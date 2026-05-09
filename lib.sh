@@ -78,6 +78,7 @@ regenerate_xray_config() {
         --arg port "$SETALINK_PORT" \
         --arg sni  "$SETALINK_SNI" \
         --arg pk   "$SETALINK_PRIVATE_KEY" \
+        --arg accept_proxy "${SETALINK_ACCEPT_PROXY_PROTOCOL:-0}" \
         --slurpfile db "$SETALINK_USERS_DB" \
         '
         {
@@ -98,18 +99,24 @@ regenerate_xray_config() {
               })),
               decryption: "none"
             },
-            streamSettings: {
-              network:  "tcp",
-              security: "reality",
-              realitySettings: {
-                show:        false,
-                dest:        ($sni + ":443"),
-                xver:        0,
-                serverNames: [$sni],
-                privateKey:  $pk,
-                shortIds:    (["", ($db[0].users | map(.shortId))] | flatten | unique)
+            streamSettings: (
+              {
+                network:  "tcp",
+                security: "reality",
+                realitySettings: {
+                  show:        false,
+                  dest:        ($sni + ":443"),
+                  xver:        0,
+                  serverNames: [$sni],
+                  privateKey:  $pk,
+                  shortIds:    (["", ($db[0].users | map(.shortId))] | flatten | unique)
+                }
               }
-            },
+              + (if $accept_proxy == "1"
+                 then { tcpSettings: { acceptProxyProtocol: true } }
+                 else {}
+                 end)
+            ),
             sniffing: { enabled: true, destOverride: ["http","tls","quic"] }
           }],
           outbounds: [
@@ -133,9 +140,16 @@ regenerate_xray_config() {
         }
         ' > "$tmp"
 
-    # Validate before swap. xray test exits non-zero on bad config.
-    if ! "$XRAY_BIN" test -config "$tmp" >/dev/null 2>&1; then
-        local out; out="$("$XRAY_BIN" test -config "$tmp" 2>&1 || true)"
+    # Validate before swap. The CLI surface differs across Xray versions:
+    #   Xray >= 26:  xray run -test -config <file>
+    #   Xray  < 26:  xray test     -config <file>
+    # Try the newer form first; fall back if it reports unknown command/flag.
+    local out rc
+    out="$("$XRAY_BIN" run -test -config "$tmp" 2>&1)"; rc=$?
+    if [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -qiE 'unknown (command|flag)|flag provided but not defined|unrecognized'; then
+        out="$("$XRAY_BIN" test -config "$tmp" 2>&1)"; rc=$?
+    fi
+    if [ "$rc" -ne 0 ]; then
         rm -f "$tmp"
         err "generated xray config failed validation:"
         printf "%s\n" "$out" >&2
@@ -164,8 +178,13 @@ build_vless_url() {
     # shellcheck disable=SC1090
     . "$SETALINK_ENV"
 
+    # Public port clients connect to. Defaults to the xray listen port for
+    # vanilla deployments; set SETALINK_CLIENT_PORT in setalink.env when xray
+    # is fronted by another listener (e.g. nginx stream multiplexing on :443).
+    local client_port="${SETALINK_CLIENT_PORT:-$SETALINK_PORT}"
+
     local frag
     frag="$(printf '%s' "$name" | jq -sRr @uri)"
     printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp&flow=xtls-rprx-vision#%s\n' \
-        "$uuid" "$SETALINK_HOST" "$SETALINK_PORT" "$SETALINK_SNI" "$SETALINK_PUBLIC_KEY" "$sid" "$frag"
+        "$uuid" "$SETALINK_HOST" "$client_port" "$SETALINK_SNI" "$SETALINK_PUBLIC_KEY" "$sid" "$frag"
 }

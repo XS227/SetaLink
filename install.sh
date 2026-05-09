@@ -122,10 +122,16 @@ if [ -f "$SETALINK_ENV" ]; then
 else
     log "generating fresh REALITY x25519 keypair"
     KEYS="$("$XRAY_BIN" x25519)"
-    PRIV="$(printf '%s\n' "$KEYS" | awk -F': *' '/Private key/{print $2; exit}')"
-    PUB="$( printf '%s\n' "$KEYS" | awk -F': *' '/Public key/ {print $2; exit}')"
+    # Xray's x25519 output has changed across releases. Match all known label
+    # forms; first hit wins. Known labels:
+    #   older: "Private key:" / "Public key:"
+    #   newer: "PrivateKey:"   / "Password (PublicKey):"
+    PRIV="$(printf '%s\n' "$KEYS" | awk -F': *' '/^(Private[ ]?[Kk]ey)[[:space:]]*:/ {print $2; exit}')"
+    PUB="$( printf '%s\n' "$KEYS" | awk -F': *' '/^(Public[ ]?[Kk]ey|Password \(PublicKey\))[[:space:]]*:/ {print $2; exit}')"
     if [ -z "$PRIV" ] || [ -z "$PUB" ]; then
-        die "could not parse 'xray x25519' output"
+        err "could not parse 'xray x25519' output. Raw output was:"
+        printf '%s\n' "$KEYS" >&2
+        die "unrecognized xray x25519 format"
     fi
 fi
 
@@ -163,11 +169,14 @@ regenerate_xray_config
 # ---------------------------------------------------------------------------
 # 7. Enable + start systemd
 # ---------------------------------------------------------------------------
-log "enabling + starting xray.service"
+log "enabling + (re)starting xray.service"
 systemctl daemon-reload
-systemctl enable --now xray >/dev/null
-sleep 1
-systemctl is-active --quiet xray || die "xray failed to start; check: journalctl -u xray -n 50"
+systemctl enable xray >/dev/null
+# Use restart-or-start: the official xray-install starts xray with its default
+# config during package install, and a plain `enable --now` is a no-op against
+# an already-running unit — meaning our freshly-written config wouldn't be
+# loaded until something else triggered a restart. restart_xray covers both.
+restart_xray
 
 # ---------------------------------------------------------------------------
 # 8. Firewall — preserve existing nginx, allow Xray port + SSH
