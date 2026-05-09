@@ -2,7 +2,8 @@
 # Add a SetaLink user. Generates UUID + per-user shortId, regenerates Xray
 # config, restarts xray, and writes <user>/link.txt + <user>/qr.png.
 #
-# Usage: ./add-user.sh <username>
+# Usage: ./add-user.sh <username> [--package=NAME]
+#   --package=NAME   one of: 5GB, 10GB, 15GB, unlimited (default: unlimited)
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,12 +12,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 require_root "$@"
 
-if [ $# -ne 1 ]; then
-    die "usage: $0 <username>"
-fi
+NAME=""
+PACKAGE="unlimited"
+for arg in "$@"; do
+    case "$arg" in
+        --package=*)  PACKAGE="${arg#--package=}" ;;
+        --*)          die "unknown flag: $arg" ;;
+        *)            [ -z "$NAME" ] || die "usage: $0 <username> [--package=NAME]"
+                      NAME="$arg" ;;
+    esac
+done
+[ -n "$NAME" ] || die "usage: $0 <username> [--package=NAME]"
 
-NAME="$1"
 validate_username "$NAME"
+validate_package_name "$PACKAGE"
+QUOTA_BYTES="$(package_to_bytes "$PACKAGE")"
 
 [ -r "$SETALINK_ENV" ]      || die "setalink not installed (missing $SETALINK_ENV) — run install.sh first"
 [ -r "$SETALINK_USERS_DB" ] || die "missing $SETALINK_USERS_DB — run install.sh first"
@@ -43,7 +53,18 @@ CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Append to users.json atomically.
 TMP="$(mktemp /tmp/setalink-users.XXXXXX.json)"
 jq --arg n "$NAME" --arg u "$UUID" --arg s "$SHORTID" --arg c "$CREATED" \
-    '.users += [{name:$n, uuid:$u, shortId:$s, created:$c}]' \
+   --arg p "$PACKAGE" --argjson q "$QUOTA_BYTES" \
+    '.users += [{
+        name:         $n,
+        uuid:         $u,
+        shortId:      $s,
+        created:      $c,
+        package_name: $p,
+        quota_bytes:  $q,
+        used_bytes:   0,
+        disabled:     false,
+        last_seen_at: null
+     }]' \
     "$SETALINK_USERS_DB" > "$TMP"
 install -m 0600 -o root -g root "$TMP" "$SETALINK_USERS_DB"
 rm -f "$TMP"
@@ -78,6 +99,7 @@ cat <<EOF
 
   uuid     : $UUID
   shortId  : $SHORTID
+  package  : $PACKAGE$( [ "$QUOTA_BYTES" -gt 0 ] && printf " (quota %s bytes)" "$QUOTA_BYTES" )
   link.txt : $USER_DIR/link.txt
   qr.png   : $USER_DIR/qr.png
 

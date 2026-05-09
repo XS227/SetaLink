@@ -20,6 +20,34 @@ XRAY_LOG_DIR="/var/log/xray"
 MAX_USERS=50
 
 # ---------------------------------------------------------------------------
+# Packages — canonical list and quota mapping. quota_bytes=0 means unlimited
+# (no auto-disable). Add a new package by adding a line below.
+# ---------------------------------------------------------------------------
+PACKAGE_NAMES=("5GB" "10GB" "15GB" "unlimited")
+
+# Map a package name to its quota in bytes. Echoes the byte count to stdout
+# (0 for unlimited / unknown). Caller should validate against PACKAGE_NAMES.
+package_to_bytes() {
+    case "$1" in
+        5GB)        echo $(( 5  * 1024 * 1024 * 1024 ));;   #  5368709120
+        10GB)       echo $(( 10 * 1024 * 1024 * 1024 ));;   # 10737418240
+        15GB)       echo $(( 15 * 1024 * 1024 * 1024 ));;   # 16106127360
+        unlimited)  echo 0 ;;
+        *)          echo 0 ;;
+    esac
+}
+
+# Validate a package name against the canonical list; die() on mismatch.
+validate_package_name() {
+    local p="$1"
+    local valid
+    for valid in "${PACKAGE_NAMES[@]}"; do
+        [ "$p" = "$valid" ] && return 0
+    done
+    die "invalid package '$p' (allowed: ${PACKAGE_NAMES[*]})"
+}
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 if [ -t 1 ]; then
@@ -79,6 +107,7 @@ regenerate_xray_config() {
         --arg sni  "$SETALINK_SNI" \
         --arg pk   "$SETALINK_PRIVATE_KEY" \
         --arg accept_proxy "${SETALINK_ACCEPT_PROXY_PROTOCOL:-0}" \
+        --arg stats_port "${SETALINK_STATS_PORT:-8344}" \
         --slurpfile db "$SETALINK_USERS_DB" \
         '
         {
@@ -87,16 +116,33 @@ regenerate_xray_config() {
             access:   "/var/log/xray/access.log",
             error:    "/var/log/xray/error.log"
           },
+          # Stats + API: enable per-user uplink/downlink counters and expose
+          # them via a localhost-only gRPC inbound for poll-traffic.sh.
+          # Disabled implicitly by setting stats_port=0 (the api inbound is
+          # only added when stats_port > 0).
+          stats: {},
+          api:   { tag: "api", services: ["StatsService"] },
+          policy: {
+            levels: { "0": { statsUserUplink: true, statsUserDownlink: true } },
+            system: { statsInboundUplink: true, statsInboundDownlink: true,
+                      statsOutboundUplink: true, statsOutboundDownlink: true }
+          },
           inbounds: [{
             listen:   "0.0.0.0",
             port:     ($port | tonumber),
             protocol: "vless",
             settings: {
-              clients: ($db[0].users | map({
-                id:    .uuid,
-                flow:  "xtls-rprx-vision",
-                email: .name
-              })),
+              # Disabled users (.disabled == true) are filtered out so xray
+              # has no client record for them. Effect is immediate on restart:
+              # their UUID stops authenticating but their record remains in
+              # users.json so enable-user.sh can restore them in place.
+              clients: ($db[0].users
+                        | map(select((.disabled // false) != true))
+                        | map({
+                          id:    .uuid,
+                          flow:  "xtls-rprx-vision",
+                          email: .name
+                        })),
               decryption: "none"
             },
             streamSettings: (
@@ -118,15 +164,27 @@ regenerate_xray_config() {
                  end)
             ),
             sniffing: { enabled: true, destOverride: ["http","tls","quic"] }
-          }],
+          }] | (
+            # gRPC stats endpoint. Bound to 127.0.0.1 only — never reachable
+            # externally (the host edge firewall blocks non-22/80/443 anyway,
+            # and the stream multiplexer wont route to it without a matching SNI).
+            if ($stats_port|tonumber) > 0
+            then . + [{
+              listen:   "127.0.0.1",
+              port:     ($stats_port|tonumber),
+              protocol: "dokodemo-door",
+              settings: { address: "127.0.0.1" },
+              tag:      "api"
+            }]
+            else . end
+          ),
           outbounds: [
             { protocol: "freedom",   tag: "direct" },
             { protocol: "blackhole", tag: "block"  }
           ],
           routing: {
             domainStrategy: "AsIs",
-            rules: [
-              {
+            rules: ([{
                 type: "field",
                 ip: [
                   "10.0.0.0/8","172.16.0.0/12","192.168.0.0/16",
@@ -134,8 +192,12 @@ regenerate_xray_config() {
                   "::1/128","fc00::/7","fe80::/10"
                 ],
                 outboundTag: "block"
-              }
-            ]
+              }] | (
+                if ($stats_port|tonumber) > 0
+                then [{ type: "field", inboundTag: ["api"], outboundTag: "api" }] + .
+                else . end
+              )
+            )
           }
         }
         ' > "$tmp"

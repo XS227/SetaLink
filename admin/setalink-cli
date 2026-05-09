@@ -1,0 +1,211 @@
+#!/usr/bin/env bash
+# SetaLink admin CLI — the SOLE program in the sudoers whitelist for www-data.
+# Every state-changing or privileged action the PHP dashboard performs must
+# go through this wrapper. Subcommands re-validate every argument so that PHP
+# (or anything that compromises PHP) cannot inject shell metacharacters or
+# escalate beyond the closed set defined here.
+#
+# Owned root:root, mode 0755 — www-data must NOT be able to modify this file.
+# If www-data could write here, the sudoers entry would be a privilege
+# escalation. Permissions are enforced by setup-admin.sh.
+
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck disable=SC1091
+. "$REPO_DIR/lib.sh"
+
+require_root "$@"   # Always invoked via sudo — bail out otherwise.
+
+ACTION="${1:-}"
+[ -n "$ACTION" ] || { echo "usage: setalink-cli <action> [args]" >&2; exit 2; }
+shift
+
+# Strict username validation, identical regex to lib.sh::validate_username.
+# We re-validate inside the wrapper rather than trusting the caller.
+_check_name() {
+    local n="${1:-}"
+    [ -n "$n" ] || { echo "missing username" >&2; exit 2; }
+    [[ "$n" =~ ^[a-z0-9][a-z0-9._-]{0,31}$ ]] || \
+        { echo "invalid username" >&2; exit 2; }
+}
+
+case "$ACTION" in
+    status)
+        # Server-status JSON. Read-only; no setuid scripts called.
+        # shellcheck disable=SC1090
+        . "$SETALINK_ENV"
+        XRAY_STATE=$(systemctl is-active xray  2>/dev/null || true)
+        NGINX_STATE=$(systemctl is-active nginx 2>/dev/null || true)
+        UFW_STATE=$(ufw status 2>/dev/null | awk '/^Status:/{print $2; exit}')
+        TOTAL=$(jq '.users | length' "$SETALINK_USERS_DB" 2>/dev/null || echo 0)
+        DISABLED=$(jq '[.users[] | select((.disabled // false) == true)] | length' \
+                    "$SETALINK_USERS_DB" 2>/dev/null || echo 0)
+        ACTIVE=$(( TOTAL - DISABLED ))
+        jq -n \
+            --arg xray "$XRAY_STATE" \
+            --arg nginx "$NGINX_STATE" \
+            --arg ufw "$UFW_STATE" \
+            --argjson total "$TOTAL" \
+            --argjson active "$ACTIVE" \
+            --argjson disabled "$DISABLED" \
+            --argjson max "$MAX_USERS" \
+            --arg client_port "${SETALINK_CLIENT_PORT:-$SETALINK_PORT}" \
+            --arg listen_port "$SETALINK_PORT" \
+            --arg sni "$SETALINK_SNI" \
+            --arg host "$SETALINK_HOST" \
+            '{
+                services: { xray: $xray, nginx: $nginx, ufw: $ufw },
+                ports:    { public: ($client_port|tonumber),
+                            xray_internal: ($listen_port|tonumber) },
+                sni:      $sni,
+                host:     $host,
+                users:    { total: $total, active: $active,
+                            disabled: $disabled, max: $max }
+            }'
+        ;;
+
+    list)
+        # users.json + computed totals + per-package usage. Read-only.
+        # Includes Phase 3 fields: package_name, quota_bytes, used_bytes, last_seen_at.
+        jq --arg dir "$SETALINK_USERS_DIR" --argjson max "$MAX_USERS" '
+            {
+                max: $max,
+                total: (.users | length),
+                active: ([.users[] | select((.disabled // false) != true)] | length),
+                disabled: ([.users[] | select((.disabled // false) == true)] | length),
+                users: (.users | map({
+                    name:         .name,
+                    uuid:         .uuid,
+                    shortId:      .shortId,
+                    created:      .created,
+                    disabled:     ((.disabled // false) == true),
+                    package_name: (.package_name // "unlimited"),
+                    quota_bytes:  (.quota_bytes  // 0),
+                    used_bytes:   (.used_bytes   // 0),
+                    last_seen_at: (.last_seen_at // null),
+                    remaining_bytes: (
+                        if ((.quota_bytes // 0) > 0)
+                        then (((.quota_bytes // 0) - (.used_bytes // 0)) | (if . < 0 then 0 else . end))
+                        else null end
+                    ),
+                    usage_percent: (
+                        if ((.quota_bytes // 0) > 0)
+                        then ((((.used_bytes // 0) / (.quota_bytes // 0)) * 100) | floor)
+                        else null end
+                    )
+                }))
+            }
+        ' "$SETALINK_USERS_DB"
+        ;;
+
+    add)
+        _check_name "${1:-}"
+        ADD_PKG="${2:-unlimited}"
+        # Reject anything that isn't a known package name. add-user.sh re-checks too.
+        case "$ADD_PKG" in
+            5GB|10GB|15GB|unlimited) ;;
+            *) echo "invalid package: $ADD_PKG" >&2; exit 2 ;;
+        esac
+        "$REPO_DIR/add-user.sh" "$1" --package="$ADD_PKG"
+        ;;
+
+    remove|delete)
+        _check_name "${1:-}"
+        "$REPO_DIR/remove-user.sh" "$1"
+        ;;
+
+    disable)
+        _check_name "${1:-}"
+        "$REPO_DIR/disable-user.sh" "$1"
+        ;;
+
+    enable)
+        _check_name "${1:-}"
+        "$REPO_DIR/enable-user.sh" "$1"
+        ;;
+
+    reset-traffic)
+        # Clear used_bytes for one user. Metadata-only — no xray restart.
+        # Note: any traffic accumulated in xray's stats counter since the last
+        # poll-traffic.sh run will still be added on the next poll. To zero
+        # both simultaneously, run poll-traffic.sh immediately after.
+        _check_name "${1:-}"
+        if ! jq -e --arg n "$1" '.users[] | select(.name == $n)' "$SETALINK_USERS_DB" >/dev/null; then
+            echo "user '$1' not found" >&2; exit 3
+        fi
+        TMP="$(mktemp /tmp/setalink-users.XXXXXX.json)"
+        jq --arg n "$1" '.users |= map(if .name == $n then .used_bytes = 0 else . end)' \
+            "$SETALINK_USERS_DB" > "$TMP"
+        install -m 0600 -o root -g root "$TMP" "$SETALINK_USERS_DB"
+        rm -f "$TMP"
+        ok "reset traffic for '$1'"
+        ;;
+
+    change-package)
+        # Update a user's package_name + quota_bytes. Does NOT auto-enable a
+        # user who was previously auto-disabled — admin must enable explicitly.
+        _check_name "${1:-}"
+        CP_PKG="${2:-}"
+        validate_package_name "$CP_PKG"
+        CP_QUOTA="$(package_to_bytes "$CP_PKG")"
+        if ! jq -e --arg n "$1" '.users[] | select(.name == $n)' "$SETALINK_USERS_DB" >/dev/null; then
+            echo "user '$1' not found" >&2; exit 3
+        fi
+        TMP="$(mktemp /tmp/setalink-users.XXXXXX.json)"
+        jq --arg n "$1" --arg p "$CP_PKG" --argjson q "$CP_QUOTA" \
+            '.users |= map(if .name == $n then .package_name = $p | .quota_bytes = $q else . end)' \
+            "$SETALINK_USERS_DB" > "$TMP"
+        install -m 0600 -o root -g root "$TMP" "$SETALINK_USERS_DB"
+        rm -f "$TMP"
+        ok "set package for '$1' to '$CP_PKG' (quota=$CP_QUOTA)"
+        ;;
+
+    regen-link)
+        # Rebuild link.txt + qr.png from the user's current uuid/shortId.
+        # Useful if the per-user files were lost or the env-derived URL changed
+        # (e.g. SETALINK_CLIENT_PORT was updated). No xray restart needed.
+        _check_name "${1:-}"
+        require_cmd qrencode
+        RL_UUID="$(jq -r --arg n "$1" '.users[] | select(.name == $n) | .uuid'    "$SETALINK_USERS_DB")"
+        RL_SID="$( jq -r --arg n "$1" '.users[] | select(.name == $n) | .shortId' "$SETALINK_USERS_DB")"
+        [ -n "$RL_UUID" ] && [ "$RL_UUID" != "null" ] || { echo "user '$1' not found" >&2; exit 3; }
+        RL_DIR="$SETALINK_USERS_DIR/$1"
+        mkdir -p "$RL_DIR"
+        chmod 0700 "$RL_DIR"
+        RL_URL="$(build_vless_url "$RL_UUID" "$RL_SID" "$1")"
+        umask 077
+        printf '%s\n' "$RL_URL" > "$RL_DIR/link.txt.new"
+        mv "$RL_DIR/link.txt.new" "$RL_DIR/link.txt"
+        qrencode -o "$RL_DIR/qr.png.new" -t PNG -s 8 -m 2 "$RL_URL"
+        mv "$RL_DIR/qr.png.new" "$RL_DIR/qr.png"
+        chown root:root "$RL_DIR/link.txt" "$RL_DIR/qr.png"
+        chmod 0600       "$RL_DIR/link.txt" "$RL_DIR/qr.png"
+        umask 022
+        ok "regenerated link + qr for '$1'"
+        ;;
+
+    read-link)
+        _check_name "${1:-}"
+        # shellcheck disable=SC1090
+        . "$SETALINK_ENV"
+        F="$SETALINK_USERS_DIR/$1/link.txt"
+        [ -r "$F" ] || { echo "no link for user '$1'" >&2; exit 3; }
+        cat "$F"
+        ;;
+
+    read-qr)
+        _check_name "${1:-}"
+        # shellcheck disable=SC1090
+        . "$SETALINK_ENV"
+        F="$SETALINK_USERS_DIR/$1/qr.png"
+        [ -r "$F" ] || { echo "no qr for user '$1'" >&2; exit 3; }
+        cat "$F"
+        ;;
+
+    *)
+        echo "unknown action: $ACTION" >&2
+        echo "valid: status list add remove disable enable reset-traffic change-package regen-link read-link read-qr" >&2
+        exit 2
+        ;;
+esac
