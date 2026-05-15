@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetaLink — Design System v1.0</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+:root{
+  /* ── Brand ── */
+  --emerald-200:#8BFFC9;
+  --emerald-400:#00E87A;
+  --emerald-500:#00C966;
+  --emerald-700:#007A3D;
+  --emerald-900:#002E16;
+  --blue-400:#3399FF;
+  --amber:#FFB800;
+  --red:#FF4444;
+  --purple:#9B77FF;
+  /* ── Backgrounds ── */
+  --bg-void:#030609;
+  --bg-base:#070D18;
+  --bg-surface:#0D1828;
+  --bg-elevated:#111F35;
+  --bg-glass:rgba(13,24,40,0.82);
+  /* ── Borders ── */
+  --border-subtle:rgba(255,255,255,0.05);
+  --border-default:rgba(255,255,255,0.08);
+  --border-glow:rgba(0,232,122,0.28);
+  --border-active:rgba(0,232,122,0.55);
+  /* ── Text ── */
+  --text-primary:#F0F6FF;
+  --text-secondary:#8FA8C8;
+  --text-muted:#3D5570;
+  --text-inverse:#030609;
+  /* ── Radius ── */
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px;
+  --r-2xl:24px; --r-3xl:32px; --r-full:9999px;
+  /* ── Shadows ── */
+  --shadow-card:0 8px 32px rgba(0,0,0,0.45),0 2px 8px rgba(0,0,0,0.3);
+  --shadow-emerald:0 0 18px rgba(0,232,122,0.20);
+  --shadow-emerald-sm:0 0 10px rgba(0,232,122,0.14);
+  /* ── Font ── */
+  --font:'Inter',system-ui,sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+
+/* ── Page shell ── */
+body{
+  font-family:var(--font);
+  background:var(--bg-void);
+  color:var(--text-primary);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  display:flex;
+}
+
+/* ── Sidebar ── */
+.sidebar{
+  width:240px;flex-shrink:0;height:100vh;position:sticky;top:0;
+  background:var(--bg-base);border-right:1px solid var(--border-subtle);
+  display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:none;padding:32px 0 40px;
+}
+.sidebar::-webkit-scrollbar{display:none;}
+.sb-brand{padding:0 24px 32px;border-bottom:1px solid var(--border-subtle);}
+.sb-mark{
+  width:32px;height:32px;border-radius:8px;background:var(--emerald-400);
+  display:inline-flex;align-items:center;justify-content:center;
+  transform:rotate(45deg);margin-bottom:12px;
+  box-shadow:var(--shadow-emerald-sm);
+}
+.sb-mark span{transform:rotate(-45deg);font-size:14px;font-weight:700;color:var(--text-inverse);}
+.sb-title{font-size:14px;font-weight:600;color:var(--text-primary);letter-spacing:-0.3px;}
+.sb-version{
+  font-size:10px;font-family:var(--mono);color:var(--text-muted);
+  letter-spacing:0.8px;margin-top:3px;
+}
+
+.sb-nav{padding:24px 12px 0;flex:1;}
+.sb-group-label{
+  font-size:9px;font-weight:500;color:var(--text-muted);
+  letter-spacing:1.5px;text-transform:uppercase;
+  padding:0 12px;margin-bottom:6px;margin-top:20px;
+}
+.sb-group-label:first-child{margin-top:0;}
+.sb-link{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;
+  border-radius:var(--r-md);cursor:pointer;
+  font-size:13px;color:var(--text-muted);
+  text-decoration:none;transition:all 0.15s;
+  position:relative;
+}
+.sb-link:hover{color:var(--text-secondary);background:rgba(255,255,255,0.04);}
+.sb-link.active{color:var(--emerald-400);background:rgba(0,232,122,0.06);}
+.sb-num{
+  font-size:10px;font-family:var(--mono);color:var(--text-muted);
+  width:18px;flex-shrink:0;
+}
+.sb-link.active .sb-num{color:rgba(0,232,122,0.5);}
+
+/* ── Main ── */
+.main{flex:1;min-width:0;padding:0 0 80px;}
+
+/* ── Hero ── */
+.hero{
+  padding:64px 64px 48px;
+  border-bottom:1px solid var(--border-subtle);
+  position:relative;overflow:hidden;
+}
+.hero::before{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:radial-gradient(ellipse 600px 300px at 60% 50%,rgba(0,232,122,0.04),transparent 70%);
+  pointer-events:none;
+}
+.hero-eyebrow{
+  font-size:10px;font-weight:500;color:var(--emerald-400);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;
+  display:flex;align-items:center;gap:8px;
+}
+.hero-dot{width:5px;height:5px;border-radius:50%;background:var(--emerald-400);}
+.hero-title{
+  font-size:52px;font-weight:300;color:var(--text-primary);
+  letter-spacing:-2.5px;line-height:1.02;margin-bottom:16px;
+}
+.hero-title strong{font-weight:600;color:var(--emerald-400);}
+.hero-sub{
+  font-size:16px;color:var(--text-secondary);line-height:1.7;
+  max-width:560px;margin-bottom:32px;
+}
+.hero-tags{display:flex;gap:8px;flex-wrap:wrap;}
+.hero-tag{
+  padding:5px 12px;border-radius:var(--r-full);
+  border:1px solid var(--border-default);background:var(--bg-surface);
+  font-size:11px;font-weight:500;color:var(--text-muted);letter-spacing:0.3px;
+}
+
+/* ── Section ── */
+.section{padding:56px 64px;border-bottom:1px solid var(--border-subtle);}
+.section:last-child{border-bottom:none;}
+.sec-eyebrow{
+  display:flex;align-items:center;gap:10px;margin-bottom:8px;
+}
+.sec-num{
+  font-size:11px;font-family:var(--mono);color:var(--text-muted);
+  letter-spacing:1px;
+}
+.sec-title{font-size:28px;font-weight:600;color:var(--text-primary);letter-spacing:-0.8px;margin-bottom:8px;}
+.sec-sub{font-size:14px;color:var(--text-secondary);line-height:1.7;margin-bottom:40px;max-width:600px;}
+
+/* ── Subsection ── */
+.subsec{margin-bottom:48px;}
+.subsec:last-child{margin-bottom:0;}
+.subsec-title{
+  font-size:13px;font-weight:600;color:var(--text-primary);
+  letter-spacing:-0.2px;margin-bottom:20px;
+  display:flex;align-items:center;gap:8px;
+}
+.subsec-title::after{
+  content:'';flex:1;height:1px;background:var(--border-subtle);
+}
+
+/* ── Token table ── */
+.token-table{
+  display:flex;flex-direction:column;gap:1px;
+  border:1px solid var(--border-subtle);border-radius:var(--r-lg);overflow:hidden;
+}
+.token-row{
+  display:grid;grid-template-columns:200px 1fr 1fr 1fr;align-items:center;
+  padding:12px 16px;background:var(--bg-surface);gap:16px;
+}
+.token-row:first-child{background:var(--bg-elevated);}
+.token-row:nth-child(even){background:var(--bg-base);}
+.t-name{font-size:12px;font-family:var(--mono);color:var(--text-secondary);}
+.t-swatch{width:28px;height:28px;border-radius:6px;flex-shrink:0;border:1px solid rgba(255,255,255,0.06);}
+.t-value{font-size:11px;font-family:var(--mono);color:var(--text-muted);}
+.t-label{font-size:12px;color:var(--text-secondary);}
+.t-desc{font-size:11px;color:var(--text-muted);}
+.t-header{font-size:10px;font-weight:600;color:var(--text-muted);letter-spacing:0.8px;text-transform:uppercase;}
+
+/* ── Color grid ── */
+.color-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;}
+.color-card{border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border-subtle);}
+.color-swatch{height:72px;}
+.color-meta{padding:10px 12px;background:var(--bg-surface);}
+.color-name{font-size:12px;font-weight:500;color:var(--text-primary);margin-bottom:2px;}
+.color-hex{font-size:11px;font-family:var(--mono);color:var(--text-muted);}
+.color-use{font-size:10px;color:var(--text-muted);margin-top:3px;line-height:1.4;}
+
+/* ── Type demo ── */
+.type-table{display:flex;flex-direction:column;gap:0;}
+.type-row{
+  display:grid;grid-template-columns:140px 1fr 160px;
+  align-items:baseline;gap:24px;padding:20px 0;
+  border-bottom:1px solid var(--border-subtle);
+}
+.type-row:last-child{border-bottom:none;}
+.type-meta{display:flex;flex-direction:column;gap:3px;flex-shrink:0;}
+.type-role{font-size:11px;font-weight:500;color:var(--emerald-400);letter-spacing:0.4px;}
+.type-spec{font-size:10px;font-family:var(--mono);color:var(--text-muted);}
+.type-sample{overflow:hidden;}
+.type-usage{font-size:11px;color:var(--text-muted);text-align:right;line-height:1.5;white-space:nowrap;}
+
+/* ── Spacing demos ── */
+.spacing-grid{display:flex;flex-direction:column;gap:10px;}
+.sp-row{display:flex;align-items:center;gap:16px;}
+.sp-label{font-size:11px;font-family:var(--mono);color:var(--text-muted);width:52px;flex-shrink:0;text-align:right;}
+.sp-bar-wrap{flex:1;height:28px;display:flex;align-items:center;}
+.sp-bar{height:28px;background:rgba(0,232,122,0.12);border:1px solid rgba(0,232,122,0.25);border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding:0 8px;}
+.sp-bar-val{font-size:10px;font-family:var(--mono);color:rgba(0,232,122,0.7);}
+.sp-use{font-size:11px;color:var(--text-muted);width:220px;flex-shrink:0;}
+
+/* ── Radius demos ── */
+.radius-grid{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;}
+.radius-item{display:flex;flex-direction:column;align-items:center;gap:10px;}
+.radius-box{
+  background:var(--bg-surface);border:1px solid var(--border-default);
+  width:80px;height:80px;display:flex;align-items:center;justify-content:center;
+}
+.radius-name{font-size:10px;font-family:var(--mono);color:var(--text-muted);text-align:center;}
+.radius-val{font-size:9px;color:var(--text-muted);text-align:center;}
+
+/* ── Shadow demos ── */
+.shadow-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;}
+.shadow-card{
+  border-radius:var(--r-xl);padding:20px;background:var(--bg-surface);
+  border:1px solid var(--border-default);
+}
+.shadow-card.s-card{box-shadow:var(--shadow-card);}
+.shadow-card.s-em{box-shadow:var(--shadow-card),var(--shadow-emerald);}
+.shadow-card.s-em-sm{box-shadow:var(--shadow-card),var(--shadow-emerald-sm);}
+.shadow-card.s-inset{box-shadow:inset 0 0 20px rgba(0,232,122,0.04);}
+.shadow-name{font-size:11px;font-weight:500;color:var(--text-secondary);margin-bottom:4px;}
+.shadow-val{font-size:10px;font-family:var(--mono);color:var(--text-muted);line-height:1.5;}
+
+/* ── Motion demos ── */
+.motion-grid{display:flex;flex-direction:column;gap:16px;}
+.motion-row{
+  display:grid;grid-template-columns:180px 1fr 160px;
+  align-items:center;gap:24px;padding:16px;
+  background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--r-lg);
+}
+.motion-demo{display:flex;align-items:center;justify-content:center;height:40px;}
+.motion-dot{
+  width:10px;height:10px;border-radius:50%;background:var(--emerald-400);
+}
+.m-fade{animation:m-fade 3s ease-in-out infinite;}
+@keyframes m-fade{0%,100%{opacity:0.2;}50%{opacity:1;}}
+.m-slide{animation:m-slide 3s ease infinite;}
+@keyframes m-slide{0%,100%{transform:translateX(-16px);opacity:0;}10%,90%{opacity:1;}50%{transform:translateX(16px);}}
+.m-scale{animation:m-scale 2.5s cubic-bezier(0.34,1.56,0.64,1) infinite;}
+@keyframes m-scale{0%,100%{transform:scale(0.6);opacity:0.4;}50%{transform:scale(1);opacity:1;}}
+.m-orbit{
+  width:40px;height:40px;border-radius:50%;border:1px dashed rgba(0,232,122,0.2);
+  position:relative;animation:orbit-demo 16s linear infinite;flex-shrink:0;
+}
+@keyframes orbit-demo{from{transform:rotate(0);}to{transform:rotate(360deg);}}
+.m-orbit::before{
+  content:'';position:absolute;top:-4px;left:50%;transform:translateX(-50%);
+  width:8px;height:8px;border-radius:50%;background:var(--emerald-400);
+  box-shadow:0 0 5px rgba(0,232,122,0.5);
+}
+.m-pulse-ring{
+  width:32px;height:32px;border-radius:50%;border:1px solid var(--emerald-400);
+  animation:m-pulse 4s ease-out infinite;
+}
+@keyframes m-pulse{0%{transform:scale(1);opacity:0.18;}100%{transform:scale(2);opacity:0;}}
+.m-breathe{
+  width:32px;height:32px;border-radius:50%;
+  background:radial-gradient(circle,rgba(0,232,122,0.2),rgba(0,232,122,0.04));
+  border:1px solid rgba(0,232,122,0.35);
+  animation:m-breathe 4.5s ease-in-out infinite;
+}
+@keyframes m-breathe{0%,100%{box-shadow:0 0 8px rgba(0,232,122,0.12);}50%{box-shadow:0 0 18px rgba(0,232,122,0.24);transform:scale(1.06);}}
+.motion-name{font-size:13px;font-weight:500;color:var(--text-primary);}
+.motion-desc{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.motion-spec{font-size:11px;font-family:var(--mono);color:var(--text-muted);text-align:right;line-height:1.6;}
+
+/* ── Component demos ── */
+.comp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;}
+.comp-card{
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:var(--r-xl);overflow:hidden;
+}
+.comp-label{
+  font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:1.2px;
+  text-transform:uppercase;padding:12px 16px;
+  border-bottom:1px solid var(--border-subtle);
+}
+.comp-demo{padding:24px;display:flex;flex-direction:column;gap:12px;align-items:flex-start;}
+.comp-demo.centered{align-items:center;justify-content:center;}
+
+/* ── Live components ── */
+/* Buttons */
+.btn-primary{
+  height:48px;background:var(--emerald-400);border-radius:var(--r-lg);
+  display:inline-flex;align-items:center;padding:0 24px;gap:8px;cursor:pointer;
+  font-size:14px;font-weight:600;color:var(--text-inverse);
+  box-shadow:0 0 14px rgba(0,232,122,0.18),0 4px 16px rgba(0,0,0,0.3);
+  transition:transform 0.15s,box-shadow 0.15s;border:none;
+}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 0 22px rgba(0,232,122,0.26),0 8px 20px rgba(0,0,0,0.35);}
+.btn-secondary{
+  height:44px;background:var(--bg-elevated);border-radius:var(--r-lg);
+  display:inline-flex;align-items:center;padding:0 20px;gap:8px;cursor:pointer;
+  font-size:13px;font-weight:500;color:var(--text-secondary);
+  border:1px solid var(--border-default);
+  transition:border-color 0.15s,color 0.15s;
+}
+.btn-secondary:hover{border-color:var(--border-glow);color:var(--emerald-400);}
+.btn-ghost{
+  height:40px;background:transparent;border-radius:var(--r-lg);
+  display:inline-flex;align-items:center;padding:0 16px;cursor:pointer;
+  font-size:13px;font-weight:500;color:var(--emerald-400);
+  border:1px solid rgba(0,232,122,0.30);
+  transition:background 0.15s;
+}
+.btn-ghost:hover{background:rgba(0,232,122,0.06);}
+.btn-danger{
+  height:44px;background:rgba(255,68,68,0.06);border-radius:var(--r-lg);
+  display:inline-flex;align-items:center;padding:0 20px;cursor:pointer;
+  font-size:13px;font-weight:500;color:#FF4444;
+  border:1px solid rgba(255,68,68,0.25);
+  transition:background 0.15s;
+}
+
+/* Pill */
+.pill{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 10px;
+  border-radius:var(--r-full);border:1px solid var(--border-glow);
+  background:rgba(0,232,122,0.07);
+}
+.pill-dot{width:6px;height:6px;border-radius:50%;background:var(--emerald-400);animation:pill-blink 2s ease-in-out infinite;}
+@keyframes pill-blink{0%,100%{opacity:1;}50%{opacity:0.35;}}
+.pill-text{font-size:11px;font-weight:500;color:var(--emerald-400);letter-spacing:0.8px;text-transform:uppercase;}
+.pill-proto{
+  display:inline-flex;padding:5px 10px;border-radius:var(--r-full);
+  background:var(--bg-elevated);border:1px solid var(--border-default);
+}
+.pill-proto-text{font-size:11px;font-family:var(--mono);color:var(--text-secondary);}
+
+/* Glass card */
+.glass{
+  background:var(--bg-glass);backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--border-default);border-radius:var(--r-xl);
+  padding:18px;box-shadow:var(--shadow-card);
+  width:100%;
+}
+.glass.glow-e{border-color:var(--border-glow);box-shadow:var(--shadow-card),0 0 12px rgba(0,232,122,0.05);}
+.glass-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px;}
+.glass-sub{font-size:11px;color:var(--text-muted);}
+
+/* Metric pill */
+.metric-pills{display:flex;gap:8px;}
+.mpill{
+  background:var(--bg-elevated);border:1px solid var(--border-default);
+  border-radius:var(--r-xl);padding:12px 14px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;min-width:80px;
+}
+.mpill.accent{border-color:var(--border-glow);background:rgba(0,232,122,0.04);}
+.mpill-val{font-size:18px;font-weight:600;color:var(--text-primary);letter-spacing:-0.5px;}
+.mpill.accent .mpill-val{color:var(--emerald-400);}
+.mpill-lbl{font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;}
+
+/* Server row */
+.server-row-demo{
+  display:flex;align-items:center;gap:12px;
+  background:var(--bg-elevated);border-radius:var(--r-xl);
+  border:1px solid var(--border-subtle);padding:12px 14px;width:100%;
+  cursor:pointer;transition:border-color 0.15s;
+}
+.server-row-demo:hover{border-color:var(--border-default);}
+.server-row-demo.active{border-color:var(--border-active);background:rgba(0,232,122,0.04);}
+.srv-flag{font-size:22px;flex-shrink:0;}
+.srv-info{flex:1;}
+.srv-name{font-size:14px;font-weight:600;color:var(--text-primary);}
+.srv-sub{font-size:10px;color:var(--text-muted);margin-top:1px;}
+.srv-ping{display:flex;flex-direction:column;align-items:flex-end;gap:4px;}
+.pdot{width:6px;height:6px;border-radius:50%;}
+.pdot.g{background:var(--emerald-400);box-shadow:0 0 4px rgba(0,232,122,0.4);}
+.pdot.a{background:var(--amber);}
+.ping-r{display:flex;align-items:center;gap:4px;}
+.ping-val{font-size:11px;font-family:var(--mono);color:var(--text-secondary);}
+.load-bar-d{width:44px;height:3px;background:var(--bg-void);border-radius:2px;overflow:hidden;}
+.load-fill-d{height:100%;border-radius:2px;background:var(--emerald-400);}
+
+/* Nav bar */
+.nav-demo{
+  background:var(--bg-elevated);border:1px solid var(--border-default);
+  border-radius:var(--r-3xl);display:flex;align-items:center;
+  padding:0 8px;height:58px;gap:0;width:100%;
+}
+.nav-item-d{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:3px;cursor:pointer;color:var(--text-muted);padding:4px 0;
+}
+.nav-item-d.active{color:var(--emerald-400);}
+.nav-icon-d{font-size:17px;line-height:1;}
+.nav-lbl-d{font-size:9px;font-weight:500;letter-spacing:0.3px;}
+.nav-ai-d{
+  width:50px;height:50px;border-radius:50%;background:var(--emerald-400);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  margin-top:-18px;flex-shrink:0;gap:1px;
+  box-shadow:0 0 16px rgba(0,232,122,0.30);cursor:pointer;
+}
+.nav-ai-d .nav-icon-d{font-size:15px;color:var(--text-inverse);}
+.nav-ai-d .nav-lbl-d{color:var(--text-inverse);font-size:8px;letter-spacing:0.8px;text-transform:uppercase;}
+
+/* AI orb */
+.orb-demo{position:relative;width:120px;height:120px;display:flex;align-items:center;justify-content:center;}
+.orb-breathe-d{
+  position:absolute;width:120px;height:120px;border-radius:50%;
+  border:1px solid rgba(0,232,122,0.10);
+  animation:breathe-d 4.5s ease-out infinite;
+}
+.orb-breathe-d:nth-child(2){animation-delay:2.2s;}
+@keyframes breathe-d{0%{transform:scale(1);opacity:0.22;}100%{transform:scale(1.5);opacity:0;}}
+.orb-orbit-d{
+  position:absolute;width:95px;height:95px;border-radius:50%;
+  border:1px dashed rgba(0,232,122,0.18);
+  animation:orbit-d 16s linear infinite;
+}
+@keyframes orbit-d{from{transform:rotate(0);}to{transform:rotate(360deg);}}
+.orb-orbit-d::before{
+  content:'';position:absolute;top:-4px;left:50%;transform:translateX(-50%);
+  width:7px;height:7px;border-radius:50%;background:var(--emerald-400);
+  box-shadow:0 0 5px rgba(0,232,122,0.5);
+}
+.orb-core-d{
+  width:56px;height:56px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,rgba(0,232,122,0.22),rgba(0,232,122,0.06) 55%,rgba(7,13,24,0.95));
+  border:1px solid rgba(0,232,122,0.4);
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;color:var(--emerald-400);
+  box-shadow:0 0 14px rgba(0,232,122,0.16),inset 0 0 10px rgba(0,232,122,0.06);
+  animation:orb-d-glow 5s ease-in-out infinite;
+}
+@keyframes orb-d-glow{0%,100%{box-shadow:0 0 10px rgba(0,232,122,0.12),inset 0 0 8px rgba(0,232,122,0.04);}50%{box-shadow:0 0 22px rgba(0,232,122,0.22),inset 0 0 14px rgba(0,232,122,0.08);}}
+
+/* Toggle */
+.toggle-demo{display:flex;align-items:center;justify-content:space-between;width:100%;gap:12px;}
+.toggle-text{font-size:13px;color:var(--text-primary);}
+.toggle-sub{font-size:11px;color:var(--text-muted);margin-top:1px;}
+.sw{width:42px;height:24px;border-radius:12px;position:relative;flex-shrink:0;cursor:pointer;}
+.sw.on{background:var(--emerald-400);}
+.sw.off{background:var(--bg-elevated);border:1px solid var(--border-default);}
+.sw-thumb{position:absolute;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform 0.2s cubic-bezier(0.34,1.56,0.64,1);}
+.sw.on .sw-thumb{transform:translateX(21px);}
+.sw.off .sw-thumb{transform:translateX(3px);}
+
+/* Status indicators */
+.status-demos{display:flex;flex-direction:column;gap:8px;width:100%;}
+.status-d{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;
+  border-radius:var(--r-lg);border:1px solid;
+}
+.status-d.ok{background:rgba(0,232,122,0.06);border-color:rgba(0,232,122,0.25);}
+.status-d.warn{background:rgba(255,184,0,0.06);border-color:rgba(255,184,0,0.25);}
+.status-d.err{background:rgba(255,68,68,0.06);border-color:rgba(255,68,68,0.25);}
+.status-d.info{background:rgba(51,153,255,0.06);border-color:rgba(51,153,255,0.25);}
+.st-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.st-dot.ok{background:var(--emerald-400);}
+.st-dot.warn{background:var(--amber);}
+.st-dot.err{background:var(--red);}
+.st-dot.info{background:var(--blue-400);}
+.st-text{font-size:12px;font-weight:500;}
+.st-text.ok{color:var(--emerald-400);}
+.st-text.warn{color:var(--amber);}
+.st-text.err{color:#FF4444;}
+.st-text.info{color:var(--blue-400);}
+.st-sub{font-size:11px;color:var(--text-muted);margin-left:auto;}
+
+/* ── Accessibility ── */
+.contrast-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;}
+.contrast-card{
+  border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--border-subtle);
+}
+.contrast-preview{padding:20px 16px;display:flex;flex-direction:column;gap:4px;}
+.c-label{font-size:9px;font-weight:500;letter-spacing:1px;text-transform:uppercase;opacity:0.5;}
+.contrast-meta{padding:10px 12px;background:var(--bg-surface);border-top:1px solid var(--border-subtle);}
+.c-ratio{font-size:13px;font-weight:600;color:var(--text-primary);}
+.c-rating{font-size:10px;color:var(--text-muted);}
+.c-pass{color:var(--emerald-400);}
+.c-fail{color:var(--red);}
+
+/* ── Brand ── */
+.brand-words{display:flex;flex-wrap:wrap;gap:12px;}
+.brand-word{
+  padding:14px 20px;border-radius:var(--r-lg);
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  flex:1;min-width:180px;
+}
+.bw-title{font-size:16px;font-weight:600;color:var(--text-primary);letter-spacing:-0.3px;margin-bottom:4px;}
+.bw-desc{font-size:12px;color:var(--text-muted);line-height:1.6;}
+
+.rule-list{display:flex;flex-direction:column;gap:8px;}
+.rule-item{
+  display:flex;align-items:flex-start;gap:12px;padding:12px 16px;
+  background:var(--bg-surface);border-radius:var(--r-md);border-left:2px solid;
+}
+.rule-item.do{border-color:var(--emerald-400);}
+.rule-item.dont{border-color:var(--red);}
+.rule-badge{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;flex-shrink:0;width:28px;}
+.rule-badge.do{color:var(--emerald-400);}
+.rule-badge.dont{color:var(--red);}
+.rule-text{font-size:12px;color:var(--text-secondary);line-height:1.6;}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:var(--bg-base);}
+::-webkit-scrollbar-thumb{background:var(--bg-elevated);border-radius:3px;}
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<nav class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-mark"><span>S</span></div>
+    <div class="sb-title">SetaLink DS</div>
+    <div class="sb-version">v1.0 · 2026</div>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-group-label">Foundations</div>
+    <a class="sb-link" href="#colors"><span class="sb-num">01</span>Color System</a>
+    <a class="sb-link" href="#typography"><span class="sb-num">02</span>Typography</a>
+    <a class="sb-link" href="#spacing"><span class="sb-num">03</span>Spacing</a>
+    <a class="sb-link" href="#radius"><span class="sb-num">04</span>Radius &amp; Shadows</a>
+    <div class="sb-group-label">Interaction</div>
+    <a class="sb-link" href="#motion"><span class="sb-num">05</span>Motion System</a>
+    <div class="sb-group-label">Components</div>
+    <a class="sb-link" href="#components"><span class="sb-num">06</span>Components</a>
+    <div class="sb-group-label">Guidelines</div>
+    <a class="sb-link" href="#accessibility"><span class="sb-num">07</span>Accessibility</a>
+    <a class="sb-link" href="#brand"><span class="sb-num">08</span>Brand Personality</a>
+  </div>
+</nav>
+
+<!-- ── Main ── -->
+<main class="main">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-eyebrow"><div class="hero-dot"></div>Design System</div>
+    <h1 class="hero-title">SetaLink<br><strong>Visual Language</strong></h1>
+    <p class="hero-sub">A frozen specification of the SetaLink UI system, ready for React Native conversion. Every token, component, and motion rule is defined here to ensure pixel-perfect implementation across platforms.</p>
+    <div class="hero-tags">
+      <div class="hero-tag">React Native Ready</div>
+      <div class="hero-tag">Glassmorphism</div>
+      <div class="hero-tag">Scandinavian · Futuristic</div>
+      <div class="hero-tag">Dark-First</div>
+      <div class="hero-tag">AI-Centered</div>
+    </div>
+  </div>
+
+  <!-- 01 Colors -->
+  <section class="section" id="colors">
+    <div class="sec-eyebrow"><span class="sec-num">01</span></div>
+    <div class="sec-title">Color System</div>
+    <p class="sec-sub">SetaLink uses a deep navy foundation with a single emerald accent. Emerald is reserved for moments that matter — connection state, active elements, AI presence — never decorative.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Brand Accent — Emerald</div>
+      <div class="color-grid">
+        <div class="color-card">
+          <div class="color-swatch" style="background:#8BFFC9;"></div>
+          <div class="color-meta">
+            <div class="color-name">Emerald 200</div>
+            <div class="color-hex">#8BFFC9</div>
+            <div class="color-use">Highlights on dark. Rarely used.</div>
+          </div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#00E87A;"></div>
+          <div class="color-meta">
+            <div class="color-name">Emerald 400 — Primary</div>
+            <div class="color-hex">#00E87A</div>
+            <div class="color-use">Connect button, active nav, status dots, CTA fills.</div>
+          </div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#00C966;"></div>
+          <div class="color-meta">
+            <div class="color-name">Emerald 500</div>
+            <div class="color-hex">#00C966</div>
+            <div class="color-use">Hover / pressed state of primary.</div>
+          </div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#007A3D;"></div>
+          <div class="color-meta">
+            <div class="color-name">Emerald 700</div>
+            <div class="color-hex">#007A3D</div>
+            <div class="color-use">Deep tint for glass overlays.</div>
+          </div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#002E16;border:1px solid rgba(255,255,255,0.06);"></div>
+          <div class="color-meta">
+            <div class="color-name">Emerald 900</div>
+            <div class="color-hex">#002E16</div>
+            <div class="color-use">Near-invisible tint backgrounds.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Backgrounds — Void to Surface</div>
+      <div class="color-grid">
+        <div class="color-card">
+          <div class="color-swatch" style="background:#030609;"></div>
+          <div class="color-meta"><div class="color-name">bg-void</div><div class="color-hex">#030609</div><div class="color-use">Page/screen background.</div></div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#070D18;border:1px solid rgba(255,255,255,0.04);"></div>
+          <div class="color-meta"><div class="color-name">bg-base</div><div class="color-hex">#070D18</div><div class="color-use">Phone frame, primary surfaces.</div></div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#0D1828;border:1px solid rgba(255,255,255,0.04);"></div>
+          <div class="color-meta"><div class="color-name">bg-surface</div><div class="color-hex">#0D1828</div><div class="color-use">Cards, nav bars, inputs.</div></div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#111F35;border:1px solid rgba(255,255,255,0.04);"></div>
+          <div class="color-meta"><div class="color-name">bg-elevated</div><div class="color-hex">#111F35</div><div class="color-use">Toggles, meta rows, inner elements.</div></div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:rgba(13,24,40,0.82);border:1px solid rgba(255,255,255,0.08);backdrop-filter:blur(8px);"></div>
+          <div class="color-meta"><div class="color-name">bg-glass</div><div class="color-hex">rgba(13,24,40,0.82)</div><div class="color-use">Glass cards. Always blur(24px) + saturate(160%).</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Text Hierarchy</div>
+      <div class="token-table">
+        <div class="token-row">
+          <span class="t-header">Token</span><span class="t-header">Value</span><span class="t-header">Usage</span><span class="t-header">Preview</span>
+        </div>
+        <div class="token-row">
+          <span class="t-name">text-primary</span>
+          <span class="t-value">#F0F6FF</span>
+          <span class="t-desc">Headings, values, body reading text</span>
+          <span style="font-size:14px;color:#F0F6FF;font-weight:600;">Frankfurt, Germany</span>
+        </div>
+        <div class="token-row">
+          <span class="t-name">text-secondary</span>
+          <span class="t-value">#8FA8C8</span>
+          <span class="t-desc">Subtitles, descriptions, ping values</span>
+          <span style="font-size:13px;color:#8FA8C8;">CDN Edge · Premium · 24ms</span>
+        </div>
+        <div class="token-row">
+          <span class="t-name">text-muted</span>
+          <span class="t-value">#3D5570</span>
+          <span class="t-desc">Labels, timestamps, captions, nav labels</span>
+          <span style="font-size:11px;color:#3D5570;text-transform:uppercase;letter-spacing:1px;">PROTOCOL</span>
+        </div>
+        <div class="token-row">
+          <span class="t-name">text-inverse</span>
+          <span class="t-value">#030609</span>
+          <span class="t-desc">Text on emerald fills (buttons, nav AI)</span>
+          <span style="font-size:13px;color:#030609;background:#00E87A;padding:2px 8px;border-radius:4px;font-weight:600;">Connect</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Semantic Colors</div>
+      <div class="color-grid">
+        <div class="color-card">
+          <div class="color-swatch" style="background:#3399FF;"></div>
+          <div class="color-meta"><div class="color-name">Blue 400</div><div class="color-hex">#3399FF</div><div class="color-use">Download direction, referral, info states.</div></div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#FFB800;"></div>
+          <div class="color-meta"><div class="color-name">Amber</div><div class="color-hex">#FFB800</div><div class="color-use">Warning, medium load, streaming mode.</div></div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#FF4444;"></div>
+          <div class="color-meta"><div class="color-name">Red</div><div class="color-hex">#FF4444</div><div class="color-use">Error, high load, disconnect danger, logout.</div></div>
+        </div>
+        <div class="color-card">
+          <div class="color-swatch" style="background:#9B77FF;"></div>
+          <div class="color-meta"><div class="color-name">Purple</div><div class="color-hex">#9B77FF</div><div class="color-use">Stealth mode only. Never for primary UI.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Border Tokens</div>
+      <div class="token-table">
+        <div class="token-row">
+          <span class="t-header">Token</span><span class="t-header">Value</span><span class="t-header">Usage</span><span class="t-header"></span>
+        </div>
+        <div class="token-row">
+          <span class="t-name">border-subtle</span>
+          <span class="t-value">rgba(255,255,255,0.05)</span>
+          <span class="t-desc">Dividers, section separators</span>
+          <div style="width:80px;height:1px;background:rgba(255,255,255,0.05);border:none;"></div>
+        </div>
+        <div class="token-row">
+          <span class="t-name">border-default</span>
+          <span class="t-value">rgba(255,255,255,0.08)</span>
+          <span class="t-desc">Card, input, nav bar borders</span>
+          <div style="width:80px;height:20px;border-radius:4px;border:1px solid rgba(255,255,255,0.08);background:transparent;"></div>
+        </div>
+        <div class="token-row">
+          <span class="t-name">border-glow</span>
+          <span class="t-value">rgba(0,232,122,0.28)</span>
+          <span class="t-desc">Glowing card borders, active states</span>
+          <div style="width:80px;height:20px;border-radius:4px;border:1px solid rgba(0,232,122,0.28);background:rgba(0,232,122,0.04);"></div>
+        </div>
+        <div class="token-row">
+          <span class="t-name">border-active</span>
+          <span class="t-value">rgba(0,232,122,0.55)</span>
+          <span class="t-desc">Selected server row, active connect border</span>
+          <div style="width:80px;height:20px;border-radius:4px;border:1px solid rgba(0,232,122,0.55);background:rgba(0,232,122,0.06);"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 Typography -->
+  <section class="section" id="typography">
+    <div class="sec-eyebrow"><span class="sec-num">02</span></div>
+    <div class="sec-title">Typography</div>
+    <p class="sec-sub">Two typefaces. Inter for all UI text — thin weight for display, medium/semibold for hierarchy. JetBrains Mono exclusively for numeric data, protocols, and code values.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Type Scale</div>
+      <div class="type-table">
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Display</div><div class="type-spec">52px / 300 / -2.5px</div></div>
+          <div class="type-sample"><div style="font-size:52px;font-weight:300;color:var(--text-primary);letter-spacing:-2.5px;line-height:1.0;">SetaLink</div></div>
+          <div class="type-usage">Splash wordmark only</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Hero</div><div class="type-spec">36px / 700 / -1.5px</div></div>
+          <div class="type-sample"><div style="font-size:36px;font-weight:700;color:var(--text-primary);letter-spacing:-1.5px;line-height:1.0;">Welcome back.</div></div>
+          <div class="type-usage">Auth headline</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Page Title</div><div class="type-spec">26px / 700 / -0.8px</div></div>
+          <div class="type-sample"><div style="font-size:26px;font-weight:700;color:var(--text-primary);letter-spacing:-0.8px;">Smart AI</div></div>
+          <div class="type-usage">Screen headers</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Username</div><div class="type-spec">22px / 600 / -0.5px</div></div>
+          <div class="type-sample"><div style="font-size:22px;font-weight:600;color:var(--text-primary);letter-spacing:-0.5px;">Khabat <span style="color:#00E87A;">↗</span></div></div>
+          <div class="type-usage">Home greeting</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Section Title</div><div class="type-spec">14px / 600 / -0.2px</div></div>
+          <div class="type-sample"><div style="font-size:14px;font-weight:600;color:var(--text-primary);">Connection Modes</div></div>
+          <div class="type-usage">Card group headers</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Body</div><div class="type-spec">14px / 400 / 0px</div></div>
+          <div class="type-sample"><div style="font-size:14px;color:var(--text-secondary);line-height:1.6;">AI selects the optimal protocol and route in real time.</div></div>
+          <div class="type-usage">Descriptions</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">UI Label</div><div class="type-spec">12px / 500 / 0px</div></div>
+          <div class="type-sample"><div style="font-size:12px;font-weight:500;color:var(--text-secondary);">Frankfurt, Germany</div></div>
+          <div class="type-usage">Server names, action labels</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Caption</div><div class="type-spec">11px / 400 / 0px</div></div>
+          <div class="type-sample"><div style="font-size:11px;color:var(--text-muted);">CDN Edge · Premium · Recommended</div></div>
+          <div class="type-usage">Server subtitles, helper text</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Micro Label</div><div class="type-spec">10px / 500 / 1.2px UC</div></div>
+          <div class="type-sample"><div style="font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:1.2px;text-transform:uppercase;">Active Protocol Chain</div></div>
+          <div class="type-usage">Card labels, section tags</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Mono Metric</div><div class="type-spec">28px / 400 / -1px JBMono</div></div>
+          <div class="type-sample"><div style="font-size:28px;font-family:'JetBrains Mono',monospace;color:var(--emerald-400);letter-spacing:-1px;">24<span style="font-size:14px;color:var(--text-muted);">ms</span></div></div>
+          <div class="type-usage">Diagnostic values</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Mono Proto</div><div class="type-spec">12px / 400 / 0.3px JBMono</div></div>
+          <div class="type-sample"><div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--emerald-400);">VLESS · Reality · WebSocket</div></div>
+          <div class="type-usage">Protocol chains, IP addresses</div>
+        </div>
+        <div class="type-row">
+          <div class="type-meta"><div class="type-role">Timer</div><div class="type-spec">17px / 400 / 3px JBMono</div></div>
+          <div class="type-sample"><div style="font-size:17px;font-family:'JetBrains Mono',monospace;color:var(--text-secondary);letter-spacing:3px;">02:34:17</div></div>
+          <div class="type-usage">Session timer on home</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Rules</div>
+      <div class="rule-list">
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Use JetBrains Mono for all numbers that represent data: ping (ms), throughput (MB/s), IP addresses, timestamps, session timers.</span></div>
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Use <code style="font-family:monospace;background:var(--bg-elevated);padding:1px 4px;border-radius:3px;">letter-spacing: -0.5px to -2.5px</code> on display and heading weights to feel contemporary, not compressed.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never render navigation labels, section titles, or UI descriptors in monospace. Mono is exclusively for data values.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never go below 10px for any visible text in the production app. Micro labels must maintain 10px minimum.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 Spacing -->
+  <section class="section" id="spacing">
+    <div class="sec-eyebrow"><span class="sec-num">03</span></div>
+    <div class="sec-title">Spacing System</div>
+    <p class="sec-sub">All spacing follows a strict 4pt grid. The default scroll area gap is 16pt — never tighter. Mobile UI needs to breathe; cramped spacing reads as low-quality.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Base Scale</div>
+      <div class="spacing-grid">
+        <div class="sp-row"><span class="sp-label">2pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:8px;"><span class="sp-bar-val" style="display:none;"></span></div></div><span class="sp-use">Icon gap, dot spacing</span></div>
+        <div class="sp-row"><span class="sp-label">4pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:16px;"></div></div><span class="sp-use">Minimum element gap</span></div>
+        <div class="sp-row"><span class="sp-label">8pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:32px;"></div></div><span class="sp-use">Inline icon-to-text gap, pill padding V</span></div>
+        <div class="sp-row"><span class="sp-label">10pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:40px;"></div></div><span class="sp-use">Pill padding H, filter tab padding</span></div>
+        <div class="sp-row"><span class="sp-label">12pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:48px;"></div></div><span class="sp-use">Server row inner gap, section title margin</span></div>
+        <div class="sp-row"><span class="sp-label">14pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:56px;"></div></div><span class="sp-use">Scroll area top/bottom padding</span></div>
+        <div class="sp-row"><span class="sp-label">16pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:64px;"><span class="sp-bar-val">default</span></div></div><span class="sp-use">Scroll area section gap — primary rhythm unit</span></div>
+        <div class="sp-row"><span class="sp-label">18pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:72px;"></div></div><span class="sp-use">Glass card padding (all sides)</span></div>
+        <div class="sp-row"><span class="sp-label">20pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:80px;"></div></div><span class="sp-use">Scroll area horizontal padding (side gutters)</span></div>
+        <div class="sp-row"><span class="sp-label">24pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:96px;"></div></div><span class="sp-use">Status bar padding, auth scroll padding</span></div>
+        <div class="sp-row"><span class="sp-label">48pt</span><div class="sp-bar-wrap"><div class="sp-bar" style="width:192px;"></div></div><span class="sp-use">Section spacing in design handbook, page hero padding</span></div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Layout Constants (React Native)</div>
+      <div class="token-table">
+        <div class="token-row"><span class="t-header">Constant</span><span class="t-header">Value</span><span class="t-header">Description</span><span class="t-header"></span></div>
+        <div class="token-row"><span class="t-name">connectButtonSize</span><span class="t-value">188dp</span><span class="t-desc">Connect button diameter</span><span></span></div>
+        <div class="token-row"><span class="t-name">bottomNavHeight</span><span class="t-value">80dp</span><span class="t-desc">Bottom nav container height</span><span></span></div>
+        <div class="token-row"><span class="t-name">navBarHeight</span><span class="t-value">58–60dp</span><span class="t-desc">Inner nav bar (inside the 80dp container)</span><span></span></div>
+        <div class="token-row"><span class="t-name">aiButtonSize</span><span class="t-value">50dp</span><span class="t-desc">Center AI nav button diameter</span><span></span></div>
+        <div class="token-row"><span class="t-name">aiButtonLift</span><span class="t-value">-18dp to -20dp</span><span class="t-desc">Negative margin-top to float above nav</span><span></span></div>
+        <div class="token-row"><span class="t-name">statusBarHeight</span><span class="t-value">52dp</span><span class="t-desc">Includes 16dp top safe area padding</span><span></span></div>
+        <div class="token-row"><span class="t-name">scrollGutter</span><span class="t-value">20dp</span><span class="t-desc">Horizontal screen padding</span><span></span></div>
+        <div class="token-row"><span class="t-name">sectionGap</span><span class="t-value">16dp</span><span class="t-desc">Vertical gap between scroll area items</span><span></span></div>
+        <div class="token-row"><span class="t-name">cardPadding</span><span class="t-value">18dp</span><span class="t-desc">Glass card internal padding (uniform)</span><span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 Radius & Shadows -->
+  <section class="section" id="radius">
+    <div class="sec-eyebrow"><span class="sec-num">04</span></div>
+    <div class="sec-title">Radius &amp; Shadows</div>
+    <p class="sec-sub">Consistent radius creates visual coherence. Shadows establish depth without heaviness — a single soft glow layer, never stacked.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Radius Scale</div>
+      <div class="radius-grid">
+        <div class="radius-item"><div class="radius-box" style="border-radius:8px;"></div><div class="radius-name">r-sm</div><div class="radius-val">8px — Chips, toggles</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:12px;"></div><div class="radius-name">r-md</div><div class="radius-val">12px — Inputs, small cards</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:16px;"></div><div class="radius-name">r-lg</div><div class="radius-val">16px — Buttons, action rows</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:20px;"></div><div class="radius-name">r-xl</div><div class="radius-val">20px — Glass cards, server rows</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:24px;"></div><div class="radius-name">r-2xl</div><div class="radius-val">24px — Large modal sheets</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:32px;"></div><div class="radius-name">r-3xl</div><div class="radius-val">32px — Bottom nav bar</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:44px;"></div><div class="radius-name">r-phone</div><div class="radius-val">44px — Phone frame only</div></div>
+        <div class="radius-item"><div class="radius-box" style="border-radius:9999px;width:80px;height:40px;"></div><div class="radius-name">r-full</div><div class="radius-val">9999px — Pills, badges, dots</div></div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Shadow Hierarchy</div>
+      <div class="shadow-grid">
+        <div class="shadow-card s-card">
+          <div class="shadow-name">shadow-card</div>
+          <div class="shadow-val">0 8px 32px rgba(0,0,0,0.45)<br>0 2px 8px rgba(0,0,0,0.3)</div>
+        </div>
+        <div class="shadow-card s-em">
+          <div class="shadow-name">shadow-emerald (+ card)</div>
+          <div class="shadow-val">0 0 18px rgba(0,232,122,0.20)<br>Used on active connect state</div>
+        </div>
+        <div class="shadow-card s-em-sm">
+          <div class="shadow-name">shadow-emerald-sm (+ card)</div>
+          <div class="shadow-val">0 0 10px rgba(0,232,122,0.14)<br>Subtle, for most glow cases</div>
+        </div>
+        <div class="shadow-card s-inset">
+          <div class="shadow-name">inset glow</div>
+          <div class="shadow-val">inset 0 0 20px rgba(0,232,122,0.04)<br>Connect button inner feel</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Glow Budget — Max Allowed Values</div>
+      <div class="token-table">
+        <div class="token-row"><span class="t-header">Context</span><span class="t-header">Max Spread</span><span class="t-header">Max Opacity</span><span class="t-header">Rule</span></div>
+        <div class="token-row"><span class="t-name">Connect button (idle)</span><span class="t-value">22px</span><span class="t-value">0.18</span><span class="t-desc">Single layer only</span></div>
+        <div class="token-row"><span class="t-name">Connect button (active peak)</span><span class="t-value">30px</span><span class="t-value">0.24</span><span class="t-desc">Via animation, not static</span></div>
+        <div class="token-row"><span class="t-name">Nav AI button</span><span class="t-value">16px</span><span class="t-value">0.30</span><span class="t-desc">No second layer</span></div>
+        <div class="token-row"><span class="t-name">AI orb core</span><span class="t-value">28px</span><span class="t-value">0.28</span><span class="t-desc">At peak breathe only</span></div>
+        <div class="token-row"><span class="t-name">Glowing card border</span><span class="t-value">12px</span><span class="t-value">0.05</span><span class="t-desc">Glow-e class: barely perceptible</span></div>
+        <div class="token-row"><span class="t-name">Active ping dot</span><span class="t-value">4–6px</span><span class="t-value">0.40</span><span class="t-desc">Tight radius, low spread</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 Motion -->
+  <section class="section" id="motion">
+    <div class="sec-eyebrow"><span class="sec-num">05</span></div>
+    <div class="sec-title">Motion System</div>
+    <p class="sec-sub">SetaLink moves slowly and intentionally. The UI should feel alive but never anxious. Fast animations suggest urgency; SetaLink is calm and in control. Every animation below is running at production speed.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Core Animations (Live Demos)</div>
+      <div class="motion-grid">
+        <div class="motion-row">
+          <div><div class="motion-name">Pulse Ring</div><div class="motion-desc">Connect button rings expanding outward</div></div>
+          <div class="motion-demo"><div style="position:relative;width:80px;height:80px;display:flex;align-items:center;justify-content:center;"><div class="m-pulse-ring" style="position:absolute;"></div><div class="m-pulse-ring" style="position:absolute;animation-delay:2s;"></div><div style="width:28px;height:28px;border-radius:50%;border:1px solid var(--emerald-400);background:rgba(0,232,122,0.1);"></div></div></div>
+          <div class="motion-spec">duration: 4s<br>easing: ease-out<br>delay: 0s, 2s<br>opacity: 0.18→0</div>
+        </div>
+        <div class="motion-row">
+          <div><div class="motion-name">Breathe / Orb Glow</div><div class="motion-desc">AI orb and connect button glow cycle</div></div>
+          <div class="motion-demo"><div class="m-breathe"></div></div>
+          <div class="motion-spec">duration: 4.5–5s<br>easing: ease-in-out<br>loop: infinite<br>opacity cycle glow</div>
+        </div>
+        <div class="motion-row">
+          <div><div class="motion-name">Orbit</div><div class="motion-desc">AI orb outer ring rotation</div></div>
+          <div class="motion-demo"><div class="m-orbit"></div></div>
+          <div class="motion-spec">duration: 16s (outer)<br>24s (inner, reverse)<br>easing: linear<br>never fast-spin</div>
+        </div>
+        <div class="motion-row">
+          <div><div class="motion-name">Section Reveal</div><div class="motion-desc">Staggered entry for screen sections</div></div>
+          <div class="motion-demo" style="flex-direction:column;gap:4px;">
+            <div style="width:120px;height:8px;border-radius:3px;background:var(--bg-elevated);animation:m-fade 3s ease-in-out infinite;"></div>
+            <div style="width:100px;height:8px;border-radius:3px;background:var(--bg-elevated);animation:m-fade 3s ease-in-out 0.3s infinite;"></div>
+            <div style="width:80px;height:8px;border-radius:3px;background:var(--bg-elevated);animation:m-fade 3s ease-in-out 0.6s infinite;"></div>
+          </div>
+          <div class="motion-spec">duration: 0.45s<br>easing: ease<br>delay: +0.06s/item<br>from: Y+10px, 0→1</div>
+        </div>
+        <div class="motion-row">
+          <div><div class="motion-name">Status Dot Pulse</div><div class="motion-desc">Connected indicator blink</div></div>
+          <div class="motion-demo"><div class="m-fade" style="width:8px;height:8px;border-radius:50%;background:var(--emerald-400);box-shadow:0 0 4px rgba(0,232,122,0.4);"></div></div>
+          <div class="motion-spec">duration: 2–2.5s<br>easing: ease-in-out<br>opacity: 1→0.35</div>
+        </div>
+        <div class="motion-row">
+          <div><div class="motion-name">Button Press</div><div class="motion-desc">Tactile spring scale on tap</div></div>
+          <div class="motion-demo"><button class="btn-primary" style="font-size:12px;height:36px;padding:0 16px;">Press me</button></div>
+          <div class="motion-spec">scale: 1→0.95→1<br>spring: cubic-bezier<br>(0.34,1.56,0.64,1)<br>duration: 0.15s</div>
+        </div>
+        <div class="motion-row">
+          <div><div class="motion-name">Hover Lift</div><div class="motion-desc">Cards and server rows on hover</div></div>
+          <div class="motion-demo"><div style="background:var(--bg-elevated);border:1px solid var(--border-default);border-radius:var(--r-md);padding:8px 14px;font-size:12px;color:var(--text-secondary);transition:transform 0.15s,border-color 0.15s;cursor:pointer;" onmouseenter="this.style.transform='translateY(-2px)';this.style.borderColor='rgba(0,232,122,0.28)'" onmouseleave="this.style.transform='';this.style.borderColor=''">Hover me</div></div>
+          <div class="motion-spec">translateY: -1 to -2px<br>duration: 0.15s<br>easing: ease<br>+ border-color</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Duration Reference</div>
+      <div class="token-table">
+        <div class="token-row"><span class="t-header">Name</span><span class="t-header">Value</span><span class="t-header">Use case</span><span class="t-header"></span></div>
+        <div class="token-row"><span class="t-name">instant</span><span class="t-value">0.1s</span><span class="t-desc">Color/opacity-only micro-transitions</span><span></span></div>
+        <div class="token-row"><span class="t-name">fast</span><span class="t-value">0.15s</span><span class="t-desc">Press scale, hover border, icon swaps</span><span></span></div>
+        <div class="token-row"><span class="t-name">default</span><span class="t-value">0.2s</span><span class="t-desc">Border color, background color transitions</span><span></span></div>
+        <div class="token-row"><span class="t-name">enter</span><span class="t-value">0.45s</span><span class="t-desc">Section-in reveal animations</span><span></span></div>
+        <div class="token-row"><span class="t-name">breathe</span><span class="t-value">4–5s</span><span class="t-desc">Orb glow, logo breathe, status dot</span><span></span></div>
+        <div class="token-row"><span class="t-name">pulse</span><span class="t-value">4s</span><span class="t-desc">Expanding ring animations (2 rings max)</span><span></span></div>
+        <div class="token-row"><span class="t-name">orbit-outer</span><span class="t-value">16s</span><span class="t-desc">AI orb outer dashed ring</span><span></span></div>
+        <div class="token-row"><span class="t-name">orbit-inner</span><span class="t-value">24s</span><span class="t-desc">AI orb inner ring (reverse direction)</span><span></span></div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Easing Curves</div>
+      <div class="token-table">
+        <div class="token-row"><span class="t-header">Name</span><span class="t-header">Curve</span><span class="t-header">Use case</span><span class="t-header"></span></div>
+        <div class="token-row"><span class="t-name">spring</span><span class="t-value">cubic-bezier(0.34,1.56,0.64,1)</span><span class="t-desc">Button press scale, toggle thumb, modal entry — slight overshoot</span><span></span></div>
+        <div class="token-row"><span class="t-name">ease</span><span class="t-value">ease</span><span class="t-desc">Section reveal, general transitions</span><span></span></div>
+        <div class="token-row"><span class="t-name">ease-in-out</span><span class="t-value">ease-in-out</span><span class="t-desc">Breathing, glow cycles — symmetrical feel</span><span></span></div>
+        <div class="token-row"><span class="t-name">ease-out</span><span class="t-value">ease-out</span><span class="t-desc">Pulse rings, elements entering (fast start, slow end)</span><span></span></div>
+        <div class="token-row"><span class="t-name">linear</span><span class="t-value">linear</span><span class="t-desc">Orbit rotation only — never for UI transitions</span><span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 Components -->
+  <section class="section" id="components">
+    <div class="sec-eyebrow"><span class="sec-num">06</span></div>
+    <div class="sec-title">Components</div>
+    <p class="sec-sub">Every component below is rendered using production-matching CSS. Values shown are the canonical implementation reference.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Buttons</div>
+      <div class="comp-grid">
+        <div class="comp-card">
+          <div class="comp-label">Primary — Emerald Fill</div>
+          <div class="comp-demo">
+            <button class="btn-primary">Connect to Germany</button>
+            <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:4px;">h:48dp · bg:emerald-400 · r:16 · shadow-emerald-sm</div>
+          </div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-label">Secondary — Elevated</div>
+          <div class="comp-demo">
+            <button class="btn-secondary">Change Server</button>
+            <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:4px;">h:44dp · bg:elevated · border:default</div>
+          </div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-label">Ghost — Emerald Outline</div>
+          <div class="comp-demo">
+            <button class="btn-ghost">Export Report</button>
+            <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:4px;">h:40dp · bg:transparent · border:glow×0.3</div>
+          </div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-label">Danger — Sign Out</div>
+          <div class="comp-demo">
+            <button class="btn-danger">Sign Out</button>
+            <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:4px;">h:44dp · red border/text · bg:red×0.05</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Pills &amp; Badges</div>
+      <div class="comp-grid">
+        <div class="comp-card">
+          <div class="comp-label">Status Badge — Connected</div>
+          <div class="comp-demo" style="flex-direction:row;flex-wrap:wrap;gap:8px;">
+            <div class="pill"><div class="pill-dot"></div><span class="pill-text">Connected</span></div>
+            <div class="pill-proto"><span class="pill-proto-text">VLESS · Reality</span></div>
+            <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);width:100%;margin-top:4px;">Pill: border-glow · bg:emerald×0.07</div>
+          </div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-label">Server Tags</div>
+          <div class="comp-demo" style="flex-direction:row;flex-wrap:wrap;gap:6px;align-items:center;">
+            <div style="padding:2px 7px;border-radius:var(--r-full);border:1px solid rgba(0,232,122,0.4);background:rgba(0,232,122,0.12);font-size:8.5px;font-weight:500;color:var(--emerald-400);letter-spacing:0.3px;text-transform:uppercase;">Recommended</div>
+            <div style="padding:2px 7px;border-radius:var(--r-full);border:1px solid rgba(51,153,255,0.4);background:rgba(51,153,255,0.12);font-size:8.5px;font-weight:500;color:var(--blue-400);letter-spacing:0.3px;text-transform:uppercase;">Fastest</div>
+            <div style="padding:2px 7px;border-radius:var(--r-full);border:1px solid rgba(155,119,255,0.4);background:rgba(155,119,255,0.12);font-size:8.5px;font-weight:500;color:var(--purple);letter-spacing:0.3px;text-transform:uppercase;">Stealth</div>
+            <div style="padding:2px 7px;border-radius:var(--r-full);border:1px solid rgba(255,184,0,0.4);background:rgba(255,184,0,0.12);font-size:8.5px;font-weight:500;color:var(--amber);letter-spacing:0.3px;text-transform:uppercase;">Streaming</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Cards</div>
+      <div class="comp-grid">
+        <div class="comp-card">
+          <div class="comp-label">Glass Card — Default</div>
+          <div class="comp-demo">
+            <div class="glass">
+              <div style="font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:12px;">Session Traffic</div>
+              <div style="display:flex;justify-content:space-around;">
+                <div style="text-align:center;"><div style="font-size:16px;font-weight:600;color:var(--text-primary);">1.2 GB</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;">Sent</div></div>
+                <div style="width:1px;background:var(--border-subtle);"></div>
+                <div style="text-align:center;"><div style="font-size:16px;font-weight:600;color:var(--text-primary);">4.8 GB</div><div style="font-size:10px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.6px;">Received</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="comp-card">
+          <div class="comp-label">Glass Card — Emerald Glow</div>
+          <div class="comp-demo">
+            <div class="glass glow-e">
+              <div style="font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:12px;">Network Quality</div>
+              <div style="height:5px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;"><div style="height:100%;width:91%;background:linear-gradient(90deg,var(--emerald-400),#00ffaa);border-radius:3px;"></div></div>
+              <div style="display:flex;justify-content:space-between;margin-top:8px;"><span style="font-size:11px;color:var(--emerald-400);">Excellent</span><span style="font-size:13px;font-family:var(--mono);color:var(--emerald-400);">91%</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Metric Row</div>
+      <div class="comp-card" style="max-width:420px;">
+        <div class="comp-label">Metric Pills — Three-across</div>
+        <div class="comp-demo">
+          <div class="metric-pills">
+            <div class="mpill accent"><div class="mpill-val">24<span style="font-size:11px;color:var(--text-muted);font-weight:400;"> ms</span></div><div class="mpill-lbl">Ping</div></div>
+            <div class="mpill"><div class="mpill-val">4.2<span style="font-size:11px;color:var(--text-muted);font-weight:400;"> MB/s</span></div><div class="mpill-lbl">Upload</div></div>
+            <div class="mpill"><div class="mpill-val">18.7<span style="font-size:11px;color:var(--text-muted);font-weight:400;"> MB/s</span></div><div class="mpill-lbl">Download</div></div>
+          </div>
+          <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:8px;">Accent pill: border-glow · bg:emerald×0.04 · value:emerald-400</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Server Cards</div>
+      <div class="comp-card" style="max-width:420px;">
+        <div class="comp-label">Server Row — Default &amp; Selected</div>
+        <div class="comp-demo">
+          <div class="server-row-demo active">
+            <span class="srv-flag">🇩🇪</span>
+            <div class="srv-info"><div class="srv-name" style="color:var(--emerald-400);">Germany</div><div class="srv-sub">Frankfurt · Premium</div></div>
+            <div class="srv-ping">
+              <div class="ping-r"><div class="pdot g"></div><span class="ping-val">24ms</span></div>
+              <div class="load-bar-d"><div class="load-fill-d" style="width:34%;"></div></div>
+              <div style="font-size:9px;font-family:var(--mono);color:var(--text-muted);">VLESS</div>
+            </div>
+          </div>
+          <div class="server-row-demo">
+            <span class="srv-flag">🇳🇱</span>
+            <div class="srv-info"><div class="srv-name">Netherlands</div><div class="srv-sub">Amsterdam · CDN</div></div>
+            <div class="srv-ping">
+              <div class="ping-r"><div class="pdot g"></div><span class="ping-val">31ms</span></div>
+              <div class="load-bar-d"><div class="load-fill-d" style="width:42%;"></div></div>
+              <div style="font-size:9px;font-family:var(--mono);color:var(--text-muted);">VLESS</div>
+            </div>
+          </div>
+          <div class="server-row-demo">
+            <span class="srv-flag">🇺🇸</span>
+            <div class="srv-info"><div class="srv-name">United States</div><div class="srv-sub">New York</div></div>
+            <div class="srv-ping">
+              <div class="ping-r"><div class="pdot a"></div><span class="ping-val">88ms</span></div>
+              <div class="load-bar-d"><div class="load-fill-d" style="width:63%;background:var(--amber);"></div></div>
+              <div style="font-size:9px;font-family:var(--mono);color:var(--text-muted);">WSTCP</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Navigation Bar</div>
+      <div class="comp-card">
+        <div class="comp-label">Bottom Nav — 5 tabs · Floating AI Center</div>
+        <div class="comp-demo">
+          <div class="nav-demo">
+            <div class="nav-item-d active"><span class="nav-icon-d">⬡</span><span class="nav-lbl-d">Home</span></div>
+            <div class="nav-item-d"><span class="nav-icon-d">◈</span><span class="nav-lbl-d">Servers</span></div>
+            <div class="nav-ai-d"><span class="nav-icon-d">◎</span><span class="nav-lbl-d">AI</span></div>
+            <div class="nav-item-d"><span class="nav-icon-d">≡</span><span class="nav-lbl-d">Activity</span></div>
+            <div class="nav-item-d"><span class="nav-icon-d">○</span><span class="nav-lbl-d">Profile</span></div>
+          </div>
+          <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:8px;">Container: 80dp · Bar: 58dp · AI btn: 50dp circle · lift: -18dp to -20dp</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">AI Orb</div>
+      <div class="comp-card" style="max-width:300px;">
+        <div class="comp-label">Smart AI — Orb Center Piece</div>
+        <div class="comp-demo centered">
+          <div class="orb-demo">
+            <div class="orb-breathe-d"></div>
+            <div class="orb-breathe-d"></div>
+            <div class="orb-orbit-d"></div>
+            <div class="orb-core-d">◎</div>
+          </div>
+          <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);text-align:center;margin-top:8px;">outer ring: 16s · inner: 24s rev<br>breathe: 4.5s × 2 rings staggered</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Toggle Switches</div>
+      <div class="comp-card" style="max-width:360px;">
+        <div class="comp-label">Toggle — On / Off States</div>
+        <div class="comp-demo">
+          <div class="toggle-demo"><div><div class="toggle-text">Auto protocol selection</div><div class="toggle-sub">Switch based on conditions</div></div><div class="sw on"><div class="sw-thumb"></div></div></div>
+          <div class="toggle-demo"><div><div class="toggle-text">Domain rotation</div><div class="toggle-sub">Rotate SNI to evade detection</div></div><div class="sw off"><div class="sw-thumb"></div></div></div>
+          <div style="font-size:10px;font-family:var(--mono);color:var(--text-muted);margin-top:4px;">On: bg:emerald-400 · Off: bg:elevated · thumb: white 18dp</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Status Indicators</div>
+      <div class="comp-card" style="max-width:420px;">
+        <div class="comp-label">State Badges — All Four States</div>
+        <div class="comp-demo">
+          <div class="status-demos">
+            <div class="status-d ok"><div class="st-dot ok"></div><span class="st-text ok">Healthy</span><span class="st-sub">TLS Certificate · Valid</span></div>
+            <div class="status-d warn"><div class="st-dot warn"></div><span class="st-text warn">Degraded</span><span class="st-sub">Fallback domain slow</span></div>
+            <div class="status-d err"><div class="st-dot err"></div><span class="st-text err">Failed</span><span class="st-sub">No route to host</span></div>
+            <div class="status-d info"><div class="st-dot info"></div><span class="st-text info">Reconnecting</span><span class="st-sub">AI rerouting…</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 Accessibility -->
+  <section class="section" id="accessibility">
+    <div class="sec-eyebrow"><span class="sec-num">07</span></div>
+    <div class="sec-title">Accessibility Rules</div>
+    <p class="sec-sub">SetaLink is a VPN used in low-light, high-stress contexts. Readability is non-negotiable, even with glow effects active. Every glow is decorative — text contrast must pass without it.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Contrast Ratios</div>
+      <div class="contrast-grid">
+        <div class="contrast-card">
+          <div class="contrast-preview" style="background:var(--bg-base);">
+            <div class="c-label" style="color:var(--text-muted);">Label</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text-primary);">Primary text</div>
+            <div style="font-size:12px;color:var(--text-primary);">on bg-base</div>
+          </div>
+          <div class="contrast-meta"><div class="c-ratio">13.2 : 1 <span class="c-pass">✓</span></div><div class="c-rating">AAA — Exceeds standard</div></div>
+        </div>
+        <div class="contrast-card">
+          <div class="contrast-preview" style="background:var(--bg-base);">
+            <div class="c-label" style="color:var(--text-muted);">Label</div>
+            <div style="font-size:14px;color:var(--text-secondary);">Secondary text</div>
+            <div style="font-size:12px;color:var(--text-secondary);">on bg-base</div>
+          </div>
+          <div class="contrast-meta"><div class="c-ratio">6.4 : 1 <span class="c-pass">✓</span></div><div class="c-rating">AA — Passes all sizes</div></div>
+        </div>
+        <div class="contrast-card">
+          <div class="contrast-preview" style="background:var(--bg-base);">
+            <div class="c-label" style="color:var(--text-muted);">Label</div>
+            <div style="font-size:11px;color:var(--text-muted);">Muted text</div>
+            <div style="font-size:10px;color:var(--text-muted);">on bg-base</div>
+          </div>
+          <div class="contrast-meta"><div class="c-ratio">3.1 : 1 <span class="c-fail">!</span></div><div class="c-rating">Non-critical only. Never for actionable text.</div></div>
+        </div>
+        <div class="contrast-card">
+          <div class="contrast-preview" style="background:var(--emerald-400);">
+            <div class="c-label" style="color:rgba(3,6,9,0.5);">Label</div>
+            <div style="font-size:15px;font-weight:600;color:var(--text-inverse);">Connect</div>
+            <div style="font-size:11px;color:var(--text-inverse);">on emerald-400</div>
+          </div>
+          <div class="contrast-meta"><div class="c-ratio">8.8 : 1 <span class="c-pass">✓</span></div><div class="c-rating">AAA — Button text on fill</div></div>
+        </div>
+        <div class="contrast-card">
+          <div class="contrast-preview" style="background:var(--bg-surface);">
+            <div class="c-label" style="color:var(--text-muted);">Label</div>
+            <div style="font-size:13px;font-weight:500;color:var(--emerald-400);">Active state</div>
+            <div style="font-size:11px;color:var(--emerald-400);">on bg-surface</div>
+          </div>
+          <div class="contrast-meta"><div class="c-ratio">7.2 : 1 <span class="c-pass">✓</span></div><div class="c-rating">AA — Emerald on dark</div></div>
+        </div>
+        <div class="contrast-card">
+          <div class="contrast-preview" style="background:var(--bg-elevated);">
+            <div class="c-label" style="color:var(--text-muted);">Label</div>
+            <div style="font-size:13px;color:var(--text-secondary);">Secondary</div>
+            <div style="font-size:11px;color:var(--text-secondary);">on bg-elevated</div>
+          </div>
+          <div class="contrast-meta"><div class="c-ratio">5.8 : 1 <span class="c-pass">✓</span></div><div class="c-rating">AA — Passes at 12px+</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Glow Limits for Readability</div>
+      <div class="rule-list">
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Test text contrast with glows disabled. Glow is decorative only — text must pass WCAG AA (4.5:1 for body, 3:1 for large text) before glow is applied.</span></div>
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Cap glow box-shadow opacity at 0.28 for borders and 0.24 for spread glow. Beyond this, the glow begins to bleed onto adjacent text and reduces readability.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never place body text adjacent to an active glow without a dark background buffer. The glow halo must not reach readable text elements.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never drop text size below 10px in production. Micro labels at 10px are the hard floor. Navigation labels minimum 9px only for the inactive 9px spec — active labels must be 10px+.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never use muted text (#3D5570) for actionable elements, error states, or any text the user must act on. Reserve muted only for purely decorative or supplementary labels.</span></div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Interactive Touch Targets</div>
+      <div class="token-table">
+        <div class="token-row"><span class="t-header">Component</span><span class="t-header">Minimum Touch Area</span><span class="t-header">Notes</span><span class="t-header"></span></div>
+        <div class="token-row"><span class="t-name">Connect button</span><span class="t-value">188×188dp</span><span class="t-desc">Well above minimum, no issue</span><span></span></div>
+        <div class="token-row"><span class="t-name">Nav items</span><span class="t-value">48dp wide × 58dp tall</span><span class="t-desc">Each item expands to fill column</span><span></span></div>
+        <div class="token-row"><span class="t-name">AI nav button</span><span class="t-value">50×50dp</span><span class="t-desc">Circular, meets 44dp minimum</span><span></span></div>
+        <div class="token-row"><span class="t-name">Server rows</span><span class="t-value">Full width × 52dp min</span><span class="t-desc">Entire row is tappable</span><span></span></div>
+        <div class="token-row"><span class="t-name">Toggle switches</span><span class="t-value">42dp wide × 44dp touch</span><span class="t-desc">Add hitSlop padding in RN</span><span></span></div>
+        <div class="token-row"><span class="t-name">Bell/settings icon</span><span class="t-value">40×40dp</span><span class="t-desc">Meets 44dp with hitSlop</span><span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 Brand Personality -->
+  <section class="section" id="brand">
+    <div class="sec-eyebrow"><span class="sec-num">08</span></div>
+    <div class="sec-title">Brand Personality</div>
+    <p class="sec-sub">SetaLink is not a utility. It is a premium intelligence layer between the user and the internet. The interface should feel like a calm, confident co-pilot — not a technical dashboard.</p>
+
+    <div class="subsec">
+      <div class="subsec-title">Six Core Feelings</div>
+      <div class="brand-words">
+        <div class="brand-word">
+          <div class="bw-title">Calm</div>
+          <div class="bw-desc">Slow animations, generous spacing, restrained glow. Nothing on screen is fighting for attention. The user feels in control, not overwhelmed.</div>
+        </div>
+        <div class="brand-word">
+          <div class="bw-title">Intelligent</div>
+          <div class="bw-desc">Protocol data in monospace, AI decisions surfaced in real time, adaptive routing. The app communicates what it's doing without requiring the user to understand it.</div>
+        </div>
+        <div class="brand-word">
+          <div class="bw-title">Stealth</div>
+          <div class="bw-desc">Dark backgrounds, subtle borders, glow only where necessary. The UI doesn't shout. It whispers capability. Like a matte-black instrument.</div>
+        </div>
+        <div class="brand-word">
+          <div class="bw-title">Cinematic</div>
+          <div class="bw-desc">Staggered section reveals, breathing orbs, orbit rings. Every state transition tells a small story. Opening the app should feel like a brief scene.</div>
+        </div>
+        <div class="brand-word">
+          <div class="bw-title">Premium</div>
+          <div class="bw-desc">High contrast, precise typography, perfect radius consistency. Reference: Apple system UI, Arc Browser, Linear, Notion Calendar. The details are right.</div>
+        </div>
+        <div class="brand-word">
+          <div class="bw-title">Trustworthy</div>
+          <div class="bw-desc">Technical data is shown clearly. Health checks are visible. The user always knows the protocol, latency, and connection state. Transparency is the trust mechanism.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Visual Voice — Do &amp; Don't</div>
+      <div class="rule-list">
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Reserve emerald for exactly three contexts: connection state (the connect button + status dot), active/selected items (nav, mode cards), and primary CTAs. Everywhere else: neutral.</span></div>
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Make the AI center button the emotional focal point. It should feel slightly elevated, slightly alive, and always glowing softly — even when the screen is idle.</span></div>
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Let the dark void breathe. Extra whitespace (dark-space) between cards is not waste — it is the premium signal. Tight layouts feel cheap.</span></div>
+        <div class="rule-item do"><span class="rule-badge do">DO</span><span class="rule-text">Reference Linear, Arc, Nothing OS, Tailscale, and Mullvad for visual compass. These products share SetaLink's commitment to restraint + capability.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never stack multiple glow layers. One soft glow layer is intentional. Two layers is uncertain. Three layers is panic.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never animate more than three elements simultaneously. The pulse rings, the breathing orb, and the status dot — that is the maximum active animation state on any screen.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never use color purely decoratively. Every color appearance must carry semantic meaning: emerald = active/safe, amber = warning, red = danger, blue = info/data flow.</span></div>
+        <div class="rule-item dont"><span class="rule-badge dont">NO</span><span class="rule-text">Never use gradients on text. The only text gradient use is the "SetaLink" name on the splash screen wordmark. All other text is flat.</span></div>
+      </div>
+    </div>
+
+    <div class="subsec">
+      <div class="subsec-title">Implementation Priority (React Native Conversion)</div>
+      <div class="token-table">
+        <div class="token-row"><span class="t-header">Priority</span><span class="t-header">Component</span><span class="t-header">Complexity</span><span class="t-header">Notes</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--emerald-400);">P0</span><span class="t-name">Connect Button + Pulse</span><span class="t-value">High</span><span class="t-desc">Core identity. Use Reanimated 3 spring + repeat.</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--emerald-400);">P0</span><span class="t-name">Bottom Nav + AI Button</span><span class="t-value">Medium</span><span class="t-desc">Custom tab bar. AI btn needs negative marginTop.</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--emerald-400);">P0</span><span class="t-name">Design Tokens (tokens.ts)</span><span class="t-value">Low</span><span class="t-desc">Already drafted. Freeze before any screen work.</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--blue-400);">P1</span><span class="t-name">AI Orb Screen</span><span class="t-value">High</span><span class="t-desc">Reanimated loop for orbit + breathe rings.</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--blue-400);">P1</span><span class="t-name">Glass Card + BlurView</span><span class="t-value">Medium</span><span class="t-desc">@react-native-community/blur or Expo Blur.</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--blue-400);">P1</span><span class="t-name">Server List + Selection</span><span class="t-value">Low</span><span class="t-desc">FlatList with Reanimated item transitions.</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--text-muted);">P2</span><span class="t-name">Section Reveal Animation</span><span class="t-value">Medium</span><span class="t-desc">Entering layout animations, staggered delay.</span></div>
+        <div class="token-row"><span style="font-size:11px;font-weight:600;color:var(--text-muted);">P2</span><span class="t-name">Diagnostics Route Trace</span><span class="t-value">Medium</span><span class="t-desc">Animated hop reveals, throughput bar entrance.</span></div>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+</body>
+</html>

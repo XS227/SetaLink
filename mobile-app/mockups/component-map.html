@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetaLink — Component Map &amp; Architecture</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+:root{
+  --emerald-200:#8BFFC9;
+  --emerald-400:#00E87A;
+  --emerald-500:#00C966;
+  --emerald-700:#007A3D;
+  --emerald-900:#002E16;
+  --blue-400:#3399FF;
+  --amber:#FFB800;
+  --red:#FF4444;
+  --purple:#9B77FF;
+  --bg-void:#030609;
+  --bg-base:#070D18;
+  --bg-surface:#0D1828;
+  --bg-elevated:#111F35;
+  --bg-glass:rgba(13,24,40,0.82);
+  --border-subtle:rgba(255,255,255,0.05);
+  --border-default:rgba(255,255,255,0.08);
+  --border-glow:rgba(0,232,122,0.28);
+  --border-active:rgba(0,232,122,0.55);
+  --text-primary:#F0F6FF;
+  --text-secondary:#8FA8C8;
+  --text-muted:#3D5570;
+  --text-inverse:#030609;
+  --r-sm:8px;--r-md:12px;--r-lg:16px;--r-xl:20px;--r-2xl:24px;--r-3xl:32px;--r-full:9999px;
+  --shadow-card:0 8px 32px rgba(0,0,0,0.45),0 2px 8px rgba(0,0,0,0.3);
+  --shadow-emerald:0 0 18px rgba(0,232,122,0.20);
+  --shadow-emerald-sm:0 0 10px rgba(0,232,122,0.14);
+  --font:'Inter',system-ui,sans-serif;
+  --mono:'JetBrains Mono',monospace;
+}
+
+body{
+  font-family:var(--font);
+  background:var(--bg-void);
+  color:var(--text-primary);
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  display:flex;
+}
+
+/* ── Sidebar ── */
+.sidebar{
+  width:240px;flex-shrink:0;height:100vh;position:sticky;top:0;
+  background:var(--bg-base);border-right:1px solid var(--border-subtle);
+  display:flex;flex-direction:column;overflow-y:auto;scrollbar-width:none;padding:32px 0 40px;
+}
+.sidebar::-webkit-scrollbar{display:none;}
+.sb-brand{padding:0 24px 32px;border-bottom:1px solid var(--border-subtle);}
+.sb-mark{
+  width:32px;height:32px;border-radius:8px;background:var(--emerald-400);
+  display:inline-flex;align-items:center;justify-content:center;
+  transform:rotate(45deg);margin-bottom:12px;box-shadow:var(--shadow-emerald-sm);
+}
+.sb-mark span{transform:rotate(-45deg);font-size:14px;font-weight:700;color:var(--text-inverse);}
+.sb-title{font-size:14px;font-weight:600;color:var(--text-primary);letter-spacing:-0.3px;}
+.sb-version{font-size:10px;font-family:var(--mono);color:var(--text-muted);letter-spacing:0.8px;margin-top:3px;}
+.sb-nav{padding:24px 12px 0;flex:1;}
+.sb-group-label{
+  font-size:9px;font-weight:500;color:var(--text-muted);letter-spacing:1.5px;text-transform:uppercase;
+  padding:0 12px;margin-bottom:6px;margin-top:20px;
+}
+.sb-group-label:first-child{margin-top:0;}
+.sb-link{
+  display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:var(--r-md);cursor:pointer;
+  font-size:13px;color:var(--text-muted);text-decoration:none;transition:all 0.15s;
+}
+.sb-link:hover{color:var(--text-secondary);background:rgba(255,255,255,0.04);}
+.sb-link.active{color:var(--emerald-400);background:rgba(0,232,122,0.06);}
+.sb-num{font-size:10px;font-family:var(--mono);color:var(--text-muted);width:18px;flex-shrink:0;}
+.sb-link.active .sb-num{color:rgba(0,232,122,0.5);}
+
+/* ── Main ── */
+.main{flex:1;min-width:0;padding:0 0 80px;}
+
+/* ── Hero ── */
+.hero{
+  padding:64px 64px 48px;border-bottom:1px solid var(--border-subtle);
+  position:relative;overflow:hidden;
+}
+.hero::before{
+  content:'';position:absolute;top:0;left:0;right:0;bottom:0;
+  background:radial-gradient(ellipse 600px 300px at 60% 50%,rgba(0,232,122,0.04),transparent 70%);
+  pointer-events:none;
+}
+.hero-eyebrow{font-size:10px;font-weight:500;color:var(--emerald-400);letter-spacing:2px;text-transform:uppercase;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+.hero-dot{width:5px;height:5px;border-radius:50%;background:var(--emerald-400);}
+.hero-title{font-size:52px;font-weight:300;color:var(--text-primary);letter-spacing:-2.5px;line-height:1.02;margin-bottom:16px;}
+.hero-title strong{font-weight:600;color:var(--emerald-400);}
+.hero-sub{font-size:16px;color:var(--text-secondary);line-height:1.7;max-width:560px;margin-bottom:32px;}
+.hero-tags{display:flex;gap:8px;flex-wrap:wrap;}
+.hero-tag{padding:5px 12px;border-radius:var(--r-full);border:1px solid var(--border-default);background:var(--bg-surface);font-size:11px;font-weight:500;color:var(--text-muted);letter-spacing:0.3px;}
+
+/* ── Section ── */
+.section{padding:56px 64px;border-bottom:1px solid var(--border-subtle);}
+.section:last-child{border-bottom:none;}
+.sec-eyebrow{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.sec-num{font-size:11px;font-family:var(--mono);color:var(--text-muted);letter-spacing:1px;}
+.sec-title{font-size:28px;font-weight:600;color:var(--text-primary);letter-spacing:-0.8px;margin-bottom:8px;}
+.sec-sub{font-size:14px;color:var(--text-secondary);line-height:1.7;margin-bottom:40px;max-width:600px;}
+.subsec{margin-bottom:48px;}
+.subsec:last-child{margin-bottom:0;}
+.subsec-title{
+  font-size:13px;font-weight:600;color:var(--text-primary);letter-spacing:-0.2px;margin-bottom:20px;
+  display:flex;align-items:center;gap:8px;
+}
+.subsec-title::after{content:'';flex:1;height:1px;background:var(--border-subtle);}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:var(--bg-base);}
+::-webkit-scrollbar-thumb{background:var(--bg-elevated);border-radius:3px;}
+
+/* ────────────────────────────────────────────
+   SECTION 1: Architecture Layers Stack
+──────────────────────────────────────────── */
+.arch-stack{
+  display:flex;flex-direction:column;gap:3px;
+  border-radius:var(--r-2xl);overflow:hidden;
+  border:1px solid var(--border-subtle);
+}
+.arch-layer{
+  display:flex;align-items:center;gap:0;
+  min-height:72px;position:relative;
+  cursor:default;transition:filter 0.2s;
+}
+.arch-layer:hover{filter:brightness(1.12);}
+.arch-layer-bar{
+  width:180px;flex-shrink:0;display:flex;flex-direction:column;justify-content:center;
+  padding:14px 20px;border-right:1px solid rgba(255,255,255,0.06);
+}
+.arch-layer-num{font-size:9px;font-family:var(--mono);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;opacity:0.6;}
+.arch-layer-name{font-size:14px;font-weight:600;letter-spacing:-0.2px;}
+.arch-layer-chips{
+  flex:1;display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:14px 20px;
+}
+.arch-chip{
+  padding:4px 10px;border-radius:var(--r-full);
+  font-size:11px;font-weight:500;font-family:var(--mono);
+  border:1px solid;white-space:nowrap;
+}
+
+/* Layer color palettes */
+.layer-ui   { background: rgba(0,232,122,0.04); }
+.layer-ui .arch-layer-bar   { background: rgba(0,232,122,0.08); }
+.layer-ui .arch-layer-num   { color: var(--emerald-400); }
+.layer-ui .arch-layer-name  { color: var(--emerald-400); }
+.layer-ui .arch-chip        { background:rgba(0,232,122,0.08);border-color:rgba(0,232,122,0.25);color:var(--emerald-200); }
+
+.layer-anim { background: rgba(51,153,255,0.04); }
+.layer-anim .arch-layer-bar { background: rgba(51,153,255,0.08); }
+.layer-anim .arch-layer-num { color: var(--blue-400); }
+.layer-anim .arch-layer-name{ color: var(--blue-400); }
+.layer-anim .arch-chip      { background:rgba(51,153,255,0.08);border-color:rgba(51,153,255,0.25);color:#7DC8FF; }
+
+.layer-state{ background: rgba(155,119,255,0.04); }
+.layer-state .arch-layer-bar{ background: rgba(155,119,255,0.08); }
+.layer-state .arch-layer-num{ color: var(--purple); }
+.layer-state .arch-layer-name{color: var(--purple); }
+.layer-state .arch-chip     { background:rgba(155,119,255,0.08);border-color:rgba(155,119,255,0.25);color:#C4AAFF; }
+
+.layer-svc  { background: rgba(255,184,0,0.04); }
+.layer-svc .arch-layer-bar  { background: rgba(255,184,0,0.08); }
+.layer-svc .arch-layer-num  { color: var(--amber); }
+.layer-svc .arch-layer-name { color: var(--amber); }
+.layer-svc .arch-chip       { background:rgba(255,184,0,0.08);border-color:rgba(255,184,0,0.25);color:#FFD466; }
+
+.layer-vpn  { background: rgba(255,68,68,0.04); }
+.layer-vpn .arch-layer-bar  { background: rgba(255,68,68,0.08); }
+.layer-vpn .arch-layer-num  { color: var(--red); }
+.layer-vpn .arch-layer-name { color: var(--red); }
+.layer-vpn .arch-chip       { background:rgba(255,68,68,0.08);border-color:rgba(255,68,68,0.25);color:#FF8888; }
+
+.layer-plat { background: rgba(143,168,200,0.04); }
+.layer-plat .arch-layer-bar { background: rgba(143,168,200,0.08); }
+.layer-plat .arch-layer-num { color: var(--text-secondary); }
+.layer-plat .arch-layer-name{ color: var(--text-secondary); }
+.layer-plat .arch-chip      { background:rgba(143,168,200,0.08);border-color:rgba(143,168,200,0.2);color:var(--text-secondary); }
+
+/* ────────────────────────────────────────────
+   SECTION 2: Component Hierarchy Tree
+──────────────────────────────────────────── */
+.tree-wrap{
+  display:flex;flex-direction:column;gap:0;
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:var(--r-2xl);overflow:hidden;
+}
+.tree-tier{padding:20px 24px;border-bottom:1px solid var(--border-subtle);}
+.tree-tier:last-child{border-bottom:none;}
+.tree-tier-header{
+  display:flex;align-items:center;gap:12px;margin-bottom:16px;
+}
+.tree-tier-label{
+  font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  padding:3px 10px;border-radius:var(--r-full);border:1px solid;
+}
+.tree-tier-label.atom  { color:#3D5570;border-color:rgba(61,85,112,0.4);background:rgba(61,85,112,0.08);}
+.tree-tier-label.mol   { color:var(--blue-400);border-color:rgba(51,153,255,0.35);background:rgba(51,153,255,0.06);}
+.tree-tier-label.org   { color:var(--emerald-400);border-color:rgba(0,232,122,0.35);background:rgba(0,232,122,0.06);}
+.tree-tier-desc{font-size:12px;color:var(--text-muted);}
+.tree-items{display:flex;flex-wrap:wrap;gap:8px;}
+.tree-node{
+  display:flex;align-items:center;gap:6px;
+  padding:6px 12px;border-radius:var(--r-full);border:1px solid;
+  font-size:12px;font-weight:500;transition:all 0.15s;cursor:default;
+}
+.tree-node.atom{
+  background:rgba(61,85,112,0.08);border-color:rgba(61,85,112,0.3);color:var(--text-muted);
+}
+.tree-node.atom:hover{border-color:rgba(143,168,200,0.3);color:var(--text-secondary);}
+.tree-node.mol{
+  background:rgba(51,153,255,0.05);border-color:rgba(51,153,255,0.2);color:#7DC8FF;
+}
+.tree-node.mol:hover{border-color:rgba(51,153,255,0.4);background:rgba(51,153,255,0.09);}
+.tree-node.org{
+  background:rgba(0,232,122,0.05);border-color:rgba(0,232,122,0.22);color:var(--emerald-400);
+}
+.tree-node.org:hover{border-color:rgba(0,232,122,0.45);background:rgba(0,232,122,0.09);}
+.tree-node-dot{
+  width:5px;height:5px;border-radius:50%;flex-shrink:0;
+}
+.tree-node.atom .tree-node-dot{background:var(--text-muted);}
+.tree-node.mol .tree-node-dot{background:var(--blue-400);}
+.tree-node.org .tree-node-dot{background:var(--emerald-400);}
+
+/* arrows between tiers */
+.tree-connector{
+  display:flex;justify-content:center;align-items:center;
+  padding:4px 0;gap:4px;color:var(--text-muted);font-size:11px;
+}
+.tree-connector-line{
+  flex:1;max-width:80px;height:1px;
+  background:linear-gradient(to right,transparent,var(--border-subtle),transparent);
+}
+
+/* ────────────────────────────────────────────
+   SECTION 3: Screen–Component Matrix
+──────────────────────────────────────────── */
+.matrix-wrap{overflow-x:auto;}
+.matrix{
+  display:grid;
+  grid-template-columns: 180px repeat(7,80px) 60px;
+  border:1px solid var(--border-subtle);border-radius:var(--r-xl);overflow:hidden;
+  min-width:900px;
+}
+.matrix-cell{
+  padding:10px 8px;display:flex;align-items:center;justify-content:center;
+  border-right:1px solid var(--border-subtle);border-bottom:1px solid var(--border-subtle);
+  font-size:11px;
+}
+.matrix-cell:last-child{border-right:none;}
+.matrix-row:last-child .matrix-cell{border-bottom:none;}
+.matrix-row{display:contents;}
+.matrix-head{
+  background:var(--bg-elevated);font-size:10px;font-weight:600;
+  color:var(--text-muted);letter-spacing:0.8px;text-transform:uppercase;
+}
+.matrix-head.comp-col{justify-content:flex-start;padding-left:14px;}
+.matrix-label{
+  background:var(--bg-surface);font-size:12px;color:var(--text-secondary);
+  justify-content:flex-start;padding-left:14px;font-family:var(--mono);
+  font-weight:400;
+}
+.matrix-cell.even{background:var(--bg-elevated);}
+.matrix-cell.even.matrix-label{background:rgba(17,31,53,0.8);}
+.matrix-dot-cell{background:var(--bg-surface);}
+.matrix-dot-cell.even{background:var(--bg-elevated);}
+.m-dot{
+  width:10px;height:10px;border-radius:50%;background:var(--emerald-400);
+  box-shadow:0 0 5px rgba(0,232,122,0.5);
+  animation:m-dot-pulse 3s ease-in-out infinite;
+}
+@keyframes m-dot-pulse{0%,100%{box-shadow:0 0 4px rgba(0,232,122,0.4);}50%{box-shadow:0 0 9px rgba(0,232,122,0.7);}}
+.m-empty{width:10px;height:10px;border-radius:50%;background:transparent;border:1px solid var(--border-subtle);}
+.count-badge{
+  font-size:11px;font-weight:600;font-family:var(--mono);
+  color:var(--emerald-400);background:rgba(0,232,122,0.08);
+  border-radius:var(--r-full);padding:2px 7px;border:1px solid rgba(0,232,122,0.2);
+}
+
+/* ────────────────────────────────────────────
+   SECTION 4: Navigation Flow
+──────────────────────────────────────────── */
+.nav-flow{
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:var(--r-2xl);padding:32px;overflow-x:auto;
+}
+.nav-legend{
+  display:flex;gap:20px;flex-wrap:wrap;margin-bottom:28px;
+  padding-bottom:20px;border-bottom:1px solid var(--border-subtle);
+}
+.nav-legend-item{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);}
+.legend-line{
+  width:32px;height:2px;border-radius:1px;
+}
+.legend-line.push{background:var(--emerald-400);}
+.legend-line.modal{background:var(--blue-400);}
+.legend-line.tab{background:var(--amber);border-style:dashed;}
+.legend-line.tab-dash{
+  width:32px;height:2px;
+  background: repeating-linear-gradient(to right,var(--amber) 0,var(--amber) 5px,transparent 5px,transparent 10px);
+}
+
+.nav-diagram{
+  display:flex;align-items:flex-start;gap:0;
+  min-width:700px;
+}
+.nav-col{
+  display:flex;flex-direction:column;align-items:center;gap:0;
+}
+.nav-col-label{
+  font-size:9px;font-weight:500;color:var(--text-muted);letter-spacing:1.2px;
+  text-transform:uppercase;margin-bottom:12px;
+}
+.nav-box{
+  padding:10px 14px;border-radius:var(--r-lg);border:1px solid;
+  font-size:12px;font-weight:600;text-align:center;min-width:100px;
+  position:relative;white-space:nowrap;
+}
+.nav-box.screen{
+  background:var(--bg-elevated);border-color:var(--border-default);color:var(--text-primary);
+}
+.nav-box.tab-root{
+  background:rgba(0,232,122,0.05);border-color:var(--border-glow);color:var(--emerald-400);
+}
+.nav-box.modal-box{
+  background:rgba(51,153,255,0.05);border-color:rgba(51,153,255,0.3);color:#7DC8FF;
+}
+.nav-box.push-child{
+  background:var(--bg-elevated);border-color:var(--border-default);color:var(--text-secondary);
+  font-size:11px;
+}
+.nav-arrow-row{
+  display:flex;align-items:center;gap:0;
+  margin:8px 0;
+}
+.nav-arrow-h{
+  display:flex;align-items:center;
+}
+.nav-line{height:2px;}
+.nav-line.push{background:var(--emerald-400);}
+.nav-line.modal{background:var(--blue-400);}
+.nav-arrow-tip{
+  width:0;height:0;
+}
+.nav-arrow-tip.push{
+  border-top:4px solid transparent;border-bottom:4px solid transparent;
+  border-left:7px solid var(--emerald-400);
+}
+.nav-arrow-tip.modal{
+  border-top:4px solid transparent;border-bottom:4px solid transparent;
+  border-left:7px solid var(--blue-400);
+}
+.nav-arrow-down{
+  display:flex;flex-direction:column;align-items:center;
+  margin:4px 0;
+}
+.nav-vline{width:2px;}
+.nav-vline.push{background:var(--emerald-400);}
+.nav-vline.tab{
+  background: repeating-linear-gradient(to bottom,var(--amber) 0,var(--amber) 5px,transparent 5px,transparent 9px);
+}
+.nav-arrow-tip-down{
+  width:0;height:0;
+}
+.nav-arrow-tip-down.push{
+  border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:7px solid var(--emerald-400);
+}
+.nav-arrow-tip-down.tab{
+  border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:7px solid var(--amber);
+}
+.nav-tabs-row{
+  display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px;
+}
+.nav-tab-item{
+  display:flex;flex-direction:column;align-items:center;gap:4px;
+}
+.nav-tab-box{
+  padding:8px 12px;border-radius:var(--r-md);border:1px solid;font-size:11px;
+  font-weight:600;text-align:center;min-width:72px;
+}
+.nav-tab-box.active-tab{
+  background:rgba(0,232,122,0.08);border-color:rgba(0,232,122,0.35);color:var(--emerald-400);
+}
+.nav-tab-box.plain-tab{
+  background:var(--bg-elevated);border-color:var(--border-default);color:var(--text-secondary);
+  font-size:10px;
+}
+.nav-tab-label{font-size:9px;color:var(--text-muted);font-family:var(--mono);}
+.nav-push-row{
+  display:flex;gap:8px;margin-top:12px;justify-content:center;
+}
+.nav-push-item{
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+.nav-push-box{
+  padding:6px 10px;border-radius:var(--r-md);border:1px solid var(--border-subtle);
+  font-size:10px;color:var(--text-muted);background:var(--bg-void);
+}
+.nav-type-label{
+  font-size:8px;font-family:var(--mono);color:var(--text-muted);
+  letter-spacing:0.5px;text-align:center;
+}
+.nav-type-label.push{color:rgba(0,232,122,0.5);}
+.nav-type-label.modal{color:rgba(51,153,255,0.5);}
+
+/* ────────────────────────────────────────────
+   SECTION 5: State Flow
+──────────────────────────────────────────── */
+.state-flow-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr 1fr;
+  gap:20px;
+}
+@media(max-width:900px){.state-flow-grid{grid-template-columns:1fr 1fr;}}
+.state-flow-card{
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:var(--r-xl);padding:20px;position:relative;overflow:hidden;
+}
+.state-flow-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2px;
+}
+.state-flow-card.vpn::before   {background:linear-gradient(to right,var(--emerald-400),transparent);}
+.state-flow-card.server::before{background:linear-gradient(to right,var(--blue-400),transparent);}
+.state-flow-card.ai::before    {background:linear-gradient(to right,var(--purple),transparent);}
+.state-flow-card.auth::before  {background:linear-gradient(to right,var(--amber),transparent);}
+.state-flow-card.diag::before  {background:linear-gradient(to right,var(--red),transparent);}
+.state-flow-card.sett::before  {background:linear-gradient(to right,var(--text-secondary),transparent);}
+.sfc-header{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+.sfc-icon{
+  width:28px;height:28px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;
+  font-size:13px;flex-shrink:0;
+}
+.sfc-icon.vpn   {background:rgba(0,232,122,0.1);color:var(--emerald-400);}
+.sfc-icon.server{background:rgba(51,153,255,0.1);color:var(--blue-400);}
+.sfc-icon.ai    {background:rgba(155,119,255,0.1);color:var(--purple);}
+.sfc-icon.auth  {background:rgba(255,184,0,0.1);color:var(--amber);}
+.sfc-icon.diag  {background:rgba(255,68,68,0.1);color:var(--red);}
+.sfc-icon.sett  {background:rgba(143,168,200,0.1);color:var(--text-secondary);}
+.sfc-name{font-size:13px;font-weight:600;color:var(--text-primary);}
+.sfc-section{margin-bottom:10px;}
+.sfc-section:last-child{margin-bottom:0;}
+.sfc-label{font-size:9px;font-weight:500;color:var(--text-muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px;}
+.sfc-tags{display:flex;flex-wrap:wrap;gap:4px;}
+.sfc-tag{
+  font-size:10px;font-family:var(--mono);padding:3px 8px;border-radius:var(--r-full);
+  border:1px solid;
+}
+.sfc-tag.reads{background:rgba(0,232,122,0.04);border-color:rgba(0,232,122,0.2);color:var(--emerald-400);}
+.sfc-tag.writes{background:rgba(51,153,255,0.04);border-color:rgba(51,153,255,0.2);color:#7DC8FF;}
+
+/* ────────────────────────────────────────────
+   SECTION 6: Store Map
+──────────────────────────────────────────── */
+.store-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:16px;
+}
+@media(max-width:800px){.store-grid{grid-template-columns:1fr;}}
+.store-card{
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:var(--r-xl);overflow:hidden;
+}
+.store-card-head{
+  padding:14px 18px;border-bottom:1px solid var(--border-subtle);
+  display:flex;align-items:center;gap:10px;
+}
+.store-badge{
+  font-size:9px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+  padding:3px 8px;border-radius:var(--r-full);border:1px solid;
+  font-family:var(--mono);
+}
+.store-badge.vpn   {background:rgba(0,232,122,0.06);border-color:rgba(0,232,122,0.25);color:var(--emerald-400);}
+.store-badge.server{background:rgba(51,153,255,0.06);border-color:rgba(51,153,255,0.25);color:#7DC8FF;}
+.store-badge.ai    {background:rgba(155,119,255,0.06);border-color:rgba(155,119,255,0.25);color:#C4AAFF;}
+.store-badge.auth  {background:rgba(255,184,0,0.06);border-color:rgba(255,184,0,0.25);color:var(--amber);}
+.store-badge.diag  {background:rgba(255,68,68,0.06);border-color:rgba(255,68,68,0.25);color:#FF8888;}
+.store-badge.sett  {background:rgba(143,168,200,0.06);border-color:rgba(143,168,200,0.2);color:var(--text-secondary);}
+.store-card-title{font-size:14px;font-weight:600;color:var(--text-primary);font-family:var(--mono);}
+.store-card-body{padding:16px 18px;display:flex;flex-direction:column;gap:12px;}
+.store-section{}
+.store-sec-label{
+  font-size:9px;font-weight:600;color:var(--text-muted);letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:6px;
+}
+.store-fields{display:flex;flex-direction:column;gap:4px;}
+.store-field{
+  display:flex;align-items:baseline;gap:8px;
+  font-size:11px;padding:4px 0;border-bottom:1px solid var(--border-subtle);
+}
+.store-field:last-child{border-bottom:none;}
+.sf-name{font-family:var(--mono);color:var(--text-secondary);flex-shrink:0;}
+.sf-type{font-family:var(--mono);color:var(--text-muted);font-size:10px;}
+.store-actions{display:flex;flex-wrap:wrap;gap:4px;}
+.store-action{
+  font-size:10px;font-family:var(--mono);padding:3px 8px;
+  border-radius:var(--r-full);background:rgba(0,232,122,0.05);
+  border:1px solid rgba(0,232,122,0.15);color:rgba(0,232,122,0.7);
+}
+
+/* ────────────────────────────────────────────
+   SECTION 7: VPN Integration Stack
+──────────────────────────────────────────── */
+.vpn-stack-wrap{
+  display:grid;grid-template-columns:1fr 1fr;gap:24px;
+}
+@media(max-width:800px){.vpn-stack-wrap{grid-template-columns:1fr;}}
+
+.vpn-bridge-diagram{
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:var(--r-xl);padding:24px;
+}
+.vpn-bd-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:20px;}
+.vpn-layer{
+  display:flex;flex-direction:column;align-items:center;
+}
+.vpn-layer-box{
+  width:100%;padding:12px 16px;border-radius:var(--r-lg);
+  border:1px solid;text-align:center;
+}
+.vpn-lbl{font-size:12px;font-weight:600;margin-bottom:2px;}
+.vpn-sub{font-size:10px;font-family:var(--mono);}
+.vpn-layer-box.app-js   {background:rgba(0,232,122,0.05);border-color:rgba(0,232,122,0.25);}
+.vpn-layer-box.app-js .vpn-lbl{color:var(--emerald-400);}
+.vpn-layer-box.app-js .vpn-sub{color:rgba(0,232,122,0.5);}
+.vpn-layer-box.bridge   {background:rgba(51,153,255,0.05);border-color:rgba(51,153,255,0.25);}
+.vpn-layer-box.bridge .vpn-lbl{color:var(--blue-400);}
+.vpn-layer-box.bridge .vpn-sub{color:rgba(51,153,255,0.5);}
+.vpn-layer-box.core     {background:rgba(255,68,68,0.05);border-color:rgba(255,68,68,0.25);}
+.vpn-layer-box.core .vpn-lbl{color:var(--red);}
+.vpn-layer-box.core .vpn-sub{color:rgba(255,68,68,0.5);}
+.vpn-layer-box.network  {background:rgba(143,168,200,0.05);border-color:rgba(143,168,200,0.2);}
+.vpn-layer-box.network .vpn-lbl{color:var(--text-secondary);}
+.vpn-layer-box.network .vpn-sub{color:var(--text-muted);}
+.vpn-bridge-arrow{
+  display:flex;flex-direction:column;align-items:center;padding:5px 0;gap:2px;
+}
+.vpn-bridge-arrow-line{width:2px;height:16px;background:var(--border-default);}
+.vpn-bridge-arrow-tip{
+  width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:6px solid var(--border-default);
+}
+.vpn-bridge-label{
+  font-size:9px;font-family:var(--mono);color:var(--text-muted);
+  letter-spacing:0.5px;white-space:nowrap;
+}
+.vpn-proto-row{
+  display:flex;gap:6px;margin-top:8px;justify-content:center;flex-wrap:wrap;
+}
+.vpn-proto-tag{
+  font-size:9px;font-family:var(--mono);padding:2px 7px;border-radius:var(--r-full);
+  background:rgba(255,68,68,0.06);border:1px solid rgba(255,68,68,0.2);color:#FF8888;
+}
+
+/* State machine */
+.state-machine{
+  background:var(--bg-surface);border:1px solid var(--border-subtle);
+  border-radius:var(--r-xl);padding:24px;
+}
+.sm-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:20px;}
+.sm-diagram{display:flex;flex-direction:column;gap:8px;}
+.sm-row{display:flex;align-items:center;justify-content:center;gap:8px;}
+.sm-state{
+  width:110px;height:44px;border-radius:var(--r-full);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:600;border:1px solid;text-align:center;
+  flex-shrink:0;font-family:var(--mono);
+}
+.sm-state.idle        {background:rgba(143,168,200,0.08);border-color:rgba(143,168,200,0.25);color:var(--text-secondary);}
+.sm-state.connecting  {background:rgba(255,184,0,0.08);border-color:rgba(255,184,0,0.35);color:var(--amber);}
+.sm-state.connected   {background:rgba(0,232,122,0.08);border-color:rgba(0,232,122,0.40);color:var(--emerald-400);}
+.sm-state.disconnecting{background:rgba(51,153,255,0.08);border-color:rgba(51,153,255,0.30);color:var(--blue-400);}
+.sm-state.error       {background:rgba(255,68,68,0.08);border-color:rgba(255,68,68,0.35);color:var(--red);}
+.sm-state.connected{
+  animation:sm-connected-pulse 3s ease-in-out infinite;
+}
+@keyframes sm-connected-pulse{
+  0%,100%{box-shadow:0 0 0 rgba(0,232,122,0);}
+  50%{box-shadow:0 0 12px rgba(0,232,122,0.25);}
+}
+.sm-arrow{
+  display:flex;flex-direction:column;align-items:center;
+  flex-shrink:0;
+}
+.sm-arrow-line-h{height:2px;background:var(--border-default);width:24px;}
+.sm-arrow-tip-r{
+  width:0;height:0;border-top:4px solid transparent;border-bottom:4px solid transparent;
+  border-left:6px solid var(--border-default);
+}
+.sm-arrow-line-v{width:2px;background:var(--border-default);height:16px;}
+.sm-arrow-tip-d{
+  width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
+  border-top:6px solid var(--border-default);
+}
+.sm-arrow-label{
+  font-size:8px;font-family:var(--mono);color:var(--text-muted);
+  white-space:nowrap;letter-spacing:0.3px;
+}
+.sm-error-row{
+  display:flex;align-items:center;gap:6px;margin-top:4px;justify-content:center;
+}
+.sm-error-label{font-size:9px;font-family:var(--mono);color:var(--text-muted);}
+
+/* ── Misc shared ── */
+.info-note{
+  font-size:12px;color:var(--text-muted);background:var(--bg-surface);
+  border:1px solid var(--border-subtle);border-left:2px solid var(--emerald-400);
+  border-radius:var(--r-md);padding:10px 14px;margin-top:16px;line-height:1.6;
+}
+</style>
+</head>
+<body>
+
+<!-- ── Sidebar ── -->
+<nav class="sidebar">
+  <div class="sb-brand">
+    <div class="sb-mark"><span>S</span></div>
+    <div class="sb-title">SetaLink Arch</div>
+    <div class="sb-version">v1.0 · 2026</div>
+  </div>
+  <div class="sb-nav">
+    <div class="sb-group-label">Architecture</div>
+    <a class="sb-link" href="#layers"><span class="sb-num">01</span>Layer Stack</a>
+    <a class="sb-link" href="#hierarchy"><span class="sb-num">02</span>Component Tree</a>
+    <a class="sb-link" href="#matrix"><span class="sb-num">03</span>Dependency Matrix</a>
+    <div class="sb-group-label">Navigation &amp; State</div>
+    <a class="sb-link" href="#nav-flow"><span class="sb-num">04</span>Navigation Flow</a>
+    <a class="sb-link" href="#state-flow"><span class="sb-num">05</span>State Flow</a>
+    <a class="sb-link" href="#store-map"><span class="sb-num">06</span>Store Map</a>
+    <div class="sb-group-label">VPN Core</div>
+    <a class="sb-link" href="#vpn-stack"><span class="sb-num">07</span>VPN Integration</a>
+  </div>
+</nav>
+
+<!-- ── Main ── -->
+<main class="main">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-eyebrow"><div class="hero-dot"></div>Component Map</div>
+    <h1 class="hero-title">SetaLink<br><strong>Architecture</strong></h1>
+    <p class="hero-sub">Visual diagrams for the React Native app architecture — layer stack, component hierarchy, screen dependency matrix, navigation graph, and state topology. Planning phase only; no implementation code.</p>
+    <div class="hero-tags">
+      <div class="hero-tag">React Native 0.75</div>
+      <div class="hero-tag">Reanimated 3</div>
+      <div class="hero-tag">Zustand 5</div>
+      <div class="hero-tag">Xray-Core (Go)</div>
+      <div class="hero-tag">MMKV 3</div>
+    </div>
+  </div>
+
+  <!-- ── 01: Architecture Layers ── -->
+  <section class="section" id="layers">
+    <div class="sec-eyebrow"><span class="sec-num">01</span></div>
+    <div class="sec-title">Architecture Layers</div>
+    <p class="sec-sub">Six horizontal layers from UI at top to platform at bottom. Each layer has a single responsibility and a defined interface to adjacent layers. No layer skips — the UI never calls XrayBridge directly.</p>
+
+    <div class="arch-stack">
+      <!-- Layer 1: UI -->
+      <div class="arch-layer layer-ui">
+        <div class="arch-layer-bar">
+          <div class="arch-layer-num">Layer 1</div>
+          <div class="arch-layer-name">UI Layer</div>
+        </div>
+        <div class="arch-layer-chips">
+          <span class="arch-chip">SplashScreen</span>
+          <span class="arch-chip">AuthScreen</span>
+          <span class="arch-chip">HomeScreen</span>
+          <span class="arch-chip">SmartAIScreen</span>
+          <span class="arch-chip">ServersScreen</span>
+          <span class="arch-chip">DiagnosticsScreen</span>
+          <span class="arch-chip">ProfileScreen</span>
+          <span class="arch-chip">SettingsScreen</span>
+          <span class="arch-chip">ConnectButton</span>
+          <span class="arch-chip">AIOrb</span>
+          <span class="arch-chip">GlassCard</span>
+          <span class="arch-chip">BottomNav</span>
+          <span class="arch-chip">ServerList</span>
+          <span class="arch-chip">DiagnosticsChart</span>
+        </div>
+      </div>
+
+      <!-- Layer 2: Animation -->
+      <div class="arch-layer layer-anim">
+        <div class="arch-layer-bar">
+          <div class="arch-layer-num">Layer 2</div>
+          <div class="arch-layer-name">Animation Layer</div>
+        </div>
+        <div class="arch-layer-chips">
+          <span class="arch-chip">useBreathing</span>
+          <span class="arch-chip">usePulseRings</span>
+          <span class="arch-chip">useOrbit</span>
+          <span class="arch-chip">useSectionReveal</span>
+          <span class="arch-chip">useSpring</span>
+          <span class="arch-chip">useConnectTransition</span>
+          <span class="arch-chip">Reanimated worklets</span>
+          <span class="arch-chip">UI-thread only</span>
+          <span class="arch-chip">timings.ts</span>
+        </div>
+      </div>
+
+      <!-- Layer 3: State -->
+      <div class="arch-layer layer-state">
+        <div class="arch-layer-bar">
+          <div class="arch-layer-num">Layer 3</div>
+          <div class="arch-layer-name">State Layer</div>
+        </div>
+        <div class="arch-layer-chips">
+          <span class="arch-chip">vpnStore</span>
+          <span class="arch-chip">serverStore</span>
+          <span class="arch-chip">aiStore</span>
+          <span class="arch-chip">authStore</span>
+          <span class="arch-chip">diagnosticsStore</span>
+          <span class="arch-chip">settingsStore</span>
+          <span class="arch-chip">Zustand 5</span>
+          <span class="arch-chip">MMKV persistence</span>
+          <span class="arch-chip">React Query cache</span>
+        </div>
+      </div>
+
+      <!-- Layer 4: Service -->
+      <div class="arch-layer layer-svc">
+        <div class="arch-layer-bar">
+          <div class="arch-layer-num">Layer 4</div>
+          <div class="arch-layer-name">Service Layer</div>
+        </div>
+        <div class="arch-layer-chips">
+          <span class="arch-chip">api/client.ts</span>
+          <span class="arch-chip">auth.api.ts</span>
+          <span class="arch-chip">servers.api.ts</span>
+          <span class="arch-chip">AIRouteSelector</span>
+          <span class="arch-chip">DiagnosticsEngine</span>
+          <span class="arch-chip">HopTracer</span>
+          <span class="arch-chip">LogExporter</span>
+          <span class="arch-chip">secureStore.ts</span>
+          <span class="arch-chip">ProtocolManager</span>
+          <span class="arch-chip">VpnConfig</span>
+        </div>
+      </div>
+
+      <!-- Layer 5: VPN Core -->
+      <div class="arch-layer layer-vpn">
+        <div class="arch-layer-bar">
+          <div class="arch-layer-num">Layer 5</div>
+          <div class="arch-layer-name">VPN Core Layer</div>
+        </div>
+        <div class="arch-layer-chips">
+          <span class="arch-chip">XrayBridge.ts</span>
+          <span class="arch-chip">NativeModules.XrayBridge</span>
+          <span class="arch-chip">ConnectionManager</span>
+          <span class="arch-chip">Xray-Core (Go binary)</span>
+          <span class="arch-chip">VLESS-Reality</span>
+          <span class="arch-chip">VLESS-WS</span>
+          <span class="arch-chip">XHTTP</span>
+          <span class="arch-chip">HTTPUpgrade</span>
+          <span class="arch-chip">Foreground Service</span>
+        </div>
+      </div>
+
+      <!-- Layer 6: Platform -->
+      <div class="arch-layer layer-plat">
+        <div class="arch-layer-bar">
+          <div class="arch-layer-num">Layer 6</div>
+          <div class="arch-layer-name">Platform Layer</div>
+        </div>
+        <div class="arch-layer-chips">
+          <span class="arch-chip">iOS 16+</span>
+          <span class="arch-chip">Android 10+ (API 29)</span>
+          <span class="arch-chip">UIKit / SwiftUI</span>
+          <span class="arch-chip">Android Jetpack</span>
+          <span class="arch-chip">Keychain</span>
+          <span class="arch-chip">Android Keystore</span>
+          <span class="arch-chip">VpnService (Android)</span>
+          <span class="arch-chip">NetworkExtension (iOS)</span>
+        </div>
+      </div>
+    </div>
+
+    <p class="info-note">The single allowed cross-layer skip: <code style="font-family:var(--mono);font-size:11px;color:var(--emerald-400);">XrayBridge.ts</code> (Service Layer) wraps the native module directly. All other services call through <code style="font-family:var(--mono);font-size:11px;color:var(--emerald-400);">XrayBridge.ts</code> — no other file imports <code style="font-family:var(--mono);font-size:11px;color:var(--emerald-400);">NativeModules</code>.</p>
+  </section>
+
+  <!-- ── 02: Component Hierarchy ── -->
+  <section class="section" id="hierarchy">
+    <div class="sec-eyebrow"><span class="sec-num">02</span></div>
+    <div class="sec-title">Component Hierarchy</div>
+    <p class="sec-sub">Three-tier atomic design: atoms are indivisible UI primitives, molecules compose 2–5 atoms into named units, organisms are complex self-contained sections that may hold local state.</p>
+
+    <div class="tree-wrap">
+      <!-- Atoms -->
+      <div class="tree-tier">
+        <div class="tree-tier-header">
+          <div class="tree-tier-label atom">Atoms</div>
+          <div class="tree-tier-desc">Indivisible primitives. No internal state. No business logic. Only tokens for styling.</div>
+        </div>
+        <div class="tree-items">
+          <div class="tree-node atom"><div class="tree-node-dot"></div>AnimatedRing</div>
+          <div class="tree-node atom"><div class="tree-node-dot"></div>GlowDot</div>
+          <div class="tree-node atom"><div class="tree-node-dot"></div>PingDot</div>
+          <div class="tree-node atom"><div class="tree-node-dot"></div>MonoText</div>
+          <div class="tree-node atom"><div class="tree-node-dot"></div>StatusDot</div>
+          <div class="tree-node atom"><div class="tree-node-dot"></div>Toggle</div>
+          <div class="tree-node atom"><div class="tree-node-dot"></div>Tag</div>
+          <div class="tree-node atom"><div class="tree-node-dot"></div>PowerIcon</div>
+        </div>
+      </div>
+
+      <div class="tree-connector">
+        <div class="tree-connector-line"></div>
+        <span style="font-size:10px;color:var(--text-muted);">composed into</span>
+        <div class="tree-connector-line"></div>
+      </div>
+
+      <!-- Molecules -->
+      <div class="tree-tier">
+        <div class="tree-tier-header">
+          <div class="tree-tier-label mol">Molecules</div>
+          <div class="tree-tier-desc">2–5 atoms combined into a named, reusable unit. May hold minimal display state (hover, focus). Never own business data.</div>
+        </div>
+        <div class="tree-items">
+          <div class="tree-node mol"><div class="tree-node-dot"></div>GlassCard</div>
+          <div class="tree-node mol"><div class="tree-node-dot"></div>StatusPill</div>
+          <div class="tree-node mol"><div class="tree-node-dot"></div>MetricPill</div>
+          <div class="tree-node mol"><div class="tree-node-dot"></div>MetricRow</div>
+          <div class="tree-node mol"><div class="tree-node-dot"></div>ServerRow</div>
+          <div class="tree-node mol"><div class="tree-node-dot"></div>ProtocolChain</div>
+          <div class="tree-node mol"><div class="tree-node-dot"></div>AIBadge</div>
+          <div class="tree-node mol"><div class="tree-node-dot"></div>DiagnosticsMetric</div>
+        </div>
+      </div>
+
+      <div class="tree-connector">
+        <div class="tree-connector-line"></div>
+        <span style="font-size:10px;color:var(--text-muted);">assembled into</span>
+        <div class="tree-connector-line"></div>
+      </div>
+
+      <!-- Organisms -->
+      <div class="tree-tier">
+        <div class="tree-tier-header">
+          <div class="tree-tier-label org">Organisms</div>
+          <div class="tree-tier-desc">Complex, self-contained UI sections. May own local state. Connected to Zustand stores via screen hooks, not directly.</div>
+        </div>
+        <div class="tree-items">
+          <div class="tree-node org"><div class="tree-node-dot"></div>ConnectButton</div>
+          <div class="tree-node org"><div class="tree-node-dot"></div>AIOrb</div>
+          <div class="tree-node org"><div class="tree-node-dot"></div>BottomNav</div>
+          <div class="tree-node org"><div class="tree-node-dot"></div>GlowButton</div>
+          <div class="tree-node org"><div class="tree-node-dot"></div>DiagnosticsChart</div>
+          <div class="tree-node org"><div class="tree-node-dot"></div>ServerList</div>
+          <div class="tree-node org"><div class="tree-node-dot"></div>ModeGrid</div>
+          <div class="tree-node org"><div class="tree-node-dot"></div>NetworkQualityCard</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 03: Dependency Matrix ── -->
+  <section class="section" id="matrix">
+    <div class="sec-eyebrow"><span class="sec-num">03</span></div>
+    <div class="sec-title">Screen–Component Dependency Matrix</div>
+    <p class="sec-sub">Filled dots indicate a component is used on that screen. The reuse count on the right shows how many screens share each component — higher reuse = higher design fidelity ROI.</p>
+
+    <div class="matrix-wrap">
+      <div class="matrix">
+        <!-- Header row -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-head comp-col">Component</div>
+          <div class="matrix-cell matrix-head">Splash</div>
+          <div class="matrix-cell matrix-head">Auth</div>
+          <div class="matrix-cell matrix-head">Home</div>
+          <div class="matrix-cell matrix-head">SmartAI</div>
+          <div class="matrix-cell matrix-head">Servers</div>
+          <div class="matrix-cell matrix-head">Diagn.</div>
+          <div class="matrix-cell matrix-head">Profile</div>
+          <div class="matrix-cell matrix-head" style="color:var(--emerald-400);">Uses</div>
+        </div>
+
+        <!-- GlassCard -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">GlassCard</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">5</span></div>
+        </div>
+
+        <!-- AIOrb -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">AIOrb</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">2</span></div>
+        </div>
+
+        <!-- ConnectButton -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">ConnectButton</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">1</span></div>
+        </div>
+
+        <!-- StatusPill -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">StatusPill</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">4</span></div>
+        </div>
+
+        <!-- MetricRow -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">MetricRow</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">2</span></div>
+        </div>
+
+        <!-- ServerRow -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">ServerRow</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">3</span></div>
+        </div>
+
+        <!-- BottomNav -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">BottomNav</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">5</span></div>
+        </div>
+
+        <!-- AnimatedRing -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">AnimatedRing</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">3</span></div>
+        </div>
+
+        <!-- GlowButton -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">GlowButton</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">2</span></div>
+        </div>
+
+        <!-- DiagnosticsChart -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">DiagnosticsChart</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">1</span></div>
+        </div>
+
+        <!-- ProtocolChain -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">ProtocolChain</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">3</span></div>
+        </div>
+
+        <!-- AIBadge -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">AIBadge</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">2</span></div>
+        </div>
+
+        <!-- Toggle -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">Toggle</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">1</span></div>
+        </div>
+
+        <!-- ModeGrid -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">ModeGrid</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">1</span></div>
+        </div>
+
+        <!-- NetworkQualityCard -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label">NetworkQualityCard</div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell"><span class="count-badge">2</span></div>
+        </div>
+
+        <!-- StatusDot -->
+        <div class="matrix-row">
+          <div class="matrix-cell matrix-label even">StatusDot</div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-dot"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><div class="m-empty"></div></div>
+          <div class="matrix-cell matrix-dot-cell even"><span class="count-badge">4</span></div>
+        </div>
+
+      </div><!-- end .matrix -->
+    </div><!-- end .matrix-wrap -->
+  </section>
+
+  <!-- ── 04: Navigation Flow ── -->
+  <section class="section" id="nav-flow">
+    <div class="sec-eyebrow"><span class="sec-num">04</span></div>
+    <div class="sec-title">Navigation Flow</div>
+    <p class="sec-sub">App uses a native stack navigator for auth flow, a bottom tab navigator for main screens, and modal presentation for Settings. Arrows show transition type.</p>
+
+    <div class="nav-flow">
+      <div class="nav-legend">
+        <div class="nav-legend-item">
+          <div class="legend-line push"></div>
+          <span>Stack push (native transition)</span>
+        </div>
+        <div class="nav-legend-item">
+          <div class="legend-line modal"></div>
+          <span>Modal presentation</span>
+        </div>
+        <div class="nav-legend-item">
+          <div class="legend-line tab-dash"></div>
+          <span>Tab switch (no transition)</span>
+        </div>
+      </div>
+
+      <!-- Row 1: Splash → Auth → Main Tabs -->
+      <div style="display:flex;flex-direction:column;align-items:center;min-width:640px;">
+        <!-- Top row: Splash → Auth → Main Stack entry -->
+        <div style="display:flex;align-items:center;gap:0;width:100%;justify-content:center;">
+          <div class="nav-box screen" style="min-width:90px;text-align:center;">Splash</div>
+          <div class="nav-arrow-h">
+            <div class="nav-line push" style="width:40px;"></div>
+            <div class="nav-arrow-tip push"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <div class="nav-type-label push" style="font-size:8px;font-family:var(--mono);color:rgba(0,232,122,0.5);letter-spacing:0.5px;">push</div>
+          </div>
+          <div class="nav-arrow-h">
+            <div class="nav-line push" style="width:8px;"></div>
+          </div>
+          <div class="nav-box screen" style="min-width:90px;text-align:center;">Auth</div>
+          <div class="nav-arrow-h">
+            <div class="nav-line push" style="width:40px;"></div>
+            <div class="nav-arrow-tip push"></div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+            <div class="nav-type-label push" style="font-size:8px;font-family:var(--mono);color:rgba(0,232,122,0.5);letter-spacing:0.5px;">replace</div>
+          </div>
+          <div class="nav-arrow-h">
+            <div class="nav-line push" style="width:8px;"></div>
+          </div>
+          <div style="background:rgba(0,232,122,0.05);border:1px solid rgba(0,232,122,0.25);border-radius:var(--r-xl);padding:12px 20px;min-width:320px;">
+            <div style="font-size:10px;font-weight:600;color:var(--emerald-400);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px;text-align:center;">Main Tab Navigator</div>
+            <div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
+              <div class="nav-tab-box active-tab">Home</div>
+              <div class="nav-tab-box plain-tab">Servers</div>
+              <div class="nav-tab-box active-tab" style="background:rgba(0,232,122,0.12);border-color:rgba(0,232,122,0.5);">AI</div>
+              <div class="nav-tab-box plain-tab">Activity</div>
+              <div class="nav-tab-box plain-tab">Profile</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 2: Children pushed from tabs -->
+        <div style="margin-top:24px;width:100%;display:flex;justify-content:flex-end;padding-right:0px;">
+          <div style="width:320px;display:flex;gap:0;flex-direction:column;align-items:center;">
+            <!-- Down arrow from tabs box -->
+            <div class="nav-arrow-down" style="margin-bottom:0px;">
+              <div class="nav-vline push" style="height:12px;"></div>
+              <div class="nav-arrow-tip-down push"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;width:100%;">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+                <div class="nav-push-box" style="font-size:11px;color:var(--text-secondary);padding:8px 12px;border-color:var(--border-default);">Settings</div>
+                <div class="nav-type-label modal">modal</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+                <div class="nav-push-box" style="font-size:11px;color:var(--text-secondary);padding:8px 12px;border-color:var(--border-default);">Server Detail</div>
+                <div class="nav-type-label push">stack push</div>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px;">
+                <div class="nav-push-box" style="font-size:11px;color:var(--text-secondary);padding:8px 12px;border-color:var(--border-default);">Diagnostics</div>
+                <div class="nav-type-label push">stack push</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="info-note" style="margin-top:20px;">Settings is presented as a <strong style="color:var(--text-primary);">modal</strong> from Home (slide-up sheet on iOS, bottom sheet on Android). Server Detail and Diagnostics are <strong style="color:var(--text-primary);">native stack pushes</strong> — they get the back button automatically. Tab switching has no animation by default.</p>
+    </div>
+  </section>
+
+  <!-- ── 05: State Flow ── -->
+  <section class="section" id="state-flow">
+    <div class="sec-eyebrow"><span class="sec-num">05</span></div>
+    <div class="sec-title">State Flow</div>
+    <p class="sec-sub">Each card shows which screens read from the store (green tags) and which services write to it (blue tags). Screens never write directly — they call service functions which dispatch to stores.</p>
+
+    <div class="state-flow-grid">
+      <!-- vpnStore -->
+      <div class="state-flow-card vpn">
+        <div class="sfc-header">
+          <div class="sfc-icon vpn">⚡</div>
+          <div class="sfc-name">vpnStore</div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Screens read</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag reads">Home</span>
+            <span class="sfc-tag reads">SmartAI</span>
+            <span class="sfc-tag reads">Servers</span>
+            <span class="sfc-tag reads">Diagnostics</span>
+          </div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Services write</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag writes">ConnectionManager</span>
+            <span class="sfc-tag writes">XrayBridge</span>
+            <span class="sfc-tag writes">DiagnosticsEngine</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- serverStore -->
+      <div class="state-flow-card server">
+        <div class="sfc-header">
+          <div class="sfc-icon server">🌐</div>
+          <div class="sfc-name">serverStore</div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Screens read</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag reads">Home</span>
+            <span class="sfc-tag reads">Servers</span>
+            <span class="sfc-tag reads">SmartAI</span>
+          </div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Services write</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag writes">servers.api.ts</span>
+            <span class="sfc-tag writes">DiagnosticsEngine</span>
+            <span class="sfc-tag writes">AIRouteSelector</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- aiStore -->
+      <div class="state-flow-card ai">
+        <div class="sfc-header">
+          <div class="sfc-icon ai">✦</div>
+          <div class="sfc-name">aiStore</div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Screens read</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag reads">Home</span>
+            <span class="sfc-tag reads">SmartAI</span>
+          </div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Services write</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag writes">AIRouteSelector</span>
+            <span class="sfc-tag writes">ProtocolManager</span>
+            <span class="sfc-tag writes">decisionLogger</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- authStore -->
+      <div class="state-flow-card auth">
+        <div class="sfc-header">
+          <div class="sfc-icon auth">🔑</div>
+          <div class="sfc-name">authStore</div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Screens read</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag reads">Auth</span>
+            <span class="sfc-tag reads">Profile</span>
+            <span class="sfc-tag reads">RootNavigator</span>
+          </div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Services write</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag writes">auth.api.ts</span>
+            <span class="sfc-tag writes">profile.api.ts</span>
+            <span class="sfc-tag writes">secureStore.ts</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- diagnosticsStore -->
+      <div class="state-flow-card diag">
+        <div class="sfc-header">
+          <div class="sfc-icon diag">📊</div>
+          <div class="sfc-name">diagnosticsStore</div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Screens read</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag reads">Diagnostics</span>
+            <span class="sfc-tag reads">Home</span>
+          </div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Services write</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag writes">DiagnosticsEngine</span>
+            <span class="sfc-tag writes">HopTracer</span>
+            <span class="sfc-tag writes">XrayBridge</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- settingsStore -->
+      <div class="state-flow-card sett">
+        <div class="sfc-header">
+          <div class="sfc-icon sett">⚙</div>
+          <div class="sfc-name">settingsStore</div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Screens read</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag reads">Settings</span>
+            <span class="sfc-tag reads">Profile</span>
+            <span class="sfc-tag reads">ConnectionManager</span>
+          </div>
+        </div>
+        <div class="sfc-section">
+          <div class="sfc-label">Services write</div>
+          <div class="sfc-tags">
+            <span class="sfc-tag writes">Settings.hooks.ts</span>
+            <span class="sfc-tag writes">MMKV persist</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 06: Store Map ── -->
+  <section class="section" id="store-map">
+    <div class="sec-eyebrow"><span class="sec-num">06</span></div>
+    <div class="sec-title">Zustand Store Map</div>
+    <p class="sec-sub">Six domain stores. Each card shows the key state slices (field name + TypeScript type) and available actions. Stores are colocated by domain — no cross-store imports.</p>
+
+    <div class="store-grid">
+
+      <!-- vpnStore -->
+      <div class="store-card">
+        <div class="store-card-head">
+          <div class="store-badge vpn">vpn</div>
+          <div class="store-card-title">vpnStore</div>
+        </div>
+        <div class="store-card-body">
+          <div class="store-section">
+            <div class="store-sec-label">State Slices</div>
+            <div class="store-fields">
+              <div class="store-field"><span class="sf-name">connectionState</span><span class="sf-type">ConnectionState</span></div>
+              <div class="store-field"><span class="sf-name">activeServer</span><span class="sf-type">Server | null</span></div>
+              <div class="store-field"><span class="sf-name">activeProtocol</span><span class="sf-type">Protocol | null</span></div>
+              <div class="store-field"><span class="sf-name">sessionStart</span><span class="sf-type">number | null</span></div>
+              <div class="store-field"><span class="sf-name">sessionBytes</span><span class="sf-type">&#123; up, down &#125;</span></div>
+              <div class="store-field"><span class="sf-name">error</span><span class="sf-type">string | null</span></div>
+            </div>
+          </div>
+          <div class="store-section">
+            <div class="store-sec-label">Actions</div>
+            <div class="store-actions">
+              <div class="store-action">connect()</div>
+              <div class="store-action">disconnect()</div>
+              <div class="store-action">setConnectionState()</div>
+              <div class="store-action">updateSessionBytes()</div>
+              <div class="store-action">clearError()</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- serverStore -->
+      <div class="store-card">
+        <div class="store-card-head">
+          <div class="store-badge server">server</div>
+          <div class="store-card-title">serverStore</div>
+        </div>
+        <div class="store-card-body">
+          <div class="store-section">
+            <div class="store-sec-label">State Slices</div>
+            <div class="store-fields">
+              <div class="store-field"><span class="sf-name">servers</span><span class="sf-type">Server[]</span></div>
+              <div class="store-field"><span class="sf-name">selectedServerId</span><span class="sf-type">string | null</span></div>
+              <div class="store-field"><span class="sf-name">pingCache</span><span class="sf-type">Record&lt;string, number&gt;</span></div>
+              <div class="store-field"><span class="sf-name">lastFetched</span><span class="sf-type">number | null</span></div>
+              <div class="store-field"><span class="sf-name">filter</span><span class="sf-type">ServerFilter</span></div>
+            </div>
+          </div>
+          <div class="store-section">
+            <div class="store-sec-label">Actions</div>
+            <div class="store-actions">
+              <div class="store-action">setServers()</div>
+              <div class="store-action">selectServer()</div>
+              <div class="store-action">updatePing()</div>
+              <div class="store-action">setFilter()</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- aiStore -->
+      <div class="store-card">
+        <div class="store-card-head">
+          <div class="store-badge ai">ai</div>
+          <div class="store-card-title">aiStore</div>
+        </div>
+        <div class="store-card-body">
+          <div class="store-section">
+            <div class="store-sec-label">State Slices</div>
+            <div class="store-fields">
+              <div class="store-field"><span class="sf-name">activeMode</span><span class="sf-type">AIMode</span></div>
+              <div class="store-field"><span class="sf-name">isThinking</span><span class="sf-type">boolean</span></div>
+              <div class="store-field"><span class="sf-name">decisionLog</span><span class="sf-type">AIDecision[]</span></div>
+              <div class="store-field"><span class="sf-name">protocolChain</span><span class="sf-type">Protocol[]</span></div>
+              <div class="store-field"><span class="sf-name">lastDecisionAt</span><span class="sf-type">number | null</span></div>
+            </div>
+          </div>
+          <div class="store-section">
+            <div class="store-sec-label">Actions</div>
+            <div class="store-actions">
+              <div class="store-action">setMode()</div>
+              <div class="store-action">setThinking()</div>
+              <div class="store-action">appendDecision()</div>
+              <div class="store-action">setProtocolChain()</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- authStore -->
+      <div class="store-card">
+        <div class="store-card-head">
+          <div class="store-badge auth">auth</div>
+          <div class="store-card-title">authStore</div>
+        </div>
+        <div class="store-card-body">
+          <div class="store-section">
+            <div class="store-sec-label">State Slices</div>
+            <div class="store-fields">
+              <div class="store-field"><span class="sf-name">user</span><span class="sf-type">User | null</span></div>
+              <div class="store-field"><span class="sf-name">token</span><span class="sf-type">string | null</span></div>
+              <div class="store-field"><span class="sf-name">subscription</span><span class="sf-type">Subscription | null</span></div>
+              <div class="store-field"><span class="sf-name">isHydrated</span><span class="sf-type">boolean</span></div>
+            </div>
+          </div>
+          <div class="store-section">
+            <div class="store-sec-label">Actions</div>
+            <div class="store-actions">
+              <div class="store-action">setUser()</div>
+              <div class="store-action">setToken()</div>
+              <div class="store-action">clearAuth()</div>
+              <div class="store-action">setSubscription()</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- diagnosticsStore -->
+      <div class="store-card">
+        <div class="store-card-head">
+          <div class="store-badge diag">diag</div>
+          <div class="store-card-title">diagnosticsStore</div>
+        </div>
+        <div class="store-card-body">
+          <div class="store-section">
+            <div class="store-sec-label">State Slices</div>
+            <div class="store-fields">
+              <div class="store-field"><span class="sf-name">metrics.latency</span><span class="sf-type">number[] (60)</span></div>
+              <div class="store-field"><span class="sf-name">metrics.jitter</span><span class="sf-type">number[] (60)</span></div>
+              <div class="store-field"><span class="sf-name">metrics.packetLoss</span><span class="sf-type">number[] (60)</span></div>
+              <div class="store-field"><span class="sf-name">healthChecks</span><span class="sf-type">HealthCheck[]</span></div>
+              <div class="store-field"><span class="sf-name">hops</span><span class="sf-type">HopResult[]</span></div>
+              <div class="store-field"><span class="sf-name">isPolling</span><span class="sf-type">boolean</span></div>
+            </div>
+          </div>
+          <div class="store-section">
+            <div class="store-sec-label">Actions</div>
+            <div class="store-actions">
+              <div class="store-action">appendMetric()</div>
+              <div class="store-action">setHealthChecks()</div>
+              <div class="store-action">setHops()</div>
+              <div class="store-action">setPolling()</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- settingsStore -->
+      <div class="store-card">
+        <div class="store-card-head">
+          <div class="store-badge sett">settings</div>
+          <div class="store-card-title">settingsStore</div>
+        </div>
+        <div class="store-card-body">
+          <div class="store-section">
+            <div class="store-sec-label">State Slices</div>
+            <div class="store-fields">
+              <div class="store-field"><span class="sf-name">autoConnect</span><span class="sf-type">boolean</span></div>
+              <div class="store-field"><span class="sf-name">killSwitch</span><span class="sf-type">boolean</span></div>
+              <div class="store-field"><span class="sf-name">splitTunneling</span><span class="sf-type">boolean</span></div>
+              <div class="store-field"><span class="sf-name">splitTunnelingApps</span><span class="sf-type">string[]</span></div>
+              <div class="store-field"><span class="sf-name">notificationsEnabled</span><span class="sf-type">boolean</span></div>
+              <div class="store-field"><span class="sf-name">reducedAnimations</span><span class="sf-type">boolean</span></div>
+            </div>
+          </div>
+          <div class="store-section">
+            <div class="store-sec-label">Actions</div>
+            <div class="store-actions">
+              <div class="store-action">toggle()</div>
+              <div class="store-action">setSplitTunnelingApps()</div>
+              <div class="store-action">setLanguage()</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── 07: VPN Integration Stack ── -->
+  <section class="section" id="vpn-stack">
+    <div class="sec-eyebrow"><span class="sec-num">07</span></div>
+    <div class="sec-title">VPN Integration Stack</div>
+    <p class="sec-sub">How the JavaScript application layer connects to the Xray-core Go binary through a typed native module bridge. The state machine shows the five connection states and all valid transitions.</p>
+
+    <div class="vpn-stack-wrap">
+
+      <!-- Bridge diagram -->
+      <div class="vpn-bridge-diagram">
+        <div class="vpn-bd-title">JS → Native Module → Xray-Core → Network</div>
+        <div class="vpn-layer">
+
+          <div class="vpn-layer-box app-js">
+            <div class="vpn-lbl">App JavaScript Layer</div>
+            <div class="vpn-sub">ConnectionManager · ProtocolManager · VpnConfig</div>
+          </div>
+
+          <div class="vpn-bridge-arrow">
+            <div class="vpn-bridge-label">startXray(configJSON) / stopXray() / getStats()</div>
+            <div class="vpn-bridge-arrow-line"></div>
+            <div class="vpn-bridge-arrow-tip"></div>
+          </div>
+
+          <div class="vpn-layer-box bridge">
+            <div class="vpn-lbl">XrayBridge.ts — Native Module Wrapper</div>
+            <div class="vpn-sub">NativeModules.XrayBridge · Typed async interface · Single file</div>
+          </div>
+
+          <div class="vpn-bridge-arrow">
+            <div class="vpn-bridge-label">JNI (Android) · Objective-C bridge (iOS)</div>
+            <div class="vpn-bridge-arrow-line"></div>
+            <div class="vpn-bridge-arrow-tip"></div>
+          </div>
+
+          <div class="vpn-layer-box core">
+            <div class="vpn-lbl">Xray-Core (Go Binary)</div>
+            <div class="vpn-sub">xray-core · .so (Android jniLibs) · .framework (iOS)</div>
+          </div>
+          <div class="vpn-proto-row">
+            <span class="vpn-proto-tag">VLESS-Reality</span>
+            <span class="vpn-proto-tag">VLESS-WS</span>
+            <span class="vpn-proto-tag">XHTTP</span>
+            <span class="vpn-proto-tag">HTTPUpgrade</span>
+          </div>
+
+          <div class="vpn-bridge-arrow" style="margin-top:8px;">
+            <div class="vpn-bridge-label">Encrypted tunneled traffic</div>
+            <div class="vpn-bridge-arrow-line"></div>
+            <div class="vpn-bridge-arrow-tip"></div>
+          </div>
+
+          <div class="vpn-layer-box network">
+            <div class="vpn-lbl">Network</div>
+            <div class="vpn-sub">WiFi · LTE/5G · VpnService (Android) · NetworkExtension (iOS)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- State machine -->
+      <div class="state-machine">
+        <div class="sm-title">ConnectionManager State Machine</div>
+        <div class="sm-diagram">
+
+          <!-- Row 1: idle -->
+          <div class="sm-row">
+            <div class="sm-state idle">idle</div>
+          </div>
+          <div class="sm-row" style="justify-content:center;gap:4px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(0,232,122,0.3);"></div>
+              <div style="font-size:8px;font-family:var(--mono);color:rgba(0,232,122,0.5);letter-spacing:0.3px;">connect()</div>
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(0,232,122,0.3);"></div>
+              <div class="sm-arrow-tip-d push" style="border-top-color:rgba(0,232,122,0.3);"></div>
+            </div>
+          </div>
+
+          <!-- Row 2: connecting -->
+          <div class="sm-row">
+            <div class="sm-state connecting">connecting</div>
+          </div>
+          <div class="sm-row" style="justify-content:center;gap:4px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(0,232,122,0.3);"></div>
+              <div style="font-size:8px;font-family:var(--mono);color:rgba(0,232,122,0.5);letter-spacing:0.3px;">xray started</div>
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(0,232,122,0.3);"></div>
+              <div class="sm-arrow-tip-d push" style="border-top-color:rgba(0,232,122,0.3);"></div>
+            </div>
+          </div>
+
+          <!-- Row 3: connected -->
+          <div class="sm-row">
+            <div class="sm-state connected">connected</div>
+          </div>
+          <div class="sm-row" style="justify-content:center;gap:4px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(51,153,255,0.3);"></div>
+              <div style="font-size:8px;font-family:var(--mono);color:rgba(51,153,255,0.5);letter-spacing:0.3px;">disconnect()</div>
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(51,153,255,0.3);"></div>
+              <div class="sm-arrow-tip-d" style="border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid rgba(51,153,255,0.3);"></div>
+            </div>
+          </div>
+
+          <!-- Row 4: disconnecting -->
+          <div class="sm-row">
+            <div class="sm-state disconnecting">disconnecting</div>
+          </div>
+          <div class="sm-row" style="justify-content:center;gap:4px;">
+            <div style="display:flex;flex-direction:column;align-items:center;">
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(143,168,200,0.2);"></div>
+              <div style="font-size:8px;font-family:var(--mono);color:var(--text-muted);letter-spacing:0.3px;">xray stopped</div>
+              <div class="sm-arrow-line-v" style="height:8px;background:rgba(143,168,200,0.2);"></div>
+              <div class="sm-arrow-tip-d" style="border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid rgba(143,168,200,0.2);"></div>
+            </div>
+          </div>
+
+          <!-- Row 5: back to idle -->
+          <div class="sm-row">
+            <div class="sm-state idle" style="border-style:dashed;opacity:0.5;">idle</div>
+          </div>
+
+          <!-- Error state annotation -->
+          <div class="sm-error-row" style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-subtle);">
+            <div class="sm-state error" style="width:90px;height:36px;font-size:10px;">error</div>
+            <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
+              Any state can transition to <span style="color:#FF8888;font-family:var(--mono);">error</span> on XrayBridge failure.<br>
+              <span style="font-family:var(--mono);color:rgba(143,168,200,0.5);font-size:10px;">clearError()</span> returns to <span style="font-family:var(--mono);color:var(--text-muted);font-size:10px;">idle</span>.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <p class="info-note" style="margin-top:0;">The <strong style="color:var(--text-primary);">ProtocolManager</strong> selects the protocol before <code style="font-family:var(--mono);font-size:11px;color:var(--emerald-400);">XrayBridge.startXray()</code> is called. If the connection enters <code style="font-family:var(--mono);font-size:11px;color:#FF8888;">error</code>, the <strong style="color:var(--text-primary);">AIRouteSelector</strong> evaluates the fallback chain and may automatically retry with a different protocol or server — recorded as an entry in <code style="font-family:var(--mono);font-size:11px;color:var(--purple);">aiStore.decisionLog</code>.</p>
+  </section>
+
+</main>
+
+<script>
+// Highlight active sidebar link on scroll
+const sections = document.querySelectorAll('section[id]');
+const links = document.querySelectorAll('.sb-link');
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      links.forEach(l => l.classList.remove('active'));
+      const active = document.querySelector('.sb-link[href="#' + entry.target.id + '"]');
+      if (active) active.classList.add('active');
+    }
+  });
+}, { rootMargin: '-20% 0px -60% 0px' });
+sections.forEach(s => observer.observe(s));
+</script>
+
+</body>
+</html>
