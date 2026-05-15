@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetaLink VPN — UI Preview</title>
+<style>
+
+/* ── Fonts ──────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── Reset ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+/* ── Tokens ─────────────────────────────────────────────── */
+:root {
+  --bg-void:     #030609;
+  --bg-base:     #070D18;
+  --bg-surface:  #0D1828;
+  --bg-elevated: #111F35;
+
+  --border-subtle:  rgba(255,255,255,0.05);
+  --border-default: rgba(255,255,255,0.08);
+  --border-glow:    rgba(0,232,122,0.28);
+  --border-hover:   rgba(0,232,122,0.50);
+
+  --emerald:    #00E87A;
+  --emerald-dim:#00C966;
+  --blue:       #3399FF;
+  --amber:      #FFB800;
+
+  --text-primary:   #F0F6FF;
+  --text-secondary: #8FA8C8;
+  --text-muted:     #3D5570;
+  --text-inverse:   #030609;
+
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  20px;
+  --radius-2xl: 24px;
+  --radius-full:9999px;
+
+  --font:  'Inter', system-ui, -apple-system, sans-serif;
+  --mono:  'JetBrains Mono', 'Fira Code', monospace;
+
+  --shadow-card:   0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.25);
+  --shadow-hover:  0 20px 60px rgba(0,0,0,0.55), 0 0 16px rgba(0,232,122,0.07);
+  --shadow-emerald:0 0 16px rgba(0,232,122,0.18);
+}
+
+/* ── Page ────────────────────────────────────────────────── */
+body {
+  font-family: var(--font);
+  background: var(--bg-void);
+  color: var(--text-primary);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Ambient radial glows */
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 900px 500px at 50% -80px,
+      rgba(0,232,122,0.07) 0%, transparent 65%),
+    radial-gradient(ellipse 600px 600px at 5% 70%,
+      rgba(51,153,255,0.04) 0%, transparent 55%),
+    radial-gradient(ellipse 500px 500px at 95% 85%,
+      rgba(0,232,122,0.03) 0%, transparent 55%);
+}
+
+/* Subtle dot grid */
+body::after {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+/* ── Container ───────────────────────────────────────────── */
+.container {
+  position: relative; z-index: 1;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 28px;
+}
+
+/* ── Header ──────────────────────────────────────────────── */
+header {
+  position: relative; z-index: 1;
+  padding: 64px 28px 56px;
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  text-align: center;
+}
+
+/* Top label pill */
+.header-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(0,232,122,0.28);
+  border-radius: var(--radius-full);
+  padding: 6px 16px;
+  margin-bottom: 32px;
+  background: rgba(0,232,122,0.06);
+  backdrop-filter: blur(8px);
+}
+.tag-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--emerald);
+  box-shadow: 0 0 4px rgba(0,232,122,0.4);
+  animation: dot-pulse 2.5s ease-in-out infinite;
+}
+.tag-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--emerald);
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+}
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* Logo */
+.logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+.logo-mark {
+  width: 48px; height: 48px;
+  border-radius: 13px;
+  background: var(--emerald);
+  display: flex; align-items: center; justify-content: center;
+  transform: rotate(45deg);
+  box-shadow: var(--shadow-emerald);
+  flex-shrink: 0;
+}
+.logo-mark span {
+  transform: rotate(-45deg);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-inverse);
+}
+.logo-wordmark {
+  font-size: 32px;
+  font-weight: 300;
+  letter-spacing: -1.5px;
+  color: var(--text-primary);
+}
+.logo-wordmark strong { color: var(--emerald); font-weight: 600; }
+
+/* Titles */
+.page-title {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 700;
+  letter-spacing: -1.5px;
+  color: var(--text-primary);
+  line-height: 1.05;
+  margin-bottom: 14px;
+}
+.page-title em {
+  font-style: normal;
+  color: var(--emerald);
+}
+.page-subtitle {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 480px;
+  margin: 0 auto 28px;
+}
+
+/* Meta pills row */
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 52px;
+}
+.meta-pill {
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: rgba(255,255,255,0.03);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+  font-family: var(--mono);
+}
+.meta-pill.accent {
+  border-color: rgba(0,232,122,0.22);
+  background: rgba(0,232,122,0.05);
+  color: var(--emerald);
+}
+
+/* Divider line with label */
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 36px;
+}
+.div-line { flex: 1; height: 1px; background: var(--border-subtle); }
+.div-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  white-space: nowrap;
+}
+
+/* ── Cards Grid ──────────────────────────────────────────── */
+main {
+  position: relative; z-index: 1;
+  padding: 0 28px 80px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+/* ── Card ────────────────────────────────────────────────── */
+.card {
+  display: flex;
+  flex-direction: column;
+  background: rgba(13, 24, 40, 0.75);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-2xl);
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--shadow-card);
+  transition:
+    transform 0.30s cubic-bezier(0.34, 1.56, 0.64, 1),
+    border-color 0.25s ease,
+    box-shadow 0.30s ease;
+  cursor: pointer;
+  position: relative;
+}
+
+/* Hover state */
+.card:hover {
+  transform: translateY(-5px);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-hover);
+}
+.card:hover .card-visual { opacity: 1; }
+.card:hover .card-arrow { transform: translateX(4px); }
+.card:hover .visual-glow { opacity: 1; }
+
+/* Active / press */
+.card:active { transform: translateY(-2px) scale(0.99); }
+
+/* Emerald top-edge accent line */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(0,232,122,0.5) 40%,
+    rgba(0,232,122,0.5) 60%,
+    transparent 100%);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.card:hover::before { opacity: 1; }
+
+/* ── Card visual (mini preview illustration) ─────────────── */
+.card-visual {
+  height: 128px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+  opacity: 0.85;
+  transition: opacity 0.25s ease;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Ambient glow behind each illustration */
+.visual-glow {
+  position: absolute;
+  width: 120px; height: 120px;
+  border-radius: 50%;
+  opacity: 0.65;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+/* ── Illustrations ───────────────────────────────────────── */
+
+/* 01 Splash — diamond with S */
+.vis-splash .visual-glow {
+  background: radial-gradient(circle, rgba(0,232,122,0.18), transparent 70%);
+}
+.vis-splash .diamond {
+  width: 52px; height: 52px;
+  border: 1.5px solid var(--emerald);
+  border-radius: 14px;
+  transform: rotate(45deg);
+  background: rgba(0,232,122,0.08);
+  box-shadow: 0 0 10px rgba(0,232,122,0.14), inset 0 0 7px rgba(0,232,122,0.04);
+  display: flex; align-items: center; justify-content: center;
+  animation: logo-breathe 5s ease-in-out infinite;
+}
+.vis-splash .diamond span {
+  transform: rotate(-45deg);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--emerald);
+  text-shadow: 0 0 6px rgba(0,232,122,0.35);
+  font-family: var(--font);
+}
+@keyframes logo-breathe {
+  0%, 100% { box-shadow: 0 0 8px rgba(0,232,122,0.12), inset 0 0 6px rgba(0,232,122,0.03); }
+  50%       { box-shadow: 0 0 16px rgba(0,232,122,0.22), inset 0 0 12px rgba(0,232,122,0.07); }
+}
+
+/* 02 Auth — form fields */
+.vis-auth .visual-glow {
+  background: radial-gradient(circle, rgba(0,232,122,0.10), transparent 70%);
+}
+.vis-auth .form-sketch {
+  display: flex; flex-direction: column; gap: 8px; width: 130px;
+}
+.vis-auth .field {
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: rgba(255,255,255,0.04);
+  position: relative; overflow: hidden;
+}
+.vis-auth .field.focused {
+  border-color: rgba(0,232,122,0.45);
+  box-shadow: 0 0 8px rgba(0,232,122,0.15);
+}
+.vis-auth .field-dot {
+  position: absolute; left: 8px; top: 50%;
+  transform: translateY(-50%);
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--text-muted);
+}
+.vis-auth .field-line {
+  position: absolute; left: 22px; right: 10px; top: 50%;
+  transform: translateY(-50%);
+  height: 1.5px; border-radius: 1px;
+  background: rgba(255,255,255,0.06);
+}
+.vis-auth .cta-field {
+  height: 28px;
+  border-radius: 6px;
+  background: var(--emerald);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 14px rgba(0,232,122,0.35);
+}
+.vis-auth .cta-bar {
+  width: 48px; height: 2.5px; border-radius: 2px;
+  background: rgba(3,6,9,0.5);
+}
+
+/* 03 Home — connect button with pulse rings */
+.vis-home .visual-glow {
+  background: radial-gradient(circle, rgba(0,232,122,0.22), transparent 65%);
+}
+.vis-home .connect-wrap {
+  position: relative;
+  width: 80px; height: 80px;
+  display: flex; align-items: center; justify-content: center;
+}
+.vis-home .pulse-r {
+  position: absolute;
+  width: 80px; height: 80px;
+  border-radius: 50%;
+  border: 1.5px solid var(--emerald);
+  animation: vis-pulse 4s ease-out infinite;
+}
+.vis-home .pulse-r:nth-child(2) { animation-delay: 2s; }
+@keyframes vis-pulse {
+  0%   { transform: scale(1);   opacity: 0.18; }
+  100% { transform: scale(2);   opacity: 0; }
+}
+.vis-home .connect-circle {
+  width: 62px; height: 62px;
+  border-radius: 50%;
+  border: 1.5px solid var(--emerald);
+  background: radial-gradient(circle at 38% 35%,
+    rgba(0,232,122,0.22), rgba(0,232,122,0.06) 50%, rgba(7,13,24,0.95));
+  box-shadow: 0 0 10px rgba(0,232,122,0.16), inset 0 0 8px rgba(0,232,122,0.04);
+  display: flex; align-items: center; justify-content: center;
+  animation: home-btn-glow 5s ease-in-out infinite;
+}
+@keyframes home-btn-glow {
+  0%,100%{box-shadow:0 0 8px rgba(0,232,122,0.14),inset 0 0 6px rgba(0,232,122,0.03);}
+  50%    {box-shadow:0 0 16px rgba(0,232,122,0.24),inset 0 0 12px rgba(0,232,122,0.07);}
+}
+.vis-home .power {
+  width: 20px; height: 20px;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+}
+.vis-home .power-arc {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--emerald);
+  border-bottom-color: transparent; border-left-color: transparent;
+  transform: rotate(135deg);
+  position: absolute;
+}
+.vis-home .power-line {
+  width: 2px; height: 7px;
+  background: var(--emerald);
+  border-radius: 1px;
+  position: absolute; top: 1px;
+}
+
+/* 04 Smart AI — orbit ring */
+.vis-ai .visual-glow {
+  background: radial-gradient(circle, rgba(0,232,122,0.16), transparent 65%);
+}
+.vis-ai .orb-wrap {
+  position: relative;
+  width: 80px; height: 80px;
+  display: flex; align-items: center; justify-content: center;
+}
+.vis-ai .orbit-ring {
+  position: absolute;
+  width: 76px; height: 76px;
+  border-radius: 50%;
+  border: 1px dashed rgba(0,232,122,0.35);
+  animation: orbit-spin 14s linear infinite;
+}
+@keyframes orbit-spin { from{transform:rotate(0deg);}to{transform:rotate(360deg);} }
+.vis-ai .orbit-dot {
+  position: absolute; top: -4px; left: 50%;
+  transform: translateX(-50%);
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--emerald);
+  box-shadow: 0 0 5px rgba(0,232,122,0.5);
+}
+.vis-ai .orbit-ring-inner {
+  position: absolute;
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,232,122,0.12);
+  animation: orbit-spin 22s linear infinite reverse;
+}
+.vis-ai .orb-core {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%,
+    rgba(0,232,122,0.18), rgba(0,232,122,0.04) 60%, rgba(7,13,24,0.95));
+  border: 1px solid rgba(0,232,122,0.40);
+  box-shadow: 0 0 8px rgba(0,232,122,0.18), inset 0 0 6px rgba(0,232,122,0.06);
+  animation: orb-core-glow 5s ease-in-out infinite;
+}
+@keyframes orb-core-glow {
+  0%,100%{box-shadow:0 0 6px rgba(0,232,122,0.14);}
+  50%    {box-shadow:0 0 14px rgba(0,232,122,0.26);}
+}
+
+/* 05 Servers — list rows */
+.vis-servers .visual-glow {
+  background: radial-gradient(circle, rgba(51,153,255,0.12), transparent 65%);
+}
+.vis-servers .server-list-mini {
+  display: flex; flex-direction: column; gap: 7px; width: 150px;
+}
+.vis-servers .srv-row {
+  display: flex; align-items: center; gap: 7px;
+  height: 22px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 0 8px;
+}
+.vis-servers .srv-row.selected {
+  border-color: rgba(0,232,122,0.4);
+  background: rgba(0,232,122,0.05);
+}
+.vis-servers .srv-flag { font-size: 12px; line-height: 1; }
+.vis-servers .srv-bar {
+  flex: 1; height: 2px; border-radius: 1px;
+  background: rgba(255,255,255,0.06);
+  position: relative; overflow: hidden;
+}
+.vis-servers .srv-bar-fill {
+  height: 100%; border-radius: 1px;
+  background: var(--emerald);
+}
+.vis-servers .srv-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--emerald);
+  box-shadow: 0 0 4px rgba(0,232,122,0.7);
+  flex-shrink: 0;
+}
+.vis-servers .srv-dot.amber { background: var(--amber); box-shadow: 0 0 4px rgba(255,184,0,0.6); }
+
+/* 06 Diagnostics — metrics grid */
+.vis-diag .visual-glow {
+  background: radial-gradient(circle, rgba(0,232,122,0.12), transparent 65%);
+}
+.vis-diag .metrics-mini {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  width: 140px;
+}
+.vis-diag .metric-mini {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 7px 8px;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.vis-diag .metric-mini.glow-e {
+  border-color: rgba(0,232,122,0.28);
+  background: rgba(0,232,122,0.04);
+}
+.vis-diag .m-val {
+  font-size: 14px; font-weight: 600;
+  font-family: var(--mono);
+  color: var(--text-primary); line-height: 1;
+}
+.vis-diag .m-val.green { color: var(--emerald); }
+.vis-diag .m-lbl {
+  font-size: 7px; font-weight: 500;
+  color: var(--text-muted); letter-spacing: 0.8px;
+  text-transform: uppercase;
+}
+
+/* 07 Profile — avatar + bars */
+.vis-profile .visual-glow {
+  background: radial-gradient(circle, rgba(255,184,0,0.10), transparent 65%);
+}
+.vis-profile .profile-sketch {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+}
+.vis-profile .avatar-circle {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, rgba(0,232,122,0.35), rgba(0,100,50,0.7));
+  border: 2px solid var(--emerald);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 16px rgba(0,232,122,0.3);
+  font-size: 16px; font-weight: 600; color: var(--text-primary);
+}
+.vis-profile .profile-bars {
+  display: flex; flex-direction: column; gap: 5px; width: 100px;
+}
+.vis-profile .p-bar {
+  height: 5px; border-radius: 3px; overflow: hidden;
+  background: rgba(255,255,255,0.06);
+}
+.vis-profile .p-bar-fill {
+  height: 100%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--emerald), #00ffaa);
+}
+
+/* ── Card body ───────────────────────────────────────────── */
+.card-body {
+  padding: 18px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+/* Screen number */
+.card-num {
+  font-size: 10px;
+  font-weight: 500;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  letter-spacing: 1.5px;
+}
+
+/* Screen name */
+.card-name {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+}
+
+/* File name */
+.card-file {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--emerald);
+  opacity: 0.75;
+  letter-spacing: 0.2px;
+}
+
+/* Description */
+.card-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  margin-top: 2px;
+  flex: 1;
+}
+
+/* Feature tags */
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 4px;
+}
+.card-tag {
+  font-size: 9px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-default);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+/* Card footer row */
+.card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-subtle);
+}
+.card-cta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--emerald);
+  letter-spacing: 0.2px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.card-arrow {
+  font-size: 14px;
+  color: var(--emerald);
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+
+/* Screen type dot */
+.card-type {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.type-dot {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--emerald);
+  opacity: 0.5;
+}
+.type-label {
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+}
+
+/* ── Stats bar ───────────────────────────────────────────── */
+.stats-bar {
+  position: relative; z-index: 1;
+  max-width: 1200px;
+  margin: 0 auto 48px;
+  padding: 0 28px;
+}
+.stats-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  background: rgba(13,24,40,0.7);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+.stat-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 12px;
+}
+.stat-item + .stat-item {
+  border-left: 1px solid var(--border-subtle);
+}
+.stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.8px;
+  font-family: var(--mono);
+  line-height: 1;
+}
+.stat-val .accent { color: var(--emerald); }
+.stat-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ── Footer ──────────────────────────────────────────────── */
+footer {
+  position: relative; z-index: 1;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 80px;
+  padding: 48px 28px 56px;
+  text-align: center;
+}
+.footer-inner { max-width: 1200px; margin: 0 auto; }
+.footer-logo-row {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; margin-bottom: 12px;
+}
+.footer-mark {
+  width: 32px; height: 32px; border-radius: 9px;
+  background: var(--emerald);
+  display: flex; align-items: center; justify-content: center;
+  transform: rotate(45deg);
+  box-shadow: 0 0 16px rgba(0,232,122,0.35);
+  flex-shrink: 0;
+}
+.footer-mark span {
+  transform: rotate(-45deg);
+  font-size: 13px; font-weight: 700;
+  color: var(--text-inverse);
+}
+.footer-name {
+  font-size: 20px; font-weight: 300;
+  letter-spacing: -1px; color: var(--text-primary);
+}
+.footer-name strong { color: var(--emerald); font-weight: 600; }
+.footer-tagline {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+  letter-spacing: 0.2px;
+}
+.footer-stack {
+  display: flex; align-items: center; justify-content: center;
+  flex-wrap: wrap; gap: 6px; margin-bottom: 28px;
+}
+.stack-pill {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-muted);
+  padding: 3px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: rgba(255,255,255,0.02);
+}
+.copyright {
+  font-size: 11px;
+  color: #1B2A3D;
+  letter-spacing: 0.3px;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+@media (max-width: 960px) {
+  .cards-grid { grid-template-columns: repeat(2, 1fr); }
+  .stat-label { font-size: 9px; letter-spacing: 0.5px; }
+}
+
+@media (max-width: 600px) {
+  header { padding: 48px 20px 40px; }
+  .container, main, .stats-bar, footer { padding-left: 16px; padding-right: 16px; }
+  .cards-grid { grid-template-columns: 1fr; gap: 16px; }
+  .page-title { font-size: 28px; }
+  .stats-inner { flex-wrap: wrap; }
+  .stat-item { min-width: 40%; }
+  .stat-item + .stat-item { border-left: none; border-top: 1px solid var(--border-subtle); }
+}
+
+@media (max-width: 400px) {
+  .logo-wordmark { font-size: 24px; }
+  .stat-val { font-size: 18px; }
+}
+
+</style>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────── -->
+<header>
+  <div class="header-tag">
+    <div class="tag-dot"></div>
+    <span class="tag-text">Interface Prototype · v1.0</span>
+  </div>
+
+  <div class="logo-row">
+    <div class="logo-mark"><span>S</span></div>
+    <div class="logo-wordmark">Seta<strong>Link</strong></div>
+  </div>
+
+  <h1 class="page-title">SETALINK VPN<br><em>UI Preview</em></h1>
+  <p class="page-subtitle">Mobile app interface prototype — dark emerald, AI-powered, premium.</p>
+
+  <div class="meta-row">
+    <span class="meta-pill accent">7 Screens</span>
+    <span class="meta-pill">React Native</span>
+    <span class="meta-pill">VLESS · Reality · Xray</span>
+    <span class="meta-pill accent">Glassmorphism</span>
+    <span class="meta-pill">Android · iOS</span>
+  </div>
+</header>
+
+<!-- ── Stats bar ───────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <div class="stat-val"><span class="accent">7</span></div>
+      <div class="stat-label">Screens</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val">390<span style="font-size:13px;color:var(--text-muted);">px</span></div>
+      <div class="stat-label">Mobile Width</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val"><span class="accent">0</span></div>
+      <div class="stat-label">JS Dependencies</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val">CSS<span style="font-size:13px;color:var(--text-muted);"> only</span></div>
+      <div class="stat-label">Animations</div>
+    </div>
+    <div class="stat-item">
+      <div class="stat-val"><span class="accent">∞</span></div>
+      <div class="stat-label">AI Routes</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Cards ────────────────────────────────────────────────── -->
+<main>
+  <div class="section-divider">
+    <div class="div-line"></div>
+    <span class="div-label">All screens</span>
+    <div class="div-line"></div>
+  </div>
+
+  <div class="cards-grid">
+
+    <!-- 01 Splash -->
+    <a class="card" href="01-splash.html">
+      <div class="card-visual vis-splash">
+        <div class="visual-glow"></div>
+        <div class="diamond"><span>S</span></div>
+      </div>
+      <div class="card-body">
+        <div class="card-num">01 / 07</div>
+        <div class="card-name">Splash Screen</div>
+        <div class="card-file">01-splash.html</div>
+        <div class="card-desc">
+          Animated brand intro with logo scale-in, floating
+          particles, ambient emerald glow, and loading sweep bar.
+        </div>
+        <div class="card-tags">
+          <span class="card-tag">Animation</span>
+          <span class="card-tag">Brand</span>
+          <span class="card-tag">Particles</span>
+        </div>
+        <div class="card-footer">
+          <div class="card-type">
+            <div class="type-dot"></div>
+            <span class="type-label">Onboarding</span>
+          </div>
+          <div class="card-cta">
+            View screen <span class="card-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <!-- 02 Auth -->
+    <a class="card" href="02-auth.html">
+      <div class="card-visual vis-auth">
+        <div class="visual-glow"></div>
+        <div class="form-sketch">
+          <div class="field focused">
+            <div class="field-dot"></div>
+            <div class="field-line"></div>
+          </div>
+          <div class="field">
+            <div class="field-dot"></div>
+            <div class="field-line"></div>
+          </div>
+          <div class="cta-field">
+            <div class="cta-bar"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-num">02 / 07</div>
+        <div class="card-name">Login / Register</div>
+        <div class="card-file">02-auth.html</div>
+        <div class="card-desc">
+          Glass inputs with emerald focus glow, tab switcher,
+          shimmer CTA button, biometric and invite code auth options.
+        </div>
+        <div class="card-tags">
+          <span class="card-tag">Auth</span>
+          <span class="card-tag">Form</span>
+          <span class="card-tag">Biometric</span>
+        </div>
+        <div class="card-footer">
+          <div class="card-type">
+            <div class="type-dot"></div>
+            <span class="type-label">Onboarding</span>
+          </div>
+          <div class="card-cta">
+            View screen <span class="card-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <!-- 03 Home -->
+    <a class="card" href="03-home.html">
+      <div class="card-visual vis-home">
+        <div class="visual-glow"></div>
+        <div class="connect-wrap">
+          <div class="pulse-r"></div>
+          <div class="pulse-r"></div>
+          <div class="pulse-r"></div>
+          <div class="connect-circle">
+            <div class="power">
+              <div class="power-arc"></div>
+              <div class="power-line"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-num">03 / 07</div>
+        <div class="card-name">Home Screen</div>
+        <div class="card-file">03-home.html</div>
+        <div class="card-desc">
+          Pulsing connect button with 3-ring animation, live session
+          timer, server pill, ping &amp; traffic metrics, network quality bar.
+        </div>
+        <div class="card-tags">
+          <span class="card-tag">Connect</span>
+          <span class="card-tag">Metrics</span>
+          <span class="card-tag">Live Data</span>
+        </div>
+        <div class="card-footer">
+          <div class="card-type">
+            <div class="type-dot"></div>
+            <span class="type-label">Core</span>
+          </div>
+          <div class="card-cta">
+            View screen <span class="card-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <!-- 04 Smart AI -->
+    <a class="card" href="04-smart-ai.html">
+      <div class="card-visual vis-ai">
+        <div class="visual-glow"></div>
+        <div class="orb-wrap">
+          <div class="orbit-ring">
+            <div class="orbit-dot"></div>
+          </div>
+          <div class="orbit-ring-inner"></div>
+          <div class="orb-core"></div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-num">04 / 07</div>
+        <div class="card-name">Smart AI</div>
+        <div class="card-file">04-smart-ai.html</div>
+        <div class="card-desc">
+          Rotating AI orb visualization, 6 connection modes (Auto, Iran,
+          Gaming, Streaming, Stealth, Fallback), live protocol decision log.
+        </div>
+        <div class="card-tags">
+          <span class="card-tag">AI</span>
+          <span class="card-tag">Protocol</span>
+          <span class="card-tag">Modes</span>
+        </div>
+        <div class="card-footer">
+          <div class="card-type">
+            <div class="type-dot"></div>
+            <span class="type-label">Intelligence</span>
+          </div>
+          <div class="card-cta">
+            View screen <span class="card-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <!-- 05 Servers -->
+    <a class="card" href="05-servers.html">
+      <div class="card-visual vis-servers">
+        <div class="visual-glow"></div>
+        <div class="server-list-mini">
+          <div class="srv-row selected">
+            <span class="srv-flag">🇩🇪</span>
+            <div class="srv-bar"><div class="srv-bar-fill" style="width:34%;"></div></div>
+            <div class="srv-dot"></div>
+          </div>
+          <div class="srv-row">
+            <span class="srv-flag">🇳🇱</span>
+            <div class="srv-bar"><div class="srv-bar-fill" style="width:42%;"></div></div>
+            <div class="srv-dot"></div>
+          </div>
+          <div class="srv-row">
+            <span class="srv-flag">🇫🇷</span>
+            <div class="srv-bar"><div class="srv-bar-fill" style="width:57%;background:var(--amber);"></div></div>
+            <div class="srv-dot amber"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-num">05 / 07</div>
+        <div class="card-name">Servers</div>
+        <div class="card-file">05-servers.html</div>
+        <div class="card-desc">
+          AI-picked server cards, filter tabs (Recommended, Fastest,
+          Stealth, Streaming), full list with ping, load bars, protocol tags.
+        </div>
+        <div class="card-tags">
+          <span class="card-tag">Servers</span>
+          <span class="card-tag">Search</span>
+          <span class="card-tag">Filtering</span>
+        </div>
+        <div class="card-footer">
+          <div class="card-type">
+            <div class="type-dot"></div>
+            <span class="type-label">Navigation</span>
+          </div>
+          <div class="card-cta">
+            View screen <span class="card-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <!-- 06 Diagnostics -->
+    <a class="card" href="06-diagnostics.html">
+      <div class="card-visual vis-diag">
+        <div class="visual-glow"></div>
+        <div class="metrics-mini">
+          <div class="metric-mini glow-e">
+            <div class="m-val green">24</div>
+            <div class="m-lbl">Latency</div>
+          </div>
+          <div class="metric-mini glow-e">
+            <div class="m-val green">0.0</div>
+            <div class="m-lbl">Loss</div>
+          </div>
+          <div class="metric-mini">
+            <div class="m-val">2.1</div>
+            <div class="m-lbl">Jitter</div>
+          </div>
+          <div class="metric-mini">
+            <div class="m-val" style="font-size:11px;">TLS 1.3</div>
+            <div class="m-lbl">Cipher</div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-num">06 / 07</div>
+        <div class="card-name">Diagnostics</div>
+        <div class="card-file">06-diagnostics.html</div>
+        <div class="card-desc">
+          Live metric grid, TLS connection info, pulsing health checks,
+          route trace hops, real-time throughput bars, export report.
+        </div>
+        <div class="card-tags">
+          <span class="card-tag">Technical</span>
+          <span class="card-tag">Health</span>
+          <span class="card-tag">TLS</span>
+        </div>
+        <div class="card-footer">
+          <div class="card-type">
+            <div class="type-dot"></div>
+            <span class="type-label">Advanced</span>
+          </div>
+          <div class="card-cta">
+            View screen <span class="card-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+
+    <!-- 07 Profile -->
+    <a class="card" href="07-profile.html">
+      <div class="card-visual vis-profile">
+        <div class="visual-glow"></div>
+        <div class="profile-sketch">
+          <div class="avatar-circle">K</div>
+          <div class="profile-bars">
+            <div class="p-bar"><div class="p-bar-fill" style="width:37%;"></div></div>
+            <div class="p-bar"><div class="p-bar-fill" style="width:60%;opacity:0.5;"></div></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-num">07 / 07</div>
+        <div class="card-name">Profile</div>
+        <div class="card-file">07-profile.html</div>
+        <div class="card-desc">
+          Subscription card with bandwidth tracker, device list,
+          referral system with copy code, rewards hub placeholder.
+        </div>
+        <div class="card-tags">
+          <span class="card-tag">Account</span>
+          <span class="card-tag">Subscription</span>
+          <span class="card-tag">Referral</span>
+        </div>
+        <div class="card-footer">
+          <div class="card-type">
+            <div class="type-dot"></div>
+            <span class="type-label">Account</span>
+          </div>
+          <div class="card-cta">
+            View screen <span class="card-arrow">→</span>
+          </div>
+        </div>
+      </div>
+    </a>
+
+  </div><!-- /.cards-grid -->
+</main>
+
+<!-- ── Footer ──────────────────────────────────────────────── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo-row">
+      <div class="footer-mark"><span>S</span></div>
+      <div class="footer-name">Seta<strong>Link</strong></div>
+    </div>
+    <div class="footer-tagline">Intelligent Connectivity · AI-Powered Network Access</div>
+    <div class="footer-stack">
+      <span class="stack-pill">React Native 0.75</span>
+      <span class="stack-pill">TypeScript 5.6</span>
+      <span class="stack-pill">Reanimated 3</span>
+      <span class="stack-pill">VLESS · Reality</span>
+      <span class="stack-pill">Xray Core</span>
+      <span class="stack-pill">WebSocket · XHTTP</span>
+    </div>
+    <div class="copyright">© 2026 SetaLink — Mobile UI v1.0.0 — Interface Prototype</div>
+    <div style="margin-top:20px;">
+      <a href="design-system.html" style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;border-radius:9999px;border:1px solid rgba(0,232,122,0.28);background:rgba(0,232,122,0.06);font-size:12px;font-weight:500;color:#00E87A;text-decoration:none;letter-spacing:0.3px;">
+        ◎ View Design System Specification →
+      </a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

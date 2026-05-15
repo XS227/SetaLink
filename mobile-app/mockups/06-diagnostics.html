@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetaLink — Diagnostics</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg-void:#030609;--bg-base:#070D18;--bg-surface:#0D1828;--bg-elevated:#111F35;
+  --border-subtle:rgba(255,255,255,0.05);--border-default:rgba(255,255,255,0.08);
+  --border-glow:rgba(0,232,122,0.28);
+  --emerald-400:#00E87A;--blue-400:#3399FF;--amber:#FFB800;--red:#FF4444;
+  --text-primary:#F0F6FF;--text-secondary:#8FA8C8;--text-muted:#3D5570;--text-inverse:#030609;
+  --radius-md:12px;--radius-lg:16px;--radius-xl:20px;--radius-full:9999px;
+}
+body{
+  background:radial-gradient(ellipse 700px 500px at 50% -60px,rgba(0,232,122,0.055),transparent 60%),#010204;
+  display:flex;flex-direction:column;align-items:center;min-height:100vh;
+  padding:48px 20px 60px;font-family:'Inter',system-ui,sans-serif;
+}
+.phone{
+  width:390px;height:844px;border-radius:44px;overflow:hidden;position:relative;
+  background:var(--bg-base);flex-shrink:0;display:flex;flex-direction:column;
+  border:1.5px solid rgba(255,255,255,0.1);
+  box-shadow:0 0 0 1px rgba(0,0,0,0.7),0 40px 100px rgba(0,0,0,0.65),inset 0 1px 0 rgba(255,255,255,0.09);
+}
+.di{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:120px;height:34px;background:#000;border-radius:20px;z-index:100;}
+.status-bar{height:52px;padding:16px 24px 0;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:10;position:relative;}
+.status-time{font-size:15px;font-weight:600;color:var(--text-primary);}
+.scroll-area{flex:1;overflow-y:auto;scrollbar-width:none;padding:14px 20px 24px;display:flex;flex-direction:column;gap:16px;}
+.scroll-area::-webkit-scrollbar{display:none;}
+
+/* Header */
+.header{display:flex;align-items:flex-start;justify-content:space-between;}
+.page-title{font-size:26px;font-weight:700;color:var(--text-primary);letter-spacing:-0.8px;}
+.page-sub{font-size:12px;color:var(--text-muted);margin-top:2px;}
+.live-badge{
+  display:flex;align-items:center;gap:6px;padding:6px 12px;
+  background:var(--bg-surface);border:1px solid var(--border-glow);border-radius:var(--radius-full);
+}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--emerald-400);animation:live-blink 1.5s ease-in-out infinite;}
+@keyframes live-blink{0%,100%{opacity:1;box-shadow:0 0 4px rgba(0,232,122,0.5);}50%{opacity:0.3;box-shadow:none;}}
+.live-text{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--emerald-400);letter-spacing:1px;}
+
+/* Metric grid */
+.metric-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.metric-card{
+  background:rgba(13,24,40,0.82);backdrop-filter:blur(20px);border:1px solid var(--border-default);
+  border-radius:var(--radius-xl);padding:14px;box-shadow:0 6px 24px rgba(0,0,0,0.4);
+}
+.metric-card.glow-e{border-color:var(--border-glow);box-shadow:0 6px 24px rgba(0,0,0,0.4),0 0 10px rgba(0,232,122,0.05);}
+.mc-label{font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:1.2px;text-transform:uppercase;display:block;margin-bottom:7px;}
+.mc-value{font-size:28px;font-family:'JetBrains Mono',monospace;color:var(--text-primary);letter-spacing:-1px;line-height:1;}
+.mc-value.green{color:var(--emerald-400);}
+.mc-unit{font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);}
+.mc-sub{font-size:10px;color:var(--text-muted);margin-top:4px;}
+.mc-sub.green{color:var(--emerald-400);}
+
+/* Glass card */
+.glass-card{
+  background:rgba(13,24,40,0.82);backdrop-filter:blur(24px) saturate(160%);
+  -webkit-backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--border-default);border-radius:var(--radius-xl);
+  padding:14px 16px;box-shadow:0 8px 32px rgba(0,0,0,0.4);
+}
+.glass-card.glow-e{border-color:var(--border-glow);box-shadow:0 8px 32px rgba(0,0,0,0.4),0 0 12px rgba(0,232,122,0.05);}
+.card-label{font-size:10px;font-weight:500;color:var(--text-muted);letter-spacing:1.2px;text-transform:uppercase;display:block;margin-bottom:12px;}
+
+/* Info rows */
+.info-row{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:8px 0;border-bottom:1px solid var(--border-subtle);
+}
+.info-row:last-child{border-bottom:none;}
+.info-key{font-size:12px;color:var(--text-muted);}
+.info-val{font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text-secondary);text-align:right;max-width:55%;}
+
+/* Health checks */
+.health-row{
+  display:flex;align-items:center;gap:10px;padding:9px 0;
+  border-bottom:1px solid var(--border-subtle);
+}
+.health-row:last-child{border-bottom:none;}
+.health-dot-wrap{position:relative;width:12px;height:12px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.health-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.health-dot.ok{background:var(--emerald-400);}
+.health-dot.warn{background:var(--amber);}
+.health-dot.fail{background:var(--red);}
+.health-ring{
+  position:absolute;width:12px;height:12px;border-radius:50%;animation:health-pulse 2s ease-out infinite;
+}
+.health-ring.ok{background:rgba(0,232,122,0.3);}
+.health-ring.warn{background:rgba(255,184,0,0.3);}
+@keyframes health-pulse{0%{transform:scale(1);opacity:0.6;}100%{transform:scale(2);opacity:0;}}
+.health-info{flex:1;}
+.health-label{font-size:12px;font-weight:500;color:var(--text-primary);}
+.health-detail{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);margin-top:2px;}
+.health-badge{
+  padding:3px 8px;border-radius:var(--radius-full);border:1px solid;flex-shrink:0;
+}
+.health-badge.ok{border-color:rgba(0,232,122,0.35);background:rgba(0,232,122,0.1);}
+.health-badge.ok span{font-size:10px;font-weight:500;color:var(--emerald-400);}
+.health-badge.warn{border-color:rgba(255,184,0,0.35);background:rgba(255,184,0,0.1);}
+.health-badge.warn span{font-size:10px;font-weight:500;color:var(--amber);}
+
+/* Route trace */
+.section-title{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px;}
+.hop-row{
+  display:flex;align-items:center;gap:10px;padding:10px 16px;
+  border-bottom:1px solid var(--border-subtle);
+}
+.hop-row:last-child{border-bottom:none;}
+.hop-num{
+  width:22px;height:22px;border-radius:50%;background:var(--bg-elevated);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.hop-num span{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);}
+.hop-connector{display:flex;align-items:center;flex-shrink:0;}
+.hop-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.hop-dot.active{background:var(--emerald-400);box-shadow:0 0 5px rgba(0,232,122,0.45);}
+.hop-dot.inactive{background:rgba(61,85,112,0.5);}
+.hop-info{flex:1;}
+.hop-label{font-size:12px;font-weight:500;color:var(--text-primary);}
+.hop-ip{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--text-muted);margin-top:2px;}
+.hop-rtt{font-size:12px;font-family:'JetBrains Mono',monospace;}
+.hop-rtt.green{color:var(--emerald-400);}
+.hop-rtt.muted{color:var(--text-muted);}
+
+/* Throughput */
+.throughput-row{display:flex;flex-direction:column;gap:10px;}
+.tp-item{display:flex;align-items:center;gap:10px;}
+.tp-icon{font-size:18px;font-weight:600;width:20px;text-align:center;flex-shrink:0;}
+.tp-icon.up{color:var(--emerald-400);}
+.tp-icon.down{color:var(--blue-400);}
+.tp-bar{flex:1;height:6px;background:var(--bg-elevated);border-radius:3px;overflow:hidden;}
+.tp-fill{height:100%;border-radius:3px;animation:tp-in 1s ease 0.5s both;}
+.tp-fill.up{background:linear-gradient(90deg,var(--emerald-400),#00ffaa);width:23%;}
+.tp-fill.down{background:linear-gradient(90deg,var(--blue-400),#66bbff);width:67%;}
+@keyframes tp-in{from{width:0;}to{}}
+.tp-val{font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--text-secondary);width:76px;text-align:right;flex-shrink:0;}
+
+/* Export btn */
+.export-btn{
+  border:1px solid var(--border-glow);border-radius:var(--radius-xl);
+  padding:14px;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  background:rgba(0,232,122,0.04);transition:all 0.2s;
+}
+.export-btn:hover{background:rgba(0,232,122,0.08);border-color:rgba(0,232,122,0.45);}
+.export-text{font-size:13px;font-weight:500;color:var(--emerald-400);letter-spacing:0.3px;}
+
+.screen-label{margin-top:20px;font-size:11px;font-weight:500;color:rgba(255,255,255,0.22);letter-spacing:2px;text-transform:uppercase;text-align:center;}
+@keyframes section-in{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+.s1{animation:section-in 0.45s ease 0.02s both;}
+.s2{animation:section-in 0.45s ease 0.10s both;}
+.s3{animation:section-in 0.45s ease 0.18s both;}
+.s4{animation:section-in 0.45s ease 0.26s both;}
+.s5{animation:section-in 0.45s ease 0.34s both;}
+.s6{animation:section-in 0.45s ease 0.42s both;}
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="di"></div>
+  <div class="status-bar">
+    <span class="status-time">9:41</span>
+    <div style="display:flex;gap:6px;align-items:center;">
+      <svg width="17" height="12" viewBox="0 0 17 12" fill="none"><rect x="0" y="4" width="3" height="8" rx="1" fill="#F0F6FF" opacity=".5"/><rect x="4.5" y="2.5" width="3" height="9.5" rx="1" fill="#F0F6FF" opacity=".7"/><rect x="9" y="1" width="3" height="11" rx="1" fill="#F0F6FF" opacity=".9"/><rect x="13.5" y="0" width="3" height="12" rx="1" fill="#F0F6FF"/></svg>
+      <svg width="25" height="12" viewBox="0 0 25 12" fill="none"><rect x="0.5" y="0.5" width="21" height="11" rx="3.5" stroke="#F0F6FF" stroke-opacity=".35"/><rect x="2" y="2" width="16" height="8" rx="2" fill="#F0F6FF"/></svg>
+    </div>
+  </div>
+
+  <div class="scroll-area">
+    <!-- Header -->
+    <div class="header s1">
+      <div>
+        <div class="page-title">Diagnostics</div>
+        <div class="page-sub">Live connection analysis</div>
+      </div>
+      <div class="live-badge">
+        <div class="live-dot"></div>
+        <span class="live-text">LIVE · 02:34</span>
+      </div>
+    </div>
+
+    <!-- Metric grid -->
+    <div class="metric-grid s2">
+      <div class="metric-card glow-e">
+        <span class="mc-label">Latency</span>
+        <div class="mc-value green">24<span class="mc-unit">ms</span></div>
+        <div class="mc-sub green">Excellent</div>
+      </div>
+      <div class="metric-card glow-e">
+        <span class="mc-label">Packet Loss</span>
+        <div class="mc-value green">0.0<span class="mc-unit">%</span></div>
+        <div class="mc-sub green">No loss detected</div>
+      </div>
+      <div class="metric-card">
+        <span class="mc-label">Jitter</span>
+        <div class="mc-value">2.1<span class="mc-unit">ms</span></div>
+        <div class="mc-sub">Very stable</div>
+      </div>
+      <div class="metric-card">
+        <span class="mc-label">Session Uptime</span>
+        <div class="mc-value" style="font-size:22px;">02:34</div>
+        <div class="mc-sub">Active session</div>
+      </div>
+    </div>
+
+    <!-- Connection info -->
+    <div class="glass-card glow-e s3">
+      <span class="card-label">Active Connection</span>
+      <div class="info-row"><span class="info-key">Protocol</span><span class="info-val">VLESS + Reality</span></div>
+      <div class="info-row"><span class="info-key">Transport</span><span class="info-val">TCP (XHTTP)</span></div>
+      <div class="info-row"><span class="info-key">Server SNI</span><span class="info-val">cdn.setalink.net</span></div>
+      <div class="info-row"><span class="info-key">Destination</span><span class="info-val">5.180.62.12:443</span></div>
+      <div class="info-row"><span class="info-key">TLS Version</span><span class="info-val">TLS 1.3</span></div>
+      <div class="info-row"><span class="info-key">Cipher</span><span class="info-val">AES-256-GCM-SHA384</span></div>
+      <div class="info-row" style="border:none;"><span class="info-key">ALPN</span><span class="info-val">h2, http/1.1</span></div>
+    </div>
+
+    <!-- Health checks -->
+    <div class="glass-card">
+      <span class="card-label">Health Checks</span>
+      <div class="health-row">
+        <div class="health-dot-wrap"><div class="health-ring ok"></div><div class="health-dot ok"></div></div>
+        <div class="health-info">
+          <div class="health-label">TLS Certificate</div>
+          <div class="health-detail">Valid · Expires 2027-03-01</div>
+        </div>
+        <div class="health-badge ok"><span>Healthy</span></div>
+      </div>
+      <div class="health-row">
+        <div class="health-dot-wrap"><div class="health-ring ok"></div><div class="health-dot ok"></div></div>
+        <div class="health-info">
+          <div class="health-label">CDN Edge (DE)</div>
+          <div class="health-detail">Cloudflare · 104.26.12.55</div>
+        </div>
+        <div class="health-badge ok"><span>Healthy</span></div>
+      </div>
+      <div class="health-row">
+        <div class="health-dot-wrap"><div class="health-ring ok"></div><div class="health-dot ok"></div></div>
+        <div class="health-info">
+          <div class="health-label">SNI Consistency</div>
+          <div class="health-detail">cdn.setalink.net ↔ cert match</div>
+        </div>
+        <div class="health-badge ok"><span>Healthy</span></div>
+      </div>
+      <div class="health-row">
+        <div class="health-dot-wrap"><div class="health-ring warn"></div><div class="health-dot warn"></div></div>
+        <div class="health-info">
+          <div class="health-label">Fallback Domain</div>
+          <div class="health-detail">alt.setalink.io · slow response</div>
+        </div>
+        <div class="health-badge warn"><span>Degraded</span></div>
+      </div>
+      <div class="health-row" style="border:none;">
+        <div class="health-dot-wrap"><div class="health-ring ok"></div><div class="health-dot ok"></div></div>
+        <div class="health-info">
+          <div class="health-label">DNS Resolution</div>
+          <div class="health-detail">Cloudflare DoH · 1ms</div>
+        </div>
+        <div class="health-badge ok"><span>Healthy</span></div>
+      </div>
+    </div>
+
+    <!-- Route trace -->
+    <div>
+      <div class="section-title">Route Trace</div>
+      <div class="glass-card" style="padding:0;">
+        <div class="hop-row">
+          <div class="hop-num"><span>1</span></div>
+          <div class="hop-connector"><div class="hop-dot inactive"></div></div>
+          <div class="hop-info">
+            <div class="hop-label">Local Gateway</div>
+            <div class="hop-ip">10.0.0.1</div>
+          </div>
+          <span class="hop-rtt green">1ms</span>
+        </div>
+        <div class="hop-row">
+          <div class="hop-num"><span>2</span></div>
+          <div class="hop-connector"><div class="hop-dot inactive"></div></div>
+          <div class="hop-info">
+            <div class="hop-label">ISP Transit</div>
+            <div class="hop-ip">185.220.101.34</div>
+          </div>
+          <span class="hop-rtt green">8ms</span>
+        </div>
+        <div class="hop-row">
+          <div class="hop-num"><span>3</span></div>
+          <div class="hop-connector"><div class="hop-dot inactive"></div></div>
+          <div class="hop-info">
+            <div class="hop-label">CDN Edge (CF)</div>
+            <div class="hop-ip">104.26.12.55</div>
+          </div>
+          <span class="hop-rtt green">14ms</span>
+        </div>
+        <div class="hop-row">
+          <div class="hop-num"><span>4</span></div>
+          <div class="hop-connector"><div class="hop-dot active"></div></div>
+          <div class="hop-info">
+            <div class="hop-label" style="color:#00E87A;">SetaLink DE·01</div>
+            <div class="hop-ip">5.180.62.12</div>
+          </div>
+          <span class="hop-rtt green">22ms</span>
+        </div>
+        <div class="hop-row" style="border:none;opacity:0.5;">
+          <div class="hop-num"><span>5</span></div>
+          <div class="hop-connector"><div class="hop-dot inactive"></div></div>
+          <div class="hop-info">
+            <div class="hop-label">Destination</div>
+            <div class="hop-ip">hidden</div>
+          </div>
+          <span class="hop-rtt muted">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Throughput -->
+    <div class="glass-card">
+      <span class="card-label">Real-time Throughput</span>
+      <div class="throughput-row">
+        <div class="tp-item">
+          <span class="tp-icon up">↑</span>
+          <div class="tp-bar"><div class="tp-fill up"></div></div>
+          <span class="tp-val">4.2 MB/s</span>
+        </div>
+        <div class="tp-item">
+          <span class="tp-icon down">↓</span>
+          <div class="tp-bar"><div class="tp-fill down"></div></div>
+          <span class="tp-val">18.7 MB/s</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export -->
+    <div class="export-btn">
+      <span class="export-text">Export Diagnostic Report</span>
+    </div>
+  </div>
+</div>
+<div class="screen-label">06 — Diagnostics Screen</div>
+</body>
+</html>
