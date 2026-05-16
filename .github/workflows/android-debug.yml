@@ -41,7 +41,7 @@ jobs:
       - name: Set up Gradle 8.6
         uses: gradle/actions/setup-gradle@v3
         with:
-          gradle-version: '8.6'
+          gradle-version: '8.7'
 
       # ── JS dependencies ─────────────────────────────────────────────────────
       - name: Cache node_modules
@@ -59,7 +59,7 @@ jobs:
       - name: Generate Gradle wrapper
         working-directory: mobile-app/android
         run: |
-          gradle wrapper --gradle-version 8.6 --distribution-type all
+          gradle wrapper --gradle-version 8.7 --distribution-type all
           chmod +x gradlew
 
       - name: Generate debug keystore
