@@ -1,6 +1,5 @@
 package com.setalink;
 
-import androidx.annotation.NonNull;
 import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;
 import com.facebook.react.bridge.ReactApplicationContext;
@@ -11,15 +10,13 @@ import java.util.List;
 
 public class MainPackage implements ReactPackage {
 
-    @NonNull
     @Override
-    public List<NativeModule> createNativeModules(@NonNull ReactApplicationContext context) {
+    public List<NativeModule> createNativeModules(ReactApplicationContext context) {
         return Collections.emptyList();
     }
 
-    @NonNull
     @Override
-    public List<ViewManager> createViewManagers(@NonNull ReactApplicationContext context) {
+    public List<ViewManager> createViewManagers(ReactApplicationContext context) {
         return Collections.emptyList();
     }
 }
