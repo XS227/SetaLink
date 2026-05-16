@@ -1,34 +1,44 @@
-/**
- * Profile / Account Screen
- *
- * Shows:
- *   - User info + avatar
- *   - Subscription status card
- *   - Device count + bandwidth
- *   - Referral section with invite link
- *   - Rewards placeholder
- *   - Logout
- */
-
 import React from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
+import { useAuthStore }    from '../stores/authStore';
+import { useSessionStore } from '../stores/sessionStore';
+import { useToastStore }   from '../stores/toastStore';
+import { formatBytes, formatDuration } from '../utils/formatters';
 
-interface Props {
-  onNavigate: (tab: NavTab) => void;
-  activeTab: NavTab;
+// ── Plan meta ─────────────────────────────────────────────────────────────────
+
+const PLAN_LIMITS: Record<string, { label: string; gbLimit: number | null }> = {
+  free:    { label: 'Free Plan',    gbLimit: 10   },
+  premium: { label: 'Premium Plan', gbLimit: null }, // unlimited
+  team:    { label: 'Team Plan',    gbLimit: null },
+};
+
+function formatExpiry(iso: string | null): string {
+  if (!iso) return 'No expiry';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function BandwidthBar({ used, total }: { used: number; total: number }) {
-  const pct = Math.min(used / total, 1);
-  const color =
-    pct < 0.6  ? Colors.emerald[400] :
-    pct < 0.85 ? '#FFB800' :
-    Colors.status.disconnected;
+// ── BandwidthBar ──────────────────────────────────────────────────────────────
+
+function BandwidthBar({ usedBytes, limitGb }: { usedBytes: number; limitGb: number | null }) {
+  if (limitGb === null) {
+    return (
+      <View style={bwStyles.unlimitedRow}>
+        <Text style={bwStyles.unlimitedText}>Unlimited bandwidth</Text>
+        <Text style={bwStyles.usedText}>{formatBytes(usedBytes, 2)} used this month</Text>
+      </View>
+    );
+  }
+
+  const usedGb  = usedBytes / 1e9;
+  const pct     = Math.min(usedGb / limitGb, 1);
+  const color   = pct < 0.6 ? Colors.emerald[400] : pct < 0.85 ? '#FFB800' : Colors.status.disconnected;
 
   return (
     <View style={bwStyles.wrapper}>
@@ -36,42 +46,54 @@ function BandwidthBar({ used, total }: { used: number; total: number }) {
         <View style={[bwStyles.fill, { width: `${pct * 100}%` as any, backgroundColor: color }]} />
       </View>
       <View style={bwStyles.labels}>
-        <Text style={bwStyles.used}>{used} GB used</Text>
-        <Text style={bwStyles.total}>{total} GB</Text>
+        <Text style={bwStyles.usedText}>{usedGb.toFixed(1)} GB used</Text>
+        <Text style={bwStyles.total}>{limitGb} GB</Text>
       </View>
     </View>
   );
 }
 
 const bwStyles = StyleSheet.create({
-  wrapper: { gap: 6 },
-  track: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.bg.elevated,
-    overflow: 'hidden',
-  },
-  fill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  labels: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  used: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.mono,
-    color: Colors.text.secondary,
-  },
-  total: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.mono,
-    color: Colors.text.muted,
-  },
+  wrapper:       { gap: 6 },
+  track:         { height: 6, borderRadius: 3, backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
+  fill:          { height: '100%', borderRadius: 3 },
+  labels:        { flexDirection: 'row', justifyContent: 'space-between' },
+  unlimitedRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  unlimitedText: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+  usedText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
+  total:         { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
 });
 
-export function ProfileScreen({ onNavigate, activeTab }: Props) {
+// ── Screen ────────────────────────────────────────────────────────────────────
+
+interface Props {
+  onNavigate: (tab: NavTab) => void;
+  activeTab:  NavTab;
+  onSignOut?: () => void;
+}
+
+export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
+  const { user, logout }                 = useAuthStore();
+  const { totalBytesThisMonth, sessionsThisMonth, totalDurationToday } = useSessionStore();
+  const showToast = useToastStore((s) => s.show);
+
+  if (!user) return null;
+
+  const plan     = PLAN_LIMITS[user.plan] ?? PLAN_LIMITS.free;
+  const initial  = user.name.charAt(0).toUpperCase();
+  const monthSessions = sessionsThisMonth();
+  const monthBytes    = totalBytesThisMonth();
+
+  const handleCopyReferral = () => {
+    Clipboard.setString(user.referralCode);
+    showToast('Referral code copied!', 'success', 2000);
+  };
+
+  const handleSignOut = () => {
+    logout();
+    onSignOut?.();
+  };
+
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -82,25 +104,38 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Profile</Text>
-          <TouchableOpacity style={styles.settingsBtn} onPress={() => {}}>
+          <TouchableOpacity
+            style={styles.settingsBtn}
+            onPress={() => onNavigate('settings' as NavTab)}
+          >
             <Text style={styles.settingsIcon}>⚙</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Avatar + user info */}
+        {/* User info */}
         <View style={styles.userCard}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarInitial}>K</Text>
-            <View style={styles.premiumBadge}>
-              <Text style={styles.premiumIcon}>★</Text>
-            </View>
+            <Text style={styles.avatarInitial}>{initial}</Text>
+            {user.plan !== 'free' && (
+              <View style={styles.premiumBadge}>
+                <Text style={styles.premiumIcon}>★</Text>
+              </View>
+            )}
           </View>
           <View>
-            <Text style={styles.userName}>Khabat Setaei</Text>
-            <Text style={styles.userEmail}>khabat.setaei@gmail.com</Text>
+            <Text style={styles.userName}>{user.name}</Text>
+            <Text style={styles.userEmail}>{user.email}</Text>
             <View style={styles.planRow}>
-              <View style={styles.planBadge}>
-                <Text style={styles.planText}>Premium Plan</Text>
+              <View style={[
+                styles.planBadge,
+                user.plan === 'free' && { borderColor: Colors.border.default, backgroundColor: Colors.bg.elevated },
+              ]}>
+                <Text style={[
+                  styles.planText,
+                  user.plan === 'free' && { color: Colors.text.muted },
+                ]}>
+                  {plan.label}
+                </Text>
               </View>
             </View>
           </View>
@@ -110,8 +145,10 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
         <GlassCard glowColor={Colors.emerald[400]} style={styles.subCard}>
           <View style={styles.subHeader}>
             <View>
-              <Text style={styles.subTitle}>Premium</Text>
-              <Text style={styles.subExpiry}>Renews on Jul 15, 2026</Text>
+              <Text style={styles.subTitle}>{plan.label}</Text>
+              <Text style={styles.subExpiry}>
+                {user.planExpiry ? `Renews on ${formatExpiry(user.planExpiry)}` : 'Lifetime access'}
+              </Text>
             </View>
             <View style={styles.subStatus}>
               <View style={styles.subDot} />
@@ -121,14 +158,14 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
 
           <View style={styles.subDivider} />
 
-          <BandwidthBar used={37.4} total={100} />
+          <BandwidthBar usedBytes={monthBytes} limitGb={plan.gbLimit} />
 
           <View style={styles.subMeta}>
             {[
-              { label: 'Devices', value: '3 / 5' },
-              { label: 'Servers',  value: '50+' },
-              { label: 'Speed',    value: 'Unlimited' },
-            ].map(item => (
+              { label: 'Sessions',  value: String(monthSessions.length) },
+              { label: 'Servers',   value: user.plan === 'free' ? '5' : '50+' },
+              { label: 'Speed',     value: user.plan === 'free' ? '10 MB/s' : 'Unlimited' },
+            ].map((item) => (
               <View key={item.label} style={styles.subMetaItem}>
                 <Text style={styles.subMetaValue}>{item.value}</Text>
                 <Text style={styles.subMetaLabel}>{item.label}</Text>
@@ -136,25 +173,31 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
             ))}
           </View>
 
-          <TouchableOpacity style={styles.manageBtn} activeOpacity={0.8}>
-            <Text style={styles.manageBtnText}>Manage Subscription</Text>
-          </TouchableOpacity>
+          {user.plan === 'free' ? (
+            <TouchableOpacity style={styles.upgradeBtn} activeOpacity={0.85}>
+              <Text style={styles.upgradeBtnText}>Upgrade to Premium</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={styles.manageBtn} activeOpacity={0.8}>
+              <Text style={styles.manageBtnText}>Manage Subscription</Text>
+            </TouchableOpacity>
+          )}
         </GlassCard>
 
         {/* Devices */}
         <GlassCard>
           <Text style={styles.cardLabel}>Active Devices</Text>
           {[
-            { name: 'Pixel 8 Pro',      os: 'Android 15',  icon: '◻', active: true },
-            { name: 'MacBook Pro',       os: 'macOS 15.2',  icon: '◻', active: true },
-            { name: 'iPad Air (M2)',     os: 'iPadOS 18',   icon: '◻', active: false },
+            { name: 'Pixel 8 Pro',   os: 'Android 15', active: true  },
+            { name: 'MacBook Pro',   os: 'macOS 15.2', active: true  },
+            { name: 'iPad Air (M2)', os: 'iPadOS 18',  active: false },
           ].map((device, i) => (
             <View key={i} style={[
               styles.deviceRow,
               i > 0 && { borderTopWidth: 1, borderTopColor: Colors.border.subtle },
             ]}>
               <View style={styles.deviceIcon}>
-                <Text style={styles.deviceIconText}>{device.icon}</Text>
+                <Text style={styles.deviceIconText}>◻</Text>
               </View>
               <View style={styles.deviceInfo}>
                 <Text style={styles.deviceName}>{device.name}</Text>
@@ -162,9 +205,7 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
               </View>
               <View style={[
                 styles.deviceStatus,
-                { backgroundColor: device.active
-                  ? Colors.emerald[400] + '20'
-                  : Colors.bg.elevated },
+                { backgroundColor: device.active ? Colors.emerald[400] + '20' : Colors.bg.elevated },
               ]}>
                 <Text style={[
                   styles.deviceStatusText,
@@ -189,8 +230,8 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
             Invite friends and earn 30 days of free premium for every signup.
           </Text>
           <View style={styles.referralCode}>
-            <Text style={styles.referralCodeText}>KHABAT-2026</Text>
-            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75}>
+            <Text style={styles.referralCodeText}>{user.referralCode}</Text>
+            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
               <Text style={styles.copyBtnText}>Copy</Text>
             </TouchableOpacity>
           </View>
@@ -206,7 +247,7 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
           </View>
         </GlassCard>
 
-        {/* Rewards placeholder */}
+        {/* Rewards */}
         <GlassCard>
           <View style={styles.rewardsRow}>
             <View>
@@ -221,18 +262,18 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
 
         {/* Actions */}
         {[
-          { label: 'Change Password', icon: '◌' },
-          { label: 'Notification Settings', icon: '◌' },
-          { label: 'Export Config', icon: '◌' },
-        ].map((item, i) => (
-          <TouchableOpacity key={i} style={styles.actionRow} activeOpacity={0.7}>
+          { label: 'Change Password',       onPress: undefined },
+          { label: 'Notification Settings', onPress: undefined },
+          { label: 'Export Config',         onPress: undefined },
+        ].map((item) => (
+          <TouchableOpacity key={item.label} style={styles.actionRow} activeOpacity={0.7} onPress={item.onPress}>
             <Text style={styles.actionLabel}>{item.label}</Text>
             <Text style={styles.actionChevron}>›</Text>
           </TouchableOpacity>
         ))}
 
-        {/* Logout */}
-        <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75}>
+        {/* Sign out */}
+        <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={handleSignOut}>
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
 
@@ -245,359 +286,69 @@ export function ProfileScreen({ onNavigate, activeTab }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: Colors.bg.base,
-  },
-  scroll: { flex: 1 },
-  content: {
-    paddingTop: Layout.statusBarHeight + Spacing[2],
-    paddingHorizontal: Layout.screenPadding,
-    gap: Spacing[4],
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  title: {
-    fontSize: Typography.size['2xl'],
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-    letterSpacing: Typography.tracking.tight,
-  },
-  settingsBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: Colors.bg.surface,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  settingsIcon: {
-    fontSize: 18,
-    color: Colors.text.secondary,
-  },
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[4],
-  },
-  avatar: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.emerald[700],
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.emerald[400],
-    position: 'relative',
-  },
-  avatarInitial: {
-    fontSize: Typography.size['2xl'],
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  premiumBadge: {
-    position: 'absolute',
-    bottom: -2,
-    right: -2,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FFB800',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: Colors.bg.base,
-  },
-  premiumIcon: {
-    fontSize: 9,
-    color: '#000',
-  },
-  userName: {
-    fontSize: Typography.size.lg,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  userEmail: {
-    fontSize: Typography.size.sm,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  planRow: {
-    marginTop: 6,
-  },
-  planBadge: {
-    backgroundColor: 'rgba(255,184,0,0.15)',
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255,184,0,0.3)',
-    paddingHorizontal: Spacing[3],
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-  },
-  planText: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-    color: '#FFB800',
-    letterSpacing: 0.5,
-  },
-  subCard: { gap: Spacing[4] },
-  subHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  subTitle: {
-    fontSize: Typography.size.xl,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  subExpiry: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  subStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(0,232,122,0.1)',
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing[3],
-    paddingVertical: 5,
-  },
-  subDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.emerald[400],
-  },
-  subStatusText: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-    color: Colors.emerald[400],
-  },
-  subDivider: {
-    height: 1,
-    backgroundColor: Colors.border.subtle,
-  },
-  subMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  subMetaItem: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  subMetaValue: {
-    fontSize: Typography.size.base,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  subMetaLabel: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  manageBtn: {
-    borderWidth: 1,
-    borderColor: Colors.emerald[400],
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing[3],
-    alignItems: 'center',
-  },
-  manageBtnText: {
-    fontSize: Typography.size.sm,
-    fontFamily: Typography.family.label,
-    color: Colors.emerald[400],
-    letterSpacing: 0.5,
-  },
-  cardLabel: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-    color: Colors.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: Spacing[3],
-  },
-  deviceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing[3],
-    gap: Spacing[3],
-  },
-  deviceIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.bg.elevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deviceIconText: {
-    fontSize: 20,
-    color: Colors.text.secondary,
-  },
-  deviceInfo: { flex: 1 },
-  deviceName: {
-    fontSize: Typography.size.sm,
-    fontFamily: Typography.family.label,
-    color: Colors.text.primary,
-  },
-  deviceOs: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  deviceStatus: {
-    borderRadius: Radius.full,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  deviceStatusText: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-  },
-  referralCard: { gap: Spacing[3] },
-  referralHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  rewardBadge: {
-    backgroundColor: 'rgba(51,153,255,0.12)',
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(51,153,255,0.3)',
-    paddingHorizontal: Spacing[3],
-    paddingVertical: 3,
-  },
-  rewardBadgeText: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-    color: Colors.blue[400],
-  },
-  referralDesc: {
-    fontSize: Typography.size.sm,
-    fontFamily: Typography.family.body,
-    color: Colors.text.secondary,
-    lineHeight: 20,
-  },
-  referralCode: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.bg.elevated,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing[3],
-    gap: Spacing[3],
-  },
-  referralCodeText: {
-    flex: 1,
-    fontSize: Typography.size.base,
-    fontFamily: Typography.family.mono,
-    color: Colors.text.primary,
-    letterSpacing: 2,
-  },
-  copyBtn: {
-    backgroundColor: Colors.emerald[400],
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing[3],
-    paddingVertical: 6,
-  },
-  copyBtnText: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-    color: Colors.text.inverse,
-  },
-  referralStats: {
-    flexDirection: 'row',
-    gap: Spacing[6],
-  },
-  referralStat: { gap: 2 },
-  referralStatValue: {
-    fontSize: Typography.size.xl,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  referralStatLabel: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-  },
-  rewardsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  rewardsTitle: {
-    fontSize: Typography.size.base,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  rewardsSub: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  comingSoon: {
-    backgroundColor: Colors.bg.elevated,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    paddingHorizontal: Spacing[3],
-    paddingVertical: 4,
-  },
-  comingSoonText: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-    color: Colors.text.muted,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.bg.surface,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.border.subtle,
-    paddingHorizontal: Spacing[4],
-    paddingVertical: Spacing[4],
-  },
-  actionLabel: {
-    fontSize: Typography.size.base,
-    fontFamily: Typography.family.body,
-    color: Colors.text.primary,
-  },
-  actionChevron: {
-    fontSize: 20,
-    color: Colors.text.muted,
-  },
-  logoutBtn: {
-    borderWidth: 1,
-    borderColor: 'rgba(255,68,68,0.3)',
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing[4],
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,68,68,0.06)',
-  },
-  logoutText: {
-    fontSize: Typography.size.base,
-    fontFamily: Typography.family.label,
-    color: Colors.status.disconnected,
-    letterSpacing: 0.3,
-  },
+  screen:           { flex: 1, backgroundColor: Colors.bg.base },
+  scroll:           { flex: 1 },
+  content:          { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
+  header:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title:            { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
+  settingsBtn:      { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
+  settingsIcon:     { fontSize: 18, color: Colors.text.secondary },
+  userCard:         { flexDirection: 'row', alignItems: 'center', gap: Spacing[4] },
+  avatar:           { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.emerald[700], alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.emerald[400], position: 'relative' },
+  avatarInitial:    { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary },
+  premiumBadge:     { position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFB800', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.bg.base },
+  premiumIcon:      { fontSize: 9, color: '#000' },
+  userName:         { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  userEmail:        { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  planRow:          { marginTop: 6 },
+  planBadge:        { backgroundColor: 'rgba(255,184,0,0.15)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3, alignSelf: 'flex-start' },
+  planText:         { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FFB800', letterSpacing: 0.5 },
+  subCard:          { gap: Spacing[4] },
+  subHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  subTitle:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  subExpiry:        { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  subStatus:        { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, paddingHorizontal: Spacing[3], paddingVertical: 5 },
+  subDot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.emerald[400] },
+  subStatusText:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+  subDivider:       { height: 1, backgroundColor: Colors.border.subtle },
+  subMeta:          { flexDirection: 'row', justifyContent: 'space-around' },
+  subMetaItem:      { alignItems: 'center', gap: 2 },
+  subMetaValue:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  subMetaLabel:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  manageBtn:        { borderWidth: 1, borderColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[3], alignItems: 'center' },
+  manageBtnText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.5 },
+  upgradeBtn:       { backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[3], alignItems: 'center' },
+  upgradeBtnText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: 0.5 },
+  cardLabel:        { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[3] },
+  deviceRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing[3], gap: Spacing[3] },
+  deviceIcon:       { width: 36, height: 36, borderRadius: Radius.md, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
+  deviceIconText:   { fontSize: 20, color: Colors.text.secondary },
+  deviceInfo:       { flex: 1 },
+  deviceName:       { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.primary },
+  deviceOs:         { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  deviceStatus:     { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
+  deviceStatusText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label },
+  referralCard:     { gap: Spacing[3] },
+  referralHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rewardBadge:      { backgroundColor: 'rgba(51,153,255,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(51,153,255,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
+  rewardBadgeText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.blue[400] },
+  referralDesc:     { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 20 },
+  referralCode:     { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[4], paddingVertical: Spacing[3], gap: Spacing[3] },
+  referralCodeText: { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.mono, color: Colors.text.primary, letterSpacing: 2 },
+  copyBtn:          { backgroundColor: Colors.emerald[400], borderRadius: Radius.md, paddingHorizontal: Spacing[3], paddingVertical: 6 },
+  copyBtnText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.inverse },
+  referralStats:    { flexDirection: 'row', gap: Spacing[6] },
+  referralStat:     { gap: 2 },
+  referralStatValue:{ fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  referralStatLabel:{ fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+  rewardsRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  rewardsTitle:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  rewardsSub:       { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  comingSoon:       { backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  comingSoonText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted },
+  actionRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[4] },
+  actionLabel:      { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },
+  actionChevron:    { fontSize: 20, color: Colors.text.muted },
+  logoutBtn:        { borderWidth: 1, borderColor: 'rgba(255,68,68,0.3)', borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', backgroundColor: 'rgba(255,68,68,0.06)' },
+  logoutText:       { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: Colors.status.disconnected, letterSpacing: 0.3 },
 });

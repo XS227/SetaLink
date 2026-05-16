@@ -6,3 +6,4 @@ export { useSessionTimer, formatElapsed } from './useSessionTimer';
 export { useGreeting }          from './useGreeting';
 export { useSessionLifecycle }  from './useSessionLifecycle';
 export { useAppBoot }           from './useAppBoot';
+export { useDeepLinks }         from './useDeepLinks';

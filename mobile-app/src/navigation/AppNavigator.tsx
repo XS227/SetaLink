@@ -15,7 +15,7 @@
  */
 
 import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
 
@@ -29,11 +29,13 @@ import { ProfileScreen }     from '../screens/ProfileScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
 import { BottomNav, NavTab } from '../components/BottomNav';
+import { Toast }             from '../components/Toast';
 
 import { runBootSequence }   from '../services/bootService';
 import { useAuthStore }      from '../stores/authStore';
 import { useVpnStore }       from '../stores/vpnStore';
 import { useAppBoot }        from '../hooks/useAppBoot';
+import { useDeepLinks }      from '../hooks/useDeepLinks';
 
 import type { RootStackParamList, MainTabParamList } from './types';
 
@@ -113,7 +115,16 @@ function ActivityAdapter({ navigation, route }: ScreenAdapterProps) {
 }
 
 function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
-  return <ProfileScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'profile'} onNavigate={makeOnNavigate(navigation)} />;
+  return (
+    <ProfileScreen
+      activeTab={SCREEN_TO_TAB[route.name] ?? 'profile'}
+      onNavigate={makeOnNavigate(navigation)}
+      onSignOut={() => {
+        useAuthStore.getState().logout();
+        navigation.replace('Auth');
+      }}
+    />
+  );
 }
 
 // ── Stack adapters ────────────────────────────────────────────────────────────
@@ -153,11 +164,20 @@ function AuthAdapter({ navigation }: ScreenAdapterProps) {
   );
 }
 
+// ── Deep link handler — must be inside NavigationContainer ───────────────────
+
+function DeepLinkHandler() {
+  const navigation = useNavigation();
+  useDeepLinks(navigation);
+  return null;
+}
+
 // ── Root navigator ────────────────────────────────────────────────────────────
 
 export function AppNavigator() {
   return (
     <NavigationContainer>
+      <DeepLinkHandler />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="Splash"      component={SplashAdapter} />
         <Stack.Screen name="Auth"        component={AuthAdapter} />
@@ -173,6 +193,7 @@ export function AppNavigator() {
           options={{ animation: 'slide_from_right' }}
         />
       </Stack.Navigator>
+      <Toast />
     </NavigationContainer>
   );
 }

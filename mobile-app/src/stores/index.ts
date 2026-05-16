@@ -15,3 +15,9 @@ export type { ServerRecord, FilterTab } from './serverStore';
 export { SERVER_CATALOG, FILTER_TABS, scoreServer } from './serverStore';
 
 export { useDiagnosticsStore }  from './diagnosticsStore';
+
+export { useSessionStore }      from './sessionStore';
+export type { SessionRecord }   from './sessionStore';
+
+export { useToastStore }        from './toastStore';
+export type { ToastType, ToastEntry } from './toastStore';
