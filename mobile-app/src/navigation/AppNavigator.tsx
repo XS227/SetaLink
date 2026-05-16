@@ -1,27 +1,25 @@
 /**
- * AppNavigator
+ * AppNavigator — React Navigation v7
  *
- * In production: use React Navigation v7 with Stack + BottomTab navigators.
- * This file shows the intended navigation architecture with a lightweight
- * state-machine approach so the design is runnable without the full nav library.
+ * Architecture:
+ *   NavigationContainer
+ *   └── RootStack (NativeStack, animation: fade)
+ *       ├── Splash  → replace → Auth
+ *       ├── Auth    → replace → Main
+ *       ├── Main    → BottomTabs (custom BottomNav component)
+ *       │   ├── Home, Servers, AI, Activity, Profile
+ *       ├── Settings    (slide_from_right)
+ *       └── Diagnostics (slide_from_right)
  *
- * Navigation tree:
- *
- *   RootStack
- *   ├── Splash          (auto-dismissed after animation)
- *   ├── Auth            (login / register)
- *   └── Main (tabs)
- *       ├── Home
- *       ├── Servers
- *       ├── SmartAI
- *       ├── Activity
- *       └── Profile
- *           └── Settings  (pushed from Profile / nav)
- *           └── Diagnostics (pushed from Settings / Home)
+ * Adapter pattern: existing screens expose { onNavigate, activeTab } props.
+ * Adapters translate React Navigation props to that legacy interface so no
+ * screen file needs modification in this phase.
  */
 
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
 
 import { SplashScreen }      from '../screens/SplashScreen';
 import { AuthScreen }        from '../screens/AuthScreen';
@@ -32,67 +30,147 @@ import { ActivityScreen }    from '../screens/ActivityScreen';
 import { ProfileScreen }     from '../screens/ProfileScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
-import { NavTab }            from '../components/BottomNav';
+import { BottomNav, NavTab } from '../components/BottomNav';
 
-type RootScreen = 'splash' | 'auth' | 'main' | 'settings' | 'diagnostics';
+import type { RootStackParamList, MainTabParamList } from './types';
 
-export function AppNavigator() {
-  const [root, setRoot]     = useState<RootScreen>('splash');
-  const [tab, setTab]       = useState<NavTab>('home');
+const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab   = createBottomTabNavigator<MainTabParamList>();
 
-  const navigate = (screen: RootScreen) => setRoot(screen);
+// Map React Navigation tab screen names → legacy NavTab strings
+const SCREEN_TO_TAB: Record<string, NavTab> = {
+  Home:     'home',
+  Servers:  'servers',
+  AI:       'ai',
+  Activity: 'activity',
+  Profile:  'profile',
+};
 
-  if (root === 'splash') {
-    return <SplashScreen onFinish={() => navigate('auth')} />;
-  }
+// Reverse map for navigation.navigate() calls
+const TAB_TO_SCREEN: Record<NavTab, keyof MainTabParamList> = {
+  home:     'Home',
+  servers:  'Servers',
+  ai:       'AI',
+  activity: 'Activity',
+  profile:  'Profile',
+};
 
-  if (root === 'auth') {
-    return <AuthScreen onAuth={() => navigate('main')} />;
-  }
+// ── Shared adapter helpers ─────────────────────────────────────────────────
 
-  if (root === 'settings') {
-    return (
-      <View style={styles.full}>
-        <SettingsScreen />
-      </View>
-    );
-  }
+type ScreenAdapterProps = { navigation: any; route: any };
 
-  if (root === 'diagnostics') {
-    return (
-      <View style={styles.full}>
-        <DiagnosticsScreen />
-      </View>
-    );
-  }
+function makeOnNavigate(navigation: any): (tab: NavTab) => void {
+  return (tab) => {
+    // Settings / Diagnostics are stack screens, not tabs
+    if ((tab as string) === 'settings')     { navigation.navigate('Settings');    return; }
+    if ((tab as string) === 'diagnostics')  { navigation.navigate('Diagnostics'); return; }
+    navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
+  };
+}
 
-  // Main tab shell
+// ── Main tab shell ─────────────────────────────────────────────────────────
+
+function MainTabs() {
   return (
-    <View style={styles.full}>
-      {tab === 'home' && (
-        <HomeScreen onNavigate={t => {
-          // Settings and Diagnostics navigate as stack pushes
-          if ((t as string) === 'settings')     { navigate('settings'); return; }
-          if ((t as string) === 'diagnostics')  { navigate('diagnostics'); return; }
-          setTab(t);
-        }} activeTab={tab} />
-      )}
-      {tab === 'servers' && (
-        <ServersScreen onNavigate={setTab} activeTab={tab} />
-      )}
-      {tab === 'ai' && (
-        <SmartAIScreen onNavigate={setTab} activeTab={tab} />
-      )}
-      {tab === 'activity' && (
-        <ActivityScreen onNavigate={setTab} activeTab={tab} />
-      )}
-      {tab === 'profile' && (
-        <ProfileScreen onNavigate={setTab} activeTab={tab} />
-      )}
-    </View>
+    <Tab.Navigator
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => {
+        const routeName = props.state.routes[props.state.index].name as string;
+        const activeTab = SCREEN_TO_TAB[routeName] ?? 'home';
+        return (
+          <BottomNav
+            active={activeTab}
+            onPress={(tab) => props.navigation.navigate(TAB_TO_SCREEN[tab])}
+          />
+        );
+      }}
+    >
+      <Tab.Screen name="Home"     component={HomeAdapter} />
+      <Tab.Screen name="Servers"  component={ServersAdapter} />
+      <Tab.Screen name="AI"       component={AIAdapter} />
+      <Tab.Screen name="Activity" component={ActivityAdapter} />
+      <Tab.Screen name="Profile"  component={ProfileAdapter} />
+    </Tab.Navigator>
   );
 }
 
-const styles = StyleSheet.create({
-  full: { flex: 1 },
-});
+// ── Tab adapters ───────────────────────────────────────────────────────────
+
+function HomeAdapter({ navigation, route }: ScreenAdapterProps) {
+  return (
+    <HomeScreen
+      activeTab={SCREEN_TO_TAB[route.name] ?? 'home'}
+      onNavigate={makeOnNavigate(navigation)}
+    />
+  );
+}
+
+function ServersAdapter({ navigation, route }: ScreenAdapterProps) {
+  return (
+    <ServersScreen
+      activeTab={SCREEN_TO_TAB[route.name] ?? 'servers'}
+      onNavigate={makeOnNavigate(navigation)}
+    />
+  );
+}
+
+function AIAdapter({ navigation, route }: ScreenAdapterProps) {
+  return (
+    <SmartAIScreen
+      activeTab={SCREEN_TO_TAB[route.name] ?? 'ai'}
+      onNavigate={makeOnNavigate(navigation)}
+    />
+  );
+}
+
+function ActivityAdapter({ navigation, route }: ScreenAdapterProps) {
+  return (
+    <ActivityScreen
+      activeTab={SCREEN_TO_TAB[route.name] ?? 'activity'}
+      onNavigate={makeOnNavigate(navigation)}
+    />
+  );
+}
+
+function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
+  return (
+    <ProfileScreen
+      activeTab={SCREEN_TO_TAB[route.name] ?? 'profile'}
+      onNavigate={makeOnNavigate(navigation)}
+    />
+  );
+}
+
+// ── Stack adapters ─────────────────────────────────────────────────────────
+
+function SplashAdapter({ navigation }: ScreenAdapterProps) {
+  return <SplashScreen onFinish={() => navigation.replace('Auth')} />;
+}
+
+function AuthAdapter({ navigation }: ScreenAdapterProps) {
+  return <AuthScreen onAuth={() => navigation.replace('Main')} />;
+}
+
+// ── Root navigator ─────────────────────────────────────────────────────────
+
+export function AppNavigator() {
+  return (
+    <NavigationContainer>
+      <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
+        <Stack.Screen name="Splash"      component={SplashAdapter} />
+        <Stack.Screen name="Auth"        component={AuthAdapter} />
+        <Stack.Screen name="Main"        component={MainTabs} />
+        <Stack.Screen
+          name="Settings"
+          component={SettingsScreen as any}
+          options={{ animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
+          name="Diagnostics"
+          component={DiagnosticsScreen as any}
+          options={{ animation: 'slide_from_right' }}
+        />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}
