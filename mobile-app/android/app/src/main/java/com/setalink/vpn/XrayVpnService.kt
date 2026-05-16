@@ -43,7 +43,7 @@ class XrayVpnService : VpnService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_START -> {
-                val config = intent.getStringExtra(EXTRA_CONFIG) ?: return START_NOT_STICKY
+                val config = intent?.getStringExtra(EXTRA_CONFIG) ?: return START_NOT_STICKY
                 startForeground(NotificationHelper.NOTIFICATION_ID,
                     NotificationHelper.buildConnected(this))
                 scope.launch { establishTunnel(config) }
