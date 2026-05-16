@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.net.VpnService
+import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactMethod
@@ -52,7 +53,9 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             addAction(XrayVpnService.BROADCAST_CONNECTED)
             addAction(XrayVpnService.BROADCAST_DISCONNECTED)
         }
-        reactContext.registerReceiver(vpnReceiver, filter)
+        ContextCompat.registerReceiver(
+            reactContext, vpnReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun getName(): String = NAME
