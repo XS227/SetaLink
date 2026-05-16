@@ -60,7 +60,7 @@ jobs:
         working-directory: mobile-app/android
         run: |
           curl -fsSL \
-            "https://raw.githubusercontent.com/facebook/react-native/v0.75.4/packages/react-native/template/android/gradle/wrapper/gradle-wrapper.jar" \
+            "https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar" \
             -o gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
 
