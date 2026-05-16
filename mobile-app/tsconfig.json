@@ -1,0 +1,17 @@
+{
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": false,
+    "paths": {
+      "@stores/*":  ["./src/stores/*"],
+      "@hooks/*":   ["./src/hooks/*"],
+      "@screens/*": ["./src/screens/*"],
+      "@services/*":["./src/services/*"],
+      "@design/*":  ["./src/design/*"],
+      "@utils/*":   ["./src/utils/*"]
+    }
+  },
+  "include": ["src", "index.js"],
+  "exclude": ["node_modules", "android", "ios"]
+}

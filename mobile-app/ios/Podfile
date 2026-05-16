@@ -1,0 +1,30 @@
+# Resolve react_native_pods.rb from the react-native gem
+require Pod::Executable.execute_command('node', ['-e',
+  "process.stdout.write(require('react-native/scripts/react_native_pods').podsPath)",
+  '--no-warnings'
+]).strip
+
+platform :ios, min_ios_version_supported
+prepare_react_native_project!
+
+# React Native New Architecture — enable Fabric + TurboModules
+ENV['RCT_NEW_ARCH_ENABLED'] = '1'
+
+target 'SetaLink' do
+  config = use_native_modules!
+
+  use_react_native!(
+    path:            config[:reactNativePath],
+    hermes_enabled:  true,
+    fabric_enabled:  true,
+    app_path:        "#{Pod::Config.instance.installation_root}/.."
+  )
+
+  post_install do |installer|
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      mac_catalyst_enabled: false
+    )
+  end
+end

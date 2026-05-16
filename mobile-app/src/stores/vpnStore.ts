@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { ConnectionMachine, MachineState } from '../services/connectionMachine';
+import { getAdapter }                       from '../services/vpnBridge';
+import { buildXrayConfigJson }              from '../services/xrayConfigBuilder';
 
 // Re-exported so screens that import ConnectionState don't break
 export type ConnectionState = MachineState;
@@ -147,7 +149,20 @@ export const useVpnStore = create<VpnState>((set, get) => {
         HapticService.error();
       } catch {}
     },
-  });
+
+    getConnectConfig: () => {
+      const { selectedServer, selectedProtocol } = get();
+      if (!selectedServer) return null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useSettingsStore } = require('./settingsStore');
+        const dnsMode = useSettingsStore.getState().dnsMode;
+        return buildXrayConfigJson(selectedServer, selectedProtocol, dnsMode);
+      } catch {
+        return buildXrayConfigJson(selectedServer, selectedProtocol, 'Cloudflare (DoH)');
+      }
+    },
+  }, getAdapter());
 
   return {
     connectionState:   'idle',

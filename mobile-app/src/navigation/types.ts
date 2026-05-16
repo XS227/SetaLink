@@ -4,6 +4,7 @@ import type { CompositeNavigationProp }   from '@react-navigation/native';
 
 export type RootStackParamList = {
   Splash:      undefined;
+  Onboarding:  undefined;
   Auth:        undefined;
   Main:        undefined;
   Settings:    undefined;
