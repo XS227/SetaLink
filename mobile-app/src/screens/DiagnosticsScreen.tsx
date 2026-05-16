@@ -1,11 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Animated, TouchableOpacity,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useDiagnosticsStore } from '../stores/diagnosticsStore';
+import { useVpnStore }         from '../stores/vpnStore';
 import { formatElapsed } from '../hooks/useSessionTimer';
+import { getNetworkInfo } from '../services/networkInfoService';
 
 // ── PulsingDot — unchanged visual primitive ────────────────────────────────────
 
@@ -89,12 +91,22 @@ const hStyles = StyleSheet.create({
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 export function DiagnosticsScreen() {
-  const { snapshot, isRunning, elapsedSecs, startMonitor, stopMonitor } = useDiagnosticsStore();
+  const { snapshot, isRunning, elapsedSecs, liveStats, startMonitor, stopMonitor } =
+    useDiagnosticsStore();
+  const { connectionState, selectedServer } = useVpnStore();
+
+  const [networkInfo, setNetworkInfo] = useState<{ localIp: string | null; publicIp: string | null } | null>(null);
 
   useEffect(() => {
     startMonitor();
+    getNetworkInfo().then(setNetworkInfo).catch(() => {});
     return () => stopMonitor();
   }, []);
+
+  // Prefer live adapter stats over mock snapshot
+  const displayPing         = liveStats?.ping         ?? snapshot?.ping         ?? 0;
+  const displayUploadMbps   = liveStats?.uploadMbps   ?? snapshot?.uploadMbps   ?? 0;
+  const displayDownloadMbps = liveStats?.downloadMbps ?? snapshot?.downloadMbps ?? 0;
 
   const conn = snapshot?.connection;
 
@@ -132,10 +144,10 @@ export function DiagnosticsScreen() {
         <View style={styles.metricGrid}>
           <MetricCard
             label="Latency"
-            value={snapshot ? String(snapshot.ping) : '—'}
+            value={displayPing ? String(displayPing) : '—'}
             unit="ms"
-            sub={snapshot ? pingQuality(snapshot.ping) : undefined}
-            color={snapshot && snapshot.ping < 60 ? Colors.emerald[400] : undefined}
+            sub={displayPing ? pingQuality(displayPing) : undefined}
+            color={displayPing && displayPing < 60 ? Colors.emerald[400] : undefined}
           />
           <MetricCard
             label="Packet Loss"
@@ -156,6 +168,22 @@ export function DiagnosticsScreen() {
             sub="This session"
           />
         </View>
+
+        {/* Network info */}
+        <GlassCard>
+          <Text style={styles.cardLabel}>Network</Text>
+          {[
+            { key: 'Local IP',   val: networkInfo?.localIp  ?? 'Detecting…' },
+            { key: 'Exit IP',    val: networkInfo?.publicIp ?? (connectionState === 'connected' ? 'Detecting…' : 'Not connected') },
+            { key: 'VPN Server', val: selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : '—' },
+            { key: 'Protocol',   val: selectedServer ? selectedServer.protocol : '—' },
+          ].map((item) => (
+            <View key={item.key} style={styles.infoRow}>
+              <Text style={styles.infoKey}>{item.key}</Text>
+              <Text style={styles.infoVal}>{item.val}</Text>
+            </View>
+          ))}
+        </GlassCard>
 
         {/* Protocol & route info */}
         <GlassCard glowColor={Colors.emerald[400]}>
@@ -220,8 +248,8 @@ export function DiagnosticsScreen() {
           <Text style={styles.cardLabel}>Real-time Throughput</Text>
           <View style={styles.throughputRow}>
             {[
-              { icon: '↑', color: Colors.emerald[400], value: snapshot ? `${snapshot.uploadMbps} MB/s` : '—', pct: snapshot ? snapshot.uploadMbps / 10 : 0 },
-              { icon: '↓', color: Colors.blue[400],    value: snapshot ? `${snapshot.downloadMbps} MB/s` : '—', pct: snapshot ? snapshot.downloadMbps / 30 : 0 },
+              { icon: '↑', color: Colors.emerald[400], value: displayUploadMbps   ? `${displayUploadMbps} MB/s`   : '—', pct: displayUploadMbps   / 10 },
+              { icon: '↓', color: Colors.blue[400],    value: displayDownloadMbps ? `${displayDownloadMbps} MB/s` : '—', pct: displayDownloadMbps / 30 },
             ].map((item) => (
               <View key={item.icon} style={styles.throughputItem}>
                 <Text style={[styles.throughputIcon, { color: item.color }]}>{item.icon}</Text>

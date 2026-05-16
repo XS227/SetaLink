@@ -6,7 +6,8 @@
  * replace with real values fetched from the SetaLink API.
  */
 
-import type { VpnServer } from '../stores/vpnStore';
+import type { VpnServer }        from '../stores/vpnStore';
+import type { ServerCredentials } from './serverConfigService';
 
 export interface XrayConfig {
   log:       XrayLog;
@@ -68,16 +69,21 @@ const DNS_PROFILES: Record<string, XrayDns> = {
   },
 };
 
-function buildVlessRealityOutbound(server: VpnServer): XrayOutbound {
+const PLACEHOLDER_UUID       = '00000000-0000-0000-0000-000000000001';
+const PLACEHOLDER_PUBLIC_KEY = 'PLACEHOLDER_PUBLIC_KEY';
+const PLACEHOLDER_SHORT_ID   = 'PLACEHOLDER_SHORT_ID';
+const PLACEHOLDER_SNI        = 'www.microsoft.com';
+
+function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   return {
     tag:      'proxy',
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: `${server.id}.setalink.net`,  // placeholder — replace with real server address
-        port:    443,
+        address: creds?.address ?? `${server.id}.setalink.net`,
+        port:    creds?.port    ?? 443,
         users: [{
-          id:         '00000000-0000-0000-0000-000000000001',  // placeholder UUID
+          id:         creds?.uuid      ?? PLACEHOLDER_UUID,
           encryption: 'none',
           flow:       'xtls-rprx-vision',
         }],
@@ -88,24 +94,25 @@ function buildVlessRealityOutbound(server: VpnServer): XrayOutbound {
       security: 'reality',
       realitySettings: {
         fingerprint: 'chrome',
-        serverName:  'www.microsoft.com',
-        publicKey:   'PLACEHOLDER_PUBLIC_KEY',   // from server provisioning API
-        shortId:     'PLACEHOLDER_SHORT_ID',
+        serverName:  creds?.sni       ?? PLACEHOLDER_SNI,
+        publicKey:   creds?.publicKey ?? PLACEHOLDER_PUBLIC_KEY,
+        shortId:     creds?.shortId   ?? PLACEHOLDER_SHORT_ID,
       },
     },
   };
 }
 
-function buildVlessWsOutbound(server: VpnServer): XrayOutbound {
+function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
+  const host = creds?.address ?? `${server.id}.setalink.net`;
   return {
     tag:      'proxy',
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: `${server.id}.setalink.net`,
-        port:    443,
+        address: host,
+        port:    creds?.port ?? 443,
         users: [{
-          id:         '00000000-0000-0000-0000-000000000001',
+          id:         creds?.uuid ?? PLACEHOLDER_UUID,
           encryption: 'none',
         }],
       }],
@@ -114,21 +121,22 @@ function buildVlessWsOutbound(server: VpnServer): XrayOutbound {
       network:     'ws',
       security:    'tls',
       wsSettings:  { path: '/vpn' },
-      tlsSettings: { serverName: `${server.id}.setalink.net`, allowInsecure: false },
+      tlsSettings: { serverName: host, allowInsecure: false },
     },
   };
 }
 
-function buildVmessWsOutbound(server: VpnServer): XrayOutbound {
+function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
+  const host = creds?.address ?? `${server.id}.setalink.net`;
   return {
     tag:      'proxy',
     protocol: 'vmess',
     settings: {
       vnext: [{
-        address: `${server.id}.setalink.net`,
-        port:    443,
+        address: host,
+        port:    creds?.port ?? 443,
         users: [{
-          id:       '00000000-0000-0000-0000-000000000001',
+          id:       creds?.uuid ?? PLACEHOLDER_UUID,
           alterId:  0,
           security: 'auto',
         }],
@@ -138,23 +146,22 @@ function buildVmessWsOutbound(server: VpnServer): XrayOutbound {
       network:     'ws',
       security:    'tls',
       wsSettings:  { path: '/vmess' },
-      tlsSettings: { serverName: `${server.id}.setalink.net`, allowInsecure: false },
+      tlsSettings: { serverName: host, allowInsecure: false },
     },
   };
 }
 
-function buildProxyOutbound(server: VpnServer, protocol: string): XrayOutbound {
+function buildProxyOutbound(server: VpnServer, protocol: string, creds?: ServerCredentials): XrayOutbound {
   if (protocol.includes('Reality') || server.protocol === 'Reality') {
-    return buildVlessRealityOutbound(server);
+    return buildVlessRealityOutbound(server, creds);
   }
   if (protocol.includes('WebSocket') || server.protocol === 'WebSocket') {
-    return buildVlessWsOutbound(server);
+    return buildVlessWsOutbound(server, creds);
   }
   if (protocol.includes('VMess')) {
-    return buildVmessWsOutbound(server);
+    return buildVmessWsOutbound(server, creds);
   }
-  // Default: VLESS+Reality
-  return buildVlessRealityOutbound(server);
+  return buildVlessRealityOutbound(server, creds);
 }
 
 export function buildXrayConfig(
@@ -162,6 +169,7 @@ export function buildXrayConfig(
   protocol:  string,
   dnsMode:   string = 'Cloudflare (DoH)',
   debugMode: boolean = false,
+  creds?:    ServerCredentials,
 ): XrayConfig {
   const dns = DNS_PROFILES[dnsMode] ?? DNS_PROFILES['Cloudflare (DoH)']!;
 
@@ -188,7 +196,7 @@ export function buildXrayConfig(
     ],
 
     outbounds: [
-      buildProxyOutbound(server, protocol),
+      buildProxyOutbound(server, protocol, creds),
       { tag: 'direct', protocol: 'freedom', settings: {} },
       { tag: 'block',  protocol: 'blackhole', settings: { response: { type: 'http' } } },
     ],
@@ -196,11 +204,8 @@ export function buildXrayConfig(
     routing: {
       domainStrategy: 'IPIfNonMatch',
       rules: [
-        // Bypass LAN + loopback
         { type: 'field', ip: ['geoip:private', '127.0.0.1/32'], outboundTag: 'direct' },
-        // Block ads
-        { type: 'field', domain: ['geosite:category-ads-all'], outboundTag: 'block' },
-        // Iran bypass (direct for local services) — only when Iran mode active
+        { type: 'field', domain: ['geosite:category-ads-all'],  outboundTag: 'block'  },
         ...(protocol.includes('Iran') ? [
           { type: 'field', domain: ['geosite:ir'], outboundTag: 'direct' },
           { type: 'field', ip:     ['geoip:ir'],   outboundTag: 'direct' },
@@ -214,6 +219,7 @@ export function buildXrayConfigJson(
   server:   VpnServer,
   protocol: string,
   dnsMode:  string,
+  creds?:   ServerCredentials,
 ): string {
-  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode));
+  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, false, creds));
 }

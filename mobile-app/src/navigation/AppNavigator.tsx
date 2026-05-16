@@ -31,6 +31,7 @@ import { SettingsScreen }    from '../screens/SettingsScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { Toast }             from '../components/Toast';
+import { UpgradeScreen }     from '../screens/UpgradeScreen';
 
 import { runBootSequence }   from '../services/bootService';
 import { useAuthStore }      from '../stores/authStore';
@@ -66,6 +67,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
   return (tab) => {
     if ((tab as string) === 'settings')    { navigation.navigate('Settings');    return; }
     if ((tab as string) === 'diagnostics') { navigation.navigate('Diagnostics'); return; }
+    if ((tab as string) === 'upgrade')     { navigation.navigate('Upgrade');     return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };
 }
@@ -215,6 +217,14 @@ export function AppNavigator() {
           component={DiagnosticsScreen as any}
           options={{ animation: 'slide_from_right' }}
         />
+        <Stack.Screen
+          name="Upgrade"
+          options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+        >
+          {({ navigation }) => (
+            <UpgradeScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
       </Stack.Navigator>
       <Toast />
     </NavigationContainer>
