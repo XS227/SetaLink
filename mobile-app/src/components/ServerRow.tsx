@@ -42,7 +42,7 @@ function LoadBar({ load }: { load: number }) {
   );
 }
 
-export function ServerRow({ server, onSelect }: Props) {
+function ServerRowComponent({ server, onSelect }: Props) {
   return (
     <TouchableOpacity
       style={[styles.row, server.selected && styles.selectedRow]}
@@ -88,6 +88,13 @@ export function ServerRow({ server, onSelect }: Props) {
     </TouchableOpacity>
   );
 }
+
+export const ServerRow = React.memo(ServerRowComponent, (prev, next) =>
+  prev.server.id       === next.server.id       &&
+  prev.server.selected === next.server.selected &&
+  prev.server.ping     === next.server.ping     &&
+  prev.server.load     === next.server.load
+);
 
 const TAG_STYLES: Record<string, object> = {
   Recommended: { backgroundColor: 'rgba(0,232,122,0.12)', borderColor: Colors.border.glow },

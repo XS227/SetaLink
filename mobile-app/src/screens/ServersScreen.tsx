@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet,
+  StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { ServerRow } from '../components/ServerRow';
@@ -18,7 +18,7 @@ interface Props {
 }
 
 export function ServersScreen({ onNavigate, activeTab }: Props) {
-  const { selectedId, filter, query, selectServer, setFilter, setQuery, filteredServers, aiPicks, servers } = useServerStore();
+  const { selectedId, filter, query, selectServer, setFilter, setQuery, filteredServers, aiPicks, servers, isLoading, loadError } = useServerStore();
   const { connectionState, connect, switchServer } = useVpnStore();
   const { activeMode } = useAIStore();
   const userPlan = useAuthStore((s) => s.user?.plan ?? 'free');
@@ -74,10 +74,19 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>Servers</Text>
-          <View style={styles.countBadge}>
-            <Text style={styles.countText}>{servers.length} locations</Text>
+          <View style={styles.headerRight}>
+            {isLoading && <ActivityIndicator size="small" color={Colors.emerald[400]} style={{ marginRight: Spacing[2] }} />}
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>{servers.length} locations</Text>
+            </View>
           </View>
         </View>
+
+        {loadError && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>{loadError} · showing cached list</Text>
+          </View>
+        )}
 
         {/* Search */}
         <View style={styles.searchWrapper}>
@@ -203,10 +212,13 @@ const styles = StyleSheet.create({
   screen:           { flex: 1, backgroundColor: Colors.bg.base },
   scroll:           { flex: 1 },
   content:          { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
-  header:           { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  header:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerRight:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   title:            { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   countBadge:       { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
   countText:        { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  errorBanner:      { backgroundColor: 'rgba(255,68,68,0.08)', borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(255,68,68,0.2)', paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
+  errorBannerText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.status.disconnected },
   searchWrapper:    { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[4], paddingVertical: Spacing[3], gap: Spacing[3] },
   searchIcon:       { fontSize: 16, color: Colors.text.muted },
   searchInput:      { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },

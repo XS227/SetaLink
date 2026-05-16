@@ -47,22 +47,13 @@ async function _fetchCredentials(
   serverId:  string,
   authToken: string,
 ): Promise<ServerCredentials> {
-  // Try real API first (comment this block out to stay on mocks during dev)
+  // Try real API first; fall through to mock on any failure or mock token
   if (authToken && !authToken.startsWith('mock-')) {
     try {
-      const res = await fetch(
-        `https://api.setalink.net/v1/servers/${encodeURIComponent(serverId)}/config`,
-        {
-          headers: {
-            Authorization: `Bearer ${authToken}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
-      if (res.ok) {
-        const data = await res.json() as Partial<ServerCredentials>;
-        if (data.uuid && data.publicKey) return data as ServerCredentials;
-      }
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { ServersAPI } = require('./api/servers.api');
+      const data: Partial<ServerCredentials> = await ServersAPI.getConfig(serverId, authToken);
+      if (data.uuid && data.publicKey) return data as ServerCredentials;
     } catch {}
   }
 

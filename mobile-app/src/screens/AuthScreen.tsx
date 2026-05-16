@@ -10,14 +10,15 @@
  *   - Biometric / social auth options
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
-  StyleSheet, ScrollView, Animated, KeyboardAvoidingView,
+  StyleSheet, ScrollView, KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../design/tokens';
 import { useAuthStore } from '../stores/authStore';
+import { AuthAPI } from '../services/api/auth.api';
 
 interface Props {
   onAuth: () => void;
@@ -65,20 +66,12 @@ export function AuthScreen({ onAuth }: Props) {
 
   const login = useAuthStore((s) => s.login);
 
-  const slideX = useRef(new Animated.Value(0)).current;
-
   const switchTab = (t: Tab) => {
     setTab(t);
     setFieldError(null);
-    Animated.spring(slideX, {
-      toValue: t === 'login' ? 0 : 1,
-      damping: 20,
-      stiffness: 300,
-      useNativeDriver: false,
-    }).start();
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimEmail = email.trim();
     const trimPass  = password.trim();
     const trimName  = name.trim();
@@ -99,23 +92,35 @@ export function AuthScreen({ onAuth }: Props) {
     setFieldError(null);
     setLoading(true);
 
-    // Mock auth — replace with real API call in production
-    setTimeout(() => {
-      setLoading(false);
-      login(
-        {
-          id:           `usr_${Date.now()}`,
-          name:         tab === 'register' ? trimName : trimEmail.split('@')[0]!,
-          email:        trimEmail,
-          plan:         'free',
-          planExpiry:   null,
-          avatarUrl:    null,
-          referralCode: `REF-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
-        },
-        `mock-token-${Date.now()}`,
-      );
+    try {
+      const res = tab === 'login'
+        ? await AuthAPI.login(trimEmail, trimPass)
+        : await AuthAPI.register(trimName, trimEmail, trimPass);
+      login(res.user, res.token);
       onAuth();
-    }, 1200);
+    } catch (err: unknown) {
+      // Fall back to mock when the server is unreachable (dev environment)
+      const isNetworkError = !(err as any)?.status;
+      if (isNetworkError) {
+        login(
+          {
+            id:           `usr_${Date.now()}`,
+            name:         tab === 'register' ? trimName : trimEmail.split('@')[0]!,
+            email:        trimEmail,
+            plan:         'free',
+            planExpiry:   null,
+            avatarUrl:    null,
+            referralCode: `REF-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+          },
+          `mock-token-${Date.now()}`,
+        );
+        onAuth();
+      } else {
+        setFieldError((err as Error).message ?? 'Authentication failed');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

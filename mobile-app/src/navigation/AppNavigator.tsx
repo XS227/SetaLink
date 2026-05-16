@@ -37,6 +37,7 @@ import { runBootSequence }   from '../services/bootService';
 import { useAuthStore }      from '../stores/authStore';
 import { useSettingsStore }  from '../stores/settingsStore';
 import { useVpnStore }       from '../stores/vpnStore';
+import { useServerStore }    from '../stores/serverStore';
 import { useAppBoot }        from '../hooks/useAppBoot';
 import { useDeepLinks }      from '../hooks/useDeepLinks';
 
@@ -76,6 +77,12 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
 
 function MainTabs() {
   useAppBoot(); // registers AppState listener for kill-switch / reconnect logic
+
+  const token        = useAuthStore((s) => s.token);
+  const fetchServers = useServerStore((s) => s.fetchServers);
+  useEffect(() => {
+    if (token) { fetchServers(token).catch(() => {}); }
+  }, [token, fetchServers]);
 
   return (
     <Tab.Navigator
