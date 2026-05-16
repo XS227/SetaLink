@@ -13,6 +13,7 @@ interface SettingsState {
   ipv6:              boolean;
   pushNotifications: boolean;
   biometricLock:     boolean;
+  hasOnboarded:      boolean;
 
   setProtocol:             (v: string) => void;
   setDnsMode:              (v: string) => void;
@@ -24,6 +25,7 @@ interface SettingsState {
   toggleIpv6:              () => void;
   togglePushNotifications: () => void;
   toggleBiometricLock:     () => void;
+  completeOnboarding:      () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -39,6 +41,7 @@ export const useSettingsStore = create<SettingsState>()(
       ipv6:              false,
       pushNotifications: true,
       biometricLock:     false,
+      hasOnboarded:      false,
 
       setProtocol: (v) => set({ protocol: v }),
       setDnsMode:  (v) => set({ dnsMode: v }),
@@ -51,6 +54,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleIpv6:              () => set((s) => ({ ipv6:              !s.ipv6 })),
       togglePushNotifications: () => set((s) => ({ pushNotifications: !s.pushNotifications })),
       toggleBiometricLock:     () => set((s) => ({ biometricLock:     !s.biometricLock })),
+      completeOnboarding:      () => set({ hasOnboarded: true }),
     }),
     {
       name:    'setalink-settings',

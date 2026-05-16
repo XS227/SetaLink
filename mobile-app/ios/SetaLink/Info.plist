@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>$(DEVELOPMENT_LANGUAGE)</string>
+
+    <key>CFBundleDisplayName</key>
+    <string>SetaLink</string>
+
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+
+    <key>CFBundleVersion</key>
+    <string>1</string>
+
+    <!-- Deep link URL scheme -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.setalink.deeplink</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>setalink</string>
+            </array>
+        </dict>
+    </array>
+
+    <!-- VPN usage descriptions (required by App Store) -->
+    <key>NSVPNUsageDescription</key>
+    <string>SetaLink uses a VPN connection to encrypt your traffic and protect your privacy.</string>
+
+    <key>NSFaceIDUsageDescription</key>
+    <string>SetaLink uses Face ID to protect your account.</string>
+
+    <!-- Network Extension entitlement companion key -->
+    <key>NEVPNEnabled</key>
+    <true/>
+
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
+    </array>
+
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <false/>
+
+    <!-- Allow arbitrary loads only in Debug via xcconfig override -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+</dict>
+</plist>

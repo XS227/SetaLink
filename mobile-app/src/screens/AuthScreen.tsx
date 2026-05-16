@@ -17,6 +17,7 @@ import {
   Platform,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Shadow } from '../design/tokens';
+import { useAuthStore } from '../stores/authStore';
 
 interface Props {
   onAuth: () => void;
@@ -60,11 +61,15 @@ export function AuthScreen({ onAuth }: Props) {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+
+  const login = useAuthStore((s) => s.login);
 
   const slideX = useRef(new Animated.Value(0)).current;
 
   const switchTab = (t: Tab) => {
     setTab(t);
+    setFieldError(null);
     Animated.spring(slideX, {
       toValue: t === 'login' ? 0 : 1,
       damping: 20,
@@ -74,9 +79,41 @@ export function AuthScreen({ onAuth }: Props) {
   };
 
   const handleSubmit = () => {
+    const trimEmail = email.trim();
+    const trimPass  = password.trim();
+    const trimName  = name.trim();
+
+    if (!trimEmail || !trimPass || (tab === 'register' && !trimName)) {
+      setFieldError('Please fill in all fields.');
+      return;
+    }
+    if (!trimEmail.includes('@')) {
+      setFieldError('Enter a valid email address.');
+      return;
+    }
+    if (trimPass.length < 6) {
+      setFieldError('Password must be at least 6 characters.');
+      return;
+    }
+
+    setFieldError(null);
     setLoading(true);
+
+    // Mock auth — replace with real API call in production
     setTimeout(() => {
       setLoading(false);
+      login(
+        {
+          id:           `usr_${Date.now()}`,
+          name:         tab === 'register' ? trimName : trimEmail.split('@')[0]!,
+          email:        trimEmail,
+          plan:         'free',
+          planExpiry:   null,
+          avatarUrl:    null,
+          referralCode: `REF-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+        },
+        `mock-token-${Date.now()}`,
+      );
       onAuth();
     }, 1200);
   };
@@ -162,6 +199,13 @@ export function AuthScreen({ onAuth }: Props) {
             </TouchableOpacity>
           )}
         </View>
+
+        {/* Inline error */}
+        {fieldError && (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{fieldError}</Text>
+          </View>
+        )}
 
         {/* CTA */}
         <TouchableOpacity
@@ -398,5 +442,19 @@ const styles = StyleSheet.create({
   },
   termsLink: {
     color: Colors.emerald[400],
+  },
+  errorBox: {
+    backgroundColor: 'rgba(255,68,68,0.10)',
+    borderWidth:     1,
+    borderColor:     'rgba(255,68,68,0.30)',
+    borderRadius:    Radius.md,
+    paddingHorizontal: Spacing[4],
+    paddingVertical:   Spacing[3],
+  },
+  errorText: {
+    fontSize:   Typography.size.sm,
+    fontFamily: Typography.family.body,
+    color:      Colors.status.disconnected,
+    textAlign:  'center',
   },
 });

@@ -20,6 +20,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
 
 import { SplashScreen }      from '../screens/SplashScreen';
+import { OnboardingScreen }  from '../screens/OnboardingScreen';
 import { AuthScreen }        from '../screens/AuthScreen';
 import { HomeScreen }        from '../screens/HomeScreen';
 import { ServersScreen }     from '../screens/ServersScreen';
@@ -33,6 +34,7 @@ import { Toast }             from '../components/Toast';
 
 import { runBootSequence }   from '../services/bootService';
 import { useAuthStore }      from '../stores/authStore';
+import { useSettingsStore }  from '../stores/settingsStore';
 import { useVpnStore }       from '../stores/vpnStore';
 import { useAppBoot }        from '../hooks/useAppBoot';
 import { useDeepLinks }      from '../hooks/useDeepLinks';
@@ -134,6 +136,12 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
     <SplashScreen
       onFinish={async () => {
         const result = await runBootSequence();
+        const { hasOnboarded } = useSettingsStore.getState();
+
+        if (!hasOnboarded) {
+          navigation.replace('Onboarding');
+          return;
+        }
 
         if (result.status === 'auth_required') {
           navigation.replace('Auth');
@@ -143,7 +151,6 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
         navigation.replace('Main');
 
         if (result.shouldAutoConnect) {
-          // Slight delay lets Main tabs mount before triggering connect
           setTimeout(() => useVpnStore.getState().connect(), 600);
         }
       }}
@@ -151,8 +158,23 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
   );
 }
 
+function OnboardingAdapter({ navigation }: ScreenAdapterProps) {
+  const { completeOnboarding } = useSettingsStore();
+  return (
+    <OnboardingScreen
+      onFinish={() => {
+        completeOnboarding();
+        if (useAuthStore.getState().isAuthenticated) {
+          navigation.replace('Main');
+        } else {
+          navigation.replace('Auth');
+        }
+      }}
+    />
+  );
+}
+
 function AuthAdapter({ navigation }: ScreenAdapterProps) {
-  // Guard: skip auth screen if already authenticated (e.g. deep-link navigation)
   if (useAuthStore.getState().isAuthenticated) {
     navigation.replace('Main');
     return null;
@@ -180,6 +202,7 @@ export function AppNavigator() {
       <DeepLinkHandler />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="Splash"      component={SplashAdapter} />
+        <Stack.Screen name="Onboarding"  component={OnboardingAdapter} />
         <Stack.Screen name="Auth"        component={AuthAdapter} />
         <Stack.Screen name="Main"        component={MainTabs} />
         <Stack.Screen
