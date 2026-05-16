@@ -1,0 +1,64 @@
+#!/bin/sh
+#
+# Copyright 2015 the original author or authors.
+# Licensed under the Apache License, Version 2.0.
+#
+# Gradle startup script for UN*X.
+# gradle-wrapper.jar is NOT committed — generate it once locally with:
+#   gradle wrapper --gradle-version 8.6 --distribution-type all
+#
+
+set -e
+
+APP_HOME=$(cd "$(dirname "$0")" && pwd -P)
+APP_NAME="Gradle"
+APP_BASE_NAME=$(basename "$0")
+DEFAULT_JVM_OPTS='"-Xmx64m" "-Xms64m"'
+
+MAX_FD=maximum
+
+warn() { echo "$*"; }
+die()  { echo; echo "$*"; echo; exit 1; }
+
+# Resolve JAVA_HOME / java command
+if [ -n "$JAVA_HOME" ]; then
+    JAVA_CMD="$JAVA_HOME/bin/java"
+    [ -x "$JAVA_CMD" ] || die "ERROR: JAVA_HOME is set to an invalid directory: $JAVA_HOME"
+else
+    JAVA_CMD="java"
+    command -v java >/dev/null 2>&1 || die "ERROR: JAVA_HOME is not set and no 'java' command found in PATH."
+fi
+
+# Increase file descriptors
+if [ "$(uname)" != "Darwin" ]; then
+    MAX_FD_LIMIT=$(ulimit -H -n 2>/dev/null)
+    [ $? -eq 0 ] && [ "$MAX_FD" = "maximum" ] && ulimit -n "$MAX_FD_LIMIT" 2>/dev/null || true
+fi
+
+# Classpath
+CLASSPATH=$APP_HOME/gradle/wrapper/gradle-wrapper.jar
+
+if [ ! -f "$CLASSPATH" ]; then
+    die "ERROR: gradle-wrapper.jar not found at $CLASSPATH
+
+Run this once to generate it:
+  gradle wrapper --gradle-version 8.6 --distribution-type all
+
+Or run: mobile-app/scripts/setup-android.sh"
+fi
+
+# Escape arguments
+save() {
+    for i do printf '%s\n' "$i" | sed "s/'/'\\\\''/g;1s/^/'/;\$s/\$/' \\\\/" ; done
+    echo " "
+}
+APP_ARGS=$(save "$@")
+
+eval set -- "$DEFAULT_JVM_OPTS" "$JAVA_OPTS" "$GRADLE_OPTS" \
+    '"-Djava.security.manager=allow"' \
+    '"-Dorg.gradle.appname='"$APP_BASE_NAME"'"' \
+    -classpath '"'"$CLASSPATH"'"' \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$APP_ARGS"
+
+exec "$JAVA_CMD" "$@"
