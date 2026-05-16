@@ -15,6 +15,7 @@ import { useVpnStore }         from '../stores/vpnStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
+import { useVpnStats }         from '../hooks/useVpnStats';
 import { formatBytes }         from '../utils/formatters';
 
 const { width } = Dimensions.get('window');
@@ -57,8 +58,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   const { greeting, name } = useGreeting();
   const timer = useSessionTimer(connectionState === 'connected', sessionStartedAt);
+  const { uploadMbps, downloadMbps, pingMs } = useVpnStats();
 
-  // Simulates traffic bytes accumulation while connected
   useSessionLifecycle();
 
   const isConnected = connectionState === 'connected';
@@ -165,20 +166,20 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         <Animated.View style={[styles.metricRow, { transform: [{ translateY: contentTranslate }] }]}>
           <MetricPill
             label="Ping"
-            value={selectedServer ? String(selectedServer.ping) : '—'}
+            value={isConnected ? String(pingMs || selectedServer?.ping || '—') : (selectedServer ? String(selectedServer.ping) : '—')}
             unit={selectedServer ? 'ms' : ''}
             accent={isConnected}
             style={{ flex: 1 }}
           />
           <MetricPill
             label="Upload"
-            value={isConnected ? '4.2' : '—'}
+            value={isConnected ? String(uploadMbps.toFixed(1)) : '—'}
             unit={isConnected ? 'MB/s' : ''}
             style={{ flex: 1 }}
           />
           <MetricPill
             label="Download"
-            value={isConnected ? '18.7' : '—'}
+            value={isConnected ? String(downloadMbps.toFixed(1)) : '—'}
             unit={isConnected ? 'MB/s' : ''}
             style={{ flex: 1 }}
           />
@@ -187,7 +188,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         {/* Network quality */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
           <GlassCard glowColor={isConnected ? Colors.emerald[400] : undefined}>
-            <NetworkQualityBar quality={isConnected ? 91 : 0} />
+            <NetworkQualityBar quality={isConnected
+              ? Math.min(100, Math.max(0, Math.round(100 - (pingMs || selectedServer?.ping || 100) * 0.4)))
+              : 0}
+            />
           </GlassCard>
         </Animated.View>
 

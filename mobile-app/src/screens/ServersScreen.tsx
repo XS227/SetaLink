@@ -10,6 +10,7 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { useServerStore, FILTER_TABS, FilterTab } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
 import { useAIStore }   from '../stores/aiStore';
+import { useAuthStore } from '../stores/authStore';
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
@@ -20,6 +21,16 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const { selectedId, filter, query, selectServer, setFilter, setQuery, filteredServers, aiPicks, servers } = useServerStore();
   const { connectionState, connect } = useVpnStore();
   const { activeMode } = useAIStore();
+  const userPlan = useAuthStore((s) => s.user?.plan ?? 'free');
+
+  const handleSelectServer = (serverId: string) => {
+    const server = servers.find((s) => s.id === serverId);
+    if (server?.premium && userPlan === 'free') {
+      (onNavigate as (tab: string) => void)('upgrade');
+      return;
+    }
+    selectServer(serverId);
+  };
 
   const picks    = aiPicks(activeMode);
   const filtered = filteredServers(activeMode).map((s) => ({ ...s, selected: s.id === selectedId }));
@@ -105,7 +116,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                 <TouchableOpacity
                   key={s.id}
                   style={[styles.smartCard, s.id === selectedId && styles.smartCardActive]}
-                  onPress={() => selectServer(s.id)}
+                  onPress={() => handleSelectServer(s.id)}
                   activeOpacity={0.75}
                 >
                   <Text style={styles.smartFlag}>{s.flag}</Text>
@@ -141,7 +152,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             </View>
           ) : (
             filtered.map((s) => (
-              <ServerRow key={s.id} server={s} onSelect={(sv) => selectServer(sv.id)} />
+              <ServerRow key={s.id} server={s} onSelect={(sv) => handleSelectServer(sv.id)} />
             ))
           )}
         </View>

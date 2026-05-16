@@ -7,3 +7,5 @@ export { useGreeting }          from './useGreeting';
 export { useSessionLifecycle }  from './useSessionLifecycle';
 export { useAppBoot }           from './useAppBoot';
 export { useDeepLinks }         from './useDeepLinks';
+export { useVpnStats }          from './useVpnStats';
+export type { VpnStatsResult }  from './useVpnStats';

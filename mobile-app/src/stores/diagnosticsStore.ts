@@ -3,14 +3,19 @@ import { snapshot as takeSnapshot, DiagnosticsSnapshot } from '../services/diagn
 
 const POLL_INTERVAL_MS = 2000;
 
+interface LiveStats { ping: number; uploadMbps: number; downloadMbps: number }
+
 interface DiagnosticsState {
   snapshot:    DiagnosticsSnapshot | null;
   isRunning:   boolean;
   elapsedSecs: number;
+  liveStats:   LiveStats | null;  // real adapter stats when VPN is connected
 
-  startMonitor: () => void;
-  stopMonitor:  () => void;
-  runOnce:      () => void;
+  startMonitor:  () => void;
+  stopMonitor:   () => void;
+  runOnce:       () => void;
+  pushLiveStats: (s: LiveStats) => void;
+  clearLiveStats: () => void;
 }
 
 let _pollTimer:    ReturnType<typeof setInterval> | null = null;
@@ -20,6 +25,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
   snapshot:    null,
   isRunning:   false,
   elapsedSecs: 0,
+  liveStats:   null,
 
   startMonitor: () => {
     if (_pollTimer) return; // already running
@@ -42,4 +48,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
   },
 
   runOnce: () => set({ snapshot: takeSnapshot() }),
+
+  pushLiveStats: (s) => set({ liveStats: s }),
+  clearLiveStats: () => set({ liveStats: null }),
 }));
