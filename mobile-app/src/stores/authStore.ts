@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { storage } from '../storage/storage';
 
 export interface AuthUser {
   id:           string;
@@ -20,7 +22,7 @@ interface AuthState {
   setUser: (partial: Partial<AuthUser>) => void;
 }
 
-// Pre-seeded for prototype continuity — replace with real auth in production
+// Pre-seeded mock user — replace with real auth response in production
 const MOCK_USER: AuthUser = {
   id:           'usr_001',
   name:         'Khabat',
@@ -31,14 +33,28 @@ const MOCK_USER: AuthUser = {
   referralCode: 'KHABAT-2026',
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
-  user:            MOCK_USER,
-  token:           'mock-token-001',
-  isAuthenticated: true,
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set) => ({
+      user:            MOCK_USER,
+      token:           'mock-token-001',
+      isAuthenticated: true,
 
-  login:  (user, token) => set({ user, token, isAuthenticated: true }),
-  logout: ()            => set({ user: null, token: null, isAuthenticated: false }),
-  setUser: (partial)    => set((prev) => ({
-    user: prev.user ? { ...prev.user, ...partial } : null,
-  })),
-}));
+      login:  (user, token) => set({ user, token, isAuthenticated: true }),
+      logout: ()            => set({ user: null, token: null, isAuthenticated: false }),
+      setUser: (partial)    => set((prev) => ({
+        user: prev.user ? { ...prev.user, ...partial } : null,
+      })),
+    }),
+    {
+      name:    'setalink-auth',
+      storage: createJSONStorage(() => storage),
+      // Only persist identity fields — never persist action functions
+      partialize: (s) => ({
+        user:            s.user,
+        token:           s.token,
+        isAuthenticated: s.isAuthenticated,
+      }),
+    }
+  )
+);

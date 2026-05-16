@@ -1,86 +1,94 @@
-/**
- * Home Screen — Main connection hub
- *
- * Layout (top to bottom):
- *   Status bar area
- *   Header: greeting + notification bell
- *   Connection status badge
- *   Large connect button (center)
- *   Server info pill
- *   Metric row: ping, upload, download
- *   Network quality bar
- *   AI optimize button
- *   Traffic stats card
- *   Bottom nav
- */
-
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Dimensions, Animated,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { ConnectButton } from '../components/ConnectButton';
-import { StatusBadge } from '../components/StatusBadge';
-import { MetricPill } from '../components/MetricPill';
+import { StatusBadge }   from '../components/StatusBadge';
+import { MetricPill }    from '../components/MetricPill';
 import { NetworkQualityBar } from '../components/NetworkQualityBar';
-import { GlassCard } from '../components/GlassCard';
+import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
+
+import { useVpnStore }         from '../stores/vpnStore';
+import { useSessionTimer }     from '../hooks/useSessionTimer';
+import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
+import { useGreeting }         from '../hooks/useGreeting';
+import { formatBytes }         from '../utils/formatters';
 
 const { width } = Dimensions.get('window');
 
-type ConnState = 'idle' | 'connecting' | 'connected' | 'disconnecting';
-const STATUS_MAP: Record<ConnState, 'idle' | 'connecting' | 'connected' | 'disconnected'> = {
+// StatusBadge status mapping
+const STATUS_MAP = {
   idle:          'idle',
   connecting:    'connecting',
   connected:     'connected',
   disconnecting: 'connecting',
+  error:         'disconnected',
+  reconnecting:  'connecting',
+} as const;
+
+// ConnectButton accepts only 4 states — map our 6 machine states down
+const BUTTON_STATE_MAP: Record<string, 'idle' | 'connecting' | 'connected' | 'disconnecting'> = {
+  idle:          'idle',
+  connecting:    'connecting',
+  connected:     'connected',
+  disconnecting: 'disconnecting',
+  error:         'idle',
+  reconnecting:  'connecting',
 };
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
-  activeTab: NavTab;
+  activeTab:  NavTab;
 }
 
 export function HomeScreen({ onNavigate, activeTab }: Props) {
-  const [connState, setConnState] = useState<ConnState>('idle');
-  const headerOpacity = useRef(new Animated.Value(0)).current;
+  const {
+    connectionState,
+    selectedServer,
+    sessionStartedAt,
+    sessionBytes,
+    error,
+    connect,
+    disconnect,
+  } = useVpnStore();
+
+  const { greeting, name } = useGreeting();
+  const timer = useSessionTimer(connectionState === 'connected', sessionStartedAt);
+
+  // Simulates traffic bytes accumulation while connected
+  useSessionLifecycle();
+
+  const isConnected = connectionState === 'connected';
+
+  const headerOpacity    = useRef(new Animated.Value(0)).current;
   const contentTranslate = useRef(new Animated.Value(20)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(headerOpacity, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
+        toValue: 1, duration: 500, useNativeDriver: true,
       }),
       Animated.spring(contentTranslate, {
-        toValue: 0,
-        damping: 20,
-        stiffness: 200,
-        useNativeDriver: true,
+        toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true,
       }),
     ]).start();
   }, []);
 
   const handleConnect = () => {
-    if (connState === 'idle') {
-      setConnState('connecting');
-      setTimeout(() => setConnState('connected'), 1800);
-    } else if (connState === 'connected') {
-      setConnState('disconnecting');
-      setTimeout(() => setConnState('idle'), 1000);
-    }
+    if (connectionState === 'idle' || connectionState === 'error') connect();
+    else if (connectionState === 'connected') disconnect();
   };
 
-  const isConnected = connState === 'connected';
+  const protocol = selectedServer
+    ? `${selectedServer.protocol} · ${selectedServer.transport}`
+    : 'VLESS · Reality';
 
   return (
     <View style={styles.screen}>
-      {/* Ambient glow — visible when connected */}
-      {isConnected && (
-        <View style={styles.ambientGlow} pointerEvents="none" />
-      )}
+      {isConnected && <View style={styles.ambientGlow} pointerEvents="none" />}
 
       <ScrollView
         style={styles.scroll}
@@ -90,8 +98,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         {/* Header */}
         <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
           <View>
-            <Text style={styles.greeting}>Good evening</Text>
-            <Text style={styles.username}>Khabat ↗</Text>
+            <Text style={styles.greeting}>{greeting}</Text>
+            <Text style={styles.username}>{name} ↗</Text>
           </View>
           <TouchableOpacity style={styles.bellBtn}>
             <Text style={styles.bellIcon}>◌</Text>
@@ -99,16 +107,24 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Status */}
+        {/* Status row */}
         <Animated.View style={[
           styles.statusRow,
           { opacity: headerOpacity, transform: [{ translateY: contentTranslate }] },
         ]}>
-          <StatusBadge status={STATUS_MAP[connState]} />
+          <StatusBadge status={STATUS_MAP[connectionState]} />
           {isConnected && (
             <View style={styles.protocolBadge}>
-              <Text style={styles.protocolText}>VLESS · Reality</Text>
+              <Text style={styles.protocolText}>{protocol}</Text>
             </View>
+          )}
+          {error && (
+            <TouchableOpacity
+              style={styles.errorBadge}
+              onPress={() => useVpnStore.getState().clearError()}
+            >
+              <Text style={styles.errorText}>{error} · Tap to retry</Text>
+            </TouchableOpacity>
           )}
         </Animated.View>
 
@@ -117,12 +133,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           styles.connectArea,
           { transform: [{ translateY: contentTranslate }] },
         ]}>
-          <ConnectButton state={connState} onPress={handleConnect} />
-
-          {/* Session timer */}
-          {isConnected && (
-            <Text style={styles.timer}>02:34:17</Text>
-          )}
+          <ConnectButton state={BUTTON_STATE_MAP[connectionState]} onPress={handleConnect} />
+          {isConnected && <Text style={styles.timer}>{timer}</Text>}
         </Animated.View>
 
         {/* Server pill */}
@@ -132,28 +144,29 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             onPress={() => onNavigate('servers')}
             activeOpacity={0.75}
           >
-            <Text style={styles.serverFlag}>🇩🇪</Text>
+            <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
             <View style={styles.serverInfo}>
-              <Text style={styles.serverName}>Frankfurt, Germany</Text>
-              <Text style={styles.serverSub}>CDN Edge · Premium</Text>
+              <Text style={styles.serverName}>
+                {selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : 'Select server'}
+              </Text>
+              <Text style={styles.serverSub}>
+                {selectedServer ? `${selectedServer.protocol} · ${selectedServer.premium ? 'Premium' : 'Standard'}` : 'Tap to choose'}
+              </Text>
             </View>
             <View style={styles.serverMeta}>
               <View style={[styles.pingDot, { backgroundColor: Colors.emerald[400] }]} />
-              <Text style={styles.serverPing}>24ms</Text>
+              <Text style={styles.serverPing}>{selectedServer?.ping ?? '—'}ms</Text>
             </View>
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
         </Animated.View>
 
         {/* Metric row */}
-        <Animated.View style={[
-          styles.metricRow,
-          { transform: [{ translateY: contentTranslate }] },
-        ]}>
+        <Animated.View style={[styles.metricRow, { transform: [{ translateY: contentTranslate }] }]}>
           <MetricPill
             label="Ping"
-            value="24"
-            unit="ms"
+            value={selectedServer ? String(selectedServer.ping) : '—'}
+            unit={selectedServer ? 'ms' : ''}
             accent={isConnected}
             style={{ flex: 1 }}
           />
@@ -190,9 +203,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <View>
                 <Text style={styles.aiBtnTitle}>AI Optimize</Text>
                 <Text style={styles.aiBtnSub}>
-                  {isConnected
-                    ? 'Route optimized · Stealth active'
-                    : 'Will optimize on connect'}
+                  {isConnected ? 'Route optimized · Stealth active' : 'Will optimize on connect'}
                 </Text>
               </View>
             </View>
@@ -202,26 +213,26 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Traffic stats */}
+        {/* Traffic stats (connected only) */}
         {isConnected && (
           <GlassCard style={styles.trafficCard}>
             <Text style={styles.cardLabel}>Session Traffic</Text>
             <View style={styles.trafficRow}>
               <View style={styles.trafficItem}>
                 <Text style={styles.trafficIcon}>↑</Text>
-                <Text style={styles.trafficValue}>1.2 GB</Text>
+                <Text style={styles.trafficValue}>{formatBytes(sessionBytes.sent)}</Text>
                 <Text style={styles.trafficSub}>Sent</Text>
               </View>
               <View style={styles.trafficDivider} />
               <View style={styles.trafficItem}>
                 <Text style={[styles.trafficIcon, { color: Colors.blue[400] }]}>↓</Text>
-                <Text style={styles.trafficValue}>4.8 GB</Text>
+                <Text style={styles.trafficValue}>{formatBytes(sessionBytes.received)}</Text>
                 <Text style={styles.trafficSub}>Received</Text>
               </View>
               <View style={styles.trafficDivider} />
               <View style={styles.trafficItem}>
                 <Text style={styles.trafficIcon}>⬡</Text>
-                <Text style={styles.trafficValue}>DE·01</Text>
+                <Text style={styles.trafficValue}>{selectedServer?.id?.toUpperCase() ?? '—'}</Text>
                 <Text style={styles.trafficSub}>Node</Text>
               </View>
             </View>
@@ -237,247 +248,50 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: Colors.bg.base,
+  screen:       { flex: 1, backgroundColor: Colors.bg.base },
+  ambientGlow:  {
+    position: 'absolute', width, height: width, borderRadius: width / 2,
+    backgroundColor: Colors.emerald[900], opacity: 0.12, top: -width * 0.3, left: 0,
   },
-  ambientGlow: {
-    position: 'absolute',
-    width: width,
-    height: width,
-    borderRadius: width / 2,
-    backgroundColor: Colors.emerald[900],
-    opacity: 0.12,
-    top: -width * 0.3,
-    left: 0,
-  },
-  scroll: {
-    flex: 1,
-  },
-  content: {
-    paddingTop: Layout.statusBarHeight,
-    paddingHorizontal: Layout.screenPadding,
-    gap: Spacing[4],
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingTop: Spacing[2],
-  },
-  greeting: {
-    fontSize: Typography.size.sm,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    letterSpacing: Typography.tracking.wide,
-  },
-  username: {
-    fontSize: Typography.size.xl,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-    letterSpacing: Typography.tracking.tight,
-  },
-  bellBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.bg.surface,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bellIcon: {
-    fontSize: 18,
-    color: Colors.text.secondary,
-  },
-  notifDot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: Colors.emerald[400],
-    borderWidth: 1.5,
-    borderColor: Colors.bg.base,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[3],
-  },
-  protocolBadge: {
-    backgroundColor: 'rgba(0,232,122,0.1)',
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border.glow,
-    paddingHorizontal: Spacing[3],
-    paddingVertical: 4,
-  },
-  protocolText: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.mono,
-    color: Colors.emerald[400],
-    letterSpacing: 0.5,
-  },
-  connectArea: {
-    alignItems: 'center',
-    paddingVertical: Spacing[4],
-    gap: Spacing[3],
-  },
-  timer: {
-    fontSize: Typography.size.md,
-    fontFamily: Typography.family.mono,
-    color: Colors.text.secondary,
-    letterSpacing: 2,
-  },
-  serverPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.bg.surface,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: Colors.border.default,
-    padding: Spacing[4],
-    gap: Spacing[3],
-  },
-  serverPillActive: {
-    borderColor: Colors.border.glow,
-    backgroundColor: 'rgba(0,232,122,0.04)',
-  },
-  serverFlag: {
-    fontSize: 28,
-  },
-  serverInfo: {
-    flex: 1,
-  },
-  serverName: {
-    fontSize: Typography.size.base,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  serverSub: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  serverMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  pingDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  serverPing: {
-    fontSize: Typography.size.sm,
-    fontFamily: Typography.family.mono,
-    color: Colors.emerald[400],
-  },
-  chevron: {
-    fontSize: 20,
-    color: Colors.text.muted,
-    marginLeft: -4,
-  },
-  metricRow: {
-    flexDirection: 'row',
-    gap: Spacing[3],
-  },
-  aiBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.bg.surface,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(0,232,122,0.15)',
-    padding: Spacing[4],
-    ...Shadow.card,
-  },
-  aiBtnLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[3],
-  },
-  aiOrb: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,232,122,0.12)',
-    borderWidth: 1,
-    borderColor: Colors.border.glow,
-    shadowColor: Colors.emerald[400],
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  aiBtnTitle: {
-    fontSize: Typography.size.base,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  aiBtnSub: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    marginTop: 2,
-  },
-  aiArrow: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.bg.elevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  aiArrowText: {
-    fontSize: 18,
-    color: Colors.emerald[400],
-  },
-  trafficCard: {
-    gap: Spacing[3],
-  },
-  cardLabel: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.label,
-    color: Colors.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  trafficRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  trafficItem: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 4,
-  },
-  trafficIcon: {
-    fontSize: Typography.size.xl,
-    color: Colors.emerald[400],
-    fontFamily: Typography.family.heading,
-  },
-  trafficValue: {
-    fontSize: Typography.size.lg,
-    fontFamily: Typography.family.heading,
-    color: Colors.text.primary,
-  },
-  trafficSub: {
-    fontSize: Typography.size.xs,
-    fontFamily: Typography.family.body,
-    color: Colors.text.muted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  trafficDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: Colors.border.subtle,
-  },
+  scroll:       { flex: 1 },
+  content:      { paddingTop: Layout.statusBarHeight, paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
+  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
+  greeting:     { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
+  username:     { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
+  bellBtn:      { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
+  bellIcon:     { fontSize: 18, color: Colors.text.secondary },
+  notifDot:     { position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.emerald[400], borderWidth: 1.5, borderColor: Colors.bg.base },
+  statusRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flexWrap: 'wrap' },
+  protocolBadge:{ backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  protocolText: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5 },
+  errorBadge:   { backgroundColor: 'rgba(255,80,80,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  errorText:    { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.status.disconnected },
+  connectArea:  { alignItems: 'center', paddingVertical: Spacing[4], gap: Spacing[3] },
+  timer:        { fontSize: Typography.size.md, fontFamily: Typography.family.mono, color: Colors.text.secondary, letterSpacing: 2 },
+  serverPill:   { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[3] },
+  serverPillActive: { borderColor: Colors.border.glow, backgroundColor: 'rgba(0,232,122,0.04)' },
+  serverFlag:   { fontSize: 28 },
+  serverInfo:   { flex: 1 },
+  serverName:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  serverSub:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  serverMeta:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pingDot:      { width: 6, height: 6, borderRadius: 3 },
+  serverPing:   { fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.emerald[400] },
+  chevron:      { fontSize: 20, color: Colors.text.muted, marginLeft: -4 },
+  metricRow:    { flexDirection: 'row', gap: Spacing[3] },
+  aiBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(0,232,122,0.15)', padding: Spacing[4], ...Shadow.card },
+  aiBtnLeft:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  aiOrb:        { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,232,122,0.12)', borderWidth: 1, borderColor: Colors.border.glow, shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
+  aiBtnTitle:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  aiBtnSub:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  aiArrow:      { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
+  aiArrowText:  { fontSize: 18, color: Colors.emerald[400] },
+  trafficCard:  { gap: Spacing[3] },
+  cardLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 },
+  trafficRow:   { flexDirection: 'row', alignItems: 'center' },
+  trafficItem:  { flex: 1, alignItems: 'center', gap: 4 },
+  trafficIcon:  { fontSize: Typography.size.xl, color: Colors.emerald[400], fontFamily: Typography.family.heading },
+  trafficValue: { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  trafficSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  trafficDivider:{ width: 1, height: 40, backgroundColor: Colors.border.subtle },
 });
