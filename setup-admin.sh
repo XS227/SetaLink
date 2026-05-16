@@ -53,8 +53,8 @@ log "preflight"
 require_cmd nginx
 require_cmd visudo
 systemctl is-active --quiet nginx || die "nginx is not running"
-systemctl is-active --quiet php8.1-fpm || die "php8.1-fpm is not running"
-[ -S /run/php/php8.1-fpm.sock ] || die "expected /run/php/php8.1-fpm.sock not found"
+systemctl is-active --quiet php8.3-fpm || die "php8.3-fpm is not running"
+[ -S /run/php/php8.3-fpm.sock ] || die "expected /run/php/php8.3-fpm.sock not found"
 
 # ---------------------------------------------------------------------------
 # 2. apache2-utils (provides htpasswd)
@@ -197,7 +197,7 @@ location $ADMIN_PATH {
     location ~ ^${ADMIN_PATH}([^/]+\\.php)$ {
         # Safety: re-apply alias inside the regex location
         alias /var/www/setalink/admin/\$1;
-        fastcgi_pass            unix:/run/php/php8.1-fpm.sock;
+        fastcgi_pass            unix:/run/php/php8.3-fpm.sock;
         fastcgi_index           index.php;
         fastcgi_param           SCRIPT_FILENAME  \$request_filename;
         fastcgi_param           SCRIPT_NAME      \$fastcgi_script_name;

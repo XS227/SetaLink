@@ -21,16 +21,18 @@ export interface VpnServer {
 interface SessionBytes { sent: number; received: number }
 
 interface VpnState {
-  connectionState:   ConnectionState;
-  selectedServer:    VpnServer | null;
-  sessionStartedAt:  number | null;   // unix ms
-  sessionBytes:      SessionBytes;
-  selectedProtocol:  string;
-  error:             string | null;
-  reconnectAttempts: number;
+  connectionState:    ConnectionState;
+  selectedServer:     VpnServer | null;
+  sessionStartedAt:   number | null;   // unix ms
+  sessionBytes:       SessionBytes;
+  selectedProtocol:   string;
+  error:              string | null;
+  reconnectAttempts:  number;
+  isSwitchingServer:  boolean;
 
   connect:            () => void;
   disconnect:         () => void;
+  switchServer:       () => void;
   setSelectedServer:  (server: VpnServer) => void;
   setSessionBytes:    (b: SessionBytes) => void;
   addSessionBytes:    (sent: number, received: number) => void;
@@ -91,7 +93,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     onDisconnected: () => {
       const state = get();
 
-      // Record session before resetting
+      // Always record the completed session, even during server switches
       if (state.sessionStartedAt && state.selectedServer) {
         const endedAt  = Date.now();
         const duration = Math.max(1, Math.floor((endedAt - state.sessionStartedAt) / 1000));
@@ -114,6 +116,22 @@ export const useVpnStore = create<VpnState>((set, get) => {
       }
 
       set({ sessionStartedAt: null, sessionBytes: { sent: 0, received: 0 }, reconnectAttempts: 0 });
+
+      // Server switch: skip the disconnect toast and auto-reconnect to the new server
+      if (get().isSwitchingServer) {
+        set({ isSwitchingServer: false });
+        const nextServer = get().selectedServer;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useToastStore } = require('./toastStore');
+          useToastStore.getState().show(
+            `Switching to ${nextServer?.city ?? 'server'}…`,
+            'info'
+          );
+        } catch {}
+        setTimeout(() => machine.send('CONNECT'), 350);
+        return;
+      }
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -172,9 +190,17 @@ export const useVpnStore = create<VpnState>((set, get) => {
     selectedProtocol:  'VLESS+Reality',
     error:             null,
     reconnectAttempts: 0,
+    isSwitchingServer: false,
 
     connect:    () => machine.send('CONNECT'),
     disconnect: () => machine.send('DISCONNECT'),
+
+    switchServer: () => {
+      const { connectionState: cs } = get();
+      if (cs !== 'connected') return;
+      set({ isSwitchingServer: true });
+      machine.send('DISCONNECT');
+    },
 
     setSelectedServer: (server) => set({ selectedServer: server }),
 

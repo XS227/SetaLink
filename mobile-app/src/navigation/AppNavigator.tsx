@@ -14,7 +14,7 @@
  * translate React Navigation props to that interface with no screen changes.
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
@@ -177,15 +177,14 @@ function OnboardingAdapter({ navigation }: ScreenAdapterProps) {
 }
 
 function AuthAdapter({ navigation }: ScreenAdapterProps) {
-  if (useAuthStore.getState().isAuthenticated) {
-    navigation.replace('Main');
-    return null;
-  }
-  return (
-    <AuthScreen
-      onAuth={() => navigation.replace('Main')}
-    />
-  );
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+  useEffect(() => {
+    if (isAuthenticated) navigation.replace('Main');
+  }, [isAuthenticated]);
+
+  if (isAuthenticated) return null;
+  return <AuthScreen onAuth={() => navigation.replace('Main')} />;
 }
 
 // ── Deep link handler — must be inside NavigationContainer ───────────────────
@@ -209,14 +208,20 @@ export function AppNavigator() {
         <Stack.Screen name="Main"        component={MainTabs} />
         <Stack.Screen
           name="Settings"
-          component={SettingsScreen as any}
           options={{ animation: 'slide_from_right' }}
-        />
+        >
+          {({ navigation }) => (
+            <SettingsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
         <Stack.Screen
           name="Diagnostics"
-          component={DiagnosticsScreen as any}
           options={{ animation: 'slide_from_right' }}
-        />
+        >
+          {({ navigation }) => (
+            <DiagnosticsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
         <Stack.Screen
           name="Upgrade"
           options={{ animation: 'slide_from_bottom', presentation: 'modal' }}

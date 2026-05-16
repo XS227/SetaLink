@@ -4,7 +4,7 @@
 #
 # Env overrides (skip prompts):
 #   SETALINK_HOST=vps.example.com   # public hostname or IP clients connect to
-#   SETALINK_PORT=8443              # Xray listen port (default 8443)
+#   SETALINK_PORT=8443             # Xray listen port (default 8443)
 #   SETALINK_SNI=www.cloudflare.com # REALITY masquerade target (TLS 1.3 + X25519)
 #   SETALINK_NONINTERACTIVE=1       # accept all defaults, no prompts
 

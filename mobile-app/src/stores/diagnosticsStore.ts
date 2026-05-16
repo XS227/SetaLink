@@ -1,5 +1,15 @@
 import { create } from 'zustand';
-import { snapshot as takeSnapshot, DiagnosticsSnapshot } from '../services/diagnosticsEngine';
+import { snapshot as takeSnapshot, DiagnosticsSnapshot, ServerHint } from '../services/diagnosticsEngine';
+
+function activeServerHint(): ServerHint | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useVpnStore } = require('../stores/vpnStore');
+    const s = useVpnStore.getState().selectedServer;
+    if (!s) return undefined;
+    return { id: s.id, ping: s.ping, protocol: s.protocol, city: s.city, country: s.country };
+  } catch { return undefined; }
+}
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -30,10 +40,10 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
   startMonitor: () => {
     if (_pollTimer) return; // already running
 
-    set({ isRunning: true, elapsedSecs: 0, snapshot: takeSnapshot() });
+    set({ isRunning: true, elapsedSecs: 0, snapshot: takeSnapshot(activeServerHint()) });
 
     _pollTimer = setInterval(() => {
-      set({ snapshot: takeSnapshot() });
+      set({ snapshot: takeSnapshot(activeServerHint()) });
     }, POLL_INTERVAL_MS);
 
     _elapsedTimer = setInterval(() => {
@@ -47,7 +57,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
     set({ isRunning: false });
   },
 
-  runOnce: () => set({ snapshot: takeSnapshot() }),
+  runOnce: () => set({ snapshot: takeSnapshot(activeServerHint()) }),
 
   pushLiveStats: (s) => set({ liveStats: s }),
   clearLiveStats: () => set({ liveStats: null }),

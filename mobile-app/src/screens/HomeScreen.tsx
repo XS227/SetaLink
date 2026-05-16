@@ -52,6 +52,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     sessionStartedAt,
     sessionBytes,
     error,
+    reconnectAttempts,
     connect,
     disconnect,
   } = useVpnStore();
@@ -62,7 +63,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   useSessionLifecycle();
 
-  const isConnected = connectionState === 'connected';
+  const isConnected     = connectionState === 'connected';
+  const isTransitioning = connectionState === 'connecting'
+    || connectionState === 'disconnecting'
+    || connectionState === 'reconnecting';
 
   const headerOpacity    = useRef(new Animated.Value(0)).current;
   const contentTranslate = useRef(new Animated.Value(20)).current;
@@ -119,7 +123,14 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.protocolText}>{protocol}</Text>
             </View>
           )}
-          {error && (
+          {connectionState === 'reconnecting' && (
+            <View style={styles.reconnectBadge}>
+              <Text style={styles.reconnectText}>
+                Reconnecting · {reconnectAttempts}/3
+              </Text>
+            </View>
+          )}
+          {error && !isTransitioning && (
             <TouchableOpacity
               style={styles.errorBadge}
               onPress={() => useVpnStore.getState().clearError()}
@@ -134,7 +145,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           styles.connectArea,
           { transform: [{ translateY: contentTranslate }] },
         ]}>
-          <ConnectButton state={BUTTON_STATE_MAP[connectionState]} onPress={handleConnect} />
+          <ConnectButton
+            state={BUTTON_STATE_MAP[connectionState]}
+            onPress={handleConnect}
+            disabled={isTransitioning}
+          />
           {isConnected && <Text style={styles.timer}>{timer}</Text>}
         </Animated.View>
 
@@ -268,8 +283,10 @@ const styles = StyleSheet.create({
   statusRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flexWrap: 'wrap' },
   protocolBadge:{ backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 4 },
   protocolText: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5 },
-  errorBadge:   { backgroundColor: 'rgba(255,80,80,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  errorText:    { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.status.disconnected },
+  errorBadge:     { backgroundColor: 'rgba(255,80,80,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  errorText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.status.disconnected },
+  reconnectBadge: { backgroundColor: 'rgba(255,184,0,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.35)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  reconnectText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: '#FFB800', letterSpacing: 0.3 },
   connectArea:  { alignItems: 'center', paddingVertical: Spacing[4], gap: Spacing[3] },
   timer:        { fontSize: Typography.size.md, fontFamily: Typography.family.mono, color: Colors.text.secondary, letterSpacing: 2 },
   serverPill:   { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[3] },

@@ -50,10 +50,20 @@ UUID="$(uuidgen)"
 SHORTID="$(openssl rand -hex 8)"
 CREATED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
+# Compute expiry date for time-based packages (7days/30days).
+EXPIRY_DAYS="$(package_to_expiry_days "$PACKAGE")"
+if [ "$EXPIRY_DAYS" -gt 0 ]; then
+    EXPIRES_AT="$(date -u -d "+${EXPIRY_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
+    EXPIRES_ARG="$EXPIRES_AT"
+else
+    EXPIRES_ARG="null"
+fi
+
 # Append to users.json atomically.
 TMP="$(mktemp /tmp/setalink-users.XXXXXX.json)"
 jq --arg n "$NAME" --arg u "$UUID" --arg s "$SHORTID" --arg c "$CREATED" \
    --arg p "$PACKAGE" --argjson q "$QUOTA_BYTES" \
+   --argjson expires "$([ "$EXPIRES_ARG" = "null" ] && echo 'null' || printf '"%s"' "$EXPIRES_ARG")" \
     '.users += [{
         name:         $n,
         uuid:         $u,
@@ -63,7 +73,8 @@ jq --arg n "$NAME" --arg u "$UUID" --arg s "$SHORTID" --arg c "$CREATED" \
         quota_bytes:  $q,
         used_bytes:   0,
         disabled:     false,
-        last_seen_at: null
+        last_seen_at: null,
+        expires_at:   $expires
      }]' \
     "$SETALINK_USERS_DB" > "$TMP"
 install -m 0600 -o root -g root "$TMP" "$SETALINK_USERS_DB"

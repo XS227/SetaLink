@@ -30,6 +30,107 @@ _check_name() {
         { echo "invalid username" >&2; exit 2; }
 }
 
+# Format bytes as human-readable string (e.g. 2.3GB, 500MB).
+_fmt_bytes() {
+    awk -v b="$1" 'BEGIN{
+        if      (b>=1073741824) printf "%.1fGB", b/1073741824
+        else if (b>=1048576)    printf "%.1fMB", b/1048576
+        else if (b>=1024)       printf "%.1fKB", b/1024
+        else                    printf "%dB",    b
+    }'
+}
+
+# Generate a full Xray client JSON config and write to
+# $SETALINK_USERS_DIR/<name>/full.json (mode 0600).
+# Args: <name> <uuid> <shortId>
+_gen_full_json() {
+    local _name="$1" _uuid="$2" _sid="$3"
+    # shellcheck disable=SC1090
+    . "$SETALINK_ENV"
+    local _dir="$SETALINK_USERS_DIR/$_name"
+    local _port="${SETALINK_CLIENT_PORT:-$SETALINK_PORT}"
+
+    local _used _quota _used_fmt _quota_fmt _remarks
+    _used="$(jq -r --arg n "$_name" '.users[] | select(.name == $n) | (.used_bytes  // 0)' "$SETALINK_USERS_DB")"
+    _quota="$(jq -r --arg n "$_name" '.users[] | select(.name == $n) | (.quota_bytes // 0)' "$SETALINK_USERS_DB")"
+    _used_fmt="$(_fmt_bytes "${_used:-0}")"
+    _quota_fmt="$([ "${_quota:-0}" = "0" ] && echo "∞" || _fmt_bytes "$_quota")"
+    _remarks="📊 $_name - $_used_fmt/$_quota_fmt"
+
+    mkdir -p "$_dir"
+    chmod 0700 "$_dir"
+    jq -n \
+        --arg host    "$SETALINK_HOST" \
+        --arg port    "$_port" \
+        --arg sni     "$SETALINK_SNI" \
+        --arg pubkey  "$SETALINK_PUBLIC_KEY" \
+        --arg uuid    "$_uuid" \
+        --arg sid     "$_sid" \
+        --arg remarks "$_remarks" \
+        '{
+          remarks: $remarks,
+          log: { loglevel: "warning" },
+          dns: {
+            servers: ["1.1.1.1", "8.8.8.8"]
+          },
+          fakedns: [
+            { ipPool: "198.20.0.0/15", poolSize: 128 },
+            { ipPool: "fc00::/64",     poolSize: 128  }
+          ],
+          inbounds: [{
+            listen:   "127.0.0.1",
+            port:     1080,
+            protocol: "socks",
+            tag:      "socks",
+            settings: { auth: "noauth", udp: true },
+            sniffing: {
+              enabled:     true,
+              destOverride: ["http","tls","quic"],
+              routeOnly:   true
+            }
+          }],
+          outbounds: [
+            {
+              tag:      "proxy",
+              protocol: "vless",
+              settings: {
+                vnext: [{
+                  address: $host,
+                  port:    ($port | tonumber),
+                  users: [{
+                    id:         $uuid,
+                    flow:       "xtls-rprx-vision",
+                    encryption: "none"
+                  }]
+                }]
+              },
+              streamSettings: {
+                network:  "tcp",
+                security: "reality",
+                realitySettings: {
+                  show:        false,
+                  fingerprint: "chrome",
+                  serverName:  $sni,
+                  publicKey:   $pubkey,
+                  shortId:     $sid,
+                  spiderX:     "/"
+                }
+              }
+            },
+            { tag: "DIRECT", protocol: "freedom"   },
+            { tag: "BLOCK",  protocol: "blackhole"  },
+            { tag: "direct", protocol: "freedom"    },
+            { tag: "block",  protocol: "blackhole"  }
+          ],
+          routing: {
+            domainStrategy: "AsIs",
+            rules: []
+          }
+        }' > "$_dir/full.json.new"
+    install -m 0600 -o root -g root "$_dir/full.json.new" "$_dir/full.json"
+    rm -f "$_dir/full.json.new"
+}
+
 case "$ACTION" in
     status)
         # Server-status JSON. Read-only; no setuid scripts called.
@@ -66,24 +167,29 @@ case "$ACTION" in
         ;;
 
     list)
-        # users.json + computed totals + per-package usage. Read-only.
-        # Includes Phase 3 fields: package_name, quota_bytes, used_bytes, last_seen_at.
-        jq --arg dir "$SETALINK_USERS_DIR" --argjson max "$MAX_USERS" '
+        # users.json + computed totals + per-user fields including expiry.
+        jq --arg dir "$SETALINK_USERS_DIR" --argjson max "$MAX_USERS" \
+           --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '
             {
                 max: $max,
                 total: (.users | length),
                 active: ([.users[] | select((.disabled // false) != true)] | length),
                 disabled: ([.users[] | select((.disabled // false) == true)] | length),
                 users: (.users | map({
-                    name:         .name,
-                    uuid:         .uuid,
-                    shortId:      .shortId,
-                    created:      .created,
-                    disabled:     ((.disabled // false) == true),
-                    package_name: (.package_name // "unlimited"),
-                    quota_bytes:  (.quota_bytes  // 0),
-                    used_bytes:   (.used_bytes   // 0),
-                    last_seen_at: (.last_seen_at // null),
+                    name:            .name,
+                    uuid:            .uuid,
+                    shortId:         .shortId,
+                    created:         .created,
+                    disabled:        ((.disabled // false) == true),
+                    disabled_reason: (.disabled_reason // null),
+                    package_name:    (.package_name // "unlimited"),
+                    quota_bytes:     (.quota_bytes  // 0),
+                    used_bytes:      (.used_bytes     // 0),
+                    upload_bytes:    (.upload_bytes   // 0),
+                    download_bytes:  (.download_bytes // 0),
+                    last_seen_at:    (.last_seen_at // null),
+                    expires_at:      (.expires_at   // null),
+                    is_expired:      ((.expires_at != null) and (.expires_at <= $now)),
                     remaining_bytes: (
                         if ((.quota_bytes // 0) > 0)
                         then (((.quota_bytes // 0) - (.used_bytes // 0)) | (if . < 0 then 0 else . end))
@@ -102,12 +208,15 @@ case "$ACTION" in
     add)
         _check_name "${1:-}"
         ADD_PKG="${2:-unlimited}"
-        # Reject anything that isn't a known package name. add-user.sh re-checks too.
         case "$ADD_PKG" in
-            5GB|10GB|15GB|unlimited) ;;
+            7days|30days|unlimited|5GB|10GB|15GB) ;;
             *) echo "invalid package: $ADD_PKG" >&2; exit 2 ;;
         esac
         "$REPO_DIR/add-user.sh" "$1" --package="$ADD_PKG"
+        # Generate full client JSON for the newly created user.
+        _add_uuid="$(jq -r --arg n "$1" '.users[] | select(.name == $n) | .uuid'    "$SETALINK_USERS_DB")"
+        _add_sid="$( jq -r --arg n "$1" '.users[] | select(.name == $n) | .shortId' "$SETALINK_USERS_DB")"
+        _gen_full_json "$1" "$_add_uuid" "$_add_sid"
         ;;
 
     remove|delete)
@@ -183,6 +292,23 @@ case "$ACTION" in
         chmod 0600       "$RL_DIR/link.txt" "$RL_DIR/qr.png"
         umask 022
         ok "regenerated link + qr for '$1'"
+        _gen_full_json "$1" "$RL_UUID" "$RL_SID"
+        ;;
+
+    gen-full-json)
+        _check_name "${1:-}"
+        GFJ_UUID="$(jq -r --arg n "$1" '.users[] | select(.name == $n) | .uuid'    "$SETALINK_USERS_DB")"
+        GFJ_SID="$( jq -r --arg n "$1" '.users[] | select(.name == $n) | .shortId' "$SETALINK_USERS_DB")"
+        [ -n "$GFJ_UUID" ] && [ "$GFJ_UUID" != "null" ] || { echo "user '$1' not found" >&2; exit 3; }
+        _gen_full_json "$1" "$GFJ_UUID" "$GFJ_SID"
+        ok "generated full.json for '$1'"
+        ;;
+
+    read-full-json)
+        _check_name "${1:-}"
+        F="$SETALINK_USERS_DIR/$1/full.json"
+        [ -r "$F" ] || { echo "no full.json for user '$1'" >&2; exit 3; }
+        cat "$F"
         ;;
 
     read-link)
@@ -203,9 +329,145 @@ case "$ACTION" in
         cat "$F"
         ;;
 
+    regen-all-full-json)
+        # Regenerate full.json for every user in users.json.
+        mapfile -t _all_names < <(jq -r '.users[].name' "$SETALINK_USERS_DB")
+        for _u in "${_all_names[@]}"; do
+            _u_uuid="$(jq -r --arg n "$_u" '.users[] | select(.name == $n) | .uuid'    "$SETALINK_USERS_DB")"
+            _u_sid="$( jq -r --arg n "$_u" '.users[] | select(.name == $n) | .shortId' "$SETALINK_USERS_DB")"
+            _gen_full_json "$_u" "$_u_uuid" "$_u_sid"
+            ok "regenerated full.json for '$_u'"
+        done
+        ok "done — regenerated full.json for ${#_all_names[@]} user(s)"
+        ;;
+
+    gen-links)
+        # Return JSON with all 5 transport VLESS links for a user.
+        _check_name "${1:-}"
+        # shellcheck disable=SC1090
+        . "$SETALINK_ENV"
+        GL_UUID="$(jq -r --arg n "$1" '.users[] | select(.name==$n) | .uuid'    "$SETALINK_USERS_DB")"
+        GL_SID="$( jq -r --arg n "$1" '.users[] | select(.name==$n) | .shortId' "$SETALINK_USERS_DB")"
+        [ -n "$GL_UUID" ] && [ "$GL_UUID" != "null" ] || { echo "user '$1' not found" >&2; exit 3; }
+        GL_HOST="${SETALINK_EDGE_HOST:-$SETALINK_HOST}"
+        GL_NPORT="${SETALINK_NGINX_PORT:-443}"
+        GL_WS="${SETALINK_WS_PATH:-/ws}"
+        GL_XHTTP="${SETALINK_XHTTP_PATH:-/xhttp}"
+        GL_HTTPUP="${SETALINK_HTTPUP_PATH:-/httpup}"
+        GL_RPORT="${SETALINK_REALITY_PORT:-8443}"
+        GL_RSNI="${SETALINK_REALITY_SNI:-www.microsoft.com}"
+        GL_RPBK="${SETALINK_REALITY_PUBLIC_KEY:-$SETALINK_PUBLIC_KEY}"
+        GL_NENC="$(printf '%s' "$1" | jq -sRr @uri)"
+        jq -n \
+            --arg user  "$1"         --arg uuid "$GL_UUID"  --arg sid  "$GL_SID" \
+            --arg host  "$GL_HOST"   --arg np   "$GL_NPORT" \
+            --arg ws    "$GL_WS"     --arg xh   "$GL_XHTTP" --arg hu   "$GL_HTTPUP" \
+            --arg rp    "$GL_RPORT"  --arg rsni "$GL_RSNI"  --arg rpbk "$GL_RPBK" \
+            --arg nenc  "$GL_NENC" \
+            '{
+              user: $user, uuid: $uuid,
+              links: {
+                ws:      ("vless://"+$uuid+"@"+$host+":"+$np+"?security=tls&type=ws&path="+($ws|@uri)+"&host="+$host+"&sni="+$host+"#"+$nenc+"-WS"),
+                chrome:  ("vless://"+$uuid+"@"+$host+":"+$np+"?security=tls&type=ws&path="+($ws|@uri)+"&host="+$host+"&sni="+$host+"&fp=chrome&alpn=http%2F1.1#"+$nenc+"-CHROME"),
+                xhttp:   ("vless://"+$uuid+"@"+$host+":"+$np+"?security=tls&type=xhttp&path="+($xh|@uri)+"&host="+$host+"&sni="+$host+"&fp=chrome#"+$nenc+"-XHTTP"),
+                httpup:  ("vless://"+$uuid+"@"+$host+":"+$np+"?security=tls&type=httpupgrade&path="+($hu|@uri)+"&host="+$host+"&sni="+$host+"&alpn=http%2F1.1#"+$nenc+"-HTTPUP"),
+                reality: ("vless://"+$uuid+"@"+$host+":"+$rp+"?security=reality&type=tcp&flow=xtls-rprx-vision&sni="+$rsni+"&fp=chrome&pbk="+$rpbk+"&sid="+$sid+"&spx=%2F#"+$nenc+"-REALITY")
+              }
+            }'
+        ;;
+
+    gen-qr-transport)
+        # Generate QR PNG for one transport. Args: <name> <transport>
+        _check_name "${1:-}"
+        GQT_T="${2:-ws}"
+        case "$GQT_T" in ws|chrome|xhttp|httpup|reality) ;;
+            *) echo "invalid transport" >&2; exit 2 ;; esac
+        require_cmd qrencode
+        # shellcheck disable=SC1090
+        . "$SETALINK_ENV"
+        GQT_UUID="$(jq -r --arg n "$1" '.users[] | select(.name==$n) | .uuid'    "$SETALINK_USERS_DB")"
+        GQT_SID="$( jq -r --arg n "$1" '.users[] | select(.name==$n) | .shortId' "$SETALINK_USERS_DB")"
+        [ -n "$GQT_UUID" ] && [ "$GQT_UUID" != "null" ] || { echo "user '$1' not found" >&2; exit 3; }
+        GQT_H="${SETALINK_EDGE_HOST:-$SETALINK_HOST}"
+        GQT_NP="${SETALINK_NGINX_PORT:-443}"
+        GQT_WS="${SETALINK_WS_PATH:-/ws}"
+        GQT_XH="${SETALINK_XHTTP_PATH:-/xhttp}"
+        GQT_HU="${SETALINK_HTTPUP_PATH:-/httpup}"
+        GQT_RP="${SETALINK_REALITY_PORT:-8443}"
+        GQT_RS="${SETALINK_REALITY_SNI:-www.microsoft.com}"
+        GQT_RK="${SETALINK_REALITY_PUBLIC_KEY:-$SETALINK_PUBLIC_KEY}"
+        GQT_NE="$(printf '%s' "$1" | jq -sRr @uri)"
+        GQT_WE="$(printf '%s' "$GQT_WS" | jq -sRr @uri)"
+        GQT_XE="$(printf '%s' "$GQT_XH" | jq -sRr @uri)"
+        GQT_HE="$(printf '%s' "$GQT_HU" | jq -sRr @uri)"
+        case "$GQT_T" in
+            ws)      L="vless://${GQT_UUID}@${GQT_H}:${GQT_NP}?security=tls&type=ws&path=${GQT_WE}&host=${GQT_H}&sni=${GQT_H}#${GQT_NE}-WS" ;;
+            chrome)  L="vless://${GQT_UUID}@${GQT_H}:${GQT_NP}?security=tls&type=ws&path=${GQT_WE}&host=${GQT_H}&sni=${GQT_H}&fp=chrome&alpn=http%2F1.1#${GQT_NE}-CHROME" ;;
+            xhttp)   L="vless://${GQT_UUID}@${GQT_H}:${GQT_NP}?security=tls&type=xhttp&path=${GQT_XE}&host=${GQT_H}&sni=${GQT_H}&fp=chrome#${GQT_NE}-XHTTP" ;;
+            httpup)  L="vless://${GQT_UUID}@${GQT_H}:${GQT_NP}?security=tls&type=httpupgrade&path=${GQT_HE}&host=${GQT_H}&sni=${GQT_H}&alpn=http%2F1.1#${GQT_NE}-HTTPUP" ;;
+            reality) L="vless://${GQT_UUID}@${GQT_H}:${GQT_RP}?security=reality&type=tcp&flow=xtls-rprx-vision&sni=${GQT_RS}&fp=chrome&pbk=${GQT_RK}&sid=${GQT_SID}&spx=%2F#${GQT_NE}-REALITY" ;;
+        esac
+        qrencode -o - -t PNG -s 8 -m 2 "$L"
+        ;;
+
+    server-stats)
+        python3 - <<'PYEOF'
+import json, time, subprocess, sys
+def read_cpu():
+    with open('/proc/stat') as f:
+        p = f.readline().split()
+    v = list(map(int, p[1:]))
+    return sum(v), v[3]
+t1,i1 = read_cpu(); time.sleep(0.3); t2,i2 = read_cpu()
+dt,di = t2-t1, i2-i1
+cpu = round((1-di/dt)*100,1) if dt>0 else 0
+mem={}
+with open('/proc/meminfo') as f:
+    for line in f:
+        k,v = line.split(':')
+        mem[k.strip()] = int(v.split()[0])
+mt,ma = mem.get('MemTotal',0), mem.get('MemAvailable',0)
+mu = mt-ma
+with open('/proc/uptime') as f: up=int(float(f.read().split()[0]))
+with open('/proc/loadavg') as f: ld=f.read().split()
+try:
+    df=subprocess.check_output(['df','-B1','/'],stderr=subprocess.DEVNULL).decode().split('\n')[1].split()
+    dt_b,du_b = int(df[1]),int(df[2])
+except Exception: dt_b,du_b=0,0
+print(json.dumps({
+    'cpu_pct':cpu,
+    'mem_total_kb':mt,'mem_used_kb':mu,
+    'mem_pct':round(mu/mt*100,1) if mt else 0,
+    'uptime_sec':up,
+    'load1':float(ld[0]),'load5':float(ld[1]),'load15':float(ld[2]),
+    'disk_total':dt_b,'disk_used':du_b,
+    'disk_pct':round(du_b/dt_b*100,1) if dt_b else 0,
+}))
+PYEOF
+        ;;
+
+    tail-logs)
+        _LOG_TYPE="${1:-access}"
+        _LOG_N="${2:-100}"
+        [[ "$_LOG_N" =~ ^[0-9]+$ ]] || _LOG_N=100
+        [ "$_LOG_N" -gt 500 ] && _LOG_N=500
+        case "$_LOG_TYPE" in
+            access) _LOG_F="/var/log/xray/access.log"  ;;
+            error)  _LOG_F="/var/log/xray/error.log"   ;;
+            nginx)  _LOG_F="/var/log/nginx/access.log" ;;
+            *) echo "[]"; exit 0 ;;
+        esac
+        [ -r "$_LOG_F" ] || { echo "[]"; exit 0; }
+        tail -n "$_LOG_N" "$_LOG_F" 2>/dev/null | python3 -c "
+import sys,json
+lines=[l.rstrip() for l in sys.stdin if l.strip()]
+print(json.dumps(lines))
+"
+        ;;
+
     *)
         echo "unknown action: $ACTION" >&2
-        echo "valid: status list add remove disable enable reset-traffic change-package regen-link read-link read-qr" >&2
+        echo "valid: status list add remove disable enable reset-traffic change-package regen-link gen-full-json gen-links gen-qr-transport read-link read-qr read-full-json regen-all-full-json server-stats tail-logs" >&2
         exit 2
         ;;
 esac

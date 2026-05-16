@@ -1,0 +1,10 @@
+# Backup files created during edits
+*.bak
+*.bak-*
+*.bak.*
+admin.bak/
+
+# IDE / OS
+.DS_Store
+*.swp
+*.swo
