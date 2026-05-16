@@ -56,10 +56,12 @@ jobs:
         run: npm install
 
       # ── Android build setup ─────────────────────────────────────────────────
-      - name: Generate Gradle wrapper
+      - name: Download Gradle wrapper jar
         working-directory: mobile-app/android
         run: |
-          gradle wrapper --gradle-version 8.7 --distribution-type all
+          curl -fsSL \
+            "https://raw.githubusercontent.com/facebook/react-native/v0.75.4/packages/react-native/template/android/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
 
       - name: Generate debug keystore
