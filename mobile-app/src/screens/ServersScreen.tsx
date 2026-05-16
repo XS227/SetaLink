@@ -19,17 +19,30 @@ interface Props {
 
 export function ServersScreen({ onNavigate, activeTab }: Props) {
   const { selectedId, filter, query, selectServer, setFilter, setQuery, filteredServers, aiPicks, servers } = useServerStore();
-  const { connectionState, connect } = useVpnStore();
+  const { connectionState, connect, switchServer } = useVpnStore();
   const { activeMode } = useAIStore();
   const userPlan = useAuthStore((s) => s.user?.plan ?? 'free');
 
+  const isConnected     = connectionState === 'connected';
+  const isTransitioning = connectionState === 'connecting'
+    || connectionState === 'disconnecting'
+    || connectionState === 'reconnecting';
+
   const handleSelectServer = (serverId: string) => {
+    if (isTransitioning) return;
+
     const server = servers.find((s) => s.id === serverId);
     if (server?.premium && userPlan === 'free') {
       (onNavigate as (tab: string) => void)('upgrade');
       return;
     }
-    selectServer(serverId);
+
+    const isDifferentServer = serverId !== selectedId;
+    selectServer(serverId); // syncs to vpnStore.selectedServer
+
+    if (isConnected && isDifferentServer) {
+      switchServer(); // disconnect → reconnect to newly selected server
+    }
   };
 
   const picks    = aiPicks(activeMode);
@@ -37,13 +50,18 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const selected = servers.find((s) => s.id === selectedId);
 
   const showAIPicks = filter === 'All' && query === '';
-  const isConnected  = connectionState === 'connected';
 
   const handleConnect = () => {
-    // If already connected, disconnect is handled on HomeScreen
+    if (isTransitioning) return;
     if (connectionState === 'idle' || connectionState === 'error') connect();
     onNavigate('home');
   };
+
+  const ctaLabel = isTransitioning
+    ? 'Switching…'
+    : isConnected
+      ? `Connected · ${selected?.country ?? ''}`
+      : `Connect to ${selected?.country ?? ''}`;
 
   return (
     <View style={styles.screen}>
@@ -163,13 +181,16 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       {/* Connect CTA */}
       <View style={styles.stickyFooter}>
         <TouchableOpacity
-          style={[styles.connectCta, isConnected && styles.connectCtaActive]}
-          activeOpacity={0.85}
+          style={[
+            styles.connectCta,
+            isConnected && styles.connectCtaActive,
+            isTransitioning && styles.connectCtaDisabled,
+          ]}
+          activeOpacity={isTransitioning ? 1 : 0.85}
           onPress={handleConnect}
+          disabled={isTransitioning}
         >
-          <Text style={styles.connectCtaText}>
-            {isConnected ? `Connected to ${selected?.country ?? ''}` : `Connect to ${selected?.country ?? ''}`}
-          </Text>
+          <Text style={styles.connectCtaText}>{ctaLabel}</Text>
         </TouchableOpacity>
       </View>
 
@@ -215,7 +236,8 @@ const styles = StyleSheet.create({
   empty:            { paddingVertical: Spacing[10], alignItems: 'center' },
   emptyText:        { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.muted },
   stickyFooter:     { position: 'absolute', bottom: Layout.bottomNavHeight + 8, left: Layout.screenPadding, right: Layout.screenPadding },
-  connectCta:       { backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
-  connectCtaActive: { backgroundColor: Colors.emerald[600] ?? Colors.emerald[400], opacity: 0.85 },
-  connectCtaText:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: Typography.tracking.wide },
+  connectCta:         { backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
+  connectCtaActive:   { backgroundColor: Colors.emerald[600] ?? Colors.emerald[400], opacity: 0.85 },
+  connectCtaDisabled: { opacity: 0.45 },
+  connectCtaText:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: Typography.tracking.wide },
 });

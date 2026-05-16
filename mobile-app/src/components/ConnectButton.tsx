@@ -12,13 +12,14 @@ import { AnimatedRing } from './AnimatedRing';
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnecting';
 
 interface Props {
-  state:   ConnectionState;
-  onPress: () => void;
+  state:    ConnectionState;
+  onPress:  () => void;
+  disabled?: boolean;
 }
 
 const SIZE = 188;
 
-export function ConnectButton({ state, onPress }: Props) {
+export function ConnectButton({ state, onPress, disabled = false }: Props) {
   const scale       = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
 
@@ -66,9 +67,9 @@ export function ConnectButton({ state, onPress }: Props) {
       )}
 
       <Pressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        onPress={disabled ? undefined : onPress}
+        onPressIn={disabled ? undefined : handlePressIn}
+        onPressOut={disabled ? undefined : handlePressOut}
         hitSlop={8}
       >
         <Animated.View

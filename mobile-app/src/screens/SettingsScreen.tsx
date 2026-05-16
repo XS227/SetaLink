@@ -94,7 +94,9 @@ const selStyles = StyleSheet.create({
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-export function SettingsScreen() {
+interface SettingsProps { onBack?: () => void }
+
+export function SettingsScreen({ onBack }: SettingsProps) {
   const {
     protocol, dnsMode, language,
     autoConnect, killSwitch, stealthMode, splitTunnel, ipv6,
@@ -126,7 +128,14 @@ export function SettingsScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Settings</Text>
+        <View style={styles.screenHeader}>
+          {onBack && (
+            <TouchableOpacity onPress={onBack} style={styles.backBtn} hitSlop={12}>
+              <Text style={styles.backBtnText}>‹</Text>
+            </TouchableOpacity>
+          )}
+          <Text style={styles.title}>Settings</Text>
+        </View>
 
         <Section label="Connection">
           <SelectRow
@@ -250,7 +259,10 @@ const styles = StyleSheet.create({
   screen:  { flex: 1, backgroundColor: Colors.bg.base },
   scroll:  { flex: 1 },
   content: { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[5] },
-  title:   { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight, marginBottom: Spacing[2] },
+  screenHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], marginBottom: Spacing[2] },
+  backBtn:      { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default },
+  backBtnText:  { fontSize: 22, color: Colors.text.secondary, lineHeight: 26 },
+  title:        { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   about:   { alignItems: 'center', gap: Spacing[1], paddingVertical: Spacing[4] },
   appName: { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
   version: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },

@@ -27,7 +27,35 @@ if ! "$SCRIPT_DIR/poll-traffic.sh"; then
     warn "poll-traffic.sh failed; checking quotas against last-known used_bytes"
 fi
 
-# Step 2 — list usernames over quota and not yet disabled.
+# Step 1b — update last_seen_at from the access log (catches active sessions
+# with sub-threshold traffic that poll-traffic.sh would miss).
+"$SCRIPT_DIR/parse-last-seen.sh" || warn "parse-last-seen.sh failed; last_seen_at may be stale"
+
+# Step 2a — list usernames expired by time.
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+mapfile -t EXPIRED < <(jq -r --arg now "$NOW" '
+    .users[]
+    | select((.disabled // false) != true)
+    | select(.expires_at != null and .expires_at <= $now)
+    | .name
+' "$SETALINK_USERS_DB")
+
+for u in "${EXPIRED[@]}"; do
+    warn "user '$u' subscription expired; disabling"
+    if "$SCRIPT_DIR/disable-user.sh" "$u"; then
+        # Tag disable reason so the dashboard can show "expired" status.
+        TMP="$(mktemp /tmp/setalink-users.XXXXXX.json)"
+        jq --arg n "$u" '.users |= map(if .name == $n then .disabled_reason = "expired" else . end)' \
+            "$SETALINK_USERS_DB" > "$TMP"
+        install -m 0600 -o root -g root "$TMP" "$SETALINK_USERS_DB"
+        rm -f "$TMP"
+        ok "auto-disabled expired user '$u'"
+    else
+        err "failed to disable expired user '$u' — will retry next run"
+    fi
+done
+
+# Step 2b — list usernames over data quota and not yet disabled.
 mapfile -t OVER_QUOTA < <(jq -r '
     .users[]
     | select((.disabled // false) != true)
@@ -36,14 +64,16 @@ mapfile -t OVER_QUOTA < <(jq -r '
     | .name
 ' "$SETALINK_USERS_DB")
 
-if [ "${#OVER_QUOTA[@]}" -eq 0 ]; then
-    log "no users over quota"
+if [ "${#OVER_QUOTA[@]}" -eq 0 ] && [ "${#EXPIRED[@]}" -eq 0 ]; then
+    log "no users over quota or expired"
     exit 0
 fi
 
-# Step 3 — disable each over-quota user. disable-user.sh handles its own
-# regen + xray restart. We loop, so multiple users get disabled in a single
-# enforcement run, but each restart is sub-second.
+if [ "${#OVER_QUOTA[@]}" -eq 0 ]; then
+    exit 0
+fi
+
+# Step 3 — disable each over-quota user.
 log "auto-disabling ${#OVER_QUOTA[@]} user(s) over quota: ${OVER_QUOTA[*]}"
 for u in "${OVER_QUOTA[@]}"; do
     if "$SCRIPT_DIR/disable-user.sh" "$u"; then

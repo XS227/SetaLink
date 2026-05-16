@@ -25,7 +25,8 @@ over SSH or via the dashboard behind HTTP basic auth.
 | `list-users.sh`            | List users (table), or show one user's detail.                          |
 | `migrate-users-v3.sh`      | One-shot migration to Phase 3 schema (idempotent).                      |
 | `poll-traffic.sh`          | Read xray's stats API (atomic reset), accumulate to `users.json`.       |
-| `check-quotas.sh`          | Run `poll-traffic.sh` then auto-disable users over quota.               |
+| `check-quotas.sh`          | Run `poll-traffic.sh` + `parse-last-seen.sh`, then auto-disable users over quota. |
+| `parse-last-seen.sh`       | Parse xray access log; advance `last_seen_at` per user (never regresses). |
 | `setup-admin.sh`           | Install + configure the admin web dashboard (PHP + nginx).              |
 | `backup.sh`                | Snapshot `/etc/setalink` + Xray config to a tar.gz.                     |
 | `admin/`                   | The web dashboard — see [`admin/README.md`](admin/README.md).           |
@@ -68,7 +69,7 @@ Sensitive runtime data is **NOT** under `/var/www/`. It lives where nginx can ne
       "quota_bytes":  5368709120,       // 0 == unlimited (no auto-disable)
       "used_bytes":   0,                // accumulated by poll-traffic.sh
       "disabled":     false,            // true → filtered from xray clients[]
-      "last_seen_at": null              // ISO 8601 UTC, set by poll-traffic.sh
+      "last_seen_at": null              // ISO 8601 UTC, set by parse-last-seen.sh (+ poll-traffic.sh)
     }
   ]
 }
@@ -86,7 +87,7 @@ The installer:
 
 1. Installs `xray-core` (official `Xray-install` script), `jq`, `qrencode`, `ufw`, `fail2ban`.
 2. Generates a fresh REALITY x25519 keypair (preserved on re-runs).
-3. Asks for **public host**, **port** (default `8443`), **REALITY SNI** (default `www.cloudflare.com`).
+3. Asks for **public host**, **port** (default `443`), **REALITY SNI** (default `www.cloudflare.com`).
 4. Writes `/etc/setalink/setalink.env` and the initial Xray config.
 5. Enables `xray.service`, configures `ufw` (preserves 22/80/443 + opens the Xray port), enables a `sshd` jail in `fail2ban`.
 
@@ -94,7 +95,7 @@ The installer:
 
 ```bash
 sudo SETALINK_HOST=vpn.example.com \
-     SETALINK_PORT=8443 \
+     SETALINK_PORT=443 \
      SETALINK_SNI=www.cloudflare.com \
      SETALINK_NONINTERACTIVE=1 \
      ./install.sh
@@ -110,7 +111,7 @@ public :443
    ▼
 nginx stream {} (ssl_preread on, proxy_protocol on)
    │
-   ├─ SNI = www.cloudflare.com  ─►  127.0.0.1:8443  ─►  xray VLESS+REALITY
+   ├─ SNI = www.cloudflare.com  ─►  127.0.0.1:443  ─►  xray VLESS+REALITY
    └─ default                   ─►  127.0.0.1:8444  ─►  nginx http {} vhosts
                                                           (shahnameh.setaei.com,
                                                            admin.shahnameh.setaei.com,
@@ -215,6 +216,7 @@ The cron job at `/etc/cron.d/setalink-quotas` runs `check-quotas.sh` every 5 min
 `check-quotas.sh`:
 
 1. Calls `poll-traffic.sh` (failures here don't block enforcement against last-known counters).
+2. Calls `parse-last-seen.sh` — parses the xray access log and advances `last_seen_at` for every user seen since the last run.
 2. Lists users where `disabled != true && quota_bytes > 0 && used_bytes >= quota_bytes`.
 3. Calls `disable-user.sh` for each — which regenerates the xray config with the user filtered out of `clients[]` and restarts xray.
 
@@ -276,7 +278,7 @@ Two ways to onboard a user:
 sudo systemctl status xray
 sudo journalctl -u xray -n 100 --no-pager
 sudo /usr/local/bin/xray test -config /usr/local/etc/xray/config.json
-sudo ss -tlnp 'sport = :8443'
+sudo ss -tlnp 'sport = :443'
 sudo ufw status verbose
 sudo fail2ban-client status sshd
 ```

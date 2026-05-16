@@ -90,7 +90,9 @@ const hStyles = StyleSheet.create({
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-export function DiagnosticsScreen() {
+interface DiagnosticsProps { onBack?: () => void }
+
+export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
   const { snapshot, isRunning, elapsedSecs, liveStats, startMonitor, stopMonitor } =
     useDiagnosticsStore();
   const { connectionState, selectedServer } = useVpnStore();
@@ -110,6 +112,14 @@ export function DiagnosticsScreen() {
 
   const conn = snapshot?.connection;
 
+  // Progressive health check reveal: show one check every ~1.2s of elapsed time
+  const allChecks     = snapshot?.healthChecks ?? [];
+  const visibleCount  = isRunning
+    ? Math.min(allChecks.length, Math.ceil((elapsedSecs + 0.1) / 1.2))
+    : allChecks.length;
+  const visibleChecks = allChecks.slice(0, visibleCount);
+  const isScanning    = isRunning && visibleCount < allChecks.length;
+
   const pingQuality = (ping: number) =>
     ping < 40 ? 'Excellent' : ping < 80 ? 'Good' : ping < 120 ? 'Fair' : 'Poor';
 
@@ -128,14 +138,21 @@ export function DiagnosticsScreen() {
       >
         {/* Header */}
         <View style={styles.header}>
-          <View>
-            <Text style={styles.title}>Diagnostics</Text>
-            <Text style={styles.sub}>Live connection analysis</Text>
+          <View style={styles.headerLeft}>
+            {onBack && (
+              <TouchableOpacity onPress={onBack} style={styles.backBtn} hitSlop={12}>
+                <Text style={styles.backBtnText}>‹</Text>
+              </TouchableOpacity>
+            )}
+            <View>
+              <Text style={styles.title}>Diagnostics</Text>
+              <Text style={styles.sub}>Live connection analysis</Text>
+            </View>
           </View>
           <View style={styles.liveBadge}>
-            <PulsingDot color={Colors.emerald[400]} />
+            <PulsingDot color={isScanning ? '#FFB800' : Colors.emerald[400]} />
             <Text style={styles.liveText}>
-              {isRunning ? `LIVE · ${formatElapsed(elapsedSecs)}` : 'IDLE'}
+              {isScanning ? `SCANNING…` : isRunning ? `LIVE · ${formatElapsed(elapsedSecs)}` : 'IDLE'}
             </Text>
           </View>
         </View>
@@ -208,10 +225,24 @@ export function DiagnosticsScreen() {
 
         {/* Health checks */}
         <GlassCard>
-          <Text style={styles.cardLabel}>Health Checks</Text>
-          {(snapshot?.healthChecks ?? []).map((hc) => (
+          <View style={styles.healthHeader}>
+            <Text style={styles.cardLabel}>Health Checks</Text>
+            {isScanning && (
+              <View style={styles.scanningBadge}>
+                <Text style={styles.scanningText}>
+                  {visibleCount}/{allChecks.length}
+                </Text>
+              </View>
+            )}
+          </View>
+          {visibleChecks.map((hc) => (
             <HealthRow key={hc.label} label={hc.label} status={hc.status} detail={hc.detail} />
           ))}
+          {isScanning && (
+            <View style={styles.scanningRow}>
+              <Text style={styles.scanningRowText}>Running checks…</Text>
+            </View>
+          )}
           <View style={{ height: 1 }} />
         </GlassCard>
 
@@ -278,10 +309,18 @@ const styles = StyleSheet.create({
   scroll:         { flex: 1 },
   content:        { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[5] },
   header:         { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  headerLeft:     { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing[3] },
+  backBtn:        { width: 36, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, marginTop: 2 },
+  backBtnText:    { fontSize: 22, color: Colors.text.secondary, lineHeight: 26 },
   title:          { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   sub:            { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   liveBadge:      { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 6 },
   liveText:       { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 1 },
+  healthHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] },
+  scanningBadge:  { backgroundColor: 'rgba(255,184,0,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.35)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
+  scanningText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: '#FFB800' },
+  scanningRow:    { paddingVertical: Spacing[3], alignItems: 'center' },
+  scanningRowText:{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, letterSpacing: 0.5 },
   metricGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing[3] },
   cardLabel:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[3] },
   infoRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[2] + 1, borderBottomWidth: 1, borderBottomColor: Colors.border.subtle },

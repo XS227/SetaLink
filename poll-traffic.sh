@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # Poll xray's stats API, atomically read+zero each per-user counter (xray's
 # --reset returns the current value AND zeros it), and accumulate the deltas
-# into /etc/setalink/users.json (used_bytes, last_seen_at).
+# into /etc/setalink/users.json (used_bytes, upload_bytes, download_bytes,
+# last_seen_at).
 #
 # Designed to run frequently (e.g. every 5 min via cron). Idempotent and
 # safe to invoke manually.
 #
 # What we count:
-#   used_bytes += uplink_delta + downlink_delta   (both directions)
+#   upload_bytes   += uplink delta   (client → server)
+#   download_bytes += downlink delta (server → client)
+#   used_bytes     += uplink + downlink (total, legacy field)
 #
 # Caveats:
 #   - On xray restart, in-memory counters reset; any traffic accumulated
@@ -37,22 +40,35 @@ if ! ss -tlnH "sport = :$API_PORT" 2>/dev/null | grep -q .; then
 fi
 
 # Query + reset, restricted to per-user counters. Output is JSON like:
-#   { "stat": [ {"name":"user>>>khabat>>>traffic>>>uplink", "value": 12345}, ... ] }
+#   { "stat": [ {"name":"user>>>alice>>>traffic>>>uplink", "value": 12345}, ... ] }
 # `value` is omitted by xray when it's 0 — handle that with "// 0".
 RAW="$(xray api statsquery --server="$API_ADDR" --reset --pattern "user>>>" 2>/dev/null || true)"
 [ -n "$RAW" ] || RAW='{}'
 
-# Build delta map {"username": total_bytes_since_last_poll, ...}
-DELTAS="$(printf '%s' "$RAW" | jq -c '
+# Build per-direction delta maps: {"username": bytes, ...}
+DELTA_UP="$(printf '%s' "$RAW" | jq -c '
     [(.stat // [])[]
-        | select((.name // "") | startswith("user>>>"))
-        | { name: (.name | split(">>>")[1]),
+        | select((.name // "") | (startswith("user>>>") and endswith(">>>traffic>>>uplink")))
+        | { key: (.name | split(">>>")[1]),
             value: ((.value // 0) | tonumber) }
-    ]
-    | group_by(.name)
-    | map({ key: .[0].name, value: (map(.value) | add) })
-    | from_entries
+    ] | from_entries
 ' 2>/dev/null || echo '{}')"
+[ -n "$DELTA_UP" ] || DELTA_UP='{}'
+
+DELTA_DOWN="$(printf '%s' "$RAW" | jq -c '
+    [(.stat // [])[]
+        | select((.name // "") | (startswith("user>>>") and endswith(">>>traffic>>>downlink")))
+        | { key: (.name | split(">>>")[1]),
+            value: ((.value // 0) | tonumber) }
+    ] | from_entries
+' 2>/dev/null || echo '{}')"
+[ -n "$DELTA_DOWN" ] || DELTA_DOWN='{}'
+
+# Combined total per user (uplink + downlink).
+DELTAS="$(jq -cn --argjson up "$DELTA_UP" --argjson dn "$DELTA_DOWN" '
+    (($up | keys_unsorted) + ($dn | keys_unsorted)) | unique |
+    map({ key: ., value: (($up[.] // 0) + ($dn[.] // 0)) }) | from_entries
+')"
 [ -n "$DELTAS" ] || DELTAS='{}'
 
 # Total just for the log line
@@ -66,13 +82,15 @@ fi
 
 # Atomically merge into users.json.
 TMP="$(mktemp /tmp/setalink-users.XXXXXX.json)"
-jq --argjson d "$DELTAS" --arg now "$NOW" '
+jq --argjson d "$DELTAS" --argjson up "$DELTA_UP" --argjson dn "$DELTA_DOWN" --arg now "$NOW" '
     .users |= map(
         (.name) as $n
         | if ($d[$n] // 0) > 0
           then .
-               | .used_bytes   = ((.used_bytes // 0) + ($d[$n] // 0))
-               | .last_seen_at = $now
+               | .used_bytes     = ((.used_bytes     // 0) + ($d[$n]  // 0))
+               | .upload_bytes   = ((.upload_bytes   // 0) + ($up[$n] // 0))
+               | .download_bytes = ((.download_bytes // 0) + ($dn[$n] // 0))
+               | .last_seen_at   = $now
           else . end
     )
 ' "$SETALINK_USERS_DB" > "$TMP"
