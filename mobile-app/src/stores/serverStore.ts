@@ -54,10 +54,13 @@ interface ServerState {
   selectedId: string;
   filter:     FilterTab;
   query:      string;
+  isLoading:  boolean;
+  loadError:  string | null;
 
-  selectServer: (id: string) => void;
-  setFilter:    (f: FilterTab) => void;
-  setQuery:     (q: string) => void;
+  selectServer:  (id: string) => void;
+  setFilter:     (f: FilterTab) => void;
+  setQuery:      (q: string) => void;
+  fetchServers:  (token: string) => Promise<void>;
 
   // Selector functions — call these in components, not store subscriptions
   filteredServers: (mode?: AIModeKey) => ServerRecord[];
@@ -70,11 +73,13 @@ export const useServerStore = create<ServerState>((set, get) => ({
   selectedId: 'de1',
   filter:     'All',
   query:      '',
+  isLoading:  false,
+  loadError:  null,
 
   selectServer: (id) => {
     set({ selectedId: id });
 
-    const record = SERVER_CATALOG.find((s) => s.id === id);
+    const record = get().servers.find((s) => s.id === id);
     if (!record) return;
 
     // Sync selected server into vpnStore — one-way dependency, no cycle
@@ -96,6 +101,23 @@ export const useServerStore = create<ServerState>((set, get) => ({
   setFilter: (f) => set({ filter: f }),
   setQuery:  (q) => set({ query: q }),
 
+  fetchServers: async (token) => {
+    set({ isLoading: true, loadError: null });
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { ServersAPI } = require('../services/api/servers.api');
+      const data: ServerRecord[] = await ServersAPI.list(token);
+      if (Array.isArray(data) && data.length > 0) {
+        set({ servers: data, isLoading: false });
+      } else {
+        set({ isLoading: false });
+      }
+    } catch {
+      // Keep SERVER_CATALOG fallback on any network/API error
+      set({ isLoading: false, loadError: 'Could not refresh server list' });
+    }
+  },
+
   filteredServers: (mode = 'auto') => {
     const { servers, filter, query } = get();
     return servers
@@ -112,9 +134,9 @@ export const useServerStore = create<ServerState>((set, get) => ({
   },
 
   aiPicks: (mode = 'auto') =>
-    [...SERVER_CATALOG]
+    [...get().servers]
       .sort((a, b) => scoreServer(b, mode) - scoreServer(a, mode))
       .slice(0, 3),
 
-  selectedRecord: () => SERVER_CATALOG.find((s) => s.id === get().selectedId),
+  selectedRecord: () => get().servers.find((s) => s.id === get().selectedId),
 }));

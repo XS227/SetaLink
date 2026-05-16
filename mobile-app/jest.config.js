@@ -1,8 +1,6 @@
 module.exports = {
   preset: 'react-native',
-  setupFilesAfterFramework: ['@testing-library/react-native/extend-expect'],
   moduleNameMapper: {
-    // Alias maps matching tsconfig paths
     '^@stores/(.*)$':  '<rootDir>/src/stores/$1',
     '^@hooks/(.*)$':   '<rootDir>/src/hooks/$1',
     '^@screens/(.*)$': '<rootDir>/src/screens/$1',
@@ -13,6 +11,6 @@ module.exports = {
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|react-native-reanimated|zustand|react-native-mmkv|react-native-haptic-feedback)/)',
   ],
-  testPathPattern: '__tests__',
+  testMatch: ['**/__tests__/**/*.{ts,tsx}'],
   collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts'],
 };

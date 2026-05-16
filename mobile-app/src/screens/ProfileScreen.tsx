@@ -174,7 +174,11 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </View>
 
           {user.plan === 'free' ? (
-            <TouchableOpacity style={styles.upgradeBtn} activeOpacity={0.85}>
+            <TouchableOpacity
+              style={styles.upgradeBtn}
+              activeOpacity={0.85}
+              onPress={() => (onNavigate as (tab: string) => void)('upgrade')}
+            >
               <Text style={styles.upgradeBtnText}>Upgrade to Premium</Text>
             </TouchableOpacity>
           ) : (
