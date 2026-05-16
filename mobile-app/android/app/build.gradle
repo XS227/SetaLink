@@ -3,8 +3,7 @@ apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 react {
-    // JS bundle entry point
-    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", rootDir.getAbsolutePath(), "android", "absolute"].execute(null, rootDir).text.trim())
+    entryFile      = file("../../index.js")
     reactNativeDir = file("$rootDir/../node_modules/react-native")
     hermesCommand  = "$rootDir/../node_modules/react-native/sdks/hermesc/%OS_ARCH%/hermesc"
     codegenDir     = file("$rootDir/../node_modules/@react-native/codegen")

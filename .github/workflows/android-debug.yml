@@ -1,0 +1,98 @@
+name: Android Debug APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile-app/**'
+      - '.github/workflows/android-debug.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'mobile-app/**'
+  workflow_dispatch:
+
+jobs:
+  build-debug:
+    name: Build debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # ── Source ──────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Toolchain ───────────────────────────────────────────────────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle 8.6
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.6'
+
+      # ── JS dependencies ─────────────────────────────────────────────────────
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/node_modules
+          key: node-modules-${{ hashFiles('mobile-app/package.json') }}
+          restore-keys: node-modules-
+
+      - name: Install JS dependencies
+        working-directory: mobile-app
+        run: npm install
+
+      # ── Android build setup ─────────────────────────────────────────────────
+      - name: Generate Gradle wrapper
+        working-directory: mobile-app/android
+        run: |
+          gradle wrapper --gradle-version 8.6 --distribution-type all
+          chmod +x gradlew
+
+      - name: Generate debug keystore
+        working-directory: mobile-app/android/app
+        run: |
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            2>/dev/null
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      - name: Build debug APK
+        working-directory: mobile-app/android
+        run: ./gradlew assembleDebug --stacktrace
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
+      # ── Artifact ─────────────────────────────────────────────────────────────
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: setalink-debug-${{ github.run_number }}
+          path: mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Print APK size
+        run: |
+          APK=mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
+          echo "APK size: $(du -sh "$APK" | cut -f1)"
