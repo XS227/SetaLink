@@ -59,24 +59,71 @@ export const useVpnStore = create<VpnState>((set, get) => {
     onConnected: () => {
       set({ sessionStartedAt: Date.now(), error: null });
 
-      // Lazy import avoids circular dependency at module load time
+      const server = get().selectedServer;
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAIStore } = require('./aiStore');
-        const protocol = get().selectedServer?.protocol ?? 'VLESS';
         useAIStore.getState().addLogEntry(
-          `Connection established · ${protocol} · DPI bypass active`,
+          `Connection established · ${server?.protocol ?? 'VPN'} · DPI bypass active`,
           'success'
         );
+      } catch {}
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useToastStore } = require('./toastStore');
+        useToastStore.getState().show(
+          `Connected to ${server?.city ?? 'server'}`,
+          'success'
+        );
+      } catch {}
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { HapticService } = require('../services/hapticService');
+        HapticService.connect();
       } catch {}
     },
 
     onDisconnected: () => {
-      set({
-        sessionStartedAt:  null,
-        sessionBytes:      { sent: 0, received: 0 },
-        reconnectAttempts: 0,
-      });
+      const state = get();
+
+      // Record session before resetting
+      if (state.sessionStartedAt && state.selectedServer) {
+        const endedAt  = Date.now();
+        const duration = Math.max(1, Math.floor((endedAt - state.sessionStartedAt) / 1000));
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useSessionStore } = require('./sessionStore');
+          useSessionStore.getState().addSession({
+            serverId:   state.selectedServer.id,
+            serverName: `${state.selectedServer.city}, ${state.selectedServer.country}`,
+            serverFlag: state.selectedServer.flag,
+            protocol:   state.selectedServer.protocol,
+            startedAt:  state.sessionStartedAt,
+            endedAt,
+            duration,
+            sentBytes:  state.sessionBytes.sent,
+            recvBytes:  state.sessionBytes.received,
+            status:     'success',
+          });
+        } catch {}
+      }
+
+      set({ sessionStartedAt: null, sessionBytes: { sent: 0, received: 0 }, reconnectAttempts: 0 });
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useToastStore } = require('./toastStore');
+        useToastStore.getState().show('Disconnected', 'info');
+      } catch {}
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { HapticService } = require('../services/hapticService');
+        HapticService.disconnect();
+      } catch {}
     },
 
     onError: (message) => {
@@ -86,6 +133,18 @@ export const useVpnStore = create<VpnState>((set, get) => {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAIStore } = require('./aiStore');
         useAIStore.getState().addLogEntry(`Connection error: ${message}`, 'warn');
+      } catch {}
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useToastStore } = require('./toastStore');
+        useToastStore.getState().show(message, 'error');
+      } catch {}
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { HapticService } = require('../services/hapticService');
+        HapticService.error();
       } catch {}
     },
   });
