@@ -67,6 +67,10 @@ jobs:
             -o gradle/wrapper/gradle-wrapper.jar
           chmod +x gradlew
 
+      - name: Generate local.properties
+        working-directory: mobile-app/android
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
       - name: Generate debug keystore
         working-directory: mobile-app/android/app
         run: |
@@ -87,6 +91,7 @@ jobs:
         run: ./gradlew assembleDebug --stacktrace
         env:
           GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
 
       # ── Artifact ─────────────────────────────────────────────────────────────
       - name: Upload debug APK
