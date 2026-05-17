@@ -36,7 +36,7 @@ export const useSettingsStore = create<SettingsState>()(
       protocol:            'VLESS+Reality',
       dnsMode:             'Cloudflare (DoH)',
       language:            'English',
-      autoConnect:         true,
+      autoConnect:         false,
       killSwitch:          false,
       stealthMode:         false,
       splitTunnel:         false,
