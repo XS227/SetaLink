@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Switch,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Switch, Linking,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -8,15 +8,15 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { useAuthStore }    from '../stores/authStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
-import { formatBytes, formatDuration } from '../utils/formatters';
+import { formatBytes } from '../utils/formatters';
 import { useT } from '../i18n';
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
-const PLAN_LIMITS: Record<string, { label: string; gbLimit: number | null }> = {
-  free:    { label: 'Free Invite Trial',    gbLimit: 1   },
-  premium: { label: 'Premium Plan', gbLimit: null }, // unlimited
-  team:    { label: 'Team Plan',    gbLimit: null },
+const PLAN_LIMITS: Record<string, { labelKey: string; gbLimit: number | null }> = {
+  free:    { labelKey: 'Free Invite Trial',    gbLimit: 1   },
+  premium: { labelKey: 'Unlimited', gbLimit: null }, // unlimited
+  team:    { labelKey: 'Paid package',    gbLimit: null },
 };
 
 function formatExpiry(iso: string | null): string {
@@ -92,15 +92,15 @@ interface Props {
 export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { t } = useT();
   const { user, logout, setBiometricSecure } = useAuthStore();
-  const { totalBytesThisMonth, sessionsThisMonth, totalDurationToday } = useSessionStore();
+  const { sessionsThisMonth } = useSessionStore();
   const showToast = useToastStore((s) => s.show);
 
   if (!user) return null;
 
   const plan     = PLAN_LIMITS[user.plan] ?? PLAN_LIMITS.free;
+  const planLabel = plan.labelKey;
   const initial  = user.id.slice(0, 1).toUpperCase();
   const monthSessions = sessionsThisMonth();
-  const monthBytes    = totalBytesThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);
   const isUnlimited   = plan.gbLimit === null;
 
@@ -114,7 +114,32 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
       await Share.share({
         message: `Join SetaLink with my code: ${user.referralCode}\nhttps://setalink.com/?ref=${user.referralCode}`,
       });
-    } catch {}
+    } catch {
+      showToast(t('pr.shareUnavailable'), 'error', 2500);
+    }
+  };
+  const referralLink = `https://setalink.no/?ref=${user.referralCode}`;
+
+  const handleOpenSupport = async () => {
+    const supportLink = 'https://t.me/setalink_support';
+    try {
+      const supported = await Linking.canOpenURL(supportLink);
+      if (!supported) {
+        showToast(t('pr.supportUnavailable'), 'error', 2500);
+        return;
+      }
+      await Linking.openURL(supportLink);
+    } catch {
+      showToast(t('pr.supportUnavailable'), 'error', 2500);
+    }
+  };
+
+  const handleOpenWebsite = async () => {
+    try {
+      await Linking.openURL('https://setalink.no');
+    } catch {
+      showToast(t('pr.websiteUnavailable'), 'error', 2500);
+    }
   };
 
   const handleSignOut = () => {
@@ -162,7 +187,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                   styles.planText,
                   user.plan === 'free' && { color: Colors.text.muted },
                 ]}>
-                  {plan.label}
+                  {planLabel}
                 </Text>
               </View>
             </View>
@@ -173,7 +198,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         <GlassCard glowColor={Colors.emerald[400]} style={styles.subCard}>
           <View style={styles.subHeader}>
             <View style={{ gap: 4 }}>
-              <Text style={styles.subTitle}>{plan.label}</Text>
+              <Text style={styles.subTitle}>{planLabel}</Text>
               <Text style={styles.subExpiry}>
                 {user.planExpiry ? `${t('pr.renewsOn')} ${formatExpiry(user.planExpiry)}` : t('pr.lifetime')}
               </Text>
@@ -184,15 +209,13 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                   </View>
                 ) : plan.gbLimit !== null ? (
                   <View style={styles.gbPill}>
-                    <Text style={styles.gbPillText}>
-                      {((user.quotaBytesTotal - user.quotaBytesUsed) / 1e9).toFixed(1)} GB left
-                    </Text>
+                    <Text style={styles.gbPillText}>{`${Math.max(0, (user.quotaBytesTotal - user.quotaBytesUsed) / 1e9).toFixed(1)} GB ${t('pr.remaining')}`}</Text>
                   </View>
                 ) : null}
                 {daysLeft !== null && (
                   <View style={[styles.daysPill, daysLeft <= 7 && styles.daysPillUrgent]}>
                     <Text style={[styles.daysPillText, daysLeft <= 7 && styles.daysPillTextUrgent]}>
-                      {daysLeft}d remaining
+                      {daysLeft}d {t('pr.remaining')}
                     </Text>
                   </View>
                 )}
@@ -217,9 +240,9 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
           <View style={styles.subMeta}>
             {[
-              { label: t('pr.sessions'), value: String(monthSessions.length) },
-              { label: t('pr.servers'),  value: 'Invite' },
-              { label: t('pr.speed'),    value: user.quotaBytesUsed >= user.quotaBytesTotal ? 'Quota finished' : 'Free trial' },
+              { label: t('pr.totalQuota'), value: plan.gbLimit === null ? t('pr.unlimitedShort') : `${(user.quotaBytesTotal / 1e9).toFixed(1)} GB` },
+              { label: t('pr.usedTraffic'),  value: `${(user.quotaBytesUsed / 1e9).toFixed(2)} GB` },
+              { label: t('pr.sessions'),    value: String(monthSessions.length) },
             ].map((item) => (
               <View key={item.label} style={styles.subMetaItem}>
                 <Text style={styles.subMetaValue}>{item.value}</Text>
@@ -237,7 +260,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               <Text style={styles.upgradeBtnText}>{t('pr.upgradePremium')}</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.manageBtn} activeOpacity={0.8}>
+            <TouchableOpacity style={styles.manageBtn} activeOpacity={0.8} onPress={() => showToast(t('pr.noSubscriptionManager'), 'info', 2500)}>
               <Text style={styles.manageBtnText}>{t('pr.manageSub')}</Text>
             </TouchableOpacity>
           )}
@@ -246,8 +269,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         <GlassCard>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <View>
-              <Text style={styles.cardLabel}>Secure account with biometric lock</Text>
-              <Text style={styles.deviceOs}>Optional and off by default</Text>
+              <Text style={styles.cardLabel}>{t('pr.biometricLock')}</Text>
+              <Text style={styles.deviceOs}>{t('pr.biometricLockDesc')}</Text>
             </View>
             <Switch
               value={user.securedWithBiometric}
@@ -255,40 +278,6 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               trackColor={{ true: Colors.emerald[400], false: Colors.bg.elevated }}
             />
           </View>
-        </GlassCard>
-
-        {/* Devices */}
-        <GlassCard>
-          <Text style={styles.cardLabel}>{t('pr.activeDevices')}</Text>
-          {[
-            { name: 'Pixel 8 Pro',   os: 'Android 15', active: true  },
-            { name: 'MacBook Pro',   os: 'macOS 15.2', active: true  },
-            { name: 'iPad Air (M2)', os: 'iPadOS 18',  active: false },
-          ].map((device, i) => (
-            <View key={i} style={[
-              styles.deviceRow,
-              i > 0 && { borderTopWidth: 1, borderTopColor: Colors.border.subtle },
-            ]}>
-              <View style={styles.deviceIcon}>
-                <Text style={styles.deviceIconText}>◻</Text>
-              </View>
-              <View style={styles.deviceInfo}>
-                <Text style={styles.deviceName}>{device.name}</Text>
-                <Text style={styles.deviceOs}>{device.os}</Text>
-              </View>
-              <View style={[
-                styles.deviceStatus,
-                { backgroundColor: device.active ? Colors.emerald[400] + '20' : Colors.bg.elevated },
-              ]}>
-                <Text style={[
-                  styles.deviceStatusText,
-                  { color: device.active ? Colors.emerald[400] : Colors.text.muted },
-                ]}>
-                  {device.active ? t('pr.online') : t('pr.offline')}
-                </Text>
-              </View>
-            </View>
-          ))}
         </GlassCard>
 
         {/* Referral */}
@@ -300,6 +289,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             </View>
           </View>
           <Text style={styles.referralDesc}>{t('pr.referDesc')}</Text>
+          <Text style={styles.deviceOs}>{referralLink}</Text>
           <View style={styles.referralCode}>
             <Text style={styles.referralCodeText}>{user.referralCode}</Text>
             <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
@@ -309,43 +299,20 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8} onPress={handleShareReferral}>
             <Text style={styles.shareBtnText}>{t('pr.shareLink')}</Text>
           </TouchableOpacity>
-          <View style={styles.referralStats}>
-            <View style={styles.referralStat}>
-              <Text style={styles.referralStatValue}>4</Text>
-              <Text style={styles.referralStatLabel}>{t('pr.invited')}</Text>
-            </View>
-            <View style={styles.referralStat}>
-              <Text style={styles.referralStatValue}>120</Text>
-              <Text style={styles.referralStatLabel}>{t('pr.daysEarned')}</Text>
-            </View>
-          </View>
         </GlassCard>
+        <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={handleOpenSupport}>
+          <Text style={styles.actionLabel}>{t('pr.support')}</Text>
+          <Text style={styles.actionChevron}>›</Text>
+        </TouchableOpacity>
 
-        {/* Rewards */}
         <GlassCard>
-          <View style={styles.rewardsRow}>
-            <View>
-              <Text style={styles.rewardsTitle}>{t('pr.rewardsHub')}</Text>
-              <Text style={styles.rewardsSub}>{t('pr.rewardsSoon')}</Text>
-            </View>
-            <View style={styles.comingSoon}>
-              <Text style={styles.comingSoonText}>{t('pr.soon')}</Text>
-            </View>
-          </View>
-        </GlassCard>
-
-        {/* Actions */}
-        {[
-          { labelKey: 'pr.changePassword', onPress: undefined },
-          { labelKey: 'pr.notifSettings',  onPress: undefined },
-          { labelKey: 'pr.exportConfig',   onPress: undefined },
-          { labelKey: 'pr.support',        onPress: undefined },
-        ].map((item) => (
-          <TouchableOpacity key={item.labelKey} style={styles.actionRow} activeOpacity={0.7} onPress={item.onPress}>
-            <Text style={styles.actionLabel}>{t(item.labelKey as any)}</Text>
-            <Text style={styles.actionChevron}>›</Text>
+          <Text style={styles.footerBrand}>SetaLink</Text>
+          <Text style={styles.footerMeta}>v1.0.0 (100)</Text>
+          <TouchableOpacity onPress={handleOpenWebsite}>
+            <Text style={styles.footerLink}>https://setalink.no</Text>
           </TouchableOpacity>
-        ))}
+          <Text style={styles.footerCopy}>© 2026 SetaLink. {t('st.allRights')}</Text>
+        </GlassCard>
 
         {/* Sign out */}
         <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={handleSignOut}>
@@ -437,4 +404,8 @@ const styles = StyleSheet.create({
   actionChevron:    { fontSize: 20, color: Colors.text.muted },
   logoutBtn:        { borderWidth: 1, borderColor: 'rgba(255,68,68,0.3)', borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', backgroundColor: 'rgba(255,68,68,0.06)' },
   logoutText:       { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: Colors.status.disconnected, letterSpacing: 0.3 },
+  footerBrand:      { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  footerMeta:       { marginTop: 4, fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  footerLink:       { marginTop: Spacing[2], fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.blue[400] },
+  footerCopy:       { marginTop: Spacing[2], fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
 });
