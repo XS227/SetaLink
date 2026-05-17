@@ -167,7 +167,7 @@ const _nameCount: Map<string, number> = new Map();
 function dedupeTitle(base: string): string {
   const count = (_nameCount.get(base) ?? 0) + 1;
   _nameCount.set(base, count);
-  return count === 1 ? base : `${base} #${count}`;
+  return `${base} ${count}`;
 }
 
 function buildEntry(cfg: ParsedVlessConfig, index: number): ImportedServer {

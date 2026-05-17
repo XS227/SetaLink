@@ -6,6 +6,8 @@ import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
@@ -159,15 +161,28 @@ class XrayVpnService : VpnService() {
 
             tunFd = vpnBuilder.establish()
                 ?: throw Exception("TUN establish() returned null — was VPN permission revoked?")
-            val tunFdInt   = tunFd!!.fd
-            val procFdPath = "/proc/${android.os.Process.myPid()}/fd/$tunFdInt"
-            broadcastStep("tun", true, "TUN fd=$tunFdInt established")
+            val tunFdInt = tunFd!!.fd
 
-            // 7. Start tun2socks
+            // Clear FD_CLOEXEC so this fd survives exec() into tun2socks.
+            // By default Android sets CLOEXEC on all fds; exec() would close it,
+            // leaving tun2socks with an invalid fd number if we pass fd://<N>.
+            try {
+                Os.fcntl(tunFd!!.fileDescriptor, OsConstants.F_SETFD, 0)
+                appendLog("[TUN] fd=$tunFdInt FD_CLOEXEC cleared — fd is inheritable")
+            } catch (e: Exception) {
+                appendLog("[TUN] Warning: could not clear FD_CLOEXEC: ${e.message}")
+                Log.w(TAG, "FD_CLOEXEC clear failed: ${e.message}")
+            }
+
+            broadcastStep("tun", true, "TUN fd=$tunFdInt established (inheritable)")
+
+            // 7. Start tun2socks — pass fd://<N> so tun2socks uses the inherited fd directly.
+            // Passing /proc/<pid>/fd/<N> fails on Android because the child process cannot
+            // open another process's fd symlinks under SELinux default policy.
             broadcastStep("tun2socks_start", true, "Starting tun2socks → socks5://127.0.0.1:10808")
             tun2socksProc = ProcessBuilder(
                 tun2sockBin.absolutePath,
-                "--device",   procFdPath,
+                "--device",   "fd://$tunFdInt",
                 "--proxy",    "socks5://127.0.0.1:10808",
                 "--loglevel", "warning"
             ).apply {
