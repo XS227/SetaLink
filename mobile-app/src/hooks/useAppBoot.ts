@@ -67,11 +67,11 @@ async function _checkTunnelOnForeground(): Promise<void> {
     if (connectionState === 'connected') {
       const running = await getAdapter().isRunning();
       if (!running) {
-        Logger.info('AppBoot', 'Tunnel dropped in background — reconnecting');
+        Logger.info('AppBoot', 'Tunnel dropped in background — connecting');
         clearError();
         connect();
       }
-    } else if (connectionState === 'error' && autoConnect) {
+    } else if (connectionState === 'failed' && autoConnect) {
       Logger.info('AppBoot', 'Error state on foreground + autoConnect — retrying');
       clearError();
       connect();
