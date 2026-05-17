@@ -44,11 +44,14 @@ class XrayVpnService : VpnService() {
 
     // Calls fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) via JNI so the fd survives exec().
     private external fun nativeClearCloexec(fd: Int): Int
+    private external fun nativeStartTun2socks(binPath: String, tunFd: Int, proxy: String, logLevel: String): Int
+    private external fun nativeTun2socksExitCode(pid: Int): Int
+    private external fun nativeStopTun2socks(pid: Int)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var tunFd:         ParcelFileDescriptor? = null
     private var xrayProcess:   Process?              = null
-    private var tun2socksProc: Process?              = null
+    private var tun2socksPid:  Int?                  = null
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -192,31 +195,32 @@ class XrayVpnService : VpnService() {
             // Root-cause note: tun2socks accepts [debug|info|warn|error|silent].
             // "warning" is NOT a valid level and causes immediate exit with
             // "unrecognized level: warning". Use TUN2SOCKS_LOG_LEVEL = "warn".
-            val tun2socksArgs = listOf(
-                tun2sockBin.absolutePath,
-                "--device",   "fd://$tunFdInt",
-                "--proxy",    "socks5://127.0.0.1:10808",
-                "--loglevel", TUN2SOCKS_LOG_LEVEL
-            )
+            val tun2socksArgs = listOf("--device", "fd://$tunFdInt", "--proxy", "socks5://127.0.0.1:10808", "--loglevel", TUN2SOCKS_LOG_LEVEL)
             appendLog("[tun2socks] args: ${tun2socksArgs.joinToString(" ")}")
             broadcastStep("tun2socks_started", true,
-                "Launching: ${tun2socksArgs.drop(1).joinToString(" ")}")
+                "Launching: ${tun2socksArgs.joinToString(" ")}")
 
-            tun2socksProc = ProcessBuilder(tun2socksArgs).apply {
-                redirectErrorStream(true)
-                directory(filesDir)
-            }.start()
-            scope.launch { streamToLog(tun2socksProc!!, "tun2socks") }
+            val pid = nativeStartTun2socks(
+                tun2sockBin.absolutePath,
+                tunFdInt,
+                "socks5://127.0.0.1:10808",
+                TUN2SOCKS_LOG_LEVEL
+            )
+            if (pid <= 0) {
+                throw Exception("nativeStartTun2socks failed (pid=$pid)")
+            }
+            tun2socksPid = pid
+            appendLog("[tun2socks] started via native fork/exec pid=$pid")
 
             delay(1500L)
 
-            if (tun2socksProc?.isAlive != true) {
-                val exitCode = runCatching { tun2socksProc?.exitValue() }.getOrNull()
+            val firstExit = nativeTun2socksExitCode(pid)
+            if (firstExit != -2) {
                 val logTail  = readLogTail(20)
                 broadcastStep("tun2socks_alive", false,
-                    "tun2socks exited code=$exitCode\nargs: ${tun2socksArgs.drop(1).joinToString(" ")}\nLog:\n$logTail")
+                    "tun2socks exited code=$firstExit pid=$pid\nargs: ${tun2socksArgs.joinToString(" ")}\nLog:\n$logTail")
                 throw Exception(
-                    "tun2socks exited (code=$exitCode).\nargs: ${tun2socksArgs.drop(1).joinToString(" ")}\nLog:\n$logTail")
+                    "tun2socks exited (code=$firstExit pid=$pid).\nargs: ${tun2socksArgs.joinToString(" ")}\nLog:\n$logTail")
             }
             broadcastStep("tun2socks_alive", true, "tun2socks running — fd://$tunFdInt → socks5://127.0.0.1:10808")
 
@@ -229,7 +233,7 @@ class XrayVpnService : VpnService() {
                 while (isActive) {
                     delay(3_000L)
                     val xAlive = xrayProcess?.isAlive == true
-                    val tAlive = tun2socksProc?.isAlive == true
+                    val tAlive = tun2socksPid?.let { nativeTun2socksExitCode(it) == -2 } == true
                     if (!xAlive || !tAlive) {
                         val logTail = readLogTail(20)
                         val msg = "Process died unexpectedly (xray=$xAlive tun2socks=$tAlive).\n$logTail"
@@ -312,18 +316,18 @@ class XrayVpnService : VpnService() {
             appendLog("[CLEANUP] killed stale xray process")
         }
         xrayProcess = null
-        tun2socksProc?.let {
-            it.destroyForcibly()
-            appendLog("[CLEANUP] killed stale tun2socks process")
+        tun2socksPid?.let {
+            nativeStopTun2socks(it)
+            appendLog("[CLEANUP] killed stale tun2socks pid=$it")
         }
-        tun2socksProc = null
+        tun2socksPid = null
         runCatching { tunFd?.close() }
         tunFd = null
     }
 
     private fun tearDownTunnel() {
         xrayProcess?.destroyForcibly();    xrayProcess   = null
-        tun2socksProc?.destroyForcibly();  tun2socksProc = null
+        tun2socksPid?.let { nativeStopTun2socks(it) }; tun2socksPid = null
         runCatching { tunFd?.close() }
         tunFd = null
         sendBroadcast(Intent(BROADCAST_DISCONNECTED).setPackage(packageName))
