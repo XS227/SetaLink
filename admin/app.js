@@ -430,3 +430,194 @@ document.querySelectorAll('.js-json-copy-btn').forEach(btn => {
         }
     });
 });
+
+// ─── App Analytics ────────────────────────────────────────────────────────────
+
+const appAnalyticsMockData = {
+    totalInstalls: 47,
+    active7d: 31,
+    newMonth: 12,
+    latestVersion: '1.0.0',
+    versionDist: [
+        { ver: '1.0.0', count: 38 },
+        { ver: '0.9.5', count: 9 },
+    ],
+};
+
+function renderAppAnalytics(data) {
+    const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+    setEl('appStatInstalls',  String(data.totalInstalls));
+    setEl('appStatActive7d',  String(data.active7d));
+    setEl('appStatNewMonth',  String(data.newMonth));
+    setEl('appStatVersion',   'v' + data.latestVersion);
+
+    const container = document.getElementById('appVersionDist');
+    if (!container || !data.versionDist) return;
+    const total = data.versionDist.reduce((s, v) => s + v.count, 0);
+    container.innerHTML = data.versionDist.map(v => {
+        const pct = total > 0 ? Math.round(v.count / total * 100) : 0;
+        return `<div class="app-ver-row">
+          <span class="app-ver-label">v${v.ver}</span>
+          <div class="app-ver-bar-wrap"><div class="app-ver-bar" style="width:${pct}%"></div></div>
+          <span class="app-ver-pct">${pct}%</span>
+        </div>`;
+    }).join('');
+}
+
+(function initAppAnalytics() {
+    const btn = document.getElementById('refreshAppAnalyticsBtn');
+    if (!btn) return; // not on dashboard page
+
+    // Initial load — use mock data until API endpoint exists
+    renderAppAnalytics(appAnalyticsMockData);
+
+    btn.addEventListener('click', () => {
+        btn.disabled = true;
+        // In production: fetch('/admin/api.php?action=app-analytics')
+        //   .then(r => r.json()).then(renderAppAnalytics).finally(() => btn.disabled = false);
+        setTimeout(() => {
+            renderAppAnalytics(appAnalyticsMockData);
+            showToast('App analytics refreshed', 'ok', 2000);
+            btn.disabled = false;
+        }, 600);
+    });
+})();
+
+// ─── Server Nodes Management ──────────────────────────────────────────────────
+
+const nodesMockData = [
+    { id: 'node-01', label: 'DE-01 Frankfurt', host: '157.90.xxx.1',  country: 'Germany',     flag: '🇩🇪', protocol: 'VLESS+Reality', port: 8443, status: 'online', pingMs: 42,  loadPct: 34, userCount: 18, tags: ['primary'] },
+    { id: 'node-02', label: 'NL-01 Amsterdam', host: '45.76.xxx.88',  country: 'Netherlands', flag: '🇳🇱', protocol: 'VLESS+XHTTP',   port: 443,  status: 'online', pingMs: 51,  loadPct: 22, userCount: 11, tags: ['backup'] },
+    { id: 'node-03', label: 'FI-01 Helsinki',  host: '95.217.xxx.14', country: 'Finland',     flag: '🇫🇮', protocol: 'VLESS+Reality', port: 8443, status: 'online', pingMs: 68,  loadPct: 8,  userCount: 4,  tags: ['premium'] },
+];
+
+function pingClass(ms) {
+    if (ms < 60)  return 'good';
+    if (ms < 120) return 'warn';
+    return 'bad';
+}
+
+function renderNodes(nodes) {
+    const tbody = document.getElementById('nodesTbody');
+    if (!tbody) return;
+
+    if (!nodes || nodes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:2rem 0">No nodes configured</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = nodes.map(n => {
+        const statusDot = n.status === 'online'
+            ? '<span class="dot dot-ok" title="Online"></span>'
+            : '<span class="dot dot-bad" title="Offline"></span>';
+        const pingCls = pingClass(n.pingMs);
+        const loadCls = n.loadPct > 80 ? 'danger' : n.loadPct > 60 ? 'warn' : '';
+        const tags = (n.tags || []).map(t => `<span class="badge badge-muted" style="font-size:.65rem">${t}</span>`).join(' ');
+
+        return `<tr>
+          <td>
+            <div class="user-name-cell">
+              <span class="node-flag">${n.flag}</span>
+              <div>
+                <div class="node-label">${n.label} ${tags}</div>
+                <div class="node-host">${n.host}:${n.port}</div>
+              </div>
+            </div>
+          </td>
+          <td>${n.country}</td>
+          <td><span class="badge badge-accent" style="font-size:.7rem">${n.protocol}</span></td>
+          <td>${statusDot}</td>
+          <td><span class="node-ping ${pingCls}">${n.pingMs}ms</span></td>
+          <td>
+            <div class="stat-bar" style="width:80px;margin:0">
+              <div class="stat-bar-fill ${loadCls}" style="width:${n.loadPct}%"></div>
+            </div>
+            <span style="font-size:.75rem;color:var(--muted)">${n.loadPct}%</span>
+          </td>
+          <td>${n.userCount}</td>
+          <td style="text-align:right">
+            <div class="row-actions">
+              <button class="btn-icon js-node-ping" data-id="${n.id}" title="Ping">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 6l5 5 5-5 5 5 5-5"/><path d="M1 18l5-5 5 5 5-5 5 5"/></svg>
+              </button>
+              <button class="btn-icon icon-delete js-node-delete" data-id="${n.id}" data-label="${n.label}" title="Remove node">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
+
+    // Wire ping buttons
+    tbody.querySelectorAll('.js-node-ping').forEach(btn => {
+        btn.addEventListener('click', () => {
+            showToast(`Pinging node ${btn.dataset.id}…`, 'info', 1500);
+        });
+    });
+
+    // Wire delete buttons
+    tbody.querySelectorAll('.js-node-delete').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (!confirm(`Remove node "${btn.dataset.label}" from the panel? (Does not destroy the server.)`)) return;
+            showToast(`Node "${btn.dataset.label}" removed`, 'ok', 2500);
+            // In production: POST to api.php?action=remove-node
+        });
+    });
+}
+
+(function initNodes() {
+    const tbody = document.getElementById('nodesTbody');
+    if (!tbody) return; // not on dashboard page
+
+    renderNodes(nodesMockData);
+
+    const addBtn      = document.getElementById('addNodeBtn');
+    const refreshBtn  = document.getElementById('refreshNodesBtn');
+    const modalEl     = document.getElementById('addNodeModal');
+    const closeBtn    = document.getElementById('addNodeModalClose');
+    const cancelBtn   = document.getElementById('addNodeModalCancel');
+    const confirmBtn  = document.getElementById('addNodeConfirmBtn');
+
+    if (addBtn)    addBtn.addEventListener('click',    () => { if (modalEl) modalEl.style.display = 'flex'; });
+    if (closeBtn)  closeBtn.addEventListener('click',  () => { if (modalEl) modalEl.style.display = 'none'; });
+    if (cancelBtn) cancelBtn.addEventListener('click', () => { if (modalEl) modalEl.style.display = 'none'; });
+
+    if (modalEl) {
+        modalEl.addEventListener('click', e => { if (e.target === modalEl) modalEl.style.display = 'none'; });
+    }
+
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', () => {
+            const label    = document.getElementById('nodeLabel')?.value.trim();
+            const host     = document.getElementById('nodeHost')?.value.trim();
+            const country  = document.getElementById('nodeCountry')?.value.trim();
+            const flag     = document.getElementById('nodeFlag')?.value.trim() || '🌐';
+            const protocol = document.getElementById('nodeProtocol')?.value || 'VLESS+Reality';
+            const port     = parseInt(document.getElementById('nodePort')?.value || '443');
+            const tags     = (document.getElementById('nodeTags')?.value || '').split(',').map(t => t.trim()).filter(Boolean);
+
+            if (!label || !host) { showToast('Label and Host are required', 'error', 3000); return; }
+
+            const newNode = {
+                id: 'node-' + Date.now(),
+                label, host, country: country || 'Unknown', flag,
+                protocol, port, status: 'unknown', pingMs: 0, loadPct: 0, userCount: 0, tags,
+            };
+            nodesMockData.push(newNode);
+            renderNodes(nodesMockData);
+            if (modalEl) modalEl.style.display = 'none';
+            showToast(`Node "${label}" added`, 'ok', 2500);
+        });
+    }
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            refreshBtn.disabled = true;
+            setTimeout(() => {
+                renderNodes(nodesMockData);
+                showToast('Nodes refreshed', 'ok', 2000);
+                refreshBtn.disabled = false;
+            }, 500);
+        });
+    }
+})();
