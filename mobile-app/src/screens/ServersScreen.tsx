@@ -194,9 +194,14 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           </View>
         </View>
 
-        {loadError && (
+        {loadError && servers.length > 0 && (
+          <View style={styles.cachedBanner}>
+            <Text style={styles.cachedBannerText}>◎ {t('sv.usingSaved')}</Text>
+          </View>
+        )}
+        {loadError && servers.length === 0 && (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{loadError} · {t('sv.cachedList')}</Text>
+            <Text style={styles.errorBannerText}>{loadError}</Text>
           </View>
         )}
 
@@ -466,6 +471,8 @@ const styles = StyleSheet.create({
   importBtnText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
 
   // Banners
+  cachedBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
+  cachedBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
   errorBanner:     { backgroundColor: 'rgba(255,68,68,0.08)', borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(255,68,68,0.2)', paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
   errorBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.status.disconnected },
 
