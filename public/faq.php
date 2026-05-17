@@ -80,7 +80,7 @@ header('X-Content-Type-Options: nosniff');
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.start.a1">Message us on Telegram at @SetaLink3. We'll send you the Android APK file and create your account. iOS support is coming in Q3 2026. Once the app stores are live, you'll be able to download directly.</p>
+          <p data-t="faq.start.a1">Download the APK directly from <a href="/download/setalink-latest.apk" style="color:var(--accent)">setalink.com/download</a> — no account needed to try. For iOS support (coming Q3 2026) or help setting up, message us on Telegram at <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" style="color:var(--accent)">@SetaLink3</a>.</p>
         </div>
       </div>
 
