@@ -34,7 +34,7 @@ interface VpnState {
   connect:            () => void;
   disconnect:         () => void;
   switchServer:       () => void;
-  setSelectedServer:  (server: VpnServer) => void;
+  setSelectedServer:  (server: VpnServer | null) => void;
   setSessionBytes:    (b: SessionBytes) => void;
   addSessionBytes:    (sent: number, received: number) => void;
   resetSession:       () => void;
@@ -45,11 +45,7 @@ interface VpnState {
   setConnectionState: (s: ConnectionState) => void;
 }
 
-const DEFAULT_SERVER: VpnServer = {
-  id: 'de1', country: 'Germany', city: 'Frankfurt',
-  flag: '🇩🇪', protocol: 'VLESS', transport: 'Reality',
-  ping: 24, load: 34, premium: true,
-};
+// No default server — user must import a real VLESS config before connecting.
 
 export const useVpnStore = create<VpnState>((set, get) => {
   // Machine lives in closure — one instance per store, survives re-renders
@@ -183,23 +179,29 @@ export const useVpnStore = create<VpnState>((set, get) => {
     getConnectConfig: () => {
       const { selectedServer, selectedProtocol } = get();
       if (!selectedServer) return null;
+
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useServerStore } = require('./serverStore') as typeof import('./serverStore');
+      const creds = useServerStore.getState().getImportedCreds(selectedServer.id);
+
+      // No real credentials — refuse to connect with placeholder config.
+      // The machine will call FAILED with a user-visible error.
+      if (!creds) return null;
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { useSettingsStore } = require('./settingsStore');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { useServerStore }   = require('./serverStore');
+        const { useSettingsStore } = require('./settingsStore') as typeof import('./settingsStore');
         const dnsMode = useSettingsStore.getState().dnsMode;
-        const creds   = useServerStore.getState().getImportedCreds(selectedServer.id);
         return buildXrayConfigJson(selectedServer, selectedProtocol, dnsMode, creds);
       } catch {
-        return buildXrayConfigJson(selectedServer, selectedProtocol, 'Cloudflare (DoH)');
+        return buildXrayConfigJson(selectedServer, selectedProtocol, 'Cloudflare (DoH)', creds);
       }
     },
   }, getAdapter());
 
   return {
     connectionState:   'idle',
-    selectedServer:    DEFAULT_SERVER,
+    selectedServer:    null,
     sessionStartedAt:  null,
     sessionBytes:      { sent: 0, received: 0 },
     selectedProtocol:  'VLESS+Reality',

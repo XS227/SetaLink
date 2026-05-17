@@ -1,6 +1,8 @@
-import { create } from 'zustand';
-import type { AIModeKey }         from './aiStore';
-import type { ServerCredentials } from '../services/serverConfigService';
+import { create }                    from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { storage }                   from '../storage/storage';
+import type { AIModeKey }            from './aiStore';
+import type { ServerCredentials }    from '../services/serverConfigService';
 
 export interface ServerRecord {
   id:       string;
@@ -17,20 +19,8 @@ export interface ServerRecord {
 export type FilterTab = 'All' | 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming';
 export const FILTER_TABS: FilterTab[] = ['All', 'Recommended', 'Fastest', 'Stealth', 'Streaming'];
 
-export const SERVER_CATALOG: ServerRecord[] = [
-  { id: 'de1', country: 'Germany',        city: 'Frankfurt',   flag: '🇩🇪', ping: 24,  load: 34, protocol: 'VLESS',     tags: ['Recommended', 'Fastest'], premium: true  },
-  { id: 'nl1', country: 'Netherlands',    city: 'Amsterdam',   flag: '🇳🇱', ping: 31,  load: 42, protocol: 'VLESS',     tags: ['Streaming'],              premium: true  },
-  { id: 'fi1', country: 'Finland',        city: 'Helsinki',    flag: '🇫🇮', ping: 38,  load: 21, protocol: 'Reality',                                     premium: false },
-  { id: 'fr1', country: 'France',         city: 'Paris',       flag: '🇫🇷', ping: 28,  load: 57, protocol: 'VLESS',     tags: ['Stealth'],                premium: false },
-  { id: 'us1', country: 'United States',  city: 'New York',    flag: '🇺🇸', ping: 88,  load: 63, protocol: 'WebSocket'                                                  },
-  { id: 'us2', country: 'United States',  city: 'Los Angeles', flag: '🇺🇸', ping: 112, load: 71, protocol: 'VLESS'                                                       },
-  { id: 'sg1', country: 'Singapore',      city: 'Singapore',   flag: '🇸🇬', ping: 67,  load: 48, protocol: 'Reality',   tags: ['Streaming'],              premium: true  },
-  { id: 'jp1', country: 'Japan',          city: 'Tokyo',       flag: '🇯🇵', ping: 95,  load: 39, protocol: 'VLESS'                                                       },
-  { id: 'uk1', country: 'United Kingdom', city: 'London',      flag: '🇬🇧', ping: 33,  load: 55, protocol: 'VLESS',     tags: ['Streaming'],              premium: true  },
-  { id: 'ch1', country: 'Switzerland',    city: 'Zurich',      flag: '🇨🇭', ping: 35,  load: 18, protocol: 'Reality',   tags: ['Stealth'],                premium: true  },
-  { id: 'tr1', country: 'Turkey',         city: 'Istanbul',    flag: '🇹🇷', ping: 52,  load: 44, protocol: 'VLESS'                                                       },
-  { id: 'se1', country: 'Sweden',         city: 'Stockholm',   flag: '🇸🇪', ping: 41,  load: 29, protocol: 'Reality'                                                     },
-];
+// No hardcoded demo servers — only real imported or backend-provided nodes appear here.
+export const SERVER_CATALOG: ServerRecord[] = [];
 
 // Composite server score for AI-driven ranking
 export function scoreServer(s: ServerRecord, mode: AIModeKey): number {
@@ -79,9 +69,29 @@ interface ServerState {
   selectedRecord:  () => ServerRecord | undefined;
 }
 
-export const useServerStore = create<ServerState>((set, get) => ({
+function syncToVpnStore(record: ServerRecord): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useVpnStore } = require('./vpnStore') as typeof import('./vpnStore');
+    useVpnStore.getState().setSelectedServer({
+      id:        record.id,
+      country:   record.country,
+      city:      record.city,
+      flag:      record.flag,
+      protocol:  record.protocol,
+      transport: record.protocol === 'Reality' ? 'Reality' : 'TCP',
+      ping:      record.ping,
+      load:      record.load,
+      premium:   record.premium ?? false,
+    });
+  } catch {}
+}
+
+export const useServerStore = create<ServerState>()(
+  persist(
+    (set, get) => ({
   servers:       SERVER_CATALOG,
-  selectedId:    'de1',
+  selectedId:    '',
   filter:        'All',
   query:         '',
   isLoading:     false,
@@ -95,19 +105,7 @@ export const useServerStore = create<ServerState>((set, get) => ({
     if (!record) return;
 
     // Sync selected server into vpnStore — one-way dependency, no cycle
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { useVpnStore } = require('./vpnStore');
-    useVpnStore.getState().setSelectedServer({
-      id:        record.id,
-      country:   record.country,
-      city:      record.city,
-      flag:      record.flag,
-      protocol:  record.protocol,
-      transport: record.protocol === 'Reality' ? 'Reality' : 'TCP',
-      ping:      record.ping,
-      load:      record.load,
-      premium:   record.premium ?? false,
-    });
+    syncToVpnStore(record);
   },
 
   setFilter: (f) => set({ filter: f }),
@@ -137,7 +135,7 @@ export const useServerStore = create<ServerState>((set, get) => ({
       const entry = parseSingleVless(uri);
       if (!entry) return { success: false, error: 'Invalid or unsupported VLESS URI' };
 
-      const { servers, importedCreds } = get();
+      const { servers, importedCreds, selectedId } = get();
       // Avoid duplicate by address+port
       const exists = servers.some(
         (s) => importedCreds[s.id]?.address === entry.creds.address &&
@@ -149,6 +147,12 @@ export const useServerStore = create<ServerState>((set, get) => ({
         servers:       [...servers, entry.record],
         importedCreds: { ...importedCreds, [entry.record.id]: entry.creds },
       });
+
+      // Auto-select the imported server when no server is currently selected
+      if (!selectedId) {
+        get().selectServer(entry.record.id);
+      }
+
       return { success: true };
     } catch (e) {
       return { success: false, error: e instanceof Error ? e.message : 'Import failed' };
@@ -194,21 +198,40 @@ export const useServerStore = create<ServerState>((set, get) => ({
     const { servers, importedCreds, selectedId } = get();
     const next = { ...importedCreds };
     delete next[id];
-    set({
-      servers:       servers.filter((s) => s.id !== id),
-      importedCreds: next,
-      selectedId:    selectedId === id ? 'de1' : selectedId,
-    });
+    const nextServers = servers.filter((s) => s.id !== id);
+    const nextSelected = selectedId === id ? (nextServers[0]?.id ?? '') : selectedId;
+    set({ servers: nextServers, importedCreds: next, selectedId: nextSelected });
+    // Sync vpnStore when selection changes
+    if (selectedId === id) {
+      const nextRecord = nextServers[0];
+      if (nextRecord) syncToVpnStore(nextRecord);
+      else {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useVpnStore } = require('./vpnStore') as typeof import('./vpnStore');
+          useVpnStore.getState().setSelectedServer(null);
+        } catch {}
+      }
+    }
   },
 
   clearImportedServers: () => {
     const { servers, importedCreds, selectedId } = get();
     const importedIds = new Set(Object.keys(importedCreds));
-    set({
-      servers:       servers.filter((s) => !importedIds.has(s.id)),
-      importedCreds: {},
-      selectedId:    importedIds.has(selectedId) ? 'de1' : selectedId,
-    });
+    const nextServers = servers.filter((s) => !importedIds.has(s.id));
+    const nextSelected = importedIds.has(selectedId) ? (nextServers[0]?.id ?? '') : selectedId;
+    set({ servers: nextServers, importedCreds: {}, selectedId: nextSelected });
+    if (importedIds.has(selectedId)) {
+      const nextRecord = nextServers[0];
+      if (nextRecord) syncToVpnStore(nextRecord);
+      else {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useVpnStore } = require('./vpnStore') as typeof import('./vpnStore');
+          useVpnStore.getState().setSelectedServer(null);
+        } catch {}
+      }
+    }
   },
 
   getImportedCreds: (serverId) => get().importedCreds[serverId],
@@ -234,4 +257,22 @@ export const useServerStore = create<ServerState>((set, get) => ({
       .slice(0, 3),
 
   selectedRecord: () => get().servers.find((s) => s.id === get().selectedId),
-}));
+    }),
+    {
+      name:    'setalink-servers-v1',
+      storage: createJSONStorage(() => storage),
+      // Only persist data — functions are recreated from the store definition
+      partialize: (state) => ({
+        servers:       state.servers,
+        importedCreds: state.importedCreds,
+        selectedId:    state.selectedId,
+      }),
+      // On app start, sync the persisted selected server into vpnStore
+      onRehydrateStorage: () => (state) => {
+        if (!state?.selectedId) return;
+        const record = state.servers.find((s) => s.id === state.selectedId);
+        if (record) syncToVpnStore(record);
+      },
+    }
+  )
+);

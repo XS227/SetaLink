@@ -119,8 +119,15 @@ export class ConnectionMachine {
 
     const config = this.cb.getConnectConfig?.() ?? null;
 
-    if (this.adapter && config) {
+    if (this.adapter) {
       // Real path — delegate to VpnAdapter
+      if (!config) {
+        // No server selected or no credentials for the selected server
+        this.lastAdapterError =
+          'No VPN credentials — import a VLESS link in the Servers tab first';
+        this.send('FAILED');
+        return;
+      }
       this.adapter.connect(config).then(
         () => { if (!this.aborted) this.send('CONNECTED'); },
         (err: unknown) => {

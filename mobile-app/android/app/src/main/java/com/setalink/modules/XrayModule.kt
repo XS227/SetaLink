@@ -1,6 +1,7 @@
 package com.setalink.modules
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -92,6 +93,28 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             reactContext, vpnReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
         )
         reactContext.addActivityEventListener(this)
+
+        // Restore running state when app is restarted while the VPN service is active.
+        // getRunningServices() still returns own-package services on API 26+ per Android docs.
+        if (isVpnServiceRunning()) {
+            running   = true
+            startedAt = System.currentTimeMillis()
+            Log.i(TAG, "VPN service already running — restoring connected state")
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    @Suppress("DEPRECATION")
+    private fun isVpnServiceRunning(): Boolean {
+        return try {
+            val am = reactContext.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            am.getRunningServices(Int.MAX_VALUE)
+                .any { it.service.className == XrayVpnService::class.java.name }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not check running services: ${e.message}")
+            false
+        }
     }
 
     // ── TurboModule interface ─────────────────────────────────────────────────
@@ -181,8 +204,6 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     }
 
     override fun onNewIntent(intent: Intent?) {}
-
-    // ── Private helpers ───────────────────────────────────────────────────────
 
     private fun startVpnService(config: String, promise: Promise) {
         try {

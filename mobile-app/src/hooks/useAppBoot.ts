@@ -11,6 +11,10 @@ export function useAppBoot(): void {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
+    // On mount: sync native VPN state to JS store in case the app was restarted
+    // while the VPN service was already running.
+    _syncNativeState();
+
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appStateRef.current;
       appStateRef.current = next;
@@ -33,6 +37,23 @@ export function useAppBoot(): void {
 
     return () => sub.remove();
   }, []);
+}
+
+// On app mount, if the native service is running but JS thinks idle (app was restarted
+// while VPN was active), force-sync the connected state so the user can disconnect.
+async function _syncNativeState(): Promise<void> {
+  try {
+    const { connectionState, setConnectionState } = useVpnStore.getState();
+    if (connectionState !== 'idle') return;            // already in a non-idle state
+    const running = await getAdapter().isRunning();
+    if (running) {
+      Logger.info('AppBoot', 'Native VPN running on mount — restoring connected state');
+      setConnectionState('connected');
+      useVpnStore.setState({ sessionStartedAt: Date.now() });
+    }
+  } catch (e) {
+    Logger.warn('AppBoot', `Native state sync failed: ${e}`);
+  }
 }
 
 // Checks whether the native tunnel is still alive after the app was backgrounded.

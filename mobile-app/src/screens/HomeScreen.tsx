@@ -109,7 +109,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.greeting}>{greeting}</Text>
             <Text style={styles.username}>{name} ↗</Text>
           </View>
-          <TouchableOpacity style={styles.bellBtn}>
+          <TouchableOpacity
+            style={styles.bellBtn}
+            onPress={() => onNavigate('settings' as NavTab)}
+            activeOpacity={0.75}
+          >
             <Text style={styles.bellIcon}>◌</Text>
             <View style={styles.notifDot} />
           </TouchableOpacity>
