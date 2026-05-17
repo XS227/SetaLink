@@ -4,7 +4,6 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import android.system.Os
 import android.system.OsConstants
 import android.util.Log
 import com.setalink.notification.NotificationHelper
@@ -133,12 +132,16 @@ class XrayVpnService : VpnService() {
             // Clear FD_CLOEXEC so tun2socks child process can inherit the TUN file descriptor.
             // Android sets FD_CLOEXEC on all fds by default; without clearing it the fd is closed
             // before exec() runs and tun2socks receives an invalid fd://N argument.
+            // Os.fcntl is a hidden (@hide) API absent from android.jar; call via reflection.
             try {
-                Os.fcntl(tunFd!!.fileDescriptor, OsConstants.F_SETFD, 0)
+                Class.forName("android.system.Os")
+                    .getMethod("fcntl", java.io.FileDescriptor::class.java,
+                        Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                    .invoke(null, tunFd!!.fileDescriptor, OsConstants.F_SETFD, 0)
                 broadcastStep("fd_inherit", true, "FD_CLOEXEC cleared — fd is inheritable")
             } catch (e: Exception) {
-                broadcastStep("fd_inherit", false, "fcntl failed: ${e.message}")
-                Log.e(TAG, "Could not clear FD_CLOEXEC: ${e.message}")
+                broadcastStep("fd_inherit", false, "fcntl via reflection: ${e.message}")
+                Log.w(TAG, "Could not clear FD_CLOEXEC (non-fatal): ${e.message}")
             }
 
             // 7. Start tun2socks (bridges TUN ↔ Xray SOCKS5)
