@@ -9,8 +9,7 @@ export type MachineState =
   | 'connecting'
   | 'connected'
   | 'disconnecting'
-  | 'error'
-  | 'reconnecting';
+  | 'failed';
 
 export type MachineEvent =
   | 'CONNECT'
@@ -18,7 +17,6 @@ export type MachineEvent =
   | 'CONNECTED'
   | 'DISCONNECTED'
   | 'FAILED'
-  | 'RECONNECT'
   | 'RESET';
 
 export interface MachineCallbacks {
@@ -33,14 +31,12 @@ export interface MachineCallbacks {
 // [currentState][event] → nextState  (omitted = invalid, silently ignored)
 const TRANSITIONS: Partial<Record<MachineState, Partial<Record<MachineEvent, MachineState>>>> = {
   idle:          { CONNECT:      'connecting'    },
-  connecting:    { CONNECTED:    'connected',    FAILED:  'error',   DISCONNECT: 'idle'  },
+  connecting:    { CONNECTED:    'connected',    FAILED:  'failed',   DISCONNECT: 'disconnecting'  },
   connected:     { DISCONNECT:   'disconnecting'                                         },
   disconnecting: { DISCONNECTED: 'idle'                                                   },
-  error:         { CONNECT:      'reconnecting', DISCONNECT: 'disconnecting', RESET:   'idle' },
-  reconnecting:  { CONNECTED:    'connected',    FAILED:  'error',   RESET:      'idle'  },
+  failed:        { CONNECT:      'connecting', DISCONNECT: 'disconnecting', RESET: 'idle' },
 };
 
-const MAX_RECONNECT         = 3;
 const MOCK_SUCCESS_RATE     = 0.95;
 const MOCK_CONNECT_DELAY_MS = () => 1500 + Math.random() * 1000;
 const MOCK_DISCONNECT_MS    = () => 600  + Math.random() * 400;
@@ -82,13 +78,6 @@ export class ConnectionMachine {
         this._doConnect(MOCK_CONNECT_DELAY_MS());
         break;
 
-      case 'reconnecting': {
-        this.reconnectAttempts++;
-        const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 8000);
-        this._doConnect(delay);
-        break;
-      }
-
       case 'connected':
         this.reconnectAttempts = 0;
         this.cb.onConnected();
@@ -102,11 +91,9 @@ export class ConnectionMachine {
         if (prev !== 'idle') this.cb.onDisconnected();
         break;
 
-      case 'error': {
+      case 'failed': {
         const msg = this.lastAdapterError
-          ?? (this.reconnectAttempts >= MAX_RECONNECT
-            ? 'Max reconnection attempts reached'
-            : 'Connection failed');
+          ?? 'Connection failed';
         this.lastAdapterError = null;
         this.cb.onError(msg);
         break;

@@ -27,8 +27,7 @@ const STATUS_MAP = {
   connecting:    'connecting',
   connected:     'connected',
   disconnecting: 'connecting',
-  error:         'disconnected',
-  reconnecting:  'connecting',
+  failed:        'disconnected',
 } as const;
 
 // ConnectButton accepts only 4 states — map our 6 machine states down
@@ -37,8 +36,7 @@ const BUTTON_STATE_MAP: Record<string, 'idle' | 'connecting' | 'connected' | 'di
   connecting:    'connecting',
   connected:     'connected',
   disconnecting: 'disconnecting',
-  error:         'idle',
-  reconnecting:  'connecting',
+  failed:        'idle',
 };
 
 interface Props {
@@ -68,8 +66,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
-    || connectionState === 'disconnecting'
-    || connectionState === 'reconnecting';
+    || connectionState === 'disconnecting';
 
   const headerOpacity    = useRef(new Animated.Value(0)).current;
   const contentTranslate = useRef(new Animated.Value(20)).current;
@@ -86,7 +83,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   }, []);
 
   const handleConnect = () => {
-    if (connectionState === 'idle' || connectionState === 'error') connect();
+    if (connectionState === 'idle' || connectionState === 'failed') connect();
     else if (connectionState === 'connected') disconnect();
   };
 
@@ -130,13 +127,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.protocolText}>{protocol}</Text>
             </View>
           )}
-          {connectionState === 'reconnecting' && (
-            <View style={styles.reconnectBadge}>
-              <Text style={styles.reconnectText}>
-                {t('home.reconnecting')} · {reconnectAttempts}/3
-              </Text>
-            </View>
-          )}
           {error && !isTransitioning && (
             <TouchableOpacity
               style={styles.errorBadge}
@@ -161,7 +151,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         </Animated.View>
 
         {/* Connection log (shown while connecting or on error) */}
-        {(connectionState === 'connecting' || connectionState === 'error') && connectionLog.length > 0 && (
+        {(connectionState === 'connecting' || connectionState === 'failed') && connectionLog.length > 0 && (
           <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
             <GlassCard style={styles.logPanel}>
               <Text style={styles.logPanelTitle}>{t('home.connLog')}</Text>

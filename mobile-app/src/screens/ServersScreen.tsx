@@ -117,7 +117,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
     || connectionState === 'disconnecting'
-    || connectionState === 'reconnecting';
+    || false;
 
   const handleSelectServer = useCallback((serverId: string) => {
     if (isTransitioning) return;
@@ -148,7 +148,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
 
   const handleConnect = useCallback(() => {
     if (isTransitioning) return;
-    if (connectionState === 'idle' || connectionState === 'error') connect();
+    if (connectionState === 'idle' || connectionState === 'failed') connect();
     onNavigate('home');
   }, [isTransitioning, connectionState, connect, onNavigate]);
 
