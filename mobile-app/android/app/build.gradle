@@ -80,6 +80,16 @@ android {
         jvmTarget = "17"
     }
 
+    // Prevent NDK from stripping our standalone ELF executables packaged as .so
+    // and force extraction to nativeLibraryDir on install (not compressed in APK).
+    packagingOptions {
+        doNotStrip "*/arm64-v8a/libxray.so"
+        doNotStrip "*/arm64-v8a/libtun2socks.so"
+        jniLibs {
+            useLegacyPackaging true
+        }
+    }
+
     lint {
         checkReleaseBuilds false
         abortOnError false

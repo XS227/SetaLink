@@ -17,8 +17,7 @@ import java.net.Socket
 class XrayVpnService : VpnService() {
 
     companion object {
-        private const val TAG        = "XrayVpnService"
-        private const val BINARY_VER = "xray-26.3.27+t2s-2.6.0"
+        private const val TAG = "XrayVpnService"
 
         const val ACTION_START = "com.setalink.vpn.START"
         const val ACTION_STOP  = "com.setalink.vpn.STOP"
@@ -84,20 +83,16 @@ class XrayVpnService : VpnService() {
         try { File(filesDir, XRAY_LOG_FILE).writeText("") } catch (_: Exception) {}
 
         try {
-            // 1. Extract + verify binaries
-            broadcastStep("binaries", true, "Extracting binaries (ver=$BINARY_VER)")
-            val xrayBin     = extractBinary("xray-arm64",      "xray")
-            val tun2sockBin = extractBinary("tun2socks-arm64", "tun2socks")
-
-            // canExecute() is the ground truth — setExecutable may silently fail on some OEMs
-            if (!xrayBin.canExecute()) {
-                throw Exception(
-                    "Xray binary not executable at ${xrayBin.absolutePath} " +
-                    "(${xrayBin.length()} B). " +
-                    "Possible SELinux policy block or filesystem noexec mount."
-                )
-            }
-            broadcastStep("binaries", true, "xray=${xrayBin.length()}B tun2socks=${tun2sockBin.length()}B — executable OK")
+            // 1. Resolve binaries from nativeLibraryDir (exec-safe, unlike filesDir)
+            appendLog("[DIAG] nativeLibraryDir=${applicationInfo.nativeLibraryDir}")
+            appendLog("[DIAG] filesDir=${filesDir.absolutePath} (noexec on many OEMs — NOT used for binaries)")
+            broadcastStep("binaries", true, "Resolving binaries from nativeLibraryDir")
+            val xrayBin     = resolveBinary("libxray.so")
+            val tun2sockBin = resolveBinary("libtun2socks.so")
+            broadcastStep("binaries", true,
+                "xray=${xrayBin.length()}B tun2socks=${tun2sockBin.length()}B " +
+                "nativeDir=${applicationInfo.nativeLibraryDir}"
+            )
 
             // 2. Write config
             val configFile = File(filesDir, "xray.json")
@@ -330,23 +325,50 @@ class XrayVpnService : VpnService() {
 
     // ── Binary helpers ────────────────────────────────────────────────────────
 
-    private fun extractBinary(assetName: String, outName: String): File {
-        val outFile   = File(filesDir, outName)
-        val stampFile = File(filesDir, "$outName.ver")
-        if (!outFile.exists() || stampFile.readTextOrEmpty() != BINARY_VER) {
-            Log.i(TAG, "Extracting $assetName → ${outFile.absolutePath}")
-            assets.open(assetName).use { src ->
-                outFile.outputStream().use { dst -> src.copyTo(dst) }
-            }
-            stampFile.writeText(BINARY_VER)
+    /**
+     * Resolves a binary from nativeLibraryDir — the exec-safe path Android uses for
+     * extracted .so files (e.g. /data/app/com.setalink-XXX/lib/arm64/).
+     * filesDir is mounted noexec on many OEMs (MIUI/HyperOS, ColorOS, some Samsung ROMs)
+     * so we package binaries as libXXX.so in jniLibs/ and let the installer extract them.
+     */
+    private fun resolveBinary(libName: String): File {
+        val nativeDir = File(applicationInfo.nativeLibraryDir)
+        val binFile   = File(nativeDir, libName)
+
+        val diagLine = "path=${binFile.absolutePath} exists=${binFile.exists()} " +
+                       "size=${binFile.length()}B canExecute=${binFile.canExecute()}"
+        appendLog("[BINARY] $diagLine")
+        Log.i(TAG, "Binary $libName: $diagLine")
+
+        if (!binFile.exists()) {
+            val contents = nativeDir.list()?.joinToString() ?: "dir missing"
+            throw Exception(
+                "Binary $libName not found at ${binFile.absolutePath}\n" +
+                "nativeLibraryDir contents: $contents"
+            )
         }
-        // Always set — executable bit can be stripped by app updates without cache miss
-        val chmodOk = outFile.setExecutable(true, false)
-        if (!chmodOk) Log.w(TAG, "setExecutable returned false for ${outFile.absolutePath}")
-        return outFile
+        if (!binFile.canExecute()) {
+            // Attempt chmod — may succeed on some ROMs even in nativeLibraryDir
+            binFile.setExecutable(true, false)
+            if (!binFile.canExecute()) {
+                throw Exception(
+                    "Binary $libName not executable at ${binFile.absolutePath}\n" +
+                    "Mount: ${getMountLine(binFile)}"
+                )
+            }
+            appendLog("[BINARY] $libName chmod succeeded despite canExecute=false initially")
+        }
+        return binFile
     }
 
-    private fun File.readTextOrEmpty() = try { readText() } catch (_: Exception) { "" }
+    private fun getMountLine(file: File): String {
+        return try {
+            val path = file.absolutePath
+            File("/proc/mounts").readLines()
+                .lastOrNull { line -> path.startsWith(line.split(" ").getOrElse(1) { "" }) }
+                ?: "no matching mount entry"
+        } catch (_: Exception) { "unavailable" }
+    }
 
     private suspend fun waitForPort(port: Int, timeoutMs: Long): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
