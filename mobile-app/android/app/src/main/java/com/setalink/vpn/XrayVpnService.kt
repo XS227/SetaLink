@@ -6,8 +6,6 @@ import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import android.system.Os
-import android.system.OsConstants
 import android.util.Log
 import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
@@ -34,7 +32,14 @@ class XrayVpnService : VpnService() {
         const val EXTRA_STEP_MSG         = "step_msg"
 
         const val XRAY_LOG_FILE = "xray.log"
+
+        init {
+            System.loadLibrary("setalink_vpn")
+        }
     }
+
+    // Calls fcntl(fd, F_SETFD, flags & ~FD_CLOEXEC) via JNI so the fd survives exec().
+    private external fun nativeClearCloexec(fd: Int): Int
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var tunFd:         ParcelFileDescriptor? = null
@@ -165,14 +170,9 @@ class XrayVpnService : VpnService() {
 
             // Clear FD_CLOEXEC so this fd survives exec() into tun2socks.
             // By default Android sets CLOEXEC on all fds; exec() would close it,
-            // leaving tun2socks with an invalid fd number if we pass fd://<N>.
-            try {
-                Os.fcntl(tunFd!!.fileDescriptor, OsConstants.F_SETFD, 0)
-                appendLog("[TUN] fd=$tunFdInt FD_CLOEXEC cleared — fd is inheritable")
-            } catch (e: Exception) {
-                appendLog("[TUN] Warning: could not clear FD_CLOEXEC: ${e.message}")
-                Log.w(TAG, "FD_CLOEXEC clear failed: ${e.message}")
-            }
+            // leaving tun2socks with an invalid fd number when we pass fd://<N>.
+            val cloexecResult = nativeClearCloexec(tunFdInt)
+            appendLog("[TUN] fd=$tunFdInt FD_CLOEXEC clear result=$cloexecResult (0=ok, -1=err)")
 
             broadcastStep("tun", true, "TUN fd=$tunFdInt established (inheritable)")
 
