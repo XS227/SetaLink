@@ -196,6 +196,15 @@ const EN = {
   'pr.support':         'Contact Support',
   'pr.shareLink':       'Share Referral Link',
   'pr.remaining':       'remaining',
+  'pr.totalQuota':      'Total quota',
+  'pr.usedTraffic':     'Used traffic',
+  'pr.unlimitedShort':  'Unlimited',
+  'pr.biometricLock':   'Biometric Lock',
+  'pr.biometricLockDesc':'Local app lock only (off by default)',
+  'pr.supportUnavailable':'Support link is not available right now.',
+  'pr.websiteUnavailable':'Unable to open website.',
+  'pr.shareUnavailable':'Unable to share invite link.',
+  'pr.noSubscriptionManager':'Subscription management is not available yet.',
 
   // Invite-only auth
   'auth.inviteOnlyTitle': 'Invite-only access',
@@ -391,6 +400,15 @@ const FA: typeof EN = {
   'pr.support':         'تماس با پشتیبانی',
   'pr.shareLink':       'اشتراک‌گذاری لینک معرف',
   'pr.remaining':       'باقیمانده',
+  'pr.totalQuota':      'کل سهمیه',
+  'pr.usedTraffic':     'ترافیک مصرف‌شده',
+  'pr.unlimitedShort':  'نامحدود',
+  'pr.biometricLock':   'قفل بیومتریک',
+  'pr.biometricLockDesc':'فقط قفل محلی برنامه (پیش‌فرض خاموش)',
+  'pr.supportUnavailable':'لینک پشتیبانی در حال حاضر در دسترس نیست.',
+  'pr.websiteUnavailable':'باز کردن وب‌سایت ممکن نیست.',
+  'pr.shareUnavailable':'اشتراک‌گذاری لینک دعوت ممکن نیست.',
+  'pr.noSubscriptionManager':'مدیریت اشتراک هنوز در دسترس نیست.',
 
   // Invite-only auth
   'auth.inviteOnlyTitle': 'ورود فقط با دعوت‌نامه',
