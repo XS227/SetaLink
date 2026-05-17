@@ -162,8 +162,7 @@ class XrayVpnService : VpnService() {
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
                 .setMtu(1500)
-                .addRoute("0.0.0.0", 0)
-                .addDisallowedApplication(packageName)
+                 .addRoute("0.0.0.0", 0)
 
             // IPv6: best-effort (some ROMs reject these calls)
             runCatching {
@@ -186,7 +185,7 @@ class XrayVpnService : VpnService() {
             val cloexecResult = nativeClearCloexec(tunFdInt)
             appendLog("[TUN] fd=$tunFdInt FD_CLOEXEC clear result=$cloexecResult (0=ok, -1=err)")
 
-            broadcastStep("tun_created", true, "TUN fd=$tunFdInt established (FD_CLOEXEC cleared, result=$cloexecResult)")
+            broadcastStep("tun_created", true, "TUN fd=$tunFdInt established (FD_CLOEXEC cleared, result=$cloexecResult)\nVPN app UID is INCLUDED in tunnel for real end-to-end routing checks")
 
             // 7. Start tun2socks — pass fd://<N> so tun2socks uses the inherited fd directly.
             // Passing /proc/<pid>/fd/<N> fails on Android because the child process cannot
