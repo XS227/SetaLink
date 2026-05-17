@@ -701,7 +701,7 @@ $page_titles = [
         </div>
       </div>
       <div class="section-body" style="padding:1.25rem">
-        <div class="srv-stats-row" id="appStatsRow" style="grid-template-columns:repeat(4,1fr)">
+        <div class="srv-stats-row" id="appStatsRow" style="grid-template-columns:repeat(5,1fr)">
           <div class="srv-stat">
             <div class="srv-stat-label">Total Installs</div>
             <div class="srv-stat-value" id="appStatInstalls">—</div>
@@ -715,8 +715,12 @@ $page_titles = [
             <div class="srv-stat-value" id="appStatNewMonth">—</div>
           </div>
           <div class="srv-stat">
-            <div class="srv-stat-label">Latest Version</div>
-            <div class="srv-stat-value" id="appStatVersion" style="font-size:1.1rem">—</div>
+            <div class="srv-stat-label">Latest APK</div>
+            <div class="srv-stat-value" id="appStatVersion" style="font-size:1.1rem">0.2.0</div>
+          </div>
+          <div class="srv-stat">
+            <div class="srv-stat-label">Failed (24h)</div>
+            <div class="srv-stat-value" id="appStatFailed" style="color:var(--danger)">—</div>
           </div>
         </div>
 
@@ -1468,6 +1472,110 @@ if (CURRENT_PAGE === 'dashboard') {
 
     loadProtoMini();
     setInterval(loadProtoMini, 30000);
+
+    // ── App analytics ─────────────────────────────────────────────────────
+    async function loadAppAnalytics() {
+        try {
+            const r = await fetch(API_URL + '?action=app-analytics', { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const j = await r.json();
+            const d = j.data || j;
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+            set('appStatInstalls',  d.total_installs  ?? '—');
+            set('appStatActive7d',  d.active_7d       ?? '—');
+            set('appStatNewMonth',  d.new_this_month  ?? '—');
+            set('appStatVersion',   d.latest_version  ? 'v' + d.latest_version : '0.2.0');
+            set('appStatFailed',    d.failed_24h      ?? '—');
+        } catch (e) { /* silently ignore */ }
+    }
+
+    loadAppAnalytics();
+    setInterval(loadAppAnalytics, 60000);
+
+    // ── Nodes table ───────────────────────────────────────────────────────
+    async function loadNodes() {
+        try {
+            const r = await fetch(API_URL + '?action=node-list', { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const j = await r.json();
+            const nodes = Array.isArray(j.data) ? j.data : (Array.isArray(j) ? j : []);
+            const tbody = document.getElementById('nodesTbody');
+            const ph    = document.getElementById('nodesPlaceholder');
+            if (!tbody) return;
+
+            const existing = tbody.querySelectorAll('tr[data-node-id]');
+            existing.forEach(r => r.remove());
+            if (ph) ph.style.display = nodes.length ? 'none' : '';
+
+            const pingClass = p => p < 80 ? 'good' : p < 200 ? 'warn' : 'bad';
+            nodes.forEach(n => {
+                const tr = document.createElement('tr');
+                tr.dataset.nodeId = n.id;
+                tr.innerHTML = `
+                    <td><span class="node-flag">${SL.esc(n.flag ?? '🌐')}</span> <span class="node-label">${SL.esc(n.label)}</span></td>
+                    <td>${SL.esc(n.country ?? '—')}<br><span class="node-host">${SL.esc(n.city ?? '')}</span></td>
+                    <td><code>${SL.esc(n.protocol ?? '—')}</code></td>
+                    <td><span class="dot ${n.online ? 'dot-ok' : 'dot-bad'}"></span> ${n.online ? 'Online' : 'Offline'}</td>
+                    <td class="node-ping ${pingClass(n.ping ?? 999)}">${n.ping != null ? n.ping + 'ms' : '—'}</td>
+                    <td>${n.load != null ? n.load + '%' : '—'}</td>
+                    <td>${n.user_count ?? '—'}</td>
+                    <td style="text-align:right">
+                        <button class="btn btn-icon" title="Remove" data-action="del-node" data-id="${SL.esc(String(n.id))}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                        </button>
+                    </td>`;
+                tbody.appendChild(tr);
+            });
+
+            tbody.querySelectorAll('[data-action="del-node"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('Remove this node?')) return;
+                    await fetch(API_URL, { method: 'POST', credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+                        body: JSON.stringify({ action: 'node-delete', id: btn.dataset.id }) });
+                    loadNodes();
+                });
+            });
+        } catch (e) { /* silently ignore */ }
+    }
+
+    loadNodes();
+    document.getElementById('refreshNodesBtn')?.addEventListener('click', loadNodes);
+
+    document.getElementById('addNodeBtn')?.addEventListener('click', () => {
+        const modal = document.getElementById('addNodeModal');
+        if (modal) modal.classList.add('open');
+    });
+
+    document.getElementById('nodeModalCancel')?.addEventListener('click', () => {
+        const modal = document.getElementById('addNodeModal');
+        if (modal) modal.classList.remove('open');
+    });
+
+    document.getElementById('nodeModalSave')?.addEventListener('click', async () => {
+        const payload = {
+            action:   'node-add',
+            label:    document.getElementById('nodeLabel')?.value.trim()   ?? '',
+            host:     document.getElementById('nodeHost')?.value.trim()    ?? '',
+            country:  document.getElementById('nodeCountry')?.value.trim() ?? '',
+            flag:     document.getElementById('nodeFlag')?.value.trim()    ?? '',
+            protocol: document.getElementById('nodeProtocol')?.value       ?? 'Reality',
+            port:     parseInt(document.getElementById('nodePort')?.value  ?? '443', 10),
+            tags:     (document.getElementById('nodeTags')?.value ?? '').split(',').map(s => s.trim()).filter(Boolean),
+        };
+        if (!payload.label || !payload.host) { showToast('Label and host are required.', 'error', 3000); return; }
+        const r = await fetch(API_URL, { method: 'POST', credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+            body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (j.ok || j.success) {
+            document.getElementById('addNodeModal')?.classList.remove('open');
+            showToast('Node added.', 'success', 2500);
+            loadNodes();
+        } else {
+            showToast(j.error || 'Failed to add node.', 'error', 3000);
+        }
+    });
 }
 
 // =========================================================================
