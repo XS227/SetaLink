@@ -9,10 +9,12 @@ function buildMachine(overrides?: Partial<{ adapter: VpnAdapter }>) {
 
   const machine = new ConnectionMachine(
     {
-      onStateChange:  (next, prev) => events.push({ next, prev }),
-      onConnected:    connected,
-      onDisconnected: disconnected,
-      onError:        error,
+      onStateChange:   (next, prev) => events.push({ next, prev }),
+      onConnected:     connected,
+      onDisconnected:  disconnected,
+      onError:         error,
+      // Provide a stub config so the adapter path is taken when an adapter is given
+      getConnectConfig: overrides?.adapter ? () => '{}' : undefined,
     },
     overrides?.adapter,
   );
