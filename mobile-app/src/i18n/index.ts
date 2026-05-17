@@ -196,6 +196,14 @@ const EN = {
   'pr.support':         'Contact Support',
   'pr.shareLink':       'Share Referral Link',
   'pr.remaining':       'remaining',
+
+  // Invite-only auth
+  'auth.inviteOnlyTitle': 'Invite-only access',
+  'auth.inviteOnlySub': 'Enter your invite code or open an invite link to create an anonymous account with 1GB free data.',
+  'auth.invitePlaceholder': 'INVITE-CODE',
+  'auth.enterWithInvite': 'Enter with Invite',
+  'auth.invalidInvite': 'Invite code format is invalid.',
+  'auth.privacyNote': 'No email, phone number, or Google login is required.',
 };
 
 const FA: typeof EN = {
@@ -383,6 +391,14 @@ const FA: typeof EN = {
   'pr.support':         'تماس با پشتیبانی',
   'pr.shareLink':       'اشتراک‌گذاری لینک معرف',
   'pr.remaining':       'باقیمانده',
+
+  // Invite-only auth
+  'auth.inviteOnlyTitle': 'ورود فقط با دعوت‌نامه',
+  'auth.inviteOnlySub': 'کد دعوت را وارد کنید یا لینک دعوت را باز کنید تا حساب ناشناس با ۱ گیگابایت سهمیه رایگان ساخته شود.',
+  'auth.invitePlaceholder': 'INVITE-CODE',
+  'auth.enterWithInvite': 'ورود با دعوت‌نامه',
+  'auth.invalidInvite': 'فرمت کد دعوت نامعتبر است.',
+  'auth.privacyNote': 'نیازی به ایمیل، شماره تلفن یا ورود گوگل نیست.',
 };
 
 export type TKey = keyof typeof EN;

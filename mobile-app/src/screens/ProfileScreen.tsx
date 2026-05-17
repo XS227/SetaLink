@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Switch,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -14,7 +14,7 @@ import { useT } from '../i18n';
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
 const PLAN_LIMITS: Record<string, { label: string; gbLimit: number | null }> = {
-  free:    { label: 'Free Plan',    gbLimit: 10   },
+  free:    { label: 'Free Invite Trial',    gbLimit: 1   },
   premium: { label: 'Premium Plan', gbLimit: null }, // unlimited
   team:    { label: 'Team Plan',    gbLimit: null },
 };
@@ -91,14 +91,14 @@ interface Props {
 
 export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { t } = useT();
-  const { user, logout }                 = useAuthStore();
+  const { user, logout, setBiometricSecure } = useAuthStore();
   const { totalBytesThisMonth, sessionsThisMonth, totalDurationToday } = useSessionStore();
   const showToast = useToastStore((s) => s.show);
 
   if (!user) return null;
 
   const plan     = PLAN_LIMITS[user.plan] ?? PLAN_LIMITS.free;
-  const initial  = user.name.charAt(0).toUpperCase();
+  const initial  = user.id.slice(0, 1).toUpperCase();
   const monthSessions = sessionsThisMonth();
   const monthBytes    = totalBytesThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);
@@ -151,8 +151,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             )}
           </View>
           <View>
-            <Text style={styles.userName}>{user.name}</Text>
-            <Text style={styles.userEmail}>{user.email}</Text>
+            <Text style={styles.userName}>{`Anonymous ${user.id.slice(-6)}`}</Text>
+            <Text style={styles.userEmail}>{`Device ${user.deviceId.slice(-8)}`}</Text>
             <View style={styles.planRow}>
               <View style={[
                 styles.planBadge,
@@ -185,7 +185,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                 ) : plan.gbLimit !== null ? (
                   <View style={styles.gbPill}>
                     <Text style={styles.gbPillText}>
-                      {(plan.gbLimit - monthBytes / 1e9).toFixed(1)} GB left
+                      {((user.quotaBytesTotal - user.quotaBytesUsed) / 1e9).toFixed(1)} GB left
                     </Text>
                   </View>
                 ) : null}
@@ -207,7 +207,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <View style={styles.subDivider} />
 
           <BandwidthBar
-            usedBytes={monthBytes}
+            usedBytes={user.quotaBytesUsed}
             limitGb={plan.gbLimit}
             labelUnlimited={t('pr.unlimited')}
             labelUsedMonth={t('pr.usedMonth')}
@@ -218,8 +218,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <View style={styles.subMeta}>
             {[
               { label: t('pr.sessions'), value: String(monthSessions.length) },
-              { label: t('pr.servers'),  value: user.plan === 'free' ? '5' : '50+' },
-              { label: t('pr.speed'),    value: user.plan === 'free' ? '10 MB/s' : t('pr.unlimited') },
+              { label: t('pr.servers'),  value: 'Invite' },
+              { label: t('pr.speed'),    value: user.quotaBytesUsed >= user.quotaBytesTotal ? 'Quota finished' : 'Free trial' },
             ].map((item) => (
               <View key={item.label} style={styles.subMetaItem}>
                 <Text style={styles.subMetaValue}>{item.value}</Text>
@@ -241,6 +241,20 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               <Text style={styles.manageBtnText}>{t('pr.manageSub')}</Text>
             </TouchableOpacity>
           )}
+        </GlassCard>
+
+        <GlassCard>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={styles.cardLabel}>Secure account with biometric lock</Text>
+              <Text style={styles.deviceOs}>Optional and off by default</Text>
+            </View>
+            <Switch
+              value={user.securedWithBiometric}
+              onValueChange={setBiometricSecure}
+              trackColor={{ true: Colors.emerald[400], false: Colors.bg.elevated }}
+            />
+          </View>
         </GlassCard>
 
         {/* Devices */}
