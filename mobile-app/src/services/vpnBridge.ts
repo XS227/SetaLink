@@ -128,13 +128,19 @@ class NativeAdapter implements VpnAdapter {
 
     if (!connected) {
       const nativeErr = await this.module.getLastError?.().catch(() => null) as string | null;
-      const msg = nativeErr ?? 'VPN tunnel did not start within 30 s — check server config';
+      const msg = nativeErr ?? 'VPN tunnel did not start — check server config';
       log.push(`✗ ${msg}`);
-      // Collect native step log
+
+      // Pull native step log and xray process output for diagnostics
+      const nativeSteps = await this.module.getConnectionLog?.().catch(() => []) as string[] ?? [];
+      let xrayLogLines: string[] = [];
       try {
-        const nativeSteps = await this.module.getConnectionLog?.() as string[] ?? [];
-        _lastConnectLog = [...nativeSteps, ...log];
-      } catch { _lastConnectLog = log; }
+        const rawLog = await this.module.getXrayLog?.() as string | null;
+        if (rawLog && !rawLog.startsWith('(no xray')) {
+          xrayLogLines = ['--- xray.log ---', ...rawLog.split('\n').slice(-20), '---'];
+        }
+      } catch {}
+      _lastConnectLog = [...nativeSteps, ...log, ...xrayLogLines];
       throw new Error(msg);
     }
     log.push('Native tunnel reports running — verifying IP routing...');
@@ -149,14 +155,12 @@ class NativeAdapter implements VpnAdapter {
 
     if (priorIp && postIp) {
       if (priorIp === postIp) {
-        // IP did not change — tunnel is up but traffic isn't routing through it
-        try {
-          const nativeSteps = await this.module.getConnectionLog?.() as string[] ?? [];
-          _lastConnectLog = [...nativeSteps, ...log,
-            `✗ Routing check: IP unchanged (${priorIp}) — tunnel not forwarding traffic`];
-        } catch { _lastConnectLog = log; }
+        const nativeSteps = await this.module.getConnectionLog?.().catch(() => []) as string[] ?? [];
+        _lastConnectLog = [...nativeSteps, ...log,
+          `✗ Routing check: IP unchanged (${priorIp}) — tun2socks may not be forwarding`];
         throw new Error(
-          `Tunnel not active — traffic not routed through VPN (IP unchanged: ${priorIp})`
+          `Tunnel started but traffic not routed (IP still ${priorIp}). ` +
+          'Check that tun2socks attached to the TUN interface.'
         );
       }
       log.push(`✓ IP changed ${priorIp} → ${postIp} — routing confirmed`);

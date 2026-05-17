@@ -117,7 +117,14 @@ export class ConnectionMachine {
   private _doConnect(mockDelayMs: number): void {
     if (this.aborted) return;
 
-    const config = this.cb.getConnectConfig?.() ?? null;
+    let config: string | null = null;
+    try {
+      config = this.cb.getConnectConfig?.() ?? null;
+    } catch (e: unknown) {
+      this.lastAdapterError = e instanceof Error ? e.message : String(e);
+      this.send('FAILED');
+      return;
+    }
 
     if (this.adapter) {
       // Real path — delegate to VpnAdapter
