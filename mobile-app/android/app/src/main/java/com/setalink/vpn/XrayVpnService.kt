@@ -79,13 +79,6 @@ class XrayVpnService : VpnService() {
 
     private suspend fun establishTunnel(configJson: String) {
         try {
-            // Safety net: ensure VPN permission is already granted before proceeding
-            if (VpnService.prepare(this) != null) {
-                broadcastStep("permission", false, "VPN permission not yet granted")
-                throw Exception("VPN permission not granted — please tap Connect again from the app")
-            }
-            broadcastStep("permission", true, "VPN permission OK")
-
             // 1. Extract binaries from assets (cached by version stamp)
             broadcastStep("binaries", true, "Extracting Xray + tun2socks (ver=$BINARY_VER)")
             val xrayBin     = extractBinary("xray-arm64",     "xray")
@@ -160,7 +153,7 @@ class XrayVpnService : VpnService() {
             broadcastStep("tun2socks_alive", true, "tun2socks running — tunnel active")
 
             Log.i(TAG, "VPN tunnel active")
-            sendBroadcast(Intent(BROADCAST_CONNECTED))
+            sendBroadcast(Intent(BROADCAST_CONNECTED).setPackage(packageName))
 
             // 7. Watch for process death
             scope.launch {
@@ -191,17 +184,21 @@ class XrayVpnService : VpnService() {
         tun2socksProc?.destroy(); tun2socksProc = null
         try { tunFd?.close() } catch (_: Exception) {}
         tunFd = null
-        sendBroadcast(Intent(BROADCAST_DISCONNECTED))
+        sendBroadcast(Intent(BROADCAST_DISCONNECTED).setPackage(packageName))
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     private fun broadcastError(msg: String) {
-        sendBroadcast(Intent(BROADCAST_DISCONNECTED).apply { putExtra(EXTRA_ERROR, msg) })
+        sendBroadcast(Intent(BROADCAST_DISCONNECTED).apply {
+            setPackage(packageName)
+            putExtra(EXTRA_ERROR, msg)
+        })
     }
 
     private fun broadcastStep(step: String, ok: Boolean, msg: String) {
         sendBroadcast(Intent(BROADCAST_STEP).apply {
+            setPackage(packageName)
             putExtra(EXTRA_STEP, step)
             putExtra(EXTRA_STEP_OK, ok)
             putExtra(EXTRA_STEP_MSG, msg)
