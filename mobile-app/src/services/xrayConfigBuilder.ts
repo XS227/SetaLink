@@ -51,18 +51,13 @@ interface XrayRouting {
 }
 
 // DNS profiles keyed by settingsStore.dnsMode
+// NOTE: No geosite/geoip refs — those require data files not bundled in the APK.
 const DNS_PROFILES: Record<string, XrayDns> = {
   'Cloudflare (DoH)': {
-    servers: [
-      { address: 'https://1.1.1.1/dns-query', domains: ['geosite:geolocation-!cn'] },
-      '8.8.8.8',
-    ],
+    servers: ['1.1.1.1', '1.0.0.1'],
   },
   'Google (DoH)': {
-    servers: [
-      { address: 'https://dns.google/dns-query', domains: ['geosite:geolocation-!cn'] },
-      '8.8.4.4',
-    ],
+    servers: ['8.8.8.8', '8.8.4.4'],
   },
   'System': {
     servers: ['localhost'],
