@@ -113,18 +113,28 @@ class NativeAdapter implements VpnAdapter {
     }
     log.push('VPN service started — waiting for tunnel...');
 
-    // Poll until VpnService broadcasts CONNECTED (max 15 s)
+    // Poll until VpnService broadcasts CONNECTED (max 30 s)
     let connected = false;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 60; i++) {
       await sleep(500);
       if (await this.module.isRunning()) { connected = true; break; }
+      // Fail fast: if service already broadcast an error, stop waiting
+      const earlyErr = await this.module.getLastError?.().catch(() => null) as string | null;
+      if (earlyErr) {
+        log.push(`✗ Service error detected early: ${earlyErr}`);
+        break;
+      }
     }
 
     if (!connected) {
       const nativeErr = await this.module.getLastError?.().catch(() => null) as string | null;
-      const msg = nativeErr ?? 'VPN tunnel did not start within 15 s — check server config';
+      const msg = nativeErr ?? 'VPN tunnel did not start within 30 s — check server config';
       log.push(`✗ ${msg}`);
-      _lastConnectLog = log;
+      // Collect native step log
+      try {
+        const nativeSteps = await this.module.getConnectionLog?.() as string[] ?? [];
+        _lastConnectLog = [...nativeSteps, ...log];
+      } catch { _lastConnectLog = log; }
       throw new Error(msg);
     }
     log.push('Native tunnel reports running — verifying IP routing...');
