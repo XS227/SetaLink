@@ -1,0 +1,7 @@
+# Gradle build outputs
+.gradle/
+build/
+local.properties
+
+# keystore.properties contains plaintext passwords — never commit
+keystore.properties

@@ -2,10 +2,17 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+// Load release signing credentials from keystore.properties (not committed to git)
+def keystorePropsFile = rootProject.file("keystore.properties")
+def keystoreProps     = new Properties()
+if (keystorePropsFile.exists()) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+}
+
 react {
     entryFile      = file("../../index.js")
     reactNativeDir = file("$rootDir/../node_modules/react-native")
-    hermesCommand  = "$rootDir/../node_modules/react-native/sdks/hermesc/%OS_ARCH%/hermesc"
+    hermesCommand  = "$rootDir/../node_modules/react-native/sdks/hermesc/linux64-bin/hermesc"
     codegenDir     = file("$rootDir/../node_modules/@react-native/codegen")
     autolinkLibrariesWithApp()
 }
@@ -33,6 +40,12 @@ android {
             keyAlias      "androiddebugkey"
             keyPassword   "android"
         }
+        release {
+            storeFile     file(keystoreProps['storeFile'] ?: 'release.keystore')
+            storePassword keystoreProps['storePassword'] ?: ''
+            keyAlias      keystoreProps['keyAlias']      ?: ''
+            keyPassword   keystoreProps['keyPassword']   ?: ''
+        }
     }
 
     buildTypes {
@@ -40,9 +53,21 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            minifyEnabled  true
-            proguardFiles  getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-            signingConfig  signingConfigs.debug  // replace with release keystore before publishing
+            signingConfig    signingConfigs.release
+            minifyEnabled    true
+            shrinkResources  true
+            proguardFiles    getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    // Per-architecture APKs — each is ~40 % smaller than a fat universal APK.
+    // For sideloading: use arm64-v8a (most Android phones since 2015).
+    splits {
+        abi {
+            enable         true
+            reset()
+            include        'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            universalApk   true   // also emit a fat APK for convenience
         }
     }
 
@@ -68,7 +93,4 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
-
-    // Notification channel
-    implementation("androidx.core:core-ktx:1.13.1")
 }
