@@ -125,10 +125,19 @@ export function SplashScreen({ onFinish }: Props) {
           {/* Glow halo */}
           <Animated.View style={[styles.logoGlow, { opacity: glowOpacity }]} />
 
-          {/* Geometric logo: hexagon-inspired with S mark */}
-          <View style={styles.logoShape}>
-            <View style={styles.logoInner}>
-              {/* S shape via layered rectangles */}
+          {/* Lion/sun emblem — gold sun body with rays */}
+          <View style={styles.sunContainer}>
+            {/* 8 rays at 45° increments */}
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
+              <View
+                key={deg}
+                style={[styles.ray, { transform: [{ rotate: `${deg}deg` }] }]}
+              />
+            ))}
+            {/* Outer mane ring */}
+            <View style={styles.maneRing} />
+            {/* Sun body */}
+            <View style={styles.sunBody}>
               <View style={styles.sTop} />
               <View style={styles.sMid} />
               <View style={styles.sBot} />
@@ -142,6 +151,7 @@ export function SplashScreen({ onFinish }: Props) {
             <Text style={styles.wordmarkAccent}>S</Text>eta
             <Text style={styles.wordmarkAccent}>L</Text>ink
           </Text>
+
         </Animated.View>
 
         {/* Tagline */}
@@ -152,7 +162,7 @@ export function SplashScreen({ onFinish }: Props) {
 
       {/* Version tag */}
       <Animated.Text style={[styles.version, { opacity: tagOpacity }]}>
-        v1.0.0
+        v0.2.0
       </Animated.Text>
     </Animated.View>
   );
@@ -168,15 +178,15 @@ const styles = StyleSheet.create({
   particle: {
     position: 'absolute',
     borderRadius: 2,
-    backgroundColor: Colors.emerald[400],
+    backgroundColor: Colors.gold[400],
   },
   ambientGlow: {
     position: 'absolute',
     width: 320,
     height: 320,
     borderRadius: 160,
-    backgroundColor: Colors.emerald[900],
-    opacity: 0.25,
+    backgroundColor: Colors.gold[600],
+    opacity: 0.12,
     top: height / 2 - 160,
     left: width / 2 - 160,
   },
@@ -191,51 +201,67 @@ const styles = StyleSheet.create({
   },
   logoGlow: {
     position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: Colors.emerald[400],
-    opacity: 0.15,
-    shadowColor: Colors.emerald[400],
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: Colors.gold[400],
+    opacity: 0.12,
+    shadowColor: Colors.gold[300],
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
-    shadowRadius: 40,
+    shadowRadius: 48,
   },
-  logoShape: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: Colors.emerald[400],
+  sunContainer: {
+    width: 100,
+    height: 100,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,232,122,0.08)',
-    transform: [{ rotate: '45deg' }],
   },
-  logoInner: {
-    transform: [{ rotate: '-45deg' }],
+  ray: {
+    position: 'absolute',
+    width: 6,
+    height: 100,
+    borderRadius: 3,
+    backgroundColor: Colors.gold[400],
+    opacity: 0.55,
+  },
+  maneRing: {
+    position: 'absolute',
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: Colors.gold[500],
+  },
+  sunBody: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.gold[300],
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    gap: 5,
   },
   sTop: {
-    width: 24,
+    width: 22,
     height: 3,
-    borderRadius: 2,
-    backgroundColor: Colors.emerald[400],
+    borderRadius: 1.5,
+    backgroundColor: '#1A1400',
     alignSelf: 'flex-start',
+    marginLeft: 9,
   },
   sMid: {
-    width: 24,
+    width: 22,
     height: 3,
-    borderRadius: 2,
-    backgroundColor: Colors.emerald[400],
+    borderRadius: 1.5,
+    backgroundColor: '#1A1400',
   },
   sBot: {
-    width: 24,
+    width: 22,
     height: 3,
-    borderRadius: 2,
-    backgroundColor: Colors.emerald[400],
+    borderRadius: 1.5,
+    backgroundColor: '#1A1400',
     alignSelf: 'flex-end',
+    marginRight: 9,
   },
   wordmark: {
     fontSize: Typography.size['3xl'],
@@ -244,7 +270,7 @@ const styles = StyleSheet.create({
     letterSpacing: Typography.tracking.tightest,
   },
   wordmarkAccent: {
-    color: Colors.emerald[400],
+    color: Colors.gold[400],
   },
   tagline: {
     fontSize: Typography.size.sm,
