@@ -66,6 +66,15 @@ class MockAdapter implements VpnAdapter {
 let _lastConnectLog: string[] = [];
 export function getLastConnectLog(): string[] { return _lastConnectLog; }
 
+export interface RoutingValidationResult {
+  ok: boolean;
+  reason: string;
+  preIp?: string | null;
+  postIp?: string | null;
+  uploadBytes?: number;
+  downloadBytes?: number;
+}
+
 async function fetchPublicIp(): Promise<string | null> {
   try {
     const controller = new AbortController();
@@ -77,6 +86,26 @@ async function fetchPublicIp(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+
+async function validateRouting(module: any, preIp: string | null, log: string[]): Promise<RoutingValidationResult> {
+  const postIp = await fetchPublicIp();
+  const stats = await module.getStats?.().catch(() => ({}));
+  const up = Number(stats?.uploadBytes ?? 0);
+  const down = Number(stats?.downloadBytes ?? 0);
+  const countersForwarding = up > 0 || down > 0;
+  const ipChanged = Boolean(preIp && postIp && preIp !== postIp);
+
+  if (postIp) log.push(`Post-connect IP: ${postIp}`);
+  else log.push('Post-connect IP: unavailable');
+  log.push(`TUN counters: up=${up}B down=${down}B`);
+
+  if (ipChanged || countersForwarding) {
+    return { ok: true, reason: ipChanged ? 'public_ip_changed' : 'tun_counters_forwarding', preIp, postIp, uploadBytes: up, downloadBytes: down };
+  }
+
+  return { ok: false, reason: 'no_forwarding_signal', preIp, postIp, uploadBytes: up, downloadBytes: down };
 }
 
 class NativeAdapter implements VpnAdapter {
@@ -143,26 +172,24 @@ class NativeAdapter implements VpnAdapter {
       _lastConnectLog = [...nativeSteps, ...log, ...xrayLogLines];
       throw new Error(msg);
     }
-    log.push('Native tunnel reports running — verifying IP routing...');
+    log.push('Native tunnel reports running — validating traffic routing...');
 
-    // Verify traffic actually routes through the VPN by checking public IP
-    const postIp = await fetchPublicIp();
-    if (postIp) {
-      log.push(`Post-connect IP: ${postIp}`);
-    } else {
-      log.push('Post-connect IP: unavailable (check internet via VPN)');
-    }
-
-    if (priorIp && postIp) {
-      if (priorIp === postIp) {
-        const nativeSteps = await this.module.getConnectionLog?.().catch(() => []) as string[] ?? [];
-        _lastConnectLog = [...nativeSteps, ...log,
-          `⚠ Routing check: IP unchanged (${priorIp}) — endpoint may be cached or server may egress through same IP.`];
-        log.push('Routing warning: public IP unchanged; tunnel stays active for real traffic validation.');
+    const validation = await validateRouting(this.module, priorIp, log);
+    if (!validation.ok) {
+      log.push(`✗ Routing validation failed (${validation.reason})`);
+      await this.module.stop?.().catch(() => {});
+      await sleep(900);
+      log.push('Recovery: full teardown requested, retrying clean start (1/1)');
+      await this.module.start(configJson);
+      await sleep(1500);
+      const second = await validateRouting(this.module, priorIp, log);
+      if (!second.ok) {
+        await this.module.stop?.().catch(() => {});
+        throw new Error('VPN connected but routing could not be verified');
       }
-      log.push(`✓ IP changed ${priorIp} → ${postIp} — routing confirmed`);
+      log.push(`✓ Routing recovered (${second.reason})`);
     } else {
-      log.push('IP verification skipped — could not reach IP check endpoint');
+      log.push(`✓ Routing validated (${validation.reason})`);
     }
 
     // Merge native step log with JS log
