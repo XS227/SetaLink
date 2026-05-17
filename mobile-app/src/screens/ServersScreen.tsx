@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Alert,
+  StyleSheet, ActivityIndicator, Modal, KeyboardAvoidingView,
+  Platform, Alert, Clipboard,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { ServerRow } from '../components/ServerRow';
@@ -17,88 +18,163 @@ interface Props {
   activeTab:  NavTab;
 }
 
-export function ServersScreen({ onNavigate, activeTab }: Props) {
-  const { selectedId, filter, query, selectServer, setFilter, setQuery, filteredServers, aiPicks, servers, isLoading, loadError, importFromVless, importFromSubscription, importedCreds } = useServerStore();
-  const { connectionState, connect, switchServer } = useVpnStore();
-  const { activeMode } = useAIStore();
-  const userPlan = useAuthStore((s) => s.user?.plan ?? 'free');
+// ── Import input type detection ───────────────────────────────────────────────
 
+type InputType = 'vless' | 'subscription' | 'unknown' | 'empty';
+
+function detectInputType(val: string): InputType {
+  const t = val.trim();
+  if (!t) return 'empty';
+  if (t.startsWith('vless://')) return 'vless';
+  if (t.startsWith('http://') || t.startsWith('https://')) return 'subscription';
+  return 'unknown';
+}
+
+const INPUT_HINTS: Record<InputType, string | null> = {
+  vless:        'VLESS link detected — will import single server',
+  subscription: 'Subscription URL detected — will fetch and import all servers',
+  unknown:      'Must start with vless:// or https://',
+  empty:        null,
+};
+
+const INPUT_HINT_COLORS: Record<InputType, string> = {
+  vless:        Colors.emerald[400],
+  subscription: '#3399FF',
+  unknown:      Colors.status.disconnected,
+  empty:        Colors.text.muted,
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+export function ServersScreen({ onNavigate, activeTab }: Props) {
+  const {
+    selectedId, filter, query, selectServer, setFilter, setQuery,
+    filteredServers, aiPicks, servers, isLoading, loadError,
+    importFromVless, importFromSubscription, importedCreds, removeImportedServer,
+  } = useServerStore();
+  const { connectionState, connect, switchServer } = useVpnStore();
+  const { activeMode }  = useAIStore();
+  const userPlan        = useAuthStore((s) => s.user?.plan ?? 'free');
+
+  // Import modal state
   const [importVisible, setImportVisible] = useState(false);
-  const [importInput, setImportInput]     = useState('');
-  const [importing, setImporting]         = useState(false);
+  const [importInput,   setImportInput]   = useState('');
+  const [importing,     setImporting]     = useState(false);
+  const [importError,   setImportError]   = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+
+  const inputType = useMemo(() => detectInputType(importInput), [importInput]);
+  const hint      = INPUT_HINTS[inputType];
+
+  const openImport = useCallback(() => {
+    setImportInput('');
+    setImportError(null);
+    setImportSuccess(null);
+    setImportVisible(true);
+  }, []);
+
+  const closeImport = useCallback(() => {
+    if (importing) return;
+    setImportVisible(false);
+  }, [importing]);
+
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      const text = await Clipboard.getString();
+      if (text) {
+        setImportInput(text.trim());
+        setImportError(null);
+        setImportSuccess(null);
+      }
+    } catch {}
+  }, []);
 
   const handleImport = useCallback(async () => {
     const val = importInput.trim();
-    if (!val) return;
+    if (!val || inputType === 'unknown' || inputType === 'empty') return;
 
     setImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+
     try {
-      if (val.startsWith('vless://')) {
+      if (inputType === 'vless') {
         const result = importFromVless(val);
         if (result.success) {
-          Alert.alert('Imported', 'Server added successfully.');
-          setImportInput('');
-          setImportVisible(false);
+          setImportSuccess('Server added successfully.');
+          setTimeout(() => { setImportVisible(false); setImportInput(''); }, 1200);
         } else {
-          Alert.alert('Import failed', result.error ?? 'Invalid VLESS link.');
+          setImportError(result.error ?? 'Invalid VLESS link.');
         }
-      } else if (val.startsWith('http://') || val.startsWith('https://')) {
-        const result = await importFromSubscription(val);
-        Alert.alert(
-          'Subscription imported',
-          `Added ${result.imported} server${result.imported !== 1 ? 's' : ''}${result.errors ? ` (${result.errors} skipped)` : ''}.`,
-        );
-        setImportInput('');
-        setImportVisible(false);
       } else {
-        Alert.alert('Invalid input', 'Paste a vless:// link or a subscription URL (https://).');
+        const result = await importFromSubscription(val);
+        const msg = `Added ${result.imported} server${result.imported !== 1 ? 's' : ''}${result.errors ? ` (${result.errors} skipped)` : ''}.`;
+        setImportSuccess(msg);
+        setTimeout(() => { setImportVisible(false); setImportInput(''); }, 1800);
       }
     } catch (e) {
-      Alert.alert('Import failed', e instanceof Error ? e.message : 'Unknown error');
+      setImportError(e instanceof Error ? e.message : 'Import failed — check the URL and try again.');
     } finally {
       setImporting(false);
     }
-  }, [importInput, importFromVless, importFromSubscription]);
+  }, [importInput, inputType, importFromVless, importFromSubscription]);
 
+  // Connection state helpers
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
     || connectionState === 'disconnecting'
     || connectionState === 'reconnecting';
 
-  const handleSelectServer = (serverId: string) => {
+  const handleSelectServer = useCallback((serverId: string) => {
     if (isTransitioning) return;
-
     const server = servers.find((s) => s.id === serverId);
     if (server?.premium && userPlan === 'free') {
       (onNavigate as (tab: string) => void)('upgrade');
       return;
     }
+    const isDifferent = serverId !== selectedId;
+    selectServer(serverId);
+    if (isConnected && isDifferent) switchServer();
+  }, [isTransitioning, servers, userPlan, selectedId, isConnected, onNavigate, selectServer, switchServer]);
 
-    const isDifferentServer = serverId !== selectedId;
-    selectServer(serverId); // syncs to vpnStore.selectedServer
+  const handleDeleteServer = useCallback((serverId: string, serverName: string) => {
+    Alert.alert(
+      'Remove server',
+      `Remove "${serverName}" from your server list?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => removeImportedServer(serverId),
+        },
+      ],
+    );
+  }, [removeImportedServer]);
 
-    if (isConnected && isDifferentServer) {
-      switchServer(); // disconnect → reconnect to newly selected server
-    }
-  };
-
-  const picks    = aiPicks(activeMode);
-  const filtered = filteredServers(activeMode).map((s) => ({ ...s, selected: s.id === selectedId }));
-  const selected = servers.find((s) => s.id === selectedId);
-
-  const showAIPicks = filter === 'All' && query === '';
-
-  const handleConnect = () => {
+  const handleConnect = useCallback(() => {
     if (isTransitioning) return;
     if (connectionState === 'idle' || connectionState === 'error') connect();
     onNavigate('home');
-  };
+  }, [isTransitioning, connectionState, connect, onNavigate]);
+
+  // Derived data
+  const picks    = aiPicks(activeMode);
+  const filtered = filteredServers(activeMode).map((s) => ({
+    ...s,
+    selected: s.id === selectedId,
+    imported: !!importedCreds[s.id],
+  }));
+  const selected     = servers.find((s) => s.id === selectedId);
+  const showAIPicks  = filter === 'All' && query === '';
 
   const ctaLabel = isTransitioning
     ? 'Switching…'
     : isConnected
       ? `Connected · ${selected?.country ?? ''}`
       : `Connect to ${selected?.country ?? ''}`;
+
+  const canImport = !importing && inputType !== 'empty' && inputType !== 'unknown';
 
   return (
     <View style={styles.screen}>
@@ -112,15 +188,13 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         <View style={styles.header}>
           <Text style={styles.title}>Servers</Text>
           <View style={styles.headerRight}>
-            {isLoading && <ActivityIndicator size="small" color={Colors.emerald[400]} style={{ marginRight: Spacing[2] }} />}
+            {isLoading && (
+              <ActivityIndicator size="small" color={Colors.emerald[400]} style={{ marginRight: Spacing[1] }} />
+            )}
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{servers.length} locations</Text>
             </View>
-            <TouchableOpacity
-              style={styles.importBtn}
-              onPress={() => setImportVisible(true)}
-              activeOpacity={0.75}
-            >
+            <TouchableOpacity style={styles.importBtn} onPress={openImport} activeOpacity={0.75}>
               <Text style={styles.importBtnText}>+ Import</Text>
             </TouchableOpacity>
           </View>
@@ -177,7 +251,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.sectionTitle}>AI Picks</Text>
               <Text style={styles.sectionSub}>Optimized for {activeMode} mode</Text>
             </View>
-
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -198,7 +271,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                       styles.smartPingDot,
                       { backgroundColor: s.ping < 60 ? Colors.emerald[400] : '#FFB800' },
                     ]} />
-                    <Text style={styles.smartPing}>{s.ping}ms</Text>
+                    <Text style={styles.smartPing}>{s.ping > 0 ? `${s.ping}ms` : '—'}</Text>
                   </View>
                   {(s.tags ?? []).slice(0, 1).map((tag) => (
                     <View key={tag} style={styles.smartTag}>
@@ -213,9 +286,16 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
 
         {/* Server list */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {filter === 'All' ? 'All Servers' : filter}
-          </Text>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {filter === 'All' ? 'All Servers' : filter}
+            </Text>
+            {Object.keys(importedCreds).length > 0 && (
+              <Text style={styles.sectionSub}>
+                · {Object.keys(importedCreds).length} custom
+              </Text>
+            )}
+          </View>
 
           {filtered.length === 0 ? (
             <View style={styles.empty}>
@@ -223,7 +303,15 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             </View>
           ) : (
             filtered.map((s) => (
-              <ServerRow key={s.id} server={s} onSelect={(sv) => handleSelectServer(sv.id)} />
+              <ServerRow
+                key={s.id}
+                server={s}
+                onSelect={(sv) => handleSelectServer(sv.id)}
+                onDelete={s.imported
+                  ? (sv) => handleDeleteServer(sv.id, sv.country)
+                  : undefined
+                }
+              />
             ))
           )}
         </View>
@@ -253,8 +341,8 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       <Modal
         visible={importVisible}
         transparent
-        animationType="fade"
-        onRequestClose={() => setImportVisible(false)}
+        animationType="slide"
+        onRequestClose={closeImport}
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
@@ -263,47 +351,99 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           <TouchableOpacity
             style={StyleSheet.absoluteFill}
             activeOpacity={1}
-            onPress={() => setImportVisible(false)}
+            onPress={closeImport}
           />
+
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Import Server</Text>
+            {/* Modal header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Import Server</Text>
+              <TouchableOpacity
+                onPress={pasteFromClipboard}
+                style={styles.pasteBtn}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.pasteBtnText}>Paste</Text>
+              </TouchableOpacity>
+            </View>
+
             <Text style={styles.modalSub}>
-              Paste a{' '}
-              <Text style={styles.modalHighlight}>vless://</Text>
-              {' '}link or a subscription URL.
+              Paste a <Text style={styles.mono}>vless://</Text> link or a{' '}
+              <Text style={styles.mono}>https://</Text> subscription URL.
             </Text>
 
-            <TextInput
-              style={styles.modalInput}
-              placeholder="vless://... or https://..."
-              placeholderTextColor={Colors.text.muted}
-              value={importInput}
-              onChangeText={setImportInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              multiline
-              numberOfLines={3}
-              selectionColor={Colors.emerald[400]}
-            />
+            {/* Input */}
+            <View style={[
+              styles.inputWrapper,
+              inputType === 'unknown' && styles.inputWrapperError,
+              (inputType === 'vless' || inputType === 'subscription') && styles.inputWrapperValid,
+            ]}>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="vless://UUID@host:port?... or https://..."
+                placeholderTextColor={Colors.text.muted}
+                value={importInput}
+                onChangeText={(t) => { setImportInput(t); setImportError(null); setImportSuccess(null); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+                multiline
+                numberOfLines={4}
+                selectionColor={Colors.emerald[400]}
+              />
+              {importInput.length > 0 && (
+                <TouchableOpacity
+                  style={styles.clearInputBtn}
+                  onPress={() => { setImportInput(''); setImportError(null); setImportSuccess(null); }}
+                >
+                  <Text style={styles.clearInputText}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
 
+            {/* Inline hint / feedback */}
+            {importSuccess ? (
+              <View style={styles.feedbackRow}>
+                <Text style={[styles.feedbackText, { color: Colors.emerald[400] }]}>
+                  ✓ {importSuccess}
+                </Text>
+              </View>
+            ) : importError ? (
+              <View style={styles.feedbackRow}>
+                <Text style={[styles.feedbackText, { color: Colors.status.disconnected }]}>
+                  ✕ {importError}
+                </Text>
+              </View>
+            ) : hint ? (
+              <View style={styles.feedbackRow}>
+                <Text style={[styles.feedbackText, { color: INPUT_HINT_COLORS[inputType] }]}>
+                  {hint}
+                </Text>
+              </View>
+            ) : null}
+
+            {/* Actions */}
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancel}
-                onPress={() => { setImportVisible(false); setImportInput(''); }}
+                onPress={closeImport}
+                disabled={importing}
                 activeOpacity={0.75}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.modalConfirm, (importing || !importInput.trim()) && styles.modalConfirmDisabled]}
+                style={[styles.modalConfirm, !canImport && styles.modalConfirmDisabled]}
                 onPress={handleImport}
-                disabled={importing || !importInput.trim()}
+                disabled={!canImport}
                 activeOpacity={0.85}
               >
                 {importing
                   ? <ActivityIndicator size="small" color={Colors.text.inverse} />
-                  : <Text style={styles.modalConfirmText}>Import</Text>
+                  : <Text style={styles.modalConfirmText}>
+                      {inputType === 'subscription' ? 'Fetch & Import' : 'Import'}
+                    </Text>
                 }
               </TouchableOpacity>
             </View>
@@ -314,66 +454,99 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   );
 }
 
+// ── Styles ────────────────────────────────────────────────────────────────────
+
 const styles = StyleSheet.create({
-  screen:           { flex: 1, backgroundColor: Colors.bg.base },
-  scroll:           { flex: 1 },
-  content:          { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
-  header:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerRight:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  title:            { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
-  countBadge:       { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  countText:        { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
-  errorBanner:      { backgroundColor: 'rgba(255,68,68,0.08)', borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(255,68,68,0.2)', paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
-  errorBannerText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.status.disconnected },
-  searchWrapper:    { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[4], paddingVertical: Spacing[3], gap: Spacing[3] },
-  searchIcon:       { fontSize: 16, color: Colors.text.muted },
-  searchInput:      { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },
-  clearIcon:        { fontSize: 14, color: Colors.text.muted },
+  screen:  { flex: 1, backgroundColor: Colors.bg.base },
+  scroll:  { flex: 1 },
+  content: { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
+
+  // Header
+  header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+  title:       { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
+  countBadge:  { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  countText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  importBtn:   { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  importBtnText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+
+  // Banners
+  errorBanner:     { backgroundColor: 'rgba(255,68,68,0.08)', borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(255,68,68,0.2)', paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
+  errorBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.status.disconnected },
+
+  // Search
+  searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[4], paddingVertical: Spacing[3], gap: Spacing[3] },
+  searchIcon:    { fontSize: 16, color: Colors.text.muted },
+  searchInput:   { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },
+  clearIcon:     { fontSize: 14, color: Colors.text.muted },
+
+  // Filter tabs
   tabScroll:        { marginHorizontal: -Layout.screenPadding },
   tabContent:       { paddingHorizontal: Layout.screenPadding, gap: Spacing[2] },
   filterTab:        { paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface },
   filterTabActive:  { backgroundColor: 'rgba(0,232,122,0.1)', borderColor: Colors.border.glow },
   filterLabel:      { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted },
   filterLabelActive:{ color: Colors.emerald[400] },
-  section:          { gap: Spacing[3] },
-  sectionHeader:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  aiDot:            { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.emerald[400], shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4, elevation: 4 },
-  sectionTitle:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  sectionSub:       { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginLeft: 2 },
-  smartRow:         { gap: Spacing[3], paddingBottom: 4 },
-  smartCard:        { width: 130, backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[1] },
-  smartCardActive:  { borderColor: Colors.border.active, backgroundColor: 'rgba(0,232,122,0.05)' },
-  smartFlag:        { fontSize: 28, marginBottom: 4 },
-  smartCountry:     { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  smartCity:        { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  smartMeta:        { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-  smartPingDot:     { width: 5, height: 5, borderRadius: 3 },
-  smartPing:        { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
-  smartTag:         { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
-  smartTagText:     { fontSize: 9, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.3 },
-  empty:            { paddingVertical: Spacing[10], alignItems: 'center' },
-  emptyText:        { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.muted },
-  stickyFooter:     { position: 'absolute', bottom: Layout.bottomNavHeight + 8, left: Layout.screenPadding, right: Layout.screenPadding },
+
+  // Sections
+  section:       { gap: Spacing[3] },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+  aiDot:         { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.emerald[400], shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 4, elevation: 4 },
+  sectionTitle:  { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  sectionSub:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  // AI picks carousel
+  smartRow:      { gap: Spacing[3], paddingBottom: 4 },
+  smartCard:     { width: 130, backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[1] },
+  smartCardActive: { borderColor: Colors.border.active, backgroundColor: 'rgba(0,232,122,0.05)' },
+  smartFlag:     { fontSize: 28, marginBottom: 4 },
+  smartCountry:  { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  smartCity:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+  smartMeta:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  smartPingDot:  { width: 5, height: 5, borderRadius: 3 },
+  smartPing:     { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
+  smartTag:      { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, paddingHorizontal: 6, paddingVertical: 2, alignSelf: 'flex-start', marginTop: 4 },
+  smartTagText:  { fontSize: 9, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.3 },
+
+  // Empty state
+  empty:     { paddingVertical: Spacing[10], alignItems: 'center' },
+  emptyText: { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  // Connect CTA
+  stickyFooter:       { position: 'absolute', bottom: Layout.bottomNavHeight + 8, left: Layout.screenPadding, right: Layout.screenPadding },
   connectCta:         { backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
   connectCtaActive:   { backgroundColor: Colors.emerald[600] ?? Colors.emerald[400], opacity: 0.85 },
   connectCtaDisabled: { opacity: 0.45 },
   connectCtaText:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: Typography.tracking.wide },
 
-  // Import button (header)
-  importBtn:          { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  importBtnText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+  // Modal
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+  modalCard:    { backgroundColor: Colors.bg.surface, borderTopLeftRadius: Radius['2xl'] ?? 24, borderTopRightRadius: Radius['2xl'] ?? 24, borderTopWidth: 1, borderColor: Colors.border.default, padding: Spacing[6], paddingBottom: Spacing[8], gap: Spacing[4] },
 
-  // Import modal
-  modalOverlay:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', padding: Spacing[6] },
-  modalCard:          { width: '100%', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[6], gap: Spacing[4] },
-  modalTitle:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  modalSub:           { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, lineHeight: 20 },
-  modalHighlight:     { color: Colors.emerald[400], fontFamily: Typography.family.mono },
-  modalInput:         { backgroundColor: Colors.bg.base, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[3], fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.primary, minHeight: 72, textAlignVertical: 'top' },
-  modalActions:       { flexDirection: 'row', gap: Spacing[3] },
-  modalCancel:        { flex: 1, paddingVertical: Spacing[3], alignItems: 'center', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default },
-  modalCancelText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted },
-  modalConfirm:       { flex: 2, paddingVertical: Spacing[3], alignItems: 'center', borderRadius: Radius.md, backgroundColor: Colors.emerald[400] },
-  modalConfirmDisabled: { opacity: 0.4 },
-  modalConfirmText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.inverse },
+  modalHeader:  { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  modalTitle:   { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  pasteBtn:     { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: Spacing[1] },
+  pasteBtnText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+
+  modalSub:     { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, lineHeight: 20 },
+  mono:         { fontFamily: Typography.family.mono, color: Colors.emerald[400] },
+
+  // Input wrapper with validation border
+  inputWrapper:      { borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.base, overflow: 'hidden' },
+  inputWrapperValid: { borderColor: Colors.border.glow },
+  inputWrapperError: { borderColor: 'rgba(255,68,68,0.5)' },
+
+  modalInput:    { padding: Spacing[3], fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.primary, minHeight: 90, textAlignVertical: 'top', paddingRight: 32 },
+  clearInputBtn: { position: 'absolute', top: 10, right: 10 },
+  clearInputText:{ fontSize: 12, color: Colors.text.muted },
+
+  feedbackRow:  { minHeight: 20 },
+  feedbackText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, lineHeight: 18 },
+
+  modalActions:      { flexDirection: 'row', gap: Spacing[3] },
+  modalCancel:       { flex: 1, paddingVertical: Spacing[3], alignItems: 'center', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default },
+  modalCancelText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted },
+  modalConfirm:      { flex: 2, paddingVertical: Spacing[3], alignItems: 'center', borderRadius: Radius.md, backgroundColor: Colors.emerald[400] },
+  modalConfirmDisabled: { opacity: 0.35 },
+  modalConfirmText:  { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.inverse },
 });
