@@ -5,3 +5,6 @@ local.properties
 
 # keystore.properties contains plaintext passwords — never commit
 keystore.properties
+
+# JVM heap dumps from OOM crashes
+*.hprof
