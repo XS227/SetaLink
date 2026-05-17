@@ -183,11 +183,22 @@ class NativeAdapter implements VpnAdapter {
 // ── Factory ───────────────────────────────────────────────────────────────────
 
 export function createAdapter(): VpnAdapter {
+  // Try TurboModuleRegistry first (works with New Architecture)
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require('../specs/NativeXrayModule').default;
     if (mod) return new NativeAdapter(mod);
   } catch {}
+
+  // Fallback: Old Architecture bridge — modules registered via ReactPackage
+  // live in NativeModules, not in TurboModuleRegistry, when newArchEnabled=false
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NativeModules } = require('react-native');
+    const mod = NativeModules?.XrayModule;
+    if (mod) return new NativeAdapter(mod);
+  } catch {}
+
   return new MockAdapter();
 }
 
