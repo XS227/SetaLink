@@ -121,6 +121,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
 
     override fun getName(): String = NAME
 
+    @ReactMethod
     override fun start(config: String, promise: Promise) {
         synchronized(stepLogLock) { stepLog.clear() }
         try {
@@ -144,6 +145,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
     override fun stop(promise: Promise) {
         try {
             reactContext.startService(
@@ -158,10 +160,13 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
     override fun isRunning(promise: Promise) = promise.resolve(running)
 
+    @ReactMethod
     override fun getLastError(promise: Promise) = promise.resolve(lastError)
 
+    @ReactMethod
     override fun getStats(promise: Promise) {
         synchronized(statsLock) {
             val uptime = if (startedAt > 0) (System.currentTimeMillis() - startedAt) / 1000 else 0L
@@ -174,9 +179,11 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
     override fun validateConfig(config: String, promise: Promise) =
         promise.resolve(config.trim().startsWith("{"))
 
+    @ReactMethod
     override fun getConnectionLog(promise: Promise) {
         synchronized(stepLogLock) {
             val arr = com.facebook.react.bridge.WritableNativeArray()
