@@ -1,10 +1,11 @@
 package com.setalink.vpn
 
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
+import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import android.system.OsConstants
 import android.util.Log
 import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
@@ -45,10 +46,18 @@ class XrayVpnService : VpnService() {
             ACTION_START -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                     ?: return broadcastError("No config provided").let { START_NOT_STICKY }
-                startForeground(
-                    NotificationHelper.NOTIFICATION_ID,
-                    NotificationHelper.buildConnected(this)
-                )
+                val notification = NotificationHelper.buildConnected(this)
+                // Android 14 (API 34) enforces that startForeground() must include the type
+                // declared in the manifest — omitting it throws MissingForegroundServiceTypeException.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    startForeground(
+                        NotificationHelper.NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    )
+                } else {
+                    startForeground(NotificationHelper.NOTIFICATION_ID, notification)
+                }
                 scope.launch { establishTunnel(config) }
             }
             ACTION_STOP -> tearDownTunnel()
@@ -111,8 +120,10 @@ class XrayVpnService : VpnService() {
             val builder = Builder()
                 .setSession("SetaLink")
                 .addAddress("10.0.0.2", 24)
+                .addAddress("fdfe:dcba:9876::2", 64)   // IPv6 TUN address
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
+                .addDnsServer("2606:4700:4700::1111")   // Cloudflare IPv6 DNS
                 .setMtu(1500)
 
             val routes = if (serverIp != null) buildExcludeRoutes(serverIp)
@@ -123,32 +134,25 @@ class XrayVpnService : VpnService() {
                     Log.w(TAG, "Skipped route $addr/$prefix: ${e.message}")
                 }
             }
+            // Route all IPv6 through the tunnel to prevent leaks
+            try { builder.addRoute("::", 0) } catch (e: Exception) {
+                Log.w(TAG, "IPv6 route skipped: ${e.message}")
+            }
 
             tunFd = builder.establish()
                 ?: throw Exception("Failed to establish TUN interface — VPN permission missing?")
-            val tunFdInt = tunFd!!.fd
-            broadcastStep("tun", true, "TUN interface established (fd=$tunFdInt, ${routes.size} routes)")
-
-            // Clear FD_CLOEXEC so tun2socks child process can inherit the TUN file descriptor.
-            // Android sets FD_CLOEXEC on all fds by default; without clearing it the fd is closed
-            // before exec() runs and tun2socks receives an invalid fd://N argument.
-            // Os.fcntl is a hidden (@hide) API absent from android.jar; call via reflection.
-            try {
-                Class.forName("android.system.Os")
-                    .getMethod("fcntl", java.io.FileDescriptor::class.java,
-                        Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
-                    .invoke(null, tunFd!!.fileDescriptor, OsConstants.F_SETFD, 0)
-                broadcastStep("fd_inherit", true, "FD_CLOEXEC cleared — fd is inheritable")
-            } catch (e: Exception) {
-                broadcastStep("fd_inherit", false, "fcntl via reflection: ${e.message}")
-                Log.w(TAG, "Could not clear FD_CLOEXEC (non-fatal): ${e.message}")
-            }
+            val tunFdInt    = tunFd!!.fd
+            // Use /proc/PID/fd/N instead of fd://N so tun2socks opens the fd by filesystem path.
+            // This avoids the FD_CLOEXEC inheritance problem entirely — the child process opens
+            // the fd itself via the proc symlink rather than inheriting it across exec().
+            val procFdPath  = "/proc/${android.os.Process.myPid()}/fd/$tunFdInt"
+            broadcastStep("tun", true, "TUN fd=$tunFdInt routes=${routes.size}+IPv6 path=$procFdPath")
 
             // 7. Start tun2socks (bridges TUN ↔ Xray SOCKS5)
-            broadcastStep("tun2socks_start", true, "Starting tun2socks fd://$tunFdInt → socks5://127.0.0.1:10808")
+            broadcastStep("tun2socks_start", true, "Starting tun2socks $procFdPath → socks5://127.0.0.1:10808")
             tun2socksProc = ProcessBuilder(
                 tun2sockBin.absolutePath,
-                "--device", "fd://$tunFdInt",
+                "--device", procFdPath,
                 "--proxy",  "socks5://127.0.0.1:10808",
                 "--loglevel", "warn"
             ).redirectErrorStream(true).start()
