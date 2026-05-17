@@ -9,10 +9,7 @@ import android.os.ParcelFileDescriptor
 import android.util.Log
 import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
-import org.json.JSONObject
 import java.io.File
-import java.net.Inet4Address
-import java.net.InetAddress
 import java.net.Socket
 
 class XrayVpnService : VpnService() {
@@ -82,41 +79,38 @@ class XrayVpnService : VpnService() {
 
     private suspend fun establishTunnel(configJson: String) {
         try {
+            // Safety net: ensure VPN permission is already granted before proceeding
+            if (VpnService.prepare(this) != null) {
+                broadcastStep("permission", false, "VPN permission not yet granted")
+                throw Exception("VPN permission not granted — please tap Connect again from the app")
+            }
+            broadcastStep("permission", true, "VPN permission OK")
+
             // 1. Extract binaries from assets (cached by version stamp)
             broadcastStep("binaries", true, "Extracting Xray + tun2socks (ver=$BINARY_VER)")
             val xrayBin     = extractBinary("xray-arm64",     "xray")
             val tun2sockBin = extractBinary("tun2socks-arm64","tun2socks")
 
-            // 2. Parse server address for split routing
-            val serverAddr = parseServerAddress(configJson)
-                ?: throw Exception("Cannot parse server address from config")
-            broadcastStep("resolve", true, "Server: $serverAddr")
-
-            val serverIp = withContext(Dispatchers.IO) {
-                runCatching { InetAddress.getByName(serverAddr).hostAddress }.getOrNull()
-            }
-            broadcastStep("dns", serverIp != null, "Resolved: ${serverIp ?: "failed"}")
-
-            // 3. Write Xray config to disk
+            // 2. Write Xray config to disk
             val configFile = File(filesDir, "xray.json")
             configFile.writeText(configJson)
             broadcastStep("config", true, "Config written to disk")
 
-            // 4. Start Xray subprocess
+            // 3. Start Xray subprocess
             broadcastStep("xray_start", true, "Starting Xray process")
             xrayProcess = ProcessBuilder(xrayBin.absolutePath, "run", "-c", configFile.absolutePath)
                 .redirectErrorStream(true)
                 .start()
             scope.launch { streamLog(xrayProcess!!, "Xray") }
 
-            // 5. Wait up to 8 s for Xray SOCKS5 to open
+            // 4. Wait up to 8 s for Xray SOCKS5 to open
             if (!waitForPort(10808, 8_000)) {
                 broadcastStep("xray_socks5", false, "SOCKS5 port 10808 not ready — check UUID/server config")
                 throw Exception("Xray failed to open SOCKS5 port within 8 s — check server config or UUID")
             }
             broadcastStep("xray_socks5", true, "SOCKS5 listening on :10808")
 
-            // 6. Build TUN with split routing (exclude server IP so Xray bypasses VPN)
+            // 5. Build TUN — route everything through tunnel, exclude own app at OS level
             val builder = Builder()
                 .setSession("SetaLink")
                 .addAddress("10.0.0.2", 24)
@@ -125,18 +119,15 @@ class XrayVpnService : VpnService() {
                 .addDnsServer("8.8.8.8")
                 .addDnsServer("2606:4700:4700::1111")   // Cloudflare IPv6 DNS
                 .setMtu(1500)
+                .addRoute("0.0.0.0", 0)
+                .addDisallowedApplication(packageName)  // Xray/tun2socks subprocesses inherit our UID
 
-            val routes = if (serverIp != null) buildExcludeRoutes(serverIp)
-                         else listOf(Pair("0.0.0.0", 0))
-            Log.i(TAG, "Adding ${routes.size} split routes (excluding $serverIp)")
-            for ((addr, prefix) in routes) {
-                try { builder.addRoute(addr, prefix) } catch (e: Exception) {
-                    Log.w(TAG, "Skipped route $addr/$prefix: ${e.message}")
-                }
-            }
-            // Route all IPv6 through the tunnel to prevent leaks
-            try { builder.addRoute("::", 0) } catch (e: Exception) {
-                Log.w(TAG, "IPv6 route skipped: ${e.message}")
+            // Full IPv6 route
+            try { builder.addRoute("::", 0) } catch (_: Exception) {}
+
+            // Unmetered so Android doesn't throttle the VPN interface (API 29+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                builder.setMetered(false)
             }
 
             tunFd = builder.establish()
@@ -146,9 +137,9 @@ class XrayVpnService : VpnService() {
             // This avoids the FD_CLOEXEC inheritance problem entirely — the child process opens
             // the fd itself via the proc symlink rather than inheriting it across exec().
             val procFdPath  = "/proc/${android.os.Process.myPid()}/fd/$tunFdInt"
-            broadcastStep("tun", true, "TUN fd=$tunFdInt routes=${routes.size}+IPv6 path=$procFdPath")
+            broadcastStep("tun", true, "TUN established fd=$tunFdInt (app=$packageName excluded from tunnel)")
 
-            // 7. Start tun2socks (bridges TUN ↔ Xray SOCKS5)
+            // 6. Start tun2socks (bridges TUN ↔ Xray SOCKS5)
             broadcastStep("tun2socks_start", true, "Starting tun2socks $procFdPath → socks5://127.0.0.1:10808")
             tun2socksProc = ProcessBuilder(
                 tun2sockBin.absolutePath,
@@ -159,7 +150,7 @@ class XrayVpnService : VpnService() {
             scope.launch { streamLog(tun2socksProc!!, "tun2socks") }
 
             // Give tun2socks a moment to attach to the fd
-            delay(600)
+            delay(1200)
 
             if (!tun2socksProc!!.isAlive) {
                 val exitCode = tun2socksProc!!.exitValue()
@@ -171,7 +162,7 @@ class XrayVpnService : VpnService() {
             Log.i(TAG, "VPN tunnel active")
             sendBroadcast(Intent(BROADCAST_CONNECTED))
 
-            // 8. Watch for process death
+            // 7. Watch for process death
             scope.launch {
                 while (isActive) {
                     delay(3_000)
@@ -236,22 +227,6 @@ class XrayVpnService : VpnService() {
 
     private fun File.readTextOrEmpty() = try { readText() } catch (_: Exception) { "" }
 
-    private fun parseServerAddress(configJson: String): String? {
-        return try {
-            val outbounds = JSONObject(configJson).optJSONArray("outbounds") ?: return null
-            for (i in 0 until outbounds.length()) {
-                val ob = outbounds.getJSONObject(i)
-                if (ob.optString("tag") == "proxy") {
-                    val vnext = ob.optJSONObject("settings")?.optJSONArray("vnext") ?: continue
-                    if (vnext.length() > 0) {
-                        return vnext.getJSONObject(0).optString("address").ifBlank { null }
-                    }
-                }
-            }
-            null
-        } catch (_: Exception) { null }
-    }
-
     private suspend fun waitForPort(port: Int, timeoutMs: Long): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
@@ -260,51 +235,6 @@ class XrayVpnService : VpnService() {
         }
         return false
     }
-
-    /**
-     * Covers 0.0.0.0/0 minus [excludeIp]/32 using a binary CIDR split.
-     * Generates at most 32 routes. Xray's outbound traffic to [excludeIp]
-     * naturally bypasses the VPN because no matching route exists.
-     */
-    private fun buildExcludeRoutes(excludeIp: String): List<Pair<String, Int>> {
-        val results = mutableListOf<Pair<String, Int>>()
-        try {
-            val addr = InetAddress.getByName(excludeIp)
-            if (addr !is Inet4Address) return listOf(Pair("0.0.0.0", 0))
-            val excl = ipToLong(addr.address)
-
-            var netAddr = 0L
-            var prefix  = 0
-            while (prefix < 32) {
-                val halfBit = 1L shl (31 - prefix)
-                val halfPfx = prefix + 1
-                if (excl and halfBit == 0L) {
-                    // excluded IP is in lower half → add upper half, descend lower
-                    results.add(Pair(longToIp(netAddr or halfBit), halfPfx))
-                    prefix = halfPfx
-                } else {
-                    // excluded IP is in upper half → add lower half, descend upper
-                    results.add(Pair(longToIp(netAddr), halfPfx))
-                    netAddr = netAddr or halfBit
-                    prefix  = halfPfx
-                }
-            }
-            // at prefix == 32 we're at the excluded IP itself — omit it
-        } catch (e: Exception) {
-            Log.e(TAG, "buildExcludeRoutes failed for $excludeIp: ${e.message}")
-            return listOf(Pair("0.0.0.0", 0))
-        }
-        return results
-    }
-
-    private fun ipToLong(b: ByteArray) =
-        ((b[0].toLong() and 0xFF) shl 24) or
-        ((b[1].toLong() and 0xFF) shl 16) or
-        ((b[2].toLong() and 0xFF) shl 8)  or
-        (b[3].toLong()  and 0xFF)
-
-    private fun longToIp(ip: Long) =
-        "${(ip shr 24) and 0xFF}.${(ip shr 16) and 0xFF}.${(ip shr 8) and 0xFF}.${ip and 0xFF}"
 
     private fun streamLog(process: Process, label: String) {
         try {
