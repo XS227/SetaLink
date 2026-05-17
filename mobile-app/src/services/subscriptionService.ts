@@ -80,6 +80,39 @@ function decodeSubscriptionBody(body: string): string {
   }
 }
 
+// City hints from hostname / address patterns
+const CITY_PATTERNS: Array<{ pattern: RegExp; city: string }> = [
+  { pattern: /\b(frankfurt|fra\d*|fkb)\b/i,       city: 'Frankfurt'  },
+  { pattern: /\b(helsinki|hel\d*)\b/i,             city: 'Helsinki'   },
+  { pattern: /\b(amsterdam|ams\d*)\b/i,            city: 'Amsterdam'  },
+  { pattern: /\b(paris|cdg|par\d*)\b/i,            city: 'Paris'      },
+  { pattern: /\b(london|lon\d*|lhr)\b/i,           city: 'London'     },
+  { pattern: /\b(virginia|ash\d*|iad)\b/i,         city: 'Virginia'   },
+  { pattern: /\b(oregon|pdx)\b/i,                  city: 'Oregon'     },
+  { pattern: /\b(ohio|cmh)\b/i,                    city: 'Ohio'       },
+  { pattern: /\b(california|lax|sfo)\b/i,          city: 'California' },
+  { pattern: /\b(singapore|sin\d*|sgp)\b/i,        city: 'Singapore'  },
+  { pattern: /\b(tokyo|nrt|tyo)\b/i,               city: 'Tokyo'      },
+  { pattern: /\b(istanbul|ist\d*)\b/i,             city: 'Istanbul'   },
+  { pattern: /\b(stockholm|sto\d*|arlanda)\b/i,   city: 'Stockholm'  },
+  { pattern: /\b(zurich|zrh|zur\d*)\b/i,           city: 'Zürich'     },
+  { pattern: /\b(toronto|yyz|yto)\b/i,             city: 'Toronto'    },
+  { pattern: /\b(sydney|syd\d*)\b/i,               city: 'Sydney'     },
+  { pattern: /\b(tehran|thr)\b/i,                  city: 'Tehran'     },
+  { pattern: /\b(berlin|ber\d*)\b/i,               city: 'Berlin'     },
+  { pattern: /\b(munich|muc\d*)\b/i,               city: 'Munich'     },
+  { pattern: /\b(warsaw|waw\d*)\b/i,               city: 'Warsaw'     },
+  { pattern: /\b(dubai|dxb)\b/i,                   city: 'Dubai'      },
+  { pattern: /\b(seoul|icn|sel)\b/i,               city: 'Seoul'      },
+];
+
+function detectCity(address: string): string | null {
+  for (const { pattern, city } of CITY_PATTERNS) {
+    if (pattern.test(address)) return city;
+  }
+  return null;
+}
+
 // Provider detection — ordered by hostname suffix specificity
 const PROVIDER_PATTERNS: Array<{ pattern: RegExp; label: string; flag: string }> = [
   { pattern: /\.oracle\.com$/i,                             label: 'Oracle',       flag: '☁️' },
@@ -143,41 +176,60 @@ function buildEntry(cfg: ParsedVlessConfig, index: number): ImportedServer {
     isReality            ? 'Reality'   :
     cfg.network === 'ws' ? 'WebSocket' : 'VLESS';
 
-  const protoLabel = isReality ? 'Reality' : cfg.network === 'ws' ? 'VLESS' : 'VLESS';
-  const rawName    = cfg.name ?? '';
+  const rawName = cfg.name ?? '';
+  const isIp    = /^\d{1,3}(\.\d{1,3}){3}$/.test(cfg.address);
 
-  // 1. Try provider detection from address hostname
-  const provider = detectProvider(cfg.address);
-
-  // 2. Try country from fragment name OR address
+  // 1. Detect provider and country
+  const provider           = detectProvider(cfg.address);
   const countryFromName    = rawName ? detectCountry(rawName)    : null;
   const countryFromAddress = detectCountry(cfg.address);
   const countryInfo        = countryFromName ?? countryFromAddress;
 
-  // 3. Build display title
+  // 2. Build display name in "SetaLink X N" format (max ~22 chars before dedup)
   let titleBase: string;
   let flagChar: string;
 
   if (provider) {
-    titleBase = `${provider.label} • ${protoLabel}`;
-    flagChar  = provider.flag;
-    // Override flag with country if we know it
-    if (countryInfo) flagChar = countryInfo.flag;
+    // Known cloud/hosting provider: "SetaLink Oracle", "SetaLink Hetzner"
+    titleBase = `SetaLink ${provider.label}`;
+    flagChar  = countryInfo?.flag ?? provider.flag;
   } else if (countryInfo) {
-    titleBase = `${countryInfo.country} • ${protoLabel}`;
+    // Detected country: "SetaLink Germany", "SetaLink Finland"
+    titleBase = `SetaLink ${countryInfo.country}`;
     flagChar  = countryInfo.flag;
-  } else if (rawName && rawName.length <= 40 && !rawName.includes(':')) {
-    // Fragment is a readable label, not an IP:port
+  } else if (rawName && rawName.length <= 32 && !rawName.includes(':')) {
+    // Fragment is a user-given label — use up to 14 chars after stripping flags
     const stripped = rawName.replace(/\p{Regional_Indicator}{2}/gu, '').trim();
-    titleBase = stripped || `Custom • ${protoLabel}`;
+    titleBase = stripped.length > 1 ? `SetaLink ${stripped.slice(0, 14)}` : 'SetaLink Custom';
     flagChar  = extractFlag(rawName) ?? '⚡';
   } else {
-    titleBase = `Custom • ${protoLabel}`;
+    titleBase = 'SetaLink Custom';
     flagChar  = '⚡';
   }
 
   const country = dedupeTitle(titleBase);
-  const city    = cfg.address; // shown as subtitle / secondary line
+
+  // 3. City: human-readable location, never the raw IP/hostname
+  const cityFromAddress = detectCity(cfg.address);
+  const cityFromName    = rawName ? detectCity(rawName) : null;
+  let city: string;
+
+  if (cityFromName) {
+    city = cityFromName;
+  } else if (cityFromAddress) {
+    city = cityFromAddress;
+  } else if (countryInfo) {
+    city = countryInfo.country;
+  } else if (provider) {
+    city = provider.label;
+  } else if (!isIp) {
+    // Hostname but no location hint — show cleaned domain without TLD
+    const hostParts = cfg.address.replace(/:\d+$/, '').split('.');
+    const meaningful = hostParts.find((p) => p.length > 3 && !/^\d+$/.test(p));
+    city = meaningful ? meaningful.charAt(0).toUpperCase() + meaningful.slice(1) : 'Custom';
+  } else {
+    city = 'Custom Server';
+  }
 
   const id = `sub-${index}-${cfg.address.replace(/[^a-zA-Z0-9]/g, '-')}-${cfg.port}`;
 

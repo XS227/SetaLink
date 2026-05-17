@@ -96,12 +96,7 @@ export const useAIStore = create<AIState>((set, get) => ({
     latencyAwareRouting: true,
   },
 
-  liveLog: [
-    { id: '3', timestamp: Date.now() - 83000,  message: 'Protocol switched: VLESS → Reality',          level: 'success' },
-    { id: '2', timestamp: Date.now() - 99000,  message: 'Latency spike detected (142ms)',              level: 'warn'    },
-    { id: '1', timestamp: Date.now() - 113000, message: 'CDN route optimized via Frankfurt edge',      level: 'success' },
-    { id: '0', timestamp: Date.now() - 145000, message: 'Connection established · DPI bypass active',  level: 'success' },
-  ],
+  liveLog: [],
 
   selectMode: (mode) => set({ activeMode: mode }),
 
