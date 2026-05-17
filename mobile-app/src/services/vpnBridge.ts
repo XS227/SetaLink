@@ -62,6 +62,23 @@ class MockAdapter implements VpnAdapter {
 
 // ── Native adapter (wraps XrayModule TurboModule) ────────────────────────────
 
+// Last connect log — readable by vpnStore without creating a circular import
+let _lastConnectLog: string[] = [];
+export function getLastConnectLog(): string[] { return _lastConnectLog; }
+
+async function fetchPublicIp(): Promise<string | null> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 5000);
+    const res  = await fetch('https://api.ipify.org?format=json', { signal: controller.signal });
+    clearTimeout(tid);
+    const json = await res.json() as { ip?: string };
+    return json.ip ?? null;
+  } catch {
+    return null;
+  }
+}
+
 class NativeAdapter implements VpnAdapter {
   private module: any;
 
@@ -70,28 +87,78 @@ class NativeAdapter implements VpnAdapter {
   }
 
   async connect(configJson: string): Promise<void> {
+    const log: string[] = [];
+
+    // Check public IP before connecting so we can verify routing later
+    log.push('Checking pre-connect public IP...');
+    const priorIp = await fetchPublicIp();
+    if (priorIp) {
+      log.push(`Pre-connect IP: ${priorIp}`);
+    } else {
+      log.push('Pre-connect IP: unavailable (no internet?)');
+    }
+
     // module.start() may reject immediately (e.g. VPN_PERMISSION_DENIED)
     // or resolve and then the service broadcasts connected/failed asynchronously.
     try {
       await this.module.start(configJson);
     } catch (e: unknown) {
-      // Extract readable message from native rejection
       const msg =
         (e as any)?.userInfo?.NSLocalizedDescription ??
         (e as any)?.userInfo?.message               ??
         (e instanceof Error ? e.message : String(e));
+      log.push(`✗ start() rejected: ${msg}`);
+      _lastConnectLog = log;
       throw new Error(msg);
     }
+    log.push('VPN service started — waiting for tunnel...');
 
     // Poll until VpnService broadcasts CONNECTED (max 15 s)
+    let connected = false;
     for (let i = 0; i < 30; i++) {
       await sleep(500);
-      if (await this.module.isRunning()) return;
+      if (await this.module.isRunning()) { connected = true; break; }
     }
 
-    // Timed out — retrieve the specific error from the native layer
-    const nativeErr = await this.module.getLastError?.().catch(() => null);
-    throw new Error(nativeErr ?? 'VPN tunnel did not start — check server config');
+    if (!connected) {
+      const nativeErr = await this.module.getLastError?.().catch(() => null) as string | null;
+      const msg = nativeErr ?? 'VPN tunnel did not start within 15 s — check server config';
+      log.push(`✗ ${msg}`);
+      _lastConnectLog = log;
+      throw new Error(msg);
+    }
+    log.push('Native tunnel reports running — verifying IP routing...');
+
+    // Verify traffic actually routes through the VPN by checking public IP
+    const postIp = await fetchPublicIp();
+    if (postIp) {
+      log.push(`Post-connect IP: ${postIp}`);
+    } else {
+      log.push('Post-connect IP: unavailable (check internet via VPN)');
+    }
+
+    if (priorIp && postIp) {
+      if (priorIp === postIp) {
+        // IP did not change — tunnel is up but traffic isn't routing through it
+        try {
+          const nativeSteps = await this.module.getConnectionLog?.() as string[] ?? [];
+          _lastConnectLog = [...nativeSteps, ...log,
+            `✗ Routing check: IP unchanged (${priorIp}) — tunnel not forwarding traffic`];
+        } catch { _lastConnectLog = log; }
+        throw new Error(
+          `Tunnel not active — traffic not routed through VPN (IP unchanged: ${priorIp})`
+        );
+      }
+      log.push(`✓ IP changed ${priorIp} → ${postIp} — routing confirmed`);
+    } else {
+      log.push('IP verification skipped — could not reach IP check endpoint');
+    }
+
+    // Merge native step log with JS log
+    try {
+      const nativeSteps = await this.module.getConnectionLog?.() as string[] ?? [];
+      _lastConnectLog = [...nativeSteps, ...log];
+    } catch { _lastConnectLog = log; }
   }
 
   async disconnect(): Promise<void> {

@@ -52,6 +52,7 @@ const EN = {
   'home.download':        'Download',
   'home.premium':         'Premium',
   'home.standard':        'Standard',
+  'home.connLog':         'Connection Log',
 
   // Servers screen
   'sv.title':           'Servers',

@@ -29,6 +29,7 @@ interface VpnState {
   error:              string | null;
   reconnectAttempts:  number;
   isSwitchingServer:  boolean;
+  connectionLog:      string[];        // step log from most recent connect attempt
 
   connect:            () => void;
   disconnect:         () => void;
@@ -39,6 +40,7 @@ interface VpnState {
   resetSession:       () => void;
   setProtocol:        (p: string) => void;
   clearError:         () => void;
+  setConnectionLog:   (log: string[]) => void;
   // kept for backward compat in tests / adapters
   setConnectionState: (s: ConnectionState) => void;
 }
@@ -62,6 +64,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
     onConnected: () => {
       set({ sessionStartedAt: Date.now(), error: null });
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getLastConnectLog } = require('../services/vpnBridge');
+        set({ connectionLog: getLastConnectLog() });
+      } catch {}
 
       const server = get().selectedServer;
 
@@ -148,6 +155,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
     onError: (message) => {
       set({ error: message });
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getLastConnectLog } = require('../services/vpnBridge');
+        set({ connectionLog: getLastConnectLog() });
+      } catch {}
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -194,6 +206,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     error:             null,
     reconnectAttempts: 0,
     isSwitchingServer: false,
+    connectionLog:     [],
 
     connect:    () => machine.send('CONNECT'),
     disconnect: () => machine.send('DISCONNECT'),
@@ -231,8 +244,10 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
     clearError: () => {
       machine.send('RESET');
-      set({ error: null });
+      set({ error: null, connectionLog: [] });
     },
+
+    setConnectionLog: (log) => set({ connectionLog: log }),
 
     setConnectionState: (s) => set({ connectionState: s }),
   };
