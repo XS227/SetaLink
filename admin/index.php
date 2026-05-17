@@ -685,6 +685,172 @@ $page_titles = [
     </div>
     <?php endif; ?>
 
+
+    <!-- =================================================================
+         APP ANALYTICS OVERVIEW
+         ================================================================= -->
+    <div class="section" style="margin-bottom:1.5rem">
+      <div class="section-header">
+        <h2>App Analytics</h2>
+        <div class="section-controls">
+          <span class="badge badge-muted" id="appAnalyticsPeriod">Last 30 days</span>
+          <button class="btn btn-secondary" id="refreshAppAnalyticsBtn" title="Refresh">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div class="section-body" style="padding:1.25rem">
+        <div class="srv-stats-row" id="appStatsRow" style="grid-template-columns:repeat(4,1fr)">
+          <div class="srv-stat">
+            <div class="srv-stat-label">Total Installs</div>
+            <div class="srv-stat-value" id="appStatInstalls">—</div>
+          </div>
+          <div class="srv-stat">
+            <div class="srv-stat-label">Active (7d)</div>
+            <div class="srv-stat-value" id="appStatActive7d">—</div>
+          </div>
+          <div class="srv-stat">
+            <div class="srv-stat-label">New This Month</div>
+            <div class="srv-stat-value" id="appStatNewMonth">—</div>
+          </div>
+          <div class="srv-stat">
+            <div class="srv-stat-label">Latest Version</div>
+            <div class="srv-stat-value" id="appStatVersion" style="font-size:1.1rem">—</div>
+          </div>
+        </div>
+
+        <div style="margin-top:1rem">
+          <div class="section-header" style="padding:0 0 .75rem;border-bottom:1px solid var(--border);margin-bottom:.75rem">
+            <span style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Version Distribution</span>
+          </div>
+          <div id="appVersionDist" style="display:flex;flex-direction:column;gap:.5rem">
+            <div class="app-ver-row" data-ver="1.0.0" data-pct="100">
+              <span class="app-ver-label">v1.0.0</span>
+              <div class="app-ver-bar-wrap"><div class="app-ver-bar" style="width:100%"></div></div>
+              <span class="app-ver-pct">100%</span>
+            </div>
+          </div>
+        </div>
+
+        <style>
+          .app-ver-row{display:flex;align-items:center;gap:.75rem}
+          .app-ver-label{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--text-2);min-width:56px}
+          .app-ver-bar-wrap{flex:1;height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden}
+          .app-ver-bar{height:100%;background:linear-gradient(90deg,var(--accent),#79b8ff);border-radius:3px;transition:width .4s}
+          .app-ver-pct{font-size:.75rem;color:var(--muted);min-width:36px;text-align:right}
+        </style>
+      </div>
+    </div>
+
+    <!-- =================================================================
+         SERVER NODES MANAGEMENT
+         ================================================================= -->
+    <div class="section" style="margin-bottom:1.5rem">
+      <div class="section-header">
+        <h2>Server Nodes</h2>
+        <div class="section-controls">
+          <button class="btn btn-primary" id="addNodeBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Node
+          </button>
+          <button class="btn btn-secondary" id="refreshNodesBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+      <div class="section-body" style="padding:0">
+        <table class="user-table" id="nodesTable">
+          <thead>
+            <tr>
+              <th>Node</th>
+              <th>Location</th>
+              <th>Protocol</th>
+              <th>Status</th>
+              <th>Ping</th>
+              <th>Load</th>
+              <th>Users</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="nodesTbody">
+            <!-- Populated by JS -->
+            <tr id="nodesPlaceholder">
+              <td colspan="8" style="text-align:center;color:var(--muted);padding:2rem 0">
+                Loading nodes…
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Add Node Modal -->
+    <div class="modal-overlay" id="addNodeModal" style="display:none" role="dialog" aria-modal="true">
+      <div class="modal">
+        <div class="modal-header">
+          <h3 class="modal-title">Add Server Node</h3>
+          <button class="modal-close" id="addNodeModalClose" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem">
+          <div class="form-group">
+            <label class="form-label">Node Label</label>
+            <input type="text" class="form-input" id="nodeLabel" placeholder="e.g. DE-01 Frankfurt" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label">IP / Hostname</label>
+            <input type="text" class="form-input" id="nodeHost" placeholder="e.g. 185.123.45.67 or de01.example.com" autocomplete="off">
+          </div>
+          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+            <div class="form-group">
+              <label class="form-label">Country</label>
+              <input type="text" class="form-input" id="nodeCountry" placeholder="Germany" autocomplete="off">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Flag Emoji</label>
+              <input type="text" class="form-input" id="nodeFlag" placeholder="🇩🇪" maxlength="4">
+            </div>
+          </div>
+          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+            <div class="form-group">
+              <label class="form-label">Protocol</label>
+              <select class="form-input" id="nodeProtocol">
+                <option value="VLESS+Reality">VLESS + Reality</option>
+                <option value="VLESS+XHTTP">VLESS + XHTTP</option>
+                <option value="VLESS+WS">VLESS + WebSocket</option>
+                <option value="VLESS+HTTPUpgrade">VLESS + HTTPUpgrade</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Port</label>
+              <input type="number" class="form-input" id="nodePort" value="443" min="1" max="65535">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tags (comma-separated)</label>
+            <input type="text" class="form-input" id="nodeTags" placeholder="premium, europe" autocomplete="off">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="addNodeModalCancel">Cancel</button>
+          <button class="btn btn-primary" id="addNodeConfirmBtn">Add Node</button>
+        </div>
+      </div>
+    </div>
+
+    <style>
+      #nodesTable .node-flag{font-size:1.1rem}
+      #nodesTable .node-label{font-weight:600;color:var(--text)}
+      #nodesTable .node-host{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--muted)}
+      #nodesTable .node-ping{font-family:"JetBrains Mono",monospace;font-size:.82rem}
+      #nodesTable .node-ping.good{color:var(--ok)}
+      #nodesTable .node-ping.warn{color:var(--warn)}
+      #nodesTable .node-ping.bad{color:var(--danger)}
+    </style>
+
     <!-- Users section -->
     <div class="section">
       <div class="section-header">
