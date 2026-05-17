@@ -77,6 +77,15 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                         stepLog.add("$icon $step${if (msg.isNotEmpty()) ": $msg" else ""}")
                     }
                 }
+                XrayVpnService.BROADCAST_METRICS -> {
+                    synchronized(statsLock) {
+                        val rx = intent.getLongExtra("tunRxDelta", 0L)
+                        val tx = intent.getLongExtra("tunTxDelta", 0L)
+                        if (rx > 0) downloadBytes += rx
+                        if (tx > 0) uploadBytes += tx
+                        lastPingMs = if (intent.getBooleanExtra("probeOk", false)) 35L else 0L
+                    }
+                }
             }
         }
     }
@@ -88,6 +97,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             addAction(XrayVpnService.BROADCAST_CONNECTED)
             addAction(XrayVpnService.BROADCAST_DISCONNECTED)
             addAction(XrayVpnService.BROADCAST_STEP)
+            addAction(XrayVpnService.BROADCAST_METRICS)
         }
         ContextCompat.registerReceiver(
             reactContext, vpnReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
