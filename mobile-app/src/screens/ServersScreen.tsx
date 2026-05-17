@@ -201,7 +201,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         )}
         {loadError && servers.length === 0 && (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{loadError}</Text>
+            <Text style={styles.errorBannerText}>◎ {loadError}</Text>
           </View>
         )}
 
@@ -473,8 +473,8 @@ const styles = StyleSheet.create({
   // Banners
   cachedBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
   cachedBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  errorBanner:     { backgroundColor: 'rgba(255,68,68,0.08)', borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(255,68,68,0.2)', paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
-  errorBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.status.disconnected },
+  errorBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
+  errorBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
 
   // Search
   searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[4], paddingVertical: Spacing[3], gap: Spacing[3] },

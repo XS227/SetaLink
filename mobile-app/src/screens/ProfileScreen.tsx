@@ -25,6 +25,12 @@ function formatExpiry(iso: string | null): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function getDaysRemaining(iso: string | null): number | null {
+  if (!iso) return null;
+  const diff = new Date(iso).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
 // ── BandwidthBar ──────────────────────────────────────────────────────────────
 
 interface BandwidthBarProps {
@@ -95,6 +101,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const initial  = user.name.charAt(0).toUpperCase();
   const monthSessions = sessionsThisMonth();
   const monthBytes    = totalBytesThisMonth();
+  const daysLeft      = getDaysRemaining(user.planExpiry);
+  const isUnlimited   = plan.gbLimit === null;
 
   const handleCopyReferral = () => {
     Clipboard.setString(user.referralCode);
@@ -164,11 +172,31 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         {/* Subscription card */}
         <GlassCard glowColor={Colors.emerald[400]} style={styles.subCard}>
           <View style={styles.subHeader}>
-            <View>
+            <View style={{ gap: 4 }}>
               <Text style={styles.subTitle}>{plan.label}</Text>
               <Text style={styles.subExpiry}>
                 {user.planExpiry ? `${t('pr.renewsOn')} ${formatExpiry(user.planExpiry)}` : t('pr.lifetime')}
               </Text>
+              <View style={styles.subPills}>
+                {isUnlimited ? (
+                  <View style={styles.unlimitedPill}>
+                    <Text style={styles.unlimitedPillText}>∞ Unlimited</Text>
+                  </View>
+                ) : plan.gbLimit !== null ? (
+                  <View style={styles.gbPill}>
+                    <Text style={styles.gbPillText}>
+                      {(plan.gbLimit - monthBytes / 1e9).toFixed(1)} GB left
+                    </Text>
+                  </View>
+                ) : null}
+                {daysLeft !== null && (
+                  <View style={[styles.daysPill, daysLeft <= 7 && styles.daysPillUrgent]}>
+                    <Text style={[styles.daysPillText, daysLeft <= 7 && styles.daysPillTextUrgent]}>
+                      {daysLeft}d remaining
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
             <View style={styles.subStatus}>
               <View style={styles.subDot} />
@@ -344,6 +372,15 @@ const styles = StyleSheet.create({
   subDot:           { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.emerald[400] },
   subStatusText:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
   subDivider:       { height: 1, backgroundColor: Colors.border.subtle },
+  subPills:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  unlimitedPill:    { backgroundColor: 'rgba(0,232,122,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(0,232,122,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 2 },
+  unlimitedPillText:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.3 },
+  gbPill:           { backgroundColor: 'rgba(0,232,122,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(0,232,122,0.2)', paddingHorizontal: Spacing[3], paddingVertical: 2 },
+  gbPillText:       { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400] },
+  daysPill:         { backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 2 },
+  daysPillUrgent:   { backgroundColor: 'rgba(255,184,0,0.1)', borderColor: 'rgba(255,184,0,0.35)' },
+  daysPillText:     { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  daysPillTextUrgent: { color: '#FFB800' },
   subMeta:          { flexDirection: 'row', justifyContent: 'space-around' },
   subMetaItem:      { alignItems: 'center', gap: 2 },
   subMetaValue:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },

@@ -124,7 +124,7 @@ export const useServerStore = create<ServerState>()(
       }
     } catch {
       // Keep SERVER_CATALOG fallback on any network/API error
-      set({ isLoading: false, loadError: 'Could not refresh server list' });
+      set({ isLoading: false, loadError: 'Using saved server list' });
     }
   },
 
