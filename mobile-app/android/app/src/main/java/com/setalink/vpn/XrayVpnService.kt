@@ -2,6 +2,8 @@ package com.setalink.vpn
 
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
@@ -11,8 +13,11 @@ import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileWriter
+import java.net.HttpURLConnection
 import java.net.InetSocketAddress
+import java.net.NetworkInterface
 import java.net.Socket
+import java.net.URL
 
 class XrayVpnService : VpnService() {
 
@@ -30,6 +35,7 @@ class XrayVpnService : VpnService() {
         const val EXTRA_STEP             = "step_name"
         const val EXTRA_STEP_OK          = "step_ok"
         const val EXTRA_STEP_MSG         = "step_msg"
+        const val BROADCAST_METRICS      = "com.setalink.vpn.METRICS"
 
         const val XRAY_LOG_FILE = "xray.log"
 
@@ -178,6 +184,7 @@ class XrayVpnService : VpnService() {
             tunFd = vpnBuilder.establish()
                 ?: throw Exception("TUN establish() returned null — was VPN permission revoked?")
             val tunFdInt = tunFd!!.fd
+            val tunInterface = findTunInterfaceName()
 
             // Clear FD_CLOEXEC so this fd survives exec() into tun2socks.
             // By default Android sets CLOEXEC on all fds; exec() would close it,
@@ -185,7 +192,8 @@ class XrayVpnService : VpnService() {
             val cloexecResult = nativeClearCloexec(tunFdInt)
             appendLog("[TUN] fd=$tunFdInt FD_CLOEXEC clear result=$cloexecResult (0=ok, -1=err)")
 
-            broadcastStep("tun_created", true, "TUN fd=$tunFdInt established (FD_CLOEXEC cleared, result=$cloexecResult)\nVPN app UID is INCLUDED in tunnel for real end-to-end routing checks")
+            broadcastStep("tun_created", true, "TUN fd=$tunFdInt iface=${tunInterface ?: "unknown"} established (FD_CLOEXEC cleared, result=$cloexecResult)")
+            broadcastRouteDiagnostics(tunInterface)
 
             // 7. Start tun2socks — pass fd://<N> so tun2socks uses the inherited fd directly.
             // Passing /proc/<pid>/fd/<N> fails on Android because the child process cannot
@@ -223,8 +231,15 @@ class XrayVpnService : VpnService() {
             }
             broadcastStep("tun2socks_alive", true, "tun2socks running — fd://$tunFdInt → socks5://127.0.0.1:10808")
 
-            Log.i(TAG, "VPN tunnel active")
-            broadcastStep("vpn_connected", true, "Tunnel active — traffic flowing through VPN")
+            val validation = runRoutingValidation(tunInterface)
+            if (!validation.ok) {
+                broadcastStep("routing_validation", false, validation.message)
+                throw Exception("Routing validation failed: ${validation.message}")
+            }
+
+            Log.i(TAG, "VPN tunnel active and validated")
+            broadcastStep("routing_validation", true, validation.message)
+            broadcastStep("vpn_connected", true, "Tunnel active + routing validated")
             sendBroadcast(Intent(BROADCAST_CONNECTED).setPackage(packageName))
 
             // 8. Watch for process death
@@ -349,6 +364,77 @@ class XrayVpnService : VpnService() {
             putExtra(EXTRA_STEP_MSG, msg)
         })
         Log.i(TAG, "[STEP] $step=${if (ok) "OK" else "FAIL"} — $msg")
+    }
+
+    private data class ValidationResult(val ok: Boolean, val message: String)
+
+    private fun runRoutingValidation(tunInterface: String?): ValidationResult {
+        val before = tunInterface?.let { readInterfaceBytes(it) }
+        val dnsOk = runCatching {
+            URL("https://1.1.1.1/cdn-cgi/trace").openConnection().let { conn ->
+                conn as HttpURLConnection
+                conn.connectTimeout = 3000
+                conn.readTimeout = 3000
+                conn.instanceFollowRedirects = false
+                conn.requestMethod = "GET"
+                conn.inputStream.bufferedReader().use { it.readLine() }
+                conn.disconnect()
+                true
+            }
+        }.getOrElse { false }
+        Thread.sleep(800)
+        val after = tunInterface?.let { readInterfaceBytes(it) }
+        val deltaRx = if (before != null && after != null) (after.first - before.first) else -1L
+        val deltaTx = if (before != null && after != null) (after.second - before.second) else -1L
+        publishMetrics(tunInterface, deltaRx, deltaTx, dnsOk)
+        if (!dnsOk) return ValidationResult(false, "HTTP reachability probe failed through VPN service path")
+        if (deltaRx <= 0 && deltaTx <= 0) {
+            return ValidationResult(false, "No TUN byte growth detected (rx=$deltaRx tx=$deltaTx)")
+        }
+        return ValidationResult(true, "Probe success and TUN bytes increased (rx=$deltaRx tx=$deltaTx)")
+    }
+
+    private fun findTunInterfaceName(): String? {
+        return runCatching {
+            NetworkInterface.getNetworkInterfaces().toList()
+                .firstOrNull { iface ->
+                    val n = iface.name.lowercase()
+                    iface.isUp && (n.startsWith("tun") || n.startsWith("ppp"))
+                }?.name
+        }.getOrNull()
+    }
+
+    private fun readInterfaceBytes(iface: String): Pair<Long, Long>? {
+        return runCatching {
+            File("/proc/net/dev").readLines().firstOrNull { it.trimStart().startsWith("$iface:") }?.let { line ->
+                val fields = line.substringAfter(":").trim().split(Regex("\\s+"))
+                Pair(fields[0].toLong(), fields[8].toLong())
+            }
+        }.getOrNull()
+    }
+
+    private fun broadcastRouteDiagnostics(tunInterface: String?) {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val active = cm?.activeNetwork
+        val caps = cm?.getNetworkCapabilities(active)
+        val transport = when {
+            caps == null -> "unknown"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "wifi"
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile"
+            else -> "other"
+        }
+        val msg = "iface=${tunInterface ?: "unknown"} route4=0.0.0.0/0 route6=::/0 dns=1.1.1.1,8.8.8.8 net=$transport ipv6=${caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN) == false}"
+        broadcastStep("route_diag", true, msg)
+    }
+
+    private fun publishMetrics(tunInterface: String?, rxDelta: Long, txDelta: Long, probeOk: Boolean) {
+        sendBroadcast(Intent(BROADCAST_METRICS).apply {
+            setPackage(packageName)
+            putExtra("tunInterface", tunInterface ?: "unknown")
+            putExtra("tunRxDelta", rxDelta)
+            putExtra("tunTxDelta", txDelta)
+            putExtra("probeOk", probeOk)
+        })
     }
 
     // ── Log helpers ───────────────────────────────────────────────────────────
