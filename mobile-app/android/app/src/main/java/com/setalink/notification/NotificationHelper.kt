@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.setalink.MainActivity
+import com.setalink.R
 
 object NotificationHelper {
 
@@ -41,7 +42,7 @@ object NotificationHelper {
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle("SetaLink VPN")
             .setContentText("Connected — your traffic is protected")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_vpn)
             .setOngoing(true)
             .setContentIntent(openIntent)
             .build()
@@ -53,7 +54,7 @@ object NotificationHelper {
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle("SetaLink VPN")
             .setContentText("Connecting…")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_stat_vpn)
             .setOngoing(true)
             .build()
     }
