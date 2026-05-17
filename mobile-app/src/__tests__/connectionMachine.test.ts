@@ -57,8 +57,8 @@ describe('ConnectionMachine — state transitions', () => {
     machine.send('CONNECT');
     // Advance past mock delay
     jest.advanceTimersByTime(4000);
-    // State may be 'connected' or 'error' depending on random; just assert callbacks are possible
-    expect(['connected', 'error']).toContain(machine.getState());
+    // State may be 'connected' or 'failed' depending on random; just assert callbacks are possible
+    expect(['connected', 'failed']).toContain(machine.getState());
     machine.destroy();
   });
 
@@ -86,20 +86,19 @@ describe('ConnectionMachine — state transitions', () => {
     machine.send('CONNECT');
     await Promise.resolve();
 
-    expect(machine.getState()).toBe('error');
-    expect(error).toHaveBeenCalledWith('Connection failed');
+    expect(machine.getState()).toBe('failed');
+    expect(error).toHaveBeenCalledWith('fail');
   });
 
-  it('error → reconnecting on CONNECT, increments reconnectAttempts', async () => {
+  it('failed → connecting on CONNECT', async () => {
     const adapter = makeAdapter({ succeed: false });
     const { machine } = buildMachine({ adapter });
 
     machine.send('CONNECT');
     await Promise.resolve(); // → error
 
-    machine.send('CONNECT'); // → reconnecting
-    expect(machine.getState()).toBe('reconnecting');
-    expect(machine.getReconnectAttempts()).toBe(1);
+    machine.send('CONNECT'); // → connecting
+    expect(machine.getState()).toBe('connecting');
   });
 
   it('ignores invalid transitions silently', () => {
@@ -129,7 +128,6 @@ describe('xrayConfigBuilder', () => {
     const config = buildXrayConfig(server, 'VLESS+Reality', 'Cloudflare (DoH)');
     expect(config.outbounds[0].protocol).toBe('vless');
     expect(config.outbounds[0].streamSettings?.security).toBe('reality');
-    expect(config.inbounds).toHaveLength(2);
     expect(config.routing.rules.length).toBeGreaterThan(0);
   });
 

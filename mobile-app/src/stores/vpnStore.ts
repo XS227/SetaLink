@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { ConnectionMachine, MachineState } from '../services/connectionMachine';
 import { getAdapter }                       from '../services/vpnBridge';
 import { buildXrayConfigJson, validateCreds } from '../services/xrayConfigBuilder';
+import { appendMetric } from '../services/vpnMetricsStore';
 
 // Re-exported so screens that import ConnectionState don't break
 export type ConnectionState = MachineState;
@@ -52,10 +53,6 @@ export const useVpnStore = create<VpnState>((set, get) => {
   const machine = new ConnectionMachine({
     onStateChange: (next, _prev) => {
       set({ connectionState: next });
-
-      if (next === 'reconnecting') {
-        set({ reconnectAttempts: machine.getReconnectAttempts() });
-      }
     },
 
     onConnected: () => {
@@ -76,6 +73,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
           'success'
         );
       } catch {}
+
+      appendMetric({ type: 'connect_success', at: Date.now(), country: server?.country, transport: server?.transport, protocol: server?.protocol });
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -118,6 +117,9 @@ export const useVpnStore = create<VpnState>((set, get) => {
         } catch {}
       }
 
+      if (state.sessionStartedAt) {
+        appendMetric({ type: 'disconnect', at: Date.now(), durationSec: Math.max(1, Math.floor((Date.now() - state.sessionStartedAt)/1000)), reconnects: state.reconnectAttempts });
+      }
       set({ sessionStartedAt: null, sessionBytes: { sent: 0, received: 0 }, reconnectAttempts: 0 });
 
       // Server switch: skip the disconnect toast and auto-reconnect to the new server
@@ -151,6 +153,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
     onError: (message) => {
       set({ error: message });
+      appendMetric({ type: message.toLowerCase().includes('routing') ? 'routing_failed' : 'connect_failed', at: Date.now(), reason: message, country: get().selectedServer?.country });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog } = require('../services/vpnBridge');
