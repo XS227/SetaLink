@@ -34,6 +34,14 @@ export const Colors = {
     900: '#002E16',
   },
 
+  // Brand: Gold (Lion & Sun accent — premium, referral, rewards)
+  gold: {
+    300: '#F0D060',
+    400: '#D4AF37',
+    500: '#C9982A',
+    600: '#B8860B',
+  },
+
   // Brand: Electric Blue (secondary)
   blue: {
     300: '#66B8FF',
