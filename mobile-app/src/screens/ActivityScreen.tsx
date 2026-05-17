@@ -7,14 +7,15 @@ import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { useSessionStore } from '../stores/sessionStore';
 import { formatBytes, formatDuration } from '../utils/formatters';
+import { useT } from '../i18n';
 
-function groupLabel(ts: number): string {
+function groupLabel(ts: number, todayStr: string, yesterdayStr: string): string {
   const d         = new Date(ts);
   const today     = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  if (d.toDateString() === today.toDateString())     return 'Today';
-  if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  if (d.toDateString() === today.toDateString())     return todayStr;
+  if (d.toDateString() === yesterday.toDateString()) return yesterdayStr;
   return d.toLocaleDateString('en-US', { weekday: 'short' });
 }
 
@@ -69,6 +70,7 @@ interface Props {
 }
 
 export function ActivityScreen({ onNavigate, activeTab }: Props) {
+  const { t } = useT();
   const { sessions, sessionsToday, totalBytesToday, totalDurationToday, hourlyDownload } =
     useSessionStore();
 
@@ -78,10 +80,13 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
   const spark      = hourlyDownload();
   const peakMb     = Math.max(...spark, 0);
 
+  const todayLabel     = t('ac.today');
+  const yesterdayLabel = t('ac.yesterday');
+
   const dateHeader = useMemo(() => {
     const d = new Date();
-    return `Today, ${d.toLocaleDateString('en-US', { day: 'numeric', month: 'long' })}`;
-  }, []);
+    return `${todayLabel}, ${d.toLocaleDateString('en-US', { day: 'numeric', month: 'long' })}`;
+  }, [todayLabel]);
 
   return (
     <View style={styles.screen}>
@@ -92,16 +97,16 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Activity</Text>
+          <Text style={styles.title}>{t('ac.title')}</Text>
           <Text style={styles.date}>{dateHeader}</Text>
         </View>
 
         {/* Summary cards */}
         <View style={styles.summaryRow}>
           {[
-            { label: 'Total Data', value: formatBytes(totalBytes), accent: true },
-            { label: 'Sessions',   value: String(today.length),    accent: false },
-            { label: 'Total Time', value: formatDuration(totalDur), accent: false },
+            { label: t('ac.totalData'), value: formatBytes(totalBytes), accent: true },
+            { label: t('ac.sessions'), value: String(today.length),    accent: false },
+            { label: t('ac.totalTime'), value: formatDuration(totalDur), accent: false },
           ].map(item => (
             <GlassCard
               key={item.label}
@@ -119,9 +124,9 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
         {/* Traffic chart */}
         <GlassCard>
           <View style={styles.chartHeader}>
-            <Text style={styles.cardLabel}>Bandwidth · Today</Text>
+            <Text style={styles.cardLabel}>{t('ac.bandwidth')}</Text>
             <Text style={styles.chartPeak}>
-              {peakMb > 0 ? `Peak ${peakMb.toFixed(0)} MB` : 'No data today'}
+              {peakMb > 0 ? `${t('ac.peak')} ${peakMb.toFixed(0)} MB` : t('ac.noPeak')}
             </Text>
           </View>
           <Sparkline data={spark} />
@@ -134,16 +139,16 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
 
         {/* Log timeline */}
         <View>
-          <Text style={styles.sectionTitle}>Connection Log</Text>
+          <Text style={styles.sectionTitle}>{t('ac.connLog')}</Text>
 
           {sessions.length === 0 ? (
             <GlassCard>
-              <Text style={styles.emptyText}>No sessions recorded yet</Text>
+              <Text style={styles.emptyText}>{t('ac.noSessions')}</Text>
             </GlassCard>
           ) : (
             sessions.map((session, i) => {
-              const label     = groupLabel(session.startedAt);
-              const prevLabel = i > 0 ? groupLabel(sessions[i - 1].startedAt) : null;
+              const label     = groupLabel(session.startedAt, todayLabel, yesterdayLabel);
+              const prevLabel = i > 0 ? groupLabel(sessions[i - 1].startedAt, todayLabel, yesterdayLabel) : null;
               const showSep   = i === 0 || label !== prevLabel;
 
               return (

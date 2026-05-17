@@ -20,6 +20,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
 
 import { SplashScreen }      from '../screens/SplashScreen';
+import { LanguageScreen }    from '../screens/LanguageScreen';
 import { OnboardingScreen }  from '../screens/OnboardingScreen';
 import { AuthScreen }        from '../screens/AuthScreen';
 import { HomeScreen }        from '../screens/HomeScreen';
@@ -145,7 +146,12 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
     <SplashScreen
       onFinish={async () => {
         const result = await runBootSequence();
-        const { hasOnboarded } = useSettingsStore.getState();
+        const { hasOnboarded, hasSelectedLanguage } = useSettingsStore.getState();
+
+        if (!hasSelectedLanguage) {
+          navigation.replace('Language');
+          return;
+        }
 
         if (!hasOnboarded) {
           navigation.replace('Onboarding');
@@ -162,6 +168,17 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
         if (result.shouldAutoConnect) {
           setTimeout(() => useVpnStore.getState().connect(), 600);
         }
+      }}
+    />
+  );
+}
+
+function LanguageAdapter({ navigation }: ScreenAdapterProps) {
+  return (
+    <LanguageScreen
+      onSelect={() => {
+        const { hasOnboarded } = useSettingsStore.getState();
+        navigation.replace(hasOnboarded ? 'Main' : 'Onboarding');
       }}
     />
   );
@@ -210,6 +227,7 @@ export function AppNavigator() {
       <DeepLinkHandler />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="Splash"      component={SplashAdapter} />
+        <Stack.Screen name="Language"    component={LanguageAdapter} />
         <Stack.Screen name="Onboarding"  component={OnboardingAdapter} />
         <Stack.Screen name="Auth"        component={AuthAdapter} />
         <Stack.Screen name="Main"        component={MainTabs} />

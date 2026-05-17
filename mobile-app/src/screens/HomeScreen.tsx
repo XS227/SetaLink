@@ -17,6 +17,7 @@ import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { formatBytes }         from '../utils/formatters';
+import { useT }                from '../i18n';
 
 const { width } = Dimensions.get('window');
 
@@ -46,6 +47,7 @@ interface Props {
 }
 
 export function HomeScreen({ onNavigate, activeTab }: Props) {
+  const { t, isRTL } = useT();
   const {
     connectionState,
     selectedServer,
@@ -126,7 +128,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           {connectionState === 'reconnecting' && (
             <View style={styles.reconnectBadge}>
               <Text style={styles.reconnectText}>
-                Reconnecting · {reconnectAttempts}/3
+                {t('home.reconnecting')} · {reconnectAttempts}/3
               </Text>
             </View>
           )}
@@ -135,7 +137,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               style={styles.errorBadge}
               onPress={() => useVpnStore.getState().clearError()}
             >
-              <Text style={styles.errorText}>{error} · Tap to retry</Text>
+              <Text style={styles.errorText}>{error} · {t('home.tapToRetry')}</Text>
             </TouchableOpacity>
           )}
         </Animated.View>
@@ -163,10 +165,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
             <View style={styles.serverInfo}>
               <Text style={styles.serverName}>
-                {selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : 'Select server'}
+                {selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : t('home.selectServer')}
               </Text>
               <Text style={styles.serverSub}>
-                {selectedServer ? `${selectedServer.protocol} · ${selectedServer.premium ? 'Premium' : 'Standard'}` : 'Tap to choose'}
+                {selectedServer ? `${selectedServer.protocol} · ${selectedServer.premium ? t('home.premium') : t('home.standard')}` : t('home.tapToChoose')}
               </Text>
             </View>
             <View style={styles.serverMeta}>
@@ -180,20 +182,20 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         {/* Metric row */}
         <Animated.View style={[styles.metricRow, { transform: [{ translateY: contentTranslate }] }]}>
           <MetricPill
-            label="Ping"
+            label={t('home.ping')}
             value={isConnected ? String(pingMs || selectedServer?.ping || '—') : (selectedServer ? String(selectedServer.ping) : '—')}
             unit={selectedServer ? 'ms' : ''}
             accent={isConnected}
             style={{ flex: 1 }}
           />
           <MetricPill
-            label="Upload"
+            label={t('home.upload')}
             value={isConnected ? String(uploadMbps.toFixed(1)) : '—'}
             unit={isConnected ? 'MB/s' : ''}
             style={{ flex: 1 }}
           />
           <MetricPill
-            label="Download"
+            label={t('home.download')}
             value={isConnected ? String(downloadMbps.toFixed(1)) : '—'}
             unit={isConnected ? 'MB/s' : ''}
             style={{ flex: 1 }}
@@ -220,9 +222,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             <View style={styles.aiBtnLeft}>
               <View style={styles.aiOrb} />
               <View>
-                <Text style={styles.aiBtnTitle}>AI Optimize</Text>
+                <Text style={styles.aiBtnTitle}>{t('home.aiOptimize')}</Text>
                 <Text style={styles.aiBtnSub}>
-                  {isConnected ? 'Route optimized · Stealth active' : 'Will optimize on connect'}
+                  {isConnected ? t('home.routeOptimized') : t('home.willOptimize')}
                 </Text>
               </View>
             </View>
@@ -235,24 +237,24 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         {/* Traffic stats (connected only) */}
         {isConnected && (
           <GlassCard style={styles.trafficCard}>
-            <Text style={styles.cardLabel}>Session Traffic</Text>
+            <Text style={styles.cardLabel}>{t('home.sessionTraffic')}</Text>
             <View style={styles.trafficRow}>
               <View style={styles.trafficItem}>
                 <Text style={styles.trafficIcon}>↑</Text>
                 <Text style={styles.trafficValue}>{formatBytes(sessionBytes.sent)}</Text>
-                <Text style={styles.trafficSub}>Sent</Text>
+                <Text style={styles.trafficSub}>{t('home.sent')}</Text>
               </View>
               <View style={styles.trafficDivider} />
               <View style={styles.trafficItem}>
                 <Text style={[styles.trafficIcon, { color: Colors.blue[400] }]}>↓</Text>
                 <Text style={styles.trafficValue}>{formatBytes(sessionBytes.received)}</Text>
-                <Text style={styles.trafficSub}>Received</Text>
+                <Text style={styles.trafficSub}>{t('home.received')}</Text>
               </View>
               <View style={styles.trafficDivider} />
               <View style={styles.trafficItem}>
                 <Text style={styles.trafficIcon}>⬡</Text>
                 <Text style={styles.trafficValue}>{selectedServer?.id?.toUpperCase() ?? '—'}</Text>
-                <Text style={styles.trafficSub}>Node</Text>
+                <Text style={styles.trafficSub}>{t('home.node')}</Text>
               </View>
             </View>
           </GlassCard>

@@ -1,48 +1,43 @@
 import React, { useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Dimensions, ScrollView, Platform, Animated,
+  Dimensions, ScrollView, Animated,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
+import { useT } from '../i18n';
 
 const { width: W } = Dimensions.get('window');
-
-interface Slide {
-  icon:     string;
-  title:    string;
-  subtitle: string;
-  accent:   string;
-}
-
-const SLIDES: Slide[] = [
-  {
-    icon:     '🛡',
-    title:    'Bypass any\nrestriction.',
-    subtitle: 'SetaLink uses next-gen VLESS+Reality protocols that are\nindistinguishable from normal HTTPS traffic.',
-    accent:   Colors.emerald[400],
-  },
-  {
-    icon:     '🤖',
-    title:    'AI-powered\nrouting.',
-    subtitle: 'Our Smart AI engine picks the fastest server and protocol\nautomatically — no configuration needed.',
-    accent:   '#3399FF',
-  },
-  {
-    icon:     '🔒',
-    title:    'Zero logs,\never.',
-    subtitle: 'We never store connection logs, IP addresses, or traffic data.\nYour privacy is the product.',
-    accent:   '#B47AFF',
-  },
-];
 
 interface Props {
   onFinish: () => void;
 }
 
 export function OnboardingScreen({ onFinish }: Props) {
+  const { t, isRTL } = useT();
   const [index, setIndex]   = useState(0);
   const scrollRef           = useRef<ScrollView>(null);
   const buttonScale         = useRef(new Animated.Value(1)).current;
+
+  const SLIDES = [
+    {
+      icon:     '🛡',
+      title:    t('ob.s1.title'),
+      subtitle: t('ob.s1.sub'),
+      accent:   Colors.emerald[400],
+    },
+    {
+      icon:     '🤖',
+      title:    t('ob.s2.title'),
+      subtitle: t('ob.s2.sub'),
+      accent:   '#3399FF',
+    },
+    {
+      icon:     '🔒',
+      title:    t('ob.s3.title'),
+      subtitle: t('ob.s3.sub'),
+      accent:   '#B47AFF',
+    },
+  ];
 
   const goTo = (i: number) => {
     scrollRef.current?.scrollTo({ x: i * W, animated: true });
@@ -62,7 +57,6 @@ export function OnboardingScreen({ onFinish }: Props) {
 
   return (
     <View style={styles.screen}>
-      {/* Slides */}
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -74,22 +68,19 @@ export function OnboardingScreen({ onFinish }: Props) {
       >
         {SLIDES.map((s, i) => (
           <View key={i} style={styles.slide}>
-            {/* Large icon */}
             <View style={[styles.iconWrap, { borderColor: s.accent + '30', shadowColor: s.accent }]}>
               <Text style={styles.iconEmoji}>{s.icon}</Text>
-              {/* Ambient glow ring */}
               <View style={[styles.glowRing, { borderColor: s.accent + '18' }]} />
             </View>
-
-            <Text style={[styles.slideTitle, { color: Colors.text.primary }]}>{s.title}</Text>
-            <Text style={styles.slideSubtitle}>{s.subtitle}</Text>
+            <Text style={[styles.slideTitle, { color: Colors.text.primary }, isRTL && styles.rtl]}>
+              {s.title}
+            </Text>
+            <Text style={[styles.slideSubtitle, isRTL && styles.rtl]}>{s.subtitle}</Text>
           </View>
         ))}
       </ScrollView>
 
-      {/* Bottom section */}
       <View style={styles.footer}>
-        {/* Dots */}
         <View style={styles.dots}>
           {SLIDES.map((_, i) => (
             <TouchableOpacity key={i} onPress={() => goTo(i)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
@@ -103,7 +94,6 @@ export function OnboardingScreen({ onFinish }: Props) {
           ))}
         </View>
 
-        {/* CTA */}
         <Animated.View style={{ transform: [{ scale: buttonScale }], width: '100%' }}>
           <TouchableOpacity
             style={[styles.cta, { backgroundColor: slide.accent }]}
@@ -113,15 +103,14 @@ export function OnboardingScreen({ onFinish }: Props) {
             activeOpacity={1}
           >
             <Text style={styles.ctaText}>
-              {isLast ? 'Get Started' : 'Next'}
+              {isLast ? t('ob.getStarted') : t('ob.next')}
             </Text>
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Skip (hidden on last slide) */}
         {!isLast && (
           <TouchableOpacity onPress={onFinish} style={styles.skipBtn}>
-            <Text style={styles.skipText}>Skip</Text>
+            <Text style={styles.skipText}>{t('ob.skip')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -135,9 +124,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.bg.void,
     paddingTop:      Layout.statusBarHeight,
   },
-  pager: {
-    flex: 1,
-  },
+  pager:  { flex: 1 },
   slide: {
     width:          W,
     flex:           1,
@@ -167,9 +154,7 @@ const styles = StyleSheet.create({
     borderRadius:  100,
     borderWidth:   1,
   },
-  iconEmoji: {
-    fontSize: 72,
-  },
+  iconEmoji: { fontSize: 72 },
   slideTitle: {
     fontSize:      Typography.size['3xl'],
     fontFamily:    Typography.family.heading,
@@ -184,6 +169,7 @@ const styles = StyleSheet.create({
     textAlign:  'center',
     lineHeight: Typography.size.base * 1.65,
   },
+  rtl: { writingDirection: 'rtl', textAlign: 'center' },
   footer: {
     paddingHorizontal: Layout.screenPadding,
     paddingBottom:     Layout.bottomNavHeight,
@@ -209,14 +195,12 @@ const styles = StyleSheet.create({
     alignItems:      'center',
   },
   ctaText: {
-    fontSize:   Typography.size.base,
-    fontFamily: Typography.family.heading,
-    color:      Colors.text.inverse,
+    fontSize:      Typography.size.base,
+    fontFamily:    Typography.family.heading,
+    color:         Colors.text.inverse,
     letterSpacing: Typography.tracking.wide,
   },
-  skipBtn: {
-    paddingVertical: Spacing[2],
-  },
+  skipBtn:  { paddingVertical: Spacing[2] },
   skipText: {
     fontSize:   Typography.size.sm,
     fontFamily: Typography.family.body,

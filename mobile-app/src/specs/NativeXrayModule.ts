@@ -34,6 +34,9 @@ export interface Spec extends TurboModule {
 
   /** Validate a config string without starting the tunnel. */
   validateConfig(config: string): Promise<boolean>;
+
+  /** Returns the last error message from the VPN service, or null if none. */
+  getLastError(): Promise<string | null>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');

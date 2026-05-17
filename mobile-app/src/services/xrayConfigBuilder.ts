@@ -174,7 +174,7 @@ export function buildXrayConfig(
   const dns = DNS_PROFILES[dnsMode] ?? DNS_PROFILES['Cloudflare (DoH)']!;
 
   return {
-    log: { loglevel: debugMode ? 'info' : 'warning' },
+    log: { loglevel: debugMode ? 'debug' : 'info' },
 
     dns,
 

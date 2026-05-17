@@ -70,13 +70,28 @@ class NativeAdapter implements VpnAdapter {
   }
 
   async connect(configJson: string): Promise<void> {
-    await this.module.start(configJson);
-    // Poll until the service signals it's running (max 10 s)
-    for (let i = 0; i < 20; i++) {
+    // module.start() may reject immediately (e.g. VPN_PERMISSION_DENIED)
+    // or resolve and then the service broadcasts connected/failed asynchronously.
+    try {
+      await this.module.start(configJson);
+    } catch (e: unknown) {
+      // Extract readable message from native rejection
+      const msg =
+        (e as any)?.userInfo?.NSLocalizedDescription ??
+        (e as any)?.userInfo?.message               ??
+        (e instanceof Error ? e.message : String(e));
+      throw new Error(msg);
+    }
+
+    // Poll until VpnService broadcasts CONNECTED (max 15 s)
+    for (let i = 0; i < 30; i++) {
       await sleep(500);
       if (await this.module.isRunning()) return;
     }
-    throw new Error('Tunnel did not start within 10 seconds');
+
+    // Timed out — retrieve the specific error from the native layer
+    const nativeErr = await this.module.getLastError?.().catch(() => null);
+    throw new Error(nativeErr ?? 'VPN tunnel did not start — check server config');
   }
 
   async disconnect(): Promise<void> {

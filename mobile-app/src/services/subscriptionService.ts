@@ -51,6 +51,7 @@ export async function fetchSubscription(url: string): Promise<SubscriptionResult
 
   const configs = parseUriList(decoded);
   const errors  = vlessLines.length - configs.length;
+  _nameCount.clear();
   const servers = configs.map((cfg, i) => buildEntry(cfg, i));
 
   return { servers, errors, total: vlessLines.length };
@@ -79,28 +80,112 @@ function decodeSubscriptionBody(body: string): string {
   }
 }
 
+// Provider detection — ordered by hostname suffix specificity
+const PROVIDER_PATTERNS: Array<{ pattern: RegExp; label: string; flag: string }> = [
+  { pattern: /\.oracle\.com$/i,                             label: 'Oracle',       flag: '☁️' },
+  { pattern: /\.amazonaws\.com$/i,                          label: 'AWS',          flag: '☁️' },
+  { pattern: /compute\.amazonaws\.com$/i,                   label: 'AWS',          flag: '☁️' },
+  { pattern: /hetzner\.(com|cloud|de)$/i,                   label: 'Hetzner',      flag: '🇩🇪' },
+  { pattern: /\.hetzner\.cloud$/i,                          label: 'Hetzner',      flag: '🇩🇪' },
+  { pattern: /cloudflare\.com$/i,                           label: 'Cloudflare',   flag: '🌐' },
+  { pattern: /vultr\.com$/i,                                label: 'Vultr',        flag: '☁️' },
+  { pattern: /linode\.com$|linodeobjects\.com$/i,           label: 'Linode',       flag: '☁️' },
+  { pattern: /digitalocean\.com$/i,                         label: 'DigitalOcean', flag: '☁️' },
+  { pattern: /ovh\.(net|com)$/i,                            label: 'OVH',          flag: '🇫🇷' },
+  { pattern: /contabo\.(com|net)$/i,                        label: 'Contabo',      flag: '🇩🇪' },
+  { pattern: /hostinger\.com$/i,                            label: 'Hostinger',    flag: '☁️' },
+];
+
+// Country hints from common hostname patterns
+const COUNTRY_PATTERNS: Array<{ pattern: RegExp; country: string; flag: string }> = [
+  { pattern: /\b(de|germany|frankfurt|berlin)\b/i, country: 'Germany',     flag: '🇩🇪' },
+  { pattern: /\b(nl|netherlands|amsterdam)\b/i,     country: 'Netherlands', flag: '🇳🇱' },
+  { pattern: /\b(fi|finland|helsinki)\b/i,          country: 'Finland',     flag: '🇫🇮' },
+  { pattern: /\b(fr|france|paris)\b/i,              country: 'France',      flag: '🇫🇷' },
+  { pattern: /\b(uk|gb|england|london)\b/i,         country: 'UK',          flag: '🇬🇧' },
+  { pattern: /\b(us|usa|united.states|virginia|oregon|ohio|california)\b/i, country: 'US', flag: '🇺🇸' },
+  { pattern: /\b(sg|singapore)\b/i,                 country: 'Singapore',   flag: '🇸🇬' },
+  { pattern: /\b(jp|japan|tokyo)\b/i,               country: 'Japan',       flag: '🇯🇵' },
+  { pattern: /\b(tr|turkey|istanbul)\b/i,           country: 'Turkey',      flag: '🇹🇷' },
+  { pattern: /\b(se|sweden|stockholm)\b/i,          country: 'Sweden',      flag: '🇸🇪' },
+  { pattern: /\b(ch|switzerland|zurich)\b/i,        country: 'Switzerland', flag: '🇨🇭' },
+  { pattern: /\b(ca|canada|toronto|montreal)\b/i,   country: 'Canada',      flag: '🇨🇦' },
+  { pattern: /\b(au|australia|sydney|melbourne)\b/i,country: 'Australia',   flag: '🇦🇺' },
+  { pattern: /\b(ir|iran|tehran)\b/i,               country: 'Iran',        flag: '🇮🇷' },
+];
+
+function detectProvider(address: string): { label: string; flag: string } | null {
+  for (const { pattern, label, flag } of PROVIDER_PATTERNS) {
+    if (pattern.test(address)) return { label, flag };
+  }
+  return null;
+}
+
+function detectCountry(text: string): { country: string; flag: string } | null {
+  for (const { pattern, country, flag } of COUNTRY_PATTERNS) {
+    if (pattern.test(text)) return { country, flag };
+  }
+  return null;
+}
+
+// Global dedup counter across a single import batch
+const _nameCount: Map<string, number> = new Map();
+
+function dedupeTitle(base: string): string {
+  const count = (_nameCount.get(base) ?? 0) + 1;
+  _nameCount.set(base, count);
+  return count === 1 ? base : `${base} #${count}`;
+}
+
 function buildEntry(cfg: ParsedVlessConfig, index: number): ImportedServer {
   const isReality = cfg.security === 'reality';
   const protocol  =
-    isReality           ? 'Reality'   :
+    isReality            ? 'Reality'   :
     cfg.network === 'ws' ? 'WebSocket' : 'VLESS';
 
-  const displayName = cfg.name || `${cfg.address}:${cfg.port}`;
-  let country = displayName;
-  let city    = cfg.address;
+  const protoLabel = isReality ? 'Reality' : cfg.network === 'ws' ? 'VLESS' : 'VLESS';
+  const rawName    = cfg.name ?? '';
 
-  if (displayName.includes(' - ')) {
-    [country, city] = displayName.split(' - ', 2) as [string, string];
+  // 1. Try provider detection from address hostname
+  const provider = detectProvider(cfg.address);
+
+  // 2. Try country from fragment name OR address
+  const countryFromName    = rawName ? detectCountry(rawName)    : null;
+  const countryFromAddress = detectCountry(cfg.address);
+  const countryInfo        = countryFromName ?? countryFromAddress;
+
+  // 3. Build display title
+  let titleBase: string;
+  let flagChar: string;
+
+  if (provider) {
+    titleBase = `${provider.label} • ${protoLabel}`;
+    flagChar  = provider.flag;
+    // Override flag with country if we know it
+    if (countryInfo) flagChar = countryInfo.flag;
+  } else if (countryInfo) {
+    titleBase = `${countryInfo.country} • ${protoLabel}`;
+    flagChar  = countryInfo.flag;
+  } else if (rawName && rawName.length <= 40 && !rawName.includes(':')) {
+    // Fragment is a readable label, not an IP:port
+    const stripped = rawName.replace(/\p{Regional_Indicator}{2}/gu, '').trim();
+    titleBase = stripped || `Custom • ${protoLabel}`;
+    flagChar  = extractFlag(rawName) ?? '⚡';
+  } else {
+    titleBase = `Custom • ${protoLabel}`;
+    flagChar  = '⚡';
   }
 
-  const flag = extractFlag(displayName) ?? '⚡';
-  const id   = `sub-${index}-${cfg.address.replace(/[^a-zA-Z0-9]/g, '-')}-${cfg.port}`;
+  const country = dedupeTitle(titleBase);
+  const city    = cfg.address; // shown as subtitle / secondary line
+
+  const id = `sub-${index}-${cfg.address.replace(/[^a-zA-Z0-9]/g, '-')}-${cfg.port}`;
 
   const record: ServerRecord = {
     id,
-    country: country.trim(),
-    city:    city.trim() || cfg.address,
-    flag,
+    country,
+    city,
+    flag: flagChar,
     ping:    0,
     load:    0,
     protocol,
@@ -121,7 +206,6 @@ function buildEntry(cfg: ParsedVlessConfig, index: number): ImportedServer {
 }
 
 function extractFlag(s: string): string | null {
-  // Match a Unicode regional indicator pair (emoji flag)
   const m = s.match(/\p{Regional_Indicator}{2}/u);
   return m?.[0] ?? null;
 }

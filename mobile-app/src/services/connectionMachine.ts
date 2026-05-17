@@ -50,6 +50,7 @@ export class ConnectionMachine {
   private reconnectAttempts: number       = 0;
   private timers:            ReturnType<typeof setTimeout>[] = [];
   private aborted            = false;
+  private lastAdapterError:  string | null = null;
 
   constructor(
     private readonly cb:      MachineCallbacks,
@@ -101,13 +102,15 @@ export class ConnectionMachine {
         if (prev !== 'idle') this.cb.onDisconnected();
         break;
 
-      case 'error':
-        this.cb.onError(
-          this.reconnectAttempts >= MAX_RECONNECT
+      case 'error': {
+        const msg = this.lastAdapterError
+          ?? (this.reconnectAttempts >= MAX_RECONNECT
             ? 'Max reconnection attempts reached'
-            : 'Connection failed',
-        );
+            : 'Connection failed');
+        this.lastAdapterError = null;
+        this.cb.onError(msg);
         break;
+      }
     }
   }
 
@@ -120,7 +123,12 @@ export class ConnectionMachine {
       // Real path — delegate to VpnAdapter
       this.adapter.connect(config).then(
         () => { if (!this.aborted) this.send('CONNECTED'); },
-        () => { if (!this.aborted) this.send('FAILED'); },
+        (err: unknown) => {
+          if (!this.aborted) {
+            this.lastAdapterError = err instanceof Error ? err.message : String(err);
+            this.send('FAILED');
+          }
+        },
       );
     } else {
       // Mock path — random delay + success rate

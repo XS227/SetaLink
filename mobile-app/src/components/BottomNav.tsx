@@ -1,21 +1,18 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
+import { useT } from '../i18n';
 
 export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile';
 
-interface NavItem {
-  key: NavTab;
-  label: string;
-  icon: string; // unicode/emoji stand-in; swap for SVG icons in production
-}
+type NavItem = { key: NavTab; icon: string };
 
-const TABS: NavItem[] = [
-  { key: 'home',     label: 'Home',     icon: '⬡' },
-  { key: 'servers',  label: 'Servers',  icon: '◈' },
-  { key: 'ai',       label: 'AI',       icon: '◎' },
-  { key: 'activity', label: 'Activity', icon: '≡' },
-  { key: 'profile',  label: 'Profile',  icon: '○' },
+const TAB_KEYS: NavItem[] = [
+  { key: 'home',     icon: '⬡' },
+  { key: 'servers',  icon: '◈' },
+  { key: 'ai',       icon: '◎' },
+  { key: 'activity', icon: '≡' },
+  { key: 'profile',  icon: '○' },
 ];
 
 interface Props {
@@ -24,10 +21,20 @@ interface Props {
 }
 
 export function BottomNav({ active, onPress }: Props) {
+  const { t } = useT();
+
+  const LABEL_KEYS: Record<NavTab, Parameters<typeof t>[0]> = {
+    home:     'nav.home',
+    servers:  'nav.servers',
+    ai:       'nav.ai',
+    activity: 'nav.activity',
+    profile:  'nav.profile',
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.bar}>
-        {TABS.map(tab => {
+        {TAB_KEYS.map(tab => {
           const isActive = tab.key === active;
           const isAI = tab.key === 'ai';
 
@@ -40,7 +47,7 @@ export function BottomNav({ active, onPress }: Props) {
                 activeOpacity={0.8}
               >
                 <Text style={styles.aiIcon}>{tab.icon}</Text>
-                <Text style={styles.aiLabel}>AI</Text>
+                <Text style={styles.aiLabel}>{t('nav.ai')}</Text>
               </TouchableOpacity>
             );
           }
@@ -56,7 +63,7 @@ export function BottomNav({ active, onPress }: Props) {
                 {tab.icon}
               </Text>
               <Text style={[styles.label, isActive && styles.activeLabel]}>
-                {tab.label}
+                {t(LABEL_KEYS[tab.key])}
               </Text>
               {isActive && <View style={styles.activeDot} />}
             </TouchableOpacity>

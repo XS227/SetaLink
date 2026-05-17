@@ -9,6 +9,7 @@ import { useAuthStore }    from '../stores/authStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { formatBytes, formatDuration } from '../utils/formatters';
+import { useT } from '../i18n';
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
@@ -26,12 +27,20 @@ function formatExpiry(iso: string | null): string {
 
 // ── BandwidthBar ──────────────────────────────────────────────────────────────
 
-function BandwidthBar({ usedBytes, limitGb }: { usedBytes: number; limitGb: number | null }) {
+interface BandwidthBarProps {
+  usedBytes: number;
+  limitGb: number | null;
+  labelUnlimited: string;
+  labelUsedMonth: string;
+  labelGbUsed: string;
+}
+
+function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labelGbUsed }: BandwidthBarProps) {
   if (limitGb === null) {
     return (
       <View style={bwStyles.unlimitedRow}>
-        <Text style={bwStyles.unlimitedText}>Unlimited bandwidth</Text>
-        <Text style={bwStyles.usedText}>{formatBytes(usedBytes, 2)} used this month</Text>
+        <Text style={bwStyles.unlimitedText}>{labelUnlimited}</Text>
+        <Text style={bwStyles.usedText}>{formatBytes(usedBytes, 2)} {labelUsedMonth}</Text>
       </View>
     );
   }
@@ -46,7 +55,7 @@ function BandwidthBar({ usedBytes, limitGb }: { usedBytes: number; limitGb: numb
         <View style={[bwStyles.fill, { width: `${pct * 100}%` as any, backgroundColor: color }]} />
       </View>
       <View style={bwStyles.labels}>
-        <Text style={bwStyles.usedText}>{usedGb.toFixed(1)} GB used</Text>
+        <Text style={bwStyles.usedText}>{usedGb.toFixed(1)} {labelGbUsed}</Text>
         <Text style={bwStyles.total}>{limitGb} GB</Text>
       </View>
     </View>
@@ -73,6 +82,7 @@ interface Props {
 }
 
 export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
+  const { t } = useT();
   const { user, logout }                 = useAuthStore();
   const { totalBytesThisMonth, sessionsThisMonth, totalDurationToday } = useSessionStore();
   const showToast = useToastStore((s) => s.show);
@@ -86,7 +96,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
   const handleCopyReferral = () => {
     Clipboard.setString(user.referralCode);
-    showToast('Referral code copied!', 'success', 2000);
+    showToast(t('pr.copiedCode'), 'success', 2000);
   };
 
   const handleSignOut = () => {
@@ -103,7 +113,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Profile</Text>
+          <Text style={styles.title}>{t('pr.title')}</Text>
           <TouchableOpacity
             style={styles.settingsBtn}
             onPress={() => onNavigate('settings' as NavTab)}
@@ -147,24 +157,30 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <View>
               <Text style={styles.subTitle}>{plan.label}</Text>
               <Text style={styles.subExpiry}>
-                {user.planExpiry ? `Renews on ${formatExpiry(user.planExpiry)}` : 'Lifetime access'}
+                {user.planExpiry ? `${t('pr.renewsOn')} ${formatExpiry(user.planExpiry)}` : t('pr.lifetime')}
               </Text>
             </View>
             <View style={styles.subStatus}>
               <View style={styles.subDot} />
-              <Text style={styles.subStatusText}>Active</Text>
+              <Text style={styles.subStatusText}>{t('pr.active')}</Text>
             </View>
           </View>
 
           <View style={styles.subDivider} />
 
-          <BandwidthBar usedBytes={monthBytes} limitGb={plan.gbLimit} />
+          <BandwidthBar
+            usedBytes={monthBytes}
+            limitGb={plan.gbLimit}
+            labelUnlimited={t('pr.unlimited')}
+            labelUsedMonth={t('pr.usedMonth')}
+            labelGbUsed={t('pr.gbUsed')}
+          />
 
           <View style={styles.subMeta}>
             {[
-              { label: 'Sessions',  value: String(monthSessions.length) },
-              { label: 'Servers',   value: user.plan === 'free' ? '5' : '50+' },
-              { label: 'Speed',     value: user.plan === 'free' ? '10 MB/s' : 'Unlimited' },
+              { label: t('pr.sessions'), value: String(monthSessions.length) },
+              { label: t('pr.servers'),  value: user.plan === 'free' ? '5' : '50+' },
+              { label: t('pr.speed'),    value: user.plan === 'free' ? '10 MB/s' : t('pr.unlimited') },
             ].map((item) => (
               <View key={item.label} style={styles.subMetaItem}>
                 <Text style={styles.subMetaValue}>{item.value}</Text>
@@ -179,18 +195,18 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               activeOpacity={0.85}
               onPress={() => (onNavigate as (tab: string) => void)('upgrade')}
             >
-              <Text style={styles.upgradeBtnText}>Upgrade to Premium</Text>
+              <Text style={styles.upgradeBtnText}>{t('pr.upgradePremium')}</Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.manageBtn} activeOpacity={0.8}>
-              <Text style={styles.manageBtnText}>Manage Subscription</Text>
+              <Text style={styles.manageBtnText}>{t('pr.manageSub')}</Text>
             </TouchableOpacity>
           )}
         </GlassCard>
 
         {/* Devices */}
         <GlassCard>
-          <Text style={styles.cardLabel}>Active Devices</Text>
+          <Text style={styles.cardLabel}>{t('pr.activeDevices')}</Text>
           {[
             { name: 'Pixel 8 Pro',   os: 'Android 15', active: true  },
             { name: 'MacBook Pro',   os: 'macOS 15.2', active: true  },
@@ -215,7 +231,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                   styles.deviceStatusText,
                   { color: device.active ? Colors.emerald[400] : Colors.text.muted },
                 ]}>
-                  {device.active ? 'Online' : 'Offline'}
+                  {device.active ? t('pr.online') : t('pr.offline')}
                 </Text>
               </View>
             </View>
@@ -225,18 +241,16 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         {/* Referral */}
         <GlassCard style={styles.referralCard} glowColor={Colors.blue[400]}>
           <View style={styles.referralHeader}>
-            <Text style={styles.cardLabel}>Refer & Earn</Text>
+            <Text style={styles.cardLabel}>{t('pr.referEarn')}</Text>
             <View style={styles.rewardBadge}>
-              <Text style={styles.rewardBadgeText}>+30 days free</Text>
+              <Text style={styles.rewardBadgeText}>{t('pr.free30days')}</Text>
             </View>
           </View>
-          <Text style={styles.referralDesc}>
-            Invite friends and earn 30 days of free premium for every signup.
-          </Text>
+          <Text style={styles.referralDesc}>{t('pr.referDesc')}</Text>
           <View style={styles.referralCode}>
             <Text style={styles.referralCodeText}>{user.referralCode}</Text>
             <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
-              <Text style={styles.copyBtnText}>Copy</Text>
+              <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.referralStats}>
