@@ -36,7 +36,7 @@ const TRANSITIONS: Partial<Record<MachineState, Partial<Record<MachineEvent, Mac
   connecting:    { CONNECTED:    'connected',    FAILED:  'error',   DISCONNECT: 'idle'  },
   connected:     { DISCONNECT:   'disconnecting'                                         },
   disconnecting: { DISCONNECTED: 'idle'                                                   },
-  error:         { CONNECT:      'reconnecting', RESET:   'idle'                         },
+  error:         { CONNECT:      'reconnecting', DISCONNECT: 'disconnecting', RESET:   'idle' },
   reconnecting:  { CONNECTED:    'connected',    FAILED:  'error',   RESET:      'idle'  },
 };
 
