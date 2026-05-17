@@ -256,11 +256,11 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <View style={styles.referralStats}>
             <View style={styles.referralStat}>
               <Text style={styles.referralStatValue}>4</Text>
-              <Text style={styles.referralStatLabel}>Invited</Text>
+              <Text style={styles.referralStatLabel}>{t('pr.invited')}</Text>
             </View>
             <View style={styles.referralStat}>
               <Text style={styles.referralStatValue}>120</Text>
-              <Text style={styles.referralStatLabel}>Days earned</Text>
+              <Text style={styles.referralStatLabel}>{t('pr.daysEarned')}</Text>
             </View>
           </View>
         </GlassCard>
@@ -269,30 +269,30 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         <GlassCard>
           <View style={styles.rewardsRow}>
             <View>
-              <Text style={styles.rewardsTitle}>Rewards Hub</Text>
-              <Text style={styles.rewardsSub}>Coming soon · Earn points for usage</Text>
+              <Text style={styles.rewardsTitle}>{t('pr.rewardsHub')}</Text>
+              <Text style={styles.rewardsSub}>{t('pr.rewardsSoon')}</Text>
             </View>
             <View style={styles.comingSoon}>
-              <Text style={styles.comingSoonText}>Soon</Text>
+              <Text style={styles.comingSoonText}>{t('pr.soon')}</Text>
             </View>
           </View>
         </GlassCard>
 
         {/* Actions */}
         {[
-          { label: 'Change Password',       onPress: undefined },
-          { label: 'Notification Settings', onPress: undefined },
-          { label: 'Export Config',         onPress: undefined },
+          { labelKey: 'pr.changePassword', onPress: undefined },
+          { labelKey: 'pr.notifSettings',  onPress: undefined },
+          { labelKey: 'pr.exportConfig',   onPress: undefined },
         ].map((item) => (
-          <TouchableOpacity key={item.label} style={styles.actionRow} activeOpacity={0.7} onPress={item.onPress}>
-            <Text style={styles.actionLabel}>{item.label}</Text>
+          <TouchableOpacity key={item.labelKey} style={styles.actionRow} activeOpacity={0.7} onPress={item.onPress}>
+            <Text style={styles.actionLabel}>{t(item.labelKey as any)}</Text>
             <Text style={styles.actionChevron}>›</Text>
           </TouchableOpacity>
         ))}
 
         {/* Sign out */}
         <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={handleSignOut}>
-          <Text style={styles.logoutText}>Sign Out</Text>
+          <Text style={styles.logoutText}>{t('pr.signOut')}</Text>
         </TouchableOpacity>
 
         <View style={{ height: Layout.bottomNavHeight + Spacing[4] }} />
