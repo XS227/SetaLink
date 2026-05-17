@@ -181,30 +181,21 @@ export function buildXrayConfig(
         protocol: 'socks',
         settings: { auth: 'noauth', udp: true },
       },
-      {
-        tag:      'http-in',
-        port:     10809,
-        listen:   '127.0.0.1',
-        protocol: 'http',
-        settings: { allowTransparent: false },
-      },
     ],
 
     outbounds: [
       buildProxyOutbound(server, protocol, creds),
       { tag: 'direct', protocol: 'freedom', settings: {} },
-      { tag: 'block',  protocol: 'blackhole', settings: { response: { type: 'http' } } },
     ],
 
     routing: {
       domainStrategy: 'IPIfNonMatch',
       rules: [
-        { type: 'field', ip: ['geoip:private', '127.0.0.1/32'], outboundTag: 'direct' },
-        { type: 'field', domain: ['geosite:category-ads-all'],  outboundTag: 'block'  },
-        ...(protocol.includes('Iran') ? [
-          { type: 'field', domain: ['geosite:ir'], outboundTag: 'direct' },
-          { type: 'field', ip:     ['geoip:ir'],   outboundTag: 'direct' },
-        ] : []),
+        {
+          type: 'field',
+          ip:   ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+          outboundTag: 'direct',
+        },
       ],
     },
   };
