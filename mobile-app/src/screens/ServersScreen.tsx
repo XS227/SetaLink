@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  StyleSheet, ActivityIndicator,
+  StyleSheet, ActivityIndicator, Modal, KeyboardAvoidingView, Platform, Alert,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { ServerRow } from '../components/ServerRow';
@@ -18,10 +18,47 @@ interface Props {
 }
 
 export function ServersScreen({ onNavigate, activeTab }: Props) {
-  const { selectedId, filter, query, selectServer, setFilter, setQuery, filteredServers, aiPicks, servers, isLoading, loadError } = useServerStore();
+  const { selectedId, filter, query, selectServer, setFilter, setQuery, filteredServers, aiPicks, servers, isLoading, loadError, importFromVless, importFromSubscription, importedCreds } = useServerStore();
   const { connectionState, connect, switchServer } = useVpnStore();
   const { activeMode } = useAIStore();
   const userPlan = useAuthStore((s) => s.user?.plan ?? 'free');
+
+  const [importVisible, setImportVisible] = useState(false);
+  const [importInput, setImportInput]     = useState('');
+  const [importing, setImporting]         = useState(false);
+
+  const handleImport = useCallback(async () => {
+    const val = importInput.trim();
+    if (!val) return;
+
+    setImporting(true);
+    try {
+      if (val.startsWith('vless://')) {
+        const result = importFromVless(val);
+        if (result.success) {
+          Alert.alert('Imported', 'Server added successfully.');
+          setImportInput('');
+          setImportVisible(false);
+        } else {
+          Alert.alert('Import failed', result.error ?? 'Invalid VLESS link.');
+        }
+      } else if (val.startsWith('http://') || val.startsWith('https://')) {
+        const result = await importFromSubscription(val);
+        Alert.alert(
+          'Subscription imported',
+          `Added ${result.imported} server${result.imported !== 1 ? 's' : ''}${result.errors ? ` (${result.errors} skipped)` : ''}.`,
+        );
+        setImportInput('');
+        setImportVisible(false);
+      } else {
+        Alert.alert('Invalid input', 'Paste a vless:// link or a subscription URL (https://).');
+      }
+    } catch (e) {
+      Alert.alert('Import failed', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setImporting(false);
+    }
+  }, [importInput, importFromVless, importFromSubscription]);
 
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
@@ -79,6 +116,13 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{servers.length} locations</Text>
             </View>
+            <TouchableOpacity
+              style={styles.importBtn}
+              onPress={() => setImportVisible(true)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.importBtnText}>+ Import</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -204,6 +248,68 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       </View>
 
       <BottomNav active={activeTab} onPress={onNavigate} />
+
+      {/* Import modal */}
+      <Modal
+        visible={importVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImportVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setImportVisible(false)}
+          />
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Import Server</Text>
+            <Text style={styles.modalSub}>
+              Paste a{' '}
+              <Text style={styles.modalHighlight}>vless://</Text>
+              {' '}link or a subscription URL.
+            </Text>
+
+            <TextInput
+              style={styles.modalInput}
+              placeholder="vless://... or https://..."
+              placeholderTextColor={Colors.text.muted}
+              value={importInput}
+              onChangeText={setImportInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+              multiline
+              numberOfLines={3}
+              selectionColor={Colors.emerald[400]}
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancel}
+                onPress={() => { setImportVisible(false); setImportInput(''); }}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalConfirm, (importing || !importInput.trim()) && styles.modalConfirmDisabled]}
+                onPress={handleImport}
+                disabled={importing || !importInput.trim()}
+                activeOpacity={0.85}
+              >
+                {importing
+                  ? <ActivityIndicator size="small" color={Colors.text.inverse} />
+                  : <Text style={styles.modalConfirmText}>Import</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -252,4 +358,22 @@ const styles = StyleSheet.create({
   connectCtaActive:   { backgroundColor: Colors.emerald[600] ?? Colors.emerald[400], opacity: 0.85 },
   connectCtaDisabled: { opacity: 0.45 },
   connectCtaText:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: Typography.tracking.wide },
+
+  // Import button (header)
+  importBtn:          { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  importBtnText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+
+  // Import modal
+  modalOverlay:       { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.7)', padding: Spacing[6] },
+  modalCard:          { width: '100%', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[6], gap: Spacing[4] },
+  modalTitle:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  modalSub:           { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, lineHeight: 20 },
+  modalHighlight:     { color: Colors.emerald[400], fontFamily: Typography.family.mono },
+  modalInput:         { backgroundColor: Colors.bg.base, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[3], fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.primary, minHeight: 72, textAlignVertical: 'top' },
+  modalActions:       { flexDirection: 'row', gap: Spacing[3] },
+  modalCancel:        { flex: 1, paddingVertical: Spacing[3], alignItems: 'center', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default },
+  modalCancelText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted },
+  modalConfirm:       { flex: 2, paddingVertical: Spacing[3], alignItems: 'center', borderRadius: Radius.md, backgroundColor: Colors.emerald[400] },
+  modalConfirmDisabled: { opacity: 0.4 },
+  modalConfirmText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.inverse },
 });
