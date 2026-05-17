@@ -37,7 +37,7 @@ export const useSettingsStore = create<SettingsState>()(
       dnsMode:             'Cloudflare (DoH)',
       language:            'English',
       autoConnect:         true,
-      killSwitch:          true,
+      killSwitch:          false,
       stealthMode:         false,
       splitTunnel:         false,
       ipv6:                false,
@@ -61,7 +61,7 @@ export const useSettingsStore = create<SettingsState>()(
       completeLanguageSelection: () => set({ hasSelectedLanguage: true }),
     }),
     {
-      name:    'setalink-settings',
+      name:    'setalink-settings-v2',
       storage: createJSONStorage(() => storage),
     }
   )
