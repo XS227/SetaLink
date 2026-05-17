@@ -9,6 +9,7 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 
 import { useAIStore, AI_MODES, AIFeatures } from '../stores/aiStore';
 import { formatRelativeTime } from '../utils/formatters';
+import { useT } from '../i18n';
 
 // ── AI Orb ────────────────────────────────────────────────────────────────────
 // Visual only — all business logic stays in aiStore
@@ -72,14 +73,16 @@ const orbStyles = StyleSheet.create({
   icon:      { fontSize: 28 },
 });
 
-// ── Feature toggle labels ─────────────────────────────────────────────────────
+// Feature key → i18n key pairs (resolved at render time)
+type FeatureTKeys = { label: string; desc: string };
+type FeatureI18nMap = Record<keyof AIFeatures, { labelKey: string; descKey: string }>;
 
-const FEATURE_LABELS: Record<keyof AIFeatures, { label: string; desc: string }> = {
-  autoProtocol:        { label: 'Auto protocol selection',  desc: 'Switch protocols based on conditions' },
-  smartReconnect:      { label: 'Smart reconnect',          desc: 'Reconnect automatically on drop' },
-  domainRotation:      { label: 'Domain rotation',          desc: 'Rotate SNI to evade detection' },
-  cdnFallback:         { label: 'CDN fallback',             desc: 'Use CDN edge if direct fails' },
-  latencyAwareRouting: { label: 'Latency-aware routing',    desc: 'Route via lowest-latency path' },
+const FEATURE_I18N: FeatureI18nMap = {
+  autoProtocol:        { labelKey: 'ai.feat.autoProto',  descKey: 'ai.feat.autoProtoD' },
+  smartReconnect:      { labelKey: 'ai.feat.reconnect',  descKey: 'ai.feat.reconnectD' },
+  domainRotation:      { labelKey: 'ai.feat.domainRot',  descKey: 'ai.feat.domainRotD' },
+  cdnFallback:         { labelKey: 'ai.feat.cdn',        descKey: 'ai.feat.cdnD' },
+  latencyAwareRouting: { labelKey: 'ai.feat.latency',    descKey: 'ai.feat.latencyD' },
 };
 
 // ── Screen ────────────────────────────────────────────────────────────────────
@@ -90,6 +93,7 @@ interface Props {
 }
 
 export function SmartAIScreen({ onNavigate, activeTab }: Props) {
+  const { t } = useT();
   const { activeMode, features, liveLog, selectMode, toggleFeature, activeModeDef } = useAIStore();
   const mode = activeModeDef();
 
@@ -103,12 +107,12 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <View>
-            <Text style={styles.title}>Smart AI</Text>
-            <Text style={styles.sub}>Adaptive protocol intelligence</Text>
+            <Text style={styles.title}>{t('ai.title')}</Text>
+            <Text style={styles.sub}>{t('ai.sub')}</Text>
           </View>
           <View style={[styles.aiBadge, { borderColor: mode.accentColor + '50' }]}>
             <View style={[styles.aiBadgeDot, { backgroundColor: mode.accentColor }]} />
-            <Text style={[styles.aiBadgeText, { color: mode.accentColor }]}>Active</Text>
+            <Text style={[styles.aiBadgeText, { color: mode.accentColor }]}>{t('ai.active')}</Text>
           </View>
         </View>
 
@@ -116,14 +120,14 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
         <View style={styles.orbArea}>
           <AIOrb active color={mode.accentColor} />
           <View style={styles.orbLabels}>
-            <Text style={[styles.activeMode, { color: mode.accentColor }]}>{mode.label} Mode</Text>
+            <Text style={[styles.activeMode, { color: mode.accentColor }]}>{mode.label} {t('ai.modeLabel')}</Text>
             <Text style={styles.orbDescription}>{mode.description}</Text>
           </View>
         </View>
 
         {/* Protocol chain */}
         <GlassCard glowColor={mode.accentColor}>
-          <Text style={styles.cardLabel}>Active Protocol Chain</Text>
+          <Text style={styles.cardLabel}>{t('ai.protoChain')}</Text>
           <View style={styles.protoChain}>
             {mode.protocols.map((p, i) => (
               <React.Fragment key={p}>
@@ -140,7 +144,7 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
 
         {/* Mode selector grid */}
         <View>
-          <Text style={styles.sectionTitle}>Connection Modes</Text>
+          <Text style={styles.sectionTitle}>{t('ai.connModes')}</Text>
           <View style={styles.modeGrid}>
             {AI_MODES.map((m) => (
               <TouchableOpacity
@@ -168,9 +172,11 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
 
         {/* Feature toggles */}
         <GlassCard>
-          <Text style={styles.cardLabel}>Intelligent Features</Text>
-          {(Object.keys(FEATURE_LABELS) as (keyof AIFeatures)[]).map((key, i) => {
-            const { label, desc } = FEATURE_LABELS[key];
+          <Text style={styles.cardLabel}>{t('ai.features')}</Text>
+          {(Object.keys(FEATURE_I18N) as (keyof AIFeatures)[]).map((key, i) => {
+            const { labelKey, descKey } = FEATURE_I18N[key];
+            const label = t(labelKey as any);
+            const desc  = t(descKey as any);
             const on = features[key];
             return (
               <View key={key} style={[styles.toggleRow, i > 0 && styles.toggleRowBorder]}>
@@ -192,7 +198,7 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
 
         {/* Live decision log */}
         <View>
-          <Text style={styles.sectionTitle}>Live Decisions</Text>
+          <Text style={styles.sectionTitle}>{t('ai.liveLog')}</Text>
           <GlassCard noPadding>
             {liveLog.slice(0, 6).map((entry, i) => (
               <View key={entry.id} style={[styles.logRow, i < Math.min(liveLog.length, 6) - 1 && styles.logRowBorder]}>

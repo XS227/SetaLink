@@ -12,6 +12,7 @@ import { useServerStore, FILTER_TABS, FilterTab } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
 import { useAIStore }   from '../stores/aiStore';
 import { useAuthStore } from '../stores/authStore';
+import { useT }         from '../i18n';
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
@@ -23,19 +24,12 @@ interface Props {
 type InputType = 'vless' | 'subscription' | 'unknown' | 'empty';
 
 function detectInputType(val: string): InputType {
-  const t = val.trim();
-  if (!t) return 'empty';
-  if (t.startsWith('vless://')) return 'vless';
-  if (t.startsWith('http://') || t.startsWith('https://')) return 'subscription';
+  const v = val.trim();
+  if (!v) return 'empty';
+  if (v.startsWith('vless://')) return 'vless';
+  if (v.startsWith('http://') || v.startsWith('https://')) return 'subscription';
   return 'unknown';
 }
-
-const INPUT_HINTS: Record<InputType, string | null> = {
-  vless:        'VLESS link detected — will import single server',
-  subscription: 'Subscription URL detected — will fetch and import all servers',
-  unknown:      'Must start with vless:// or https://',
-  empty:        null,
-};
 
 const INPUT_HINT_COLORS: Record<InputType, string> = {
   vless:        Colors.emerald[400],
@@ -47,6 +41,7 @@ const INPUT_HINT_COLORS: Record<InputType, string> = {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ServersScreen({ onNavigate, activeTab }: Props) {
+  const { t } = useT();
   const {
     selectedId, filter, query, selectServer, setFilter, setQuery,
     filteredServers, aiPicks, servers, isLoading, loadError,
@@ -64,7 +59,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const inputType = useMemo(() => detectInputType(importInput), [importInput]);
-  const hint      = INPUT_HINTS[inputType];
 
   const openImport = useCallback(() => {
     setImportInput('');
@@ -101,7 +95,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       if (inputType === 'vless') {
         const result = importFromVless(val);
         if (result.success) {
-          setImportSuccess('Server added successfully.');
+          setImportSuccess(t('sv.added'));
           setTimeout(() => { setImportVisible(false); setImportInput(''); }, 1200);
         } else {
           setImportError(result.error ?? 'Invalid VLESS link.');
@@ -113,7 +107,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         setTimeout(() => { setImportVisible(false); setImportInput(''); }, 1800);
       }
     } catch (e) {
-      setImportError(e instanceof Error ? e.message : 'Import failed — check the URL and try again.');
+      setImportError(e instanceof Error ? e.message : t('sv.importFailed'));
     } finally {
       setImporting(false);
     }
@@ -139,18 +133,18 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
 
   const handleDeleteServer = useCallback((serverId: string, serverName: string) => {
     Alert.alert(
-      'Remove server',
-      `Remove "${serverName}" from your server list?`,
+      t('sv.remove'),
+      `"${serverName}" ${t('sv.removeConfirm')}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('sv.cancel'), style: 'cancel' },
         {
-          text: 'Remove',
+          text: t('sv.remove.btn'),
           style: 'destructive',
           onPress: () => removeImportedServer(serverId),
         },
       ],
     );
-  }, [removeImportedServer]);
+  }, [removeImportedServer, t]);
 
   const handleConnect = useCallback(() => {
     if (isTransitioning) return;
@@ -169,10 +163,10 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const showAIPicks  = filter === 'All' && query === '';
 
   const ctaLabel = isTransitioning
-    ? 'Switching…'
+    ? t('sv.switching')
     : isConnected
-      ? `Connected · ${selected?.country ?? ''}`
-      : `Connect to ${selected?.country ?? ''}`;
+      ? `${t('sv.connected')} · ${selected?.country ?? ''}`
+      : `${t('sv.connectTo')} ${selected?.country ?? ''}`;
 
   const canImport = !importing && inputType !== 'empty' && inputType !== 'unknown';
 
@@ -186,23 +180,23 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Servers</Text>
+          <Text style={styles.title}>{t('sv.title')}</Text>
           <View style={styles.headerRight}>
             {isLoading && (
               <ActivityIndicator size="small" color={Colors.emerald[400]} style={{ marginRight: Spacing[1] }} />
             )}
             <View style={styles.countBadge}>
-              <Text style={styles.countText}>{servers.length} locations</Text>
+              <Text style={styles.countText}>{servers.length} {t('sv.locations')}</Text>
             </View>
             <TouchableOpacity style={styles.importBtn} onPress={openImport} activeOpacity={0.75}>
-              <Text style={styles.importBtnText}>+ Import</Text>
+              <Text style={styles.importBtnText}>{t('sv.import')}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {loadError && (
           <View style={styles.errorBanner}>
-            <Text style={styles.errorBannerText}>{loadError} · showing cached list</Text>
+            <Text style={styles.errorBannerText}>{loadError} · {t('sv.cachedList')}</Text>
           </View>
         )}
 
@@ -211,7 +205,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           <Text style={styles.searchIcon}>◎</Text>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search country or city..."
+            placeholder={t('sv.search')}
             placeholderTextColor={Colors.text.muted}
             value={query}
             onChangeText={setQuery}
@@ -248,8 +242,8 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <View style={styles.aiDot} />
-              <Text style={styles.sectionTitle}>AI Picks</Text>
-              <Text style={styles.sectionSub}>Optimized for {activeMode} mode</Text>
+              <Text style={styles.sectionTitle}>{t('sv.aiPicks')}</Text>
+              <Text style={styles.sectionSub}>{t('sv.optimizedFor')} {activeMode} {t('sv.mode')}</Text>
             </View>
             <ScrollView
               horizontal
@@ -288,18 +282,18 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              {filter === 'All' ? 'All Servers' : filter}
+              {filter === 'All' ? t('sv.allServers') : filter}
             </Text>
             {Object.keys(importedCreds).length > 0 && (
               <Text style={styles.sectionSub}>
-                · {Object.keys(importedCreds).length} custom
+                · {Object.keys(importedCreds).length} {t('sv.custom')}
               </Text>
             )}
           </View>
 
           {filtered.length === 0 ? (
             <View style={styles.empty}>
-              <Text style={styles.emptyText}>No servers found</Text>
+              <Text style={styles.emptyText}>{t('sv.noResults')}</Text>
             </View>
           ) : (
             filtered.map((s) => (
@@ -357,19 +351,18 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           <View style={styles.modalCard}>
             {/* Modal header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Import Server</Text>
+              <Text style={styles.modalTitle}>{t('sv.importTitle')}</Text>
               <TouchableOpacity
                 onPress={pasteFromClipboard}
                 style={styles.pasteBtn}
                 activeOpacity={0.75}
               >
-                <Text style={styles.pasteBtnText}>Paste</Text>
+                <Text style={styles.pasteBtnText}>{t('sv.importPaste')}</Text>
               </TouchableOpacity>
             </View>
 
             <Text style={styles.modalSub}>
-              Paste a <Text style={styles.mono}>vless://</Text> link or a{' '}
-              <Text style={styles.mono}>https://</Text> subscription URL.
+              {t('sv.importSub')}
             </Text>
 
             {/* Input */}
@@ -380,7 +373,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             ]}>
               <TextInput
                 style={styles.modalInput}
-                placeholder="vless://UUID@host:port?... or https://..."
+                placeholder={t('sv.importPH')}
                 placeholderTextColor={Colors.text.muted}
                 value={importInput}
                 onChangeText={(t) => { setImportInput(t); setImportError(null); setImportSuccess(null); }}
@@ -414,10 +407,12 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   ✕ {importError}
                 </Text>
               </View>
-            ) : hint ? (
+            ) : inputType !== 'empty' ? (
               <View style={styles.feedbackRow}>
                 <Text style={[styles.feedbackText, { color: INPUT_HINT_COLORS[inputType] }]}>
-                  {hint}
+                  {inputType === 'vless'        ? t('sv.hintVless')   :
+                   inputType === 'subscription' ? t('sv.hintSub')     :
+                                                  t('sv.hintUnknown')}
                 </Text>
               </View>
             ) : null}
@@ -430,7 +425,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                 disabled={importing}
                 activeOpacity={0.75}
               >
-                <Text style={styles.modalCancelText}>Cancel</Text>
+                <Text style={styles.modalCancelText}>{t('sv.cancel')}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -442,7 +437,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                 {importing
                   ? <ActivityIndicator size="small" color={Colors.text.inverse} />
                   : <Text style={styles.modalConfirmText}>
-                      {inputType === 'subscription' ? 'Fetch & Import' : 'Import'}
+                      {inputType === 'subscription' ? t('sv.importFetch') : t('sv.importConfirm')}
                     </Text>
                 }
               </TouchableOpacity>

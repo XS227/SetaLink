@@ -5,6 +5,7 @@ import {
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useT } from '../i18n';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -97,6 +98,7 @@ const selStyles = StyleSheet.create({
 interface SettingsProps { onBack?: () => void }
 
 export function SettingsScreen({ onBack }: SettingsProps) {
+  const { t } = useT();
   const {
     protocol, dnsMode, language,
     autoConnect, killSwitch, stealthMode, splitTunnel, ipv6,
@@ -134,102 +136,102 @@ export function SettingsScreen({ onBack }: SettingsProps) {
               <Text style={styles.backBtnText}>‹</Text>
             </TouchableOpacity>
           )}
-          <Text style={styles.title}>Settings</Text>
+          <Text style={styles.title}>{t('st.title')}</Text>
         </View>
 
-        <Section label="Connection">
+        <Section label={t('st.connection')}>
           <SelectRow
-            label="Protocol"
+            label={t('st.protocol')}
             value={protocol}
             options={['VLESS+Reality', 'VLESS', 'Reality', 'WebSocket', 'XHTTP', 'HTTPUpgrade']}
             onChange={setProtocol}
           />
           <Divider />
           <SelectRow
-            label="DNS Mode"
+            label={t('st.dns')}
             value={dnsMode}
             options={['Cloudflare (DoH)', 'Google (DoH)', 'AdGuard (DoH)', 'Custom']}
             onChange={setDnsMode}
           />
           <Divider />
           <ToggleRow
-            label="Auto Connect"
-            description="Connect on app launch"
+            label={t('st.autoConnect')}
+            description={t('st.autoConnectD')}
             value={autoConnect}
             onChange={toggleAutoConnect}
           />
         </Section>
 
-        <Section label="Privacy & Security">
+        <Section label={t('st.privacy')}>
           <ToggleRow
-            label="Kill Switch"
-            description="Block internet if VPN drops"
+            label={t('st.killSwitch')}
+            description={t('st.killSwitchD')}
             value={killSwitch}
             onChange={toggleKillSwitch}
           />
           <Divider />
           <ToggleRow
-            label="Stealth Mode"
-            description="Disguise traffic as HTTPS"
+            label={t('st.stealth')}
+            description={t('st.stealthD')}
             value={stealthMode}
             onChange={toggleStealthMode}
           />
           <Divider />
           <ToggleRow
-            label="Split Tunnel"
-            description="Route only selected apps through VPN"
+            label={t('st.split')}
+            description={t('st.splitD')}
             value={splitTunnel}
             onChange={toggleSplitTunnel}
           />
           <Divider />
           <ToggleRow
-            label="IPv6 Support"
-            description="Enable IPv6 tunneling"
+            label={t('st.ipv6')}
+            description={t('st.ipv6D')}
             value={ipv6}
             onChange={toggleIpv6}
           />
         </Section>
 
-        <Section label="Appearance">
+        <Section label={t('st.appearance')}>
           <SelectRow
-            label="Language"
+            label={t('st.language')}
             value={language}
-            options={['English', 'فارسی (Persian)', 'Deutsch', 'Français', '中文']}
+            options={['English', 'فارسی']}
             onChange={setLanguage}
           />
         </Section>
 
-        <Section label="Notifications">
+        <Section label={t('st.notifications')}>
           <ToggleRow
-            label="Push Notifications"
-            description="Connection status & alerts"
+            label={t('st.pushNotif')}
+            description={t('st.pushNotifD')}
             value={pushNotifications}
             onChange={togglePushNotifications}
           />
           <Divider />
           <ToggleRow
-            label="Biometric Lock"
-            description="Require fingerprint to open app"
+            label={t('st.biometric')}
+            description={t('st.biometricD')}
             value={biometricLock}
             onChange={toggleBiometricLock}
           />
         </Section>
 
-        <Section label="Diagnostics">
-          {[
-            { label: 'Run Diagnostics',   sub: 'Check connection health',    danger: false },
-            { label: 'Connection Logs',   sub: 'View raw log output',        danger: false },
-            { label: 'Export Config',     sub: 'Share Xray config file',     danger: false },
-            { label: 'Reset Settings',    sub: 'Restore defaults',           danger: true  },
-          ].map((item, i) => (
-            <View key={item.label}>
+        <Section label={t('st.diagnostics')}>
+          {([
+            { labelKey: 'st.runDiag',   subKey: 'st.runDiagD',   danger: false },
+            { labelKey: 'st.connLogs',  subKey: 'st.connLogsD',  danger: false },
+            { labelKey: 'st.exportCfg', subKey: 'st.exportCfgD', danger: false },
+            { labelKey: 'st.reset',     subKey: 'st.resetD',     danger: true  },
+          ] as const).map((item, i) => (
+            <View key={item.labelKey}>
               {i > 0 && <Divider />}
               <TouchableOpacity style={selStyles.row} activeOpacity={0.7}>
                 <View>
                   <Text style={[selStyles.label, item.danger && { color: Colors.status.disconnected }]}>
-                    {item.label}
+                    {t(item.labelKey)}
                   </Text>
-                  <Text style={rowStyles.desc}>{item.sub}</Text>
+                  <Text style={rowStyles.desc}>{t(item.subKey)}</Text>
                 </View>
                 <Text style={selStyles.chevron}>›</Text>
               </TouchableOpacity>
@@ -239,8 +241,8 @@ export function SettingsScreen({ onBack }: SettingsProps) {
 
         <View style={styles.about}>
           <Text style={styles.appName}>SetaLink</Text>
-          <Text style={styles.version}>Version 1.0.0 · Build 2026.05.16</Text>
-          <Text style={styles.legal}>© 2026 SetaLink. All rights reserved.</Text>
+          <Text style={styles.version}>{t('st.version')} 1.0.0 · Build 2026.05.16</Text>
+          <Text style={styles.legal}>© 2026 SetaLink. {t('st.allRights')}</Text>
         </View>
 
         <View style={{ height: Spacing[12] }} />
