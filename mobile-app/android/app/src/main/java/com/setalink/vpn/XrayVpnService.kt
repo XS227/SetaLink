@@ -10,13 +10,15 @@ import android.util.Log
 import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
 import java.io.File
+import java.io.FileWriter
+import java.net.InetSocketAddress
 import java.net.Socket
 
 class XrayVpnService : VpnService() {
 
     companion object {
-        private const val TAG         = "XrayVpnService"
-        private const val BINARY_VER  = "xray-26.3.27+t2s-2.6.0" // bump when updating assets
+        private const val TAG        = "XrayVpnService"
+        private const val BINARY_VER = "xray-26.3.27+t2s-2.6.0"
 
         const val ACTION_START = "com.setalink.vpn.START"
         const val ACTION_STOP  = "com.setalink.vpn.STOP"
@@ -29,12 +31,14 @@ class XrayVpnService : VpnService() {
         const val EXTRA_STEP             = "step_name"
         const val EXTRA_STEP_OK          = "step_ok"
         const val EXTRA_STEP_MSG         = "step_msg"
+
+        const val XRAY_LOG_FILE = "xray.log"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private var tunFd:          ParcelFileDescriptor? = null
-    private var xrayProcess:    Process?              = null
-    private var tun2socksProc:  Process?              = null
+    private var tunFd:         ParcelFileDescriptor? = null
+    private var xrayProcess:   Process?              = null
+    private var tun2socksProc: Process?              = null
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -44,8 +48,6 @@ class XrayVpnService : VpnService() {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
                     ?: return broadcastError("No config provided").let { START_NOT_STICKY }
                 val notification = NotificationHelper.buildConnected(this)
-                // Android 14 (API 34) enforces that startForeground() must include the type
-                // declared in the manifest — omitting it throws MissingForegroundServiceTypeException.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     startForeground(
                         NotificationHelper.NOTIFICATION_ID,
@@ -78,92 +80,131 @@ class XrayVpnService : VpnService() {
     // ── Tunnel setup ──────────────────────────────────────────────────────────
 
     private suspend fun establishTunnel(configJson: String) {
-        try {
-            // 1. Extract binaries from assets (cached by version stamp)
-            broadcastStep("binaries", true, "Extracting Xray + tun2socks (ver=$BINARY_VER)")
-            val xrayBin     = extractBinary("xray-arm64",     "xray")
-            val tun2sockBin = extractBinary("tun2socks-arm64","tun2socks")
+        // Reset log for this attempt
+        try { File(filesDir, XRAY_LOG_FILE).writeText("") } catch (_: Exception) {}
 
-            // 2. Write Xray config to disk
+        try {
+            // 1. Extract + verify binaries
+            broadcastStep("binaries", true, "Extracting binaries (ver=$BINARY_VER)")
+            val xrayBin     = extractBinary("xray-arm64",      "xray")
+            val tun2sockBin = extractBinary("tun2socks-arm64", "tun2socks")
+
+            // canExecute() is the ground truth — setExecutable may silently fail on some OEMs
+            if (!xrayBin.canExecute()) {
+                throw Exception(
+                    "Xray binary not executable at ${xrayBin.absolutePath} " +
+                    "(${xrayBin.length()} B). " +
+                    "Possible SELinux policy block or filesystem noexec mount."
+                )
+            }
+            broadcastStep("binaries", true, "xray=${xrayBin.length()}B tun2socks=${tun2sockBin.length()}B — executable OK")
+
+            // 2. Write config
             val configFile = File(filesDir, "xray.json")
             configFile.writeText(configJson)
-            broadcastStep("config", true, "Config written to disk")
+            broadcastStep("config", true, "Config written (${configJson.length} bytes)")
 
-            // 3. Start Xray subprocess
+            // 3. Config test — run xray in test mode to catch malformed configs early
+            broadcastStep("config_test", true, "Running xray -test...")
+            val testResult = runConfigTest(xrayBin, configFile)
+            if (!testResult.passed) {
+                appendLog("[CONFIG TEST FAILED]\n${testResult.output}")
+                broadcastStep("config_test", false, testResult.firstError)
+                throw Exception("Config rejected by Xray: ${testResult.firstError}")
+            }
+            broadcastStep("config_test", true, "Config valid (xray accepted)")
+
+            // 4. Start Xray
             broadcastStep("xray_start", true, "Starting Xray process")
-            xrayProcess = ProcessBuilder(xrayBin.absolutePath, "run", "-c", configFile.absolutePath)
-                .redirectErrorStream(true)
-                .start()
-            scope.launch { streamLog(xrayProcess!!, "Xray") }
+            xrayProcess = ProcessBuilder(
+                xrayBin.absolutePath, "run", "-c", configFile.absolutePath
+            ).apply {
+                environment()["XRAY_LOCATION_ASSET"] = filesDir.absolutePath
+                redirectErrorStream(true)
+                directory(filesDir)
+            }.start()
+            scope.launch { streamToLog(xrayProcess!!, "Xray") }
 
-            // 4. Wait up to 8 s for Xray SOCKS5 to open
-            if (!waitForPort(10808, 8_000)) {
-                broadcastStep("xray_socks5", false, "SOCKS5 port 10808 not ready — check UUID/server config")
-                throw Exception("Xray failed to open SOCKS5 port within 8 s — check server config or UUID")
+            // 5. Wait for SOCKS5 port
+            if (!waitForPort(10808, 10_000L)) {
+                val alive    = xrayProcess?.isAlive == true
+                val exitCode = if (!alive) runCatching { xrayProcess?.exitValue() }.getOrNull() else null
+                val logTail  = readLogTail(30)
+                broadcastStep("xray_socks5", false,
+                    if (alive) "Port 10808 not open (alive). Last output:\n$logTail"
+                    else       "Xray exited code=$exitCode. Last output:\n$logTail"
+                )
+                throw Exception(
+                    if (alive) "Xray running but SOCKS5 not ready after 10s.\nLast output:\n$logTail"
+                    else       "Xray exited prematurely (code=$exitCode).\nLast output:\n$logTail"
+                )
             }
             broadcastStep("xray_socks5", true, "SOCKS5 listening on :10808")
 
-            // 5. Build TUN — route everything through tunnel, exclude own app at OS level
-            val builder = Builder()
+            // 6. Build TUN interface
+            val vpnBuilder = Builder()
                 .setSession("SetaLink")
                 .addAddress("10.0.0.2", 24)
-                .addAddress("fdfe:dcba:9876::2", 64)   // IPv6 TUN address
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
-                .addDnsServer("2606:4700:4700::1111")   // Cloudflare IPv6 DNS
                 .setMtu(1500)
                 .addRoute("0.0.0.0", 0)
-                .addDisallowedApplication(packageName)  // Xray/tun2socks subprocesses inherit our UID
+                .addDisallowedApplication(packageName)
 
-            // Full IPv6 route
-            try { builder.addRoute("::", 0) } catch (_: Exception) {}
-
-            // Unmetered so Android doesn't throttle the VPN interface (API 29+)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                builder.setMetered(false)
+            // IPv6: best-effort (some ROMs reject these calls)
+            runCatching {
+                vpnBuilder.addAddress("fdfe:dcba:9876::2", 64)
+                vpnBuilder.addDnsServer("2606:4700:4700::1111")
+                vpnBuilder.addRoute("::", 0)
             }
 
-            tunFd = builder.establish()
-                ?: throw Exception("Failed to establish TUN interface — VPN permission missing?")
-            val tunFdInt    = tunFd!!.fd
-            // Use /proc/PID/fd/N instead of fd://N so tun2socks opens the fd by filesystem path.
-            // This avoids the FD_CLOEXEC inheritance problem entirely — the child process opens
-            // the fd itself via the proc symlink rather than inheriting it across exec().
-            val procFdPath  = "/proc/${android.os.Process.myPid()}/fd/$tunFdInt"
-            broadcastStep("tun", true, "TUN established fd=$tunFdInt (app=$packageName excluded from tunnel)")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                vpnBuilder.setMetered(false)
+            }
 
-            // 6. Start tun2socks (bridges TUN ↔ Xray SOCKS5)
-            broadcastStep("tun2socks_start", true, "Starting tun2socks $procFdPath → socks5://127.0.0.1:10808")
+            tunFd = vpnBuilder.establish()
+                ?: throw Exception("TUN establish() returned null — was VPN permission revoked?")
+            val tunFdInt   = tunFd!!.fd
+            val procFdPath = "/proc/${android.os.Process.myPid()}/fd/$tunFdInt"
+            broadcastStep("tun", true, "TUN fd=$tunFdInt established")
+
+            // 7. Start tun2socks
+            broadcastStep("tun2socks_start", true, "Starting tun2socks → socks5://127.0.0.1:10808")
             tun2socksProc = ProcessBuilder(
                 tun2sockBin.absolutePath,
-                "--device", procFdPath,
-                "--proxy",  "socks5://127.0.0.1:10808",
-                "--loglevel", "warn"
-            ).redirectErrorStream(true).start()
-            scope.launch { streamLog(tun2socksProc!!, "tun2socks") }
+                "--device",   procFdPath,
+                "--proxy",    "socks5://127.0.0.1:10808",
+                "--loglevel", "warning"
+            ).apply {
+                redirectErrorStream(true)
+                directory(filesDir)
+            }.start()
+            scope.launch { streamToLog(tun2socksProc!!, "tun2socks") }
 
-            // Give tun2socks a moment to attach to the fd
-            delay(1200)
+            delay(1500L)
 
-            if (!tun2socksProc!!.isAlive) {
-                val exitCode = tun2socksProc!!.exitValue()
-                broadcastStep("tun2socks_alive", false, "Exited immediately (code=$exitCode)")
-                throw Exception("tun2socks exited immediately (code=$exitCode) — TUN fd may not have been inherited")
+            if (tun2socksProc?.isAlive != true) {
+                val exitCode = runCatching { tun2socksProc?.exitValue() }.getOrNull()
+                val logTail  = readLogTail(15)
+                broadcastStep("tun2socks_alive", false, "Exited code=$exitCode. Log:\n$logTail")
+                throw Exception("tun2socks exited (code=$exitCode).\nLog:\n$logTail")
             }
             broadcastStep("tun2socks_alive", true, "tun2socks running — tunnel active")
 
             Log.i(TAG, "VPN tunnel active")
             sendBroadcast(Intent(BROADCAST_CONNECTED).setPackage(packageName))
 
-            // 7. Watch for process death
+            // 8. Watch for process death
             scope.launch {
                 while (isActive) {
-                    delay(3_000)
+                    delay(3_000L)
                     val xAlive = xrayProcess?.isAlive == true
                     val tAlive = tun2socksProc?.isAlive == true
                     if (!xAlive || !tAlive) {
-                        Log.e(TAG, "Process died: xray=$xAlive tun2socks=$tAlive")
-                        broadcastError("VPN process died unexpectedly")
+                        val logTail = readLogTail(20)
+                        val msg = "Process died unexpectedly (xray=$xAlive tun2socks=$tAlive).\n$logTail"
+                        Log.e(TAG, msg)
+                        broadcastError(msg)
                         tearDownTunnel()
                         break
                     }
@@ -172,17 +213,73 @@ class XrayVpnService : VpnService() {
 
         } catch (e: Exception) {
             Log.e(TAG, "Tunnel setup failed: ${e.message}", e)
+            appendLog("[TUNNEL FAILED] ${e.message}")
             broadcastError(e.message ?: "Unknown VPN error")
             tearDownTunnel()
+        }
+    }
+
+    // ── Config test ───────────────────────────────────────────────────────────
+
+    private data class TestResult(val passed: Boolean, val output: String, val firstError: String)
+
+    private suspend fun runConfigTest(xrayBin: File, configFile: File): TestResult {
+        return try {
+            val proc = ProcessBuilder(
+                xrayBin.absolutePath, "run", "-test", "-c", configFile.absolutePath
+            ).apply {
+                environment()["XRAY_LOCATION_ASSET"] = filesDir.absolutePath
+                redirectErrorStream(true)
+                directory(filesDir)
+            }.start()
+
+            // Drain output in a coroutine so it doesn't fill the pipe buffer and deadlock
+            val outputDeferred = scope.async(Dispatchers.IO) {
+                proc.inputStream.bufferedReader().readText()
+            }
+
+            // waitFor() on IO dispatcher so we don't block the calling coroutine's thread
+            val exitCode = withContext(Dispatchers.IO) {
+                // 5-second hard limit — xray -test should be near-instant
+                val deadline = System.currentTimeMillis() + 5_000L
+                while (proc.isAlive && System.currentTimeMillis() < deadline) {
+                    delay(100L)
+                }
+                if (proc.isAlive) {
+                    proc.destroyForcibly()
+                    null  // null means timed out
+                } else {
+                    proc.exitValue()
+                }
+            }
+
+            val output = outputDeferred.await()
+            appendLog("[CONFIG TEST exit=$exitCode]\n$output")
+            Log.i(TAG, "[CONFIG TEST] exit=$exitCode | output=$output")
+
+            when {
+                exitCode == null -> TestResult(false, "(timed out)", "Config test timed out after 5 s")
+                exitCode == 0    -> TestResult(true, output, "")
+                else             -> {
+                    val firstErr = output.lines()
+                        .firstOrNull { it.contains("error", ignoreCase = true) && it.isNotBlank() }
+                        ?: output.lines().firstOrNull { it.isNotBlank() }
+                        ?: "Config invalid (exit=$exitCode)"
+                    TestResult(false, output, firstErr.take(200))
+                }
+            }
+        } catch (e: Exception) {
+            appendLog("[CONFIG TEST EXCEPTION] ${e.message}")
+            TestResult(false, e.message ?: "", e.message ?: "Config test failed")
         }
     }
 
     // ── Teardown ──────────────────────────────────────────────────────────────
 
     private fun tearDownTunnel() {
-        xrayProcess?.destroy();   xrayProcess   = null
-        tun2socksProc?.destroy(); tun2socksProc = null
-        try { tunFd?.close() } catch (_: Exception) {}
+        xrayProcess?.destroy();    xrayProcess   = null
+        tun2socksProc?.destroy();  tun2socksProc = null
+        runCatching { tunFd?.close() }
         tunFd = null
         sendBroadcast(Intent(BROADCAST_DISCONNECTED).setPackage(packageName))
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -206,19 +303,46 @@ class XrayVpnService : VpnService() {
         Log.i(TAG, "[STEP] $step=${if (ok) "OK" else "FAIL"} — $msg")
     }
 
-    // ── Utilities ─────────────────────────────────────────────────────────────
+    // ── Log helpers ───────────────────────────────────────────────────────────
+
+    private fun appendLog(text: String) {
+        try {
+            FileWriter(File(filesDir, XRAY_LOG_FILE), true).use { it.write("$text\n") }
+        } catch (_: Exception) {}
+    }
+
+    fun readLogTail(lines: Int = 50): String {
+        return try {
+            val f = File(filesDir, XRAY_LOG_FILE)
+            if (!f.exists()) return "(no log)"
+            f.readLines().takeLast(lines).joinToString("\n").ifEmpty { "(empty)" }
+        } catch (_: Exception) { "(unreadable)" }
+    }
+
+    private fun streamToLog(process: Process, label: String) {
+        try {
+            process.inputStream.bufferedReader().forEachLine { line ->
+                Log.d("$TAG/$label", line)
+                appendLog("[$label] $line")
+            }
+        } catch (_: Exception) {}
+    }
+
+    // ── Binary helpers ────────────────────────────────────────────────────────
 
     private fun extractBinary(assetName: String, outName: String): File {
         val outFile   = File(filesDir, outName)
         val stampFile = File(filesDir, "$outName.ver")
         if (!outFile.exists() || stampFile.readTextOrEmpty() != BINARY_VER) {
-            Log.i(TAG, "Extracting asset: $assetName")
+            Log.i(TAG, "Extracting $assetName → ${outFile.absolutePath}")
             assets.open(assetName).use { src ->
                 outFile.outputStream().use { dst -> src.copyTo(dst) }
             }
-            outFile.setExecutable(true, false)
             stampFile.writeText(BINARY_VER)
         }
+        // Always set — executable bit can be stripped by app updates without cache miss
+        val chmodOk = outFile.setExecutable(true, false)
+        if (!chmodOk) Log.w(TAG, "setExecutable returned false for ${outFile.absolutePath}")
         return outFile
     }
 
@@ -227,17 +351,14 @@ class XrayVpnService : VpnService() {
     private suspend fun waitForPort(port: Int, timeoutMs: Long): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            try { Socket("127.0.0.1", port).use { return true } } catch (_: Exception) {}
-            delay(250)
+            try {
+                Socket().use { s ->
+                    s.connect(InetSocketAddress("127.0.0.1", port), 200)
+                }
+                return true
+            } catch (_: Exception) {}
+            delay(300L)
         }
         return false
-    }
-
-    private fun streamLog(process: Process, label: String) {
-        try {
-            process.inputStream.bufferedReader().forEachLine { line ->
-                Log.d("$TAG/$label", line)
-            }
-        } catch (_: Exception) {}
     }
 }

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { ConnectionMachine, MachineState } from '../services/connectionMachine';
 import { getAdapter }                       from '../services/vpnBridge';
-import { buildXrayConfigJson }              from '../services/xrayConfigBuilder';
+import { buildXrayConfigJson, validateCreds } from '../services/xrayConfigBuilder';
 
 // Re-exported so screens that import ConnectionState don't break
 export type ConnectionState = MachineState;
@@ -185,8 +185,10 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const creds = useServerStore.getState().getImportedCreds(selectedServer.id);
 
       // No real credentials — refuse to connect with placeholder config.
-      // The machine will call FAILED with a user-visible error.
       if (!creds) return null;
+
+      const credCheck = validateCreds(creds);
+      if (!credCheck.valid) throw new Error(credCheck.error!);
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires

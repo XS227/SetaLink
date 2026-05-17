@@ -40,6 +40,9 @@ export interface Spec extends TurboModule {
 
   /** Returns ordered step log from the most recent tunnel setup attempt. */
   getConnectionLog(): Promise<string[]>;
+
+  /** Returns the tail of the xray process stdout/stderr log file. */
+  getXrayLog(): Promise<string>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');

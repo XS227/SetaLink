@@ -192,6 +192,21 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
+    override fun getXrayLog(promise: Promise) {
+        try {
+            val logFile = java.io.File(reactContext.filesDir, XrayVpnService.XRAY_LOG_FILE)
+            if (!logFile.exists()) {
+                promise.resolve("(no xray.log — tunnel not yet started)")
+                return
+            }
+            val lines = logFile.readLines().takeLast(100)
+            promise.resolve(lines.joinToString("\n"))
+        } catch (e: Exception) {
+            promise.resolve("(error reading xray.log: ${e.message})")
+        }
+    }
+
     // ── VPN permission result ─────────────────────────────────────────────────
 
     override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {

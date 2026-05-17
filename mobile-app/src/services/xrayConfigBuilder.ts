@@ -69,6 +69,32 @@ const PLACEHOLDER_PUBLIC_KEY = 'PLACEHOLDER_PUBLIC_KEY';
 const PLACEHOLDER_SHORT_ID   = 'PLACEHOLDER_SHORT_ID';
 const PLACEHOLDER_SNI        = 'www.microsoft.com';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export interface CredValidation { valid: boolean; error?: string }
+
+export function validateCreds(creds: ServerCredentials): CredValidation {
+  if (!creds.uuid || creds.uuid === PLACEHOLDER_UUID) {
+    return { valid: false, error: 'Missing UUID — import a real VLESS link in Servers tab' };
+  }
+  if (!UUID_RE.test(creds.uuid)) {
+    return { valid: false, error: `Malformed UUID: ${creds.uuid.slice(0, 20)}…` };
+  }
+  if (!creds.address || creds.address.length < 2) {
+    return { valid: false, error: 'Missing server address' };
+  }
+  if (!creds.port || creds.port < 1 || creds.port > 65535) {
+    return { valid: false, error: `Invalid port: ${creds.port}` };
+  }
+  if (creds.publicKey === PLACEHOLDER_PUBLIC_KEY) {
+    return { valid: false, error: 'Placeholder publicKey — import a real VLESS Reality link' };
+  }
+  if (creds.shortId === PLACEHOLDER_SHORT_ID) {
+    return { valid: false, error: 'Placeholder shortId — import a real VLESS Reality link' };
+  }
+  return { valid: true };
+}
+
 function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   return {
     tag:      'proxy',
