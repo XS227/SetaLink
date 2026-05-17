@@ -84,6 +84,7 @@ const EN = {
   'sv.added':           'Server added successfully.',
   'sv.importFailed':    'Import failed — check the URL and try again.',
   'sv.cachedList':      'showing cached list',
+  'sv.usingSaved':      'Using saved servers',
 
   // Settings screen
   'st.title':           'Settings',
@@ -192,6 +193,9 @@ const EN = {
   'pr.notifSettings':   'Notification Settings',
   'pr.exportConfig':    'Export Config',
   'pr.signOut':         'Sign Out',
+  'pr.support':         'Contact Support',
+  'pr.shareLink':       'Share Referral Link',
+  'pr.remaining':       'remaining',
 };
 
 const FA: typeof EN = {
@@ -235,6 +239,7 @@ const FA: typeof EN = {
   'home.download':        'دانلود',
   'home.premium':         'ویژه',
   'home.standard':        'عادی',
+  'home.connLog':         'لاگ اتصال',
 
   // Servers screen
   'sv.title':           'سرورها',
@@ -266,6 +271,7 @@ const FA: typeof EN = {
   'sv.added':           'سرور با موفقیت اضافه شد.',
   'sv.importFailed':    'وارد کردن ناموفق بود — URL را بررسی کنید.',
   'sv.cachedList':      'نمایش لیست ذخیره‌شده',
+  'sv.usingSaved':      'نمایش سرورهای ذخیره‌شده',
 
   // Settings screen
   'st.title':           'تنظیمات',
@@ -374,6 +380,9 @@ const FA: typeof EN = {
   'pr.notifSettings':   'تنظیمات اعلان',
   'pr.exportConfig':    'خروجی تنظیمات',
   'pr.signOut':         'خروج از حساب',
+  'pr.support':         'تماس با پشتیبانی',
+  'pr.shareLink':       'اشتراک‌گذاری لینک معرف',
+  'pr.remaining':       'باقیمانده',
 };
 
 export type TKey = keyof typeof EN;

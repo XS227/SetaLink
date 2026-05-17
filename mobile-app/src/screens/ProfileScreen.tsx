@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -33,9 +33,10 @@ interface BandwidthBarProps {
   labelUnlimited: string;
   labelUsedMonth: string;
   labelGbUsed: string;
+  labelRemaining: string;
 }
 
-function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labelGbUsed }: BandwidthBarProps) {
+function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labelGbUsed, labelRemaining }: BandwidthBarProps) {
   if (limitGb === null) {
     return (
       <View style={bwStyles.unlimitedRow}>
@@ -45,9 +46,10 @@ function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labe
     );
   }
 
-  const usedGb  = usedBytes / 1e9;
-  const pct     = Math.min(usedGb / limitGb, 1);
-  const color   = pct < 0.6 ? Colors.emerald[400] : pct < 0.85 ? '#FFB800' : Colors.status.disconnected;
+  const usedGb      = usedBytes / 1e9;
+  const remainingGb = Math.max(0, limitGb - usedGb);
+  const pct         = Math.min(usedGb / limitGb, 1);
+  const color       = pct < 0.6 ? Colors.emerald[400] : pct < 0.85 ? '#FFB800' : Colors.status.disconnected;
 
   return (
     <View style={bwStyles.wrapper}>
@@ -56,7 +58,7 @@ function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labe
       </View>
       <View style={bwStyles.labels}>
         <Text style={bwStyles.usedText}>{usedGb.toFixed(1)} {labelGbUsed}</Text>
-        <Text style={bwStyles.total}>{limitGb} GB</Text>
+        <Text style={[bwStyles.total, { color }]}>{remainingGb.toFixed(1)} GB {labelRemaining}</Text>
       </View>
     </View>
   );
@@ -97,6 +99,14 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const handleCopyReferral = () => {
     Clipboard.setString(user.referralCode);
     showToast(t('pr.copiedCode'), 'success', 2000);
+  };
+
+  const handleShareReferral = async () => {
+    try {
+      await Share.share({
+        message: `Join SetaLink with my code: ${user.referralCode}\nhttps://setalink.com/?ref=${user.referralCode}`,
+      });
+    } catch {}
   };
 
   const handleSignOut = () => {
@@ -174,6 +184,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             labelUnlimited={t('pr.unlimited')}
             labelUsedMonth={t('pr.usedMonth')}
             labelGbUsed={t('pr.gbUsed')}
+            labelRemaining={t('pr.remaining')}
           />
 
           <View style={styles.subMeta}>
@@ -253,6 +264,9 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
             </TouchableOpacity>
           </View>
+          <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8} onPress={handleShareReferral}>
+            <Text style={styles.shareBtnText}>{t('pr.shareLink')}</Text>
+          </TouchableOpacity>
           <View style={styles.referralStats}>
             <View style={styles.referralStat}>
               <Text style={styles.referralStatValue}>4</Text>
@@ -283,6 +297,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           { labelKey: 'pr.changePassword', onPress: undefined },
           { labelKey: 'pr.notifSettings',  onPress: undefined },
           { labelKey: 'pr.exportConfig',   onPress: undefined },
+          { labelKey: 'pr.support',        onPress: undefined },
         ].map((item) => (
           <TouchableOpacity key={item.labelKey} style={styles.actionRow} activeOpacity={0.7} onPress={item.onPress}>
             <Text style={styles.actionLabel}>{t(item.labelKey as any)}</Text>
@@ -355,6 +370,8 @@ const styles = StyleSheet.create({
   referralCodeText: { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.mono, color: Colors.text.primary, letterSpacing: 2 },
   copyBtn:          { backgroundColor: Colors.emerald[400], borderRadius: Radius.md, paddingHorizontal: Spacing[3], paddingVertical: 6 },
   copyBtnText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.inverse },
+  shareBtn:         { borderWidth: 1, borderColor: Colors.blue[400], borderRadius: Radius.md, paddingVertical: Spacing[3], alignItems: 'center' },
+  shareBtnText:     { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.blue[400], letterSpacing: 0.3 },
   referralStats:    { flexDirection: 'row', gap: Spacing[6] },
   referralStat:     { gap: 2 },
   referralStatValue:{ fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },

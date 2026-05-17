@@ -191,10 +191,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
             <View style={styles.serverInfo}>
               <Text style={styles.serverName}>
-                {selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : t('home.selectServer')}
+                {selectedServer ? selectedServer.country : t('home.selectServer')}
               </Text>
               <Text style={styles.serverSub}>
-                {selectedServer ? `${selectedServer.protocol} · ${selectedServer.premium ? t('home.premium') : t('home.standard')}` : t('home.tapToChoose')}
+                {selectedServer
+                  ? `${selectedServer.city} · ${selectedServer.protocol}`
+                  : t('home.tapToChoose')}
               </Text>
             </View>
             <View style={styles.serverMeta}>
