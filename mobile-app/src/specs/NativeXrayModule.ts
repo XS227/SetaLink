@@ -37,6 +37,9 @@ export interface Spec extends TurboModule {
 
   /** Returns the last error message from the VPN service, or null if none. */
   getLastError(): Promise<string | null>;
+
+  /** Returns ordered step log from the most recent tunnel setup attempt. */
+  getConnectionLog(): Promise<string[]>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');

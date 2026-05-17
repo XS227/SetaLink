@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.VpnService
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
@@ -25,7 +27,11 @@ class XrayVpnService : VpnService() {
 
         const val BROADCAST_CONNECTED    = "com.setalink.vpn.CONNECTED"
         const val BROADCAST_DISCONNECTED = "com.setalink.vpn.DISCONNECTED"
+        const val BROADCAST_STEP         = "com.setalink.vpn.STEP"
         const val EXTRA_ERROR            = "error_message"
+        const val EXTRA_STEP             = "step_name"
+        const val EXTRA_STEP_OK          = "step_ok"
+        const val EXTRA_STEP_MSG         = "step_msg"
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -69,37 +75,38 @@ class XrayVpnService : VpnService() {
     private suspend fun establishTunnel(configJson: String) {
         try {
             // 1. Extract binaries from assets (cached by version stamp)
-            Log.i(TAG, "Extracting binaries (ver=$BINARY_VER)...")
+            broadcastStep("binaries", true, "Extracting Xray + tun2socks (ver=$BINARY_VER)")
             val xrayBin     = extractBinary("xray-arm64",     "xray")
             val tun2sockBin = extractBinary("tun2socks-arm64","tun2socks")
 
             // 2. Parse server address for split routing
             val serverAddr = parseServerAddress(configJson)
                 ?: throw Exception("Cannot parse server address from config")
-            Log.i(TAG, "Server address: $serverAddr")
+            broadcastStep("resolve", true, "Server: $serverAddr")
 
             val serverIp = withContext(Dispatchers.IO) {
                 runCatching { InetAddress.getByName(serverAddr).hostAddress }.getOrNull()
             }
-            Log.i(TAG, "Resolved server IP: $serverIp")
+            broadcastStep("dns", serverIp != null, "Resolved: ${serverIp ?: "failed"}")
 
             // 3. Write Xray config to disk
             val configFile = File(filesDir, "xray.json")
             configFile.writeText(configJson)
+            broadcastStep("config", true, "Config written to disk")
 
             // 4. Start Xray subprocess
-            Log.i(TAG, "Starting Xray...")
+            broadcastStep("xray_start", true, "Starting Xray process")
             xrayProcess = ProcessBuilder(xrayBin.absolutePath, "run", "-c", configFile.absolutePath)
                 .redirectErrorStream(true)
                 .start()
             scope.launch { streamLog(xrayProcess!!, "Xray") }
 
             // 5. Wait up to 8 s for Xray SOCKS5 to open
-            Log.i(TAG, "Waiting for Xray SOCKS5 on :10808...")
             if (!waitForPort(10808, 8_000)) {
+                broadcastStep("xray_socks5", false, "SOCKS5 port 10808 not ready — check UUID/server config")
                 throw Exception("Xray failed to open SOCKS5 port within 8 s — check server config or UUID")
             }
-            Log.i(TAG, "Xray SOCKS5 ready")
+            broadcastStep("xray_socks5", true, "SOCKS5 listening on :10808")
 
             // 6. Build TUN with split routing (exclude server IP so Xray bypasses VPN)
             val builder = Builder()
@@ -121,10 +128,21 @@ class XrayVpnService : VpnService() {
             tunFd = builder.establish()
                 ?: throw Exception("Failed to establish TUN interface — VPN permission missing?")
             val tunFdInt = tunFd!!.fd
-            Log.i(TAG, "TUN interface fd=$tunFdInt")
+            broadcastStep("tun", true, "TUN interface established (fd=$tunFdInt, ${routes.size} routes)")
+
+            // Clear FD_CLOEXEC so tun2socks child process can inherit the TUN file descriptor.
+            // Android sets FD_CLOEXEC on all fds by default; without clearing it the fd is closed
+            // before exec() runs and tun2socks receives an invalid fd://N argument.
+            try {
+                Os.fcntl(tunFd!!.fileDescriptor, OsConstants.F_SETFD, 0)
+                broadcastStep("fd_inherit", true, "FD_CLOEXEC cleared — fd is inheritable")
+            } catch (e: Exception) {
+                broadcastStep("fd_inherit", false, "fcntl failed: ${e.message}")
+                Log.e(TAG, "Could not clear FD_CLOEXEC: ${e.message}")
+            }
 
             // 7. Start tun2socks (bridges TUN ↔ Xray SOCKS5)
-            Log.i(TAG, "Starting tun2socks fd://$tunFdInt -> socks5://127.0.0.1:10808")
+            broadcastStep("tun2socks_start", true, "Starting tun2socks fd://$tunFdInt → socks5://127.0.0.1:10808")
             tun2socksProc = ProcessBuilder(
                 tun2sockBin.absolutePath,
                 "--device", "fd://$tunFdInt",
@@ -138,8 +156,10 @@ class XrayVpnService : VpnService() {
 
             if (!tun2socksProc!!.isAlive) {
                 val exitCode = tun2socksProc!!.exitValue()
+                broadcastStep("tun2socks_alive", false, "Exited immediately (code=$exitCode)")
                 throw Exception("tun2socks exited immediately (code=$exitCode) — TUN fd may not have been inherited")
             }
+            broadcastStep("tun2socks_alive", true, "tun2socks running — tunnel active")
 
             Log.i(TAG, "VPN tunnel active")
             sendBroadcast(Intent(BROADCAST_CONNECTED))
@@ -180,6 +200,15 @@ class XrayVpnService : VpnService() {
 
     private fun broadcastError(msg: String) {
         sendBroadcast(Intent(BROADCAST_DISCONNECTED).apply { putExtra(EXTRA_ERROR, msg) })
+    }
+
+    private fun broadcastStep(step: String, ok: Boolean, msg: String) {
+        sendBroadcast(Intent(BROADCAST_STEP).apply {
+            putExtra(EXTRA_STEP, step)
+            putExtra(EXTRA_STEP_OK, ok)
+            putExtra(EXTRA_STEP_MSG, msg)
+        })
+        Log.i(TAG, "[STEP] $step=${if (ok) "OK" else "FAIL"} — $msg")
     }
 
     // ── Utilities ─────────────────────────────────────────────────────────────

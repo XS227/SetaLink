@@ -36,6 +36,10 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     private var pendingConfig:  String?  = null
     private var pendingPromise: Promise? = null
 
+    // Tunnel setup step log — cleared on each start(), appended via BROADCAST_STEP
+    private val stepLog     = mutableListOf<String>()
+    private val stepLogLock = Any()
+
     // Stats — uptime is real; bytes/ping remain mocked until libXray integration
     private val statsLock    = Any()
     private var uploadBytes  = 0L
@@ -63,6 +67,15 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                         Log.i(TAG, "VPN disconnected")
                     }
                 }
+                XrayVpnService.BROADCAST_STEP -> {
+                    val step = intent.getStringExtra(XrayVpnService.EXTRA_STEP) ?: return
+                    val ok   = intent.getBooleanExtra(XrayVpnService.EXTRA_STEP_OK, false)
+                    val msg  = intent.getStringExtra(XrayVpnService.EXTRA_STEP_MSG) ?: ""
+                    val icon = if (ok) "✓" else "✗"
+                    synchronized(stepLogLock) {
+                        stepLog.add("$icon $step${if (msg.isNotEmpty()) ": $msg" else ""}")
+                    }
+                }
             }
         }
     }
@@ -73,6 +86,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         val filter = IntentFilter().apply {
             addAction(XrayVpnService.BROADCAST_CONNECTED)
             addAction(XrayVpnService.BROADCAST_DISCONNECTED)
+            addAction(XrayVpnService.BROADCAST_STEP)
         }
         ContextCompat.registerReceiver(
             reactContext, vpnReceiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED
@@ -85,6 +99,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     override fun getName(): String = NAME
 
     override fun start(config: String, promise: Promise) {
+        synchronized(stepLogLock) { stepLog.clear() }
         try {
             val permIntent = VpnService.prepare(reactContext)
             if (permIntent != null) {
@@ -138,6 +153,14 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
 
     override fun validateConfig(config: String, promise: Promise) =
         promise.resolve(config.trim().startsWith("{"))
+
+    override fun getConnectionLog(promise: Promise) {
+        synchronized(stepLogLock) {
+            val arr = com.facebook.react.bridge.WritableNativeArray()
+            stepLog.forEach { arr.pushString(it) }
+            promise.resolve(arr)
+        }
+    }
 
     // ── VPN permission result ─────────────────────────────────────────────────
 

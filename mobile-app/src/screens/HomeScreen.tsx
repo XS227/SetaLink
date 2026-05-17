@@ -55,6 +55,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     sessionBytes,
     error,
     reconnectAttempts,
+    connectionLog,
     connect,
     disconnect,
   } = useVpnStore();
@@ -154,6 +155,27 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           />
           {isConnected && <Text style={styles.timer}>{timer}</Text>}
         </Animated.View>
+
+        {/* Connection log (shown while connecting or on error) */}
+        {(connectionState === 'connecting' || connectionState === 'error') && connectionLog.length > 0 && (
+          <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+            <GlassCard style={styles.logPanel}>
+              <Text style={styles.logPanelTitle}>{t('home.connLog')}</Text>
+              {connectionLog.map((entry, i) => (
+                <Text
+                  key={i}
+                  style={[
+                    styles.logEntry,
+                    entry.startsWith('✗') && styles.logEntryError,
+                    entry.startsWith('✓') && styles.logEntryOk,
+                  ]}
+                >
+                  {entry}
+                </Text>
+              ))}
+            </GlassCard>
+          </Animated.View>
+        )}
 
         {/* Server pill */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
@@ -317,4 +339,9 @@ const styles = StyleSheet.create({
   trafficValue: { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
   trafficSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
   trafficDivider:{ width: 1, height: 40, backgroundColor: Colors.border.subtle },
+  logPanel:      { gap: Spacing[1] },
+  logPanelTitle: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[1] },
+  logEntry:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, lineHeight: 18 },
+  logEntryOk:    { color: Colors.emerald[400] },
+  logEntryError: { color: Colors.status.disconnected },
 });
