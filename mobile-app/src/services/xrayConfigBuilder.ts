@@ -96,6 +96,12 @@ export function validateCreds(creds: ServerCredentials): CredValidation {
 }
 
 function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
+  // Use || so empty-string values fall back to the placeholder/default.
+  // flow must be omitted (not set to '') when the server doesn't use XTLS Vision.
+  const flow        = creds?.flow        || 'xtls-rprx-vision';
+  const fingerprint = creds?.fingerprint || 'chrome';
+  const sni         = creds?.sni         || PLACEHOLDER_SNI;
+
   return {
     tag:      'proxy',
     protocol: 'vless',
@@ -106,7 +112,8 @@ function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials)
         users: [{
           id:         creds?.uuid      ?? PLACEHOLDER_UUID,
           encryption: 'none',
-          flow:       'xtls-rprx-vision',
+          // Omit flow key entirely when empty to match server config exactly.
+          ...(flow ? { flow } : {}),
         }],
       }],
     },
@@ -114,8 +121,8 @@ function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials)
       network:  'tcp',
       security: 'reality',
       realitySettings: {
-        fingerprint: 'chrome',
-        serverName:  creds?.sni       ?? PLACEHOLDER_SNI,
+        fingerprint,
+        serverName:  sni,
         publicKey:   creds?.publicKey ?? PLACEHOLDER_PUBLIC_KEY,
         shortId:     creds?.shortId   ?? PLACEHOLDER_SHORT_ID,
       },
@@ -234,4 +241,47 @@ export function buildXrayConfigJson(
   creds?:   ServerCredentials,
 ): string {
   return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, false, creds));
+}
+
+/**
+ * Emergency config: IPv4 only, DNS 1.1.1.1, debug log, no split-tunnel rules.
+ * Useful to isolate packet-flow issues by removing all complexity.
+ * The TUN side is controlled by the native service (MTU 1280, no IPv6 routes).
+ */
+export function buildEmergencyXrayConfigJson(
+  server:  VpnServer,
+  protocol: string,
+  creds?:  ServerCredentials,
+): string {
+  const cfg: XrayConfig = {
+    log: { loglevel: 'debug' },
+
+    dns: {
+      servers: ['1.1.1.1'],
+    },
+
+    inbounds: [
+      {
+        tag:      'socks-in',
+        port:     10808,
+        listen:   '127.0.0.1',
+        protocol: 'socks',
+        settings: { auth: 'noauth', udp: true },
+      },
+    ],
+
+    outbounds: [
+      buildProxyOutbound(server, protocol, creds),
+      { tag: 'direct', protocol: 'freedom', settings: {} },
+    ],
+
+    // No private-IP bypass rules — all traffic proxied through VPN server.
+    // This removes one possible failure mode where local routing rules block traffic.
+    routing: {
+      domainStrategy: 'IPIfNonMatch',
+      rules: [],
+    },
+  };
+
+  return JSON.stringify(cfg);
 }

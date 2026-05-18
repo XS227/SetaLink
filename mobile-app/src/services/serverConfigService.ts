@@ -13,12 +13,14 @@
  */
 
 export interface ServerCredentials {
-  uuid:      string;
-  address:   string;
-  port:      number;
-  publicKey: string;   // X25519 Reality key
-  shortId:   string;
-  sni:       string;   // reality serverName
+  uuid:        string;
+  address:     string;
+  port:        number;
+  publicKey:   string;   // X25519 Reality key
+  shortId:     string;
+  sni:         string;   // reality serverName
+  flow:        string;   // e.g. 'xtls-rprx-vision' or '' for none
+  fingerprint: string;   // TLS fingerprint: chrome | firefox | safari | …
 }
 
 const CACHE_TTL_MS = 5 * 60_000;   // 5 min
@@ -67,11 +69,13 @@ function _mockCredentials(serverId: string): ServerCredentials {
   const hex  = (hash * 0xdeadbeef).toString(16).padStart(8, '0').slice(0, 8);
 
   return {
-    uuid:      `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`,
-    address:   `${serverId}.edge.setalink.net`,
-    port:      443,
-    publicKey: `AAAA${Buffer.from(serverId + 'pubkey').toString('base64').slice(0, 40)}`,
-    shortId:   hex.slice(0, 8),
-    sni:       'www.microsoft.com',
+    uuid:        `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`,
+    address:     `${serverId}.edge.setalink.net`,
+    port:        443,
+    publicKey:   `AAAA${Buffer.from(serverId + 'pubkey').toString('base64').slice(0, 40)}`,
+    shortId:     hex.slice(0, 8),
+    sni:         'www.microsoft.com',
+    flow:        'xtls-rprx-vision',
+    fingerprint: 'chrome',
   };
 }
