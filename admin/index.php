@@ -1803,8 +1803,8 @@ $page_titles = [
      ===================================================================== -->
 <script>
 const CSRF         = <?= json_encode($csrf_token) ?>;
-const API_URL      = 'api.php';
-const QR_URL       = 'qr.php';
+const API_URL      = '/_setalink-admin/api.php';
+const QR_URL       = '/_setalink-admin/qr.php';
 const CURRENT_PAGE = <?= json_encode($page) ?>;
 </script>
 <script src="app.js"></script>
@@ -1975,8 +1975,8 @@ if (CURRENT_PAGE === 'dashboard') {
                 btn.addEventListener('click', async () => {
                     if (!confirm('Remove this node?')) return;
                     await fetch(API_URL, { method: 'POST', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-                        body: JSON.stringify({ action: 'node-delete', id: btn.dataset.id }) });
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ _csrf: CSRF, action: 'node-delete', id: btn.dataset.id }) });
                     loadNodes();
                 });
             });
@@ -2009,8 +2009,8 @@ if (CURRENT_PAGE === 'dashboard') {
         };
         if (!payload.label || !payload.host) { showToast('Label and host are required.', 'error', 3000); return; }
         const r = await fetch(API_URL, { method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
-            body: JSON.stringify(payload) });
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ _csrf: CSRF, ...payload }) });
         const j = await r.json();
         if (j.ok || j.success) {
             document.getElementById('addNodeModal')?.classList.remove('open');
@@ -2503,13 +2503,15 @@ if (document.getElementById('diagRefreshBtn')) {
   }
 
   async function loadDbTestResults() {
+    const el     = document.getElementById('dbTestResults');
+    const countEl = document.getElementById('testResultsCount');
+    if (!el) return;
     try {
       const resp = await fetch(API_URL + '?action=test-results', { credentials: 'same-origin' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const j = await resp.json();
+      if (!j.ok) throw new Error(j.error || 'API error');
       const rows = j?.data ?? [];
-      const el = document.getElementById('dbTestResults');
-      const countEl = document.getElementById('testResultsCount');
-      if (!el) return;
       if (countEl) countEl.textContent = (rows.length + 2) + ' results';
 
       if (!rows.length) { el.innerHTML = ''; return; }
@@ -2533,7 +2535,7 @@ if (document.getElementById('diagRefreshBtn')) {
           </div>
         </div>`;
       }).join('');
-    } catch {}
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
   function escHtml(s) {
@@ -2611,15 +2613,16 @@ if (document.getElementById('diagRefreshBtn')) {
 
   // ── Iran compatibility score ──────────────────────────────────────────
   async function loadIranScore() {
+    const el_checks = document.getElementById('iranScoreChecks');
     try {
       const r = await fetch(API_URL + '?action=iran-score', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
-      if (!j.ok) return;
+      if (!j.ok) throw new Error(j.error || 'API error');
       const d = j.data;
       const el_num   = document.getElementById('iranScoreNum');
       const el_grade = document.getElementById('iranScoreGrade');
       const el_at    = document.getElementById('iranScoreAt');
-      const el_checks= document.getElementById('iranScoreChecks');
       if (!el_num) return;
 
       const color = d.score >= 90 ? 'var(--ok)' : d.score >= 70 ? 'var(--warn)' : 'var(--danger)';
@@ -2629,28 +2632,29 @@ if (document.getElementById('diagRefreshBtn')) {
       el_grade.style.color = color;
       el_at.textContent    = 'Checked ' + d.checked_at;
 
-      el_checks.innerHTML = (d.checks || []).map(c => `
+      if (el_checks) el_checks.innerHTML = (d.checks || []).map(c => `
         <div class="cfg-row">
           <span class="cfg-key">${escHtml(c.label)}</span>
           <code class="cfg-val ${c.ok ? 'ok' : 'danger'}">${c.ok ? '✓' : '✗'} ${escHtml(c.detail)}</code>
         </div>`).join('');
-    } catch {}
+    } catch(e) { if (el_checks) el_checks.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
   // ── Active sessions ────────────────────────────────────────────────────
   async function loadActiveSessions() {
+    const elAt = document.getElementById('activeSessionsAt');
     try {
       const r = await fetch(API_URL + '?action=active-sessions', { credentials: 'same-origin' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const j = await r.json();
-      if (!j.ok) return;
+      if (!j.ok) throw new Error(j.error || 'API error');
       const d = j.data;
       const elIPs = document.getElementById('activeIPs');
       const elEv  = document.getElementById('recentEvents');
-      const elAt  = document.getElementById('activeSessionsAt');
       if (elIPs) elIPs.textContent = d.active_ips;
       if (elEv)  elEv.textContent  = d.recent_events;
       if (elAt)  elAt.textContent  = 'Updated ' + d.checked_at;
-    } catch {}
+    } catch(e) { if (elAt) elAt.textContent = 'Error: ' + e.message; }
   }
 
   // ── Profile success rates ──────────────────────────────────────────────
