@@ -185,9 +185,58 @@ function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
   };
 }
 
+function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
+  const host = creds?.address ?? `${server.id}.setalink.net`;
+  return {
+    tag:      'proxy',
+    protocol: 'vless',
+    settings: {
+      vnext: [{
+        address: host,
+        port:    creds?.port ?? 443,
+        users:   [{ id: creds?.uuid ?? PLACEHOLDER_UUID, encryption: 'none' }],
+      }],
+    },
+    streamSettings: {
+      network:       'xhttp',
+      security:      'tls',
+      xhttpSettings: { path: '/', mode: 'auto' },
+      tlsSettings:   { serverName: host, allowInsecure: false },
+    },
+  };
+}
+
+function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
+  const host = creds?.address ?? `${server.id}.setalink.net`;
+  return {
+    tag:      'proxy',
+    protocol: 'vless',
+    settings: {
+      vnext: [{
+        address: host,
+        port:    creds?.port ?? 443,
+        users:   [{ id: creds?.uuid ?? PLACEHOLDER_UUID, encryption: 'none' }],
+      }],
+    },
+    streamSettings: {
+      network:             'httpupgrade',
+      security:            'tls',
+      httpupgradeSettings: { path: '/', host },
+      tlsSettings:         { serverName: host, allowInsecure: false },
+    },
+  };
+}
+
 function buildProxyOutbound(server: VpnServer, protocol: string, creds?: ServerCredentials): XrayOutbound {
   if (protocol.includes('Reality') || server.protocol === 'Reality') {
     return buildVlessRealityOutbound(server, creds);
+  }
+  // Check XHTTP/HTTPUpgrade before WebSocket — all contain 'HTTP'
+  if (protocol.includes('XHTTP') || protocol.includes('xhttp')) {
+    return buildVlessXhttpOutbound(server, creds);
+  }
+  if (protocol.includes('HTTPUpgrade') || protocol.includes('httpupgrade')) {
+    return buildVlessHttpUpgradeOutbound(server, creds);
   }
   if (protocol.includes('WebSocket') || server.protocol === 'WebSocket') {
     return buildVlessWsOutbound(server, creds);

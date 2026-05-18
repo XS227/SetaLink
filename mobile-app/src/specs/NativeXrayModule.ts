@@ -44,6 +44,9 @@ export interface Spec extends TurboModule {
   /** Returns the last error message from the VPN service, or null if none. */
   getLastError(): Promise<string | null>;
 
+  /** Returns true if the last tunnel validation included a successful HTTP/HTTPS probe (not just TCP). */
+  getLastProbeResult(): Promise<boolean>;
+
   /** Returns ordered step log from the most recent tunnel setup attempt. */
   getConnectionLog(): Promise<string[]>;
 

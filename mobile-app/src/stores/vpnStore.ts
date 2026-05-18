@@ -183,6 +183,17 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const { selectedServer, selectedProtocol } = get();
       if (!selectedServer) return null;
 
+      // If Auto Mode found a validated winning config for this server, use it directly.
+      // This lets runAutoConnect pre-select the best profile without a second probe cycle.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAIStore } = require('./aiStore');
+        const winner = useAIStore.getState().autoConnect.winningConfig;
+        if (winner?.serverId === selectedServer.id && winner.configJson) {
+          return winner.configJson;
+        }
+      } catch {}
+
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { useServerStore } = require('./serverStore') as typeof import('./serverStore');
       const creds = useServerStore.getState().getImportedCreds(selectedServer.id);

@@ -14,6 +14,7 @@ abstract class NativeXrayModuleSpec(context: ReactApplicationContext) :
     abstract fun getStats(promise: Promise)
     abstract fun validateConfig(config: String, promise: Promise)
     abstract fun getLastError(promise: Promise)
+    abstract fun getLastProbeResult(promise: Promise)
     abstract fun getConnectionLog(promise: Promise)
     abstract fun getXrayLog(promise: Promise)
     abstract fun getTun2socksLog(promise: Promise)

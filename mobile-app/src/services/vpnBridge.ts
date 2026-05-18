@@ -72,8 +72,10 @@ class MockAdapter implements VpnAdapter {
 // ── Native adapter (wraps XrayModule TurboModule) ────────────────────────────
 
 // Last connect log — readable by vpnStore without creating a circular import
-let _lastConnectLog: string[] = [];
-export function getLastConnectLog(): string[] { return _lastConnectLog; }
+let _lastConnectLog:   string[]  = [];
+let _lastConnectProbeOk: boolean = false;
+export function getLastConnectLog():    string[]  { return _lastConnectLog; }
+export function getLastConnectProbeOk(): boolean  { return _lastConnectProbeOk; }
 
 class NativeAdapter implements VpnAdapter {
   private module: any;
@@ -154,7 +156,9 @@ class NativeAdapter implements VpnAdapter {
     // SOCKS5 probe before broadcasting CONNECTED.  No JS-side IP-change check needed
     // — our app UID is excluded from the VPN, so fetchPublicIp() always returns the
     // real device IP regardless of VPN state, making pre/post comparison meaningless.
-    log.push('✓ Native SOCKS5 validation passed — tunnel active');
+    // Read probe result before merging logs — probeOk=true means HTTP/HTTPS data confirmed.
+    _lastConnectProbeOk = (await this.module.getLastProbeResult?.().catch(() => false) as boolean | null) ?? false;
+    log.push(`✓ Native validation passed — tunnel active (probeOk=${_lastConnectProbeOk})`);
 
     // Merge native step log with JS log
     try {

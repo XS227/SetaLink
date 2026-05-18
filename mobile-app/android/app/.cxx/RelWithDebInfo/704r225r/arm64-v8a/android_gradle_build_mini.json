@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "/var/www/setalink/mobile-app/android/app/src/main/cpp/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/home/ubuntu/android-sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/var/www/setalink/mobile-app/android/app/.cxx/RelWithDebInfo/704r225r/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/home/ubuntu/android-sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/var/www/setalink/mobile-app/android/app/.cxx/RelWithDebInfo/704r225r/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "setalink_vpn::@6890427a1f51a3e7e1df": {
+      "artifactName": "setalink_vpn",
+      "abi": "arm64-v8a",
+      "output": "/var/www/setalink/mobile-app/android/app/build/intermediates/cxx/RelWithDebInfo/704r225r/obj/arm64-v8a/libsetalink_vpn.so",
+      "runtimeFiles": []
+    }
+  }
+}

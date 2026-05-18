@@ -1,0 +1,1 @@
+/var/www/setalink/mobile-app/android/app/src/main/cpp/CMakeLists.txt
