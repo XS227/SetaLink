@@ -90,12 +90,15 @@ async function refreshDashboard() {
 
 document.getElementById('refreshBtn')?.addEventListener('click', refreshDashboard);
 
-// ─── Sidebar (mobile) ────────────────────────────────────────────────────────
+// ─── Sidebar (mobile + desktop collapse) ─────────────────────────────────────
 
-const sidebar  = document.getElementById('sidebar');
-const overlay  = document.getElementById('overlay');
-const menuBtn  = document.getElementById('menuBtn');
+const sidebar      = document.getElementById('sidebar');
+const mainWrap     = document.getElementById('mainWrap');
+const overlay      = document.getElementById('overlay');
+const menuBtn      = document.getElementById('menuBtn');
 const sidebarClose = document.getElementById('sidebarClose');
+const collapseBtn  = document.getElementById('sidebarCollapseBtn');
+const collapseIcon = document.getElementById('collapseIcon');
 
 function openSidebar() {
     sidebar.classList.add('open');
@@ -108,6 +111,26 @@ function closeSidebar() {
 menuBtn?.addEventListener('click', openSidebar);
 sidebarClose?.addEventListener('click', closeSidebar);
 overlay?.addEventListener('click', closeSidebar);
+
+// Desktop collapse / expand — persisted in localStorage
+(function initCollapse() {
+    if (localStorage.getItem('sl_sidebar_collapsed') === '1') {
+        sidebar?.classList.add('collapsed');
+        mainWrap?.classList.add('sidebar-collapsed');
+        if (collapseIcon) collapseIcon.innerHTML = '<polyline points="9 18 15 12 9 6"/>';
+    }
+})();
+
+collapseBtn?.addEventListener('click', () => {
+    const nowCollapsed = sidebar.classList.toggle('collapsed');
+    mainWrap?.classList.toggle('sidebar-collapsed', nowCollapsed);
+    localStorage.setItem('sl_sidebar_collapsed', nowCollapsed ? '1' : '0');
+    if (collapseIcon) {
+        collapseIcon.innerHTML = nowCollapsed
+            ? '<polyline points="9 18 15 12 9 6"/>'   // chevron-right: expand
+            : '<polyline points="15 18 9 12 15 6"/>'; // chevron-left: collapse
+    }
+});
 
 // ─── Search & filter ─────────────────────────────────────────────────────────
 

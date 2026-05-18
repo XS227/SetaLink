@@ -111,7 +111,7 @@ $I = [
     'pause'     => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
 ];
 
-$LOGO_ICON = '<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2L25 7.5v8.5c0 5.5-4.5 9.5-11 11.5C7.5 25.5 3 21.5 3 16V7.5L14 2z" fill="rgba(88,166,255,0.12)" stroke="#58a6ff" stroke-width="1.5"/><path d="M10 11.5c0-1.5 1.5-2.5 4-2.5s4 1 4 2.5-1.5 2.5-4 2.5-4 1-4 2.5 1.5 2.5 4 2.5 4-1 4-2.5" stroke="#58a6ff" stroke-width="2" stroke-linecap="round"/></svg>';
+$LOGO_ICON = '<img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="28" height="28" alt="SetaLink" style="display:block;border-radius:6px">';
 
 // -------------------------------------------------------------------------
 // Fetch data (status always needed for sidebar)
@@ -155,6 +155,7 @@ $page_titles = [
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>SetaLink Admin — <?= h($page_title) ?></title>
+  <link rel="icon" type="image/png" href="/assets/logo/shirokhorshid/favicon.ico">
   <link rel="stylesheet" href="style.css">
   <style>
     /* ── Additional styles for new pages ─────────────────────────────── */
@@ -2463,7 +2464,7 @@ if (document.getElementById('diagRefreshBtn')) {
     try {
       const resp = await fetch(API_URL + '?action=connection-analytics', { credentials: 'same-origin' });
       const j = await resp.json();
-      if (!j.ok) return;
+      if (!j.ok) { if (el) el.textContent = 'Error: ' + (j.error || 'failed'); return; }
       const d = j.data;
 
       document.getElementById('statUserConns').textContent  = d.user_connections ?? '—';
@@ -2659,7 +2660,8 @@ if (document.getElementById('diagRefreshBtn')) {
     try {
       const r = await fetch(API_URL + '?action=profile-stats', { credentials: 'same-origin' });
       const j = await r.json();
-      if (!j.ok || !j.data.length) {
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      if (!j.data.length) {
         el.innerHTML = '<div class="diag-loading">No profile data recorded yet. Use the Record Test button to add results.</div>';
         return;
       }
@@ -2674,7 +2676,7 @@ if (document.getElementById('diagRefreshBtn')) {
             <div style="font-size:.65rem;color:var(--muted);margin-top:.2rem">${p.success} success / ${p.fail} fail (${p.total} total)</div>
           </div>`;
         }).join('') + `</div>`;
-    } catch {}
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error loading profiles.</div>`; }
   }
 
   // ── No-internet analysis ──────────────────────────────────────────────────
@@ -2684,7 +2686,8 @@ if (document.getElementById('diagRefreshBtn')) {
     try {
       const r = await fetch(API_URL + '?action=no-internet-analysis', { credentials: 'same-origin' });
       const j = await r.json();
-      if (!j.ok || !j.data.length) {
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      if (!j.data.length) {
         el.innerHTML = '<div class="diag-loading">No no-internet events recorded yet. This is good!</div>';
         return;
       }
@@ -2810,7 +2813,7 @@ if (document.getElementById('diagRefreshBtn')) {
     try {
       const r = await fetch(API_URL + '?action=get-remote-config', { credentials: 'same-origin' });
       const j = await r.json();
-      if (!j.ok) return;
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">API error: ${escHtml(j.error||'unknown')}</div>`; return; }
       const d = j.data;
       el.innerHTML = `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
         Version ${d.version} — Updated: ${d.updated_at || 'never'} — Bootstrap: ${d.bootstrap_set ? '<span style="color:var(--ok)">SET</span>' : '<span style="color:var(--danger)">NOT SET</span>'}
@@ -2837,9 +2840,8 @@ if (document.getElementById('diagRefreshBtn')) {
     if (status) status.textContent = '';
 
     try {
-      const csrf = document.cookie.split(';').find(c => c.trim().startsWith('_csrf='))?.split('=')[1] ?? '';
       const payload = {
-        _csrf:             decodeURIComponent(csrf),
+        _csrf:             CSRF,
         action:            'save-remote-config',
         rc_sni_priorities: parseList(document.getElementById('rcSniPriorities')?.value || ''),
         rc_iran_sni_order: parseList(document.getElementById('rcIranSniOrder')?.value || ''),

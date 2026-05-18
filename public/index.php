@@ -12,6 +12,7 @@ header('X-Content-Type-Options: nosniff');
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Vazirmatn:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/x-icon" href="/assets/logo/shirokhorshid/favicon.ico">
   <link rel="stylesheet" href="/css/main.css">
   <style>
     /* ── App announcement section ── */
@@ -63,12 +64,7 @@ header('X-Content-Type-Options: nosniff');
 <!-- ── NAVIGATION ── -->
 <nav class="nav">
   <div class="nav-logo">
-    <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect width="28" height="28" rx="7" fill="#00e87a" opacity=".15"/>
-      <path d="M14 5C9.03 5 5 9.03 5 14s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9z" stroke="#00e87a" stroke-width="1.6" fill="none"/>
-      <path d="M10 14c0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4-4-1.79-4-4z" fill="#00e87a"/>
-      <path d="M14 5v4M14 19v4M5 14h4M19 14h4" stroke="#00e87a" stroke-width="1.4" stroke-linecap="round"/>
-    </svg>
+    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="28" height="28" alt="SetaLink" style="border-radius:6px;display:block">
     Seta<span class="dot">Link</span>
   </div>
   <div class="nav-actions">

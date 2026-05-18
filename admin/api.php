@@ -410,6 +410,26 @@ if ($method === 'POST') {
         }
         // Auto-stamp updated_at
         $st_rc->execute(['rc_updated_at', date('Y-m-d H:i:s')]);
+
+        // Assemble + write the composite key that the public mobile API reads
+        $all = $db_rc->query("SELECT key,value FROM settings")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $da  = function(string $k, array $def) use ($all): array {
+            if (!isset($all[$k])) return $def;
+            $v = json_decode($all[$k], true);
+            return is_array($v) ? $v : $def;
+        };
+        $composite = [
+            'version'        => (int)($all['rc_version'] ?? 1),
+            'sni_priorities' => $da('rc_sni_priorities', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
+            'kill_switches'  => $da('rc_kill_switches',  []),
+            'protocol_order' => $da('rc_protocol_order', ['Reality','XHTTP','WebSocket']),
+            'emergency_sni'  => (string)($all['rc_emergency_sni'] ?? 'www.microsoft.com'),
+            'iran_sni_order' => $da('rc_iran_sni_order', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
+            'ttl'            => (int)($all['rc_ttl'] ?? 3600),
+            'updated_at'     => date('Y-m-d H:i:s'),
+        ];
+        $st_rc->execute(['remote_config', json_encode($composite)]);
+
         api_ok(['saved' => $saved]);
     }
 
