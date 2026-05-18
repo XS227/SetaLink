@@ -125,6 +125,8 @@ function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials)
         serverName:  sni,
         publicKey:   creds?.publicKey ?? PLACEHOLDER_PUBLIC_KEY,
         shortId:     creds?.shortId   ?? PLACEHOLDER_SHORT_ID,
+        // spiderX is required by many Reality server configs; empty string is the safe default.
+        spiderX:     '',
       },
     },
   };
@@ -196,12 +198,13 @@ export function buildXrayConfig(
   server:    VpnServer,
   protocol:  string,
   dnsMode:   string = 'Cloudflare (DoH)',
-  debugMode: boolean = false,
+  debugMode: boolean = true,
   creds?:    ServerCredentials,
 ): XrayConfig {
   const dns = DNS_PROFILES[dnsMode] ?? DNS_PROFILES['Cloudflare (DoH)']!;
 
   return {
+    // Always debug so Reality handshake errors appear in xray.log for diagnostics.
     log: { loglevel: debugMode ? 'debug' : 'info' },
 
     dns,
@@ -240,7 +243,7 @@ export function buildXrayConfigJson(
   dnsMode:  string,
   creds?:   ServerCredentials,
 ): string {
-  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, false, creds));
+  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, true, creds));
 }
 
 /**
