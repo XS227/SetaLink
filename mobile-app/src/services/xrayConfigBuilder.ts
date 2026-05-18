@@ -31,6 +31,7 @@ interface XrayInbound {
   listen:   string;
   protocol: string;
   settings: Record<string, unknown>;
+  sniffing?: { enabled: boolean; destOverride: string[] };
 }
 
 interface XrayOutbound {
@@ -46,6 +47,7 @@ interface XrayRouting {
     type:         string;
     ip?:          string[];
     domain?:      string[];
+    port?:        string;
     outboundTag:  string;
   }>;
 }
@@ -96,9 +98,11 @@ export function validateCreds(creds: ServerCredentials): CredValidation {
 }
 
 function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
-  // Use || so empty-string values fall back to the placeholder/default.
-  // flow must be omitted (not set to '') when the server doesn't use XTLS Vision.
-  const flow        = creds?.flow        || 'xtls-rprx-vision';
+  // Use ?? for flow: preserve empty string from the imported VLESS URI.
+  // Empty string → omit flow key entirely (server doesn't use XTLS Vision).
+  // Forcing 'xtls-rprx-vision' on a non-Vision server injects Vision bytes the
+  // server doesn't expect, silently breaking all traffic even when CONNECTED.
+  const flow        = creds?.flow        ?? '';
   const fingerprint = creds?.fingerprint || 'chrome';
   const sni         = creds?.sni         || PLACEHOLDER_SNI;
 
@@ -216,21 +220,35 @@ export function buildXrayConfig(
         listen:   '127.0.0.1',
         protocol: 'socks',
         settings: { auth: 'noauth', udp: true },
+        // Sniffing extracts the destination domain from TLS SNI / HTTP Host so
+        // routing rules can match by domain name even when tun2socks sends raw IPs.
+        sniffing: { enabled: true, destOverride: ['http', 'tls'] },
       },
     ],
 
     outbounds: [
       buildProxyOutbound(server, protocol, creds),
       { tag: 'direct', protocol: 'freedom', settings: {} },
+      // dns-out: Xray's internal DNS resolver handles port-53 traffic directly,
+      // avoiding the UDP ASSOCIATE path in SOCKS5 which is fragile on some devices.
+      { tag: 'dns-out', protocol: 'dns', settings: {} },
     ],
 
     routing: {
       domainStrategy: 'IPIfNonMatch',
       rules: [
+        // Private IPs always go direct (LAN, local DNS servers stay off-tunnel).
         {
           type: 'field',
           ip:   ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
           outboundTag: 'direct',
+        },
+        // All other port-53 traffic goes to Xray's internal DNS resolver so
+        // DNS queries are resolved reliably through the VPN without UDP ASSOCIATE.
+        {
+          type: 'field',
+          port: '53',
+          outboundTag: 'dns-out',
         },
       ],
     },
@@ -270,19 +288,24 @@ export function buildEmergencyXrayConfigJson(
         listen:   '127.0.0.1',
         protocol: 'socks',
         settings: { auth: 'noauth', udp: true },
+        sniffing: { enabled: true, destOverride: ['http', 'tls'] },
       },
     ],
 
     outbounds: [
       buildProxyOutbound(server, protocol, creds),
       { tag: 'direct', protocol: 'freedom', settings: {} },
+      { tag: 'dns-out', protocol: 'dns', settings: {} },
     ],
 
     // No private-IP bypass rules — all traffic proxied through VPN server.
     // This removes one possible failure mode where local routing rules block traffic.
+    // DNS routing is kept: UDP ASSOCIATE is unreliable; internal resolver is safer.
     routing: {
       domainStrategy: 'IPIfNonMatch',
-      rules: [],
+      rules: [
+        { type: 'field', port: '53', outboundTag: 'dns-out' },
+      ],
     },
   };
 
