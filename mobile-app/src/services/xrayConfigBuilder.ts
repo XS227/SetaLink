@@ -137,14 +137,17 @@ function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials)
 }
 
 function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
-  const host = creds?.address ?? `${server.id}.setalink.net`;
+  // WebSocket goes through the nginx edge proxy, not directly to the Reality port.
+  const edgeHost = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
+  const edgePort = creds?.edgePort ?? 443;
+  const wsPath   = creds?.wsPath   ?? '/ws';
   return {
     tag:      'proxy',
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: host,
-        port:    creds?.port ?? 443,
+        address: edgeHost,
+        port:    edgePort,
         users: [{
           id:         creds?.uuid ?? PLACEHOLDER_UUID,
           encryption: 'none',
@@ -154,8 +157,8 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
     streamSettings: {
       network:     'ws',
       security:    'tls',
-      wsSettings:  { path: '/vpn' },
-      tlsSettings: { serverName: host, allowInsecure: false },
+      wsSettings:  { path: wsPath },
+      tlsSettings: { serverName: edgeHost, allowInsecure: false },
     },
   };
 }
@@ -186,43 +189,47 @@ function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
 }
 
 function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
-  const host = creds?.address ?? `${server.id}.setalink.net`;
+  const edgeHost  = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
+  const edgePort  = creds?.edgePort  ?? 443;
+  const xhttpPath = creds?.xhttpPath ?? '/xhttp';
   return {
     tag:      'proxy',
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: host,
-        port:    creds?.port ?? 443,
+        address: edgeHost,
+        port:    edgePort,
         users:   [{ id: creds?.uuid ?? PLACEHOLDER_UUID, encryption: 'none' }],
       }],
     },
     streamSettings: {
       network:       'xhttp',
       security:      'tls',
-      xhttpSettings: { path: '/', mode: 'auto' },
-      tlsSettings:   { serverName: host, allowInsecure: false },
+      xhttpSettings: { path: xhttpPath, mode: 'auto' },
+      tlsSettings:   { serverName: edgeHost, allowInsecure: false },
     },
   };
 }
 
 function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
-  const host = creds?.address ?? `${server.id}.setalink.net`;
+  const edgeHost   = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
+  const edgePort   = creds?.edgePort   ?? 443;
+  const httpupPath = creds?.httpupPath ?? '/httpup';
   return {
     tag:      'proxy',
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: host,
-        port:    creds?.port ?? 443,
+        address: edgeHost,
+        port:    edgePort,
         users:   [{ id: creds?.uuid ?? PLACEHOLDER_UUID, encryption: 'none' }],
       }],
     },
     streamSettings: {
       network:             'httpupgrade',
       security:            'tls',
-      httpupgradeSettings: { path: '/', host },
-      tlsSettings:         { serverName: host, allowInsecure: false },
+      httpupgradeSettings: { path: httpupPath, host: edgeHost },
+      tlsSettings:         { serverName: edgeHost, allowInsecure: false },
     },
   };
 }

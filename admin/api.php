@@ -161,6 +161,12 @@ function fetch_bootstrap_server(PDO $db): ?array {
         'sni'         => $r['bootstrap_sni'] ?? 'www.microsoft.com',
         'flow'        => $r['bootstrap_flow'] ?? 'xtls-rprx-vision',
         'fingerprint' => $r['bootstrap_fp'] ?? 'chrome',
+        // Edge transport — nginx proxy for WebSocket/XHTTP/HTTPUpgrade.
+        'edgeAddress' => $r['bootstrap_edge_address'] ?? 'edge.setalink.no',
+        'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
+        'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
+        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
+        'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
     ];
 }
 
