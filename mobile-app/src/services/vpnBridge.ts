@@ -110,9 +110,12 @@ class NativeAdapter implements VpnAdapter {
     }
     log.push('VPN service started — waiting for tunnel...');
 
-    // Poll until VpnService broadcasts CONNECTED (max 30 s)
+    // Poll until VpnService broadcasts CONNECTED (max 75 s).
+    // Deep validation can take ~60 s in the worst case (several probe targets timing
+    // out before a successful HTTPS probe). 30 s was too short and caused Server B's
+    // "VPN tunnel did not start" error before the native side finished validating.
     let connected = false;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 150; i++) {
       await sleep(500);
       if (await this.module.isRunning()) { connected = true; break; }
       // Fail fast: if service already broadcast an error, stop waiting

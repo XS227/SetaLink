@@ -332,14 +332,11 @@ class XrayVpnService : VpnService() {
 
         // Step B: HTTP GET via SOCKS5.
         // NOTE: With xtls-rprx-vision, the VPN server may reject non-TLS inner traffic.
-        // Plain HTTP probes can return 0 bytes even when the tunnel is healthy for HTTPS.
-        // We try several targets but treat HTTP failure as a soft warning, not a hard error.
+        // We use 2 targets and a short timeout to keep total probe time low.
         data class ProbeTarget(val host: String, val port: Int, val isDomain: Boolean)
         val httpTargets = listOf(
-            ProbeTarget("1.1.1.1",                  80, false),
-            ProbeTarget("neverssl.com",              80, true),
-            ProbeTarget("detectportal.firefox.com",  80, true),
-            ProbeTarget("httpforever.com",           80, true),
+            ProbeTarget("1.1.1.1",     80, false),
+            ProbeTarget("neverssl.com", 80, true),
         )
 
         var httpOk      = false
@@ -362,7 +359,7 @@ class XrayVpnService : VpnService() {
         var httpsHost   = ""
 
         if (!httpOk) {
-            for (host in listOf("clients3.google.com", "www.cloudflare.com")) {
+            for (host in listOf("clients3.google.com", "www.cloudflare.com", "www.apple.com")) {
                 appendLog("[VALIDATION-C] HTTPS probe -> $host:443 via SOCKS5+TLS")
                 val (ok, bytes, snippet) = runHttpsProbe(host)
                 appendLog("[VALIDATION-C] $host -> ok=$ok bytes=$bytes snippet=$snippet")
@@ -389,20 +386,24 @@ class XrayVpnService : VpnService() {
                 "HTTP probe was inconclusive (expected for Vision-only servers).")
         }
 
-        // Only TCP connect succeeded. Dump Xray log and let tunnel stay up so real apps
-        // (Chrome, Telegram — which use HTTPS/TLS) can be tested directly.
-        // Killing the tunnel here would prevent verifying whether Vision works for TLS traffic.
+        // TCP connect succeeded but all HTTP and HTTPS probes failed.
+        // This means Xray accepts SOCKS5 connections but cannot forward traffic through
+        // the VPN server. Common causes: wrong flow (Vision mismatch), wrong publicKey,
+        // wrong shortId, wrong SNI, or the server is down.
+        // We do NOT leave the tunnel "up" here — CONNECTED without working traffic only
+        // confuses the user. Return failure so the error message guides them to check creds.
         val xrayTail = readLogTail(80)
-        appendLog("[VALIDATION] HTTP+HTTPS probes inconclusive. Full Xray log:\n$xrayTail")
-        broadcastStep("probe_warn", true,
-            "HTTP/HTTPS probes inconclusive (last result: $httpSnippet). " +
-            "With xtls-rprx-vision, plain HTTP is expected to fail on some servers. " +
-            "Tunnel is UP — test with Chrome/Telegram/Instagram (all use TLS). " +
-            "Check xray.log for Reality handshake details.")
+        appendLog("[VALIDATION] FAILED — TCP OK but HTTP+HTTPS probes both failed. Full Xray log:\n$xrayTail")
+        broadcastStep("probe_fail", false,
+            "TCP connect OK but HTTP+HTTPS probes failed (last: $httpSnippet). " +
+            "Traffic is not flowing through the VPN server. " +
+            "Check: flow param (Vision mismatch), publicKey, shortId, SNI. " +
+            "See xray.log for Reality handshake errors.")
 
-        return ValidationResult(true,
-            "SOCKS5 TCP OK. HTTP/HTTPS probes inconclusive ($httpSnippet). " +
-            "Tunnel active — verify with real HTTPS apps. See xray.log for Reality details.")
+        return ValidationResult(false,
+            "TCP OK but HTTP+HTTPS probes failed — traffic not flowing through VPN server. " +
+            "Last probe result: $httpSnippet. " +
+            "Verify Reality credentials: flow (leave empty if server has no flow), publicKey, shortId, SNI.")
     }
 
     // Returns (ok, bytesRead, snippet) — plain HTTP/1.0 GET over SOCKS5
@@ -413,11 +414,11 @@ class XrayVpnService : VpnService() {
             withContext(Dispatchers.IO) {
                 val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
                 Socket(proxy).use { sock ->
-                    sock.soTimeout = 10_000
+                    sock.soTimeout = 6_000
                     if (isDomain) {
-                        sock.connect(InetSocketAddress.createUnresolved(host, port), 10_000)
+                        sock.connect(InetSocketAddress.createUnresolved(host, port), 6_000)
                     } else {
-                        sock.connect(InetSocketAddress(host, port), 10_000)
+                        sock.connect(InetSocketAddress(host, port), 6_000)
                     }
                     val req = "GET / HTTP/1.0\r\nHost: $host\r\nUser-Agent: SetaLink/1.0\r\nConnection: close\r\n\r\n"
                     sock.getOutputStream().apply { write(req.toByteArray()); flush() }
@@ -445,11 +446,11 @@ class XrayVpnService : VpnService() {
                 val proxy   = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
                 val rawSock = Socket(proxy)
                 try {
-                    rawSock.soTimeout = 12_000
-                    rawSock.connect(InetSocketAddress.createUnresolved(host, 443), 12_000)
+                    rawSock.soTimeout = 8_000
+                    rawSock.connect(InetSocketAddress.createUnresolved(host, 443), 8_000)
                     val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
                     val sslSock   = sslFactory.createSocket(rawSock, host, 443, true) as SSLSocket
-                    sslSock.soTimeout = 12_000
+                    sslSock.soTimeout = 8_000
                     try {
                         sslSock.startHandshake()
                         val req = "GET / HTTP/1.1\r\nHost: $host\r\nUser-Agent: SetaLink/1.0\r\nConnection: close\r\n\r\n"
@@ -588,11 +589,20 @@ class XrayVpnService : VpnService() {
                 exitCode == null -> TestResult(false, "(timed out)", "Config test timed out")
                 exitCode == 0    -> TestResult(true, output, "")
                 else             -> {
-                    val firstErr = output.lines()
-                        .firstOrNull { it.contains("error", ignoreCase = true) && it.isNotBlank() }
-                        ?: output.lines().firstOrNull { it.isNotBlank() }
-                        ?: "Config invalid (exit=$exitCode)"
-                    TestResult(false, output, firstErr.take(200))
+                    // "Job was cancelled" is Xray's generic context-cancellation output —
+                    // it masks the real error. Collect all diagnostic lines:
+                    // 1. Lines containing error/fail/invalid/cancel keywords
+                    // 2. Last 8 non-blank lines (where Xray prints the root cause)
+                    val keywords = setOf("error", "fail", "invalid", "cancel", "reject", "panic")
+                    val errorLines = output.lines().filter { line ->
+                        val l = line.lowercase()
+                        line.isNotBlank() && keywords.any { l.contains(it) }
+                    }
+                    val tailLines = output.lines().filter { it.isNotBlank() }.takeLast(8)
+                    val combined  = (errorLines + tailLines).distinct()
+                    val summary   = combined.joinToString(" | ").take(400)
+                        .ifEmpty { "Config invalid (exit=$exitCode)" }
+                    TestResult(false, output, summary)
                 }
             }
         } catch (e: Exception) {
