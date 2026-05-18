@@ -6,381 +6,388 @@ header('X-Content-Type-Options: nosniff');
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SetaLink · Help & FAQ</title>
-  <meta name="description" content="SetaLink FAQ and help guide. How to get the app, which protocol to use, troubleshooting, privacy policy and more.">
+  <title>SetaLink · FAQ &amp; Help</title>
+  <meta name="description" content="SetaLink FAQ — How the invite system works, protocols, privacy, remote config, Iran vs Turkey routing, and the full roadmap.">
   <meta name="robots" content="noindex,nofollow">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Vazirmatn:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" type="image/x-icon" href="/assets/logo/shirokhorshid/favicon.ico">
   <link rel="stylesheet" href="/css/main.css">
-  <style>
-    .page-header{padding:80px 0 48px;text-align:center}
-    .page-header .eyebrow{font-size:.75rem;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);margin-bottom:16px}
-    .page-header h1{font-size:2.5rem;font-weight:800;line-height:1.15;margin-bottom:16px}
-    .page-header p{color:var(--text2);font-size:1rem;max-width:520px;margin:0 auto;line-height:1.7}
-
-    .faq-page{max-width:760px;margin:0 auto;padding:0 24px 80px}
-
-    .faq-category{margin-bottom:56px}
-    .faq-cat-title{font-size:1rem;font-weight:700;color:var(--accent);letter-spacing:.5px;text-transform:uppercase;margin-bottom:24px;padding-bottom:12px;border-bottom:1px solid var(--border)}
-
-    /* help card for troubleshooting steps */
-    .help-steps{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;margin-top:12px;display:none}
-    .faq-item.open .help-steps{display:block}
-    .help-step{display:flex;gap:14px;margin-bottom:16px}
-    .help-step:last-child{margin-bottom:0}
-    .help-step-num{width:26px;height:26px;border-radius:50%;background:rgba(0,232,122,.12);border:1px solid rgba(0,232,122,.3);color:var(--accent);font-size:.8rem;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}
-    .help-step-body h4{font-size:.9rem;font-weight:700;color:var(--text);margin-bottom:4px}
-    .help-step-body p{font-size:.85rem;color:var(--text2);line-height:1.6}
-
-    .contact-strip{background:linear-gradient(135deg,rgba(0,232,122,.06),rgba(51,153,255,.06));border:1px solid rgba(0,232,122,.2);border-radius:20px;padding:40px;text-align:center;margin-top:48px}
-    .contact-strip h2{font-size:1.5rem;font-weight:800;margin-bottom:12px}
-    .contact-strip p{color:var(--text2);margin-bottom:24px;font-size:.95rem}
-    .contact-strip .btn{display:inline-flex;align-items:center;gap:8px}
-  </style>
 </head>
 <body dir="ltr">
 
-<!-- ── NAV ── -->
+<!-- ════════════════════════════════════════════
+     NAVIGATION
+════════════════════════════════════════════ -->
 <nav class="nav">
-  <div class="nav-logo">
-    <a href="/" style="text-decoration:none;display:flex;align-items:center;gap:10px;color:inherit">
-      <svg viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="28" height="28" rx="7" fill="#00e87a" opacity=".15"/>
-        <path d="M14 5C9.03 5 5 9.03 5 14s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9z" stroke="#00e87a" stroke-width="1.6" fill="none"/>
-        <path d="M10 14c0-2.21 1.79-4 4-4s4 1.79 4 4-1.79 4-4 4-4-1.79-4-4z" fill="#00e87a"/>
-        <path d="M14 5v4M14 19v4M5 14h4M19 14h4" stroke="#00e87a" stroke-width="1.4" stroke-linecap="round"/>
-      </svg>
-      Seta<span class="dot">Link</span>
-    </a>
-  </div>
+  <a href="/" class="nav-logo" style="text-decoration:none">
+    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="30" height="30" alt="SetaLink">
+    <span>Seta<span class="brand-link">Link</span></span>
+  </a>
   <div class="nav-actions">
-    <button class="btn-lang" id="btn-lang" data-t="nav.lang">فارسی</button>
+    <!-- Lion & Sun Flag language toggle -->
+    <button class="btn-lang" id="btn-lang" aria-label="Toggle language">
+      <svg viewBox="0 0 30 20" width="30" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="30" height="6.67" fill="#239F23"/>
+        <rect y="6.67" width="30" height="6.67" fill="#F5F0E8"/>
+        <rect y="13.33" width="30" height="6.67" fill="#C8102E"/>
+        <line x1="15" y1="5.5"  x2="15" y2="3.5"  stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <line x1="15" y1="14.5" x2="15" y2="16.5" stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <line x1="9.5"  y1="10" x2="7.5"  y2="10" stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <line x1="20.5" y1="10" x2="22.5" y2="10" stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <line x1="11.2" y1="6.8"  x2="9.8"  y2="5.5"  stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <line x1="18.8" y1="6.8"  x2="20.2" y2="5.5"  stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <line x1="11.2" y1="13.2" x2="9.8"  y2="14.5" stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <line x1="18.8" y1="13.2" x2="20.2" y2="14.5" stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
+        <ellipse cx="15" cy="10.5" rx="3.2" ry="2.2" fill="#C9A42A" opacity=".92"/>
+        <circle cx="17.2" cy="8.8" r="1.9" fill="#C9A42A" opacity=".92"/>
+        <circle cx="15" cy="10.5" r="0" fill="none"/>
+        <circle cx="15" cy="10" r="1.3" fill="none" stroke="#C9A42A" stroke-width=".6" opacity=".7"/>
+      </svg>
+      <span class="btn-lang-text" data-t="nav.lang.label">فارسی</span>
+    </button>
+    <a href="/download/setalink-latest.apk" class="btn-nav-dl">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12z"/><rect x="2" y="13" width="12" height="1.5" rx=".75"/></svg>
+      <span data-t="nav.download">Download APK</span>
+    </a>
   </div>
 </nav>
 
-<!-- ── PAGE HEADER ── -->
+<!-- ════════════════════════════════════════════
+     PAGE HEADER
+════════════════════════════════════════════ -->
 <div class="page-header">
-  <div class="eyebrow" data-t="faq.eyebrow">Help & FAQ</div>
-  <h1 data-t="faq.h1">How can we help?</h1>
-  <p data-t="faq.h1sub">Everything you need to know about SetaLink — getting started, troubleshooting, privacy, and more.</p>
+  <div class="eyebrow" data-t="faq.eyebrow">FAQ &amp; HELP</div>
+  <h1 data-t="faq.h1">How does SetaLink work?</h1>
+  <p data-t="faq.h1sub">Everything about the invite system, protocols, privacy, and the technical details behind the app.</p>
 </div>
 
-<!-- ── FAQ CONTENT ── -->
-<div class="faq-page">
+<!-- ════════════════════════════════════════════
+     FAQ CONTENT
+════════════════════════════════════════════ -->
+<div class="faq-page-wrap">
 
-  <!-- Getting Started -->
+  <!-- ── Getting Started ── -->
   <div class="faq-category">
     <div class="faq-cat-title" data-t="faq.cat.start">Getting Started</div>
     <div class="faq-list">
 
+      <!-- Q1 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.start.q1">How do I get the SetaLink app?</span>
+          <span data-t="faq.q1">How does the invite/referral system work?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.start.a1">Download the APK directly from <a href="/download/setalink-latest.apk" style="color:var(--accent)">setalink.com/download</a> — no account needed to try. For iOS support (coming Q3 2026) or help setting up, message us on Telegram at <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" style="color:var(--accent)">@SetaLink3</a>.</p>
+          <p data-t="faq.a1">After installing SetaLink, open the app and navigate to the menu — you will find your unique referral code. Share this code with anyone. When a new user installs the app and enters your code during onboarding, both of you receive 512 MB of additional data. There is no limit to how many people you can invite. The more you share, the larger your combined data pool grows — and this also benefits the overall network by reducing per-user infrastructure cost.</p>
         </div>
       </div>
 
+      <!-- Q2 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.start.q2">What do I need to run the app?</span>
+          <span data-t="faq.q2">What is the emergency starter package?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.start.a2">Android 8.0 (API 26) or higher. The app requires VPN permission — which it will ask for on first connect. No root access needed. File size is around 40 MB.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-q">
-          <span data-t="faq.start.q3">How do I install an APK from Telegram?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-a">
-          <p data-t="faq.start.a3">1. Download the APK from our Telegram message. 2. Open your phone's Settings → Security → allow "Install unknown apps" for your file manager or browser. 3. Open the downloaded APK file and tap Install. 4. Open SetaLink, log in, and tap Connect.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-q">
-          <span data-t="faq.start.q4">Is it free?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-a">
-          <p data-t="faq.start.a4">Yes — a free tier with 10 GB/month is available. Premium plans ($3/month) offer unlimited data and more server locations. Contact us on Telegram to get started.</p>
+          <p data-t="faq.a2">Every new SetaLink installation automatically receives 1 GB of data — no account, no login, no credit card required. This is the emergency starter package. It is designed so that anyone who urgently needs internet access during censorship events can install the APK and connect immediately. The quota is tied to the device, not a user account. You can grow beyond 1 GB by inviting friends or contacting us on Telegram.</p>
         </div>
       </div>
 
     </div>
   </div>
 
-  <!-- Connection & Protocols -->
+  <!-- ── Connection & Protocols ── -->
   <div class="faq-category">
-    <div class="faq-cat-title" data-t="faq.cat.conn">Connection & Protocols</div>
+    <div class="faq-cat-title" data-t="faq.cat.conn">Connection &amp; Protocols</div>
     <div class="faq-list">
 
+      <!-- Q3 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.conn.q1">Which protocol should I use?</span>
+          <span data-t="faq.q3">Why does my connection sometimes fail even though it says "Connected"?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.conn.a1">The app selects the best protocol automatically using AI routing. If you prefer to choose manually: Reality is hardest to detect and block. XHTTP works well against DPI. HTTPUpgrade and WebSocket are reliable fallbacks. You can switch from the Servers screen.</p>
+          <p data-t="faq.a3">SetaLink enforces a strict validation policy: a TCP handshake alone is never accepted as a successful connection. After connecting, the app sends an actual HTTP or HTTPS request to a known endpoint and checks that real data is returned. This is a deliberate design choice — in heavily censored environments, it is common for a connection to succeed at the TCP level but fail at the application level, giving users a false sense of security. If the app rejects a connection, it automatically moves on to the next server profile. If all profiles fail, it reports a clear error rather than pretending you are online.</p>
         </div>
       </div>
 
+      <!-- Q4 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.conn.q2">What is VLESS + Reality?</span>
+          <span data-t="faq.q4">Is my traffic logged or monitored?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.conn.a2">VLESS is a modern, lightweight VPN protocol built on Xray-core. Reality is a transport layer that makes VPN traffic indistinguishable from normal HTTPS traffic by mimicking real websites like google.com or apple.com. Together they form the most DPI-resistant combination available.</p>
+          <p data-t="faq.a4">No. SetaLink does not store IP addresses, connection timestamps, session durations, traffic volumes, or browsing data. The VPN tunnel uses VLESS with the Reality transport layer — traffic is encrypted end-to-end using TLS 1.3 with perfect forward secrecy. Even if our servers were seized, there would be no connection logs to hand over. The only data associated with a device is its anonymous device ID and remaining quota. No Telegram username, no email, no personal identifier is required.</p>
         </div>
       </div>
 
+      <!-- Q5 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.conn.q3">The app says "Connected" but sites won't load</span>
+          <span data-t="faq.q5">Why does the app use multiple protocols (Reality, XHTTP, WebSocket)?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.conn.a3">Try these steps in order: 1. Go to Servers → tap a different server. 2. Change protocol — swipe a server card to see transport options. 3. Toggle airplane mode off/on to reset your network stack. 4. If still stuck, message us on Telegram with your protocol and ISP name.</p>
+          <p data-t="faq.a5">Different censorship systems block different things. Reality disguises VPN traffic as normal HTTPS traffic by impersonating real websites at the TLS fingerprint level — it is the hardest to detect but requires direct TCP access. XHTTP runs over HTTP/2, making it useful when deep packet inspection is active. WebSocket over TLS is widely compatible and works through many corporate and ISP proxies. Having all three means the app can fall back intelligently: if one is blocked, another is tried automatically. This layered approach is the reason SetaLink maintains connectivity in environments where single-protocol VPNs fail.</p>
         </div>
       </div>
 
+      <!-- Q6 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.conn.q4">Can I use SetaLink with v2rayNG or Hiddify?</span>
+          <span data-t="faq.q6">What is the AI Protocol Optimizer?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.conn.a4">Yes. Ask us for a VLESS subscription link and you can import it into v2rayNG (Android), Streisand (iOS/macOS), or Hiddify (all platforms). The SetaLink app is recommended as it handles everything automatically, but the subscription link works if you prefer those clients.</p>
+          <p data-t="faq.a6">Before establishing a final connection, the app tests multiple protocol and server combinations in parallel using a lightweight probe. Each probe checks not only whether a TCP connection can be made, but also whether actual internet data is returned (see question 3). The combination that returns valid data fastest wins. The result is that you always connect via the fastest working path for your current network, your location, and your ISP — without any manual configuration. This decision logic runs on every new connection, not just once at install time.</p>
         </div>
       </div>
 
     </div>
   </div>
 
-  <!-- Privacy & Security -->
+  <!-- ── Technical & Platform ── -->
   <div class="faq-category">
-    <div class="faq-cat-title" data-t="faq.cat.priv">Privacy & Security</div>
+    <div class="faq-cat-title" data-t="faq.cat.tech">Technical &amp; Platform</div>
     <div class="faq-list">
 
+      <!-- Q7 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.priv.q1">Do you log my activity?</span>
+          <span data-t="faq.q7">Why is SetaLink Android-only?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.priv.a1">No. We do not log IP addresses, connection timestamps, session duration, or any browsing data. The only data associated with your account is your Telegram username and plan expiry. We have no ability to reconstruct what sites you visited.</p>
+          <p data-t="faq.a7">Android allows direct APK distribution outside of the Play Store. This means the SetaLink app can be downloaded from our website or shared over Telegram without passing through a corporate app store gatekeeper that can remove or block the app. iOS requires App Store submission and Apple can revoke distribution at any time — a single regulatory complaint can make the app disappear for millions of users overnight. Android-first is a deliberate resilience decision: it keeps the distribution channel itself free from censorship. A direct APK download link cannot be "removed from the store."</p>
         </div>
       </div>
 
+      <!-- Q8 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.priv.q2">Is the VPN tunnel encrypted?</span>
+          <span data-t="faq.q8">What is Remote Config and how does it work?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.priv.a2">Yes. VLESS+Reality uses TLS 1.3 with perfect forward secrecy. Your traffic is encrypted between your device and our server. We cannot see the content of your browsing even if we wanted to.</p>
+          <p data-t="faq.a8">Remote Config is a server-side mechanism that allows the SetaLink admin to update protocol priority rules, server lists, SNI domains, and routing weights without requiring users to update the app. When censorship patterns change — for example, if a specific SNI gets blocked or a new protocol becomes available — the server pushes an updated config that the app downloads on next launch or connection attempt. This means your app stays effective even as censorship evolves, without waiting for a new APK release to be distributed.</p>
         </div>
       </div>
 
+      <!-- Q9 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.priv.q3">Does the Kill Switch really cut internet?</span>
+          <span data-t="faq.q9">How does SetaLink work differently in Turkey vs. Iran?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.priv.a3">Yes. When Kill Switch is enabled in Settings, if the VPN tunnel drops, all internet traffic is blocked until the VPN reconnects. This prevents your real IP from leaking during a dropout. You can toggle it off if you prefer to fall back to your regular connection.</p>
+          <p data-t="faq.a9">Turkey and Iran use fundamentally different censorship approaches. Iran's system blocks at the IP and SNI level — certain server IP ranges and domain names are blocked entirely, so the app must use SNIs that are not on the blocklist (for example, impersonating domains that Iranian authorities allow). Turkey's system tends to rely more on DNS-based blocking, making SNI filtering less comprehensive, but it blocks specific ports more aggressively. SetaLink's adaptive routing learns which configuration works from which region and prioritises accordingly via Remote Config. Nodes in Norway serve Iran-optimised routing, while Turkey-region nodes use different SNI and port priorities.</p>
         </div>
       </div>
 
     </div>
   </div>
 
-  <!-- Account & Billing -->
+  <!-- ── Roadmap ── -->
   <div class="faq-category">
-    <div class="faq-cat-title" data-t="faq.cat.acct">Account & Billing</div>
+    <div class="faq-cat-title" data-t="faq.cat.road">Roadmap</div>
     <div class="faq-list">
 
+      <!-- Q10 -->
       <div class="faq-item">
         <button class="faq-q">
-          <span data-t="faq.acct.q1">How do I upgrade to Premium?</span>
+          <span data-t="faq.q10">What is the future roadmap?</span>
           <span class="faq-icon">+</span>
         </button>
         <div class="faq-a">
-          <p data-t="faq.acct.a1">Message us on Telegram. We support payment via Crypto (USDT/TON), and will add card payment soon. Premium gives you unlimited data, 50+ server locations, and maximum speed.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-q">
-          <span data-t="faq.acct.q2">My account expired — how do I renew?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-a">
-          <p data-t="faq.acct.a2">Message @SetaLink3 on Telegram with your username. We'll renew your account within a few hours. Free tier users get 10 GB/month automatically — just let us know if it ran out early.</p>
-        </div>
-      </div>
-
-      <div class="faq-item">
-        <button class="faq-q">
-          <span data-t="faq.acct.q3">Can I use the app on multiple devices?</span>
-          <span class="faq-icon">+</span>
-        </button>
-        <div class="faq-a">
-          <p data-t="faq.acct.a3">Free and Premium accounts allow 1 simultaneous connection. The Team plan ($8/mo) supports 5 simultaneous users — perfect for families or small organizations.</p>
+          <p data-t="faq.a10">SetaLink is actively developed. The immediate priorities are: (1) expanding server capacity in Norway and Turkey as the user base grows, (2) launching the Premium tier with unlimited data and priority routing, (3) building a community funding model so users can co-fund new server regions. Longer-term plans include: adding more geographic nodes based on demand, an optional account system for multi-device sync, and publishing the protocol selection and validation logic as open source so the community can audit and contribute. All updates are announced on the Telegram group at @SetaLink3.</p>
         </div>
       </div>
 
     </div>
   </div>
 
-  <!-- Contact strip -->
+  <!-- ── Contact Strip ── -->
   <div class="contact-strip">
-    <h2 data-t="faq.help.h">Still need help?</h2>
-    <p data-t="faq.help.p">We're on Telegram and reply within a few hours. No bots — a real person handles every message.</p>
+    <h2 data-t="faq.help.h">Still have questions?</h2>
+    <p data-t="faq.help.p">We answer every message. Real people, no bots — usually within a few hours.</p>
     <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" class="btn btn-primary">
-      <span>✈️</span>
+      <!-- Telegram icon -->
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><path d="M12 0C5.372 0 0 5.373 0 12s5.372 12 12 12 12-5.373 12-12S18.628 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
       <span data-t="faq.help.cta">Message on Telegram</span>
     </a>
   </div>
 
-</div>
+</div><!-- /faq-page-wrap -->
 
+<!-- ════════════════════════════════════════════
+     FOOTER
+════════════════════════════════════════════ -->
 <footer>
-  <span data-t="footer">© 2026 SetaLink · Smart VPN for Iran</span>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="footer-logo">
+        <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="28" height="28" alt="SetaLink">
+        <span>Seta<span style="color:var(--gold)">Link</span> by SETAEI</span>
+      </div>
+      <div class="footer-tagline" data-t="footer.tagline">AI-powered VPN for censored regions</div>
+      <div class="footer-note"    data-t="footer.note">Android only &mdash; APK direct download, no Google Play required.</div>
+    </div>
+    <div class="footer-links">
+      <a href="/download/setalink-latest.apk" data-t="footer.l1">Download</a>
+      <a href="/faq"                          data-t="footer.l2">FAQ</a>
+      <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" data-t="footer.l3">Telegram</a>
+      <a href="https://github.com/setaei" target="_blank" rel="noopener" data-t="footer.l4">GitHub</a>
+    </div>
+  </div>
+  <div class="footer-copy">
+    <span data-t="footer.copy">&copy; 2026 SETAEI. All rights reserved.</span>
+    <span data-t="footer.built">Built in Norway &amp; Turkey</span>
+  </div>
 </footer>
 
 <script>
-// Inline lang strings for FAQ page
 (function () {
   'use strict';
-  const STRINGS = {
+
+  var STRINGS = {
     en: {
-      'nav.lang': 'فارسی',
-      'faq.eyebrow': 'Help & FAQ',
-      'faq.h1': 'How can we help?',
-      'faq.h1sub': 'Everything you need to know about SetaLink — getting started, troubleshooting, privacy, and more.',
+      'nav.lang.label': 'فارسی',
+      'nav.download':   'Download APK',
+
+      'faq.eyebrow': 'FAQ & HELP',
+      'faq.h1':      'How does SetaLink work?',
+      'faq.h1sub':   'Everything about the invite system, protocols, privacy, and the technical details behind the app.',
+
       'faq.cat.start': 'Getting Started',
-      'faq.start.q1': 'How do I get the SetaLink app?',
-      'faq.start.a1': 'Message us on Telegram at @SetaLink3. We\'ll send you the Android APK file and create your account. iOS support is coming in Q3 2026.',
-      'faq.start.q2': 'What do I need to run the app?',
-      'faq.start.a2': 'Android 8.0 (API 26) or higher. The app requires VPN permission — which it will ask for on first connect. No root access needed.',
-      'faq.start.q3': 'How do I install an APK from Telegram?',
-      'faq.start.a3': '1. Download the APK from our Telegram message. 2. Allow "Install unknown apps" in Settings → Security. 3. Open the downloaded APK and tap Install. 4. Open SetaLink, log in, and tap Connect.',
-      'faq.start.q4': 'Is it free?',
-      'faq.start.a4': 'Yes — a free tier with 10 GB/month is available. Premium plans ($3/month) offer unlimited data and more server locations.',
+      'faq.q1': 'How does the invite/referral system work?',
+      'faq.a1': 'After installing SetaLink, open the app and navigate to the menu — you will find your unique referral code. Share this code with anyone. When a new user installs the app and enters your code, both of you receive 512 MB of additional data. There is no limit to how many people you can invite.',
+      'faq.q2': 'What is the emergency starter package?',
+      'faq.a2': 'Every new SetaLink installation automatically receives 1 GB of data — no account, no login, no credit card required. It is designed so that anyone who urgently needs internet access can install the APK and connect immediately.',
+
       'faq.cat.conn': 'Connection & Protocols',
-      'faq.conn.q1': 'Which protocol should I use?',
-      'faq.conn.a1': 'The app selects the best protocol automatically. If you prefer manually: Reality is hardest to block, XHTTP works well against DPI, HTTPUpgrade and WebSocket are reliable fallbacks.',
-      'faq.conn.q2': 'What is VLESS + Reality?',
-      'faq.conn.a2': 'VLESS is a modern protocol built on Xray-core. Reality makes VPN traffic indistinguishable from HTTPS by mimicking real websites. Together they form the most DPI-resistant combination available.',
-      'faq.conn.q3': 'The app says "Connected" but sites won\'t load',
-      'faq.conn.a3': 'Try: 1. Switch to a different server. 2. Change the protocol from the server screen. 3. Toggle airplane mode off/on. 4. Message us with your ISP name if still stuck.',
-      'faq.conn.q4': 'Can I use SetaLink with v2rayNG or Hiddify?',
-      'faq.conn.a4': 'Yes. Ask us for a VLESS subscription link compatible with v2rayNG, Streisand, and Hiddify.',
-      'faq.cat.priv': 'Privacy & Security',
-      'faq.priv.q1': 'Do you log my activity?',
-      'faq.priv.a1': 'No. We do not log IP addresses, connection timestamps, session duration, or browsing data. The only data we hold is your Telegram username and plan expiry.',
-      'faq.priv.q2': 'Is the VPN tunnel encrypted?',
-      'faq.priv.a2': 'Yes. VLESS+Reality uses TLS 1.3 with perfect forward secrecy. Your traffic is encrypted between your device and our server.',
-      'faq.priv.q3': 'Does the Kill Switch really cut internet?',
-      'faq.priv.a3': 'Yes. When Kill Switch is on, if the VPN drops, all internet is blocked until it reconnects. This prevents your real IP from leaking during dropouts.',
-      'faq.cat.acct': 'Account & Billing',
-      'faq.acct.q1': 'How do I upgrade to Premium?',
-      'faq.acct.a1': 'Message us on Telegram. We support USDT/TON crypto payment, with card payment coming soon.',
-      'faq.acct.q2': 'My account expired — how do I renew?',
-      'faq.acct.a2': 'Message @SetaLink3 on Telegram with your username. We\'ll renew within a few hours.',
-      'faq.acct.q3': 'Can I use the app on multiple devices?',
-      'faq.acct.a3': 'Free and Premium: 1 simultaneous connection. Team plan ($8/mo): 5 simultaneous users.',
-      'faq.help.h': 'Still need help?',
-      'faq.help.p': 'We\'re on Telegram and reply within a few hours. No bots — a real person handles every message.',
+      'faq.q3': 'Why does my connection sometimes fail even though it says "Connected"?',
+      'faq.a3': 'SetaLink validates actual internet access, not just a TCP handshake. After connecting, the app sends an HTTP or HTTPS request and checks that real data is returned. If the tunnel connects but fails at the application level, the app rejects it and tries the next server profile automatically.',
+      'faq.q4': 'Is my traffic logged or monitored?',
+      'faq.a4': 'No. SetaLink does not store IP addresses, connection timestamps, session durations, or browsing data. Traffic is encrypted end-to-end with VLESS+Reality using TLS 1.3. No personal identifier is required.',
+      'faq.q5': 'Why does the app use multiple protocols (Reality, XHTTP, WebSocket)?',
+      'faq.a5': 'Different censorship systems block different things. Reality disguises VPN traffic as normal HTTPS at the TLS fingerprint level. XHTTP runs over HTTP/2. WebSocket over TLS is widely compatible. Having all three lets the app fall back intelligently when one is blocked.',
+      'faq.q6': 'What is the AI Protocol Optimizer?',
+      'faq.a6': 'Before connecting, the app tests multiple protocol and server combinations in parallel. Each probe checks whether real internet data is returned. The fastest working combination wins. This runs on every new connection — not just once at install.',
+
+      'faq.cat.tech': 'Technical & Platform',
+      'faq.q7': 'Why is SetaLink Android-only?',
+      'faq.a7': 'Android allows direct APK distribution without a corporate gatekeeper. iOS App Store approval can be revoked by Apple at any time. Android-first keeps the distribution channel itself free from censorship — a direct APK download link cannot be removed from a store.',
+      'faq.q8': 'What is Remote Config and how does it work?',
+      'faq.a8': 'Remote Config lets the admin update protocol priorities, server lists, SNI domains, and routing weights without requiring an app update. When censorship patterns change, the server pushes an updated config the app downloads automatically.',
+      'faq.q9': 'How does SetaLink work differently in Turkey vs. Iran?',
+      'faq.a9': 'Iran blocks at the IP and SNI level — certain domains and IP ranges are blocked entirely. Turkey relies more on DNS-based blocking with aggressive port filtering. SetaLink\'s adaptive routing learns which configuration works per region and prioritises accordingly via Remote Config. Norway nodes use Iran-optimised routing; Turkey nodes use different SNI and port priorities.',
+
+      'faq.cat.road': 'Roadmap',
+      'faq.q10': 'What is the future roadmap?',
+      'faq.a10': 'Immediate priorities: expand server capacity in Norway and Turkey, launch the Premium unlimited-data tier, and build a community funding model for new regions. Longer-term: additional geographic nodes, optional account system for multi-device sync, and open-sourcing the protocol selection and validation logic. All updates at @SetaLink3.',
+
+      'faq.help.h':   'Still have questions?',
+      'faq.help.p':   'We answer every message. Real people, no bots — usually within a few hours.',
       'faq.help.cta': 'Message on Telegram',
-      'footer': '© 2026 SetaLink · Smart VPN for Iran',
+
+      'footer.tagline': 'AI-powered VPN for censored regions',
+      'footer.note':    'Android only — APK direct download, no Google Play required.',
+      'footer.l1': 'Download',
+      'footer.l2': 'FAQ',
+      'footer.l3': 'Telegram',
+      'footer.l4': 'GitHub',
+      'footer.copy':  '© 2026 SETAEI. All rights reserved.',
+      'footer.built': 'Built in Norway & Turkey',
     },
+
     fa: {
-      'nav.lang': 'English',
-      'faq.eyebrow': 'راهنما و سوالات متداول',
-      'faq.h1': 'چطور می‌توانیم کمک کنیم؟',
-      'faq.h1sub': 'همه چیزی که باید درباره ستالینک بدانید — شروع کار، رفع اشکال، حریم خصوصی و بیشتر.',
+      'nav.lang.label': 'English',
+      'nav.download':   'دانلود APK',
+
+      'faq.eyebrow': 'سوالات متداول',
+      'faq.h1':      'ستالینک چطور کار میکند؟',
+      'faq.h1sub':   'همه چیز درباره سیستم دعوت، پروتکلها، حریم خصوصی و جزئیات فنی برنامه.',
+
       'faq.cat.start': 'شروع کار',
-      'faq.start.q1': 'چطور اپ ستالینک را دریافت کنم؟',
-      'faq.start.a1': 'در تلگرام به @SetaLink3 پیام بدهید. APK اندروید را برای شما ارسال می‌کنیم و حساب شما را ایجاد می‌کنیم. پشتیبانی iOS در سه‌ماهه سوم ۲۰۲۶ می‌آید.',
-      'faq.start.q2': 'برای اجرای اپ به چه چیزی نیاز دارم؟',
-      'faq.start.a2': 'اندروید ۸.۰ (API 26) یا بالاتر. اپ مجوز VPN می‌خواهد که در اولین اتصال درخواست می‌کند. نیاز به روت ندارد.',
-      'faq.start.q3': 'چطور APK از تلگرام نصب کنم؟',
-      'faq.start.a3': '۱. APK را از پیام تلگرام دانلود کنید. ۲. در تنظیمات → امنیت، نصب از منابع ناشناس را فعال کنید. ۳. فایل APK را باز کرده و نصب را بزنید. ۴. ستالینک را باز کنید، وارد شوید و Connect بزنید.',
-      'faq.start.q4': 'آیا رایگان است؟',
-      'faq.start.a4': 'بله — یک طرح رایگان با ۱۰ گیگابایت در ماه وجود دارد. طرح پریمیوم (۳ دلار در ماه) داده نامحدود و موقعیت‌های بیشتر ارائه می‌دهد.',
-      'faq.cat.conn': 'اتصال و پروتکل‌ها',
-      'faq.conn.q1': 'کدام پروتکل را استفاده کنم؟',
-      'faq.conn.a1': 'اپ به‌طور خودکار بهترین پروتکل را انتخاب می‌کند. برای انتخاب دستی: Reality سخت‌ترین برای مسدود کردن است، XHTTP در برابر DPI خوب کار می‌کند.',
-      'faq.conn.q2': 'VLESS + Reality چیست؟',
-      'faq.conn.a2': 'VLESS یک پروتکل مدرن مبتنی بر Xray-core است. Reality ترافیک VPN را با جعل وب‌سایت‌های واقعی از HTTPS معمولی غیرقابل تشخیص می‌کند.',
-      'faq.conn.q3': 'اپ "Connected" نشان می‌دهد ولی سایت‌ها باز نمی‌شوند',
-      'faq.conn.a3': 'امتحان کنید: ۱. به سرور دیگری تغییر دهید. ۲. پروتکل را از صفحه سرورها عوض کنید. ۳. حالت هواپیما را یکبار روشن و خاموش کنید. ۴. اگر مشکل ادامه دارد با نام ISP خود پیام بدهید.',
-      'faq.conn.q4': 'آیا می‌توانم ستالینک را با v2rayNG یا Hiddify استفاده کنم؟',
-      'faq.conn.a4': 'بله. لینک اشتراک VLESS سازگار با v2rayNG، Streisand و Hiddify را از ما بخواهید.',
-      'faq.cat.priv': 'حریم خصوصی و امنیت',
-      'faq.priv.q1': 'آیا فعالیت من را ثبت می‌کنید؟',
-      'faq.priv.a1': 'خیر. ما آدرس IP، زمان اتصال، مدت جلسه یا داده‌های مرور را ثبت نمی‌کنیم. تنها داده‌ای که نگه می‌داریم نام کاربری تلگرام و تاریخ انقضای طرح شماست.',
-      'faq.priv.q2': 'آیا تونل VPN رمزنگاری شده است؟',
-      'faq.priv.a2': 'بله. VLESS+Reality از TLS 1.3 با Perfect Forward Secrecy استفاده می‌کند. ترافیک شما بین دستگاه و سرور ما رمزنگاری شده است.',
-      'faq.priv.q3': 'آیا Kill Switch واقعاً اینترنت را قطع می‌کند؟',
-      'faq.priv.a3': 'بله. وقتی Kill Switch روشن است، اگر VPN قطع شود، همه اینترنت تا زمان اتصال مجدد مسدود می‌شود. این از لو رفتن IP واقعی شما جلوگیری می‌کند.',
-      'faq.cat.acct': 'حساب و پرداخت',
-      'faq.acct.q1': 'چطور به پریمیوم ارتقا دهم؟',
-      'faq.acct.a1': 'در تلگرام پیام بدهید. از طریق کریپتو (USDT/TON) پرداخت می‌پذیریم و پرداخت با کارت به‌زودی اضافه می‌شود.',
-      'faq.acct.q2': 'حساب من منقضی شده — چطور تمدید کنم؟',
-      'faq.acct.a2': 'با نام کاربری خود به @SetaLink3 پیام بدهید. ظرف چند ساعت تمدید می‌کنیم.',
-      'faq.acct.q3': 'آیا می‌توانم روی چندین دستگاه استفاده کنم؟',
-      'faq.acct.a3': 'طرح رایگان و پریمیوم: ۱ اتصال همزمان. طرح تیمی (۸ دلار/ماه): ۵ کاربر همزمان.',
-      'faq.help.h': 'هنوز به کمک نیاز دارید؟',
-      'faq.help.p': 'در تلگرام هستیم و ظرف چند ساعت پاسخ می‌دهیم. بدون ربات — یک نفر واقعی هر پیام را مدیریت می‌کند.',
+      'faq.q1': 'سیستم دعوت چطور کار میکند؟',
+      'faq.a1': 'بعد از نصب ستالینک، منوی برنامه را باز کنید — کد معرف منحصربهفرد شما آنجاست. آن را با هر کسی به اشتراک بگذارید. وقتی کاربر جدیدی کد شما را وارد میکند، هر دو ۵۱۲ مگابایت دریافت میکنید. محدودیتی در تعداد دعوتها وجود ندارد.',
+      'faq.q2': 'بسته اضطراری رایگان چیست؟',
+      'faq.a2': 'هر نصب جدید ستالینک بهطور خودکار ۱ گیگابایت داده دریافت میکند — بدون حساب، بدون ورود، بدون کارت بانکی. برای کسانی طراحی شده که فوری به اینترنت نیاز دارند.',
+
+      'faq.cat.conn': 'اتصال و پروتکلها',
+      'faq.q3': 'چرا اتصال گاهی حتی با نمایش "Connected" رد میشود؟',
+      'faq.a3': 'ستالینک دسترسی واقعی به اینترنت را اعتبارسنجی میکند. اگر تونل وصل شود ولی درخواست HTTP نتواند داده واقعی برگرداند، اتصال رد شده و پروفایل بعدی امتحان میشود.',
+      'faq.q4': 'آیا ترافیک من لاگ یا نظارت میشود؟',
+      'faq.a4': 'خیر. آدرس IP، زمان اتصال، مدت جلسه یا دادههای مروری ذخیره نمیشوند. ترافیک توسط VLESS+Reality با TLS 1.3 رمزنگاری میشود. هیچ شناسه شخصی نیاز نیست.',
+      'faq.q5': 'چرا برنامه از چند پروتکل استفاده میکند؟',
+      'faq.a5': 'سیستمهای سانسور چیزهای مختلف را مسدود میکنند. Reality ترافیک VPN را از HTTPS معمولی غیرقابل تشخیص میکند. XHTTP روی HTTP/2 کار میکند. WebSocket سازگاری گسترده دارد. داشتن هر سه امکان fallback هوشمند را فراهم میکند.',
+      'faq.q6': 'بهینهساز پروتکل هوش مصنوعی چیست؟',
+      'faq.a6': 'قبل از اتصال، برنامه ترکیبهای مختلف پروتکل و سرور را بهصورت موازی آزمایش میکند. سریعترین ترکیبی که داده واقعی برمیگرداند برنده میشود. این فرآیند در هر اتصال جدید اجرا میشود.',
+
+      'faq.cat.tech': 'فنی و پلتفرم',
+      'faq.q7': 'چرا فقط اندروید؟',
+      'faq.a7': 'اندروید توزیع مستقیم APK را بدون فروشگاه مجاز میکند. تاییدیه App Store اپل میتواند هر لحظه لغو شود. اندروید-اول یعنی کانال توزیع خودش از سانسور آزاد است.',
+      'faq.q8': 'Remote Config چیست و چطور کار میکند؟',
+      'faq.a8': 'Remote Config به مدیر اجازه میدهد اولویتهای پروتکل، لیست سرورها و SNIها را بدون بهروزرسانی اپ تغییر دهد. وقتی الگوهای سانسور تغییر میکنند، کانفیگ جدید بهطور خودکار دانلود میشود.',
+      'faq.q9': 'ستالینک در ترکیه و ایران چه تفاوتی دارد؟',
+      'faq.a9': 'ایران در سطح IP و SNI مسدود میکند. ترکیه بیشتر از مسدودسازی DNS و فیلتر پورت استفاده میکند. مسیریابی انطباقی ستالینک از طریق Remote Config بهینهسازی منطقهای را انجام میدهد.',
+
+      'faq.cat.road': 'نقشه راه',
+      'faq.q10': 'نقشه راه آینده چیست؟',
+      'faq.a10': 'اولویتهای فوری: گسترش ظرفیت سرور، راهاندازی تیر پریمیوم نامحدود، مدل تامین مالی جامعه. بلندمدت: نودهای جغرافیایی بیشتر، سیستم حساب اختیاری، و متن باز کردن منطق انتخاب پروتکل.',
+
+      'faq.help.h':   'هنوز سوال دارید؟',
+      'faq.help.p':   'هر پیامی را پاسخ میدهیم. افراد واقعی، بدون ربات — معمولاً ظرف چند ساعت.',
       'faq.help.cta': 'پیام در تلگرام',
-      'footer': '© ۲۰۲۶ ستالینک · VPN هوشمند برای ایران',
+
+      'footer.tagline': 'VPN هوشمند برای مناطق سانسور شده',
+      'footer.note':    'فقط اندروید — دانلود مستقیم APK، بدون گوگل پلی.',
+      'footer.l1': 'دانلود',
+      'footer.l2': 'سوالات',
+      'footer.l3': 'تلگرام',
+      'footer.l4': 'گیتهاب',
+      'footer.copy':  '© ۲۰۲۶ SETAEI. حقوق محفوظ است.',
+      'footer.built': 'ساخته شده در نروژ و ترکیه',
     }
   };
 
-  let lang = localStorage.getItem('sl-lang') || 'en';
+  var lang = localStorage.getItem('sl-lang') || 'en';
 
   function applyLang(l) {
     lang = l;
     localStorage.setItem('sl-lang', l);
     document.documentElement.setAttribute('lang', l);
     document.body.setAttribute('dir', l === 'fa' ? 'rtl' : 'ltr');
-    const s = STRINGS[l];
-    document.querySelectorAll('[data-t]').forEach(el => {
-      const key = el.dataset.t;
+    var s = STRINGS[l];
+    document.querySelectorAll('[data-t]').forEach(function(el) {
+      var key = el.dataset.t;
       if (s[key] !== undefined) el.textContent = s[key];
     });
   }
 
   function initLangToggle() {
-    const btn = document.getElementById('btn-lang');
+    var btn = document.getElementById('btn-lang');
     if (!btn) return;
-    btn.addEventListener('click', () => applyLang(lang === 'en' ? 'fa' : 'en'));
+    btn.addEventListener('click', function() { applyLang(lang === 'en' ? 'fa' : 'en'); });
   }
 
   function initFAQ() {
-    document.querySelectorAll('.faq-item').forEach(item => {
-      const btn = item.querySelector('.faq-q');
+    document.querySelectorAll('.faq-item').forEach(function(item) {
+      var btn = item.querySelector('.faq-q');
       if (!btn) return;
-      btn.addEventListener('click', () => {
-        const isOpen = item.classList.contains('open');
-        document.querySelectorAll('.faq-item.open').forEach(o => o.classList.remove('open'));
+      btn.addEventListener('click', function() {
+        var isOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item.open').forEach(function(o) { o.classList.remove('open'); });
         if (!isOpen) item.classList.add('open');
       });
     });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', function() {
     initLangToggle();
     initFAQ();
     applyLang(lang);
