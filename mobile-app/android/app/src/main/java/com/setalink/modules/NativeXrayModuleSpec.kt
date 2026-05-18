@@ -8,6 +8,7 @@ abstract class NativeXrayModuleSpec(context: ReactApplicationContext) :
     ReactContextBaseJavaModule(context) {
 
     abstract fun start(config: String, promise: Promise)
+    abstract fun startEmergency(config: String, promise: Promise)
     abstract fun stop(promise: Promise)
     abstract fun isRunning(promise: Promise)
     abstract fun getStats(promise: Promise)
@@ -15,4 +16,6 @@ abstract class NativeXrayModuleSpec(context: ReactApplicationContext) :
     abstract fun getLastError(promise: Promise)
     abstract fun getConnectionLog(promise: Promise)
     abstract fun getXrayLog(promise: Promise)
+    abstract fun getTun2socksLog(promise: Promise)
+    abstract fun getGeneratedConfig(promise: Promise)
 }

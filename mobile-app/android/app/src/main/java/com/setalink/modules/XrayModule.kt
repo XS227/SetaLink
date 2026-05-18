@@ -34,18 +34,20 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     private var lastError: String? = null
 
     // Stored while Android VPN-permission dialog is shown
-    private var pendingConfig:  String?  = null
-    private var pendingPromise: Promise? = null
+    private var pendingConfig:   String?  = null
+    private var pendingPromise:  Promise? = null
+    private var pendingEmergency: Boolean = false
 
     // Tunnel setup step log — cleared on each start(), appended via BROADCAST_STEP
     private val stepLog     = mutableListOf<String>()
     private val stepLogLock = Any()
 
-    // Stats — uptime is real; bytes/ping remain mocked until libXray integration
+    // Stats — accumulated from periodic BROADCAST_METRICS from XrayVpnService.
+    // uploadBytes / downloadBytes are cumulative for the current session.
     private val statsLock    = Any()
     private var uploadBytes  = 0L
     private var downloadBytes= 0L
-    private var lastPingMs   = 24L
+    private var lastPingMs   = 0L
 
     // ── Broadcast receiver (must be declared before init block) ──────────────
 
@@ -56,6 +58,8 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                     running   = true
                     startedAt = System.currentTimeMillis()
                     lastError = null
+                    // Reset byte counters for the new session
+                    synchronized(statsLock) { uploadBytes = 0L; downloadBytes = 0L; lastPingMs = 0L }
                     Log.i(TAG, "VPN connected")
                 }
                 XrayVpnService.BROADCAST_DISCONNECTED -> {
@@ -81,10 +85,13 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                     synchronized(statsLock) {
                         val rx = intent.getLongExtra("tunRxDelta", 0L)
                         val tx = intent.getLongExtra("tunTxDelta", 0L)
+                        // rx = bytes received by TUN (download direction)
+                        // tx = bytes sent from TUN (upload direction)
                         if (rx > 0) downloadBytes += rx
                         if (tx > 0) uploadBytes += tx
-                        lastPingMs = if (intent.getBooleanExtra("probeOk", false)) 35L else 0L
+                        if (intent.getBooleanExtra("probeOk", false)) lastPingMs = 35L
                     }
+                    Log.d(TAG, "[METRICS] rx_delta=${intent.getLongExtra("tunRxDelta",0)} tx_delta=${intent.getLongExtra("tunTxDelta",0)}")
                 }
             }
         }
@@ -148,10 +155,34 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                 activity.startActivityForResult(permIntent, VPN_PERM_REQUEST_CODE)
                 return          // promise resolved/rejected later in onActivityResult
             }
-            startVpnService(config, promise)
+            startVpnService(config, promise, emergencyMode = false)
         } catch (e: Exception) {
             Log.e(TAG, "start() error: ${e.message}", e)
             promise.reject("VPN_START_ERROR", e.message ?: "Unknown error starting VPN", e)
+        }
+    }
+
+    @ReactMethod
+    override fun startEmergency(config: String, promise: Promise) {
+        synchronized(stepLogLock) { stepLog.clear() }
+        try {
+            val permIntent = VpnService.prepare(reactContext)
+            if (permIntent != null) {
+                val activity = reactContext.currentActivity
+                if (activity == null) {
+                    promise.reject("VPN_NO_ACTIVITY", "Bring app to foreground before connecting")
+                    return
+                }
+                pendingConfig  = config
+                pendingPromise = promise
+                // Store emergency flag so onActivityResult can use it
+                pendingEmergency = true
+                activity.startActivityForResult(permIntent, VPN_PERM_REQUEST_CODE)
+                return
+            }
+            startVpnService(config, promise, emergencyMode = true)
+        } catch (e: Exception) {
+            promise.reject("VPN_START_ERROR", e.message ?: "Unknown error", e)
         }
     }
 
@@ -207,13 +238,37 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         try {
             val logFile = java.io.File(reactContext.filesDir, XrayVpnService.XRAY_LOG_FILE)
             if (!logFile.exists()) {
-                promise.resolve("(no xray.log — tunnel not yet started)")
+                promise.resolve("(no xray.log)")
                 return
             }
-            val lines = logFile.readLines().takeLast(100)
-            promise.resolve(lines.joinToString("\n"))
+            promise.resolve(logFile.readLines().takeLast(100).joinToString("\n"))
         } catch (e: Exception) {
             promise.resolve("(error reading xray.log: ${e.message})")
+        }
+    }
+
+    @ReactMethod
+    override fun getTun2socksLog(promise: Promise) {
+        try {
+            val logFile = java.io.File(reactContext.filesDir, XrayVpnService.TUN2SOCKS_LOG_FILE)
+            if (!logFile.exists()) {
+                promise.resolve("(no tun2socks.log — tunnel not yet started)")
+                return
+            }
+            promise.resolve(logFile.readLines().takeLast(60).joinToString("\n"))
+        } catch (e: Exception) {
+            promise.resolve("(error reading tun2socks.log: ${e.message})")
+        }
+    }
+
+    @ReactMethod
+    override fun getGeneratedConfig(promise: Promise) {
+        try {
+            val f = java.io.File(reactContext.filesDir, "xray.json")
+            if (!f.exists()) { promise.resolve("(no xray.json — tunnel not started yet)"); return }
+            promise.resolve(f.readText())
+        } catch (e: Exception) {
+            promise.resolve("(error reading xray.json: ${e.message})")
         }
     }
 
@@ -226,9 +281,11 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         pendingConfig  = null
         pendingPromise = null
 
+        val emergency = pendingEmergency
+        pendingEmergency = false
         if (resultCode == Activity.RESULT_OK) {
-            Log.i(TAG, "VPN permission granted")
-            startVpnService(config, promise)
+            Log.i(TAG, "VPN permission granted (emergency=$emergency)")
+            startVpnService(config, promise, emergencyMode = emergency)
         } else {
             Log.w(TAG, "VPN permission denied by user")
             promise.reject("VPN_PERMISSION_DENIED", "VPN permission denied — tap to grant access")
@@ -237,16 +294,17 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
 
     override fun onNewIntent(intent: Intent?) {}
 
-    private fun startVpnService(config: String, promise: Promise) {
+    private fun startVpnService(config: String, promise: Promise, emergencyMode: Boolean = false) {
         try {
             lastError = null
             reactContext.startForegroundService(
                 Intent(reactContext, XrayVpnService::class.java).apply {
                     action = XrayVpnService.ACTION_START
                     putExtra(XrayVpnService.EXTRA_CONFIG, config)
+                    putExtra(XrayVpnService.EXTRA_EMERGENCY_MODE, emergencyMode)
                 }
             )
-            Log.i(TAG, "XrayVpnService started")
+            Log.i(TAG, "XrayVpnService started (emergencyMode=$emergencyMode)")
             promise.resolve(null)
         } catch (e: Exception) {
             Log.e(TAG, "startVpnService failed: ${e.message}", e)

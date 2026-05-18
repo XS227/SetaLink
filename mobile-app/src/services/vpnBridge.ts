@@ -20,9 +20,12 @@ export interface VpnStats {
 
 export interface VpnAdapter {
   connect(configJson: string): Promise<void>;
+  connectEmergency(configJson: string): Promise<void>;
   disconnect(): Promise<void>;
   getStats(): Promise<VpnStats>;
   isRunning(): Promise<boolean>;
+  getTun2socksLog?(): Promise<string>;
+  getGeneratedConfig?(): Promise<string>;
 }
 
 // ── Mock adapter (used when native module is unavailable) ─────────────────────
@@ -39,6 +42,10 @@ class MockAdapter implements VpnAdapter {
     if (Math.random() >= MOCK_SUCCESS_RATE) throw new Error('Connection failed (mock)');
     this._running   = true;
     this._startedAt = Date.now();
+  }
+
+  async connectEmergency(_configJson: string): Promise<void> {
+    return this.connect(_configJson);
   }
 
   async disconnect(): Promise<void> {
@@ -58,6 +65,8 @@ class MockAdapter implements VpnAdapter {
   }
 
   async isRunning(): Promise<boolean> { return this._running; }
+  async getTun2socksLog(): Promise<string> { return '(mock — no native tunnel)'; }
+  async getGeneratedConfig(): Promise<string> { return '(mock — no native tunnel)'; }
 }
 
 // ── Native adapter (wraps XrayModule TurboModule) ────────────────────────────
@@ -73,13 +82,23 @@ class NativeAdapter implements VpnAdapter {
     this.module = module;
   }
 
+  async connectEmergency(configJson: string): Promise<void> {
+    return this._doConnect(configJson, true);
+  }
+
   async connect(configJson: string): Promise<void> {
+    return this._doConnect(configJson, false);
+  }
+
+  private async _doConnect(configJson: string, emergency: boolean): Promise<void> {
     const log: string[] = [];
 
-    // module.start() may reject immediately (e.g. VPN_PERMISSION_DENIED)
-    // or resolve and then the service broadcasts connected/failed asynchronously.
     try {
-      await this.module.start(configJson);
+      if (emergency) {
+        await this.module.startEmergency(configJson);
+      } else {
+        await this.module.start(configJson);
+      }
     } catch (e: unknown) {
       const msg =
         (e as any)?.userInfo?.NSLocalizedDescription ??
@@ -112,13 +131,20 @@ class NativeAdapter implements VpnAdapter {
       // Pull native step log and xray process output for diagnostics
       const nativeSteps = await this.module.getConnectionLog?.().catch(() => []) as string[] ?? [];
       let xrayLogLines: string[] = [];
+      let t2sLogLines: string[] = [];
       try {
         const rawLog = await this.module.getXrayLog?.() as string | null;
         if (rawLog && !rawLog.startsWith('(no xray')) {
-          xrayLogLines = ['--- xray.log ---', ...rawLog.split('\n').slice(-20), '---'];
+          xrayLogLines = ['--- xray.log (last 20) ---', ...rawLog.split('\n').slice(-20), '---'];
         }
       } catch {}
-      _lastConnectLog = [...nativeSteps, ...log, ...xrayLogLines];
+      try {
+        const t2sRaw = await this.module.getTun2socksLog?.() as string | null;
+        if (t2sRaw && !t2sRaw.startsWith('(no tun2socks')) {
+          t2sLogLines = ['--- tun2socks.log (last 20) ---', ...t2sRaw.split('\n').slice(-20), '---'];
+        }
+      } catch {}
+      _lastConnectLog = [...nativeSteps, ...log, ...xrayLogLines, ...t2sLogLines];
       throw new Error(msg);
     }
     // Native layer (runRoutingValidation) validated end-to-end connectivity via a
@@ -150,6 +176,14 @@ class NativeAdapter implements VpnAdapter {
 
   async isRunning(): Promise<boolean> {
     return this.module.isRunning();
+  }
+
+  async getTun2socksLog(): Promise<string> {
+    return this.module.getTun2socksLog?.() ?? '(not available)';
+  }
+
+  async getGeneratedConfig(): Promise<string> {
+    return this.module.getGeneratedConfig?.() ?? '(not available)';
   }
 }
 

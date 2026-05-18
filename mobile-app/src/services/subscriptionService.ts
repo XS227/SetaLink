@@ -246,12 +246,15 @@ function buildEntry(cfg: ParsedVlessConfig, index: number): ImportedServer {
   };
 
   const creds: ServerCredentials = {
-    uuid:      cfg.uuid,
-    address:   cfg.address,
-    port:      cfg.port,
-    publicKey: cfg.pbk ?? '',
-    shortId:   cfg.sid ?? '',
-    sni:       cfg.sni ?? cfg.address,
+    uuid:        cfg.uuid,
+    address:     cfg.address,
+    port:        cfg.port,
+    publicKey:   cfg.pbk  ?? '',
+    shortId:     cfg.sid  ?? '',
+    // Use || (not ??) so empty string from the parser also falls back
+    sni:         cfg.sni  || '',
+    flow:        cfg.flow || '',
+    fingerprint: cfg.fp   || 'chrome',
   };
 
   return { record, creds };

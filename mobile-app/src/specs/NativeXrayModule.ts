@@ -23,6 +23,12 @@ export interface Spec extends TurboModule {
   /** Start the Xray VPN tunnel with a JSON config string. */
   start(config: string): Promise<void>;
 
+  /**
+   * Start in emergency test mode: IPv4 only, MTU 1280, DNS 1.1.1.1, debug log.
+   * Use buildEmergencyXrayConfigJson() to build the config.
+   */
+  startEmergency(config: string): Promise<void>;
+
   /** Stop the running tunnel gracefully. */
   stop(): Promise<void>;
 
@@ -43,6 +49,12 @@ export interface Spec extends TurboModule {
 
   /** Returns the tail of the xray process stdout/stderr log file. */
   getXrayLog(): Promise<string>;
+
+  /** Returns the tail of the tun2socks stdout/stderr log file. */
+  getTun2socksLog(): Promise<string>;
+
+  /** Returns the full content of the generated xray.json for debug comparison. */
+  getGeneratedConfig(): Promise<string>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');
