@@ -276,6 +276,11 @@ export const useServerStore = create<ServerState>()(
         sni:         profile.sni,
         flow:        profile.flow,
         fingerprint: profile.fingerprint,
+        edgeAddress: profile.edgeAddress,
+        edgePort:    profile.edgePort,
+        wsPath:      profile.wsPath,
+        xhttpPath:   profile.xhttpPath,
+        httpupPath:  profile.httpupPath,
       };
 
       set({

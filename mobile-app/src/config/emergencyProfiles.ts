@@ -23,13 +23,19 @@ export interface EmergencyProfile {
   id:          string;
   label:       string;
   uuid:        string;
-  address:     string;
+  address:     string;   // Reality/VPN server (port 8443)
   port:        number;
   publicKey:   string;
   shortId:     string;
   sni:         string;
   flow:        string;
   fingerprint: string;
+  // Edge transport fields (populated from bootstrap API)
+  edgeAddress?: string;  // nginx proxy host (e.g. edge.setalink.no)
+  edgePort?:    number;
+  wsPath?:      string;
+  xhttpPath?:   string;
+  httpupPath?:  string;
 }
 
 /** Returns the bootstrapped emergency profile, or null if not available. */

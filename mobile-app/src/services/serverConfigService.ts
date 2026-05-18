@@ -14,13 +14,19 @@
 
 export interface ServerCredentials {
   uuid:        string;
-  address:     string;
-  port:        number;
+  address:     string;   // Reality/VPN server hostname (port 8443)
+  port:        number;   // Reality port (e.g. 8443)
   publicKey:   string;   // X25519 Reality key
   shortId:     string;
   sni:         string;   // reality serverName
   flow:        string;   // e.g. 'xtls-rprx-vision' or '' for none
   fingerprint: string;   // TLS fingerprint: chrome | firefox | safari | …
+  // Edge transport (WebSocket / XHTTP / HTTPUpgrade via nginx)
+  edgeAddress?: string;  // nginx proxy host (e.g. edge.setalink.no)
+  edgePort?:    number;  // nginx port (443)
+  wsPath?:      string;  // WebSocket path (e.g. /ws)
+  xhttpPath?:   string;  // XHTTP path (e.g. /xhttp)
+  httpupPath?:  string;  // HTTPUpgrade path (e.g. /httpup)
 }
 
 const CACHE_TTL_MS = 5 * 60_000;   // 5 min

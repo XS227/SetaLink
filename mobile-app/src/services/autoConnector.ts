@@ -76,7 +76,9 @@ export interface AutoConnectResult {
 
 const ADMIN_REPORT_URL   = 'https://admin.setalink.no/api.php?mobile=1';
 const MOBILE_TOKEN       = 'setalink-mobile-diag-v1';
-const CONNECT_TIMEOUT_MS = 70_000;
+// Increased to 120s: HTTPS probe (12s × 4 hosts) + HTTP probe (10s × 3 hosts) + tunnel setup.
+// Validation now runs HTTPS first (for Vision), then HTTP — worst-case ~90s total.
+const CONNECT_TIMEOUT_MS = 120_000;
 const BETWEEN_ATTEMPTS_MS = 700;
 
 // Autonomous retry back-off: 5s, 10s, 20s, 40s, 60s (capped)
@@ -114,7 +116,10 @@ export function buildAutoProfiles(
   mode:   'auto' | 'iran',
   sniPriorities?: string[],
 ): ProfileDef[] {
-  const addr   = creds.address || `${server.id}.setalink.net`;
+  const addr     = creds.address || `${server.id}.setalink.net`;
+  // Edge host is the nginx proxy used for WebSocket/XHTTP transports.
+  // Falls back to deriving from VPN address if not explicitly set.
+  const edgeAddr = creds.edgeAddress || addr;
   const baseFlow = creds.flow;
   const baseFp   = creds.fingerprint || 'chrome';
   const basePort = creds.port;
@@ -129,9 +134,11 @@ export function buildAutoProfiles(
     emergency: false,
   });
 
+  // TLS transport profiles (WebSocket / XHTTP / HTTPUpgrade) go through the nginx
+  // edge proxy, not the Reality port. Use edgeAddr and port 443 for the SNI.
   const tls = (id: string, label: string, protocol: string, port = 443): ProfileDef => ({
     id, label, protocol,
-    sni: addr, port, flow: '', fingerprint: 'chrome',
+    sni: edgeAddr, port, flow: '', fingerprint: 'chrome',
     emergency: false,
   });
 

@@ -344,13 +344,13 @@ class XrayVpnService : VpnService() {
         val bytesBefore = tunInterface?.let { readInterfaceBytes(it) }
         appendLog("[VALIDATION] TUN snapshot before probe: rx=${bytesBefore?.first ?: -1} tx=${bytesBefore?.second ?: -1} iface=${tunInterface ?: "?"}")
 
-        // Step A: SOCKS5 TCP connect to a reliable IP (proves Xray is listening)
+        // Step A: SOCKS5 TCP connect to a reliable IP (proves Xray is listening).
+        // Use 1.1.1.1:80 — raw IP, no DNS, fast TCP-level confirmation.
         appendLog("[VALIDATION-A] SOCKS5 TCP connect → 1.1.1.1:80")
         val tcpOk = runCatching {
             val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
             Socket(proxy).use { sock ->
-                sock.soTimeout = 8000
-                sock.connect(InetSocketAddress("1.1.1.1", 80), 8000)
+                sock.connect(InetSocketAddress("1.1.1.1", 80), 10_000)
                 true
             }
         }.onFailure { e -> appendLog("[VALIDATION-A] TCP connect failed: ${e.message}") }
@@ -366,10 +366,27 @@ class XrayVpnService : VpnService() {
         delay(300L)
         appendLog("[VALIDATION] Xray log before probes:\n${readLogTail(30)}")
 
-        // Step B: HTTP GET via SOCKS5.
-        // connectivitycheck.gstatic.com returns HTTP 204 immediately — fastest probe globally.
-        // captive.apple.com returns HTTP 200. Both are designed as fast connectivity checks.
-        // 1.1.1.1 is a direct-IP fallback (no DNS resolution needed).
+        // Step B: HTTPS probe via SSLSocket — tried FIRST because xtls-rprx-vision
+        // (Vision flow) is specifically designed to splice TLS inner streams. Vision
+        // correctly detects the TLS ClientHello and forwards raw bytes to the target.
+        // Plain HTTP (non-TLS) requires Vision's fallback path which can be slower
+        // under high-latency conditions. Trying HTTPS first maximises pass rate
+        // on Vision Reality servers in high-latency regions (Turkey, Iran, etc.).
+        var httpsOk     = false
+        var httpsBytes  = 0
+        var httpsHost   = ""
+
+        for (host in listOf("connectivitycheck.gstatic.com", "captive.apple.com", "clients3.google.com", "www.cloudflare.com")) {
+            appendLog("[VALIDATION-B] HTTPS probe -> $host:443 via SOCKS5+TLS")
+            val (ok, bytes, snippet) = runHttpsProbe(host)
+            appendLog("[VALIDATION-B] $host -> ok=$ok bytes=$bytes snippet=$snippet")
+            if (ok) { httpsOk = true; httpsBytes = bytes; httpsHost = host; break }
+        }
+
+        // Step C: HTTP GET via SOCKS5 — fallback for servers without Vision flow
+        // (e.g. WebSocket/XHTTP transport profiles).
+        // connectivitycheck.gstatic.com returns HTTP 204, captive.apple.com HTTP 200.
+        // 1.1.1.1 is a raw-IP fallback (no DNS resolution needed inside Xray).
         data class ProbeTarget(val host: String, val port: Int, val isDomain: Boolean)
         val httpTargets = listOf(
             ProbeTarget("connectivitycheck.gstatic.com", 80, true),
@@ -382,28 +399,13 @@ class XrayVpnService : VpnService() {
         var httpSnippet = "not attempted"
         var httpHost    = ""
 
-        for (target in httpTargets) {
-            appendLog("[VALIDATION-B] HTTP GET http://${target.host}/ via SOCKS5")
-            val (ok, bytes, snippet) = runDeepHttpProbe(target.host, target.port, target.isDomain)
-            appendLog("[VALIDATION-B] ${target.host} -> ok=$ok bytes=$bytes snippet=$snippet")
-            httpSnippet = snippet
-            if (ok) { httpOk = true; httpBytes = bytes; httpHost = target.host; break }
-        }
-
-        // Step C: HTTPS probe via SSLSocket — TLS inner traffic is what xtls-rprx-vision
-        // is designed for. A server with Vision flow will forward TLS even when HTTP fails.
-        var httpsOk     = false
-        var httpsBytes  = 0
-        var httpsHost   = ""
-
-        if (!httpOk) {
-            // connectivitycheck.gstatic.com returns HTTP 204 almost instantly — fastest probe.
-            // captive.apple.com is equally fast. Fall through to others if first fails.
-            for (host in listOf("connectivitycheck.gstatic.com", "captive.apple.com", "clients3.google.com", "www.cloudflare.com")) {
-                appendLog("[VALIDATION-C] HTTPS probe -> $host:443 via SOCKS5+TLS")
-                val (ok, bytes, snippet) = runHttpsProbe(host)
-                appendLog("[VALIDATION-C] $host -> ok=$ok bytes=$bytes snippet=$snippet")
-                if (ok) { httpsOk = true; httpsBytes = bytes; httpsHost = host; break }
+        if (!httpsOk) {
+            for (target in httpTargets) {
+                appendLog("[VALIDATION-C] HTTP GET http://${target.host}/ via SOCKS5")
+                val (ok, bytes, snippet) = runDeepHttpProbe(target.host, target.port, target.isDomain)
+                appendLog("[VALIDATION-C] ${target.host} -> ok=$ok bytes=$bytes snippet=$snippet")
+                httpSnippet = snippet
+                if (ok) { httpOk = true; httpBytes = bytes; httpHost = target.host; break }
             }
         }
 
@@ -416,41 +418,33 @@ class XrayVpnService : VpnService() {
         val probeOk = httpOk || httpsOk
         publishMetrics(tunInterface, rxSnap, txSnap, probeOk)
 
+        if (httpsOk) {
+            return ValidationResult(true,
+                "TCP+HTTPS OK via $httpsHost (${httpsBytes}B) — TLS/Vision traffic confirmed. " +
+                "TUN rx=$rxSnap tx=$txSnap",
+                probeOk = true)
+        }
         if (httpOk) {
             return ValidationResult(true,
                 "TCP+HTTP OK via $httpHost (${httpBytes}B). TUN rx=$rxSnap tx=$txSnap",
                 probeOk = true)
         }
-        if (httpsOk) {
-            return ValidationResult(true,
-                "TCP+HTTPS OK via $httpsHost (${httpsBytes}B) — TLS/Vision traffic confirmed. " +
-                "HTTP probe was inconclusive (expected for Vision-only servers).",
-                probeOk = true)
-        }
 
-        // All probes failed: TCP connects but no HTTP or HTTPS data received.
-        // This means the VPN server is not forwarding inner traffic, or tun2socks
-        // is not delivering packets from the TUN interface.
-        //
-        // "TCP OK" only proves the SOCKS5→Xray→server outer TCP path works.
-        // It does NOT prove the server is forwarding inner application traffic,
-        // and it does NOT prove tun2socks is routing TUN traffic to SOCKS5.
-        //
-        // We MUST disconnect. The autoConnector will try the next profile.
-        appendLog("[VALIDATION] HARD FAIL — TCP OK but ALL HTTP+HTTPS probes timed out. " +
-            "The VPN server is accepting connections but not forwarding inner traffic. " +
-            "Possible causes: wrong flow/SNI, server-side packet drop, tun2socks not routing. " +
+        // All probes failed.
+        appendLog("[VALIDATION] HARD FAIL — TCP OK but ALL HTTPS+HTTP probes timed out. " +
+            "Possible causes: wrong flow/SNI, wrong paths (WS/XHTTP), server-side drop. " +
             "HTTP snippet: $httpSnippet  Disconnecting to try next profile.")
         broadcastStep("probe_fail", false,
-            "TCP OK — but HTTP+HTTPS probes all timed out. " +
-            "VPN server not confirmed to deliver internet. Trying next profile.")
+            "TCP OK — HTTPS+HTTP probes all failed. VPN not confirmed. Trying next profile.")
 
         return ValidationResult(false,
             "TCP OK — but no HTTP or HTTPS data received through tunnel. " +
             "HTTP snippet: $httpSnippet. VPN server may not be forwarding traffic.")
     }
 
-    // Returns (ok, bytesRead, snippet) — plain HTTP/1.0 GET over SOCKS5
+    // Returns (ok, bytesRead, snippet) — plain HTTP/1.0 GET over SOCKS5.
+    // 10s connect timeout: allows for Reality TLS handshake + VLESS setup + target
+    // connection under high-latency conditions (Turkey ~50ms RTT, potential packet loss).
     private suspend fun runDeepHttpProbe(
         host: String, port: Int, isDomain: Boolean = false
     ): Triple<Boolean, Int, String> {
@@ -458,12 +452,12 @@ class XrayVpnService : VpnService() {
             withContext(Dispatchers.IO) {
                 val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
                 Socket(proxy).use { sock ->
-                    sock.soTimeout = 4_000
                     if (isDomain) {
-                        sock.connect(InetSocketAddress.createUnresolved(host, port), 4_000)
+                        sock.connect(InetSocketAddress.createUnresolved(host, port), 10_000)
                     } else {
-                        sock.connect(InetSocketAddress(host, port), 4_000)
+                        sock.connect(InetSocketAddress(host, port), 10_000)
                     }
+                    sock.soTimeout = 10_000   // read timeout after connect
                     val req = "GET / HTTP/1.0\r\nHost: $host\r\nUser-Agent: SetaLink/1.0\r\nConnection: close\r\n\r\n"
                     sock.getOutputStream().apply { write(req.toByteArray()); flush() }
                     val buf  = ByteArray(2048)
@@ -482,19 +476,21 @@ class XrayVpnService : VpnService() {
     }
 
     // Returns (ok, bytesRead, snippet) — HTTPS/TLS GET over SOCKS5.
-    // This is the correct probe for xtls-rprx-vision servers: the inner payload is a
-    // TLS ClientHello that Vision recognises and splices — exactly what real apps send.
+    // This is the PRIMARY probe for xtls-rprx-vision servers: the inner TLS ClientHello
+    // is exactly what Vision recognises and splices. Tried FIRST in the validation sequence.
+    // 12s timeout: Reality TLS + VLESS + target TLS handshake + HTTP response in high-latency
+    // regions (Turkey, Iran) with potential packet retransmits.
     private suspend fun runHttpsProbe(host: String): Triple<Boolean, Int, String> {
         return runCatching {
             withContext(Dispatchers.IO) {
                 val proxy   = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
                 val rawSock = Socket(proxy)
                 try {
-                    rawSock.soTimeout = 5_000
-                    rawSock.connect(InetSocketAddress.createUnresolved(host, 443), 5_000)
+                    rawSock.connect(InetSocketAddress.createUnresolved(host, 443), 12_000)
+                    rawSock.soTimeout = 12_000
                     val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
                     val sslSock   = sslFactory.createSocket(rawSock, host, 443, true) as SSLSocket
-                    sslSock.soTimeout = 5_000
+                    sslSock.soTimeout = 12_000
                     try {
                         sslSock.startHandshake()
                         val req = "GET / HTTP/1.1\r\nHost: $host\r\nUser-Agent: SetaLink/1.0\r\nConnection: close\r\n\r\n"
