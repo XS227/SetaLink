@@ -15,7 +15,7 @@
 import { storage } from '../storage/storage';
 
 const BOOTSTRAP_URL =
-  'https://admin.setalink.no/api.php?mobile=1&action=bootstrap&_token=setalink-mobile-diag-v1';
+  'https://setalink.no/api.php?mobile=1&action=bootstrap&_token=setalink-mobile-diag-v1';
 
 const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v2';
 

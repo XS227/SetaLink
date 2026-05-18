@@ -1,4 +1,4 @@
-const BASE_URL  = 'https://admin.setalink.no/api.php';
+const BASE_URL  = 'https://setalink.no/api.php';
 const TOKEN     = 'setalink-mobile-diag-v1';
 const TIMEOUT   = 10_000;
 

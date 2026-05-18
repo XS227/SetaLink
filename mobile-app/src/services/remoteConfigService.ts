@@ -14,7 +14,7 @@
 import { storage } from '../storage/storage';
 
 const REMOTE_CONFIG_URL =
-  'https://admin.setalink.no/api.php?mobile=1&action=remote-config&_token=setalink-mobile-diag-v1';
+  'https://setalink.no/api.php?mobile=1&action=remote-config&_token=setalink-mobile-diag-v1';
 
 const CACHE_KEY     = 'remote_config_v2';
 const CACHE_TTL_KEY = 'remote_config_ttl_v2';
