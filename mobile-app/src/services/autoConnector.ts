@@ -1,35 +1,39 @@
 /**
- * Auto Mode connector — tests profiles in priority order and stays connected
- * on the first fully-validated success (HTTP/HTTPS probe through SOCKS5).
+ * Auto Mode connector — tests profiles in priority order, stays connected
+ * on the first fully-validated success, and retries forever in autonomous mode.
  *
- * Differs from connectionOptimizer, which disconnects every profile to rank them.
- * This service keeps the VPN connected after finding the first working profile
- * so the caller can hand off to the normal vpnStore connect flow.
+ * Priority is determined by:
+ *   1. Remote config SNI priority list (dynamic, pushed from admin)
+ *   2. Local success history (MMKV — profiles that worked before come first)
+ *   3. Static fallback order per mode (auto / iran)
  *
- * Priority order:
- *   Auto Mode  — current SNI → microsoft → apple → bing → speedtest → XHTTP → WS → Emergency
- *   Iran Mode  — microsoft 443 → microsoft port → bing → apple → samsung → speedtest → XHTTP → WS → Emergency
+ * Success requires probeOk=true — at least one HTTP or HTTPS response must
+ * have been received through the tunnel. TCP-only (probe inconclusive) is
+ * recorded as a failure and the next profile is tried. Only real internet
+ * access marks a profile as the winner.
  *
- * "Success" tiers (in order of preference):
- *   1. probeOk=true  — HTTPS/HTTP probe confirmed real data through the tunnel
- *   2. probeOk=false — TCP-only (tunnel is up, probe inconclusive — still usable)
- *   3. fail          — Xray/config error or SOCKS5 unreachable
+ * Phase 5: runAutoConnectLoop() never gives up. It retries with back-off,
+ * re-fetches remote config on each cycle, and re-sorts by history.
  */
 
+import { Platform } from 'react-native';
 import type { VpnAdapter }        from './vpnBridge';
 import type { VpnServer }         from '../stores/vpnStore';
 import type { ServerCredentials } from './serverConfigService';
 import { buildXrayConfigJson, buildEmergencyXrayConfigJson } from './xrayConfigBuilder';
 import { getLastConnectProbeOk }  from './vpnBridge';
+import { recordSuccess, recordFailure, sortByHistory, getTopProfiles } from './successHistory';
+import { getRemoteConfig, isKillSwitched, invalidateRemoteConfig } from './remoteConfigService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type AutoPhase =
   | 'idle'
   | 'testing'
-  | 'probe-validated'   // HTTPS/HTTP probe confirmed traffic
-  | 'tcp-only'          // TCP works, probes inconclusive (still connected)
-  | 'failed';
+  | 'probe-validated'
+  | 'tcp-only'
+  | 'failed'
+  | 'retrying';
 
 export interface AutoProfile {
   id:          string;
@@ -53,26 +57,52 @@ export interface AutoConnectStatus {
   profileIndex: number;
   profileCount: number;
   profileLabel: string;
+  retryCount?:  number;
   error?:       string;
 }
 
 export interface AutoConnectResult {
-  success:      boolean;            // true if any profile connected (probe or TCP-only)
-  probeOk:      boolean;            // true only if the winner had a passing HTTP/HTTPS probe
+  success:      boolean;
+  probeOk:      boolean;
   profiles:     AutoProfile[];
   winnerId:     string | null;
-  winnerConfig: string | null;      // Xray JSON string to hand to vpnStore
+  winnerConfig: string | null;
   durationMs:   number;
   ranAt:        number;
+  retryCount:   number;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ADMIN_REPORT_URL  = 'https://admin.setalink.no/api.php?mobile=1';
-const MOBILE_TOKEN      = 'setalink-mobile-diag-v1';
-// 70 s covers worst case: setup + all probes timing out (~56 s total)
+const ADMIN_REPORT_URL   = 'https://admin.setalink.no/api.php?mobile=1';
+const MOBILE_TOKEN       = 'setalink-mobile-diag-v1';
 const CONNECT_TIMEOUT_MS = 70_000;
 const BETWEEN_ATTEMPTS_MS = 700;
+
+// Autonomous retry back-off: 5s, 10s, 20s, 40s, 60s (capped)
+const RETRY_DELAYS_MS = [5_000, 10_000, 20_000, 40_000, 60_000];
+
+// ── Device info cache ─────────────────────────────────────────────────────────
+
+let _deviceInfo: { model: string; androidRelease: string; androidSdk: number } | null = null;
+
+async function getDeviceInfo(): Promise<typeof _deviceInfo> {
+  if (_deviceInfo) return _deviceInfo;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('../specs/NativeXrayModule').default;
+    if (mod?.getDeviceInfo) {
+      _deviceInfo = await mod.getDeviceInfo();
+      return _deviceInfo;
+    }
+  } catch {}
+  _deviceInfo = {
+    model:          'unknown',
+    androidRelease: String(Platform.Version),
+    androidSdk:     typeof Platform.Version === 'number' ? Platform.Version : 0,
+  };
+  return _deviceInfo;
+}
 
 // ── Profile builders ──────────────────────────────────────────────────────────
 
@@ -82,8 +112,9 @@ export function buildAutoProfiles(
   server: VpnServer,
   creds:  ServerCredentials,
   mode:   'auto' | 'iran',
+  sniPriorities?: string[],
 ): ProfileDef[] {
-  const addr = creds.address || `${server.id}.setalink.net`;
+  const addr   = creds.address || `${server.id}.setalink.net`;
   const baseFlow = creds.flow;
   const baseFp   = creds.fingerprint || 'chrome';
   const basePort = creds.port;
@@ -93,9 +124,9 @@ export function buildAutoProfiles(
     { fp = baseFp, flow = baseFlow, port = basePort } = {},
   ): ProfileDef => ({
     id, label,
-    protocol:    'VLESS + Reality',
+    protocol: 'VLESS + Reality',
     sni, port, flow, fingerprint: fp,
-    emergency:   false,
+    emergency: false,
   });
 
   const tls = (id: string, label: string, protocol: string, port = 443): ProfileDef => ({
@@ -112,60 +143,75 @@ export function buildAutoProfiles(
   });
 
   if (mode === 'iran') {
-    return [
-      // Priority 1-2: Microsoft SNI on both 443 and current port (confirmed working in Iran)
-      reality('iran-ms-443',    'Reality · microsoft.com · 443',          'www.microsoft.com', { port: 443 }),
-      reality('iran-ms-port',   'Reality · microsoft.com · current port', 'www.microsoft.com'),
-      // Priority 3: Bing (Microsoft CDN — less DPI-targeted in Iran)
-      reality('iran-bing',      'Reality · bing.com',                     'www.bing.com'),
-      // Priority 4: Apple with Safari fingerprint (common iOS device signature)
-      reality('iran-apple',     'Reality · apple.com',                    'www.apple.com',    { fp: 'safari' }),
-      // Priority 5: Samsung (Android-native SNI — blends with device traffic)
-      reality('iran-samsung',   'Reality · samsung.com',                  'www.samsung.com'),
-      // Priority 6: Speedtest — no vision flow (broadest compatibility)
-      reality('iran-speedtest', 'Reality · speedtest.net',                'www.speedtest.net', { flow: '' }),
-      // Priority 7-8: TLS-based transports (bypass DPI that targets Reality handshake)
-      tls('iran-xhttp',         'VLESS + XHTTP · 443',       'VLESS+XHTTP'),
-      tls('iran-ws',            'VLESS + WebSocket · 443',   'VLESS + WebSocket'),
-      // Priority 9: Emergency — IPv4 only, MTU 1280, no IPv6 routes
-      emergency('iran-emrg',    'Emergency · IPv4+MTU1280',               'www.microsoft.com'),
+    // Build ordered SNI list from remote config or static default
+    const iranSnis = sniPriorities ?? [
+      'www.microsoft.com', 'www.bing.com', 'www.apple.com', 'www.samsung.com', 'www.speedtest.net',
     ];
+
+    const profiles: ProfileDef[] = [
+      // Priority 1-2: top SNI on both 443 and current port
+      reality('iran-sni0-443',  `Reality · ${iranSnis[0]} · 443`,         iranSnis[0]!, { port: 443 }),
+      reality('iran-sni0-port', `Reality · ${iranSnis[0]} · ${basePort}`, iranSnis[0]!),
+    ];
+
+    // Remaining SNIs from priority list
+    for (let i = 1; i < Math.min(iranSnis.length, 5); i++) {
+      const sni = iranSnis[i]!;
+      const fp  = sni.includes('apple') ? 'safari' : baseFp;
+      profiles.push(reality(`iran-sni${i}`, `Reality · ${sni}`, sni, { fp }));
+    }
+
+    // Speedtest with no flow (broader compat)
+    if (!iranSnis.includes('www.speedtest.net')) {
+      profiles.push(reality('iran-speedtest', 'Reality · speedtest.net', 'www.speedtest.net', { flow: '' }));
+    }
+
+    // TLS transports
+    profiles.push(tls('iran-xhttp', 'VLESS + XHTTP · 443',     'VLESS+XHTTP'));
+    profiles.push(tls('iran-ws',    'VLESS + WebSocket · 443',  'VLESS + WebSocket'));
+
+    // Emergency
+    profiles.push(emergency('iran-emrg', 'Emergency · IPv4+MTU1280', iranSnis[0]!));
+    return profiles;
   }
 
-  // Auto Mode — tries current imported config first, then common fallbacks
-  return [
-    reality('auto-current',   'Reality · current config',     creds.sni || 'www.microsoft.com'),
-    reality('auto-ms',        'Reality · microsoft.com',      'www.microsoft.com'),
-    reality('auto-apple',     'Reality · apple.com',          'www.apple.com',    { fp: 'safari' }),
-    reality('auto-bing',      'Reality · bing.com',           'www.bing.com'),
-    reality('auto-speedtest', 'Reality · speedtest.net',      'www.speedtest.net', { flow: '' }),
-    tls('auto-xhttp',         'VLESS + XHTTP · 443',          'VLESS+XHTTP'),
-    tls('auto-ws',            'VLESS + WebSocket · 443',      'VLESS + WebSocket'),
-    emergency('auto-emrg',    'Emergency · IPv4+MTU1280',     creds.sni || 'www.microsoft.com'),
+  // Auto Mode — ordered by remote SNI priorities
+  const autoSnis = sniPriorities ?? [
+    'www.microsoft.com', 'www.apple.com', 'www.bing.com', 'www.samsung.com', 'www.speedtest.net',
   ];
+
+  const profiles: ProfileDef[] = [
+    reality('auto-current', 'Reality · current config', creds.sni || autoSnis[0]!),
+  ];
+
+  for (let i = 0; i < Math.min(autoSnis.length, 5); i++) {
+    const sni = autoSnis[i]!;
+    if (sni === creds.sni) continue; // already added as auto-current
+    const fp = sni.includes('apple') ? 'safari' : baseFp;
+    profiles.push(reality(`auto-sni${i}`, `Reality · ${sni}`, sni, { fp }));
+  }
+
+  profiles.push(tls('auto-xhttp', 'VLESS + XHTTP · 443',    'VLESS+XHTTP'));
+  profiles.push(tls('auto-ws',    'VLESS + WebSocket · 443', 'VLESS + WebSocket'));
+  profiles.push(emergency('auto-emrg', 'Emergency · IPv4+MTU1280', creds.sni || autoSnis[0]!));
+  return profiles;
 }
 
 function buildConfig(def: ProfileDef, server: VpnServer, creds: ServerCredentials): string {
   const patched: ServerCredentials = {
-    ...creds,
-    sni:         def.sni,
-    port:        def.port,
-    flow:        def.flow,
-    fingerprint: def.fingerprint,
+    ...creds, sni: def.sni, port: def.port, flow: def.flow, fingerprint: def.fingerprint,
   };
-
   const protoKey =
-    def.protocol.includes('XHTTP')     ? 'VLESS+XHTTP'       :
-    def.protocol.includes('WebSocket') ? 'WebSocket'          :
-    def.protocol.includes('Reality')   ? 'Reality'            : 'Reality';
+    def.protocol.includes('XHTTP')     ? 'VLESS+XHTTP'  :
+    def.protocol.includes('WebSocket') ? 'WebSocket'     :
+    def.protocol.includes('Reality')   ? 'Reality'       : 'Reality';
 
-  if (def.emergency) {
-    return buildEmergencyXrayConfigJson(server, protoKey, patched);
-  }
-  return buildXrayConfigJson(server, protoKey, 'Cloudflare (DoH)', patched);
+  return def.emergency
+    ? buildEmergencyXrayConfigJson(server, protoKey, patched)
+    : buildXrayConfigJson(server, protoKey, 'Cloudflare (DoH)', patched);
 }
 
-// ── Runner ────────────────────────────────────────────────────────────────────
+// ── Single pass runner ────────────────────────────────────────────────────────
 
 export async function runAutoConnect(
   server:   VpnServer,
@@ -174,10 +220,103 @@ export async function runAutoConnect(
   mode:     'auto' | 'iran',
   onUpdate: (status: AutoConnectStatus, profiles: AutoProfile[]) => void,
 ): Promise<AutoConnectResult> {
-  const ranAt = Date.now();
-  const defs  = buildAutoProfiles(server, creds, mode);
+  return _runPass(server, creds, adapter, mode, onUpdate, 0);
+}
 
-  const profiles: AutoProfile[] = defs.map(d => ({
+// ── Autonomous retry loop (Phase 5) ──────────────────────────────────────────
+
+/**
+ * Runs runAutoConnect in an infinite retry loop.
+ * Invalidates remote config and re-sorts by history on each cycle.
+ * Calls onUpdate with phase='retrying' between cycles.
+ * Stops when:
+ *   - A profile succeeds (returns result)
+ *   - cancel() is called (returns last failure result)
+ */
+export function runAutoConnectLoop(
+  server:   VpnServer,
+  creds:    ServerCredentials,
+  adapter:  VpnAdapter,
+  mode:     'auto' | 'iran',
+  onUpdate: (status: AutoConnectStatus, profiles: AutoProfile[]) => void,
+): { promise: Promise<AutoConnectResult>; cancel: () => void } {
+  let cancelled = false;
+  let lastResult: AutoConnectResult | null = null;
+
+  const promise = (async () => {
+    let retryCount = 0;
+
+    while (!cancelled) {
+      // Invalidate remote config after first failure so we re-fetch fresh priorities
+      if (retryCount > 0) invalidateRemoteConfig();
+
+      const result = await _runPass(server, creds, adapter, mode, onUpdate, retryCount);
+      lastResult = result;
+
+      if (result.success || cancelled) return result;
+
+      retryCount++;
+      const delayMs = RETRY_DELAYS_MS[Math.min(retryCount - 1, RETRY_DELAYS_MS.length - 1)]!;
+      const retryIn = Math.round(delayMs / 1000);
+
+      const retryMsg = `All profiles failed — retrying in ${retryIn}s (attempt ${retryCount + 1})`;
+      onUpdate({
+        phase: 'retrying',
+        profileIndex: 0,
+        profileCount: result.profiles.length,
+        profileLabel: retryMsg,
+        retryCount,
+        error: retryMsg,
+      }, result.profiles);
+
+      await sleep(delayMs);
+    }
+
+    return lastResult ?? {
+      success: false, probeOk: false, profiles: [],
+      winnerId: null, winnerConfig: null,
+      durationMs: 0, ranAt: Date.now(), retryCount: 0,
+    };
+  })();
+
+  return {
+    promise,
+    cancel: () => { cancelled = true; },
+  };
+}
+
+// ── Internal: single pass ─────────────────────────────────────────────────────
+
+async function _runPass(
+  server:     VpnServer,
+  creds:      ServerCredentials,
+  adapter:    VpnAdapter,
+  mode:       'auto' | 'iran',
+  onUpdate:   (status: AutoConnectStatus, profiles: AutoProfile[]) => void,
+  retryCount: number,
+): Promise<AutoConnectResult> {
+  const ranAt = Date.now();
+
+  // Fetch remote config to get current SNI priority list and kill-switches
+  const remoteCfg = await getRemoteConfig();
+  const sniPriorities = mode === 'iran'
+    ? remoteCfg.iran_sni_order
+    : remoteCfg.sni_priorities;
+
+  const defs = buildAutoProfiles(server, creds, mode, sniPriorities);
+
+  // Apply kill-switches: skip profiles that are known broken
+  const filteredDefs = defs.filter(d => !isKillSwitched(d.sni, d.protocol, remoteCfg));
+
+  // Sort by historical success (puts previously successful profiles first)
+  const profileIds = filteredDefs.map(d => d.id);
+  const sortedIds  = sortByHistory(profileIds);
+  const sortedDefs = [
+    ...sortedIds.map(id => filteredDefs.find(d => d.id === id)!).filter(Boolean),
+    ...filteredDefs.filter(d => !sortedIds.includes(d.id)),
+  ];
+
+  const profiles: AutoProfile[] = sortedDefs.map(d => ({
     ...d,
     configJson: buildConfig(d, server, creds),
     status:     'pending' as const,
@@ -186,12 +325,11 @@ export async function runAutoConnect(
   onUpdate({
     phase: 'testing', profileIndex: 0,
     profileCount: profiles.length, profileLabel: profiles[0]?.label ?? '',
+    retryCount,
   }, [...profiles]);
 
-  let probeWinnerId:    string | null = null;
-  let probeWinnerCfg:   string | null = null;
-  let tcpOnlyWinnerId:  string | null = null;
-  let tcpOnlyWinnerCfg: string | null = null;
+  let probeWinnerId:  string | null = null;
+  let probeWinnerCfg: string | null = null;
 
   for (let i = 0; i < profiles.length; i++) {
     const p = profiles[i]!;
@@ -204,7 +342,7 @@ export async function runAutoConnect(
     p.status = 'testing';
     onUpdate({
       phase: 'testing', profileIndex: i,
-      profileCount: profiles.length, profileLabel: p.label,
+      profileCount: profiles.length, profileLabel: p.label, retryCount,
     }, [...profiles]);
 
     const t0 = Date.now();
@@ -216,142 +354,132 @@ export async function runAutoConnect(
         ),
       ]);
 
-      const probeOk  = getLastConnectProbeOk();
-      p.latencyMs    = Date.now() - t0;
-      p.testedAt     = Date.now();
-      p.probeOk      = probeOk;
+      const probeOk = getLastConnectProbeOk();
+      p.latencyMs   = Date.now() - t0;
+      p.testedAt    = Date.now();
+      p.probeOk     = probeOk;
 
       if (probeOk) {
-        // Full success — probe confirmed real data. Stay connected; stop testing.
+        // Probe-validated: real HTTP/HTTPS data confirmed through tunnel.
         p.status      = 'success';
         probeWinnerId  = p.id;
         probeWinnerCfg = p.configJson;
+        recordSuccess(p.id, p.latencyMs, p.sni, p.protocol);
         onUpdate({
           phase: 'probe-validated', profileIndex: i,
-          profileCount: profiles.length, profileLabel: p.label,
+          profileCount: profiles.length, profileLabel: p.label, retryCount,
         }, [...profiles]);
-        // Don't disconnect — leave tunnel up for caller to hand to vpnStore
         break;
       }
 
-      // TCP-only success: record as backup, disconnect and try next profile
+      // probeOk=false: TCP established but no internet data confirmed.
+      // This tunnel does NOT deliver real internet access. Do NOT accept it.
+      // Disconnect and try the next profile.
       p.status = 'tcp-only';
-      if (!tcpOnlyWinnerId) {
-        tcpOnlyWinnerId  = p.id;
-        tcpOnlyWinnerCfg = p.configJson;
-      }
+      recordFailure(p.id, p.sni, p.protocol);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
       onUpdate({
         phase: 'testing', profileIndex: i + 1,
         profileCount: profiles.length,
-        profileLabel: profiles[i + 1]?.label ?? '',
+        profileLabel: profiles[i + 1]?.label ?? '', retryCount,
       }, [...profiles]);
 
     } catch (e: unknown) {
-      p.status   = 'fail';
-      p.error    = e instanceof Error ? e.message : String(e);
-      p.testedAt = Date.now();
+      p.latencyMs = Date.now() - t0;
+      p.testedAt  = Date.now();
+      const errMsg = e instanceof Error ? e.message : String(e);
+      // Distinguish "TCP ok but probe failed" from hard Xray/config failures.
+      p.status = errMsg.includes('TCP OK') ? 'tcp-only' : 'fail';
+      p.error  = errMsg;
+      recordFailure(p.id, p.sni, p.protocol);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
       onUpdate({
         phase: 'testing', profileIndex: i + 1,
         profileCount: profiles.length,
-        profileLabel: profiles[i + 1]?.label ?? '',
+        profileLabel: profiles[i + 1]?.label ?? '', retryCount,
       }, [...profiles]);
     }
   }
 
-  // If probe winner found: already connected — return immediately
   if (probeWinnerId) {
     const result: AutoConnectResult = {
       success: true, probeOk: true, profiles,
       winnerId: probeWinnerId, winnerConfig: probeWinnerCfg,
-      durationMs: Date.now() - ranAt, ranAt,
+      durationMs: Date.now() - ranAt, ranAt, retryCount,
     };
     reportToAdmin(result, server.id, mode).catch(() => {});
     return result;
   }
 
-  // No probe winner, but TCP-only winner exists — reconnect it
-  if (tcpOnlyWinnerId && tcpOnlyWinnerCfg) {
-    const tp = profiles.find(p => p.id === tcpOnlyWinnerId)!;
-    tp.status = 'success'; // promote — it will be the VPN the user uses
-
-    try {
-      await Promise.race([
-        tp.emergency
-          ? adapter.connectEmergency(tcpOnlyWinnerCfg)
-          : adapter.connect(tcpOnlyWinnerCfg),
-        new Promise<never>((_, rej) =>
-          setTimeout(() => rej(new Error('Reconnect timeout')), CONNECT_TIMEOUT_MS)
-        ),
-      ]);
-      onUpdate({
-        phase: 'tcp-only', profileIndex: 0,
-        profileCount: profiles.length, profileLabel: tp.label,
-      }, profiles);
-    } catch {
-      tp.status = 'fail';
-      tcpOnlyWinnerId  = null;
-      tcpOnlyWinnerCfg = null;
-    }
-  }
-
-  const success = tcpOnlyWinnerId !== null;
-
-  if (!success) {
-    onUpdate({
-      phase: 'failed', profileIndex: profiles.length,
-      profileCount: profiles.length, profileLabel: '',
-    }, profiles);
-  }
+  // No profile delivered confirmed internet access.
+  onUpdate({
+    phase: 'failed', profileIndex: profiles.length,
+    profileCount: profiles.length, profileLabel: '', retryCount,
+  }, profiles);
 
   const result: AutoConnectResult = {
-    success,
+    success:      false,
     probeOk:      false,
     profiles,
-    winnerId:     tcpOnlyWinnerId,
-    winnerConfig: tcpOnlyWinnerCfg,
+    winnerId:     null,
+    winnerConfig: null,
     durationMs:   Date.now() - ranAt,
     ranAt,
+    retryCount,
   };
   reportToAdmin(result, server.id, mode).catch(() => {});
   return result;
 }
 
-// ── Admin reporting ───────────────────────────────────────────────────────────
+// ── Admin telemetry reporting (Phase 2) ───────────────────────────────────────
 
 async function reportToAdmin(
   result:   AutoConnectResult,
   serverId: string,
   mode:     string,
 ): Promise<void> {
+  const device = await getDeviceInfo();
+  const topHistory = getTopProfiles(3)
+    .map(p => `${p.protocol}/${p.sni}@${Math.round(p.rate * 100)}%`)
+    .join(';');
+
   try {
     for (const p of result.profiles) {
       if (p.status === 'pending' || p.status === 'skipped') continue;
+
       const body = new URLSearchParams({
-        _token:      MOBILE_TOKEN,
-        country:     'unknown',
-        network:     'unknown',
-        server:      serverId,
-        port:        String(p.port),
-        protocol:    p.protocol,
-        sni:         p.sni,
-        flow:        p.flow,
-        fingerprint: p.fingerprint,
-        result:      p.status === 'success' ? 'success'
-                   : p.status === 'tcp-only' ? 'tcp_only' : 'fail',
-        error_msg:   p.error ?? '',
-        tcp_ok:      p.status !== 'fail' ? '1' : '0',
-        http_ok:     p.probeOk ? '1' : '0',
-        latency_ms:  String(p.latencyMs ?? 0),
-        is_winner:   p.id === result.winnerId ? '1' : '0',
-        tested_by:   'auto-connector-v1',
+        _token:          MOBILE_TOKEN,
+        country:         'unknown',
+        network:         'unknown',
+        server:          serverId,
+        port:            String(p.port),
+        protocol:        p.protocol,
+        sni:             p.sni,
+        flow:            p.flow,
+        fingerprint:     p.fingerprint,
+        result:          p.status === 'success' ? 'success'
+                       : p.status === 'tcp-only' ? 'tcp_only' : 'fail',
+        error_msg:       p.error ?? '',
+        tcp_ok:          p.status !== 'fail' ? '1' : '0',
+        http_ok:         p.probeOk ? '1' : '0',
+        latency_ms:      String(p.latencyMs ?? 0),
+        is_winner:       p.id === result.winnerId ? '1' : '0',
+        tested_by:       'auto-connector-v2',
         mode,
-        emergency:   p.emergency ? '1' : '0',
-        notes:       `AutoConnector mode=${mode} total=${result.durationMs}ms probeOk=${result.probeOk}`,
+        emergency:       p.emergency ? '1' : '0',
+        device_model:    device?.model ?? 'unknown',
+        android_version: device?.androidRelease ?? '',
+        android_sdk:     String(device?.androidSdk ?? 0),
+        ipv6_enabled:    '0',  // IPv6 is now disabled in TUN (Phase 1 fix)
+        mtu:             p.emergency ? '1280' : '1400',
+        reconnect_count: String(result.retryCount),
+        no_internet:     (p.status === 'tcp-only' && !p.probeOk) ? '1' : '0',
+        fallback_chain:  topHistory,
+        notes: `AutoConnector v2 mode=${mode} total=${result.durationMs}ms probeOk=${result.probeOk} retry=${result.retryCount}`,
       });
+
       await Promise.race([
         fetch(ADMIN_REPORT_URL, {
           method:  'POST',

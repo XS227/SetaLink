@@ -15,6 +15,7 @@ interface SettingsState {
   biometricLock:        boolean;
   hasOnboarded:         boolean;
   hasSelectedLanguage:  boolean;
+  hasSeenWelcome:       boolean;
 
   setProtocol:              (v: string) => void;
   setDnsMode:               (v: string) => void;
@@ -28,6 +29,7 @@ interface SettingsState {
   toggleBiometricLock:      () => void;
   completeOnboarding:       () => void;
   completeLanguageSelection: () => void;
+  markWelcomeSeen:           () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -45,6 +47,7 @@ export const useSettingsStore = create<SettingsState>()(
       biometricLock:       false,
       hasOnboarded:        false,
       hasSelectedLanguage: false,
+      hasSeenWelcome:      false,
 
       setProtocol: (v) => set({ protocol: v }),
       setDnsMode:  (v) => set({ dnsMode: v }),
@@ -59,6 +62,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleBiometricLock:       () => set((s) => ({ biometricLock:     !s.biometricLock })),
       completeOnboarding:        () => set({ hasOnboarded: true }),
       completeLanguageSelection: () => set({ hasSelectedLanguage: true }),
+      markWelcomeSeen:           () => set({ hasSeenWelcome: true }),
     }),
     {
       name:    'setalink-settings-v2',

@@ -55,10 +55,13 @@ interface ServerState {
   fetchServers:  (token: string) => Promise<void>;
 
   // Import actions
-  importFromVless:        (uri: string) => { success: boolean; error?: string };
+  importFromVless:        (uri: string) => { success: boolean; error?: string; updated?: boolean };
   importFromSubscription: (url: string) => Promise<{ imported: number; errors: number }>;
   removeImportedServer:   (id: string) => void;
   clearImportedServers:   () => void;
+
+  // Bootstrap profile — fetches remote emergency profile for fresh installs
+  loadBootstrapIfEmpty:  () => Promise<boolean>;
 
   // Credential lookup for the VPN config builder
   getImportedCreds: (serverId: string) => ServerCredentials | undefined;
@@ -136,12 +139,21 @@ export const useServerStore = create<ServerState>()(
       if (!entry) return { success: false, error: 'Invalid or unsupported VLESS URI' };
 
       const { servers, importedCreds, selectedId } = get();
-      // Avoid duplicate by address+port
-      const exists = servers.some(
+
+      // Check for existing import by address+port
+      const existingServer = servers.find(
         (s) => importedCreds[s.id]?.address === entry.creds.address &&
                importedCreds[s.id]?.port    === entry.creds.port,
       );
-      if (exists) return { success: false, error: 'Server already imported' };
+
+      if (existingServer) {
+        // Update existing credentials in-place (allows recovering from broken configs).
+        // UUID or keys may have rotated — replace creds, keep the server record.
+        set({
+          importedCreds: { ...importedCreds, [existingServer.id]: entry.creds },
+        });
+        return { success: true, updated: true };
+      }
 
       set({
         servers:       [...servers, entry.record],
@@ -231,6 +243,50 @@ export const useServerStore = create<ServerState>()(
           useVpnStore.getState().setSelectedServer(null);
         } catch {}
       }
+    }
+  },
+
+  loadBootstrapIfEmpty: async () => {
+    const { servers, importedCreds } = get();
+    // Only load bootstrap when the user has no imported configs at all.
+    if (Object.keys(importedCreds).length > 0 || servers.length > 0) return false;
+
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { getEmergencyProfile } = require('../config/emergencyProfiles') as typeof import('../config/emergencyProfiles');
+      const profile = await getEmergencyProfile();
+      if (!profile?.uuid || !profile?.address || !profile?.publicKey) return false;
+
+      const record: ServerRecord = {
+        id:       profile.id || 'bootstrap-1',
+        country:  'SetaLink',
+        city:     'Auto',
+        flag:     '⚡',
+        ping:     0,
+        load:     0,
+        protocol: 'Reality',
+        tags:     ['Recommended', 'Stealth'],
+      };
+      const creds: ServerCredentials = {
+        uuid:        profile.uuid,
+        address:     profile.address,
+        port:        profile.port,
+        publicKey:   profile.publicKey,
+        shortId:     profile.shortId,
+        sni:         profile.sni,
+        flow:        profile.flow,
+        fingerprint: profile.fingerprint,
+      };
+
+      set({
+        servers:       [record],
+        importedCreds: { [record.id]: creds },
+        selectedId:    record.id,
+      });
+      syncToVpnStore(record);
+      return true;
+    } catch {
+      return false;
     }
   },
 

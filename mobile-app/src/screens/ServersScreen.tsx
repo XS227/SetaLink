@@ -95,7 +95,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       if (inputType === 'vless') {
         const result = importFromVless(val);
         if (result.success) {
-          setImportSuccess(t('sv.added'));
+          setImportSuccess(result.updated ? 'Config updated — credentials replaced.' : t('sv.added'));
           setTimeout(() => { setImportVisible(false); setImportInput(''); }, 1200);
         } else {
           setImportError(result.error ?? 'Invalid VLESS link.');
@@ -296,7 +296,19 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             )}
           </View>
 
-          {filtered.length === 0 ? (
+          {servers.length === 0 ? (
+            <View style={styles.onboardingCard}>
+              <Text style={styles.onboardingIcon}>◎</Text>
+              <Text style={styles.onboardingTitle}>No server configured</Text>
+              <Text style={styles.onboardingBody}>
+                Tap <Text style={styles.onboardingHighlight}>Import</Text> above and paste your VLESS link.{'\n\n'}
+                Get your link from your SetaLink account or admin.
+              </Text>
+              <TouchableOpacity style={styles.onboardingBtn} onPress={openImport} activeOpacity={0.8}>
+                <Text style={styles.onboardingBtnText}>Import Config</Text>
+              </TouchableOpacity>
+            </View>
+          ) : filtered.length === 0 ? (
             <View style={styles.empty}>
               <Text style={styles.emptyText}>{t('sv.noResults')}</Text>
             </View>
@@ -511,8 +523,17 @@ const styles = StyleSheet.create({
   smartTagText:  { fontSize: 9, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.3 },
 
   // Empty state
-  empty:     { paddingVertical: Spacing[10], alignItems: 'center' },
-  emptyText: { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.muted },
+  empty:            { paddingVertical: Spacing[10], alignItems: 'center' },
+  emptyText:        { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  // Onboarding card (shown when no servers at all)
+  onboardingCard:      { margin: Spacing[2], padding: Spacing[6], backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', gap: Spacing[3] },
+  onboardingIcon:      { fontSize: 36, color: Colors.emerald[400] },
+  onboardingTitle:     { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  onboardingBody:      { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, textAlign: 'center', lineHeight: 22 },
+  onboardingHighlight: { color: Colors.emerald[400], fontFamily: Typography.family.label },
+  onboardingBtn:       { marginTop: Spacing[2], paddingHorizontal: Spacing[6], paddingVertical: Spacing[3], backgroundColor: Colors.emerald[400] + '20', borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.emerald[400] + '60' },
+  onboardingBtnText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.5 },
 
   // Connect CTA
   stickyFooter:       { position: 'absolute', bottom: Layout.bottomNavHeight + 8, left: Layout.screenPadding, right: Layout.screenPadding },

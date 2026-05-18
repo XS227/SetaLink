@@ -11,7 +11,7 @@ import { useAIStore, AI_MODES, AIFeatures } from '../stores/aiStore';
 import { formatRelativeTime }               from '../utils/formatters';
 import { useT }                             from '../i18n';
 import { runOptimizer }                     from '../services/connectionOptimizer';
-import { runAutoConnect }                   from '../services/autoConnector';
+import { runAutoConnectLoop }               from '../services/autoConnector';
 import { getAdapter }                       from '../services/vpnBridge';
 import { useVpnStore }                      from '../stores/vpnStore';
 import { useServerStore }                   from '../stores/serverStore';
@@ -120,8 +120,8 @@ const FEATURE_I18N: FeatureI18nMap = {
 function phaseLabel(phase: string, label: string, index: number, count: number): string {
   switch (phase) {
     case 'testing':        return `Testing profile ${index + 1}/${count}: ${label}`;
-    case 'probe-validated':return `Best route selected: ${label}`;
-    case 'tcp-only':       return `Connected (tunnel active): ${label}`;
+    case 'probe-validated':return `Internet confirmed: ${label}`;
+    case 'retrying':       return label || 'All profiles failed — retrying…';
     case 'failed':         return 'All profiles failed — check server config';
     default:               return '';
   }
@@ -130,8 +130,8 @@ function phaseLabel(phase: string, label: string, index: number, count: number):
 function phaseColor(phase: string): string {
   switch (phase) {
     case 'probe-validated': return Colors.emerald[400];
-    case 'tcp-only':        return '#7BCF8E';
     case 'failed':          return '#FF5A5A';
+    case 'retrying':        return '#FFB800';
     case 'testing':         return '#FFB800';
     default:                return Colors.text.muted;
   }
@@ -183,38 +183,59 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
     }
   }, [selectedServer, getImportedCreds, clearOptimizerResult, setOptimizerRunning, setOptimizerProfiles, setOptimizerResult]);
 
-  // ── Auto Connect (find best + stay connected, hand off to vpnStore) ────────
+  // ── Auto Connect — autonomous loop (Phase 5: never gives up) ─────────────
 
   const isAutoMode = activeMode === 'auto' || activeMode === 'iran';
+  // Holds the cancel function for the running loop
+  const autoLoopCancelRef = useRef<(() => void) | null>(null);
+
+  // Cancel loop when screen unmounts or user manually stops
+  useEffect(() => {
+    return () => { autoLoopCancelRef.current?.(); };
+  }, []);
+
+  const stopAutoConnectFlow = useCallback(() => {
+    autoLoopCancelRef.current?.();
+    autoLoopCancelRef.current = null;
+    clearAutoConnect();
+  }, [clearAutoConnect]);
 
   const startAutoConnectFlow = useCallback(async () => {
     if (!selectedServer) return;
     const creds = getImportedCreds(selectedServer.id);
     if (!creds) return;
 
+    // Cancel any running loop before starting a new one
+    autoLoopCancelRef.current?.();
+    autoLoopCancelRef.current = null;
+
     clearAutoConnect();
     startAutoConnect(activeMode as 'auto' | 'iran');
 
     const adapter = getAdapter();
+
+    const { promise, cancel } = runAutoConnectLoop(
+      selectedServer,
+      creds,
+      adapter,
+      activeMode as 'auto' | 'iran',
+      (status, profiles) => updateAutoStatus(status, profiles as any),
+    );
+    autoLoopCancelRef.current = cancel;
+
     try {
-      const result = await runAutoConnect(
-        selectedServer,
-        creds,
-        adapter,
-        activeMode as 'auto' | 'iran',
-        (status, profiles) => updateAutoStatus(status, profiles as any),
-      );
+      const result = await promise;
+      autoLoopCancelRef.current = null;
 
       setAutoResult({
-        winnerId: result.winnerId,
-        probeOk:  result.probeOk,
+        winnerId:   result.winnerId,
+        probeOk:    result.probeOk,
         durationMs: result.durationMs,
       });
 
       if (result.success && result.winnerConfig && result.winnerId) {
         const winnerProfile = result.profiles.find(p => p.id === result.winnerId);
 
-        // Store winning config — vpnStore.getConnectConfig() will use it
         setWinningConfig({
           serverId:   selectedServer.id,
           profileId:  result.winnerId,
@@ -223,13 +244,14 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
           label:      winnerProfile?.label ?? result.winnerId,
         });
 
-        // Disconnect the auto-connected tunnel, then reconnect via proper vpnStore flow
+        // Disconnect auto-connect tunnel then reconnect via vpnStore flow
         // so session tracking, watchdog, and stats all work correctly.
         try { await adapter.disconnect(); } catch {}
         await new Promise<void>(resolve => setTimeout(resolve, 500));
         vpnConnect();
       }
     } catch {
+      autoLoopCancelRef.current = null;
       setAutoResult({ winnerId: null, probeOk: false, durationMs: 0 });
     }
   }, [
@@ -377,11 +399,11 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                             {autoConnect.result.probeOk ? '✓' : '~'}
                           </Text>
                           <View>
-                            <Text style={[autoStyles.winnerLabel, { color: autoConnect.result.probeOk ? Colors.emerald[400] : '#7BCF8E' }]}>
+                            <Text style={[autoStyles.winnerLabel, { color: Colors.emerald[400] }]}>
                               {autoConnect.winningConfig?.label ?? 'Best profile found'}
                             </Text>
                             <Text style={autoStyles.winnerSub}>
-                              {autoConnect.result.probeOk ? 'Probe validated · real traffic confirmed' : 'TCP connected · tunnel active'}
+                              {'Internet confirmed · real traffic validated'}
                               {' · '}{(autoConnect.result.durationMs / 1000).toFixed(1)}s
                             </Text>
                           </View>
@@ -449,8 +471,8 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                           </Text>
                         )}
                         {p.status === 'tcp-only' && (
-                          <Text style={[autoStyles.profileSub, { color: '#7BCF8E' }]}>
-                            TCP only — probe inconclusive · trying next
+                          <Text style={[autoStyles.profileSub, { color: '#FF8C00' }]}>
+                            TCP connected but no internet confirmed — skipping
                           </Text>
                         )}
                         {p.status === 'fail' && p.error && (

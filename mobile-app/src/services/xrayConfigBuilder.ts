@@ -281,23 +281,38 @@ export function buildXrayConfig(
       // dns-out: Xray's internal DNS resolver handles port-53 traffic directly,
       // avoiding the UDP ASSOCIATE path in SOCKS5 which is fragile on some devices.
       { tag: 'dns-out', protocol: 'dns', settings: {} },
+      // blackhole: fast-fails IPv6 connections that reach SOCKS5 from tun2socks.
+      // Without this, IPv6 traffic through a proxy chain that lacks IPv6 support
+      // hangs indefinitely, blocking Happy Eyeballs from falling back to IPv4.
+      { tag: 'blackhole', protocol: 'blackhole', settings: {} },
     ],
 
     routing: {
       domainStrategy: 'IPIfNonMatch',
       rules: [
-        // Private IPs always go direct (LAN, local DNS servers stay off-tunnel).
+        // Private IPv4 + IPv6 LAN ranges always go direct.
         {
           type: 'field',
-          ip:   ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+          ip:   [
+            '127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16',
+            '::1/128', 'fc00::/7', 'fe80::/10',
+          ],
           outboundTag: 'direct',
         },
-        // All other port-53 traffic goes to Xray's internal DNS resolver so
-        // DNS queries are resolved reliably through the VPN without UDP ASSOCIATE.
+        // Port 53 → Xray internal DNS resolver (reliable, no UDP ASSOCIATE needed).
         {
           type: 'field',
           port: '53',
           outboundTag: 'dns-out',
+        },
+        // All IPv6 → blackhole. Gives apps an immediate connection-refused so
+        // Happy Eyeballs retries on IPv4 without waiting for a timeout.
+        // TUN routes do not include ::/0 (native service excludes IPv6 from TUN),
+        // so this rule is a safety net for any IPv6 that enters via tun2socks.
+        {
+          type: 'field',
+          ip:   ['::/0'],
+          outboundTag: 'blackhole',
         },
       ],
     },
@@ -345,15 +360,15 @@ export function buildEmergencyXrayConfigJson(
       buildProxyOutbound(server, protocol, creds),
       { tag: 'direct', protocol: 'freedom', settings: {} },
       { tag: 'dns-out', protocol: 'dns', settings: {} },
+      { tag: 'blackhole', protocol: 'blackhole', settings: {} },
     ],
 
-    // No private-IP bypass rules — all traffic proxied through VPN server.
-    // This removes one possible failure mode where local routing rules block traffic.
-    // DNS routing is kept: UDP ASSOCIATE is unreliable; internal resolver is safer.
     routing: {
       domainStrategy: 'IPIfNonMatch',
       rules: [
         { type: 'field', port: '53', outboundTag: 'dns-out' },
+        // Fast-fail all IPv6 so Happy Eyeballs immediately retries on IPv4.
+        { type: 'field', ip: ['::/0'], outboundTag: 'blackhole' },
       ],
     },
   };

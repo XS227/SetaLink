@@ -23,6 +23,7 @@ import { SplashScreen }      from '../screens/SplashScreen';
 import { LanguageScreen }    from '../screens/LanguageScreen';
 import { OnboardingScreen }  from '../screens/OnboardingScreen';
 import { AuthScreen }        from '../screens/AuthScreen';
+import { WelcomeScreen }     from '../screens/WelcomeScreen';
 import { HomeScreen }        from '../screens/HomeScreen';
 import { ServersScreen }     from '../screens/ServersScreen';
 import { SmartAIScreen }     from '../screens/SmartAIScreen';
@@ -34,13 +35,15 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { Toast }             from '../components/Toast';
 import { UpgradeScreen }     from '../screens/UpgradeScreen';
 
-import { runBootSequence }   from '../services/bootService';
-import { useAuthStore }      from '../stores/authStore';
-import { useSettingsStore }  from '../stores/settingsStore';
-import { useVpnStore }       from '../stores/vpnStore';
-import { useServerStore }    from '../stores/serverStore';
-import { useAppBoot }        from '../hooks/useAppBoot';
-import { useDeepLinks }      from '../hooks/useDeepLinks';
+import { runBootSequence }       from '../services/bootService';
+import { getOrCreateDeviceId }   from '../services/deviceIdentityService';
+import { registerDevice }        from '../services/entitlementService';
+import { useAuthStore }          from '../stores/authStore';
+import { useSettingsStore }      from '../stores/settingsStore';
+import { useVpnStore }           from '../stores/vpnStore';
+import { useServerStore }        from '../stores/serverStore';
+import { useAppBoot }            from '../hooks/useAppBoot';
+import { useDeepLinks }          from '../hooks/useDeepLinks';
 
 import type { RootStackParamList, MainTabParamList } from './types';
 
@@ -80,10 +83,18 @@ function MainTabs() {
   useAppBoot(); // registers AppState listener for kill-switch / reconnect logic
 
   const token        = useAuthStore((s) => s.token);
-  const fetchServers = useServerStore((s) => s.fetchServers);
+  const fetchServers        = useServerStore((s) => s.fetchServers);
+  const loadBootstrapIfEmpty = useServerStore((s) => s.loadBootstrapIfEmpty);
+
   useEffect(() => {
     if (token) { fetchServers(token).catch(() => {}); }
   }, [token, fetchServers]);
+
+  // On first launch (no servers imported), try to fetch the remote bootstrap profile.
+  // This gives fresh installs a working "install → open → connect" experience.
+  useEffect(() => {
+    loadBootstrapIfEmpty().catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <Tab.Navigator
@@ -141,12 +152,32 @@ function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
 
 // ── Stack adapters ────────────────────────────────────────────────────────────
 
+async function tryAutoRegister(): Promise<boolean> {
+  try {
+    const deviceId   = getOrCreateDeviceId();
+    const entitlement = await registerDevice(deviceId);
+    useAuthStore.getState().loginWithDevice(entitlement);
+    // Bootstrap server from registration response → import into server list
+    if (entitlement.server?.uuid && entitlement.server?.address) {
+      const { importFromVless } = useServerStore.getState();
+      const vless = `vless://${entitlement.server.uuid}@${entitlement.server.address}:${entitlement.server.port}` +
+        `?security=reality&encryption=none&pbk=${entitlement.server.publicKey}` +
+        `&sid=${entitlement.server.shortId}&sni=${entitlement.server.sni}` +
+        `&flow=${entitlement.server.flow}&fp=${entitlement.server.fingerprint}&type=tcp#SetaLink-Auto`;
+      importFromVless(vless);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function SplashAdapter({ navigation }: ScreenAdapterProps) {
   return (
     <SplashScreen
       onFinish={async () => {
         const result = await runBootSequence();
-        const { hasOnboarded, hasSelectedLanguage } = useSettingsStore.getState();
+        const { hasOnboarded, hasSelectedLanguage, hasSeenWelcome } = useSettingsStore.getState();
 
         if (!hasSelectedLanguage) {
           navigation.replace('Language');
@@ -159,7 +190,18 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
         }
 
         if (result.status === 'auth_required') {
-          navigation.replace('Auth');
+          const registered = await tryAutoRegister();
+          if (registered) {
+            navigation.replace('Welcome');
+          } else {
+            navigation.replace('Auth');
+          }
+          return;
+        }
+
+        // Already authenticated
+        if (!hasSeenWelcome) {
+          navigation.replace('Welcome');
           return;
         }
 
@@ -168,6 +210,17 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
         if (result.shouldAutoConnect) {
           setTimeout(() => useVpnStore.getState().connect(), 600);
         }
+      }}
+    />
+  );
+}
+
+function WelcomeAdapter({ navigation }: ScreenAdapterProps) {
+  return (
+    <WelcomeScreen
+      onStart={() => {
+        useSettingsStore.getState().markWelcomeSeen();
+        navigation.replace('Main');
       }}
     />
   );
@@ -230,6 +283,7 @@ export function AppNavigator() {
         <Stack.Screen name="Language"    component={LanguageAdapter} />
         <Stack.Screen name="Onboarding"  component={OnboardingAdapter} />
         <Stack.Screen name="Auth"        component={AuthAdapter} />
+        <Stack.Screen name="Welcome"     component={WelcomeAdapter} />
         <Stack.Screen name="Main"        component={MainTabs} />
         <Stack.Screen
           name="Settings"

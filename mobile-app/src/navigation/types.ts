@@ -7,6 +7,7 @@ export type RootStackParamList = {
   Language:    undefined;
   Onboarding:  undefined;
   Auth:        undefined;
+  Welcome:     undefined;
   Main:        undefined;
   Settings:    undefined;
   Diagnostics: undefined;
