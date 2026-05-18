@@ -1,4 +1,8 @@
 import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { storage } from '../storage/storage';
+import type { OptimizerProfile, OptimizerResult } from '../services/connectionOptimizer';
+import type { AutoPhase, AutoConnectStatus } from '../services/autoConnector';
 
 export type AIModeKey =
   | 'auto'
@@ -71,47 +75,219 @@ export interface AIFeatures {
   latencyAwareRouting: boolean;
 }
 
-interface AIState {
-  activeMode: AIModeKey;
-  features:   AIFeatures;
-  liveLog:    AILogEntry[];
+export interface OptimizerState {
+  isRunning:       boolean;
+  profiles:        OptimizerProfile[];
+  lastResult:      OptimizerResult | null;
+  bestProfileId:   string | null;
+}
 
-  selectMode:    (mode: AIModeKey) => void;
-  toggleFeature: (key: keyof AIFeatures) => void;
-  addLogEntry:   (message: string, level?: AILogEntry['level']) => void;
-  clearLog:      () => void;
-  activeModeDef: () => AIMode;
+// Mirrors AutoProfile from autoConnector without importing the full service type
+export interface AutoConnectProfile {
+  id:          string;
+  label:       string;
+  protocol:    string;
+  sni:         string;
+  port:        number;
+  flow:        string;
+  fingerprint: string;
+  emergency:   boolean;
+  status:      'pending' | 'testing' | 'success' | 'tcp-only' | 'fail' | 'skipped';
+  latencyMs?:  number;
+  error?:      string;
+  probeOk?:    boolean;
+}
+
+export interface AutoConnectWinner {
+  serverId:   string;
+  profileId:  string;
+  configJson: string;
+  probeOk:    boolean;
+  label:      string;
+}
+
+export interface AutoConnectState {
+  isRunning:     boolean;
+  mode:          'auto' | 'iran' | null;
+  phase:         AutoPhase;
+  profiles:      AutoConnectProfile[];
+  currentIndex:  number;
+  currentLabel:  string;
+  result:        { winnerId: string | null; probeOk: boolean; durationMs: number } | null;
+  winningConfig: AutoConnectWinner | null;
+}
+
+interface AIState {
+  activeMode:    AIModeKey;
+  features:      AIFeatures;
+  liveLog:       AILogEntry[];
+  optimizer:     OptimizerState;
+
+  selectMode:         (mode: AIModeKey) => void;
+  toggleFeature:      (key: keyof AIFeatures) => void;
+  addLogEntry:        (message: string, level?: AILogEntry['level']) => void;
+  clearLog:           () => void;
+  activeModeDef:      () => AIMode;
+
+  // Optimizer actions
+  setOptimizerRunning:  (running: boolean) => void;
+  setOptimizerProfiles: (profiles: OptimizerProfile[]) => void;
+  setOptimizerResult:   (result: OptimizerResult) => void;
+  clearOptimizerResult: () => void;
+
+  // Auto-connect actions
+  autoConnect:            AutoConnectState;
+  startAutoConnect:       (mode: 'auto' | 'iran') => void;
+  updateAutoStatus:       (status: AutoConnectStatus, profiles: AutoConnectProfile[]) => void;
+  setAutoResult:          (result: { winnerId: string | null; probeOk: boolean; durationMs: number }) => void;
+  setWinningConfig:       (winner: AutoConnectWinner | null) => void;
+  clearAutoConnect:       () => void;
 }
 
 let _logIdCounter = 100;
 
-export const useAIStore = create<AIState>((set, get) => ({
-  activeMode: 'auto',
+export const useAIStore = create<AIState>()(
+  persist(
+    (set, get) => ({
+      activeMode: 'auto',
 
-  features: {
-    autoProtocol:        true,
-    smartReconnect:      true,
-    domainRotation:      false,
-    cdnFallback:         true,
-    latencyAwareRouting: true,
-  },
+      features: {
+        autoProtocol:        true,
+        smartReconnect:      true,
+        domainRotation:      false,
+        cdnFallback:         true,
+        latencyAwareRouting: true,
+      },
 
-  liveLog: [],
+      liveLog: [],
 
-  selectMode: (mode) => set({ activeMode: mode }),
+      optimizer: {
+        isRunning:     false,
+        profiles:      [],
+        lastResult:    null,
+        bestProfileId: null,
+      },
 
-  toggleFeature: (key) => set((s) => ({
-    features: { ...s.features, [key]: !s.features[key] },
-  })),
+      autoConnect: {
+        isRunning:     false,
+        mode:          null,
+        phase:         'idle',
+        profiles:      [],
+        currentIndex:  0,
+        currentLabel:  '',
+        result:        null,
+        winningConfig: null,
+      },
 
-  addLogEntry: (message, level = 'info') => set((s) => ({
-    liveLog: [
-      { id: String(++_logIdCounter), timestamp: Date.now(), message, level },
-      ...s.liveLog.slice(0, 49), // keep last 50 entries
-    ],
-  })),
+      selectMode: (mode) => set({ activeMode: mode }),
 
-  clearLog: () => set({ liveLog: [] }),
+      toggleFeature: (key) => set((s) => ({
+        features: { ...s.features, [key]: !s.features[key] },
+      })),
 
-  activeModeDef: () => AI_MODES.find((m) => m.key === get().activeMode) ?? AI_MODES[0],
-}));
+      addLogEntry: (message, level = 'info') => set((s) => ({
+        liveLog: [
+          { id: String(++_logIdCounter), timestamp: Date.now(), message, level },
+          ...s.liveLog.slice(0, 49),
+        ],
+      })),
+
+      clearLog: () => set({ liveLog: [] }),
+
+      activeModeDef: () => AI_MODES.find((m) => m.key === get().activeMode) ?? AI_MODES[0],
+
+      setOptimizerRunning: (running) =>
+        set((s) => ({ optimizer: { ...s.optimizer, isRunning: running } })),
+
+      setOptimizerProfiles: (profiles) =>
+        set((s) => ({ optimizer: { ...s.optimizer, profiles } })),
+
+      setOptimizerResult: (result) =>
+        set((s) => ({
+          optimizer: {
+            ...s.optimizer,
+            isRunning:     false,
+            profiles:      result.profiles,
+            lastResult:    result,
+            bestProfileId: result.bestProfileId,
+          },
+        })),
+
+      clearOptimizerResult: () =>
+        set((s) => ({
+          optimizer: { ...s.optimizer, profiles: [], lastResult: null, bestProfileId: null },
+        })),
+
+      startAutoConnect: (mode) =>
+        set((s) => ({
+          autoConnect: {
+            ...s.autoConnect,
+            isRunning: true, mode,
+            phase: 'testing', profiles: [], currentIndex: 0, currentLabel: '',
+            result: null,
+          },
+        })),
+
+      updateAutoStatus: (status, profiles) =>
+        set((s) => ({
+          autoConnect: {
+            ...s.autoConnect,
+            phase:        status.phase,
+            currentIndex: status.profileIndex,
+            currentLabel: status.profileLabel,
+            profiles,
+          },
+        })),
+
+      setAutoResult: (result) =>
+        set((s) => ({
+          autoConnect: {
+            ...s.autoConnect,
+            isRunning: false,
+            result,
+            phase: result.winnerId ? (s.autoConnect.phase === 'probe-validated' ? 'probe-validated' : 'tcp-only') : 'failed',
+          },
+        })),
+
+      setWinningConfig: (winner) =>
+        set((s) => ({
+          autoConnect: { ...s.autoConnect, winningConfig: winner },
+        })),
+
+      clearAutoConnect: () =>
+        set((s) => ({
+          autoConnect: {
+            ...s.autoConnect,
+            isRunning: false, mode: null,
+            phase: 'idle', profiles: [], currentIndex: 0, currentLabel: '',
+            result: null,
+          },
+        })),
+    }),
+    {
+      name:    'ai-store-v1',
+      storage: createJSONStorage(() => storage),
+      // Persist mode, features, optimizer results, and winning config (never isRunning flags)
+      partialize: (s) => ({
+        activeMode:    s.activeMode,
+        features:      s.features,
+        optimizer: {
+          isRunning:     false,
+          profiles:      s.optimizer.profiles,
+          lastResult:    s.optimizer.lastResult,
+          bestProfileId: s.optimizer.bestProfileId,
+        },
+        autoConnect: {
+          isRunning:     false,
+          mode:          null,
+          phase:         'idle' as const,
+          profiles:      [],
+          currentIndex:  0,
+          currentLabel:  '',
+          result:        s.autoConnect.result,
+          winningConfig: s.autoConnect.winningConfig,
+        },
+      }),
+    },
+  ),
+);

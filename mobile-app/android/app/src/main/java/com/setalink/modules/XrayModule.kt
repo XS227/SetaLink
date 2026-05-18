@@ -29,9 +29,10 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         private const val TAG           = "XrayModule"
     }
 
-    private var running    = false
-    private var startedAt  = 0L
-    private var lastError: String? = null
+    private var running      = false
+    private var startedAt    = 0L
+    private var lastError:   String? = null
+    private var lastProbeOk  = false
 
     // Stored while Android VPN-permission dialog is shown
     private var pendingConfig:   String?  = null
@@ -55,12 +56,13 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 XrayVpnService.BROADCAST_CONNECTED -> {
-                    running   = true
-                    startedAt = System.currentTimeMillis()
-                    lastError = null
+                    running      = true
+                    startedAt    = System.currentTimeMillis()
+                    lastError    = null
+                    lastProbeOk  = intent.getBooleanExtra("probe_ok", false)
                     // Reset byte counters for the new session
                     synchronized(statsLock) { uploadBytes = 0L; downloadBytes = 0L; lastPingMs = 0L }
-                    Log.i(TAG, "VPN connected")
+                    Log.i(TAG, "VPN connected (probeOk=$lastProbeOk)")
                 }
                 XrayVpnService.BROADCAST_DISCONNECTED -> {
                     running   = false
@@ -206,6 +208,9 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     override fun getLastError(promise: Promise) = promise.resolve(lastError)
+
+    @ReactMethod
+    override fun getLastProbeResult(promise: Promise) = promise.resolve(lastProbeOk)
 
     @ReactMethod
     override fun getStats(promise: Promise) {

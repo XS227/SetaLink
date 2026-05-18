@@ -1,0 +1,3 @@
+# ninja log v5
+0	192	1779095484996568581	CMakeFiles/setalink_vpn.dir/tunnel_helper.cpp.o	341d5e408ac306f5
+192	238	1779095485046570586	/var/www/setalink/mobile-app/android/app/build/intermediates/cxx/RelWithDebInfo/704r225r/obj/arm64-v8a/libsetalink_vpn.so	d6ef096e0d2d917c
