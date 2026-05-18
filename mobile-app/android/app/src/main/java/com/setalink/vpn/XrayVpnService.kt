@@ -39,7 +39,8 @@ class XrayVpnService : VpnService() {
         const val EXTRA_STEP             = "step_name"
         const val EXTRA_STEP_OK          = "step_ok"
         const val EXTRA_STEP_MSG         = "step_msg"
-        const val BROADCAST_METRICS      = "com.setalink.vpn.METRICS"
+        const val BROADCAST_METRICS        = "com.setalink.vpn.METRICS"
+        const val BROADCAST_TRAFFIC_STALL = "com.setalink.vpn.TRAFFIC_STALL"
 
         const val XRAY_LOG_FILE     = "xray.log"
         const val TUN2SOCKS_LOG_FILE = "tun2socks.log"
@@ -212,14 +213,14 @@ class XrayVpnService : VpnService() {
             runCatching { vpnBuilder.addDisallowedApplication(packageName) }
                 .onFailure { e -> appendLog("[TUN] addDisallowedApplication failed: ${e.message}") }
 
-            if (!emergencyMode) {
-                // IPv6: best-effort (some ROMs reject)
-                runCatching {
-                    vpnBuilder.addAddress("fdfe:dcba:9876::2", 64)
-                    vpnBuilder.addDnsServer("2606:4700:4700::1111")
-                    vpnBuilder.addRoute("::", 0)
-                }
-            }
+            // IPv6 is intentionally NOT routed through TUN.
+            // When ::/0 is added to TUN but the proxy chain lacks IPv6 support,
+            // ALL dual-stack connections hang — the IPv6 attempt blocks until
+            // timeout before Happy Eyeballs can retry with IPv4. This is the
+            // primary cause of "CONNECTED + NO INTERNET" on modern Android.
+            // IPv6 traffic bypasses TUN and uses the device's native connection.
+            // A blackhole rule in the Xray config fast-fails any IPv6 at SOCKS5.
+            appendLog("[TUN] IPv6 NOT tunneled — dual-stack stall prevention active")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 vpnBuilder.setMetered(false)
@@ -280,6 +281,38 @@ class XrayVpnService : VpnService() {
             }
 
             broadcastStep("routing_validation", true, validation.message)
+
+            // Verify tun2socks log shows startup activity.
+            // The probe traffic goes directly App→SOCKS5, bypassing TUN.
+            // tun2socks reads from TUN fd and forwards to SOCKS5.
+            // If tun2socks log is empty or shows errors, the TUN→SOCKS5 path
+            // (used by Chrome, Telegram, etc.) may be broken even when the probe passes.
+            val t2sLog = readTun2socksLog()
+            val t2sHasActivity = t2sLog.lines().any { line ->
+                val l = line.lowercase()
+                l.contains("listen") || l.contains("start") || l.contains("tun") ||
+                l.contains("socks") || l.contains("proxy") || l.contains("accept")
+            }
+            val t2sHasErrors = t2sLog.lines().any { line ->
+                val l = line.lowercase()
+                l.contains("error") || l.contains("fatal") || l.contains("failed") ||
+                l.contains("panic") || l.contains("exit")
+            }
+            appendLog("[TUN2SOCKS CHECK] hasActivity=$t2sHasActivity hasErrors=$t2sHasErrors log_lines=${t2sLog.lines().size}")
+            if (t2sHasErrors) {
+                broadcastStep("tun2socks_check", false,
+                    "tun2socks reported errors — TUN forwarding may be broken.\n$t2sLog")
+                appendLog("[TUN2SOCKS CHECK] WARNING: tun2socks log contains errors. " +
+                    "App traffic through TUN may not be forwarded to SOCKS5. Log:\n$t2sLog")
+            } else if (!t2sHasActivity) {
+                appendLog("[TUN2SOCKS CHECK] WARNING: tun2socks log has no startup messages. " +
+                    "tun2socks may not have initialised correctly. Log:\n$t2sLog")
+                broadcastStep("tun2socks_check", false,
+                    "tun2socks log has no startup activity — may not be routing TUN packets.")
+            } else {
+                broadcastStep("tun2socks_check", true, "tun2socks active and healthy")
+            }
+
             broadcastStep("vpn_connected", true, "Tunnel active — ${validation.message}")
 
             Log.i(TAG, "VPN tunnel active and deep-validated (probeOk=${validation.probeOk})")
@@ -334,12 +367,14 @@ class XrayVpnService : VpnService() {
         appendLog("[VALIDATION] Xray log before probes:\n${readLogTail(30)}")
 
         // Step B: HTTP GET via SOCKS5.
-        // NOTE: With xtls-rprx-vision, the VPN server may reject non-TLS inner traffic.
-        // We use 2 targets and a short timeout to keep total probe time low.
+        // connectivitycheck.gstatic.com returns HTTP 204 immediately — fastest probe globally.
+        // captive.apple.com returns HTTP 200. Both are designed as fast connectivity checks.
+        // 1.1.1.1 is a direct-IP fallback (no DNS resolution needed).
         data class ProbeTarget(val host: String, val port: Int, val isDomain: Boolean)
         val httpTargets = listOf(
-            ProbeTarget("1.1.1.1",     80, false),
-            ProbeTarget("neverssl.com", 80, true),
+            ProbeTarget("connectivitycheck.gstatic.com", 80, true),
+            ProbeTarget("captive.apple.com",             80, true),
+            ProbeTarget("1.1.1.1",                       80, false),
         )
 
         var httpOk      = false
@@ -393,26 +428,26 @@ class XrayVpnService : VpnService() {
                 probeOk = true)
         }
 
-        // TCP succeeded but HTTP and HTTPS probes timed out.
-        // This is expected in several legitimate scenarios:
-        //   • Vision-only servers reject plain HTTP inner traffic by design
-        //   • Probe targets (1.1.1.1, google, cloudflare) may be slow or filtered in
-        //     the client's region (Turkey, etc.) even when the tunnel is fully functional
-        //   • The tunnel was working correctly before this strict probe was added
-        // Decision: TCP OK = tunnel is healthy. Keep connected and let apps verify
-        // real traffic. Only hard-fail when Xray itself is unreachable (Step A).
-        appendLog("[VALIDATION] WARNING — TCP OK but HTTP+HTTPS probes timed out. " +
-            "Keeping tunnel ACTIVE. Vision servers reject plain HTTP; probe targets may be " +
-            "geo-filtered in this region. Apps will confirm real connectivity. " +
-            "Last HTTP snippet: $httpSnippet")
-        broadcastStep("probe_warn", true,
-            "TCP OK — HTTP/HTTPS probes inconclusive (timeout). " +
-            "Tunnel kept ACTIVE. Vision/Reality servers often drop probe traffic. " +
-            "Last probe: $httpSnippet")
+        // All probes failed: TCP connects but no HTTP or HTTPS data received.
+        // This means the VPN server is not forwarding inner traffic, or tun2socks
+        // is not delivering packets from the TUN interface.
+        //
+        // "TCP OK" only proves the SOCKS5→Xray→server outer TCP path works.
+        // It does NOT prove the server is forwarding inner application traffic,
+        // and it does NOT prove tun2socks is routing TUN traffic to SOCKS5.
+        //
+        // We MUST disconnect. The autoConnector will try the next profile.
+        appendLog("[VALIDATION] HARD FAIL — TCP OK but ALL HTTP+HTTPS probes timed out. " +
+            "The VPN server is accepting connections but not forwarding inner traffic. " +
+            "Possible causes: wrong flow/SNI, server-side packet drop, tun2socks not routing. " +
+            "HTTP snippet: $httpSnippet  Disconnecting to try next profile.")
+        broadcastStep("probe_fail", false,
+            "TCP OK — but HTTP+HTTPS probes all timed out. " +
+            "VPN server not confirmed to deliver internet. Trying next profile.")
 
-        return ValidationResult(true,
-            "TCP OK (SOCKS+TUN alive). HTTP/HTTPS probes timed out — tunnel active, " +
-            "apps will confirm real connectivity. (Probe timeout is expected for Vision servers.)")
+        return ValidationResult(false,
+            "TCP OK — but no HTTP or HTTPS data received through tunnel. " +
+            "HTTP snippet: $httpSnippet. VPN server may not be forwarding traffic.")
     }
 
     // Returns (ok, bytesRead, snippet) — plain HTTP/1.0 GET over SOCKS5
@@ -423,11 +458,11 @@ class XrayVpnService : VpnService() {
             withContext(Dispatchers.IO) {
                 val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
                 Socket(proxy).use { sock ->
-                    sock.soTimeout = 6_000
+                    sock.soTimeout = 4_000
                     if (isDomain) {
-                        sock.connect(InetSocketAddress.createUnresolved(host, port), 6_000)
+                        sock.connect(InetSocketAddress.createUnresolved(host, port), 4_000)
                     } else {
-                        sock.connect(InetSocketAddress(host, port), 6_000)
+                        sock.connect(InetSocketAddress(host, port), 4_000)
                     }
                     val req = "GET / HTTP/1.0\r\nHost: $host\r\nUser-Agent: SetaLink/1.0\r\nConnection: close\r\n\r\n"
                     sock.getOutputStream().apply { write(req.toByteArray()); flush() }
@@ -455,11 +490,11 @@ class XrayVpnService : VpnService() {
                 val proxy   = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
                 val rawSock = Socket(proxy)
                 try {
-                    rawSock.soTimeout = 8_000
-                    rawSock.connect(InetSocketAddress.createUnresolved(host, 443), 8_000)
+                    rawSock.soTimeout = 5_000
+                    rawSock.connect(InetSocketAddress.createUnresolved(host, 443), 5_000)
                     val sslFactory = SSLSocketFactory.getDefault() as SSLSocketFactory
                     val sslSock   = sslFactory.createSocket(rawSock, host, 443, true) as SSLSocket
-                    sslSock.soTimeout = 8_000
+                    sslSock.soTimeout = 5_000
                     try {
                         sslSock.startHandshake()
                         val req = "GET / HTTP/1.1\r\nHost: $host\r\nUser-Agent: SetaLink/1.0\r\nConnection: close\r\n\r\n"
@@ -491,9 +526,32 @@ class XrayVpnService : VpnService() {
             var lastRx = readInterfaceBytes(tunInterface ?: "")?.first  ?: 0L
             var lastTx = readInterfaceBytes(tunInterface ?: "")?.second ?: 0L
             var iteration = 0
+            var noTrafficIterations = 0
             while (isActive) {
                 delay(METRICS_INTERVAL_MS)
                 iteration++
+
+                // First iteration: async DNS health check (does not block CONNECTED state)
+                if (iteration == 1) {
+                    scope.launch {
+                        val dnsOk = runCatching {
+                            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
+                            Socket(proxy).use { s ->
+                                s.soTimeout = 5_000
+                                s.connect(InetSocketAddress.createUnresolved("www.google.com", 80), 5_000)
+                                true
+                            }
+                        }.getOrElse { e ->
+                            appendLog("[DNS-CHECK] Failed: ${e.message}")
+                            false
+                        }
+                        appendLog("[DNS-CHECK] dnsOk=$dnsOk (google.com:80 via SOCKS5)")
+                        broadcastStep("dns_check", dnsOk,
+                            if (dnsOk) "DNS OK — hostname resolution working"
+                            else "DNS FAILED — hostname resolution may not work through tunnel")
+                    }
+                }
+
                 val bytes   = tunInterface?.let { readInterfaceBytes(it) }
                 val curRx   = bytes?.first  ?: lastRx
                 val curTx   = bytes?.second ?: lastTx
@@ -502,9 +560,32 @@ class XrayVpnService : VpnService() {
                 lastRx = curRx
                 lastTx = curTx
 
+                // Traffic stall detection
+                if (rxDelta == 0L && txDelta == 0L) {
+                    noTrafficIterations++
+                    if (noTrafficIterations % 10 == 0) {
+                        val stallSec = noTrafficIterations * METRICS_INTERVAL_MS / 1000
+                        appendLog("[STALL#$iteration] No TUN traffic for ${stallSec}s rx_total=$curRx tx_total=$curTx tun=${tunInterface ?: "?"}")
+                        sendBroadcast(Intent(BROADCAST_TRAFFIC_STALL).apply {
+                            setPackage(packageName)
+                            putExtra("stall_seconds", stallSec)
+                            putExtra("rx_total", curRx)
+                            putExtra("tx_total", curTx)
+                        })
+                        broadcastStep("traffic_stall", false,
+                            "No TUN traffic for ${stallSec}s — apps may have no internet")
+                    }
+                } else {
+                    if (noTrafficIterations >= 10) {
+                        val recoveredSec = noTrafficIterations * METRICS_INTERVAL_MS / 1000
+                        appendLog("[STALL-RECOVERED#$iteration] Traffic resumed after ${recoveredSec}s stall")
+                    }
+                    noTrafficIterations = 0
+                }
+
                 // Log every 5 iterations or when there's traffic
                 if (iteration % 5 == 0 || rxDelta > 0 || txDelta > 0) {
-                    appendLog("[METRICS#$iteration] TUN iface=${tunInterface ?: "?"} rx_total=$curRx tx_total=$curTx rx_delta=$rxDelta tx_delta=$txDelta")
+                    appendLog("[METRICS#$iteration] TUN iface=${tunInterface ?: "?"} rx_total=$curRx tx_total=$curTx rx_delta=$rxDelta tx_delta=$txDelta stall=${noTrafficIterations * 3}s")
                 }
 
                 publishMetrics(tunInterface, rxDelta, txDelta, true)

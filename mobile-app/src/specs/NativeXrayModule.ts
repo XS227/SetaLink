@@ -58,6 +58,18 @@ export interface Spec extends TurboModule {
 
   /** Returns the full content of the generated xray.json for debug comparison. */
   getGeneratedConfig(): Promise<string>;
+
+  /** Returns device hardware/OS info for telemetry enrichment. */
+  getDeviceInfo(): Promise<{
+    model: string;
+    manufacturer: string;
+    brand: string;
+    androidSdk: number;
+    androidRelease: string;
+  }>;
+
+  /** Stub — telemetry is sent from JS via fetch(). */
+  reportTelemetry(payload: string): Promise<void>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');

@@ -277,6 +277,23 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    @ReactMethod
+    override fun getDeviceInfo(promise: Promise) {
+        promise.resolve(com.facebook.react.bridge.WritableNativeMap().apply {
+            putString("model",          android.os.Build.MODEL)
+            putString("manufacturer",   android.os.Build.MANUFACTURER)
+            putString("brand",          android.os.Build.BRAND)
+            putInt("androidSdk",        android.os.Build.VERSION.SDK_INT)
+            putString("androidRelease", android.os.Build.VERSION.RELEASE)
+        })
+    }
+
+    @ReactMethod
+    override fun reportTelemetry(payload: String, promise: Promise) {
+        // Telemetry is sent from JS directly via fetch(); this stub satisfies the spec.
+        promise.resolve(null)
+    }
+
     // ── VPN permission result ─────────────────────────────────────────────────
 
     override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {

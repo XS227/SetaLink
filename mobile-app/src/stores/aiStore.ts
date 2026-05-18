@@ -245,7 +245,7 @@ export const useAIStore = create<AIState>()(
             ...s.autoConnect,
             isRunning: false,
             result,
-            phase: result.winnerId ? (s.autoConnect.phase === 'probe-validated' ? 'probe-validated' : 'tcp-only') : 'failed',
+            phase: result.winnerId && result.probeOk ? 'probe-validated' : 'failed',
           },
         })),
 

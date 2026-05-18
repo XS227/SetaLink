@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { storage } from '../storage/storage';
+import type { DeviceEntitlement } from '../services/entitlementService';
 
 export interface AuthUser {
   id: string;
@@ -28,11 +29,13 @@ interface AuthState {
   token: string | null;
   isAuthenticated: boolean;
 
-  loginWithInvite: (payload: InvitePayload) => void;
-  logout: () => void;
-  touchLastSeen: () => void;
-  setBiometricSecure: (enabled: boolean) => void;
-  consumeQuota: (bytes: number) => void;
+  loginWithInvite:       (payload: InvitePayload) => void;
+  loginWithDevice:       (entitlement: DeviceEntitlement) => void;
+  updateFromEntitlement: (entitlement: DeviceEntitlement) => void;
+  logout:                () => void;
+  touchLastSeen:         () => void;
+  setBiometricSecure:    (enabled: boolean) => void;
+  consumeQuota:          (bytes: number) => void;
 }
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
@@ -70,6 +73,44 @@ export const useAuthStore = create<AuthState>()(
           isAuthenticated: true,
         };
       }),
+      loginWithDevice: (e) => set(() => {
+        const now = new Date().toISOString();
+        return {
+          user: {
+            id:                   e.device_id,
+            deviceId:             e.device_id,
+            inviteCodeUsed:       '',
+            referralParent:       null,
+            referralCode:         e.referral_code,
+            quotaBytesTotal:      e.quota_bytes_total,
+            quotaBytesUsed:       e.quota_bytes_used,
+            createdAt:            now,
+            lastSeen:             now,
+            securedWithBiometric: false,
+            status:               e.blocked ? 'blocked' : 'active',
+            plan:                 'free',
+            planExpiry:           e.valid_until ?? null,
+          },
+          token:           `device-${e.device_id}`,
+          isAuthenticated: true,
+        };
+      }),
+
+      updateFromEntitlement: (e) => set((prev) => {
+        if (!prev.user) return prev;
+        return {
+          user: {
+            ...prev.user,
+            referralCode:    e.referral_code,
+            quotaBytesTotal: e.quota_bytes_total,
+            quotaBytesUsed:  e.quota_bytes_used,
+            status:          e.blocked ? 'blocked' : 'active',
+            plan:            'free',
+            planExpiry:      e.valid_until ?? null,
+          },
+        };
+      }),
+
       logout: () => set({ user: null, token: null, isAuthenticated: false }),
       touchLastSeen: () => set((prev) => ({
         user: prev.user ? { ...prev.user, lastSeen: new Date().toISOString() } : null,
