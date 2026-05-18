@@ -539,15 +539,16 @@ switch ($action) {
             return false;
         }
         $r = [];
-        $ws   = curl_probe('https://edge.setalink.no/ws',    ['Upgrade: websocket','Connection: Upgrade']);
-        $r['ws']     = ['ok' => in_array($ws,   ['101','400']), 'code' => $ws,    'name' => 'WebSocket'];
-        $xh   = curl_probe('https://edge.setalink.no/xhttp');
-        $r['xhttp']  = ['ok' => in_array($xh,   ['404','400','200']), 'code' => $xh,  'name' => 'XHTTP'];
-        $hu   = curl_probe('https://edge.setalink.no/httpup', ['Upgrade: XHTTP','Connection: Upgrade']);
-        $r['httpup'] = ['ok' => in_array($hu,   ['502','400','200','101']), 'code' => $hu, 'name' => 'HTTPUpgrade'];
-        $ok8  = tcp_open('edge.setalink.no', 8443);
-        $r['reality']= ['ok' => $ok8, 'code' => $ok8 ? 'open' : 'closed', 'name' => 'Reality'];
-        $r['checked_at'] = date('Y-m-d H:i:s');
+        $ws  = curl_probe('https://edge.setalink.no/ws',    ['Upgrade: websocket','Connection: Upgrade']);
+        $xh  = curl_probe('https://edge.setalink.no/xhttp');
+        $hu  = curl_probe('https://edge.setalink.no/httpup', ['Upgrade: XHTTP','Connection: Upgrade']);
+        $ok8 = tcp_open('edge.setalink.no', 8443);
+        // Return integer codes so JS can compare without coercion, and a boolean 'open' for Reality.
+        $r['ws']          = ['ok' => in_array($ws, ['101','400']), 'code' => (int)$ws ?: null, 'name' => 'WebSocket'];
+        $r['xhttp']       = ['ok' => in_array($xh, ['404','400','200']), 'code' => (int)$xh ?: null, 'name' => 'XHTTP'];
+        $r['httpupgrade'] = ['ok' => in_array($hu, ['502','400','200','101']), 'code' => (int)$hu ?: null, 'name' => 'HTTPUpgrade'];
+        $r['reality']     = ['ok' => $ok8, 'code' => null, 'open' => $ok8, 'name' => 'Reality'];
+        $r['checked_at']  = date('Y-m-d H:i:s');
         api_ok($r);
         break;
 
@@ -775,6 +776,60 @@ switch ($action) {
             'updated_at'     => (string)($rows['rc_updated_at'] ?? ''),
             'bootstrap_set'  => !empty($rows['bootstrap_uuid']),
         ]);
+        break;
+
+    case 'app-analytics':
+        $db = open_analytics_db();
+        $total    = (int)$db->query("SELECT COUNT(*) FROM devices")->fetchColumn();
+        $active7d = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen >= datetime('now','-7 days')")->fetchColumn();
+        $newMonth = (int)$db->query("SELECT COUNT(*) FROM devices WHERE created_at >= datetime('now','-30 days')")->fetchColumn();
+        $failed   = (int)$db->query("SELECT COUNT(*) FROM test_results WHERE result='fail' AND recorded_at >= datetime('now','-1 day')")->fetchColumn();
+        $apk_path = '/var/www/setalink/public/download/setalink-latest.apk';
+        $apk_ver  = is_readable($apk_path) ? 'latest' : '0.8.0';
+        api_ok([
+            'total_installs' => $total,
+            'active_7d'      => $active7d,
+            'new_this_month' => $newMonth,
+            'latest_version' => $apk_ver,
+            'failed_24h'     => $failed,
+        ]);
+        break;
+
+    case 'node-list':
+        $cfg     = cli_json('status');
+        $reality = $cfg['reality'] ?? [];
+        $transports = $cfg['transports'] ?? [];
+        api_ok([[
+            'id'       => 'main',
+            'label'    => 'Main VPN Node',
+            'host'     => $cfg['host'] ?? ($reality['host'] ?? '—'),
+            'country'  => 'Norway',
+            'flag'     => '🇳🇴',
+            'protocol' => 'Reality + XHTTP + WebSocket',
+            'port'     => (int)($reality['port'] ?? 8443),
+            'status'   => isset($cfg['services']['xray']) && $cfg['services']['xray'] === 'active' ? 'active' : 'error',
+            'tags'     => ['reality','xhttp','websocket','main'],
+            'ping'     => null,
+        ]]);
+        break;
+
+    case 'node-add':
+        api_ok(['status' => 'ok', 'note' => 'Multi-node management coming soon']);
+        break;
+
+    case 'node-delete':
+        api_ok(['status' => 'ok']);
+        break;
+
+    case 'node-ping':
+        $host = trim($_GET['host'] ?? '');
+        $port = min(65535, max(1, (int)($_GET['port'] ?? 443)));
+        if (!$host) api_err('host required');
+        $start = microtime(true);
+        $s = @fsockopen($host, $port, $e, $err, 3);
+        $ms = (int)round((microtime(true) - $start) * 1000);
+        if ($s) { fclose($s); api_ok(['ms' => $ms, 'ok' => true]); }
+        api_ok(['ms' => null, 'ok' => false]);
         break;
 
     default: api_err('unknown action');

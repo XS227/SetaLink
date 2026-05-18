@@ -1841,9 +1841,9 @@ if (CURRENT_PAGE === 'dashboard') {
             const j = await r.json();
             const d = j.data || j;
 
-            const cpuPct = parseFloat(d.cpu_percent ?? 0);
-            const memPct = parseFloat(d.memory_percent ?? 0);
-            const dskPct = parseFloat(d.disk_percent ?? 0);
+            const cpuPct = parseFloat(d.cpu_pct ?? d.cpu_percent ?? 0);
+            const memPct = parseFloat(d.mem_pct ?? d.memory_percent ?? 0);
+            const dskPct = parseFloat(d.disk_pct ?? d.disk_percent ?? 0);
 
             const set = (valId, cardId, val) => {
                 const el = document.getElementById(valId);
@@ -1851,10 +1851,15 @@ if (CURRENT_PAGE === 'dashboard') {
                 document.getElementById(cardId)?.classList.remove('loading');
             };
 
+            const sec = d.uptime_sec ?? d.uptime ?? 0;
+            const uptimeStr = sec > 86400
+                ? Math.floor(sec / 86400) + 'd ' + Math.floor((sec % 86400) / 3600) + 'h'
+                : Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
+
             set('srvCpuVal',    'srvCpu',    cpuPct.toFixed(1) + '%');
             set('srvMemVal',    'srvMem',    memPct.toFixed(1) + '%');
-            set('srvLoadVal',   'srvLoad',   d.load_1    ?? '—');
-            set('srvUptimeVal', 'srvUptime', d.uptime    ?? '—');
+            set('srvLoadVal',   'srvLoad',   d.load1 ?? d.load_1 ?? '—');
+            set('srvUptimeVal', 'srvUptime', uptimeStr);
             set('srvDiskVal',   'srvDisk',   dskPct.toFixed(1) + '%');
 
             const cpuBar = document.getElementById('srvCpuBar');
@@ -1863,7 +1868,11 @@ if (CURRENT_PAGE === 'dashboard') {
             if (cpuBar) { cpuBar.style.width = Math.min(cpuPct, 100) + '%'; setBarClass(cpuBar, cpuPct); }
             if (memBar) { memBar.style.width = Math.min(memPct, 100) + '%'; setBarClass(memBar, memPct); }
             if (dskBar) { dskBar.style.width = Math.min(dskPct, 100) + '%'; setBarClass(dskBar, dskPct); }
-        } catch (e) { /* silently ignore */ }
+        } catch (e) {
+            ['srvCpu','srvMem','srvLoad','srvUptime','srvDisk'].forEach(id => {
+                document.getElementById(id)?.classList.remove('loading');
+            });
+        }
     }
 
     loadServerStats();
@@ -1935,6 +1944,7 @@ if (CURRENT_PAGE === 'dashboard') {
 
     loadAppAnalytics();
     setInterval(loadAppAnalytics, 60000);
+    document.getElementById('refreshAppAnalyticsBtn')?.addEventListener('click', loadAppAnalytics);
 
     // ── Nodes table ───────────────────────────────────────────────────────
     async function loadNodes() {
@@ -1959,7 +1969,7 @@ if (CURRENT_PAGE === 'dashboard') {
                     <td><span class="node-flag">${SL.esc(n.flag ?? '🌐')}</span> <span class="node-label">${SL.esc(n.label)}</span></td>
                     <td>${SL.esc(n.country ?? '—')}<br><span class="node-host">${SL.esc(n.city ?? '')}</span></td>
                     <td><code>${SL.esc(n.protocol ?? '—')}</code></td>
-                    <td><span class="dot ${n.online ? 'dot-ok' : 'dot-bad'}"></span> ${n.online ? 'Online' : 'Offline'}</td>
+                    <td><span class="dot ${(n.online || n.status === 'active') ? 'dot-ok' : 'dot-bad'}"></span> ${(n.online || n.status === 'active') ? 'Online' : 'Offline'}</td>
                     <td class="node-ping ${pingClass(n.ping ?? 999)}">${n.ping != null ? n.ping + 'ms' : '—'}</td>
                     <td>${n.load != null ? n.load + '%' : '—'}</td>
                     <td>${n.user_count ?? '—'}</td>
