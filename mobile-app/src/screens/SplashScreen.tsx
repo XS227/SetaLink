@@ -162,7 +162,7 @@ export function SplashScreen({ onFinish }: Props) {
 
       {/* Version tag */}
       <Animated.Text style={[styles.version, { opacity: tagOpacity }]}>
-        v0.2.0
+        v0.7.0
       </Animated.Text>
     </Animated.View>
   );

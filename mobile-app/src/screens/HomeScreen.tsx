@@ -102,17 +102,19 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       >
         {/* Header */}
         <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
-          <View>
+          <View style={styles.brandBlock}>
+            <View style={styles.brandRow}>
+              <View style={styles.brandOrb} />
+              <Text style={styles.brandName}>SetaLink</Text>
+            </View>
             <Text style={styles.greeting}>{greeting}</Text>
-            <Text style={styles.username}>{name} ↗</Text>
           </View>
           <TouchableOpacity
-            style={styles.bellBtn}
+            style={styles.settingsBtn}
             onPress={() => onNavigate('settings' as NavTab)}
             activeOpacity={0.75}
           >
-            <Text style={styles.bellIcon}>◌</Text>
-            <View style={styles.notifDot} />
+            <Text style={styles.settingsIcon}>⚙</Text>
           </TouchableOpacity>
         </Animated.View>
 
@@ -295,11 +297,19 @@ const styles = StyleSheet.create({
   scroll:       { flex: 1 },
   content:      { paddingTop: Layout.statusBarHeight, paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
   header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
-  greeting:     { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
-  username:     { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
-  bellBtn:      { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
-  bellIcon:     { fontSize: 18, color: Colors.text.secondary },
-  notifDot:     { position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.emerald[400], borderWidth: 1.5, borderColor: Colors.bg.base },
+  brandBlock:   { flex: 1, gap: 2 },
+  brandRow:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  brandOrb:     {
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: 'rgba(0,232,122,0.14)',
+    borderWidth: 1.5, borderColor: Colors.emerald[400],
+    shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55, shadowRadius: 6, elevation: 4,
+  },
+  brandName:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 0.5 },
+  greeting:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
+  settingsBtn:  { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
+  settingsIcon: { fontSize: 18, color: Colors.text.secondary },
   statusRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flexWrap: 'wrap' },
   protocolBadge:{ backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 4 },
   protocolText: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5 },
