@@ -78,7 +78,7 @@ function pkg_class(string $pkg): string {
 // Page routing
 // -------------------------------------------------------------------------
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard', 'logs', 'protocols', 'settings'], true)) {
+if (!in_array($page, ['dashboard', 'logs', 'protocols', 'settings', 'diagnostics'], true)) {
     $page = 'dashboard';
 }
 
@@ -111,6 +111,8 @@ $I = [
     'pause'     => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
 ];
 
+$LOGO_ICON = '<svg width="28" height="28" viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M14 2L25 7.5v8.5c0 5.5-4.5 9.5-11 11.5C7.5 25.5 3 21.5 3 16V7.5L14 2z" fill="rgba(88,166,255,0.12)" stroke="#58a6ff" stroke-width="1.5"/><path d="M10 11.5c0-1.5 1.5-2.5 4-2.5s4 1 4 2.5-1.5 2.5-4 2.5-4 1-4 2.5 1.5 2.5 4 2.5 4-1 4-2.5" stroke="#58a6ff" stroke-width="2" stroke-linecap="round"/></svg>';
+
 // -------------------------------------------------------------------------
 // Fetch data (status always needed for sidebar)
 // -------------------------------------------------------------------------
@@ -139,10 +141,11 @@ if ($page === 'dashboard') {
 }
 
 $page_titles = [
-    'dashboard' => ['VPN Dashboard',    'Server management &amp; user control'],
-    'logs'      => ['Log Viewer',       'Xray &amp; Nginx real-time logs'],
-    'protocols' => ['Protocol Health',  'WS / XHTTP / HTTPUpgrade / Reality status'],
-    'settings'  => ['Settings',         'Server configuration &amp; integrations'],
+    'dashboard'   => ['VPN Dashboard',    'Server management &amp; user control'],
+    'logs'        => ['Log Viewer',       'Xray &amp; Nginx real-time logs'],
+    'protocols'   => ['Protocol Health',  'WS / XHTTP / HTTPUpgrade / Reality status'],
+    'settings'    => ['Settings',         'Server configuration &amp; integrations'],
+    'diagnostics' => ['Diagnostics',      'Server config · Iran/Turkey tests · Connection analytics'],
 ];
 [$page_title, $page_sub] = $page_titles[$page];
 ?><!doctype html>
@@ -462,30 +465,37 @@ $page_titles = [
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-header">
     <div class="logo">
-      <span class="logo-icon"><?= $I['link'] ?></span>
-      SetaLink
+      <span class="logo-icon"><?= $LOGO_ICON ?></span>
+      <span class="logo-text">SetaLink</span>
       <span class="version-chip">VPN</span>
     </div>
+    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Collapse sidebar" title="Collapse sidebar">
+      <svg id="collapseIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
     <button class="sidebar-close" id="sidebarClose" aria-label="Close menu"><?= $I['x'] ?></button>
   </div>
 
   <nav class="nav" aria-label="Main navigation">
     <div class="nav-section">Management</div>
-    <a href="?page=dashboard" class="nav-item<?= $page === 'dashboard' ? ' active' : '' ?>">
+    <a href="?page=dashboard" class="nav-item<?= $page === 'dashboard' ? ' active' : '' ?>" data-tooltip="Dashboard">
       <?= $I['users'] ?>
-      Dashboard
+      <span class="nav-label">Dashboard</span>
     </a>
-    <a href="?page=logs" class="nav-item<?= $page === 'logs' ? ' active' : '' ?>">
+    <a href="?page=logs" class="nav-item<?= $page === 'logs' ? ' active' : '' ?>" data-tooltip="Logs">
       <?= $I['logs'] ?>
-      Logs
+      <span class="nav-label">Logs</span>
     </a>
-    <a href="?page=protocols" class="nav-item<?= $page === 'protocols' ? ' active' : '' ?>">
+    <a href="?page=protocols" class="nav-item<?= $page === 'protocols' ? ' active' : '' ?>" data-tooltip="Protocols">
       <?= $I['protocols'] ?>
-      Protocols
+      <span class="nav-label">Protocols</span>
     </a>
-    <a href="?page=settings" class="nav-item<?= $page === 'settings' ? ' active' : '' ?>">
+    <a href="?page=settings" class="nav-item<?= $page === 'settings' ? ' active' : '' ?>" data-tooltip="Settings">
       <?= $I['settings'] ?>
-      Settings
+      <span class="nav-label">Settings</span>
+    </a>
+    <a href="?page=diagnostics" class="nav-item<?= $page === 'diagnostics' ? ' active' : '' ?>" data-tooltip="Diagnostics">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span class="nav-label">Diagnostics</span>
     </a>
   </nav>
 
@@ -517,11 +527,11 @@ $page_titles = [
 <!-- =====================================================================
      Main wrap
      ===================================================================== -->
-<div class="main-wrap">
+<div class="main-wrap" id="mainWrap">
   <header class="topbar" role="banner">
     <button class="menu-btn" id="menuBtn" aria-label="Open sidebar"><?= $I['menu'] ?></button>
     <span class="topbar-logo">
-      <span style="color:var(--accent)"><?= $I['link'] ?></span>
+      <span style="color:var(--accent)"><?= $LOGO_ICON ?></span>
       SetaLink
     </span>
     <?php if ($page === 'dashboard'): ?>
@@ -558,6 +568,13 @@ $page_titles = [
         <?php elseif ($page === 'settings'): ?>
         <button class="btn btn-primary" id="saveSettingsBtn">
           <?= $I['save'] ?> Save Settings
+        </button>
+        <?php elseif ($page === 'diagnostics'): ?>
+        <button class="btn btn-secondary" id="diagRefreshBtn" title="Refresh diagnostics">
+          <?= $I['refresh'] ?> Refresh
+        </button>
+        <button class="btn btn-primary" id="recordTestBtn">
+          <?= $I['plus'] ?> Record Test
         </button>
         <?php endif; ?>
       </div>
@@ -1211,6 +1228,432 @@ $page_titles = [
         </div>
       </div>
     </div>
+
+    <?php elseif ($page === 'diagnostics'): ?>
+    <?php
+    // Pre-load server config details for the diagnostics page
+    $srv_cfg = cli_json('status');
+    $reality = $srv_cfg['reality'] ?? [];
+    $transports = $srv_cfg['transports'] ?? [];
+    ?>
+
+    <style>
+      .diag-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.5rem; }
+      .diag-full { grid-column:1/-1; }
+      .diag-panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; }
+      .diag-panel-head {
+        padding:.9rem 1.25rem; border-bottom:1px solid var(--border); background:var(--panel-2);
+        display:flex; align-items:center; justify-content:space-between;
+      }
+      .diag-panel-head h2 { font-size:.75rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0; }
+      .diag-panel-body { padding:1.1rem 1.25rem; }
+      .cfg-row { display:flex; align-items:baseline; gap:.6rem; padding:.4rem 0; border-bottom:1px solid var(--border); }
+      .cfg-row:last-child { border-bottom:none; }
+      .cfg-key { font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); min-width:120px; flex-shrink:0; }
+      .cfg-val { font-family:"JetBrains Mono",monospace; font-size:.82rem; color:var(--text-2); word-break:break-all; }
+      .cfg-val.ok { color:var(--ok); }
+      .cfg-val.warn { color:var(--warn); }
+      .cfg-val.danger { color:var(--danger); }
+      .transport-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-top:.5rem; }
+      .transport-card { background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius); padding:.75rem 1rem; }
+      .transport-name { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:.4rem; }
+      .transport-detail { font-family:"JetBrains Mono",monospace; font-size:.78rem; color:var(--text-2); }
+      .test-result-row { display:flex; align-items:flex-start; gap:1rem; padding:.8rem 0; border-bottom:1px solid var(--border); }
+      .test-result-row:last-child { border-bottom:none; }
+      .test-country { font-weight:700; color:var(--text); min-width:80px; font-size:.9rem; }
+      .test-badge-ok { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .65rem; border-radius:999px; font-size:.72rem; font-weight:700; background:rgba(63,185,80,.12); color:var(--ok); border:1px solid rgba(63,185,80,.3); }
+      .test-badge-fail { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .65rem; border-radius:999px; font-size:.72rem; font-weight:700; background:rgba(248,81,73,.12); color:var(--danger); border:1px solid rgba(248,81,73,.3); }
+      .test-badge-partial { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .65rem; border-radius:999px; font-size:.72rem; font-weight:700; background:rgba(210,153,34,.12); color:var(--warn); border:1px solid rgba(210,153,34,.3); }
+      .test-meta { font-size:.78rem; color:var(--muted); margin-top:.3rem; font-family:"JetBrains Mono",monospace; }
+      .test-error { font-size:.78rem; color:var(--danger); margin-top:.3rem; max-width:480px; line-height:1.5; }
+      .test-analysis { font-size:.8rem; color:var(--text-2); margin-top:.4rem; line-height:1.6; background:var(--panel-2); border-radius:var(--radius); padding:.5rem .75rem; border-left:3px solid var(--warn); }
+      .analytic-num { font-size:1.6rem; font-weight:700; color:var(--text); line-height:1; }
+      .analytic-label { font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-top:.25rem; }
+      .analytic-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; }
+      .analytic-card { background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius); padding:.9rem 1rem; }
+      .error-log-line { font-family:"JetBrains Mono",monospace; font-size:.72rem; line-height:1.55; padding:2px 0; white-space:pre-wrap; word-break:break-all; color:var(--muted); }
+      .error-log-line.is-error { color:var(--danger); }
+      .error-log-line.is-warn { color:var(--warn); }
+      .error-log-empty { text-align:center; padding:2rem 1rem; color:var(--muted-2); font-size:.85rem; }
+      .diag-loading { text-align:center; padding:2rem 1rem; color:var(--muted-2); font-size:.82rem; }
+      @media(max-width:900px){ .diag-grid{grid-template-columns:1fr;} .diag-full{grid-column:1;} .analytic-grid{grid-template-columns:repeat(2,1fr);} .transport-grid{grid-template-columns:1fr;} }
+    </style>
+
+    <div class="diag-grid">
+
+      <!-- ── Server Config ───────────────────────────────────── -->
+      <div class="diag-panel">
+        <div class="diag-panel-head">
+          <h2>Reality Config</h2>
+          <span style="font-size:.7rem;color:var(--muted)">vpn.setalink.no</span>
+        </div>
+        <div class="diag-panel-body">
+          <?php
+          $r_host = h((string)($reality['host'] ?? $host));
+          $r_port = (int)($reality['port'] ?? 8443);
+          $r_sni  = h((string)($reality['sni'] ?? '—'));
+          $r_sid  = h((string)($reality['shortId'] ?? '—'));
+          $r_flow = h((string)($reality['flow'] ?? '—'));
+          $r_fp   = h((string)($reality['fingerprint'] ?? '—'));
+          $r_pk   = (string)($reality['publicKey'] ?? '');
+          $r_pk_short = strlen($r_pk) > 12 ? substr($r_pk, 0, 8) . '…' . substr($r_pk, -4) : '—';
+          ?>
+          <div class="cfg-row">
+            <span class="cfg-key">Host</span>
+            <code class="cfg-val"><?= $r_host ?>:<?= $r_port ?></code>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-key">Protocol</span>
+            <code class="cfg-val ok">VLESS + Reality</code>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-key">SNI</span>
+            <code class="cfg-val <?= $r_sni === 'www.oracle.com' ? 'danger' : 'ok' ?>"><?= $r_sni ?></code>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-key">Flow</span>
+            <code class="cfg-val"><?= $r_flow ?: '(none)' ?></code>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-key">Fingerprint</span>
+            <code class="cfg-val"><?= $r_fp ?></code>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-key">ShortId prefix</span>
+            <code class="cfg-val"><?= $r_sid ?>…</code>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-key">PublicKey</span>
+            <code class="cfg-val" title="<?= h($r_pk) ?>"><?= h($r_pk_short) ?></code>
+          </div>
+          <div class="cfg-row">
+            <span class="cfg-key">Port</span>
+            <code class="cfg-val"><?= $r_port ?></code>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Transport Endpoints ────────────────────────────── -->
+      <div class="diag-panel">
+        <div class="diag-panel-head">
+          <h2>TLS Transport Endpoints</h2>
+          <span style="font-size:.7rem;color:var(--muted)">edge.setalink.no:443</span>
+        </div>
+        <div class="diag-panel-body">
+          <?php
+          $e_host  = h((string)($transports['edge_host'] ?? '—'));
+          $e_port  = (int)($transports['edge_port'] ?? 443);
+          $ws_path = h((string)($transports['ws']['path']    ?? '/ws'));
+          $xh_path = h((string)($transports['xhttp']['path'] ?? '/xhttp'));
+          $hu_path = h((string)($transports['httpup']['path'] ?? '/httpup'));
+          ?>
+          <div class="transport-grid">
+            <div class="transport-card">
+              <div class="transport-name">WebSocket</div>
+              <div class="transport-detail"><?= $e_host ?>:<?= $e_port ?></div>
+              <div class="transport-detail" style="color:var(--muted)"><?= $ws_path ?></div>
+            </div>
+            <div class="transport-card">
+              <div class="transport-name">XHTTP</div>
+              <div class="transport-detail"><?= $e_host ?>:<?= $e_port ?></div>
+              <div class="transport-detail" style="color:var(--muted)"><?= $xh_path ?></div>
+            </div>
+            <div class="transport-card">
+              <div class="transport-name">HTTPUpgrade</div>
+              <div class="transport-detail"><?= $e_host ?>:<?= $e_port ?></div>
+              <div class="transport-detail" style="color:var(--muted)"><?= $hu_path ?></div>
+            </div>
+          </div>
+          <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)">
+            <div class="cfg-row">
+              <span class="cfg-key">Security</span>
+              <code class="cfg-val ok">TLS (nginx → xray)</code>
+            </div>
+            <div class="cfg-row">
+              <span class="cfg-key">Camouflage SNI</span>
+              <code class="cfg-val"><?= h((string)($srv_cfg['sni'] ?? '—')) ?></code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Country Test Results ───────────────────────────── -->
+      <div class="diag-panel diag-full">
+        <div class="diag-panel-head">
+          <h2>Country Test Results</h2>
+          <span style="font-size:.7rem;color:var(--muted)" id="testResultsCount">Loading…</span>
+        </div>
+        <div class="diag-panel-body" id="testResultsBody">
+          <!-- Known results pre-seeded from the 2026-05-18 test session -->
+          <div class="test-result-row">
+            <div>
+              <div class="test-country">🇹🇷 Turkey</div>
+              <div class="test-meta">All 3 configs · 2026-05-18 · SETAEI</div>
+            </div>
+            <div>
+              <span class="test-badge-ok">✓ SUCCESS</span>
+              <div class="test-meta">TCP OK · HTTP OK · Browser/IP check passed · Real traffic flowing</div>
+            </div>
+          </div>
+          <div class="test-result-row">
+            <div>
+              <div class="test-country">🇮🇷 Iran</div>
+              <div class="test-meta">178.104.77.231:8443 · sni=www.oracle.com · flow=none · 2026-05-18 · SETAEI</div>
+            </div>
+            <div>
+              <span class="test-badge-fail">✗ FAILED</span>
+              <div class="test-error">TCP OK but HTTP+HTTPS probes failed — Read timed out. Traffic not flowing through VPN server. Native probe: SOCKS5 timeout after TUN started.</div>
+              <div class="test-analysis">
+                <strong>Root cause analysis:</strong> Client config uses <code>sni=www.oracle.com</code> but server is configured for <code>www.microsoft.com</code>.
+                Oracle.com is blocked by Iran's national firewall (GFW) — TLS ClientHello with this SNI gets intercepted.
+                TCP connects before DPI activates, but subsequent traffic is dropped.
+                <br><strong>Fix:</strong> Distribute configs with <code>sni=www.microsoft.com</code> (matches server config, not blocked in Iran).
+                Alternatively test VLESS+XHTTP or WebSocket on port 443 which bypass Reality port filtering.
+              </div>
+            </div>
+          </div>
+          <div id="dbTestResults"></div>
+        </div>
+      </div>
+
+      <!-- ── Connection Analytics ──────────────────────────── -->
+      <div class="diag-panel">
+        <div class="diag-panel-head">
+          <h2>Connection Analytics</h2>
+          <span class="diag-loading" id="analyticsStatus" style="font-size:.7rem;padding:0;color:var(--muted)">Loading…</span>
+        </div>
+        <div class="diag-panel-body">
+          <div class="analytic-grid" id="analyticsGrid">
+            <div class="analytic-card">
+              <div class="analytic-num" id="statUserConns">—</div>
+              <div class="analytic-label">User Connections</div>
+            </div>
+            <div class="analytic-card">
+              <div class="analytic-num" id="statUniqueIPs">—</div>
+              <div class="analytic-label">Unique Client IPs</div>
+            </div>
+            <div class="analytic-card">
+              <div class="analytic-num" id="statErrors" style="color:var(--danger)">—</div>
+              <div class="analytic-label">Xray Errors</div>
+            </div>
+            <div class="analytic-card">
+              <div class="analytic-num" id="statRestarts" style="color:var(--warn)">—</div>
+              <div class="analytic-label">Xray Restarts</div>
+            </div>
+          </div>
+          <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)">
+            <div class="cfg-row">
+              <span class="cfg-key">Last user conn</span>
+              <code class="cfg-val" id="statLastConn">—</code>
+            </div>
+            <div class="cfg-row">
+              <span class="cfg-key">API polls</span>
+              <code class="cfg-val" id="statApiPolls">—</code>
+            </div>
+            <div class="cfg-row">
+              <span class="cfg-key">Warnings (log)</span>
+              <code class="cfg-val" id="statWarnings">—</code>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Recent Error Log ──────────────────────────────── -->
+      <div class="diag-panel">
+        <div class="diag-panel-head">
+          <h2>Recent Xray Errors / Warnings</h2>
+          <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshErrorLogBtn">
+            <?= $I['refresh'] ?> Refresh
+          </button>
+        </div>
+        <div class="diag-panel-body" style="padding:0;max-height:320px;overflow-y:auto">
+          <div id="errorLogBody" style="padding:.75rem 1rem">
+            <div class="diag-loading">Loading error log…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Iran Compatibility Score ─────────────────────── -->
+      <div class="diag-panel" id="iranScorePanel">
+        <div class="diag-panel-head">
+          <h2>Iran Compatibility Score</h2>
+          <span style="font-size:.7rem;color:var(--muted)" id="iranScoreAt">Loading…</span>
+        </div>
+        <div class="diag-panel-body">
+          <div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1rem">
+            <div style="text-align:center">
+              <div id="iranScoreNum" style="font-size:2.8rem;font-weight:800;color:var(--ok);line-height:1">—</div>
+              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:.3rem">Score / 100</div>
+            </div>
+            <div style="text-align:center;background:var(--panel-2);border-radius:var(--radius);padding:.6rem 1.2rem;border:1px solid var(--border)">
+              <div id="iranScoreGrade" style="font-size:2rem;font-weight:900;color:var(--ok);line-height:1">—</div>
+              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:.3rem">Grade</div>
+            </div>
+          </div>
+          <div id="iranScoreChecks"></div>
+        </div>
+      </div>
+
+      <!-- ── Active Sessions ────────────────────────────────── -->
+      <div class="diag-panel" id="activeSessionsPanel">
+        <div class="diag-panel-head">
+          <h2>Active Sessions</h2>
+          <span style="font-size:.7rem;color:var(--muted)" id="activeSessionsAt">Loading…</span>
+        </div>
+        <div class="diag-panel-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem">
+            <div class="analytic-card">
+              <div class="analytic-num" id="activeIPs">—</div>
+              <div class="analytic-label">Active IPs (5 min)</div>
+            </div>
+            <div class="analytic-card">
+              <div class="analytic-num" id="recentEvents">—</div>
+              <div class="analytic-label">Log Events (5 min)</div>
+            </div>
+          </div>
+          <div style="font-size:.75rem;color:var(--muted);margin-top:.5rem">
+            Unique client IPs seen in the last 5 minutes via Xray access log. Auto-refreshes every 30s.
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Profile Success Rates ──────────────────────────── -->
+      <div class="diag-panel diag-full" id="profileStatsPanel">
+        <div class="diag-panel-head">
+          <h2>Profile Success Rates</h2>
+          <span style="font-size:.7rem;color:var(--muted)">From recorded test results</span>
+        </div>
+        <div class="diag-panel-body">
+          <div id="profileStatsBody">
+            <div class="diag-loading">Loading profile statistics…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── No-Internet Analysis ──────────────────────────── -->
+      <div class="diag-panel diag-full" id="noInternetPanel">
+        <div class="diag-panel-head">
+          <h2>CONNECTED + No Internet Analysis</h2>
+          <span style="font-size:.7rem;color:var(--danger)">Routing bug tracker</span>
+        </div>
+        <div class="diag-panel-body">
+          <div style="font-size:.78rem;color:var(--muted);margin-bottom:.75rem">
+            Profiles that reach TCP OK but apps report no internet.
+            High <code>no_internet</code> count = routing/IPv6 issue on that profile+device combo.
+          </div>
+          <div id="noInternetBody"><div class="diag-loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- ── SNI Leaderboard ───────────────────────────────── -->
+      <div class="diag-panel diag-full" id="sniLeaderboardPanel">
+        <div class="diag-panel-head">
+          <h2>SNI Leaderboard</h2>
+          <span style="font-size:.7rem;color:var(--muted)">Global success rates — use to set remote config priorities</span>
+        </div>
+        <div class="diag-panel-body">
+          <div id="sniLeaderboardBody"><div class="diag-loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- ── Learning Intelligence ─────────────────────────── -->
+      <div class="diag-panel diag-full" id="learningPanel">
+        <div class="diag-panel-head">
+          <h2>Learning Intelligence</h2>
+          <span style="font-size:.7rem;color:var(--muted)">Per-country, per-mode protocol effectiveness</span>
+        </div>
+        <div class="diag-panel-body">
+          <div id="learningBody"><div class="diag-loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- ── Device Breakdown ──────────────────────────────── -->
+      <div class="diag-panel" id="deviceBreakdownPanel">
+        <div class="diag-panel-head">
+          <h2>Device Breakdown</h2>
+          <span style="font-size:.7rem;color:var(--muted)">Android versions + models</span>
+        </div>
+        <div class="diag-panel-body">
+          <div id="deviceBreakdownBody"><div class="diag-loading">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- ── Remote Config Editor ──────────────────────────── -->
+      <div class="diag-panel" id="remoteConfigPanel">
+        <div class="diag-panel-head">
+          <h2>Remote Config</h2>
+          <span style="font-size:.7rem;color:var(--muted)">Pushed to all apps on next refresh</span>
+        </div>
+        <div class="diag-panel-body">
+          <div id="remoteConfigLoaded">
+            <div class="diag-loading">Loading current config…</div>
+          </div>
+          <div style="margin-top:1rem">
+            <div class="form-group" style="margin-bottom:.75rem">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI Priorities (comma-separated)</label>
+              <input type="text" id="rcSniPriorities" style="width:100%;font-family:monospace;font-size:.82rem"
+                     placeholder="www.microsoft.com, www.bing.com, www.apple.com, …">
+            </div>
+            <div class="form-group" style="margin-bottom:.75rem">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Iran SNI Order (comma-separated)</label>
+              <input type="text" id="rcIranSniOrder" style="width:100%;font-family:monospace;font-size:.82rem"
+                     placeholder="www.microsoft.com, www.bing.com, …">
+            </div>
+            <div class="form-group" style="margin-bottom:.75rem">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Kill-Switches (profiles to disable, comma-separated)</label>
+              <input type="text" id="rcKillSwitches" style="width:100%;font-family:monospace;font-size:.82rem"
+                     placeholder="www.oracle.com, VMess/ws, …">
+            </div>
+            <div class="form-group" style="margin-bottom:.75rem">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Emergency SNI</label>
+              <input type="text" id="rcEmergencySni" style="width:100%;font-family:monospace;font-size:.82rem"
+                     placeholder="www.microsoft.com">
+            </div>
+            <button class="btn btn-primary" id="rcSaveBtn" style="margin-top:.5rem">Save Remote Config</button>
+            <span id="rcSaveStatus" style="font-size:.78rem;margin-left:.75rem;color:var(--muted)"></span>
+            <span id="rcLastUpdated" style="font-size:.72rem;color:var(--muted);margin-left:.5rem"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Iran Investigation Notes ──────────────────────── -->
+      <div class="diag-panel diag-full" style="border-color:rgba(210,153,34,.35)">
+        <div class="diag-panel-head" style="background:rgba(210,153,34,.08)">
+          <h2 style="color:var(--warn)">Iran Connectivity Investigation</h2>
+          <span style="font-size:.7rem;color:var(--warn)">Updated 2026-05-18</span>
+        </div>
+        <div class="diag-panel-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
+            <div>
+              <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:.6rem">What we know</div>
+              <div style="font-size:.82rem;color:var(--text-2);line-height:1.75">
+                <div>✅ Turkey: All 3 configs connect successfully</div>
+                <div>❌ Iran: TCP OK but all HTTP/HTTPS probes timeout</div>
+                <div>❌ Iran: "Read timed out" on SOCKS5 validation</div>
+                <div>⚠️ Client SNI mismatch: <code>oracle.com</code> vs server <code>microsoft.com</code></div>
+                <div>⚠️ oracle.com is partially blocked in Iran by the GFW</div>
+                <div>ℹ️ Port 8443 is reachable (TCP connects from Iran)</div>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:.6rem">Recommended fixes (priority order)</div>
+              <div style="font-size:.82rem;color:var(--text-2);line-height:1.75">
+                <div><strong>1.</strong> Regenerate all user VLESS links → <code>sni=www.microsoft.com</code></div>
+                <div><strong>2.</strong> Test VLESS+XHTTP on port 443 from Iran (bypasses port filter)</div>
+                <div><strong>3.</strong> Test VLESS+WebSocket on port 443 from Iran</div>
+                <div><strong>4.</strong> Enable AI Optimizer in app to auto-detect working config</div>
+                <div><strong>5.</strong> Consider CDN fronting (Cloudflare) as fallback</div>
+                <div><strong>6.</strong> Try alternative SNI: <code>www.apple.com</code>, <code>www.speedtest.net</code></div>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:1rem;padding:.75rem 1rem;background:var(--panel-2);border-radius:var(--radius);border:1px solid var(--border);font-size:.78rem;color:var(--muted);font-family:'JetBrains Mono',monospace">
+            Server SNI: <?= h((string)($reality['sni'] ?? 'www.microsoft.com')) ?> | Port: <?= (int)($reality['port'] ?? 8443) ?> | Flow: <?= h((string)($reality['flow'] ?? 'xtls-rprx-vision')) ?> | FP: <?= h((string)($reality['fingerprint'] ?? 'chrome')) ?>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /.diag-grid -->
 
     <?php endif; ?>
 
@@ -1912,6 +2355,552 @@ if (CURRENT_PAGE === 'settings') {
     document.getElementById('reloadSettingsBtn')?.addEventListener('click',   loadSettings);
 
     loadSettings();
+}
+
+
+<!-- =====================================================================
+     Modal: Record Test Result
+     ===================================================================== -->
+<div class="modal" id="recordTestModal" role="dialog" aria-modal="true" aria-labelledby="recordTestTitle">
+  <div class="modal-dialog" style="max-width:560px">
+    <div class="modal-header">
+      <h3 id="recordTestTitle">Record Test Result</h3>
+      <button class="modal-close js-modal-close" aria-label="Close"><?= $I['x'] ?></button>
+    </div>
+    <div class="modal-body" style="display:flex;flex-direction:column;gap:.9rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+        <div class="form-group">
+          <label>Country</label>
+          <input type="text" id="rtCountry" class="form-input" placeholder="e.g. Iran" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Network / ISP</label>
+          <input type="text" id="rtNetwork" class="form-input" placeholder="e.g. MCI, Irancell" autocomplete="off">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 80px;gap:.75rem">
+        <div class="form-group">
+          <label>Server</label>
+          <input type="text" id="rtServer" class="form-input" placeholder="e.g. 178.104.77.231" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Port</label>
+          <input type="number" id="rtPort" class="form-input" value="8443" min="1" max="65535">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+        <div class="form-group">
+          <label>Protocol</label>
+          <select id="rtProtocol" class="form-input">
+            <option value="VLESS+Reality">VLESS + Reality</option>
+            <option value="VLESS+XHTTP">VLESS + XHTTP</option>
+            <option value="VLESS+WS">VLESS + WebSocket</option>
+            <option value="VLESS+HTTPUpgrade">VLESS + HTTPUpgrade</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Result</label>
+          <select id="rtResult" class="form-input">
+            <option value="fail">✗ Failed</option>
+            <option value="success">✓ Success</option>
+            <option value="partial">~ Partial</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
+        <div class="form-group">
+          <label>SNI</label>
+          <input type="text" id="rtSni" class="form-input" placeholder="www.microsoft.com" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Flow</label>
+          <input type="text" id="rtFlow" class="form-input" placeholder="xtls-rprx-vision or empty" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label>Fingerprint</label>
+          <input type="text" id="rtFp" class="form-input" placeholder="chrome" autocomplete="off">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;cursor:pointer">
+            <input type="checkbox" id="rtTcpOk"> TCP OK
+          </label>
+          <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;cursor:pointer;margin-left:.75rem">
+            <input type="checkbox" id="rtHttpOk"> HTTP OK
+          </label>
+        </div>
+        <div class="form-group">
+          <label>Latency (ms)</label>
+          <input type="number" id="rtLatency" class="form-input" value="0" min="0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Error message (if failed)</label>
+        <textarea id="rtError" class="form-input" rows="2" placeholder="e.g. Read timed out / Deep validation failed" style="resize:vertical"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="rtNotes" class="form-input" rows="2" placeholder="Additional observations" style="resize:vertical"></textarea>
+      </div>
+      <div id="rtAlert" class="alert" style="display:none"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary js-modal-close">Cancel</button>
+      <button class="btn btn-primary" id="rtSubmitBtn">Save Test Result</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Diagnostics page ────────────────────────────────────────────────────────
+
+if (document.getElementById('diagRefreshBtn')) {
+
+  async function loadConnectionAnalytics() {
+    const el = document.getElementById('analyticsStatus');
+    if (el) el.textContent = 'Loading…';
+    try {
+      const resp = await fetch(API_URL + '?action=connection-analytics', { credentials: 'same-origin' });
+      const j = await resp.json();
+      if (!j.ok) return;
+      const d = j.data;
+
+      document.getElementById('statUserConns').textContent  = d.user_connections ?? '—';
+      document.getElementById('statUniqueIPs').textContent  = d.unique_client_ips ?? '—';
+      document.getElementById('statErrors').textContent     = d.error_count ?? '—';
+      document.getElementById('statRestarts').textContent   = d.xray_restarts ?? '—';
+      document.getElementById('statLastConn').textContent   = d.last_user_conn_at ?? 'none yet';
+      document.getElementById('statApiPolls').textContent   = d.internal_api_polls ?? '—';
+      document.getElementById('statWarnings').textContent   = d.warning_count ?? '—';
+
+      if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    } catch (e) {
+      if (el) el.textContent = 'Error loading analytics';
+    }
+  }
+
+  async function loadErrorLog() {
+    const body = document.getElementById('errorLogBody');
+    if (!body) return;
+    body.innerHTML = '<div class="diag-loading">Loading…</div>';
+    try {
+      const resp = await fetch(API_URL + '?action=connection-analytics', { credentials: 'same-origin' });
+      const j = await resp.json();
+      const errors = j?.data?.recent_errors ?? [];
+      if (!errors.length) {
+        body.innerHTML = '<div class="error-log-empty">No errors or warnings in log.</div>';
+        return;
+      }
+      body.innerHTML = errors.map(line => {
+        const cls = line.includes('[Error]') ? 'is-error' : line.includes('[Warning]') ? 'is-warn' : '';
+        return `<div class="error-log-line ${cls}">${escHtml(line)}</div>`;
+      }).join('');
+    } catch (e) {
+      body.innerHTML = '<div class="error-log-empty" style="color:var(--danger)">Failed to load log.</div>';
+    }
+  }
+
+  async function loadDbTestResults() {
+    try {
+      const resp = await fetch(API_URL + '?action=test-results', { credentials: 'same-origin' });
+      const j = await resp.json();
+      const rows = j?.data ?? [];
+      const el = document.getElementById('dbTestResults');
+      const countEl = document.getElementById('testResultsCount');
+      if (!el) return;
+      if (countEl) countEl.textContent = (rows.length + 2) + ' results';
+
+      if (!rows.length) { el.innerHTML = ''; return; }
+
+      el.innerHTML = rows.map(r => {
+        const badgeCls = r.result === 'success' ? 'test-badge-ok' : r.result === 'partial' ? 'test-badge-partial' : 'test-badge-fail';
+        const badgeLabel = r.result === 'success' ? '✓ SUCCESS' : r.result === 'partial' ? '~ PARTIAL' : '✗ FAILED';
+        const probes = [r.tcp_ok ? 'TCP ✓' : 'TCP ✗', r.http_ok ? 'HTTP ✓' : 'HTTP ✗'].join(' · ');
+        const latency = r.latency_ms > 0 ? ` · ${r.latency_ms}ms` : '';
+        const errHtml = r.error_msg ? `<div class="test-error">${escHtml(r.error_msg)}</div>` : '';
+        const notesHtml = r.notes ? `<div class="test-meta" style="color:var(--muted-2)">${escHtml(r.notes)}</div>` : '';
+        return `<div class="test-result-row">
+          <div>
+            <div class="test-country">${escHtml(r.country)}</div>
+            <div class="test-meta">${escHtml(r.server)}:${r.port} · ${escHtml(r.sni)} · ${escHtml(r.recorded_at)} · ${escHtml(r.tested_by || '—')}</div>
+          </div>
+          <div>
+            <span class="${badgeCls}">${badgeLabel}</span>
+            <div class="test-meta">${probes}${latency} · ${escHtml(r.protocol)}</div>
+            ${errHtml}${notesHtml}
+          </div>
+        </div>`;
+      }).join('');
+    } catch {}
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+
+
+  document.getElementById('refreshErrorLogBtn')?.addEventListener('click', loadErrorLog);
+
+  // Record Test modal
+  document.getElementById('recordTestBtn')?.addEventListener('click', () => {
+    // Pre-fill with server config
+    document.getElementById('rtServer').value  = '<?= h($host) ?>';
+    document.getElementById('rtPort').value    = '<?= h((string)($reality['port'] ?? '8443')) ?>';
+    document.getElementById('rtSni').value     = '<?= h((string)($reality['sni'] ?? '')) ?>';
+    document.getElementById('rtFlow').value    = '<?= h((string)($reality['flow'] ?? '')) ?>';
+    document.getElementById('rtFp').value      = '<?= h((string)($reality['fingerprint'] ?? 'chrome')) ?>';
+    document.getElementById('rtResult').value  = 'fail';
+    document.getElementById('rtTcpOk').checked = false;
+    document.getElementById('rtHttpOk').checked = false;
+    document.getElementById('rtLatency').value  = '0';
+    document.getElementById('rtError').value    = '';
+    document.getElementById('rtNotes').value    = '';
+    document.getElementById('rtAlert').style.display = 'none';
+    openModal('recordTestModal');
+  });
+
+  document.getElementById('rtSubmitBtn')?.addEventListener('click', async () => {
+    const country = document.getElementById('rtCountry').value.trim();
+    const server  = document.getElementById('rtServer').value.trim();
+    if (!country || !server) {
+      const a = document.getElementById('rtAlert');
+      a.textContent = 'Country and server are required.';
+      a.className = 'alert alert-error';
+      a.style.display = 'flex';
+      return;
+    }
+    const payload = {
+      action:      'record-test',
+      country,
+      network:     document.getElementById('rtNetwork').value.trim(),
+      server,
+      port:        parseInt(document.getElementById('rtPort').value) || 8443,
+      protocol:    document.getElementById('rtProtocol').value,
+      sni:         document.getElementById('rtSni').value.trim(),
+      flow:        document.getElementById('rtFlow').value.trim(),
+      fingerprint: document.getElementById('rtFp').value.trim(),
+      result:      document.getElementById('rtResult').value,
+      error_msg:   document.getElementById('rtError').value.trim(),
+      tcp_ok:      document.getElementById('rtTcpOk').checked,
+      http_ok:     document.getElementById('rtHttpOk').checked,
+      latency_ms:  parseInt(document.getElementById('rtLatency').value) || 0,
+      notes:       document.getElementById('rtNotes').value.trim(),
+    };
+    try {
+      const r = await apiPost(payload);
+      if (r.ok) {
+        closeModal('recordTestModal');
+        showToast('Test result recorded', 'ok');
+        loadDbTestResults();
+      } else {
+        const a = document.getElementById('rtAlert');
+        a.textContent = r.error || 'Failed to save';
+        a.className = 'alert alert-error';
+        a.style.display = 'flex';
+      }
+    } catch (e) {
+      const a = document.getElementById('rtAlert');
+      a.textContent = 'Error: ' + e.message;
+      a.className = 'alert alert-error';
+      a.style.display = 'flex';
+    }
+  });
+
+  // ── Iran compatibility score ──────────────────────────────────────────
+  async function loadIranScore() {
+    try {
+      const r = await fetch(API_URL + '?action=iran-score', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok) return;
+      const d = j.data;
+      const el_num   = document.getElementById('iranScoreNum');
+      const el_grade = document.getElementById('iranScoreGrade');
+      const el_at    = document.getElementById('iranScoreAt');
+      const el_checks= document.getElementById('iranScoreChecks');
+      if (!el_num) return;
+
+      const color = d.score >= 90 ? 'var(--ok)' : d.score >= 70 ? 'var(--warn)' : 'var(--danger)';
+      el_num.textContent   = d.score;
+      el_num.style.color   = color;
+      el_grade.textContent = d.grade;
+      el_grade.style.color = color;
+      el_at.textContent    = 'Checked ' + d.checked_at;
+
+      el_checks.innerHTML = (d.checks || []).map(c => `
+        <div class="cfg-row">
+          <span class="cfg-key">${escHtml(c.label)}</span>
+          <code class="cfg-val ${c.ok ? 'ok' : 'danger'}">${c.ok ? '✓' : '✗'} ${escHtml(c.detail)}</code>
+        </div>`).join('');
+    } catch {}
+  }
+
+  // ── Active sessions ────────────────────────────────────────────────────
+  async function loadActiveSessions() {
+    try {
+      const r = await fetch(API_URL + '?action=active-sessions', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok) return;
+      const d = j.data;
+      const elIPs = document.getElementById('activeIPs');
+      const elEv  = document.getElementById('recentEvents');
+      const elAt  = document.getElementById('activeSessionsAt');
+      if (elIPs) elIPs.textContent = d.active_ips;
+      if (elEv)  elEv.textContent  = d.recent_events;
+      if (elAt)  elAt.textContent  = 'Updated ' + d.checked_at;
+    } catch {}
+  }
+
+  // ── Profile success rates ──────────────────────────────────────────────
+  async function loadProfileStats() {
+    const el = document.getElementById('profileStatsBody');
+    if (!el) return;
+    try {
+      const r = await fetch(API_URL + '?action=profile-stats', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok || !j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No profile data recorded yet. Use the Record Test button to add results.</div>';
+        return;
+      }
+      el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem">` +
+        j.data.map(p => {
+          const pct = p.pct !== null ? p.pct : '—';
+          const color = p.pct === null ? 'var(--muted)' : p.pct >= 80 ? 'var(--ok)' : p.pct >= 50 ? 'var(--warn)' : 'var(--danger)';
+          return `<div class="analytic-card">
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.4rem">${escHtml(p.protocol || '—')}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-2);margin-bottom:.5rem">${escHtml(p.sni || '—')}</div>
+            <div style="font-size:1.6rem;font-weight:700;color:${color};line-height:1">${pct}${pct !== '—' ? '%' : ''}</div>
+            <div style="font-size:.65rem;color:var(--muted);margin-top:.2rem">${p.success} success / ${p.fail} fail (${p.total} total)</div>
+          </div>`;
+        }).join('') + `</div>`;
+    } catch {}
+  }
+
+  // ── No-internet analysis ──────────────────────────────────────────────────
+  async function loadNoInternetAnalysis() {
+    const el = document.getElementById('noInternetBody');
+    if (!el) return;
+    try {
+      const r = await fetch(API_URL + '?action=no-internet-analysis', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok || !j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No no-internet events recorded yet. This is good!</div>';
+        return;
+      }
+      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Protocol / SNI</th>
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Android</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Total</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--danger);font-size:.7rem;text-transform:uppercase">No-Internet</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Probe OK</th>
+        </tr>` +
+        j.data.map(r => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:.4rem .6rem;font-family:monospace">${escHtml(r.protocol)} / ${escHtml(r.sni)}</td>
+          <td style="padding:.4rem .6rem;font-family:monospace">${escHtml(r.android_version || '—')}</td>
+          <td style="padding:.4rem .6rem;text-align:right">${r.total}</td>
+          <td style="padding:.4rem .6rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--ok)'}">${r.no_internet_cnt}</td>
+          <td style="padding:.4rem .6rem;text-align:right">${r.probe_ok_cnt}</td>
+        </tr>`).join('') + `</table></div>`;
+    } catch(e) { el.innerHTML = '<div class="diag-loading">Error loading data.</div>'; }
+  }
+
+  // ── SNI leaderboard ───────────────────────────────────────────────────────
+  async function loadSniLeaderboard() {
+    const el = document.getElementById('sniLeaderboardBody');
+    if (!el) return;
+    try {
+      const r = await fetch(API_URL + '?action=sni-leaderboard', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok || !j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No SNI data yet. Data accumulates after app connections.</div>';
+        return;
+      }
+      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">SNI</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Total</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Connected</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Rate</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Avg ms</th>
+        </tr>` +
+        j.data.map(r => {
+          const rate = r.connect_rate !== null ? r.connect_rate : '—';
+          const color = r.connect_rate === null ? 'var(--muted)' : r.connect_rate >= 80 ? 'var(--ok)' : r.connect_rate >= 50 ? 'var(--warn)' : 'var(--danger)';
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem;font-family:monospace;font-weight:600">${escHtml(r.sni)}</td>
+            <td style="padding:.4rem .6rem;text-align:right">${r.total}</td>
+            <td style="padding:.4rem .6rem;text-align:right;color:var(--ok)">${r.connected}</td>
+            <td style="padding:.4rem .6rem;text-align:right;font-weight:700;color:${color}">${rate !== '—' ? rate + '%' : '—'}</td>
+            <td style="padding:.4rem .6rem;text-align:right;font-family:monospace">${r.avg_latency ?? '—'}</td>
+          </tr>`;
+        }).join('') + `</table></div>`;
+    } catch(e) { el.innerHTML = '<div class="diag-loading">Error loading data.</div>'; }
+  }
+
+  // ── Learning intelligence ─────────────────────────────────────────────────
+  async function loadLearningStats() {
+    const el = document.getElementById('learningBody');
+    if (!el) return;
+    try {
+      const r = await fetch(API_URL + '?action=learning-stats', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok || !j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No learning data yet. Accumulates as users connect.</div>';
+        return;
+      }
+      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Country/Mode</th>
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Protocol / SNI</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Attempts</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Rate</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--danger);font-size:.7rem;text-transform:uppercase">No-Net</th>
+          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Avg ms</th>
+        </tr>` +
+        j.data.slice(0, 50).map(r => {
+          const rate  = r.connect_rate !== null ? r.connect_rate : '—';
+          const color = r.connect_rate === null ? 'var(--muted)' : r.connect_rate >= 80 ? 'var(--ok)' : r.connect_rate >= 50 ? 'var(--warn)' : 'var(--danger)';
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem;font-weight:600">${escHtml(r.country||'?')} / ${escHtml(r.mode||'?')}</td>
+            <td style="padding:.4rem .6rem;font-family:monospace;font-size:.72rem">${escHtml(r.protocol)} / ${escHtml(r.sni)}</td>
+            <td style="padding:.4rem .6rem;text-align:right">${r.total}</td>
+            <td style="padding:.4rem .6rem;text-align:right;font-weight:700;color:${color}">${rate !== '—' ? rate+'%' : '—'}</td>
+            <td style="padding:.4rem .6rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--muted)'}">${r.no_internet_cnt}</td>
+            <td style="padding:.4rem .6rem;text-align:right;font-family:monospace">${r.avg_latency ?? '—'}</td>
+          </tr>`;
+        }).join('') + `</table></div>`;
+    } catch(e) { el.innerHTML = '<div class="diag-loading">Error.</div>'; }
+  }
+
+  // ── Device breakdown ──────────────────────────────────────────────────────
+  async function loadDeviceBreakdown() {
+    const el = document.getElementById('deviceBreakdownBody');
+    if (!el) return;
+    try {
+      const r = await fetch(API_URL + '?action=device-breakdown', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok || !j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No device data yet.</div>';
+        return;
+      }
+      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Model</th>
+          <th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Android</th>
+          <th style="text-align:right;padding:.3rem .5rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Attempts</th>
+          <th style="text-align:right;padding:.3rem .5rem;color:var(--ok);font-size:.68rem;text-transform:uppercase">Connected</th>
+          <th style="text-align:right;padding:.3rem .5rem;color:var(--danger);font-size:.68rem;text-transform:uppercase">No-Net</th>
+        </tr>` +
+        j.data.map(r => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:.3rem .5rem;font-family:monospace;font-size:.72rem">${escHtml(r.device_model||'unknown')}</td>
+          <td style="padding:.3rem .5rem;font-family:monospace">${escHtml(r.android_version||'—')}</td>
+          <td style="padding:.3rem .5rem;text-align:right">${r.attempts}</td>
+          <td style="padding:.3rem .5rem;text-align:right;color:var(--ok)">${r.connected}</td>
+          <td style="padding:.3rem .5rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--muted)'}">${r.no_internet_cnt}</td>
+        </tr>`).join('') + `</table></div>`;
+    } catch(e) { el.innerHTML = '<div class="diag-loading">Error.</div>'; }
+  }
+
+  // ── Remote config loader + saver ──────────────────────────────────────────
+  async function loadRemoteConfigEditor() {
+    const el = document.getElementById('remoteConfigLoaded');
+    if (!el) return;
+    try {
+      const r = await fetch(API_URL + '?action=get-remote-config', { credentials: 'same-origin' });
+      const j = await r.json();
+      if (!j.ok) return;
+      const d = j.data;
+      el.innerHTML = `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
+        Version ${d.version} — Updated: ${d.updated_at || 'never'} — Bootstrap: ${d.bootstrap_set ? '<span style="color:var(--ok)">SET</span>' : '<span style="color:var(--danger)">NOT SET</span>'}
+      </div>`;
+      const f = (id, val) => { const el2 = document.getElementById(id); if (el2) el2.value = Array.isArray(val) ? val.join(', ') : (val||''); };
+      f('rcSniPriorities', d.sni_priorities);
+      f('rcIranSniOrder',  d.iran_sni_order);
+      f('rcKillSwitches',  d.kill_switches);
+      f('rcEmergencySni',  d.emergency_sni);
+    } catch(e) { el.innerHTML = '<div class="diag-loading">Error loading remote config.</div>'; }
+  }
+
+  const parseList = v => v.split(',').map(s => s.trim()).filter(Boolean);
+
+  document.getElementById('rcSaveBtn')?.addEventListener('click', async () => {
+    const btn    = document.getElementById('rcSaveBtn');
+    const status = document.getElementById('rcSaveStatus');
+    const lastUpdatedEl = document.getElementById('rcLastUpdated');
+    if (!btn) return;
+
+    btn.disabled = true;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '<span style="opacity:.7">Saving…</span>';
+    if (status) status.textContent = '';
+
+    try {
+      const csrf = document.cookie.split(';').find(c => c.trim().startsWith('_csrf='))?.split('=')[1] ?? '';
+      const payload = {
+        _csrf:             decodeURIComponent(csrf),
+        action:            'save-remote-config',
+        rc_sni_priorities: parseList(document.getElementById('rcSniPriorities')?.value || ''),
+        rc_iran_sni_order: parseList(document.getElementById('rcIranSniOrder')?.value || ''),
+        rc_kill_switches:  parseList(document.getElementById('rcKillSwitches')?.value || ''),
+        rc_emergency_sni:  document.getElementById('rcEmergencySni')?.value?.trim() || '',
+      };
+      const r = await fetch(API_URL, {
+        method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const j = await r.json();
+      if (j.ok) {
+        showToast('Remote config saved', 'ok', 3000);
+        const now = new Date().toLocaleTimeString();
+        if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last saved: ' + now;
+        if (status) { status.style.color = 'var(--ok)'; status.textContent = '✓ Saved at ' + now; }
+        loadRemoteConfigEditor();
+      } else {
+        showToast('Save failed: ' + (j.error || 'unknown error'), 'error', 4000);
+        if (status) { status.style.color = 'var(--danger)'; status.textContent = 'Error: ' + (j.error || 'unknown'); }
+      }
+    } catch(e) {
+      showToast('Network error: ' + e.message, 'error', 4000);
+      if (status) { status.style.color = 'var(--danger)'; status.textContent = 'Save failed'; }
+    }
+
+    btn.disabled = false;
+    btn.innerHTML = origText;
+  });
+
+  // Refresh all panels on button click
+  document.getElementById('diagRefreshBtn')?.addEventListener('click', () => {
+    loadConnectionAnalytics();
+    loadErrorLog();
+    loadDbTestResults();
+    loadIranScore();
+    loadActiveSessions();
+    loadProfileStats();
+    loadNoInternetAnalysis();
+    loadSniLeaderboard();
+    loadLearningStats();
+    loadDeviceBreakdown();
+    loadRemoteConfigEditor();
+  });
+
+  // Auto-refresh active sessions every 30 seconds
+  setInterval(loadActiveSessions, 30000);
+
+  // Auto-load diagnostics data on page load
+  loadConnectionAnalytics();
+  loadErrorLog();
+  loadDbTestResults();
+  loadIranScore();
+  loadActiveSessions();
+  loadProfileStats();
+  loadNoInternetAnalysis();
+  loadSniLeaderboard();
+  loadLearningStats();
+  loadDeviceBreakdown();
+  loadRemoteConfigEditor();
 }
 </script>
 </body>

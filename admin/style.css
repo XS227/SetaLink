@@ -36,6 +36,7 @@
 
   /* Layout */
   --sidebar-w: 240px;
+  --sidebar-w-collapsed: 64px;
   --topbar-h:  56px;
   --radius:    8px;
   --radius-sm: 4px;
@@ -234,7 +235,9 @@ input, select, textarea { font: inherit; }
   min-width: 0;
   display: flex;
   flex-direction: column;
+  transition: margin-left .25s cubic-bezier(.4,0,.2,1);
 }
+.main-wrap.sidebar-collapsed { margin-left: var(--sidebar-w-collapsed); }
 .main {
   flex: 1;
   padding: 2rem 2.5rem;
@@ -969,3 +972,69 @@ td {
 }
 .traffic-up   { color: var(--ok); }
 .traffic-down { color: #58a6ff; }
+
+/* ── Sidebar collapse ──────────────────────────────────────────────────── */
+.sidebar-collapse-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  flex-shrink: 0;
+}
+.sidebar-collapse-btn:hover { background: var(--panel-3); color: var(--text-2); }
+
+/* Show collapse btn only on desktop */
+@media (min-width: 900px) {
+  .sidebar-collapse-btn { display: flex; }
+}
+
+/* ── Collapsed state ────────────────────────────────────────────────────── */
+.sidebar.collapsed { width: var(--sidebar-w-collapsed); }
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .version-chip,
+.sidebar.collapsed .nav-section,
+.sidebar.collapsed .svc-name,
+.sidebar.collapsed .svc-state,
+.sidebar.collapsed .auth-user { display: none; }
+
+.sidebar.collapsed .sidebar-header { padding: .9rem .6rem; justify-content: center; gap: 0; }
+.sidebar.collapsed .logo { gap: 0; }
+.sidebar.collapsed .sidebar-close { display: none; }
+
+.sidebar.collapsed .nav { padding: .5rem .5rem; }
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: .7rem;
+  border-radius: var(--radius);
+  position: relative;
+}
+.sidebar.collapsed .nav-label { display: none; }
+
+/* Tooltip on hover when collapsed */
+.sidebar.collapsed .nav-item[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--panel-3);
+  border: 1px solid var(--border-2);
+  color: var(--text-2);
+  padding: .3rem .65rem;
+  border-radius: var(--radius-sm);
+  font-size: .78rem;
+  font-weight: 500;
+  white-space: nowrap;
+  z-index: 300;
+  pointer-events: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebar.collapsed .sidebar-footer { padding: .75rem .5rem; align-items: center; }
+.sidebar.collapsed .svc-row { justify-content: center; }

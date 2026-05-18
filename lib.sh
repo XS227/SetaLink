@@ -297,15 +297,15 @@ build_vless_url() {
     # shellcheck disable=SC1090
     . "$SETALINK_ENV"
 
-    # Public port clients connect to. Defaults to the xray listen port for
-    # vanilla deployments; set SETALINK_CLIENT_PORT in setalink.env when xray
-    # is fronted by another listener (e.g. nginx stream multiplexing on :443).
-    local client_port="${SETALINK_CLIENT_PORT:-$SETALINK_PORT}"
+    # Reality-specific params — always use the Reality port/SNI/key for the primary link.
+    local port="${SETALINK_REALITY_PORT:-8443}"
+    local sni="${SETALINK_REALITY_SNI:-www.microsoft.com}"
+    local pbk="${SETALINK_REALITY_PUBLIC_KEY:-$SETALINK_PUBLIC_KEY}"
 
     local frag
     frag="$(printf '%s' "$name" | jq -sRr @uri)"
-    printf 'vless://%s@%s:%s?encryption=none&security=reality&sni=%s&fp=chrome&pbk=%s&sid=%s&type=tcp&flow=xtls-rprx-vision#%s\n' \
-        "$uuid" "$SETALINK_HOST" "$client_port" "$SETALINK_SNI" "$SETALINK_PUBLIC_KEY" "$sid" "$frag"
+    printf 'vless://%s@%s:%s?security=reality&type=tcp&flow=xtls-rprx-vision&sni=%s&fp=chrome&pbk=%s&sid=%s&spx=%%2F#%s\n' \
+        "$uuid" "$SETALINK_HOST" "$port" "$sni" "$pbk" "$sid" "$frag"
 }
 
 # ---------------------------------------------------------------------------

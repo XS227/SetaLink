@@ -48,7 +48,7 @@ _gen_full_json() {
     # shellcheck disable=SC1090
     . "$SETALINK_ENV"
     local _dir="$SETALINK_USERS_DIR/$_name"
-    local _port="${SETALINK_CLIENT_PORT:-$SETALINK_PORT}"
+    local _port="${SETALINK_REALITY_PORT:-8443}"
 
     local _used _quota _used_fmt _quota_fmt _remarks
     _used="$(jq -r --arg n "$_name" '.users[] | select(.name == $n) | (.used_bytes  // 0)' "$SETALINK_USERS_DB")"
@@ -62,8 +62,8 @@ _gen_full_json() {
     jq -n \
         --arg host    "$SETALINK_HOST" \
         --arg port    "$_port" \
-        --arg sni     "$SETALINK_SNI" \
-        --arg pubkey  "$SETALINK_PUBLIC_KEY" \
+        --arg sni     "${SETALINK_REALITY_SNI:-www.microsoft.com}" \
+        --arg pubkey  "${SETALINK_REALITY_PUBLIC_KEY:-$SETALINK_PUBLIC_KEY}" \
         --arg uuid    "$_uuid" \
         --arg sid     "$_sid" \
         --arg remarks "$_remarks" \
@@ -143,6 +143,19 @@ case "$ACTION" in
         DISABLED=$(jq '[.users[] | select((.disabled // false) == true)] | length' \
                     "$SETALINK_USERS_DB" 2>/dev/null || echo 0)
         ACTIVE=$(( TOTAL - DISABLED ))
+        # Reality + transport config
+        R_PORT="${SETALINK_REALITY_PORT:-8443}"
+        R_SNI="${SETALINK_REALITY_SNI:-www.microsoft.com}"
+        R_SID="${SETALINK_REALITY_SHORT_ID_SERVER:-}"
+        R_SID_PREFIX="${R_SID:0:6}"
+        R_FLOW="${SETALINK_REALITY_FLOW:-xtls-rprx-vision}"
+        R_FP="${SETALINK_REALITY_FINGERPRINT:-chrome}"
+        R_PUBKEY="${SETALINK_REALITY_PUBLIC_KEY:-${SETALINK_PUBLIC_KEY:-}}"
+        E_HOST="${SETALINK_EDGE_HOST:-$SETALINK_HOST}"
+        E_PORT="${SETALINK_NGINX_PORT:-443}"
+        WS_PATH_VAL="${SETALINK_WS_PATH:-/ws}"
+        XHTTP_PATH_VAL="${SETALINK_XHTTP_PATH:-/xhttp}"
+        HTTPUP_PATH_VAL="${SETALINK_HTTPUP_PATH:-/httpup}"
         jq -n \
             --arg xray "$XRAY_STATE" \
             --arg nginx "$NGINX_STATE" \
@@ -155,6 +168,17 @@ case "$ACTION" in
             --arg listen_port "$SETALINK_PORT" \
             --arg sni "$SETALINK_SNI" \
             --arg host "$SETALINK_HOST" \
+            --arg r_port "$R_PORT" \
+            --arg r_sni "$R_SNI" \
+            --arg r_sid_prefix "$R_SID_PREFIX" \
+            --arg r_flow "$R_FLOW" \
+            --arg r_fp "$R_FP" \
+            --arg r_pubkey "$R_PUBKEY" \
+            --arg e_host "$E_HOST" \
+            --arg e_port "$E_PORT" \
+            --arg ws_path "$WS_PATH_VAL" \
+            --arg xhttp_path "$XHTTP_PATH_VAL" \
+            --arg httpup_path "$HTTPUP_PATH_VAL" \
             '{
                 services: { xray: $xray, nginx: $nginx, ufw: $ufw },
                 ports:    { public: ($client_port|tonumber),
@@ -162,7 +186,23 @@ case "$ACTION" in
                 sni:      $sni,
                 host:     $host,
                 users:    { total: $total, active: $active,
-                            disabled: $disabled, max: $max }
+                            disabled: $disabled, max: $max },
+                reality: {
+                    host:        $host,
+                    port:        ($r_port|tonumber),
+                    sni:         $r_sni,
+                    shortId:     $r_sid_prefix,
+                    flow:        $r_flow,
+                    fingerprint: $r_fp,
+                    publicKey:   $r_pubkey
+                },
+                transports: {
+                    edge_host: $e_host,
+                    edge_port: ($e_port|tonumber),
+                    ws:        { path: $ws_path },
+                    xhttp:     { path: $xhttp_path },
+                    httpup:    { path: $httpup_path }
+                }
             }'
         ;;
 
@@ -309,6 +349,82 @@ case "$ACTION" in
         F="$SETALINK_USERS_DIR/$1/full.json"
         [ -r "$F" ] || { echo "no full.json for user '$1'" >&2; exit 3; }
         cat "$F"
+        ;;
+
+    verify-links)
+        # Parse and validate a user's Reality link + full.json against server config.
+        # Usage: setalink-cli verify-links <username>
+        _check_name "${1:-}"
+        # shellcheck disable=SC1090
+        . "$SETALINK_ENV"
+        VL_USER="$1"
+        VL_LINK="$SETALINK_USERS_DIR/$VL_USER/link.txt"
+        VL_JSON="$SETALINK_USERS_DIR/$VL_USER/full.json"
+
+        E_PORT="${SETALINK_REALITY_PORT:-8443}"
+        E_SNI="${SETALINK_REALITY_SNI:-www.microsoft.com}"
+        E_PBK="${SETALINK_REALITY_PUBLIC_KEY:-$SETALINK_PUBLIC_KEY}"
+        E_FLOW="xtls-rprx-vision"
+        E_FP="chrome"
+
+        PASS=0; FAIL=0
+
+        _check() {
+            local label="$1" got="$2" expected="$3"
+            if [ "$got" = "$expected" ]; then
+                echo "  ✓ $label: $got"
+                PASS=$((PASS+1))
+            else
+                echo "  ✗ $label: got='$got' expected='$expected'"
+                FAIL=$((FAIL+1))
+            fi
+        }
+
+        echo ""
+        echo "── link.txt ──────────────────────────────"
+        if [ -r "$VL_LINK" ]; then
+            L="$(cat "$VL_LINK")"
+            # Parse params from vless URL
+            _port="$(printf '%s' "$L" | grep -oP '(?<=:)\d+(?=\?)' || echo '')"
+            _sni="$(printf '%s' "$L" | grep -oP '(?<=sni=)[^&]+' || echo '')"
+            _pbk="$(printf '%s' "$L" | grep -oP '(?<=pbk=)[^&]+' || echo '')"
+            _flow="$(printf '%s' "$L" | grep -oP '(?<=flow=)[^&]+' || echo '')"
+            _fp="$(printf '%s' "$L" | grep -oP '(?<=fp=)[^&]+' || echo '')"
+            _check "port" "$_port" "$E_PORT"
+            _check "sni " "$_sni"  "$E_SNI"
+            _check "pbk " "$_pbk"  "$E_PBK"
+            _check "flow" "$_flow" "$E_FLOW"
+            _check "fp  " "$_fp"   "$E_FP"
+        else
+            echo "  ✗ link.txt not found"
+            FAIL=$((FAIL+1))
+        fi
+
+        echo ""
+        echo "── full.json ─────────────────────────────"
+        if [ -r "$VL_JSON" ]; then
+            _port="$(jq -r '.outbounds[0].settings.vnext[0].port' "$VL_JSON")"
+            _sni="$(jq -r '.outbounds[0].streamSettings.realitySettings.serverName' "$VL_JSON")"
+            _pbk="$(jq -r '.outbounds[0].streamSettings.realitySettings.publicKey' "$VL_JSON")"
+            _flow="$(jq -r '.outbounds[0].settings.vnext[0].users[0].flow' "$VL_JSON")"
+            _fp="$(jq -r '.outbounds[0].streamSettings.realitySettings.fingerprint' "$VL_JSON")"
+            _check "port" "$_port" "$E_PORT"
+            _check "sni " "$_sni"  "$E_SNI"
+            _check "pbk " "$_pbk"  "$E_PBK"
+            _check "flow" "$_flow" "$E_FLOW"
+            _check "fp  " "$_fp"   "$E_FP"
+        else
+            echo "  ✗ full.json not found"
+            FAIL=$((FAIL+1))
+        fi
+
+        echo ""
+        if [ "$FAIL" -eq 0 ]; then
+            echo "  Result: $PASS/$((PASS+FAIL)) checks passed — all params correct ✓"
+        else
+            echo "  Result: $FAIL check(s) FAILED — regenerate with: setalink-cli regen-link $VL_USER"
+            exit 1
+        fi
         ;;
 
     read-link)
@@ -465,9 +581,97 @@ print(json.dumps(lines))
 "
         ;;
 
+    connection-analytics)
+        # Parse Xray access/error logs for real connection stats.
+        python3 - <<'PYEOF2'
+import json, re, os
+from collections import Counter
+from datetime import datetime, timezone, timedelta
+
+ACCESS_LOG = "/var/log/xray/access.log"
+ERROR_LOG  = "/var/log/xray/error.log"
+
+result = {
+    "total_events": 0,
+    "user_connections": 0,
+    "internal_api_polls": 0,
+    "unique_client_ips": 0,
+    "unique_ip_list": [],
+    "last_user_conn_at": None,
+    "recent_errors": [],
+    "error_count": 0,
+    "warning_count": 0,
+    "xray_restarts": 0,
+    "destinations": [],
+    "access_log_lines": 0,
+}
+
+ip_set = set()
+dest_counter = Counter()
+last_conn = None
+
+if os.path.exists(ACCESS_LOG):
+    try:
+        with open(ACCESS_LOG, "r", errors="replace") as f:
+            lines = f.readlines()
+        result["access_log_lines"] = len(lines)
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            if "[Warning]" in line and "started" in line:
+                result["xray_restarts"] += 1
+                continue
+            if "[Warning]" in line or "[Error]" in line or "[Debug]" in line or "[Info]" in line:
+                continue
+            result["total_events"] += 1
+            if "[api -> api]" in line:
+                result["internal_api_polls"] += 1
+                continue
+            result["user_connections"] += 1
+            m_ip = re.search(r"from (\d+\.\d+\.\d+\.\d+):", line)
+            if m_ip:
+                ip_set.add(m_ip.group(1))
+            m_dest = re.search(r"accepted \w+:([^\s]+)", line)
+            if m_dest:
+                dest_counter[m_dest.group(1)] += 1
+            m_ts = re.match(r"(\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})", line)
+            if m_ts:
+                last_conn = m_ts.group(1)
+    except Exception as e:
+        result["access_log_error"] = str(e)
+
+result["unique_client_ips"] = len(ip_set)
+result["unique_ip_list"] = sorted(ip_set)[:20]
+result["last_user_conn_at"] = last_conn
+result["destinations"] = [{"dest": d, "count": c} for d, c in dest_counter.most_common(10)]
+
+if os.path.exists(ERROR_LOG):
+    try:
+        with open(ERROR_LOG, "r", errors="replace") as f:
+            err_lines = f.readlines()
+        result["error_count"]   = sum(1 for l in err_lines if "[Error]" in l)
+        result["warning_count"] = sum(1 for l in err_lines if "[Warning]" in l)
+        recent = []
+        for line in reversed(err_lines[-300:]):
+            line = line.strip()
+            if not line:
+                continue
+            if "[Error]" in line or "[Warning]" in line:
+                recent.append(line[-400:])
+                if len(recent) >= 25:
+                    break
+        result["recent_errors"] = list(reversed(recent))
+    except Exception as e:
+        result["error_log_error"] = str(e)
+
+print(json.dumps(result))
+PYEOF2
+        ;;
+
     *)
         echo "unknown action: $ACTION" >&2
-        echo "valid: status list add remove disable enable reset-traffic change-package regen-link gen-full-json gen-links gen-qr-transport read-link read-qr read-full-json regen-all-full-json server-stats tail-logs" >&2
+        echo "valid: status list add remove disable enable reset-traffic change-package regen-link gen-full-json gen-links gen-qr-transport read-link read-qr read-full-json regen-all-full-json verify-links server-stats tail-logs" >&2
         exit 2
         ;;
 esac
