@@ -13,11 +13,10 @@ import com.setalink.notification.NotificationHelper
 import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileWriter
-import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
+import java.net.Proxy
 import java.net.Socket
-import java.net.URL
 
 class XrayVpnService : VpnService() {
 
@@ -167,8 +166,16 @@ class XrayVpnService : VpnService() {
                 .addAddress("10.0.0.2", 24)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
-                .setMtu(1500)
-                 .addRoute("0.0.0.0", 0)
+                .setMtu(1400)           // 1400 avoids fragmentation when VLESS/TLS adds headers
+                .addRoute("0.0.0.0", 0)
+
+            // Exclude our own app (and all its subprocesses — including Xray, same UID)
+            // from the VPN routes.  Without this, Xray's outbound TCP to the VPN server
+            // is captured by the TUN, routed back into tun2socks → Xray SOCKS, and loops
+            // forever.  With this, Xray's sockets go directly to the real network while
+            // all other apps' traffic still flows through TUN → tun2socks → Xray → internet.
+            runCatching { vpnBuilder.addDisallowedApplication(packageName) }
+                .onFailure { e -> appendLog("[TUN] addDisallowedApplication failed: ${e.message}") }
 
             // IPv6: best-effort (some ROMs reject these calls)
             runCatching {
@@ -369,29 +376,38 @@ class XrayVpnService : VpnService() {
     private data class ValidationResult(val ok: Boolean, val message: String)
 
     private fun runRoutingValidation(tunInterface: String?): ValidationResult {
-        val before = tunInterface?.let { readInterfaceBytes(it) }
-        val dnsOk = runCatching {
-            URL("https://1.1.1.1/cdn-cgi/trace").openConnection().let { conn ->
-                conn as HttpURLConnection
-                conn.connectTimeout = 3000
-                conn.readTimeout = 3000
-                conn.instanceFollowRedirects = false
-                conn.requestMethod = "GET"
-                conn.inputStream.bufferedReader().use { it.readLine() }
-                conn.disconnect()
+        appendLog("[VALIDATION] SOCKS5 probe: 127.0.0.1:10808 → CONNECT 1.1.1.1:80")
+
+        // Our app UID is excluded from the VPN (addDisallowedApplication), so:
+        //   • This socket connects to 127.0.0.1:10808 via loopback — never touches TUN.
+        //   • Xray's subprocess (same UID) dials the VPN server directly on the real NIC.
+        // A successful CONNECT proves end-to-end: app→SOCKS5→Xray→VPN server→internet.
+        val socks5Ok = runCatching {
+            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
+            Socket(proxy).use { sock ->
+                sock.soTimeout = 6000
+                sock.connect(InetSocketAddress("1.1.1.1", 80), 6000)
                 true
             }
-        }.getOrElse { false }
-        Thread.sleep(800)
-        val after = tunInterface?.let { readInterfaceBytes(it) }
-        val deltaRx = if (before != null && after != null) (after.first - before.first) else -1L
-        val deltaTx = if (before != null && after != null) (after.second - before.second) else -1L
-        publishMetrics(tunInterface, deltaRx, deltaTx, dnsOk)
-        if (!dnsOk) return ValidationResult(false, "HTTP reachability probe failed through VPN service path")
-        if (deltaRx <= 0 && deltaTx <= 0) {
-            return ValidationResult(false, "No TUN byte growth detected (rx=$deltaRx tx=$deltaTx)")
+        }.onFailure { e -> appendLog("[VALIDATION] SOCKS5 probe error: ${e.message}") }
+         .getOrElse { false }
+
+        appendLog("[VALIDATION] SOCKS5 probe result: $socks5Ok")
+
+        // TUN counters — logged for diagnostics; not required to be non-zero at connect
+        // time since other apps haven't sent traffic yet.
+        val bytes  = tunInterface?.let { readInterfaceBytes(it) }
+        val rxSnap = bytes?.first  ?: -1L
+        val txSnap = bytes?.second ?: -1L
+        appendLog("[VALIDATION] TUN snapshot: rx=$rxSnap tx=$txSnap iface=${tunInterface ?: "unknown"}")
+
+        publishMetrics(tunInterface, rxSnap, txSnap, socks5Ok)
+
+        return if (socks5Ok) {
+            ValidationResult(true, "SOCKS5 probe OK — Xray can proxy traffic to internet (TUN rx=$rxSnap tx=$txSnap)")
+        } else {
+            ValidationResult(false, "SOCKS5 probe failed — VPN server unreachable or routing loop not cleared")
         }
-        return ValidationResult(true, "Probe success and TUN bytes increased (rx=$deltaRx tx=$deltaTx)")
     }
 
     private fun findTunInterfaceName(): String? {

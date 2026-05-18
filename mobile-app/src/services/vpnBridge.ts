@@ -66,48 +66,6 @@ class MockAdapter implements VpnAdapter {
 let _lastConnectLog: string[] = [];
 export function getLastConnectLog(): string[] { return _lastConnectLog; }
 
-export interface RoutingValidationResult {
-  ok: boolean;
-  reason: string;
-  preIp?: string | null;
-  postIp?: string | null;
-  uploadBytes?: number;
-  downloadBytes?: number;
-}
-
-async function fetchPublicIp(): Promise<string | null> {
-  try {
-    const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), 5000);
-    const res  = await fetch('https://api.ipify.org?format=json', { signal: controller.signal });
-    clearTimeout(tid);
-    const json = await res.json() as { ip?: string };
-    return json.ip ?? null;
-  } catch {
-    return null;
-  }
-}
-
-
-async function validateRouting(module: any, preIp: string | null, log: string[]): Promise<RoutingValidationResult> {
-  const postIp = await fetchPublicIp();
-  const stats = await module.getStats?.().catch(() => ({}));
-  const up = Number(stats?.uploadBytes ?? 0);
-  const down = Number(stats?.downloadBytes ?? 0);
-  const countersForwarding = up > 0 || down > 0;
-  const ipChanged = Boolean(preIp && postIp && preIp !== postIp);
-
-  if (postIp) log.push(`Post-connect IP: ${postIp}`);
-  else log.push('Post-connect IP: unavailable');
-  log.push(`TUN counters: up=${up}B down=${down}B`);
-
-  if (ipChanged || countersForwarding) {
-    return { ok: true, reason: ipChanged ? 'public_ip_changed' : 'tun_counters_forwarding', preIp, postIp, uploadBytes: up, downloadBytes: down };
-  }
-
-  return { ok: false, reason: 'no_forwarding_signal', preIp, postIp, uploadBytes: up, downloadBytes: down };
-}
-
 class NativeAdapter implements VpnAdapter {
   private module: any;
 
@@ -117,15 +75,6 @@ class NativeAdapter implements VpnAdapter {
 
   async connect(configJson: string): Promise<void> {
     const log: string[] = [];
-
-    // Check public IP before connecting so we can verify routing later
-    log.push('Checking pre-connect public IP...');
-    const priorIp = await fetchPublicIp();
-    if (priorIp) {
-      log.push(`Pre-connect IP: ${priorIp}`);
-    } else {
-      log.push('Pre-connect IP: unavailable (no internet?)');
-    }
 
     // module.start() may reject immediately (e.g. VPN_PERMISSION_DENIED)
     // or resolve and then the service broadcasts connected/failed asynchronously.
@@ -172,25 +121,11 @@ class NativeAdapter implements VpnAdapter {
       _lastConnectLog = [...nativeSteps, ...log, ...xrayLogLines];
       throw new Error(msg);
     }
-    log.push('Native tunnel reports running — validating traffic routing...');
-
-    const validation = await validateRouting(this.module, priorIp, log);
-    if (!validation.ok) {
-      log.push(`✗ Routing validation failed (${validation.reason})`);
-      await this.module.stop?.().catch(() => {});
-      await sleep(900);
-      log.push('Recovery: full teardown requested, retrying clean start (1/1)');
-      await this.module.start(configJson);
-      await sleep(1500);
-      const second = await validateRouting(this.module, priorIp, log);
-      if (!second.ok) {
-        await this.module.stop?.().catch(() => {});
-        throw new Error('VPN connected but routing could not be verified');
-      }
-      log.push(`✓ Routing recovered (${second.reason})`);
-    } else {
-      log.push(`✓ Routing validated (${validation.reason})`);
-    }
+    // Native layer (runRoutingValidation) validated end-to-end connectivity via a
+    // SOCKS5 probe before broadcasting CONNECTED.  No JS-side IP-change check needed
+    // — our app UID is excluded from the VPN, so fetchPublicIp() always returns the
+    // real device IP regardless of VPN state, making pre/post comparison meaningless.
+    log.push('✓ Native SOCKS5 validation passed — tunnel active');
 
     // Merge native step log with JS log
     try {
