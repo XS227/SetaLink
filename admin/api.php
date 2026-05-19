@@ -473,6 +473,82 @@ if ($method === 'POST') {
         api_ok(['quota_bytes_total' => $quota]);
     }
 
+    if ($action === 'payment-approve' || $action === 'payment-reject') {
+        $pid  = (int)($parsed['payment_id'] ?? 0);
+        $note = substr(trim((string)($parsed['note'] ?? '')), 0, 255);
+        if (!$pid) api_err('payment_id required');
+        $db = open_analytics_db();
+        $db->exec("CREATE TABLE IF NOT EXISTS payment_queue (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id   TEXT NOT NULL,
+            memo        TEXT DEFAULT '',
+            package     TEXT NOT NULL DEFAULT '30days',
+            amount_usdt REAL DEFAULT 0,
+            tx_hash     TEXT DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'pending',
+            submitted_at TEXT DEFAULT (datetime('now')),
+            reviewed_at  TEXT DEFAULT NULL,
+            reviewed_by  TEXT DEFAULT '',
+            note         TEXT DEFAULT ''
+        )");
+        $pay = $db->prepare("SELECT * FROM payment_queue WHERE id=?")->execute([$pid]) ? null : null;
+        $stmt = $db->prepare("SELECT * FROM payment_queue WHERE id=?");
+        $stmt->execute([$pid]);
+        $pay = $stmt->fetch();
+        if (!$pay) api_err('payment not found');
+        if ($pay['status'] !== 'pending') api_err('payment already reviewed');
+
+        $new_status = $action === 'payment-approve' ? 'approved' : 'rejected';
+        $db->prepare("UPDATE payment_queue SET status=?, reviewed_at=datetime('now'), reviewed_by=?, note=? WHERE id=?")
+           ->execute([$new_status, $auth_user, $note, $pid]);
+
+        if ($action === 'payment-approve') {
+            $pkg = $pay['package'];
+            // Map package to quota bytes / plan
+            $pkg_map = [
+                '7days'     => ['plan' => 'premium', 'days' => 7,   'bytes' => 10737418240],  // 10 GB
+                '30days'    => ['plan' => 'premium', 'days' => 30,  'bytes' => 32212254720],  // 30 GB
+                'unlimited' => ['plan' => 'premium', 'days' => 365, 'bytes' => 1099511627776], // 1 TB
+                '5GB'       => ['plan' => 'premium', 'days' => 30,  'bytes' => 5368709120],
+                '10GB'      => ['plan' => 'premium', 'days' => 30,  'bytes' => 10737418240],
+                '15GB'      => ['plan' => 'premium', 'days' => 30,  'bytes' => 16106127360],
+            ];
+            $conf = $pkg_map[$pkg] ?? $pkg_map['30days'];
+            $valid_until = date('Y-m-d H:i:s', strtotime('+' . $conf['days'] . ' days'));
+            $db->prepare("UPDATE devices SET plan=?, quota_bytes_total=?, quota_bytes_used=0, valid_until=? WHERE device_id=?")
+               ->execute([$conf['plan'], $conf['bytes'], $valid_until, $pay['device_id']]);
+        }
+        api_ok(['status' => $new_status, 'payment_id' => $pid]);
+    }
+
+    if ($action === 'payment-submit') {
+        // Mobile or admin can pre-register a payment for a device
+        $did   = trim((string)($parsed['device_id'] ?? ''));
+        $pkg   = trim((string)($parsed['package'] ?? '30days'));
+        $memo  = substr(trim((string)($parsed['memo'] ?? '')), 0, 255);
+        $tx    = substr(trim((string)($parsed['tx_hash'] ?? '')), 0, 100);
+        $amt   = (float)($parsed['amount_usdt'] ?? 0);
+        if (!$did) api_err('device_id required');
+        if (!in_array($pkg, VALID_PKGS, true)) api_err('invalid package');
+        $db = open_analytics_db();
+        $db->exec("CREATE TABLE IF NOT EXISTS payment_queue (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id   TEXT NOT NULL,
+            memo        TEXT DEFAULT '',
+            package     TEXT NOT NULL DEFAULT '30days',
+            amount_usdt REAL DEFAULT 0,
+            tx_hash     TEXT DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'pending',
+            submitted_at TEXT DEFAULT (datetime('now')),
+            reviewed_at  TEXT DEFAULT NULL,
+            reviewed_by  TEXT DEFAULT '',
+            note         TEXT DEFAULT ''
+        )");
+        $db->prepare("INSERT INTO payment_queue (device_id, package, memo, tx_hash, amount_usdt) VALUES (?,?,?,?,?)")
+           ->execute([$did, $pkg, $memo, $tx, $amt]);
+        api_ok(['payment_id' => (int)$db->lastInsertId()]);
+    }
+
     if ($action === 'save-settings') {
         $data = $parsed;
         $allowed_keys = ['telegram_url', 'server_label'];
@@ -1131,6 +1207,133 @@ switch ($action) {
             'last_errors'        => $last_errors,
             'checked_at'         => date('Y-m-d H:i:s'),
         ]);
+        break;
+
+    case 'session-stats':
+        // Real VPN session analytics from vpn_sessions table in analytics.db.
+        $db = open_analytics_db();
+        // Create table if it doesn't exist yet (first session not arrived)
+        $db->exec("CREATE TABLE IF NOT EXISTS vpn_sessions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id     TEXT,
+            protocol      TEXT,
+            bytes_sent    INTEGER DEFAULT 0,
+            bytes_recv    INTEGER DEFAULT 0,
+            duration_secs INTEGER DEFAULT 0,
+            app_version   TEXT    DEFAULT '',
+            started_at    TEXT,
+            ended_at      TEXT    DEFAULT (datetime('now')),
+            client_ip     TEXT    DEFAULT ''
+        )");
+        // Also create ISP cache table
+        $db->exec("CREATE TABLE IF NOT EXISTS ip_isp_cache (
+            ip        TEXT PRIMARY KEY,
+            isp       TEXT,
+            asn       TEXT,
+            country   TEXT,
+            cached_at TEXT DEFAULT (datetime('now'))
+        )");
+        $today       = (int)$db->query("SELECT COUNT(*) FROM vpn_sessions WHERE ended_at >= date('now')")->fetchColumn();
+        $total_sess  = (int)$db->query("SELECT COUNT(*) FROM vpn_sessions")->fetchColumn();
+        $avg_dur     = (float)($db->query("SELECT AVG(duration_secs) FROM vpn_sessions WHERE duration_secs > 10")->fetchColumn() ?? 0);
+        $total_bytes = (int)($db->query("SELECT SUM(bytes_sent+bytes_recv) FROM vpn_sessions")->fetchColumn() ?? 0);
+        $by_protocol = $db->query(
+            "SELECT protocol, COUNT(*) as sessions,
+                    SUM(duration_secs) as total_secs, SUM(bytes_sent+bytes_recv) as total_bytes
+             FROM vpn_sessions GROUP BY protocol ORDER BY sessions DESC LIMIT 10"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $recent = $db->query(
+            "SELECT device_id, protocol, bytes_sent, bytes_recv, duration_secs, ended_at, client_ip
+             FROM vpn_sessions ORDER BY ended_at DESC LIMIT 20"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        // ISP breakdown from cached lookups
+        $isp_breakdown = $db->query(
+            "SELECT c.isp, c.country, COUNT(*) as sessions
+             FROM vpn_sessions s JOIN ip_isp_cache c ON s.client_ip=c.ip
+             GROUP BY c.isp ORDER BY sessions DESC LIMIT 15"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        api_ok([
+            'today'         => $today,
+            'total'         => $total_sess,
+            'avg_duration'  => round($avg_dur),
+            'total_bytes'   => $total_bytes,
+            'by_protocol'   => $by_protocol,
+            'isp_breakdown' => $isp_breakdown,
+            'recent'        => $recent,
+        ]);
+        break;
+
+    case 'lookup-isp':
+        // Resolve ISP/ASN for a client IP and cache it in analytics.db.
+        // Called by admin dashboard when a new IP is seen in sessions.
+        $ip = preg_replace('/[^0-9a-f:.]/', '', $_GET['ip'] ?? '');
+        if (!$ip || !filter_var($ip, FILTER_VALIDATE_IP)) api_err('invalid ip');
+        if (str_starts_with($ip, '10.') || str_starts_with($ip, '192.168.') || str_starts_with($ip, '127.')) {
+            api_ok(['ip' => $ip, 'isp' => 'LAN', 'asn' => '', 'country' => 'Local']);
+        }
+
+        $db = open_analytics_db();
+        $db->exec("CREATE TABLE IF NOT EXISTS ip_isp_cache (
+            ip TEXT PRIMARY KEY, isp TEXT, asn TEXT, country TEXT,
+            cached_at TEXT DEFAULT (datetime('now'))
+        )");
+        // Return cached result if available (TTL: 7 days)
+        $cached = $db->prepare("SELECT * FROM ip_isp_cache WHERE ip=? AND cached_at > datetime('now','-7 days')");
+        $cached->execute([$ip]);
+        $row = $cached->fetch();
+        if ($row) {
+            api_ok(['ip' => $ip, 'isp' => $row['isp'], 'asn' => $row['asn'], 'country' => $row['country'], 'cached' => true]);
+        }
+
+        // Fetch from ipinfo.io (free tier — 50k req/month)
+        $raw = @file_get_contents("https://ipinfo.io/{$ip}/json");
+        $info = $raw ? json_decode($raw, true) : null;
+        $isp     = $info['org'] ?? 'Unknown';
+        $asn     = '';
+        if (preg_match('/^(AS\d+)\s/', $isp, $m)) { $asn = $m[1]; $isp = trim(substr($isp, strlen($m[1]))); }
+        $country = $info['country'] ?? '';
+
+        $db->prepare("INSERT OR REPLACE INTO ip_isp_cache (ip, isp, asn, country) VALUES (?,?,?,?)")
+           ->execute([$ip, $isp, $asn, $country]);
+        api_ok(['ip' => $ip, 'isp' => $isp, 'asn' => $asn, 'country' => $country, 'cached' => false]);
+        break;
+
+    case 'watchdog-log':
+        // Return last N lines of watchdog log for admin dashboard.
+        $log = '/var/log/setalink/watchdog.log';
+        $n = min(200, max(20, (int)($_GET['n'] ?? 50)));
+        if (!is_readable($log)) api_ok(['lines' => [], 'note' => 'log not yet created']);
+        $lines = array_slice(file($log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -$n);
+        api_ok(['lines' => $lines, 'count' => count($lines)]);
+        break;
+
+    case 'payment-queue':
+        // List pending USDT payment submissions.
+        $db = open_analytics_db();
+        $db->exec("CREATE TABLE IF NOT EXISTS payment_queue (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id   TEXT NOT NULL,
+            memo        TEXT DEFAULT '',
+            package     TEXT NOT NULL DEFAULT '30days',
+            amount_usdt REAL DEFAULT 0,
+            tx_hash     TEXT DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'pending',
+            submitted_at TEXT DEFAULT (datetime('now')),
+            reviewed_at  TEXT DEFAULT NULL,
+            reviewed_by  TEXT DEFAULT '',
+            note         TEXT DEFAULT ''
+        )");
+        $status_filter = $_GET['status'] ?? 'pending';
+        if (!in_array($status_filter, ['pending','approved','rejected','all'], true)) $status_filter = 'pending';
+        $where = $status_filter === 'all' ? '' : "WHERE p.status = '$status_filter'";
+        $rows = $db->query("
+            SELECT p.*, d.platform, d.plan, d.quota_bytes_total, d.quota_bytes_used
+            FROM payment_queue p
+            LEFT JOIN devices d ON d.device_id = p.device_id
+            $where
+            ORDER BY p.submitted_at DESC LIMIT 100
+        ")->fetchAll();
+        api_ok(['payments' => $rows, 'filter' => $status_filter]);
         break;
 
     default: api_err('unknown action');
