@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Linking,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -8,6 +8,13 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useServerStore }   from '../stores/serverStore';
 import { BiometricService } from '../services/biometricService';
 import { useT } from '../i18n';
+
+const APP_VERSION     = '0.9.4';
+const APP_BUILD       = '9';
+const VERSION_URL     = 'https://setalink.no/download/version.json';
+const DOWNLOAD_URL    = 'https://setalink.no/download/setalink-latest.apk';
+const GITHUB_URL      = 'https://github.com/setaei/setalink';
+const WEBSITE_URL     = 'https://setalink.no';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -123,6 +130,29 @@ export function SettingsScreen({ onBack }: SettingsProps) {
     toggleAutoConnect, toggleBiometricLock, setBiometricLock,
   } = useSettingsStore();
   const { clearImportedServers, loadBootstrapIfEmpty } = useServerStore();
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'uptodate' | 'available'>('idle');
+  const [latestVersion, setLatestVersion] = useState('');
+
+  const handleCheckUpdate = async () => {
+    setUpdateStatus('checking');
+    try {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(VERSION_URL, { signal: controller.signal });
+      clearTimeout(tid);
+      const json = await res.json() as { version: string };
+      const latest = json.version ?? '';
+      setLatestVersion(latest);
+      setUpdateStatus(latest !== APP_VERSION ? 'available' : 'uptodate');
+    } catch {
+      setUpdateStatus('idle');
+      Alert.alert('Update check failed', 'Could not reach setalink.no. Try again later.');
+    }
+  };
+
+  const handleDownloadUpdate = () => {
+    Linking.openURL(DOWNLOAD_URL);
+  };
 
   const handleBiometricToggle = async () => {
     if (biometricLock) {
@@ -248,9 +278,50 @@ export function SettingsScreen({ onBack }: SettingsProps) {
           </TouchableOpacity>
         </Section>
 
+        <Section label="About">
+          <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(GITHUB_URL)} activeOpacity={0.7}>
+            <Text style={selStyles.label}>GitHub</Text>
+            <Text style={selStyles.value}>github.com/setaei/setalink</Text>
+          </TouchableOpacity>
+          <Divider />
+          <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(WEBSITE_URL)} activeOpacity={0.7}>
+            <Text style={selStyles.label}>Website</Text>
+            <Text style={selStyles.value}>setalink.no</Text>
+          </TouchableOpacity>
+        </Section>
+
+        <Section label="Updates">
+          <View style={selStyles.row}>
+            <View>
+              <Text style={selStyles.label}>App version</Text>
+              <Text style={rowStyles.desc}>v{APP_VERSION} · Build {APP_BUILD}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={updateStatus === 'available' ? handleDownloadUpdate : handleCheckUpdate}
+              style={[styles.updateBtn, updateStatus === 'available' && styles.updateBtnAvailable]}
+              activeOpacity={0.75}
+              disabled={updateStatus === 'checking'}
+            >
+              <Text style={[styles.updateBtnText, updateStatus === 'available' && styles.updateBtnTextAvailable]}>
+                {updateStatus === 'checking'  ? 'Checking…'        :
+                 updateStatus === 'available' ? `Update ${latestVersion}` :
+                 updateStatus === 'uptodate'  ? 'Up to date ✓'    :
+                 'Check update'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          {updateStatus === 'available' && (
+            <View style={styles.updateBanner}>
+              <Text style={styles.updateBannerText}>
+                Version {latestVersion} is available. Tap "Update" to download.
+              </Text>
+            </View>
+          )}
+        </Section>
+
         <View style={styles.about}>
           <Text style={styles.appName}>SetaLink</Text>
-          <Text style={styles.version}>{t('st.version')} 0.9.2 · Build 2026.05.19</Text>
+          <Text style={styles.version}>v{APP_VERSION} · Build {APP_BUILD}</Text>
           <Text style={styles.legal}>© 2026 SetaLink. {t('st.allRights')}</Text>
         </View>
 
@@ -275,7 +346,13 @@ const styles = StyleSheet.create({
   backBtnText:  { fontSize: 22, color: Colors.text.secondary, lineHeight: 26 },
   title:        { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   about:   { alignItems: 'center', gap: Spacing[1], paddingVertical: Spacing[4] },
-  appName: { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  version: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
-  legal:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, opacity: 0.6 },
+  appName:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  version:    { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  legal:      { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, opacity: 0.6 },
+  updateBtn:  { borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 6 },
+  updateBtnAvailable: { borderColor: Colors.emerald[400], backgroundColor: 'rgba(0,232,122,0.1)' },
+  updateBtnText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted },
+  updateBtnTextAvailable: { color: Colors.emerald[400] },
+  updateBanner:       { backgroundColor: 'rgba(0,232,122,0.07)', borderRadius: Radius.md, borderWidth: 1, borderColor: 'rgba(0,232,122,0.2)', padding: Spacing[3] },
+  updateBannerText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400], lineHeight: 18 },
 });

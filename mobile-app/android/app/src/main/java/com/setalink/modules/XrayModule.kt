@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.TrafficStats
 import android.net.VpnService
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -50,6 +51,14 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     private var downloadBytes= 0L
     private var lastPingMs   = 0L
 
+    // TrafficStats snapshot at session start — reliable fallback when TUN interface
+    // name detection fails (some Android devices/ROMs use non-standard TUN names).
+    // getUidRxBytes/TxBytes captures all network traffic by our UID (= Xray process),
+    // which approximates the proxied download/upload traffic through the tunnel.
+    private val TRAFFIC_UNSUPPORTED = TrafficStats.UNSUPPORTED.toLong()
+    private var sessionStartRxBytes = TRAFFIC_UNSUPPORTED
+    private var sessionStartTxBytes = TRAFFIC_UNSUPPORTED
+
     // ── Broadcast receiver (must be declared before init block) ──────────────
 
     private val vpnReceiver = object : BroadcastReceiver() {
@@ -60,12 +69,25 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                     startedAt    = System.currentTimeMillis()
                     lastError    = null
                     lastProbeOk  = intent.getBooleanExtra("probe_ok", false)
-                    // Reset byte counters for the new session
-                    synchronized(statsLock) { uploadBytes = 0L; downloadBytes = 0L; lastPingMs = 0L }
-                    Log.i(TAG, "VPN connected (probeOk=$lastProbeOk)")
+                    // Snapshot TrafficStats at session start for fallback byte tracking
+                    val myUid = android.os.Process.myUid()
+                    val rx = TrafficStats.getUidRxBytes(myUid)
+                    val tx = TrafficStats.getUidTxBytes(myUid)
+                    synchronized(statsLock) {
+                        uploadBytes        = 0L
+                        downloadBytes      = 0L
+                        lastPingMs         = 0L
+                        sessionStartRxBytes = if (rx == TRAFFIC_UNSUPPORTED) TRAFFIC_UNSUPPORTED else rx
+                        sessionStartTxBytes = if (tx == TRAFFIC_UNSUPPORTED) TRAFFIC_UNSUPPORTED else tx
+                    }
+                    Log.i(TAG, "VPN connected (probeOk=$lastProbeOk rx_start=$rx tx_start=$tx)")
                 }
                 XrayVpnService.BROADCAST_DISCONNECTED -> {
                     running   = false
+                    synchronized(statsLock) {
+                        sessionStartRxBytes = TRAFFIC_UNSUPPORTED
+                        sessionStartTxBytes = TRAFFIC_UNSUPPORTED
+                    }
                     val err   = intent.getStringExtra(XrayVpnService.EXTRA_ERROR)
                     if (err != null) {
                         lastError = err
@@ -215,10 +237,23 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     override fun getStats(promise: Promise) {
         synchronized(statsLock) {
+            // Primary: TUN-based accumulated bytes from BROADCAST_METRICS.
+            // Fallback: TrafficStats delta since session start.
+            // Use max() — whichever is larger gives the more accurate reading.
+            val myUid    = android.os.Process.myUid()
+            val curRx    = TrafficStats.getUidRxBytes(myUid)
+            val curTx    = TrafficStats.getUidTxBytes(myUid)
+            val trafficDn = if (sessionStartRxBytes != TRAFFIC_UNSUPPORTED && curRx != TRAFFIC_UNSUPPORTED)
+                                maxOf(0L, curRx - sessionStartRxBytes) else 0L
+            val trafficUp = if (sessionStartTxBytes != TRAFFIC_UNSUPPORTED && curTx != TRAFFIC_UNSUPPORTED)
+                                maxOf(0L, curTx - sessionStartTxBytes) else 0L
+            val reportedUp = maxOf(uploadBytes, trafficUp)
+            val reportedDn = maxOf(downloadBytes, trafficDn)
             val uptime = if (startedAt > 0) (System.currentTimeMillis() - startedAt) / 1000 else 0L
+            Log.d(TAG, "[getStats] tunUp=$uploadBytes tunDn=$downloadBytes tsUp=$trafficUp tsDn=$trafficDn reported_up=$reportedUp reported_dn=$reportedDn")
             promise.resolve(WritableNativeMap().apply {
-                putDouble("uploadBytes",   uploadBytes.toDouble())
-                putDouble("downloadBytes", downloadBytes.toDouble())
+                putDouble("uploadBytes",   reportedUp.toDouble())
+                putDouble("downloadBytes", reportedDn.toDouble())
                 putDouble("pingMs",        lastPingMs.toDouble())
                 putDouble("uptime",        uptime.toDouble())
             })
@@ -286,6 +321,15 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             putInt("androidSdk",        android.os.Build.VERSION.SDK_INT)
             putString("androidRelease", android.os.Build.VERSION.RELEASE)
         })
+    }
+
+    @ReactMethod
+    fun getAndroidId(promise: Promise) {
+        val androidId = android.provider.Settings.Secure.getString(
+            reactContext.contentResolver,
+            android.provider.Settings.Secure.ANDROID_ID,
+        ) ?: ""
+        promise.resolve(androidId)
     }
 
     @ReactMethod

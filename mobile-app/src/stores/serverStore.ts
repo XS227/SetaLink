@@ -5,16 +5,26 @@ import type { AIModeKey }            from './aiStore';
 import type { ServerCredentials }    from '../services/serverConfigService';
 
 export interface ServerRecord {
-  id:       string;
-  country:  string;
-  city:     string;
-  flag:     string;
-  ping:     number;
-  load:     number;  // 0–100
-  protocol: string;
-  tags?:    string[];
-  premium?: boolean;
+  id:        string;
+  country:   string;
+  city:      string;
+  flag:      string;
+  ping:      number;
+  load:      number;  // 0–100
+  protocol:  string;
+  transport?: string;
+  tags?:     string[];
+  premium?:  boolean;
+  comingSoon?: boolean;
 }
+
+// Coming-soon placeholder entries — shown greyed out, never selectable
+export const COMING_SOON_SERVERS: ServerRecord[] = [
+  { id: 'cs-finland',     country: 'Finland',     city: 'Helsinki', flag: '🇫🇮', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
+  { id: 'cs-norway',      country: 'Norway',      city: 'Oslo',     flag: '🇳🇴', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
+  { id: 'cs-greece',      country: 'Greece',      city: 'Athens',   flag: '🇬🇷', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
+  { id: 'cs-netherlands', country: 'Netherlands', city: 'Amsterdam',flag: '🇳🇱', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
+];
 
 export type FilterTab = 'All' | 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming';
 export const FILTER_TABS: FilterTab[] = ['All', 'Recommended', 'Fastest', 'Stealth', 'Streaming'];
@@ -247,12 +257,13 @@ export const useServerStore = create<ServerState>()(
   },
 
   loadBootstrapIfEmpty: async () => {
+    const BOOTSTRAP_IDS = ['server-reality', 'server-ws', 'server-xhttp', 'server-emergency', 'bootstrap-1'];
     const { servers, importedCreds } = get();
-    const nonBootstrapServers = servers.filter(
-      (s) => s.id !== 'server-emergency' && s.id !== 'bootstrap-1',
-    );
-    // If user has real imported servers, bootstrap is not needed
-    if (nonBootstrapServers.length > 0) return false;
+
+    // Check if all 3 real inbounds are present
+    const realIds = ['server-reality', 'server-ws', 'server-xhttp'];
+    const allExist = realIds.every((id) => servers.find((s) => s.id === id));
+    if (allExist) return false;
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -260,18 +271,7 @@ export const useServerStore = create<ServerState>()(
       const profile = await getEmergencyProfile();
       if (!profile?.uuid || !profile?.address || !profile?.publicKey) return false;
 
-      const id = 'server-emergency';
-      const record: ServerRecord = {
-        id,
-        country:  'Germany',
-        city:     'SetaLink Cloudflare',
-        flag:     '🇩🇪',
-        ping:     0,
-        load:     0,
-        protocol: 'Reality',
-        tags:     ['Stealth', 'Recommended'],
-      };
-      const creds: ServerCredentials = {
+      const baseCreds: ServerCredentials = {
         uuid:        profile.uuid,
         address:     profile.address,
         port:        profile.port,
@@ -287,14 +287,65 @@ export const useServerStore = create<ServerState>()(
         httpupPath:  profile.httpupPath  || '/httpup',
       };
 
+      const newServers: ServerRecord[] = [
+        {
+          id:        'server-reality',
+          country:   'Germany',
+          city:      'SetaLink Reality',
+          flag:      '🇩🇪',
+          ping:      45,
+          load:      20,
+          protocol:  'Reality',
+          transport: 'TCP',
+          tags:      ['Stealth', 'Recommended'],
+        },
+        {
+          id:        'server-ws',
+          country:   'Germany',
+          city:      'SetaLink WebSocket',
+          flag:      '🇩🇪',
+          ping:      55,
+          load:      25,
+          protocol:  'WebSocket',
+          transport: 'WS',
+          tags:      ['Streaming'],
+        },
+        {
+          id:        'server-xhttp',
+          country:   'Germany',
+          city:      'SetaLink XHTTP',
+          flag:      '🇩🇪',
+          ping:      50,
+          load:      22,
+          protocol:  'XHTTP',
+          transport: 'XHTTP',
+          tags:      ['Stealth'],
+        },
+      ];
+
+      const newCreds: Record<string, ServerCredentials> = {
+        'server-reality': baseCreds,
+        'server-ws':      baseCreds,
+        'server-xhttp':   baseCreds,
+      };
+
+      // Remove old bootstrap entries, keep any user-added servers (none now since import removed)
+      const otherServers = servers.filter((s) => !BOOTSTRAP_IDS.includes(s.id));
+      const otherCreds   = { ...importedCreds };
+      BOOTSTRAP_IDS.forEach((id) => delete otherCreds[id]);
+
       const prevSelectedId = get().selectedId;
+      const defaultId = 'server-reality';
       set({
-        servers:       [...nonBootstrapServers, record],
-        importedCreds: { ...importedCreds, [id]: creds },
-        selectedId:    prevSelectedId || id,
+        servers:       [...otherServers, ...newServers],
+        importedCreds: { ...otherCreds, ...newCreds },
+        selectedId:    prevSelectedId && !BOOTSTRAP_IDS.includes(prevSelectedId)
+                       ? prevSelectedId
+                       : defaultId,
       });
-      // Sync to vpnStore when no server was previously selected (first install)
-      if (!prevSelectedId) syncToVpnStore(record);
+      if (!prevSelectedId || BOOTSTRAP_IDS.includes(prevSelectedId)) {
+        syncToVpnStore(newServers[0]);
+      }
       return true;
     } catch {
       return false;

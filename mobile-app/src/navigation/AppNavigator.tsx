@@ -38,7 +38,7 @@ import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { UpgradeScreen }            from '../screens/UpgradeScreen';
 
 import { runBootSequence }       from '../services/bootService';
-import { getOrCreateDeviceId }   from '../services/deviceIdentityService';
+import { getOrCreateDeviceId, enrichDeviceId } from '../services/deviceIdentityService';
 import { registerDevice }        from '../services/entitlementService';
 import { BiometricService }      from '../services/biometricService';
 import { getAdapter }            from '../services/vpnBridge';
@@ -204,7 +204,8 @@ function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
 
 async function tryAutoRegister(): Promise<boolean> {
   try {
-    const deviceId   = getOrCreateDeviceId();
+    // Attempt to use stable Android hardware ID; falls back to MMKV UUID
+    const deviceId = await enrichDeviceId().catch(() => getOrCreateDeviceId());
     const entitlement = await registerDevice(deviceId);
     useAuthStore.getState().loginWithDevice(entitlement);
     // Bootstrap server from registration response → import into server list
