@@ -1,7 +1,7 @@
 const BASE_URL   = 'https://setalink.no/api.php';
 const TOKEN      = 'setalink-mobile-diag-v1';
 const TIMEOUT    = 10_000;
-const APP_VERSION = '0.9.5';
+const APP_VERSION = '0.9.6';
 
 export interface DeviceEntitlement {
   device_id:         string;
@@ -99,4 +99,34 @@ export async function useReferral(deviceId: string, referralCode: string): Promi
 export async function reportUsage(deviceId: string, bytesUsed: number): Promise<{ remaining_bytes: number }> {
   const data = await mobilePost('report-usage', { device_id: deviceId, bytes_used: bytesUsed });
   return data as { remaining_bytes: number };
+}
+
+export async function mobilePostPayment(
+  deviceId: string,
+  packageKey: string,
+  memo: string,
+): Promise<{ payment_id: number }> {
+  const data = await mobilePost('submit-payment', {
+    device_id: deviceId,
+    package:   packageKey,
+    memo,
+  });
+  return data as { payment_id: number };
+}
+
+export async function reportSessionEnd(
+  deviceId:     string,
+  protocol:     string,
+  bytesSent:    number,
+  bytesRecv:    number,
+  durationSecs: number,
+): Promise<void> {
+  await mobilePost('report-session', {
+    device_id:     deviceId,
+    protocol,
+    bytes_sent:    bytesSent,
+    bytes_recv:    bytesRecv,
+    duration_secs: durationSecs,
+    app_version:   APP_VERSION,
+  });
 }

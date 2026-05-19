@@ -21,6 +21,10 @@ export interface VpnServer {
 
 interface SessionBytes { sent: number; received: number }
 
+// Ordered protocol fallback for auto-connect: Reality → XHTTP → WebSocket.
+// Each entry is the protocol string that buildXrayConfigJson understands.
+const FALLBACK_PROTOCOLS = ['Reality', 'XHTTP', 'WebSocket'] as const;
+
 interface VpnState {
   connectionState:    ConnectionState;
   selectedServer:     VpnServer | null;
@@ -31,6 +35,9 @@ interface VpnState {
   reconnectAttempts:  number;
   isSwitchingServer:  boolean;
   connectionLog:      string[];        // step log from most recent connect attempt
+  // Protocol auto-fallback state (internal — not persisted)
+  _fallbackIdx:       number;
+  _fallbackActive:    boolean;
 
   connect:            () => void;
   disconnect:         () => void;
@@ -56,7 +63,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     onConnected: () => {
-      set({ sessionStartedAt: Date.now(), error: null });
+      set({ sessionStartedAt: Date.now(), error: null, _fallbackActive: false, _fallbackIdx: 0 });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog } = require('../services/vpnBridge');
@@ -133,22 +140,29 @@ export const useVpnStore = create<VpnState>((set, get) => {
         appendMetric({ type: 'disconnect', at: Date.now(), durationSec: Math.max(1, Math.floor((Date.now() - state.sessionStartedAt)/1000)), reconnects: state.reconnectAttempts });
       }
 
-      // Update local quota usage
+      // Update local quota usage and report session to backend.
       const totalBytes = state.sessionBytes.sent + state.sessionBytes.received;
-      if (totalBytes > 0) {
-        try {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAuthStore } = require('./authStore');
+        if (totalBytes > 0) useAuthStore.getState().consumeQuota(totalBytes);
+        const user = useAuthStore.getState().user;
+        if (user) {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { useAuthStore } = require('./authStore');
-          useAuthStore.getState().consumeQuota(totalBytes);
-          // Report to backend asynchronously (fire and forget)
-          const user = useAuthStore.getState().user;
-          if (user) {
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { reportUsage } = require('../services/entitlementService');
-            reportUsage(user.deviceId, useAuthStore.getState().user!.quotaBytesUsed).catch(() => {});
+          const { reportUsage, reportSessionEnd } = require('../services/entitlementService');
+          if (totalBytes > 0) reportUsage(user.deviceId, useAuthStore.getState().user!.quotaBytesUsed).catch(() => {});
+          if (state.sessionStartedAt && state.selectedServer) {
+            const sessionDuration = Math.max(1, Math.floor((Date.now() - state.sessionStartedAt) / 1000));
+            reportSessionEnd(
+              user.deviceId,
+              state.selectedServer.protocol,
+              state.sessionBytes.sent,
+              state.sessionBytes.received,
+              sessionDuration,
+            ).catch(() => {});
           }
-        } catch {}
-      }
+        }
+      } catch {}
 
       set({ sessionStartedAt: null, sessionBytes: { sent: 0, received: 0 }, reconnectAttempts: 0 });
 
@@ -191,7 +205,22 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     onError: (message) => {
-      set({ error: message });
+      // Protocol auto-fallback: silently try next protocol before surfacing the error.
+      const { _fallbackActive, _fallbackIdx } = get();
+      const nextIdx = _fallbackIdx + 1;
+      if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length) {
+        const nextProto = FALLBACK_PROTOCOLS[nextIdx]!;
+        set({ _fallbackIdx: nextIdx, error: `Optimizing route… (${nextProto})` });
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { getLastConnectLog } = require('../services/vpnBridge');
+          set({ connectionLog: getLastConnectLog() });
+        } catch {}
+        setTimeout(() => machine.send('CONNECT'), 800);
+        return;
+      }
+      // All protocols exhausted (or not in fallback mode) — surface the error.
+      set({ _fallbackActive: false, _fallbackIdx: 0, error: message });
       appendMetric({ type: message.toLowerCase().includes('routing') ? 'routing_failed' : 'connect_failed', at: Date.now(), reason: message, country: get().selectedServer?.country });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -219,7 +248,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     getConnectConfig: () => {
-      const { selectedServer, selectedProtocol } = get();
+      const { selectedServer, selectedProtocol, _fallbackActive, _fallbackIdx } = get();
       if (!selectedServer) return null;
 
       // If Auto Mode found a validated winning config for this server, use it directly.
@@ -229,6 +258,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
         const { useAIStore } = require('./aiStore');
         const winner = useAIStore.getState().autoConnect.winningConfig;
         if (winner?.serverId === selectedServer.id && winner.configJson) {
+          // AI already validated a winner — disable our fallback loop.
+          set({ _fallbackActive: false, _fallbackIdx: 0 });
           return winner.configJson;
         }
       } catch {}
@@ -243,13 +274,20 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const credCheck = validateCreds(creds);
       if (!credCheck.valid) throw new Error(credCheck.error!);
 
+      // When auto-fallback is active, use the current fallback protocol instead of
+      // the per-server default. This lets Reality → XHTTP → WebSocket progression
+      // happen transparently without changing the selected server.
+      const protocol = _fallbackActive
+        ? (FALLBACK_PROTOCOLS[_fallbackIdx] ?? selectedProtocol)
+        : selectedProtocol;
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useSettingsStore } = require('./settingsStore') as typeof import('./settingsStore');
         const dnsMode = useSettingsStore.getState().dnsMode;
-        return buildXrayConfigJson(selectedServer, selectedProtocol, dnsMode, creds);
+        return buildXrayConfigJson(selectedServer, protocol, dnsMode, creds);
       } catch {
-        return buildXrayConfigJson(selectedServer, selectedProtocol, 'Cloudflare (DoH)', creds);
+        return buildXrayConfigJson(selectedServer, protocol, 'Cloudflare (DoH)', creds);
       }
     },
   }, getAdapter());
@@ -264,9 +302,21 @@ export const useVpnStore = create<VpnState>((set, get) => {
     reconnectAttempts: 0,
     isSwitchingServer: false,
     connectionLog:     [],
+    _fallbackIdx:      0,
+    _fallbackActive:   false,
 
-    connect:    () => machine.send('CONNECT'),
-    disconnect: () => machine.send('DISCONNECT'),
+    connect: () => {
+      // Start auto-fallback only on a fresh connect (not during a fallback retry).
+      if (!get()._fallbackActive) {
+        set({ _fallbackActive: true, _fallbackIdx: 0, error: null });
+      }
+      machine.send('CONNECT');
+    },
+
+    disconnect: () => {
+      set({ _fallbackActive: false, _fallbackIdx: 0 });
+      machine.send('DISCONNECT');
+    },
 
     switchServer: () => {
       const { connectionState: cs } = get();
