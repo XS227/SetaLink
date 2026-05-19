@@ -21,15 +21,16 @@ function api_ok(mixed $data = null): never {
     echo json_encode(['ok' => true, 'data' => $data], JSON_UNESCAPED_UNICODE);
     exit;
 }
-function cli_run(string $action, array $args = []): array {
-    $cmd = CLI . ' ' . escapeshellarg($action);
+function cli_run(string $action, array $args = [], int $timeout = 0): array {
+    $prefix = $timeout > 0 ? 'timeout ' . $timeout . ' ' : '';
+    $cmd = $prefix . CLI . ' ' . escapeshellarg($action);
     foreach ($args as $a) $cmd .= ' ' . escapeshellarg($a);
     $cmd .= ' 2>&1';
     exec($cmd, $out, $rc);
     return ['rc' => $rc, 'output' => implode("\n", $out)];
 }
-function cli_json(string $action, array $args = []): array {
-    $r = cli_run($action, $args);
+function cli_json(string $action, array $args = [], int $timeout = 0): array {
+    $r = cli_run($action, $args, $timeout);
     if ($r['rc'] !== 0) return ['_error' => $r['output']];
     $j = json_decode($r['output'], true);
     return is_array($j) ? $j : ['_error' => 'unparseable cli output'];
@@ -505,8 +506,8 @@ if ($method === 'POST') {
 // -------------------------------------------------------------------------
 $action = (string)($_GET['action'] ?? 'status');
 switch ($action) {
-    case 'status': api_ok(cli_json('status')); break;
-    case 'list':   api_ok(cli_json('list'));   break;
+    case 'status': api_ok(cli_json('status', [], 8)); break;
+    case 'list':   api_ok(cli_json('list',   [], 8)); break;
     case 'csrf':
         api_ok(['csrf' => $csrf_token]);
         break;
@@ -520,11 +521,11 @@ switch ($action) {
         exit;
 
     case 'server-stats':
-        api_ok(cli_json('server-stats'));
+        api_ok(cli_json('server-stats', [], 8));
         break;
 
     case 'connection-analytics':
-        api_ok(cli_json('connection-analytics'));
+        api_ok(cli_json('connection-analytics', [], 8));
         break;
 
     case 'test-results':
@@ -538,35 +539,87 @@ switch ($action) {
     case 'logs':
         $type = preg_match('/^(access|error|nginx)$/', $_GET['type'] ?? 'access') ? $_GET['type'] : 'access';
         $n    = min(500, max(20, (int)($_GET['n'] ?? 100)));
-        $r    = cli_run('tail-logs', [$type, (string)$n]);
+        $r    = cli_run('tail-logs', [$type, (string)$n], 9);
         $raw  = trim($r['output']);
         $lines = ($raw && $raw !== '[]') ? json_decode($raw, true) : [];
         api_ok(is_array($lines) ? $lines : []);
         break;
 
     case 'protocol-health':
-        function curl_probe(string $url, array $hdrs = [], int $t = 5): string {
-            $args = '';
-            foreach ($hdrs as $h) $args .= ' -H ' . escapeshellarg($h);
-            $cmd = 'curl -sk -o /dev/null -w \'%{http_code}\' --max-time ' . $t . $args . ' ' . escapeshellarg($url);
-            return trim((string)shell_exec($cmd));
-        }
-        function tcp_open(string $host, int $port, int $t = 4): bool {
-            $s = @fsockopen($host, $port, $e, $err, $t);
+        // All 4 probes must complete within ~8s total.
+        // TCP probe runs synchronously (max 3s); HTTP probes run in parallel as background processes.
+        set_time_limit(15);
+        function tcp_open(string $host, int $port, int $t = 3): bool {
+            $s = @fsockopen($host, $port, $e, $err, (float)$t);
             if ($s) { fclose($s); return true; }
             return false;
         }
+        $EDGE = 'edge.setalink.no';
+        // Map key → [url, extra curl headers]
+        $ph_probes = [
+            'ws'          => ['url' => "https://{$EDGE}/ws",     'hdrs' => ['-H', 'Upgrade: websocket', '-H', 'Connection: Upgrade']],
+            'xhttp'       => ['url' => "https://{$EDGE}/xhttp",  'hdrs' => []],
+            'httpupgrade' => ['url' => "https://{$EDGE}/httpup", 'hdrs' => ['-H', 'Upgrade: XHTTP', '-H', 'Connection: Upgrade']],
+        ];
+        // Launch HTTP probes in parallel (background curl processes)
+        $ph_files = [];
+        foreach ($ph_probes as $pkey => $pp) {
+            $f = tempnam('/tmp', 'phck_');
+            $ph_files[$pkey] = $f;
+            $hargs = '';
+            foreach ($pp['hdrs'] as $harg) $hargs .= ' ' . escapeshellarg($harg);
+            $cmd = '(curl -sk -o /dev/null -w "%{http_code}" --max-time 6' . $hargs . ' ' . escapeshellarg($pp['url']) . ') > ' . escapeshellarg($f) . ' 2>&1 &';
+            exec($cmd);
+        }
+        // TCP probe for Reality runs synchronously (max 3s) while curl runs in background
+        $reality_open = tcp_open($EDGE, 8443, 3);
+        // Poll for HTTP results — up to 5 more seconds (8s total from start)
+        $ph_deadline = microtime(true) + 5.0;
+        while (microtime(true) < $ph_deadline) {
+            $all_done = true;
+            foreach ($ph_files as $f) {
+                clearstatcache(true, $f);
+                if (!file_exists($f) || filesize($f) === 0) { $all_done = false; break; }
+            }
+            if ($all_done) break;
+            usleep(200000); // 200ms poll interval
+        }
+        // Interpret results
         $r = [];
-        $ws  = curl_probe('https://edge.setalink.no/ws',    ['Upgrade: websocket','Connection: Upgrade']);
-        $xh  = curl_probe('https://edge.setalink.no/xhttp');
-        $hu  = curl_probe('https://edge.setalink.no/httpup', ['Upgrade: XHTTP','Connection: Upgrade']);
-        $ok8 = tcp_open('edge.setalink.no', 8443);
-        // Return integer codes so JS can compare without coercion, and a boolean 'open' for Reality.
-        $r['ws']          = ['ok' => in_array($ws, ['101','400']), 'code' => (int)$ws ?: null, 'name' => 'WebSocket'];
-        $r['xhttp']       = ['ok' => in_array($xh, ['404','400','200']), 'code' => (int)$xh ?: null, 'name' => 'XHTTP'];
-        $r['httpupgrade'] = ['ok' => in_array($hu, ['502','400','200','101']), 'code' => (int)$hu ?: null, 'name' => 'HTTPUpgrade'];
-        $r['reality']     = ['ok' => $ok8, 'code' => null, 'open' => $ok8, 'name' => 'Reality'];
-        $r['checked_at']  = date('Y-m-d H:i:s');
+        foreach ($ph_files as $pkey => $f) {
+            clearstatcache(true, $f);
+            $raw  = file_exists($f) ? trim((string)file_get_contents($f)) : '';
+            @unlink($f);
+            $code = (is_numeric($raw) && (int)$raw > 0) ? (int)$raw : null;
+            switch ($pkey) {
+                case 'ws':
+                    $ok  = in_array($code, [101, 400]);
+                    $det = $code === null  ? 'timeout — nginx/xray not reachable on /ws' :
+                          ($code === 101   ? '101 Switching Protocols — WebSocket upgrade accepted' :
+                          ($code === 400   ? 'HTTP 400 — xray routing OK (rejects unauthenticated upgrade)' :
+                          ($code === 502   ? 'HTTP 502 — nginx upstream error (xray inbound missing?)' :
+                          ($code === 404   ? 'HTTP 404 — nginx route missing for /ws' : "HTTP {$code}"))));
+                    $r['ws'] = ['ok' => $ok, 'code' => $code, 'name' => 'WebSocket', 'timeout' => $code === null, 'detail' => $det];
+                    break;
+                case 'xhttp':
+                    $ok  = in_array($code, [404, 400, 200]);
+                    $det = $code === null            ? 'timeout — nginx/xray not reachable on /xhttp' :
+                          (in_array($code, [404,400,200]) ? "HTTP {$code} — XHTTP path reachable and routing correctly" :
+                          ($code === 502               ? 'HTTP 502 — nginx upstream error (xray XHTTP inbound missing?)' : "HTTP {$code}"));
+                    $r['xhttp'] = ['ok' => $ok, 'code' => $code, 'name' => 'XHTTP', 'timeout' => $code === null, 'detail' => $det];
+                    break;
+                case 'httpupgrade':
+                    $ok  = in_array($code, [502, 400, 200, 101]);
+                    $det = $code === null                    ? 'timeout — nginx/xray not reachable on /httpup' :
+                          (in_array($code, [502,400,200,101]) ? "HTTP {$code} — HTTPUpgrade path reachable" :
+                          ($code === 404                      ? 'HTTP 404 — nginx route missing for /httpup' : "HTTP {$code}"));
+                    $r['httpupgrade'] = ['ok' => $ok, 'code' => $code, 'name' => 'HTTPUpgrade', 'timeout' => $code === null, 'detail' => $det];
+                    break;
+            }
+        }
+        $r['reality']    = ['ok' => $reality_open, 'code' => null, 'open' => $reality_open, 'name' => 'Reality',
+                            'timeout' => false, 'detail' => $reality_open ? 'port 8443 open — Reality accepting connections' : 'port 8443 closed — check ufw rules and xray Reality inbound'];
+        $r['checked_at'] = date('Y-m-d H:i:s');
         api_ok($r);
         break;
 
@@ -580,7 +633,7 @@ switch ($action) {
 
     case 'iran-score':
         // Compute Iran compatibility score from live server config.
-        $cfg = cli_json('status');
+        $cfg = cli_json('status', [], 8);
         $r   = $cfg['reality'] ?? [];
         $score = 0; $checks = [];
 
@@ -851,6 +904,32 @@ switch ($action) {
         $ms = (int)round((microtime(true) - $start) * 1000);
         if ($s) { fclose($s); api_ok(['ms' => $ms, 'ok' => true]); }
         api_ok(['ms' => null, 'ok' => false]);
+        break;
+
+    case 'heartbeat':
+        // Lightweight health check — returns green/red for each critical service.
+        $hb_xray  = trim((string)@shell_exec('systemctl is-active xray.service  2>/dev/null')) === 'active';
+        $hb_nginx = trim((string)@shell_exec('systemctl is-active nginx.service 2>/dev/null')) === 'active';
+        $hb_sqlite = false;
+        try { open_analytics_db(); $hb_sqlite = true; } catch (Exception $e) {}
+        $hb_bs_raw = trim((string)@shell_exec('curl -sk --max-time 4 "http://127.0.0.1/api.php?mobile=1&action=bootstrap&_token=' . MOBILE_REPORT_TOKEN . '" 2>/dev/null'));
+        $hb_bs_j   = $hb_bs_raw ? json_decode($hb_bs_raw, true) : null;
+        $hb_bs_ok  = is_array($hb_bs_j) && !empty($hb_bs_j['ok']) && !empty($hb_bs_j['data']['uuid'] ?? '');
+        api_ok(['xray' => $hb_xray, 'nginx' => $hb_nginx, 'sqlite' => $hb_sqlite, 'api' => true, 'bootstrap' => $hb_bs_ok, 'checked_at' => date('Y-m-d H:i:s')]);
+        break;
+
+    case 'test-bootstrap':
+        // Test the public mobile bootstrap endpoint and verify JSON structure.
+        $tb_raw = trim((string)@shell_exec('curl -sk --max-time 6 "http://127.0.0.1/api.php?mobile=1&action=bootstrap&_token=' . MOBILE_REPORT_TOKEN . '" 2>/dev/null'));
+        if (!$tb_raw) api_err('Bootstrap endpoint did not respond within 6s', 503);
+        $tb_j = json_decode($tb_raw, true);
+        if (!is_array($tb_j))         api_err('Bootstrap endpoint returned invalid JSON');
+        if (!($tb_j['ok'] ?? false))  api_err('Bootstrap returned error: ' . ($tb_j['error'] ?? 'unknown'));
+        $tb_d = $tb_j['data'] ?? [];
+        foreach (['uuid', 'address', 'port', 'publicKey'] as $tbf) {
+            if (empty($tb_d[$tbf])) api_err("Bootstrap missing required field: {$tbf}");
+        }
+        api_ok(['status' => 'ok', 'profile' => $tb_d]);
         break;
 
     default: api_err('unknown action');

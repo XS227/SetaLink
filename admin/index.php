@@ -160,6 +160,16 @@ $page_titles = [
   <style>
     /* ── Additional styles for new pages ─────────────────────────────── */
 
+    /* ── Admin heartbeat bar (all pages) ──────────────────────────── */
+    .hb-row {
+      display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+      padding: .4rem 1rem; background: var(--panel); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); margin-bottom: 1.25rem;
+    }
+    .hb-item { display:flex; align-items:center; gap:.35rem; font-size:.7rem; font-weight:600;
+      text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+    .hb-updated { margin-left:auto; font-size:.68rem; color:var(--muted-2); }
+
     /* Server stats row (dashboard top) */
     .srv-stats-row {
       display: grid;
@@ -579,6 +589,16 @@ $page_titles = [
         </button>
         <?php endif; ?>
       </div>
+    </div>
+
+    <!-- Admin heartbeat — visible on all pages -->
+    <div class="hb-row" id="hbRow">
+      <div class="hb-item"><span class="dot dot-unk" id="hbDotXray"></span> xray</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbDotNginx"></span> nginx</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbDotSqlite"></span> sqlite</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbDotApi"></span> api.php</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbDotBootstrap"></span> bootstrap</div>
+      <span class="hb-updated" id="hbUpdated">checking…</span>
     </div>
 
     <?php if ($err_status): ?>
@@ -1579,6 +1599,22 @@ $page_titles = [
         </div>
       </div>
 
+      <!-- ── Bootstrap Verification ────────────────────────── -->
+      <div class="diag-panel diag-full" id="bootstrapVerifyPanel">
+        <div class="diag-panel-head">
+          <h2>Current Mobile Bootstrap Profile</h2>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <span id="bsVerifyStatus" style="font-size:.7rem;color:var(--muted)">—</span>
+            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="testBootstrapBtn">
+              Test bootstrap endpoint
+            </button>
+          </div>
+        </div>
+        <div class="diag-panel-body">
+          <div id="bsVerifyBody"><div class="diag-loading">Loading…</div></div>
+        </div>
+      </div>
+
       <!-- ── Remote Config Editor ──────────────────────────── -->
       <div class="diag-panel" id="remoteConfigPanel">
         <div class="diag-panel-head">
@@ -1891,6 +1927,35 @@ SL.esc = function(s) {
 };
 
 // =========================================================================
+// GLOBAL — admin heartbeat (all pages, 30s interval)
+// =========================================================================
+async function runHeartbeat() {
+    const setDot = (id, ok) => {
+        const el = document.getElementById(id);
+        if (el) el.className = 'dot ' + (ok === true ? 'dot-ok' : ok === false ? 'dot-bad' : 'dot-unk');
+    };
+    const upd = document.getElementById('hbUpdated');
+    try {
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 8000);
+        const r = await fetch(API_URL + '?action=heartbeat', { credentials: 'same-origin', signal: ctrl.signal });
+        clearTimeout(tid);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = (await r.json()).data || {};
+        setDot('hbDotXray',      d.xray);
+        setDot('hbDotNginx',     d.nginx);
+        setDot('hbDotSqlite',    d.sqlite);
+        setDot('hbDotApi',       d.api);
+        setDot('hbDotBootstrap', d.bootstrap);
+        if (upd) upd.textContent = 'updated ' + new Date().toLocaleTimeString();
+    } catch (e) {
+        if (upd) upd.textContent = e.name === 'AbortError' ? 'heartbeat timeout' : 'heartbeat error';
+    }
+}
+runHeartbeat();
+setInterval(runHeartbeat, 30000);
+
+// =========================================================================
 // DASHBOARD — server stats (15s) + protocol mini-row (30s)
 // =========================================================================
 if (CURRENT_PAGE === 'dashboard') {
@@ -1967,31 +2032,35 @@ if (CURRENT_PAGE === 'dashboard') {
 
     async function loadProtoMini() {
         const ctrlM = new AbortController();
-        const tidM  = setTimeout(() => ctrlM.abort(), 30000);
+        const tidM  = setTimeout(() => ctrlM.abort(), 15000);
         try {
             const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin', signal: ctrlM.signal });
             clearTimeout(tidM);
-            if (!r.ok) return;
+            if (!r.ok) throw new Error('HTTP ' + r.status);
             const j = await r.json();
             const protos = j.data || j.protocols || j;
 
-            const map = {
-                WS: 'WS', XHTTP: 'XHTTP', HTTPUpgrade: 'HTTPUpgrade', Reality: 'Reality'
-            };
+            const map = { WS: 'WS', XHTTP: 'XHTTP', HTTPUpgrade: 'HTTPUpgrade', Reality: 'Reality' };
             Object.entries(map).forEach(([key, id]) => {
                 const entry = protos[key] || protos[key.toLowerCase()] || {};
                 const code  = entry.code ?? entry.status_code ?? null;
                 const open  = entry.open ?? null;
                 const ok    = interpretProto(key, code, open);
-
                 const dotEl  = document.getElementById('protoMiniDot'  + id);
                 const codeEl = document.getElementById('protoMiniCode' + id);
                 if (dotEl)  dotEl.className  = 'dot ' + (ok ? 'dot-ok' : 'dot-bad');
-                if (codeEl) codeEl.textContent = code !== null
-                    ? String(code)
+                if (codeEl) codeEl.textContent = entry.timeout ? 'timeout'
+                    : code !== null ? String(code)
                     : (open !== null ? (open ? 'open' : 'closed') : '—');
             });
-        } catch (e) { clearTimeout(tidM); /* silently ignore on mini dashboard */ }
+        } catch (e) {
+            clearTimeout(tidM);
+            // Show unknown on dashboard mini row — full details on the Protocols page
+            ['WS','XHTTP','HTTPUpgrade','Reality'].forEach(id => {
+                const dotEl = document.getElementById('protoMiniDot' + id);
+                if (dotEl) dotEl.className = 'dot dot-bad';
+            });
+        }
     }
 
     loadProtoMini();
@@ -2273,33 +2342,38 @@ if (CURRENT_PAGE === 'logs') {
 if (CURRENT_PAGE === 'protocols') {
 
     function interpretProtoFull(key, entry) {
-        const code = entry.code ?? entry.status_code ?? null;
-        const open = entry.open ?? null;
-        const none = code === null && open === null;
+        const code    = entry.code ?? entry.status_code ?? null;
+        const open    = entry.open ?? null;
+        const timedout = entry.timeout ?? false;
+        const srvDetail = entry.detail ?? null;
 
+        if (timedout) {
+            return { ok: false, meaning: 'TIMEOUT', detail: srvDetail || 'Request timed out — nginx or xray not responding' };
+        }
         if (key === 'WS') {
-            if (code === 101) return { ok: true,  meaning: 'Connected',      detail: '101 Switching Protocols — WebSocket upgrade accepted by xray.' };
-            if (code === 400) return { ok: true,  meaning: 'Routing OK',     detail: 'HTTP 400 — xray is reachable and rejecting unauthenticated upgrades (expected behavior).' };
-            if (none)         return { ok: false, meaning: 'No response',    detail: 'Could not reach the WebSocket endpoint. Check nginx and xray.' };
-            return              { ok: false, meaning: 'Unexpected',          detail: `HTTP ${code} — possible routing or configuration issue.` };
+            if (code === 101) return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || '101 Switching Protocols — WebSocket upgrade accepted.' };
+            if (code === 400) return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || 'HTTP 400 — routing OK (xray rejecting unauthenticated upgrades).' };
+            if (code === null && open === null) return { ok: false, meaning: 'OFFLINE', detail: srvDetail || 'No response — check nginx route and xray inbound.' };
+            return              { ok: false, meaning: code === 404 ? 'MISCONFIGURED' : 'ERROR',
+                                  detail: srvDetail || `HTTP ${code} — unexpected response.` };
         }
         if (key === 'XHTTP') {
             if (code !== null && [404, 400, 200].includes(code))
-                              return { ok: true,  meaning: 'Routing OK',     detail: `HTTP ${code} — XHTTP path is reachable and routing correctly.` };
-            if (none)         return { ok: false, meaning: 'No response',    detail: 'Could not reach the XHTTP endpoint.' };
-            return              { ok: false, meaning: 'Unexpected',          detail: `HTTP ${code} — service may be misconfigured.` };
+                              return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || `HTTP ${code} — XHTTP path reachable.` };
+            if (code === null) return { ok: false, meaning: 'OFFLINE',      detail: srvDetail || 'No response from XHTTP endpoint.' };
+            return              { ok: false, meaning: 'MISCONFIGURED',      detail: srvDetail || `HTTP ${code} — unexpected response.` };
         }
         if (key === 'HTTPUpgrade') {
             if (code !== null && [502, 400, 200, 101].includes(code))
-                              return { ok: true,  meaning: 'Routing OK',     detail: `HTTP ${code} — HTTPUpgrade path is reachable.` };
-            if (none)         return { ok: false, meaning: 'No response',    detail: 'Could not reach the HTTPUpgrade endpoint.' };
-            return              { ok: false, meaning: 'Unexpected',          detail: `HTTP ${code} — check nginx upstream and xray inbound config.` };
+                              return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || `HTTP ${code} — HTTPUpgrade path reachable.` };
+            if (code === null) return { ok: false, meaning: 'OFFLINE',      detail: srvDetail || 'No response from HTTPUpgrade endpoint.' };
+            return              { ok: false, meaning: 'MISCONFIGURED',      detail: srvDetail || `HTTP ${code} — check nginx upstream.` };
         }
         if (key === 'Reality') {
-            if (open === true)  return { ok: true,  meaning: 'Port Open',    detail: 'REALITY port is reachable and accepting TLS connections.' };
-            return                { ok: false, meaning: 'Port Closed',       detail: 'Cannot connect to the REALITY port. Check ufw and xray.' };
+            if (open === true)  return { ok: true,  meaning: 'ONLINE',      detail: srvDetail || 'Port 8443 open — Reality accepting connections.' };
+            return                { ok: false, meaning: 'OFFLINE',          detail: srvDetail || 'Port 8443 closed — check ufw rules and xray Reality inbound.' };
         }
-        return { ok: false, meaning: 'Unknown', detail: 'No data returned.' };
+        return { ok: false, meaning: 'UNKNOWN', detail: 'No data returned.' };
     }
 
     function updateProtoCard(key, entry, ts) {
@@ -2333,7 +2407,7 @@ if (CURRENT_PAGE === 'protocols') {
             if (bEl) bEl.innerHTML = '<span class="muted">Checking…</span>';
         });
         const ctrl = new AbortController();
-        const tid  = setTimeout(() => ctrl.abort(), 30000);
+        const tid  = setTimeout(() => ctrl.abort(), 15000);
         try {
             const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin', signal: ctrl.signal });
             clearTimeout(tid);
@@ -2349,8 +2423,8 @@ if (CURRENT_PAGE === 'protocols') {
         } catch (e) {
             clearTimeout(tid);
             const ts  = new Date().toLocaleTimeString();
-            const msg = e.name === 'AbortError' ? 'Timed out (30s)' : e.message;
-            PROTO_KEYS.forEach(k => updateProtoCard(k, {}, ts));
+            const msg = e.name === 'AbortError' ? 'Timed out (15s)' : e.message;
+            PROTO_KEYS.forEach(k => updateProtoCard(k, { timeout: true, detail: 'Check failed: ' + msg }, ts));
             showToast('Check failed: ' + msg, 'error', 4000);
         }
     }
@@ -2365,7 +2439,7 @@ if (CURRENT_PAGE === 'protocols') {
             if (bEl) bEl.innerHTML = '<span class="muted">Checking…</span>';
             btn.disabled = true;
             const ctrl2 = new AbortController();
-            const tid2  = setTimeout(() => ctrl2.abort(), 30000);
+            const tid2  = setTimeout(() => ctrl2.abort(), 15000);
             try {
                 const r = await fetch(`${API_URL}?action=protocol-health`, { credentials: 'same-origin', signal: ctrl2.signal });
                 clearTimeout(tid2);
@@ -2377,8 +2451,8 @@ if (CURRENT_PAGE === 'protocols') {
                 updateProtoCard(key, entry, ts);
             } catch (e) {
                 clearTimeout(tid2);
-                const msg2 = e.name === 'AbortError' ? 'Timed out (30s)' : e.message;
-                updateProtoCard(key, {}, new Date().toLocaleTimeString());
+                const msg2 = e.name === 'AbortError' ? 'Timed out (15s)' : e.message;
+                updateProtoCard(key, { timeout: true, detail: 'Re-check failed: ' + msg2 }, new Date().toLocaleTimeString());
                 showToast('Re-check failed: ' + msg2, 'error', 4000);
             }
             btn.disabled = false;
@@ -2652,7 +2726,10 @@ if (document.getElementById('diagRefreshBtn')) {
           </div>
         </div>`;
       }).join('');
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
+    } catch(e) {
+      if (countEl) countEl.textContent = 'load error';
+      el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`;
+    }
   }
 
   function escHtml(s) {
@@ -2752,7 +2829,11 @@ if (document.getElementById('diagRefreshBtn')) {
           <span class="cfg-key">${escHtml(c.label)}</span>
           <code class="cfg-val ${c.ok ? 'ok' : 'danger'}">${c.ok ? '✓' : '✗'} ${escHtml(c.detail)}</code>
         </div>`).join('');
-    } catch(e) { if (el_checks) el_checks.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
+    } catch(e) {
+      const el_at_err = document.getElementById('iranScoreAt');
+      if (el_at_err) el_at_err.textContent = 'Check failed';
+      if (el_checks) el_checks.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`;
+    }
   }
 
   // ── Active sessions ────────────────────────────────────────────────────
@@ -2764,9 +2845,11 @@ if (document.getElementById('diagRefreshBtn')) {
       const d = j.data;
       const elIPs = document.getElementById('activeIPs');
       const elEv  = document.getElementById('recentEvents');
-      if (elIPs) elIPs.textContent = d.active_ips;
-      if (elEv)  elEv.textContent  = d.recent_events;
-      if (elAt)  elAt.textContent  = 'Updated ' + d.checked_at;
+      if (elIPs) elIPs.textContent = d.active_ips ?? 0;
+      if (elEv)  elEv.textContent  = d.recent_events ?? 0;
+      if (elAt)  elAt.textContent  = d.active_ips === 0
+          ? 'No connected devices yet — Updated ' + d.checked_at
+          : 'Updated ' + d.checked_at;
     } catch(e) { if (elAt) elAt.textContent = 'Error: ' + e.message; }
   }
 
@@ -2954,7 +3037,7 @@ if (document.getElementById('diagRefreshBtn')) {
         f('bsXhttpPath',   bs.xhttpPath   || '/xhttp');
         f('bsHttpupPath',  bs.httpupPath  || '/httpup');
       }
-    } catch(e) { el.innerHTML = '<div class="diag-loading">Error loading remote config.</div>'; }
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Remote config load failed: ${escHtml(e.message)}</div>`; }
   }
 
   const parseList = v => v.split(',').map(s => s.trim()).filter(Boolean);
@@ -3018,6 +3101,58 @@ if (document.getElementById('diagRefreshBtn')) {
     btn.innerHTML = origText;
   });
 
+  // ── Bootstrap verification ────────────────────────────────────────────
+  async function loadBootstrapPanel() {
+    const body = document.getElementById('bsVerifyBody');
+    if (!body) return;
+    try {
+      const j = await diagFetch(API_URL + '?action=get-remote-config');
+      if (!j.ok) throw new Error(j.error || 'API error');
+      const bs = j.data?.bootstrap;
+      if (!bs || !bs.uuid) {
+        body.innerHTML = '<div class="diag-loading">No bootstrap profile saved in DB — using hardcoded fallback profile.</div>';
+        return;
+      }
+      const row = (k, v) => `<div class="cfg-row"><span class="cfg-key">${escHtml(k)}</span><code class="cfg-val">${escHtml(String(v ?? '—'))}</code></div>`;
+      body.innerHTML =
+        row('Label',        bs.city || 'SetaLink Cloudflare') +
+        row('Address',      bs.address) +
+        row('Port',         bs.port) +
+        row('Protocol',     'VLESS + Reality') +
+        row('SNI',          bs.sni) +
+        row('PublicKey',    bs.publicKey ? bs.publicKey.substring(0,10) + '…' : '—') +
+        row('ShortId',      bs.shortId) +
+        row('Flow',         bs.flow || '(none)') +
+        row('WS Path',      bs.wsPath   || '/ws') +
+        row('XHTTP Path',   bs.xhttpPath  || '/xhttp') +
+        row('HTTPup Path',  bs.httpupPath || '/httpup');
+    } catch(e) {
+      body.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`;
+    }
+  }
+
+  document.getElementById('testBootstrapBtn')?.addEventListener('click', async () => {
+    const btn    = document.getElementById('testBootstrapBtn');
+    const status = document.getElementById('bsVerifyStatus');
+    if (!btn) return;
+    btn.disabled = true;
+    if (status) { status.style.color = 'var(--muted)'; status.textContent = 'Testing…'; }
+    try {
+      const j = await diagFetch(API_URL + '?action=test-bootstrap', 10000);
+      if (!j.ok) throw new Error(j.error || 'failed');
+      const p = j.data?.profile;
+      if (status) {
+        status.style.color = 'var(--ok)';
+        status.textContent = `✓ OK — ${p?.address || ''}:${p?.port || ''}`;
+      }
+      showToast('Bootstrap endpoint verified', 'ok', 3000);
+    } catch(e) {
+      if (status) { status.style.color = 'var(--danger)'; status.textContent = '✗ ' + e.message; }
+      showToast('Bootstrap test failed: ' + e.message, 'error', 4000);
+    }
+    btn.disabled = false;
+  });
+
   // Refresh all panels on button click
   document.getElementById('diagRefreshBtn')?.addEventListener('click', () => {
     loadConnectionAnalytics();
@@ -3031,6 +3166,7 @@ if (document.getElementById('diagRefreshBtn')) {
     loadLearningStats();
     loadDeviceBreakdown();
     loadRemoteConfigEditor();
+    loadBootstrapPanel();
   });
 
   // Auto-refresh active sessions every 30 seconds
@@ -3048,6 +3184,7 @@ if (document.getElementById('diagRefreshBtn')) {
   loadLearningStats();
   loadDeviceBreakdown();
   loadRemoteConfigEditor();
+  loadBootstrapPanel();
 }
 </script>
 </body>
