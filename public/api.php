@@ -59,8 +59,23 @@ function init_device_tables(PDO $pdo): void {
         blocked            INTEGER DEFAULT 0,
         platform           TEXT    DEFAULT 'android',
         created_at         TEXT    DEFAULT (datetime('now')),
-        last_seen          TEXT    DEFAULT (datetime('now'))
+        last_seen          TEXT    DEFAULT (datetime('now')),
+        app_version        TEXT    DEFAULT '',
+        active_protocol    TEXT    DEFAULT '',
+        status             TEXT    DEFAULT 'offline',
+        country            TEXT    DEFAULT '',
+        language           TEXT    DEFAULT ''
     )");
+    $migrations = [
+        "ALTER TABLE devices ADD COLUMN app_version TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN active_protocol TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN status TEXT DEFAULT 'offline'",
+        "ALTER TABLE devices ADD COLUMN country TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN language TEXT DEFAULT ''",
+    ];
+    foreach ($migrations as $sql) {
+        try { $pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
+    }
     $pdo->exec("CREATE TABLE IF NOT EXISTS referral_uses (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         referral_code TEXT,
@@ -79,17 +94,22 @@ function generate_referral_code(PDO $pdo): string {
 
 function hardcoded_bootstrap(): array {
     return [
-        'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
-        'address'     => '178.104.77.231',
-        'port'        => 443,
-        'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
-        'shortId'     => 'd93af82f2ecb7f6a',
-        'sni'         => 'www.cloudflare.com',
-        'flow'        => '',
+        'uuid'        => 'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
+        'address'     => '5.249.252.221',
+        'port'        => 8443,
+        'publicKey'   => 'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
+        'shortId'     => '7f81892e',
+        'sni'         => 'www.microsoft.com',
+        'flow'        => 'xtls-rprx-vision',
         'fingerprint' => 'chrome',
-        'country'     => 'Germany',
-        'flag'        => '🇩🇪',
-        'city'        => 'SetaLink Cloudflare',
+        'country'     => 'Netherlands',
+        'flag'        => '🇳🇱',
+        'city'        => 'SetaLink Edge',
+        'edgeAddress' => 'edge.setalink.no',
+        'edgePort'    => 443,
+        'wsPath'      => '/ws',
+        'xhttpPath'   => '/xhttp',
+        'httpupPath'  => '/httpup',
     ];
 }
 
@@ -202,8 +222,10 @@ if ($method === 'GET') {
 if ($method === 'POST') {
 
     if ($action === 'register-device') {
-        $deviceId = trim($_POST['device_id'] ?? '');
-        $platform = trim($_POST['platform']  ?? 'android');
+        $deviceId   = trim($_POST['device_id']    ?? '');
+        $platform   = substr(trim($_POST['platform']    ?? 'android'), 0, 20);
+        $appVersion = substr(trim($_POST['app_version'] ?? ''), 0, 20);
+        $language   = substr(trim($_POST['language']    ?? ''), 0, 30);
         if (!$deviceId) err('missing device_id');
 
         $pdo  = db();
@@ -213,15 +235,14 @@ if ($method === 'POST') {
 
         if (!$dev) {
             $code = generate_referral_code($pdo);
-            $ins  = $pdo->prepare(
-                "INSERT INTO devices (device_id, referral_code, platform) VALUES (?, ?, ?)"
-            );
-            $ins->execute([$deviceId, $code, $platform]);
+            $pdo->prepare(
+                "INSERT INTO devices (device_id, referral_code, platform, app_version, language) VALUES (?, ?, ?, ?, ?)"
+            )->execute([$deviceId, $code, $platform, $appVersion, $language]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
         } else {
-            $pdo->prepare("UPDATE devices SET last_seen=datetime('now'), platform=? WHERE device_id=?")
-                ->execute([$platform, $deviceId]);
+            $pdo->prepare("UPDATE devices SET last_seen=datetime('now'), platform=?, app_version=?, language=? WHERE device_id=?")
+                ->execute([$platform, $appVersion, $language, $deviceId]);
         }
 
         $srv = fetch_bootstrap_server($pdo);
@@ -291,6 +312,20 @@ if ($method === 'POST') {
         if (!$row) err('device not found');
 
         ok(['remaining_bytes' => max(0, (int)$row['quota_bytes_total'] - (int)$row['quota_bytes_used'])]);
+    }
+
+    if ($action === 'update-status') {
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $status   = trim($_POST['status']    ?? 'offline');
+        $protocol = substr(trim($_POST['active_protocol'] ?? ''), 0, 60);
+        if (!$deviceId) err('missing device_id');
+        if (!in_array($status, ['online', 'offline'], true)) $status = 'offline';
+
+        $pdo = db();
+        $pdo->prepare(
+            "UPDATE devices SET status=?, active_protocol=?, last_seen=datetime('now') WHERE device_id=?"
+        )->execute([$status, $protocol, $deviceId]);
+        ok(['status' => $status]);
     }
 
     err('unknown action');

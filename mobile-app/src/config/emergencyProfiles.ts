@@ -20,18 +20,23 @@ const BOOTSTRAP_URL =
 const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v3';
 
 // Hardcoded working profile — always available, zero dependencies.
-// vless://fd709d48-a983-484a-99e3-afc97e2c3692@178.104.77.231:443?type=tcp&security=reality&...
+// vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@5.249.252.221:8443?security=reality&flow=xtls-rprx-vision&sni=www.microsoft.com&fp=chrome&pbk=Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU&sid=7f81892e
 const HARDCODED_PROFILE: EmergencyProfile = {
   id:          'server-emergency',
-  label:       'SetaLink Cloudflare',
-  uuid:        'fd709d48-a983-484a-99e3-afc97e2c3692',
-  address:     '178.104.77.231',
-  port:        443,
-  publicKey:   'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
-  shortId:     'd93af82f2ecb7f6a',
-  sni:         'www.cloudflare.com',
-  flow:        '',
+  label:       'SetaLink Edge',
+  uuid:        'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
+  address:     '5.249.252.221',
+  port:        8443,
+  publicKey:   'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
+  shortId:     '7f81892e',
+  sni:         'www.microsoft.com',
+  flow:        'xtls-rprx-vision',
   fingerprint: 'chrome',
+  edgeAddress: 'edge.setalink.no',
+  edgePort:    443,
+  wsPath:      '/ws',
+  xhttpPath:   '/xhttp',
+  httpupPath:  '/httpup',
 };
 
 export interface EmergencyProfile {

@@ -748,10 +748,18 @@ $page_titles = [
         </div>
       </div>
       <div class="section-body" style="padding:1.25rem">
-        <div class="srv-stats-row" id="appStatsRow" style="grid-template-columns:repeat(5,1fr)">
+        <div class="srv-stats-row" id="appStatsRow" style="grid-template-columns:repeat(6,1fr)">
           <div class="srv-stat">
             <div class="srv-stat-label">Total Installs</div>
             <div class="srv-stat-value" id="appStatInstalls">—</div>
+          </div>
+          <div class="srv-stat">
+            <div class="srv-stat-label" style="color:var(--ok)">Online Now</div>
+            <div class="srv-stat-value" id="appStatOnline" style="color:var(--ok)">—</div>
+          </div>
+          <div class="srv-stat">
+            <div class="srv-stat-label">Active Today</div>
+            <div class="srv-stat-value" id="appStatToday">—</div>
           </div>
           <div class="srv-stat">
             <div class="srv-stat-label">Active (7d)</div>
@@ -760,10 +768,6 @@ $page_titles = [
           <div class="srv-stat">
             <div class="srv-stat-label">New This Month</div>
             <div class="srv-stat-value" id="appStatNewMonth">—</div>
-          </div>
-          <div class="srv-stat">
-            <div class="srv-stat-label">Latest APK</div>
-            <div class="srv-stat-value" id="appStatVersion" style="font-size:1.1rem">0.2.0</div>
           </div>
           <div class="srv-stat">
             <div class="srv-stat-label">Failed (24h)</div>
@@ -776,10 +780,8 @@ $page_titles = [
             <span style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Version Distribution</span>
           </div>
           <div id="appVersionDist" style="display:flex;flex-direction:column;gap:.5rem">
-            <div class="app-ver-row" data-ver="1.0.0" data-pct="100">
-              <span class="app-ver-label">v1.0.0</span>
-              <div class="app-ver-bar-wrap"><div class="app-ver-bar" style="width:100%"></div></div>
-              <span class="app-ver-pct">100%</span>
+            <div class="app-ver-row">
+              <span class="app-ver-label" style="color:var(--muted)">Loading…</span>
             </div>
           </div>
         </div>
@@ -1091,6 +1093,54 @@ $page_titles = [
           </tbody>
         </table>
         <?php endif; ?>
+      </div>
+    </div><!-- /.section -->
+
+    <!-- =================================================================
+         MOBILE DEVICES — auto-registered from app
+         ================================================================= -->
+    <div class="section" style="margin-bottom:1.5rem">
+      <div class="section-header">
+        <h2>Mobile Devices</h2>
+        <div class="section-controls">
+          <div class="search-wrap">
+            <span class="search-icon"><?= $I['search'] ?></span>
+            <input type="search" class="search-input" id="deviceSearch"
+                   placeholder="Search devices…" autocomplete="off" spellcheck="false">
+          </div>
+          <select class="filter-select" id="deviceStatusFilter">
+            <option value="">All status</option>
+            <option value="online">Online</option>
+            <option value="offline">Offline</option>
+          </select>
+          <button class="btn btn-secondary" id="refreshDevicesBtn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+          <span class="user-count" id="deviceCount">— devices</span>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="devicesTable" aria-label="Mobile devices list">
+          <thead>
+            <tr>
+              <th>Device ID</th>
+              <th>Platform</th>
+              <th>App Ver.</th>
+              <th>Protocol</th>
+              <th>Quota</th>
+              <th>Language</th>
+              <th>Last Seen</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="devicesTbody">
+            <tr id="devicesPlaceholder">
+              <td colspan="9" style="text-align:center;padding:2rem;color:var(--muted)">Loading…</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div><!-- /.section -->
 
@@ -1544,6 +1594,20 @@ $page_titles = [
           <div style="font-size:.75rem;color:var(--muted);margin-top:.5rem">
             Unique client IPs seen in the last 5 minutes via Xray access log. Auto-refreshes every 30s.
           </div>
+        </div>
+      </div>
+
+      <!-- ── Inbound Diagnostics ──────────────────────────── -->
+      <div class="diag-panel diag-full" id="inboundDiagPanel">
+        <div class="diag-panel-head">
+          <h2>Inbound Diagnostics</h2>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <span id="inboundDiagAt" style="font-size:.7rem;color:var(--muted)">Loading…</span>
+            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshInboundBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="diag-panel-body">
+          <div id="inboundDiagBody"><div class="diag-loading">Loading inbound status…</div></div>
         </div>
       </div>
 
@@ -2084,16 +2148,149 @@ if (CURRENT_PAGE === 'dashboard') {
             const d = j.data || j;
             const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
             set('appStatInstalls',  d.total_installs  ?? '—');
+            set('appStatOnline',    d.online_now      ?? '—');
+            set('appStatToday',     d.active_today    ?? '—');
             set('appStatActive7d',  d.active_7d       ?? '—');
             set('appStatNewMonth',  d.new_this_month  ?? '—');
-            set('appStatVersion',   d.latest_version  ? 'v' + d.latest_version : '0.2.0');
             set('appStatFailed',    d.failed_24h      ?? '—');
+            // Version distribution
+            const verEl = document.getElementById('appVersionDist');
+            if (verEl && Array.isArray(d.version_distribution) && d.version_distribution.length > 0) {
+                const total = d.version_distribution.reduce((s, v) => s + (v.cnt || 0), 0);
+                verEl.innerHTML = d.version_distribution.map(v => {
+                    const pct = total > 0 ? Math.round(v.cnt / total * 100) : 0;
+                    return `<div class="app-ver-row">
+                        <span class="app-ver-label">v${SL.esc(String(v.version || '?'))}</span>
+                        <div class="app-ver-bar-wrap"><div class="app-ver-bar" style="width:${pct}%"></div></div>
+                        <span class="app-ver-pct">${pct}%</span>
+                    </div>`;
+                }).join('');
+            } else if (verEl && d.total_installs === 0) {
+                verEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">No registered devices yet.</span>';
+            }
         } catch (e) { /* silently ignore */ }
     }
 
     loadAppAnalytics();
     setInterval(loadAppAnalytics, 60000);
     document.getElementById('refreshAppAnalyticsBtn')?.addEventListener('click', loadAppAnalytics);
+
+    // ── Mobile Devices table ───────────────────────────────────────────────
+    let allDevices = [];
+    function fmtBytes(b) {
+        if (!b) return '0 B';
+        const u = ['B','KB','MB','GB'];
+        let i = 0; let v = b;
+        while (v >= 1024 && i < 3) { v /= 1024; i++; }
+        return v.toFixed(i > 0 ? 1 : 0) + ' ' + u[i];
+    }
+    function fmtRelative(ts) {
+        if (!ts) return '—';
+        const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+        if (s < 60)   return s + 's ago';
+        if (s < 3600) return Math.floor(s/60) + 'm ago';
+        if (s < 86400) return Math.floor(s/3600) + 'h ago';
+        return Math.floor(s/86400) + 'd ago';
+    }
+
+    async function loadDevices() {
+        try {
+            const r = await fetch(API_URL + '?action=devices-list', { credentials: 'same-origin' });
+            if (!r.ok) return;
+            const j = await r.json();
+            allDevices = Array.isArray(j.data) ? j.data : [];
+            renderDevices();
+        } catch (e) { /* silently ignore */ }
+    }
+
+    function renderDevices() {
+        const search   = (document.getElementById('deviceSearch')?.value  ?? '').toLowerCase();
+        const stFilter = (document.getElementById('deviceStatusFilter')?.value ?? '');
+        const tbody    = document.getElementById('devicesTbody');
+        const ph       = document.getElementById('devicesPlaceholder');
+        const countEl  = document.getElementById('deviceCount');
+        if (!tbody) return;
+
+        const filtered = allDevices.filter(d => {
+            if (stFilter && d.status !== stFilter) return false;
+            if (search) {
+                const hay = [d.device_id_short, d.device_id, d.language, d.app_version, d.active_protocol, d.platform].join(' ').toLowerCase();
+                if (!hay.includes(search)) return false;
+            }
+            return true;
+        });
+
+        if (countEl) countEl.textContent = filtered.length + ' device' + (filtered.length !== 1 ? 's' : '');
+
+        tbody.querySelectorAll('tr[data-did]').forEach(r => r.remove());
+        if (ph) ph.style.display = filtered.length ? 'none' : '';
+        if (!filtered.length) {
+            if (ph) { ph.style.display = ''; ph.querySelector('td').textContent = allDevices.length ? 'No devices match filter.' : 'No registered devices yet.'; }
+            return;
+        }
+
+        filtered.forEach(d => {
+            const isOnline = d.status === 'online';
+            const pct      = d.quota_bytes_total > 0 ? Math.round(d.quota_bytes_used / d.quota_bytes_total * 100) : 0;
+            const barCls   = pct >= 90 ? 'bar-danger' : pct >= 70 ? 'bar-warn' : 'bar-ok';
+            const tr = document.createElement('tr');
+            tr.dataset.did = d.device_id;
+            tr.innerHTML = `
+                <td>
+                  <code style="font-size:.78rem" title="${SL.esc(d.device_id)}">${SL.esc(d.device_id_short)}</code>
+                  ${d.blocked ? '<span class="badge badge-danger" style="margin-left:.4rem">blocked</span>' : ''}
+                </td>
+                <td><span class="badge badge-muted">${SL.esc(d.platform || 'android')}</span></td>
+                <td><code>${d.app_version ? 'v' + SL.esc(d.app_version) : '—'}</code></td>
+                <td>${d.active_protocol ? '<code>' + SL.esc(d.active_protocol) + '</code>' : '<span class="muted">—</span>'}</td>
+                <td>
+                  <div style="font-size:.8rem">${SL.esc(fmtBytes(d.quota_bytes_used))} / ${SL.esc(fmtBytes(d.quota_bytes_total))}</div>
+                  ${d.quota_bytes_total > 0 ? `<div class="traffic-bar"><div class="traffic-bar-fill ${barCls}" style="width:${pct}%"></div></div>` : ''}
+                </td>
+                <td>${SL.esc(d.language || '—')}</td>
+                <td class="cell-date">
+                  ${isOnline ? '<span class="online-dot"></span>' : ''}
+                  <span class="${isOnline ? '' : 'muted'}">${SL.esc(fmtRelative(d.last_seen))}</span>
+                </td>
+                <td>${isOnline
+                    ? '<span class="badge badge-ok">online</span>'
+                    : '<span class="badge badge-muted">offline</span>'}</td>
+                <td style="text-align:right">
+                  <div class="row-actions" style="justify-content:flex-end">
+                    ${d.blocked
+                        ? `<button class="btn-icon js-dev-unblock" data-did="${SL.esc(d.device_id)}" title="Unblock">${'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>'}</button>`
+                        : `<button class="btn-icon js-dev-block" data-did="${SL.esc(d.device_id)}" title="Block">${'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>'}</button>`
+                    }
+                  </div>
+                </td>`;
+            tbody.appendChild(tr);
+        });
+
+        // Block/unblock handlers
+        tbody.querySelectorAll('.js-dev-block').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                if (!confirm('Block this device? It will no longer be able to connect.')) return;
+                await fetch(API_URL, { method:'POST', credentials:'same-origin',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ _csrf: CSRF, action:'device-block', device_id: btn.dataset.did }) });
+                loadDevices();
+            });
+        });
+        tbody.querySelectorAll('.js-dev-unblock').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                await fetch(API_URL, { method:'POST', credentials:'same-origin',
+                    headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify({ _csrf: CSRF, action:'device-unblock', device_id: btn.dataset.did }) });
+                loadDevices();
+            });
+        });
+    }
+
+    loadDevices();
+    setInterval(loadDevices, 30000);
+    document.getElementById('refreshDevicesBtn')?.addEventListener('click', loadDevices);
+    document.getElementById('deviceSearch')?.addEventListener('input', renderDevices);
+    document.getElementById('deviceStatusFilter')?.addEventListener('change', renderDevices);
 
     // ── Nodes table ───────────────────────────────────────────────────────
     async function loadNodes() {
@@ -2873,6 +3070,77 @@ if (document.getElementById('diagRefreshBtn')) {
     } catch(e) { if (elAt) elAt.textContent = 'Error: ' + e.message; }
   }
 
+  // ── Inbound diagnostics ───────────────────────────────────────────────
+  async function loadInboundDiag() {
+    const el   = document.getElementById('inboundDiagBody');
+    const elAt = document.getElementById('inboundDiagAt');
+    if (!el) return;
+    try {
+      const j = await diagFetch(API_URL + '?action=inbound-stats');
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      const d = j.data;
+      if (elAt) elAt.textContent = 'Updated ' + d.checked_at;
+
+      const portRows = Object.entries(d.ports).map(([k, p]) => {
+        const dot = p.listening
+          ? `<span class="dot dot-ok" style="margin-right:.4rem"></span>`
+          : `<span class="dot dot-bad" style="margin-right:.4rem"></span>`;
+        const status = p.listening ? `<span style="color:var(--ok)">Listening :${p.port}</span>` : `<span style="color:var(--danger)">NOT listening :${p.port}</span>`;
+        return `<div class="cfg-row">${dot}<span class="cfg-key">${escHtml(p.label)}</span>${status}</div>`;
+      }).join('');
+
+      const uuidRows = (d.xray_uuids || []).map(u =>
+        `<div class="cfg-row"><span class="cfg-key">${escHtml(u.email||'client')}</span><code class="cfg-val">${escHtml(u.uuid)}</code></div>`
+      ).join('');
+
+      const rejBadge = d.uuid_rejections > 0
+        ? `<span style="color:var(--danger);font-weight:700">${d.uuid_rejections}</span>`
+        : `<span style="color:var(--ok)">0</span>`;
+
+      const rejUuids = (d.rejected_uuids || []).length > 0
+        ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.3rem;font-family:monospace">Rejected UUIDs: ${d.rejected_uuids.map(u => escHtml(u)).join(', ')}</div>`
+        : '';
+
+      const lastSession = d.last_accepted_ip
+        ? `${escHtml(d.last_accepted_ip)} at ${escHtml(d.last_accepted_at)}`
+        : 'None yet';
+
+      const errHtml = (d.last_errors || []).length > 0
+        ? d.last_errors.map(l => `<div class="error-log-line is-error">${escHtml(l)}</div>`).join('')
+        : '<div class="error-log-empty">No recent errors</div>';
+
+      el.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Listening Ports</div>
+            ${portRows}
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Xray UUIDs (active)</div>
+            ${uuidRows || '<div style="color:var(--muted)">Could not read Xray config</div>'}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
+          <div class="analytic-card">
+            <div class="analytic-num">${rejBadge}</div>
+            <div class="analytic-label">UUID Rejections</div>
+            ${rejUuids}
+          </div>
+          <div class="analytic-card">
+            <div class="analytic-num" style="color:var(--ok)">${d.accepted_external ?? 0}</div>
+            <div class="analytic-label">Accepted External Sessions</div>
+            <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Last: ${escHtml(lastSession)}</div>
+          </div>
+          <div class="analytic-card">
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Last Xray Errors</div>
+            <div style="max-height:100px;overflow-y:auto">${errHtml}</div>
+          </div>
+        </div>`;
+    } catch(e) { if (el) el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
+  }
+
+  document.getElementById('refreshInboundBtn')?.addEventListener('click', loadInboundDiag);
+
   // ── Profile success rates ──────────────────────────────────────────────
   async function loadProfileStats() {
     const el = document.getElementById('profileStatsBody');
@@ -3180,6 +3448,7 @@ if (document.getElementById('diagRefreshBtn')) {
     loadDbTestResults();
     loadIranScore();
     loadActiveSessions();
+    loadInboundDiag();
     loadProfileStats();
     loadNoInternetAnalysis();
     loadSniLeaderboard();
@@ -3191,6 +3460,7 @@ if (document.getElementById('diagRefreshBtn')) {
 
   // Auto-refresh active sessions every 30 seconds
   setInterval(loadActiveSessions, 30000);
+  setInterval(loadInboundDiag, 30000);
 
   // Auto-load diagnostics data on page load
   loadConnectionAnalytics();
@@ -3198,6 +3468,7 @@ if (document.getElementById('diagRefreshBtn')) {
   loadDbTestResults();
   loadIranScore();
   loadActiveSessions();
+  loadInboundDiag();
   loadProfileStats();
   loadNoInternetAnalysis();
   loadSniLeaderboard();

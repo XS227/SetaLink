@@ -290,9 +290,9 @@ export const useServerStore = create<ServerState>()(
       const newServers: ServerRecord[] = [
         {
           id:        'server-reality',
-          country:   'Germany',
+          country:   'Netherlands',
           city:      'SetaLink Reality',
-          flag:      '🇩🇪',
+          flag:      '🇳🇱',
           ping:      45,
           load:      20,
           protocol:  'Reality',
@@ -301,9 +301,9 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-ws',
-          country:   'Germany',
+          country:   'Netherlands',
           city:      'SetaLink WebSocket',
-          flag:      '🇩🇪',
+          flag:      '🇳🇱',
           ping:      55,
           load:      25,
           protocol:  'WebSocket',
@@ -312,9 +312,9 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-xhttp',
-          country:   'Germany',
+          country:   'Netherlands',
           city:      'SetaLink XHTTP',
-          flag:      '🇩🇪',
+          flag:      '🇳🇱',
           ping:      50,
           load:      22,
           protocol:  'XHTTP',
