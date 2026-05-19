@@ -2175,7 +2175,9 @@ if (CURRENT_PAGE === 'logs') {
     function renderAccessTable(lines) {
         const filt = lines.filter(l => !_logFilter || l.toLowerCase().includes(_logFilter));
         if (!filt.length) {
-            logBody.innerHTML = '<div class="log-empty">No matching log lines.</div>';
+            logBody.innerHTML = _logFilter
+                ? '<div class="log-empty">No log lines match the filter.</div>'
+                : '<div class="log-empty">No access log entries yet.</div>';
             return;
         }
         const rows = filt.slice(-100).reverse().map(raw => {
@@ -2203,7 +2205,9 @@ if (CURRENT_PAGE === 'logs') {
     function renderGenericLines(lines) {
         const filt = lines.filter(l => !_logFilter || l.toLowerCase().includes(_logFilter));
         if (!filt.length) {
-            logBody.innerHTML = '<div class="log-empty">No matching log lines.</div>';
+            logBody.innerHTML = _logFilter
+                ? '<div class="log-empty">No log lines match the filter.</div>'
+                : '<div class="log-empty">No log entries yet.</div>';
             return;
         }
         const html = filt.slice(-100).reverse().map(raw => {
@@ -2227,13 +2231,23 @@ if (CURRENT_PAGE === 'logs') {
     }
 
     async function fetchLogs(type) {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 12000);
         try {
-            const r = await fetch(`${API_URL}?action=logs&type=${encodeURIComponent(type)}`, { credentials: 'same-origin' });
+            const r = await fetch(`${API_URL}?action=logs&type=${encodeURIComponent(type)}`, { credentials: 'same-origin', signal: ctrl.signal });
+            clearTimeout(tid);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const j = await r.json();
-            renderLogs(type, j.lines || j.data || []);
+            const lines = j.lines || j.data || [];
+            if (!lines.length) {
+                if (logBody) logBody.innerHTML = '<div class="log-empty">No log entries yet.</div>';
+            } else {
+                renderLogs(type, lines);
+            }
         } catch (e) {
-            if (logBody) logBody.innerHTML = `<div class="log-empty" style="color:var(--danger)">Failed to load: ${SL.esc(e.message)}</div>`;
+            clearTimeout(tid);
+            const msg = e.name === 'AbortError' ? 'Request timed out' : SL.esc(e.message);
+            if (logBody) logBody.innerHTML = `<div class="log-empty" style="color:var(--danger)">Failed to load: ${msg}</div>`;
         }
     }
 
@@ -2536,12 +2550,27 @@ if (CURRENT_PAGE === 'settings') {
 
 if (document.getElementById('diagRefreshBtn')) {
 
+  // Fetch with a hard timeout — prevents widgets from staying on "Loading…" forever
+  async function diagFetch(url, timeoutMs = 12000) {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { credentials: 'same-origin', signal: ctrl.signal });
+      clearTimeout(tid);
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } catch (e) {
+      clearTimeout(tid);
+      if (e.name === 'AbortError') throw new Error('Request timed out after ' + (timeoutMs/1000) + 's');
+      throw e;
+    }
+  }
+
   async function loadConnectionAnalytics() {
     const el = document.getElementById('analyticsStatus');
     if (el) el.textContent = 'Loading…';
     try {
-      const resp = await fetch(API_URL + '?action=connection-analytics', { credentials: 'same-origin' });
-      const j = await resp.json();
+      const j = await diagFetch(API_URL + '?action=connection-analytics');
       if (!j.ok) { if (el) el.textContent = 'Error: ' + (j.error || 'failed'); return; }
       const d = j.data;
 
@@ -2555,7 +2584,7 @@ if (document.getElementById('diagRefreshBtn')) {
 
       if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
     } catch (e) {
-      if (el) el.textContent = 'Error loading analytics';
+      if (el) el.textContent = 'Error: ' + e.message;
     }
   }
 
@@ -2564,8 +2593,7 @@ if (document.getElementById('diagRefreshBtn')) {
     if (!body) return;
     body.innerHTML = '<div class="diag-loading">Loading…</div>';
     try {
-      const resp = await fetch(API_URL + '?action=connection-analytics', { credentials: 'same-origin' });
-      const j = await resp.json();
+      const j = await diagFetch(API_URL + '?action=connection-analytics');
       const errors = j?.data?.recent_errors ?? [];
       if (!errors.length) {
         body.innerHTML = '<div class="error-log-empty">No errors or warnings in log.</div>';
@@ -2576,7 +2604,7 @@ if (document.getElementById('diagRefreshBtn')) {
         return `<div class="error-log-line ${cls}">${escHtml(line)}</div>`;
       }).join('');
     } catch (e) {
-      body.innerHTML = '<div class="error-log-empty" style="color:var(--danger)">Failed to load log.</div>';
+      body.innerHTML = `<div class="error-log-empty" style="color:var(--danger)">Failed to load: ${escHtml(e.message)}</div>`;
     }
   }
 
@@ -2585,9 +2613,7 @@ if (document.getElementById('diagRefreshBtn')) {
     const countEl = document.getElementById('testResultsCount');
     if (!el) return;
     try {
-      const resp = await fetch(API_URL + '?action=test-results', { credentials: 'same-origin' });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const j = await resp.json();
+      const j = await diagFetch(API_URL + '?action=test-results');
       if (!j.ok) throw new Error(j.error || 'API error');
       const rows = j?.data ?? [];
       if (countEl) countEl.textContent = (rows.length + 2) + ' results';
@@ -2693,9 +2719,7 @@ if (document.getElementById('diagRefreshBtn')) {
   async function loadIranScore() {
     const el_checks = document.getElementById('iranScoreChecks');
     try {
-      const r = await fetch(API_URL + '?action=iran-score', { credentials: 'same-origin' });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
+      const j = await diagFetch(API_URL + '?action=iran-score');
       if (!j.ok) throw new Error(j.error || 'API error');
       const d = j.data;
       const el_num   = document.getElementById('iranScoreNum');
@@ -2722,9 +2746,7 @@ if (document.getElementById('diagRefreshBtn')) {
   async function loadActiveSessions() {
     const elAt = document.getElementById('activeSessionsAt');
     try {
-      const r = await fetch(API_URL + '?action=active-sessions', { credentials: 'same-origin' });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
+      const j = await diagFetch(API_URL + '?action=active-sessions');
       if (!j.ok) throw new Error(j.error || 'API error');
       const d = j.data;
       const elIPs = document.getElementById('activeIPs');
@@ -2740,11 +2762,10 @@ if (document.getElementById('diagRefreshBtn')) {
     const el = document.getElementById('profileStatsBody');
     if (!el) return;
     try {
-      const r = await fetch(API_URL + '?action=profile-stats', { credentials: 'same-origin' });
-      const j = await r.json();
+      const j = await diagFetch(API_URL + '?action=profile-stats');
       if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
       if (!j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No profile data recorded yet. Use the Record Test button to add results.</div>';
+        el.innerHTML = '<div class="diag-loading">No profile data yet.</div>';
         return;
       }
       el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem">` +
@@ -2758,7 +2779,7 @@ if (document.getElementById('diagRefreshBtn')) {
             <div style="font-size:.65rem;color:var(--muted);margin-top:.2rem">${p.success} success / ${p.fail} fail (${p.total} total)</div>
           </div>`;
         }).join('') + `</div>`;
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error loading profiles.</div>`; }
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
   // ── No-internet analysis ──────────────────────────────────────────────────
@@ -2766,11 +2787,10 @@ if (document.getElementById('diagRefreshBtn')) {
     const el = document.getElementById('noInternetBody');
     if (!el) return;
     try {
-      const r = await fetch(API_URL + '?action=no-internet-analysis', { credentials: 'same-origin' });
-      const j = await r.json();
+      const j = await diagFetch(API_URL + '?action=no-internet-analysis');
       if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
       if (!j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No no-internet events recorded yet. This is good!</div>';
+        el.innerHTML = '<div class="diag-loading">No no-internet events recorded yet — good!</div>';
         return;
       }
       el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
@@ -2788,7 +2808,7 @@ if (document.getElementById('diagRefreshBtn')) {
           <td style="padding:.4rem .6rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--ok)'}">${r.no_internet_cnt}</td>
           <td style="padding:.4rem .6rem;text-align:right">${r.probe_ok_cnt}</td>
         </tr>`).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = '<div class="diag-loading">Error loading data.</div>'; }
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
   // ── SNI leaderboard ───────────────────────────────────────────────────────
@@ -2796,10 +2816,10 @@ if (document.getElementById('diagRefreshBtn')) {
     const el = document.getElementById('sniLeaderboardBody');
     if (!el) return;
     try {
-      const r = await fetch(API_URL + '?action=sni-leaderboard', { credentials: 'same-origin' });
-      const j = await r.json();
-      if (!j.ok || !j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No SNI data yet. Data accumulates after app connections.</div>';
+      const j = await diagFetch(API_URL + '?action=sni-leaderboard');
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      if (!j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No SNI data yet — accumulates after app connections.</div>';
         return;
       }
       el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
@@ -2821,7 +2841,7 @@ if (document.getElementById('diagRefreshBtn')) {
             <td style="padding:.4rem .6rem;text-align:right;font-family:monospace">${r.avg_latency ?? '—'}</td>
           </tr>`;
         }).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = '<div class="diag-loading">Error loading data.</div>'; }
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
   // ── Learning intelligence ─────────────────────────────────────────────────
@@ -2829,10 +2849,10 @@ if (document.getElementById('diagRefreshBtn')) {
     const el = document.getElementById('learningBody');
     if (!el) return;
     try {
-      const r = await fetch(API_URL + '?action=learning-stats', { credentials: 'same-origin' });
-      const j = await r.json();
-      if (!j.ok || !j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No learning data yet. Accumulates as users connect.</div>';
+      const j = await diagFetch(API_URL + '?action=learning-stats');
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      if (!j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No learning data yet — accumulates as mobile app connects.</div>';
         return;
       }
       el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
@@ -2856,7 +2876,7 @@ if (document.getElementById('diagRefreshBtn')) {
             <td style="padding:.4rem .6rem;text-align:right;font-family:monospace">${r.avg_latency ?? '—'}</td>
           </tr>`;
         }).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = '<div class="diag-loading">Error.</div>'; }
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
   // ── Device breakdown ──────────────────────────────────────────────────────
@@ -2864,10 +2884,10 @@ if (document.getElementById('diagRefreshBtn')) {
     const el = document.getElementById('deviceBreakdownBody');
     if (!el) return;
     try {
-      const r = await fetch(API_URL + '?action=device-breakdown', { credentials: 'same-origin' });
-      const j = await r.json();
-      if (!j.ok || !j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No device data yet.</div>';
+      const j = await diagFetch(API_URL + '?action=device-breakdown');
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      if (!j.data.length) {
+        el.innerHTML = '<div class="diag-loading">No device data yet — appears after mobile app telemetry reports.</div>';
         return;
       }
       el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
@@ -2885,7 +2905,7 @@ if (document.getElementById('diagRefreshBtn')) {
           <td style="padding:.3rem .5rem;text-align:right;color:var(--ok)">${r.connected}</td>
           <td style="padding:.3rem .5rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--muted)'}">${r.no_internet_cnt}</td>
         </tr>`).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = '<div class="diag-loading">Error.</div>'; }
+    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
   // ── Remote config loader + saver ──────────────────────────────────────────
@@ -2893,8 +2913,7 @@ if (document.getElementById('diagRefreshBtn')) {
     const el = document.getElementById('remoteConfigLoaded');
     if (!el) return;
     try {
-      const r = await fetch(API_URL + '?action=get-remote-config', { credentials: 'same-origin' });
-      const j = await r.json();
+      const j = await diagFetch(API_URL + '?action=get-remote-config');
       if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">API error: ${escHtml(j.error||'unknown')}</div>`; return; }
       const d = j.data;
       el.innerHTML = `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
