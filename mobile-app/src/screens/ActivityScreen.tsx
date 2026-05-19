@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, StyleSheet,
 } from 'react-native';
@@ -6,6 +6,7 @@ import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { useSessionStore } from '../stores/sessionStore';
+import { useVpnStore }     from '../stores/vpnStore';
 import { formatBytes, formatDuration } from '../utils/formatters';
 import { useT } from '../i18n';
 
@@ -74,11 +75,35 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
   const { sessions, sessionsToday, totalBytesToday, totalDurationToday, hourlyDownload } =
     useSessionStore();
 
+  const {
+    connectionState,
+    sessionStartedAt,
+    sessionBytes,
+    selectedServer,
+  } = useVpnStore();
+
+  // Tick every second to keep live duration accurate
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (connectionState !== 'connected') return;
+    const id = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [connectionState]);
+
+  const isConnected   = connectionState === 'connected';
+  const liveDuration  = sessionStartedAt ? Math.floor((Date.now() - sessionStartedAt) / 1000) : 0;
+  const liveBytes     = sessionBytes.sent + sessionBytes.received;
+
   const today      = sessionsToday();
   const totalBytes = totalBytesToday();
   const totalDur   = totalDurationToday();
   const spark      = hourlyDownload();
   const peakMb     = Math.max(...spark, 0);
+
+  // Include active session in summary totals
+  const displayCount = today.length + (isConnected ? 1 : 0);
+  const displayBytes = totalBytes + (isConnected ? liveBytes : 0);
+  const displayDur   = totalDur   + (isConnected ? liveDuration : 0);
 
   const todayLabel     = t('ac.today');
   const yesterdayLabel = t('ac.yesterday');
@@ -104,9 +129,9 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
         {/* Summary cards */}
         <View style={styles.summaryRow}>
           {[
-            { label: t('ac.totalData'), value: formatBytes(totalBytes), accent: true },
-            { label: t('ac.sessions'), value: String(today.length),    accent: false },
-            { label: t('ac.totalTime'), value: formatDuration(totalDur), accent: false },
+            { label: t('ac.totalData'), value: formatBytes(displayBytes), accent: true },
+            { label: t('ac.sessions'), value: String(displayCount),       accent: false },
+            { label: t('ac.totalTime'), value: formatDuration(displayDur), accent: false },
           ].map(item => (
             <GlassCard
               key={item.label}
@@ -141,7 +166,40 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
         <View>
           <Text style={styles.sectionTitle}>{t('ac.connLog')}</Text>
 
-          {sessions.length === 0 ? (
+          {/* Live in-progress session row */}
+          {isConnected && selectedServer && (
+            <View style={styles.logRow}>
+              <View style={styles.timeline}>
+                <View style={[styles.timelineDot, { backgroundColor: Colors.emerald[400] }]} />
+                {sessions.length > 0 && <View style={styles.timelineLine} />}
+              </View>
+              <GlassCard style={[styles.logCard, styles.logCardLive]}>
+                <View style={styles.logTop}>
+                  <View style={styles.logLeft}>
+                    <Text style={styles.logFlag}>{selectedServer.flag}</Text>
+                    <View>
+                      <Text style={styles.logServer}>{selectedServer.city}, {selectedServer.country}</Text>
+                      <Text style={styles.logProtocol}>{selectedServer.protocol}</Text>
+                    </View>
+                  </View>
+                  <View style={[styles.statusPill, { backgroundColor: 'rgba(0,232,122,0.12)', borderColor: 'rgba(0,232,122,0.4)' }]}>
+                    <Text style={[styles.statusText, { color: Colors.emerald[400] }]}>Live</Text>
+                  </View>
+                </View>
+                <View style={styles.logMeta}>
+                  <Text style={styles.metaItem}>⏱ {formatDuration(liveDuration)}</Text>
+                  <Text style={styles.metaDivider}>·</Text>
+                  <Text style={styles.metaItem}>↑ {formatBytes(sessionBytes.sent)}</Text>
+                  <Text style={styles.metaDivider}>·</Text>
+                  <Text style={styles.metaItem}>↓ {formatBytes(sessionBytes.received)}</Text>
+                  <Text style={styles.metaDivider}>·</Text>
+                  <Text style={styles.metaItem}>{timeLabel(sessionStartedAt!)}</Text>
+                </View>
+              </GlassCard>
+            </View>
+          )}
+
+          {sessions.length === 0 && !isConnected ? (
             <GlassCard>
               <Text style={styles.emptyText}>{t('ac.noSessions')}</Text>
             </GlassCard>
@@ -334,6 +392,9 @@ const styles = StyleSheet.create({
   logCard: {
     flex: 1,
     gap:  Spacing[2],
+  },
+  logCardLive: {
+    borderColor: 'rgba(0,232,122,0.25)',
   },
   logTop: {
     flexDirection:  'row',

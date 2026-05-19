@@ -42,7 +42,6 @@ export function BiometricLockScreen({ visible, onUnlock }: Props) {
     if (visible) {
       setError(null);
       setUnavailable(false);
-      // Auto-trigger biometric on show
       handleAuthenticate();
     }
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -61,7 +60,7 @@ export function BiometricLockScreen({ visible, onUnlock }: Props) {
         {unavailable ? (
           <Text style={styles.errorText}>
             Biometric authentication is not available on this device.{'\n'}
-            Please check your device settings.
+            Please check your device settings or continue below.
           </Text>
         ) : error ? (
           <Text style={styles.errorText}>{error}</Text>
@@ -74,9 +73,19 @@ export function BiometricLockScreen({ visible, onUnlock }: Props) {
           activeOpacity={0.8}
         >
           <Text style={styles.unlockBtnText}>
-            {loading ? 'Authenticating…' : unavailable ? 'Unavailable' : 'Unlock with Biometrics'}
+            {loading ? 'Authenticating…' : 'Unlock with Biometrics'}
           </Text>
         </TouchableOpacity>
+
+        {unavailable && (
+          <TouchableOpacity
+            style={styles.fallbackBtn}
+            onPress={onUnlock}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.fallbackBtnText}>Continue without Biometric</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </Modal>
   );
@@ -92,4 +101,6 @@ const styles = StyleSheet.create({
   unlockBtn:        { marginTop: Spacing[4], paddingHorizontal: 40, paddingVertical: Spacing[4], backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, minWidth: 220, alignItems: 'center' },
   unlockBtnLoading: { opacity: 0.6 },
   unlockBtnText:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: 0.3 },
+  fallbackBtn:      { paddingHorizontal: 40, paddingVertical: Spacing[3], borderRadius: Radius.lg, minWidth: 220, alignItems: 'center', borderWidth: 1, borderColor: Colors.border.default },
+  fallbackBtnText:  { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, letterSpacing: 0.2 },
 });

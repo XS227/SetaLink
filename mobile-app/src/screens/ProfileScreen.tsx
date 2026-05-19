@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Switch, Linking,
 } from 'react-native';
@@ -8,6 +8,8 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { useAuthStore }    from '../stores/authStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
+import { useVpnStore }     from '../stores/vpnStore';
+import { BiometricService } from '../services/biometricService';
 import { formatBytes } from '../utils/formatters';
 import { useT } from '../i18n';
 
@@ -94,8 +96,19 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { user, logout, setBiometricSecure } = useAuthStore();
   const { sessionsThisMonth } = useSessionStore();
   const showToast = useToastStore((s) => s.show);
+  const { connectionState, sessionBytes } = useVpnStore();
+
+  const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    BiometricService.isAvailable().then(setBiometricAvailable).catch(() => setBiometricAvailable(false));
+  }, []);
 
   if (!user) return null;
+
+  const isConnected = connectionState === 'connected';
+  // Show live quota usage including the current active session
+  const liveQuotaUsed = user.quotaBytesUsed + (isConnected ? sessionBytes.sent + sessionBytes.received : 0);
 
   const plan     = PLAN_LIMITS[user.plan] ?? PLAN_LIMITS.free;
   const planLabel = plan.labelKey;
@@ -209,7 +222,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                   </View>
                 ) : plan.gbLimit !== null ? (
                   <View style={styles.gbPill}>
-                    <Text style={styles.gbPillText}>{`${Math.max(0, (user.quotaBytesTotal - user.quotaBytesUsed) / 1e9).toFixed(1)} GB ${t('pr.remaining')}`}</Text>
+                    <Text style={styles.gbPillText}>{`${Math.max(0, (user.quotaBytesTotal - liveQuotaUsed) / 1e9).toFixed(1)} GB ${t('pr.remaining')}`}</Text>
                   </View>
                 ) : null}
                 {daysLeft !== null && (
@@ -230,7 +243,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <View style={styles.subDivider} />
 
           <BandwidthBar
-            usedBytes={user.quotaBytesUsed}
+            usedBytes={liveQuotaUsed}
             limitGb={plan.gbLimit}
             labelUnlimited={t('pr.unlimited')}
             labelUsedMonth={t('pr.usedMonth')}
@@ -241,7 +254,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <View style={styles.subMeta}>
             {[
               { label: t('pr.totalQuota'), value: plan.gbLimit === null ? t('pr.unlimitedShort') : `${(user.quotaBytesTotal / 1e9).toFixed(1)} GB` },
-              { label: t('pr.usedTraffic'),  value: `${(user.quotaBytesUsed / 1e9).toFixed(2)} GB` },
+              { label: t('pr.usedTraffic'),  value: `${(liveQuotaUsed / 1e9).toFixed(2)} GB` },
               { label: t('pr.sessions'),    value: String(monthSessions.length) },
             ].map((item) => (
               <View key={item.label} style={styles.subMetaItem}>
@@ -268,13 +281,22 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
         <GlassCard>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View>
+            <View style={{ flex: 1, marginRight: Spacing[3] }}>
               <Text style={styles.cardLabel}>{t('pr.biometricLock')}</Text>
               <Text style={styles.deviceOs}>{t('pr.biometricLockDesc')}</Text>
+              {biometricAvailable === false && (
+                <Text style={styles.biometricWarning}>
+                  Biometric authentication is not available on this device.
+                </Text>
+              )}
             </View>
             <Switch
-              value={user.securedWithBiometric}
-              onValueChange={setBiometricSecure}
+              value={biometricAvailable === true && user.securedWithBiometric}
+              disabled={biometricAvailable === false}
+              onValueChange={(v) => {
+                if (!biometricAvailable) return;
+                setBiometricSecure(v);
+              }}
               trackColor={{ true: Colors.emerald[400], false: Colors.bg.elevated }}
             />
           </View>
@@ -307,7 +329,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
         <GlassCard>
           <Text style={styles.footerBrand}>SetaLink</Text>
-          <Text style={styles.footerMeta}>v1.0.0 (100)</Text>
+          <Text style={styles.footerMeta}>v0.9.3 (8)</Text>
           <TouchableOpacity onPress={handleOpenWebsite}>
             <Text style={styles.footerLink}>https://setalink.no</Text>
           </TouchableOpacity>
@@ -377,6 +399,7 @@ const styles = StyleSheet.create({
   deviceInfo:       { flex: 1 },
   deviceName:       { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.primary },
   deviceOs:         { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  biometricWarning: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: '#FFB800', marginTop: 4, lineHeight: 16 },
   deviceStatus:     { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
   deviceStatusText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label },
   referralCard:     { gap: Spacing[3] },

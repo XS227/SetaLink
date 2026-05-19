@@ -5,7 +5,8 @@ import {
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useServerStore } from '../stores/serverStore';
+import { useServerStore }   from '../stores/serverStore';
+import { BiometricService } from '../services/biometricService';
 import { useT } from '../i18n';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -119,9 +120,28 @@ export function SettingsScreen({ onBack }: SettingsProps) {
     protocol, dnsMode, language,
     autoConnect, biometricLock,
     setProtocol, setDnsMode, setLanguage,
-    toggleAutoConnect, toggleBiometricLock,
+    toggleAutoConnect, toggleBiometricLock, setBiometricLock,
   } = useSettingsStore();
   const { clearImportedServers, loadBootstrapIfEmpty } = useServerStore();
+
+  const handleBiometricToggle = async () => {
+    if (biometricLock) {
+      // Turning off — always allowed
+      toggleBiometricLock();
+      return;
+    }
+    // Turning on — verify device support first
+    const available = await BiometricService.isAvailable().catch(() => false);
+    if (!available) {
+      Alert.alert(
+        'Biometric Unavailable',
+        'This device does not have enrolled biometrics. Please set up fingerprint or face unlock in your device settings first.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    setBiometricLock(true);
+  };
 
   function Section({ label, children }: { label: string; children: React.ReactNode }) {
     return (
@@ -191,7 +211,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
             label={t('st.biometric')}
             description={t('st.biometricD')}
             value={biometricLock}
-            onChange={toggleBiometricLock}
+            onChange={handleBiometricToggle}
           />
         </Section>
 
