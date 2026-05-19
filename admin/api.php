@@ -398,6 +398,8 @@ if ($method === 'POST') {
             'rc_emergency_sni','rc_iran_sni_order','rc_ttl','rc_updated_at',
             'bootstrap_uuid','bootstrap_address','bootstrap_port','bootstrap_pubkey',
             'bootstrap_shortid','bootstrap_sni','bootstrap_flow','bootstrap_fp',
+            'bootstrap_edge_address','bootstrap_edge_port',
+            'bootstrap_ws_path','bootstrap_xhttp_path','bootstrap_httpup_path',
         ];
         $db_rc = open_analytics_db();
         $st_rc = $db_rc->prepare('INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime(\'now\'))');
@@ -765,6 +767,21 @@ switch ($action) {
             $v = json_decode($rows[$key], true);
             return ($v !== null) ? $v : $rows[$key];
         };
+        $bs = !empty($rows['bootstrap_uuid']) ? [
+            'uuid'        => $rows['bootstrap_uuid'] ?? '',
+            'address'     => $rows['bootstrap_address'] ?? '',
+            'port'        => (int)($rows['bootstrap_port'] ?? 8443),
+            'publicKey'   => $rows['bootstrap_pubkey'] ?? '',
+            'shortId'     => $rows['bootstrap_shortid'] ?? '',
+            'sni'         => $rows['bootstrap_sni'] ?? 'www.microsoft.com',
+            'flow'        => $rows['bootstrap_flow'] ?? 'xtls-rprx-vision',
+            'fingerprint' => $rows['bootstrap_fp'] ?? 'chrome',
+            'edgeAddress' => $rows['bootstrap_edge_address'] ?? 'edge.setalink.no',
+            'edgePort'    => (int)($rows['bootstrap_edge_port'] ?? 443),
+            'wsPath'      => $rows['bootstrap_ws_path'] ?? '/ws',
+            'xhttpPath'   => $rows['bootstrap_xhttp_path'] ?? '/xhttp',
+            'httpupPath'  => $rows['bootstrap_httpup_path'] ?? '/httpup',
+        ] : null;
         api_ok([
             'version'        => (int)($rows['rc_version'] ?? 1),
             'sni_priorities' => $decode('rc_sni_priorities', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
@@ -774,7 +791,8 @@ switch ($action) {
             'iran_sni_order' => $decode('rc_iran_sni_order', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
             'ttl'            => (int)($rows['rc_ttl'] ?? 3600),
             'updated_at'     => (string)($rows['rc_updated_at'] ?? ''),
-            'bootstrap_set'  => !empty($rows['bootstrap_uuid']),
+            'bootstrap_set'  => $bs !== null,
+            'bootstrap'      => $bs,
         ]);
         break;
 

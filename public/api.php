@@ -92,6 +92,11 @@ function fetch_bootstrap_server(PDO $pdo): ?array {
         'sni'         => $r['bootstrap_sni'] ?? 'www.microsoft.com',
         'flow'        => $r['bootstrap_flow'] ?? 'xtls-rprx-vision',
         'fingerprint' => $r['bootstrap_fp'] ?? 'chrome',
+        'edgeAddress' => $r['bootstrap_edge_address'] ?? 'edge.setalink.no',
+        'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
+        'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
+        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
+        'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
     ];
 }
 
@@ -104,11 +109,24 @@ if ($method === 'GET') {
 
     if ($action === 'remote-config') {
         $pdo = db();
-        $row = $pdo->query("SELECT value FROM settings WHERE key='remote_config' LIMIT 1")->fetch();
-        if (!$row) err('no remote config');
-        $cfg = json_decode($row['value'], true);
-        if (!is_array($cfg)) err('invalid remote config');
-        ok($cfg);
+        try {
+            $row = $pdo->query("SELECT value FROM settings WHERE key='remote_config' LIMIT 1")->fetch();
+        } catch (\Exception $e) { $row = null; }
+        if ($row) {
+            $cfg = json_decode($row['value'], true);
+            if (is_array($cfg)) { ok($cfg); }
+        }
+        // Return hardcoded defaults if no config saved yet
+        ok([
+            'version'        => 1,
+            'sni_priorities' => ['www.microsoft.com', 'www.bing.com', 'www.apple.com', 'www.samsung.com'],
+            'kill_switches'  => [],
+            'protocol_order' => ['Reality', 'XHTTP', 'WebSocket'],
+            'emergency_sni'  => 'www.microsoft.com',
+            'iran_sni_order' => ['www.microsoft.com', 'www.bing.com', 'www.apple.com'],
+            'ttl'            => 3600,
+            'updated_at'     => '',
+        ]);
     }
 
     if ($action === 'bootstrap') {
@@ -117,7 +135,7 @@ if ($method === 'GET') {
         if (!$srv) err('no bootstrap configured');
         ok([
             'id'          => 'server-emergency',
-            'label'       => 'Emergency (built-in)',
+            'label'       => 'SetaLink Reality',
             'uuid'        => $srv['uuid']        ?? '',
             'address'     => $srv['address']     ?? '',
             'port'        => (int)($srv['port']  ?? 8443),
@@ -126,6 +144,11 @@ if ($method === 'GET') {
             'sni'         => $srv['sni']         ?? 'www.microsoft.com',
             'flow'        => $srv['flow']        ?? 'xtls-rprx-vision',
             'fingerprint' => $srv['fingerprint'] ?? 'chrome',
+            'edgeAddress' => $srv['edgeAddress'] ?? 'edge.setalink.no',
+            'edgePort'    => (int)($srv['edgePort'] ?? 443),
+            'wsPath'      => $srv['wsPath']      ?? '/ws',
+            'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp',
+            'httpupPath'  => $srv['httpupPath']  ?? '/httpup',
         ]);
     }
 

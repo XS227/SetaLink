@@ -248,8 +248,11 @@ export const useServerStore = create<ServerState>()(
 
   loadBootstrapIfEmpty: async () => {
     const { servers, importedCreds } = get();
-    // Only load bootstrap when the user has no imported configs at all.
-    if (Object.keys(importedCreds).length > 0 || servers.length > 0) return false;
+    const nonBootstrapServers = servers.filter(
+      (s) => s.id !== 'server-emergency' && s.id !== 'bootstrap-1',
+    );
+    // If user has real imported servers, bootstrap is not needed
+    if (nonBootstrapServers.length > 0) return false;
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -257,15 +260,16 @@ export const useServerStore = create<ServerState>()(
       const profile = await getEmergencyProfile();
       if (!profile?.uuid || !profile?.address || !profile?.publicKey) return false;
 
+      const id = 'server-emergency';
       const record: ServerRecord = {
-        id:       profile.id || 'bootstrap-1',
-        country:  'SetaLink',
-        city:     'Auto',
-        flag:     '⚡',
+        id,
+        country:  'Norway',
+        city:     'Hetzner VPS',
+        flag:     '🇳🇴',
         ping:     0,
         load:     0,
         protocol: 'Reality',
-        tags:     ['Recommended', 'Stealth'],
+        tags:     ['Stealth'],
       };
       const creds: ServerCredentials = {
         uuid:        profile.uuid,
@@ -276,19 +280,21 @@ export const useServerStore = create<ServerState>()(
         sni:         profile.sni,
         flow:        profile.flow,
         fingerprint: profile.fingerprint,
-        edgeAddress: profile.edgeAddress,
-        edgePort:    profile.edgePort,
-        wsPath:      profile.wsPath,
-        xhttpPath:   profile.xhttpPath,
-        httpupPath:  profile.httpupPath,
+        edgeAddress: profile.edgeAddress || 'edge.setalink.no',
+        edgePort:    profile.edgePort    || 443,
+        wsPath:      profile.wsPath      || '/ws',
+        xhttpPath:   profile.xhttpPath   || '/xhttp',
+        httpupPath:  profile.httpupPath  || '/httpup',
       };
 
+      const prevSelectedId = get().selectedId;
       set({
-        servers:       [record],
-        importedCreds: { [record.id]: creds },
-        selectedId:    record.id,
+        servers:       [...nonBootstrapServers, record],
+        importedCreds: { ...importedCreds, [id]: creds },
+        selectedId:    prevSelectedId || id,
       });
-      syncToVpnStore(record);
+      // Sync to vpnStore when no server was previously selected (first install)
+      if (!prevSelectedId) syncToVpnStore(record);
       return true;
     } catch {
       return false;
