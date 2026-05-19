@@ -328,6 +328,78 @@ if ($method === 'POST') {
         ok(['status' => $status]);
     }
 
+    if ($action === 'submit-payment') {
+        $deviceId = trim($_POST['device_id']  ?? '');
+        $pkg      = trim($_POST['package']     ?? '');
+        $memo     = substr(trim($_POST['memo'] ?? ''), 0, 255);
+        $tx       = substr(trim($_POST['tx_hash'] ?? ''), 0, 100);
+        $amt      = (float)($_POST['amount_usdt'] ?? 0);
+        $validPkgs = ['7days','30days','unlimited','5GB','10GB','15GB'];
+        if (!$deviceId) err('missing device_id');
+        if (!in_array($pkg, $validPkgs, true)) err('invalid package');
+
+        $pdo = db();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS payment_queue (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id   TEXT NOT NULL,
+            memo        TEXT DEFAULT '',
+            package     TEXT NOT NULL DEFAULT '30days',
+            amount_usdt REAL DEFAULT 0,
+            tx_hash     TEXT DEFAULT '',
+            status      TEXT NOT NULL DEFAULT 'pending',
+            submitted_at TEXT DEFAULT (datetime('now')),
+            reviewed_at  TEXT DEFAULT NULL,
+            reviewed_by  TEXT DEFAULT '',
+            note         TEXT DEFAULT ''
+        )");
+        $pdo->prepare("INSERT INTO payment_queue (device_id, package, memo, tx_hash, amount_usdt) VALUES (?,?,?,?,?)")
+            ->execute([$deviceId, $pkg, $memo, $tx, $amt]);
+        ok(['payment_id' => (int)$pdo->lastInsertId()]);
+    }
+
+    if ($action === 'report-session') {
+        $deviceId     = trim($_POST['device_id']     ?? '');
+        $protocol     = substr(trim($_POST['protocol']  ?? ''), 0, 60);
+        $bytesSent    = (int)($_POST['bytes_sent']    ?? 0);
+        $bytesRecv    = (int)($_POST['bytes_recv']    ?? 0);
+        $durationSecs = (int)($_POST['duration_secs'] ?? 0);
+        $appVersion   = substr(trim($_POST['app_version'] ?? ''), 0, 20);
+        if (!$deviceId || $durationSecs < 1) err('invalid session data');
+
+        $pdo = db();
+        // Create sessions table if not exists
+        $pdo->exec("CREATE TABLE IF NOT EXISTS vpn_sessions (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id     TEXT,
+            protocol      TEXT,
+            bytes_sent    INTEGER DEFAULT 0,
+            bytes_recv    INTEGER DEFAULT 0,
+            duration_secs INTEGER DEFAULT 0,
+            app_version   TEXT    DEFAULT '',
+            started_at    TEXT,
+            ended_at      TEXT    DEFAULT (datetime('now')),
+            client_ip     TEXT    DEFAULT ''
+        )");
+        $pdo->prepare(
+            "INSERT INTO vpn_sessions
+                (device_id, protocol, bytes_sent, bytes_recv, duration_secs, app_version, started_at, ended_at, client_ip)
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now', ? || ' seconds'), datetime('now'), ?)"
+        )->execute([
+            $deviceId, $protocol, $bytesSent, $bytesRecv,
+            $durationSecs, $appVersion,
+            '-' . $durationSecs,
+            $_SERVER['REMOTE_ADDR'] ?? '',
+        ]);
+        // Accumulate quota usage
+        $total = $bytesSent + $bytesRecv;
+        if ($total > 0) {
+            $pdo->prepare(
+                "UPDATE devices SET quota_bytes_used=quota_bytes_used+?, last_seen=datetime('now') WHERE device_id=?"
+            )->execute([$total, $deviceId]);
+        }
+        ok(['recorded' => true]);
+    }
+
     err('unknown action');
 }
 

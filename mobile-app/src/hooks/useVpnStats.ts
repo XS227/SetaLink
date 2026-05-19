@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useVpnStore } from '../stores/vpnStore';
+import { useAuthStore } from '../stores/authStore';
 import { getAdapter }  from '../services/vpnBridge';
 
 export interface VpnStatsResult {
@@ -17,6 +18,8 @@ const POLL_MS = 3000;
 export function useVpnStats(): VpnStatsResult {
   const connectionState = useVpnStore((s) => s.connectionState);
   const setSessionBytes = useVpnStore((s) => s.setSessionBytes);
+  const disconnect      = useVpnStore((s) => s.disconnect);
+  const user = useAuthStore((s) => s.user);
 
   const [stats, setStats] = useState<VpnStatsResult>({ uploadMbps: 0, downloadMbps: 0, pingMs: 0 });
 
@@ -37,6 +40,15 @@ export function useVpnStats(): VpnStatsResult {
         if (cancelled) return;
 
         setSessionBytes({ sent: s.uploadBytes, received: s.downloadBytes });
+
+        // Quota enforcement: auto-disconnect when free plan exhausts quota.
+        if (user && user.plan === 'free') {
+          const totalUsed = (user.quotaBytesUsed ?? 0) + s.uploadBytes + s.downloadBytes;
+          if (totalUsed >= (user.quotaBytesTotal ?? 0) && user.quotaBytesTotal > 0) {
+            disconnect();
+            return;
+          }
+        }
 
         const now = Date.now();
         let uploadMbps   = 0;
