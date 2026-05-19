@@ -199,7 +199,7 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $db3 = open_analytics_db();
         $server = fetch_bootstrap_server($db3);
         if ($server) {
-            api_ok(array_merge(['id' => 'server-emergency', 'label' => 'Emergency (built-in)'], $server));
+            api_ok(array_merge(['id' => 'server-emergency', 'label' => 'SetaLink Reality'], $server));
         }
         api_err('no bootstrap config set', 404);
     }
