@@ -40,6 +40,8 @@ import { UpgradeScreen }            from '../screens/UpgradeScreen';
 import { runBootSequence }       from '../services/bootService';
 import { getOrCreateDeviceId }   from '../services/deviceIdentityService';
 import { registerDevice }        from '../services/entitlementService';
+import { BiometricService }      from '../services/biometricService';
+import { getAdapter }            from '../services/vpnBridge';
 import { useAuthStore }          from '../stores/authStore';
 import { useSettingsStore }      from '../stores/settingsStore';
 import { useVpnStore }           from '../stores/vpnStore';
@@ -88,6 +90,9 @@ function MainTabs() {
   const fetchServers        = useServerStore((s) => s.fetchServers);
   const loadBootstrapIfEmpty = useServerStore((s) => s.loadBootstrapIfEmpty);
   const biometricLock       = useSettingsStore((s) => s.biometricLock);
+  const setBiometricLock    = useSettingsStore((s) => s.setBiometricLock);
+  const connectionState     = useVpnStore((s) => s.connectionState);
+  const setSessionBytes     = useVpnStore((s) => s.setSessionBytes);
 
   const [isLocked, setIsLocked] = React.useState(false);
   const appStateRef = React.useRef(AppState.currentState);
@@ -102,16 +107,41 @@ function MainTabs() {
     loadBootstrapIfEmpty().catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // On mount: if biometric lock is enabled, verify the device actually supports it.
+  // If unavailable, silently disable the setting so the user is never locked out.
+  useEffect(() => {
+    if (!biometricLock) return;
+    BiometricService.isAvailable().then((available) => {
+      if (!available) setBiometricLock(false);
+    }).catch(() => setBiometricLock(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', (nextState) => {
       if (appStateRef.current === 'active' && nextState.match(/inactive|background/)) {
-        // App going to background
-        if (biometricLock) setIsLocked(true);
+        // Only lock if biometric lock is still enabled (it may have been auto-disabled above)
+        if (useSettingsStore.getState().biometricLock) setIsLocked(true);
       }
       appStateRef.current = nextState;
     });
     return () => sub.remove();
-  }, [biometricLock]);
+  }, []);
+
+  // Global traffic poller — runs at the shell level regardless of which tab is active.
+  // Ensures sessionBytes stays up to date for Activity, Profile, and Home displays.
+  useEffect(() => {
+    if (connectionState !== 'connected') return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const s = await getAdapter().getStats();
+        if (!cancelled) setSessionBytes({ sent: s.uploadBytes, received: s.downloadBytes });
+      } catch {}
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [connectionState]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>

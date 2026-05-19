@@ -27,6 +27,7 @@ interface SettingsState {
   toggleIpv6:               () => void;
   togglePushNotifications:  () => void;
   toggleBiometricLock:      () => void;
+  setBiometricLock:         (v: boolean) => void;
   completeOnboarding:       () => void;
   completeLanguageSelection: () => void;
   markWelcomeSeen:           () => void;
@@ -60,6 +61,7 @@ export const useSettingsStore = create<SettingsState>()(
       toggleIpv6:                () => set((s) => ({ ipv6:              !s.ipv6 })),
       togglePushNotifications:   () => set((s) => ({ pushNotifications: !s.pushNotifications })),
       toggleBiometricLock:       () => set((s) => ({ biometricLock:     !s.biometricLock })),
+      setBiometricLock:          (v) => set({ biometricLock: v }),
       completeOnboarding:        () => set({ hasOnboarded: true }),
       completeLanguageSelection: () => set({ hasSelectedLanguage: true }),
       markWelcomeSeen:           () => set({ hasSeenWelcome: true }),
