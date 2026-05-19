@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
@@ -31,9 +32,10 @@ import { ActivityScreen }    from '../screens/ActivityScreen';
 import { ProfileScreen }     from '../screens/ProfileScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
-import { BottomNav, NavTab } from '../components/BottomNav';
-import { Toast }             from '../components/Toast';
-import { UpgradeScreen }     from '../screens/UpgradeScreen';
+import { BottomNav, NavTab }        from '../components/BottomNav';
+import { Toast }                    from '../components/Toast';
+import { BiometricLockScreen }      from '../components/BiometricLockScreen';
+import { UpgradeScreen }            from '../screens/UpgradeScreen';
 
 import { runBootSequence }       from '../services/bootService';
 import { getOrCreateDeviceId }   from '../services/deviceIdentityService';
@@ -82,9 +84,13 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
 function MainTabs() {
   useAppBoot(); // registers AppState listener for kill-switch / reconnect logic
 
-  const token        = useAuthStore((s) => s.token);
+  const token               = useAuthStore((s) => s.token);
   const fetchServers        = useServerStore((s) => s.fetchServers);
   const loadBootstrapIfEmpty = useServerStore((s) => s.loadBootstrapIfEmpty);
+  const biometricLock       = useSettingsStore((s) => s.biometricLock);
+
+  const [isLocked, setIsLocked] = React.useState(false);
+  const appStateRef = React.useRef(AppState.currentState);
 
   useEffect(() => {
     if (token) { fetchServers(token).catch(() => {}); }
@@ -96,26 +102,40 @@ function MainTabs() {
     loadBootstrapIfEmpty().catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (nextState) => {
+      if (appStateRef.current === 'active' && nextState.match(/inactive|background/)) {
+        // App going to background
+        if (biometricLock) setIsLocked(true);
+      }
+      appStateRef.current = nextState;
+    });
+    return () => sub.remove();
+  }, [biometricLock]);
+
   return (
-    <Tab.Navigator
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => {
-        const routeName = props.state.routes[props.state.index].name as string;
-        const activeTab = SCREEN_TO_TAB[routeName] ?? 'home';
-        return (
-          <BottomNav
-            active={activeTab}
-            onPress={(tab) => props.navigation.navigate(TAB_TO_SCREEN[tab])}
-          />
-        );
-      }}
-    >
-      <Tab.Screen name="Home"     component={HomeAdapter} />
-      <Tab.Screen name="Servers"  component={ServersAdapter} />
-      <Tab.Screen name="AI"       component={AIAdapter} />
-      <Tab.Screen name="Activity" component={ActivityAdapter} />
-      <Tab.Screen name="Profile"  component={ProfileAdapter} />
-    </Tab.Navigator>
+    <>
+      <Tab.Navigator
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => {
+          const routeName = props.state.routes[props.state.index].name as string;
+          const activeTab = SCREEN_TO_TAB[routeName] ?? 'home';
+          return (
+            <BottomNav
+              active={activeTab}
+              onPress={(tab) => props.navigation.navigate(TAB_TO_SCREEN[tab])}
+            />
+          );
+        }}
+      >
+        <Tab.Screen name="Home"     component={HomeAdapter} />
+        <Tab.Screen name="Servers"  component={ServersAdapter} />
+        <Tab.Screen name="AI"       component={AIAdapter} />
+        <Tab.Screen name="Activity" component={ActivityAdapter} />
+        <Tab.Screen name="Profile"  component={ProfileAdapter} />
+      </Tab.Navigator>
+      <BiometricLockScreen visible={isLocked} onUnlock={() => setIsLocked(false)} />
+    </>
   );
 }
 

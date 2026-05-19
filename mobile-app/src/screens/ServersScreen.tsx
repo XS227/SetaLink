@@ -132,6 +132,15 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   }, [isTransitioning, servers, userPlan, selectedId, isConnected, onNavigate, selectServer, switchServer]);
 
   const handleDeleteServer = useCallback((serverId: string, serverName: string) => {
+    const importedCount = Object.keys(importedCreds).length;
+    if (importedCount <= 1) {
+      Alert.alert(
+        'Cannot Delete',
+        'This is your only profile. Import a new config before removing this one.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
     Alert.alert(
       t('sv.remove'),
       `"${serverName}" ${t('sv.removeConfirm')}`,
@@ -144,7 +153,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         },
       ],
     );
-  }, [removeImportedServer, t]);
+  }, [removeImportedServer, importedCreds, t]);
 
   const handleConnect = useCallback(() => {
     if (isTransitioning) return;
@@ -204,24 +213,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.errorBannerText}>◎ {loadError}</Text>
           </View>
         )}
-
-        {/* Search */}
-        <View style={styles.searchWrapper}>
-          <Text style={styles.searchIcon}>◎</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder={t('sv.search')}
-            placeholderTextColor={Colors.text.muted}
-            value={query}
-            onChangeText={setQuery}
-            selectionColor={Colors.emerald[400]}
-          />
-          {query.length > 0 && (
-            <TouchableOpacity onPress={() => setQuery('')}>
-              <Text style={styles.clearIcon}>✕</Text>
-            </TouchableOpacity>
-          )}
-        </View>
 
         {/* Filter tabs */}
         <ScrollView
@@ -487,12 +478,6 @@ const styles = StyleSheet.create({
   cachedBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
   errorBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
   errorBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-
-  // Search
-  searchWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[4], paddingVertical: Spacing[3], gap: Spacing[3] },
-  searchIcon:    { fontSize: 16, color: Colors.text.muted },
-  searchInput:   { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },
-  clearIcon:     { fontSize: 14, color: Colors.text.muted },
 
   // Filter tabs
   tabScroll:        { marginHorizontal: -Layout.screenPadding },

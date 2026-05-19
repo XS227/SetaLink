@@ -120,6 +120,24 @@ export const useVpnStore = create<VpnState>((set, get) => {
       if (state.sessionStartedAt) {
         appendMetric({ type: 'disconnect', at: Date.now(), durationSec: Math.max(1, Math.floor((Date.now() - state.sessionStartedAt)/1000)), reconnects: state.reconnectAttempts });
       }
+
+      // Update local quota usage
+      const totalBytes = state.sessionBytes.sent + state.sessionBytes.received;
+      if (totalBytes > 0) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useAuthStore } = require('./authStore');
+          useAuthStore.getState().consumeQuota(totalBytes);
+          // Report to backend asynchronously (fire and forget)
+          const user = useAuthStore.getState().user;
+          if (user) {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { reportUsage } = require('../services/entitlementService');
+            reportUsage(user.deviceId, useAuthStore.getState().user!.quotaBytesUsed).catch(() => {});
+          }
+        } catch {}
+      }
+
       set({ sessionStartedAt: null, sessionBytes: { sent: 0, received: 0 }, reconnectAttempts: 0 });
 
       // Server switch: skip the disconnect toast and auto-reconnect to the new server

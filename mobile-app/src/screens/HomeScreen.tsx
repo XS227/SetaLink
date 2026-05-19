@@ -153,11 +153,35 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         </Animated.View>
 
         {/* Connection log (shown while connecting or on error) */}
-        {(connectionState === 'connecting' || connectionState === 'failed') && connectionLog.length > 0 && (
+        {(connectionState === 'connecting' || connectionState === 'failed') && (
           <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
             <GlassCard style={styles.logPanel}>
               <Text style={styles.logPanelTitle}>{t('home.connLog')}</Text>
-              {connectionLog.map((entry, i) => (
+              {connectionLog.length === 0 && connectionState === 'connecting' ? (
+                <Text style={styles.logEntry}>Establishing tunnel…</Text>
+              ) : (
+                connectionLog.map((entry, i) => (
+                  <Text
+                    key={i}
+                    style={[
+                      styles.logEntry,
+                      entry.startsWith('✗') && styles.logEntryError,
+                      entry.startsWith('✓') && styles.logEntryOk,
+                    ]}
+                  >
+                    {entry}
+                  </Text>
+                ))
+              )}
+            </GlassCard>
+          </Animated.View>
+        )}
+        {/* Connection log (shown when connected — last 5 entries) */}
+        {connectionState === 'connected' && connectionLog.length > 0 && (
+          <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+            <GlassCard style={styles.logPanel}>
+              <Text style={styles.logPanelTitle}>{t('home.connLog')}</Text>
+              {connectionLog.slice(-5).map((entry, i) => (
                 <Text
                   key={i}
                   style={[

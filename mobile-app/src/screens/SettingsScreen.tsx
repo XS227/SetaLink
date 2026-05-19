@@ -117,11 +117,9 @@ export function SettingsScreen({ onBack }: SettingsProps) {
   const { t } = useT();
   const {
     protocol, dnsMode, language,
-    autoConnect, killSwitch, stealthMode, splitTunnel, ipv6,
-    pushNotifications, biometricLock,
+    autoConnect, biometricLock,
     setProtocol, setDnsMode, setLanguage,
-    toggleAutoConnect, toggleKillSwitch, toggleStealthMode,
-    toggleSplitTunnel, toggleIpv6, togglePushNotifications, toggleBiometricLock,
+    toggleAutoConnect, toggleBiometricLock,
   } = useSettingsStore();
   const { clearImportedServers, loadBootstrapIfEmpty } = useServerStore();
 
@@ -179,40 +177,6 @@ export function SettingsScreen({ onBack }: SettingsProps) {
           />
         </Section>
 
-        <Section label={t('st.privacy')}>
-          <ToggleRow
-            label={t('st.killSwitch')}
-            description={t('st.killSwitchD')}
-            value={killSwitch}
-            onChange={toggleKillSwitch}
-            comingSoon
-          />
-          <Divider />
-          <ToggleRow
-            label={t('st.stealth')}
-            description={t('st.stealthD')}
-            value={stealthMode}
-            onChange={toggleStealthMode}
-            comingSoon
-          />
-          <Divider />
-          <ToggleRow
-            label={t('st.split')}
-            description={t('st.splitD')}
-            value={splitTunnel}
-            onChange={toggleSplitTunnel}
-            comingSoon
-          />
-          <Divider />
-          <ToggleRow
-            label={t('st.ipv6')}
-            description={t('st.ipv6D')}
-            value={ipv6}
-            onChange={toggleIpv6}
-            comingSoon
-          />
-        </Section>
-
         <Section label={t('st.appearance')}>
           <SelectRow
             label={t('st.language')}
@@ -224,19 +188,10 @@ export function SettingsScreen({ onBack }: SettingsProps) {
 
         <Section label={t('st.notifications')}>
           <ToggleRow
-            label={t('st.pushNotif')}
-            description={t('st.pushNotifD')}
-            value={pushNotifications}
-            onChange={togglePushNotifications}
-            comingSoon
-          />
-          <Divider />
-          <ToggleRow
             label={t('st.biometric')}
             description={t('st.biometricD')}
             value={biometricLock}
             onChange={toggleBiometricLock}
-            comingSoon
           />
         </Section>
 
@@ -275,7 +230,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
 
         <View style={styles.about}>
           <Text style={styles.appName}>SetaLink</Text>
-          <Text style={styles.version}>{t('st.version')} 1.0.0 · Build 2026.05.16</Text>
+          <Text style={styles.version}>{t('st.version')} 0.9.2 · Build 2026.05.19</Text>
           <Text style={styles.legal}>© 2026 SetaLink. {t('st.allRights')}</Text>
         </View>
 

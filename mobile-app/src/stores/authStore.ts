@@ -36,6 +36,7 @@ interface AuthState {
   touchLastSeen:         () => void;
   setBiometricSecure:    (enabled: boolean) => void;
   consumeQuota:          (bytes: number) => void;
+  fixQuotaOverflow:      () => void;
 }
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
@@ -83,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
             referralParent:       null,
             referralCode:         e.referral_code,
             quotaBytesTotal:      e.quota_bytes_total,
-            quotaBytesUsed:       e.quota_bytes_used,
+            quotaBytesUsed:       Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
             createdAt:            now,
             lastSeen:             now,
             securedWithBiometric: false,
@@ -103,7 +104,7 @@ export const useAuthStore = create<AuthState>()(
             ...prev.user,
             referralCode:    e.referral_code,
             quotaBytesTotal: e.quota_bytes_total,
-            quotaBytesUsed:  e.quota_bytes_used,
+            quotaBytesUsed:  Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
             status:          e.blocked ? 'blocked' : 'active',
             plan:            'free',
             planExpiry:      e.valid_until ?? null,
@@ -121,6 +122,12 @@ export const useAuthStore = create<AuthState>()(
       consumeQuota: (bytes) => set((prev) => {
         if (!prev.user) return prev;
         const used = Math.max(0, Math.min(prev.user.quotaBytesTotal, prev.user.quotaBytesUsed + Math.max(0, bytes)));
+        return { user: { ...prev.user, quotaBytesUsed: used } };
+      }),
+      fixQuotaOverflow: () => set((prev) => {
+        if (!prev.user) return prev;
+        const used = Math.min(prev.user.quotaBytesTotal, Math.max(0, prev.user.quotaBytesUsed));
+        if (used === prev.user.quotaBytesUsed) return prev;
         return { user: { ...prev.user, quotaBytesUsed: used } };
       }),
     }),

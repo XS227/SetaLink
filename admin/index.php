@@ -30,6 +30,15 @@ setcookie('_csrf', $csrf_token, [
     'httponly' => true,
     'samesite' => 'Lax',
 ]);
+// Session cookie: lets api.php verify identity for fetch() calls without re-triggering
+// the nginx Basic Auth challenge (which causes browsers to hang on XHR requests).
+setcookie('_sl_session', hash_hmac('sha256', 'sl-session:' . $auth_user, $csrf_secret), [
+    'path'     => $admin_path,
+    'secure'   => true,
+    'httponly' => true,
+    'samesite' => 'Strict',
+    'expires'  => time() + 28800, // 8 hours
+]);
 
 // -------------------------------------------------------------------------
 // Helpers
@@ -2308,8 +2317,13 @@ if (CURRENT_PAGE === 'logs') {
         try {
             const r = await fetch(`${API_URL}?action=logs&type=${encodeURIComponent(type)}`, { credentials: 'same-origin', signal: ctrl.signal });
             clearTimeout(tid);
-            if (!r.ok) throw new Error('HTTP ' + r.status);
             const j = await r.json();
+            if (!r.ok || j.ok === false) {
+                const msg = j.error || ('HTTP ' + r.status);
+                const reload = msg.includes('Session') ? ' <a href="" style="color:var(--accent)">Reload page</a>' : '';
+                if (logBody) logBody.innerHTML = `<div class="log-empty" style="color:var(--danger)">${SL.esc(msg)}${reload}</div>`;
+                return;
+            }
             const lines = j.lines || j.data || [];
             if (!lines.length) {
                 if (logBody) logBody.innerHTML = '<div class="log-empty">No log entries yet.</div>';
@@ -2318,8 +2332,8 @@ if (CURRENT_PAGE === 'logs') {
             }
         } catch (e) {
             clearTimeout(tid);
-            const msg = e.name === 'AbortError' ? 'Request timed out' : SL.esc(e.message);
-            if (logBody) logBody.innerHTML = `<div class="log-empty" style="color:var(--danger)">Failed to load: ${msg}</div>`;
+            const msg = e.name === 'AbortError' ? 'Request timed out after 12s — try refreshing' : SL.esc(e.message);
+            if (logBody) logBody.innerHTML = `<div class="log-empty" style="color:var(--danger)">${msg}</div>`;
         }
     }
 
@@ -2411,8 +2425,14 @@ if (CURRENT_PAGE === 'protocols') {
         try {
             const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin', signal: ctrl.signal });
             clearTimeout(tid);
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const j   = await r.json();
+            const j = await r.json();
+            if (!r.ok || j.ok === false) {
+                const msg = j.error || ('HTTP ' + r.status);
+                const ts2 = new Date().toLocaleTimeString();
+                PROTO_KEYS.forEach(k => updateProtoCard(k, { timeout: false, detail: msg }, ts2));
+                showToast(msg, 'error', 5000);
+                return;
+            }
             const prt = j.data || j.protocols || j;
             const ts  = new Date().toLocaleTimeString();
             PROTO_KEYS.forEach(k => {
