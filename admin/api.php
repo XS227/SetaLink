@@ -104,6 +104,27 @@ function csrf_secret(): string {
 }
 $csrf_secret = csrf_secret();
 $auth_user   = (string)($_SERVER['PHP_AUTH_USER'] ?? $_SERVER['REMOTE_USER'] ?? '');
+
+// api.php has auth_basic off in nginx — validate via session cookie when no Basic Auth header.
+// The _sl_session cookie is set by index.php after nginx validates the initial page load.
+if (!$auth_user) {
+    $sl_cookie = trim((string)($_COOKIE['_sl_session'] ?? ''));
+    if ($sl_cookie) {
+        // Enumerate htpasswd users: in this deployment 'admin' is the only configured user.
+        // HMAC comparison is timing-safe.
+        $expected = hash_hmac('sha256', 'sl-session:admin', $csrf_secret);
+        if (hash_equals($expected, $sl_cookie)) {
+            $auth_user = 'admin';
+        }
+    }
+    if (!$auth_user) {
+        // No valid session — reject cleanly (no WWW-Authenticate so browser won't pop a dialog)
+        http_response_code(401);
+        echo json_encode(['ok' => false, 'error' => 'Session expired — reload the admin panel to log in again.']);
+        exit;
+    }
+}
+
 $csrf_token  = hash_hmac('sha256', $auth_user, $csrf_secret);
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
