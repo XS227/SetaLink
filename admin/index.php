@@ -1589,31 +1589,99 @@ $page_titles = [
           <div id="remoteConfigLoaded">
             <div class="diag-loading">Loading current config…</div>
           </div>
-          <div style="margin-top:1rem">
-            <div class="form-group" style="margin-bottom:.75rem">
+
+          <!-- Bootstrap Server Section -->
+          <details style="margin-bottom:1.25rem" open>
+            <summary style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text);cursor:pointer;padding:.5rem 0;user-select:none">Bootstrap Server (Starter Profile for Fresh Installs)</summary>
+            <div style="margin-top:.75rem;padding:1rem;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius)">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">UUID</label>
+                  <input type="text" id="bsUuid" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="ef317b14-...">
+                </div>
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Server Address (IP or domain)</label>
+                  <input type="text" id="bsAddress" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="5.249.252.221 or setalink.no">
+                </div>
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Reality Port</label>
+                  <input type="number" id="bsPort" style="width:100%;font-family:monospace;font-size:.8rem" value="8443">
+                </div>
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Public Key (X25519)</label>
+                  <input type="text" id="bsPubkey" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU">
+                </div>
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Short ID</label>
+                  <input type="text" id="bsShortid" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="176477b70b8b518b">
+                </div>
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI (Reality server name)</label>
+                  <input type="text" id="bsSni" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="www.microsoft.com">
+                </div>
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Flow</label>
+                  <input type="text" id="bsFlow" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="xtls-rprx-vision">
+                </div>
+                <div class="form-group">
+                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Fingerprint</label>
+                  <input type="text" id="bsFp" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="chrome">
+                </div>
+              </div>
+              <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
+                <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Edge Transport (nginx proxy for WebSocket / XHTTP)</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:.75rem">
+                  <div class="form-group">
+                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">Edge Host</label>
+                    <input type="text" id="bsEdgeAddress" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="edge.setalink.no">
+                  </div>
+                  <div class="form-group">
+                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">Edge Port</label>
+                    <input type="number" id="bsEdgePort" style="width:100%;font-family:monospace;font-size:.78rem" value="443">
+                  </div>
+                  <div class="form-group">
+                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">WS Path</label>
+                    <input type="text" id="bsWsPath" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="/ws">
+                  </div>
+                  <div class="form-group">
+                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">XHTTP Path</label>
+                    <input type="text" id="bsXhttpPath" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="/xhttp">
+                  </div>
+                  <div class="form-group">
+                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">HTTPUpgrade Path</label>
+                    <input type="text" id="bsHttpupPath" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="/httpup">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <!-- SNI / Kill-switch section -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+            <div class="form-group">
               <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI Priorities (comma-separated)</label>
               <input type="text" id="rcSniPriorities" style="width:100%;font-family:monospace;font-size:.82rem"
                      placeholder="www.microsoft.com, www.bing.com, www.apple.com, …">
             </div>
-            <div class="form-group" style="margin-bottom:.75rem">
+            <div class="form-group">
               <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Iran SNI Order (comma-separated)</label>
               <input type="text" id="rcIranSniOrder" style="width:100%;font-family:monospace;font-size:.82rem"
                      placeholder="www.microsoft.com, www.bing.com, …">
             </div>
-            <div class="form-group" style="margin-bottom:.75rem">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Kill-Switches (profiles to disable, comma-separated)</label>
+            <div class="form-group">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Kill-Switches (comma-separated)</label>
               <input type="text" id="rcKillSwitches" style="width:100%;font-family:monospace;font-size:.82rem"
                      placeholder="www.oracle.com, VMess/ws, …">
             </div>
-            <div class="form-group" style="margin-bottom:.75rem">
+            <div class="form-group">
               <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Emergency SNI</label>
               <input type="text" id="rcEmergencySni" style="width:100%;font-family:monospace;font-size:.82rem"
                      placeholder="www.microsoft.com">
             </div>
-            <button class="btn btn-primary" id="rcSaveBtn" style="margin-top:.5rem">Save Remote Config</button>
-            <span id="rcSaveStatus" style="font-size:.78rem;margin-left:.75rem;color:var(--muted)"></span>
-            <span id="rcLastUpdated" style="font-size:.72rem;color:var(--muted);margin-left:.5rem"></span>
           </div>
+          <button class="btn btn-primary" id="rcSaveBtn" style="margin-top:.75rem">Save Remote Config</button>
+          <span id="rcSaveStatus" style="font-size:.78rem;margin-left:.75rem;color:var(--muted)"></span>
+          <span id="rcLastUpdated" style="font-size:.72rem;color:var(--muted);margin-left:.5rem"></span>
         </div>
       </div>
 
@@ -2830,13 +2898,30 @@ if (document.getElementById('diagRefreshBtn')) {
       if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">API error: ${escHtml(j.error||'unknown')}</div>`; return; }
       const d = j.data;
       el.innerHTML = `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
-        Version ${d.version} — Updated: ${d.updated_at || 'never'} — Bootstrap: ${d.bootstrap_set ? '<span style="color:var(--ok)">SET</span>' : '<span style="color:var(--danger)">NOT SET</span>'}
+        Version ${d.version} — Updated: ${d.updated_at || 'never'} — Bootstrap: ${d.bootstrap_set ? '<span style="color:var(--ok)">✅ Configured</span>' : '<span style="color:var(--danger)">❌ Not set</span>'}
       </div>`;
       const f = (id, val) => { const el2 = document.getElementById(id); if (el2) el2.value = Array.isArray(val) ? val.join(', ') : (val||''); };
       f('rcSniPriorities', d.sni_priorities);
       f('rcIranSniOrder',  d.iran_sni_order);
       f('rcKillSwitches',  d.kill_switches);
       f('rcEmergencySni',  d.emergency_sni);
+      // Populate bootstrap fields if available
+      if (d.bootstrap) {
+        const bs = d.bootstrap;
+        f('bsUuid',        bs.uuid);
+        f('bsAddress',     bs.address);
+        f('bsPort',        bs.port);
+        f('bsPubkey',      bs.publicKey);
+        f('bsShortid',     bs.shortId);
+        f('bsSni',         bs.sni);
+        f('bsFlow',        bs.flow);
+        f('bsFp',          bs.fingerprint);
+        f('bsEdgeAddress', bs.edgeAddress || 'edge.setalink.no');
+        f('bsEdgePort',    bs.edgePort    || 443);
+        f('bsWsPath',      bs.wsPath      || '/ws');
+        f('bsXhttpPath',   bs.xhttpPath   || '/xhttp');
+        f('bsHttpupPath',  bs.httpupPath  || '/httpup');
+      }
     } catch(e) { el.innerHTML = '<div class="diag-loading">Error loading remote config.</div>'; }
   }
 
@@ -2861,6 +2946,20 @@ if (document.getElementById('diagRefreshBtn')) {
         rc_iran_sni_order: parseList(document.getElementById('rcIranSniOrder')?.value || ''),
         rc_kill_switches:  parseList(document.getElementById('rcKillSwitches')?.value || ''),
         rc_emergency_sni:  document.getElementById('rcEmergencySni')?.value?.trim() || '',
+        // Bootstrap server fields
+        bootstrap_uuid:         document.getElementById('bsUuid')?.value?.trim()        || '',
+        bootstrap_address:      document.getElementById('bsAddress')?.value?.trim()     || '',
+        bootstrap_port:         parseInt(document.getElementById('bsPort')?.value || '8443'),
+        bootstrap_pubkey:       document.getElementById('bsPubkey')?.value?.trim()      || '',
+        bootstrap_shortid:      document.getElementById('bsShortid')?.value?.trim()     || '',
+        bootstrap_sni:          document.getElementById('bsSni')?.value?.trim()         || 'www.microsoft.com',
+        bootstrap_flow:         document.getElementById('bsFlow')?.value?.trim()        || 'xtls-rprx-vision',
+        bootstrap_fp:           document.getElementById('bsFp')?.value?.trim()          || 'chrome',
+        bootstrap_edge_address: document.getElementById('bsEdgeAddress')?.value?.trim() || 'edge.setalink.no',
+        bootstrap_edge_port:    parseInt(document.getElementById('bsEdgePort')?.value || '443'),
+        bootstrap_ws_path:      document.getElementById('bsWsPath')?.value?.trim()      || '/ws',
+        bootstrap_xhttp_path:   document.getElementById('bsXhttpPath')?.value?.trim()   || '/xhttp',
+        bootstrap_httpup_path:  document.getElementById('bsHttpupPath')?.value?.trim()  || '/httpup',
       };
       const r = await fetch(API_URL, {
         method: 'POST', credentials: 'same-origin',
