@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Dimensions, Animated,
+  StyleSheet, Dimensions, Animated, Image,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { ConnectButton } from '../components/ConnectButton';
@@ -12,12 +12,16 @@ import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 
 import { useVpnStore }         from '../stores/vpnStore';
+import { useAuthStore }        from '../stores/authStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { formatBytes }         from '../utils/formatters';
 import { useT }                from '../i18n';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const LOGO_SMALL = require('../assets/logo_mark.png') as number;
 
 const { width } = Dimensions.get('window');
 
@@ -58,7 +62,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     disconnect,
   } = useVpnStore();
 
-  const { greeting, name } = useGreeting();
+  const { greeting } = useGreeting();
+  const user = useAuthStore((s) => s.user);
   const timer = useSessionTimer(connectionState === 'connected', sessionStartedAt);
   const { uploadMbps, downloadMbps, pingMs } = useVpnStats();
 
@@ -83,8 +88,15 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   }, []);
 
   const handleConnect = () => {
-    if (connectionState === 'idle' || connectionState === 'failed') connect();
-    else if (connectionState === 'connected') disconnect();
+    if (connectionState === 'connected') { disconnect(); return; }
+    if (connectionState === 'idle' || connectionState === 'failed') {
+      // Block connect when free quota is exhausted
+      if (user && user.plan === 'free' && user.quotaBytesUsed >= user.quotaBytesTotal) {
+        (onNavigate as (tab: string) => void)('upgrade');
+        return;
+      }
+      connect();
+    }
   };
 
   const protocol = selectedServer
@@ -104,7 +116,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
           <View style={styles.brandBlock}>
             <View style={styles.brandRow}>
-              <View style={styles.brandOrb} />
+              <Image source={LOGO_SMALL} style={styles.brandLogoSmall} resizeMode="contain" />
               <Text style={styles.brandName}>SetaLink</Text>
             </View>
             <Text style={styles.greeting}>{greeting}</Text>
@@ -323,13 +335,7 @@ const styles = StyleSheet.create({
   header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
   brandBlock:   { flex: 1, gap: 2 },
   brandRow:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  brandOrb:     {
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: 'rgba(0,232,122,0.14)',
-    borderWidth: 1.5, borderColor: Colors.emerald[400],
-    shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.55, shadowRadius: 6, elevation: 4,
-  },
+  brandLogoSmall: { width: 22, height: 22, tintColor: Colors.emerald[400] },
   brandName:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 0.5 },
   greeting:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
   settingsBtn:  { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },

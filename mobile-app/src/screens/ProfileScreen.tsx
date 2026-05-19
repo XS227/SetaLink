@@ -329,7 +329,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
         <GlassCard>
           <Text style={styles.footerBrand}>SetaLink</Text>
-          <Text style={styles.footerMeta}>v0.9.3 (8)</Text>
+          <Text style={styles.footerMeta}>v0.9.4 (9)</Text>
           <TouchableOpacity onPress={handleOpenWebsite}>
             <Text style={styles.footerLink}>https://setalink.no</Text>
           </TouchableOpacity>
