@@ -1966,8 +1966,11 @@ if (CURRENT_PAGE === 'dashboard') {
     }
 
     async function loadProtoMini() {
+        const ctrlM = new AbortController();
+        const tidM  = setTimeout(() => ctrlM.abort(), 30000);
         try {
-            const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin' });
+            const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin', signal: ctrlM.signal });
+            clearTimeout(tidM);
             if (!r.ok) return;
             const j = await r.json();
             const protos = j.data || j.protocols || j;
@@ -1988,7 +1991,7 @@ if (CURRENT_PAGE === 'dashboard') {
                     ? String(code)
                     : (open !== null ? (open ? 'open' : 'closed') : '—');
             });
-        } catch (e) { /* silently ignore */ }
+        } catch (e) { clearTimeout(tidM); /* silently ignore on mini dashboard */ }
     }
 
     loadProtoMini();
@@ -2329,8 +2332,11 @@ if (CURRENT_PAGE === 'protocols') {
             const bEl  = document.getElementById('protoBody' + safe);
             if (bEl) bEl.innerHTML = '<span class="muted">Checking…</span>';
         });
+        const ctrl = new AbortController();
+        const tid  = setTimeout(() => ctrl.abort(), 30000);
         try {
-            const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin' });
+            const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin', signal: ctrl.signal });
+            clearTimeout(tid);
             if (!r.ok) throw new Error('HTTP ' + r.status);
             const j   = await r.json();
             const prt = j.data || j.protocols || j;
@@ -2341,9 +2347,11 @@ if (CURRENT_PAGE === 'protocols') {
             });
             showToast('Protocol check complete', 'ok', 3000);
         } catch (e) {
-            const ts = new Date().toLocaleTimeString();
+            clearTimeout(tid);
+            const ts  = new Date().toLocaleTimeString();
+            const msg = e.name === 'AbortError' ? 'Timed out (30s)' : e.message;
             PROTO_KEYS.forEach(k => updateProtoCard(k, {}, ts));
-            showToast('Check failed: ' + e.message, 'error', 4000);
+            showToast('Check failed: ' + msg, 'error', 4000);
         }
     }
 
@@ -2356,8 +2364,11 @@ if (CURRENT_PAGE === 'protocols') {
             const bEl  = document.getElementById('protoBody' + safe);
             if (bEl) bEl.innerHTML = '<span class="muted">Checking…</span>';
             btn.disabled = true;
+            const ctrl2 = new AbortController();
+            const tid2  = setTimeout(() => ctrl2.abort(), 30000);
             try {
-                const r = await fetch(`${API_URL}?action=protocol-health`, { credentials: 'same-origin' });
+                const r = await fetch(`${API_URL}?action=protocol-health`, { credentials: 'same-origin', signal: ctrl2.signal });
+                clearTimeout(tid2);
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 const j   = await r.json();
                 const prt = j.data || j.protocols || j;
@@ -2365,8 +2376,10 @@ if (CURRENT_PAGE === 'protocols') {
                 const entry = prt[key] || prt[key.toLowerCase()] || {};
                 updateProtoCard(key, entry, ts);
             } catch (e) {
+                clearTimeout(tid2);
+                const msg2 = e.name === 'AbortError' ? 'Timed out (30s)' : e.message;
                 updateProtoCard(key, {}, new Date().toLocaleTimeString());
-                showToast('Re-check failed: ' + e.message, 'error', 4000);
+                showToast('Re-check failed: ' + msg2, 'error', 4000);
             }
             btn.disabled = false;
         });

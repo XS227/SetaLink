@@ -77,22 +77,43 @@ function generate_referral_code(PDO $pdo): string {
     return $code;
 }
 
-function fetch_bootstrap_server(PDO $pdo): ?array {
+function hardcoded_bootstrap(): array {
+    return [
+        'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
+        'address'     => '178.104.77.231',
+        'port'        => 443,
+        'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+        'shortId'     => 'd93af82f2ecb7f6a',
+        'sni'         => 'www.cloudflare.com',
+        'flow'        => '',
+        'fingerprint' => 'chrome',
+        'country'     => 'Germany',
+        'flag'        => '🇩🇪',
+        'city'        => 'SetaLink Cloudflare',
+    ];
+}
+
+function fetch_bootstrap_server(PDO $pdo): array {
     // Admin stores bootstrap as individual bootstrap_* keys
     $r = $pdo->query(
         "SELECT key, value FROM settings WHERE key LIKE 'bootstrap_%'"
     )->fetchAll(PDO::FETCH_KEY_PAIR);
-    if (empty($r['bootstrap_uuid']) || empty($r['bootstrap_pubkey'])) return null;
+    if (empty($r['bootstrap_uuid']) || empty($r['bootstrap_pubkey'])) {
+        return hardcoded_bootstrap();
+    }
     return [
         'uuid'        => $r['bootstrap_uuid'],
         'address'     => $r['bootstrap_address'] ?? '',
-        'port'        => (int)($r['bootstrap_port'] ?? 8443),
+        'port'        => (int)($r['bootstrap_port'] ?? 443),
         'publicKey'   => $r['bootstrap_pubkey'],
         'shortId'     => $r['bootstrap_shortid'] ?? '',
-        'sni'         => $r['bootstrap_sni'] ?? 'www.microsoft.com',
-        'flow'        => $r['bootstrap_flow'] ?? 'xtls-rprx-vision',
+        'sni'         => $r['bootstrap_sni'] ?? 'www.cloudflare.com',
+        'flow'        => $r['bootstrap_flow'] ?? '',
         'fingerprint' => $r['bootstrap_fp'] ?? 'chrome',
-        'edgeAddress' => $r['bootstrap_edge_address'] ?? 'edge.setalink.no',
+        'country'     => $r['bootstrap_country'] ?? 'Germany',
+        'flag'        => $r['bootstrap_flag']    ?? '🇩🇪',
+        'city'        => $r['bootstrap_city']    ?? 'SetaLink Cloudflare',
+        'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
         'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
@@ -132,19 +153,21 @@ if ($method === 'GET') {
     if ($action === 'bootstrap') {
         $pdo = db();
         $srv = fetch_bootstrap_server($pdo);
-        if (!$srv) err('no bootstrap configured');
         ok([
             'id'          => 'server-emergency',
-            'label'       => 'SetaLink Reality',
+            'label'       => 'SetaLink Cloudflare',
+            'country'     => $srv['country']     ?? 'Germany',
+            'flag'        => $srv['flag']        ?? '🇩🇪',
+            'city'        => $srv['city']        ?? 'SetaLink Cloudflare',
             'uuid'        => $srv['uuid']        ?? '',
             'address'     => $srv['address']     ?? '',
-            'port'        => (int)($srv['port']  ?? 8443),
+            'port'        => (int)($srv['port']  ?? 443),
             'publicKey'   => $srv['publicKey']   ?? '',
             'shortId'     => $srv['shortId']     ?? '',
-            'sni'         => $srv['sni']         ?? 'www.microsoft.com',
-            'flow'        => $srv['flow']        ?? 'xtls-rprx-vision',
+            'sni'         => $srv['sni']         ?? 'www.cloudflare.com',
+            'flow'        => $srv['flow']        ?? '',
             'fingerprint' => $srv['fingerprint'] ?? 'chrome',
-            'edgeAddress' => $srv['edgeAddress'] ?? 'edge.setalink.no',
+            'edgeAddress' => $srv['edgeAddress'] ?? '',
             'edgePort'    => (int)($srv['edgePort'] ?? 443),
             'wsPath'      => $srv['wsPath']      ?? '/ws',
             'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp',

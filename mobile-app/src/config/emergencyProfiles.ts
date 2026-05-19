@@ -19,6 +19,21 @@ const BOOTSTRAP_URL =
 
 const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v3';
 
+// Hardcoded working profile — always available, zero dependencies.
+// vless://fd709d48-a983-484a-99e3-afc97e2c3692@178.104.77.231:443?type=tcp&security=reality&...
+const HARDCODED_PROFILE: EmergencyProfile = {
+  id:          'server-emergency',
+  label:       'SetaLink Cloudflare',
+  uuid:        'fd709d48-a983-484a-99e3-afc97e2c3692',
+  address:     '178.104.77.231',
+  port:        443,
+  publicKey:   'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+  shortId:     'd93af82f2ecb7f6a',
+  sni:         'www.cloudflare.com',
+  flow:        '',
+  fingerprint: 'chrome',
+};
+
 export interface EmergencyProfile {
   id:          string;
   label:       string;
@@ -63,7 +78,8 @@ export async function getEmergencyProfile(): Promise<EmergencyProfile | null> {
     }
   } catch {}
 
-  return null;
+  // Always fall back to the hardcoded working profile
+  return HARDCODED_PROFILE;
 }
 
 /** Call after a successful connection to update the cached bootstrap. */

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator,
+  View, Text, Pressable, StyleSheet, ActivityIndicator, Image,
 } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle,
@@ -8,6 +8,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors, Typography, Shadow, Animation } from '../design/tokens';
 import { AnimatedRing } from './AnimatedRing';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const LOGO = require('../assets/logo_mark.png') as number;
 
 export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnecting';
 
@@ -88,16 +91,14 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
             <ActivityIndicator size="large" color={Colors.emerald[400]} />
           ) : (
             <>
-              <View style={[styles.powerIcon, {
-                borderColor: isConnected ? Colors.text.inverse : Colors.emerald[400],
-              }]}>
-                <View style={[styles.powerArc, {
-                  borderColor: isConnected ? Colors.text.inverse : Colors.emerald[400],
-                }]} />
-                <View style={[styles.powerLine, {
-                  backgroundColor: isConnected ? Colors.text.inverse : Colors.emerald[400],
-                }]} />
-              </View>
+              <Image
+                source={LOGO}
+                style={[
+                  styles.logoImg,
+                  { tintColor: isConnected ? Colors.text.inverse : Colors.emerald[400] },
+                ]}
+                resizeMode="contain"
+              />
               <Text style={[styles.label, {
                 color: isConnected ? Colors.text.inverse : Colors.text.secondary,
               }]}>
@@ -141,28 +142,9 @@ const styles = StyleSheet.create({
     borderRadius:    SIZE,
     borderWidth:     1,
   },
-  powerIcon: {
-    width:           44,
-    height:          44,
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
-  powerArc: {
-    width:            32,
-    height:           32,
-    borderRadius:     16,
-    borderWidth:      3,
-    borderBottomColor:'transparent',
-    borderLeftColor:  'transparent',
-    transform:        [{ rotate: '45deg' }],
-    position:         'absolute',
-  },
-  powerLine: {
-    width:            3,
-    height:           14,
-    borderRadius:     2,
-    position:         'absolute',
-    top:              0,
+  logoImg: {
+    width:  64,
+    height: 64,
   },
   label: {
     fontSize:         Typography.size.sm,
