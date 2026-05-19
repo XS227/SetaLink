@@ -1,6 +1,7 @@
-const BASE_URL  = 'https://setalink.no/api.php';
-const TOKEN     = 'setalink-mobile-diag-v1';
-const TIMEOUT   = 10_000;
+const BASE_URL   = 'https://setalink.no/api.php';
+const TOKEN      = 'setalink-mobile-diag-v1';
+const TIMEOUT    = 10_000;
+const APP_VERSION = '0.9.5';
 
 export interface DeviceEntitlement {
   device_id:         string;
@@ -59,9 +60,30 @@ async function mobileGet(action: string, params: Record<string, string> = {}): P
   }
 }
 
-export async function registerDevice(deviceId: string, platform = 'android'): Promise<DeviceEntitlement> {
-  const data = await mobilePost('register-device', { device_id: deviceId, platform });
+export async function registerDevice(
+  deviceId: string,
+  platform = 'android',
+  options: { language?: string; referralCode?: string } = {}
+): Promise<DeviceEntitlement> {
+  const body: Record<string, string | number> = {
+    device_id:   deviceId,
+    platform,
+    app_version: APP_VERSION,
+  };
+  if (options.language)     body.language      = options.language;
+  if (options.referralCode) body.referral_code = options.referralCode;
+  const data = await mobilePost('register-device', body);
   return data as DeviceEntitlement;
+}
+
+export async function reportVpnStatus(
+  deviceId: string,
+  status: 'online' | 'offline',
+  protocol?: string
+): Promise<void> {
+  const body: Record<string, string | number> = { device_id: deviceId, status };
+  if (protocol) body.active_protocol = protocol;
+  await mobilePost('update-status', body);
 }
 
 export async function syncEntitlement(deviceId: string): Promise<DeviceEntitlement> {

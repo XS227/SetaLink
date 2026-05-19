@@ -90,6 +90,18 @@ export const useVpnStore = create<VpnState>((set, get) => {
         const { HapticService } = require('../services/hapticService');
         HapticService.connect();
       } catch {}
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reportVpnStatus } = require('../services/entitlementService');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAuthStore } = require('./authStore');
+        const user = useAuthStore.getState().user;
+        if (user) {
+          const protocol = get().selectedServer?.protocol ?? '';
+          reportVpnStatus(user.deviceId, 'online', protocol).catch(() => {});
+        }
+      } catch {}
     },
 
     onDisconnected: () => {
@@ -166,6 +178,15 @@ export const useVpnStore = create<VpnState>((set, get) => {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { HapticService } = require('../services/hapticService');
         HapticService.disconnect();
+      } catch {}
+
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reportVpnStatus } = require('../services/entitlementService');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAuthStore } = require('./authStore');
+        const user = useAuthStore.getState().user;
+        if (user) reportVpnStatus(user.deviceId, 'offline').catch(() => {});
       } catch {}
     },
 

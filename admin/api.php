@@ -140,18 +140,33 @@ const ONE_GB_BYTES         = 1073741824;    // 1 GB starter quota
 const REFERRAL_BONUS_BYTES = 536870912;     // 512 MB per referral party
 
 function init_device_tables(PDO $db): void {
-    $db->exec('CREATE TABLE IF NOT EXISTS devices (
+    $db->exec("CREATE TABLE IF NOT EXISTS devices (
         device_id TEXT PRIMARY KEY,
         referral_code TEXT UNIQUE NOT NULL,
-        plan TEXT NOT NULL DEFAULT \'free\',
+        plan TEXT NOT NULL DEFAULT 'free',
         quota_bytes_total INTEGER NOT NULL DEFAULT 1073741824,
         quota_bytes_used INTEGER NOT NULL DEFAULT 0,
         valid_until TEXT,
         blocked INTEGER NOT NULL DEFAULT 0,
-        platform TEXT NOT NULL DEFAULT \'\',
+        platform TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )');
+        last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        app_version TEXT DEFAULT '',
+        active_protocol TEXT DEFAULT '',
+        status TEXT DEFAULT 'offline',
+        country TEXT DEFAULT '',
+        language TEXT DEFAULT ''
+    )");
+    $migrations = [
+        "ALTER TABLE devices ADD COLUMN app_version TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN active_protocol TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN status TEXT DEFAULT 'offline'",
+        "ALTER TABLE devices ADD COLUMN country TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN language TEXT DEFAULT ''",
+    ];
+    foreach ($migrations as $sql) {
+        try { $db->exec($sql); } catch (Exception $e) { /* column already exists */ }
+    }
     $db->exec('CREATE TABLE IF NOT EXISTS referral_uses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         referrer_device_id TEXT NOT NULL,
@@ -176,19 +191,22 @@ function fetch_bootstrap_server(PDO $db): array {
     if (empty($r['bootstrap_uuid']) || empty($r['bootstrap_pubkey'])) {
         // Hardcoded working fallback — zero DB dependency
         return [
-            'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
-            'address'     => '178.104.77.231',
-            'port'        => 443,
-            'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
-            'shortId'     => 'd93af82f2ecb7f6a',
-            'sni'         => 'www.cloudflare.com',
-            'flow'        => '',
+            'uuid'        => 'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
+            'address'     => '5.249.252.221',
+            'port'        => 8443,
+            'publicKey'   => 'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
+            'shortId'     => '7f81892e',
+            'sni'         => 'www.microsoft.com',
+            'flow'        => 'xtls-rprx-vision',
             'fingerprint' => 'chrome',
-            'country'     => 'Germany',
-            'flag'        => '🇩🇪',
-            'city'        => 'SetaLink Cloudflare',
-            'edgeAddress' => '',
+            'country'     => 'Netherlands',
+            'flag'        => '🇳🇱',
+            'city'        => 'SetaLink Edge',
+            'edgeAddress' => 'edge.setalink.no',
             'edgePort'    => 443,
+            'wsPath'      => '/ws',
+            'xhttpPath'   => '/xhttp',
+            'httpupPath'  => '/httpup',
         ];
     }
     return [
@@ -273,21 +291,24 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     $ma = (string)($_GET['action'] ?? $_POST['action'] ?? '');
 
     if ($ma === 'register-device') {
-        $device_id = trim((string)($_POST['device_id'] ?? ''));
-        $platform  = substr(trim((string)($_POST['platform'] ?? 'android')), 0, 20);
-        if (!$device_id || strlen($device_id) > 64) api_err('invalid device_id');
-        if (!preg_match('/^[a-f0-9\-]{8,64}$/', $device_id)) api_err('invalid device_id format');
+        $device_id   = trim((string)($_POST['device_id']    ?? ''));
+        $platform    = substr(trim((string)($_POST['platform']    ?? 'android')), 0, 20);
+        $app_version = substr(trim((string)($_POST['app_version'] ?? '')), 0, 20);
+        $language    = substr(trim((string)($_POST['language']    ?? '')), 0, 30);
+        if (!$device_id || strlen($device_id) > 128) api_err('invalid device_id');
+        if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9\-_]{5,126}$/', $device_id)) api_err('invalid device_id format');
         $db = open_analytics_db();
         init_device_tables($db);
         $st = $db->prepare('SELECT * FROM devices WHERE device_id = ?');
         $st->execute([$device_id]);
         $dev = $st->fetch(PDO::FETCH_ASSOC);
         if ($dev) {
-            $db->prepare("UPDATE devices SET last_seen = datetime('now') WHERE device_id = ?")->execute([$device_id]);
+            $db->prepare("UPDATE devices SET last_seen = datetime('now'), platform = ?, app_version = ?, language = ? WHERE device_id = ?")
+               ->execute([$platform, $app_version, $language, $device_id]);
         } else {
             $ref = generate_referral_code($db);
-            $db->prepare("INSERT INTO devices (device_id,referral_code,plan,quota_bytes_total,quota_bytes_used,platform) VALUES (?,?,'free',?,0,?)")
-               ->execute([$device_id, $ref, ONE_GB_BYTES, $platform]);
+            $db->prepare("INSERT INTO devices (device_id,referral_code,plan,quota_bytes_total,quota_bytes_used,platform,app_version,language) VALUES (?,?,'free',?,0,?,?,?)")
+               ->execute([$device_id, $ref, ONE_GB_BYTES, $platform, $app_version, $language]);
             $st->execute([$device_id]);
             $dev = $st->fetch(PDO::FETCH_ASSOC);
         }
@@ -354,6 +375,19 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         ]);
     }
 
+    if ($ma === 'update-status') {
+        $device_id       = trim((string)($_POST['device_id']       ?? ''));
+        $status          = trim((string)($_POST['status']          ?? 'offline'));
+        $active_protocol = substr(trim((string)($_POST['active_protocol'] ?? '')), 0, 60);
+        if (!$device_id) api_err('device_id required');
+        if (!in_array($status, ['online', 'offline'], true)) $status = 'offline';
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $db->prepare("UPDATE devices SET status = ?, active_protocol = ?, last_seen = datetime('now') WHERE device_id = ?")
+           ->execute([$status, $active_protocol, $device_id]);
+        api_ok(['status' => $status]);
+    }
+
     // --- Mobile POST: telemetry report ---
     $allowed_results = ['success', 'fail', 'partial', 'tcp_only'];
     $country        = substr(trim((string)($_POST['country']        ?? 'unknown')), 0, 80);
@@ -418,6 +452,26 @@ if ($method === 'POST') {
     $action = (string)($parsed['action'] ?? '');
     $name   = trim((string)($parsed['name'] ?? ''));
     $pkg    = trim((string)($parsed['package'] ?? ''));
+
+    if ($action === 'device-block' || $action === 'device-unblock') {
+        $did    = trim((string)($parsed['device_id'] ?? ''));
+        if (!$did) api_err('device_id required');
+        $block  = $action === 'device-block' ? 1 : 0;
+        $db     = open_analytics_db();
+        init_device_tables($db);
+        $db->prepare("UPDATE devices SET blocked = ? WHERE device_id = ?")->execute([$block, $did]);
+        api_ok(['blocked' => (bool)$block]);
+    }
+
+    if ($action === 'device-set-quota') {
+        $did   = trim((string)($parsed['device_id'] ?? ''));
+        $quota = max(0, (int)($parsed['quota_bytes'] ?? ONE_GB_BYTES));
+        if (!$did) api_err('device_id required');
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $db->prepare("UPDATE devices SET quota_bytes_total = ? WHERE device_id = ?")->execute([$quota, $did]);
+        api_ok(['quota_bytes_total' => $quota]);
+    }
 
     if ($action === 'save-settings') {
         $data = $parsed;
@@ -875,19 +929,56 @@ switch ($action) {
 
     case 'app-analytics':
         $db = open_analytics_db();
-        $total    = (int)$db->query("SELECT COUNT(*) FROM devices")->fetchColumn();
-        $active7d = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen >= datetime('now','-7 days')")->fetchColumn();
-        $newMonth = (int)$db->query("SELECT COUNT(*) FROM devices WHERE created_at >= datetime('now','-30 days')")->fetchColumn();
-        $failed   = (int)$db->query("SELECT COUNT(*) FROM test_results WHERE result='fail' AND recorded_at >= datetime('now','-1 day')")->fetchColumn();
-        $apk_path = '/var/www/setalink/public/download/setalink-latest.apk';
-        $apk_ver  = is_readable($apk_path) ? 'latest' : '0.8.0';
+        init_device_tables($db);
+        $total       = (int)$db->query("SELECT COUNT(*) FROM devices")->fetchColumn();
+        $onlineNow   = (int)$db->query("SELECT COUNT(*) FROM devices WHERE status='online' OR last_seen >= datetime('now','-5 minutes')")->fetchColumn();
+        $activeToday = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen >= date('now')")->fetchColumn();
+        $active7d    = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen >= datetime('now','-7 days')")->fetchColumn();
+        $newMonth    = (int)$db->query("SELECT COUNT(*) FROM devices WHERE created_at >= datetime('now','-30 days')")->fetchColumn();
+        $failed      = (int)$db->query("SELECT COUNT(*) FROM test_results WHERE result='fail' AND recorded_at >= datetime('now','-1 day')")->fetchColumn();
+        $pkgRows     = $db->query("SELECT plan, COUNT(*) as cnt FROM devices GROUP BY plan ORDER BY cnt DESC")->fetchAll(PDO::FETCH_ASSOC);
+        $pkgDist     = [];
+        foreach ($pkgRows as $r) $pkgDist[$r['plan']] = (int)$r['cnt'];
+        $verRows     = $db->query("SELECT app_version as version, COUNT(*) as cnt FROM devices WHERE app_version != '' GROUP BY app_version ORDER BY cnt DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
         api_ok([
-            'total_installs' => $total,
-            'active_7d'      => $active7d,
-            'new_this_month' => $newMonth,
-            'latest_version' => $apk_ver,
-            'failed_24h'     => $failed,
+            'total_installs'       => $total,
+            'online_now'           => $onlineNow,
+            'active_today'         => $activeToday,
+            'active_7d'            => $active7d,
+            'new_this_month'       => $newMonth,
+            'failed_24h'           => $failed,
+            'package_distribution' => $pkgDist,
+            'version_distribution' => $verRows,
         ]);
+        break;
+
+    case 'devices-list':
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $rows = $db->query("SELECT * FROM devices ORDER BY created_at DESC LIMIT 1000")->fetchAll(PDO::FETCH_ASSOC);
+        $result = array_map(function($r) {
+            $ls = $r['last_seen'] ?? null;
+            $is_online = ($r['status'] ?? '') === 'online'
+                || ($ls && (time() - (int)strtotime((string)$ls)) < 300);
+            return [
+                'device_id'       => $r['device_id'],
+                'device_id_short' => strtoupper(substr(hash('sha256', (string)$r['device_id']), 0, 8)),
+                'platform'        => $r['platform']        ?? 'android',
+                'plan'            => $r['plan']            ?? 'free',
+                'quota_bytes_total' => (int)($r['quota_bytes_total'] ?? 0),
+                'quota_bytes_used'  => (int)($r['quota_bytes_used']  ?? 0),
+                'status'          => $is_online ? 'online' : 'offline',
+                'app_version'     => $r['app_version']     ?? '',
+                'active_protocol' => $r['active_protocol'] ?? '',
+                'country'         => $r['country']         ?? '',
+                'language'        => $r['language']        ?? '',
+                'created_at'      => $r['created_at'],
+                'last_seen'       => $r['last_seen'],
+                'blocked'         => (bool)(int)($r['blocked'] ?? 0),
+                'referral_code'   => $r['referral_code']   ?? '',
+            ];
+        }, $rows);
+        api_ok($result);
         break;
 
     case 'node-list':
@@ -951,6 +1042,95 @@ switch ($action) {
             if (empty($tb_d[$tbf])) api_err("Bootstrap missing required field: {$tbf}");
         }
         api_ok(['status' => 'ok', 'profile' => $tb_d]);
+        break;
+
+    case 'inbound-stats':
+        // Real-time Xray inbound health: ports, UUID rejections, accepted sessions.
+        $access_log = '/var/log/xray/access.log';
+        $error_log  = '/var/log/xray/error.log';
+
+        // Port listening check via ss
+        $ss_out = (string)@shell_exec('ss -tulpn 2>/dev/null');
+        $ports = [
+            'reality' => ['port' => 8443,  'listening' => false, 'label' => 'Reality (direct)'],
+            'ws'      => ['port' => 10000, 'listening' => false, 'label' => 'WebSocket'],
+            'xhttp'   => ['port' => 10001, 'listening' => false, 'label' => 'XHTTP'],
+            'httpup'  => ['port' => 10002, 'listening' => false, 'label' => 'HTTPUpgrade'],
+        ];
+        foreach ($ports as $k => &$p) {
+            $p['listening'] = str_contains($ss_out, ':' . $p['port']);
+        }
+        unset($p);
+
+        // Parse access log: count UUID rejections + accepted external sessions
+        $uuid_rejections = 0;
+        $accepted_external = 0;
+        $last_accepted_ip  = '';
+        $last_accepted_at  = '';
+        $rejected_uuids    = [];
+        if (is_readable($access_log)) {
+            $lines = array_slice(file($access_log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -2000);
+            foreach ($lines as $line) {
+                if (str_contains($line, 'invalid request user id')) {
+                    $uuid_rejections++;
+                    if (preg_match('/user id: ([0-9a-f\-]{36})/', $line, $m)) {
+                        $rejected_uuids[$m[1]] = ($rejected_uuids[$m[1]] ?? 0) + 1;
+                    }
+                }
+                if (str_contains($line, 'accepted') && !str_contains($line, '127.0.0.1') && !str_contains($line, '::1')) {
+                    $accepted_external++;
+                    if (preg_match('/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})/', $line, $ts) &&
+                        preg_match('/accepted\s+([\d\.a-f:]+):\d+/', $line, $ip)) {
+                        $last_accepted_at = $ts[1];
+                        $last_accepted_ip = $ip[1];
+                    }
+                }
+            }
+        }
+        arsort($rejected_uuids);
+
+        // Read canonical UUIDs from Xray config
+        $xray_cfg_path = '/usr/local/etc/xray/config.json';
+        $xray_uuids = [];
+        if (is_readable($xray_cfg_path)) {
+            $xcfg = json_decode(file_get_contents($xray_cfg_path), true);
+            $seen = [];
+            foreach ($xcfg['inbounds'] ?? [] as $ib) {
+                foreach ($ib['settings']['clients'] ?? [] as $c) {
+                    $uid = $c['id'] ?? '';
+                    if ($uid && !isset($seen[$uid])) {
+                        $xray_uuids[] = ['uuid' => $uid, 'email' => $c['email'] ?? ''];
+                        $seen[$uid] = true;
+                    }
+                }
+            }
+        }
+
+        // Last 5 notable Xray log lines (skip pure Info/startup noise)
+        $last_errors = [];
+        if (is_readable($error_log)) {
+            $elines = array_slice(file($error_log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -500);
+            foreach (array_reverse($elines) as $el) {
+                if (str_contains($el, '[Warning]') && str_contains($el, 'started')) continue;
+                if (str_contains($el, '[Info]') && str_contains($el, 'listening')) continue;
+                if (str_contains($el, '[Info]') && str_contains($el, 'proxy/dokodemo')) continue;
+                if (str_contains($el, '[Info]') && str_contains($el, 'app/dispatcher')) continue;
+                $last_errors[] = $el;
+                if (count($last_errors) >= 5) break;
+            }
+        }
+
+        api_ok([
+            'ports'              => $ports,
+            'uuid_rejections'    => $uuid_rejections,
+            'rejected_uuids'     => array_slice(array_keys($rejected_uuids), 0, 5),
+            'accepted_external'  => $accepted_external,
+            'last_accepted_ip'   => $last_accepted_ip,
+            'last_accepted_at'   => $last_accepted_at,
+            'xray_uuids'         => $xray_uuids,
+            'last_errors'        => $last_errors,
+            'checked_at'         => date('Y-m-d H:i:s'),
+        ]);
         break;
 
     default: api_err('unknown action');

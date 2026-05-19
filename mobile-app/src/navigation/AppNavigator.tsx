@@ -206,7 +206,8 @@ async function tryAutoRegister(): Promise<boolean> {
   try {
     // Attempt to use stable Android hardware ID; falls back to MMKV UUID
     const deviceId = await enrichDeviceId().catch(() => getOrCreateDeviceId());
-    const entitlement = await registerDevice(deviceId);
+    const { language } = useSettingsStore.getState();
+    const entitlement = await registerDevice(deviceId, 'android', { language });
     useAuthStore.getState().loginWithDevice(entitlement);
     // Bootstrap server from registration response → import into server list
     if (entitlement.server?.uuid && entitlement.server?.address) {
@@ -292,12 +293,13 @@ function OnboardingAdapter({ navigation }: ScreenAdapterProps) {
   const { completeOnboarding } = useSettingsStore();
   return (
     <OnboardingScreen
-      onFinish={() => {
+      onFinish={async () => {
         completeOnboarding();
         if (useAuthStore.getState().isAuthenticated) {
           navigation.replace('Main');
         } else {
-          navigation.replace('Auth');
+          const registered = await tryAutoRegister();
+          navigation.replace(registered ? 'Welcome' : 'Auth');
         }
       }}
     />
