@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useServerStore } from '../stores/serverStore';
 import { useT } from '../i18n';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -14,31 +15,46 @@ interface ToggleRowProps {
   description?: string;
   value:        boolean;
   onChange:     () => void;
+  comingSoon?:  boolean;
 }
 
-function ToggleRow({ label, description, value, onChange }: ToggleRowProps) {
+function ToggleRow({ label, description, value, onChange, comingSoon = false }: ToggleRowProps) {
+  const handlePress = comingSoon
+    ? () => Alert.alert('Coming soon', `${label} will be available in a future update.`)
+    : onChange;
+
   return (
-    <TouchableOpacity style={rowStyles.row} onPress={onChange} activeOpacity={0.75}>
+    <TouchableOpacity style={rowStyles.row} onPress={handlePress} activeOpacity={0.75}>
       <View style={rowStyles.left}>
-        <Text style={rowStyles.label}>{label}</Text>
+        <View style={rowStyles.labelRow}>
+          <Text style={[rowStyles.label, comingSoon && rowStyles.labelMuted]}>{label}</Text>
+          {comingSoon && <Text style={rowStyles.badge}>Soon</Text>}
+        </View>
         {description && <Text style={rowStyles.desc}>{description}</Text>}
       </View>
-      <View style={[rowStyles.toggle, value ? rowStyles.toggleOn : rowStyles.toggleOff]}>
-        <View style={[rowStyles.thumb, { transform: [{ translateX: value ? 16 : 0 }] }]} />
+      <View style={[
+        rowStyles.toggle,
+        comingSoon ? rowStyles.toggleDisabled : (value ? rowStyles.toggleOn : rowStyles.toggleOff),
+      ]}>
+        <View style={[rowStyles.thumb, { transform: [{ translateX: comingSoon ? 0 : (value ? 16 : 0) }] }]} />
       </View>
     </TouchableOpacity>
   );
 }
 
 const rowStyles = StyleSheet.create({
-  row:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[3] + 2, gap: Spacing[4] },
-  left:      { flex: 1, gap: 2 },
-  label:     { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },
-  desc:      { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  toggle:    { width: 40, height: 24, borderRadius: 12, justifyContent: 'center', paddingHorizontal: 3 },
-  toggleOn:  { backgroundColor: Colors.emerald[400] },
-  toggleOff: { backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.default },
-  thumb:     { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
+  row:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[3] + 2, gap: Spacing[4] },
+  left:          { flex: 1, gap: 2 },
+  labelRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+  label:         { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },
+  labelMuted:    { color: Colors.text.muted },
+  desc:          { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+  badge:         { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, borderWidth: 1, borderColor: Colors.border.default, borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1, letterSpacing: 0.5, textTransform: 'uppercase' },
+  toggle:        { width: 40, height: 24, borderRadius: 12, justifyContent: 'center', paddingHorizontal: 3 },
+  toggleOn:      { backgroundColor: Colors.emerald[400] },
+  toggleOff:     { backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.default },
+  toggleDisabled:{ backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.subtle, opacity: 0.4 },
+  thumb:         { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
 });
 
 interface SelectRowProps {
@@ -107,6 +123,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
     toggleAutoConnect, toggleKillSwitch, toggleStealthMode,
     toggleSplitTunnel, toggleIpv6, togglePushNotifications, toggleBiometricLock,
   } = useSettingsStore();
+  const { clearImportedServers, loadBootstrapIfEmpty } = useServerStore();
 
   function Section({ label, children }: { label: string; children: React.ReactNode }) {
     return (
@@ -168,6 +185,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
             description={t('st.killSwitchD')}
             value={killSwitch}
             onChange={toggleKillSwitch}
+            comingSoon
           />
           <Divider />
           <ToggleRow
@@ -175,6 +193,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
             description={t('st.stealthD')}
             value={stealthMode}
             onChange={toggleStealthMode}
+            comingSoon
           />
           <Divider />
           <ToggleRow
@@ -182,6 +201,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
             description={t('st.splitD')}
             value={splitTunnel}
             onChange={toggleSplitTunnel}
+            comingSoon
           />
           <Divider />
           <ToggleRow
@@ -189,6 +209,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
             description={t('st.ipv6D')}
             value={ipv6}
             onChange={toggleIpv6}
+            comingSoon
           />
         </Section>
 
@@ -207,6 +228,7 @@ export function SettingsScreen({ onBack }: SettingsProps) {
             description={t('st.pushNotifD')}
             value={pushNotifications}
             onChange={togglePushNotifications}
+            comingSoon
           />
           <Divider />
           <ToggleRow
@@ -214,29 +236,41 @@ export function SettingsScreen({ onBack }: SettingsProps) {
             description={t('st.biometricD')}
             value={biometricLock}
             onChange={toggleBiometricLock}
+            comingSoon
           />
         </Section>
 
         <Section label={t('st.diagnostics')}>
-          {([
-            { labelKey: 'st.runDiag',   subKey: 'st.runDiagD',   danger: false },
-            { labelKey: 'st.connLogs',  subKey: 'st.connLogsD',  danger: false },
-            { labelKey: 'st.exportCfg', subKey: 'st.exportCfgD', danger: false },
-            { labelKey: 'st.reset',     subKey: 'st.resetD',     danger: true  },
-          ] as const).map((item, i) => (
-            <View key={item.labelKey}>
-              {i > 0 && <Divider />}
-              <TouchableOpacity style={selStyles.row} activeOpacity={0.7}>
-                <View>
-                  <Text style={[selStyles.label, item.danger && { color: Colors.status.disconnected }]}>
-                    {t(item.labelKey)}
-                  </Text>
-                  <Text style={rowStyles.desc}>{t(item.subKey)}</Text>
-                </View>
-                <Text style={selStyles.chevron}>›</Text>
-              </TouchableOpacity>
+          <TouchableOpacity
+            style={selStyles.row}
+            activeOpacity={0.7}
+            onPress={() => {
+              Alert.alert(
+                'Reset App Data',
+                'Remove all imported server profiles and reset to the default starter profile?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Reset',
+                    style: 'destructive',
+                    onPress: async () => {
+                      clearImportedServers();
+                      await loadBootstrapIfEmpty();
+                      Alert.alert('Done', 'Server list reset to default.');
+                    },
+                  },
+                ],
+              );
+            }}
+          >
+            <View>
+              <Text style={[selStyles.label, { color: Colors.status.disconnected }]}>
+                {t('st.reset')}
+              </Text>
+              <Text style={rowStyles.desc}>{t('st.resetD')}</Text>
             </View>
-          ))}
+            <Text style={selStyles.chevron}>›</Text>
+          </TouchableOpacity>
         </Section>
 
         <View style={styles.about}>

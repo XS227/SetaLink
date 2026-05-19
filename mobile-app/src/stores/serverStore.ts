@@ -263,13 +263,13 @@ export const useServerStore = create<ServerState>()(
       const id = 'server-emergency';
       const record: ServerRecord = {
         id,
-        country:  'Norway',
-        city:     'Hetzner VPS',
-        flag:     '🇳🇴',
+        country:  'Germany',
+        city:     'SetaLink Cloudflare',
+        flag:     '🇩🇪',
         ping:     0,
         load:     0,
         protocol: 'Reality',
-        tags:     ['Stealth'],
+        tags:     ['Stealth', 'Recommended'],
       };
       const creds: ServerCredentials = {
         uuid:        profile.uuid,
@@ -280,7 +280,7 @@ export const useServerStore = create<ServerState>()(
         sni:         profile.sni,
         flow:        profile.flow,
         fingerprint: profile.fingerprint,
-        edgeAddress: profile.edgeAddress || 'edge.setalink.no',
+        edgeAddress: profile.edgeAddress || '',
         edgePort:    profile.edgePort    || 443,
         wsPath:      profile.wsPath      || '/ws',
         xhttpPath:   profile.xhttpPath   || '/xhttp',

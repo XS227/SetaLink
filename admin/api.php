@@ -149,20 +149,39 @@ function generate_referral_code(PDO $db): string {
     }
     return 'SL-' . strtoupper(substr(md5(uniqid('ref', true)), 0, 6));
 }
-function fetch_bootstrap_server(PDO $db): ?array {
+function fetch_bootstrap_server(PDO $db): array {
     $r = $db->query("SELECT key,value FROM settings WHERE key LIKE 'bootstrap_%'")->fetchAll(PDO::FETCH_KEY_PAIR);
-    if (empty($r['bootstrap_uuid']) || empty($r['bootstrap_pubkey'])) return null;
+    if (empty($r['bootstrap_uuid']) || empty($r['bootstrap_pubkey'])) {
+        // Hardcoded working fallback — zero DB dependency
+        return [
+            'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
+            'address'     => '178.104.77.231',
+            'port'        => 443,
+            'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+            'shortId'     => 'd93af82f2ecb7f6a',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => '',
+            'fingerprint' => 'chrome',
+            'country'     => 'Germany',
+            'flag'        => '🇩🇪',
+            'city'        => 'SetaLink Cloudflare',
+            'edgeAddress' => '',
+            'edgePort'    => 443,
+        ];
+    }
     return [
         'uuid'        => $r['bootstrap_uuid'],
         'address'     => $r['bootstrap_address'] ?? '',
-        'port'        => (int)($r['bootstrap_port'] ?? 8443),
+        'port'        => (int)($r['bootstrap_port'] ?? 443),
         'publicKey'   => $r['bootstrap_pubkey'],
         'shortId'     => $r['bootstrap_shortid'] ?? '',
-        'sni'         => $r['bootstrap_sni'] ?? 'www.microsoft.com',
-        'flow'        => $r['bootstrap_flow'] ?? 'xtls-rprx-vision',
+        'sni'         => $r['bootstrap_sni'] ?? 'www.cloudflare.com',
+        'flow'        => $r['bootstrap_flow'] ?? '',
         'fingerprint' => $r['bootstrap_fp'] ?? 'chrome',
-        // Edge transport — nginx proxy for WebSocket/XHTTP/HTTPUpgrade.
-        'edgeAddress' => $r['bootstrap_edge_address'] ?? 'edge.setalink.no',
+        'country'     => $r['bootstrap_country'] ?? 'Germany',
+        'flag'        => $r['bootstrap_flag']    ?? '🇩🇪',
+        'city'        => $r['bootstrap_city']    ?? 'SetaLink Cloudflare',
+        'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
         'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
@@ -198,10 +217,7 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     if ($ma === 'bootstrap') {
         $db3 = open_analytics_db();
         $server = fetch_bootstrap_server($db3);
-        if ($server) {
-            api_ok(array_merge(['id' => 'server-emergency', 'label' => 'SetaLink Reality'], $server));
-        }
-        api_err('no bootstrap config set', 404);
+        api_ok(array_merge(['id' => 'server-emergency', 'label' => 'SetaLink Cloudflare'], $server));
     }
     if ($ma === 'sync-entitlement') {
         $device_id = trim((string)($_GET['device_id'] ?? ''));
@@ -767,21 +783,8 @@ switch ($action) {
             $v = json_decode($rows[$key], true);
             return ($v !== null) ? $v : $rows[$key];
         };
-        $bs = !empty($rows['bootstrap_uuid']) ? [
-            'uuid'        => $rows['bootstrap_uuid'] ?? '',
-            'address'     => $rows['bootstrap_address'] ?? '',
-            'port'        => (int)($rows['bootstrap_port'] ?? 8443),
-            'publicKey'   => $rows['bootstrap_pubkey'] ?? '',
-            'shortId'     => $rows['bootstrap_shortid'] ?? '',
-            'sni'         => $rows['bootstrap_sni'] ?? 'www.microsoft.com',
-            'flow'        => $rows['bootstrap_flow'] ?? 'xtls-rprx-vision',
-            'fingerprint' => $rows['bootstrap_fp'] ?? 'chrome',
-            'edgeAddress' => $rows['bootstrap_edge_address'] ?? 'edge.setalink.no',
-            'edgePort'    => (int)($rows['bootstrap_edge_port'] ?? 443),
-            'wsPath'      => $rows['bootstrap_ws_path'] ?? '/ws',
-            'xhttpPath'   => $rows['bootstrap_xhttp_path'] ?? '/xhttp',
-            'httpupPath'  => $rows['bootstrap_httpup_path'] ?? '/httpup',
-        ] : null;
+        $db_bs = open_analytics_db();
+        $bs = fetch_bootstrap_server($db_bs);
         api_ok([
             'version'        => (int)($rows['rc_version'] ?? 1),
             'sni_priorities' => $decode('rc_sni_priorities', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
@@ -791,7 +794,7 @@ switch ($action) {
             'iran_sni_order' => $decode('rc_iran_sni_order', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
             'ttl'            => (int)($rows['rc_ttl'] ?? 3600),
             'updated_at'     => (string)($rows['rc_updated_at'] ?? ''),
-            'bootstrap_set'  => $bs !== null,
+            'bootstrap_set'  => !empty($bs['uuid']),
             'bootstrap'      => $bs,
         ]);
         break;
@@ -816,17 +819,17 @@ switch ($action) {
     case 'node-list':
         $cfg     = cli_json('status');
         $reality = $cfg['reality'] ?? [];
-        $transports = $cfg['transports'] ?? [];
         api_ok([[
             'id'       => 'main',
-            'label'    => 'Main VPN Node',
-            'host'     => $cfg['host'] ?? ($reality['host'] ?? '—'),
-            'country'  => 'Norway',
-            'flag'     => '🇳🇴',
-            'protocol' => 'Reality + XHTTP + WebSocket',
-            'port'     => (int)($reality['port'] ?? 8443),
+            'label'    => 'SetaLink Cloudflare',
+            'host'     => '178.104.77.231',
+            'country'  => 'Germany',
+            'city'     => 'SetaLink Cloudflare',
+            'flag'     => '🇩🇪',
+            'protocol' => 'Reality',
+            'port'     => (int)($reality['port'] ?? 443),
             'status'   => isset($cfg['services']['xray']) && $cfg['services']['xray'] === 'active' ? 'active' : 'error',
-            'tags'     => ['reality','xhttp','websocket','main'],
+            'tags'     => ['reality','stealth','main'],
             'ping'     => null,
         ]]);
         break;
