@@ -7,6 +7,7 @@ import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/t
 import { GlassCard } from '../components/GlassCard';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
+import { mobilePostPayment } from '../services/entitlementService';
 
 const WALLET_ADDRESS = 'UQBWUvIAvNpzjAR4BB1kjQFHXCLA1bSRPb_7B-ZMcRy65nIJ';
 const USDT_CONTRACT  = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs';
@@ -15,13 +16,14 @@ interface Package {
   gb:   number;
   usd:  number;
   label: string;
+  key:  string;
 }
 
 const PACKAGES: Package[] = [
-  { gb: 10, usd: 3,  label: '10 GB' },
-  { gb: 20, usd: 5,  label: '20 GB' },
-  { gb: 30, usd: 7,  label: '30 GB' },
-  { gb: 40, usd: 9,  label: '40 GB' },
+  { gb: 10,  usd: 3,  label: '10 GB',  key: '10GB'  },
+  { gb: 20,  usd: 5,  label: '20 GB',  key: '30days' },
+  { gb: 30,  usd: 7,  label: '30 GB',  key: '30days' },
+  { gb: -1,  usd: 15, label: 'Unlimited', key: 'unlimited' },
 ];
 
 interface Props {
@@ -66,12 +68,23 @@ export function UpgradeScreen({ onBack }: Props) {
     }
   };
 
-  const handlePaid = () => {
-    Alert.alert(
-      'Payment submitted',
-      `Your payment of ${pkg.usd} USDT for ${pkg.gb} GB will be verified and activated within 24 hours.\n\nMake sure you included your Device ID as the payment memo.`,
-      [{ text: 'OK', onPress: onBack }],
-    );
+  const [submitting, setSubmitting] = useState(false);
+
+  const handlePaid = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await mobilePostPayment(deviceId, pkg.key, `${pkg.usd} USDT`);
+      Alert.alert(
+        'Payment submitted',
+        `Your payment of ${pkg.usd} USDT for ${pkg.label} has been submitted.\n\nActivation within 24 hours after verification.`,
+        [{ text: 'OK', onPress: onBack }],
+      );
+    } catch {
+      showToast('Could not submit — please contact support', 'error', 3000);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -214,11 +227,12 @@ export function UpgradeScreen({ onBack }: Props) {
           <Text style={styles.tonBtnText}>Open Tonkeeper to Pay {amountStr}</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.paidBtn}
+          style={[styles.paidBtn, submitting && { opacity: 0.5 }]}
           onPress={handlePaid}
           activeOpacity={0.8}
+          disabled={submitting}
         >
-          <Text style={styles.paidBtnText}>I have paid — notify admin</Text>
+          <Text style={styles.paidBtnText}>{submitting ? 'Submitting…' : 'I have paid — notify admin'}</Text>
         </TouchableOpacity>
       </View>
     </View>

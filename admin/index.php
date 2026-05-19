@@ -1611,6 +1611,50 @@ $page_titles = [
         </div>
       </div>
 
+      <!-- ── VPN Session Analytics ───────────────────────────── -->
+      <div class="diag-panel diag-full" id="sessionStatsPanel">
+        <div class="diag-panel-head">
+          <h2>VPN Session Analytics</h2>
+          <span id="sessionStatsAt" style="font-size:.7rem;color:var(--muted)">Loading…</span>
+        </div>
+        <div class="diag-panel-body">
+          <div id="sessionStatsBody"><div class="diag-loading">Loading session data…</div></div>
+        </div>
+      </div>
+
+      <!-- ── Watchdog Log ──────────────────────────────────── -->
+      <div class="diag-panel diag-full" id="watchdogPanel">
+        <div class="diag-panel-head">
+          <h2>Server Watchdog Log</h2>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <span id="watchdogAt" style="font-size:.7rem;color:var(--muted)">Loading…</span>
+            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshWatchdogBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="diag-panel-body" style="padding:0;max-height:280px;overflow-y:auto">
+          <div id="watchdogBody" style="padding:.75rem 1rem"><div class="diag-loading">Loading watchdog log…</div></div>
+        </div>
+      </div>
+
+      <!-- ── Payment Queue ─────────────────────────────────── -->
+      <div class="diag-panel diag-full" id="paymentQueuePanel">
+        <div class="diag-panel-head">
+          <h2>USDT Payment Queue</h2>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <select id="paymentFilter" style="font-size:.72rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.2rem .5rem">
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="rejected">Rejected</option>
+              <option value="all">All</option>
+            </select>
+            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshPaymentsBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="diag-panel-body" style="padding:0">
+          <div id="paymentQueueBody" style="padding:.75rem 1rem"><div class="diag-loading">Loading payments…</div></div>
+        </div>
+      </div>
+
       <!-- ── Profile Success Rates ──────────────────────────── -->
       <div class="diag-panel diag-full" id="profileStatsPanel">
         <div class="diag-panel-head">
@@ -3141,6 +3185,149 @@ if (document.getElementById('diagRefreshBtn')) {
 
   document.getElementById('refreshInboundBtn')?.addEventListener('click', loadInboundDiag);
 
+  // ── VPN session analytics ─────────────────────────────────────────────
+  async function loadSessionStats() {
+    const el   = document.getElementById('sessionStatsBody');
+    const elAt = document.getElementById('sessionStatsAt');
+    if (!el) return;
+    try {
+      const j = await diagFetch(API_URL + '?action=session-stats');
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      const d = j.data;
+      if (elAt) elAt.textContent = `${d.total} total sessions`;
+
+      const fmtBytes = (b) => b > 1e9 ? (b/1e9).toFixed(2)+' GB' : b > 1e6 ? (b/1e6).toFixed(1)+' MB' : b > 1e3 ? (b/1e3).toFixed(0)+' KB' : b+' B';
+      const fmtDur   = (s) => s > 3600 ? Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m' : s > 60 ? Math.floor(s/60)+'m' : s+'s';
+
+      const protoRows = (d.by_protocol || []).map(p =>
+        `<tr><td style="padding:.35rem .5rem;font-family:monospace;font-size:.78rem">${escHtml(p.protocol||'?')}</td>
+         <td style="padding:.35rem .5rem;text-align:right;color:var(--ok)">${p.sessions}</td>
+         <td style="padding:.35rem .5rem;text-align:right;color:var(--muted)">${fmtBytes(p.total_bytes||0)}</td>
+         <td style="padding:.35rem .5rem;text-align:right;color:var(--muted)">${fmtDur(Math.round((p.total_secs||0)/(p.sessions||1)))}</td></tr>`
+      ).join('');
+
+      const ispRows = (d.isp_breakdown || []).map(r =>
+        `<div class="cfg-row"><span class="cfg-key">${escHtml(r.isp||'?')} ${escHtml(r.country||'')}</span><code class="cfg-val ok">${r.sessions} sessions</code></div>`
+      ).join('') || '<div style="color:var(--muted);font-size:.78rem">No ISP data yet — sessions needed</div>';
+
+      const recentRows = (d.recent || []).slice(0,5).map(r =>
+        `<div class="error-log-line">${escHtml(r.ended_at||'')} ${escHtml(r.protocol||'?')} ${fmtBytes((r.bytes_sent||0)+(r.bytes_recv||0))} ${fmtDur(r.duration_secs||0)} from ${escHtml(r.client_ip||'?')}</div>`
+      ).join('') || '<div class="error-log-empty">No sessions yet</div>';
+
+      el.innerHTML = `
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1rem">
+          <div class="analytic-card"><div class="analytic-num" style="color:var(--ok)">${d.today??0}</div><div class="analytic-label">Sessions Today</div></div>
+          <div class="analytic-card"><div class="analytic-num">${d.total??0}</div><div class="analytic-label">Total Sessions</div></div>
+          <div class="analytic-card"><div class="analytic-num">${fmtDur(d.avg_duration??0)}</div><div class="analytic-label">Avg Duration</div></div>
+          <div class="analytic-card"><div class="analytic-num">${fmtBytes(d.total_bytes??0)}</div><div class="analytic-label">Total Traffic</div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">By Protocol</div>
+            <table style="width:100%;border-collapse:collapse">
+              <thead><tr style="border-bottom:1px solid var(--border)">
+                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:left">Protocol</th>
+                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:right">Sessions</th>
+                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:right">Traffic</th>
+                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:right">Avg Dur</th>
+              </tr></thead>
+              <tbody>${protoRows || '<tr><td colspan="4" style="color:var(--muted);padding:.5rem">No sessions yet</td></tr>'}</tbody>
+            </table>
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">ISP Breakdown</div>
+            ${ispRows}
+          </div>
+        </div>
+        <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Recent Sessions</div>
+          ${recentRows}
+        </div>`;
+    } catch(e) { if (el) el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
+  }
+
+  // ── Watchdog log ──────────────────────────────────────────────────────
+  async function loadWatchdogLog() {
+    const el   = document.getElementById('watchdogBody');
+    const elAt = document.getElementById('watchdogAt');
+    if (!el) return;
+    try {
+      const j = await diagFetch(API_URL + '?action=watchdog-log&n=60');
+      if (!j.ok) { el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(j.error||'error')}</div>`; return; }
+      const lines = j.data.lines || [];
+      if (elAt) elAt.textContent = `${lines.length} lines`;
+      if (!lines.length) { el.innerHTML = '<div class="error-log-empty">No watchdog log yet — will appear after first run (60s)</div>'; return; }
+      el.innerHTML = [...lines].reverse().map(l => {
+        const cls = l.includes('CRIT') ? 'is-error' : l.includes('FAIL') ? 'is-warn' : '';
+        return `<div class="error-log-line ${cls}">${escHtml(l)}</div>`;
+      }).join('');
+    } catch(e) { if (el) el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(e.message)}</div>`; }
+  }
+
+  document.getElementById('refreshWatchdogBtn')?.addEventListener('click', loadWatchdogLog);
+
+  // ── Payment Queue ─────────────────────────────────────────────────────
+  const PKG_PRICES = { '7days':'~$3','30days':'~$8','unlimited':'~$25','5GB':'~$4','10GB':'~$7','15GB':'~$10' };
+  const PKG_LABELS = { '7days':'7 Days','30days':'30 Days','unlimited':'Unlimited','5GB':'5 GB','10GB':'10 GB','15GB':'15 GB' };
+
+  async function loadPaymentQueue() {
+    const el = document.getElementById('paymentQueueBody');
+    if (!el) return;
+    const filter = document.getElementById('paymentFilter')?.value || 'pending';
+    el.innerHTML = '<div class="diag-loading">Loading payments…</div>';
+    try {
+      const j = await diagFetch(`${API_URL}?action=payment-queue&status=${encodeURIComponent(filter)}`);
+      if (!j.ok) { el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(j.error||'error')}</div>`; return; }
+      const pays = j.data.payments || [];
+      if (!pays.length) { el.innerHTML = '<div style="padding:.75rem;color:var(--muted)">No ' + escHtml(filter) + ' payments.</div>'; return; }
+      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">ID</th>
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Device</th>
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Package</th>
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Memo / TX</th>
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Submitted</th>
+          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Status</th>
+          <th style="text-align:center;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Action</th>
+        </tr></thead><tbody>` +
+        pays.map(p => {
+          const statusColor = p.status==='approved' ? 'var(--ok)' : p.status==='rejected' ? 'var(--danger)' : 'var(--warn)';
+          const deviceShort = p.device_id.substring(0, 12) + '…';
+          const actionBtns = p.status==='pending'
+            ? `<button class="btn btn-primary" style="padding:.25rem .6rem;font-size:.7rem;margin-right:.3rem" onclick="approvePayment(${p.id})">Approve</button>
+               <button class="btn btn-secondary" style="padding:.25rem .6rem;font-size:.7rem;color:var(--danger);border-color:var(--danger)" onclick="rejectPayment(${p.id})">Reject</button>`
+            : `<span style="color:var(--muted);font-size:.7rem">${escHtml(p.reviewed_by||'—')}</span>`;
+          return `<tr style="border-bottom:1px solid var(--border)">
+            <td style="padding:.4rem .6rem;font-family:monospace;font-size:.72rem">#${p.id}</td>
+            <td style="padding:.4rem .6rem;font-family:monospace;font-size:.72rem" title="${escHtml(p.device_id)}">${escHtml(deviceShort)}</td>
+            <td style="padding:.4rem .6rem"><span style="font-weight:600">${escHtml(PKG_LABELS[p.package]||p.package)}</span> <span style="color:var(--muted);font-size:.7rem">${escHtml(PKG_PRICES[p.package]||'')}</span></td>
+            <td style="padding:.4rem .6rem;font-size:.7rem;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${escHtml(p.tx_hash)}">${escHtml(p.memo||'—')}${p.tx_hash ? '<br><code style="font-size:.65rem;color:var(--muted)">'+escHtml(p.tx_hash.substring(0,16))+'…</code>' : ''}</td>
+            <td style="padding:.4rem .6rem;font-size:.7rem;color:var(--muted)">${escHtml((p.submitted_at||'').replace('T',' ').substring(0,16))}</td>
+            <td style="padding:.4rem .6rem"><span style="color:${statusColor};font-weight:600;font-size:.75rem">${escHtml(p.status)}</span></td>
+            <td style="padding:.4rem .6rem;text-align:center">${actionBtns}</td>
+          </tr>`;
+        }).join('') + `</tbody></table></div>`;
+    } catch(e) { el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(e.message)}</div>`; }
+  }
+
+  async function approvePayment(id) {
+    if (!confirm('Approve payment #' + id + ' and activate quota?')) return;
+    const note = prompt('Optional note (leave blank for none):') || '';
+    const j = await SL.apiPost({ action:'payment-approve', payment_id:id, note });
+    if (j.ok) { SL.toast('Payment #' + id + ' approved — quota activated', 'success'); loadPaymentQueue(); }
+    else SL.toast('Error: ' + (j.error||'failed'), 'error');
+  }
+  async function rejectPayment(id) {
+    const note = prompt('Rejection reason (required):');
+    if (!note) return;
+    const j = await SL.apiPost({ action:'payment-reject', payment_id:id, note });
+    if (j.ok) { SL.toast('Payment #' + id + ' rejected', 'warn'); loadPaymentQueue(); }
+    else SL.toast('Error: ' + (j.error||'failed'), 'error');
+  }
+
+  document.getElementById('refreshPaymentsBtn')?.addEventListener('click', loadPaymentQueue);
+  document.getElementById('paymentFilter')?.addEventListener('change', loadPaymentQueue);
+
   // ── Profile success rates ──────────────────────────────────────────────
   async function loadProfileStats() {
     const el = document.getElementById('profileStatsBody');
@@ -3449,6 +3636,9 @@ if (document.getElementById('diagRefreshBtn')) {
     loadIranScore();
     loadActiveSessions();
     loadInboundDiag();
+    loadSessionStats();
+    loadWatchdogLog();
+    loadPaymentQueue();
     loadProfileStats();
     loadNoInternetAnalysis();
     loadSniLeaderboard();
@@ -3458,9 +3648,10 @@ if (document.getElementById('diagRefreshBtn')) {
     loadBootstrapPanel();
   });
 
-  // Auto-refresh active sessions every 30 seconds
+  // Auto-refresh panels every 30 seconds
   setInterval(loadActiveSessions, 30000);
   setInterval(loadInboundDiag, 30000);
+  setInterval(loadSessionStats, 60000);
 
   // Auto-load diagnostics data on page load
   loadConnectionAnalytics();
@@ -3469,6 +3660,9 @@ if (document.getElementById('diagRefreshBtn')) {
   loadIranScore();
   loadActiveSessions();
   loadInboundDiag();
+  loadSessionStats();
+  loadWatchdogLog();
+  loadPaymentQueue();
   loadProfileStats();
   loadNoInternetAnalysis();
   loadSniLeaderboard();
