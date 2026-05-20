@@ -1,7 +1,0 @@
-[
-{
-  "directory": "/var/www/setalink/mobile-app/android/app/.cxx/RelWithDebInfo/704r225r/arm64-v8a",
-  "command": "/home/ubuntu/android-sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android24 --sysroot=/home/ubuntu/android-sdk/ndk/26.1.10909125/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dsetalink_vpn_EXPORTS -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -O2 -g -DNDEBUG -fPIC -o CMakeFiles/setalink_vpn.dir/tunnel_helper.cpp.o -c /var/www/setalink/mobile-app/android/app/src/main/cpp/tunnel_helper.cpp",
-  "file": "/var/www/setalink/mobile-app/android/app/src/main/cpp/tunnel_helper.cpp"
-}
-]
