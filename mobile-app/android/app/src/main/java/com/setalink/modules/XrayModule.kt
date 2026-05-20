@@ -344,6 +344,57 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         promise.resolve(null)
     }
 
+    @ReactMethod
+    override fun runTraceTest(promise: Promise) {
+        // Run https://1.1.1.1/cdn-cgi/trace through the active VPN network.
+        // Uses Network.openConnection() so the request goes through TUN → tun2socks
+        // → SOCKS5 → Xray, bypassing the UID exclusion on our own process.
+        Thread {
+            try {
+                val cm = reactContext.getSystemService(android.net.ConnectivityManager::class.java)
+                val vpnNet = cm?.allNetworks?.firstOrNull { net ->
+                    cm.getNetworkCapabilities(net)
+                        ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+                }
+                if (vpnNet == null) {
+                    val map = WritableNativeMap().apply {
+                        putBoolean("ok",    false)
+                        putString("error",  "No active VPN network — is the tunnel running?")
+                    }
+                    promise.resolve(map)
+                    return@Thread
+                }
+                val url  = java.net.URL("https://1.1.1.1/cdn-cgi/trace")
+                val conn = vpnNet.openConnection(url) as java.net.HttpURLConnection
+                conn.connectTimeout = 10_000
+                conn.readTimeout    = 10_000
+                conn.setRequestProperty("User-Agent", "SetaLink/1.0")
+                try {
+                    val code = conn.responseCode
+                    val body = conn.inputStream.bufferedReader().readText()
+                    val ip   = body.lines()
+                        .firstOrNull { it.startsWith("ip=") }?.removePrefix("ip=") ?: "?"
+                    val map = WritableNativeMap().apply {
+                        putBoolean("ok",         code == 200)
+                        putInt("statusCode",     code)
+                        putString("body",        body.take(600))
+                        putString("routedIp",    ip)
+                        putDouble("bytesIn",     body.length.toDouble())
+                    }
+                    promise.resolve(map)
+                } finally {
+                    conn.disconnect()
+                }
+            } catch (e: Exception) {
+                val map = WritableNativeMap().apply {
+                    putBoolean("ok",   false)
+                    putString("error", e.message ?: "Unknown error")
+                }
+                promise.resolve(map)
+            }
+        }.start()
+    }
+
     // ── VPN permission result ─────────────────────────────────────────────────
 
     override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {

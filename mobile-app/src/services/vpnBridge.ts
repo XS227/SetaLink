@@ -18,6 +18,15 @@ export interface VpnStats {
   uptime:        number;  // seconds
 }
 
+export interface TraceTestResult {
+  ok: boolean;
+  statusCode?: number;
+  routedIp?: string;
+  body?: string;
+  bytesIn?: number;
+  error?: string;
+}
+
 export interface VpnAdapter {
   connect(configJson: string): Promise<void>;
   connectEmergency(configJson: string): Promise<void>;
@@ -26,6 +35,7 @@ export interface VpnAdapter {
   isRunning(): Promise<boolean>;
   getTun2socksLog?(): Promise<string>;
   getGeneratedConfig?(): Promise<string>;
+  runTraceTest?(): Promise<TraceTestResult>;
 }
 
 // ── Mock adapter (used when native module is unavailable) ─────────────────────
@@ -67,6 +77,10 @@ class MockAdapter implements VpnAdapter {
   async isRunning(): Promise<boolean> { return this._running; }
   async getTun2socksLog(): Promise<string> { return '(mock — no native tunnel)'; }
   async getGeneratedConfig(): Promise<string> { return '(mock — no native tunnel)'; }
+  async runTraceTest(): Promise<TraceTestResult> {
+    await sleep(800);
+    return { ok: true, statusCode: 200, routedIp: '104.28.0.1', bytesIn: 312, body: 'ip=104.28.0.1\nts=1234567890\n(mock)' };
+  }
 }
 
 // ── Native adapter (wraps XrayModule TurboModule) ────────────────────────────
@@ -191,6 +205,14 @@ class NativeAdapter implements VpnAdapter {
 
   async getGeneratedConfig(): Promise<string> {
     return this.module.getGeneratedConfig?.() ?? '(not available)';
+  }
+
+  async runTraceTest(): Promise<TraceTestResult> {
+    try {
+      return await this.module.runTraceTest();
+    } catch {
+      return { ok: false, error: 'runTraceTest not available on this platform' };
+    }
   }
 }
 

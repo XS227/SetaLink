@@ -21,4 +21,5 @@ abstract class NativeXrayModuleSpec(context: ReactApplicationContext) :
     abstract fun getGeneratedConfig(promise: Promise)
     abstract fun getDeviceInfo(promise: Promise)
     abstract fun reportTelemetry(payload: String, promise: Promise)
+    abstract fun runTraceTest(promise: Promise)
 }
