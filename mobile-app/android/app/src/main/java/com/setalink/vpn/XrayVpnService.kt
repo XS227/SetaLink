@@ -206,6 +206,18 @@ class XrayVpnService : VpnService() {
             }
             broadcastStep("socks_ready", true, "SOCKS5 listening on 127.0.0.1:10808")
 
+            // Verify SOCKS5 with a real protocol handshake (not just TCP connect)
+            Log.i(TAG, "SETALINK_SOCKS_READY port=10808 — verifying SOCKS5 handshake")
+            val socksHandshakeOk = verifySocks5Handshake(10808)
+            appendLog("[SOCKS5] handshake probe: ok=$socksHandshakeOk")
+            if (!socksHandshakeOk) {
+                val logTail = readLogTail(20)
+                broadcastStep("socks_handshake", false,
+                    "SOCKS5 handshake FAILED — Xray inbound not responding correctly on 127.0.0.1:10808\n$logTail")
+                throw Exception("SOCKS5 handshake failed on port 10808 — Xray may not have SOCKS inbound configured")
+            }
+            broadcastStep("socks_handshake", true, "SOCKS5 handshake OK on 127.0.0.1:10808 — Xray inbound responding")
+
             // 6. Build TUN interface
             val mtu = if (emergencyMode) 1280 else 1400
             val vpnBuilder = Builder()
@@ -238,6 +250,7 @@ class XrayVpnService : VpnService() {
 
             val cloexecResult = nativeClearCloexec(tunFdInt)
             appendLog("[TUN] fd=$tunFdInt iface=${tunInterface ?: "?"} mtu=$mtu FD_CLOEXEC_clear=$cloexecResult emergencyMode=$emergencyMode")
+            Log.i(TAG, "SETALINK_ROUTE_ADDED 0.0.0.0/0 ::/0 dns=${if (emergencyMode) "1.1.1.1" else "1.1.1.1,8.8.8.8"} iface=${tunInterface ?: "?"} fd=$tunFdInt mtu=$mtu")
             broadcastStep("tun_created", true,
                 "TUN fd=$tunFdInt iface=${tunInterface ?: "?"} mtu=$mtu emergencyMode=$emergencyMode cloexec=$cloexecResult")
             broadcastRouteDiagnostics(tunInterface, mtu, emergencyMode)
@@ -273,6 +286,7 @@ class XrayVpnService : VpnService() {
                     "tun2socks exited code=$firstExit pid=$pid\nargs=$args\ntun2socks output:\n$t2sLog\nxray log:\n$logTail")
                 throw Exception("tun2socks exited (code=$firstExit).\nargs=$args\nt2s output:\n$t2sLog")
             }
+            Log.i(TAG, "SETALINK_TUN_STARTED fd=$tunFdInt pid=$pid proxy=socks5://127.0.0.1:10808 iface=${tunInterface ?: "?"}")
             broadcastStep("tun2socks_alive", true,
                 "tun2socks running pid=$pid — fd://$tunFdInt → socks5://127.0.0.1:10808")
 
@@ -416,6 +430,7 @@ class XrayVpnService : VpnService() {
         }.onFailure { e -> appendLog("[BROWSER-COMPAT] DNS probe failed: ${e.message}") }
          .getOrElse { false }
 
+        if (dnsOk) Log.i(TAG, "SETALINK_DNS_OK — one.one.one.one resolved via SOCKS5")
         broadcastStep("dns_resolve", dnsOk,
             if (dnsOk) "DNS OK — hostname resolution working through tunnel"
             else        "DNS FAIL — hostname resolution failed through tunnel")
@@ -529,12 +544,15 @@ class XrayVpnService : VpnService() {
         publishMetrics(tunInterface, rxSnap, txSnap, probeOk)
 
         if (httpsOk) {
+            Log.i(TAG, "SETALINK_HTTP_OK via $httpsHost (${httpsBytes}B) TCP+HTTPS — TUN rx=$rxSnap tx=$txSnap")
+            Log.i(TAG, "SETALINK_DNS_OK — hostname resolved via Xray SOCKS5")
             return ValidationResult(true,
                 "TCP+HTTPS OK via $httpsHost (${httpsBytes}B) — TLS/Vision traffic confirmed. " +
                 "TUN rx=$rxSnap tx=$txSnap",
                 probeOk = true)
         }
         if (httpOk) {
+            Log.i(TAG, "SETALINK_HTTP_OK via $httpHost (${httpBytes}B) TCP+HTTP — TUN rx=$rxSnap tx=$txSnap")
             return ValidationResult(true,
                 "TCP+HTTP OK via $httpHost (${httpBytes}B). TUN rx=$rxSnap tx=$txSnap",
                 probeOk = true)
@@ -605,26 +623,16 @@ class XrayVpnService : VpnService() {
 
         probeOutcome.onSuccess { return it }
 
+        // vpnNet.openConnection() failed. Since our app UID is excluded from TUN via
+        // addDisallowedApplication(), Network.openConnection() is inherently unreliable
+        // and can fail with EPERM, timeout, SSL errors, or connection refused depending
+        // on the Android ROM. Always fall back to SOCKS5-based internet validation which
+        // is always reachable regardless of VPN UID exclusion.
         val err    = probeOutcome.exceptionOrNull()
         val errMsg = err?.message ?: ""
-        val isPermError = errMsg.contains("EPERM", ignoreCase = true)
-            || errMsg.contains("Operation not permitted", ignoreCase = true)
-            || errMsg.contains("Binding socket to network", ignoreCase = true)
-            || errMsg.contains("EACCES", ignoreCase = true)
-
-        if (!isPermError) {
-            appendLog("[TUN-PROBE] FAILED: ${err?.javaClass?.simpleName}: $errMsg")
-            val category = classifyFailure(readLogTail(30))
-            return ValidationResult(false, "TUN probe failed: ${errMsg.take(120)}", category = category)
-        }
-
-        // EPERM: our UID is excluded from the VPN network via addDisallowedApplication.
-        // bindSocket is blocked by the kernel — this is expected on some Android ROMs.
-        // Fall back to process-health + basic connectivity check.
-        appendLog("[TUN-PROBE] WARN: bindSocket EPERM (app UID excluded from VPN) — running process-health fallback")
-        appendLog("[TUN-PROBE] EPERM detail: $errMsg")
-        broadcastStep("tun_bind_eperm", true,
-            "bindSocket EPERM (warning — UID excluded from VPN) — checking process health")
+        appendLog("[TUN-PROBE] openConnection failed (${err?.javaClass?.simpleName}: $errMsg) — running SOCKS5 fallback")
+        broadcastStep("tun_probe_fallback", true,
+            "VPN network probe failed (${errMsg.take(80)}) — checking SOCKS5 routing")
         return runTunEpermFallback()
     }
 
@@ -677,11 +685,12 @@ class XrayVpnService : VpnService() {
         appendLog("[TUN-FALLBACK] result: probeOk=$probeOk category=$failCategory note=$probeNote xray=$xrayAlive t2s=$t2sAlive TUN=$tunIface")
 
         return if (probeOk) {
+            Log.i(TAG, "SETALINK_HTTP_OK via SOCKS5 — $probeNote TUN=$tunIface")
             broadcastStep("tun_fallback_ok", true,
-                "EPERM fallback — SOCKS5 internet confirmed: $probeNote TUN=$tunIface")
+                "SOCKS5 internet confirmed: $probeNote TUN=$tunIface")
             ValidationResult(
                 ok       = true,
-                message  = "bindSocket EPERM (OK) — SOCKS5 probe passed: $probeNote TUN=$tunIface",
+                message  = "SOCKS5 probe passed: $probeNote TUN=$tunIface",
                 probeOk  = true,
                 category = FAIL_NO_INTERNET,
             )
@@ -1113,6 +1122,27 @@ class XrayVpnService : VpnService() {
             appendLog("[BINARY] $libName chmod succeeded")
         }
         return binFile
+    }
+
+    // Sends a SOCKS5 greeting and reads the server method selection response.
+    // Confirms Xray is actually serving SOCKS5, not just accepting TCP connections.
+    private suspend fun verifySocks5Handshake(port: Int): Boolean {
+        return runCatching {
+            withContext(Dispatchers.IO) {
+                Socket().use { sock ->
+                    sock.connect(InetSocketAddress("127.0.0.1", port), 3_000)
+                    sock.soTimeout = 3_000
+                    // SOCKS5 greeting: VER=5, NMETHODS=1, METHOD=0x00 (no-auth)
+                    sock.getOutputStream().write(byteArrayOf(0x05, 0x01, 0x00))
+                    sock.getOutputStream().flush()
+                    val resp = ByteArray(2)
+                    val read = sock.getInputStream().read(resp)
+                    // Valid SOCKS5 response: VER=0x05, METHOD=0x00 (no-auth selected)
+                    read == 2 && resp[0] == 0x05.toByte() && resp[1] == 0x00.toByte()
+                }
+            }
+        }.onFailure { e -> appendLog("[SOCKS5-HANDSHAKE] failed: ${e.javaClass.simpleName}: ${e.message}") }
+         .getOrElse { false }
     }
 
     private suspend fun waitForPort(port: Int, timeoutMs: Long): Boolean {

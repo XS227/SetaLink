@@ -258,6 +258,64 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           <View style={{ height: 1 }} />
         </GlassCard>
 
+        {/* Low-level tunnel layer */}
+        <GlassCard>
+          <Text style={styles.cardLabel}>Tunnel Layer</Text>
+          {(() => {
+            const getStep = (key: string) => {
+              const line = [...connectionLog].reverse().find(l => l.includes(` ${key}:`));
+              if (!line) return 'unknown' as const;
+              return line.startsWith('✓') ? 'ok' as const : 'fail' as const;
+            };
+            const tunActive   = getStep('tun_created');
+            const socksActive = getStep('socks_handshake');
+            const xrayActive  = getStep('xray_started');
+            const dnsOk       = getStep('dns_check') === 'ok' || getStep('dns_resolve') === 'ok' ? 'ok' as const : getStep('dns_check') === 'fail' || getStep('dns_resolve') === 'fail' ? 'fail' as const : 'unknown' as const;
+            const internetOk  = getStep('tun_probe') === 'ok' || getStep('tun_fallback_ok') === 'ok' ? 'ok' as const : getStep('tun_probe') === 'fail' ? 'fail' as const : 'unknown' as const;
+            const statusColor = (s: 'ok' | 'fail' | 'unknown') =>
+              s === 'ok' ? Colors.emerald[400] : s === 'fail' ? Colors.status.disconnected : Colors.text.muted;
+            const statusIcon  = (s: 'ok' | 'fail' | 'unknown') =>
+              s === 'ok' ? '●' : s === 'fail' ? '●' : '○';
+            const layers = [
+              { label: 'TUN Device',    status: tunActive,   detail: 'VpnService.Builder TUN fd' },
+              { label: 'SOCKS5 Inbound', status: socksActive, detail: '127.0.0.1:10808 (Xray)' },
+              { label: 'Xray Process',  status: xrayActive,  detail: 'Proxy daemon' },
+              { label: 'DNS Routing',   status: dnsOk,       detail: 'Hostname resolution via tunnel' },
+              { label: 'Internet',      status: internetOk,  detail: 'HTTP/HTTPS through VPN' },
+            ];
+            return layers.map(({ label, status, detail }) => (
+              <View key={label} style={styles.infoRow}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={{ fontSize: 10, color: statusColor(status) }}>{statusIcon(status)}</Text>
+                  <View>
+                    <Text style={styles.infoKey}>{label}</Text>
+                    <Text style={{ fontSize: 10, fontFamily: 'monospace', color: Colors.text.muted }}>{detail}</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: Typography.size.xs, fontFamily: 'monospace', color: statusColor(status) }}>
+                  {status === 'ok' ? 'OK' : status === 'fail' ? 'FAIL' : '—'}
+                </Text>
+              </View>
+            ));
+          })()}
+          <View style={{ height: Spacing[2] }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={{ fontSize: Typography.size.xs, fontFamily: 'monospace', color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 }}>Upload</Text>
+              <Text style={{ fontSize: Typography.size.lg, fontFamily: 'monospace', color: Colors.emerald[400] }}>
+                {liveStats?.uploadMbps ? `${liveStats.uploadMbps}` : '0'} <Text style={{ fontSize: Typography.size.xs, color: Colors.text.muted }}>MB/s</Text>
+              </Text>
+            </View>
+            <View style={{ width: 1, backgroundColor: Colors.border.subtle }} />
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={{ fontSize: Typography.size.xs, fontFamily: 'monospace', color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 }}>Download</Text>
+              <Text style={{ fontSize: Typography.size.lg, fontFamily: 'monospace', color: Colors.blue[400] }}>
+                {liveStats?.downloadMbps ? `${liveStats.downloadMbps}` : '0'} <Text style={{ fontSize: Typography.size.xs, color: Colors.text.muted }}>MB/s</Text>
+              </Text>
+            </View>
+          </View>
+        </GlassCard>
+
         {/* Route trace */}
         <View>
           <Text style={styles.sectionTitle}>Route Trace</Text>
