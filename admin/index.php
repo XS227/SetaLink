@@ -1,16 +1,7 @@
 <?php
-// SetaLink admin dashboard — premium SaaS-style VPN management panel.
-// Auth enforced upstream by nginx auth_basic.
-// All state changes use api.php (AJAX); this file is render-only.
 declare(strict_types=1);
 
-const CLI         = '/usr/bin/sudo -n /var/www/setalink/admin/setalink-cli';
-const USERNAME_RE = '/^[a-z0-9][a-z0-9._-]{0,31}$/';
-const VALID_PKGS  = ['7days', '30days', 'unlimited', '5GB', '10GB', '15GB'];
-
-// -------------------------------------------------------------------------
-// CSRF — same derivation as api.php; fallback ensures it never silently breaks.
-// -------------------------------------------------------------------------
+// ── Auth / CSRF ───────────────────────────────────────────────────────
 function csrf_secret(): string {
     $path = '/etc/setalink/admin/csrf.secret';
     if (is_readable($path)) {
@@ -20,3814 +11,1332 @@ function csrf_secret(): string {
     return hash('sha256', 'setalink-csrf:' . gethostname() . ':' . __DIR__);
 }
 $csrf_secret = csrf_secret();
-$auth_user   = (string)($_SERVER['PHP_AUTH_USER'] ?? $_SERVER['REMOTE_USER'] ?? '');
+$auth_user   = (string)($_SERVER['PHP_AUTH_USER'] ?? $_SERVER['REMOTE_USER'] ?? 'admin');
 $csrf_token  = hash_hmac('sha256', $auth_user, $csrf_secret);
+$admin_path  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/admin/index.php'), '/') . '/';
 
-$admin_path = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? '/admin/index.php'), '/') . '/';
-setcookie('_csrf', $csrf_token, [
-    'path'     => $admin_path,
-    'secure'   => true,
-    'httponly' => true,
-    'samesite' => 'Lax',
-]);
-// Session cookie: lets api.php verify identity for fetch() calls without re-triggering
-// the nginx Basic Auth challenge (which causes browsers to hang on XHR requests).
-setcookie('_sl_session', hash_hmac('sha256', 'sl-session:' . $auth_user, $csrf_secret), [
-    'path'     => $admin_path,
-    'secure'   => true,
-    'httponly' => true,
-    'samesite' => 'Strict',
-    'expires'  => time() + 28800, // 8 hours
-]);
+setcookie('_csrf', $csrf_token, ['path'=>$admin_path,'secure'=>true,'httponly'=>true,'samesite'=>'Lax']);
+setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secret),
+    ['path'=>$admin_path,'secure'=>true,'httponly'=>true,'samesite'=>'Strict','expires'=>time()+28800]);
 
-// -------------------------------------------------------------------------
-// Helpers
-// -------------------------------------------------------------------------
-function h(string $s): string {
-    return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-}
-function cli_json(string $action, array $args = []): array {
-    $cmd = CLI . ' ' . escapeshellarg($action);
-    foreach ($args as $a) $cmd .= ' ' . escapeshellarg($a);
-    $cmd .= ' 2>&1';
-    exec($cmd, $out, $rc);
-    if ($rc !== 0) return ['_error' => implode("\n", $out)];
-    $j = json_decode(implode("\n", $out), true);
-    return is_array($j) ? $j : ['_error' => 'unparseable cli output'];
-}
-function fmt_bytes(int $b): string {
-    if ($b <= 0) return '0 B';
-    $units = ['B','KB','MB','GB','TB'];
-    $i = 0; $v = (float)$b;
-    while ($v >= 1024 && $i < 4) { $v /= 1024; $i++; }
-    return ($v >= 100 ? number_format($v, 0) : number_format($v, 1)) . ' ' . $units[$i];
-}
-function fmt_relative(?string $iso): string {
-    if (!$iso) return '—';
-    $t = strtotime($iso);
-    if ($t === false) return '—';
-    $delta = time() - $t;
-    if ($delta < 0)        return 'just now';
-    if ($delta < 60)       return $delta . 's ago';
-    if ($delta < 3600)     return (int)($delta/60) . 'm ago';
-    if ($delta < 86400)    return (int)($delta/3600) . 'h ago';
-    if ($delta < 86400*30) return (int)($delta/86400) . 'd ago';
-    return date('Y-m-d', $t);
-}
-function fmt_date(?string $iso, string $fmt = 'M j, Y'): string {
-    if (!$iso) return '—';
-    $t = strtotime($iso);
-    return $t !== false ? date($fmt, $t) : '—';
-}
-function pkg_class(string $pkg): string {
-    return 'pkg-' . strtolower(preg_replace('/[^a-z0-9]/i', '', $pkg));
-}
+function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
-// -------------------------------------------------------------------------
-// Page routing
-// -------------------------------------------------------------------------
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard', 'logs', 'protocols', 'settings', 'diagnostics'], true)) {
-    $page = 'dashboard';
+if (!in_array($page, ['dashboard','iran','devices','logs','release','config'], true)) $page = 'dashboard';
+
+// Inline SVG icon helper
+function icon(string $name): string {
+    static $icons = [
+        'grid'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
+        'globe'   => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+        'devices' => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>',
+        'log'     => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+        'package' => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16.5" y1="9.4" x2="7.5" y2="4.21"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
+        'settings'=> '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+        'menu'    => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
+        'refresh' => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+        'x'       => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+        'download'=> '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+        'check'   => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+        'alert'   => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+        'trash'   => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+        'copy'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+        'save'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
+        'plus'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+    ];
+    return $icons[$name] ?? '';
 }
-
-// -------------------------------------------------------------------------
-// Icons (inline SVG, no external deps)
-// -------------------------------------------------------------------------
-$I = [
-    'link'      => '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>',
-    'menu'      => '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>',
-    'qr'        => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="17" y2="14"/><line x1="17" y1="17" x2="17" y2="21"/><line x1="20" y1="14" x2="21" y2="14"/><line x1="21" y1="17" x2="21" y2="17"/><line x1="14" y1="20" x2="14" y2="21"/></svg>',
-    'copy'      => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
-    'enable'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-    'disable'   => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>',
-    'trash'     => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
-    'plus'      => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
-    'refresh'   => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
-    'search'    => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
-    'download'  => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-    'x'         => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
-    'json'      => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
-    'json-dl'   => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-    'users'     => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
-    'server'    => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>',
-    'logs'      => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>',
-    'protocols' => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>',
-    'settings'  => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
-    'save'      => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
-    'tg'        => '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
-    'check'     => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-    'pause'     => '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>',
-];
-
-$LOGO_ICON = '<img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="28" height="28" alt="SetaLink" style="display:block;border-radius:6px">';
-
-// -------------------------------------------------------------------------
-// Fetch data (status always needed for sidebar)
-// -------------------------------------------------------------------------
-$status     = cli_json('status');
-$err_status = isset($status['_error']);
-$xray_state  = (string)($status['services']['xray']  ?? '?');
-$nginx_state = (string)($status['services']['nginx'] ?? '?');
-$ufw_state   = (string)($status['services']['ufw']   ?? '?');
-$host        = (string)($status['host']               ?? '?');
-$sni         = (string)($status['sni']                ?? '?');
-$pub_port    = (string)($status['ports']['public']    ?? '?');
-
-// Dashboard page also needs user list
-$list      = [];
-$users     = [];
-$total     = 0; $active = 0; $disabled = 0; $max_users = 50;
-$err_list  = false;
-if ($page === 'dashboard') {
-    $list      = cli_json('list');
-    $err_list  = isset($list['_error']);
-    $users     = $err_list ? [] : (array)($list['users'] ?? []);
-    $total     = (int)($list['total']    ?? 0);
-    $active    = (int)($list['active']   ?? 0);
-    $disabled  = (int)($list['disabled'] ?? 0);
-    $max_users = (int)($list['max']      ?? 50);
-}
-
-$page_titles = [
-    'dashboard'   => ['VPN Dashboard',    'Server management &amp; user control'],
-    'logs'        => ['Log Viewer',       'Xray &amp; Nginx real-time logs'],
-    'protocols'   => ['Protocol Health',  'WS / XHTTP / HTTPUpgrade / Reality status'],
-    'settings'    => ['Settings',         'Server configuration &amp; integrations'],
-    'diagnostics' => ['Diagnostics',      'Server config · Iran/Turkey tests · Connection analytics'],
-];
-[$page_title, $page_sub] = $page_titles[$page];
 ?><!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>SetaLink Admin — <?= h($page_title) ?></title>
-  <link rel="icon" type="image/png" href="/assets/logo/shirokhorshid/favicon.ico">
+  <title>SetaLink Admin</title>
+  <link rel="icon" href="/assets/logo/shirokhorshid/favicon.ico">
   <link rel="stylesheet" href="style.css">
-  <style>
-    /* ── Additional styles for new pages ─────────────────────────────── */
-
-    /* ── Admin heartbeat bar (all pages) ──────────────────────────── */
-    .hb-row {
-      display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
-      padding: .4rem 1rem; background: var(--panel); border: 1px solid var(--border);
-      border-radius: var(--radius-lg); margin-bottom: 1.25rem;
-    }
-    .hb-item { display:flex; align-items:center; gap:.35rem; font-size:.7rem; font-weight:600;
-      text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
-    .hb-updated { margin-left:auto; font-size:.68rem; color:var(--muted-2); }
-
-    /* Server stats row (dashboard top) */
-    .srv-stats-row {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: .75rem;
-      margin-bottom: 1.25rem;
-    }
-    .srv-stat {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: .9rem 1rem;
-      display: flex;
-      flex-direction: column;
-      gap: .3rem;
-      transition: border-color .2s;
-    }
-    .srv-stat:hover { border-color: var(--border-2); }
-    .srv-stat-label {
-      font-size: .68rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .09em;
-      color: var(--muted);
-    }
-    .srv-stat-value {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: var(--text);
-      line-height: 1.1;
-    }
-    .srv-stat.loading .srv-stat-value { color: var(--muted-2); }
-    .srv-stat-bar {
-      height: 3px;
-      background: var(--panel-2);
-      border-radius: 2px;
-      overflow: hidden;
-      margin-top: 3px;
-    }
-    .srv-stat-bar-fill {
-      height: 100%;
-      border-radius: 2px;
-      background: linear-gradient(90deg, var(--accent), #79b8ff);
-      transition: width .4s ease;
-    }
-    .srv-stat-bar-fill.warn   { background: linear-gradient(90deg, var(--warn), #f0c050); }
-    .srv-stat-bar-fill.danger { background: linear-gradient(90deg, var(--danger), #ff8a80); }
-
-    /* Protocol mini-row (dashboard) */
-    .proto-health-row {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: .75rem;
-      margin-bottom: 2rem;
-    }
-    .proto-mini {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: .65rem 1rem;
-      display: flex;
-      align-items: center;
-      gap: .55rem;
-      font-size: .82rem;
-    }
-    .proto-mini-name { font-weight: 600; color: var(--text-2); flex: 1; min-width: 0; }
-    .proto-mini-code { font-family: "JetBrains Mono", monospace; font-size: .7rem; color: var(--muted); white-space: nowrap; }
-
-    /* Protocol cards page */
-    .proto-cards-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 1.25rem;
-      margin-bottom: 1.5rem;
-    }
-    .proto-card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-      gap: .75rem;
-      transition: border-color .2s;
-    }
-    .proto-card:hover { border-color: var(--border-2); }
-    .proto-card-header {
-      display: flex;
-      align-items: center;
-      gap: .75rem;
-    }
-    .proto-dot {
-      width: 12px; height: 12px;
-      border-radius: 50%;
-      flex-shrink: 0;
-    }
-    .proto-dot-ok  { background: var(--ok);     box-shadow: 0 0 8px var(--ok); }
-    .proto-dot-bad { background: var(--danger);  box-shadow: 0 0 8px var(--danger); }
-    .proto-dot-unk { background: var(--muted-2); }
-    .proto-card-name { font-size: 1.1rem; font-weight: 700; color: var(--text); }
-    .proto-card-body { font-size: .85rem; color: var(--muted); line-height: 1.65; }
-    .proto-code-badge {
-      display: inline-block;
-      font-family: "JetBrains Mono", monospace;
-      font-size: .75rem;
-      padding: 2px 8px;
-      border-radius: var(--radius-sm);
-      background: var(--panel-2);
-      border: 1px solid var(--border-2);
-      color: var(--text-2);
-      margin-right: .4rem;
-    }
-    .proto-meaning { font-weight: 600; }
-    .proto-checked { font-size: .72rem; color: var(--muted-2); }
-    .proto-actions { display: flex; gap: .6rem; }
-
-    /* Log viewer */
-    .log-tabs {
-      display: flex;
-      border-bottom: 1px solid var(--border);
-      padding: 0 1.25rem;
-      background: var(--panel-2);
-    }
-    .log-tab {
-      padding: .7rem 1.1rem;
-      font-size: .85rem;
-      font-weight: 500;
-      color: var(--muted);
-      background: none;
-      border: none;
-      border-bottom: 2px solid transparent;
-      cursor: pointer;
-      transition: color .15s, border-color .15s;
-      white-space: nowrap;
-      margin-bottom: -1px;
-    }
-    .log-tab:hover { color: var(--text-2); }
-    .log-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .log-toolbar {
-      display: flex;
-      align-items: center;
-      gap: .6rem;
-      padding: .75rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-      flex-wrap: wrap;
-      background: var(--panel);
-    }
-    .log-toolbar-right { margin-left: auto; display: flex; gap: .6rem; align-items: center; }
-    .log-search {
-      background: var(--panel-2);
-      border: 1px solid var(--border-2);
-      color: var(--text);
-      border-radius: var(--radius-sm);
-      padding: .4rem .7rem .4rem 2rem;
-      font-size: .875rem;
-      width: 260px;
-      outline: none;
-      transition: border-color .15s;
-    }
-    .log-search:focus { border-color: var(--accent); }
-    .log-search::placeholder { color: var(--muted-2); }
-    .log-status-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: .4rem;
-      padding: .3rem .7rem;
-      border-radius: 999px;
-      font-size: .72rem;
-      font-weight: 600;
-      background: var(--panel-2);
-      border: 1px solid var(--border-2);
-      color: var(--muted);
-    }
-    .log-status-pill.live   { color: var(--ok);   border-color: rgba(63,185,80,.3);  background: var(--ok-dim); }
-    .log-status-pill.paused { color: var(--warn); border-color: rgba(210,153,34,.3); background: var(--warn-dim); }
-    .log-pulse {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--ok);
-      animation: pulseOnline 1.5s ease-in-out infinite;
-    }
-    .log-body { overflow-x: auto; }
-    .access-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: .78rem;
-    }
-    .access-table thead th {
-      background: var(--panel-2);
-      padding: .5rem .85rem;
-      font-size: .65rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: var(--muted);
-      text-align: left;
-      border-bottom: 1px solid var(--border);
-      white-space: nowrap;
-    }
-    .access-table tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
-    .access-table tbody tr:last-child { border-bottom: none; }
-    .access-table tbody tr:hover { background: var(--panel-2); }
-    .access-table td {
-      padding: .45rem .85rem;
-      vertical-align: middle;
-      color: var(--text-2);
-      white-space: nowrap;
-    }
-    .access-table .td-dest { max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
-    .log-lines {
-      font-family: "JetBrains Mono", "Fira Code", monospace;
-      font-size: .75rem;
-      line-height: 1.55;
-      padding: .75rem 1.25rem;
-    }
-    .log-line { padding: 2px 0; white-space: pre-wrap; word-break: break-all; border-radius: 2px; }
-    .log-line-warn    { color: var(--warn); }
-    .log-line-error   { color: var(--danger); }
-    .log-line-info    { color: var(--muted); }
-    .log-line-default { color: var(--text-2); }
-    .log-empty   { text-align: center; padding: 3rem 1.5rem; color: var(--muted); font-size: .85rem; }
-    .log-loading { text-align: center; padding: 2.5rem 1.5rem; color: var(--muted-2); font-size: .82rem; }
-
-    /* Settings page */
-    .settings-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 1.5rem;
-      align-items: start;
-    }
-    .settings-panel {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      overflow: hidden;
-    }
-    .settings-panel-header {
-      padding: 1rem 1.25rem;
-      border-bottom: 1px solid var(--border);
-      background: var(--panel-2);
-    }
-    .settings-panel-header h2 {
-      font-size: .75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: var(--muted);
-      margin: 0;
-    }
-    .settings-panel-body { padding: 1.25rem; }
-    .settings-panel-footer {
-      padding: .85rem 1.25rem;
-      border-top: 1px solid var(--border);
-      background: var(--panel-2);
-      display: flex;
-      justify-content: flex-end;
-      gap: .6rem;
-    }
-    .settings-preview {
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: .75rem 1rem;
-      margin-top: .75rem;
-    }
-    .settings-preview-label {
-      font-size: .68rem;
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      color: var(--muted-2);
-      margin-bottom: .3rem;
-    }
-    .settings-preview-link {
-      color: var(--accent);
-      word-break: break-all;
-      font-family: "JetBrains Mono", monospace;
-      font-size: .75rem;
-    }
-
-    /* Responsive */
-    @media (max-width: 1000px) {
-      .srv-stats-row { grid-template-columns: repeat(3, 1fr); }
-      .proto-health-row { grid-template-columns: repeat(2, 1fr); }
-      .proto-cards-grid { grid-template-columns: 1fr; }
-      .settings-grid { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 600px) {
-      .srv-stats-row { grid-template-columns: repeat(2, 1fr); }
-      .proto-health-row { grid-template-columns: 1fr 1fr; }
-      .log-search { width: 100%; }
-      .log-toolbar { flex-direction: column; align-items: stretch; }
-      .log-toolbar-right { margin-left: 0; }
-    }
-  </style>
 </head>
 <body>
 
-<!-- Mobile overlay -->
-<div class="overlay" id="overlay"></div>
+<div class="layout">
 
-<!-- =====================================================================
-     Sidebar
-     ===================================================================== -->
+<!-- ── Sidebar ──────────────────────────────────────────────────────── -->
 <aside class="sidebar" id="sidebar">
-  <div class="sidebar-header">
-    <div class="logo">
-      <span class="logo-icon"><?= $LOGO_ICON ?></span>
-      <span class="logo-text">SetaLink</span>
-      <span class="version-chip">VPN</span>
+  <div class="sidebar-logo">
+    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" alt="SL">
+    <div>
+      <div class="sidebar-logo-text">SetaLink</div>
+      <div class="sidebar-logo-sub">Admin Panel</div>
     </div>
-    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" aria-label="Collapse sidebar" title="Collapse sidebar">
-      <svg id="collapseIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-    </button>
-    <button class="sidebar-close" id="sidebarClose" aria-label="Close menu"><?= $I['x'] ?></button>
   </div>
-
-  <nav class="nav" aria-label="Main navigation">
-    <div class="nav-section">Management</div>
-    <a href="?page=dashboard" class="nav-item<?= $page === 'dashboard' ? ' active' : '' ?>" data-tooltip="Dashboard">
-      <?= $I['users'] ?>
-      <span class="nav-label">Dashboard</span>
-    </a>
-    <a href="?page=logs" class="nav-item<?= $page === 'logs' ? ' active' : '' ?>" data-tooltip="Logs">
-      <?= $I['logs'] ?>
-      <span class="nav-label">Logs</span>
-    </a>
-    <a href="?page=protocols" class="nav-item<?= $page === 'protocols' ? ' active' : '' ?>" data-tooltip="Protocols">
-      <?= $I['protocols'] ?>
-      <span class="nav-label">Protocols</span>
-    </a>
-    <a href="?page=settings" class="nav-item<?= $page === 'settings' ? ' active' : '' ?>" data-tooltip="Settings">
-      <?= $I['settings'] ?>
-      <span class="nav-label">Settings</span>
-    </a>
-    <a href="?page=diagnostics" class="nav-item<?= $page === 'diagnostics' ? ' active' : '' ?>" data-tooltip="Diagnostics">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      <span class="nav-label">Diagnostics</span>
-    </a>
+  <nav class="sidebar-nav">
+    <div class="nav-section">Monitor</div>
+    <div class="nav-item<?= $page==='dashboard'?' active':'' ?>" data-page="dashboard">
+      <?= icon('grid') ?> Dashboard
+    </div>
+    <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
+      <?= icon('globe') ?> Iran Debug
+    </div>
+    <div class="nav-section">Manage</div>
+    <div class="nav-item<?= $page==='devices'?' active':'' ?>" data-page="devices">
+      <?= icon('devices') ?> Devices
+    </div>
+    <div class="nav-item<?= $page==='logs'?' active':'' ?>" data-page="logs">
+      <?= icon('log') ?> Logs
+    </div>
+    <div class="nav-section">System</div>
+    <div class="nav-item<?= $page==='release'?' active':'' ?>" data-page="release">
+      <?= icon('package') ?> Release
+    </div>
+    <div class="nav-item<?= $page==='config'?' active':'' ?>" data-page="config">
+      <?= icon('settings') ?> Config
+    </div>
   </nav>
-
-  <div class="sidebar-footer">
-    <div class="svc-row">
-      <span class="dot dot-<?= $xray_state === 'active' ? 'ok' : ($xray_state === '?' ? 'unk' : 'bad') ?>"></span>
-      <span class="svc-name">xray</span>
-      <span class="svc-state"><?= h($xray_state) ?></span>
-    </div>
-    <div class="svc-row">
-      <span class="dot dot-<?= $nginx_state === 'active' ? 'ok' : ($nginx_state === '?' ? 'unk' : 'bad') ?>"></span>
-      <span class="svc-name">nginx</span>
-      <span class="svc-state"><?= h($nginx_state) ?></span>
-    </div>
-    <?php if ($ufw_state !== '?'): ?>
-    <div class="svc-row">
-      <span class="dot dot-<?= stripos($ufw_state,'active') !== false ? 'ok' : 'unk' ?>"></span>
-      <span class="svc-name">ufw</span>
-      <span class="svc-state"><?= h($ufw_state) ?></span>
-    </div>
-    <?php endif; ?>
-    <div class="auth-user">
-      <small>Signed in as</small>
-      <code><?= h($auth_user) ?></code>
-    </div>
-  </div>
+  <div class="sidebar-footer">SetaLink v0.9.11 &middot; <?= h($auth_user) ?></div>
 </aside>
 
-<!-- =====================================================================
-     Main wrap
-     ===================================================================== -->
-<div class="main-wrap" id="mainWrap">
-  <header class="topbar" role="banner">
-    <button class="menu-btn" id="menuBtn" aria-label="Open sidebar"><?= $I['menu'] ?></button>
-    <span class="topbar-logo">
-      <span style="color:var(--accent)"><?= $LOGO_ICON ?></span>
-      SetaLink
-    </span>
-    <?php if ($page === 'dashboard'): ?>
-    <button class="btn btn-primary btn-sm" id="addUserBtnMobile">
-      <?= $I['plus'] ?> Add
-    </button>
-    <?php endif; ?>
-  </header>
+<!-- ── Main ─────────────────────────────────────────────────────────── -->
+<main class="main">
+  <div class="topbar">
+    <button class="menu-toggle btn btn-icon btn-ghost" id="menuToggle"><?= icon('menu') ?></button>
+    <span class="topbar-title" id="pageTitle">Dashboard</span>
+    <span class="topbar-sub" id="pageSub"></span>
+    <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
+      <span class="refresh-ts" id="globalTs"></span>
+      <button class="btn btn-ghost btn-sm" id="refreshBtn" title="Refresh"><?= icon('refresh') ?> Refresh</button>
+    </div>
+  </div>
 
-  <main class="main" id="mainContent">
+  <div class="page-content">
 
-    <!-- Page header -->
-    <div class="page-header">
-      <div>
-        <h1><?= h($page_title) ?></h1>
-        <p><?= $page_sub ?></p>
-      </div>
-      <div class="page-header-actions">
-        <?php if ($page === 'dashboard'): ?>
-        <button class="btn btn-secondary" id="refreshBtn" title="Refresh dashboard">
-          <?= $I['refresh'] ?> Refresh
-        </button>
-        <button class="btn btn-primary" id="addUserBtn">
-          <?= $I['plus'] ?> Add User
-        </button>
-        <?php elseif ($page === 'logs'): ?>
-        <button class="btn btn-secondary" id="logRefreshNowBtn" title="Refresh now">
-          <?= $I['refresh'] ?> Refresh
-        </button>
-        <?php elseif ($page === 'protocols'): ?>
-        <button class="btn btn-primary" id="runProtoCheckBtn">
-          <?= $I['check'] ?> Run Check
-        </button>
-        <?php elseif ($page === 'settings'): ?>
-        <button class="btn btn-primary" id="saveSettingsBtn">
-          <?= $I['save'] ?> Save Settings
-        </button>
-        <?php elseif ($page === 'diagnostics'): ?>
-        <button class="btn btn-secondary" id="diagRefreshBtn" title="Refresh diagnostics">
-          <?= $I['refresh'] ?> Refresh
-        </button>
-        <button class="btn btn-primary" id="recordTestBtn">
-          <?= $I['plus'] ?> Record Test
-        </button>
-        <?php endif; ?>
-      </div>
+    <!-- ── HEARTBEAT BAR (all pages) ─────────────────────────────── -->
+    <div class="hb-bar" id="hbBar">
+      <div class="hb-item"><span class="dot dot-unk" id="hbXray"></span> Xray</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbNginx"></span> Nginx</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbSqlite"></span> DB</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbApi"></span> API</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbBootstrap"></span> Bootstrap</div>
+      <div class="hb-item"><span class="dot dot-unk" id="hbPort"></span> :8443</div>
+      <span class="hb-ts" id="hbTs">—</span>
     </div>
 
-    <!-- Admin heartbeat — visible on all pages -->
-    <div class="hb-row" id="hbRow">
-      <div class="hb-item"><span class="dot dot-unk" id="hbDotXray"></span> xray</div>
-      <div class="hb-item"><span class="dot dot-unk" id="hbDotNginx"></span> nginx</div>
-      <div class="hb-item"><span class="dot dot-unk" id="hbDotSqlite"></span> sqlite</div>
-      <div class="hb-item"><span class="dot dot-unk" id="hbDotApi"></span> api.php</div>
-      <div class="hb-item"><span class="dot dot-unk" id="hbDotBootstrap"></span> bootstrap</div>
-      <span class="hb-updated" id="hbUpdated">checking…</span>
-    </div>
+    <!-- ============================================================ -->
+    <!-- VIEW: DASHBOARD                                              -->
+    <!-- ============================================================ -->
+    <div data-view="dashboard">
+      <div class="stat-grid" id="dashStats">
+        <div class="stat-card"><div class="stat-label">Online Now</div><div class="stat-value" id="statOnline">—</div><div class="stat-sub">last 5 minutes</div></div>
+        <div class="stat-card"><div class="stat-label">Total Devices</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub" id="statNew">—</div></div>
+        <div class="stat-card"><div class="stat-label">Active 7d</div><div class="stat-value" id="statActive7d">—</div><div class="stat-sub" id="statActiveToday">—</div></div>
+        <div class="stat-card"><div class="stat-label">Failures 24h</div><div class="stat-value" id="statFailed">—</div><div class="stat-sub">test reports</div></div>
+        <div class="stat-card"><div class="stat-label">Live Events</div><div class="stat-value" id="statEvents">—</div><div class="stat-sub">5-min window</div></div>
+      </div>
 
-    <?php if ($err_status): ?>
-    <div class="alert alert-error">
-      <?= h('Server status unavailable: ' . ($status['_error'] ?? '')) ?>
-      <button class="alert-close" onclick="this.parentElement.remove()">×</button>
-    </div>
-    <?php endif; ?>
-
-    <!-- =================================================================
-         PAGE: DASHBOARD
-         ================================================================= -->
-    <?php if ($page === 'dashboard'): ?>
-
-    <?php if ($err_list): ?>
-    <div class="alert alert-error">
-      <?= h('User list unavailable: ' . ($list['_error'] ?? '')) ?>
-      <button class="alert-close" onclick="this.parentElement.remove()">×</button>
-    </div>
-    <?php endif; ?>
-
-    <!-- Server stats row — populated via AJAX -->
-    <div class="srv-stats-row" id="srvStatsRow">
-      <div class="srv-stat loading" id="srvCpu">
-        <div class="srv-stat-label">CPU</div>
-        <div class="srv-stat-value" id="srvCpuVal">—</div>
-        <div class="srv-stat-bar"><div class="srv-stat-bar-fill" id="srvCpuBar" style="width:0%"></div></div>
-      </div>
-      <div class="srv-stat loading" id="srvMem">
-        <div class="srv-stat-label">Memory</div>
-        <div class="srv-stat-value" id="srvMemVal">—</div>
-        <div class="srv-stat-bar"><div class="srv-stat-bar-fill" id="srvMemBar" style="width:0%"></div></div>
-      </div>
-      <div class="srv-stat loading" id="srvLoad">
-        <div class="srv-stat-label">Load (1m)</div>
-        <div class="srv-stat-value" id="srvLoadVal">—</div>
-      </div>
-      <div class="srv-stat loading" id="srvUptime">
-        <div class="srv-stat-label">Uptime</div>
-        <div class="srv-stat-value" id="srvUptimeVal" style="font-size:1.05rem">—</div>
-      </div>
-      <div class="srv-stat loading" id="srvDisk">
-        <div class="srv-stat-label">Disk</div>
-        <div class="srv-stat-value" id="srvDiskVal">—</div>
-        <div class="srv-stat-bar"><div class="srv-stat-bar-fill" id="srvDiskBar" style="width:0%"></div></div>
-      </div>
-    </div>
-
-    <!-- Protocol health mini-row — populated via AJAX -->
-    <div class="proto-health-row" id="protoMiniRow">
-      <div class="proto-mini">
-        <span class="dot dot-unk" id="protoMiniDotWS"></span>
-        <span class="proto-mini-name">WebSocket</span>
-        <span class="proto-mini-code" id="protoMiniCodeWS">—</span>
-      </div>
-      <div class="proto-mini">
-        <span class="dot dot-unk" id="protoMiniDotXHTTP"></span>
-        <span class="proto-mini-name">XHTTP</span>
-        <span class="proto-mini-code" id="protoMiniCodeXHTTP">—</span>
-      </div>
-      <div class="proto-mini">
-        <span class="dot dot-unk" id="protoMiniDotHTTPUpgrade"></span>
-        <span class="proto-mini-name">HTTPUpgrade</span>
-        <span class="proto-mini-code" id="protoMiniCodeHTTPUpgrade">—</span>
-      </div>
-      <div class="proto-mini">
-        <span class="dot dot-unk" id="protoMiniDotReality"></span>
-        <span class="proto-mini-name">Reality</span>
-        <span class="proto-mini-code" id="protoMiniCodeReality">—</span>
-      </div>
-    </div>
-
-    <!-- User stat cards -->
-    <div class="stats-grid" id="statsGrid">
-      <div class="stat-card">
-        <div class="stat-label">Total Users</div>
-        <div class="stat-value">
-          <?= h((string)$total) ?><span class="sub"> / <?= h((string)$max_users) ?></span>
-        </div>
-        <div class="stat-footer">
-          <div class="stat-bar">
-            <div class="stat-bar-fill" style="width:<?= $max_users > 0 ? min(100, round($total/$max_users*100)) : 0 ?>%"></div>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><?= icon('globe') ?> Protocol Health</span>
+            <button class="btn btn-ghost btn-sm" id="probeBtn">Run Probe</button>
           </div>
+          <div class="panel-body" id="protocolHealth"><div class="loading"><div class="spinner"></div> Running probes…</div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Active Connections</span></div>
+          <div class="panel-body" id="activeSessions"><div class="loading"><div class="spinner"></div></div></div>
         </div>
       </div>
-      <div class="stat-card stat-card-ok">
-        <div class="stat-label">Active</div>
-        <div class="stat-value stat-ok"><?= h((string)$active) ?></div>
-        <div class="stat-sub">Online users</div>
-      </div>
-      <div class="stat-card stat-card-warn">
-        <div class="stat-label">Disabled</div>
-        <div class="stat-value stat-warn"><?= h((string)$disabled) ?></div>
-        <div class="stat-sub">Suspended accounts</div>
-      </div>
-      <div class="stat-card stat-card-accent">
-        <div class="stat-label">Public Port</div>
-        <div class="stat-value stat-accent"><?= h($pub_port) ?></div>
-        <div class="stat-sub">REALITY · VLESS</div>
-      </div>
-    </div>
 
-    <!-- Server info bar -->
-    <?php if (!$err_status): ?>
-    <div class="server-bar">
-      <div class="server-bar-item">
-        <span class="server-bar-label">Host</span>
-        <code class="server-bar-val"><?= h($host) ?></code>
-      </div>
-      <div class="server-bar-item">
-        <span class="server-bar-label">SNI</span>
-        <code class="server-bar-val"><?= h($sni) ?></code>
-      </div>
-      <div class="server-bar-item">
-        <span class="server-bar-label">Protocol</span>
-        <span class="server-bar-val">VLESS · XTLS Vision</span>
-      </div>
-      <div class="server-bar-item">
-        <span class="server-bar-label">Security</span>
-        <span class="server-bar-val">REALITY</span>
-      </div>
-    </div>
-    <?php endif; ?>
-
-
-    <!-- =================================================================
-         APP ANALYTICS OVERVIEW
-         ================================================================= -->
-    <div class="section" style="margin-bottom:1.5rem">
-      <div class="section-header">
-        <h2>App Analytics</h2>
-        <div class="section-controls">
-          <span class="badge badge-muted" id="appAnalyticsPeriod">Last 30 days</span>
-          <button class="btn btn-secondary" id="refreshAppAnalyticsBtn" title="Refresh">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Refresh
-          </button>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title"><?= icon('log') ?> Inbound Ports</span>
+          <span class="panel-sub" id="inboundTs"></span>
         </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Protocol</th><th>Port</th><th>Status</th><th>Accepted</th><th>UUID Rejections</th><th>Last IP</th><th>Last Accept</th></tr></thead>
+            <tbody id="inboundTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+        <div id="inboundErrors" style="padding:.5rem 1rem;display:none"></div>
       </div>
-      <div class="section-body" style="padding:1.25rem">
-        <div class="srv-stats-row" id="appStatsRow" style="grid-template-columns:repeat(6,1fr)">
-          <div class="srv-stat">
-            <div class="srv-stat-label">Total Installs</div>
-            <div class="srv-stat-value" id="appStatInstalls">—</div>
-          </div>
-          <div class="srv-stat">
-            <div class="srv-stat-label" style="color:var(--ok)">Online Now</div>
-            <div class="srv-stat-value" id="appStatOnline" style="color:var(--ok)">—</div>
-          </div>
-          <div class="srv-stat">
-            <div class="srv-stat-label">Active Today</div>
-            <div class="srv-stat-value" id="appStatToday">—</div>
-          </div>
-          <div class="srv-stat">
-            <div class="srv-stat-label">Active (7d)</div>
-            <div class="srv-stat-value" id="appStatActive7d">—</div>
-          </div>
-          <div class="srv-stat">
-            <div class="srv-stat-label">New This Month</div>
-            <div class="srv-stat-value" id="appStatNewMonth">—</div>
-          </div>
-          <div class="srv-stat">
-            <div class="srv-stat-label">Failed (24h)</div>
-            <div class="srv-stat-value" id="appStatFailed" style="color:var(--danger)">—</div>
-          </div>
-        </div>
 
-        <div style="margin-top:1rem">
-          <div class="section-header" style="padding:0 0 .75rem;border-bottom:1px solid var(--border);margin-bottom:.75rem">
-            <span style="font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)">Version Distribution</span>
-          </div>
-          <div id="appVersionDist" style="display:flex;flex-direction:column;gap:.5rem">
-            <div class="app-ver-row">
-              <span class="app-ver-label" style="color:var(--muted)">Loading…</span>
-            </div>
-          </div>
-        </div>
-
-        <style>
-          .app-ver-row{display:flex;align-items:center;gap:.75rem}
-          .app-ver-label{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--text-2);min-width:56px}
-          .app-ver-bar-wrap{flex:1;height:6px;background:var(--panel-2);border-radius:3px;overflow:hidden}
-          .app-ver-bar{height:100%;background:linear-gradient(90deg,var(--accent),#79b8ff);border-radius:3px;transition:width .4s}
-          .app-ver-pct{font-size:.75rem;color:var(--muted);min-width:36px;text-align:right}
-        </style>
-      </div>
-    </div>
-
-    <!-- =================================================================
-         SERVER NODES MANAGEMENT
-         ================================================================= -->
-    <div class="section" style="margin-bottom:1.5rem">
-      <div class="section-header">
-        <h2>Server Nodes</h2>
-        <div class="section-controls">
-          <button class="btn btn-primary" id="addNodeBtn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            Add Node
-          </button>
-          <button class="btn btn-secondary" id="refreshNodesBtn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Refresh
-          </button>
-        </div>
-      </div>
-      <div class="section-body" style="padding:0">
-        <table class="user-table" id="nodesTable">
-          <thead>
-            <tr>
-              <th>Node</th>
-              <th>Location</th>
-              <th>Protocol</th>
-              <th>Status</th>
-              <th>Ping</th>
-              <th>Load</th>
-              <th>Users</th>
-              <th style="text-align:right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="nodesTbody">
-            <!-- Populated by JS -->
-            <tr id="nodesPlaceholder">
-              <td colspan="8" style="text-align:center;color:var(--muted);padding:2rem 0">
-                Loading nodes…
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- Add Node Modal -->
-    <div class="modal-overlay" id="addNodeModal" style="display:none" role="dialog" aria-modal="true">
-      <div class="modal">
-        <div class="modal-header">
-          <h3 class="modal-title">Add Server Node</h3>
-          <button class="modal-close" id="addNodeModalClose" aria-label="Close">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </div>
-        <div class="modal-body" style="display:flex;flex-direction:column;gap:1rem">
-          <div class="form-group">
-            <label class="form-label">Node Label</label>
-            <input type="text" class="form-input" id="nodeLabel" placeholder="e.g. DE-01 Frankfurt" autocomplete="off">
-          </div>
-          <div class="form-group">
-            <label class="form-label">IP / Hostname</label>
-            <input type="text" class="form-input" id="nodeHost" placeholder="e.g. 185.123.45.67 or de01.example.com" autocomplete="off">
-          </div>
-          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-            <div class="form-group">
-              <label class="form-label">Country</label>
-              <input type="text" class="form-input" id="nodeCountry" placeholder="Germany" autocomplete="off">
-            </div>
-            <div class="form-group">
-              <label class="form-label">Flag Emoji</label>
-              <input type="text" class="form-input" id="nodeFlag" placeholder="🇩🇪" maxlength="4">
-            </div>
-          </div>
-          <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-            <div class="form-group">
-              <label class="form-label">Protocol</label>
-              <select class="form-input" id="nodeProtocol">
-                <option value="VLESS+Reality">VLESS + Reality</option>
-                <option value="VLESS+XHTTP">VLESS + XHTTP</option>
-                <option value="VLESS+WS">VLESS + WebSocket</option>
-                <option value="VLESS+HTTPUpgrade">VLESS + HTTPUpgrade</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Port</label>
-              <input type="number" class="form-input" id="nodePort" value="443" min="1" max="65535">
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Tags (comma-separated)</label>
-            <input type="text" class="form-input" id="nodeTags" placeholder="premium, europe" autocomplete="off">
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-secondary" id="addNodeModalCancel">Cancel</button>
-          <button class="btn btn-primary" id="addNodeConfirmBtn">Add Node</button>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Top SNI Performance</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Protocol / SNI</th><th>Success Rate</th><th>Total</th><th>Avg Latency</th><th>Devices</th></tr></thead>
+            <tbody id="sniLeaderboard"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
 
-    <style>
-      #nodesTable .node-flag{font-size:1.1rem}
-      #nodesTable .node-label{font-weight:600;color:var(--text)}
-      #nodesTable .node-host{font-family:"JetBrains Mono",monospace;font-size:.78rem;color:var(--muted)}
-      #nodesTable .node-ping{font-family:"JetBrains Mono",monospace;font-size:.82rem}
-      #nodesTable .node-ping.good{color:var(--ok)}
-      #nodesTable .node-ping.warn{color:var(--warn)}
-      #nodesTable .node-ping.bad{color:var(--danger)}
-    </style>
-
-    <!-- Users section -->
-    <div class="section">
-      <div class="section-header">
-        <h2>Users</h2>
-        <div class="section-controls">
-          <div class="search-wrap">
-            <span class="search-icon"><?= $I['search'] ?></span>
-            <input type="search" class="search-input" id="userSearch"
-                   placeholder="Search users…" autocomplete="off" spellcheck="false">
-          </div>
-          <select class="filter-select" id="statusFilter" title="Filter by status">
-            <option value="">All status</option>
-            <option value="active">Active</option>
-            <option value="disabled">Disabled</option>
-          </select>
-          <select class="filter-select" id="pkgFilter" title="Filter by package">
-            <option value="">All packages</option>
-            <?php foreach (VALID_PKGS as $p): ?>
-            <option value="<?= h(strtolower($p)) ?>"><?= h($p) ?></option>
-            <?php endforeach; ?>
-          </select>
-          <span class="user-count" id="userCount"><?= h((string)count($users)) ?> users</span>
-        </div>
-      </div>
-
-      <div class="table-wrap">
-        <?php if (empty($users)): ?>
-        <div class="empty-state">
-          <div class="empty-icon">👥</div>
-          <p>No users yet. Add your first VPN user.</p>
-          <button class="btn btn-primary" id="addUserBtnEmpty">
-            <?= $I['plus'] ?> Add First User
-          </button>
-        </div>
-        <?php else: ?>
-        <table id="usersTable" aria-label="Users list">
-          <thead>
-            <tr>
-              <th>User</th>
-              <th>Package</th>
-              <th>Traffic</th>
-              <th>Created</th>
-              <th class="col-expires">Expires</th>
-              <th class="col-lastseen">Last Seen</th>
-              <th>Status</th>
-              <th style="text-align:right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="usersBody">
-          <?php foreach ($users as $u):
-            $name     = (string)$u['name'];
-            $is_dis   = (bool)$u['disabled'];
-            $is_exp   = (bool)($u['is_expired'] ?? false);
-            $pkg      = (string)($u['package_name'] ?? 'unlimited');
-            $used     = (int)($u['used_bytes']     ?? 0);
-            $upload   = (int)($u['upload_bytes']   ?? 0);
-            $download = (int)($u['download_bytes'] ?? 0);
-            $quota    = (int)($u['quota_bytes']    ?? 0);
-            $pct      = $u['usage_percent'];
-            $expires  = $u['expires_at']  ?? null;
-            $lastseen = $u['last_seen_at'] ?? null;
-            $uuid     = (string)($u['uuid'] ?? '');
-            $is_online = $lastseen && (time() - (int)strtotime($lastseen)) < 300;
-
-            $bar_pct = ($pct === null) ? 0 : max(0, min(100, (int)$pct));
-            $bar_cls = 'bar-ok';
-            if ($pct !== null) {
-                if ($pct >= 90) $bar_cls = 'bar-danger';
-                elseif ($pct >= 70) $bar_cls = 'bar-warn';
-            }
-
-            if ($is_exp) {
-                $badge   = '<span class="badge badge-danger">expired</span>';
-                $row_cls = 'row-expired';
-            } elseif ($is_dis) {
-                $badge   = '<span class="badge badge-warn">disabled</span>';
-                $row_cls = 'row-disabled';
-            } else {
-                $badge   = '<span class="badge badge-ok">active</span>';
-                $row_cls = '';
-            }
-
-            $exp_cls = '';
-            if ($expires) {
-                $exp_ts = strtotime($expires);
-                if ($exp_ts !== false) {
-                    $days_left = ($exp_ts - time()) / 86400;
-                    if ($days_left <= 0)    $exp_cls = 'text-danger';
-                    elseif ($days_left < 4) $exp_cls = 'text-warn';
-                }
-            }
-          ?>
-          <tr class="<?= h($row_cls) ?>"
-              data-name="<?= h($name) ?>"
-              data-status="<?= $is_dis || $is_exp ? 'disabled' : 'active' ?>"
-              data-pkg="<?= h(strtolower($pkg)) ?>">
-            <td>
-              <div class="user-cell">
-                <div class="user-avatar"><?= h(strtoupper(substr($name, 0, 1))) ?></div>
-                <div>
-                  <div class="user-name"><?= h($name) ?></div>
-                  <div class="user-uuid" title="<?= h($uuid) ?>"><?= h($uuid) ?></div>
-                </div>
-              </div>
-            </td>
-            <td><span class="pkg-badge <?= h(pkg_class($pkg)) ?>"><?= h($pkg) ?></span></td>
-            <td>
-              <div class="traffic-cell">
-                <?php if ($upload > 0 || $download > 0): ?>
-                <div class="traffic-dirs">
-                  <span class="traffic-up" title="Upload">&#8593; <?= h(fmt_bytes($upload)) ?></span>
-                  <span class="traffic-down" title="Download">&#8595; <?= h(fmt_bytes($download)) ?></span>
-                </div>
-                <?php endif; ?>
-                <div class="traffic-text">
-                  <?= h(fmt_bytes($used)) ?>
-                  <?php if ($quota > 0): ?>
-                    <span class="muted-2"> / <?= h(fmt_bytes($quota)) ?></span>
-                  <?php else: ?>
-                    <span class="traffic-inf"> / ∞</span>
-                  <?php endif; ?>
-                </div>
-                <?php if ($quota > 0): ?>
-                <div class="traffic-bar">
-                  <div class="traffic-bar-fill <?= h($bar_cls) ?>" style="width:<?= $bar_pct ?>%"></div>
-                </div>
-                <?php endif; ?>
-              </div>
-            </td>
-            <td class="cell-date"><?= h(fmt_date($u['created'] ?? null)) ?></td>
-            <td class="cell-date col-expires">
-              <?php if ($expires): ?>
-                <span class="<?= h($exp_cls) ?>"><?= h(fmt_date($expires)) ?></span>
-              <?php else: ?>
-                <span class="muted-2">∞</span>
-              <?php endif; ?>
-            </td>
-            <td class="cell-date col-lastseen">
-              <?php if ($is_online): ?><span class="online-dot" title="Online — connected in last 5 min"></span><?php endif; ?>
-              <span class="<?= $is_online ? '' : 'muted' ?>"><?= h(fmt_relative($lastseen)) ?></span>
-            </td>
-            <td><?= $badge ?></td>
-            <td>
-              <div class="row-actions" style="justify-content:flex-end">
-                <button class="btn-icon icon-qr js-qr-btn"
-                        data-name="<?= h($name) ?>"
-                        title="Show QR code &amp; VLESS link">
-                  <?= $I['qr'] ?>
-                </button>
-                <button class="btn-icon icon-copy js-copy-btn"
-                        data-name="<?= h($name) ?>"
-                        title="Copy VLESS link">
-                  <?= $I['copy'] ?>
-                </button>
-                <button class="btn-icon icon-json js-json-dl-btn"
-                        data-name="<?= h($name) ?>"
-                        title="Download full Xray JSON config">
-                  <?= $I['json-dl'] ?>
-                </button>
-                <button class="btn-icon icon-json js-json-copy-btn"
-                        data-name="<?= h($name) ?>"
-                        title="Copy full Xray JSON config">
-                  <?= $I['json'] ?>
-                </button>
-                <?php if ($is_dis || $is_exp): ?>
-                <button class="btn-icon icon-enable js-action-btn"
-                        data-action="enable" data-name="<?= h($name) ?>"
-                        title="Enable user">
-                  <?= $I['enable'] ?>
-                </button>
-                <?php else: ?>
-                <button class="btn-icon icon-disable js-action-btn"
-                        data-action="disable" data-name="<?= h($name) ?>"
-                        title="Disable user">
-                  <?= $I['disable'] ?>
-                </button>
-                <?php endif; ?>
-                <button class="btn-icon icon-delete js-delete-btn"
-                        data-name="<?= h($name) ?>"
-                        title="Delete user">
-                  <?= $I['trash'] ?>
-                </button>
-              </div>
-            </td>
-          </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
-        <?php endif; ?>
-      </div>
-    </div><!-- /.section -->
-
-    <!-- =================================================================
-         MOBILE DEVICES — auto-registered from app
-         ================================================================= -->
-    <div class="section" style="margin-bottom:1.5rem">
-      <div class="section-header">
-        <h2>Mobile Devices</h2>
-        <div class="section-controls">
-          <div class="search-wrap">
-            <span class="search-icon"><?= $I['search'] ?></span>
-            <input type="search" class="search-input" id="deviceSearch"
-                   placeholder="Search devices…" autocomplete="off" spellcheck="false">
-          </div>
-          <select class="filter-select" id="deviceStatusFilter">
-            <option value="">All status</option>
-            <option value="online">Online</option>
-            <option value="offline">Offline</option>
-          </select>
-          <button class="btn btn-secondary" id="refreshDevicesBtn">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            Refresh
-          </button>
-          <span class="user-count" id="deviceCount">— devices</span>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table id="devicesTable" aria-label="Mobile devices list">
-          <thead>
-            <tr>
-              <th>Device ID</th>
-              <th>Platform</th>
-              <th>App Ver.</th>
-              <th>Protocol</th>
-              <th>Quota</th>
-              <th>Language</th>
-              <th>Last Seen</th>
-              <th>Status</th>
-              <th style="text-align:right">Actions</th>
-            </tr>
-          </thead>
-          <tbody id="devicesTbody">
-            <tr id="devicesPlaceholder">
-              <td colspan="9" style="text-align:center;padding:2rem;color:var(--muted)">Loading…</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div><!-- /.section -->
-
-    <!-- =================================================================
-         PAGE: LOGS
-         ================================================================= -->
-    <?php elseif ($page === 'logs'): ?>
-
-    <div class="section" id="logViewer">
-      <div class="log-tabs" id="logTabBar">
-        <button class="log-tab active" data-log-type="access">Access Logs</button>
-        <button class="log-tab" data-log-type="error">Error Logs</button>
-        <button class="log-tab" data-log-type="nginx">Nginx Logs</button>
-      </div>
-      <div class="log-toolbar">
-        <div class="search-wrap">
-          <span class="search-icon"><?= $I['search'] ?></span>
-          <input type="search" class="log-search" id="logSearchInput"
-                 placeholder="Filter log lines…" autocomplete="off" spellcheck="false">
-        </div>
-        <div class="log-toolbar-right">
-          <span class="log-status-pill live" id="logStatusPill">
-            <span class="log-pulse" id="logPulseDot"></span>
-            <span id="logStatusText">Live</span>
-          </span>
-          <button class="btn btn-secondary btn-sm" id="logPauseBtn">
-            <?= $I['pause'] ?> Pause
-          </button>
-        </div>
-      </div>
-      <div class="log-body" id="logBody">
-        <div class="log-loading">Loading logs…</div>
-      </div>
-    </div>
-
-    <!-- =================================================================
-         PAGE: PROTOCOLS
-         ================================================================= -->
-    <?php elseif ($page === 'protocols'): ?>
-
-    <div class="proto-cards-grid" id="protoCardsGrid">
-      <div class="proto-card" id="protoCardWS">
-        <div class="proto-card-header">
-          <span class="proto-dot proto-dot-unk" id="protoDotWS"></span>
-          <span class="proto-card-name">WebSocket</span>
-        </div>
-        <div class="proto-card-body" id="protoBodyWS"><span class="muted">Checking…</span></div>
-        <div class="proto-checked" id="protoCheckedWS"></div>
-        <div class="proto-actions">
-          <button class="btn btn-secondary btn-sm js-proto-recheck" data-proto="WS">
-            <?= $I['refresh'] ?> Re-check
-          </button>
-        </div>
-      </div>
-
-      <div class="proto-card" id="protoCardXHTTP">
-        <div class="proto-card-header">
-          <span class="proto-dot proto-dot-unk" id="protoDotXHTTP"></span>
-          <span class="proto-card-name">XHTTP</span>
-        </div>
-        <div class="proto-card-body" id="protoBodyXHTTP"><span class="muted">Checking…</span></div>
-        <div class="proto-checked" id="protoCheckedXHTTP"></div>
-        <div class="proto-actions">
-          <button class="btn btn-secondary btn-sm js-proto-recheck" data-proto="XHTTP">
-            <?= $I['refresh'] ?> Re-check
-          </button>
-        </div>
-      </div>
-
-      <div class="proto-card" id="protoCardHTTPUpgrade">
-        <div class="proto-card-header">
-          <span class="proto-dot proto-dot-unk" id="protoDotHTTPUpgrade"></span>
-          <span class="proto-card-name">HTTPUpgrade</span>
-        </div>
-        <div class="proto-card-body" id="protoBodyHTTPUpgrade"><span class="muted">Checking…</span></div>
-        <div class="proto-checked" id="protoCheckedHTTPUpgrade"></div>
-        <div class="proto-actions">
-          <button class="btn btn-secondary btn-sm js-proto-recheck" data-proto="HTTPUpgrade">
-            <?= $I['refresh'] ?> Re-check
-          </button>
-        </div>
-      </div>
-
-      <div class="proto-card" id="protoCardReality">
-        <div class="proto-card-header">
-          <span class="proto-dot proto-dot-unk" id="protoDotReality"></span>
-          <span class="proto-card-name">Reality</span>
-        </div>
-        <div class="proto-card-body" id="protoBodyReality"><span class="muted">Checking…</span></div>
-        <div class="proto-checked" id="protoCheckedReality"></div>
-        <div class="proto-actions">
-          <button class="btn btn-secondary btn-sm js-proto-recheck" data-proto="Reality">
-            <?= $I['refresh'] ?> Re-check
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- =================================================================
-         PAGE: SETTINGS
-         ================================================================= -->
-    <?php elseif ($page === 'settings'): ?>
-
-    <div class="settings-grid">
-      <div class="settings-panel">
-        <div class="settings-panel-header"><h2>General Settings</h2></div>
-        <div class="settings-panel-body">
-          <div class="form-group">
-            <label for="settingTelegramUrl"><?= $I['tg'] ?> Telegram URL</label>
-            <input type="url" id="settingTelegramUrl"
-                   placeholder="https://t.me/yourchannel"
-                   autocomplete="off" spellcheck="false">
-            <div class="form-hint">Telegram channel or bot link shown to users</div>
-          </div>
-          <div id="telegramPreview" style="display:none" class="settings-preview">
-            <div class="settings-preview-label">Preview</div>
-            <a class="settings-preview-link" id="telegramPreviewLink" href="#" target="_blank" rel="noopener"></a>
-          </div>
-          <div class="form-group" style="margin-top:1.1rem">
-            <label for="settingServerLabel">Server Label</label>
-            <input type="text" id="settingServerLabel"
-                   placeholder="e.g. SetaLink VPN · EU-West"
-                   maxlength="80" autocomplete="off" spellcheck="false">
-            <div class="form-hint">Display name shown in configs and user-facing pages</div>
-          </div>
-          <div id="settingsAlert" class="alert" style="display:none;margin-top:1rem"></div>
-        </div>
-        <div class="settings-panel-footer">
-          <button class="btn btn-secondary" id="reloadSettingsBtn">
-            <?= $I['refresh'] ?> Reload
-          </button>
-          <button class="btn btn-primary" id="saveSettingsBtnPanel">
-            <?= $I['save'] ?> Save
-          </button>
-        </div>
-      </div>
-
-      <div class="settings-panel">
-        <div class="settings-panel-header"><h2>Server Info</h2></div>
-        <div class="settings-panel-body">
-          <div style="display:flex;flex-direction:column;gap:.65rem">
-            <div class="server-bar-item">
-              <span class="server-bar-label">Host</span>
-              <code class="server-bar-val"><?= h($host) ?></code>
-            </div>
-            <div class="server-bar-item">
-              <span class="server-bar-label">SNI</span>
-              <code class="server-bar-val"><?= h($sni) ?></code>
-            </div>
-            <div class="server-bar-item">
-              <span class="server-bar-label">Port</span>
-              <code class="server-bar-val"><?= h($pub_port) ?></code>
-            </div>
-            <div class="server-bar-item">
-              <span class="server-bar-label">xray</span>
-              <span class="dot dot-<?= $xray_state === 'active' ? 'ok' : 'bad' ?>" style="margin:0 .3rem"></span>
-              <span class="server-bar-val"><?= h($xray_state) ?></span>
-            </div>
-            <div class="server-bar-item">
-              <span class="server-bar-label">nginx</span>
-              <span class="dot dot-<?= $nginx_state === 'active' ? 'ok' : 'bad' ?>" style="margin:0 .3rem"></span>
-              <span class="server-bar-val"><?= h($nginx_state) ?></span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <?php elseif ($page === 'diagnostics'): ?>
-    <?php
-    // Pre-load server config details for the diagnostics page
-    $srv_cfg = cli_json('status');
-    $reality = $srv_cfg['reality'] ?? [];
-    $transports = $srv_cfg['transports'] ?? [];
-    ?>
-
-    <style>
-      .diag-grid { display:grid; grid-template-columns:1fr 1fr; gap:1.25rem; margin-bottom:1.5rem; }
-      .diag-full { grid-column:1/-1; }
-      .diag-panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; }
-      .diag-panel-head {
-        padding:.9rem 1.25rem; border-bottom:1px solid var(--border); background:var(--panel-2);
-        display:flex; align-items:center; justify-content:space-between;
-      }
-      .diag-panel-head h2 { font-size:.75rem; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:0; }
-      .diag-panel-body { padding:1.1rem 1.25rem; }
-      .cfg-row { display:flex; align-items:baseline; gap:.6rem; padding:.4rem 0; border-bottom:1px solid var(--border); }
-      .cfg-row:last-child { border-bottom:none; }
-      .cfg-key { font-size:.72rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); min-width:120px; flex-shrink:0; }
-      .cfg-val { font-family:"JetBrains Mono",monospace; font-size:.82rem; color:var(--text-2); word-break:break-all; }
-      .cfg-val.ok { color:var(--ok); }
-      .cfg-val.warn { color:var(--warn); }
-      .cfg-val.danger { color:var(--danger); }
-      .transport-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-top:.5rem; }
-      .transport-card { background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius); padding:.75rem 1rem; }
-      .transport-name { font-size:.7rem; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:.4rem; }
-      .transport-detail { font-family:"JetBrains Mono",monospace; font-size:.78rem; color:var(--text-2); }
-      .test-result-row { display:flex; align-items:flex-start; gap:1rem; padding:.8rem 0; border-bottom:1px solid var(--border); }
-      .test-result-row:last-child { border-bottom:none; }
-      .test-country { font-weight:700; color:var(--text); min-width:80px; font-size:.9rem; }
-      .test-badge-ok { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .65rem; border-radius:999px; font-size:.72rem; font-weight:700; background:rgba(63,185,80,.12); color:var(--ok); border:1px solid rgba(63,185,80,.3); }
-      .test-badge-fail { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .65rem; border-radius:999px; font-size:.72rem; font-weight:700; background:rgba(248,81,73,.12); color:var(--danger); border:1px solid rgba(248,81,73,.3); }
-      .test-badge-partial { display:inline-flex; align-items:center; gap:.35rem; padding:.25rem .65rem; border-radius:999px; font-size:.72rem; font-weight:700; background:rgba(210,153,34,.12); color:var(--warn); border:1px solid rgba(210,153,34,.3); }
-      .test-meta { font-size:.78rem; color:var(--muted); margin-top:.3rem; font-family:"JetBrains Mono",monospace; }
-      .test-error { font-size:.78rem; color:var(--danger); margin-top:.3rem; max-width:480px; line-height:1.5; }
-      .test-analysis { font-size:.8rem; color:var(--text-2); margin-top:.4rem; line-height:1.6; background:var(--panel-2); border-radius:var(--radius); padding:.5rem .75rem; border-left:3px solid var(--warn); }
-      .analytic-num { font-size:1.6rem; font-weight:700; color:var(--text); line-height:1; }
-      .analytic-label { font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); margin-top:.25rem; }
-      .analytic-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; }
-      .analytic-card { background:var(--panel-2); border:1px solid var(--border); border-radius:var(--radius); padding:.9rem 1rem; }
-      .error-log-line { font-family:"JetBrains Mono",monospace; font-size:.72rem; line-height:1.55; padding:2px 0; white-space:pre-wrap; word-break:break-all; color:var(--muted); }
-      .error-log-line.is-error { color:var(--danger); }
-      .error-log-line.is-warn { color:var(--warn); }
-      .error-log-empty { text-align:center; padding:2rem 1rem; color:var(--muted-2); font-size:.85rem; }
-      .diag-loading { text-align:center; padding:2rem 1rem; color:var(--muted-2); font-size:.82rem; }
-      @media(max-width:900px){ .diag-grid{grid-template-columns:1fr;} .diag-full{grid-column:1;} .analytic-grid{grid-template-columns:repeat(2,1fr);} .transport-grid{grid-template-columns:1fr;} }
-    </style>
-
-    <div class="diag-grid">
-
-      <!-- ── Server Config ───────────────────────────────────── -->
-      <div class="diag-panel">
-        <div class="diag-panel-head">
-          <h2>Reality Config</h2>
-          <span style="font-size:.7rem;color:var(--muted)">vpn.setalink.no</span>
-        </div>
-        <div class="diag-panel-body">
-          <?php
-          $r_host = h((string)($reality['host'] ?? $host));
-          $r_port = (int)($reality['port'] ?? 8443);
-          $r_sni  = h((string)($reality['sni'] ?? '—'));
-          $r_sid  = h((string)($reality['shortId'] ?? '—'));
-          $r_flow = h((string)($reality['flow'] ?? '—'));
-          $r_fp   = h((string)($reality['fingerprint'] ?? '—'));
-          $r_pk   = (string)($reality['publicKey'] ?? '');
-          $r_pk_short = strlen($r_pk) > 12 ? substr($r_pk, 0, 8) . '…' . substr($r_pk, -4) : '—';
-          ?>
-          <div class="cfg-row">
-            <span class="cfg-key">Host</span>
-            <code class="cfg-val"><?= $r_host ?>:<?= $r_port ?></code>
-          </div>
-          <div class="cfg-row">
-            <span class="cfg-key">Protocol</span>
-            <code class="cfg-val ok">VLESS + Reality</code>
-          </div>
-          <div class="cfg-row">
-            <span class="cfg-key">SNI</span>
-            <code class="cfg-val <?= $r_sni === 'www.oracle.com' ? 'danger' : 'ok' ?>"><?= $r_sni ?></code>
-          </div>
-          <div class="cfg-row">
-            <span class="cfg-key">Flow</span>
-            <code class="cfg-val"><?= $r_flow ?: '(none)' ?></code>
-          </div>
-          <div class="cfg-row">
-            <span class="cfg-key">Fingerprint</span>
-            <code class="cfg-val"><?= $r_fp ?></code>
-          </div>
-          <div class="cfg-row">
-            <span class="cfg-key">ShortId prefix</span>
-            <code class="cfg-val"><?= $r_sid ?>…</code>
-          </div>
-          <div class="cfg-row">
-            <span class="cfg-key">PublicKey</span>
-            <code class="cfg-val" title="<?= h($r_pk) ?>"><?= h($r_pk_short) ?></code>
-          </div>
-          <div class="cfg-row">
-            <span class="cfg-key">Port</span>
-            <code class="cfg-val"><?= $r_port ?></code>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Transport Endpoints ────────────────────────────── -->
-      <div class="diag-panel">
-        <div class="diag-panel-head">
-          <h2>TLS Transport Endpoints</h2>
-          <span style="font-size:.7rem;color:var(--muted)">edge.setalink.no:443</span>
-        </div>
-        <div class="diag-panel-body">
-          <?php
-          $e_host  = h((string)($transports['edge_host'] ?? '—'));
-          $e_port  = (int)($transports['edge_port'] ?? 443);
-          $ws_path = h((string)($transports['ws']['path']    ?? '/ws'));
-          $xh_path = h((string)($transports['xhttp']['path'] ?? '/xhttp'));
-          $hu_path = h((string)($transports['httpup']['path'] ?? '/httpup'));
-          ?>
-          <div class="transport-grid">
-            <div class="transport-card">
-              <div class="transport-name">WebSocket</div>
-              <div class="transport-detail"><?= $e_host ?>:<?= $e_port ?></div>
-              <div class="transport-detail" style="color:var(--muted)"><?= $ws_path ?></div>
-            </div>
-            <div class="transport-card">
-              <div class="transport-name">XHTTP</div>
-              <div class="transport-detail"><?= $e_host ?>:<?= $e_port ?></div>
-              <div class="transport-detail" style="color:var(--muted)"><?= $xh_path ?></div>
-            </div>
-            <div class="transport-card">
-              <div class="transport-name">HTTPUpgrade</div>
-              <div class="transport-detail"><?= $e_host ?>:<?= $e_port ?></div>
-              <div class="transport-detail" style="color:var(--muted)"><?= $hu_path ?></div>
-            </div>
-          </div>
-          <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)">
-            <div class="cfg-row">
-              <span class="cfg-key">Security</span>
-              <code class="cfg-val ok">TLS (nginx → xray)</code>
-            </div>
-            <div class="cfg-row">
-              <span class="cfg-key">Camouflage SNI</span>
-              <code class="cfg-val"><?= h((string)($srv_cfg['sni'] ?? '—')) ?></code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Country Test Results ───────────────────────────── -->
-      <div class="diag-panel diag-full">
-        <div class="diag-panel-head">
-          <h2>Country Test Results</h2>
-          <span style="font-size:.7rem;color:var(--muted)" id="testResultsCount">Loading…</span>
-        </div>
-        <div class="diag-panel-body" id="testResultsBody">
-          <!-- Known results pre-seeded from the 2026-05-18 test session -->
-          <div class="test-result-row">
-            <div>
-              <div class="test-country">🇹🇷 Turkey</div>
-              <div class="test-meta">All 3 configs · 2026-05-18 · SETAEI</div>
-            </div>
-            <div>
-              <span class="test-badge-ok">✓ SUCCESS</span>
-              <div class="test-meta">TCP OK · HTTP OK · Browser/IP check passed · Real traffic flowing</div>
-            </div>
-          </div>
-          <div class="test-result-row">
-            <div>
-              <div class="test-country">🇮🇷 Iran</div>
-              <div class="test-meta">178.104.77.231:8443 · sni=www.oracle.com · flow=none · 2026-05-18 · SETAEI</div>
-            </div>
-            <div>
-              <span class="test-badge-fail">✗ FAILED</span>
-              <div class="test-error">TCP OK but HTTP+HTTPS probes failed — Read timed out. Traffic not flowing through VPN server. Native probe: SOCKS5 timeout after TUN started.</div>
-              <div class="test-analysis">
-                <strong>Root cause analysis:</strong> Client config uses <code>sni=www.oracle.com</code> but server is configured for <code>www.microsoft.com</code>.
-                Oracle.com is blocked by Iran's national firewall (GFW) — TLS ClientHello with this SNI gets intercepted.
-                TCP connects before DPI activates, but subsequent traffic is dropped.
-                <br><strong>Fix:</strong> Distribute configs with <code>sni=www.microsoft.com</code> (matches server config, not blocked in Iran).
-                Alternatively test VLESS+XHTTP or WebSocket on port 443 which bypass Reality port filtering.
+    <!-- ============================================================ -->
+    <!-- VIEW: IRAN DEBUG                                             -->
+    <!-- ============================================================ -->
+    <div data-view="iran" hidden>
+      <div class="two-col" style="margin-bottom:1.25rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Iran Compatibility Score</span></div>
+          <div class="panel-body">
+            <div style="display:flex;align-items:flex-start;gap:1rem">
+              <div class="iran-grade grade-A" id="iranGrade">?</div>
+              <div style="flex:1">
+                <div style="font-size:.85rem;font-weight:700;margin-bottom:.5rem">Score: <span id="iranScore">—</span>/100</div>
+                <ul class="checklist" id="iranChecklist"></ul>
               </div>
             </div>
           </div>
-          <div id="dbTestResults"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Iran Traffic Summary</span></div>
+          <div class="panel-body" id="iranStatsSummary"><div class="loading"><div class="spinner"></div></div></div>
         </div>
       </div>
 
-      <!-- ── Connection Analytics ──────────────────────────── -->
-      <div class="diag-panel">
-        <div class="diag-panel-head">
-          <h2>Connection Analytics</h2>
-          <span class="diag-loading" id="analyticsStatus" style="font-size:.7rem;padding:0;color:var(--muted)">Loading…</span>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">SNI Analysis — Iran</span>
+          <span class="panel-sub">grouped by protocol + SNI, Iran/Iranian ISP traffic only</span>
         </div>
-        <div class="diag-panel-body">
-          <div class="analytic-grid" id="analyticsGrid">
-            <div class="analytic-card">
-              <div class="analytic-num" id="statUserConns">—</div>
-              <div class="analytic-label">User Connections</div>
-            </div>
-            <div class="analytic-card">
-              <div class="analytic-num" id="statUniqueIPs">—</div>
-              <div class="analytic-label">Unique Client IPs</div>
-            </div>
-            <div class="analytic-card">
-              <div class="analytic-num" id="statErrors" style="color:var(--danger)">—</div>
-              <div class="analytic-label">Xray Errors</div>
-            </div>
-            <div class="analytic-card">
-              <div class="analytic-num" id="statRestarts" style="color:var(--warn)">—</div>
-              <div class="analytic-label">Xray Restarts</div>
-            </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Protocol</th><th>SNI</th><th>Success Rate</th><th>Total</th><th>TCP Only</th><th>No Internet</th><th>IPv6</th><th>Emergency</th><th>Avg Latency</th><th>Last Seen</th></tr></thead>
+            <tbody id="iranSniTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">ISP Breakdown</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>ISP / Network</th><th>Total</th><th>Success</th><th>No Internet</th><th>Avg Latency</th></tr></thead>
+              <tbody id="iranIspTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
           </div>
-          <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border)">
-            <div class="cfg-row">
-              <span class="cfg-key">Last user conn</span>
-              <code class="cfg-val" id="statLastConn">—</code>
-            </div>
-            <div class="cfg-row">
-              <span class="cfg-key">API polls</span>
-              <code class="cfg-val" id="statApiPolls">—</code>
-            </div>
-            <div class="cfg-row">
-              <span class="cfg-key">Warnings (log)</span>
-              <code class="cfg-val" id="statWarnings">—</code>
-            </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">No-Internet Analysis</span><span class="panel-sub">TCP connected but no routing</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Protocol / SNI</th><th>Android</th><th>Total</th><th>No-Internet</th><th>Probe OK</th></tr></thead>
+              <tbody id="noInternetTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
           </div>
         </div>
       </div>
 
-      <!-- ── Recent Error Log ──────────────────────────────── -->
-      <div class="diag-panel">
-        <div class="diag-panel-head">
-          <h2>Recent Xray Errors / Warnings</h2>
-          <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshErrorLogBtn">
-            <?= $I['refresh'] ?> Refresh
-          </button>
-        </div>
-        <div class="diag-panel-body" style="padding:0;max-height:320px;overflow-y:auto">
-          <div id="errorLogBody" style="padding:.75rem 1rem">
-            <div class="diag-loading">Loading error log…</div>
-          </div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Error Classification — Recent Iran Failures</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Category</th><th>Protocol</th><th>SNI</th><th>Device</th><th>Network</th><th>Time</th><th>Error</th></tr></thead>
+            <tbody id="iranErrorTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
         </div>
       </div>
 
-      <!-- ── Iran Compatibility Score ─────────────────────── -->
-      <div class="diag-panel" id="iranScorePanel">
-        <div class="diag-panel-head">
-          <h2>Iran Compatibility Score</h2>
-          <span style="font-size:.7rem;color:var(--muted)" id="iranScoreAt">Loading…</span>
-        </div>
-        <div class="diag-panel-body">
-          <div style="display:flex;align-items:center;gap:1.5rem;margin-bottom:1rem">
-            <div style="text-align:center">
-              <div id="iranScoreNum" style="font-size:2.8rem;font-weight:800;color:var(--ok);line-height:1">—</div>
-              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:.3rem">Score / 100</div>
-            </div>
-            <div style="text-align:center;background:var(--panel-2);border-radius:var(--radius);padding:.6rem 1.2rem;border:1px solid var(--border)">
-              <div id="iranScoreGrade" style="font-size:2rem;font-weight:900;color:var(--ok);line-height:1">—</div>
-              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-top:.3rem">Grade</div>
-            </div>
-          </div>
-          <div id="iranScoreChecks"></div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Error Pattern Frequency</span><span class="panel-sub">most common failure messages</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Count</th><th>Category</th><th>Protocol / SNI</th><th>Error Message</th><th>Last Seen</th></tr></thead>
+            <tbody id="iranPatternTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
         </div>
       </div>
-
-      <!-- ── Active Sessions ────────────────────────────────── -->
-      <div class="diag-panel" id="activeSessionsPanel">
-        <div class="diag-panel-head">
-          <h2>Active Sessions</h2>
-          <span style="font-size:.7rem;color:var(--muted)" id="activeSessionsAt">Loading…</span>
-        </div>
-        <div class="diag-panel-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:.75rem">
-            <div class="analytic-card">
-              <div class="analytic-num" id="activeIPs">—</div>
-              <div class="analytic-label">Active IPs (5 min)</div>
-            </div>
-            <div class="analytic-card">
-              <div class="analytic-num" id="recentEvents">—</div>
-              <div class="analytic-label">Log Events (5 min)</div>
-            </div>
-          </div>
-          <div style="font-size:.75rem;color:var(--muted);margin-top:.5rem">
-            Unique client IPs seen in the last 5 minutes via Xray access log. Auto-refreshes every 30s.
-          </div>
-        </div>
-      </div>
-
-      <!-- ── Inbound Diagnostics ──────────────────────────── -->
-      <div class="diag-panel diag-full" id="inboundDiagPanel">
-        <div class="diag-panel-head">
-          <h2>Inbound Diagnostics</h2>
-          <div style="display:flex;gap:.5rem;align-items:center">
-            <span id="inboundDiagAt" style="font-size:.7rem;color:var(--muted)">Loading…</span>
-            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshInboundBtn">Refresh</button>
-          </div>
-        </div>
-        <div class="diag-panel-body">
-          <div id="inboundDiagBody"><div class="diag-loading">Loading inbound status…</div></div>
-        </div>
-      </div>
-
-      <!-- ── VPN Session Analytics ───────────────────────────── -->
-      <div class="diag-panel diag-full" id="sessionStatsPanel">
-        <div class="diag-panel-head">
-          <h2>VPN Session Analytics</h2>
-          <span id="sessionStatsAt" style="font-size:.7rem;color:var(--muted)">Loading…</span>
-        </div>
-        <div class="diag-panel-body">
-          <div id="sessionStatsBody"><div class="diag-loading">Loading session data…</div></div>
-        </div>
-      </div>
-
-      <!-- ── Watchdog Log ──────────────────────────────────── -->
-      <div class="diag-panel diag-full" id="watchdogPanel">
-        <div class="diag-panel-head">
-          <h2>Server Watchdog Log</h2>
-          <div style="display:flex;gap:.5rem;align-items:center">
-            <span id="watchdogAt" style="font-size:.7rem;color:var(--muted)">Loading…</span>
-            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshWatchdogBtn">Refresh</button>
-          </div>
-        </div>
-        <div class="diag-panel-body" style="padding:0;max-height:280px;overflow-y:auto">
-          <div id="watchdogBody" style="padding:.75rem 1rem"><div class="diag-loading">Loading watchdog log…</div></div>
-        </div>
-      </div>
-
-      <!-- ── Payment Queue ─────────────────────────────────── -->
-      <div class="diag-panel diag-full" id="paymentQueuePanel">
-        <div class="diag-panel-head">
-          <h2>USDT Payment Queue</h2>
-          <div style="display:flex;gap:.5rem;align-items:center">
-            <select id="paymentFilter" style="font-size:.72rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.2rem .5rem">
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
-              <option value="all">All</option>
-            </select>
-            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshPaymentsBtn">Refresh</button>
-          </div>
-        </div>
-        <div class="diag-panel-body" style="padding:0">
-          <div id="paymentQueueBody" style="padding:.75rem 1rem"><div class="diag-loading">Loading payments…</div></div>
-        </div>
-      </div>
-
-      <!-- ── Profile Success Rates ──────────────────────────── -->
-      <div class="diag-panel diag-full" id="profileStatsPanel">
-        <div class="diag-panel-head">
-          <h2>Profile Success Rates</h2>
-          <span style="font-size:.7rem;color:var(--muted)">From recorded test results</span>
-        </div>
-        <div class="diag-panel-body">
-          <div id="profileStatsBody">
-            <div class="diag-loading">Loading profile statistics…</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── No-Internet Analysis ──────────────────────────── -->
-      <div class="diag-panel diag-full" id="noInternetPanel">
-        <div class="diag-panel-head">
-          <h2>CONNECTED + No Internet Analysis</h2>
-          <span style="font-size:.7rem;color:var(--danger)">Routing bug tracker</span>
-        </div>
-        <div class="diag-panel-body">
-          <div style="font-size:.78rem;color:var(--muted);margin-bottom:.75rem">
-            Profiles that reach TCP OK but apps report no internet.
-            High <code>no_internet</code> count = routing/IPv6 issue on that profile+device combo.
-          </div>
-          <div id="noInternetBody"><div class="diag-loading">Loading…</div></div>
-        </div>
-      </div>
-
-      <!-- ── SNI Leaderboard ───────────────────────────────── -->
-      <div class="diag-panel diag-full" id="sniLeaderboardPanel">
-        <div class="diag-panel-head">
-          <h2>SNI Leaderboard</h2>
-          <span style="font-size:.7rem;color:var(--muted)">Global success rates — use to set remote config priorities</span>
-        </div>
-        <div class="diag-panel-body">
-          <div id="sniLeaderboardBody"><div class="diag-loading">Loading…</div></div>
-        </div>
-      </div>
-
-      <!-- ── Learning Intelligence ─────────────────────────── -->
-      <div class="diag-panel diag-full" id="learningPanel">
-        <div class="diag-panel-head">
-          <h2>Learning Intelligence</h2>
-          <span style="font-size:.7rem;color:var(--muted)">Per-country, per-mode protocol effectiveness</span>
-        </div>
-        <div class="diag-panel-body">
-          <div id="learningBody"><div class="diag-loading">Loading…</div></div>
-        </div>
-      </div>
-
-      <!-- ── Device Breakdown ──────────────────────────────── -->
-      <div class="diag-panel" id="deviceBreakdownPanel">
-        <div class="diag-panel-head">
-          <h2>Device Breakdown</h2>
-          <span style="font-size:.7rem;color:var(--muted)">Android versions + models</span>
-        </div>
-        <div class="diag-panel-body">
-          <div id="deviceBreakdownBody"><div class="diag-loading">Loading…</div></div>
-        </div>
-      </div>
-
-      <!-- ── Bootstrap Verification ────────────────────────── -->
-      <!-- ── Backend Health / debug-status ──────────────────── -->
-      <div class="diag-panel diag-full" id="debugStatusPanel">
-        <div class="diag-panel-head">
-          <h2>Backend Health</h2>
-          <div style="display:flex;gap:.5rem;align-items:center">
-            <span id="debugStatusAt" style="font-size:.7rem;color:var(--muted)">—</span>
-            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshDebugStatusBtn">Refresh</button>
-          </div>
-        </div>
-        <div class="diag-panel-body">
-          <div id="debugStatusBody"><div class="diag-loading">Loading…</div></div>
-        </div>
-      </div>
-
-      <div class="diag-panel diag-full" id="bootstrapVerifyPanel">
-        <div class="diag-panel-head">
-          <h2>Current Mobile Bootstrap Profile</h2>
-          <div style="display:flex;gap:.5rem;align-items:center">
-            <span id="bsVerifyStatus" style="font-size:.7rem;color:var(--muted)">—</span>
-            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="testBootstrapBtn">
-              Test bootstrap endpoint
-            </button>
-          </div>
-        </div>
-        <div class="diag-panel-body">
-          <div id="bsVerifyBody"><div class="diag-loading">Loading…</div></div>
-        </div>
-      </div>
-
-      <!-- ── Profile Bundle Editor ─────────────────────────── -->
-      <div class="diag-panel" id="bundleEditorPanel">
-        <div class="diag-panel-head">
-          <h2>Profile Bundle</h2>
-          <span style="font-size:.7rem;color:var(--muted)">SNI priorities + stealth candidates pushed to all apps</span>
-        </div>
-        <div class="diag-panel-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI Priority Candidates (one per line)</label>
-              <textarea id="bundleSniCandidates" rows="6" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="www.microsoft.com&#10;www.bing.com&#10;www.apple.com&#10;www.samsung.com&#10;www.speedtest.net"></textarea>
-              <div style="font-size:.65rem;color:var(--muted);margin-top:.25rem">Used for Reality SNI selection. First = highest priority.</div>
-            </div>
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI Spoof / Stealth Candidates (one per line)</label>
-              <textarea id="bundleSpoofSnis" rows="6" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="auth.vercel.com&#10;cdn.jsdelivr.net&#10;hcaptcha.com&#10;assets.vercel.com&#10;images.unsplash.com&#10;cloudflare.com"></textarea>
-              <div style="font-size:.65rem;color:var(--muted);margin-top:.25rem">Fake SNI domains used in Stealth Mode Reality profiles. DPI sees these, not your real domain.</div>
-            </div>
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Backup IPs (one per line)</label>
-              <textarea id="bundleBackupIps" rows="3" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="5.249.252.221"></textarea>
-            </div>
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Backup Domains (one per line)</label>
-              <textarea id="bundleBackupDomains" rows="3" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="edge.setalink.no"></textarea>
-            </div>
-          </div>
-          <button class="btn btn-primary" id="bundleSaveBtn" style="margin-top:.75rem">Save Profile Bundle</button>
-          <span id="bundleSaveStatus" style="font-size:.72rem;color:var(--muted);margin-left:.75rem"></span>
-        </div>
-      </div>
-
-      <!-- ── Remote Config Editor ──────────────────────────── -->
-      <div class="diag-panel" id="remoteConfigPanel">
-        <div class="diag-panel-head">
-          <h2>Remote Config</h2>
-          <span style="font-size:.7rem;color:var(--muted)">Pushed to all apps on next refresh</span>
-        </div>
-        <div class="diag-panel-body">
-          <div id="remoteConfigLoaded">
-            <div class="diag-loading">Loading current config…</div>
-          </div>
-
-          <!-- Bootstrap Server Section -->
-          <details style="margin-bottom:1.25rem" open>
-            <summary style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text);cursor:pointer;padding:.5rem 0;user-select:none">Bootstrap Server (Starter Profile for Fresh Installs)</summary>
-            <div style="margin-top:.75rem;padding:1rem;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius)">
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">UUID</label>
-                  <input type="text" id="bsUuid" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="ef317b14-...">
-                </div>
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Server Address (IP or domain)</label>
-                  <input type="text" id="bsAddress" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="5.249.252.221 or setalink.no">
-                </div>
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Reality Port</label>
-                  <input type="number" id="bsPort" style="width:100%;font-family:monospace;font-size:.8rem" value="8443">
-                </div>
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Public Key (X25519)</label>
-                  <input type="text" id="bsPubkey" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU">
-                </div>
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Short ID</label>
-                  <input type="text" id="bsShortid" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="176477b70b8b518b">
-                </div>
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI (Reality server name)</label>
-                  <input type="text" id="bsSni" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="www.microsoft.com">
-                </div>
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Flow</label>
-                  <input type="text" id="bsFlow" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="xtls-rprx-vision">
-                </div>
-                <div class="form-group">
-                  <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Fingerprint</label>
-                  <input type="text" id="bsFp" style="width:100%;font-family:monospace;font-size:.8rem" placeholder="chrome">
-                </div>
-              </div>
-              <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)">
-                <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Edge Transport (nginx proxy for WebSocket / XHTTP)</div>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:.75rem">
-                  <div class="form-group">
-                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">Edge Host</label>
-                    <input type="text" id="bsEdgeAddress" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="edge.setalink.no">
-                  </div>
-                  <div class="form-group">
-                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">Edge Port</label>
-                    <input type="number" id="bsEdgePort" style="width:100%;font-family:monospace;font-size:.78rem" value="443">
-                  </div>
-                  <div class="form-group">
-                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">WS Path</label>
-                    <input type="text" id="bsWsPath" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="/ws">
-                  </div>
-                  <div class="form-group">
-                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">XHTTP Path</label>
-                    <input type="text" id="bsXhttpPath" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="/xhttp">
-                  </div>
-                  <div class="form-group">
-                    <label style="font-size:.68rem;font-weight:600;color:var(--muted)">HTTPUpgrade Path</label>
-                    <input type="text" id="bsHttpupPath" style="width:100%;font-family:monospace;font-size:.78rem" placeholder="/httpup">
-                  </div>
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <!-- SNI / Kill-switch section -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI Priorities (comma-separated)</label>
-              <input type="text" id="rcSniPriorities" style="width:100%;font-family:monospace;font-size:.82rem"
-                     placeholder="www.microsoft.com, www.bing.com, www.apple.com, …">
-            </div>
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Iran SNI Order (comma-separated)</label>
-              <input type="text" id="rcIranSniOrder" style="width:100%;font-family:monospace;font-size:.82rem"
-                     placeholder="www.microsoft.com, www.bing.com, …">
-            </div>
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Kill-Switches (comma-separated)</label>
-              <input type="text" id="rcKillSwitches" style="width:100%;font-family:monospace;font-size:.82rem"
-                     placeholder="www.oracle.com, VMess/ws, …">
-            </div>
-            <div class="form-group">
-              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Emergency SNI</label>
-              <input type="text" id="rcEmergencySni" style="width:100%;font-family:monospace;font-size:.82rem"
-                     placeholder="www.microsoft.com">
-            </div>
-          </div>
-          <button class="btn btn-primary" id="rcSaveBtn" style="margin-top:.75rem">Save Remote Config</button>
-          <span id="rcSaveStatus" style="font-size:.78rem;margin-left:.75rem;color:var(--muted)"></span>
-          <span id="rcLastUpdated" style="font-size:.72rem;color:var(--muted);margin-left:.5rem"></span>
-        </div>
-      </div>
-
-      <!-- ── Iran Investigation Notes ──────────────────────── -->
-      <div class="diag-panel diag-full" style="border-color:rgba(210,153,34,.35)">
-        <div class="diag-panel-head" style="background:rgba(210,153,34,.08)">
-          <h2 style="color:var(--warn)">Iran Connectivity Investigation</h2>
-          <span style="font-size:.7rem;color:var(--warn)">Updated 2026-05-18</span>
-        </div>
-        <div class="diag-panel-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
-            <div>
-              <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:.6rem">What we know</div>
-              <div style="font-size:.82rem;color:var(--text-2);line-height:1.75">
-                <div>✅ Turkey: All 3 configs connect successfully</div>
-                <div>❌ Iran: TCP OK but all HTTP/HTTPS probes timeout</div>
-                <div>❌ Iran: "Read timed out" on SOCKS5 validation</div>
-                <div>⚠️ Client SNI mismatch: <code>oracle.com</code> vs server <code>microsoft.com</code></div>
-                <div>⚠️ oracle.com is partially blocked in Iran by the GFW</div>
-                <div>ℹ️ Port 8443 is reachable (TCP connects from Iran)</div>
-              </div>
-            </div>
-            <div>
-              <div style="font-size:.8rem;font-weight:700;color:var(--text);margin-bottom:.6rem">Recommended fixes (priority order)</div>
-              <div style="font-size:.82rem;color:var(--text-2);line-height:1.75">
-                <div><strong>1.</strong> Regenerate all user VLESS links → <code>sni=www.microsoft.com</code></div>
-                <div><strong>2.</strong> Test VLESS+XHTTP on port 443 from Iran (bypasses port filter)</div>
-                <div><strong>3.</strong> Test VLESS+WebSocket on port 443 from Iran</div>
-                <div><strong>4.</strong> Enable AI Optimizer in app to auto-detect working config</div>
-                <div><strong>5.</strong> Consider CDN fronting (Cloudflare) as fallback</div>
-                <div><strong>6.</strong> Try alternative SNI: <code>www.apple.com</code>, <code>www.speedtest.net</code></div>
-              </div>
-            </div>
-          </div>
-          <div style="margin-top:1rem;padding:.75rem 1rem;background:var(--panel-2);border-radius:var(--radius);border:1px solid var(--border);font-size:.78rem;color:var(--muted);font-family:'JetBrains Mono',monospace">
-            Server SNI: <?= h((string)($reality['sni'] ?? 'www.microsoft.com')) ?> | Port: <?= (int)($reality['port'] ?? 8443) ?> | Flow: <?= h((string)($reality['flow'] ?? 'xtls-rprx-vision')) ?> | FP: <?= h((string)($reality['fingerprint'] ?? 'chrome')) ?>
-          </div>
-        </div>
-      </div>
-
-    </div><!-- /.diag-grid -->
-
-    <?php endif; ?>
-
-  </main>
-</div><!-- /.main-wrap -->
-
-<!-- =====================================================================
-     Toast area
-     ===================================================================== -->
-<div id="toastArea" aria-live="polite" aria-atomic="true"></div>
-
-<!-- =====================================================================
-     Modal: Add User
-     ===================================================================== -->
-<div class="modal" id="addUserModal" role="dialog" aria-modal="true" aria-labelledby="addUserTitle">
-  <div class="modal-dialog">
-    <div class="modal-header">
-      <h3 id="addUserTitle"><?= $I['plus'] ?> Add New User</h3>
-      <button class="modal-close js-modal-close" aria-label="Close"><?= $I['x'] ?></button>
     </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label for="newUsername">Username</label>
-        <input type="text" id="newUsername" name="name"
-               pattern="[a-z0-9][a-z0-9._\-]{0,31}" maxlength="32"
-               placeholder="e.g. alice_2024" autocomplete="off" spellcheck="false">
-        <div class="form-hint">lowercase letters, numbers, . _ − (max 32 chars, starts with letter/number)</div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: DEVICES                                                -->
+    <!-- ============================================================ -->
+    <div data-view="devices" hidden>
+      <div class="stat-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:1rem" id="devStats">
+        <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="devTotal">—</div></div>
+        <div class="stat-card stat-ok"><div class="stat-label">Online</div><div class="stat-value" id="devOnline">—</div></div>
+        <div class="stat-card"><div class="stat-label">Free</div><div class="stat-value" id="devFree">—</div></div>
+        <div class="stat-card stat-accent"><div class="stat-label">Premium</div><div class="stat-value" id="devPremium">—</div></div>
+        <div class="stat-card stat-warn"><div class="stat-label">Blocked</div><div class="stat-value" id="devBlocked">—</div></div>
       </div>
-      <div class="form-group">
-        <label for="newPackage">Package</label>
-        <select id="newPackage" name="package">
-          <option value="7days">7 Days — 7-day access</option>
-          <option value="30days" selected>30 Days — 30-day access</option>
-          <option value="unlimited">Unlimited — no expiry</option>
-          <optgroup label="Data-limited (legacy)">
-            <option value="5GB">5 GB</option>
-            <option value="10GB">10 GB</option>
-            <option value="15GB">15 GB</option>
-          </optgroup>
+      <div class="search-row">
+        <input class="input" id="devSearch" placeholder="Search device ID, country, version…" type="search">
+        <select class="select" id="devPlan" style="width:130px">
+          <option value="">All plans</option>
+          <option value="free">Free</option>
+          <option value="premium">Premium</option>
         </select>
-      </div>
-      <div id="addUserError" class="alert alert-error" style="display:none;margin-top:.75rem"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary js-modal-close">Cancel</button>
-      <button class="btn btn-primary" id="addUserSubmit">
-        <?= $I['plus'] ?> Add User
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================================
-     Modal: QR Code / Config
-     ===================================================================== -->
-<div class="modal" id="qrModal" role="dialog" aria-modal="true" aria-labelledby="qrModalTitle">
-  <div class="modal-dialog">
-    <div class="modal-header">
-      <h3 id="qrModalTitle">VPN Configuration</h3>
-      <button class="modal-close js-modal-close" aria-label="Close"><?= $I['x'] ?></button>
-    </div>
-    <div class="modal-body">
-      <div class="qr-container">
-        <div class="qr-img-wrap" id="qrImgWrap">
-          <div class="qr-loading">Loading QR…</div>
-        </div>
-        <div class="vless-link-box">
-          <span class="vless-link-text" id="vlessLinkText">Loading…</span>
-        </div>
-        <div class="qr-actions">
-          <button class="btn btn-secondary" id="qrCopyBtn">
-            <?= $I['copy'] ?> Copy Link
-          </button>
-          <a class="btn btn-secondary" id="qrDownloadBtn" href="#" download>
-            <?= $I['download'] ?> Download QR
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================================
-     Modal: Delete Confirm
-     ===================================================================== -->
-<div class="modal" id="deleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle">
-  <div class="modal-dialog modal-dialog-sm">
-    <div class="modal-header">
-      <h3 id="deleteModalTitle">Delete User</h3>
-      <button class="modal-close js-modal-close" aria-label="Close"><?= $I['x'] ?></button>
-    </div>
-    <div class="modal-body">
-      <p>Are you sure you want to delete <strong id="deleteUserLabel"></strong>?</p>
-      <p class="muted text-sm" style="margin-top:.5rem">
-        This will permanently revoke VPN access and cannot be undone.
-      </p>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary js-modal-close">Cancel</button>
-      <button class="btn btn-danger" id="deleteConfirmBtn">
-        <?= $I['trash'] ?> Delete User
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- =====================================================================
-     Modal: Change Package
-     ===================================================================== -->
-<div class="modal" id="changePkgModal" role="dialog" aria-modal="true" aria-labelledby="changePkgTitle">
-  <div class="modal-dialog modal-dialog-sm">
-    <div class="modal-header">
-      <h3 id="changePkgTitle">Change Package</h3>
-      <button class="modal-close js-modal-close" aria-label="Close"><?= $I['x'] ?></button>
-    </div>
-    <div class="modal-body">
-      <div class="form-group">
-        <label>User: <strong id="changePkgUserLabel"></strong></label>
-      </div>
-      <div class="form-group">
-        <label for="changePkgSelect">New Package</label>
-        <select id="changePkgSelect">
-          <option value="7days">7 Days</option>
-          <option value="30days">30 Days</option>
-          <option value="unlimited">Unlimited</option>
-          <optgroup label="Data-limited">
-            <option value="5GB">5 GB</option>
-            <option value="10GB">10 GB</option>
-            <option value="15GB">15 GB</option>
-          </optgroup>
+        <select class="select" id="devStatus" style="width:130px">
+          <option value="">All status</option>
+          <option value="online">Online</option>
+          <option value="offline">Offline</option>
+          <option value="blocked">Blocked</option>
         </select>
+        <button class="btn btn-secondary btn-sm" id="devRefreshBtn"><?= icon('refresh') ?></button>
+      </div>
+      <div class="panel">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Device</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">App Ver</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
+            <tbody id="devTbl"><tr><td colspan="9" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Payment Queue</span>
+          <select class="select btn-sm" id="payFilter" style="width:120px">
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+            <option value="all">All</option>
+          </select>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Device</th><th>Package</th><th>USDT</th><th>Tx Hash</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
+            <tbody id="payTbl"><tr><td colspan="8" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary js-modal-close">Cancel</button>
-      <button class="btn btn-primary" id="changePkgConfirm">Update Package</button>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: LOGS                                                   -->
+    <!-- ============================================================ -->
+    <div data-view="logs" hidden>
+      <div class="filter-row">
+        <select class="select" id="logType" style="width:140px">
+          <option value="access">Xray Access</option>
+          <option value="error">Xray Error</option>
+          <option value="nginx">Nginx Access</option>
+          <option value="watchdog">Watchdog</option>
+        </select>
+        <select class="select" id="logLines" style="width:100px">
+          <option value="50">50 lines</option>
+          <option value="100" selected>100 lines</option>
+          <option value="200">200 lines</option>
+          <option value="500">500 lines</option>
+        </select>
+        <input class="input" id="logSearch" placeholder="Filter lines…" type="search" style="flex:1">
+        <button class="btn btn-secondary btn-sm" id="logRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <button class="btn btn-ghost btn-sm" id="logExportBtn"><?= icon('download') ?> Export</button>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Log Output</span>
+          <span class="panel-sub" id="logCount"></span>
+          <label style="margin-left:auto;display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="logRawToggle" style="accent-color:var(--accent)"> Raw
+          </label>
+        </div>
+        <div id="logViewer" style="padding:.25rem .5rem;max-height:70vh;overflow-y:auto;font-size:.72rem">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
     </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: RELEASE                                                -->
+    <!-- ============================================================ -->
+    <div data-view="release" hidden>
+      <div class="panel" style="margin-bottom:1.25rem">
+        <div class="panel-header"><span class="panel-title">Download Symlink</span></div>
+        <div class="panel-body" id="dlSymlinkInfo"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+      <div class="panel" style="margin-bottom:1.25rem">
+        <div class="panel-header"><span class="panel-title">OTA version.json</span></div>
+        <div class="panel-body" id="versionJsonInfo"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+      <div id="releaseChannels"></div>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">System Health</span></div>
+        <div class="panel-body" id="debugStatus"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: CONFIG                                                 -->
+    <!-- ============================================================ -->
+    <div data-view="config" hidden>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Server Settings</span></div>
+          <div class="panel-body">
+            <div class="form-group">
+              <label>Server Label</label>
+              <input class="input" id="cfgLabel" placeholder="SetaLink VPN">
+            </div>
+            <div class="form-group">
+              <label>Telegram Support URL</label>
+              <input class="input" id="cfgTelegram" placeholder="https://t.me/…">
+            </div>
+            <button class="btn btn-primary" id="cfgSaveSettings"><?= icon('save') ?> Save Settings</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Remote Config</span><span class="panel-sub">pushed to mobile clients</span></div>
+          <div class="panel-body">
+            <div class="form-group">
+              <label>Protocol Order</label>
+              <div class="tag-list" id="rcProtocolOrder"></div>
+            </div>
+            <div class="form-group">
+              <label>SNI Priorities (Iran)</label>
+              <div class="tag-list" id="rcSniPriorities"></div>
+              <div style="display:flex;gap:.35rem;margin-top:.4rem">
+                <input class="input input-sm" id="rcSniInput" placeholder="Add SNI…" style="flex:1;padding:.3rem .5rem;font-size:.75rem">
+                <button class="btn btn-ghost btn-sm" id="rcSniAdd"><?= icon('plus') ?></button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label>Emergency SNI</label>
+              <input class="input" id="rcEmergencySni" placeholder="www.microsoft.com">
+            </div>
+            <div class="form-group">
+              <label>Kill Switches (blocked SNIs)</label>
+              <div class="tag-list" id="rcKillSwitches"></div>
+              <div style="display:flex;gap:.35rem;margin-top:.4rem">
+                <input class="input input-sm" id="rcKsInput" placeholder="Add kill switch…" style="flex:1;padding:.3rem .5rem;font-size:.75rem">
+                <button class="btn btn-ghost btn-sm" id="rcKsAdd"><?= icon('plus') ?></button>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="cfgSaveRc"><?= icon('save') ?> Save Remote Config</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Bootstrap Server</span><span class="panel-sub">emergency profile used by app on first launch</span></div>
+        <div class="panel-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
+            <div class="form-group"><label>UUID</label><input class="input" id="bsUuid"></div>
+            <div class="form-group"><label>Address</label><input class="input" id="bsAddress"></div>
+            <div class="form-group"><label>Port</label><input class="input" id="bsPort" type="number" min="1" max="65535"></div>
+            <div class="form-group"><label>Public Key</label><input class="input" id="bsPubkey"></div>
+            <div class="form-group"><label>Short ID</label><input class="input" id="bsShortid"></div>
+            <div class="form-group"><label>SNI</label><input class="input" id="bsSni"></div>
+            <div class="form-group"><label>Flow</label><input class="input" id="bsFlow" placeholder="xtls-rprx-vision"></div>
+            <div class="form-group"><label>Fingerprint</label><input class="input" id="bsFp" placeholder="chrome"></div>
+            <div class="form-group"><label>Edge Address</label><input class="input" id="bsEdgeAddr"></div>
+            <div class="form-group"><label>Edge Port</label><input class="input" id="bsEdgePort" type="number"></div>
+            <div class="form-group"><label>/ws path</label><input class="input" id="bsWsPath" value="/ws"></div>
+            <div class="form-group"><label>/xhttp path</label><input class="input" id="bsXhttpPath" value="/xhttp"></div>
+          </div>
+          <div style="display:flex;gap:.5rem;margin-top:.25rem">
+            <button class="btn btn-primary" id="cfgSaveBootstrap"><?= icon('save') ?> Save Bootstrap</button>
+            <button class="btn btn-ghost btn-sm" id="cfgTestBootstrap"><?= icon('check') ?> Test Endpoint</button>
+          </div>
+          <div id="bsTestResult" style="margin-top:.5rem;font-size:.75rem;color:var(--muted)"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /page-content -->
+</main>
+</div><!-- /layout -->
+
+<!-- ── Modals ────────────────────────────────────────────────────────── -->
+<div class="modal-backdrop" id="backdrop"></div>
+
+<div class="modal-dialog" id="modalQuota">
+  <div class="modal-header">
+    <span class="modal-title">Set Quota</span>
+    <button class="btn-close btn btn-icon" onclick="closeModal()"><?= icon('x') ?></button>
+  </div>
+  <div class="modal-body">
+    <div class="form-group">
+      <label>Device: <strong id="quotaDevLabel"></strong></label>
+    </div>
+    <div class="form-group">
+      <label>Quota (GB)</label>
+      <input class="input" id="quotaGb" type="number" min="0" step="0.5" value="1">
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" id="quotaConfirm"><?= icon('save') ?> Set Quota</button>
   </div>
 </div>
 
-<!-- Modal backdrop (shared) -->
-<div class="modal-backdrop" id="modalBackdrop"></div>
+<div class="modal-dialog" id="modalConfirm">
+  <div class="modal-header">
+    <span class="modal-title" id="confirmTitle">Confirm</span>
+    <button class="btn-close btn btn-icon" onclick="closeModal()"><?= icon('x') ?></button>
+  </div>
+  <div class="modal-body"><p id="confirmMsg" style="font-size:.83rem"></p></div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-danger" id="confirmOk">Confirm</button>
+  </div>
+</div>
 
-<!-- =====================================================================
-     Bootstrap data + scripts
-     ===================================================================== -->
+<!-- ── Toast container ───────────────────────────────────────────────── -->
+<div id="toast-container"></div>
+
+<!-- ── Script ────────────────────────────────────────────────────────── -->
 <script>
-const CSRF         = <?= json_encode($csrf_token) ?>;
-const API_URL      = '/_setalink-admin/api.php';
-const QR_URL       = '/_setalink-admin/qr.php';
-const CURRENT_PAGE = <?= json_encode($page) ?>;
-</script>
-<script src="app.js"></script>
-<script>
-// =========================================================================
-// SetaLink extended page logic
-// Runs after app.js — showToast, apiPost, closeModal are already defined.
-// =========================================================================
 'use strict';
-window.SL = window.SL || {};
+const CSRF     = <?= json_encode($csrf_token) ?>;
+const API      = '/_setalink-admin/api.php';
+const INIT_PAGE = <?= json_encode($page) ?>;
 
-SL.esc = function(s) {
-    return String(s)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// ── Utils ────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const fmtBytes = n => {
+  if (!n) return '—';
+  const u=['B','KB','MB','GB','TB'], i=Math.min(Math.floor(Math.log2(n)/10),4);
+  return (n/Math.pow(1024,i)).toFixed(i>1?1:0)+' '+u[i];
+};
+const fmtNum = n => n==null?'—':Number(n).toLocaleString();
+const fmtRelative = s => {
+  if (!s) return '—';
+  const d = (Date.now()/1000) - new Date(s.replace(' ','T')+'Z').getTime()/1000;
+  if (isNaN(d)||d<0) return 'just now';
+  if (d<60) return d.toFixed(0)+'s ago';
+  if (d<3600) return (d/60).toFixed(0)+'m ago';
+  if (d<86400) return (d/3600).toFixed(0)+'h ago';
+  return (d/86400).toFixed(0)+'d ago';
+};
+const fmtMs = ms => ms ? ms+'ms' : '—';
+const pct   = (s,t) => t>0 ? Math.round(s/t*100)+'%' : '—';
+
+// Error classifier
+function classifyError(row) {
+  const msg = ((row.error_msg||row.error||'')).toLowerCase();
+  const tcp = +row.tcp_ok, http = +row.http_ok, ipv6 = +row.ipv6_enabled;
+  if (msg.includes('eperm')||msg.includes('operation not permitted')||msg.includes('bindsocket'))
+    return {type:'android',  label:'Android VPN',       css:'err-android'};
+  if (msg.includes('connection reset')||msg.includes('forcibly closed')||msg.includes('connection refused by the proxy')||msg.includes('dpi'))
+    return {type:'dpi',      label:'DPI Blocked',        css:'err-dpi'};
+  if (msg.includes('nxdomain')||msg.includes('no such host')||(msg.includes('dns')&&msg.includes('fail')))
+    return {type:'dns',      label:'DNS Poisoned',       css:'err-dns'};
+  if (msg.includes('tls')||msg.includes('certificate')||msg.includes('handshake'))
+    return {type:'tls',      label:'TLS Failed',         css:'err-tls'};
+  if (msg.includes('alpn'))
+    return {type:'alpn',     label:'ALPN Mismatch',      css:'err-alpn'};
+  if (msg.includes('mtu')||msg.includes('too large')||msg.includes('emsgsize'))
+    return {type:'mtu',      label:'MTU Issue',          css:'err-mtu'};
+  if (msg.includes('captive')||msg.includes('portal'))
+    return {type:'captive',  label:'Captive Portal',     css:'err-captive'};
+  if (tcp&&!http&&!msg)
+    return {type:'tcponly',  label:'TCP Only',           css:'err-tcponly'};
+  if (ipv6&&!http&&(msg.includes('route')||msg.includes('unreachable')))
+    return {type:'ipv6',     label:'IPv6 Routing',       css:'err-ipv6'};
+  if (msg.includes('timeout')||msg.includes('deadline')||msg.includes('i/o timeout'))
+    return {type:'timeout',  label:'Timeout',            css:'err-timeout'};
+  if (!msg&&!tcp)
+    return {type:'unknown',  label:'Unknown',            css:'err-unknown'};
+  return      {type:'unknown',  label:'Unknown',            css:'err-unknown'};
+}
+function classHint(cat) {
+  const hints = {
+    dpi:     'Deep Packet Inspection — ISP is fingerprinting TLS handshakes. Try a different SNI or fingerprint.',
+    dns:     'DNS response is being poisoned. Switch to DoH or a trusted DNS resolver.',
+    tls:     'TLS handshake failure. Check certificate validity, SNI mismatch, or fingerprint.',
+    alpn:    'ALPN negotiation failed. Ensure xray config uses alpn:[http/1.1] for WS/HTTPUpgrade.',
+    tcponly: 'TCP connects but no HTTP routing. Check tun2socks, TUN interface, and Xray outbounds.',
+    ipv6:    'IPv6 routing issue. Xray blackhole rule for ::/0 may be missing.',
+    mtu:     'Packet size exceeds path MTU. Try reducing MTU to 1280 on device.',
+    captive: 'Captive portal intercept. Must dismiss portal before VPN can connect.',
+    android: 'Android VPN permission issue (EPERM). bindSocket excluded — this is expected behaviour, not fatal.',
+    timeout: 'Connection timed out. Server unreachable or filtered.',
+    unknown: 'Cause unclear. Check Xray error log for more detail.',
+  };
+  return hints[cat] || hints.unknown;
+}
+
+function protoBadge(p) {
+  const proto = (p||'').toLowerCase();
+  if (proto.includes('reality')) return `<span class="badge proto-reality">Reality</span>`;
+  if (proto.includes('xhttp'))   return `<span class="badge proto-xhttp">XHTTP</span>`;
+  if (proto.includes('httpupgrade')||proto.includes('httpup')) return `<span class="badge proto-httpupgrade">HTTPUp</span>`;
+  if (proto.includes('ws')||proto.includes('websocket')) return `<span class="badge proto-ws">WS</span>`;
+  return proto ? `<span class="badge badge-muted">${esc(p)}</span>` : '—';
+}
+
+// ── API client ───────────────────────────────────────────────────────
+const api = {
+  get: async (action, params={}) => {
+    const qs = new URLSearchParams({action, ...params});
+    const r  = await fetch(`${API}?${qs}`, {credentials:'include'});
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error||'API error');
+    return d.data;
+  },
+  post: async body => {
+    const r = await fetch(API, {method:'POST',credentials:'include',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({_csrf:CSRF, ...body})
+    });
+    if (!r.ok) throw new Error('HTTP '+r.status);
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error||'API error');
+    return d.data;
+  }
 };
 
-// =========================================================================
-// GLOBAL — admin heartbeat (all pages, 30s interval)
-// =========================================================================
+// ── Toast ────────────────────────────────────────────────────────────
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  $('toast-container').appendChild(el);
+  setTimeout(()=>el.remove(), 4200);
+}
+
+// ── Modal ────────────────────────────────────────────────────────────
+function openModal(id) { $('backdrop').classList.add('open'); $(id).classList.add('open'); }
+function closeModal()  {
+  $('backdrop').classList.remove('open');
+  document.querySelectorAll('.modal-dialog.open').forEach(m=>m.classList.remove('open'));
+}
+$('backdrop').addEventListener('click', closeModal);
+
+// ── Sidebar mobile toggle ────────────────────────────────────────────
+$('menuToggle').addEventListener('click', ()=>$('sidebar').classList.toggle('open'));
+document.addEventListener('click', e=>{
+  if (!$('sidebar').contains(e.target)&&!$('menuToggle').contains(e.target))
+    $('sidebar').classList.remove('open');
+});
+
+// ── Router ───────────────────────────────────────────────────────────
+let activeView='', refreshTimer=null;
+const pageTitles = {
+  dashboard: ['Dashboard', 'live monitoring · auto-refresh 10s'],
+  iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
+  devices:   ['Devices', 'device management · quota · payments'],
+  logs:      ['Logs', 'structured log viewer'],
+  release:   ['Release', 'APK channels · version.json · health'],
+  config:    ['Config', 'remote config · bootstrap server · settings'],
+};
+
+function navigate(page) {
+  if (!pageTitles[page]) page = 'dashboard';
+  document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.page===page));
+  document.querySelectorAll('[data-view]').forEach(el=>{ el.hidden = el.dataset.view!==page; });
+  const [title, sub] = pageTitles[page];
+  $('pageTitle').textContent = title;
+  $('pageSub').textContent = sub;
+  document.title = `SetaLink Admin — ${title}`;
+  const url = new URL(location.href);
+  url.searchParams.set('page', page);
+  history.pushState({page}, '', url);
+  if (refreshTimer) { clearInterval(refreshTimer); refreshTimer=null; }
+  activeView = page;
+  views[page]?.init();
+}
+window.addEventListener('popstate', e => navigate(e.state?.page||'dashboard'));
+document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
+$('refreshBtn').addEventListener('click', ()=>views[activeView]?.init?.());
+
+// ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
-    const setDot = (id, ok) => {
-        const el = document.getElementById(id);
-        if (el) el.className = 'dot ' + (ok === true ? 'dot-ok' : ok === false ? 'dot-bad' : 'dot-unk');
-    };
-    const upd = document.getElementById('hbUpdated');
-    try {
-        const ctrl = new AbortController();
-        const tid  = setTimeout(() => ctrl.abort(), 8000);
-        const r = await fetch(API_URL + '?action=heartbeat', { credentials: 'same-origin', signal: ctrl.signal });
-        clearTimeout(tid);
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        const d = (await r.json()).data || {};
-        setDot('hbDotXray',      d.xray);
-        setDot('hbDotNginx',     d.nginx);
-        setDot('hbDotSqlite',    d.sqlite);
-        setDot('hbDotApi',       d.api);
-        setDot('hbDotBootstrap', d.bootstrap);
-        if (upd) upd.textContent = 'updated ' + new Date().toLocaleTimeString();
-    } catch (e) {
-        if (upd) upd.textContent = e.name === 'AbortError' ? 'heartbeat timeout' : 'heartbeat error';
-    }
+  const setDot = (id, ok) => {
+    const el = $(id); if (!el) return;
+    el.className = 'dot '+(ok===true?'dot-ok':ok===false?'dot-bad':'dot-unk');
+  };
+  try {
+    const d = await api.get('heartbeat');
+    setDot('hbXray',      d.xray);
+    setDot('hbNginx',     d.nginx);
+    setDot('hbSqlite',    d.sqlite);
+    setDot('hbApi',       d.api);
+    setDot('hbBootstrap', d.bootstrap);
+    setDot('hbPort',      d.port_8443);
+    $('hbTs').textContent = 'updated ' + new Date().toLocaleTimeString();
+    $('globalTs').textContent = new Date().toLocaleTimeString();
+  } catch(e) {
+    $('hbTs').textContent = 'heartbeat failed: ' + e.message;
+  }
 }
 runHeartbeat();
 setInterval(runHeartbeat, 30000);
 
-// =========================================================================
-// DASHBOARD — server stats (15s) + protocol mini-row (30s)
-// =========================================================================
-if (CURRENT_PAGE === 'dashboard') {
-
-    // ── Server stats ─────────────────────────────────────────────────────
-    function setBarClass(el, pct) {
-        el.classList.remove('warn', 'danger');
-        if (pct >= 90)      el.classList.add('danger');
-        else if (pct >= 70) el.classList.add('warn');
+// ── VIEW: DASHBOARD ──────────────────────────────────────────────────
+const views = {};
+views.dashboard = {
+  init() {
+    this.loadAll();
+    refreshTimer = setInterval(()=>this.loadAll(), 10000);
+  },
+  async loadAll() {
+    const [analytics, sessions, inbounds, sniLb] = await Promise.allSettled([
+      api.get('app-analytics'),
+      api.get('active-sessions'),
+      api.get('inbound-stats'),
+      api.get('sni-leaderboard'),
+    ]);
+    if (analytics.status==='fulfilled') this.renderStats(analytics.value);
+    if (sessions.status==='fulfilled')  this.renderSessions(sessions.value);
+    if (inbounds.status==='fulfilled')  this.renderInbounds(inbounds.value);
+    if (sniLb.status==='fulfilled')     this.renderSniLb(sniLb.value);
+  },
+  renderStats(d) {
+    $('statOnline').textContent   = fmtNum(d.online_now);
+    $('statTotal').textContent    = fmtNum(d.total_installs);
+    $('statActive7d').textContent = fmtNum(d.active_7d);
+    $('statActiveToday').textContent = fmtNum(d.active_today)+' today';
+    $('statNew').textContent      = fmtNum(d.new_this_month)+' this month';
+    $('statFailed').textContent   = fmtNum(d.failed_24h);
+    $('statEvents').textContent   = fmtNum(d.online_now);
+  },
+  renderSessions(d) {
+    const el = $('activeSessions');
+    const protos = d.protocols||{};
+    let html = `<div style="margin-bottom:.5rem;font-size:.83rem">
+      <span style="font-weight:700;font-size:1.2rem">${esc(d.active_ips)}</span>
+      <span style="color:var(--muted);margin-left:.35rem">unique IPs (5-min window)</span>
+    </div>`;
+    html += `<div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem">${esc(d.recent_events)} events total</div>`;
+    if (Object.keys(protos).length) {
+      html += '<div style="display:flex;flex-wrap:wrap;gap:.3rem">';
+      for (const [p,c] of Object.entries(protos)) {
+        html += `<div style="font-size:.7rem;padding:.15rem .4rem;border-radius:4px;background:var(--bg-2);border:1px solid var(--border)">${esc(p)}: <strong>${c}</strong></div>`;
+      }
+      html += '</div>';
     }
-
-    async function loadServerStats() {
-        try {
-            const ctrl = new AbortController();
-            const tid  = setTimeout(() => ctrl.abort(), 10000);
-            const r = await fetch(API_URL + '?action=server-stats', { credentials: 'same-origin', signal: ctrl.signal });
-            clearTimeout(tid);
-            if (!r.ok) return;
-            const j = await r.json();
-            const d = j.data || j;
-
-            const cpuPct = parseFloat(d.cpu_pct ?? d.cpu_percent ?? 0);
-            const memPct = parseFloat(d.mem_pct ?? d.memory_percent ?? 0);
-            const dskPct = parseFloat(d.disk_pct ?? d.disk_percent ?? 0);
-
-            const set = (valId, cardId, val) => {
-                const el = document.getElementById(valId);
-                if (el) el.textContent = val;
-                document.getElementById(cardId)?.classList.remove('loading');
-            };
-
-            const sec = d.uptime_sec ?? d.uptime ?? 0;
-            const uptimeStr = sec > 86400
-                ? Math.floor(sec / 86400) + 'd ' + Math.floor((sec % 86400) / 3600) + 'h'
-                : Math.floor(sec / 3600) + 'h ' + Math.floor((sec % 3600) / 60) + 'm';
-
-            set('srvCpuVal',    'srvCpu',    cpuPct.toFixed(1) + '%');
-            set('srvMemVal',    'srvMem',    memPct.toFixed(1) + '%');
-            set('srvLoadVal',   'srvLoad',   d.load1 ?? d.load_1 ?? '—');
-            set('srvUptimeVal', 'srvUptime', uptimeStr);
-            set('srvDiskVal',   'srvDisk',   dskPct.toFixed(1) + '%');
-
-            const cpuBar = document.getElementById('srvCpuBar');
-            const memBar = document.getElementById('srvMemBar');
-            const dskBar = document.getElementById('srvDiskBar');
-            if (cpuBar) { cpuBar.style.width = Math.min(cpuPct, 100) + '%'; setBarClass(cpuBar, cpuPct); }
-            if (memBar) { memBar.style.width = Math.min(memPct, 100) + '%'; setBarClass(memBar, memPct); }
-            if (dskBar) { dskBar.style.width = Math.min(dskPct, 100) + '%'; setBarClass(dskBar, dskPct); }
-        } catch (e) {
-            ['srvCpu','srvMem','srvLoad','srvUptime','srvDisk'].forEach(id => {
-                document.getElementById(id)?.classList.remove('loading');
-            });
-        }
+    el.innerHTML = html;
+  },
+  renderInbounds(d) {
+    const ports = d.ports||{};
+    let rows = '';
+    for (const [k,p] of Object.entries(ports)) {
+      const ok = p.listening;
+      rows += `<tr>
+        <td>${esc(p.label)}</td>
+        <td class="mono">${p.port}</td>
+        <td><span class="badge ${ok?'badge-ok':'badge-danger'}">${ok?'listening':'closed'}</span></td>
+        <td>${k==='reality'?esc(d.accepted_external):'—'}</td>
+        <td>${k==='reality'?esc(d.uuid_rejections):'—'}</td>
+        <td class="mono">${k==='reality'?esc(d.last_accepted_ip||'—'):'—'}</td>
+        <td>${k==='reality'?esc(d.last_accepted_at||'—'):'—'}</td>
+      </tr>`;
     }
-
-    loadServerStats();
-    setInterval(loadServerStats, 15000);
-
-    // ── Protocol health mini-row ──────────────────────────────────────────
-    function interpretProto(key, code, open) {
-        if (key === 'WS') {
-            if (code === 101) return true;
-            if (code === 400) return true;
-            return false;
-        }
-        if (key === 'XHTTP') {
-            return code !== null && [404, 400, 200].includes(code);
-        }
-        if (key === 'HTTPUpgrade') {
-            return code !== null && [502, 400, 200, 101].includes(code);
-        }
-        if (key === 'Reality') {
-            return open === true;
-        }
-        return false;
+    $('inboundTbl').innerHTML = rows || '<tr><td colspan="7" class="tbl-empty">No data</td></tr>';
+    $('inboundTs').textContent = d.checked_at||'';
+    if (d.last_errors&&d.last_errors.length) {
+      const errDiv = $('inboundErrors');
+      errDiv.style.display = 'block';
+      errDiv.innerHTML = '<div style="font-size:.7rem;color:var(--muted);margin-bottom:.25rem;font-weight:600">RECENT XRAY ERRORS</div>' +
+        d.last_errors.map(e=>`<div class="mono" style="font-size:.68rem;color:var(--danger);padding:.1rem 0">${esc(e)}</div>`).join('');
     }
+  },
+  renderSniLb(rows) {
+    if (!rows||!rows.length) { $('sniLeaderboard').innerHTML='<tr><td colspan="5" class="tbl-empty">No telemetry data yet</td></tr>'; return; }
+    $('sniLeaderboard').innerHTML = rows.slice(0,10).map(r=>{
+      const rate = r.connect_rate!=null?r.connect_rate:null;
+      const cls  = rate===null?'badge-muted':rate>=80?'badge-ok':rate>=50?'badge-warn':'badge-danger';
+      return `<tr>
+        <td>${protoBadge(r.protocol)}&nbsp;<span class="mono" style="font-size:.72rem">${esc(r.sni||'—')}</span></td>
+        <td>
+          <span class="badge ${cls}">${rate!=null?rate+'%':'—'}</span>
+          <div class="progress" style="width:80px;margin-top:.3rem;display:inline-block;vertical-align:middle">
+            <div class="progress-bar ${rate>=80?'ok':rate>=50?'warn':'danger'}" style="width:${rate||0}%"></div>
+          </div>
+        </td>
+        <td>${fmtNum(r.total)}</td>
+        <td>${fmtMs(r.avg_latency)}</td>
+        <td>${fmtNum(r.devices)}</td>
+      </tr>`;
+    }).join('');
+  }
+};
+// Protocol health probe button
+$('probeBtn').addEventListener('click', async()=>{
+  const el = $('protocolHealth');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Probing…</div>';
+  try {
+    const d = await api.get('protocol-health');
+    el.innerHTML = Object.entries(d)
+      .filter(([k])=>k!=='checked_at')
+      .map(([k,v])=>`<div style="display:flex;align-items:center;gap:.6rem;padding:.3rem 0;border-bottom:1px solid var(--border)">
+        <span class="dot ${v.ok?'dot-ok':'dot-bad'}"></span>
+        <span style="font-weight:600;font-size:.8rem;flex:1">${esc(v.name)}</span>
+        <span class="badge ${v.ok?'badge-ok':'badge-danger'}">${v.ok?'OK':'FAIL'}</span>
+        <span style="font-size:.7rem;color:var(--muted)">${esc(v.detail||'')}</span>
+      </div>`).join('');
+  } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
+});
 
-    async function loadProtoMini() {
-        const ctrlM = new AbortController();
-        const tidM  = setTimeout(() => ctrlM.abort(), 15000);
-        try {
-            const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin', signal: ctrlM.signal });
-            clearTimeout(tidM);
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const j = await r.json();
-            const protos = j.data || j.protocols || j;
-
-            const map = { WS: 'WS', XHTTP: 'XHTTP', HTTPUpgrade: 'HTTPUpgrade', Reality: 'Reality' };
-            Object.entries(map).forEach(([key, id]) => {
-                const entry = protos[key] || protos[key.toLowerCase()] || {};
-                const code  = entry.code ?? entry.status_code ?? null;
-                const open  = entry.open ?? null;
-                const ok    = interpretProto(key, code, open);
-                const dotEl  = document.getElementById('protoMiniDot'  + id);
-                const codeEl = document.getElementById('protoMiniCode' + id);
-                if (dotEl)  dotEl.className  = 'dot ' + (ok ? 'dot-ok' : 'dot-bad');
-                if (codeEl) codeEl.textContent = entry.timeout ? 'timeout'
-                    : code !== null ? String(code)
-                    : (open !== null ? (open ? 'open' : 'closed') : '—');
-            });
-        } catch (e) {
-            clearTimeout(tidM);
-            // Show unknown on dashboard mini row — full details on the Protocols page
-            ['WS','XHTTP','HTTPUpgrade','Reality'].forEach(id => {
-                const dotEl = document.getElementById('protoMiniDot' + id);
-                if (dotEl) dotEl.className = 'dot dot-bad';
-            });
-        }
+// ── VIEW: IRAN DEBUG ─────────────────────────────────────────────────
+views.iran = {
+  async init() {
+    this.loadScore();
+    this.loadDebug();
+    this.loadNoInternet();
+  },
+  async loadScore() {
+    try {
+      const d = await api.get('iran-score');
+      const gc = d.grade==='A'?'A':d.grade==='B'?'B':d.grade==='C'?'C':'F';
+      $('iranGrade').textContent = d.grade;
+      $('iranGrade').className   = `iran-grade grade-${gc}`;
+      $('iranScore').textContent = d.score;
+      $('iranChecklist').innerHTML = (d.checks||[]).map(c=>`
+        <li>
+          <span class="${c.ok?'ci-ok':'ci-fail'}">${c.ok?'✓':'✗'}</span>
+          <span style="flex:1">${esc(c.label)}</span>
+          <span class="checklist-detail">${esc(c.detail)}</span>
+        </li>`).join('');
+    } catch(e) { toast('Iran score: '+e.message,'error'); }
+  },
+  async loadDebug() {
+    try {
+      const d = await api.get('iran-debug');
+      this.renderStatsSummary(d.stats);
+      this.renderSniTbl(d.sni_analysis||[]);
+      this.renderIspTbl(d.isp_breakdown||[]);
+      this.renderErrorTbl(d.errors||[]);
+      this.renderPatternTbl(d.error_patterns||[]);
+    } catch(e) {
+      $('iranSniTbl').innerHTML = `<tr><td colspan="10" class="tbl-empty">${esc(e.message)}</td></tr>`;
+      toast('Iran debug: '+e.message,'error');
     }
-
-    loadProtoMini();
-    setInterval(loadProtoMini, 30000);
-
-    // ── App analytics ─────────────────────────────────────────────────────
-    async function loadAppAnalytics() {
-        try {
-            const ctrl = new AbortController();
-            const tid  = setTimeout(() => ctrl.abort(), 10000);
-            const r = await fetch(API_URL + '?action=app-analytics', { credentials: 'same-origin', signal: ctrl.signal });
-            clearTimeout(tid);
-            if (!r.ok) return;
-            const j = await r.json();
-            const d = j.data || j;
-            const set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-            set('appStatInstalls',  d.total_installs  ?? '—');
-            set('appStatOnline',    d.online_now      ?? '—');
-            set('appStatToday',     d.active_today    ?? '—');
-            set('appStatActive7d',  d.active_7d       ?? '—');
-            set('appStatNewMonth',  d.new_this_month  ?? '—');
-            set('appStatFailed',    d.failed_24h      ?? '—');
-            // Version distribution
-            const verEl = document.getElementById('appVersionDist');
-            if (verEl && Array.isArray(d.version_distribution) && d.version_distribution.length > 0) {
-                const total = d.version_distribution.reduce((s, v) => s + (v.cnt || 0), 0);
-                verEl.innerHTML = d.version_distribution.map(v => {
-                    const pct = total > 0 ? Math.round(v.cnt / total * 100) : 0;
-                    return `<div class="app-ver-row">
-                        <span class="app-ver-label">v${SL.esc(String(v.version || '?'))}</span>
-                        <div class="app-ver-bar-wrap"><div class="app-ver-bar" style="width:${pct}%"></div></div>
-                        <span class="app-ver-pct">${pct}%</span>
-                    </div>`;
-                }).join('');
-            } else if (verEl && d.total_installs === 0) {
-                verEl.innerHTML = '<span style="color:var(--muted);font-size:.8rem">No registered devices yet.</span>';
-            }
-        } catch (e) { /* silently ignore */ }
-    }
-
-    loadAppAnalytics();
-    setInterval(loadAppAnalytics, 60000);
-    document.getElementById('refreshAppAnalyticsBtn')?.addEventListener('click', loadAppAnalytics);
-
-    // ── Mobile Devices table ───────────────────────────────────────────────
-    let allDevices = [];
-    function fmtBytes(b) {
-        if (!b) return '0 B';
-        const u = ['B','KB','MB','GB'];
-        let i = 0; let v = b;
-        while (v >= 1024 && i < 3) { v /= 1024; i++; }
-        return v.toFixed(i > 0 ? 1 : 0) + ' ' + u[i];
-    }
-    function fmtRelative(ts) {
-        if (!ts) return '—';
-        const s = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
-        if (s < 60)   return s + 's ago';
-        if (s < 3600) return Math.floor(s/60) + 'm ago';
-        if (s < 86400) return Math.floor(s/3600) + 'h ago';
-        return Math.floor(s/86400) + 'd ago';
-    }
-
-    async function loadDevices() {
-        const tbody = document.getElementById('devicesTbody');
-        try {
-            const ctrl = new AbortController();
-            const tid  = setTimeout(() => ctrl.abort(), 10000);
-            const r = await fetch(API_URL + '?action=devices-list', { credentials: 'same-origin', signal: ctrl.signal });
-            clearTimeout(tid);
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const j = await r.json();
-            allDevices = Array.isArray(j.data) ? j.data : [];
-            renderDevices();
-        } catch (e) {
-            const ph = document.getElementById('devicesPlaceholder');
-            if (ph) { ph.style.display = ''; const td = ph.querySelector('td'); if (td) td.textContent = e.name === 'AbortError' ? 'Load timed out — Retry' : 'Failed to load: ' + e.message; }
-        }
-    }
-
-    function renderDevices() {
-        const search   = (document.getElementById('deviceSearch')?.value  ?? '').toLowerCase();
-        const stFilter = (document.getElementById('deviceStatusFilter')?.value ?? '');
-        const tbody    = document.getElementById('devicesTbody');
-        const ph       = document.getElementById('devicesPlaceholder');
-        const countEl  = document.getElementById('deviceCount');
-        if (!tbody) return;
-
-        const filtered = allDevices.filter(d => {
-            if (stFilter && d.status !== stFilter) return false;
-            if (search) {
-                const hay = [d.device_id_short, d.device_id, d.language, d.app_version, d.active_protocol, d.platform].join(' ').toLowerCase();
-                if (!hay.includes(search)) return false;
-            }
-            return true;
-        });
-
-        if (countEl) countEl.textContent = filtered.length + ' device' + (filtered.length !== 1 ? 's' : '');
-
-        tbody.querySelectorAll('tr[data-did]').forEach(r => r.remove());
-        if (ph) ph.style.display = filtered.length ? 'none' : '';
-        if (!filtered.length) {
-            if (ph) { ph.style.display = ''; ph.querySelector('td').textContent = allDevices.length ? 'No devices match filter.' : 'No registered devices yet.'; }
-            return;
-        }
-
-        filtered.forEach(d => {
-            const isOnline = d.status === 'online';
-            const pct      = d.quota_bytes_total > 0 ? Math.round(d.quota_bytes_used / d.quota_bytes_total * 100) : 0;
-            const barCls   = pct >= 90 ? 'bar-danger' : pct >= 70 ? 'bar-warn' : 'bar-ok';
-            const tr = document.createElement('tr');
-            tr.dataset.did = d.device_id;
-            tr.innerHTML = `
-                <td>
-                  <code style="font-size:.78rem" title="${SL.esc(d.device_id)}">${SL.esc(d.device_id_short)}</code>
-                  ${d.blocked ? '<span class="badge badge-danger" style="margin-left:.4rem">blocked</span>' : ''}
-                </td>
-                <td><span class="badge badge-muted">${SL.esc(d.platform || 'android')}</span></td>
-                <td><code>${d.app_version ? 'v' + SL.esc(d.app_version) : '—'}</code></td>
-                <td>${d.active_protocol ? '<code>' + SL.esc(d.active_protocol) + '</code>' : '<span class="muted">—</span>'}</td>
-                <td>
-                  <div style="font-size:.8rem">${SL.esc(fmtBytes(d.quota_bytes_used))} / ${SL.esc(fmtBytes(d.quota_bytes_total))}</div>
-                  ${d.quota_bytes_total > 0 ? `<div class="traffic-bar"><div class="traffic-bar-fill ${barCls}" style="width:${pct}%"></div></div>` : ''}
-                </td>
-                <td>${SL.esc(d.language || '—')}</td>
-                <td class="cell-date">
-                  ${isOnline ? '<span class="online-dot"></span>' : ''}
-                  <span class="${isOnline ? '' : 'muted'}">${SL.esc(fmtRelative(d.last_seen))}</span>
-                </td>
-                <td>${isOnline
-                    ? '<span class="badge badge-ok">online</span>'
-                    : '<span class="badge badge-muted">offline</span>'}</td>
-                <td style="text-align:right">
-                  <div class="row-actions" style="justify-content:flex-end">
-                    ${d.blocked
-                        ? `<button class="btn-icon js-dev-unblock" data-did="${SL.esc(d.device_id)}" title="Unblock">${'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>'}</button>`
-                        : `<button class="btn-icon js-dev-block" data-did="${SL.esc(d.device_id)}" title="Block">${'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>'}</button>`
-                    }
-                  </div>
-                </td>`;
-            tbody.appendChild(tr);
-        });
-
-        // Block/unblock handlers
-        tbody.querySelectorAll('.js-dev-block').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                if (!confirm('Block this device? It will no longer be able to connect.')) return;
-                await fetch(API_URL, { method:'POST', credentials:'same-origin',
-                    headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ _csrf: CSRF, action:'device-block', device_id: btn.dataset.did }) });
-                loadDevices();
-            });
-        });
-        tbody.querySelectorAll('.js-dev-unblock').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                await fetch(API_URL, { method:'POST', credentials:'same-origin',
-                    headers:{'Content-Type':'application/json'},
-                    body: JSON.stringify({ _csrf: CSRF, action:'device-unblock', device_id: btn.dataset.did }) });
-                loadDevices();
-            });
-        });
-    }
-
-    loadDevices();
-    setInterval(loadDevices, 30000);
-    document.getElementById('refreshDevicesBtn')?.addEventListener('click', loadDevices);
-    document.getElementById('deviceSearch')?.addEventListener('input', renderDevices);
-    document.getElementById('deviceStatusFilter')?.addEventListener('change', renderDevices);
-
-    // ── Nodes table ───────────────────────────────────────────────────────
-    async function loadNodes() {
-        try {
-            const r = await fetch(API_URL + '?action=node-list', { credentials: 'same-origin' });
-            if (!r.ok) return;
-            const j = await r.json();
-            const nodes = Array.isArray(j.data) ? j.data : (Array.isArray(j) ? j : []);
-            const tbody = document.getElementById('nodesTbody');
-            const ph    = document.getElementById('nodesPlaceholder');
-            if (!tbody) return;
-
-            const existing = tbody.querySelectorAll('tr[data-node-id]');
-            existing.forEach(r => r.remove());
-            if (ph) ph.style.display = nodes.length ? 'none' : '';
-
-            const pingClass = p => p < 80 ? 'good' : p < 200 ? 'warn' : 'bad';
-            nodes.forEach(n => {
-                const tr = document.createElement('tr');
-                tr.dataset.nodeId = n.id;
-                tr.innerHTML = `
-                    <td><span class="node-flag">${SL.esc(n.flag ?? '🌐')}</span> <span class="node-label">${SL.esc(n.label)}</span></td>
-                    <td>${SL.esc(n.country ?? '—')}<br><span class="node-host">${SL.esc(n.city ?? '')}</span></td>
-                    <td><code>${SL.esc(n.protocol ?? '—')}</code></td>
-                    <td><span class="dot ${(n.online || n.status === 'active') ? 'dot-ok' : 'dot-bad'}"></span> ${(n.online || n.status === 'active') ? 'Online' : 'Offline'}</td>
-                    <td class="node-ping ${pingClass(n.ping ?? 999)}">${n.ping != null ? n.ping + 'ms' : '—'}</td>
-                    <td>${n.load != null ? n.load + '%' : '—'}</td>
-                    <td>${n.user_count ?? '—'}</td>
-                    <td style="text-align:right">
-                        <button class="btn btn-icon" title="Remove" data-action="del-node" data-id="${SL.esc(String(n.id))}">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-                        </button>
-                    </td>`;
-                tbody.appendChild(tr);
-            });
-
-            tbody.querySelectorAll('[data-action="del-node"]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    if (!confirm('Remove this node?')) return;
-                    await fetch(API_URL, { method: 'POST', credentials: 'same-origin',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ _csrf: CSRF, action: 'node-delete', id: btn.dataset.id }) });
-                    loadNodes();
-                });
-            });
-        } catch (e) { /* silently ignore */ }
-    }
-
-    loadNodes();
-    document.getElementById('refreshNodesBtn')?.addEventListener('click', loadNodes);
-
-    document.getElementById('addNodeBtn')?.addEventListener('click', () => {
-        const modal = document.getElementById('addNodeModal');
-        if (modal) modal.classList.add('open');
-    });
-
-    document.getElementById('nodeModalCancel')?.addEventListener('click', () => {
-        const modal = document.getElementById('addNodeModal');
-        if (modal) modal.classList.remove('open');
-    });
-
-    document.getElementById('nodeModalSave')?.addEventListener('click', async () => {
-        const payload = {
-            action:   'node-add',
-            label:    document.getElementById('nodeLabel')?.value.trim()   ?? '',
-            host:     document.getElementById('nodeHost')?.value.trim()    ?? '',
-            country:  document.getElementById('nodeCountry')?.value.trim() ?? '',
-            flag:     document.getElementById('nodeFlag')?.value.trim()    ?? '',
-            protocol: document.getElementById('nodeProtocol')?.value       ?? 'Reality',
-            port:     parseInt(document.getElementById('nodePort')?.value  ?? '443', 10),
-            tags:     (document.getElementById('nodeTags')?.value ?? '').split(',').map(s => s.trim()).filter(Boolean),
-        };
-        if (!payload.label || !payload.host) { showToast('Label and host are required.', 'error', 3000); return; }
-        const r = await fetch(API_URL, { method: 'POST', credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ _csrf: CSRF, ...payload }) });
-        const j = await r.json();
-        if (j.ok || j.success) {
-            document.getElementById('addNodeModal')?.classList.remove('open');
-            showToast('Node added.', 'success', 2500);
-            loadNodes();
-        } else {
-            showToast(j.error || 'Failed to add node.', 'error', 3000);
-        }
-    });
-}
-
-// =========================================================================
-// LOGS PAGE
-// =========================================================================
-if (CURRENT_PAGE === 'logs') {
-    let _logType   = 'access';
-    let _logPaused = false;
-    let _logTimer  = null;
-    let _logFilter = '';
-    let _logLines  = [];
-
-    const logBody    = document.getElementById('logBody');
-    const pauseBtn   = document.getElementById('logPauseBtn');
-    const statusPill = document.getElementById('logStatusPill');
-    const statusText = document.getElementById('logStatusText');
-    const pulseDot   = document.getElementById('logPulseDot');
-    const searchEl   = document.getElementById('logSearchInput');
-
-    const SVG_PAUSE = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>';
-    const SVG_PLAY  = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-
-    function setPaused(val) {
-        _logPaused = val;
-        if (val) {
-            if (pauseBtn)   { pauseBtn.innerHTML   = SVG_PLAY + ' Resume'; }
-            if (statusPill) { statusPill.className = 'log-status-pill paused'; }
-            if (statusText) { statusText.textContent = 'Paused'; }
-            if (pulseDot)   { pulseDot.style.display = 'none'; }
-            clearTimeout(_logTimer);
-        } else {
-            if (pauseBtn)   { pauseBtn.innerHTML   = SVG_PAUSE + ' Pause'; }
-            if (statusPill) { statusPill.className = 'log-status-pill live'; }
-            if (statusText) { statusText.textContent = 'Live'; }
-            if (pulseDot)   { pulseDot.style.display = ''; }
-            scheduleRefresh();
-        }
-    }
-
-    pauseBtn?.addEventListener('click', () => setPaused(!_logPaused));
-    document.getElementById('logRefreshNowBtn')?.addEventListener('click', () => fetchLogs(_logType));
-    searchEl?.addEventListener('input', () => {
-        _logFilter = (searchEl.value || '').toLowerCase().trim();
-        renderLogs(_logType, _logLines);
-    });
-
-    document.querySelectorAll('.log-tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.log-tab').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            _logType  = tab.dataset.logType;
-            _logLines = [];
-            if (logBody) logBody.innerHTML = '<div class="log-loading">Loading logs…</div>';
-            fetchLogs(_logType);
-        });
-    });
-
-    // Parse xray access log line
-    // e.g.: 2026/05/15 13:04:28.185743 from 37.155.49.214:0 accepted tcp:57.144.127.33:443 [direct] email: testuser
-    function parseAccess(raw) {
-        const m = raw.match(
-            /^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})\.\d+\s+from\s+(\S+)\s+accepted\s+(\S+):(\S+)\s+\[([^\]]+)\](?:\s+email:\s+(\S+))?/
-        );
-        if (!m) return null;
-        return {
-            time:      m[1],
-            src:       m[2],
-            transport: m[3],
-            dest:      m[4],
-            routing:   m[5],
-            user:      m[6] || '—',
-        };
-    }
-
-    function renderAccessTable(lines) {
-        const filt = lines.filter(l => !_logFilter || l.toLowerCase().includes(_logFilter));
-        if (!filt.length) {
-            logBody.innerHTML = _logFilter
-                ? '<div class="log-empty">No log lines match the filter.</div>'
-                : '<div class="log-empty">No access log entries yet.</div>';
-            return;
-        }
-        const rows = filt.slice(-100).reverse().map(raw => {
-            const p = parseAccess(raw);
-            if (!p) return `<tr><td colspan="6" style="font-family:monospace;font-size:.72rem;color:var(--muted-2)">${SL.esc(raw)}</td></tr>`;
-            const uc = p.user !== '—' ? 'color:var(--accent)' : 'color:var(--muted)';
-            return `<tr>
-              <td>${SL.esc(p.time)}</td>
-              <td>${SL.esc(p.src)}</td>
-              <td><span class="badge badge-ok" style="font-size:.65rem">${SL.esc(p.transport)}</span></td>
-              <td style="${uc}">${SL.esc(p.user)}</td>
-              <td style="font-size:.72rem;color:var(--muted)">[${SL.esc(p.routing)}]</td>
-              <td class="td-dest" title="${SL.esc(p.dest)}">${SL.esc(p.dest)}</td>
-            </tr>`;
+  },
+  async loadNoInternet() {
+    try {
+      const rows = await api.get('no-internet-analysis');
+      $('noInternetTbl').innerHTML = !rows.length
+        ? '<tr><td colspan="5" class="tbl-empty">No data</td></tr>'
+        : rows.map(r=>`<tr>
+            <td>${protoBadge(r.protocol)}&nbsp;<span class="mono" style="font-size:.72rem">${esc(r.sni||'—')}</span></td>
+            <td><span class="mono">${esc(r.android_version||'—')}</span></td>
+            <td>${fmtNum(r.total)}</td>
+            <td><span class="badge ${r.no_internet_cnt>0?'badge-warn':'badge-ok'}">${fmtNum(r.no_internet_cnt)}</span></td>
+            <td>${fmtNum(r.probe_ok_cnt)}</td>
+          </tr>`).join('');
+    } catch(e) { $('noInternetTbl').innerHTML=`<tr><td colspan="5" class="tbl-empty">${esc(e.message)}</td></tr>`; }
+  },
+  renderStatsSummary(s) {
+    if (!s) { $('iranStatsSummary').innerHTML='<div class="panel-empty">No Iran data yet. Stats appear once devices report from Iranian ISPs.</div>'; return; }
+    const t=+s.total, succ=+s.success;
+    const rate = t>0?Math.round(succ/t*100):0;
+    $('iranStatsSummary').innerHTML = `
+      <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);gap:.5rem">
+        <div class="stat-card"><div class="stat-label">Total Reports</div><div class="stat-value">${fmtNum(t)}</div></div>
+        <div class="stat-card ${rate>=60?'stat-ok':rate>=30?'stat-warn':'stat-danger'}">
+          <div class="stat-label">Success Rate</div><div class="stat-value">${rate}%</div></div>
+        <div class="stat-card"><div class="stat-label">No Internet</div><div class="stat-value">${fmtNum(s.no_internet)}</div></div>
+        <div class="stat-card"><div class="stat-label">TCP Only</div><div class="stat-value">${fmtNum(s.tcp_only)}</div></div>
+        <div class="stat-card"><div class="stat-label">Emergency Used</div><div class="stat-value">${fmtNum(s.emergency_used)}</div></div>
+        <div class="stat-card"><div class="stat-label">Devices</div><div class="stat-value">${fmtNum(s.device_count)}</div></div>
+      </div>
+      <div style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem">Last report: ${esc(s.last_seen||'—')}</div>`;
+  },
+  renderSniTbl(rows) {
+    $('iranSniTbl').innerHTML = !rows.length
+      ? '<tr><td colspan="10" class="tbl-empty">No Iran traffic recorded yet.</td></tr>'
+      : rows.map(r=>{
+          const rate = r.success_rate;
+          const cls  = rate===null?'badge-muted':rate>=80?'badge-ok':rate>=40?'badge-warn':'badge-danger';
+          return `<tr>
+            <td>${protoBadge(r.protocol)}</td>
+            <td class="mono" style="font-size:.72rem">${esc(r.sni||'—')}</td>
+            <td><span class="badge ${cls}">${rate!=null?rate+'%':'—'}</span></td>
+            <td>${fmtNum(r.total)}</td>
+            <td>${fmtNum(r.tcp_only)}</td>
+            <td><span class="${+r.no_internet>0?'badge badge-warn':''}">${fmtNum(r.no_internet)}</span></td>
+            <td>${fmtNum(r.ipv6_attempts)}</td>
+            <td>${fmtNum(r.emergency_used)}</td>
+            <td>${fmtMs(r.avg_latency)}</td>
+            <td style="color:var(--muted-2);font-size:.7rem">${fmtRelative(r.last_seen)}</td>
+          </tr>`;
         }).join('');
-        logBody.innerHTML = `<table class="access-table">
-          <thead><tr>
-            <th>Time</th><th>Source IP</th><th>Transport</th>
-            <th>User</th><th>Routing</th><th>Destination</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table>`;
-    }
-
-    function renderGenericLines(lines) {
-        const filt = lines.filter(l => !_logFilter || l.toLowerCase().includes(_logFilter));
-        if (!filt.length) {
-            logBody.innerHTML = _logFilter
-                ? '<div class="log-empty">No log lines match the filter.</div>'
-                : '<div class="log-empty">No log entries yet.</div>';
-            return;
-        }
-        const html = filt.slice(-100).reverse().map(raw => {
-            const low = raw.toLowerCase();
-            let cls = 'log-line-default';
-            if (low.includes(' warning') || low.includes('[warning]') || low.includes(' warn'))
-                cls = 'log-line-warn';
-            else if (low.includes(' error') || low.includes('[error]'))
-                cls = 'log-line-error';
-            else if (low.includes(' info') || low.includes('[info]'))
-                cls = 'log-line-info';
-            return `<div class="log-line ${cls}">${SL.esc(raw)}</div>`;
+  },
+  renderIspTbl(rows) {
+    $('iranIspTbl').innerHTML = !rows.length
+      ? '<tr><td colspan="5" class="tbl-empty">No ISP data yet</td></tr>'
+      : rows.map(r=>{
+          const rate = +r.total>0?Math.round(+r.success/+r.total*100):null;
+          return `<tr>
+            <td style="font-weight:600">${esc(r.isp)}</td>
+            <td>${fmtNum(r.total)}</td>
+            <td><span class="badge ${rate>=60?'badge-ok':rate>=30?'badge-warn':'badge-danger'}">${rate!=null?rate+'%':'—'}</span></td>
+            <td>${fmtNum(r.no_internet)}</td>
+            <td>${fmtMs(r.avg_latency)}</td>
+          </tr>`;
         }).join('');
-        logBody.innerHTML = `<div class="log-lines">${html}</div>`;
-    }
-
-    function renderLogs(type, lines) {
-        _logLines = lines;
-        if (type === 'access') renderAccessTable(lines);
-        else                   renderGenericLines(lines);
-    }
-
-    async function fetchLogs(type) {
-        const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 12000);
-        try {
-            const r = await fetch(`${API_URL}?action=logs&type=${encodeURIComponent(type)}`, { credentials: 'same-origin', signal: ctrl.signal });
-            clearTimeout(tid);
-            const j = await r.json();
-            if (!r.ok || j.ok === false) {
-                const msg = j.error || ('HTTP ' + r.status);
-                const reload = msg.includes('Session') ? ' <a href="" style="color:var(--accent)">Reload page</a>' : '';
-                if (logBody) logBody.innerHTML = `<div class="log-empty" style="color:var(--danger)">${SL.esc(msg)}${reload}</div>`;
-                return;
-            }
-            const lines = j.lines || j.data || [];
-            if (!lines.length) {
-                if (logBody) logBody.innerHTML = '<div class="log-empty">No log entries yet.</div>';
-            } else {
-                renderLogs(type, lines);
-            }
-        } catch (e) {
-            clearTimeout(tid);
-            const msg = e.name === 'AbortError' ? 'Request timed out after 12s — try refreshing' : SL.esc(e.message);
-            if (logBody) logBody.innerHTML = `<div class="log-empty" style="color:var(--danger)">${msg}</div>`;
-        }
-    }
-
-    function scheduleRefresh() {
-        clearTimeout(_logTimer);
-        if (_logPaused) return;
-        _logTimer = setTimeout(async () => {
-            await fetchLogs(_logType);
-            scheduleRefresh();
-        }, 8000);
-    }
-
-    fetchLogs(_logType);
-    scheduleRefresh();
-}
-
-// =========================================================================
-// PROTOCOLS PAGE
-// =========================================================================
-if (CURRENT_PAGE === 'protocols') {
-
-    function interpretProtoFull(key, entry) {
-        const code    = entry.code ?? entry.status_code ?? null;
-        const open    = entry.open ?? null;
-        const timedout = entry.timeout ?? false;
-        const srvDetail = entry.detail ?? null;
-
-        if (timedout) {
-            return { ok: false, meaning: 'TIMEOUT', detail: srvDetail || 'Request timed out — nginx or xray not responding' };
-        }
-        if (key === 'WS') {
-            if (code === 101) return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || '101 Switching Protocols — WebSocket upgrade accepted.' };
-            if (code === 400) return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || 'HTTP 400 — routing OK (xray rejecting unauthenticated upgrades).' };
-            if (code === null && open === null) return { ok: false, meaning: 'OFFLINE', detail: srvDetail || 'No response — check nginx route and xray inbound.' };
-            return              { ok: false, meaning: code === 404 ? 'MISCONFIGURED' : 'ERROR',
-                                  detail: srvDetail || `HTTP ${code} — unexpected response.` };
-        }
-        if (key === 'XHTTP') {
-            if (code !== null && [404, 400, 200].includes(code))
-                              return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || `HTTP ${code} — XHTTP path reachable.` };
-            if (code === null) return { ok: false, meaning: 'OFFLINE',      detail: srvDetail || 'No response from XHTTP endpoint.' };
-            return              { ok: false, meaning: 'MISCONFIGURED',      detail: srvDetail || `HTTP ${code} — unexpected response.` };
-        }
-        if (key === 'HTTPUpgrade') {
-            if (code !== null && [502, 400, 200, 101].includes(code))
-                              return { ok: true,  meaning: 'ONLINE',        detail: srvDetail || `HTTP ${code} — HTTPUpgrade path reachable.` };
-            if (code === null) return { ok: false, meaning: 'OFFLINE',      detail: srvDetail || 'No response from HTTPUpgrade endpoint.' };
-            return              { ok: false, meaning: 'MISCONFIGURED',      detail: srvDetail || `HTTP ${code} — check nginx upstream.` };
-        }
-        if (key === 'Reality') {
-            if (open === true)  return { ok: true,  meaning: 'ONLINE',      detail: srvDetail || 'Port 8443 open — Reality accepting connections.' };
-            return                { ok: false, meaning: 'OFFLINE',          detail: srvDetail || 'Port 8443 closed — check ufw rules and xray Reality inbound.' };
-        }
-        return { ok: false, meaning: 'UNKNOWN', detail: 'No data returned.' };
-    }
-
-    function updateProtoCard(key, entry, ts) {
-        const safe  = key.replace(/[^a-zA-Z0-9]/g, '');
-        const dotEl = document.getElementById('protoDot'     + safe);
-        const bEl   = document.getElementById('protoBody'    + safe);
-        const cEl   = document.getElementById('protoChecked' + safe);
-        if (!dotEl) return;
-
-        const info = interpretProtoFull(key, entry || {});
-        const code = entry?.code ?? entry?.status_code ?? null;
-        const open = entry?.open ?? null;
-
-        dotEl.className = 'proto-dot ' + (info.ok ? 'proto-dot-ok' : 'proto-dot-bad');
-
-        let codeBadge = '';
-        if (code !== null) codeBadge = `<span class="proto-code-badge">${SL.esc(String(code))}</span>`;
-        else if (open !== null) codeBadge = `<span class="proto-code-badge">${open ? 'open' : 'closed'}</span>`;
-
-        const color = info.ok ? 'var(--ok)' : 'var(--danger)';
-        bEl.innerHTML = `${codeBadge}<span class="proto-meaning" style="color:${color}">${SL.esc(info.meaning)}</span><br><span style="color:var(--muted);font-size:.8rem">${SL.esc(info.detail)}</span>`;
-        if (cEl) cEl.textContent = ts ? 'Last checked: ' + ts : '';
-    }
-
-    const PROTO_KEYS = ['WS', 'XHTTP', 'HTTPUpgrade', 'Reality'];
-
-    async function runAllChecks() {
-        PROTO_KEYS.forEach(k => {
-            const safe = k.replace(/[^a-zA-Z0-9]/g, '');
-            const bEl  = document.getElementById('protoBody' + safe);
-            if (bEl) bEl.innerHTML = '<span class="muted">Checking…</span>';
-        });
-        const ctrl = new AbortController();
-        const tid  = setTimeout(() => ctrl.abort(), 15000);
-        try {
-            const r = await fetch(API_URL + '?action=protocol-health', { credentials: 'same-origin', signal: ctrl.signal });
-            clearTimeout(tid);
-            const j = await r.json();
-            if (!r.ok || j.ok === false) {
-                const msg = j.error || ('HTTP ' + r.status);
-                const ts2 = new Date().toLocaleTimeString();
-                PROTO_KEYS.forEach(k => updateProtoCard(k, { timeout: false, detail: msg }, ts2));
-                showToast(msg, 'error', 5000);
-                return;
-            }
-            const prt = j.data || j.protocols || j;
-            const ts  = new Date().toLocaleTimeString();
-            PROTO_KEYS.forEach(k => {
-                const entry = prt[k] || prt[k.toLowerCase()] || {};
-                updateProtoCard(k, entry, ts);
-            });
-            showToast('Protocol check complete', 'ok', 3000);
-        } catch (e) {
-            clearTimeout(tid);
-            const ts  = new Date().toLocaleTimeString();
-            const msg = e.name === 'AbortError' ? 'Timed out (15s)' : e.message;
-            PROTO_KEYS.forEach(k => updateProtoCard(k, { timeout: true, detail: 'Check failed: ' + msg }, ts));
-            showToast('Check failed: ' + msg, 'error', 4000);
-        }
-    }
-
-    document.getElementById('runProtoCheckBtn')?.addEventListener('click', runAllChecks);
-
-    document.querySelectorAll('.js-proto-recheck').forEach(btn => {
-        btn.addEventListener('click', async () => {
-            const key  = btn.dataset.proto;
-            const safe = key.replace(/[^a-zA-Z0-9]/g, '');
-            const bEl  = document.getElementById('protoBody' + safe);
-            if (bEl) bEl.innerHTML = '<span class="muted">Checking…</span>';
-            btn.disabled = true;
-            const ctrl2 = new AbortController();
-            const tid2  = setTimeout(() => ctrl2.abort(), 15000);
-            try {
-                const r = await fetch(`${API_URL}?action=protocol-health`, { credentials: 'same-origin', signal: ctrl2.signal });
-                clearTimeout(tid2);
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const j   = await r.json();
-                const prt = j.data || j.protocols || j;
-                const ts  = new Date().toLocaleTimeString();
-                const entry = prt[key] || prt[key.toLowerCase()] || {};
-                updateProtoCard(key, entry, ts);
-            } catch (e) {
-                clearTimeout(tid2);
-                const msg2 = e.name === 'AbortError' ? 'Timed out (15s)' : e.message;
-                updateProtoCard(key, { timeout: true, detail: 'Re-check failed: ' + msg2 }, new Date().toLocaleTimeString());
-                showToast('Re-check failed: ' + msg2, 'error', 4000);
-            }
-            btn.disabled = false;
-        });
-    });
-
-    runAllChecks();
-}
-
-// =========================================================================
-// SETTINGS PAGE
-// =========================================================================
-if (CURRENT_PAGE === 'settings') {
-    const tgInput   = document.getElementById('settingTelegramUrl');
-    const lblInput  = document.getElementById('settingServerLabel');
-    const alertEl   = document.getElementById('settingsAlert');
-    const tgPreview = document.getElementById('telegramPreview');
-    const tgLink    = document.getElementById('telegramPreviewLink');
-
-    function showSettingsAlert(msg, type) {
-        alertEl.className    = 'alert alert-' + (type === 'ok' ? 'ok' : 'error');
-        alertEl.textContent  = msg;
-        alertEl.style.display = 'flex';
-        setTimeout(() => { alertEl.style.display = 'none'; }, 5000);
-    }
-
-    function updateTgPreview() {
-        const val = (tgInput?.value || '').trim();
-        if (val && /^https?:\/\//.test(val)) {
-            tgPreview.style.display = 'block';
-            tgLink.href        = val;
-            tgLink.textContent = val;
-        } else {
-            tgPreview.style.display = 'none';
-        }
-    }
-
-    tgInput?.addEventListener('input', updateTgPreview);
-
-    async function loadSettings() {
-        try {
-            const r = await fetch(API_URL + '?action=get-settings', { credentials: 'same-origin' });
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            const j = await r.json();
-            const d = j.data || j;
-            if (tgInput  && d.telegram_url  !== undefined) { tgInput.value  = d.telegram_url  || ''; updateTgPreview(); }
-            if (lblInput && d.server_label  !== undefined) { lblInput.value = d.server_label  || ''; }
-        } catch (e) {
-            showSettingsAlert('Failed to load settings: ' + e.message, 'error');
-        }
-    }
-
-    async function saveSettings() {
-        try {
-            const r = await fetch(API_URL, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({
-                    _csrf:         CSRF,
-                    action:        'save-settings',
-                    telegram_url:  (tgInput?.value  || '').trim(),
-                    server_label:  (lblInput?.value || '').trim(),
-                }),
-            });
-            const j = await r.json();
-            if (j.ok) {
-                showSettingsAlert('Settings saved.', 'ok');
-                showToast('Settings saved', 'ok', 3000);
-            } else {
-                showSettingsAlert(j.error || 'Failed to save.', 'error');
-            }
-        } catch (e) {
-            showSettingsAlert('Save error: ' + e.message, 'error');
-        }
-    }
-
-    document.getElementById('saveSettingsBtn')?.addEventListener('click',     saveSettings);
-    document.getElementById('saveSettingsBtnPanel')?.addEventListener('click', saveSettings);
-    document.getElementById('reloadSettingsBtn')?.addEventListener('click',   loadSettings);
-
-    loadSettings();
-}
-
-
-<!-- =====================================================================
-     Modal: Record Test Result
-     ===================================================================== -->
-<div class="modal" id="recordTestModal" role="dialog" aria-modal="true" aria-labelledby="recordTestTitle">
-  <div class="modal-dialog" style="max-width:560px">
-    <div class="modal-header">
-      <h3 id="recordTestTitle">Record Test Result</h3>
-      <button class="modal-close js-modal-close" aria-label="Close"><?= $I['x'] ?></button>
-    </div>
-    <div class="modal-body" style="display:flex;flex-direction:column;gap:.9rem">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-        <div class="form-group">
-          <label>Country</label>
-          <input type="text" id="rtCountry" class="form-input" placeholder="e.g. Iran" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label>Network / ISP</label>
-          <input type="text" id="rtNetwork" class="form-input" placeholder="e.g. MCI, Irancell" autocomplete="off">
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 80px;gap:.75rem">
-        <div class="form-group">
-          <label>Server</label>
-          <input type="text" id="rtServer" class="form-input" placeholder="e.g. 178.104.77.231" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label>Port</label>
-          <input type="number" id="rtPort" class="form-input" value="8443" min="1" max="65535">
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-        <div class="form-group">
-          <label>Protocol</label>
-          <select id="rtProtocol" class="form-input">
-            <option value="VLESS+Reality">VLESS + Reality</option>
-            <option value="VLESS+XHTTP">VLESS + XHTTP</option>
-            <option value="VLESS+WS">VLESS + WebSocket</option>
-            <option value="VLESS+HTTPUpgrade">VLESS + HTTPUpgrade</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Result</label>
-          <select id="rtResult" class="form-input">
-            <option value="fail">✗ Failed</option>
-            <option value="success">✓ Success</option>
-            <option value="partial">~ Partial</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
-        <div class="form-group">
-          <label>SNI</label>
-          <input type="text" id="rtSni" class="form-input" placeholder="www.microsoft.com" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label>Flow</label>
-          <input type="text" id="rtFlow" class="form-input" placeholder="xtls-rprx-vision or empty" autocomplete="off">
-        </div>
-        <div class="form-group">
-          <label>Fingerprint</label>
-          <input type="text" id="rtFp" class="form-input" placeholder="chrome" autocomplete="off">
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
-        <div style="display:flex;align-items:center;gap:.5rem">
-          <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;cursor:pointer">
-            <input type="checkbox" id="rtTcpOk"> TCP OK
-          </label>
-          <label style="display:flex;align-items:center;gap:.5rem;font-size:.85rem;cursor:pointer;margin-left:.75rem">
-            <input type="checkbox" id="rtHttpOk"> HTTP OK
-          </label>
-        </div>
-        <div class="form-group">
-          <label>Latency (ms)</label>
-          <input type="number" id="rtLatency" class="form-input" value="0" min="0">
-        </div>
-      </div>
-      <div class="form-group">
-        <label>Error message (if failed)</label>
-        <textarea id="rtError" class="form-input" rows="2" placeholder="e.g. Read timed out / Deep validation failed" style="resize:vertical"></textarea>
-      </div>
-      <div class="form-group">
-        <label>Notes</label>
-        <textarea id="rtNotes" class="form-input" rows="2" placeholder="Additional observations" style="resize:vertical"></textarea>
-      </div>
-      <div id="rtAlert" class="alert" style="display:none"></div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary js-modal-close">Cancel</button>
-      <button class="btn btn-primary" id="rtSubmitBtn">Save Test Result</button>
-    </div>
-  </div>
-</div>
-
-<script>
-// ─── Diagnostics page ────────────────────────────────────────────────────────
-
-if (document.getElementById('diagRefreshBtn')) {
-
-  // Fetch with a hard timeout — prevents widgets from staying on "Loading…" forever
-  async function diagFetch(url, timeoutMs = 12000) {
-    const ctrl = new AbortController();
-    const tid = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const r = await fetch(url, { credentials: 'same-origin', signal: ctrl.signal });
-      clearTimeout(tid);
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return await r.json();
-    } catch (e) {
-      clearTimeout(tid);
-      if (e.name === 'AbortError') throw new Error('Request timed out after ' + (timeoutMs/1000) + 's');
-      throw e;
-    }
-  }
-
-  async function loadConnectionAnalytics() {
-    const el = document.getElementById('analyticsStatus');
-    if (el) el.textContent = 'Loading…';
-    try {
-      const j = await diagFetch(API_URL + '?action=connection-analytics');
-      if (!j.ok) { if (el) el.textContent = 'Error: ' + (j.error || 'failed'); return; }
-      const d = j.data;
-
-      document.getElementById('statUserConns').textContent  = d.user_connections ?? '—';
-      document.getElementById('statUniqueIPs').textContent  = d.unique_client_ips ?? '—';
-      document.getElementById('statErrors').textContent     = d.error_count ?? '—';
-      document.getElementById('statRestarts').textContent   = d.xray_restarts ?? '—';
-      document.getElementById('statLastConn').textContent   = d.last_user_conn_at ?? 'none yet';
-      document.getElementById('statApiPolls').textContent   = d.internal_api_polls ?? '—';
-      document.getElementById('statWarnings').textContent   = d.warning_count ?? '—';
-
-      if (el) el.textContent = 'Updated ' + new Date().toLocaleTimeString();
-    } catch (e) {
-      if (el) el.textContent = 'Error: ' + e.message;
-    }
-  }
-
-  async function loadErrorLog() {
-    const body = document.getElementById('errorLogBody');
-    if (!body) return;
-    body.innerHTML = '<div class="diag-loading">Loading…</div>';
-    try {
-      const j = await diagFetch(API_URL + '?action=connection-analytics');
-      const errors = j?.data?.recent_errors ?? [];
-      if (!errors.length) {
-        body.innerHTML = '<div class="error-log-empty">No errors or warnings in log.</div>';
-        return;
-      }
-      body.innerHTML = errors.map(line => {
-        const cls = line.includes('[Error]') ? 'is-error' : line.includes('[Warning]') ? 'is-warn' : '';
-        return `<div class="error-log-line ${cls}">${escHtml(line)}</div>`;
-      }).join('');
-    } catch (e) {
-      body.innerHTML = `<div class="error-log-empty" style="color:var(--danger)">Failed to load: ${escHtml(e.message)}</div>`;
-    }
-  }
-
-  async function loadDbTestResults() {
-    const el     = document.getElementById('dbTestResults');
-    const countEl = document.getElementById('testResultsCount');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=test-results');
-      if (!j.ok) throw new Error(j.error || 'API error');
-      const rows = j?.data ?? [];
-      if (countEl) countEl.textContent = (rows.length + 2) + ' results';
-
-      if (!rows.length) { el.innerHTML = ''; return; }
-
-      el.innerHTML = rows.map(r => {
-        const badgeCls = r.result === 'success' ? 'test-badge-ok' : r.result === 'partial' ? 'test-badge-partial' : 'test-badge-fail';
-        const badgeLabel = r.result === 'success' ? '✓ SUCCESS' : r.result === 'partial' ? '~ PARTIAL' : '✗ FAILED';
-        const probes = [r.tcp_ok ? 'TCP ✓' : 'TCP ✗', r.http_ok ? 'HTTP ✓' : 'HTTP ✗'].join(' · ');
-        const latency = r.latency_ms > 0 ? ` · ${r.latency_ms}ms` : '';
-        const errHtml = r.error_msg ? `<div class="test-error">${escHtml(r.error_msg)}</div>` : '';
-        const notesHtml = r.notes ? `<div class="test-meta" style="color:var(--muted-2)">${escHtml(r.notes)}</div>` : '';
-        return `<div class="test-result-row">
-          <div>
-            <div class="test-country">${escHtml(r.country)}</div>
-            <div class="test-meta">${escHtml(r.server)}:${r.port} · ${escHtml(r.sni)} · ${escHtml(r.recorded_at)} · ${escHtml(r.tested_by || '—')}</div>
-          </div>
-          <div>
-            <span class="${badgeCls}">${badgeLabel}</span>
-            <div class="test-meta">${probes}${latency} · ${escHtml(r.protocol)}</div>
-            ${errHtml}${notesHtml}
-          </div>
-        </div>`;
-      }).join('');
-    } catch(e) {
-      if (countEl) countEl.textContent = 'load error';
-      el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`;
-    }
-  }
-
-  function escHtml(s) {
-    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-
-
-  document.getElementById('refreshErrorLogBtn')?.addEventListener('click', loadErrorLog);
-
-  // Record Test modal
-  document.getElementById('recordTestBtn')?.addEventListener('click', () => {
-    // Pre-fill with server config
-    document.getElementById('rtServer').value  = '<?= h($host) ?>';
-    document.getElementById('rtPort').value    = '<?= h((string)($reality['port'] ?? '8443')) ?>';
-    document.getElementById('rtSni').value     = '<?= h((string)($reality['sni'] ?? '')) ?>';
-    document.getElementById('rtFlow').value    = '<?= h((string)($reality['flow'] ?? '')) ?>';
-    document.getElementById('rtFp').value      = '<?= h((string)($reality['fingerprint'] ?? 'chrome')) ?>';
-    document.getElementById('rtResult').value  = 'fail';
-    document.getElementById('rtTcpOk').checked = false;
-    document.getElementById('rtHttpOk').checked = false;
-    document.getElementById('rtLatency').value  = '0';
-    document.getElementById('rtError').value    = '';
-    document.getElementById('rtNotes').value    = '';
-    document.getElementById('rtAlert').style.display = 'none';
-    openModal('recordTestModal');
-  });
-
-  document.getElementById('rtSubmitBtn')?.addEventListener('click', async () => {
-    const country = document.getElementById('rtCountry').value.trim();
-    const server  = document.getElementById('rtServer').value.trim();
-    if (!country || !server) {
-      const a = document.getElementById('rtAlert');
-      a.textContent = 'Country and server are required.';
-      a.className = 'alert alert-error';
-      a.style.display = 'flex';
-      return;
-    }
-    const payload = {
-      action:      'record-test',
-      country,
-      network:     document.getElementById('rtNetwork').value.trim(),
-      server,
-      port:        parseInt(document.getElementById('rtPort').value) || 8443,
-      protocol:    document.getElementById('rtProtocol').value,
-      sni:         document.getElementById('rtSni').value.trim(),
-      flow:        document.getElementById('rtFlow').value.trim(),
-      fingerprint: document.getElementById('rtFp').value.trim(),
-      result:      document.getElementById('rtResult').value,
-      error_msg:   document.getElementById('rtError').value.trim(),
-      tcp_ok:      document.getElementById('rtTcpOk').checked,
-      http_ok:     document.getElementById('rtHttpOk').checked,
-      latency_ms:  parseInt(document.getElementById('rtLatency').value) || 0,
-      notes:       document.getElementById('rtNotes').value.trim(),
-    };
-    try {
-      const r = await apiPost(payload);
-      if (r.ok) {
-        closeModal('recordTestModal');
-        showToast('Test result recorded', 'ok');
-        loadDbTestResults();
-      } else {
-        const a = document.getElementById('rtAlert');
-        a.textContent = r.error || 'Failed to save';
-        a.className = 'alert alert-error';
-        a.style.display = 'flex';
-      }
-    } catch (e) {
-      const a = document.getElementById('rtAlert');
-      a.textContent = 'Error: ' + e.message;
-      a.className = 'alert alert-error';
-      a.style.display = 'flex';
-    }
-  });
-
-  // ── Iran compatibility score ──────────────────────────────────────────
-  async function loadIranScore() {
-    const el_checks = document.getElementById('iranScoreChecks');
-    try {
-      const j = await diagFetch(API_URL + '?action=iran-score');
-      if (!j.ok) throw new Error(j.error || 'API error');
-      const d = j.data;
-      const el_num   = document.getElementById('iranScoreNum');
-      const el_grade = document.getElementById('iranScoreGrade');
-      const el_at    = document.getElementById('iranScoreAt');
-      if (!el_num) return;
-
-      const color = d.score >= 90 ? 'var(--ok)' : d.score >= 70 ? 'var(--warn)' : 'var(--danger)';
-      el_num.textContent   = d.score;
-      el_num.style.color   = color;
-      el_grade.textContent = d.grade;
-      el_grade.style.color = color;
-      el_at.textContent    = 'Checked ' + d.checked_at;
-
-      if (el_checks) el_checks.innerHTML = (d.checks || []).map(c => `
-        <div class="cfg-row">
-          <span class="cfg-key">${escHtml(c.label)}</span>
-          <code class="cfg-val ${c.ok ? 'ok' : 'danger'}">${c.ok ? '✓' : '✗'} ${escHtml(c.detail)}</code>
-        </div>`).join('');
-    } catch(e) {
-      const el_at_err = document.getElementById('iranScoreAt');
-      if (el_at_err) el_at_err.textContent = 'Check failed';
-      if (el_checks) el_checks.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`;
-    }
-  }
-
-  // ── Active sessions ────────────────────────────────────────────────────
-  async function loadActiveSessions() {
-    const elAt = document.getElementById('activeSessionsAt');
-    try {
-      const j = await diagFetch(API_URL + '?action=active-sessions');
-      if (!j.ok) throw new Error(j.error || 'API error');
-      const d = j.data;
-      const elIPs = document.getElementById('activeIPs');
-      const elEv  = document.getElementById('recentEvents');
-      if (elIPs) elIPs.textContent = d.active_ips ?? 0;
-      if (elEv)  elEv.textContent  = d.recent_events ?? 0;
-      if (elAt)  elAt.textContent  = d.active_ips === 0
-          ? 'No connected devices yet — Updated ' + d.checked_at
-          : 'Updated ' + d.checked_at;
-    } catch(e) { if (elAt) elAt.textContent = 'Error: ' + e.message; }
-  }
-
-  // ── Inbound diagnostics ───────────────────────────────────────────────
-  async function loadInboundDiag() {
-    const el   = document.getElementById('inboundDiagBody');
-    const elAt = document.getElementById('inboundDiagAt');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=inbound-stats');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      const d = j.data;
-      if (elAt) elAt.textContent = 'Updated ' + d.checked_at;
-
-      const portRows = Object.entries(d.ports).map(([k, p]) => {
-        const dot = p.listening
-          ? `<span class="dot dot-ok" style="margin-right:.4rem"></span>`
-          : `<span class="dot dot-bad" style="margin-right:.4rem"></span>`;
-        const status = p.listening ? `<span style="color:var(--ok)">Listening :${p.port}</span>` : `<span style="color:var(--danger)">NOT listening :${p.port}</span>`;
-        return `<div class="cfg-row">${dot}<span class="cfg-key">${escHtml(p.label)}</span>${status}</div>`;
-      }).join('');
-
-      const uuidRows = (d.xray_uuids || []).map(u =>
-        `<div class="cfg-row"><span class="cfg-key">${escHtml(u.email||'client')}</span><code class="cfg-val">${escHtml(u.uuid)}</code></div>`
-      ).join('');
-
-      const rejBadge = d.uuid_rejections > 0
-        ? `<span style="color:var(--danger);font-weight:700">${d.uuid_rejections}</span>`
-        : `<span style="color:var(--ok)">0</span>`;
-
-      const rejUuids = (d.rejected_uuids || []).length > 0
-        ? `<div style="font-size:.72rem;color:var(--muted);margin-top:.3rem;font-family:monospace">Rejected UUIDs: ${d.rejected_uuids.map(u => escHtml(u)).join(', ')}</div>`
-        : '';
-
-      const lastSession = d.last_accepted_ip
-        ? `${escHtml(d.last_accepted_ip)} at ${escHtml(d.last_accepted_at)}`
-        : 'None yet';
-
-      const errHtml = (d.last_errors || []).length > 0
-        ? d.last_errors.map(l => `<div class="error-log-line is-error">${escHtml(l)}</div>`).join('')
-        : '<div class="error-log-empty">No recent errors</div>';
-
-      el.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
-          <div>
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Listening Ports</div>
-            ${portRows}
-          </div>
-          <div>
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Xray UUIDs (active)</div>
-            ${uuidRows || '<div style="color:var(--muted)">Could not read Xray config</div>'}
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem;margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
-          <div class="analytic-card">
-            <div class="analytic-num">${rejBadge}</div>
-            <div class="analytic-label">UUID Rejections</div>
-            ${rejUuids}
-          </div>
-          <div class="analytic-card">
-            <div class="analytic-num" style="color:var(--ok)">${d.accepted_external ?? 0}</div>
-            <div class="analytic-label">Accepted External Sessions</div>
-            <div style="font-size:.72rem;color:var(--muted);margin-top:.3rem">Last: ${escHtml(lastSession)}</div>
-          </div>
-          <div class="analytic-card">
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Last Xray Errors</div>
-            <div style="max-height:100px;overflow-y:auto">${errHtml}</div>
-          </div>
-        </div>`;
-    } catch(e) { if (el) el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
-  }
-
-  document.getElementById('refreshInboundBtn')?.addEventListener('click', loadInboundDiag);
-
-  // ── VPN session analytics ─────────────────────────────────────────────
-  async function loadSessionStats() {
-    const el   = document.getElementById('sessionStatsBody');
-    const elAt = document.getElementById('sessionStatsAt');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=session-stats');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      const d = j.data;
-      if (elAt) elAt.textContent = `${d.total} total sessions`;
-
-      const fmtBytes = (b) => b > 1e9 ? (b/1e9).toFixed(2)+' GB' : b > 1e6 ? (b/1e6).toFixed(1)+' MB' : b > 1e3 ? (b/1e3).toFixed(0)+' KB' : b+' B';
-      const fmtDur   = (s) => s > 3600 ? Math.floor(s/3600)+'h '+Math.floor((s%3600)/60)+'m' : s > 60 ? Math.floor(s/60)+'m' : s+'s';
-
-      const protoRows = (d.by_protocol || []).map(p =>
-        `<tr><td style="padding:.35rem .5rem;font-family:monospace;font-size:.78rem">${escHtml(p.protocol||'?')}</td>
-         <td style="padding:.35rem .5rem;text-align:right;color:var(--ok)">${p.sessions}</td>
-         <td style="padding:.35rem .5rem;text-align:right;color:var(--muted)">${fmtBytes(p.total_bytes||0)}</td>
-         <td style="padding:.35rem .5rem;text-align:right;color:var(--muted)">${fmtDur(Math.round((p.total_secs||0)/(p.sessions||1)))}</td></tr>`
-      ).join('');
-
-      const ispRows = (d.isp_breakdown || []).map(r =>
-        `<div class="cfg-row"><span class="cfg-key">${escHtml(r.isp||'?')} ${escHtml(r.country||'')}</span><code class="cfg-val ok">${r.sessions} sessions</code></div>`
-      ).join('') || '<div style="color:var(--muted);font-size:.78rem">No ISP data yet — sessions needed</div>';
-
-      const recentRows = (d.recent || []).slice(0,5).map(r =>
-        `<div class="error-log-line">${escHtml(r.ended_at||'')} ${escHtml(r.protocol||'?')} ${fmtBytes((r.bytes_sent||0)+(r.bytes_recv||0))} ${fmtDur(r.duration_secs||0)} from ${escHtml(r.client_ip||'?')}</div>`
-      ).join('') || '<div class="error-log-empty">No sessions yet</div>';
-
-      el.innerHTML = `
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.75rem;margin-bottom:1rem">
-          <div class="analytic-card"><div class="analytic-num" style="color:var(--ok)">${d.today??0}</div><div class="analytic-label">Sessions Today</div></div>
-          <div class="analytic-card"><div class="analytic-num">${d.total??0}</div><div class="analytic-label">Total Sessions</div></div>
-          <div class="analytic-card"><div class="analytic-num">${fmtDur(d.avg_duration??0)}</div><div class="analytic-label">Avg Duration</div></div>
-          <div class="analytic-card"><div class="analytic-num">${fmtBytes(d.total_bytes??0)}</div><div class="analytic-label">Total Traffic</div></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
-          <div>
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">By Protocol</div>
-            <table style="width:100%;border-collapse:collapse">
-              <thead><tr style="border-bottom:1px solid var(--border)">
-                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:left">Protocol</th>
-                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:right">Sessions</th>
-                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:right">Traffic</th>
-                <th style="padding:.3rem .5rem;font-size:.68rem;color:var(--muted);text-align:right">Avg Dur</th>
-              </tr></thead>
-              <tbody>${protoRows || '<tr><td colspan="4" style="color:var(--muted);padding:.5rem">No sessions yet</td></tr>'}</tbody>
-            </table>
-          </div>
-          <div>
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">ISP Breakdown</div>
-            ${ispRows}
-          </div>
-        </div>
-        <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
-          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Recent Sessions</div>
-          ${recentRows}
-        </div>`;
-    } catch(e) { if (el) el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
-  }
-
-  // ── Watchdog log ──────────────────────────────────────────────────────
-  async function loadWatchdogLog() {
-    const el   = document.getElementById('watchdogBody');
-    const elAt = document.getElementById('watchdogAt');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=watchdog-log&n=60');
-      if (!j.ok) { el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(j.error||'error')}</div>`; return; }
-      const lines = j.data.lines || [];
-      if (elAt) elAt.textContent = `${lines.length} lines`;
-      if (!lines.length) { el.innerHTML = '<div class="error-log-empty">No watchdog log yet — will appear after first run (60s)</div>'; return; }
-      el.innerHTML = [...lines].reverse().map(l => {
-        const cls = l.includes('CRIT') ? 'is-error' : l.includes('FAIL') ? 'is-warn' : '';
-        return `<div class="error-log-line ${cls}">${escHtml(l)}</div>`;
-      }).join('');
-    } catch(e) { if (el) el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(e.message)}</div>`; }
-  }
-
-  document.getElementById('refreshWatchdogBtn')?.addEventListener('click', loadWatchdogLog);
-
-  // ── Payment Queue ─────────────────────────────────────────────────────
-  const PKG_PRICES = { '7days':'~$3','30days':'~$8','unlimited':'~$25','5GB':'~$4','10GB':'~$7','15GB':'~$10' };
-  const PKG_LABELS = { '7days':'7 Days','30days':'30 Days','unlimited':'Unlimited','5GB':'5 GB','10GB':'10 GB','15GB':'15 GB' };
-
-  async function loadPaymentQueue() {
-    const el = document.getElementById('paymentQueueBody');
-    if (!el) return;
-    const filter = document.getElementById('paymentFilter')?.value || 'pending';
-    el.innerHTML = '<div class="diag-loading">Loading payments…</div>';
-    try {
-      const j = await diagFetch(`${API_URL}?action=payment-queue&status=${encodeURIComponent(filter)}`);
-      if (!j.ok) { el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(j.error||'error')}</div>`; return; }
-      const pays = j.data.payments || [];
-      if (!pays.length) { el.innerHTML = '<div style="padding:.75rem;color:var(--muted)">No ' + escHtml(filter) + ' payments.</div>'; return; }
-      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
-        <thead><tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">ID</th>
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Device</th>
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Package</th>
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Memo / TX</th>
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Submitted</th>
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Status</th>
-          <th style="text-align:center;padding:.4rem .6rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Action</th>
-        </tr></thead><tbody>` +
-        pays.map(p => {
-          const statusColor = p.status==='approved' ? 'var(--ok)' : p.status==='rejected' ? 'var(--danger)' : 'var(--warn)';
-          const deviceShort = p.device_id.substring(0, 12) + '…';
-          const actionBtns = p.status==='pending'
-            ? `<button class="btn btn-primary" style="padding:.25rem .6rem;font-size:.7rem;margin-right:.3rem" onclick="approvePayment(${p.id})">Approve</button>
-               <button class="btn btn-secondary" style="padding:.25rem .6rem;font-size:.7rem;color:var(--danger);border-color:var(--danger)" onclick="rejectPayment(${p.id})">Reject</button>`
-            : `<span style="color:var(--muted);font-size:.7rem">${escHtml(p.reviewed_by||'—')}</span>`;
-          return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:.4rem .6rem;font-family:monospace;font-size:.72rem">#${p.id}</td>
-            <td style="padding:.4rem .6rem;font-family:monospace;font-size:.72rem" title="${escHtml(p.device_id)}">${escHtml(deviceShort)}</td>
-            <td style="padding:.4rem .6rem"><span style="font-weight:600">${escHtml(PKG_LABELS[p.package]||p.package)}</span> <span style="color:var(--muted);font-size:.7rem">${escHtml(PKG_PRICES[p.package]||'')}</span></td>
-            <td style="padding:.4rem .6rem;font-size:.7rem;max-width:200px;overflow:hidden;text-overflow:ellipsis" title="${escHtml(p.tx_hash)}">${escHtml(p.memo||'—')}${p.tx_hash ? '<br><code style="font-size:.65rem;color:var(--muted)">'+escHtml(p.tx_hash.substring(0,16))+'…</code>' : ''}</td>
-            <td style="padding:.4rem .6rem;font-size:.7rem;color:var(--muted)">${escHtml((p.submitted_at||'').replace('T',' ').substring(0,16))}</td>
-            <td style="padding:.4rem .6rem"><span style="color:${statusColor};font-weight:600;font-size:.75rem">${escHtml(p.status)}</span></td>
-            <td style="padding:.4rem .6rem;text-align:center">${actionBtns}</td>
+  },
+  renderErrorTbl(rows) {
+    $('iranErrorTbl').innerHTML = !rows.length
+      ? '<tr><td colspan="7" class="tbl-empty">No errors recorded for Iran traffic</td></tr>'
+      : rows.map(r=>{
+          const cat = classifyError(r);
+          return `<tr>
+            <td><span class="badge ${cat.css}" title="${esc(classHint(cat.type))}">${esc(cat.label)}</span></td>
+            <td>${protoBadge(r.protocol)}</td>
+            <td class="mono" style="font-size:.7rem">${esc(r.sni||'—')}</td>
+            <td class="mono mobile-hide" style="font-size:.68rem">${esc(r.device_model||'—')}</td>
+            <td class="mobile-hide">${esc(r.network||'—')}</td>
+            <td style="color:var(--muted-2);font-size:.7rem">${fmtRelative(r.recorded_at)}</td>
+            <td style="max-width:200px">
+              <span style="font-size:.68rem;color:var(--muted);word-break:break-all">${esc((r.error_msg||'').substring(0,80))}</span>
+              ${r.error_msg&&r.error_msg.length>80?`<button class="expand-btn" onclick="this.nextElementSibling.classList.toggle('shown');this.textContent=this.textContent==='…'?'↑':'…'">…</button><pre class="raw-detail">${esc(r.error_msg)}</pre>`:'' }
+            </td>
           </tr>`;
-        }).join('') + `</tbody></table></div>`;
-    } catch(e) { el.innerHTML = `<div style="color:var(--danger);padding:.5rem">${escHtml(e.message)}</div>`; }
-  }
-
-  async function approvePayment(id) {
-    if (!confirm('Approve payment #' + id + ' and activate quota?')) return;
-    const note = prompt('Optional note (leave blank for none):') || '';
-    const j = await SL.apiPost({ action:'payment-approve', payment_id:id, note });
-    if (j.ok) { SL.toast('Payment #' + id + ' approved — quota activated', 'success'); loadPaymentQueue(); }
-    else SL.toast('Error: ' + (j.error||'failed'), 'error');
-  }
-  async function rejectPayment(id) {
-    const note = prompt('Rejection reason (required):');
-    if (!note) return;
-    const j = await SL.apiPost({ action:'payment-reject', payment_id:id, note });
-    if (j.ok) { SL.toast('Payment #' + id + ' rejected', 'warn'); loadPaymentQueue(); }
-    else SL.toast('Error: ' + (j.error||'failed'), 'error');
-  }
-
-  document.getElementById('refreshPaymentsBtn')?.addEventListener('click', loadPaymentQueue);
-  document.getElementById('paymentFilter')?.addEventListener('change', loadPaymentQueue);
-
-  // ── Profile success rates ──────────────────────────────────────────────
-  async function loadProfileStats() {
-    const el = document.getElementById('profileStatsBody');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=profile-stats');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      if (!j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No profile data yet.</div>';
-        return;
-      }
-      el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.75rem">` +
-        j.data.map(p => {
-          const pct = p.pct !== null ? p.pct : '—';
-          const color = p.pct === null ? 'var(--muted)' : p.pct >= 80 ? 'var(--ok)' : p.pct >= 50 ? 'var(--warn)' : 'var(--danger)';
-          return `<div class="analytic-card">
-            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.4rem">${escHtml(p.protocol || '—')}</div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:.75rem;color:var(--text-2);margin-bottom:.5rem">${escHtml(p.sni || '—')}</div>
-            <div style="font-size:1.6rem;font-weight:700;color:${color};line-height:1">${pct}${pct !== '—' ? '%' : ''}</div>
-            <div style="font-size:.65rem;color:var(--muted);margin-top:.2rem">${p.success} success / ${p.fail} fail (${p.total} total)</div>
-          </div>`;
-        }).join('') + `</div>`;
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
-  }
-
-  // ── No-internet analysis ──────────────────────────────────────────────────
-  async function loadNoInternetAnalysis() {
-    const el = document.getElementById('noInternetBody');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=no-internet-analysis');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      if (!j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No no-internet events recorded yet — good!</div>';
-        return;
-      }
-      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
-        <tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Protocol / SNI</th>
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Android</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Total</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--danger);font-size:.7rem;text-transform:uppercase">No-Internet</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Probe OK</th>
-        </tr>` +
-        j.data.map(r => `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:.4rem .6rem;font-family:monospace">${escHtml(r.protocol)} / ${escHtml(r.sni)}</td>
-          <td style="padding:.4rem .6rem;font-family:monospace">${escHtml(r.android_version || '—')}</td>
-          <td style="padding:.4rem .6rem;text-align:right">${r.total}</td>
-          <td style="padding:.4rem .6rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--ok)'}">${r.no_internet_cnt}</td>
-          <td style="padding:.4rem .6rem;text-align:right">${r.probe_ok_cnt}</td>
-        </tr>`).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
-  }
-
-  // ── SNI leaderboard ───────────────────────────────────────────────────────
-  async function loadSniLeaderboard() {
-    const el = document.getElementById('sniLeaderboardBody');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=sni-leaderboard');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      if (!j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No SNI data yet — accumulates after app connections.</div>';
-        return;
-      }
-      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
-        <tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">SNI</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Total</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Connected</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Rate</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Avg ms</th>
-        </tr>` +
-        j.data.map(r => {
-          const rate = r.connect_rate !== null ? r.connect_rate : '—';
-          const color = r.connect_rate === null ? 'var(--muted)' : r.connect_rate >= 80 ? 'var(--ok)' : r.connect_rate >= 50 ? 'var(--warn)' : 'var(--danger)';
-          return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:.4rem .6rem;font-family:monospace;font-weight:600">${escHtml(r.sni)}</td>
-            <td style="padding:.4rem .6rem;text-align:right">${r.total}</td>
-            <td style="padding:.4rem .6rem;text-align:right;color:var(--ok)">${r.connected}</td>
-            <td style="padding:.4rem .6rem;text-align:right;font-weight:700;color:${color}">${rate !== '—' ? rate + '%' : '—'}</td>
-            <td style="padding:.4rem .6rem;text-align:right;font-family:monospace">${r.avg_latency ?? '—'}</td>
+        }).join('');
+  },
+  renderPatternTbl(rows) {
+    $('iranPatternTbl').innerHTML = !rows.length
+      ? '<tr><td colspan="5" class="tbl-empty">No pattern data yet</td></tr>'
+      : rows.map(r=>{
+          const cat = classifyError({error_msg:r.error_msg});
+          return `<tr>
+            <td><strong>${fmtNum(r.cnt)}</strong></td>
+            <td><span class="badge ${cat.css}" title="${esc(classHint(cat.type))}">${esc(cat.label)}</span></td>
+            <td>${protoBadge(r.protocol)}&nbsp;<span class="mono" style="font-size:.7rem">${esc(r.sni||'—')}</span></td>
+            <td style="max-width:300px;font-size:.7rem;word-break:break-all;color:var(--muted)">${esc((r.error_msg||'').substring(0,120))}</td>
+            <td style="color:var(--muted-2);font-size:.7rem;white-space:nowrap">${fmtRelative(r.last_seen)}</td>
           </tr>`;
-        }).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
+        }).join('');
   }
+};
 
-  // ── Learning intelligence ─────────────────────────────────────────────────
-  async function loadLearningStats() {
-    const el = document.getElementById('learningBody');
-    if (!el) return;
+// ── VIEW: DEVICES ────────────────────────────────────────────────────
+views.devices = {
+  devData: [],
+  quotaDevId: '',
+  blockDevId: '',
+  blockAction: '',
+  async init() {
+    this.loadDevices();
+    this.loadPayments();
+    // Wire controls
+    $('devSearch').oninput = debounce(()=>this.renderDevices(), 250);
+    $('devPlan').onchange = ()=>this.renderDevices();
+    $('devStatus').onchange = ()=>this.renderDevices();
+    $('devRefreshBtn').onclick = ()=>{ this.loadDevices(); this.loadPayments(); };
+    $('payFilter').onchange = ()=>this.loadPayments();
+  },
+  async loadDevices() {
     try {
-      const j = await diagFetch(API_URL + '?action=learning-stats');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      if (!j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No learning data yet — accumulates as mobile app connects.</div>';
-        return;
-      }
-      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
-        <tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Country/Mode</th>
-          <th style="text-align:left;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Protocol / SNI</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Attempts</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--ok);font-size:.7rem;text-transform:uppercase">Rate</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--danger);font-size:.7rem;text-transform:uppercase">No-Net</th>
-          <th style="text-align:right;padding:.4rem .6rem;color:var(--muted);font-size:.7rem;text-transform:uppercase">Avg ms</th>
-        </tr>` +
-        j.data.slice(0, 50).map(r => {
-          const rate  = r.connect_rate !== null ? r.connect_rate : '—';
-          const color = r.connect_rate === null ? 'var(--muted)' : r.connect_rate >= 80 ? 'var(--ok)' : r.connect_rate >= 50 ? 'var(--warn)' : 'var(--danger)';
-          return `<tr style="border-bottom:1px solid var(--border)">
-            <td style="padding:.4rem .6rem;font-weight:600">${escHtml(r.country||'?')} / ${escHtml(r.mode||'?')}</td>
-            <td style="padding:.4rem .6rem;font-family:monospace;font-size:.72rem">${escHtml(r.protocol)} / ${escHtml(r.sni)}</td>
-            <td style="padding:.4rem .6rem;text-align:right">${r.total}</td>
-            <td style="padding:.4rem .6rem;text-align:right;font-weight:700;color:${color}">${rate !== '—' ? rate+'%' : '—'}</td>
-            <td style="padding:.4rem .6rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--muted)'}">${r.no_internet_cnt}</td>
-            <td style="padding:.4rem .6rem;text-align:right;font-family:monospace">${r.avg_latency ?? '—'}</td>
+      const rows = await api.get('devices-list');
+      this.devData = rows;
+      const online  = rows.filter(r=>r.status==='online').length;
+      const free    = rows.filter(r=>r.plan==='free').length;
+      const premium = rows.filter(r=>r.plan==='premium').length;
+      const blocked = rows.filter(r=>r.blocked).length;
+      $('devTotal').textContent   = rows.length;
+      $('devOnline').textContent  = online;
+      $('devFree').textContent    = free;
+      $('devPremium').textContent = premium;
+      $('devBlocked').textContent = blocked;
+      this.renderDevices();
+    } catch(e) { toast('Devices: '+e.message,'error'); }
+  },
+  renderDevices() {
+    const q     = ($('devSearch').value||'').toLowerCase();
+    const plan  = $('devPlan').value;
+    const status= $('devStatus').value;
+    let rows = this.devData;
+    if (q)              rows = rows.filter(r=>(r.device_id_short+r.country+r.app_version+r.device_id).toLowerCase().includes(q));
+    if (plan)           rows = rows.filter(r=>r.plan===plan);
+    if (status==='online')  rows = rows.filter(r=>r.status==='online');
+    if (status==='offline') rows = rows.filter(r=>r.status!=='online');
+    if (status==='blocked') rows = rows.filter(r=>r.blocked);
+    $('devTbl').innerHTML = !rows.length
+      ? '<tr><td colspan="9" class="tbl-empty">No devices match filter</td></tr>'
+      : rows.map(r=>{
+          const usedPct = r.quota_bytes_total>0?Math.round(r.quota_bytes_used/r.quota_bytes_total*100):0;
+          return `<tr>
+            <td>
+              <span class="mono" style="font-size:.72rem;color:var(--text)">${esc(r.device_id_short)}</span>
+              ${r.blocked?'<span class="badge badge-danger" style="margin-left:.3rem">blocked</span>':''}
+            </td>
+            <td><span class="badge ${r.plan==='premium'?'badge-accent':'badge-muted'}">${esc(r.plan)}</span></td>
+            <td>
+              <div style="font-size:.7rem;margin-bottom:.2rem">${fmtBytes(r.quota_bytes_used)} / ${fmtBytes(r.quota_bytes_total)}</div>
+              <div class="progress" style="width:80px"><div class="progress-bar ${usedPct>90?'danger':usedPct>70?'warn':'ok'}" style="width:${usedPct}%"></div></div>
+            </td>
+            <td><span class="dot ${r.status==='online'?'dot-ok':'dot-unk'}" style="display:inline-block"></span> ${esc(r.status)}</td>
+            <td>${protoBadge(r.active_protocol)}</td>
+            <td class="mobile-hide mono" style="font-size:.7rem">${esc(r.app_version||'—')}</td>
+            <td class="mobile-hide" style="font-size:.75rem">${esc(r.country||'—')}</td>
+            <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.last_seen)}</td>
+            <td>
+              <div style="display:flex;gap:.25rem">
+                <button class="btn btn-ghost btn-sm" title="${r.blocked?'Unblock':'Block'}"
+                  onclick="devBlock('${esc(r.device_id)}','${r.blocked?'unblock':'block'}')"
+                  style="color:${r.blocked?'var(--ok)':'var(--warn)'}">
+                  ${r.blocked?'Unblock':'Block'}
+                </button>
+                <button class="btn btn-ghost btn-sm" title="Set Quota"
+                  onclick="devSetQuota('${esc(r.device_id)}','${esc(r.device_id_short)}')">Quota</button>
+              </div>
+            </td>
           </tr>`;
-        }).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
-  }
-
-  // ── Device breakdown ──────────────────────────────────────────────────────
-  async function loadDeviceBreakdown() {
-    const el = document.getElementById('deviceBreakdownBody');
-    if (!el) return;
+        }).join('');
+  },
+  async loadPayments() {
+    const sf = $('payFilter').value;
     try {
-      const j = await diagFetch(API_URL + '?action=device-breakdown');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      if (!j.data.length) {
-        el.innerHTML = '<div class="diag-loading">No device data yet — appears after mobile app telemetry reports.</div>';
-        return;
-      }
-      el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.78rem">
-        <tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Model</th>
-          <th style="text-align:left;padding:.3rem .5rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Android</th>
-          <th style="text-align:right;padding:.3rem .5rem;color:var(--muted);font-size:.68rem;text-transform:uppercase">Attempts</th>
-          <th style="text-align:right;padding:.3rem .5rem;color:var(--ok);font-size:.68rem;text-transform:uppercase">Connected</th>
-          <th style="text-align:right;padding:.3rem .5rem;color:var(--danger);font-size:.68rem;text-transform:uppercase">No-Net</th>
-        </tr>` +
-        j.data.map(r => `<tr style="border-bottom:1px solid var(--border)">
-          <td style="padding:.3rem .5rem;font-family:monospace;font-size:.72rem">${escHtml(r.device_model||'unknown')}</td>
-          <td style="padding:.3rem .5rem;font-family:monospace">${escHtml(r.android_version||'—')}</td>
-          <td style="padding:.3rem .5rem;text-align:right">${r.attempts}</td>
-          <td style="padding:.3rem .5rem;text-align:right;color:var(--ok)">${r.connected}</td>
-          <td style="padding:.3rem .5rem;text-align:right;color:${r.no_internet_cnt>0?'var(--danger)':'var(--muted)'}">${r.no_internet_cnt}</td>
-        </tr>`).join('') + `</table></div>`;
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
+      const d = await api.get('payment-queue', {status:sf});
+      const rows = d.payments||[];
+      $('payTbl').innerHTML = !rows.length
+        ? '<tr><td colspan="8" class="tbl-empty">No payments</td></tr>'
+        : rows.map(r=>`<tr>
+            <td>${r.id}</td>
+            <td class="mono" style="font-size:.7rem">${esc((r.device_id||'').substring(0,16)+'…')}</td>
+            <td><span class="badge badge-info">${esc(r.package)}</span></td>
+            <td>${r.amount_usdt||'—'} USDT</td>
+            <td class="mono mobile-hide" style="font-size:.68rem">${esc((r.tx_hash||'—').substring(0,16)+'…')}</td>
+            <td><span class="badge ${r.status==='approved'?'badge-ok':r.status==='rejected'?'badge-danger':'badge-warn'}">${esc(r.status)}</span></td>
+            <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.submitted_at)}</td>
+            <td>
+              ${r.status==='pending'?`
+                <button class="btn btn-sm btn-primary" onclick="payReview(${r.id},'approve')">Approve</button>
+                <button class="btn btn-sm btn-danger"  onclick="payReview(${r.id},'reject')">Reject</button>`
+              : '—'}
+            </td>
+          </tr>`).join('');
+    } catch(e) { toast('Payments: '+e.message,'error'); }
   }
-
-  // ── Profile bundle loader + saver ─────────────────────────────────────────
-  async function loadBundleEditor() {
+};
+// Expose device actions globally
+window.devBlock = async function(did, action) {
+  $('confirmTitle').textContent = action==='block'?'Block Device':'Unblock Device';
+  $('confirmMsg').textContent   = `${action==='block'?'Block':'Unblock'} device ${did.substring(0,16)}…? This immediately ${action==='block'?'cuts':'restores'} VPN access.`;
+  openModal('modalConfirm');
+  $('confirmOk').onclick = async()=>{
+    closeModal();
     try {
-      // Fetch current bundle values from settings via direct GET
-      const j = await diagFetch('https://setalink.no/api.php?mobile=1&action=profile-bundle&_token=setalink-mobile-diag-v1');
-      if (!j.ok) return;
-      const d = j.data;
-      const sniEl   = document.getElementById('bundleSniCandidates');
-      const spoofEl = document.getElementById('bundleSpoofSnis');
-      const ipEl    = document.getElementById('bundleBackupIps');
-      const domEl   = document.getElementById('bundleBackupDomains');
-      if (sniEl)   sniEl.value   = (d.sni_candidates || []).join('\n');
-      if (spoofEl) spoofEl.value = (d.spoof_snis     || []).join('\n');
-      if (ipEl)    ipEl.value    = (d.backup_ips     || []).join('\n');
-      if (domEl)   domEl.value   = (d.backup_domains || []).join('\n');
-    } catch(e) { /* silent */ }
-  }
+      await api.post({action:'device-'+action, device_id:did});
+      toast(`Device ${action}ed`,'ok');
+      views.devices.loadDevices();
+    } catch(e) { toast(e.message,'error'); }
+  };
+};
+window.devSetQuota = function(did, short) {
+  views.devices.quotaDevId = did;
+  $('quotaDevLabel').textContent = short;
+  const dev = views.devices.devData.find(d=>d.device_id===did);
+  $('quotaGb').value = dev ? (dev.quota_bytes_total/1073741824).toFixed(1) : 1;
+  openModal('modalQuota');
+};
+$('quotaConfirm').onclick = async()=>{
+  const did   = views.devices.quotaDevId;
+  const bytes = Math.round(parseFloat($('quotaGb').value)*1073741824);
+  closeModal();
+  try {
+    await api.post({action:'device-set-quota', device_id:did, quota_bytes:bytes});
+    toast('Quota updated','ok');
+    views.devices.loadDevices();
+  } catch(e) { toast(e.message,'error'); }
+};
+window.payReview = async function(pid, action) {
+  try {
+    await api.post({action:'payment-'+action, payment_id:pid});
+    toast(`Payment ${action}d`,'ok');
+    views.devices.loadPayments();
+  } catch(e) { toast(e.message,'error'); }
+};
 
-  function parseTextareaLines(id) {
-    const el = document.getElementById(id);
-    if (!el) return [];
-    return el.value.split('\n').map(s => s.trim()).filter(Boolean);
-  }
-
-  document.getElementById('bundleSaveBtn')?.addEventListener('click', async () => {
-    const btn    = document.getElementById('bundleSaveBtn');
-    const status = document.getElementById('bundleSaveStatus');
-    if (btn) btn.disabled = true;
+// ── VIEW: LOGS ───────────────────────────────────────────────────────
+views.logs = {
+  rawLines: [],
+  async init() {
+    this.load();
+    $('logRefreshBtn').onclick = ()=>this.load();
+    $('logSearch').oninput = debounce(()=>this.render(), 250);
+    $('logRawToggle').onchange = ()=>this.render();
+    $('logExportBtn').onclick = ()=>this.export();
+  },
+  async load() {
+    const type  = $('logType').value;
+    const lines = $('logLines').value;
+    $('logViewer').innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
     try {
-      const j = await SL.apiPost({
-        action:                'save-bundle',
-        bundle_sni_candidates: parseTextareaLines('bundleSniCandidates'),
-        bundle_spoof_snis:     parseTextareaLines('bundleSpoofSnis'),
-        bundle_backup_ips:     parseTextareaLines('bundleBackupIps'),
-        bundle_backup_domains: parseTextareaLines('bundleBackupDomains'),
-      });
-      if (j.ok) {
-        if (status) { status.style.color = 'var(--ok)'; status.textContent = '✓ Saved — apps will receive on next refresh'; }
-        SL.toast('Bundle saved', 'success');
-      } else {
-        if (status) { status.style.color = 'var(--danger)'; status.textContent = '✗ ' + (j.error || 'error'); }
-      }
+      const rows = await api.get('logs', {type, n:lines});
+      this.rawLines = Array.isArray(rows) ? rows : [];
+      this.render();
     } catch(e) {
-      if (status) { status.style.color = 'var(--danger)'; status.textContent = '✗ ' + e.message; }
+      $('logViewer').innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`;
+      toast('Logs: '+e.message,'error');
     }
-    if (btn) btn.disabled = false;
-  });
-
-  // ── Remote config loader + saver ──────────────────────────────────────────
-  async function loadRemoteConfigEditor() {
-    const el = document.getElementById('remoteConfigLoaded');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=get-remote-config');
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">API error: ${escHtml(j.error||'unknown')}</div>`; return; }
-      const d = j.data;
-      el.innerHTML = `<div style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem">
-        Version ${d.version} — Updated: ${d.updated_at || 'never'} — Bootstrap: ${d.bootstrap_set ? '<span style="color:var(--ok)">✅ Configured</span>' : '<span style="color:var(--danger)">❌ Not set</span>'}
+  },
+  render() {
+    const q    = ($('logSearch').value||'').toLowerCase();
+    const raw  = $('logRawToggle').checked;
+    let rows = this.rawLines;
+    if (q) rows = rows.filter(l=>(typeof l==='string'?l:JSON.stringify(l)).toLowerCase().includes(q));
+    $('logCount').textContent = rows.length + ' lines';
+    if (!rows.length) { $('logViewer').innerHTML='<div class="panel-empty">No matching log lines.</div>'; return; }
+    $('logViewer').innerHTML = rows.map(l=>{
+      const line = typeof l==='string'?l:JSON.stringify(l);
+      const sev  = /\[Error\]|\berror\b/i.test(line)?'err':/\[Warning\]|\bwarn(ing)?\b/i.test(line)?'warn':'info';
+      const ts   = (line.match(/^\d{4}[\/\-]\d{2}[\/\-]\d{2} \d{2}:\d{2}:\d{2}/) || [])[0] || '';
+      const body = ts ? line.substring(ts.length).trim() : line;
+      return `<div class="log-line">
+        ${ts?`<span class="log-ts">${esc(ts)}</span>`:''}
+        ${sev!=='info'?`<span class="log-sev sev-${sev}">${sev.toUpperCase()}</span>`:''}
+        <span class="log-body">${esc(body.substring(0,400))}</span>
+        ${body.length>400?`<button class="expand-btn" onclick="this.nextSibling.classList.toggle('shown');this.textContent=this.textContent==='…'?'↑':'…'">…</button><pre class="raw-detail">${esc(body)}</pre>`:''}
       </div>`;
-      const f = (id, val) => { const el2 = document.getElementById(id); if (el2) el2.value = Array.isArray(val) ? val.join(', ') : (val||''); };
-      f('rcSniPriorities', d.sni_priorities);
-      f('rcIranSniOrder',  d.iran_sni_order);
-      f('rcKillSwitches',  d.kill_switches);
-      f('rcEmergencySni',  d.emergency_sni);
-      // Populate bootstrap fields if available
-      if (d.bootstrap) {
-        const bs = d.bootstrap;
-        f('bsUuid',        bs.uuid);
-        f('bsAddress',     bs.address);
-        f('bsPort',        bs.port);
-        f('bsPubkey',      bs.publicKey);
-        f('bsShortid',     bs.shortId);
-        f('bsSni',         bs.sni);
-        f('bsFlow',        bs.flow);
-        f('bsFp',          bs.fingerprint);
-        f('bsEdgeAddress', bs.edgeAddress || 'edge.setalink.no');
-        f('bsEdgePort',    bs.edgePort    || 443);
-        f('bsWsPath',      bs.wsPath      || '/ws');
-        f('bsXhttpPath',   bs.xhttpPath   || '/xhttp');
-        f('bsHttpupPath',  bs.httpupPath  || '/httpup');
-      }
-    } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Remote config load failed: ${escHtml(e.message)}</div>`; }
+    }).join('');
+  },
+  export() {
+    const type = $('logType').value;
+    const blob = new Blob([this.rawLines.map(l=>typeof l==='string'?l:JSON.stringify(l)).join('\n')], {type:'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `setalink-${type}-${new Date().toISOString().slice(0,10)}.log`;
+    a.click(); URL.revokeObjectURL(a.href);
   }
+};
+$('logType').onchange   = ()=>views.logs.load?.();
+$('logLines').onchange  = ()=>views.logs.load?.();
 
-  const parseList = v => v.split(',').map(s => s.trim()).filter(Boolean);
+// ── VIEW: RELEASE ────────────────────────────────────────────────────
+views.release = {
+  async init() {
+    const [rel, ds] = await Promise.allSettled([api.get('release-status'), api.get('debug-status')]);
+    if (rel.status==='fulfilled') this.renderRelease(rel.value);
+    else $('releaseChannels').innerHTML = `<div class="panel-empty">${esc(rel.reason?.message)}</div>`;
+    if (ds.status==='fulfilled')  this.renderDebugStatus(ds.value);
+    else $('debugStatus').innerHTML = `<div class="panel-empty">${esc(ds.reason?.message)}</div>`;
+  },
+  renderRelease(d) {
+    // Download symlink
+    const dl  = d.download_symlink||{};
+    $('dlSymlinkInfo').innerHTML = `
+      <div style="display:flex;align-items:center;gap:.75rem;font-size:.8rem">
+        <span class="dot ${dl.valid?'dot-ok':'dot-bad'}"></span>
+        <span class="mono">/public/download/setalink-latest.apk</span>
+        <span style="color:var(--muted)">→</span>
+        <span class="mono">${esc(dl.target||'(not set)')}</span>
+        <span class="badge ${dl.valid?'badge-ok':'badge-danger'}">${dl.valid?'valid':'BROKEN'}</span>
+      </div>`;
 
-  document.getElementById('rcSaveBtn')?.addEventListener('click', async () => {
-    const btn    = document.getElementById('rcSaveBtn');
-    const status = document.getElementById('rcSaveStatus');
-    const lastUpdatedEl = document.getElementById('rcLastUpdated');
-    if (!btn) return;
+    // version.json
+    const vj = d.version_json;
+    $('versionJsonInfo').innerHTML = vj ? `
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;font-size:.8rem">
+        <div><span style="color:var(--muted)">version</span> <strong>${esc(vj.version||'—')}</strong></div>
+        <div><span style="color:var(--muted)">build</span> <strong>${esc(String(vj.versionCode||'—'))}</strong></div>
+        <div><span style="color:var(--muted)">channel</span> <strong>${esc(vj.rolloutChannel||'—')}</strong></div>
+        <div><span style="color:var(--muted)">date</span> <strong>${esc(vj.releaseDate||'—')}</strong></div>
+        <div><span style="color:var(--muted)">force update</span> <strong>${vj.forceUpdate?'yes':'no'}</strong></div>
+      </div>
+      ${vj.apkSha256?`<div class="mono" style="font-size:.68rem;color:var(--muted-2);margin-top:.4rem">sha256: ${esc(vj.apkSha256)}</div>`:''}
+      ${vj.changelog?`<ul style="margin-top:.5rem;font-size:.75rem;color:var(--muted);padding-left:1.25rem">${(vj.changelog||[]).map(c=>`<li>${esc(c)}</li>`).join('')}</ul>`:''}
+    ` : '<div class="panel-empty">version.json not found</div>';
 
-    btn.disabled = true;
-    const origText = btn.innerHTML;
-    btn.innerHTML = '<span style="opacity:.7">Saving…</span>';
-    if (status) status.textContent = '';
-
-    try {
-      const payload = {
-        _csrf:             CSRF,
-        action:            'save-remote-config',
-        rc_sni_priorities: parseList(document.getElementById('rcSniPriorities')?.value || ''),
-        rc_iran_sni_order: parseList(document.getElementById('rcIranSniOrder')?.value || ''),
-        rc_kill_switches:  parseList(document.getElementById('rcKillSwitches')?.value || ''),
-        rc_emergency_sni:  document.getElementById('rcEmergencySni')?.value?.trim() || '',
-        // Bootstrap server fields
-        bootstrap_uuid:         document.getElementById('bsUuid')?.value?.trim()        || '',
-        bootstrap_address:      document.getElementById('bsAddress')?.value?.trim()     || '',
-        bootstrap_port:         parseInt(document.getElementById('bsPort')?.value || '8443'),
-        bootstrap_pubkey:       document.getElementById('bsPubkey')?.value?.trim()      || '',
-        bootstrap_shortid:      document.getElementById('bsShortid')?.value?.trim()     || '',
-        bootstrap_sni:          document.getElementById('bsSni')?.value?.trim()         || 'www.microsoft.com',
-        bootstrap_flow:         document.getElementById('bsFlow')?.value?.trim()        || 'xtls-rprx-vision',
-        bootstrap_fp:           document.getElementById('bsFp')?.value?.trim()          || 'chrome',
-        bootstrap_edge_address: document.getElementById('bsEdgeAddress')?.value?.trim() || 'edge.setalink.no',
-        bootstrap_edge_port:    parseInt(document.getElementById('bsEdgePort')?.value || '443'),
-        bootstrap_ws_path:      document.getElementById('bsWsPath')?.value?.trim()      || '/ws',
-        bootstrap_xhttp_path:   document.getElementById('bsXhttpPath')?.value?.trim()   || '/xhttp',
-        bootstrap_httpup_path:  document.getElementById('bsHttpupPath')?.value?.trim()  || '/httpup',
-      };
-      const r = await fetch(API_URL, {
-        method: 'POST', credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const j = await r.json();
-      if (j.ok) {
-        showToast('Remote config saved', 'ok', 3000);
-        const now = new Date().toLocaleTimeString();
-        if (lastUpdatedEl) lastUpdatedEl.textContent = 'Last saved: ' + now;
-        if (status) { status.style.color = 'var(--ok)'; status.textContent = '✓ Saved at ' + now; }
-        loadRemoteConfigEditor();
-      } else {
-        showToast('Save failed: ' + (j.error || 'unknown error'), 'error', 4000);
-        if (status) { status.style.color = 'var(--danger)'; status.textContent = 'Error: ' + (j.error || 'unknown'); }
-      }
-    } catch(e) {
-      showToast('Network error: ' + e.message, 'error', 4000);
-      if (status) { status.style.color = 'var(--danger)'; status.textContent = 'Save failed'; }
-    }
-
-    btn.disabled = false;
-    btn.innerHTML = origText;
-  });
-
-  // ── Bootstrap verification ────────────────────────────────────────────
-  async function loadBootstrapPanel() {
-    const body = document.getElementById('bsVerifyBody');
-    if (!body) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=get-remote-config');
-      if (!j.ok) throw new Error(j.error || 'API error');
-      const bs = j.data?.bootstrap;
-      if (!bs || !bs.uuid) {
-        body.innerHTML = '<div class="diag-loading">No bootstrap profile saved in DB — using hardcoded fallback profile.</div>';
-        return;
-      }
-      const row = (k, v) => `<div class="cfg-row"><span class="cfg-key">${escHtml(k)}</span><code class="cfg-val">${escHtml(String(v ?? '—'))}</code></div>`;
-      body.innerHTML =
-        row('Label',        bs.city || 'SetaLink Cloudflare') +
-        row('Address',      bs.address) +
-        row('Port',         bs.port) +
-        row('Protocol',     'VLESS + Reality') +
-        row('SNI',          bs.sni) +
-        row('PublicKey',    bs.publicKey ? bs.publicKey.substring(0,10) + '…' : '—') +
-        row('ShortId',      bs.shortId) +
-        row('Flow',         bs.flow || '(none)') +
-        row('WS Path',      bs.wsPath   || '/ws') +
-        row('XHTTP Path',   bs.xhttpPath  || '/xhttp') +
-        row('HTTPup Path',  bs.httpupPath || '/httpup');
-    } catch(e) {
-      body.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`;
-    }
+    // Channels
+    const html = ['stable','beta','hotfix'].map(ch=>{
+      const info = (d.channels||{})[ch]||{};
+      const apks = info.apks||[];
+      const sym  = info.latest_symlink;
+      const symOk= info.symlink_valid;
+      return `<div class="release-channel">
+        <div class="channel-header">
+          <span class="badge ${ch==='stable'?'badge-ok':ch==='beta'?'badge-warn':'badge-info'}">${ch}</span>
+          <span class="channel-name" style="margin-left:.25rem">${apks.length} APK${apks.length!==1?'s':''}</span>
+          ${sym?`<span class="badge ${symOk?'badge-ok':'badge-danger'}" style="margin-left:auto">latest → ${esc(sym)}</span>`:'<span class="badge badge-muted" style="margin-left:auto">no symlink</span>'}
+        </div>
+        ${!apks.length?'<div style="font-size:.75rem;color:var(--muted)">No APKs in this channel</div>':
+          apks.map(a=>`<div class="apk-row">
+            <span class="apk-name">${esc(a.name)}</span>
+            <span class="apk-size">${fmtBytes(a.size)}</span>
+            <span class="apk-date">${esc(a.mtime)}</span>
+            <span class="apk-sha256" title="${esc(a.sha256)}">${esc((a.sha256||'').substring(0,16)+'…')}</span>
+            <a class="btn btn-ghost btn-sm" href="${esc(a.url)}" target="_blank" rel="noopener">${icon_str('download')} DL</a>
+            <button class="btn btn-sm btn-danger" onclick="deleteApk('${esc(ch)}','${esc(a.name)}')">${icon_str('trash')}</button>
+          </div>`).join('')
+        }
+      </div>`;
+    }).join('');
+    $('releaseChannels').innerHTML = html;
+  },
+  renderDebugStatus(d) {
+    const srv = [
+      {label:'Xray',  ok:d.xray_active,  detail:d.xray_version||''},
+      {label:'Nginx', ok:d.nginx_active,  detail:''},
+      {label:'SQLite',ok:d.db_ok,         detail:d.db_path||''},
+    ];
+    const logsHtml = Object.entries(d.logs||{}).map(([k,l])=>`
+      <div style="display:flex;align-items:center;gap:.5rem;font-size:.72rem;padding:.2rem 0">
+        <span class="dot ${l.exists&&l.readable?'dot-ok':'dot-bad'}"></span>
+        <span class="mono" style="flex:1">${esc(k)}</span>
+        <span style="color:var(--muted-2)">${l.size_kb!=null?l.size_kb+' KB':'missing'}</span>
+      </div>`).join('');
+    $('debugStatus').innerHTML = `
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem">
+        ${srv.map(s=>`<div style="display:flex;align-items:center;gap:.4rem;font-size:.78rem">
+          <span class="dot ${s.ok?'dot-ok':'dot-bad'}"></span>
+          <strong>${esc(s.label)}</strong>
+          ${s.detail?`<span class="mono" style="font-size:.7rem;color:var(--muted-2)">${esc(s.detail)}</span>`:''}
+        </div>`).join('')}
+      </div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:.75rem;font-size:.78rem">
+        <div>Devices: <strong>${fmtNum(d.device_count)}</strong></div>
+        <div>Sessions: <strong>${fmtNum(d.session_count)}</strong></div>
+        <div>Tests: <strong>${fmtNum(d.test_count)}</strong></div>
+        <div>Payments: <strong>${fmtNum(d.payment_count)}</strong></div>
+      </div>
+      <div>${logsHtml}</div>
+      <div style="margin-top:.5rem;font-size:.68rem;color:var(--muted-2)">PHP ${esc(d.php_version||'?')}</div>`;
   }
-
-  document.getElementById('testBootstrapBtn')?.addEventListener('click', async () => {
-    const btn    = document.getElementById('testBootstrapBtn');
-    const status = document.getElementById('bsVerifyStatus');
-    if (!btn) return;
-    btn.disabled = true;
-    if (status) { status.style.color = 'var(--muted)'; status.textContent = 'Testing…'; }
+};
+window.deleteApk = async function(channel, filename) {
+  $('confirmTitle').textContent = 'Delete APK';
+  $('confirmMsg').textContent   = `Delete ${filename} from ${channel}? This cannot be undone.`;
+  openModal('modalConfirm');
+  $('confirmOk').onclick = async()=>{
+    closeModal();
     try {
-      const j = await diagFetch(API_URL + '?action=test-bootstrap', 10000);
-      if (!j.ok) throw new Error(j.error || 'failed');
-      const p = j.data?.profile;
-      if (status) {
-        status.style.color = 'var(--ok)';
-        status.textContent = `✓ OK — ${p?.address || ''}:${p?.port || ''}`;
-      }
-      showToast('Bootstrap endpoint verified', 'ok', 3000);
-    } catch(e) {
-      if (status) { status.style.color = 'var(--danger)'; status.textContent = '✗ ' + e.message; }
-      showToast('Bootstrap test failed: ' + e.message, 'error', 4000);
-    }
-    btn.disabled = false;
-  });
-
-  // ── Backend Health ────────────────────────────────────────────────────
-  async function loadDebugStatus() {
-    const el   = document.getElementById('debugStatusBody');
-    const elAt = document.getElementById('debugStatusAt');
-    if (!el) return;
-    try {
-      const j = await diagFetch(API_URL + '?action=debug-status', 15000);
-      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
-      const d = j.data;
-      if (elAt) elAt.textContent = d.checked_at || '';
-      const dot = (ok) => ok
-        ? `<span class="dot dot-ok" style="margin-right:.4rem"></span>`
-        : `<span class="dot dot-bad" style="margin-right:.4rem"></span>`;
-      const row = (k, v, ok = null) => {
-        const dotHtml = ok !== null ? dot(ok) : '';
-        return `<div class="cfg-row">${dotHtml}<span class="cfg-key">${escHtml(k)}</span><code class="cfg-val">${escHtml(String(v ?? '—'))}</code></div>`;
-      };
-      const logRows = Object.entries(d.logs || {}).map(([k, l]) =>
-        `<div class="cfg-row">${dot(l.readable)}<span class="cfg-key">${escHtml(k)}</span><code class="cfg-val">${escHtml(l.readable ? `${l.size_kb} KB` : (l.exists ? 'not readable' : 'missing'))}</code></div>`
-      ).join('');
-      const vj = d.version_json;
-      el.innerHTML = `
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.5rem">
-          <div>
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Services</div>
-            ${row('PHP', d.php_version, d.php_ok)}
-            ${row('Xray', d.xray_version || (d.xray_active ? 'active' : 'inactive'), d.xray_active)}
-            ${row('Nginx', d.nginx_active ? 'active' : 'inactive', d.nginx_active)}
-            ${row('SQLite', d.db_ok ? `OK · ${d.device_count} devices · ${d.session_count} sessions` : (d.db_error||'error'), d.db_ok)}
-            ${row('DB writable', d.db_writable ? 'yes' : 'no', d.db_writable)}
-          </div>
-          <div>
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Log Files</div>
-            ${logRows}
-          </div>
-          <div>
-            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">App Update</div>
-            ${row('APK symlink', d.apk_symlink ? d.apk_symlink.split('/').pop() : 'broken', !!d.apk_symlink && !d.apk_symlink.includes('broken'))}
-            ${vj ? row('version.json', `v${vj.version} (${vj.versionCode})`, true) : row('version.json', 'missing or invalid', false)}
-            ${row('Payments pending', d.payment_count ?? '—')}
-          </div>
-        </div>`;
-    } catch(e) { if (el) el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
-  }
-  document.getElementById('refreshDebugStatusBtn')?.addEventListener('click', loadDebugStatus);
-
-  // Refresh all panels on button click
-  document.getElementById('diagRefreshBtn')?.addEventListener('click', () => {
-    loadConnectionAnalytics();
-    loadErrorLog();
-    loadDbTestResults();
-    loadIranScore();
-    loadActiveSessions();
-    loadInboundDiag();
-    loadSessionStats();
-    loadWatchdogLog();
-    loadPaymentQueue();
-    loadProfileStats();
-    loadNoInternetAnalysis();
-    loadSniLeaderboard();
-    loadLearningStats();
-    loadDeviceBreakdown();
-    loadBundleEditor();
-    loadRemoteConfigEditor();
-    loadBootstrapPanel();
-    loadDebugStatus();
-  });
-
-  // Auto-refresh panels every 30 seconds
-  setInterval(loadActiveSessions, 30000);
-  setInterval(loadInboundDiag, 30000);
-  setInterval(loadSessionStats, 60000);
-
-  // Auto-load diagnostics data on page load
-  loadConnectionAnalytics();
-  loadErrorLog();
-  loadDbTestResults();
-  loadIranScore();
-  loadActiveSessions();
-  loadInboundDiag();
-  loadSessionStats();
-  loadWatchdogLog();
-  loadPaymentQueue();
-  loadBundleEditor();
-  loadProfileStats();
-  loadNoInternetAnalysis();
-  loadSniLeaderboard();
-  loadLearningStats();
-  loadDeviceBreakdown();
-  loadRemoteConfigEditor();
-  loadBootstrapPanel();
-  loadDebugStatus();
+      await api.post({action:'delete-old-apk', channel, filename});
+      toast(`Deleted ${filename}`,'ok');
+      views.release.init();
+    } catch(e) { toast(e.message,'error'); }
+  };
+};
+// Inline icon string helper (for JS-rendered HTML)
+function icon_str(name) {
+  const map={
+    download:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+    trash:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+  };
+  return map[name]||'';
 }
+
+// ── VIEW: CONFIG ─────────────────────────────────────────────────────
+views.config = {
+  rcData: {sni_priorities:[], kill_switches:[], protocol_order:[]},
+  async init() {
+    await this.load();
+  },
+  async load() {
+    try {
+      const [settings, rc] = await Promise.all([
+        api.get('get-settings'),
+        api.get('get-remote-config'),
+      ]);
+      $('cfgLabel').value    = settings.server_label  || '';
+      $('cfgTelegram').value = settings.telegram_url  || '';
+      this.rcData = rc;
+      this.renderRcTags('rcSniPriorities', rc.sni_priorities||[]);
+      this.renderRcTags('rcKillSwitches',  rc.kill_switches||[]);
+      this.renderProtoOrder(rc.protocol_order||[]);
+      $('rcEmergencySni').value = rc.emergency_sni||'';
+      const bs = rc.bootstrap||{};
+      $('bsUuid').value      = bs.uuid||'';
+      $('bsAddress').value   = bs.address||'';
+      $('bsPort').value      = bs.port||443;
+      $('bsPubkey').value    = bs.publicKey||'';
+      $('bsShortid').value   = bs.shortId||'';
+      $('bsSni').value       = bs.sni||'';
+      $('bsFlow').value      = bs.flow||'';
+      $('bsFp').value        = bs.fingerprint||'';
+      $('bsEdgeAddr').value  = bs.edgeAddress||'';
+      $('bsEdgePort').value  = bs.edgePort||443;
+      $('bsWsPath').value    = bs.wsPath||'/ws';
+      $('bsXhttpPath').value = bs.xhttpPath||'/xhttp';
+    } catch(e) { toast('Config: '+e.message,'error'); }
+  },
+  renderRcTags(elId, arr) {
+    const el = $(elId);
+    el.innerHTML = arr.map((v,i)=>`
+      <span class="tag">${esc(v)}
+        <span class="tag-del" onclick="views.config.removeTag('${elId}',${i})">×</span>
+      </span>`).join('');
+  },
+  renderProtoOrder(arr) {
+    $('rcProtocolOrder').innerHTML = arr.map((v,i)=>`
+      <span class="tag">${esc(v)}
+        <span class="tag-del" onclick="views.config.removeProto(${i})">×</span>
+      </span>`).join('');
+  },
+  removeTag(elId, idx) {
+    const key = elId==='rcSniPriorities'?'sni_priorities':'kill_switches';
+    this.rcData[key].splice(idx,1);
+    this.renderRcTags(elId, this.rcData[key]);
+  },
+  removeProto(idx) {
+    this.rcData.protocol_order.splice(idx,1);
+    this.renderProtoOrder(this.rcData.protocol_order);
+  },
+  addSni() {
+    const v = $('rcSniInput').value.trim();
+    if (!v) return;
+    this.rcData.sni_priorities.push(v);
+    $('rcSniInput').value='';
+    this.renderRcTags('rcSniPriorities', this.rcData.sni_priorities);
+  },
+  addKs() {
+    const v = $('rcKsInput').value.trim();
+    if (!v) return;
+    this.rcData.kill_switches.push(v);
+    $('rcKsInput').value='';
+    this.renderRcTags('rcKillSwitches', this.rcData.kill_switches);
+  }
+};
+$('rcSniAdd').onclick   = ()=>views.config.addSni();
+$('rcKsAdd').onclick    = ()=>views.config.addKs();
+$('rcSniInput').onkeydown = e=>{ if(e.key==='Enter'){e.preventDefault();views.config.addSni();} };
+$('rcKsInput').onkeydown  = e=>{ if(e.key==='Enter'){e.preventDefault();views.config.addKs();} };
+
+$('cfgSaveSettings').onclick = async()=>{
+  try {
+    await api.post({action:'save-settings',server_label:$('cfgLabel').value,telegram_url:$('cfgTelegram').value});
+    toast('Settings saved','ok');
+  } catch(e) { toast(e.message,'error'); }
+};
+$('cfgSaveRc').onclick = async()=>{
+  const rc = views.config.rcData;
+  try {
+    await api.post({action:'save-remote-config',
+      rc_sni_priorities: rc.sni_priorities,
+      rc_kill_switches:  rc.kill_switches,
+      rc_protocol_order: rc.protocol_order,
+      rc_emergency_sni:  $('rcEmergencySni').value,
+      rc_iran_sni_order: rc.sni_priorities,
+      rc_version: (+(rc.version||1)+1),
+    });
+    toast('Remote config saved','ok');
+    views.config.load();
+  } catch(e) { toast(e.message,'error'); }
+};
+$('cfgSaveBootstrap').onclick = async()=>{
+  try {
+    await api.post({action:'save-remote-config',
+      bootstrap_uuid:         $('bsUuid').value,
+      bootstrap_address:      $('bsAddress').value,
+      bootstrap_port:         parseInt($('bsPort').value)||443,
+      bootstrap_pubkey:       $('bsPubkey').value,
+      bootstrap_shortid:      $('bsShortid').value,
+      bootstrap_sni:          $('bsSni').value,
+      bootstrap_flow:         $('bsFlow').value,
+      bootstrap_fp:           $('bsFp').value,
+      bootstrap_edge_address: $('bsEdgeAddr').value,
+      bootstrap_edge_port:    parseInt($('bsEdgePort').value)||443,
+      bootstrap_ws_path:      $('bsWsPath').value,
+      bootstrap_xhttp_path:   $('bsXhttpPath').value,
+    });
+    toast('Bootstrap server saved','ok');
+  } catch(e) { toast(e.message,'error'); }
+};
+$('cfgTestBootstrap').onclick = async()=>{
+  $('bsTestResult').textContent = 'Testing…';
+  try {
+    const d = await api.get('test-bootstrap');
+    $('bsTestResult').innerHTML = `<span style="color:var(--ok)">✓ OK</span> — uuid: ${esc(d.profile?.uuid||'?')}, address: ${esc(d.profile?.address||'?')}`;
+  } catch(e) {
+    $('bsTestResult').innerHTML = `<span style="color:var(--danger)">✗ FAILED</span> — ${esc(e.message)}`;
+  }
+};
+
+// ── Debounce util ────────────────────────────────────────────────────
+function debounce(fn, ms) {
+  let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); };
+}
+
+// ── Boot ─────────────────────────────────────────────────────────────
+navigate(INIT_PAGE);
 </script>
 </body>
 </html>
