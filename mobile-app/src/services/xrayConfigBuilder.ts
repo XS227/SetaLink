@@ -48,6 +48,7 @@ interface XrayRouting {
     ip?:          string[];
     domain?:      string[];
     port?:        string;
+    network?:     string;
     outboundTag:  string;
   }>;
 }
@@ -316,6 +317,17 @@ export function buildXrayConfig(
           port: '53',
           outboundTag: 'dns-out',
         },
+        // UDP/443 → blackhole. Chrome HTTP/3 uses QUIC (UDP port 443). Our VLESS/Reality
+        // outbound is TCP-only and cannot proxy UDP payloads. Without this rule, QUIC
+        // packets reach Xray via SOCKS5 ASSOCIATE but are silently dropped — Chrome never
+        // gets a rejection and shows ERR_QUIC_PROTOCOL_ERROR. Fast-rejecting UDP/443 makes
+        // Chrome immediately retry via TCP/TLS (HTTP/2 or HTTP/1.1), restoring browsing.
+        {
+          type:        'field',
+          network:     'udp',
+          port:        '443',
+          outboundTag: 'blackhole',
+        },
         // All IPv6 → blackhole. Gives apps an immediate connection-refused so
         // Happy Eyeballs retries on IPv4 without waiting for a timeout.
         // TUN routes do not include ::/0 (native service excludes IPv6 from TUN),
@@ -378,6 +390,8 @@ export function buildEmergencyXrayConfigJson(
       domainStrategy: 'IPIfNonMatch',
       rules: [
         { type: 'field', port: '53', outboundTag: 'dns-out' },
+        // UDP/443 → blackhole: fast-reject QUIC so Chrome falls back to TCP HTTPS.
+        { type: 'field', network: 'udp', port: '443', outboundTag: 'blackhole' },
         // Fast-fail all IPv6 so Happy Eyeballs immediately retries on IPv4.
         { type: 'field', ip: ['::/0'], outboundTag: 'blackhole' },
       ],

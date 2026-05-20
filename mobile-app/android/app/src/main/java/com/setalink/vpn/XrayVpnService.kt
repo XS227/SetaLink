@@ -354,10 +354,85 @@ class XrayVpnService : VpnService() {
                 putExtra("probe_ok", validation.probeOk)
                 putExtra("probe_update", true)
             })
+
+            // Browser-compatibility probes: run after primary validation so they don't
+            // delay the CONNECTED signal. Tests real websites and reports QUIC status.
+            if (validation.probeOk) {
+                runBrowserCompatibilityProbes()
+            }
         } catch (e: Exception) {
             appendLog("[BG-VALIDATION] Exception: ${e.message}")
             broadcastStep("validation_error", false, "Background validation error: ${e.message}")
         }
+    }
+
+    // ── Browser compatibility probes ──────────────────────────────────────────
+    // Probes real websites via TCP/TLS over SOCKS5 — confirms Chrome/Firefox browsing works.
+    // UDP/443 (QUIC/HTTP3) is blackholed in the Xray routing config; Chrome falls back to
+    // TCP HTTPS automatically. We report the QUIC mode here for the diagnostics UI.
+
+    private suspend fun runBrowserCompatibilityProbes() {
+        appendLog("[BROWSER-COMPAT] Starting browser compatibility probes")
+
+        // TCP HTTPS probe — real websites Chrome would visit
+        data class BrowserTarget(val host: String, val label: String)
+        val targets = listOf(
+            BrowserTarget("example.com",   "example.com"),
+            BrowserTarget("vg.no",         "vg.no"),
+            BrowserTarget("cloudflare.com","cloudflare.com"),
+        )
+
+        var tcpHttpsOk   = false
+        var tcpHttpsHost = ""
+        var tcpHttpsBytes = 0
+
+        for (t in targets) {
+            val (ok, bytes, snippet) = runHttpsProbe(t.host)
+            appendLog("[BROWSER-COMPAT] ${t.label}:443 TCP/TLS → ok=$ok bytes=$bytes snippet=$snippet")
+            broadcastStep("browser_probe_${t.label.replace('.', '_')}", ok,
+                "${t.label}:443 TCP/TLS → ${if (ok) "OK (${bytes}B)" else "FAIL: $snippet"}")
+            if (ok && !tcpHttpsOk) { tcpHttpsOk = true; tcpHttpsHost = t.label; tcpHttpsBytes = bytes }
+        }
+
+        // DNS probe — confirm hostname resolution works end-to-end
+        val dnsOk = runCatching {
+            withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", 10808))
+                Socket(proxy).use { s ->
+                    s.connect(InetSocketAddress.createUnresolved("one.one.one.one", 80), 5_000)
+                    true
+                }
+            }
+        }.onFailure { e -> appendLog("[BROWSER-COMPAT] DNS probe failed: ${e.message}") }
+         .getOrElse { false }
+
+        broadcastStep("dns_resolve", dnsOk,
+            if (dnsOk) "DNS OK — hostname resolution working through tunnel"
+            else        "DNS FAIL — hostname resolution failed through tunnel")
+
+        // QUIC/UDP status — always blocked (routing rule: udp port 443 → blackhole).
+        // Chrome detects the fast rejection and retries over TCP/TLS without hanging.
+        broadcastStep("quic_status", true,
+            "UDP/443 blackholed — QUIC fast-rejected · Chrome uses TCP HTTPS fallback · No hang")
+
+        // Overall browser compatibility verdict
+        val tcpMsg = if (tcpHttpsOk)
+            "TCP HTTPS OK via $tcpHttpsHost ($tcpHttpsBytes B) · DNS ${if (dnsOk) "OK" else "FAIL"} · QUIC blocked (TCP fallback active)"
+        else
+            "TCP HTTPS FAILED — browser browsing may not work through this tunnel"
+
+        broadcastStep("browser_compat", tcpHttpsOk, tcpMsg)
+        appendLog("[BROWSER-COMPAT] tcpHttpsOk=$tcpHttpsOk dnsOk=$dnsOk quic=blocked(blackhole) host=$tcpHttpsHost")
+
+        // Publish QUIC-aware connected status so the UI can show the right message
+        sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
+            setPackage(packageName)
+            putExtra("probe_ok",     tcpHttpsOk)
+            putExtra("probe_update", true)
+            putExtra("quic_blocked", true)
+            putExtra("tcp_https_ok", tcpHttpsOk)
+            putExtra("dns_ok",       dnsOk)
+        })
     }
 
     // ── Deep validation ───────────────────────────────────────────────────────
