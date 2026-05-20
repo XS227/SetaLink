@@ -1,6 +1,26 @@
 {
-  "version": "0.9.8",
-  "versionCode": 13,
-  "downloadUrl": "https://setalink.no/download/setalink-latest.apk",
-  "releaseNotes": "v0.9.8 - Admin + App data consistency, Backend health dashboard, version unification"
+  "version": "0.9.10",
+  "versionCode": 15,
+  "releaseDate": "2026-05-20",
+  "rolloutChannel": "stable",
+  "minSupported": "0.9.7",
+  "forceUpdate": false,
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk",
+  "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
+  "checksum": {
+    "sha256": "872803494e5a5e45082eb58411aa35e081384af39b609c65f782ef0809ecfe93",
+    "algorithm": "sha256"
+  },
+  "changelog": [
+    "Fix: TUN routing false-positive CONNECTED — browser traffic was not routed through VPN",
+    "Fix: IPv6 now enters the tunnel (addRoute('::', 0))",
+    "Fix: Block CONNECTED until https://1.1.1.1/cdn-cgi/trace returns HTTP 200 via TUN",
+    "Fix: Show 'Server connected, but internet is not routed through VPN' on routing failure",
+    "New: Test routing button on Home screen — shows routed IP and response status"
+  ],
+  "channels": {
+    "stable":  { "version": "0.9.10", "versionCode": 15, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk" },
+    "beta":    { "version": "0.9.10", "versionCode": 15, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk" },
+    "hotfix":  { "version": "0.9.10", "versionCode": 15, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk" }
+  }
 }

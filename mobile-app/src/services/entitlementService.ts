@@ -1,7 +1,8 @@
-const BASE_URL   = 'https://setalink.no/api.php';
-const TOKEN      = 'setalink-mobile-diag-v1';
-const TIMEOUT    = 10_000;
-const APP_VERSION = '0.9.8';
+import { APP_VERSION } from '../utils/version';
+
+const BASE_URL = 'https://setalink.no/api.php';
+const TOKEN    = 'setalink-mobile-diag-v1';
+const TIMEOUT  = 10_000;
 
 export interface DeviceEntitlement {
   device_id:         string;

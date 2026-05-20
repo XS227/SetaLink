@@ -8,9 +8,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useServerStore }   from '../stores/serverStore';
 import { BiometricService } from '../services/biometricService';
 import { useT } from '../i18n';
-
-const APP_VERSION     = '0.9.8';
-const APP_BUILD       = '13';
+import { APP_VERSION, APP_BUILD } from '../utils/version';
 const VERSION_URL     = 'https://setalink.no/download/version.json';
 const DOWNLOAD_URL    = 'https://setalink.no/download/setalink-latest.apk';
 const GITHUB_URL      = 'https://github.com/setaei/setalink';
