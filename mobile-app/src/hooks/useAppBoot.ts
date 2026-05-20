@@ -4,6 +4,7 @@ import { useVpnStore }      from '../stores/vpnStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { getAdapter }       from '../services/vpnBridge';
 import { Logger }           from '../utils/logger';
+import { prefetchBundle }   from '../services/profileBundleService';
 
 // Registers AppState listeners that enforce VPN policy on app lifecycle events.
 // Mount this once at the root of the Main navigator shell.
@@ -11,8 +12,8 @@ export function useAppBoot(): void {
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
-    // On mount: sync native VPN state to JS store in case the app was restarted
-    // while the VPN service was already running.
+    // On mount: prefetch profile bundle and sync native VPN state
+    prefetchBundle();
     _syncNativeState();
 
     const sub = AppState.addEventListener('change', (next) => {

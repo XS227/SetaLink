@@ -1732,6 +1732,38 @@ $page_titles = [
         </div>
       </div>
 
+      <!-- ── Profile Bundle Editor ─────────────────────────── -->
+      <div class="diag-panel" id="bundleEditorPanel">
+        <div class="diag-panel-head">
+          <h2>Profile Bundle</h2>
+          <span style="font-size:.7rem;color:var(--muted)">SNI priorities + stealth candidates pushed to all apps</span>
+        </div>
+        <div class="diag-panel-body">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+            <div class="form-group">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI Priority Candidates (one per line)</label>
+              <textarea id="bundleSniCandidates" rows="6" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="www.microsoft.com&#10;www.bing.com&#10;www.apple.com&#10;www.samsung.com&#10;www.speedtest.net"></textarea>
+              <div style="font-size:.65rem;color:var(--muted);margin-top:.25rem">Used for Reality SNI selection. First = highest priority.</div>
+            </div>
+            <div class="form-group">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">SNI Spoof / Stealth Candidates (one per line)</label>
+              <textarea id="bundleSpoofSnis" rows="6" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="auth.vercel.com&#10;cdn.jsdelivr.net&#10;hcaptcha.com&#10;assets.vercel.com&#10;images.unsplash.com&#10;cloudflare.com"></textarea>
+              <div style="font-size:.65rem;color:var(--muted);margin-top:.25rem">Fake SNI domains used in Stealth Mode Reality profiles. DPI sees these, not your real domain.</div>
+            </div>
+            <div class="form-group">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Backup IPs (one per line)</label>
+              <textarea id="bundleBackupIps" rows="3" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="5.249.252.221"></textarea>
+            </div>
+            <div class="form-group">
+              <label style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)">Backup Domains (one per line)</label>
+              <textarea id="bundleBackupDomains" rows="3" style="width:100%;font-family:monospace;font-size:.78rem;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:.5rem;resize:vertical" placeholder="edge.setalink.no"></textarea>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="bundleSaveBtn" style="margin-top:.75rem">Save Profile Bundle</button>
+          <span id="bundleSaveStatus" style="font-size:.72rem;color:var(--muted);margin-left:.75rem"></span>
+        </div>
+      </div>
+
       <!-- ── Remote Config Editor ──────────────────────────── -->
       <div class="diag-panel" id="remoteConfigPanel">
         <div class="diag-panel-head">
@@ -3479,6 +3511,54 @@ if (document.getElementById('diagRefreshBtn')) {
     } catch(e) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
   }
 
+  // ── Profile bundle loader + saver ─────────────────────────────────────────
+  async function loadBundleEditor() {
+    try {
+      // Fetch current bundle values from settings via direct GET
+      const j = await diagFetch('https://setalink.no/api.php?mobile=1&action=profile-bundle&_token=setalink-mobile-diag-v1');
+      if (!j.ok) return;
+      const d = j.data;
+      const sniEl   = document.getElementById('bundleSniCandidates');
+      const spoofEl = document.getElementById('bundleSpoofSnis');
+      const ipEl    = document.getElementById('bundleBackupIps');
+      const domEl   = document.getElementById('bundleBackupDomains');
+      if (sniEl)   sniEl.value   = (d.sni_candidates || []).join('\n');
+      if (spoofEl) spoofEl.value = (d.spoof_snis     || []).join('\n');
+      if (ipEl)    ipEl.value    = (d.backup_ips     || []).join('\n');
+      if (domEl)   domEl.value   = (d.backup_domains || []).join('\n');
+    } catch(e) { /* silent */ }
+  }
+
+  function parseTextareaLines(id) {
+    const el = document.getElementById(id);
+    if (!el) return [];
+    return el.value.split('\n').map(s => s.trim()).filter(Boolean);
+  }
+
+  document.getElementById('bundleSaveBtn')?.addEventListener('click', async () => {
+    const btn    = document.getElementById('bundleSaveBtn');
+    const status = document.getElementById('bundleSaveStatus');
+    if (btn) btn.disabled = true;
+    try {
+      const j = await SL.apiPost({
+        action:                'save-bundle',
+        bundle_sni_candidates: parseTextareaLines('bundleSniCandidates'),
+        bundle_spoof_snis:     parseTextareaLines('bundleSpoofSnis'),
+        bundle_backup_ips:     parseTextareaLines('bundleBackupIps'),
+        bundle_backup_domains: parseTextareaLines('bundleBackupDomains'),
+      });
+      if (j.ok) {
+        if (status) { status.style.color = 'var(--ok)'; status.textContent = '✓ Saved — apps will receive on next refresh'; }
+        SL.toast('Bundle saved', 'success');
+      } else {
+        if (status) { status.style.color = 'var(--danger)'; status.textContent = '✗ ' + (j.error || 'error'); }
+      }
+    } catch(e) {
+      if (status) { status.style.color = 'var(--danger)'; status.textContent = '✗ ' + e.message; }
+    }
+    if (btn) btn.disabled = false;
+  });
+
   // ── Remote config loader + saver ──────────────────────────────────────────
   async function loadRemoteConfigEditor() {
     const el = document.getElementById('remoteConfigLoaded');
@@ -3644,6 +3724,7 @@ if (document.getElementById('diagRefreshBtn')) {
     loadSniLeaderboard();
     loadLearningStats();
     loadDeviceBreakdown();
+    loadBundleEditor();
     loadRemoteConfigEditor();
     loadBootstrapPanel();
   });
@@ -3663,6 +3744,7 @@ if (document.getElementById('diagRefreshBtn')) {
   loadSessionStats();
   loadWatchdogLog();
   loadPaymentQueue();
+  loadBundleEditor();
   loadProfileStats();
   loadNoInternetAnalysis();
   loadSniLeaderboard();

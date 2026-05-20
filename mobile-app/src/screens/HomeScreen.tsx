@@ -13,12 +13,14 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
+import { useAIStore }          from '../stores/aiStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { formatBytes }         from '../utils/formatters';
 import { useT }                from '../i18n';
+import { connectingPhaseLabel } from '../services/failureClassifier';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_SMALL = require('../assets/logo_mark.png') as number;
@@ -56,6 +58,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     sessionStartedAt,
     sessionBytes,
     error,
+    smartStatus,
     reconnectAttempts,
     connectionLog,
     connect,
@@ -64,6 +67,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   const { greeting } = useGreeting();
   const user = useAuthStore((s) => s.user);
+  const autoConnect = useAIStore((s) => s.autoConnect);
   const timer = useSessionTimer(connectionState === 'connected', sessionStartedAt);
   const { uploadMbps, downloadMbps, pingMs } = useVpnStats();
 
@@ -72,6 +76,22 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
     || connectionState === 'disconnecting';
+
+  // Friendly status message shown below connect button while connecting
+  const connectingLabel = (() => {
+    if (connectionState !== 'connecting') return null;
+    if (smartStatus) return smartStatus;
+    if (autoConnect.isRunning) {
+      return connectingPhaseLabel(
+        autoConnect.currentLabel,
+        autoConnect.phase,
+        autoConnect.result?.durationMs ? 1 : 0,
+        autoConnect.currentIndex,
+        autoConnect.profiles.length,
+      );
+    }
+    return 'Establishing secure tunnel…';
+  })();
 
   const headerOpacity    = useRef(new Animated.Value(0)).current;
   const contentTranslate = useRef(new Animated.Value(20)).current;
@@ -141,13 +161,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.protocolText}>{protocol}</Text>
             </View>
           )}
-          {error && !isTransitioning && (
-            <TouchableOpacity
-              style={styles.errorBadge}
-              onPress={() => useVpnStore.getState().clearError()}
-            >
-              <Text style={styles.errorText}>{error} · {t('home.tapToRetry')}</Text>
-            </TouchableOpacity>
+          {isConnected && autoConnect.winningConfig && (
+            <View style={styles.stealthBadge}>
+              <Text style={styles.stealthBadgeText}>Stealth Active</Text>
+            </View>
           )}
         </Animated.View>
 
@@ -164,48 +181,27 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           {isConnected && <Text style={styles.timer}>{timer}</Text>}
         </Animated.View>
 
-        {/* Connection log (shown while connecting or on error) */}
-        {(connectionState === 'connecting' || connectionState === 'failed') && (
+        {/* Smart status — friendly message while connecting */}
+        {connectionState === 'connecting' && connectingLabel && (
           <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-            <GlassCard style={styles.logPanel}>
-              <Text style={styles.logPanelTitle}>{t('home.connLog')}</Text>
-              {connectionLog.length === 0 && connectionState === 'connecting' ? (
-                <Text style={styles.logEntry}>Establishing tunnel…</Text>
-              ) : (
-                connectionLog.map((entry, i) => (
-                  <Text
-                    key={i}
-                    style={[
-                      styles.logEntry,
-                      entry.startsWith('✗') && styles.logEntryError,
-                      entry.startsWith('✓') && styles.logEntryOk,
-                    ]}
-                  >
-                    {entry}
-                  </Text>
-                ))
-              )}
-            </GlassCard>
+            <View style={styles.smartStatusRow}>
+              <View style={styles.smartStatusDot} />
+              <Text style={styles.smartStatusText}>{connectingLabel}</Text>
+            </View>
           </Animated.View>
         )}
-        {/* Connection log (shown when connected — last 5 entries) */}
-        {connectionState === 'connected' && connectionLog.length > 0 && (
+
+        {/* Error message after all routes exhausted */}
+        {connectionState === 'failed' && error && (
           <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-            <GlassCard style={styles.logPanel}>
-              <Text style={styles.logPanelTitle}>{t('home.connLog')}</Text>
-              {connectionLog.slice(-5).map((entry, i) => (
-                <Text
-                  key={i}
-                  style={[
-                    styles.logEntry,
-                    entry.startsWith('✗') && styles.logEntryError,
-                    entry.startsWith('✓') && styles.logEntryOk,
-                  ]}
-                >
-                  {entry}
-                </Text>
-              ))}
-            </GlassCard>
+            <TouchableOpacity
+              style={styles.errorCard}
+              onPress={() => useVpnStore.getState().clearError()}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.errorCardText}>{error}</Text>
+              <Text style={styles.errorCardHint}>Tap to retry</Text>
+            </TouchableOpacity>
           </Animated.View>
         )}
 
@@ -268,7 +264,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </GlassCard>
         </Animated.View>
 
-        {/* AI Optimize */}
+        {/* Smart Connect Engine status */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
           <TouchableOpacity
             style={styles.aiBtn}
@@ -276,11 +272,17 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             activeOpacity={0.8}
           >
             <View style={styles.aiBtnLeft}>
-              <View style={styles.aiOrb} />
+              <View style={[styles.aiOrb, autoConnect.isRunning && { borderColor: '#FFB800', shadowColor: '#FFB800' }]} />
               <View>
-                <Text style={styles.aiBtnTitle}>{t('home.aiOptimize')}</Text>
+                <Text style={styles.aiBtnTitle}>
+                  {autoConnect.isRunning ? 'Finding best route…' : isConnected ? 'Optimal route active' : 'Auto-route selection'}
+                </Text>
                 <Text style={styles.aiBtnSub}>
-                  {isConnected ? t('home.routeOptimized') : t('home.willOptimize')}
+                  {autoConnect.isRunning
+                    ? `Testing ${autoConnect.profiles.length} routes`
+                    : isConnected && autoConnect.winningConfig
+                      ? `Connected via ${autoConnect.winningConfig.label}`
+                      : 'Tap for advanced options'}
                 </Text>
               </View>
             </View>
@@ -347,6 +349,14 @@ const styles = StyleSheet.create({
   errorText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.status.disconnected },
   reconnectBadge: { backgroundColor: 'rgba(255,184,0,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.35)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
   reconnectText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: '#FFB800', letterSpacing: 0.3 },
+  stealthBadge:   { backgroundColor: 'rgba(155,119,255,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(155,119,255,0.35)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  stealthBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#9B77FF', letterSpacing: 0.5 },
+  smartStatusRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], paddingVertical: Spacing[2], paddingHorizontal: Spacing[1] },
+  smartStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFB800' },
+  smartStatusText:{ fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, fontStyle: 'italic' },
+  errorCard:      { backgroundColor: 'rgba(255,80,80,0.08)', borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(255,80,80,0.25)', padding: Spacing[4], alignItems: 'center', gap: Spacing[1] },
+  errorCardText:  { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.status.disconnected, textAlign: 'center' },
+  errorCardHint:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
   connectArea:  { alignItems: 'center', paddingVertical: Spacing[4], gap: Spacing[3] },
   timer:        { fontSize: Typography.size.md, fontFamily: Typography.family.mono, color: Colors.text.secondary, letterSpacing: 2 },
   serverPill:   { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[3] },

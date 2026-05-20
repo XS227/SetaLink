@@ -473,6 +473,21 @@ if ($method === 'POST') {
         api_ok(['quota_bytes_total' => $quota]);
     }
 
+    if ($action === 'save-bundle') {
+        $allowed = ['bundle_sni_candidates','bundle_spoof_snis','bundle_backup_ips','bundle_backup_domains'];
+        $db = open_analytics_db();
+        $st = $db->prepare('INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime(\'now\'))');
+        foreach ($allowed as $k) {
+            if (array_key_exists($k, $parsed)) {
+                $v = $parsed[$k];
+                $st->execute([$k, is_array($v) ? json_encode($v, JSON_UNESCAPED_UNICODE) : (string)$v]);
+            }
+        }
+        $st->execute(['bundle_version', (string)((int)($db->query("SELECT COALESCE(value,'0') FROM settings WHERE key='bundle_version'")->fetchColumn()) + 1)]);
+        $st->execute(['bundle_published_at', date('Y-m-d')]);
+        api_ok(['saved' => true]);
+    }
+
     if ($action === 'payment-approve' || $action === 'payment-reject') {
         $pid  = (int)($parsed['payment_id'] ?? 0);
         $note = substr(trim((string)($parsed['note'] ?? '')), 0, 255);
