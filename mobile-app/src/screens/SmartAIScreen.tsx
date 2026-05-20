@@ -78,12 +78,11 @@ const orbStyles = StyleSheet.create({
 
 // ── Shared status helpers ─────────────────────────────────────────────────────
 
-type ProfileStatus = 'pending' | 'testing' | 'success' | 'tcp-only' | 'fail' | 'skipped';
+type ProfileStatus = 'pending' | 'testing' | 'success' | 'fail' | 'skipped';
 
 function statusColor(s: ProfileStatus | string): string {
   switch (s) {
     case 'success':  return Colors.emerald[400];
-    case 'tcp-only': return '#7BCF8E';
     case 'fail':     return '#FF5A5A';
     case 'testing':  return '#FFB800';
     case 'skipped':  return Colors.text.muted;
@@ -94,7 +93,6 @@ function statusColor(s: ProfileStatus | string): string {
 function statusIcon(s: ProfileStatus | string): string {
   switch (s) {
     case 'success':  return '✓';
-    case 'tcp-only': return '~';
     case 'fail':     return '✗';
     case 'testing':  return '…';
     case 'skipped':  return '↷';
@@ -468,11 +466,6 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                         {p.status === 'success' && (
                           <Text style={[autoStyles.profileSub, { color: Colors.emerald[400] }]}>
                             {p.probeOk ? `Probe validated · ${p.latencyMs}ms` : `TCP connected · ${p.latencyMs}ms`}
-                          </Text>
-                        )}
-                        {p.status === 'tcp-only' && (
-                          <Text style={[autoStyles.profileSub, { color: '#FF8C00' }]}>
-                            TCP connected but no internet confirmed — skipping
                           </Text>
                         )}
                         {p.status === 'fail' && p.error && (

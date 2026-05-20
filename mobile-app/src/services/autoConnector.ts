@@ -21,7 +21,7 @@ import type { VpnAdapter }        from './vpnBridge';
 import type { VpnServer }         from '../stores/vpnStore';
 import type { ServerCredentials } from './serverConfigService';
 import { buildXrayConfigJson, buildEmergencyXrayConfigJson } from './xrayConfigBuilder';
-import { getLastConnectProbeOk }  from './vpnBridge';
+import { getLastConnectProbeOk, getLastConnectFailureCategory } from './vpnBridge';
 import { recordSuccess, recordFailure, sortByHistory, getTopProfiles } from './successHistory';
 import { getRemoteConfig, isKillSwitched, invalidateRemoteConfig } from './remoteConfigService';
 import { getSpoofSnisSync, prefetchBundle } from './profileBundleService';
@@ -35,7 +35,6 @@ export type AutoPhase =
   | 'idle'
   | 'testing'
   | 'probe-validated'
-  | 'tcp-only'
   | 'failed'
   | 'retrying';
 
@@ -49,7 +48,8 @@ export interface AutoProfile {
   fingerprint: string;
   emergency:   boolean;
   configJson:  string;
-  status:      'pending' | 'testing' | 'success' | 'tcp-only' | 'fail' | 'skipped';
+  status:      'pending' | 'testing' | 'success' | 'fail' | 'skipped';
+  failureCategory?: string;
   latencyMs?:  number;
   error?:      string;
   probeOk?:    boolean;
@@ -360,11 +360,6 @@ async function _runPass(
 
   let probeWinnerId:  string | null = null;
   let probeWinnerCfg: string | null = null;
-  // Tracks the first profile where TCP succeeded (even without HTTP confirmation).
-  // Used as a fallback if no HTTP-verified profile is found — the tunnel is likely
-  // operational even if our specific probe targets were blocked or slow.
-  let tcpFallbackId:  string | null = null;
-  let tcpFallbackCfg: string | null = null;
 
   for (let i = 0; i < profiles.length; i++) {
     const p = profiles[i]!;
@@ -389,7 +384,8 @@ async function _runPass(
         ),
       ]);
 
-      const probeOk = getLastConnectProbeOk();
+      const probeOk         = getLastConnectProbeOk();
+      const failureCategory = getLastConnectFailureCategory();
       p.latencyMs   = Date.now() - t0;
       p.testedAt    = Date.now();
       p.probeOk     = probeOk;
@@ -407,11 +403,12 @@ async function _runPass(
         break;
       }
 
-      // TCP succeeded but HTTP probe is still running in background (or timed out).
-      // Keep as TCP fallback — try next profile for HTTP-confirmed access first.
-      p.status = 'tcp-only';
-      p.error  = 'TCP OK — internet probe running in background';
-      if (!tcpFallbackId) { tcpFallbackId = p.id; tcpFallbackCfg = p.configJson; }
+      // HTTP/HTTPS probe did not confirm internet — stop this profile and try next.
+      // TCP-only is NOT accepted as success: a tunnel that cannot route real HTTP
+      // traffic may be serving stale SOCKS5 or have misconfigured transport settings.
+      p.status          = 'fail';
+      p.error           = `No internet through tunnel [${failureCategory}]`;
+      p.failureCategory = failureCategory;
       recordFailure(p.id, p.sni, p.protocol);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
@@ -425,13 +422,8 @@ async function _runPass(
       p.latencyMs = Date.now() - t0;
       p.testedAt  = Date.now();
       const errMsg = e instanceof Error ? e.message : String(e);
-      // TCP-only errors indicate tunnel established but HTTP blocked.
-      // Hard failures (Xray config error, server unreachable) do NOT become TCP fallback.
-      const isTcpOnly = errMsg.includes('TCP OK') || errMsg.includes('tcp-only') ||
-                        errMsg.includes('probe') || errMsg.includes('no internet');
-      p.status = isTcpOnly ? 'tcp-only' : 'fail';
+      p.status = 'fail';
       p.error  = errMsg;
-      if (isTcpOnly && !tcpFallbackId) { tcpFallbackId = p.id; tcpFallbackCfg = p.configJson; }
       recordFailure(p.id, p.sni, p.protocol);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
@@ -453,43 +445,8 @@ async function _runPass(
     return result;
   }
 
-  // No HTTP-verified winner — but if TCP succeeded on any profile, reconnect
-  // to the best TCP-only candidate and mark as connected (probeOk=false).
-  // The tunnel is likely functional; internet probe targets may have been blocked.
-  if (tcpFallbackId && tcpFallbackCfg) {
-    const fallbackProfile = profiles.find(p => p.id === tcpFallbackId);
-    try {
-      const fallbackCfg = tcpFallbackCfg;
-      const isFallbackEmergency = fallbackProfile?.emergency ?? false;
-      await Promise.race([
-        isFallbackEmergency ? adapter.connectEmergency(fallbackCfg) : adapter.connect(fallbackCfg),
-        new Promise<never>((_, rej) =>
-          setTimeout(() => rej(new Error('Fallback reconnect timeout')), 30_000)
-        ),
-      ]);
-      if (fallbackProfile) { fallbackProfile.status = 'success'; fallbackProfile.probeOk = false; }
-    } catch { /* if reconnect fails, still report the original tcp-only result */ }
-
-    onUpdate({
-      phase: 'probe-validated', profileIndex: profiles.length - 1,
-      profileCount: profiles.length, profileLabel: fallbackProfile?.label ?? 'Fallback', retryCount,
-    }, [...profiles]);
-
-    const result: AutoConnectResult = {
-      success:      true,
-      probeOk:      false,
-      profiles,
-      winnerId:     tcpFallbackId,
-      winnerConfig: tcpFallbackCfg,
-      durationMs:   Date.now() - ranAt,
-      ranAt,
-      retryCount,
-    };
-    reportToAdmin(result, server.id, mode).catch(() => {});
-    return result;
-  }
-
-  // All profiles failed TCP — genuine connectivity failure.
+  // All profiles failed HTTP/HTTPS validation — genuine connectivity failure.
+  // TCP-only success is NOT accepted: no internet through tunnel = not connected.
   onUpdate({
     phase: 'failed', profileIndex: profiles.length,
     profileCount: profiles.length, profileLabel: '', retryCount,
@@ -525,34 +482,45 @@ async function reportToAdmin(
     for (const p of result.profiles) {
       if (p.status === 'pending' || p.status === 'skipped') continue;
 
+      // Derive failure category from error message patterns when not set explicitly
+      const rawCat = p.error ?? '';
+      const failureCat =
+        rawCat.includes('reality_clienthello') ? 'reality_clienthello_failed' :
+        rawCat.includes('ws_upgrade')          ? 'ws_upgrade_failed'          :
+        rawCat.includes('xhttp_path')          ? 'xhttp_path_mismatch'        :
+        rawCat.includes('socks_probe')         ? 'socks_probe_timeout'        :
+        rawCat.includes('dns_failed')          ? 'dns_failed'                 :
+        rawCat.match(/\[([\w_]+)\]/)           ? rawCat.match(/\[([\w_]+)\]/)![1]! :
+        p.status === 'fail'                    ? 'no_internet_routed'         : '';
+
       const body = new URLSearchParams({
-        _token:          MOBILE_TOKEN,
-        country:         'unknown',
-        network:         'unknown',
-        server:          serverId,
-        port:            String(p.port),
-        protocol:        p.protocol,
-        sni:             p.sni,
-        flow:            p.flow,
-        fingerprint:     p.fingerprint,
-        result:          p.status === 'success' ? 'success'
-                       : p.status === 'tcp-only' ? 'tcp_only' : 'fail',
-        error_msg:       p.error ?? '',
-        tcp_ok:          p.status !== 'fail' ? '1' : '0',
-        http_ok:         p.probeOk ? '1' : '0',
-        latency_ms:      String(p.latencyMs ?? 0),
-        is_winner:       p.id === result.winnerId ? '1' : '0',
-        tested_by:       'auto-connector-v2',
+        _token:           MOBILE_TOKEN,
+        country:          'unknown',
+        network:          'unknown',
+        server:           serverId,
+        port:             String(p.port),
+        protocol:         p.protocol,
+        sni:              p.sni,
+        flow:             p.flow,
+        fingerprint:      p.fingerprint,
+        result:           p.status === 'success' ? 'success' : 'fail',
+        error_msg:        p.error ?? '',
+        failure_category: failureCat,
+        tcp_ok:           p.status === 'success' ? '1' : '0',
+        http_ok:          p.probeOk ? '1' : '0',
+        latency_ms:       String(p.latencyMs ?? 0),
+        is_winner:        p.id === result.winnerId ? '1' : '0',
+        tested_by:        'auto-connector-v2',
         mode,
-        emergency:       p.emergency ? '1' : '0',
-        device_model:    device?.model ?? 'unknown',
-        android_version: device?.androidRelease ?? '',
-        android_sdk:     String(device?.androidSdk ?? 0),
-        ipv6_enabled:    '0',  // IPv6 is now disabled in TUN (Phase 1 fix)
-        mtu:             p.emergency ? '1280' : '1400',
-        reconnect_count: String(result.retryCount),
-        no_internet:     (p.status === 'tcp-only' && !p.probeOk) ? '1' : '0',
-        fallback_chain:  topHistory,
+        emergency:        p.emergency ? '1' : '0',
+        device_model:     device?.model ?? 'unknown',
+        android_version:  device?.androidRelease ?? '',
+        android_sdk:      String(device?.androidSdk ?? 0),
+        ipv6_enabled:     '0',
+        mtu:              p.emergency ? '1280' : '1400',
+        reconnect_count:  String(result.retryCount),
+        no_internet:      !p.probeOk ? '1' : '0',
+        fallback_chain:   topHistory,
         notes: `AutoConnector v2 mode=${mode} total=${result.durationMs}ms probeOk=${result.probeOk} retry=${result.retryCount}`,
       });
 

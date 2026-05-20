@@ -250,6 +250,20 @@ function icon(string $name): string {
           </table>
         </div>
       </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Transport Mismatch Warnings</span>
+          <span class="panel-sub">bad probes vs. real transport failures — last 48 h</span>
+        </div>
+        <div id="transportMismatchWarn" style="padding:12px 16px;font-size:13px;color:#8a9bbf;">Loading…</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Category</th><th>Protocol</th><th>SNI</th><th>Count</th><th>Last Error</th><th>Notes</th></tr></thead>
+            <tbody id="transportMismatchTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->
@@ -426,7 +440,7 @@ function icon(string $name): string {
             <div class="form-group"><label>Edge Address</label><input class="input" id="bsEdgeAddr"></div>
             <div class="form-group"><label>Edge Port</label><input class="input" id="bsEdgePort" type="number"></div>
             <div class="form-group"><label>/ws path</label><input class="input" id="bsWsPath" value="/ws"></div>
-            <div class="form-group"><label>/xhttp path</label><input class="input" id="bsXhttpPath" value="/xhttp"></div>
+            <div class="form-group"><label>/xhttp path</label><input class="input" id="bsXhttpPath" value="/xhttp/"></div>
           </div>
           <div style="display:flex;gap:.5rem;margin-top:.25rem">
             <button class="btn btn-primary" id="cfgSaveBootstrap"><?= icon('save') ?> Save Bootstrap</button>
@@ -789,6 +803,7 @@ views.iran = {
     this.loadScore();
     this.loadDebug();
     this.loadNoInternet();
+    this.loadTransportMismatch();
   },
   async loadScore() {
     try {
@@ -831,6 +846,55 @@ views.iran = {
             <td>${fmtNum(r.probe_ok_cnt)}</td>
           </tr>`).join('');
     } catch(e) { $('noInternetTbl').innerHTML=`<tr><td colspan="5" class="tbl-empty">${esc(e.message)}</td></tr>`; }
+  },
+  async loadTransportMismatch() {
+    try {
+      const data = await api.get('transport-mismatch');
+      const rows = data.rows || [];
+      const warns = data.warnings || [];
+
+      $('transportMismatchWarn').innerHTML = warns.length
+        ? warns.map(w=>`<div style="margin-bottom:6px;padding:6px 10px;border-left:3px solid ${w.level==='error'?'#e74c3c':w.level==='warn'?'#f39c12':'#3498db'};background:rgba(255,255,255,.03);border-radius:2px;font-size:.78rem">
+            <strong>${esc(w.label)}</strong>: ${esc(w.detail)}
+          </div>`).join('')
+        : '<span style="color:#2ecc71;font-size:.8rem">✓ No transport mismatches detected in last 48 h</span>';
+
+      const catBadge = cat => {
+        const m = {
+          reality_clienthello_failed: ['badge-danger','Reality ClientHello'],
+          ws_upgrade_failed:          ['badge-warn','WS Upgrade'],
+          xhttp_path_mismatch:        ['badge-danger','XHTTP Path'],
+          socks_probe_timeout:        ['badge-warn','SOCKS Timeout'],
+          dns_failed:                 ['badge-warn','DNS Failed'],
+          no_internet_routed:         ['badge-muted','No Internet'],
+        };
+        const [cls, label] = m[cat] || ['badge-muted', cat||'unknown'];
+        return `<span class="badge ${cls}">${esc(label)}</span>`;
+      };
+
+      $('transportMismatchTbl').innerHTML = !rows.length
+        ? '<tr><td colspan="6" class="tbl-empty">No transport failures recorded — good!</td></tr>'
+        : rows.map(r=>{
+            const notes = r.failure_category === 'xhttp_path_mismatch'
+              ? `Client sent <code>${esc(r.sni||'?')}</code> — ensure path ends with <strong>/</strong>`
+              : r.failure_category === 'reality_clienthello_failed'
+              ? 'Check if source IP is a server probe (127.x / server IP) — not a real Iran failure'
+              : r.failure_category === 'ws_upgrade_failed'
+              ? 'Verify nginx not using http2 on edge vhost; WS needs HTTP/1.1 Upgrade'
+              : '—';
+            return `<tr>
+              <td>${catBadge(r.failure_category)}</td>
+              <td>${protoBadge(r.protocol)}</td>
+              <td class="mono" style="font-size:.7rem">${esc(r.sni||'—')}</td>
+              <td><strong>${fmtNum(r.cnt)}</strong></td>
+              <td style="max-width:220px;font-size:.68rem;color:var(--muted);word-break:break-all">${esc((r.last_error||'').substring(0,100))}</td>
+              <td style="font-size:.7rem;color:var(--muted-2)">${notes}</td>
+            </tr>`;
+          }).join('');
+    } catch(e) {
+      $('transportMismatchTbl').innerHTML=`<tr><td colspan="6" class="tbl-empty">${esc(e.message)}</td></tr>`;
+      $('transportMismatchWarn').textContent = e.message;
+    }
   },
   renderStatsSummary(s) {
     if (!s) { $('iranStatsSummary').innerHTML='<div class="panel-empty">No Iran data yet. Stats appear once devices report from Iranian ISPs.</div>'; return; }
@@ -1255,7 +1319,7 @@ views.config = {
       $('bsEdgeAddr').value  = bs.edgeAddress||'';
       $('bsEdgePort').value  = bs.edgePort||443;
       $('bsWsPath').value    = bs.wsPath||'/ws';
-      $('bsXhttpPath').value = bs.xhttpPath||'/xhttp';
+      $('bsXhttpPath').value = bs.xhttpPath||'/xhttp/';
     } catch(e) { toast('Config: '+e.message,'error'); }
   },
   renderRcTags(elId, arr) {

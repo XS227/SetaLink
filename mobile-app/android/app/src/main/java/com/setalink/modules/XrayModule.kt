@@ -30,10 +30,11 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         private const val TAG           = "XrayModule"
     }
 
-    private var running      = false
-    private var startedAt    = 0L
-    private var lastError:   String? = null
-    private var lastProbeOk  = false
+    private var running             = false
+    private var startedAt           = 0L
+    private var lastError:          String? = null
+    private var lastProbeOk         = false
+    private var lastFailureCategory = ""
 
     // Stored while Android VPN-permission dialog is shown
     private var pendingConfig:   String?  = null
@@ -94,10 +95,12 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                         sessionStartRxBytes = TRAFFIC_UNSUPPORTED
                         sessionStartTxBytes = TRAFFIC_UNSUPPORTED
                     }
-                    val err   = intent.getStringExtra(XrayVpnService.EXTRA_ERROR)
+                    val err      = intent.getStringExtra(XrayVpnService.EXTRA_ERROR)
+                    val category = intent.getStringExtra("failure_category") ?: ""
                     if (err != null) {
-                        lastError = err
-                        Log.e(TAG, "VPN disconnected with error: $err")
+                        lastError          = err
+                        lastFailureCategory = category
+                        Log.e(TAG, "VPN disconnected with error: $err category=$category")
                     } else {
                         Log.i(TAG, "VPN disconnected")
                     }
@@ -239,6 +242,9 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     override fun getLastProbeResult(promise: Promise) = promise.resolve(lastProbeOk)
+
+    @ReactMethod
+    fun getLastFailureCategory(promise: Promise) = promise.resolve(lastFailureCategory)
 
     @ReactMethod
     override fun getStats(promise: Promise) {

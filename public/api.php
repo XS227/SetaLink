@@ -108,7 +108,7 @@ function hardcoded_bootstrap(): array {
         'edgeAddress' => 'edge.setalink.no',
         'edgePort'    => 443,
         'wsPath'      => '/ws',
-        'xhttpPath'   => '/xhttp',
+        'xhttpPath'   => '/xhttp/',
         'httpupPath'  => '/httpup',
     ];
 }
@@ -136,7 +136,7 @@ function fetch_bootstrap_server(PDO $pdo): array {
         'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
-        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
+        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
     ];
 }
@@ -209,7 +209,7 @@ if ($method === 'GET') {
             'edgeAddress' => $srv['edgeAddress'] ?? '',
             'edgePort'    => (int)($srv['edgePort'] ?? 443),
             'wsPath'      => $srv['wsPath']      ?? '/ws',
-            'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp',
+            'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp/',
             'httpupPath'  => $srv['httpupPath']  ?? '/httpup',
         ]);
     }

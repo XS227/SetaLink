@@ -92,7 +92,7 @@ export interface AutoConnectProfile {
   flow:        string;
   fingerprint: string;
   emergency:   boolean;
-  status:      'pending' | 'testing' | 'success' | 'tcp-only' | 'fail' | 'skipped';
+  status:      'pending' | 'testing' | 'success' | 'fail' | 'skipped';
   latencyMs?:  number;
   error?:      string;
   probeOk?:    boolean;

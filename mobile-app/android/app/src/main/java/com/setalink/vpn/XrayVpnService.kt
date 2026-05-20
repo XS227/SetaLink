@@ -45,6 +45,14 @@ class XrayVpnService : VpnService() {
         const val BROADCAST_METRICS        = "com.setalink.vpn.METRICS"
         const val BROADCAST_TRAFFIC_STALL = "com.setalink.vpn.TRAFFIC_STALL"
 
+        // Failure categories sent in BROADCAST_DISCONNECTED extra "failure_category"
+        const val FAIL_REALITY_CLIENTHELLO = "reality_clienthello_failed"
+        const val FAIL_WS_UPGRADE          = "ws_upgrade_failed"
+        const val FAIL_XHTTP_PATH_MISMATCH = "xhttp_path_mismatch"
+        const val FAIL_SOCKS_PROBE_TIMEOUT = "socks_probe_timeout"
+        const val FAIL_DNS_FAILED          = "dns_failed"
+        const val FAIL_NO_INTERNET         = "no_internet_routed"
+
         const val XRAY_LOG_FILE     = "xray.log"
         const val TUN2SOCKS_LOG_FILE = "tun2socks.log"
 
@@ -277,14 +285,16 @@ class XrayVpnService : VpnService() {
             val tunProbe = runTunNetworkProbe()
 
             if (!tunProbe.ok) {
+                val category = tunProbe.category
                 val msg = "Server connected, but internet is not routed through VPN. ${tunProbe.message}"
-                broadcastStep("tun_probe", false, msg)
-                appendLog("[TUN-PROBE FAILED] $msg")
+                broadcastStep("tun_probe", false, "[$category] $msg")
+                appendLog("[TUN-PROBE FAILED] category=$category $msg")
                 sendBroadcast(Intent(BROADCAST_ROUTING_FAIL).apply {
                     setPackage(packageName)
                     putExtra(EXTRA_ERROR, msg)
+                    putExtra("failure_category", category)
                 })
-                broadcastError(msg)
+                broadcastError(msg, category)
                 tearDownTunnel()
                 return
             }
@@ -437,7 +447,7 @@ class XrayVpnService : VpnService() {
 
     // ── Deep validation ───────────────────────────────────────────────────────
 
-    private data class ValidationResult(val ok: Boolean, val message: String, val probeOk: Boolean = false)
+    private data class ValidationResult(val ok: Boolean, val message: String, val probeOk: Boolean = false, val category: String = FAIL_NO_INTERNET)
 
     private suspend fun runDeepValidation(tunInterface: String?): ValidationResult {
         // Snapshot TUN bytes before probe
@@ -604,7 +614,8 @@ class XrayVpnService : VpnService() {
 
         if (!isPermError) {
             appendLog("[TUN-PROBE] FAILED: ${err?.javaClass?.simpleName}: $errMsg")
-            return ValidationResult(false, "TUN probe failed: ${errMsg.take(120)}")
+            val category = classifyFailure(readLogTail(30))
+            return ValidationResult(false, "TUN probe failed: ${errMsg.take(120)}", category = category)
         }
 
         // EPERM: our UID is excluded from the VPN network via addDisallowedApplication.
@@ -661,21 +672,27 @@ class XrayVpnService : VpnService() {
             else probeNote = "All SOCKS5 probes failed — last: $snippet"
         }
 
-        appendLog("[TUN-FALLBACK] result: probeOk=$probeOk note=$probeNote xray=$xrayAlive t2s=$t2sAlive TUN=$tunIface")
+        val xrayLogTail = readLogTail(40)
+        val failCategory = if (probeOk) FAIL_NO_INTERNET else classifyFailure(xrayLogTail)
+        appendLog("[TUN-FALLBACK] result: probeOk=$probeOk category=$failCategory note=$probeNote xray=$xrayAlive t2s=$t2sAlive TUN=$tunIface")
 
         return if (probeOk) {
             broadcastStep("tun_fallback_ok", true,
                 "EPERM fallback — SOCKS5 internet confirmed: $probeNote TUN=$tunIface")
             ValidationResult(
-                ok      = true,
-                message = "bindSocket EPERM (OK) — SOCKS5 probe passed: $probeNote TUN=$tunIface",
-                probeOk = true
+                ok       = true,
+                message  = "bindSocket EPERM (OK) — SOCKS5 probe passed: $probeNote TUN=$tunIface",
+                probeOk  = true,
+                category = FAIL_NO_INTERNET,
             )
         } else {
             broadcastStep("tun_fallback_fail", false,
-                "EPERM fallback — SOCKS5 internet probe FAILED: $probeNote")
-            ValidationResult(false,
-                "Server connected but internet not routed through VPN. $probeNote")
+                "EPERM fallback — SOCKS5 internet probe FAILED [$failCategory]: $probeNote")
+            ValidationResult(
+                ok       = false,
+                message  = "Server connected but internet not routed through VPN. $probeNote",
+                category = failCategory,
+            )
         }
     }
 
@@ -957,10 +974,32 @@ class XrayVpnService : VpnService() {
 
     // ── Broadcast helpers ─────────────────────────────────────────────────────
 
-    private fun broadcastError(msg: String) {
+    // Scans the Xray log to classify the transport failure category.
+    // Categories map to admin failure_category field and help diagnose server-side errors.
+    private fun classifyFailure(logTail: String): String {
+        val log = logTail.lowercase()
+        return when {
+            log.contains("failed to read client hello") ||
+            log.contains("clienthello")                  -> FAIL_REALITY_CLIENTHELLO
+            log.contains("websocket protocol") ||
+            log.contains("upgrade header") ||
+            log.contains("not using the websocket")      -> FAIL_WS_UPGRADE
+            log.contains("validate path") ||
+            log.contains("path mismatch")                -> FAIL_XHTTP_PATH_MISMATCH
+            log.contains("dns") &&
+            (log.contains("failed") || log.contains("timeout")) -> FAIL_DNS_FAILED
+            log.contains("timeout") ||
+            log.contains("i/o timeout") ||
+            log.contains("connection timed out")         -> FAIL_SOCKS_PROBE_TIMEOUT
+            else                                         -> FAIL_NO_INTERNET
+        }
+    }
+
+    private fun broadcastError(msg: String, failureCategory: String = FAIL_NO_INTERNET) {
         sendBroadcast(Intent(BROADCAST_DISCONNECTED).apply {
             setPackage(packageName)
             putExtra(EXTRA_ERROR, msg)
+            putExtra("failure_category", failureCategory)
         })
     }
 

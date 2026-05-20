@@ -87,6 +87,7 @@ function open_analytics_db(): PDO {
         "ALTER TABLE test_results ADD COLUMN mode TEXT DEFAULT ''",
         "ALTER TABLE test_results ADD COLUMN emergency INTEGER DEFAULT 0",
         "ALTER TABLE test_results ADD COLUMN fallback_chain TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN failure_category TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $db->exec($sql); } catch (Exception $e) { /* column exists */ }
@@ -192,7 +193,7 @@ function fetch_bootstrap_server(PDO $db): array {
             'edgeAddress' => 'edge.setalink.no',
             'edgePort'    => 443,
             'wsPath'      => '/ws',
-            'xhttpPath'   => '/xhttp',
+            'xhttpPath'   => '/xhttp/',
             'httpupPath'  => '/httpup',
         ];
     }
@@ -211,7 +212,7 @@ function fetch_bootstrap_server(PDO $db): array {
         'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
-        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
+        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
     ];
 }
@@ -425,7 +426,8 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     $is_winner     = (int)(bool)($_POST['is_winner']          ?? 0);
     $mode          = substr(trim((string)($_POST['mode']       ?? '')), 0, 20);
     $emergency     = (int)(bool)($_POST['emergency']          ?? 0);
-    $fallback_chain = substr(trim((string)($_POST['fallback_chain'] ?? '')), 0, 500);
+    $fallback_chain    = substr(trim((string)($_POST['fallback_chain']    ?? '')), 0, 500);
+    $failure_category  = substr(trim((string)($_POST['failure_category']  ?? '')), 0, 80);
     if (!in_array($result, $allowed_results, true)) $result = 'fail';
     if (!$server) api_err('server required');
     $db = open_analytics_db();
@@ -433,12 +435,12 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         (country,network,server,port,protocol,sni,flow,fingerprint,result,error_msg,
          tcp_ok,http_ok,latency_ms,tested_by,notes,
          device_model,android_version,android_sdk,ipv6_enabled,mtu,
-         reconnect_count,no_internet,is_winner,mode,emergency,fallback_chain)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+         reconnect_count,no_internet,is_winner,mode,emergency,fallback_chain,failure_category)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
     $st->execute([$country,$network,$server,$port,$protocol,$sni,$flow,$fingerprint,$result,$error_msg,
                   $tcp_ok,$http_ok,$latency_ms,$tested_by,$notes,
                   $device_model,$android_ver,$android_sdk,$ipv6_enabled,$mtu,
-                  $reconnect_cnt,$no_internet,$is_winner,$mode,$emergency,$fallback_chain]);
+                  $reconnect_cnt,$no_internet,$is_winner,$mode,$emergency,$fallback_chain,$failure_category]);
     api_ok(['id' => (int)$db->lastInsertId()]);
 }
 
@@ -709,7 +711,7 @@ switch ($action) {
         $EDGE = 'edge.setalink.no';
         $ph_probes = [
             'ws'          => ['url' => "https://{$EDGE}/ws",     'hdrs' => ['-H','Upgrade: websocket','-H','Connection: Upgrade']],
-            'xhttp'       => ['url' => "https://{$EDGE}/xhttp",  'hdrs' => []],
+            'xhttp'       => ['url' => "https://{$EDGE}/xhttp/", 'hdrs' => []],
             'httpupgrade' => ['url' => "https://{$EDGE}/httpup", 'hdrs' => ['-H','Upgrade: XHTTP','-H','Connection: Upgrade']],
         ];
         $ph_files = [];
@@ -1038,6 +1040,59 @@ switch ($action) {
              ORDER BY no_internet_cnt DESC LIMIT 50"
         )->fetchAll(PDO::FETCH_ASSOC);
         api_ok($rows);
+        break;
+
+    case 'transport-mismatch':
+        $db = open_analytics_db();
+        // Group failures by category + protocol + sni in last 48h
+        $rows = $db->query(
+            "SELECT failure_category, protocol, sni,
+                    COUNT(*) as cnt,
+                    MAX(error_msg) as last_error,
+                    MAX(recorded_at) as last_seen
+             FROM test_results
+             WHERE failure_category != ''
+               AND recorded_at >= datetime('now', '-48 hours')
+               AND result = 'fail'
+             GROUP BY failure_category, protocol, sni
+             ORDER BY cnt DESC LIMIT 60"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        // Build actionable warnings
+        $warnings = [];
+        foreach ($rows as $r) {
+            switch ($r['failure_category']) {
+                case 'xhttp_path_mismatch':
+                    $warnings[] = [
+                        'level'  => 'error',
+                        'label'  => 'XHTTP path mismatch',
+                        'detail' => "Client requesting /xhttp but server expects /xhttp/ — {$r['cnt']} failures. Ensure xhttpPath in bootstrap ends with /.",
+                    ];
+                    break;
+                case 'ws_upgrade_failed':
+                    $warnings[] = [
+                        'level'  => 'warn',
+                        'label'  => 'WebSocket upgrade rejected',
+                        'detail' => "Server not accepting WS Upgrade header — {$r['cnt']} failures. Check nginx edge vhost is not using http2.",
+                    ];
+                    break;
+                case 'reality_clienthello_failed':
+                    $warnings[] = [
+                        'level'  => 'warn',
+                        'label'  => 'Reality ClientHello failures',
+                        'detail' => "Server rejected ClientHello — {$r['cnt']} failures. Likely a probe or fingerprint issue, not an Iran block.",
+                    ];
+                    break;
+                case 'socks_probe_timeout':
+                    $warnings[] = [
+                        'level'  => 'warn',
+                        'label'  => 'SOCKS5 probe timeouts',
+                        'detail' => "Internet probe through tunnel timed out — {$r['cnt']} failures. Validate 1.1.1.1/cdn-cgi/trace is reachable from VPS.",
+                    ];
+                    break;
+            }
+        }
+        api_ok(['rows' => $rows, 'warnings' => array_values(array_unique($warnings, SORT_REGULAR))]);
         break;
 
     case 'get-remote-config':
