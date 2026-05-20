@@ -60,6 +60,9 @@ function icon(string $name): string {
 
 <div class="layout">
 
+<!-- ── Sidebar overlay (mobile backdrop) ───────────────────────────── -->
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
 <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
@@ -92,7 +95,7 @@ function icon(string $name): string {
       <?= icon('settings') ?> Config
     </div>
   </nav>
-  <div class="sidebar-footer">SetaLink v0.9.11 &middot; <?= h($auth_user) ?></div>
+  <div class="sidebar-footer">SetaLink v0.9.12 &middot; <?= h($auth_user) ?></div>
 </aside>
 
 <!-- ── Main ─────────────────────────────────────────────────────────── -->
@@ -138,7 +141,7 @@ function icon(string $name): string {
             <span class="panel-title"><?= icon('globe') ?> Protocol Health</span>
             <button class="btn btn-ghost btn-sm" id="probeBtn">Run Probe</button>
           </div>
-          <div class="panel-body" id="protocolHealth"><div class="loading"><div class="spinner"></div> Running probes…</div></div>
+          <div class="panel-body" id="protocolHealth"><div class="panel-empty">Click "Run Probe" to test all protocol endpoints</div></div>
         </div>
         <div class="panel">
           <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Active Connections</span></div>
@@ -253,7 +256,7 @@ function icon(string $name): string {
     <!-- VIEW: DEVICES                                                -->
     <!-- ============================================================ -->
     <div data-view="devices" hidden>
-      <div class="stat-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:1rem" id="devStats">
+      <div class="dev-stat-grid" id="devStats">
         <div class="stat-card"><div class="stat-label">Total</div><div class="stat-value" id="devTotal">—</div></div>
         <div class="stat-card stat-ok"><div class="stat-label">Online</div><div class="stat-value" id="devOnline">—</div></div>
         <div class="stat-card"><div class="stat-label">Free</div><div class="stat-value" id="devFree">—</div></div>
@@ -411,7 +414,7 @@ function icon(string $name): string {
       <div class="panel">
         <div class="panel-header"><span class="panel-title">Bootstrap Server</span><span class="panel-sub">emergency profile used by app on first launch</span></div>
         <div class="panel-body">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem">
+          <div class="bootstrap-grid">
             <div class="form-group"><label>UUID</label><input class="input" id="bsUuid"></div>
             <div class="form-group"><label>Address</label><input class="input" id="bsAddress"></div>
             <div class="form-group"><label>Port</label><input class="input" id="bsPort" type="number" min="1" max="65535"></div>
@@ -598,11 +601,20 @@ function closeModal()  {
 $('backdrop').addEventListener('click', closeModal);
 
 // ── Sidebar mobile toggle ────────────────────────────────────────────
-$('menuToggle').addEventListener('click', ()=>$('sidebar').classList.toggle('open'));
-document.addEventListener('click', e=>{
-  if (!$('sidebar').contains(e.target)&&!$('menuToggle').contains(e.target))
-    $('sidebar').classList.remove('open');
-});
+function openSidebar()  {
+  $('sidebar').classList.add('open');
+  $('sidebarOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden'; // prevent scroll behind drawer
+}
+function closeSidebar() {
+  $('sidebar').classList.remove('open');
+  $('sidebarOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+$('menuToggle').addEventListener('click', ()=>
+  $('sidebar').classList.contains('open') ? closeSidebar() : openSidebar()
+);
+$('sidebarOverlay').addEventListener('click', closeSidebar);
 
 // ── Router ───────────────────────────────────────────────────────────
 let activeView='', refreshTimer=null;
@@ -617,6 +629,7 @@ const pageTitles = {
 
 function navigate(page) {
   if (!pageTitles[page]) page = 'dashboard';
+  closeSidebar(); // close mobile drawer on every navigation
   document.querySelectorAll('.nav-item').forEach(el=>el.classList.toggle('active', el.dataset.page===page));
   document.querySelectorAll('[data-view]').forEach(el=>{ el.hidden = el.dataset.view!==page; });
   const [title, sub] = pageTitles[page];

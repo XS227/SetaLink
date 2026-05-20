@@ -14,9 +14,10 @@ data/
 *.log
 logs/
 
-# ── APK releases (large binaries — served from disk, not git) ─────────────────
-*.apk
-public/releases/
+# ── APK files — tracked via Git LFS (see .gitattributes) ─────────────────────
+# Build outputs are ignored by mobile-app/.gitignore (android/app/build/).
+# Release APKs in public/releases/ are committed through LFS.
+# The download symlink (setalink-latest.apk) is tracked as a regular symlink.
 public/assets/*.apk
 
 # ── Android build artifacts ───────────────────────────────────────────────────
