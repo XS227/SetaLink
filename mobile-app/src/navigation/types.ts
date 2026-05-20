@@ -3,15 +3,16 @@ import type { BottomTabNavigationProp }   from '@react-navigation/bottom-tabs';
 import type { CompositeNavigationProp }   from '@react-navigation/native';
 
 export type RootStackParamList = {
-  Splash:      undefined;
-  Language:    undefined;
-  Onboarding:  undefined;
-  Auth:        undefined;
-  Welcome:     undefined;
-  Main:        undefined;
-  Settings:    undefined;
-  Diagnostics: undefined;
-  Upgrade:     undefined;
+  Splash:        undefined;
+  Language:      undefined;
+  Onboarding:    undefined;
+  Auth:          undefined;
+  Welcome:       undefined;
+  Main:          undefined;
+  Settings:      undefined;
+  Diagnostics:   undefined;
+  Upgrade:       undefined;
+  ProfileImport: undefined;
 };
 
 export type MainTabParamList = {

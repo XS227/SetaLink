@@ -138,7 +138,7 @@ export function buildAutoProfiles(
     emergency: false,
   });
 
-  // TLS transport profiles (WebSocket / XHTTP / HTTPUpgrade) go through the nginx
+  // TLS transport profiles (XHTTP / WebSocket / HTTPUpgrade) go through the nginx
   // edge proxy, not the Reality port. Use edgeAddr and port 443 for the SNI.
   const tls = (id: string, label: string, protocol: string, port = 443): ProfileDef => ({
     id, label, protocol,
@@ -186,9 +186,10 @@ export function buildAutoProfiles(
       profiles.push(reality(`iran-spoof${i}`, `Stealth · ${sni}`, sni, { flow: baseFlow }));
     }
 
-    // TLS transports
-    profiles.push(tls('iran-xhttp', 'VLESS + XHTTP · 443',     'VLESS+XHTTP'));
-    profiles.push(tls('iran-ws',    'VLESS + WebSocket · 443',  'VLESS + WebSocket'));
+    // Edge transports in priority order: XHTTP → WS → HTTPUpgrade
+    profiles.push(tls('iran-xhttp',  'VLESS + XHTTP · 443',        'VLESS+XHTTP'));
+    profiles.push(tls('iran-ws',     'VLESS + WebSocket · 443',     'VLESS + WebSocket'));
+    profiles.push(tls('iran-httpup', 'VLESS + HTTPUpgrade · 443',   'VLESS+HTTPUpgrade'));
 
     // Emergency
     profiles.push(emergency('iran-emrg', 'Emergency · IPv4+MTU1280', iranSnis[0]!));
@@ -218,8 +219,10 @@ export function buildAutoProfiles(
     profiles.push(reality(`auto-spoof${i}`, `Stealth · ${sni}`, sni, { flow: baseFlow }));
   }
 
-  profiles.push(tls('auto-xhttp', 'VLESS + XHTTP · 443',    'VLESS+XHTTP'));
-  profiles.push(tls('auto-ws',    'VLESS + WebSocket · 443', 'VLESS + WebSocket'));
+  // Edge transports in priority order: XHTTP → WS → HTTPUpgrade → emergency
+  profiles.push(tls('auto-xhttp',  'VLESS + XHTTP · 443',        'VLESS+XHTTP'));
+  profiles.push(tls('auto-ws',     'VLESS + WebSocket · 443',     'VLESS + WebSocket'));
+  profiles.push(tls('auto-httpup', 'VLESS + HTTPUpgrade · 443',   'VLESS+HTTPUpgrade'));
   profiles.push(emergency('auto-emrg', 'Emergency · IPv4+MTU1280', creds.sni || autoSnis[0]!));
   return profiles;
 }
@@ -357,6 +360,11 @@ async function _runPass(
 
   let probeWinnerId:  string | null = null;
   let probeWinnerCfg: string | null = null;
+  // Tracks the first profile where TCP succeeded (even without HTTP confirmation).
+  // Used as a fallback if no HTTP-verified profile is found — the tunnel is likely
+  // operational even if our specific probe targets were blocked or slow.
+  let tcpFallbackId:  string | null = null;
+  let tcpFallbackCfg: string | null = null;
 
   for (let i = 0; i < profiles.length; i++) {
     const p = profiles[i]!;
@@ -387,7 +395,7 @@ async function _runPass(
       p.probeOk     = probeOk;
 
       if (probeOk) {
-        // Probe-validated: real HTTP/HTTPS data confirmed through tunnel.
+        // HTTP/HTTPS confirmed through tunnel — definitive winner.
         p.status      = 'success';
         probeWinnerId  = p.id;
         probeWinnerCfg = p.configJson;
@@ -399,10 +407,11 @@ async function _runPass(
         break;
       }
 
-      // probeOk=false: TCP established but no internet data confirmed.
-      // This tunnel does NOT deliver real internet access. Do NOT accept it.
-      // Disconnect and try the next profile.
+      // TCP succeeded but HTTP probe is still running in background (or timed out).
+      // Keep as TCP fallback — try next profile for HTTP-confirmed access first.
       p.status = 'tcp-only';
+      p.error  = 'TCP OK — internet probe running in background';
+      if (!tcpFallbackId) { tcpFallbackId = p.id; tcpFallbackCfg = p.configJson; }
       recordFailure(p.id, p.sni, p.protocol);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
@@ -416,9 +425,13 @@ async function _runPass(
       p.latencyMs = Date.now() - t0;
       p.testedAt  = Date.now();
       const errMsg = e instanceof Error ? e.message : String(e);
-      // Distinguish "TCP ok but probe failed" from hard Xray/config failures.
-      p.status = errMsg.includes('TCP OK') ? 'tcp-only' : 'fail';
+      // TCP-only errors indicate tunnel established but HTTP blocked.
+      // Hard failures (Xray config error, server unreachable) do NOT become TCP fallback.
+      const isTcpOnly = errMsg.includes('TCP OK') || errMsg.includes('tcp-only') ||
+                        errMsg.includes('probe') || errMsg.includes('no internet');
+      p.status = isTcpOnly ? 'tcp-only' : 'fail';
       p.error  = errMsg;
+      if (isTcpOnly && !tcpFallbackId) { tcpFallbackId = p.id; tcpFallbackCfg = p.configJson; }
       recordFailure(p.id, p.sni, p.protocol);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
@@ -440,7 +453,43 @@ async function _runPass(
     return result;
   }
 
-  // No profile delivered confirmed internet access.
+  // No HTTP-verified winner — but if TCP succeeded on any profile, reconnect
+  // to the best TCP-only candidate and mark as connected (probeOk=false).
+  // The tunnel is likely functional; internet probe targets may have been blocked.
+  if (tcpFallbackId && tcpFallbackCfg) {
+    const fallbackProfile = profiles.find(p => p.id === tcpFallbackId);
+    try {
+      const fallbackCfg = tcpFallbackCfg;
+      const isFallbackEmergency = fallbackProfile?.emergency ?? false;
+      await Promise.race([
+        isFallbackEmergency ? adapter.connectEmergency(fallbackCfg) : adapter.connect(fallbackCfg),
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error('Fallback reconnect timeout')), 30_000)
+        ),
+      ]);
+      if (fallbackProfile) { fallbackProfile.status = 'success'; fallbackProfile.probeOk = false; }
+    } catch { /* if reconnect fails, still report the original tcp-only result */ }
+
+    onUpdate({
+      phase: 'probe-validated', profileIndex: profiles.length - 1,
+      profileCount: profiles.length, profileLabel: fallbackProfile?.label ?? 'Fallback', retryCount,
+    }, [...profiles]);
+
+    const result: AutoConnectResult = {
+      success:      true,
+      probeOk:      false,
+      profiles,
+      winnerId:     tcpFallbackId,
+      winnerConfig: tcpFallbackCfg,
+      durationMs:   Date.now() - ranAt,
+      ranAt,
+      retryCount,
+    };
+    reportToAdmin(result, server.id, mode).catch(() => {});
+    return result;
+  }
+
+  // All profiles failed TCP — genuine connectivity failure.
   onUpdate({
     phase: 'failed', profileIndex: profiles.length,
     profileCount: profiles.length, profileLabel: '', retryCount,

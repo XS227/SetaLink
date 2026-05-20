@@ -271,59 +271,24 @@ class XrayVpnService : VpnService() {
             broadcastStep("tun2socks_alive", true,
                 "tun2socks running pid=$pid — fd://$tunFdInt → socks5://127.0.0.1:10808")
 
-            // 8. Deep validation: TCP connect + actual HTTP data via SOCKS5
-            val validation = runDeepValidation(tunInterface)
-            if (!validation.ok) {
-                val t2sLog = readTun2socksLog()
-                broadcastStep("routing_validation", false,
-                    "${validation.message}\n[tun2socks output]\n$t2sLog")
-                throw Exception("Deep validation failed: ${validation.message}")
-            }
-
-            broadcastStep("routing_validation", true, validation.message)
-
-            // Verify tun2socks log shows startup activity.
-            // The probe traffic goes directly App→SOCKS5, bypassing TUN.
-            // tun2socks reads from TUN fd and forwards to SOCKS5.
-            // If tun2socks log is empty or shows errors, the TUN→SOCKS5 path
-            // (used by Chrome, Telegram, etc.) may be broken even when the probe passes.
-            val t2sLog = readTun2socksLog()
-            val t2sHasActivity = t2sLog.lines().any { line ->
-                val l = line.lowercase()
-                l.contains("listen") || l.contains("start") || l.contains("tun") ||
-                l.contains("socks") || l.contains("proxy") || l.contains("accept")
-            }
-            val t2sHasErrors = t2sLog.lines().any { line ->
-                val l = line.lowercase()
-                l.contains("error") || l.contains("fatal") || l.contains("failed") ||
-                l.contains("panic") || l.contains("exit")
-            }
-            appendLog("[TUN2SOCKS CHECK] hasActivity=$t2sHasActivity hasErrors=$t2sHasErrors log_lines=${t2sLog.lines().size}")
-            if (t2sHasErrors) {
-                broadcastStep("tun2socks_check", false,
-                    "tun2socks reported errors — TUN forwarding may be broken.\n$t2sLog")
-                appendLog("[TUN2SOCKS CHECK] WARNING: tun2socks log contains errors. " +
-                    "App traffic through TUN may not be forwarded to SOCKS5. Log:\n$t2sLog")
-            } else if (!t2sHasActivity) {
-                appendLog("[TUN2SOCKS CHECK] WARNING: tun2socks log has no startup messages. " +
-                    "tun2socks may not have initialised correctly. Log:\n$t2sLog")
-                broadcastStep("tun2socks_check", false,
-                    "tun2socks log has no startup activity — may not be routing TUN packets.")
-            } else {
-                broadcastStep("tun2socks_check", true, "tun2socks active and healthy")
-            }
-
-            broadcastStep("vpn_connected", true, "Tunnel active — ${validation.message}")
-
-            Log.i(TAG, "VPN tunnel active and deep-validated (probeOk=${validation.probeOk})")
+            // 8. Broadcast CONNECTED immediately — validation runs in background.
+            // TCP + Xray SOCKS5 confirmed and tun2socks is routing packets.
+            // Running the HTTP probe before marking connected caused false-negatives:
+            // the probe targets were unreachable from the VPS even though the tunnel
+            // was fully operational for real app traffic.
+            broadcastStep("vpn_connected", true, "Tunnel active — verifying internet access in background")
+            Log.i(TAG, "VPN tunnel active — background validation starting")
             sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
                 setPackage(packageName)
-                putExtra("probe_ok", validation.probeOk)
+                putExtra("probe_ok", false)
             })
 
             // 9. Start continuous metrics loop + process watchdog
             startMetricsLoop(tunInterface)
             startWatchdog()
+
+            // 10. Background internet validation (does not block connected state)
+            scope.launch { runBackgroundValidation(tunInterface) }
 
         } catch (e: Exception) {
             Log.e(TAG, "Tunnel setup failed: ${e.message}", e)
@@ -332,6 +297,49 @@ class XrayVpnService : VpnService() {
             appendLog("[tun2socks output at failure]\n$t2sLog")
             broadcastError(e.message ?: "Unknown VPN error")
             tearDownTunnel()
+        }
+    }
+
+    // ── Background validation (non-blocking) ─────────────────────────────────
+
+    private suspend fun runBackgroundValidation(tunInterface: String?) {
+        try {
+            // Log tun2socks status before probing
+            val t2sLog = readTun2socksLog()
+            val t2sHasErrors = t2sLog.lines().any { line ->
+                val l = line.lowercase()
+                l.contains("error") || l.contains("fatal") || l.contains("failed") ||
+                l.contains("panic") || l.contains("exit")
+            }
+            if (t2sHasErrors) {
+                broadcastStep("tun2socks_check", false,
+                    "tun2socks reported errors — TUN forwarding may be degraded.\n$t2sLog")
+            } else {
+                broadcastStep("tun2socks_check", true, "tun2socks active")
+            }
+
+            val validation = runDeepValidation(tunInterface)
+
+            broadcastStep("routing_validation", validation.ok, validation.message)
+
+            if (!validation.ok) {
+                broadcastStep("probe_warning", false,
+                    "Internet probe failed — tunnel active but HTTP validation timed out. " +
+                    "Apps may still work. ${validation.message}")
+                appendLog("[BG-VALIDATION] WARN: ${validation.message}")
+            } else {
+                appendLog("[BG-VALIDATION] OK: probeOk=${validation.probeOk} — ${validation.message}")
+            }
+
+            // Publish final probe result without resetting session counters
+            sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
+                setPackage(packageName)
+                putExtra("probe_ok", validation.probeOk)
+                putExtra("probe_update", true)
+            })
+        } catch (e: Exception) {
+            appendLog("[BG-VALIDATION] Exception: ${e.message}")
+            broadcastStep("validation_error", false, "Background validation error: ${e.message}")
         }
     }
 

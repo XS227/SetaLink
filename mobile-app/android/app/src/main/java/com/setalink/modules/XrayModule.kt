@@ -65,22 +65,28 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         override fun onReceive(context: Context, intent: Intent) {
             when (intent.action) {
                 XrayVpnService.BROADCAST_CONNECTED -> {
-                    running      = true
-                    startedAt    = System.currentTimeMillis()
-                    lastError    = null
-                    lastProbeOk  = intent.getBooleanExtra("probe_ok", false)
-                    // Snapshot TrafficStats at session start for fallback byte tracking
-                    val myUid = android.os.Process.myUid()
-                    val rx = TrafficStats.getUidRxBytes(myUid)
-                    val tx = TrafficStats.getUidTxBytes(myUid)
-                    synchronized(statsLock) {
-                        uploadBytes        = 0L
-                        downloadBytes      = 0L
-                        lastPingMs         = 0L
-                        sessionStartRxBytes = if (rx == TRAFFIC_UNSUPPORTED) TRAFFIC_UNSUPPORTED else rx
-                        sessionStartTxBytes = if (tx == TRAFFIC_UNSUPPORTED) TRAFFIC_UNSUPPORTED else tx
+                    val isProbeUpdate = intent.getBooleanExtra("probe_update", false)
+                    lastProbeOk = intent.getBooleanExtra("probe_ok", false)
+                    if (!isProbeUpdate) {
+                        // Initial connect — reset session state
+                        running   = true
+                        startedAt = System.currentTimeMillis()
+                        lastError = null
+                        val myUid = android.os.Process.myUid()
+                        val rx = TrafficStats.getUidRxBytes(myUid)
+                        val tx = TrafficStats.getUidTxBytes(myUid)
+                        synchronized(statsLock) {
+                            uploadBytes         = 0L
+                            downloadBytes       = 0L
+                            lastPingMs          = 0L
+                            sessionStartRxBytes = if (rx == TRAFFIC_UNSUPPORTED) TRAFFIC_UNSUPPORTED else rx
+                            sessionStartTxBytes = if (tx == TRAFFIC_UNSUPPORTED) TRAFFIC_UNSUPPORTED else tx
+                        }
+                        Log.i(TAG, "VPN connected (probeOk=$lastProbeOk rx_start=$rx tx_start=$tx)")
+                    } else {
+                        // Background probe completed — only update probeOk, keep session alive
+                        Log.i(TAG, "VPN probe_update: probeOk=$lastProbeOk (session preserved)")
                     }
-                    Log.i(TAG, "VPN connected (probeOk=$lastProbeOk rx_start=$rx tx_start=$tx)")
                 }
                 XrayVpnService.BROADCAST_DISCONNECTED -> {
                     running   = false

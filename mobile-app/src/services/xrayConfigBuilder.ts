@@ -158,7 +158,10 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
       network:     'ws',
       security:    'tls',
       wsSettings:  { path: wsPath },
-      tlsSettings: { serverName: edgeHost, allowInsecure: false },
+      // Force HTTP/1.1 ALPN — WebSocket upgrade (RFC 6455) requires HTTP/1.1.
+      // Without this, Xray may negotiate h2, causing nginx to reject the
+      // Connection: Upgrade header with 400 Bad Request (forbidden in HTTP/2).
+      tlsSettings: { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
     },
   };
 }
@@ -229,7 +232,8 @@ function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredenti
       network:             'httpupgrade',
       security:            'tls',
       httpupgradeSettings: { path: httpupPath, host: edgeHost },
-      tlsSettings:         { serverName: edgeHost, allowInsecure: false },
+      // Force HTTP/1.1 ALPN — HTTPUpgrade requires HTTP/1.1 upgrade handshake.
+      tlsSettings:         { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
     },
   };
 }
