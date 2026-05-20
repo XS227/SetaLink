@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, Animated, TouchableOpacity,
+  View, Text, ScrollView, StyleSheet, Animated, TouchableOpacity, Alert,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -97,11 +97,19 @@ interface DiagnosticsProps { onBack?: () => void }
 export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
   const { snapshot, isRunning, elapsedSecs, liveStats, startMonitor, stopMonitor } =
     useDiagnosticsStore();
-  const { connectionState, selectedServer, connectionLog } = useVpnStore();
+  const { connectionState, selectedServer, connectionLog, traceTestResult, traceTestRunning, runTraceTest } = useVpnStore();
   const autoConnect = useAIStore((s) => s.autoConnect);
 
   const [networkInfo, setNetworkInfo] = useState<{ localIp: string | null; publicIp: string | null } | null>(null);
   const [showTechLog, setShowTechLog] = useState(false);
+
+  const handleRealInternetTest = async () => {
+    if (connectionState !== 'connected') {
+      Alert.alert('Not Connected', 'Connect to the VPN first, then run the real internet test.');
+      return;
+    }
+    await runTraceTest();
+  };
 
   useEffect(() => {
     startMonitor();
@@ -373,6 +381,59 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             ))}
           </GlassCard>
         )}
+
+        {/* Real Internet Test */}
+        <GlassCard>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
+            <Text style={styles.cardLabel}>Real Internet Test</Text>
+            <View style={{ backgroundColor: 'rgba(0,232,122,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
+              <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>1.1.1.1 TRACE</Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginBottom: Spacing[3] }}>
+            Verifies traffic actually routes through the VPN tunnel. Tests DNS, TCP 443, HTTPS, and Cloudflare trace response.
+          </Text>
+          {traceTestResult && (
+            <View style={{
+              backgroundColor: traceTestResult.ok ? 'rgba(0,232,122,0.07)' : 'rgba(255,59,48,0.07)',
+              borderRadius: Radius.md,
+              borderWidth: 1,
+              borderColor: traceTestResult.ok ? Colors.border.glow : Colors.status.disconnected + '40',
+              padding: Spacing[3],
+              marginBottom: Spacing[3],
+              gap: 4,
+            }}>
+              <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: traceTestResult.ok ? Colors.emerald[400] : Colors.status.disconnected }}>
+                {traceTestResult.ok ? '✓ INTERNET ROUTED THROUGH VPN' : '✗ INTERNET NOT ROUTED THROUGH VPN'}
+              </Text>
+              {traceTestResult.routedIp && (
+                <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary }}>
+                  Exit IP: {traceTestResult.routedIp}
+                </Text>
+              )}
+              {traceTestResult.statusCode != null && (
+                <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted }}>
+                  HTTP {traceTestResult.statusCode} · {traceTestResult.bytesIn ?? 0}B received
+                </Text>
+              )}
+              {traceTestResult.error && (
+                <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.status.disconnected }}>
+                  Error: {traceTestResult.error}
+                </Text>
+              )}
+            </View>
+          )}
+          <TouchableOpacity
+            style={[styles.exportBtn, { marginBottom: 0, borderColor: traceTestRunning ? Colors.border.default : Colors.border.glow }]}
+            onPress={handleRealInternetTest}
+            activeOpacity={0.8}
+            disabled={traceTestRunning}
+          >
+            <Text style={[styles.exportText, traceTestRunning && { color: Colors.text.muted }]}>
+              {traceTestRunning ? 'Testing…' : 'Run Real Internet Test'}
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
 
         {/* Export */}
         <TouchableOpacity style={styles.exportBtn} activeOpacity={0.8}>

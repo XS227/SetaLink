@@ -245,6 +245,7 @@ if ($method === 'POST') {
         $platform   = substr(trim($_POST['platform']    ?? 'android'), 0, 20);
         $appVersion = substr(trim($_POST['app_version'] ?? ''), 0, 20);
         $language   = substr(trim($_POST['language']    ?? ''), 0, 30);
+        $country    = substr(trim($_POST['country']     ?? ''), 0, 80);
         if (!$deviceId) err('missing device_id');
 
         $pdo  = db();
@@ -255,13 +256,13 @@ if ($method === 'POST') {
         if (!$dev) {
             $code = generate_referral_code($pdo);
             $pdo->prepare(
-                "INSERT INTO devices (device_id, referral_code, platform, app_version, language) VALUES (?, ?, ?, ?, ?)"
-            )->execute([$deviceId, $code, $platform, $appVersion, $language]);
+                "INSERT INTO devices (device_id, referral_code, platform, app_version, language, country, status) VALUES (?, ?, ?, ?, ?, ?, 'online')"
+            )->execute([$deviceId, $code, $platform, $appVersion, $language, $country]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
         } else {
-            $pdo->prepare("UPDATE devices SET last_seen=datetime('now'), platform=?, app_version=?, language=? WHERE device_id=?")
-                ->execute([$platform, $appVersion, $language, $deviceId]);
+            $pdo->prepare("UPDATE devices SET last_seen=datetime('now'), platform=?, app_version=?, language=?, country=CASE WHEN ?!='' THEN ? ELSE country END, status='online' WHERE device_id=?")
+                ->execute([$platform, $appVersion, $language, $country, $country, $deviceId]);
         }
 
         $srv = fetch_bootstrap_server($pdo);
