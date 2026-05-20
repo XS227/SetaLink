@@ -72,6 +72,19 @@ function init_device_tables(PDO $pdo): void {
         "ALTER TABLE devices ADD COLUMN status TEXT DEFAULT 'offline'",
         "ALTER TABLE devices ADD COLUMN country TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN language TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN user_id TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN manufacturer TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN model TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN sdk_version INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN android_id_hash TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN last_ip TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN country_name TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN dns_ok INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN internet_ok INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN active_sni TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN rx_bytes INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN tx_bytes INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN latency_ms INTEGER DEFAULT 0",
     ];
     foreach ($migrations as $sql) {
         try { $pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
@@ -84,12 +97,47 @@ function init_device_tables(PDO $pdo): void {
     )");
 }
 
+// Derive country from request IP using ip-api.com (free tier, 45 req/min, 2s timeout).
+// Returns ['code' => 'NO', 'name' => 'Norway'] or empty strings on failure.
+function detect_country_from_ip(string $ip): array {
+    if (!$ip || $ip === '127.0.0.1' || $ip === '::1' || str_starts_with($ip, '10.') || str_starts_with($ip, '192.168.')) {
+        return ['code' => '', 'name' => ''];
+    }
+    $ctx = stream_context_create(['http' => ['timeout' => 2, 'ignore_errors' => true]]);
+    $raw = @file_get_contents("http://ip-api.com/json/$ip?fields=countryCode,country", false, $ctx);
+    if (!$raw) return ['code' => '', 'name' => ''];
+    $data = json_decode($raw, true);
+    return [
+        'code' => substr((string)($data['countryCode'] ?? ''), 0, 4),
+        'name' => substr((string)($data['country']     ?? ''), 0, 80),
+    ];
+}
+
+function client_ip(): string {
+    foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $h) {
+        $v = $_SERVER[$h] ?? '';
+        if ($v) return trim(explode(',', $v)[0]);
+    }
+    return '';
+}
+
 function generate_referral_code(PDO $pdo): string {
     do {
         $code = strtoupper(substr(bin2hex(random_bytes(4)), 0, 7));
         $exists = $pdo->query("SELECT 1 FROM devices WHERE referral_code='$code'")->fetchColumn();
     } while ($exists);
     return $code;
+}
+
+// Generates a public SL-227-XXXXXXXX user identity — stable, unique, support-friendly.
+function generate_user_id(PDO $pdo): string {
+    for ($i = 0; $i < 20; $i++) {
+        $uid = 'SL-227-' . strtoupper(bin2hex(random_bytes(4)));
+        $st  = $pdo->prepare("SELECT 1 FROM devices WHERE user_id=?");
+        $st->execute([$uid]);
+        if (!$st->fetchColumn()) return $uid;
+    }
+    return 'SL-227-' . strtoupper(bin2hex(random_bytes(4)));
 }
 
 function hardcoded_bootstrap(): array {
@@ -222,9 +270,17 @@ if ($method === 'GET') {
         $row->execute([$deviceId]);
         $dev = $row->fetch();
         if (!$dev) err('device not found');
+        // Backfill user_id on sync if missing
+        if (empty($dev['user_id'])) {
+            $uid = generate_user_id($pdo);
+            $pdo->prepare("UPDATE devices SET user_id=? WHERE device_id=? AND (user_id='' OR user_id IS NULL)")
+                ->execute([$uid, $deviceId]);
+            $dev['user_id'] = $uid;
+        }
         $srv = fetch_bootstrap_server($pdo);
         ok([
             'device_id'         => $dev['device_id'],
+            'user_id'           => $dev['user_id']        ?? '',
             'referral_code'     => $dev['referral_code'],
             'plan'              => $dev['plan'],
             'quota_bytes_total' => (int)$dev['quota_bytes_total'],
@@ -241,33 +297,98 @@ if ($method === 'GET') {
 if ($method === 'POST') {
 
     if ($action === 'register-device') {
-        $deviceId   = trim($_POST['device_id']    ?? '');
-        $platform   = substr(trim($_POST['platform']    ?? 'android'), 0, 20);
-        $appVersion = substr(trim($_POST['app_version'] ?? ''), 0, 20);
-        $language   = substr(trim($_POST['language']    ?? ''), 0, 30);
-        $country    = substr(trim($_POST['country']     ?? ''), 0, 80);
+        $deviceId      = trim($_POST['device_id']       ?? '');
+        $platform      = substr(trim($_POST['platform']      ?? 'android'), 0, 20);
+        $appVersion    = substr(trim($_POST['app_version']   ?? ''), 0, 20);
+        $language      = substr(trim($_POST['language']      ?? ''), 0, 30);
+        $country       = substr(trim($_POST['country']       ?? ''), 0, 80);
+        $androidIdHash = substr(trim($_POST['android_id_hash'] ?? ''), 0, 64);
+        $manufacturer  = substr(trim($_POST['manufacturer']  ?? ''), 0, 80);
+        $model         = substr(trim($_POST['model']         ?? ''), 0, 120);
+        $sdkVersion    = (int)($_POST['sdk_version'] ?? 0);
         if (!$deviceId) err('missing device_id');
 
-        $pdo  = db();
+        $clientIp = client_ip();
+        $pdo      = db();
+
+        // Fingerprint-based deduplication: if the same hardware (android_id_hash) already
+        // registered under a different device_id, use the canonical existing device_id.
+        $canonicalId = $deviceId;
+        if ($androidIdHash) {
+            $fp = $pdo->prepare("SELECT device_id FROM devices WHERE android_id_hash=? AND android_id_hash!='' LIMIT 1");
+            $fp->execute([$androidIdHash]);
+            $fpRow = $fp->fetch();
+            if ($fpRow && $fpRow['device_id'] !== $deviceId) {
+                $canonicalId = $fpRow['device_id'];
+            }
+        }
+        $deviceId = $canonicalId;
+
         $stmt = $pdo->prepare("SELECT * FROM devices WHERE device_id=?");
         $stmt->execute([$deviceId]);
         $dev  = $stmt->fetch();
 
+        // Auto-detect country from request IP if not provided by client
+        if (!$country && $clientIp) {
+            $geo     = detect_country_from_ip($clientIp);
+            $country = $geo['code'];
+            $countryName = $geo['name'];
+        } else {
+            $countryName = '';
+        }
+
         if (!$dev) {
             $code = generate_referral_code($pdo);
+            $uid  = generate_user_id($pdo);
             $pdo->prepare(
-                "INSERT INTO devices (device_id, referral_code, platform, app_version, language, country, status) VALUES (?, ?, ?, ?, ?, ?, 'online')"
-            )->execute([$deviceId, $code, $platform, $appVersion, $language, $country]);
+                "INSERT INTO devices
+                    (device_id, user_id, referral_code, platform, app_version, language, country, country_name,
+                     manufacturer, model, sdk_version, android_id_hash, last_ip, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')"
+            )->execute([$deviceId, $uid, $code, $platform, $appVersion, $language,
+                        $country, $countryName, $manufacturer, $model, $sdkVersion,
+                        $androidIdHash, $clientIp]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
         } else {
-            $pdo->prepare("UPDATE devices SET last_seen=datetime('now'), platform=?, app_version=?, language=?, country=CASE WHEN ?!='' THEN ? ELSE country END, status='online' WHERE device_id=?")
-                ->execute([$platform, $appVersion, $language, $country, $country, $deviceId]);
+            // Backfill user_id if missing (existing devices before this migration)
+            if (empty($dev['user_id'])) {
+                $uid = generate_user_id($pdo);
+                $pdo->prepare("UPDATE devices SET user_id=? WHERE device_id=? AND (user_id='' OR user_id IS NULL)")
+                    ->execute([$uid, $deviceId]);
+                $dev['user_id'] = $uid;
+            }
+            $pdo->prepare(
+                "UPDATE devices SET
+                    last_seen=datetime('now'), platform=?, app_version=?, language=?,
+                    country=CASE WHEN ?!='' THEN ? ELSE country END,
+                    country_name=CASE WHEN ?!='' THEN ? ELSE country_name END,
+                    manufacturer=CASE WHEN ?!='' THEN ? ELSE manufacturer END,
+                    model=CASE WHEN ?!='' THEN ? ELSE model END,
+                    sdk_version=CASE WHEN ?>0 THEN ? ELSE sdk_version END,
+                    android_id_hash=CASE WHEN ?!='' THEN ? ELSE android_id_hash END,
+                    last_ip=CASE WHEN ?!='' THEN ? ELSE last_ip END,
+                    status='online'
+                 WHERE device_id=?"
+            )->execute([
+                $platform, $appVersion, $language,
+                $country, $country,
+                $countryName, $countryName,
+                $manufacturer, $manufacturer,
+                $model, $model,
+                $sdkVersion, $sdkVersion,
+                $androidIdHash, $androidIdHash,
+                $clientIp, $clientIp,
+                $deviceId,
+            ]);
+            $stmt->execute([$deviceId]);
+            $dev = $stmt->fetch();
         }
 
         $srv = fetch_bootstrap_server($pdo);
         ok([
             'device_id'         => $dev['device_id'],
+            'user_id'           => $dev['user_id']        ?? '',
             'referral_code'     => $dev['referral_code'],
             'plan'              => $dev['plan'],
             'quota_bytes_total' => (int)$dev['quota_bytes_total'],
@@ -335,16 +456,36 @@ if ($method === 'POST') {
     }
 
     if ($action === 'update-status') {
-        $deviceId = trim($_POST['device_id'] ?? '');
-        $status   = trim($_POST['status']    ?? 'offline');
-        $protocol = substr(trim($_POST['active_protocol'] ?? ''), 0, 60);
+        $deviceId   = trim($_POST['device_id']       ?? '');
+        $status     = trim($_POST['status']           ?? 'offline');
+        $protocol   = substr(trim($_POST['active_protocol'] ?? ''), 0, 60);
+        $activeSni  = substr(trim($_POST['active_sni']      ?? ''), 0, 120);
+        $dnsOk      = isset($_POST['dns_ok'])      ? (int)$_POST['dns_ok']      : null;
+        $internetOk = isset($_POST['internet_ok']) ? (int)$_POST['internet_ok'] : null;
+        $rxBytes    = isset($_POST['rx_bytes'])    ? (int)$_POST['rx_bytes']    : null;
+        $txBytes    = isset($_POST['tx_bytes'])    ? (int)$_POST['tx_bytes']    : null;
+        $latencyMs  = isset($_POST['latency_ms'])  ? (int)$_POST['latency_ms']  : null;
         if (!$deviceId) err('missing device_id');
         if (!in_array($status, ['online', 'offline'], true)) $status = 'offline';
 
-        $pdo = db();
-        $pdo->prepare(
-            "UPDATE devices SET status=?, active_protocol=?, last_seen=datetime('now') WHERE device_id=?"
-        )->execute([$status, $protocol, $deviceId]);
+        $pdo  = db();
+        $clientIp = client_ip();
+
+        // Build update dynamically — only overwrite active_protocol/sni when provided
+        // to avoid clearing them on disconnect (client sends no protocol on offline).
+        $sets = ["status=?", "last_seen=datetime('now')"];
+        $vals = [$status];
+        if ($protocol !== '')      { $sets[] = "active_protocol=?"; $vals[] = $protocol; }
+        if ($activeSni !== '')     { $sets[] = "active_sni=?";      $vals[] = $activeSni; }
+        if ($dnsOk     !== null)   { $sets[] = "dns_ok=?";          $vals[] = $dnsOk; }
+        if ($internetOk !== null)  { $sets[] = "internet_ok=?";     $vals[] = $internetOk; }
+        if ($rxBytes   !== null)   { $sets[] = "rx_bytes=?";        $vals[] = $rxBytes; }
+        if ($txBytes   !== null)   { $sets[] = "tx_bytes=?";        $vals[] = $txBytes; }
+        if ($latencyMs !== null)   { $sets[] = "latency_ms=?";      $vals[] = $latencyMs; }
+        if ($clientIp)             { $sets[] = "last_ip=?";         $vals[] = $clientIp; }
+        $vals[] = $deviceId;
+
+        $pdo->prepare("UPDATE devices SET " . implode(', ', $sets) . " WHERE device_id=?")->execute($vals);
         ok(['status' => $status]);
     }
 

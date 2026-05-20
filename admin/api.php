@@ -152,6 +152,19 @@ function init_device_tables(PDO $db): void {
         "ALTER TABLE devices ADD COLUMN status TEXT DEFAULT 'offline'",
         "ALTER TABLE devices ADD COLUMN country TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN language TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN user_id TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN manufacturer TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN model TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN sdk_version INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN android_id_hash TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN last_ip TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN country_name TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN dns_ok INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN internet_ok INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN active_sni TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN rx_bytes INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN tx_bytes INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN latency_ms INTEGER DEFAULT 0",
     ];
     foreach ($migrations as $sql) {
         try { $db->exec($sql); } catch (Exception $e) {}
@@ -1149,8 +1162,8 @@ switch ($action) {
         $status_filter = trim((string)($_GET['status'] ?? ''));
         $where = []; $params = [];
         if ($q) {
-            $where[] = "(device_id LIKE ? OR country LIKE ? OR app_version LIKE ?)";
-            $params = array_merge($params, ["%$q%","%$q%","%$q%"]);
+            $where[] = "(device_id LIKE ? OR user_id LIKE ? OR country LIKE ? OR app_version LIKE ? OR model LIKE ?)";
+            $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%"]);
         }
         if ($plan)          { $where[] = 'plan=?';    $params[] = $plan; }
         if ($status_filter === 'online')  { $where[] = "(status='online' OR last_seen>=datetime('now','-5 minutes'))"; }
@@ -1166,6 +1179,7 @@ switch ($action) {
             return [
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
+                'user_id'           => $r['user_id']         ?? '',
                 'platform'          => $r['platform']        ?? 'android',
                 'plan'              => $r['plan']            ?? 'free',
                 'quota_bytes_total' => (int)($r['quota_bytes_total'] ?? 0),
@@ -1173,8 +1187,19 @@ switch ($action) {
                 'status'            => $is_online ? 'online' : 'offline',
                 'app_version'       => $r['app_version']     ?? '',
                 'active_protocol'   => $r['active_protocol'] ?? '',
+                'country_code'      => $r['country']         ?? '',
                 'country'           => $r['country']         ?? '',
+                'country_name'      => $r['country_name']    ?? '',
                 'language'          => $r['language']        ?? '',
+                'manufacturer'      => $r['manufacturer']    ?? '',
+                'model'             => $r['model']           ?? '',
+                'last_ip'           => $r['last_ip']         ?? '',
+                'dns_ok'            => (bool)(int)($r['dns_ok']       ?? 0),
+                'internet_ok'       => (bool)(int)($r['internet_ok']  ?? 0),
+                'active_sni'        => $r['active_sni']      ?? '',
+                'rx_bytes'          => (int)($r['rx_bytes']  ?? 0),
+                'tx_bytes'          => (int)($r['tx_bytes']  ?? 0),
+                'latency_ms'        => (int)($r['latency_ms'] ?? 0),
                 'created_at'        => $r['created_at'],
                 'last_seen'         => $r['last_seen'],
                 'blocked'           => (bool)(int)($r['blocked'] ?? 0),

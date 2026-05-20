@@ -344,6 +344,71 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         promise.resolve(androidId)
     }
 
+    // Returns a stable device ID persisted in SharedPreferences.
+    // Generated once from the Android hardware ID (SHA-256 → UUID-like string).
+    // Falls back to a random UUID. Never regenerates once stored.
+    @ReactMethod
+    fun getOrCreateStableDeviceId(promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences("setalink_device", Context.MODE_PRIVATE)
+            val existing = prefs.getString("stable_device_id", null)
+            if (!existing.isNullOrBlank()) { promise.resolve(existing); return }
+
+            val androidId = android.provider.Settings.Secure.getString(
+                reactContext.contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID,
+            ) ?: ""
+
+            val deviceId = if (androidId.length > 4) {
+                val sha  = java.security.MessageDigest.getInstance("SHA-256")
+                val hash = sha.digest(androidId.toByteArray()).joinToString("") { "%02x".format(it) }
+                "sl-${hash.substring(0,8)}-${hash.substring(8,12)}-${hash.substring(12,16)}-${hash.substring(16,20)}-${hash.substring(20,32)}"
+            } else {
+                "sl-${java.util.UUID.randomUUID()}"
+            }
+            prefs.edit().putString("stable_device_id", deviceId).apply()
+            promise.resolve(deviceId)
+        } catch (e: Exception) {
+            promise.reject("DEVICE_ID_ERROR", e.message ?: "Failed to generate device ID")
+        }
+    }
+
+    // Saves an externally-provided device ID to SharedPreferences (canonical ID from backend).
+    @ReactMethod
+    fun saveStableDeviceId(deviceId: String, promise: Promise) {
+        try {
+            val prefs = reactContext.getSharedPreferences("setalink_device", Context.MODE_PRIVATE)
+            prefs.edit().putString("stable_device_id", deviceId).apply()
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("SAVE_ERROR", e.message)
+        }
+    }
+
+    // Returns device hardware fingerprint for registration metadata.
+    @ReactMethod
+    fun getDeviceFingerprint(promise: Promise) {
+        try {
+            val androidId = android.provider.Settings.Secure.getString(
+                reactContext.contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID,
+            ) ?: ""
+            val androidIdHash = if (androidId.length > 4) {
+                val sha = java.security.MessageDigest.getInstance("SHA-256")
+                sha.digest(androidId.toByteArray()).joinToString("") { "%02x".format(it) }.substring(0, 16)
+            } else ""
+            promise.resolve(WritableNativeMap().apply {
+                putString("android_id_hash",  androidIdHash)
+                putString("manufacturer",     android.os.Build.MANUFACTURER)
+                putString("model",            android.os.Build.MODEL)
+                putInt   ("sdk_version",      android.os.Build.VERSION.SDK_INT)
+                putString("android_version",  android.os.Build.VERSION.RELEASE)
+            })
+        } catch (e: Exception) {
+            promise.resolve(WritableNativeMap())
+        }
+    }
+
     @ReactMethod
     override fun reportTelemetry(payload: String, promise: Promise) {
         // Telemetry is sent from JS directly via fetch(); this stub satisfies the spec.

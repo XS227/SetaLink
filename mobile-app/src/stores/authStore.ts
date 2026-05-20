@@ -6,6 +6,7 @@ import type { DeviceEntitlement } from '../services/entitlementService';
 export interface AuthUser {
   id: string;
   deviceId: string;
+  userId: string;
   inviteCodeUsed: string;
   referralParent: string | null;
   referralCode: string;
@@ -80,6 +81,7 @@ export const useAuthStore = create<AuthState>()(
           user: {
             id:                   e.device_id,
             deviceId:             e.device_id,
+            userId:               e.user_id ?? '',
             inviteCodeUsed:       '',
             referralParent:       null,
             referralCode:         e.referral_code,
@@ -102,6 +104,7 @@ export const useAuthStore = create<AuthState>()(
         return {
           user: {
             ...prev.user,
+            ...(e.user_id ? { userId: e.user_id } : {}),
             referralCode:    e.referral_code,
             quotaBytesTotal: e.quota_bytes_total,
             quotaBytesUsed:  Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),

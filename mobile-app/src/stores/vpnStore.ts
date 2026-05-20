@@ -117,10 +117,17 @@ export const useVpnStore = create<VpnState>((set, get) => {
         const { reportVpnStatus } = require('../services/entitlementService');
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAuthStore } = require('./authStore');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getLastConnectProbeOk } = require('../services/vpnBridge');
         const user = useAuthStore.getState().user;
         if (user) {
-          const protocol = get().selectedServer?.protocol ?? '';
-          reportVpnStatus(user.deviceId, 'online', protocol).catch(() => {});
+          const server = get().selectedServer;
+          const protocol = server ? `${server.protocol}${server.transport && server.transport !== server.protocol ? '+' + server.transport : ''}` : '';
+          reportVpnStatus(user.deviceId, 'online', {
+            protocol,
+            internetOk: getLastConnectProbeOk?.() ?? false,
+            activeSni:  server?.sni ?? '',
+          }).catch(() => {});
         }
       } catch {}
     },

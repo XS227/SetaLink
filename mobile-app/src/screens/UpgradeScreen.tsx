@@ -37,7 +37,7 @@ export function UpgradeScreen({ onBack }: Props) {
   const showToast = useToastStore((s) => s.show);
 
   const pkg      = PACKAGES[selectedIdx];
-  const deviceId = user?.deviceId ?? 'unknown';
+  const paymentId = user?.userId || user?.deviceId || 'unknown';
   const amountStr = `${pkg.usd} USDT`;
   const amountUnits = pkg.usd * 1_000_000; // USDT has 6 decimals on TON
 
@@ -45,7 +45,7 @@ export function UpgradeScreen({ onBack }: Props) {
     `https://app.tonkeeper.com/transfer/${WALLET_ADDRESS}` +
     `?jetton=${USDT_CONTRACT}` +
     `&amount=${amountUnits}` +
-    `&text=${encodeURIComponent(deviceId)}`;
+    `&text=${encodeURIComponent(paymentId)}`;
 
   const handleCopy = (type: string, value: string) => {
     Clipboard.setString(value);
@@ -74,7 +74,7 @@ export function UpgradeScreen({ onBack }: Props) {
     if (submitting) return;
     setSubmitting(true);
     try {
-      await mobilePostPayment(deviceId, pkg.key, `${pkg.usd} USDT`);
+      await mobilePostPayment(paymentId, pkg.key, `${pkg.usd} USDT`);
       Alert.alert(
         'Payment submitted',
         `Your payment of ${pkg.usd} USDT for ${pkg.label} has been submitted.\n\nActivation within 24 hours after verification.`,
@@ -170,18 +170,18 @@ export function UpgradeScreen({ onBack }: Props) {
 
           <View style={styles.stepRow}>
             <View style={styles.stepNum}><Text style={styles.stepNumText}>2</Text></View>
-            <Text style={styles.stepText}>Include your <Text style={styles.stepHighlight}>Device ID</Text> as the payment memo/comment</Text>
+            <Text style={styles.stepText}>Include your <Text style={styles.stepHighlight}>User ID</Text> as the payment memo/comment</Text>
           </View>
 
-          {/* Device ID */}
+          {/* User ID */}
           <View style={[styles.copyRow, styles.copyRowHighlight]}>
             <View style={styles.copyLabel}>
               <Text style={styles.copyLabelText}>Memo</Text>
             </View>
-            <Text style={styles.copyValue} numberOfLines={1}>{deviceId}</Text>
+            <Text style={styles.copyValue} numberOfLines={1}>{paymentId}</Text>
             <TouchableOpacity
               style={[styles.copyBtn, copied === 'Memo' && styles.copyBtnActive]}
-              onPress={() => handleCopy('Memo', deviceId)}
+              onPress={() => handleCopy('Memo', paymentId)}
               activeOpacity={0.75}
             >
               <Text style={styles.copyBtnText}>{copied === 'Memo' ? '✓' : 'Copy'}</Text>
