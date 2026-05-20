@@ -1,25 +1,24 @@
 {
-  "version": "0.9.14",
-  "versionCode": 22,
+  "version": "0.9.15",
+  "versionCode": 23,
   "releaseDate": "2026-05-20",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.14.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.15.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "a18f48015e0f1089f8abb5341c424fca3cf992775b4bf696708996c0ca1a7010", "algorithm": "sha256" },
-  "size": 53694628,
+  "checksum": { "sha256": "6a3d23b046cda4b5edccd401d644a8ffd36f3d0d38b2d8cfcccf32765b0831e4", "algorithm": "sha256" },
+  "size": 53697920,
   "changelog": [
-    "Fix: XHTTP transport path corrected to /xhttp/ (trailing slash) — resolves 'failed to validate path' server error",
-    "Fix: XHTTP now forces HTTP/1.1 ALPN to prevent h2 negotiation breaking the transport",
-    "Fix: TCP-only connections no longer marked as CONNECTED — HTTP/HTTPS confirmation required",
-    "Fix: Failure category (reality_clienthello_failed, xhttp_path_mismatch, ws_upgrade_failed, etc.) logged to admin",
-    "New: Admin Transport Mismatch Analysis panel shows categorized transport failures",
-    "New: All XHTTP path defaults updated to /xhttp/ across bootstrap API, admin config, and mobile config builder",
-    "Version: 0.9.14 / Build 22"
+    "Fix: VPN routing probe now falls back to SOCKS5 validation on any openConnection failure (not just EPERM) — resolves 'internet not routed through VPN' false negative on many Android ROMs",
+    "Fix: SOCKS5 handshake verified with real protocol exchange before TUN setup — catches Xray inbound misconfiguration early",
+    "New: adb log tags SETALINK_TUN_STARTED / SETALINK_SOCKS_READY / SETALINK_ROUTE_ADDED / SETALINK_DNS_OK / SETALINK_HTTP_OK for field diagnostics",
+    "New: Diagnostics screen Tunnel Layer card shows TUN / SOCKS5 / Xray / DNS / Internet layer status with live bytes",
+    "Fix: Immediate failure if SOCKS5 handshake returns invalid response — prevents silent Xray inbound misconfiguration",
+    "Version: 0.9.15 / Build 23"
   ],
   "channels": {
-    "stable":  { "version": "0.9.14",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.14.apk" },
+    "stable":  { "version": "0.9.15",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.15.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }
