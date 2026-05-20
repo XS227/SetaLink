@@ -9,7 +9,14 @@
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
   "checksum": { "sha256": "d2bacaeefeb42163e6f8ed22b3942adf57b61310f493b7e7f74d044778306e7a", "algorithm": "sha256" },
   "size": 53691144,
-  "changelog": [],
+  "changelog": [
+    "Fix: QUIC/ERR_QUIC_PROTOCOL_ERROR — UDP/443 (HTTP/3) is now fast-rejected so Chrome falls back to TCP HTTPS",
+    "Fix: Chrome/browser browsing now works — QUIC blackholed, TCP/TLS (HTTP/2) fallback active",
+    "New: Browser compatibility probes run post-connect — tests example.com, vg.no, cloudflare.com over TCP/TLS",
+    "New: QUIC status reported in diagnostics — UDP/QUIC Port 443: Blocked → Chrome uses TCP fallback",
+    "New: DNS resolution verified end-to-end through tunnel after connect",
+    "Improved: Connection log now shows TCP HTTPS, DNS, QUIC, and Browser Compatibility results"
+  ],
   "channels": {
     "stable":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.12.apk" },
     "beta":    { "version": "0.9.11",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.11.apk" },

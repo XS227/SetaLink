@@ -68,12 +68,15 @@ function vary(base: number, range: number, dp = 1): number {
 }
 
 const STATIC_HEALTH: HealthCheck[] = [
-  { label: 'TLS Certificate', status: 'ok',   detail: 'Valid · Expires 2027-03-01' },
-  { label: 'CDN Edge (DE)',    status: 'ok',   detail: 'Cloudflare · 104.26.12.55' },
-  { label: 'SNI Consistency',  status: 'ok',   detail: 'cdn.setalink.net ↔ cert match' },
-  { label: 'Domain Health',    status: 'ok',   detail: 'setalink.net · A record live' },
-  { label: 'Fallback Domain',  status: 'warn', detail: 'alt.setalink.io · slow response' },
-  { label: 'DNS Resolution',   status: 'ok',   detail: 'Cloudflare DoH · 1ms' },
+  { label: 'TLS Certificate',    status: 'ok',   detail: 'Valid · Expires 2027-03-01' },
+  { label: 'CDN Edge (DE)',      status: 'ok',   detail: 'Cloudflare · 104.26.12.55' },
+  { label: 'SNI Consistency',    status: 'ok',   detail: 'cdn.setalink.net ↔ cert match' },
+  { label: 'Domain Health',      status: 'ok',   detail: 'setalink.net · A record live' },
+  { label: 'Fallback Domain',    status: 'warn', detail: 'alt.setalink.io · slow response' },
+  { label: 'DNS Resolution',     status: 'ok',   detail: 'Cloudflare DoH · 1ms' },
+  { label: 'TCP HTTPS',          status: 'ok',   detail: 'example.com · TCP/443 · TLS 1.3 · HTTP/2' },
+  { label: 'UDP/QUIC Port 443',  status: 'ok',   detail: 'Blocked → Chrome uses TCP/TLS fallback' },
+  { label: 'Browser Compat',     status: 'ok',   detail: 'Chrome/Firefox TCP HTTPS confirmed' },
 ];
 
 const STATIC_HOPS: RouteHop[] = [
