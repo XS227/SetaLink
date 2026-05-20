@@ -170,6 +170,25 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'profile-bundle') {
+        $pdo = db();
+        $rows = [];
+        try { $rows = $pdo->query("SELECT key, value FROM settings WHERE key LIKE 'bundle_%'")->fetchAll(PDO::FETCH_KEY_PAIR); } catch (\Exception $e) {}
+        $sni_candidates = json_decode($rows['bundle_sni_candidates'] ?? '[]', true) ?: ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net'];
+        $spoof_snis     = json_decode($rows['bundle_spoof_snis'] ?? '[]', true) ?: ['auth.vercel.com','cdn.jsdelivr.net','hcaptcha.com','assets.vercel.com','images.unsplash.com','cloudflare.com'];
+        $backup_ips     = json_decode($rows['bundle_backup_ips'] ?? '[]', true) ?: ['5.249.252.221'];
+        $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['edge.setalink.no'];
+        ok([
+            'version'        => (int)($rows['bundle_version'] ?? 1),
+            'published_at'   => $rows['bundle_published_at'] ?? date('Y-m-d'),
+            'sni_candidates' => $sni_candidates,
+            'spoof_snis'     => $spoof_snis,
+            'backup_ips'     => $backup_ips,
+            'backup_domains' => $backup_domains,
+            'profiles'       => [],
+        ]);
+    }
+
     if ($action === 'bootstrap') {
         $pdo = db();
         $srv = fetch_bootstrap_server($pdo);
@@ -326,6 +345,33 @@ if ($method === 'POST') {
             "UPDATE devices SET status=?, active_protocol=?, last_seen=datetime('now') WHERE device_id=?"
         )->execute([$status, $protocol, $deviceId]);
         ok(['status' => $status]);
+    }
+
+    if ($action === 'profile-bundle') {
+        // GET action (but POST path also accepted)
+        $pdo = db();
+        // Read bundle config from settings table (admin-editable)
+        $rows = [];
+        try { $rows = $pdo->query("SELECT key, value FROM settings WHERE key LIKE 'bundle_%'")->fetchAll(PDO::FETCH_KEY_PAIR); } catch (\Exception $e) {}
+
+        $sni_candidates = json_decode($rows['bundle_sni_candidates'] ?? '[]', true) ?: [
+            'www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net',
+        ];
+        $spoof_snis = json_decode($rows['bundle_spoof_snis'] ?? '[]', true) ?: [
+            'auth.vercel.com','cdn.jsdelivr.net','hcaptcha.com','assets.vercel.com','images.unsplash.com','cloudflare.com',
+        ];
+        $backup_ips     = json_decode($rows['bundle_backup_ips']     ?? '[]', true) ?: ['5.249.252.221'];
+        $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['edge.setalink.no'];
+
+        ok([
+            'version'        => (int)($rows['bundle_version'] ?? 1),
+            'published_at'   => $rows['bundle_published_at'] ?? date('Y-m-d'),
+            'sni_candidates' => $sni_candidates,
+            'spoof_snis'     => $spoof_snis,
+            'backup_ips'     => $backup_ips,
+            'backup_domains' => $backup_domains,
+            'profiles'       => [],
+        ]);
     }
 
     if ($action === 'submit-payment') {

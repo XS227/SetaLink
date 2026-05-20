@@ -3,6 +3,7 @@ import { ConnectionMachine, MachineState } from '../services/connectionMachine';
 import { getAdapter }                       from '../services/vpnBridge';
 import { buildXrayConfigJson, validateCreds } from '../services/xrayConfigBuilder';
 import { appendMetric } from '../services/vpnMetricsStore';
+import { classifyFailure } from '../services/failureClassifier';
 
 // Re-exported so screens that import ConnectionState don't break
 export type ConnectionState = MachineState;
@@ -32,6 +33,7 @@ interface VpnState {
   sessionBytes:       SessionBytes;
   selectedProtocol:   string;
   error:              string | null;
+  smartStatus:        string | null;   // user-friendly status line (non-technical)
   reconnectAttempts:  number;
   isSwitchingServer:  boolean;
   connectionLog:      string[];        // step log from most recent connect attempt
@@ -63,7 +65,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     onConnected: () => {
-      set({ sessionStartedAt: Date.now(), error: null, _fallbackActive: false, _fallbackIdx: 0 });
+      set({ sessionStartedAt: Date.now(), error: null, smartStatus: null, _fallbackActive: false, _fallbackIdx: 0 });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog } = require('../services/vpnBridge');
@@ -205,12 +207,15 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     onError: (message) => {
+      // Classify the failure for user-friendly status display
+      const analysis = classifyFailure(message);
+
       // Protocol auto-fallback: silently try next protocol before surfacing the error.
       const { _fallbackActive, _fallbackIdx } = get();
       const nextIdx = _fallbackIdx + 1;
       if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length) {
         const nextProto = FALLBACK_PROTOCOLS[nextIdx]!;
-        set({ _fallbackIdx: nextIdx, error: `Optimizing route… (${nextProto})` });
+        set({ _fallbackIdx: nextIdx, smartStatus: analysis.userMessage, error: `Optimizing route… (${nextProto})` });
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { getLastConnectLog } = require('../services/vpnBridge');
@@ -220,7 +225,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
         return;
       }
       // All protocols exhausted (or not in fallback mode) — surface the error.
-      set({ _fallbackActive: false, _fallbackIdx: 0, error: message });
+      set({ _fallbackActive: false, _fallbackIdx: 0, error: analysis.userMessage, smartStatus: null });
       appendMetric({ type: message.toLowerCase().includes('routing') ? 'routing_failed' : 'connect_failed', at: Date.now(), reason: message, country: get().selectedServer?.country });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -299,6 +304,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     sessionBytes:      { sent: 0, received: 0 },
     selectedProtocol:  'VLESS+Reality',
     error:             null,
+    smartStatus:       null,
     reconnectAttempts: 0,
     isSwitchingServer: false,
     connectionLog:     [],
@@ -308,13 +314,13 @@ export const useVpnStore = create<VpnState>((set, get) => {
     connect: () => {
       // Start auto-fallback only on a fresh connect (not during a fallback retry).
       if (!get()._fallbackActive) {
-        set({ _fallbackActive: true, _fallbackIdx: 0, error: null });
+        set({ _fallbackActive: true, _fallbackIdx: 0, error: null, smartStatus: 'Establishing secure tunnel…' });
       }
       machine.send('CONNECT');
     },
 
     disconnect: () => {
-      set({ _fallbackActive: false, _fallbackIdx: 0 });
+      set({ _fallbackActive: false, _fallbackIdx: 0, smartStatus: null });
       machine.send('DISCONNECT');
     },
 

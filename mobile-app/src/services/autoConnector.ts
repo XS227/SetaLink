@@ -24,6 +24,10 @@ import { buildXrayConfigJson, buildEmergencyXrayConfigJson } from './xrayConfigB
 import { getLastConnectProbeOk }  from './vpnBridge';
 import { recordSuccess, recordFailure, sortByHistory, getTopProfiles } from './successHistory';
 import { getRemoteConfig, isKillSwitched, invalidateRemoteConfig } from './remoteConfigService';
+import { getSpoofSnisSync, prefetchBundle } from './profileBundleService';
+
+// Kick off bundle prefetch at import time (non-blocking)
+prefetchBundle();
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -173,6 +177,15 @@ export function buildAutoProfiles(
       profiles.push(reality('iran-speedtest', 'Reality · speedtest.net', 'www.speedtest.net', { flow: '' }));
     }
 
+    // SNI Spoof profiles — Reality with alternative fake SNIs (stealth mode)
+    // These work because Reality server accepts ANY SNI via x25519 authentication.
+    // DPI sees traffic to "auth.vercel.com" and does not block it.
+    const spoofSnis = getSpoofSnisSync();
+    for (let i = 0; i < Math.min(spoofSnis.length, 4); i++) {
+      const sni = spoofSnis[i]!;
+      profiles.push(reality(`iran-spoof${i}`, `Stealth · ${sni}`, sni, { flow: baseFlow }));
+    }
+
     // TLS transports
     profiles.push(tls('iran-xhttp', 'VLESS + XHTTP · 443',     'VLESS+XHTTP'));
     profiles.push(tls('iran-ws',    'VLESS + WebSocket · 443',  'VLESS + WebSocket'));
@@ -196,6 +209,13 @@ export function buildAutoProfiles(
     if (sni === creds.sni) continue; // already added as auto-current
     const fp = sni.includes('apple') ? 'safari' : baseFp;
     profiles.push(reality(`auto-sni${i}`, `Reality · ${sni}`, sni, { fp }));
+  }
+
+  // SNI Spoof profiles for auto mode (stealth fallback)
+  const autoSpoofSnis = getSpoofSnisSync();
+  for (let i = 0; i < Math.min(autoSpoofSnis.length, 3); i++) {
+    const sni = autoSpoofSnis[i]!;
+    profiles.push(reality(`auto-spoof${i}`, `Stealth · ${sni}`, sni, { flow: baseFlow }));
   }
 
   profiles.push(tls('auto-xhttp', 'VLESS + XHTTP · 443',    'VLESS+XHTTP'));

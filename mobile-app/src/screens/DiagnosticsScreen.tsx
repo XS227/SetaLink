@@ -6,8 +6,10 @@ import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useDiagnosticsStore } from '../stores/diagnosticsStore';
 import { useVpnStore }         from '../stores/vpnStore';
+import { useAIStore }          from '../stores/aiStore';
 import { formatElapsed } from '../hooks/useSessionTimer';
 import { getNetworkInfo } from '../services/networkInfoService';
+import { classifyFailure } from '../services/failureClassifier';
 
 // ── PulsingDot — unchanged visual primitive ────────────────────────────────────
 
@@ -95,9 +97,11 @@ interface DiagnosticsProps { onBack?: () => void }
 export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
   const { snapshot, isRunning, elapsedSecs, liveStats, startMonitor, stopMonitor } =
     useDiagnosticsStore();
-  const { connectionState, selectedServer } = useVpnStore();
+  const { connectionState, selectedServer, connectionLog } = useVpnStore();
+  const autoConnect = useAIStore((s) => s.autoConnect);
 
   const [networkInfo, setNetworkInfo] = useState<{ localIp: string | null; publicIp: string | null } | null>(null);
+  const [showTechLog, setShowTechLog] = useState(false);
 
   useEffect(() => {
     startMonitor();
@@ -292,6 +296,83 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             ))}
           </View>
         </GlassCard>
+
+        {/* Probe history — admin/tester mode */}
+        {autoConnect.profiles.length > 0 && (
+          <GlassCard>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
+              <Text style={styles.cardLabel}>Connection Probe Log</Text>
+              <View style={{ flexDirection: 'row', gap: Spacing[2] }}>
+                {autoConnect.winningConfig && (
+                  <View style={{ backgroundColor: 'rgba(0,232,122,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
+                    <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>WINNER</Text>
+                  </View>
+                )}
+                <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted }}>{autoConnect.profiles.length} routes</Text>
+              </View>
+            </View>
+            {autoConnect.winningConfig && (
+              <View style={{ backgroundColor: 'rgba(0,232,122,0.06)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, padding: Spacing[3], marginBottom: Spacing[3] }}>
+                <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400], marginBottom: 4 }}>SELECTED ROUTE</Text>
+                <Text style={{ fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.text.primary }}>{autoConnect.winningConfig.label}</Text>
+              </View>
+            )}
+            {autoConnect.profiles.map((p, i) => {
+              const statusColor =
+                p.status === 'success' ? Colors.emerald[400] :
+                p.status === 'testing' ? '#FFB800' :
+                p.status === 'skipped' ? Colors.text.muted + '60' :
+                p.status === 'tcp-only' ? '#FF9500' :
+                p.status === 'fail'  ? Colors.status.disconnected :
+                Colors.text.muted;
+              const statusIcon =
+                p.status === 'success' ? '✓' :
+                p.status === 'testing' ? '◌' :
+                p.status === 'skipped' ? '—' :
+                p.status === 'tcp-only' ? '⚠' :
+                p.status === 'fail'  ? '✗' : '·';
+              const techDetail = p.error ? classifyFailure(p.error).category : null;
+              return (
+                <View key={p.id} style={{ flexDirection: 'row', alignItems: 'flex-start', paddingVertical: Spacing[2], borderBottomWidth: i < autoConnect.profiles.length - 1 ? 1 : 0, borderBottomColor: Colors.border.subtle, gap: Spacing[3] }}>
+                  <Text style={{ fontSize: 13, color: statusColor, fontFamily: Typography.family.mono, width: 16, marginTop: 1 }}>{statusIcon}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: p.status === 'skipped' ? Colors.text.muted : Colors.text.secondary }}>{p.label}</Text>
+                    {p.latencyMs != null && p.status !== 'pending' && p.status !== 'skipped' && (
+                      <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted, marginTop: 1 }}>
+                        {p.latencyMs}ms{techDetail ? ` · ${techDetail}` : ''}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </GlassCard>
+        )}
+
+        {/* Tech log (raw) — hidden behind tap */}
+        {connectionLog.length > 0 && (
+          <TouchableOpacity
+            style={{ paddingVertical: Spacing[2], alignItems: 'center' }}
+            onPress={() => setShowTechLog(v => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted }}>
+              {showTechLog ? '▲ Hide raw log' : '▾ Show raw log'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        {showTechLog && connectionLog.length > 0 && (
+          <GlassCard style={{ gap: 2 }}>
+            <Text style={styles.cardLabel}>Raw Connection Log</Text>
+            {connectionLog.map((line, i) => (
+              <Text key={i} style={[
+                { fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted, lineHeight: 16 },
+                line.startsWith('✓') && { color: Colors.emerald[400] },
+                line.startsWith('✗') && { color: Colors.status.disconnected },
+              ]}>{line}</Text>
+            ))}
+          </GlassCard>
+        )}
 
         {/* Export */}
         <TouchableOpacity style={styles.exportBtn} activeOpacity={0.8}>
