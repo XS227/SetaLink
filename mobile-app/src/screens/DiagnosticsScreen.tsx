@@ -330,14 +330,12 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
                 p.status === 'success' ? Colors.emerald[400] :
                 p.status === 'testing' ? '#FFB800' :
                 p.status === 'skipped' ? Colors.text.muted + '60' :
-                p.status === 'tcp-only' ? '#FF9500' :
                 p.status === 'fail'  ? Colors.status.disconnected :
                 Colors.text.muted;
               const statusIcon =
                 p.status === 'success' ? '✓' :
                 p.status === 'testing' ? '◌' :
                 p.status === 'skipped' ? '—' :
-                p.status === 'tcp-only' ? '⚠' :
                 p.status === 'fail'  ? '✗' : '·';
               const techDetail = p.error ? classifyFailure(p.error).category : null;
               return (

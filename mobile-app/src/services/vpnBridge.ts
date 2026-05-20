@@ -86,10 +86,12 @@ class MockAdapter implements VpnAdapter {
 // ── Native adapter (wraps XrayModule TurboModule) ────────────────────────────
 
 // Last connect log — readable by vpnStore without creating a circular import
-let _lastConnectLog:   string[]  = [];
-let _lastConnectProbeOk: boolean = false;
-export function getLastConnectLog():    string[]  { return _lastConnectLog; }
-export function getLastConnectProbeOk(): boolean  { return _lastConnectProbeOk; }
+let _lastConnectLog:         string[]  = [];
+let _lastConnectProbeOk:     boolean   = false;
+let _lastConnectFailureCat:  string    = '';
+export function getLastConnectLog():             string[]  { return _lastConnectLog; }
+export function getLastConnectProbeOk():         boolean   { return _lastConnectProbeOk; }
+export function getLastConnectFailureCategory(): string    { return _lastConnectFailureCat; }
 
 class NativeAdapter implements VpnAdapter {
   private module: any;
@@ -146,6 +148,7 @@ class NativeAdapter implements VpnAdapter {
       const nativeErr = await this.module.getLastError?.().catch(() => null) as string | null;
       const msg = nativeErr ?? 'VPN tunnel did not start — check server config';
       log.push(`✗ ${msg}`);
+      _lastConnectFailureCat = (await this.module.getLastFailureCategory?.().catch(() => '') as string | null) ?? '';
 
       // Pull native step log and xray process output for diagnostics
       const nativeSteps = await this.module.getConnectionLog?.().catch(() => []) as string[] ?? [];
@@ -171,7 +174,8 @@ class NativeAdapter implements VpnAdapter {
     // — our app UID is excluded from the VPN, so fetchPublicIp() always returns the
     // real device IP regardless of VPN state, making pre/post comparison meaningless.
     // Read probe result before merging logs — probeOk=true means HTTP/HTTPS data confirmed.
-    _lastConnectProbeOk = (await this.module.getLastProbeResult?.().catch(() => false) as boolean | null) ?? false;
+    _lastConnectProbeOk    = (await this.module.getLastProbeResult?.().catch(() => false) as boolean | null) ?? false;
+    _lastConnectFailureCat = (await this.module.getLastFailureCategory?.().catch(() => '') as string | null) ?? '';
     log.push(`✓ Native validation passed — tunnel active (probeOk=${_lastConnectProbeOk})`);
 
     // Merge native step log with JS log

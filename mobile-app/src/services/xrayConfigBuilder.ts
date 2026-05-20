@@ -195,7 +195,10 @@ function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
 function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   const edgeHost  = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
   const edgePort  = creds?.edgePort  ?? 443;
-  const xhttpPath = creds?.xhttpPath ?? '/xhttp';
+  // Canonical XHTTP path must have trailing slash — server config uses /xhttp/.
+  // Without it Xray server rejects with "failed to validate path, request:/xhttp, config:/xhttp/".
+  const rawPath   = creds?.xhttpPath ?? '/xhttp/';
+  const xhttpPath = rawPath.endsWith('/') ? rawPath : rawPath + '/';
   return {
     tag:      'proxy',
     protocol: 'vless',
@@ -210,7 +213,9 @@ function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): 
       network:       'xhttp',
       security:      'tls',
       xhttpSettings: { path: xhttpPath, mode: 'auto' },
-      tlsSettings:   { serverName: edgeHost, allowInsecure: false },
+      // Force HTTP/1.1 ALPN — XHTTP multiplexing uses HTTP/1.1 chunked transfer.
+      // Without this Xray may negotiate h2, causing nginx to reject the connection.
+      tlsSettings:   { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
     },
   };
 }
