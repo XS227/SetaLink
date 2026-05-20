@@ -5,6 +5,9 @@
 # Exit code 0 = all checks pass, 1 = warnings found
 
 set -euo pipefail
+# Ignore SIGPIPE (141) — grep/head in pipelines exit early when no match;
+# that's expected, not an error.
+trap '' PIPE
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_DIR="$REPO_ROOT/mobile-app"
@@ -50,21 +53,24 @@ fi
 # ── 3. Large tracked files ────────────────────────────────────────────────────
 echo ""
 echo "[ Large Tracked Files ]"
-LARGE_TRACKED=$(git -C "$REPO_ROOT" ls-files | while read f; do
-  [[ -f "$REPO_ROOT/$f" ]] && SIZE=$(stat -c%s "$REPO_ROOT/$f" 2>/dev/null || echo 0)
-  [[ ${SIZE:-0} -gt 5242880 ]] && echo "$f ($SIZE bytes)"
-done)
+# JNI native libs (libxray.so, libtun2socks.so, xray-arm64, tun2socks-arm64)
+# are vendored binary dependencies — intentionally large, intentionally tracked.
+LARGE_TRACKED=$(git -C "$REPO_ROOT" ls-files 2>/dev/null \
+  | grep -vE "(jniLibs/|assets/(xray|tun2socks)-arm|\.apk$)" \
+  | xargs -I{} stat -c "%s %n" "$REPO_ROOT/{}" 2>/dev/null \
+  | awk '$1 > 5242880 {print $2, "(" $1 " bytes)"}' \
+  | head -10)
 if [[ -n "$LARGE_TRACKED" ]]; then
-  warn "Large files tracked in git (>5MB):"
-  echo "$LARGE_TRACKED" | head -10
+  warn "Unexpected large files tracked in git (>5MB, excluding JNI libs):"
+  echo "$LARGE_TRACKED"
 else
-  ok "No large files tracked in git"
+  ok "No unexpected large files tracked in git (JNI libs exempted)"
 fi
 
 # ── 4. Tracked generated files ────────────────────────────────────────────────
 echo ""
 echo "[ Tracked Generated Files ]"
-GENERATED=$(git -C "$REPO_ROOT" ls-files | grep -E "\.cxx/|\.gradle/|app/build/|node_modules/" | head -5)
+GENERATED=$(git -C "$REPO_ROOT" ls-files 2>/dev/null | { grep -E "\.cxx/|\.gradle/|app/build/|node_modules/" || true; } | head -5)
 if [[ -n "$GENERATED" ]]; then
   warn "Generated files still tracked in git:"
   echo "$GENERATED"
@@ -123,9 +129,9 @@ fi
 # ── 8. Broken symlinks ────────────────────────────────────────────────────────
 echo ""
 echo "[ Broken Symlinks ]"
-BROKEN=$(find "$REPO_ROOT/public" -type l -not -path "*/node_modules/*" 2>/dev/null | while read l; do
+BROKEN=$(find "$REPO_ROOT/public" -type l -not -path "*/node_modules/*" 2>/dev/null | while IFS= read -r l; do
   [[ -e "$l" ]] || echo "broken: $l → $(readlink "$l")"
-done)
+done || true)
 if [[ -n "$BROKEN" ]]; then
   warn "Broken symlinks found:"
   echo "$BROKEN"
@@ -136,12 +142,16 @@ fi
 # ── 9. APK tracked in git ────────────────────────────────────────────────────
 echo ""
 echo "[ APKs In Git ]"
-APK_TRACKED=$(git -C "$REPO_ROOT" ls-files "*.apk" 2>/dev/null)
+APK_TRACKED=$(git -C "$REPO_ROOT" ls-files "*.apk" 2>/dev/null | while IFS= read -r f; do
+  full="$REPO_ROOT/$f"
+  # Symlinks (e.g. setalink-latest.apk) are intentional — only flag regular files
+  [[ -L "$full" ]] || echo "$f"
+done || true)
 if [[ -n "$APK_TRACKED" ]]; then
-  warn "APK files tracked in git (should be on disk only):"
+  warn "APK binary files tracked in git (should be on disk only):"
   echo "$APK_TRACKED"
 else
-  ok "No APK files tracked in git"
+  ok "No APK binary files tracked in git (symlinks OK)"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
