@@ -6,6 +6,7 @@ const TIMEOUT  = 10_000;
 
 export interface DeviceEntitlement {
   device_id:         string;
+  user_id?:          string;
   referral_code:     string;
   plan:              string;
   quota_bytes_total: number;
@@ -64,7 +65,12 @@ async function mobileGet(action: string, params: Record<string, string> = {}): P
 export async function registerDevice(
   deviceId: string,
   platform = 'android',
-  options: { language?: string; referralCode?: string; country?: string } = {}
+  options: {
+    language?:    string;
+    referralCode?: string;
+    country?:     string;
+    fingerprint?: Record<string, string | number>;
+  } = {}
 ): Promise<DeviceEntitlement> {
   const body: Record<string, string | number> = {
     device_id:   deviceId,
@@ -74,6 +80,14 @@ export async function registerDevice(
   if (options.language)     body.language      = options.language;
   if (options.referralCode) body.referral_code = options.referralCode;
   if (options.country)      body.country       = options.country;
+  if (options.fingerprint) {
+    const fp = options.fingerprint;
+    if (fp.android_id_hash) body.android_id_hash = String(fp.android_id_hash);
+    if (fp.manufacturer)    body.manufacturer    = String(fp.manufacturer);
+    if (fp.model)           body.model           = String(fp.model);
+    if (fp.sdk_version)     body.sdk_version     = Number(fp.sdk_version);
+    if (fp.android_version) body.android_version = String(fp.android_version);
+  }
   const data = await mobilePost('register-device', body);
   return data as DeviceEntitlement;
 }
@@ -81,10 +95,29 @@ export async function registerDevice(
 export async function reportVpnStatus(
   deviceId: string,
   status: 'online' | 'offline',
-  protocol?: string
+  options?: string | {
+    protocol?:   string;
+    dnsOk?:      boolean;
+    internetOk?: boolean;
+    activeSni?:  string;
+    rxBytes?:    number;
+    txBytes?:    number;
+    latencyMs?:  number;
+  }
 ): Promise<void> {
   const body: Record<string, string | number> = { device_id: deviceId, status };
-  if (protocol) body.active_protocol = protocol;
+  // Accept legacy string argument (protocol only)
+  if (typeof options === 'string') {
+    if (options) body.active_protocol = options;
+  } else if (options) {
+    if (options.protocol)                  body.active_protocol = options.protocol;
+    if (options.dnsOk     !== undefined)  body.dns_ok          = options.dnsOk ? 1 : 0;
+    if (options.internetOk !== undefined) body.internet_ok     = options.internetOk ? 1 : 0;
+    if (options.activeSni)                body.active_sni      = options.activeSni;
+    if (options.rxBytes   !== undefined)  body.rx_bytes        = options.rxBytes;
+    if (options.txBytes   !== undefined)  body.tx_bytes        = options.txBytes;
+    if (options.latencyMs !== undefined)  body.latency_ms      = options.latencyMs;
+  }
   await mobilePost('update-status', body);
 }
 

@@ -39,7 +39,7 @@ import { UpgradeScreen }            from '../screens/UpgradeScreen';
 import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
 
 import { runBootSequence }       from '../services/bootService';
-import { getOrCreateDeviceId, enrichDeviceId } from '../services/deviceIdentityService';
+import { getStableDeviceId, getOrCreateDeviceId, enrichDeviceId, getDeviceFingerprint, saveStableDeviceId } from '../services/deviceIdentityService';
 import { registerDevice }        from '../services/entitlementService';
 import { BiometricService }      from '../services/biometricService';
 import { getAdapter }            from '../services/vpnBridge';
@@ -206,12 +206,17 @@ function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
 
 async function tryAutoRegister(): Promise<boolean> {
   try {
-    // Attempt to use stable Android hardware ID; falls back to MMKV UUID
-    const deviceId = await enrichDeviceId().catch(() => getOrCreateDeviceId());
+    const deviceId    = await getStableDeviceId();
+    const fingerprint = await getDeviceFingerprint().catch(() => ({}));
     const { language } = useSettingsStore.getState();
-    const entitlement = await registerDevice(deviceId, 'android', { language });
+    const entitlement = await registerDevice(deviceId, 'android', { language, fingerprint });
+
+    // If backend returned a canonical device_id (fingerprint dedup), persist it
+    if (entitlement.device_id && entitlement.device_id !== deviceId) {
+      await saveStableDeviceId(entitlement.device_id).catch(() => {});
+    }
+
     useAuthStore.getState().loginWithDevice(entitlement);
-    // Bootstrap server from registration response → import into server list
     if (entitlement.server?.uuid && entitlement.server?.address) {
       const { importFromVless } = useServerStore.getState();
       const vless = `vless://${entitlement.server.uuid}@${entitlement.server.address}:${entitlement.server.port}` +
@@ -255,10 +260,13 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
 
         // Already authenticated — refresh registration in background so admin shows
         // current device/version immediately, even if the user never logged out.
-        enrichDeviceId().catch(() => getOrCreateDeviceId()).then((deviceId) => {
+        getStableDeviceId().then(async (deviceId) => {
+          const fingerprint = await getDeviceFingerprint().catch(() => ({}));
           const { language } = useSettingsStore.getState();
-          return registerDevice(deviceId, 'android', { language });
-        }).then((entitlement) => {
+          const entitlement = await registerDevice(deviceId, 'android', { language, fingerprint });
+          if (entitlement.device_id && entitlement.device_id !== deviceId) {
+            await saveStableDeviceId(entitlement.device_id).catch(() => {});
+          }
           useAuthStore.getState().updateFromEntitlement(entitlement);
         }).catch(() => {});
 

@@ -1,6 +1,6 @@
 import { storage } from '../storage/storage';
 
-const DEVICE_ID_KEY = 'setalink_device_id_v1';
+const STABLE_KEY = 'setalink_stable_device_id';
 
 function generateUUID(): string {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -9,39 +9,63 @@ function generateUUID(): string {
   });
 }
 
-// Try to get the Android hardware ID for stable 1-device-per-account enforcement.
-// Falls back to a generated UUID stored in MMKV (persists until app data cleared).
-async function tryGetAndroidId(): Promise<string | null> {
+// Persist the canonical device ID returned by the backend (deduplication).
+export async function saveStableDeviceId(deviceId: string): Promise<void> {
+  storage.setItem(STABLE_KEY, deviceId);
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NativeModules } = require('react-native');
+    await NativeModules?.XrayModule?.saveStableDeviceId?.(deviceId);
+  } catch {}
+}
+
+// Returns a stable device ID that survives app restarts, reconnects, and updates.
+// Source priority: SharedPreferences (native) → MMKV mirror → random UUID fallback.
+// Generated once only — never replaced after first creation.
+export async function getStableDeviceId(): Promise<string> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { NativeModules } = require('react-native');
     const mod = NativeModules?.XrayModule;
-    if (!mod?.getAndroidId) return null;
-    const id: string = await mod.getAndroidId();
-    return id && id.length > 4 ? `android-${id}` : null;
-  } catch {
-    return null;
-  }
-}
+    if (mod?.getOrCreateStableDeviceId) {
+      const nativeId: string = await mod.getOrCreateStableDeviceId();
+      if (nativeId && nativeId.length > 4) {
+        storage.setItem(STABLE_KEY, nativeId);
+        return nativeId;
+      }
+    }
+  } catch {}
 
-export function getOrCreateDeviceId(): string {
-  const existing = storage.getItem(DEVICE_ID_KEY);
-  if (existing && typeof existing === 'string') return existing;
-  const id = generateUUID();
-  storage.setItem(DEVICE_ID_KEY, id);
+  const existing = storage.getItem(STABLE_KEY);
+  if (existing && typeof existing === 'string' && existing.length > 4) return existing;
+
+  const id = `sl-${generateUUID()}`;
+  storage.setItem(STABLE_KEY, id);
   return id;
 }
 
-// Call once at boot to enrich device ID with hardware identifier if available.
-// Replaces the random UUID with an Android-ID-derived ID on first enrichment.
+// Returns hardware fingerprint metadata for registration.
+export async function getDeviceFingerprint(): Promise<Record<string, string | number>> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NativeModules } = require('react-native');
+    const mod = NativeModules?.XrayModule;
+    if (mod?.getDeviceFingerprint) return await mod.getDeviceFingerprint();
+    if (mod?.getDeviceInfo)        return await mod.getDeviceInfo();
+  } catch {}
+  return {};
+}
+
+// Legacy sync read — returns the MMKV mirror (populated after first async call).
+export function getOrCreateDeviceId(): string {
+  const v = storage.getItem(STABLE_KEY);
+  if (v && typeof v === 'string' && v.length > 4) return v;
+  const id = `sl-${generateUUID()}`;
+  storage.setItem(STABLE_KEY, id);
+  return id;
+}
+
+// Legacy async compat — delegates to getStableDeviceId.
 export async function enrichDeviceId(): Promise<string> {
-  const current = getOrCreateDeviceId();
-  // Already enriched with hardware ID
-  if (current.startsWith('android-')) return current;
-  const androidId = await tryGetAndroidId();
-  if (androidId) {
-    storage.setItem(DEVICE_ID_KEY, androidId);
-    return androidId;
-  }
-  return current;
+  return getStableDeviceId();
 }

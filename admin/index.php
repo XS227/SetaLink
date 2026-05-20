@@ -278,7 +278,7 @@ function icon(string $name): string {
         <div class="stat-card stat-warn"><div class="stat-label">Blocked</div><div class="stat-value" id="devBlocked">—</div></div>
       </div>
       <div class="search-row">
-        <input class="input" id="devSearch" placeholder="Search device ID, country, version…" type="search">
+        <input class="input" id="devSearch" placeholder="Search User ID, device ID, country, model, version…" type="search">
         <select class="select" id="devPlan" style="width:130px">
           <option value="">All plans</option>
           <option value="free">Free</option>
@@ -295,8 +295,8 @@ function icon(string $name): string {
       <div class="panel">
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Device</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">App Ver</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
-            <tbody id="devTbl"><tr><td colspan="9" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">Model</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
+            <tbody id="devTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -564,6 +564,12 @@ function classHint(cat) {
     unknown: 'Cause unclear. Check Xray error log for more detail.',
   };
   return hints[cat] || hints.unknown;
+}
+
+function countryFlag(code) {
+  if (!code || code.length !== 2) return '';
+  const c = code.toUpperCase();
+  return String.fromCodePoint(...[...c].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 65));
 }
 
 function protoBadge(p) {
@@ -1018,19 +1024,23 @@ views.devices = {
     const plan  = $('devPlan').value;
     const status= $('devStatus').value;
     let rows = this.devData;
-    if (q)              rows = rows.filter(r=>(r.device_id_short+r.country+r.app_version+r.device_id).toLowerCase().includes(q));
+    if (q)              rows = rows.filter(r=>((r.user_id||'')+(r.device_id_short||'')+(r.country||'')+(r.app_version||'')+(r.device_id||'')+(r.model||'')).toLowerCase().includes(q));
     if (plan)           rows = rows.filter(r=>r.plan===plan);
     if (status==='online')  rows = rows.filter(r=>r.status==='online');
     if (status==='offline') rows = rows.filter(r=>r.status!=='online');
     if (status==='blocked') rows = rows.filter(r=>r.blocked);
     $('devTbl').innerHTML = !rows.length
-      ? '<tr><td colspan="9" class="tbl-empty">No devices match filter</td></tr>'
+      ? '<tr><td colspan="10" class="tbl-empty">No devices match filter</td></tr>'
       : rows.map(r=>{
           const usedPct = r.quota_bytes_total>0?Math.round(r.quota_bytes_used/r.quota_bytes_total*100):0;
+          const uid     = r.user_id || r.device_id_short || '—';
+          const flag    = countryFlag(r.country_code||'');
+          const model   = [r.manufacturer, r.model].filter(Boolean).join(' ') || '—';
           return `<tr>
             <td>
-              <span class="mono" style="font-size:.72rem;color:var(--text)">${esc(r.device_id_short)}</span>
-              ${r.blocked?'<span class="badge badge-danger" style="margin-left:.3rem">blocked</span>':''}
+              <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
+              <div style="font-size:.65rem;color:var(--muted-2);font-family:var(--mono)">${esc(r.device_id_short||'')}</div>
+              ${r.blocked?'<span class="badge badge-danger" style="margin-left:0">blocked</span>':''}
             </td>
             <td><span class="badge ${r.plan==='premium'?'badge-accent':'badge-muted'}">${esc(r.plan)}</span></td>
             <td>
@@ -1039,8 +1049,9 @@ views.devices = {
             </td>
             <td><span class="dot ${r.status==='online'?'dot-ok':'dot-unk'}" style="display:inline-block"></span> ${esc(r.status)}</td>
             <td>${protoBadge(r.active_protocol)}</td>
-            <td class="mobile-hide mono" style="font-size:.7rem">${esc(r.app_version||'—')}</td>
-            <td class="mobile-hide" style="font-size:.75rem">${esc(r.country||'—')}</td>
+            <td class="mobile-hide" style="font-size:.72rem;color:var(--text)">${esc(model)}<br><span style="color:var(--muted-2);font-size:.65rem">${esc(r.app_version||'')}</span></td>
+            <td class="mobile-hide" style="font-size:.75rem">${flag} ${esc(r.country_name||r.country||'—')}</td>
+            <td class="mobile-hide mono" style="font-size:.65rem;color:var(--muted-2)">${esc(r.last_ip||'—')}</td>
             <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.last_seen)}</td>
             <td>
               <div style="display:flex;gap:.25rem">
@@ -1050,7 +1061,7 @@ views.devices = {
                   ${r.blocked?'Unblock':'Block'}
                 </button>
                 <button class="btn btn-ghost btn-sm" title="Set Quota"
-                  onclick="devSetQuota('${esc(r.device_id)}','${esc(r.device_id_short)}')">Quota</button>
+                  onclick="devSetQuota('${esc(r.device_id)}','${esc(uid)}')">Quota</button>
               </div>
             </td>
           </tr>`;

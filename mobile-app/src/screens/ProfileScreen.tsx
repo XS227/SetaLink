@@ -118,6 +118,11 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const daysLeft      = getDaysRemaining(user.planExpiry);
   const isUnlimited   = plan.gbLimit === null;
 
+  const handleCopyUserId = () => {
+    Clipboard.setString(user.userId || user.deviceId);
+    showToast('User ID copied', 'success', 2000);
+  };
+
   const handleCopyReferral = () => {
     Clipboard.setString(user.referralCode);
     showToast(t('pr.copiedCode'), 'success', 2000);
@@ -302,6 +307,20 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             />
           </View>
         </GlassCard>
+
+        {/* User ID */}
+        {(user.userId || user.deviceId) && (
+          <GlassCard>
+            <Text style={styles.cardLabel}>User ID</Text>
+            <View style={styles.referralCode}>
+              <Text style={styles.referralCodeText} numberOfLines={1}>{user.userId || user.deviceId}</Text>
+              <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyUserId}>
+                <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.deviceOs, { marginTop: 6 }]}>Use this ID as memo when making USDT payments</Text>
+          </GlassCard>
+        )}
 
         {/* Referral */}
         <GlassCard style={styles.referralCard} glowColor={Colors.blue[400]}>
