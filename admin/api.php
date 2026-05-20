@@ -1099,12 +1099,21 @@ switch ($action) {
         $hb_nginx = trim((string)@shell_exec('systemctl is-active nginx.service 2>/dev/null')) === 'active';
         $hb_sqlite = false;
         try { open_analytics_db(); $hb_sqlite = true; } catch (Exception $e) {}
-        $hb_bs_raw = trim((string)@shell_exec('curl -sk --max-time 4 "http://127.0.0.1/api.php?mobile=1&action=bootstrap&_token=' . MOBILE_REPORT_TOKEN . '" 2>/dev/null'));
-        $hb_bs_j   = $hb_bs_raw ? json_decode($hb_bs_raw, true) : null;
-        $hb_bs_ok  = is_array($hb_bs_j) && !empty($hb_bs_j['ok']) && !empty($hb_bs_j['data']['uuid'] ?? '');
+        $hb_bs_ok         = false;
+        $hb_bs_configured = false;
+        $hb_bs_address    = '';
+        try {
+            $db_bs   = open_analytics_db();
+            $bs_cfg  = $db_bs->query("SELECT key,value FROM settings WHERE key LIKE 'bootstrap_%'")->fetchAll(PDO::FETCH_KEY_PAIR);
+            $hb_bs_configured = !empty($bs_cfg['bootstrap_uuid']) && !empty($bs_cfg['bootstrap_pubkey']);
+            $bs      = fetch_bootstrap_server($db_bs);
+            $hb_bs_address = ($bs['address'] ?? '') . ':' . ($bs['port'] ?? '');
+            $hb_bs_ok = !empty($bs['uuid']);
+        } catch (Exception $e) { }
         $hb_port   = @fsockopen('127.0.0.1', 8443, $e, $err, 1) !== false;
         api_ok(['xray'=>$hb_xray,'nginx'=>$hb_nginx,'sqlite'=>$hb_sqlite,'api'=>true,
-                'bootstrap'=>$hb_bs_ok,'port_8443'=>$hb_port,'checked_at'=>date('Y-m-d H:i:s')]);
+                'bootstrap'=>['ok'=>$hb_bs_ok,'configured'=>$hb_bs_configured,'address'=>$hb_bs_address],
+                'port_8443'=>$hb_port,'checked_at'=>date('Y-m-d H:i:s')]);
         break;
 
     case 'release-status':
