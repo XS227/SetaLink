@@ -119,9 +119,9 @@ const selStyles = StyleSheet.create({
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-interface SettingsProps { onBack?: () => void }
+interface SettingsProps { onBack?: () => void; onProfileImport?: () => void }
 
-export function SettingsScreen({ onBack }: SettingsProps) {
+export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
   const { t } = useT();
   const {
     protocol, dnsMode, language,
@@ -246,6 +246,18 @@ export function SettingsScreen({ onBack }: SettingsProps) {
         </Section>
 
         <Section label={t('st.diagnostics')}>
+          {onProfileImport && (
+            <>
+              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onProfileImport}>
+                <View>
+                  <Text style={selStyles.label}>Import / Export Profiles</Text>
+                  <Text style={rowStyles.desc}>Paste vless:// links or share your config</Text>
+                </View>
+                <Text style={selStyles.chevron}>›</Text>
+              </TouchableOpacity>
+              <Divider />
+            </>
+          )}
           <TouchableOpacity
             style={selStyles.row}
             activeOpacity={0.7}

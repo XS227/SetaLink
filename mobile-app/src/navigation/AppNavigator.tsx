@@ -36,6 +36,7 @@ import { BottomNav, NavTab }        from '../components/BottomNav';
 import { Toast }                    from '../components/Toast';
 import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { UpgradeScreen }            from '../screens/UpgradeScreen';
+import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
 
 import { runBootSequence }       from '../services/bootService';
 import { getOrCreateDeviceId, enrichDeviceId } from '../services/deviceIdentityService';
@@ -74,9 +75,10 @@ type ScreenAdapterProps = { navigation: any; route: any };
 
 function makeOnNavigate(navigation: any): (tab: NavTab) => void {
   return (tab) => {
-    if ((tab as string) === 'settings')    { navigation.navigate('Settings');    return; }
-    if ((tab as string) === 'diagnostics') { navigation.navigate('Diagnostics'); return; }
-    if ((tab as string) === 'upgrade')     { navigation.navigate('Upgrade');     return; }
+    if ((tab as string) === 'settings')       { navigation.navigate('Settings');       return; }
+    if ((tab as string) === 'diagnostics')    { navigation.navigate('Diagnostics');    return; }
+    if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
+    if ((tab as string) === 'profileImport')  { navigation.navigate('ProfileImport'); return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };
 }
@@ -343,7 +345,10 @@ export function AppNavigator() {
           options={{ animation: 'slide_from_right' }}
         >
           {({ navigation }) => (
-            <SettingsScreen onBack={() => navigation.goBack()} />
+            <SettingsScreen
+              onBack={() => navigation.goBack()}
+              onProfileImport={() => navigation.navigate('ProfileImport')}
+            />
           )}
         </Stack.Screen>
         <Stack.Screen
@@ -360,6 +365,14 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <UpgradeScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="ProfileImport"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <ProfileImportScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
       </Stack.Navigator>
