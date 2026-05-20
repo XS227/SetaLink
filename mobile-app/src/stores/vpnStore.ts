@@ -167,12 +167,16 @@ export const useVpnStore = create<VpnState>((set, get) => {
           if (totalBytes > 0) reportUsage(user.deviceId, useAuthStore.getState().user!.quotaBytesUsed).catch(() => {});
           if (state.sessionStartedAt && state.selectedServer) {
             const sessionDuration = Math.max(1, Math.floor((Date.now() - state.sessionStartedAt) / 1000));
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { getLastConnectProbeOk } = require('../services/vpnBridge');
+            const probeResult: 'ok' | 'fail' | 'unknown' = getLastConnectProbeOk() ? 'ok' : 'fail';
             reportSessionEnd(
               user.deviceId,
               state.selectedServer.protocol,
               state.sessionBytes.sent,
               state.sessionBytes.received,
               sessionDuration,
+              probeResult,
             ).catch(() => {});
           }
         }

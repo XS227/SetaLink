@@ -64,7 +64,7 @@ async function mobileGet(action: string, params: Record<string, string> = {}): P
 export async function registerDevice(
   deviceId: string,
   platform = 'android',
-  options: { language?: string; referralCode?: string } = {}
+  options: { language?: string; referralCode?: string; country?: string } = {}
 ): Promise<DeviceEntitlement> {
   const body: Record<string, string | number> = {
     device_id:   deviceId,
@@ -73,6 +73,7 @@ export async function registerDevice(
   };
   if (options.language)     body.language      = options.language;
   if (options.referralCode) body.referral_code = options.referralCode;
+  if (options.country)      body.country       = options.country;
   const data = await mobilePost('register-device', body);
   return data as DeviceEntitlement;
 }
@@ -121,6 +122,8 @@ export async function reportSessionEnd(
   bytesSent:    number,
   bytesRecv:    number,
   durationSecs: number,
+  probeResult:  'ok' | 'fail' | 'unknown' = 'unknown',
+  errorReason   = '',
 ): Promise<void> {
   await mobilePost('report-session', {
     device_id:     deviceId,
@@ -129,5 +132,7 @@ export async function reportSessionEnd(
     bytes_recv:    bytesRecv,
     duration_secs: durationSecs,
     app_version:   APP_VERSION,
+    probe_result:  probeResult,
+    error_reason:  errorReason,
   });
 }

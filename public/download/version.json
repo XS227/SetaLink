@@ -1,25 +1,26 @@
 {
-  "version": "0.9.12",
-  "versionCode": 17,
+  "version": "0.9.13",
+  "versionCode": 18,
   "releaseDate": "2026-05-20",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.12.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.13.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "d2bacaeefeb42163e6f8ed22b3942adf57b61310f493b7e7f74d044778306e7a", "algorithm": "sha256" },
-  "size": 53691144,
+  "checksum": { "sha256": "", "algorithm": "sha256" },
+  "size": 0,
   "changelog": [
-    "Fix: QUIC/ERR_QUIC_PROTOCOL_ERROR — UDP/443 (HTTP/3) is now fast-rejected so Chrome falls back to TCP HTTPS",
-    "Fix: Chrome/browser browsing now works — QUIC blackholed, TCP/TLS (HTTP/2) fallback active",
-    "New: Browser compatibility probes run post-connect — tests example.com, vg.no, cloudflare.com over TCP/TLS",
-    "New: QUIC status reported in diagnostics — UDP/QUIC Port 443: Blocked → Chrome uses TCP fallback",
-    "New: DNS resolution verified end-to-end through tunnel after connect",
-    "Improved: Connection log now shows TCP HTTPS, DNS, QUIC, and Browser Compatibility results"
+    "Fix: Device registration refreshed on every launch — admin Devices list now shows current device immediately",
+    "Fix: VPN EPERM fallback now requires SOCKS5 internet probe — no longer marks connected when traffic is not routed",
+    "Fix: Protocol fallback (Reality → XHTTP → WebSocket) only declares connected after real browsing probe passes",
+    "New: Real Internet Test button in Diagnostics — tests DNS, TCP 443, HTTPS GET, Cloudflare trace, route via VPN",
+    "New: VPN connection refused until 1.1.1.1/cdn-cgi/trace returns HTTP 200 through tunnel",
+    "Fix: GitHub repository link updated to github.com/XS227/SetaLink everywhere",
+    "Version: 0.9.13 / Build 18"
   ],
   "channels": {
-    "stable":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.12.apk" },
-    "beta":    { "version": "0.9.11",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.11.apk" },
-    "hotfix":  { "version": "0.9.11",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.11.apk" }
+    "stable":  { "version": "0.9.13",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.13.apk" },
+    "beta":    { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
+    "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }
 }

@@ -11,7 +11,7 @@ import { useT } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 const VERSION_URL     = 'https://setalink.no/download/version.json';
 const DOWNLOAD_URL    = 'https://setalink.no/download/setalink-latest.apk';
-const GITHUB_URL      = 'https://github.com/setaei/setalink';
+const GITHUB_URL      = 'https://github.com/XS227/SetaLink';
 const WEBSITE_URL     = 'https://setalink.no';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -291,7 +291,7 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
         <Section label="About">
           <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(GITHUB_URL)} activeOpacity={0.7}>
             <Text style={selStyles.label}>GitHub</Text>
-            <Text style={selStyles.value}>github.com/setaei/setalink</Text>
+            <Text style={selStyles.value}>github.com/XS227/SetaLink</Text>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(WEBSITE_URL)} activeOpacity={0.7}>

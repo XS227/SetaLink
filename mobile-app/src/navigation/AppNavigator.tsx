@@ -253,7 +253,15 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
           return;
         }
 
-        // Already authenticated
+        // Already authenticated — refresh registration in background so admin shows
+        // current device/version immediately, even if the user never logged out.
+        enrichDeviceId().catch(() => getOrCreateDeviceId()).then((deviceId) => {
+          const { language } = useSettingsStore.getState();
+          return registerDevice(deviceId, 'android', { language });
+        }).then((entitlement) => {
+          useAuthStore.getState().updateFromEntitlement(entitlement);
+        }).catch(() => {});
+
         if (!hasSeenWelcome) {
           navigation.replace('Welcome');
           return;

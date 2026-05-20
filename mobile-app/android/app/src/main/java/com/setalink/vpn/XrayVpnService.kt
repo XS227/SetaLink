@@ -617,61 +617,65 @@ class XrayVpnService : VpnService() {
         return runTunEpermFallback()
     }
 
-    // Fallback when bindSocket returns EPERM. Validates:
-    //   1. Xray process alive
-    //   2. tun2socks process alive
-    //   3. TUN interface present in NetworkInterface list
-    //   4. Basic HTTPS reachability via default (non-VPN) network path
+    // Fallback when bindSocket returns EPERM (app UID excluded from VPN via addDisallowedApplication).
+    // Validates by running a SOCKS5-based internet probe through Xray instead of binding to the VPN
+    // network directly. This is the authoritative check: if Xray can forward real traffic, the
+    // tunnel is working regardless of whether Network.openConnection() is available.
     private suspend fun runTunEpermFallback(): ValidationResult {
         val xrayAlive = xrayProcess?.isAlive == true
         val t2sAlive  = tun2socksPid?.let { nativeTun2socksExitCode(it) == -2 } == true
         val tunIface  = findTunInterfaceName()
         val tunExists = tunIface != null
 
-        val (httpsOk, httpsNote) = runCatching {
-            withContext(Dispatchers.IO) {
-                val url  = URL("https://1.1.1.1/cdn-cgi/trace")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 10_000
-                conn.readTimeout    = 10_000
-                conn.setRequestProperty("User-Agent", "SetaLink/1.0")
-                try {
-                    val code = conn.responseCode
-                    if (code == 200) {
-                        val body   = conn.inputStream.bufferedReader().readText()
-                        val ipLine = body.lines().firstOrNull { it.startsWith("ip=") } ?: "ip=?"
-                        Pair(true, ipLine)
-                    } else {
-                        Pair(false, "HTTP $code")
-                    }
-                } finally {
-                    conn.disconnect()
-                }
-            }
-        }.getOrElse { e -> Pair(false, "probe error: ${e.message?.take(60)}") }
+        appendLog("[TUN-FALLBACK] processes: xray=$xrayAlive t2s=$t2sAlive tunIface=$tunIface")
 
-        appendLog("[TUN-FALLBACK] xray=$xrayAlive tun2socks=$t2sAlive tunIface=$tunIface httpsOk=$httpsOk net=$httpsNote")
-
-        val failReasons = buildList<String> {
-            if (!xrayAlive) add("Xray not running")
-            if (!t2sAlive)  add("tun2socks not running")
-            if (!tunExists) add("TUN interface missing")
-            if (!httpsOk)   add("HTTPS probe failed ($httpsNote)")
+        if (!xrayAlive || !t2sAlive || !tunExists) {
+            val reasons = buildList<String> {
+                if (!xrayAlive) add("Xray not running")
+                if (!t2sAlive)  add("tun2socks not running")
+                if (!tunExists) add("TUN interface missing")
+            }.joinToString("; ")
+            broadcastStep("tun_fallback_fail", false, "Processes unhealthy: $reasons")
+            return ValidationResult(false, "VPN setup incomplete: $reasons")
         }
 
-        return if (xrayAlive && t2sAlive && tunExists) {
+        // Run SOCKS5 HTTPS probe — this goes through Xray (localhost:10808) and confirms
+        // the tunnel is actually forwarding traffic to the internet. Unlike Network.openConnection(),
+        // SOCKS5 is always reachable by our process regardless of VPN UID exclusion.
+        broadcastStep("tun_eperm_probe", true, "Running SOCKS5 probe to confirm internet routing…")
+        var probeOk    = false
+        var probeNote  = "not attempted"
+
+        for (host in listOf("connectivitycheck.gstatic.com", "captive.apple.com", "clients3.google.com")) {
+            val (ok, bytes, snippet) = runHttpsProbe(host)
+            appendLog("[TUN-FALLBACK] SOCKS5 HTTPS probe → $host: ok=$ok bytes=$bytes snippet=$snippet")
+            if (ok) { probeOk = true; probeNote = "HTTPS OK via $host (${bytes}B)"; break }
+            probeNote = "HTTPS $host failed: $snippet"
+        }
+
+        if (!probeOk) {
+            // Try plain HTTP fallback
+            val (ok, bytes, snippet) = runDeepHttpProbe("connectivitycheck.gstatic.com", 80, true)
+            appendLog("[TUN-FALLBACK] SOCKS5 HTTP probe: ok=$ok bytes=$bytes snippet=$snippet")
+            if (ok) { probeOk = true; probeNote = "HTTP OK via connectivitycheck.gstatic.com (${bytes}B)" }
+            else probeNote = "All SOCKS5 probes failed — last: $snippet"
+        }
+
+        appendLog("[TUN-FALLBACK] result: probeOk=$probeOk note=$probeNote xray=$xrayAlive t2s=$t2sAlive TUN=$tunIface")
+
+        return if (probeOk) {
             broadcastStep("tun_fallback_ok", true,
-                "bindSocket EPERM (warning only) — xray alive, tun2socks alive, TUN=$tunIface, net=$httpsNote")
+                "EPERM fallback — SOCKS5 internet confirmed: $probeNote TUN=$tunIface")
             ValidationResult(
-                ok       = true,
-                message  = "bindSocket EPERM (warning only) — xray=$xrayAlive t2s=$t2sAlive TUN=$tunIface — $httpsNote",
-                probeOk  = httpsOk
+                ok      = true,
+                message = "bindSocket EPERM (OK) — SOCKS5 probe passed: $probeNote TUN=$tunIface",
+                probeOk = true
             )
         } else {
-            val reasons = failReasons.joinToString("; ")
             broadcastStep("tun_fallback_fail", false,
-                "bindSocket EPERM + processes unhealthy: $reasons")
-            ValidationResult(false, "VPN setup incomplete: $reasons")
+                "EPERM fallback — SOCKS5 internet probe FAILED: $probeNote")
+            ValidationResult(false,
+                "Server connected but internet not routed through VPN. $probeNote")
         }
     }
 

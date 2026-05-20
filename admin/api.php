@@ -280,6 +280,7 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $platform    = substr(trim((string)($_POST['platform']    ?? 'android')), 0, 20);
         $app_version = substr(trim((string)($_POST['app_version'] ?? '')), 0, 20);
         $language    = substr(trim((string)($_POST['language']    ?? '')), 0, 30);
+        $country     = substr(trim((string)($_POST['country']     ?? '')), 0, 80);
         if (!$device_id || strlen($device_id) > 128) api_err('invalid device_id');
         if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9\-_]{5,126}$/', $device_id)) api_err('invalid device_id format');
         $db = open_analytics_db();
@@ -288,12 +289,12 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $st->execute([$device_id]);
         $dev = $st->fetch(PDO::FETCH_ASSOC);
         if ($dev) {
-            $db->prepare("UPDATE devices SET last_seen=datetime('now'),platform=?,app_version=?,language=? WHERE device_id=?")
-               ->execute([$platform, $app_version, $language, $device_id]);
+            $db->prepare("UPDATE devices SET last_seen=datetime('now'),platform=?,app_version=?,language=?,status='online',country=CASE WHEN ?!='' THEN ? ELSE country END WHERE device_id=?")
+               ->execute([$platform, $app_version, $language, $country, $country, $device_id]);
         } else {
             $ref = generate_referral_code($db);
-            $db->prepare("INSERT INTO devices (device_id,referral_code,plan,quota_bytes_total,quota_bytes_used,platform,app_version,language) VALUES (?,?,'free',?,0,?,?,?)")
-               ->execute([$device_id, $ref, ONE_GB_BYTES, $platform, $app_version, $language]);
+            $db->prepare("INSERT INTO devices (device_id,referral_code,plan,quota_bytes_total,quota_bytes_used,platform,app_version,language,country,status) VALUES (?,?,'free',?,0,?,?,?,?,'online')")
+               ->execute([$device_id, $ref, ONE_GB_BYTES, $platform, $app_version, $language, $country]);
             $st->execute([$device_id]);
             $dev = $st->fetch(PDO::FETCH_ASSOC);
         }
@@ -362,6 +363,40 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $db->prepare("UPDATE devices SET status=?,active_protocol=?,last_seen=datetime('now') WHERE device_id=?")
            ->execute([$status, $active_protocol, $device_id]);
         api_ok(['status' => $status]);
+    }
+    if ($ma === 'report-session') {
+        $device_id     = trim((string)($_POST['device_id']     ?? ''));
+        $protocol      = substr(trim((string)($_POST['protocol']  ?? '')), 0, 60);
+        $bytes_sent    = max(0, (int)($_POST['bytes_sent']    ?? 0));
+        $bytes_recv    = max(0, (int)($_POST['bytes_recv']    ?? 0));
+        $duration_secs = max(1, (int)($_POST['duration_secs'] ?? 1));
+        $app_version   = substr(trim((string)($_POST['app_version'] ?? '')), 0, 20);
+        $probe_result  = in_array($_POST['probe_result'] ?? '', ['ok','fail','unknown'], true)
+                         ? (string)$_POST['probe_result'] : 'unknown';
+        $error_reason  = substr(trim((string)($_POST['error_reason'] ?? '')), 0, 255);
+        if (!$device_id) api_err('device_id required');
+        $db = open_analytics_db();
+        $db->exec("CREATE TABLE IF NOT EXISTS vpn_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT, protocol TEXT,
+            bytes_sent INTEGER DEFAULT 0, bytes_recv INTEGER DEFAULT 0,
+            duration_secs INTEGER DEFAULT 0, app_version TEXT DEFAULT '',
+            probe_result TEXT DEFAULT 'unknown', error_reason TEXT DEFAULT '',
+            started_at TEXT, ended_at TEXT DEFAULT (datetime('now')), client_ip TEXT DEFAULT ''
+        )");
+        $migrations_sess = [
+            "ALTER TABLE vpn_sessions ADD COLUMN probe_result TEXT DEFAULT 'unknown'",
+            "ALTER TABLE vpn_sessions ADD COLUMN error_reason TEXT DEFAULT ''",
+        ];
+        foreach ($migrations_sess as $sql) { try { $db->exec($sql); } catch (Exception $e) {} }
+        $db->prepare("INSERT INTO vpn_sessions (device_id,protocol,bytes_sent,bytes_recv,duration_secs,app_version,probe_result,error_reason,started_at,ended_at,client_ip) VALUES (?,?,?,?,?,?,?,?,datetime('now',? || ' seconds'),datetime('now'),?)")
+           ->execute([$device_id,$protocol,$bytes_sent,$bytes_recv,$duration_secs,$app_version,$probe_result,$error_reason,'-'.$duration_secs,$_SERVER['REMOTE_ADDR']??'']);
+        $total = $bytes_sent + $bytes_recv;
+        if ($total > 0) {
+            $db->prepare("UPDATE devices SET quota_bytes_used=quota_bytes_used+?,last_seen=datetime('now') WHERE device_id=?")
+               ->execute([$total, $device_id]);
+        }
+        api_ok(['recorded' => true]);
     }
     // Mobile telemetry
     $allowed_results = ['success','fail','partial','tcp_only'];
@@ -1166,8 +1201,14 @@ switch ($action) {
             device_id TEXT, protocol TEXT,
             bytes_sent INTEGER DEFAULT 0, bytes_recv INTEGER DEFAULT 0,
             duration_secs INTEGER DEFAULT 0, app_version TEXT DEFAULT '',
+            probe_result TEXT DEFAULT 'unknown', error_reason TEXT DEFAULT '',
             started_at TEXT, ended_at TEXT DEFAULT (datetime('now')), client_ip TEXT DEFAULT ''
         )");
+        $migrations_sess = [
+            "ALTER TABLE vpn_sessions ADD COLUMN probe_result TEXT DEFAULT 'unknown'",
+            "ALTER TABLE vpn_sessions ADD COLUMN error_reason TEXT DEFAULT ''",
+        ];
+        foreach ($migrations_sess as $sql) { try { $db->exec($sql); } catch (Exception $e) {} }
         $db->exec("CREATE TABLE IF NOT EXISTS ip_isp_cache (
             ip TEXT PRIMARY KEY, isp TEXT, asn TEXT, country TEXT,
             cached_at TEXT DEFAULT (datetime('now'))
@@ -1176,13 +1217,16 @@ switch ($action) {
         $total_sess = (int)$db->query("SELECT COUNT(*) FROM vpn_sessions")->fetchColumn();
         $avg_dur    = (float)($db->query("SELECT AVG(duration_secs) FROM vpn_sessions WHERE duration_secs>10")->fetchColumn() ?? 0);
         $total_bytes = (int)($db->query("SELECT SUM(bytes_sent+bytes_recv) FROM vpn_sessions")->fetchColumn() ?? 0);
+        $probe_ok_count  = (int)$db->query("SELECT COUNT(*) FROM vpn_sessions WHERE probe_result='ok'")->fetchColumn();
+        $probe_fail_count = (int)$db->query("SELECT COUNT(*) FROM vpn_sessions WHERE probe_result='fail'")->fetchColumn();
         $by_protocol = $db->query(
             "SELECT protocol,COUNT(*) as sessions,
-                    SUM(duration_secs) as total_secs,SUM(bytes_sent+bytes_recv) as total_bytes
+                    SUM(duration_secs) as total_secs,SUM(bytes_sent+bytes_recv) as total_bytes,
+                    SUM(CASE WHEN probe_result='ok' THEN 1 ELSE 0 END) as probe_ok_cnt
              FROM vpn_sessions GROUP BY protocol ORDER BY sessions DESC LIMIT 10"
         )->fetchAll(PDO::FETCH_ASSOC);
         $recent = $db->query(
-            "SELECT device_id,protocol,bytes_sent,bytes_recv,duration_secs,ended_at,client_ip
+            "SELECT device_id,protocol,bytes_sent,bytes_recv,duration_secs,ended_at,client_ip,probe_result,error_reason
              FROM vpn_sessions ORDER BY ended_at DESC LIMIT 20"
         )->fetchAll(PDO::FETCH_ASSOC);
         $isp_breakdown = $db->query(
@@ -1191,8 +1235,76 @@ switch ($action) {
              GROUP BY c.isp ORDER BY sessions DESC LIMIT 15"
         )->fetchAll(PDO::FETCH_ASSOC);
         api_ok(['today'=>$today,'total'=>$total_sess,'avg_duration'=>round($avg_dur),
-                'total_bytes'=>$total_bytes,'by_protocol'=>$by_protocol,
-                'isp_breakdown'=>$isp_breakdown,'recent'=>$recent]);
+                'total_bytes'=>$total_bytes,'probe_ok'=>$probe_ok_count,'probe_fail'=>$probe_fail_count,
+                'by_protocol'=>$by_protocol,'isp_breakdown'=>$isp_breakdown,'recent'=>$recent]);
+        break;
+
+    case 'iran-traffic':
+        // Real-time Iran/country traffic visibility from vpn_sessions + test_results
+        $db = open_analytics_db();
+        $db->exec("CREATE TABLE IF NOT EXISTS vpn_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT, protocol TEXT,
+            bytes_sent INTEGER DEFAULT 0, bytes_recv INTEGER DEFAULT 0,
+            duration_secs INTEGER DEFAULT 0, app_version TEXT DEFAULT '',
+            probe_result TEXT DEFAULT 'unknown', error_reason TEXT DEFAULT '',
+            started_at TEXT, ended_at TEXT DEFAULT (datetime('now')), client_ip TEXT DEFAULT ''
+        )");
+        $migrations_sess2 = [
+            "ALTER TABLE vpn_sessions ADD COLUMN probe_result TEXT DEFAULT 'unknown'",
+            "ALTER TABLE vpn_sessions ADD COLUMN error_reason TEXT DEFAULT ''",
+        ];
+        foreach ($migrations_sess2 as $sql) { try { $db->exec($sql); } catch (Exception $e) {} }
+        // Country breakdown from test_results (telemetry — has country+protocol+sni)
+        $country_rows = $db->query(
+            "SELECT country,protocol,sni,
+                    COUNT(*) as attempts,
+                    SUM(CASE WHEN result='success' THEN 1 ELSE 0 END) as accepted,
+                    SUM(CASE WHEN result='fail' THEN 1 ELSE 0 END) as rejected,
+                    SUM(CASE WHEN tcp_ok=1 AND http_ok=0 THEN 1 ELSE 0 END) as tcp_only,
+                    SUM(no_internet) as no_internet,
+                    MAX(recorded_at) as last_seen
+             FROM test_results
+             WHERE recorded_at >= datetime('now','-24 hours')
+             GROUP BY country,protocol,sni
+             ORDER BY attempts DESC LIMIT 100"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        // Iran-specific breakdown with device info
+        $iran_rows = $db->query(
+            "SELECT protocol,sni,error_msg,tcp_ok,http_ok,no_internet,
+                    country,network,device_model,tested_by,recorded_at,
+                    is_winner,fallback_chain,emergency
+             FROM test_results
+             WHERE (country LIKE '%Iran%' OR country='IR'
+                    OR network LIKE '%Hamrah%' OR network LIKE '%Irancell%'
+                    OR network LIKE '%MCI%' OR network LIKE '%Shatel%'
+                    OR network LIKE '%Rightel%' OR network LIKE '%TCI%')
+             ORDER BY recorded_at DESC LIMIT 50"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        // Recent sessions with device_id
+        $recent_sess = $db->query(
+            "SELECT s.device_id,s.protocol,s.probe_result,s.error_reason,
+                    s.bytes_sent,s.bytes_recv,s.duration_secs,s.client_ip,s.ended_at,
+                    d.country,d.app_version,d.status
+             FROM vpn_sessions s
+             LEFT JOIN devices d ON s.device_id=d.device_id
+             WHERE s.ended_at >= datetime('now','-24 hours')
+             ORDER BY s.ended_at DESC LIMIT 50"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        // No-internet failures (VPN connected but internet not routed)
+        $no_internet_rows = $db->query(
+            "SELECT protocol,sni,error_msg,country,network,device_model,recorded_at
+             FROM test_results
+             WHERE no_internet=1
+             ORDER BY recorded_at DESC LIMIT 30"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        api_ok([
+            'country_breakdown' => $country_rows,
+            'iran_attempts'     => $iran_rows,
+            'recent_sessions'   => $recent_sess,
+            'no_internet_failures' => $no_internet_rows,
+            'checked_at'        => date('Y-m-d H:i:s'),
+        ]);
         break;
 
     case 'lookup-isp':

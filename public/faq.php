@@ -109,7 +109,7 @@ foreach ($faqs as $i => [$q, $a]): ?>
     <nav class="footer-links">
       <a href="/">Home</a>
       <a href="https://t.me/SetaLink3" target="_blank" rel="noopener">Telegram</a>
-      <a href="https://github.com/setaei" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener">GitHub</a>
       <a href="/download/setalink-latest.apk">Download APK</a>
     </nav>
     <p class="footer-copy">&copy; <?= date('Y') ?> SETAEI · SetaLink VPN</p>
