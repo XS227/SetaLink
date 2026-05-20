@@ -1717,6 +1717,20 @@ $page_titles = [
       </div>
 
       <!-- ── Bootstrap Verification ────────────────────────── -->
+      <!-- ── Backend Health / debug-status ──────────────────── -->
+      <div class="diag-panel diag-full" id="debugStatusPanel">
+        <div class="diag-panel-head">
+          <h2>Backend Health</h2>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <span id="debugStatusAt" style="font-size:.7rem;color:var(--muted)">—</span>
+            <button class="btn btn-secondary" style="padding:.3rem .7rem;font-size:.72rem" id="refreshDebugStatusBtn">Refresh</button>
+          </div>
+        </div>
+        <div class="diag-panel-body">
+          <div id="debugStatusBody"><div class="diag-loading">Loading…</div></div>
+        </div>
+      </div>
+
       <div class="diag-panel diag-full" id="bootstrapVerifyPanel">
         <div class="diag-panel-head">
           <h2>Current Mobile Bootstrap Profile</h2>
@@ -2118,7 +2132,10 @@ if (CURRENT_PAGE === 'dashboard') {
 
     async function loadServerStats() {
         try {
-            const r = await fetch(API_URL + '?action=server-stats', { credentials: 'same-origin' });
+            const ctrl = new AbortController();
+            const tid  = setTimeout(() => ctrl.abort(), 10000);
+            const r = await fetch(API_URL + '?action=server-stats', { credentials: 'same-origin', signal: ctrl.signal });
+            clearTimeout(tid);
             if (!r.ok) return;
             const j = await r.json();
             const d = j.data || j;
@@ -2218,7 +2235,10 @@ if (CURRENT_PAGE === 'dashboard') {
     // ── App analytics ─────────────────────────────────────────────────────
     async function loadAppAnalytics() {
         try {
-            const r = await fetch(API_URL + '?action=app-analytics', { credentials: 'same-origin' });
+            const ctrl = new AbortController();
+            const tid  = setTimeout(() => ctrl.abort(), 10000);
+            const r = await fetch(API_URL + '?action=app-analytics', { credentials: 'same-origin', signal: ctrl.signal });
+            clearTimeout(tid);
             if (!r.ok) return;
             const j = await r.json();
             const d = j.data || j;
@@ -2270,13 +2290,20 @@ if (CURRENT_PAGE === 'dashboard') {
     }
 
     async function loadDevices() {
+        const tbody = document.getElementById('devicesTbody');
         try {
-            const r = await fetch(API_URL + '?action=devices-list', { credentials: 'same-origin' });
-            if (!r.ok) return;
+            const ctrl = new AbortController();
+            const tid  = setTimeout(() => ctrl.abort(), 10000);
+            const r = await fetch(API_URL + '?action=devices-list', { credentials: 'same-origin', signal: ctrl.signal });
+            clearTimeout(tid);
+            if (!r.ok) throw new Error('HTTP ' + r.status);
             const j = await r.json();
             allDevices = Array.isArray(j.data) ? j.data : [];
             renderDevices();
-        } catch (e) { /* silently ignore */ }
+        } catch (e) {
+            const ph = document.getElementById('devicesPlaceholder');
+            if (ph) { ph.style.display = ''; const td = ph.querySelector('td'); if (td) td.textContent = e.name === 'AbortError' ? 'Load timed out — Retry' : 'Failed to load: ' + e.message; }
+        }
     }
 
     function renderDevices() {
@@ -3708,6 +3735,52 @@ if (document.getElementById('diagRefreshBtn')) {
     btn.disabled = false;
   });
 
+  // ── Backend Health ────────────────────────────────────────────────────
+  async function loadDebugStatus() {
+    const el   = document.getElementById('debugStatusBody');
+    const elAt = document.getElementById('debugStatusAt');
+    if (!el) return;
+    try {
+      const j = await diagFetch(API_URL + '?action=debug-status', 15000);
+      if (!j.ok) { el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(j.error||'failed')}</div>`; return; }
+      const d = j.data;
+      if (elAt) elAt.textContent = d.checked_at || '';
+      const dot = (ok) => ok
+        ? `<span class="dot dot-ok" style="margin-right:.4rem"></span>`
+        : `<span class="dot dot-bad" style="margin-right:.4rem"></span>`;
+      const row = (k, v, ok = null) => {
+        const dotHtml = ok !== null ? dot(ok) : '';
+        return `<div class="cfg-row">${dotHtml}<span class="cfg-key">${escHtml(k)}</span><code class="cfg-val">${escHtml(String(v ?? '—'))}</code></div>`;
+      };
+      const logRows = Object.entries(d.logs || {}).map(([k, l]) =>
+        `<div class="cfg-row">${dot(l.readable)}<span class="cfg-key">${escHtml(k)}</span><code class="cfg-val">${escHtml(l.readable ? `${l.size_kb} KB` : (l.exists ? 'not readable' : 'missing'))}</code></div>`
+      ).join('');
+      const vj = d.version_json;
+      el.innerHTML = `
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.5rem">
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Services</div>
+            ${row('PHP', d.php_version, d.php_ok)}
+            ${row('Xray', d.xray_version || (d.xray_active ? 'active' : 'inactive'), d.xray_active)}
+            ${row('Nginx', d.nginx_active ? 'active' : 'inactive', d.nginx_active)}
+            ${row('SQLite', d.db_ok ? `OK · ${d.device_count} devices · ${d.session_count} sessions` : (d.db_error||'error'), d.db_ok)}
+            ${row('DB writable', d.db_writable ? 'yes' : 'no', d.db_writable)}
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">Log Files</div>
+            ${logRows}
+          </div>
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:.5rem">App Update</div>
+            ${row('APK symlink', d.apk_symlink ? d.apk_symlink.split('/').pop() : 'broken', !!d.apk_symlink && !d.apk_symlink.includes('broken'))}
+            ${vj ? row('version.json', `v${vj.version} (${vj.versionCode})`, true) : row('version.json', 'missing or invalid', false)}
+            ${row('Payments pending', d.payment_count ?? '—')}
+          </div>
+        </div>`;
+    } catch(e) { if (el) el.innerHTML = `<div class="diag-loading" style="color:var(--danger)">Error: ${escHtml(e.message)}</div>`; }
+  }
+  document.getElementById('refreshDebugStatusBtn')?.addEventListener('click', loadDebugStatus);
+
   // Refresh all panels on button click
   document.getElementById('diagRefreshBtn')?.addEventListener('click', () => {
     loadConnectionAnalytics();
@@ -3727,6 +3800,7 @@ if (document.getElementById('diagRefreshBtn')) {
     loadBundleEditor();
     loadRemoteConfigEditor();
     loadBootstrapPanel();
+    loadDebugStatus();
   });
 
   // Auto-refresh panels every 30 seconds
@@ -3752,6 +3826,7 @@ if (document.getElementById('diagRefreshBtn')) {
   loadDeviceBreakdown();
   loadRemoteConfigEditor();
   loadBootstrapPanel();
+  loadDebugStatus();
 }
 </script>
 </body>
