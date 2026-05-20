@@ -1,6 +1,6 @@
 {
-  "version": "0.9.4",
-  "versionCode": 9,
+  "version": "0.9.8",
+  "versionCode": 13,
   "downloadUrl": "https://setalink.no/download/setalink-latest.apk",
-  "releaseNotes": "v0.9.4 - USDT payments, real usage tracking, 3 server profiles"
+  "releaseNotes": "v0.9.8 - Admin + App data consistency, Backend health dashboard, version unification"
 }

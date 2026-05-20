@@ -1073,19 +1073,23 @@ switch ($action) {
         break;
 
     case 'node-list':
-        $cfg     = cli_json('status');
+        $cfg     = cli_json('status', [], 8);
         $reality = $cfg['reality'] ?? [];
+        $xray_ok = isset($cfg['services']['xray']) && $cfg['services']['xray'] === 'active';
+        $db_nl = open_analytics_db();
+        $srv_label = (string)($db_nl->query("SELECT value FROM settings WHERE key='server_label'")->fetchColumn() ?: 'SetaLink VPN');
+        $srv_host  = (string)($reality['address'] ?? '5.249.252.221');
         api_ok([[
             'id'       => 'main',
-            'label'    => 'SetaLink Cloudflare',
-            'host'     => '178.104.77.231',
-            'country'  => 'Germany',
-            'city'     => 'SetaLink Cloudflare',
-            'flag'     => '🇩🇪',
-            'protocol' => 'Reality',
-            'port'     => (int)($reality['port'] ?? 443),
-            'status'   => isset($cfg['services']['xray']) && $cfg['services']['xray'] === 'active' ? 'active' : 'error',
-            'tags'     => ['reality','stealth','main'],
+            'label'    => $srv_label,
+            'host'     => $srv_host,
+            'country'  => 'NO',
+            'city'     => 'Oslo',
+            'flag'     => '🇳🇴',
+            'protocol' => 'Reality+XHTTP+WS',
+            'port'     => (int)($reality['port'] ?? 8443),
+            'status'   => $xray_ok ? 'active' : 'error',
+            'tags'     => ['reality','xhttp','websocket','stealth','main'],
             'ping'     => null,
         ]]);
         break;
@@ -1349,6 +1353,51 @@ switch ($action) {
             ORDER BY p.submitted_at DESC LIMIT 100
         ")->fetchAll();
         api_ok(['payments' => $rows, 'filter' => $status_filter]);
+        break;
+
+    case 'debug-status':
+        // Comprehensive backend health dump for admin debugging.
+        $ds = [];
+        $ds['php_version']    = phpversion();
+        $ds['php_ok']         = true;
+        $ds['xray_active']    = trim((string)@shell_exec('systemctl is-active xray.service 2>/dev/null'))  === 'active';
+        $ds['nginx_active']   = trim((string)@shell_exec('systemctl is-active nginx.service 2>/dev/null')) === 'active';
+        $ds['xray_version']   = trim((string)@shell_exec('/usr/local/bin/xray version 2>/dev/null | head -1'));
+        $ds_db_ok = false;
+        try {
+            $ds_db = open_analytics_db();
+            $ds_db->exec("SELECT 1");
+            $ds['db_path']    = realpath(__DIR__ . '/../data/analytics.db') ?: 'not found';
+            $ds['db_ok']      = true;
+            $ds['db_writable']= is_writable(dirname((string)($ds['db_path'])));
+            $ds['device_count'] = (int)$ds_db->query("SELECT COUNT(*) FROM devices")->fetchColumn();
+            $ds['session_count']= (int)$ds_db->query("SELECT COUNT(*) FROM vpn_sessions")->fetchColumn();
+            $ds['payment_count']= (int)$ds_db->query("SELECT COUNT(*) FROM payment_queue")->fetchColumn();
+            $ds_db_ok = true;
+        } catch (Exception $e) {
+            $ds['db_ok']    = false;
+            $ds['db_error'] = $e->getMessage();
+        }
+        $log_paths = [
+            'xray_access'  => '/var/log/xray/access.log',
+            'xray_error'   => '/var/log/xray/error.log',
+            'nginx_access' => '/var/log/nginx/access.log',
+            'nginx_error'  => '/var/log/nginx/error.log',
+            'watchdog'     => '/var/log/setalink/watchdog.log',
+        ];
+        $ds['logs'] = [];
+        foreach ($log_paths as $lk => $lp) {
+            $ds['logs'][$lk] = [
+                'path'     => $lp,
+                'exists'   => file_exists($lp),
+                'readable' => is_readable($lp),
+                'size_kb'  => file_exists($lp) ? round(filesize($lp) / 1024, 1) : null,
+            ];
+        }
+        $ds['apk_symlink']    = realpath('/var/www/setalink/public/download/setalink-latest.apk') ?: 'broken';
+        $ds['version_json']   = json_decode((string)@file_get_contents('/var/www/setalink/public/download/version.json'), true) ?: null;
+        $ds['checked_at']     = date('Y-m-d H:i:s');
+        api_ok($ds);
         break;
 
     default: api_err('unknown action');

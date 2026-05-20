@@ -330,7 +330,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         <GlassCard>
           <Text style={styles.footerBrand}>SetaLink</Text>
           <TouchableOpacity onLongPress={() => (onNavigate as (tab: string) => void)('diagnostics')} delayLongPress={1500}>
-            <Text style={styles.footerMeta}>v0.9.7 (12)</Text>
+            <Text style={styles.footerMeta}>v0.9.8 (13)</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleOpenWebsite}>
             <Text style={styles.footerLink}>https://setalink.no</Text>
