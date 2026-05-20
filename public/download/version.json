@@ -1,26 +1,23 @@
 {
-  "version": "0.9.10",
-  "versionCode": 15,
+  "version": "0.9.11",
+  "versionCode": 16,
   "releaseDate": "2026-05-20",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.11.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": {
-    "sha256": "872803494e5a5e45082eb58411aa35e081384af39b609c65f782ef0809ecfe93",
-    "algorithm": "sha256"
-  },
+  "apkSha256": "02e50e494d62d309db0ae1c07f3301f4a18b675d3c2ddf1eff6e3038ef6e1dde",
   "changelog": [
-    "Fix: TUN routing false-positive CONNECTED — browser traffic was not routed through VPN",
-    "Fix: IPv6 now enters the tunnel (addRoute('::', 0))",
-    "Fix: Block CONNECTED until https://1.1.1.1/cdn-cgi/trace returns HTTP 200 via TUN",
-    "Fix: Show 'Server connected, but internet is not routed through VPN' on routing failure",
-    "New: Test routing button on Home screen — shows routed IP and response status"
+    "Fix: Clean rebuild — stale JS bundle replaced, version display now correct (v0.9.11 Build 16)",
+    "Fix: TUN routing EPERM — bindSocket failure is now a warning, not fatal disconnect",
+    "Fix: CONNECTED state uses process-health fallback when bindSocket EPERM occurs",
+    "New: Version debug panel in Settings shows JS bundle version and OTA server version",
+    "New: Fallback validation confirms Xray + tun2socks alive + TUN interface present on EPERM"
   ],
   "channels": {
-    "stable":  { "version": "0.9.10", "versionCode": 15, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk" },
-    "beta":    { "version": "0.9.10", "versionCode": 15, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk" },
-    "hotfix":  { "version": "0.9.10", "versionCode": 15, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.10.apk" }
+    "stable":  { "version": "0.9.11", "versionCode": 16, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.11.apk" },
+    "beta":    { "version": "0.9.11", "versionCode": 16, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.11.apk" },
+    "hotfix":  { "version": "0.9.11", "versionCode": 16, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.11.apk" }
   }
 }

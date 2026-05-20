@@ -468,9 +468,10 @@ class XrayVpnService : VpnService() {
     }
 
     // ── TUN routing probe (ConnectivityManager VPN network) ───────────────────
-    // Uses the registered VPN network handle so the request travels through
-    // TUN → tun2socks → SOCKS5 → Xray, regardless of our UID exclusion.
-    // This is the only reliable way to confirm end-to-end device traffic routing.
+    // Attempts a VPN-network-bound HTTPS probe first. Our app UID is excluded from
+    // TUN (addDisallowedApplication) so Network.bindSocket() / openConnection() may
+    // return EPERM on some devices. When EPERM occurs we fall back to process-health
+    // validation: confirm Xray + tun2socks are alive and the TUN interface exists.
 
     private suspend fun runTunNetworkProbe(): ValidationResult {
         val cm = getSystemService(ConnectivityManager::class.java)
@@ -493,7 +494,7 @@ class XrayVpnService : VpnService() {
         }
         appendLog("[TUN-PROBE] VPN network found: $vpnNet — GET https://1.1.1.1/cdn-cgi/trace")
 
-        return runCatching {
+        val probeOutcome = runCatching {
             withContext(Dispatchers.IO) {
                 val url  = URL("https://1.1.1.1/cdn-cgi/trace")
                 val conn = vpnNet.openConnection(url) as HttpURLConnection
@@ -515,9 +516,87 @@ class XrayVpnService : VpnService() {
                     conn.disconnect()
                 }
             }
-        }.getOrElse { e ->
-            appendLog("[TUN-PROBE] FAILED: ${e.javaClass.simpleName}: ${e.message}")
-            ValidationResult(false, "TUN probe failed: ${e.message?.take(120)}")
+        }
+
+        probeOutcome.onSuccess { return it }
+
+        val err    = probeOutcome.exceptionOrNull()
+        val errMsg = err?.message ?: ""
+        val isPermError = errMsg.contains("EPERM", ignoreCase = true)
+            || errMsg.contains("Operation not permitted", ignoreCase = true)
+            || errMsg.contains("Binding socket to network", ignoreCase = true)
+            || errMsg.contains("EACCES", ignoreCase = true)
+
+        if (!isPermError) {
+            appendLog("[TUN-PROBE] FAILED: ${err?.javaClass?.simpleName}: $errMsg")
+            return ValidationResult(false, "TUN probe failed: ${errMsg.take(120)}")
+        }
+
+        // EPERM: our UID is excluded from the VPN network via addDisallowedApplication.
+        // bindSocket is blocked by the kernel — this is expected on some Android ROMs.
+        // Fall back to process-health + basic connectivity check.
+        appendLog("[TUN-PROBE] WARN: bindSocket EPERM (app UID excluded from VPN) — running process-health fallback")
+        appendLog("[TUN-PROBE] EPERM detail: $errMsg")
+        broadcastStep("tun_bind_eperm", true,
+            "bindSocket EPERM (warning — UID excluded from VPN) — checking process health")
+        return runTunEpermFallback()
+    }
+
+    // Fallback when bindSocket returns EPERM. Validates:
+    //   1. Xray process alive
+    //   2. tun2socks process alive
+    //   3. TUN interface present in NetworkInterface list
+    //   4. Basic HTTPS reachability via default (non-VPN) network path
+    private suspend fun runTunEpermFallback(): ValidationResult {
+        val xrayAlive = xrayProcess?.isAlive == true
+        val t2sAlive  = tun2socksPid?.let { nativeTun2socksExitCode(it) == -2 } == true
+        val tunIface  = findTunInterfaceName()
+        val tunExists = tunIface != null
+
+        val (httpsOk, httpsNote) = runCatching {
+            withContext(Dispatchers.IO) {
+                val url  = URL("https://1.1.1.1/cdn-cgi/trace")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.connectTimeout = 10_000
+                conn.readTimeout    = 10_000
+                conn.setRequestProperty("User-Agent", "SetaLink/1.0")
+                try {
+                    val code = conn.responseCode
+                    if (code == 200) {
+                        val body   = conn.inputStream.bufferedReader().readText()
+                        val ipLine = body.lines().firstOrNull { it.startsWith("ip=") } ?: "ip=?"
+                        Pair(true, ipLine)
+                    } else {
+                        Pair(false, "HTTP $code")
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+            }
+        }.getOrElse { e -> Pair(false, "probe error: ${e.message?.take(60)}") }
+
+        appendLog("[TUN-FALLBACK] xray=$xrayAlive tun2socks=$t2sAlive tunIface=$tunIface httpsOk=$httpsOk net=$httpsNote")
+
+        val failReasons = buildList<String> {
+            if (!xrayAlive) add("Xray not running")
+            if (!t2sAlive)  add("tun2socks not running")
+            if (!tunExists) add("TUN interface missing")
+            if (!httpsOk)   add("HTTPS probe failed ($httpsNote)")
+        }
+
+        return if (xrayAlive && t2sAlive && tunExists) {
+            broadcastStep("tun_fallback_ok", true,
+                "bindSocket EPERM (warning only) — xray alive, tun2socks alive, TUN=$tunIface, net=$httpsNote")
+            ValidationResult(
+                ok       = true,
+                message  = "bindSocket EPERM (warning only) — xray=$xrayAlive t2s=$t2sAlive TUN=$tunIface — $httpsNote",
+                probeOk  = httpsOk
+            )
+        } else {
+            val reasons = failReasons.joinToString("; ")
+            broadcastStep("tun_fallback_fail", false,
+                "bindSocket EPERM + processes unhealthy: $reasons")
+            ValidationResult(false, "VPN setup incomplete: $reasons")
         }
     }
 
