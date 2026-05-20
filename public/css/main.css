@@ -46,7 +46,10 @@ body {
   line-height:1.65;
   -webkit-font-smoothing:antialiased;
   overflow-x:hidden;
+  -webkit-user-select:none;
+  user-select:none;
 }
+a,button,input,textarea { -webkit-user-select:auto; user-select:auto; }
 body[dir="rtl"] { font-family:'Vazirmatn','Tahoma',system-ui,sans-serif; }
 a { color:var(--gold); text-decoration:none; }
 a:hover { opacity:.82; }

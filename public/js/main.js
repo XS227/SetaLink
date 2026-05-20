@@ -1,267 +1,274 @@
-// SetaLink landing page — lang toggle + FAQ accordion
 (function () {
   'use strict';
 
-  const STRINGS = {
+  var STRINGS = {
     en: {
       'nav.lang': 'فارسی',
+      'nav.dl':   'Download APK',
 
-      // Hero
-      'hero.badge': 'Server Online',
-      'hero.h1a': 'Your VPN.',
-      'hero.h1b': 'Built for Iran.',
-      'hero.sub': 'SetaLink is a smart VPN app designed from the ground up for Iran — VLESS+Reality protocols, AI-assisted routing, no logs, bilingual. Now in beta for Android.',
-      'hero.cta1': 'Get the App',
-      'hero.cta2': 'See Features',
+      'hero.badge': 'Server Online &mdash; Norway &amp; Turkey nodes',
+      'hero.h1a':   'Free Internet',
+      'hero.h1b':   'for Everyone',
+      'hero.sub':   'AI-powered VPN built for real censorship. Android-only. 1 GB free on install. No account. No server setup.',
+      'hero.cta1':  'Download APK',
+      'hero.cta2':  'Join Telegram',
 
-      // App section
-      'app.badge': 'Android Beta · Available Now',
-      'app.h2': 'The SetaLink App is Here',
-      'app.sub': 'No more importing configs into third-party apps. SetaLink is a complete VPN app — connect in one tap, switch servers instantly, and let AI pick the fastest route.',
-      'app.android.pre': 'Join Beta',
-      'app.android.label': 'Android APK',
-      'app.ios.pre': 'Coming Soon',
-      'app.ios.label': 'iOS App',
-      'app.note': 'Contact us on Telegram to join the Android beta · iOS coming Q3 2026',
+      'stat.1': 'Free on install',
+      'stat.2': 'Protocols tested',
+      'stat.3': 'Accounts needed',
+      'stat.4': 'Per referral',
 
-      // Features
-      'feat.label': 'FEATURES',
-      'feat.h2': 'Built Different',
-      'feat.sub': 'Every detail designed for users behind Iran\'s firewall.',
-      'feat.f1.h': 'VLESS + Reality',
-      'feat.f1.p': 'The hardest-to-block protocol available. Traffic looks identical to normal HTTPS — no VPN fingerprint to detect.',
-      'feat.f2.h': 'AI Smart Routing',
-      'feat.f2.p': 'AI engine monitors latency and blocking patterns, auto-switches protocols and servers to keep you connected.',
-      'feat.f3.h': 'One-Tap Connect',
-      'feat.f3.p': 'No config files, no QR codes, no setup. Install, tap connect — that\'s it. Reconnects automatically on network changes.',
-      'feat.f4.h': 'Bilingual',
-      'feat.f4.p': 'Full Persian and English support with proper RTL layout. The first VPN app that feels native for Iranian users.',
-      'feat.f5.h': 'Zero Logs',
-      'feat.f5.p': 'We never store connection logs, your IP, or traffic data. Privacy is not a feature — it\'s the foundation.',
-      'feat.f6.h': 'Live Stats',
-      'feat.f6.p': 'Real-time upload/download speed, ping, session timer, and traffic history — all visible at a glance.',
+      'how.label': 'HOW IT WORKS',
+      'how.title': 'Three Steps to Free Internet',
+      'how.sub':   'No account, no credit card, no configuration. Install and connect.',
+      'how.s1.h':  'Emergency Access',
+      'how.s1.p':  'Install the APK and get 1 GB instantly — no login, no account. Tap Connect and the AI selects the fastest working protocol for your network.',
+      'how.s2.h':  'Invite &amp; Earn Data',
+      'how.s2.p':  'Share your referral code. Every person who joins adds 512 MB to both of you. The more people connect, the stronger and cheaper the network becomes.',
+      'how.s3.h':  'AI Picks Best Route',
+      'how.s3.p':  'Reality, XHTTP, and WebSocket are tested in parallel. Only a path that returns real HTTP data is declared connected — no fake “connected” states.',
 
-      // Transports
-      'transports.label': 'TRANSPORTS',
-      'transports.h2': 'Available Connections',
-      'transports.sub': 'Four tunneling methods. The app switches automatically — or you can pick manually.',
-      'tr.reality.desc': 'Hardest to detect. Direct TCP, looks like normal HTTPS traffic.',
-      'tr.xhttp.desc': 'HTTP/2 stream. Resistant to deep packet inspection.',
-      'tr.httpup.desc': 'HTTP Upgrade tunnel. Reliable fallback.',
-      'tr.ws.desc': 'WebSocket over TLS. Widely compatible.',
-      'transports.notice': 'Status dots show whether this server\'s transports are reachable from your location. The app handles switching automatically.',
+      'ai.label': 'INTELLIGENT ROUTING',
+      'ai.title': 'Not Just a Tunnel',
+      'ai.sub':   'SetaLink actively validates every connection and picks the best path — every single time.',
+      'ai.f1.h':  'AI Protocol Optimizer',
+      'ai.f1.p':  'Tests Reality, XHTTP, and WebSocket in parallel. Selects the fastest protocol that actually delivers internet — not the last one that worked, the one that works right now.',
+      'ai.f2.h':  'Real Internet Validation',
+      'ai.f2.p':  'TCP-connected is not enough. The app sends an actual HTTP/HTTPS request and verifies real data is received before declaring you connected. Fake states are rejected hard.',
+      'ai.f3.h':  'Adaptive Routing',
+      'ai.f3.p':  'The network learns which SNIs work from your region. Turkey and Iran have different blocking patterns — the app adapts and remembers what works where, improving over time.',
+      'ai.f4.h':  'Remote Config Push',
+      'ai.f4.p':  'Admin can push protocol priority updates without requiring an app update. When censorship patterns change, routing rules are updated automatically for all users.',
 
-      // Pricing
-      'pricing.label': 'PRICING',
-      'pricing.h2': 'Simple Plans',
-      'pricing.sub': 'Start free. Upgrade when you need more.',
-      'plan.free.label': 'FREE',
-      'plan.free.period': 'Always free',
-      'plan.free.f1': '10 GB / month',
-      'plan.free.f2': '5 server locations',
-      'plan.free.f3': 'All protocols',
-      'plan.free.f4': 'Standard speed',
-      'plan.free.cta': 'Get Started Free',
-      'plan.premium.label': 'PREMIUM',
-      'plan.premium.period': 'per month',
-      'plan.premium.f1': 'Unlimited data',
-      'plan.premium.f2': '50+ server locations',
-      'plan.premium.f3': 'All protocols + AI routing',
-      'plan.premium.f4': 'Maximum speed',
-      'plan.premium.f5': 'Priority support',
-      'plan.premium.cta': 'Get Premium',
-      'plan.team.label': 'TEAM',
-      'plan.team.period': '5 users / month',
-      'plan.team.f1': 'Everything in Premium',
-      'plan.team.f2': '5 simultaneous users',
-      'plan.team.f3': 'Shared admin panel',
-      'plan.team.f4': 'Dedicated account manager',
-      'plan.team.cta': 'Contact for Team',
+      'why.label':      'WHY SETALINK',
+      'why.title':      'Built for Real Censorship',
+      'why.sub':        'Not a generic VPN wrapper. Built from scratch for the realities of Iran and Turkey.',
+      'why.tech.label': 'TECHNICAL EXCELLENCE',
+      'why.tech.1':     'VLESS + Reality — traffic indistinguishable from standard HTTPS, the most censorship-resistant protocol available',
+      'why.tech.2':     'XHTTP and WebSocket fallback transports via nginx edge proxy, tested continuously',
+      'why.tech.3':     'No logs, no account registration required to get emergency access',
+      'why.tech.4':     'SNI probing confirms which domains work from your ISP before connecting',
+      'why.comm.label': 'COMMUNITY MODEL',
+      'why.comm.1':     'More users = lower cost per user — infrastructure is shared and the network grows stronger with scale',
+      'why.comm.2':     'Referral bonuses reward both inviter and invitee — growth benefits everyone',
+      'why.comm.3':     'Community-backed, not VC-funded — decisions stay aligned with users, not investors',
+      'why.comm.4':     'Future: user-funded server expansion — vote on new regions and node locations',
 
-      // FAQ
+      'banner.q': '&ldquo;Every new user makes the network <strong>stronger</strong> and <strong>cheaper</strong> for everyone.&rdquo;',
+      'banner.s': 'As the network grows, infrastructure cost per user decreases. Share with friends.',
+
+      'pricing.label': 'ACCESS TIERS',
+      'pricing.title': 'Start Free. Grow Together.',
+      'pricing.sub':   '1 GB on install, more via referrals, unlimited data tier coming soon.',
+
+      'plan.free.eyebrow': 'FREE EMERGENCY',
+      'plan.free.title':   'Starter Pack',
+      'plan.free.desc':    'Auto-activated when you install the APK. No account, no login, no credit card.',
+      'plan.free.f1':      '1 GB starter quota',
+      'plan.free.f2':      'Auto-activated on install',
+      'plan.free.f3':      'AI protocol selection',
+      'plan.free.f4':      'No account needed',
+      'plan.free.cta':     'Download APK',
+
+      'plan.comm.eyebrow': 'INVITE-BASED',
+      'plan.comm.title':   'Community',
+      'plan.comm.desc':    'Share your referral code. Every friend who joins gives both of you 512 MB extra.',
+      'plan.comm.f1':      '+512 MB per friend invited',
+      'plan.comm.f2':      'Invitee also receives +512 MB',
+      'plan.comm.f3':      'No limit on referrals',
+      'plan.comm.f4':      'Network grows stronger with you',
+      'plan.comm.cta':     'Get Invite Code',
+
+      'plan.prem.eyebrow': 'COMING SOON',
+      'plan.prem.title':   'Premium',
+      'plan.prem.desc':    'Unlimited data, priority nodes, dedicated support channels.',
+      'plan.prem.f1':      'Unlimited data',
+      'plan.prem.f2':      'Priority routing nodes',
+      'plan.prem.f3':      'Dedicated support',
+      'plan.prem.f4':      'Early access features',
+      'plan.prem.cta':     'Join Waitlist',
+
+      'support.label': 'INFRASTRUCTURE FUNDING',
+      'support.title': 'Support the Project',
+      'support.sub':   'SetaLink runs on real servers that cost real money. Every contribution helps add nodes, improve reliability, and expand to new regions.',
+      'support.s1.h':  'Server Costs',
+      'support.s1.p':  'VPS hosting in Norway and Turkey. More nodes = better speed and resilience for every user in the network.',
+      'support.s2.h':  'Censorship Resilience',
+      'support.s2.p':  'New protocols, SNI rotation, and edge proxy improvements require development time. Funding keeps the work moving.',
+      'support.s3.h':  'How to Help',
+      'support.s3.p':  'Share the app with friends (earn data), contribute code on GitHub, or contact us via Telegram to discuss infrastructure sponsorship.',
+
+      'comm.tg.h': 'Telegram Group',
+      'comm.tg.p': 'Ask questions, report issues, get your referral code, and stay updated on new releases. The main support channel.',
+      'comm.gh.h': 'GitHub',
+      'comm.gh.p': 'Follow development, contribute code or report bugs. Open to community review — no black-box security claims.',
+
       'faq.label': 'FAQ',
-      'faq.h2': 'Common Questions',
-      'faq.q1': 'How do I get the app?',
-      'faq.a1': 'Message us on Telegram to receive the Android APK and your account credentials. iOS is coming in Q3 2026.',
-      'faq.q2': 'Which protocol should I use?',
-      'faq.a2': 'The app picks the best protocol automatically. If you want to choose manually, start with Reality — it\'s the hardest to detect. Then try XHTTP, HTTPUpgrade, WebSocket.',
-      'faq.q3': 'Is my data private?',
-      'faq.a3': 'Yes. We never log your IP address, connection times, or browsing data. The VPN tunnel itself uses VLESS+Reality which is end-to-end encrypted.',
-      'faq.q4': 'The VPN connects but pages don\'t load?',
-      'faq.a4': 'Try a different transport from the server screen. Your ISP may be blocking that specific protocol. Reality and XHTTP are usually the most resilient.',
-      'faq.q5': 'Can I still use v2rayNG / Hiddify?',
-      'faq.a5': 'Yes. Contact us on Telegram and we\'ll send you a VLESS subscription link compatible with v2rayNG (Android), Streisand (iOS), and Hiddify (all platforms).',
+      'faq.title': 'Common Questions',
+      'faq.sub':   'Real questions about how SetaLink actually works.',
 
-      // Community
-      'comm.label': 'COMMUNITY',
-      'comm.h2': 'Stay Connected',
-      'comm.sub': 'Join our channels for updates, new servers, and support.',
-      'comm.tg.h': 'Telegram Support',
-      'comm.tg.p': 'Get your account, report issues, ask questions.',
-      'comm.ch.h': 'Announcements Channel',
-      'comm.ch.p': 'Server updates, new features, downtime alerts.',
-
-      'footer': '© 2026 SetaLink · Smart VPN for Iran',
+      'footer.faq': 'Full FAQ',
+      'footer.tg':  'Telegram',
+      'footer.gh':  'GitHub',
+      'footer.dl':  'Download APK',
     },
     fa: {
       'nav.lang': 'English',
+      'nav.dl':   'دانلود APK',
 
-      // Hero
-      'hero.badge': 'سرور فعال',
-      'hero.h1a': 'VPN شما.',
-      'hero.h1b': 'ساخته‌شده برای ایران.',
-      'hero.sub': 'ستالینک یک اپ VPN هوشمند است که از صفر برای ایران طراحی شده — پروتکل‌های VLESS+Reality، مسیریابی با هوش مصنوعی، بدون لاگ، دوزبانه. اکنون در نسخه بتا برای اندروید.',
-      'hero.cta1': 'دریافت اپ',
-      'hero.cta2': 'ویژگی‌ها',
+      'hero.badge': 'سرور فعال &mdash; گره‌های نروژ و ترکیه',
+      'hero.h1a':   'اینترنت آزاد',
+      'hero.h1b':   'برای همه',
+      'hero.sub':   'VPN مبتنی بر هوش مصنوعی، ساخته‌شده برای سانسور واقعی. فقط اندروید. ۱ گیگابایت رایگان پس از نصب. بدون حساب. بدون تنظیمات.',
+      'hero.cta1':  'دانلود APK',
+      'hero.cta2':  'پیوستن به تلگرام',
 
-      // App section
-      'app.badge': 'بتای اندروید · هم‌اکنون در دسترس',
-      'app.h2': 'اپ ستالینک اینجاست',
-      'app.sub': 'دیگر نیازی به وارد کردن کانفیگ در اپ‌های شخص ثالث نیست. ستالینک یک اپ VPN کامل است — با یک ضربه وصل شوید، سریع سرور عوض کنید، و بگذارید هوش مصنوعی سریع‌ترین مسیر را انتخاب کند.',
-      'app.android.pre': 'پیوستن به بتا',
-      'app.android.label': 'اندروید APK',
-      'app.ios.pre': 'به‌زودی',
-      'app.ios.label': 'اپ iOS',
-      'app.note': 'برای پیوستن به بتای اندروید در تلگرام با ما تماس بگیرید · iOS در سه‌ماهه سوم ۲۰۲۶',
+      'stat.1': 'رایگان پس از نصب',
+      'stat.2': 'پروتکل آزمایش‌شده',
+      'stat.3': 'بدون نیاز به حساب',
+      'stat.4': 'به ازای هر دعوت',
 
-      // Features
-      'feat.label': 'ویژگی‌ها',
-      'feat.h2': 'متفاوت ساخته شده',
-      'feat.sub': 'هر جزئیت برای کاربران پشت فایروال ایران طراحی شده.',
-      'feat.f1.h': 'VLESS + Reality',
-      'feat.f1.p': 'سخت‌ترین پروتکل برای مسدود کردن. ترافیک دقیقاً شبیه HTTPS معمولی است — هیچ اثر انگشت VPN برای تشخیص وجود ندارد.',
-      'feat.f2.h': 'مسیریابی هوشمند AI',
-      'feat.f2.p': 'موتور AI تأخیر و الگوهای مسدودسازی را رصد می‌کند و پروتکل‌ها و سرورها را به‌طور خودکار تغییر می‌دهد.',
-      'feat.f3.h': 'اتصال با یک ضربه',
-      'feat.f3.p': 'بدون فایل کانفیگ، بدون کد QR، بدون تنظیمات. نصب کنید، ضربه بزنید — همین. در تغییر شبکه به‌طور خودکار دوباره وصل می‌شود.',
-      'feat.f4.h': 'دوزبانه',
-      'feat.f4.p': 'پشتیبانی کامل از فارسی و انگلیسی با طرح‌بندی RTL صحیح. اولین اپ VPN که برای کاربران ایرانی احساس بومی می‌دهد.',
-      'feat.f5.h': 'بدون لاگ',
-      'feat.f5.p': 'ما هرگز لاگ اتصال، IP شما یا داده‌های ترافیک را ذخیره نمی‌کنیم. حریم خصوصی یک ویژگی نیست — پایه است.',
-      'feat.f6.h': 'آمار زنده',
-      'feat.f6.p': 'سرعت آپلود/دانلود، پینگ، تایمر جلسه و تاریخچه ترافیک — همه در یک نگاه قابل مشاهده.',
+      'how.label': 'چطور کار می‌کند',
+      'how.title': 'سه گام به اینترنت آزاد',
+      'how.sub':   'بدون حساب، بدون کارت اعتباری، بدون تنظیمات. نصب کن و وصل شو.',
+      'how.s1.h':  'دسترسی اضطراری',
+      'how.s1.p':  'APK را نصب کن و فوری ۱ گیگابایت بگیر — بدون لاگین، بدون حساب. Connect را بزن و هوش مصنوعی سریع‌ترین پروتکل را انتخاب می‌کند.',
+      'how.s2.h':  'دعوت و کسب داده',
+      'how.s2.p':  'کد دعوت خود را به اشتراک بگذار. هر کسی که بپیوندد ۵۱۲ مگابایت به هر دوی شما اضافه می‌کند. هرچه بیشتر وصل شوند، شبکه قوی‌تر و ارزان‌تر می‌شود.',
+      'how.s3.h':  'هوش مصنوعی بهترین مسیر را انتخاب می‌کند',
+      'how.s3.p':  'Reality، XHTTP و WebSocket به صورت موازی آزمایش می‌شوند. تنها مسیری که داده HTTP واقعی برمی‌گرداند متصل اعلام می‌شود — هیچ وضعیت متصل جعلی وجود ندارد.',
 
-      // Transports
-      'transports.label': 'پروتکل‌ها',
-      'transports.h2': 'اتصالات موجود',
-      'transports.sub': 'چهار روش تونل. اپ به‌طور خودکار تغییر می‌دهد — یا می‌توانید دستی انتخاب کنید.',
-      'tr.reality.desc': 'سخت‌ترین برای تشخیص. TCP مستقیم، شبیه ترافیک HTTPS معمولی.',
-      'tr.xhttp.desc': 'جریان HTTP/2. مقاوم در برابر بازرسی عمیق بسته.',
-      'tr.httpup.desc': 'تونل HTTP Upgrade. گزینه پشتیبان قابل اعتماد.',
-      'tr.ws.desc': 'WebSocket روی TLS. سازگاری گسترده.',
-      'transports.notice': 'نقاط وضعیت نشان می‌دهند که آیا پروتکل‌های این سرور از موقعیت شما قابل دسترسی هستند. اپ تغییر را به‌طور خودکار انجام می‌دهد.',
+      'ai.label': 'مسیریابی هوشمند',
+      'ai.title': 'فقط یک تونل نیست',
+      'ai.sub':   'ستالینک هر اتصال را فعالانه اعتبارسنجی می‌کند و هر بار بهترین مسیر را انتخاب می‌کند.',
+      'ai.f1.h':  'بهینه‌ساز پروتکل با هوش مصنوعی',
+      'ai.f1.p':  'Reality، XHTTP و WebSocket را به صورت موازی آزمایش می‌کند. سریع‌ترین پروتکلی که اینترنت واقعی ارائه می‌دهد انتخاب می‌شود — نه آنچه قبلاً کار می‌کرد، آنچه الان کار می‌کند.',
+      'ai.f2.h':  'اعتبارسنجی اینترنت واقعی',
+      'ai.f2.p':  'اتصال TCP کافی نیست. برنامه یک درخواست HTTP/HTTPS واقعی ارسال می‌کند و تأیید می‌کند داده واقعی دریافت شده — قبل از اعلام اتصال. وضعیت‌های جعلی رد می‌شوند.',
+      'ai.f3.h':  'مسیریابی تطبیقی',
+      'ai.f3.p':  'شبکه یاد می‌گیرد کدام SNIها از منطقه شما کار می‌کنند. ترکیه و ایران الگوهای سانسور متفاوتی دارند — برنامه تطبیق پیدا می‌کند و بهتر می‌شود.',
+      'ai.f4.h':  'ارسال تنظیمات از راه دور',
+      'ai.f4.p':  'بدون نیاز به به‌روزرسانی برنامه، می‌توان اولویت پروتکل‌ها را تغییر داد. وقتی الگوهای سانسور تغییر می‌کنند، قوانین مسیریابی برای همه کاربران به‌طور خودکار به‌روز می‌شوند.',
 
-      // Pricing
-      'pricing.label': 'قیمت‌گذاری',
-      'pricing.h2': 'طرح‌های ساده',
-      'pricing.sub': 'رایگان شروع کنید. وقتی نیاز بیشتری داشتید ارتقا دهید.',
-      'plan.free.label': 'رایگان',
-      'plan.free.period': 'همیشه رایگان',
-      'plan.free.f1': '۱۰ گیگابایت در ماه',
-      'plan.free.f2': '۵ موقعیت سرور',
-      'plan.free.f3': 'همه پروتکل‌ها',
-      'plan.free.f4': 'سرعت معمولی',
-      'plan.free.cta': 'شروع رایگان',
-      'plan.premium.label': 'پریمیوم',
-      'plan.premium.period': 'در ماه',
-      'plan.premium.f1': 'داده نامحدود',
-      'plan.premium.f2': 'بیش از ۵۰ موقعیت سرور',
-      'plan.premium.f3': 'همه پروتکل‌ها + مسیریابی AI',
-      'plan.premium.f4': 'حداکثر سرعت',
-      'plan.premium.f5': 'پشتیبانی اولویت‌دار',
-      'plan.premium.cta': 'دریافت پریمیوم',
-      'plan.team.label': 'تیمی',
-      'plan.team.period': '۵ کاربر در ماه',
-      'plan.team.f1': 'همه امکانات پریمیوم',
-      'plan.team.f2': '۵ کاربر همزمان',
-      'plan.team.f3': 'پنل ادمین مشترک',
-      'plan.team.f4': 'مدیر حساب اختصاصی',
-      'plan.team.cta': 'تماس برای تیم',
+      'why.label':      'چرا ستالینک',
+      'why.title':      'ساخته‌شده برای سانسور واقعی',
+      'why.sub':        'یک پوشش VPN عمومی نیست. از صفر برای واقعیت‌های ایران و ترکیه ساخته شده.',
+      'why.tech.label': 'برتری فنی',
+      'why.tech.1':     'VLESS + Reality — ترافیکی که از HTTPS استاندارد قابل تشخیص نیست، مقاوم‌ترین پروتکل موجود',
+      'why.tech.2':     'پروتکل‌های پشتیبان XHTTP و WebSocket از طریق پروکسی edge nginx، مداوماً آزمایش می‌شوند',
+      'why.tech.3':     'بدون لاگ، بدون ثبت‌نام برای دسترسی اضطراری',
+      'why.tech.4':     'SNI probing تأیید می‌کند کدام دامنه‌ها از ISP شما کار می‌کنند، قبل از اتصال',
+      'why.comm.label': 'مدل جامعه‌محور',
+      'why.comm.1':     'کاربران بیشتر = هزینه کمتر برای هر کاربر — زیرساخت مشترک است و شبکه با رشد قوی‌تر می‌شود',
+      'why.comm.2':     'پاداش دعوت هم دعوت‌کننده و هم دعوت‌شونده را جایزه می‌دهد — رشد به نفع همه است',
+      'why.comm.3':     'پشتیبانی جامعه، نه سرمایه‌گذار — تصمیمات با کاربران همسو می‌ماند',
+      'why.comm.4':     'آینده: گسترش سرور با تأمین مالی کاربران — رأی‌گیری برای مناطق و موقعیت‌های جدید',
 
-      // FAQ
+      'banner.q': '&ldquo;هر کاربر جدید شبکه را <strong>قوی‌تر</strong> و <strong>ارزان‌تر</strong> برای همه می‌کند.&rdquo;',
+      'banner.s': 'با رشد شبکه، هزینه زیرساخت به ازای هر کاربر کاهش می‌یابد. با دوستانتان به اشتراک بگذارید.',
+
+      'pricing.label': 'سطوح دسترسی',
+      'pricing.title': 'رایگان شروع کن. با هم رشد کن.',
+      'pricing.sub':   '۱ گیگابایت پس از نصب، بیشتر از طریق دعوت، سطح داده نامحدود به زودی.',
+
+      'plan.free.eyebrow': 'اضطراری رایگان',
+      'plan.free.title':   'بسته شروع',
+      'plan.free.desc':    'با نصب APK به‌طور خودکار فعال می‌شود. بدون حساب، بدون لاگین، بدون کارت اعتباری.',
+      'plan.free.f1':      'سهمیه ۱ گیگابایت اولیه',
+      'plan.free.f2':      'فعال‌سازی خودکار پس از نصب',
+      'plan.free.f3':      'انتخاب پروتکل با هوش مصنوعی',
+      'plan.free.f4':      'بدون نیاز به حساب',
+      'plan.free.cta':     'دانلود APK',
+
+      'plan.comm.eyebrow': 'دعوت‌محور',
+      'plan.comm.title':   'جامعه',
+      'plan.comm.desc':    'کد دعوت خود را به اشتراک بگذار. هر دوستی که بپیوندد ۵۱۲ مگابایت به هر دویتان اضافه می‌کند.',
+      'plan.comm.f1':      '+۵۱۲ مگابایت به ازای هر دوستی که دعوت کنی',
+      'plan.comm.f2':      'دعوت‌شونده هم +۵۱۲ مگابایت دریافت می‌کند',
+      'plan.comm.f3':      'بدون محدودیت در دعوت',
+      'plan.comm.f4':      'شبکه با تو قوی‌تر می‌شود',
+      'plan.comm.cta':     'دریافت کد دعوت',
+
+      'plan.prem.eyebrow': 'به زودی',
+      'plan.prem.title':   'پریمیوم',
+      'plan.prem.desc':    'داده نامحدود، گره‌های اولویت‌دار، کانال‌های پشتیبانی اختصاصی.',
+      'plan.prem.f1':      'داده نامحدود',
+      'plan.prem.f2':      'گره‌های مسیریابی اولویت‌دار',
+      'plan.prem.f3':      'پشتیبانی اختصاصی',
+      'plan.prem.f4':      'دسترسی زودهنگام به ویژگی‌ها',
+      'plan.prem.cta':     'ثبت‌نام در لیست انتظار',
+
+      'support.label': 'تأمین مالی زیرساخت',
+      'support.title': 'از پروژه حمایت کن',
+      'support.sub':   'ستالینک روی سرورهای واقعی اجرا می‌شود که هزینه دارند. هر کمکی به افزودن گره‌ها، بهبود پایداری و توسعه به مناطق جدید کمک می‌کند.',
+      'support.s1.h':  'هزینه‌های سرور',
+      'support.s1.p':  'هاستینگ VPS در نروژ و ترکیه. گره‌های بیشتر = سرعت و پایداری بهتر برای همه کاربران شبکه.',
+      'support.s2.h':  'مقاومت در برابر سانسور',
+      'support.s2.p':  'پروتکل‌های جدید، چرخش SNI و بهبود پروکسی edge نیاز به زمان توسعه دارند. تأمین مالی کار را ادامه می‌دهد.',
+      'support.s3.h':  'چطور کمک کنیم',
+      'support.s3.p':  'اپ را با دوستان به اشتراک بگذار (داده کسب کن)، در GitHub کد مشارکت کن، یا از طریق تلگرام با ما تماس بگیر.',
+
+      'comm.tg.h': 'گروه تلگرام',
+      'comm.tg.p': 'سوال بپرسید، مشکلات را گزارش دهید، کد دعوت دریافت کنید و از آخرین نسخه‌ها مطلع شوید.',
+      'comm.gh.h': 'گیت‌هاب',
+      'comm.gh.p': 'توسعه را دنبال کنید، کد مشارکت کنید یا باگ گزارش دهید. بدون ادعای امنیتی جعبه‌سیاه.',
+
       'faq.label': 'سوالات متداول',
-      'faq.h2': 'سوالات رایج',
-      'faq.q1': 'چطور اپ را بگیرم؟',
-      'faq.a1': 'در تلگرام پیام بدهید تا APK اندروید و اطلاعات حساب خود را دریافت کنید. iOS در سه‌ماهه سوم ۲۰۲۶ می‌آید.',
-      'faq.q2': 'کدام پروتکل را استفاده کنم؟',
-      'faq.a2': 'اپ بهترین پروتکل را به‌طور خودکار انتخاب می‌کند. اگر می‌خواهید دستی انتخاب کنید، با Reality شروع کنید — سخت‌ترین برای تشخیص است.',
-      'faq.q3': 'آیا داده‌هایم خصوصی است؟',
-      'faq.a3': 'بله. ما هرگز آدرس IP، زمان‌های اتصال یا داده‌های مرور شما را ثبت نمی‌کنیم. تونل VPN از VLESS+Reality که انتها به انتها رمزنگاری شده استفاده می‌کند.',
-      'faq.q4': 'VPN وصل می‌شود ولی صفحات باز نمی‌شوند؟',
-      'faq.a4': 'یک پروتکل دیگر از صفحه سرورها امتحان کنید. ISP شما ممکن است آن پروتکل خاص را مسدود کرده باشد.',
-      'faq.q5': 'آیا می‌توانم از v2rayNG / Hiddify استفاده کنم؟',
-      'faq.a5': 'بله. در تلگرام تماس بگیرید تا لینک اشتراک VLESS سازگار با v2rayNG، Streisand و Hiddify برای شما ارسال کنیم.',
+      'faq.title': 'سوالات رایج',
+      'faq.sub':   'سوالات واقعی درباره نحوه عملکرد ستالینک.',
 
-      // Community
-      'comm.label': 'جامعه',
-      'comm.h2': 'در ارتباط باشید',
-      'comm.sub': 'به کانال‌های ما برای به‌روزرسانی، سرورهای جدید و پشتیبانی بپیوندید.',
-      'comm.tg.h': 'پشتیبانی تلگرام',
-      'comm.tg.p': 'حساب بگیرید، مشکلات را گزارش دهید، سوال بپرسید.',
-      'comm.ch.h': 'کانال اطلاع‌رسانی',
-      'comm.ch.p': 'به‌روزرسانی سرور، ویژگی‌های جدید، هشدارهای قطعی.',
-
-      'footer': '© ۲۰۲۶ ستالینک · VPN هوشمند برای ایران',
+      'footer.faq': 'سوالات کامل',
+      'footer.tg':  'تلگرام',
+      'footer.gh':  'گیت‌هاب',
+      'footer.dl':  'دانلود APK',
     }
   };
 
-  let lang = localStorage.getItem('sl-lang') || 'en';
+  var lang = localStorage.getItem('sl-lang') || 'en';
 
   function applyLang(l) {
     lang = l;
     localStorage.setItem('sl-lang', l);
     document.documentElement.setAttribute('lang', l);
+    document.documentElement.setAttribute('dir', l === 'fa' ? 'rtl' : 'ltr');
     document.body.setAttribute('dir', l === 'fa' ? 'rtl' : 'ltr');
-
-    const s = STRINGS[l];
-    document.querySelectorAll('[data-t]').forEach(el => {
-      const key = el.dataset.t;
-      if (s[key] !== undefined) el.textContent = s[key];
+    var s = STRINGS[l];
+    document.querySelectorAll('[data-t]').forEach(function(el) {
+      var key = el.dataset.t;
+      if (s[key] !== undefined) el.innerHTML = s[key];
     });
   }
 
   function initLangToggle() {
-    const btn = document.getElementById('btn-lang');
+    var btn = document.getElementById('btn-lang');
     if (!btn) return;
-    btn.addEventListener('click', () => applyLang(lang === 'en' ? 'fa' : 'en'));
+    btn.addEventListener('click', function() {
+      applyLang(lang === 'en' ? 'fa' : 'en');
+    });
   }
 
   function initFAQ() {
-    document.querySelectorAll('.faq-item').forEach(item => {
-      const btn = item.querySelector('.faq-q');
+    document.querySelectorAll('.faq-item').forEach(function(item) {
+      var btn = item.querySelector('.faq-q');
       if (!btn) return;
-      btn.addEventListener('click', () => {
-        const isOpen = item.classList.contains('open');
-        document.querySelectorAll('.faq-item.open').forEach(o => o.classList.remove('open'));
-        if (!isOpen) item.classList.add('open');
+      btn.addEventListener('click', function() {
+        var isOpen = item.classList.contains('open');
+        document.querySelectorAll('.faq-item.open').forEach(function(o) {
+          o.classList.remove('open');
+          var ob = o.querySelector('.faq-q');
+          if (ob) ob.setAttribute('aria-expanded', 'false');
+        });
+        if (!isOpen) {
+          item.classList.add('open');
+          btn.setAttribute('aria-expanded', 'true');
+        }
       });
     });
   }
 
-  function initStatusCheck() {
-    const checks = [
-      { id: 'status-ws',      url: '/ws',     expect: [101, 400, 200] },
-      { id: 'status-xhttp',   url: '/xhttp',  expect: [404, 400, 200] },
-      { id: 'status-httpup',  url: '/httpup', expect: [502, 400, 200, 101] },
-    ];
-    checks.forEach(({ id, url, expect }) => {
-      const dot = document.getElementById(id);
-      if (!dot) return;
-      dot.className = 'status-dot checking';
-      fetch(url, { method: 'HEAD', cache: 'no-store', signal: AbortSignal.timeout(5000) })
-        .then(r => {
-          dot.className = expect.includes(r.status) ? 'status-dot' : 'status-dot offline';
-        })
-        .catch(() => {
-          dot.className = 'status-dot';
-        });
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', function() {
     initLangToggle();
     initFAQ();
-    initStatusCheck();
     applyLang(lang);
   });
 })();
