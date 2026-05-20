@@ -26,6 +26,15 @@ interface SessionBytes { sent: number; received: number }
 // Each entry is the protocol string that buildXrayConfigJson understands.
 const FALLBACK_PROTOCOLS = ['Reality', 'XHTTP', 'WebSocket'] as const;
 
+interface TraceTestResult {
+  ok: boolean;
+  statusCode?: number;
+  routedIp?: string;
+  body?: string;
+  bytesIn?: number;
+  error?: string;
+}
+
 interface VpnState {
   connectionState:    ConnectionState;
   selectedServer:     VpnServer | null;
@@ -37,6 +46,8 @@ interface VpnState {
   reconnectAttempts:  number;
   isSwitchingServer:  boolean;
   connectionLog:      string[];        // step log from most recent connect attempt
+  traceTestResult:    TraceTestResult | null;
+  traceTestRunning:   boolean;
   // Protocol auto-fallback state (internal — not persisted)
   _fallbackIdx:       number;
   _fallbackActive:    boolean;
@@ -51,6 +62,7 @@ interface VpnState {
   setProtocol:        (p: string) => void;
   clearError:         () => void;
   setConnectionLog:   (log: string[]) => void;
+  runTraceTest:       () => Promise<void>;
   // kept for backward compat in tests / adapters
   setConnectionState: (s: ConnectionState) => void;
 }
@@ -308,6 +320,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
     reconnectAttempts: 0,
     isSwitchingServer: false,
     connectionLog:     [],
+    traceTestResult:   null,
+    traceTestRunning:  false,
     _fallbackIdx:      0,
     _fallbackActive:   false,
 
@@ -361,6 +375,19 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     setConnectionLog: (log) => set({ connectionLog: log }),
+
+    runTraceTest: async () => {
+      if (get().traceTestRunning) return;
+      set({ traceTestRunning: true, traceTestResult: null });
+      try {
+        const result = await getAdapter().runTraceTest?.();
+        set({ traceTestResult: result ?? { ok: false, error: 'Not available' } });
+      } catch (e: unknown) {
+        set({ traceTestResult: { ok: false, error: String((e as any)?.message ?? e) } });
+      } finally {
+        set({ traceTestRunning: false });
+      }
+    },
 
     setConnectionState: (s) => set({ connectionState: s }),
   };

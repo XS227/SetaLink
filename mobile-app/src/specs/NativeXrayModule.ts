@@ -70,6 +70,19 @@ export interface Spec extends TurboModule {
 
   /** Stub — telemetry is sent from JS via fetch(). */
   reportTelemetry(payload: string): Promise<void>;
+
+  /**
+   * Probe https://1.1.1.1/cdn-cgi/trace through the active VPN network.
+   * Returns ok=true + routedIp when traffic flows through TUN correctly.
+   */
+  runTraceTest(): Promise<{
+    ok: boolean;
+    statusCode?: number;
+    routedIp?: string;
+    body?: string;
+    bytesIn?: number;
+    error?: string;
+  }>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');

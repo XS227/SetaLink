@@ -61,8 +61,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     smartStatus,
     reconnectAttempts,
     connectionLog,
+    traceTestResult,
+    traceTestRunning,
     connect,
     disconnect,
+    runTraceTest,
   } = useVpnStore();
 
   const { greeting } = useGreeting();
@@ -315,6 +318,40 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
                 <Text style={styles.trafficSub}>{t('home.node')}</Text>
               </View>
             </View>
+
+            {/* Routing test */}
+            <TouchableOpacity
+              style={styles.traceBtn}
+              onPress={runTraceTest}
+              disabled={traceTestRunning}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.traceBtnText}>
+                {traceTestRunning ? 'Testing…' : 'Test routing'}
+              </Text>
+            </TouchableOpacity>
+
+            {traceTestResult && (
+              <View style={[styles.traceResult, traceTestResult.ok ? styles.traceResultOk : styles.traceResultFail]}>
+                {traceTestResult.ok ? (
+                  <>
+                    <Text style={styles.traceResultTitle}>Routing OK</Text>
+                    <Text style={styles.traceResultLine}>IP: {traceTestResult.routedIp}</Text>
+                    <Text style={styles.traceResultLine}>HTTP {traceTestResult.statusCode} · {traceTestResult.bytesIn} B</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.traceResultTitle}>Routing failed</Text>
+                    <Text style={styles.traceResultLine}>
+                      {traceTestResult.error ?? `HTTP ${traceTestResult.statusCode}`}
+                    </Text>
+                    <Text style={styles.traceResultHint}>
+                      Server connected, but internet is not routed through VPN.
+                    </Text>
+                  </>
+                )}
+              </View>
+            )}
           </GlassCard>
         )}
 
@@ -385,6 +422,14 @@ const styles = StyleSheet.create({
   trafficValue: { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
   trafficSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
   trafficDivider:{ width: 1, height: 40, backgroundColor: Colors.border.subtle },
+  traceBtn:      { marginTop: Spacing[3], alignSelf: 'center', paddingHorizontal: Spacing[5], paddingVertical: Spacing[2], borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, backgroundColor: 'rgba(0,232,122,0.07)' },
+  traceBtnText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.5 },
+  traceResult:   { marginTop: Spacing[3], borderRadius: Radius.lg, padding: Spacing[3], gap: 4 },
+  traceResultOk: { backgroundColor: 'rgba(0,232,122,0.08)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.25)' },
+  traceResultFail:{ backgroundColor: 'rgba(255,80,80,0.07)', borderWidth: 1, borderColor: 'rgba(255,80,80,0.25)' },
+  traceResultTitle:{ fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  traceResultLine: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
+  traceResultHint: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.status.disconnected, marginTop: 2 },
   logPanel:      { gap: Spacing[1] },
   logPanelTitle: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[1] },
   logEntry:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, lineHeight: 18 },

@@ -14,10 +14,12 @@ import kotlinx.coroutines.*
 import java.io.File
 import java.io.FileWriter
 import java.io.RandomAccessFile
+import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.Proxy
 import java.net.Socket
+import java.net.URL
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 import org.json.JSONObject
@@ -32,9 +34,10 @@ class XrayVpnService : VpnService() {
         const val EXTRA_CONFIG         = "config_json"
         const val EXTRA_EMERGENCY_MODE = "emergency_mode"
 
-        const val BROADCAST_CONNECTED    = "com.setalink.vpn.CONNECTED"
-        const val BROADCAST_DISCONNECTED = "com.setalink.vpn.DISCONNECTED"
-        const val BROADCAST_STEP         = "com.setalink.vpn.STEP"
+        const val BROADCAST_CONNECTED     = "com.setalink.vpn.CONNECTED"
+        const val BROADCAST_DISCONNECTED  = "com.setalink.vpn.DISCONNECTED"
+        const val BROADCAST_STEP          = "com.setalink.vpn.STEP"
+        const val BROADCAST_ROUTING_FAIL  = "com.setalink.vpn.ROUTING_FAIL"
         const val EXTRA_ERROR            = "error_message"
         const val EXTRA_STEP             = "step_name"
         const val EXTRA_STEP_OK          = "step_ok"
@@ -202,6 +205,7 @@ class XrayVpnService : VpnService() {
                 .addAddress("10.0.0.2", 24)
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)
+                .addRoute("::", 0)
                 .setMtu(mtu)
 
             if (!emergencyMode) {
@@ -213,14 +217,7 @@ class XrayVpnService : VpnService() {
             runCatching { vpnBuilder.addDisallowedApplication(packageName) }
                 .onFailure { e -> appendLog("[TUN] addDisallowedApplication failed: ${e.message}") }
 
-            // IPv6 is intentionally NOT routed through TUN.
-            // When ::/0 is added to TUN but the proxy chain lacks IPv6 support,
-            // ALL dual-stack connections hang — the IPv6 attempt blocks until
-            // timeout before Happy Eyeballs can retry with IPv4. This is the
-            // primary cause of "CONNECTED + NO INTERNET" on modern Android.
-            // IPv6 traffic bypasses TUN and uses the device's native connection.
-            // A blackhole rule in the Xray config fast-fails any IPv6 at SOCKS5.
-            appendLog("[TUN] IPv6 NOT tunneled — dual-stack stall prevention active")
+            appendLog("[TUN] IPv4+IPv6 routed through TUN — Xray blackhole handles unsupported IPv6")
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 vpnBuilder.setMetered(false)
@@ -271,23 +268,43 @@ class XrayVpnService : VpnService() {
             broadcastStep("tun2socks_alive", true,
                 "tun2socks running pid=$pid — fd://$tunFdInt → socks5://127.0.0.1:10808")
 
-            // 8. Broadcast CONNECTED immediately — validation runs in background.
-            // TCP + Xray SOCKS5 confirmed and tun2socks is routing packets.
-            // Running the HTTP probe before marking connected caused false-negatives:
-            // the probe targets were unreachable from the VPS even though the tunnel
-            // was fully operational for real app traffic.
-            broadcastStep("vpn_connected", true, "Tunnel active — verifying internet access in background")
-            Log.i(TAG, "VPN tunnel active — background validation starting")
+            // 8. Probe internet via VPN network — confirms actual device traffic routing.
+            // This goes through TUN → tun2socks → SOCKS5 → Xray, NOT via direct SOCKS5.
+            // Uses Network.openConnection() which bypasses UID exclusion on the VPN network.
+            // Do NOT mark CONNECTED until HTTP 200 body is received.
+            broadcastStep("tun_probe", true, "Probing TUN routing — https://1.1.1.1/cdn-cgi/trace…")
+            appendLog("[TUN-PROBE] Starting TUN routing verification via ConnectivityManager VPN network")
+            val tunProbe = runTunNetworkProbe()
+
+            if (!tunProbe.ok) {
+                val msg = "Server connected, but internet is not routed through VPN. ${tunProbe.message}"
+                broadcastStep("tun_probe", false, msg)
+                appendLog("[TUN-PROBE FAILED] $msg")
+                sendBroadcast(Intent(BROADCAST_ROUTING_FAIL).apply {
+                    setPackage(packageName)
+                    putExtra(EXTRA_ERROR, msg)
+                })
+                broadcastError(msg)
+                tearDownTunnel()
+                return
+            }
+
+            broadcastStep("tun_probe", true, "TUN routing confirmed — ${tunProbe.message}")
+            appendLog("[TUN-PROBE OK] ${tunProbe.message}")
+
+            // 9. Broadcast CONNECTED — TUN routing verified by real HTTPS GET
+            broadcastStep("vpn_connected", true, "Tunnel active — internet routing confirmed")
+            Log.i(TAG, "VPN tunnel active — TUN routing verified")
             sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
                 setPackage(packageName)
-                putExtra("probe_ok", false)
+                putExtra("probe_ok", true)
             })
 
-            // 9. Start continuous metrics loop + process watchdog
+            // 10. Start continuous metrics loop + process watchdog
             startMetricsLoop(tunInterface)
             startWatchdog()
 
-            // 10. Background internet validation (does not block connected state)
+            // 11. Background validation — now used mainly for metrics/ping
             scope.launch { runBackgroundValidation(tunInterface) }
 
         } catch (e: Exception) {
@@ -448,6 +465,60 @@ class XrayVpnService : VpnService() {
         return ValidationResult(false,
             "TCP OK — but no HTTP or HTTPS data received through tunnel. " +
             "HTTP snippet: $httpSnippet. VPN server may not be forwarding traffic.")
+    }
+
+    // ── TUN routing probe (ConnectivityManager VPN network) ───────────────────
+    // Uses the registered VPN network handle so the request travels through
+    // TUN → tun2socks → SOCKS5 → Xray, regardless of our UID exclusion.
+    // This is the only reliable way to confirm end-to-end device traffic routing.
+
+    private suspend fun runTunNetworkProbe(): ValidationResult {
+        val cm = getSystemService(ConnectivityManager::class.java)
+        appendLog("[TUN-PROBE] Waiting for VPN network to appear in ConnectivityManager…")
+
+        var vpnNet: android.net.Network? = null
+        val findDeadline = System.currentTimeMillis() + 8_000L
+        while (System.currentTimeMillis() < findDeadline && vpnNet == null) {
+            vpnNet = cm?.allNetworks?.firstOrNull { net ->
+                cm.getNetworkCapabilities(net)
+                    ?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+            }
+            if (vpnNet == null) delay(500L)
+        }
+
+        if (vpnNet == null) {
+            appendLog("[TUN-PROBE] VPN network not found in ConnectivityManager after 8s")
+            return ValidationResult(false,
+                "VPN network not registered with system — TUN routing unavailable")
+        }
+        appendLog("[TUN-PROBE] VPN network found: $vpnNet — GET https://1.1.1.1/cdn-cgi/trace")
+
+        return runCatching {
+            withContext(Dispatchers.IO) {
+                val url  = URL("https://1.1.1.1/cdn-cgi/trace")
+                val conn = vpnNet.openConnection(url) as HttpURLConnection
+                conn.connectTimeout = 15_000
+                conn.readTimeout    = 15_000
+                conn.setRequestProperty("User-Agent", "SetaLink/1.0")
+                try {
+                    val code = conn.responseCode
+                    if (code == 200) {
+                        val body   = conn.inputStream.bufferedReader().readText()
+                        val ipLine = body.lines().firstOrNull { it.startsWith("ip=") } ?: "ip=?"
+                        appendLog("[TUN-PROBE] OK: HTTP $code $ipLine (${body.length}B)")
+                        ValidationResult(true, "HTTP $code — $ipLine (${body.length}B)", probeOk = true)
+                    } else {
+                        appendLog("[TUN-PROBE] Unexpected HTTP $code from 1.1.1.1/cdn-cgi/trace")
+                        ValidationResult(false, "HTTP $code from 1.1.1.1/cdn-cgi/trace (expected 200)")
+                    }
+                } finally {
+                    conn.disconnect()
+                }
+            }
+        }.getOrElse { e ->
+            appendLog("[TUN-PROBE] FAILED: ${e.javaClass.simpleName}: ${e.message}")
+            ValidationResult(false, "TUN probe failed: ${e.message?.take(120)}")
+        }
     }
 
     // Returns (ok, bytesRead, snippet) — plain HTTP/1.0 GET over SOCKS5.
@@ -754,10 +825,7 @@ class XrayVpnService : VpnService() {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile"
             else -> "other"
         }
-        val routes = buildString {
-            append("0.0.0.0/0")
-            if (!emergency) append(", ::/0")
-        }
+        val routes = "0.0.0.0/0, ::/0"
         val dns = if (emergency) "1.1.1.1" else "1.1.1.1,8.8.8.8"
         broadcastStep("route_diag", true,
             "iface=${tunInterface ?: "?"} mtu=$mtu routes=$routes dns=$dns net=$transport emergency=$emergency")
