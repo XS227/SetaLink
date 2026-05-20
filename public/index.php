@@ -8,7 +8,7 @@ header('X-Content-Type-Options: nosniff');
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SetaLink · Free Internet for Everyone</title>
   <meta name="description" content="SetaLink — AI-powered VPN for censored regions. Android-only. 1 GB free on install. VLESS+Reality, real internet validation.">
-  <meta name="robots" content="noindex,nofollow">
+  <meta name="robots" content="noindex,nofollow,noarchive">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Vazirmatn:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -267,33 +267,6 @@ header('X-Content-Type-Options: nosniff');
 
 <div class="divider"></div>
 
-<!-- ══ BUILT BY SETAEI ═════════════════════════════════════════ -->
-<section class="section" id="setaei">
-  <div class="builder-section">
-    <div class="section-label" data-t="setaei.label">THE MAKER</div>
-    <h2 class="section-title" data-t="setaei.title">Built by SETAEI</h2>
-    <p class="section-sub" style="margin:0 auto" data-t="setaei.sub">Independent AI + Infrastructure Initiative</p>
-
-    <div class="builder-card glass">
-      <p class="builder-desc" data-t="setaei.desc">
-        SETAEI is an independent technology initiative focused on resilient connectivity and privacy-first infrastructure.
-        Operating across Norway and Turkey, SetaLink is our first public project — a real VPN for real censorship,
-        built by a single engineer with no VC funding and no political agenda.
-        The goal: give people access to the internet they're entitled to.
-      </p>
-      <div class="chips">
-        <span class="chip chip-green" data-t="setaei.c1">Norway / Turkey</span>
-        <span class="chip chip-gold"  data-t="setaei.c2">AI-Driven</span>
-        <span class="chip"            data-t="setaei.c3">Privacy-First</span>
-        <span class="chip chip-red"   data-t="setaei.c4">Anti-Censorship</span>
-        <span class="chip"            data-t="setaei.c5">Open to Review</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
 <!-- ══ SUPPORT THE PROJECT ═════════════════════════════════════ -->
 <section class="section" id="support">
   <div class="support-section">
@@ -350,9 +323,9 @@ header('X-Content-Type-Options: nosniff');
       </div>
       <h3 data-t="comm.gh.h">GitHub</h3>
       <p data-t="comm.gh.p">Follow development, contribute code or report bugs. Open to community review — no black-box security claims.</p>
-      <a href="https://github.com/setaei" target="_blank" rel="noopener" class="btn btn-secondary">
+      <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener" class="btn btn-secondary">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-        github.com/setaei
+        github.com/XS227/SetaLink
       </a>
     </div>
   </div>
@@ -394,7 +367,7 @@ header('X-Content-Type-Options: nosniff');
     ];
     foreach ($faqs as $i => [$q, $a]): ?>
     <div class="faq-item" id="faq<?= $i ?>">
-      <button class="faq-q" onclick="toggleFaq(<?= $i ?>)" aria-expanded="false">
+      <button class="faq-q" aria-expanded="false">
         <?= htmlspecialchars($q) ?>
         <svg class="faq-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
@@ -416,38 +389,21 @@ header('X-Content-Type-Options: nosniff');
     <nav class="footer-links">
       <a href="/faq.php" data-t="footer.faq">Full FAQ</a>
       <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" data-t="footer.tg">Telegram</a>
-      <a href="https://github.com/setaei" target="_blank" rel="noopener" data-t="footer.gh">GitHub</a>
+      <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener" data-t="footer.gh">GitHub</a>
       <a href="/download/setalink-latest.apk" data-t="footer.dl">Download APK</a>
     </nav>
-    <p class="footer-copy">&copy; <?= date('Y') ?> SETAEI · SetaLink VPN · Android only</p>
+    <p class="footer-copy">&copy; <?= date('Y') ?> SetaLink VPN · Android only</p>
   </div>
 </footer>
 
 </div><!-- .page-wrap -->
 
 <script>
-// FAQ accordion
-function toggleFaq(i) {
-  var item = document.getElementById('faq' + i);
-  var btn  = item.querySelector('.faq-q');
-  var open = item.classList.toggle('open');
-  btn.setAttribute('aria-expanded', open);
-}
-
-// Language toggle (minimal — just flips dir for demo)
-var TRANSLATIONS = {
-  'nav.lang': 'English', 'nav.dl': 'دانلود APK',
-  'hero.h1a': 'اینترنت آزاد', 'hero.h1b': 'برای همه',
-  'hero.sub': 'VPN مبتنی بر هوش مصنوعی برای مناطق سانسورشده. فقط اندروید. ۱ گیگابایت رایگان پس از نصب.',
-  'hero.cta1': 'دانلود APK', 'hero.cta2': 'جوین تلگرام',
-};
-var _rtl = false;
-document.getElementById('btn-lang').addEventListener('click', function() {
-  _rtl = !_rtl;
-  document.documentElement.dir  = _rtl ? 'rtl' : 'ltr';
-  document.documentElement.lang = _rtl ? 'fa' : 'en';
-  var langText = document.querySelector('.btn-lang-text');
-  if (langText) langText.textContent = _rtl ? 'English' : 'فارسی';
+document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+document.addEventListener('keydown', function(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'u') { e.preventDefault(); }
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j')) { e.preventDefault(); }
+  if (e.key === 'F12') { e.preventDefault(); }
 });
 </script>
 </body>
