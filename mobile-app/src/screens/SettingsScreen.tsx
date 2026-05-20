@@ -327,6 +327,15 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
               </Text>
             </View>
           )}
+          <Divider />
+          <View style={selStyles.row}>
+            <View style={{ gap: 3 }}>
+              <Text style={selStyles.label}>Version debug</Text>
+              <Text style={rowStyles.desc}>Manifest version: v{APP_VERSION} (Build {APP_BUILD})</Text>
+              <Text style={rowStyles.desc}>JS bundle version: v{APP_VERSION} (Build {APP_BUILD})</Text>
+              <Text style={rowStyles.desc}>OTA version: {latestVersion ? `v${latestVersion}` : '(tap Check update)'}</Text>
+            </View>
+          </View>
         </Section>
 
         <View style={styles.about}>
