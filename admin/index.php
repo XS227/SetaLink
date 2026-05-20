@@ -655,12 +655,19 @@ async function runHeartbeat() {
   };
   try {
     const d = await api.get('heartbeat');
-    setDot('hbXray',      d.xray);
-    setDot('hbNginx',     d.nginx);
-    setDot('hbSqlite',    d.sqlite);
-    setDot('hbApi',       d.api);
-    setDot('hbBootstrap', d.bootstrap);
-    setDot('hbPort',      d.port_8443);
+    setDot('hbXray',  d.xray);
+    setDot('hbNginx', d.nginx);
+    setDot('hbSqlite',d.sqlite);
+    setDot('hbApi',   d.api);
+    setDot('hbPort',  d.port_8443);
+    const bsEl = $('hbBootstrap');
+    if (bsEl && d.bootstrap && typeof d.bootstrap === 'object') {
+      const bs = d.bootstrap;
+      bsEl.className = 'dot ' + (bs.ok && bs.configured ? 'dot-ok' : bs.ok ? 'dot-unk' : 'dot-bad');
+      bsEl.title = bs.ok
+        ? (bs.configured ? 'Bootstrap: configured · ' : 'Bootstrap: hardcoded fallback · ') + bs.address + ' · ' + d.checked_at
+        : 'Bootstrap: DB read failed · ' + d.checked_at;
+    }
     $('hbTs').textContent = 'updated ' + new Date().toLocaleTimeString();
     $('globalTs').textContent = new Date().toLocaleTimeString();
   } catch(e) {
