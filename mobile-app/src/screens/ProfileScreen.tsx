@@ -10,16 +10,17 @@ import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
 import { BiometricService } from '../services/biometricService';
+import { getRemoteConfig } from '../services/remoteConfigService';
 import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT } from '../i18n';
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
-const PLAN_LIMITS: Record<string, { labelKey: string; gbLimit: number | null }> = {
-  free:    { labelKey: 'Free Invite Trial',    gbLimit: 1   },
-  premium: { labelKey: 'Unlimited', gbLimit: null }, // unlimited
-  team:    { labelKey: 'Paid package',    gbLimit: null },
+const PLAN_LABEL: Record<string, string> = {
+  free:    'Free Invite Trial',
+  premium: 'Unlimited',
+  team:    'Paid Package',
 };
 
 function formatExpiry(iso: string | null): string {
@@ -100,26 +101,31 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { connectionState, sessionBytes } = useVpnStore();
 
   const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
+  const [supportUrl, setSupportUrl] = useState('https://t.me/setalink_support');
 
   useEffect(() => {
     BiometricService.isAvailable().then(setBiometricAvailable).catch(() => setBiometricAvailable(false));
+    getRemoteConfig().then(cfg => { if (cfg.support_url) setSupportUrl(cfg.support_url); }).catch(() => {});
   }, []);
 
   if (!user) return null;
 
-  const isConnected = connectionState === 'connected';
-  // Show live quota usage including the current active session
+  const isConnected   = connectionState === 'connected';
+  // Live quota: base + current session traffic (not yet committed to backend)
   const liveQuotaUsed = user.quotaBytesUsed + (isConnected ? sessionBytes.sent + sessionBytes.received : 0);
 
-  const plan     = PLAN_LIMITS[user.plan] ?? PLAN_LIMITS.free;
-  const planLabel = plan.labelKey;
-  const initial  = user.id.slice(0, 1).toUpperCase();
+  // Quota limits derived from the entitlement returned by backend, not hardcoded
+  const isUnlimited   = user.plan !== 'free';
+  const planLabel     = PLAN_LABEL[user.plan] ?? 'Free Invite Trial';
+  const limitGb       = isUnlimited ? null : user.quotaBytesTotal / 1e9;
+
+  const primaryId  = user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`;
+  const initial    = primaryId.slice(0, 2).toUpperCase();
   const monthSessions = sessionsThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);
-  const isUnlimited   = plan.gbLimit === null;
 
   const handleCopyUserId = () => {
-    Clipboard.setString(user.userId || user.deviceId);
+    Clipboard.setString(primaryId);
     showToast('User ID copied', 'success', 2000);
   };
 
@@ -140,14 +146,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const referralLink = `https://setalink.no/?ref=${user.referralCode}`;
 
   const handleOpenSupport = async () => {
-    const supportLink = 'https://t.me/setalink_support';
     try {
-      const supported = await Linking.canOpenURL(supportLink);
-      if (!supported) {
-        showToast(t('pr.supportUnavailable'), 'error', 2500);
-        return;
-      }
-      await Linking.openURL(supportLink);
+      await Linking.openURL(supportUrl);
     } catch {
       showToast(t('pr.supportUnavailable'), 'error', 2500);
     }
@@ -194,9 +194,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               </View>
             )}
           </View>
-          <View>
-            <Text style={styles.userName}>{`Anonymous ${user.id.slice(-6)}`}</Text>
-            <Text style={styles.userEmail}>{`Device ${user.deviceId.slice(-8)}`}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.userName} numberOfLines={1}>{primaryId}</Text>
             <View style={styles.planRow}>
               <View style={[
                 styles.planBadge,
@@ -226,11 +225,11 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                   <View style={styles.unlimitedPill}>
                     <Text style={styles.unlimitedPillText}>∞ Unlimited</Text>
                   </View>
-                ) : plan.gbLimit !== null ? (
+                ) : (
                   <View style={styles.gbPill}>
                     <Text style={styles.gbPillText}>{`${Math.max(0, (user.quotaBytesTotal - liveQuotaUsed) / 1e9).toFixed(1)} GB ${t('pr.remaining')}`}</Text>
                   </View>
-                ) : null}
+                )}
                 {daysLeft !== null && (
                   <View style={[styles.daysPill, daysLeft <= 7 && styles.daysPillUrgent]}>
                     <Text style={[styles.daysPillText, daysLeft <= 7 && styles.daysPillTextUrgent]}>
@@ -250,7 +249,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
           <BandwidthBar
             usedBytes={liveQuotaUsed}
-            limitGb={plan.gbLimit}
+            limitGb={limitGb}
             labelUnlimited={t('pr.unlimited')}
             labelUsedMonth={t('pr.usedMonth')}
             labelGbUsed={t('pr.gbUsed')}
@@ -259,7 +258,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
           <View style={styles.subMeta}>
             {[
-              { label: t('pr.totalQuota'), value: plan.gbLimit === null ? t('pr.unlimitedShort') : `${(user.quotaBytesTotal / 1e9).toFixed(1)} GB` },
+              { label: t('pr.totalQuota'), value: isUnlimited ? t('pr.unlimitedShort') : `${(user.quotaBytesTotal / 1e9).toFixed(1)} GB` },
               { label: t('pr.usedTraffic'),  value: `${(liveQuotaUsed / 1e9).toFixed(2)} GB` },
               { label: t('pr.sessions'),    value: String(monthSessions.length) },
             ].map((item) => (
@@ -309,23 +308,21 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         </GlassCard>
 
         {/* User ID */}
-        {(user.userId || user.deviceId) && (
-          <GlassCard>
-            <Text style={styles.cardLabel}>User ID</Text>
-            <View style={styles.referralCode}>
-              <Text style={styles.referralCodeText} numberOfLines={1}>{user.userId || user.deviceId}</Text>
-              <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyUserId}>
-                <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={[styles.deviceOs, { marginTop: 6 }]}>Use this ID as memo when making USDT payments</Text>
-          </GlassCard>
-        )}
+        <GlassCard>
+          <Text style={styles.cardLabel}>{t('pr.yourUserId')}</Text>
+          <View style={styles.referralCode}>
+            <Text style={styles.referralCodeText} numberOfLines={1}>{primaryId}</Text>
+            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyUserId}>
+              <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.deviceOs, { marginTop: 6 }]}>{t('pr.userIdHint')}</Text>
+        </GlassCard>
 
         {/* Referral */}
         <GlassCard style={styles.referralCard} glowColor={Colors.blue[400]}>
           <View style={styles.referralHeader}>
-            <Text style={styles.cardLabel}>{t('pr.referEarn')}</Text>
+            <Text style={styles.cardLabel}>{t('pr.referralCode')}</Text>
             <View style={styles.rewardBadge}>
               <Text style={styles.rewardBadgeText}>{t('pr.free30days')}</Text>
             </View>

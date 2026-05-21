@@ -213,6 +213,32 @@ const EN = {
   'auth.enterWithInvite': 'Enter with Invite',
   'auth.invalidInvite': 'Invite code format is invalid.',
   'auth.privacyNote': 'No email, phone number, or Google login is required.',
+
+  // Profile — user identity
+  'pr.yourUserId':      'Your User ID',
+  'pr.userIdHint':      'Use this ID as memo when making USDT payments',
+  'pr.referralCode':    'Referral Code',
+
+  // Upgrade / payment screen
+  'up.title':              'Add Data',
+  'up.subtitle':           'Pay with USDT on TON network',
+  'up.selectPackage':      'Select Package',
+  'up.howItWorks':         'How to Pay',
+  'up.step1':              'Tap "Pay with Tonkeeper" — it opens the Tonkeeper app pre-filled.',
+  'up.step2':              'Your User ID is automatically added as the payment memo:',
+  'up.step3':              'After sending, tap "I have paid" to notify the admin.',
+  'up.memoWarning':        '⚠ The memo (User ID) is required to identify your payment. Missing memo = unverifiable payment.',
+  'up.tokenInfo':          'Token Info',
+  'up.network':            'Network',
+  'up.token':              'Token',
+  'up.activation':         'Activation',
+  'up.payWithTonkeeper':   'Pay with Tonkeeper',
+  'up.iHavePaid':          'I have paid — notify admin',
+  'up.submitting':         'Submitting…',
+  'up.paymentSubmitted':   'Payment submitted',
+  'up.paymentSubmittedMsg':'Your payment of {amount} for {label} has been submitted.\n\nActivation within 24 hours after verification.',
+  'up.submitError':        'Could not submit — please contact support',
+  'up.cannotOpenTonkeeper':'Could not open Tonkeeper',
 };
 
 const FA: typeof EN = {
@@ -417,6 +443,32 @@ const FA: typeof EN = {
   'auth.enterWithInvite': 'ورود با دعوت‌نامه',
   'auth.invalidInvite': 'فرمت کد دعوت نامعتبر است.',
   'auth.privacyNote': 'نیازی به ایمیل، شماره تلفن یا ورود گوگل نیست.',
+
+  // Profile — user identity
+  'pr.yourUserId':      'شناسه کاربری شما',
+  'pr.userIdHint':      'هنگام پرداخت USDT این شناسه را به عنوان یادداشت وارد کنید',
+  'pr.referralCode':    'کد معرف',
+
+  // Upgrade / payment screen
+  'up.title':              'افزایش حجم',
+  'up.subtitle':           'پرداخت با USDT در شبکه TON',
+  'up.selectPackage':      'انتخاب بسته',
+  'up.howItWorks':         'نحوه پرداخت',
+  'up.step1':              'روی "پرداخت با Tonkeeper" ضربه بزنید — برنامه Tonkeeper با اطلاعات از پیش پر شده باز می‌شود.',
+  'up.step2':              'شناسه کاربری شما به صورت خودکار به عنوان یادداشت پرداخت اضافه می‌شود:',
+  'up.step3':              'پس از ارسال، روی "پرداخت کردم" ضربه بزنید تا ادمین مطلع شود.',
+  'up.memoWarning':        '⚠ یادداشت (شناسه کاربری) برای تشخیص پرداخت شما ضروری است. بدون یادداشت، پرداخت قابل تأیید نیست.',
+  'up.tokenInfo':          'اطلاعات توکن',
+  'up.network':            'شبکه',
+  'up.token':              'توکن',
+  'up.activation':         'فعال‌سازی',
+  'up.payWithTonkeeper':   'پرداخت با Tonkeeper',
+  'up.iHavePaid':          'پرداخت کردم — به ادمین اطلاع بده',
+  'up.submitting':         'در حال ارسال...',
+  'up.paymentSubmitted':   'پرداخت ثبت شد',
+  'up.paymentSubmittedMsg':'پرداخت {amount} برای {label} ثبت شد.\n\nفعال‌سازی ظرف ۲۴ ساعت پس از تأیید.',
+  'up.submitError':        'ارسال ناموفق — لطفاً با پشتیبانی تماس بگیرید',
+  'up.cannotOpenTonkeeper':'باز کردن Tonkeeper ممکن نیست',
 };
 
 export type TKey = keyof typeof EN;

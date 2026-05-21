@@ -143,6 +143,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.brandName}>SetaLink</Text>
             </View>
             <Text style={styles.greeting}>{greeting}</Text>
+            {user && (user.userId || user.deviceId) && (
+              <Text style={styles.userId} numberOfLines={1}>
+                {user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`}
+              </Text>
+            )}
           </View>
           <TouchableOpacity
             style={styles.settingsBtn}
@@ -377,6 +382,7 @@ const styles = StyleSheet.create({
   brandLogoSmall: { width: 22, height: 22, tintColor: Colors.emerald[400] },
   brandName:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 0.5 },
   greeting:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
+  userId:       { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5, marginTop: 1 },
   settingsBtn:  { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   settingsIcon: { fontSize: 18, color: Colors.text.secondary },
   statusRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flexWrap: 'wrap' },
