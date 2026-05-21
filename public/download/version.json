@@ -1,28 +1,17 @@
 {
-  "version": "0.9.15",
-  "versionCode": 24,
-  "releaseDate": "2026-05-20",
+  "version": "0.9.16",
+  "versionCode": 26,
+  "releaseDate": "2026-05-21",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.15.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.16.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "54d57484c52e1e3dc7a5f9a503240b50f11acba2ed43904e1197fe2e144ab44d", "algorithm": "sha256" },
-  "size": 53700732,
-  "changelog": [
-    "Fix: VPN routing probe now falls back to SOCKS5 validation on any openConnection failure (not just EPERM) — resolves 'internet not routed through VPN' false negative on many Android ROMs",
-    "Fix: SOCKS5 handshake verified with real protocol exchange before TUN setup — catches Xray inbound misconfiguration early",
-    "New: adb log tags SETALINK_TUN_STARTED / SETALINK_SOCKS_READY / SETALINK_ROUTE_ADDED / SETALINK_DNS_OK / SETALINK_HTTP_OK for field diagnostics",
-    "New: Diagnostics screen Tunnel Layer card shows TUN / SOCKS5 / Xray / DNS / Internet layer status with live bytes",
-    "Fix: Immediate failure if SOCKS5 handshake returns invalid response — prevents silent Xray inbound misconfiguration",
-    "New: Permanent User ID (SL-227-XXXXXXXX) generated on first registration, shown on Profile and used as TON payment memo",
-    "New: Admin panel shows User ID as primary device identifier with country flag, device model, and last IP",
-    "Fix: Device identity stabilised via native SharedPreferences (android_id hash) — no more duplicate device rows on restart",
-    "Fix: Country auto-detected server-side from request IP — country column now always populated",
-    "Version: 0.9.15 / Build 24"
-  ],
+  "checksum": { "sha256": "a887838d7e8a6f9215fdea744c25070591bcd22162b907deb79c139c5d409277", "algorithm": "sha256" },
+  "size": 53701632,
+  "changelog": [],
   "channels": {
-    "stable":  { "version": "0.9.15",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.15.apk" },
+    "stable":  { "version": "0.9.16",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.16.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }
