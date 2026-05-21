@@ -21,8 +21,17 @@ interface XrayLog {
   loglevel: 'none' | 'error' | 'warning' | 'info' | 'debug';
 }
 
+interface DnsServer {
+  address: string;
+  domains?: string[];
+  port?: number;
+  queryStrategy?: string;
+}
+
 interface XrayDns {
-  servers: Array<string | { address: string; domains?: string[]; port?: number }>;
+  servers: Array<string | DnsServer>;
+  queryStrategy?: string;
+  hosts?: Record<string, string>;
 }
 
 interface XrayInbound {
@@ -53,14 +62,28 @@ interface XrayRouting {
   }>;
 }
 
-// DNS profiles keyed by settingsStore.dnsMode
-// NOTE: No geosite/geoip refs — those require data files not bundled in the APK.
+// DNS profiles keyed by settingsStore.dnsMode.
+// DoH URLs (https://…) route through the proxy tunnel so ISP DNS poisoning/blocking
+// cannot intercept them. Plain IP fallbacks (8.8.8.8, etc.) are tried if DoH fails.
+// queryStrategy: 'UseIPv4' prevents IPv6 DNS leaks on devices with no IPv6 routing.
 const DNS_PROFILES: Record<string, XrayDns> = {
   'Cloudflare (DoH)': {
-    servers: ['1.1.1.1', '1.0.0.1'],
+    queryStrategy: 'UseIPv4',
+    servers: [
+      'https://1.1.1.1/dns-query',
+      'https://1.0.0.1/dns-query',
+      '8.8.8.8',
+      '9.9.9.9',
+    ],
   },
   'Google (DoH)': {
-    servers: ['8.8.8.8', '8.8.4.4'],
+    queryStrategy: 'UseIPv4',
+    servers: [
+      'https://8.8.8.8/dns-query',
+      'https://8.8.4.4/dns-query',
+      '1.1.1.1',
+      '9.9.9.9',
+    ],
   },
   'System': {
     servers: ['localhost'],
@@ -378,7 +401,8 @@ export function buildEmergencyXrayConfigJson(
     log: { loglevel: 'debug' },
 
     dns: {
-      servers: ['1.1.1.1'],
+      queryStrategy: 'UseIPv4',
+      servers: ['https://1.1.1.1/dns-query', '8.8.8.8', '9.9.9.9'],
     },
 
     inbounds: [

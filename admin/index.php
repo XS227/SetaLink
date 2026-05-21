@@ -161,6 +161,16 @@ function icon(string $name): string {
 
       <div class="two-col">
         <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><?= icon('globe') ?> DNS Resolver Probe</span>
+            <button class="btn btn-ghost btn-sm" id="dnsProbeBtn">Probe DNS</button>
+          </div>
+          <div class="panel-body" id="dnsProbeResult"><div class="panel-empty">Click "Probe DNS" to test 1.1.1.1, 8.8.8.8, 9.9.9.9 from the server</div></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
           <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Active Connections</span></div>
           <div class="panel-body" id="activeSessions"><div class="loading"><div class="spinner"></div></div></div>
         </div>
@@ -336,7 +346,7 @@ function icon(string $name): string {
       <div class="panel">
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">RX/TX</th><th class="mobile-hide">Routing</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
+            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">RX/TX</th><th class="mobile-hide">Connectivity</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
             <tbody id="devTbl"><tr><td colspan="12" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
@@ -1006,6 +1016,39 @@ $('natRepairBtn').addEventListener('click', async()=>{
   } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast('Repair failed: '+e.message,'error'); }
 });
 
+$('dnsProbeBtn').addEventListener('click', async()=>{
+  const el = $('dnsProbeResult');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Probing DNS resolvers…</div>';
+  try {
+    const d = await api.get('dns-probe');
+    let html = `<div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;padding:.5rem;background:${d.ok?'rgba(0,232,122,.08)':'rgba(255,80,80,.08)'};border-radius:6px;border:1px solid ${d.ok?'rgba(0,232,122,.25)':'rgba(255,80,80,.25)'}">
+      <span style="font-size:1.1rem">${d.ok?'✓':'✗'}</span>
+      <div>
+        <div style="font-size:.8rem;font-weight:600;color:${d.ok?'var(--ok)':'var(--danger)'}">${d.ok?'DNS resolvers reachable':'All resolvers failed'}</div>
+        <div style="font-size:.62rem;color:var(--muted-2)">method: ${esc(d.method||'?')} · ${esc(d.probed_at||'')}</div>
+      </div>
+    </div>`;
+    (d.resolvers||[]).forEach(ns=>{
+      html += `<div style="margin-bottom:.5rem;padding:.4rem .5rem;background:var(--bg-elevated);border-radius:5px">
+        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem">
+          <span class="dot ${ns.ok?'dot-ok':'dot-bad'}"></span>
+          <span style="font-size:.78rem;font-weight:600;font-family:var(--mono)">${esc(ns.resolver)}</span>
+          <span style="font-size:.65rem;color:var(--muted-2)">${ns.avg_latency_ms}ms avg</span>
+        </div>`;
+      (ns.domains||[]).forEach(dr=>{
+        html += `<div style="font-size:.65rem;display:flex;gap:.5rem;padding:.1rem 0;padding-left:.75rem;color:${dr.ok?'var(--muted)':'var(--danger)'}">
+          <span>${dr.ok?'✓':'✗'}</span>
+          <span style="font-family:var(--mono);flex:1">${esc(dr.domain)}</span>
+          <span style="color:var(--muted-2)">${dr.latency_ms}ms</span>
+          ${dr.ip?`<span style="font-family:var(--mono);color:var(--muted-2)">${esc(dr.ip)}</span>`:''}
+        </div>`;
+      });
+      html += `</div>`;
+    });
+    el.innerHTML = html;
+  } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
+});
+
 // ── VIEW: IRAN DEBUG ─────────────────────────────────────────────────
 views.iran = {
   async init() {
@@ -1316,15 +1359,17 @@ views.devices = {
           const rxtxHtml = hasTraffic
             ? `<div style="font-size:.65rem;font-family:var(--mono)">↓ ${fmtBytes(rxBytes)}</div><div style="font-size:.65rem;font-family:var(--mono);color:var(--muted-2)">↑ ${fmtBytes(txBytes)}</div>`
             : `<span style="color:var(--muted-2);font-size:.7rem">—</span>`;
-          // DNS status
-          const dnsOk = r.dns_ok;
-          const dnsHtml = r.status === 'online'
-            ? `<span style="font-size:.6rem;color:${dnsOk?'var(--ok)':'var(--danger)'}">${dnsOk?'DNS ✓':'DNS ✗'}</span>`
-            : '';
-          // Routing status — internet_ok vs dns_ok vs failure category
-          const rtOk    = r.internet_ok;
-          const rtColor = rtOk ? 'var(--ok)' : (r.last_failure_category ? 'var(--danger)' : 'var(--muted-2)');
-          const rtLabel = rtOk ? '✓ Routed' : (r.last_failure_category ? '✗ Failed' : '—');
+          // Three-state connectivity column: CONNECTED / ROUTED / DNS OK
+          const isOnline = r.status === 'online';
+          const rtOk     = r.internet_ok;
+          const dnsOk    = r.dns_ok;
+          const connColor= isOnline ? 'var(--ok)' : 'var(--muted-2)';
+          const rtColor  = isOnline ? (rtOk ? 'var(--ok)' : 'var(--danger)') : 'var(--muted-2)';
+          const dnsColor = isOnline ? (dnsOk ? 'var(--ok)' : (dnsOk===null||dnsOk===undefined ? 'var(--muted-2)' : 'var(--danger)')) : 'var(--muted-2)';
+          const connLabel= isOnline ? '● CONNECTED' : '○ OFFLINE';
+          const rtLabel  = isOnline ? (rtOk ? '✓ ROUTED' : '✗ ROUTED') : '— ROUTED';
+          const dnsLabel = isOnline ? (dnsOk===null||dnsOk===undefined ? '? DNS OK' : (dnsOk ? '✓ DNS OK' : '✗ DNS OK')) : '— DNS OK';
+          const connHtml = `<div style="font-size:.62rem;line-height:1.8;font-family:var(--mono)"><span style="color:${connColor}">${connLabel}</span><br><span style="color:${rtColor}">${rtLabel}</span><br><span style="color:${dnsColor}">${dnsLabel}</span></div>`;
           // Failure category badge
           const failCat = r.last_failure_category || '';
           const failBadge = failCat
@@ -1348,8 +1393,8 @@ views.devices = {
             </td>
             <td><span class="dot ${r.status==='online'?'dot-ok':'dot-unk'}" style="display:inline-block"></span> ${esc(r.status)}</td>
             <td>${protoBadge(r.active_protocol)}${sniHtml}</td>
-            <td class="mobile-hide">${rxtxHtml}${dnsHtml}</td>
-            <td class="mobile-hide" style="font-size:.72rem;color:${rtColor};font-weight:${rtOk?'600':'400'}">${rtLabel}</td>
+            <td class="mobile-hide">${rxtxHtml}</td>
+            <td class="mobile-hide">${connHtml}</td>
             <td class="mobile-hide" style="font-size:.7rem">${failBadge}</td>
             <td class="mobile-hide" style="font-size:.75rem">${srcCtry}<div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)">${srcIp}</div></td>
             <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.last_seen)}</td>
