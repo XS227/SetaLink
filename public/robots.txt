@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /_setalink-admin/
+Disallow: /api.php
+Disallow: /download/
+
+Sitemap: https://setalink.no/sitemap.xml
