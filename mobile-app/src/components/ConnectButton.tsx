@@ -46,8 +46,8 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
   const buttonColor = isConnected ? Colors.emerald[400] : Colors.bg.elevated;
   const borderColor = isConnected ? Colors.emerald[400] : Colors.border.default;
   const labelText   = isConnecting ? '' : isConnected ? 'Disconnect' : 'Connect';
-  // Logo: full color (white on emerald) when connected; grayscale dim when disconnected
-  const logoTint    = isConnected ? Colors.text.inverse : 'rgba(120,130,140,0.55)';
+  // Logo: white on emerald when connected; visible light gray when disconnected
+  const logoTint    = isConnected ? Colors.text.inverse : 'rgba(200,210,218,0.9)';
 
   const buttonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],

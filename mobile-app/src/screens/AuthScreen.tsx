@@ -6,7 +6,9 @@ import { useT } from '../i18n';
 
 interface Props { onAuth: () => void; }
 
-const INVITE_RE = /^[A-Z0-9-]{6,32}$/;
+// Admin/founder bootstrap codes that always pass validation
+const MASTER_CODES = new Set(['XS-227']);
+const INVITE_RE    = /^[A-Z0-9-]{6,32}$/;
 
 export function AuthScreen({ onAuth }: Props) {
   const { t } = useT();
@@ -36,7 +38,7 @@ export function AuthScreen({ onAuth }: Props) {
   if (isAuthenticated) return null;
 
   const submit = () => {
-    if (!INVITE_RE.test(sanitized)) {
+    if (!MASTER_CODES.has(sanitized) && !INVITE_RE.test(sanitized)) {
       setError(t('auth.invalidInvite'));
       return;
     }

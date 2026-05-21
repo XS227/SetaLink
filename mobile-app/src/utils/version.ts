@@ -4,4 +4,4 @@
 const pkg = require('../../package.json') as { version: string };
 
 export const APP_VERSION  = pkg.version;
-export const APP_BUILD    = '24';
+export const APP_BUILD    = '27';

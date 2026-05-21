@@ -179,12 +179,13 @@ const EN = {
   'pr.speed':           'Speed',
   'pr.upgradePremium':  'Upgrade to Premium',
   'pr.manageSub':       'Manage Subscription',
-  'pr.referEarn':       'Refer & Earn',
-  'pr.free30days':      '+30 days free',
-  'pr.referDesc':       'Invite friends and earn 30 days of free premium for every signup.',
+  'pr.referEarn':       'Invite & Earn Data',
+  'pr.free30days':      '+1 GB each',
+  'pr.referDesc':       'Invite friends. When they join, you both get +1 GB added to your quota.',
   'pr.copy':            'Copy',
   'pr.invited':         'Invited',
-  'pr.daysEarned':      'Days earned',
+  'pr.gbEarned':        'GB earned',
+  'pr.daysEarned':      'GB earned',
   'pr.copiedCode':      'Referral code copied!',
   'pr.rewardsHub':      'Rewards Hub',
   'pr.rewardsSoon':     'Coming soon · Earn points for usage',
@@ -199,8 +200,8 @@ const EN = {
   'pr.totalQuota':      'Total quota',
   'pr.usedTraffic':     'Used traffic',
   'pr.unlimitedShort':  'Unlimited',
-  'pr.biometricLock':   'Biometric Lock',
-  'pr.biometricLockDesc':'Local app lock only (off by default)',
+  'pr.biometricLock':   'App Lock',
+  'pr.biometricLockDesc':'Lock with biometrics or PIN (off by default)',
   'pr.supportUnavailable':'Support link is not available right now.',
   'pr.websiteUnavailable':'Unable to open website.',
   'pr.shareUnavailable':'Unable to share invite link.',
@@ -208,16 +209,16 @@ const EN = {
 
   // Invite-only auth
   'auth.inviteOnlyTitle': 'Invite-only access',
-  'auth.inviteOnlySub': 'Enter your invite code or open an invite link to create an anonymous account with 1GB free data.',
+  'auth.inviteOnlySub': 'Enter your invite code to register. Invalid codes are blocked. Contact support if you need a code.',
   'auth.invitePlaceholder': 'INVITE-CODE',
-  'auth.enterWithInvite': 'Enter with Invite',
-  'auth.invalidInvite': 'Invite code format is invalid.',
-  'auth.privacyNote': 'No email, phone number, or Google login is required.',
+  'auth.enterWithInvite': 'Enter with Invite Code',
+  'auth.invalidInvite': 'Invalid invite code. Please check your code and try again.',
+  'auth.privacyNote': 'No email, phone number, or Google login required.',
 
   // Profile — user identity
   'pr.yourUserId':      'Your User ID',
-  'pr.userIdHint':      'Use this ID as memo when making USDT payments',
-  'pr.referralCode':    'Referral Code',
+  'pr.userIdHint':      'Use this ID as the memo when sending USDT payments',
+  'pr.referralCode':    'Your Invite Code',
 
   // Upgrade / payment screen
   'up.title':              'Add Data',
@@ -239,6 +240,20 @@ const EN = {
   'up.paymentSubmittedMsg':'Your payment of {amount} for {label} has been submitted.\n\nActivation within 24 hours after verification.',
   'up.submitError':        'Could not submit — please contact support',
   'up.cannotOpenTonkeeper':'Could not open Tonkeeper',
+
+  // Lock screen & PIN
+  'lock.locked':          'App is locked',
+  'lock.unlock':          'Unlock with Biometrics',
+  'lock.authenticating':  'Authenticating…',
+  'lock.enterPin':        'Enter PIN',
+  'lock.createPin':       'Create PIN',
+  'lock.confirmPin':      'Confirm PIN',
+  'lock.createPinHint':   'Set a 4-digit PIN to protect the app',
+  'lock.confirmPinHint':  'Enter the same PIN again',
+  'lock.enterPinHint':    'Enter your 4-digit PIN',
+  'lock.wrongPin':        'Incorrect PIN — try again',
+  'lock.pinMismatch':     'PINs do not match — start over',
+  'lock.tryBio':          'Try biometrics instead',
 };
 
 const FA: typeof EN = {
@@ -409,12 +424,13 @@ const FA: typeof EN = {
   'pr.speed':           'سرعت',
   'pr.upgradePremium':  'ارتقا به پریمیوم',
   'pr.manageSub':       'مدیریت اشتراک',
-  'pr.referEarn':       'معرفی و درآمد',
-  'pr.free30days':      '+۳۰ روز رایگان',
-  'pr.referDesc':       'دوستانتان را دعوت کنید و برای هر ثبت‌نام ۳۰ روز پریمیوم رایگان بگیرید.',
+  'pr.referEarn':       'دعوت دوستان',
+  'pr.free30days':      '+۱ گیگابایت هدیه',
+  'pr.referDesc':       'دوستانتان را دعوت کنید. پس از ثبت‌نام آن‌ها، هر دو نفر ۱ گیگابایت به سهمیه خود اضافه می‌کنید.',
   'pr.copy':            'کپی',
-  'pr.invited':         'دعوت شده',
-  'pr.daysEarned':      'روز کسب شده',
+  'pr.invited':         'دعوت‌شده',
+  'pr.gbEarned':        'گیگابایت کسب شده',
+  'pr.daysEarned':      'گیگابایت کسب شده',
   'pr.copiedCode':      'کد معرف کپی شد!',
   'pr.rewardsHub':      'مرکز پاداش',
   'pr.rewardsSoon':     'به‌زودی · امتیاز بگیرید',
@@ -424,13 +440,13 @@ const FA: typeof EN = {
   'pr.exportConfig':    'خروجی تنظیمات',
   'pr.signOut':         'خروج از حساب',
   'pr.support':         'تماس با پشتیبانی',
-  'pr.shareLink':       'اشتراک‌گذاری لینک معرف',
+  'pr.shareLink':       'اشتراک‌گذاری لینک دعوت',
   'pr.remaining':       'باقیمانده',
   'pr.totalQuota':      'کل سهمیه',
   'pr.usedTraffic':     'ترافیک مصرف‌شده',
   'pr.unlimitedShort':  'نامحدود',
-  'pr.biometricLock':   'قفل بیومتریک',
-  'pr.biometricLockDesc':'فقط قفل محلی برنامه (پیش‌فرض خاموش)',
+  'pr.biometricLock':   'قفل برنامه',
+  'pr.biometricLockDesc':'قفل با اثر انگشت یا کد PIN (پیش‌فرض خاموش)',
   'pr.supportUnavailable':'لینک پشتیبانی در حال حاضر در دسترس نیست.',
   'pr.websiteUnavailable':'باز کردن وب‌سایت ممکن نیست.',
   'pr.shareUnavailable':'اشتراک‌گذاری لینک دعوت ممکن نیست.',
@@ -438,16 +454,16 @@ const FA: typeof EN = {
 
   // Invite-only auth
   'auth.inviteOnlyTitle': 'ورود فقط با دعوت‌نامه',
-  'auth.inviteOnlySub': 'کد دعوت را وارد کنید یا لینک دعوت را باز کنید تا حساب ناشناس با ۱ گیگابایت سهمیه رایگان ساخته شود.',
-  'auth.invitePlaceholder': 'INVITE-CODE',
-  'auth.enterWithInvite': 'ورود با دعوت‌نامه',
-  'auth.invalidInvite': 'فرمت کد دعوت نامعتبر است.',
+  'auth.inviteOnlySub': 'کد دعوت خود را وارد کنید. کدهای نامعتبر پذیرفته نمی‌شوند. برای دریافت کد با پشتیبانی تماس بگیرید.',
+  'auth.invitePlaceholder': 'کد دعوت',
+  'auth.enterWithInvite': 'ورود با کد دعوت',
+  'auth.invalidInvite': 'کد دعوت نامعتبر است. کد خود را بررسی کرده و دوباره امتحان کنید.',
   'auth.privacyNote': 'نیازی به ایمیل، شماره تلفن یا ورود گوگل نیست.',
 
   // Profile — user identity
   'pr.yourUserId':      'شناسه کاربری شما',
-  'pr.userIdHint':      'هنگام پرداخت USDT این شناسه را به عنوان یادداشت وارد کنید',
-  'pr.referralCode':    'کد معرف',
+  'pr.userIdHint':      'هنگام پرداخت USDT این شناسه را به عنوان یادداشت (memo) وارد کنید',
+  'pr.referralCode':    'کد دعوت شما',
 
   // Upgrade / payment screen
   'up.title':              'افزایش حجم',
@@ -469,6 +485,20 @@ const FA: typeof EN = {
   'up.paymentSubmittedMsg':'پرداخت {amount} برای {label} ثبت شد.\n\nفعال‌سازی ظرف ۲۴ ساعت پس از تأیید.',
   'up.submitError':        'ارسال ناموفق — لطفاً با پشتیبانی تماس بگیرید',
   'up.cannotOpenTonkeeper':'باز کردن Tonkeeper ممکن نیست',
+
+  // Lock screen & PIN
+  'lock.locked':          'برنامه قفل شده',
+  'lock.unlock':          'باز کردن با بیومتریک',
+  'lock.authenticating':  'در حال احراز هویت...',
+  'lock.enterPin':        'کد PIN را وارد کنید',
+  'lock.createPin':       'ایجاد کد PIN',
+  'lock.confirmPin':      'تأیید کد PIN',
+  'lock.createPinHint':   'یک کد ۴ رقمی برای قفل برنامه انتخاب کنید',
+  'lock.confirmPinHint':  'کد PIN را دوباره وارد کنید',
+  'lock.enterPinHint':    'کد ۴ رقمی خود را وارد کنید',
+  'lock.wrongPin':        'کد PIN اشتباه است — دوباره امتحان کنید',
+  'lock.pinMismatch':     'کدها یکسان نیستند — از ابتدا شروع کنید',
+  'lock.tryBio':          'استفاده از بیومتریک',
 };
 
 export type TKey = keyof typeof EN;

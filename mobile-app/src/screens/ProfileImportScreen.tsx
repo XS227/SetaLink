@@ -71,17 +71,19 @@ export function ProfileImportScreen({ onBack }: Props) {
     const rec   = servers.find((s) => s.id === serverId);
     if (!creds || !rec) return;
 
+    // Use SNI domain instead of raw IP to avoid exposing server infrastructure
+    const endpoint = creds.sni || creds.address;
     const flow = creds.flow ? `&flow=${encodeURIComponent(creds.flow)}` : '';
     const fp   = creds.fingerprint ? `&fp=${creds.fingerprint}` : '';
     const sid  = creds.shortId ? `&sid=${encodeURIComponent(creds.shortId)}` : '';
     const sni  = creds.sni ? `&sni=${encodeURIComponent(creds.sni)}` : '';
     const pbk  = creds.publicKey ? `&pbk=${encodeURIComponent(creds.publicKey)}` : '';
-    const name = encodeURIComponent(rec.city || rec.country);
+    const name = encodeURIComponent(rec.city || rec.country || 'SetaLink');
 
-    const uri = `vless://${creds.uuid}@${creds.address}:${creds.port}?security=reality&encryption=none&type=tcp${pbk}${sid}${sni}${flow}${fp}#${name}`;
+    const uri = `vless://${creds.uuid}@${endpoint}:${creds.port}?security=reality&encryption=none&type=tcp${pbk}${sid}${sni}${flow}${fp}#${name}`;
 
     Clipboard.setString(uri);
-    Alert.alert('Copied', 'VLESS link copied to clipboard.');
+    Alert.alert('Copied', 'Profile link copied to clipboard.');
   };
 
   const handleDelete = (serverId: string) => {
