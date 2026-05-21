@@ -29,6 +29,7 @@ interface AuthState {
   user: AuthUser | null;
   token: string | null;
   isAuthenticated: boolean;
+  pinCode: string | null;
 
   loginWithInvite:       (payload: InvitePayload) => void;
   loginWithDevice:       (entitlement: DeviceEntitlement) => void;
@@ -38,6 +39,8 @@ interface AuthState {
   setBiometricSecure:    (enabled: boolean) => void;
   consumeQuota:          (bytes: number) => void;
   fixQuotaOverflow:      () => void;
+  setPin:                (pin: string | null) => void;
+  verifyPin:             (pin: string) => boolean;
 }
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
@@ -46,12 +49,19 @@ function randomId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
 }
 
+// Extract the unique suffix from SL-227-XXXXXXXX style user IDs
+function deriveReferralCode(userId: string, fallback: string): string {
+  const m = userId?.match(/^SL-\d+-([A-Z0-9]+)$/i);
+  return m ? m[1]!.toUpperCase() : fallback;
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isAuthenticated: false,
+      pinCode: null,
 
       loginWithInvite: ({ inviteCode, referralParent = null }) => set(() => {
         const now = new Date().toISOString();
@@ -59,9 +69,10 @@ export const useAuthStore = create<AuthState>()(
           user: {
             id: randomId('anon'),
             deviceId: randomId('dev'),
+            userId: '',
             inviteCodeUsed: inviteCode.toUpperCase(),
             referralParent,
-            referralCode: `REF-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+            referralCode: '',
             quotaBytesTotal: ONE_GB_BYTES,
             quotaBytesUsed: 0,
             createdAt: now,
@@ -77,14 +88,15 @@ export const useAuthStore = create<AuthState>()(
       }),
       loginWithDevice: (e) => set(() => {
         const now = new Date().toISOString();
+        const userId = e.user_id ?? '';
         return {
           user: {
             id:                   e.device_id,
             deviceId:             e.device_id,
-            userId:               e.user_id ?? '',
+            userId,
             inviteCodeUsed:       '',
             referralParent:       null,
-            referralCode:         e.referral_code,
+            referralCode:         deriveReferralCode(userId, e.referral_code),
             quotaBytesTotal:      e.quota_bytes_total,
             quotaBytesUsed:       Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
             createdAt:            now,
@@ -101,11 +113,12 @@ export const useAuthStore = create<AuthState>()(
 
       updateFromEntitlement: (e) => set((prev) => {
         if (!prev.user) return prev;
+        const userId = e.user_id || prev.user.userId;
         return {
           user: {
             ...prev.user,
             ...(e.user_id ? { userId: e.user_id } : {}),
-            referralCode:    e.referral_code,
+            referralCode:    deriveReferralCode(userId, e.referral_code),
             quotaBytesTotal: e.quota_bytes_total,
             quotaBytesUsed:  Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
             status:          e.blocked ? 'blocked' : 'active',
@@ -133,11 +146,17 @@ export const useAuthStore = create<AuthState>()(
         if (used === prev.user.quotaBytesUsed) return prev;
         return { user: { ...prev.user, quotaBytesUsed: used } };
       }),
+
+      setPin: (pin) => set({ pinCode: pin }),
+      verifyPin: (pin) => {
+        const { pinCode } = get();
+        return pinCode !== null && pinCode === pin;
+      },
     }),
     {
       name: 'setalink-auth',
       storage: createJSONStorage(() => storage),
-      partialize: (s) => ({ user: s.user, token: s.token, isAuthenticated: s.isAuthenticated }),
+      partialize: (s) => ({ user: s.user, token: s.token, isAuthenticated: s.isAuthenticated, pinCode: s.pinCode }),
     }
   )
 );

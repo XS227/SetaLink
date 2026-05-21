@@ -3,6 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, Alert, Linking,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useAuthStore } from '../stores/authStore';
@@ -23,10 +24,9 @@ interface Package {
 }
 
 const PACKAGES: Package[] = [
-  { gb: 10,  usd: 3,  days: 30,    label: '10 GB',     key: '10GB'     },
-  { gb: 20,  usd: 5,  days: 30,    label: '20 GB',     key: '30days'   },
-  { gb: 30,  usd: 7,  days: 30,    label: '30 GB',     key: '30days'   },
-  { gb: -1,  usd: 15, days: 365,   label: 'Unlimited', key: 'unlimited'},
+  { gb: 10, usd: 3, days: 30, label: '10 GB', key: '10GB' },
+  { gb: 20, usd: 5, days: 30, label: '20 GB', key: '20GB' },
+  { gb: 30, usd: 7, days: 30, label: '30 GB', key: '30GB' },
 ];
 
 interface Props {
@@ -35,7 +35,8 @@ interface Props {
 
 export function UpgradeScreen({ onBack }: Props) {
   const { t } = useT();
-  const [selectedIdx, setSelectedIdx] = useState(1);
+  const { bottom: bottomInset } = useSafeAreaInsets();
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const [submitting, setSubmitting]   = useState(false);
 
   const user      = useAuthStore((s) => s.user);
@@ -188,11 +189,11 @@ export function UpgradeScreen({ onBack }: Props) {
           </View>
         </GlassCard>
 
-        <View style={{ height: 160 }} />
+        <View style={{ height: 210 + bottomInset }} />
       </ScrollView>
 
       {/* Sticky footer */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(Spacing[6], bottomInset) + Spacing[2] }]}>
         <TouchableOpacity
           style={styles.tonBtn}
           onPress={handleOpenTonkeeper}
@@ -291,7 +292,6 @@ const styles = StyleSheet.create({
   footer: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     paddingHorizontal: Layout.screenPadding,
-    paddingBottom: Layout.bottomNavHeight,
     paddingTop: Spacing[4],
     backgroundColor: Colors.bg.base,
     borderTopWidth: 1, borderTopColor: Colors.border.subtle,

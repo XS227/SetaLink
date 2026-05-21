@@ -101,7 +101,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { connectionState, sessionBytes } = useVpnStore();
 
   const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
-  const [supportUrl, setSupportUrl] = useState('https://t.me/setalink_support');
+  const [supportUrl, setSupportUrl] = useState('https://t.me/SetaLink3');
 
   useEffect(() => {
     BiometricService.isAvailable().then(setBiometricAvailable).catch(() => setBiometricAvailable(false));
@@ -120,6 +120,11 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const limitGb       = isUnlimited ? null : user.quotaBytesTotal / 1e9;
 
   const primaryId  = user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`;
+  // Referral code = unique suffix after SL-227- (matches identity system)
+  const referralDisplayCode = (() => {
+    const m = primaryId.match(/^SL-\d+-([A-Z0-9]+)$/i);
+    return m ? m[1]!.toUpperCase() : user.referralCode;
+  })();
   const initial    = primaryId.slice(0, 2).toUpperCase();
   const monthSessions = sessionsThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);
@@ -130,20 +135,20 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   };
 
   const handleCopyReferral = () => {
-    Clipboard.setString(user.referralCode);
+    Clipboard.setString(referralDisplayCode);
     showToast(t('pr.copiedCode'), 'success', 2000);
   };
 
   const handleShareReferral = async () => {
     try {
       await Share.share({
-        message: `Join SetaLink with my code: ${user.referralCode}\nhttps://setalink.com/?ref=${user.referralCode}`,
+        message: `Join SetaLink — invite-only VPN for Iran.\nUse my code: ${referralDisplayCode}\nhttps://setalink.no/?ref=${referralDisplayCode}\n\nWe both get +1 GB when you join.`,
       });
     } catch {
       showToast(t('pr.shareUnavailable'), 'error', 2500);
     }
   };
-  const referralLink = `https://setalink.no/?ref=${user.referralCode}`;
+  const referralLink = `https://setalink.no/?ref=${referralDisplayCode}`;
 
   const handleOpenSupport = async () => {
     try {
@@ -330,7 +335,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <Text style={styles.referralDesc}>{t('pr.referDesc')}</Text>
           <Text style={styles.deviceOs}>{referralLink}</Text>
           <View style={styles.referralCode}>
-            <Text style={styles.referralCodeText}>{user.referralCode}</Text>
+            <Text style={styles.referralCodeText}>{referralDisplayCode}</Text>
             <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
               <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
             </TouchableOpacity>

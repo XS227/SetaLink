@@ -1,17 +1,17 @@
 {
-  "version": "0.9.16",
-  "versionCode": 26,
+  "version": "0.9.17",
+  "versionCode": 27,
   "releaseDate": "2026-05-21",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.16.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.17.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "a887838d7e8a6f9215fdea744c25070591bcd22162b907deb79c139c5d409277", "algorithm": "sha256" },
-  "size": 53701632,
+  "checksum": { "sha256": "40b1db3e1a57d79b5bb3118f2737a4141f131023e0c01a7e24ce18677158e5e5", "algorithm": "sha256" },
+  "size": 53703544,
   "changelog": [],
   "channels": {
-    "stable":  { "version": "0.9.16",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.16.apk" },
+    "stable":  { "version": "0.9.17",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.17.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }
