@@ -65,6 +65,9 @@ export function parseSingleVless(uri: string): ImportedServer | null {
   const { parseVlessUri, isParseError } = require('./vlessParser') as typeof import('./vlessParser');
   const result = parseVlessUri(uri.trim());
   if (isParseError(result)) return null;
+  // Reset dedup counter so single imports don't get an unexpected " 1" suffix.
+  // The counter is only meaningful within a batch subscription import.
+  _nameCount.clear();
   return buildEntry(result, 0);
 }
 

@@ -1,11 +1,13 @@
 # SetaLink — Iran Connectivity Test Matrix
 
-Updated: 2026-05-19  
-Server: edge.setalink.no / 5.249.252.221 (Ubuntu 24.04, nginx 1.24, Xray 26.3.27)  
+Updated: 2026-05-21  
+Server: 178.104.77.231 (Hetzner Nuremberg, Germany — Ubuntu 24.04, nginx 1.24, Xray 26.3.27)  
+Edge proxy: edge.setalink.no → 5.249.252.221 (WS / XHTTP / HTTPUpgrade, CF UUID whitelisted)
 
-**Both UUIDs are valid** — use either set of links below.  
-- `b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3` — canonical app UUID (all mobile app installs)  
-- `9280e04d-ffdb-45b4-9558-66b9d6f89b49` — iran-tester UUID (existing profiles, still works)  
+**Active Reality inbounds — 3 independent keypairs:**
+- `fd709d48-a983-484a-99e3-afc97e2c3692` — SetaLink-Cloudflare :443
+- `c8af7366-b531-4f35-bea2-6fb70d1e4850` — SetaLink-Oracle :8443
+- `1580e282-be00-4ddc-932b-9bbcd69f0dad` — SetaLink-Amazon :2052
 
 ---
 
@@ -13,97 +15,97 @@ Server: edge.setalink.no / 5.249.252.221 (Ubuntu 24.04, nginx 1.24, Xray 26.3.27
 
 | # | Name | Transport | Port | Path | DPI Resistance | Notes |
 |---|------|-----------|------|------|----------------|-------|
-| 1 | EDGE-REALITY | VLESS TCP Reality | 8443 | — | Very High | No nginx, TLS impersonates microsoft.com |
-| 2 | EDGE-XHTTP | VLESS XHTTP TLS | 443 | /xhttp | High | SplitHTTP — chunked body, reads as file download |
-| 3 | EDGE-CHROME | VLESS WS TLS + uTLS | 443 | /ws | Medium-High | Chrome fingerprint + h1.1 ALPN |
-| 4 | EDGE-WS1 | VLESS WS TLS | 443 | /ws | Medium | Baseline WebSocket |
-| 5 | EDGE-HTTPUP | VLESS HTTPUpgrade TLS | 443 | /httpup | Medium | HTTP upgrade, different wire format from WS |
-| 6 | EDGE-WS2 | VLESS WS TLS (no Host) | 443 | /ws | Medium | Host header = SNI only |
+| 1 | SetaLink-Cloudflare | VLESS TCP Reality | 443 | — | Very High | TLS impersonates cloudflare.com |
+| 2 | SetaLink-Oracle | VLESS TCP Reality | 8443 | — | Very High | TLS impersonates oracle.com |
+| 3 | SetaLink-Amazon | VLESS TCP Reality | 2052 | — | Very High | TLS impersonates amazon.com |
+| 4 | EDGE-XHTTP | VLESS XHTTP TLS | 443 | /xhttp/ | High | SplitHTTP via edge.setalink.no |
+| 5 | EDGE-WS | VLESS WS TLS + uTLS | 443 | /ws | Medium-High | Chrome fingerprint via edge proxy |
+| 6 | EDGE-HTTPUP | VLESS HTTPUpgrade TLS | 443 | /httpup | Medium | HTTP upgrade via edge proxy |
 
 ---
 
-## VLESS Client Links — App UUID (b5243b1c)
+## VLESS Client Links — Hetzner Reality Inbounds
 
 Import into: v2rayN, NekoBox, v2rayNG, Hiddify, Streisand
 
-### 1. EDGE-REALITY — TCP Reality (highest priority)
+### 1. SetaLink-Cloudflare — TCP Reality :443 (Primary)
 ```
-vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@5.249.252.221:8443?security=reality&type=tcp&flow=xtls-rprx-vision&sni=www.microsoft.com&fp=chrome&pbk=Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU&sid=7f81892e#SETALINK-REALITY
-```
-
-### 2. EDGE-XHTTP — SplitHTTP TLS
-```
-vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@edge.setalink.no:443?security=tls&type=xhttp&path=%2Fxhttp&host=edge.setalink.no&sni=edge.setalink.no&fp=chrome#SETALINK-XHTTP
+vless://fd709d48-a983-484a-99e3-afc97e2c3692@178.104.77.231:443?type=tcp&encryption=none&security=reality&pbk=IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8&fp=chrome&sni=www.cloudflare.com&sid=d93af82f2ecb7f6a#SetaLink-Cloudflare
 ```
 
-### 3. EDGE-CHROME — WebSocket TLS + Chrome fingerprint
+### 2. SetaLink-Oracle — TCP Reality :8443
 ```
-vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@edge.setalink.no:443?security=tls&type=ws&path=%2Fws&host=edge.setalink.no&sni=edge.setalink.no&fp=chrome&alpn=http%2F1.1#SETALINK-CHROME
-```
-
-### 4. EDGE-WS1 — WebSocket TLS baseline
-```
-vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@edge.setalink.no:443?security=tls&type=ws&path=%2Fws&host=edge.setalink.no&sni=edge.setalink.no#SETALINK-WS
+vless://c8af7366-b531-4f35-bea2-6fb70d1e4850@178.104.77.231:8443?type=tcp&encryption=none&security=reality&pbk=5eItT4D3ZmR8Nit_JWjpm9XfX4CzZGzvhovxF4n_6CY&fp=chrome&sni=www.oracle.com&sid=70df7a#SetaLink-Oracle
 ```
 
-### 5. EDGE-HTTPUP — HTTPUpgrade TLS
+### 3. SetaLink-Amazon — TCP Reality :2052
 ```
-vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@edge.setalink.no:443?security=tls&type=httpupgrade&path=%2Fhttpup&host=edge.setalink.no&sni=edge.setalink.no#SETALINK-HTTPUP
+vless://1580e282-be00-4ddc-932b-9bbcd69f0dad@178.104.77.231:2052?type=tcp&encryption=none&security=reality&pbk=Wo4-Iz8anzOfnQye9L1ARwDElePwwLPq1b82A_ZEsjo&fp=chrome&sni=www.amazon.com&sid=a4#SetaLink-Amazon
 ```
 
 ---
 
-## VLESS Client Links — Iran-Tester UUID (9280e04d)
+## VLESS Client Links — Edge Transport (via edge.setalink.no)
 
-*These profiles match existing client imports. All still valid — UUID is now in Xray config.*
+*CF UUID (fd709d48) is whitelisted on old server Xray WS/XHTTP/HTTPUpgrade inbounds.*
 
-### 1. EDGE-REALITY
+### 4. EDGE-XHTTP — SplitHTTP TLS
 ```
-vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@5.249.252.221:8443?security=reality&type=tcp&flow=xtls-rprx-vision&sni=www.microsoft.com&fp=chrome&pbk=Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU&sid=7f81892e#EDGE-REALITY
-```
-
-### 2. EDGE-XHTTP
-```
-vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@edge.setalink.no:443?security=tls&type=xhttp&path=%2Fxhttp&host=edge.setalink.no&sni=edge.setalink.no&fp=chrome#EDGE-XHTTP
+vless://fd709d48-a983-484a-99e3-afc97e2c3692@edge.setalink.no:443?security=tls&type=xhttp&path=%2Fxhttp%2F&host=edge.setalink.no&sni=edge.setalink.no&fp=chrome#SETALINK-XHTTP
 ```
 
-### 3. EDGE-CHROME
+### 5. EDGE-WS — WebSocket TLS + Chrome fingerprint
 ```
-vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@edge.setalink.no:443?security=tls&type=ws&path=%2Fws&host=edge.setalink.no&sni=edge.setalink.no&fp=chrome&alpn=http%2F1.1#EDGE-CHROME
-```
-
-### 4. EDGE-WS1
-```
-vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@edge.setalink.no:443?security=tls&type=ws&path=%2Fws&host=edge.setalink.no&sni=edge.setalink.no#EDGE-WS1
+vless://fd709d48-a983-484a-99e3-afc97e2c3692@edge.setalink.no:443?security=tls&type=ws&path=%2Fws&host=edge.setalink.no&sni=edge.setalink.no&fp=chrome&alpn=http%2F1.1#SETALINK-WS
 ```
 
-### 5. EDGE-WS2
+### 6. EDGE-HTTPUP — HTTPUpgrade TLS
 ```
-vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@edge.setalink.no:443?security=tls&type=ws&path=%2Fws&sni=edge.setalink.no#EDGE-WS2
-```
-
-### 6. EDGE-HTTPUP
-```
-vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@edge.setalink.no:443?security=tls&type=httpupgrade&path=%2Fhttpup&host=edge.setalink.no&sni=edge.setalink.no#EDGE-HTTPUP
+vless://fd709d48-a983-484a-99e3-afc97e2c3692@edge.setalink.no:443?security=tls&type=httpupgrade&path=%2Fhttpup&host=edge.setalink.no&sni=edge.setalink.no&fp=chrome#SETALINK-HTTPUP
 ```
 
 ---
 
 ## Reality Parameters
 
+### SetaLink-Cloudflare (Primary)
 | Field | Value |
 |-------|-------|
-| Server IP | 5.249.252.221 |
-| Server hostname | edge.setalink.no |
-| Port | 8443 |
-| UUID (app) | b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3 |
-| UUID (tester) | 9280e04d-ffdb-45b4-9558-66b9d6f89b49 |
-| Flow | xtls-rprx-vision |
+| Server IP | 178.104.77.231 |
+| Port | 443 |
+| UUID | fd709d48-a983-484a-99e3-afc97e2c3692 |
+| Flow | (none) |
 | Security | reality |
-| SNI | www.microsoft.com |
+| SNI | www.cloudflare.com |
 | Fingerprint | chrome |
-| Public Key | Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU |
-| Short ID | 7f81892e |
+| Public Key | IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8 |
+| Short ID | d93af82f2ecb7f6a |
+
+### SetaLink-Oracle (Alt 1)
+| Field | Value |
+|-------|-------|
+| Server IP | 178.104.77.231 |
+| Port | 8443 |
+| UUID | c8af7366-b531-4f35-bea2-6fb70d1e4850 |
+| Flow | (none) |
+| Security | reality |
+| SNI | www.oracle.com |
+| Fingerprint | chrome |
+| Public Key | 5eItT4D3ZmR8Nit_JWjpm9XfX4CzZGzvhovxF4n_6CY |
+| Short ID | 70df7a |
+
+### SetaLink-Amazon (Alt 2)
+| Field | Value |
+|-------|-------|
+| Server IP | 178.104.77.231 |
+| Port | 2052 |
+| UUID | 1580e282-be00-4ddc-932b-9bbcd69f0dad |
+| Flow | (none) |
+| Security | reality |
+| SNI | www.amazon.com |
+| Fingerprint | chrome |
+| Public Key | Wo4-Iz8anzOfnQye9L1ARwDElePwwLPq1b82A_ZEsjo |
+| Short ID | a4 |
 
 ---
 
@@ -111,12 +113,13 @@ vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@edge.setalink.no:443?security=tls&t
 
 | Port | Binding | Profile | Transport |
 |------|---------|---------|-----------|
-| 443 | public (nginx TLS) | WS, XHTTP, HTTPUP | TLS terminated by nginx |
-| 8443 | public (Xray direct) | REALITY | TLS by Xray Reality |
-| 10000 | 127.0.0.1 | WS inbound | tag: inbound-ws |
-| 10001 | 127.0.0.1 | XHTTP inbound | tag: inbound-xhttp |
-| 10002 | 127.0.0.1 | HTTPUpgrade inbound | tag: inbound-httpup |
-| 8344 | 127.0.0.1 | Xray Stats API | tag: api |
+| 443 | public (Xray direct, Hetzner) | SetaLink-Cloudflare | Reality — TLS impersonates cloudflare.com |
+| 8443 | public (Xray direct, Hetzner) | SetaLink-Oracle | Reality — TLS impersonates oracle.com |
+| 2052 | public (Xray direct, Hetzner) | SetaLink-Amazon | Reality — TLS impersonates amazon.com |
+| 443 | edge.setalink.no (old server, nginx TLS) | WS, XHTTP, HTTPUP | TLS terminated by nginx, proxied to Xray |
+| 10000 | 127.0.0.1 (old server) | WS inbound | tag: inbound-ws |
+| 10001 | 127.0.0.1 (old server) | XHTTP inbound | tag: inbound-xhttp |
+| 10002 | 127.0.0.1 (old server) | HTTPUpgrade inbound | tag: inbound-httpup |
 
 ---
 
@@ -132,79 +135,39 @@ Test ONE profile at a time. Record for each:
 
 | Priority | Profile | Why |
 |----------|---------|-----|
-| 1st | EDGE-REALITY | Indistinguishable from Microsoft TLS — hardest to block |
-| 2nd | EDGE-XHTTP | Chunked HTTP body — DPI reads it as file download |
-| 3rd | EDGE-CHROME | WS with Chrome TLS fingerprint — looks like browser |
-| 4th | EDGE-HTTPUP | Different HTTP upgrade path than WS |
-| 5th | EDGE-WS1 | Baseline — works when ISP not filtering |
-| Last | EDGE-WS2 | Catches Host header edge cases |
+| 1st | SetaLink-Cloudflare | :443 — most likely unblocked, cloudflare.com SNI |
+| 2nd | SetaLink-Oracle | :8443 — alternate port, oracle.com SNI |
+| 3rd | SetaLink-Amazon | :2052 — CDN port, amazon.com SNI |
+| 4th | EDGE-XHTTP | SplitHTTP — chunked body looks like file download |
+| 5th | EDGE-WS | WebSocket with Chrome fingerprint |
+| Last | EDGE-HTTPUP | Different HTTP upgrade wire format |
 
 ---
 
-## What Was Fixed (2026-05-19)
+## Migration History
 
-| Problem | Root Cause | Fix |
-|---------|-----------|-----|
-| All connections rejected | UUID mismatch — bootstrap DB had wrong UUID from a different server | Bootstrap DB updated to canonical b5243b1c UUID |
-| Wrong server in bootstrap | DB had 178.104.77.231 (vpn.setalink.no) instead of 5.249.252.221 | All bootstrap sources updated |
-| Wrong public key | Bootstrap had key from vpn.setalink.no server | Derived correct key from live private key |
-| iran-tester UUID not in Xray | 9280e04d was in client profiles but not in Xray config | Added 9280e04d as second client in all 4 inbounds |
-| XHTTP plain GET 404 | Xray normalizes /xhttp → /xhttp/ internally | Expected — real XHTTP sessions use /xhttp/{session_id}/... |
-
----
-
-## Log Interpretation
-
-| Observation | Meaning |
-|---|---|
-| No nginx log entry at all | Blocked before server — ISP/GFW drop |
-| nginx `101` on /ws or /httpup | Handshake OK — check Xray for auth result |
-| nginx `502` on any path | nginx up, Xray inbound down — `systemctl status xray` |
-| nginx `400` on /ws | Xray got request, rejected it (wrong UUID or client mismatch) |
-| Xray error: `invalid request` | UUID mismatch |
-| Xray error: `failed to read` / `connection reset` | ISP injected TCP RST mid-stream |
-| Connected, no traffic | Routing issue in client or DNS leak |
-| XHTTP 404 on plain GET /xhttp | Normal — real sessions use /xhttp/{id}/... not bare path |
+| Date | Change |
+|------|--------|
+| 2026-05-19 | Fixed UUID/SNI mismatch on old server (One.com/5.249.252.221) |
+| 2026-05-21 | **Migrated to Hetzner Nuremberg (178.104.77.231)** — 3 Reality inbounds with independent keypairs |
+| 2026-05-21 | CF UUID (fd709d48) whitelisted on old server for WS/XHTTP/HTTPUpgrade continuity |
+| 2026-05-21 | Bootstrap hardcode + API updated to Hetzner CF inbound |
 
 ---
 
 ## Quick Diagnostics
 
 ```bash
-# Full system check:
-sudo bash /var/www/setalink/scripts/check-inbounds.sh
+# Watch Xray accepted sessions on Hetzner:
+sudo journalctl -u xray -f | grep "accepted"
 
-# Watch all transport paths live:
-sudo tail -f /var/log/nginx/access.log | grep -E '/ws|/xhttp|/httpup'
-
-# Watch Xray errors live:
+# Watch Xray errors:
 sudo tail -f /var/log/xray/error.log
 
-# Watch Xray accepted sessions (external only):
-sudo tail -f /var/log/xray/access.log | grep "accepted" | grep -v "127.0.0.1"
+# Watch edge transport paths on old server (edge.setalink.no):
+sudo tail -f /var/log/nginx/access.log | grep -E '/ws|/xhttp|/httpup'
 
-# Count UUID rejections:
-sudo grep "invalid request user id" /var/log/xray/access.log | wc -l
-
-# Count 502s (Xray unreachable):
-sudo grep ' 502 ' /var/log/nginx/access.log | wc -l
+# DNS check:
+dig vpn.setalink.no +short    # Should → 178.104.77.231
+dig edge.setalink.no +short   # → 5.249.252.221 (old server, still used for WS/XHTTP)
 ```
-
----
-
-## Backups
-
-```
-/usr/local/etc/xray/config.json.backup-20260515134226
-/etc/nginx/sites-available/default.backup-20260515134226
-/root/nginx-default.backup-before-fix
-```
-
----
-
-## Notes
-
-- REALITY on port 8443: Port 443 is occupied by nginx. Port 8443 is open in UFW. Use IP or hostname — both work.
-- gRPC not added: this nginx build lacks `ngx_http_grpc_module`.
-- WS and HTTPUpgrade are deprecated in Xray 26.x in favour of XHTTP — fully functional.
-- XHTTP plain GET /xhttp → 404 is correct behavior. Sessions use /xhttp/{session_id}/... paths.

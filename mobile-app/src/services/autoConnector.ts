@@ -112,7 +112,16 @@ async function getDeviceInfo(): Promise<typeof _deviceInfo> {
 
 // ── Profile builders ──────────────────────────────────────────────────────────
 
-type ProfileDef = Omit<AutoProfile, 'configJson' | 'status'>;
+// credOverride: per-profile Reality credential overrides for multi-keypair setups
+// (e.g. Hetzner Oracle :8443 has a different uuid/publicKey/shortId than Cloudflare :443).
+type ProfileDef = Omit<AutoProfile, 'configJson' | 'status'> & {
+  credOverride?: {
+    uuid:      string;
+    publicKey: string;
+    shortId:   string;
+    address?:  string;
+  };
+};
 
 export function buildAutoProfiles(
   server: VpnServer,
@@ -186,6 +195,29 @@ export function buildAutoProfiles(
       profiles.push(reality(`iran-spoof${i}`, `Stealth · ${sni}`, sni, { flow: baseFlow }));
     }
 
+    // Alt Reality inbounds (Hetzner multi-keypair) — different port/uuid/pubkey
+    if (creds.altProfiles?.length) {
+      for (const alt of creds.altProfiles) {
+        const shortName = alt.sni.replace(/^www\./, '').split('.')[0] ?? alt.sni;
+        profiles.push({
+          id:          `iran-alt-reality-${alt.port}`,
+          label:       `Reality · ${shortName} · :${alt.port}`,
+          protocol:    'VLESS + Reality',
+          sni:         alt.sni,
+          port:        alt.port,
+          flow:        alt.flow        ?? '',
+          fingerprint: alt.fingerprint ?? baseFp,
+          emergency:   false,
+          credOverride: {
+            uuid:      alt.uuid,
+            publicKey: alt.publicKey,
+            shortId:   alt.shortId,
+            address:   alt.address || addr,
+          },
+        });
+      }
+    }
+
     // Edge transports in priority order: XHTTP → WS → HTTPUpgrade
     profiles.push(tls('iran-xhttp',  'VLESS + XHTTP · 443',        'VLESS+XHTTP'));
     profiles.push(tls('iran-ws',     'VLESS + WebSocket · 443',     'VLESS + WebSocket'));
@@ -204,6 +236,30 @@ export function buildAutoProfiles(
   const profiles: ProfileDef[] = [
     reality('auto-current', 'Reality · current config', creds.sni || autoSnis[0]!),
   ];
+
+  // Alt Reality inbounds (Hetzner multi-keypair: Oracle :8443, Amazon :2052).
+  // Each has its own uuid/publicKey/shortId — credOverride applies them per-profile.
+  if (creds.altProfiles?.length) {
+    for (const alt of creds.altProfiles) {
+      const shortName = alt.sni.replace(/^www\./, '').split('.')[0] ?? alt.sni;
+      profiles.push({
+        id:          `alt-reality-${alt.port}`,
+        label:       `Reality · ${shortName} · :${alt.port}`,
+        protocol:    'VLESS + Reality',
+        sni:         alt.sni,
+        port:        alt.port,
+        flow:        alt.flow        ?? '',
+        fingerprint: alt.fingerprint ?? baseFp,
+        emergency:   false,
+        credOverride: {
+          uuid:      alt.uuid,
+          publicKey: alt.publicKey,
+          shortId:   alt.shortId,
+          address:   alt.address || addr,
+        },
+      });
+    }
+  }
 
   for (let i = 0; i < Math.min(autoSnis.length, 5); i++) {
     const sni = autoSnis[i]!;
@@ -242,6 +298,9 @@ function buildConfig(def: ProfileDef, server: VpnServer, creds: ServerCredential
     // For TLS transport profiles the SNI is the edge proxy host — ensure edgeAddress
     // matches so buildVlessXhttpOutbound/WsOutbound don't fall back to the Reality IP.
     ...(isTls ? { edgeAddress: def.sni } : {}),
+    // credOverride: per-profile keypair override for multi-inbound Reality setups.
+    // Applied last so it wins over all base creds (uuid/publicKey/shortId/address).
+    ...(def.credOverride ?? {}),
   };
   const protoKey =
     def.protocol.includes('XHTTP')        ? 'VLESS+XHTTP'       :

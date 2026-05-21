@@ -193,22 +193,44 @@ function fetch_bootstrap_server(PDO $db): array {
     $r = $db->query("SELECT key,value FROM settings WHERE key LIKE 'bootstrap_%'")->fetchAll(PDO::FETCH_KEY_PAIR);
     if (empty($r['bootstrap_uuid']) || empty($r['bootstrap_pubkey'])) {
         return [
-            'uuid'        => 'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
-            'address'     => '5.249.252.221',
-            'port'        => 8443,
-            'publicKey'   => 'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
-            'shortId'     => '7f81892e',
-            'sni'         => 'www.microsoft.com',
-            'flow'        => 'xtls-rprx-vision',
+            'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
+            'address'     => '178.104.77.231',
+            'port'        => 443,
+            'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+            'shortId'     => 'd93af82f2ecb7f6a',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => '',
             'fingerprint' => 'chrome',
-            'country'     => 'Netherlands',
-            'flag'        => '🇳🇱',
-            'city'        => 'SetaLink Edge',
+            'country'     => 'Germany',
+            'flag'        => '🇩🇪',
+            'city'        => 'SetaLink Cloudflare',
             'edgeAddress' => 'edge.setalink.no',
             'edgePort'    => 443,
             'wsPath'      => '/ws',
             'xhttpPath'   => '/xhttp/',
             'httpupPath'  => '/httpup',
+            'altProfiles' => [
+                [
+                    'uuid'        => 'c8af7366-b531-4f35-bea2-6fb70d1e4850',
+                    'publicKey'   => '5eItT4D3ZmR8Nit_JWjpm9XfX4CzZGzvhovxF4n_6CY',
+                    'shortId'     => '70df7a',
+                    'sni'         => 'www.oracle.com',
+                    'port'        => 8443,
+                    'address'     => '178.104.77.231',
+                    'flow'        => '',
+                    'fingerprint' => 'chrome',
+                ],
+                [
+                    'uuid'        => '1580e282-be00-4ddc-932b-9bbcd69f0dad',
+                    'publicKey'   => 'Wo4-Iz8anzOfnQye9L1ARwDElePwwLPq1b82A_ZEsjo',
+                    'shortId'     => 'a4',
+                    'sni'         => 'www.amazon.com',
+                    'port'        => 2052,
+                    'address'     => '178.104.77.231',
+                    'flow'        => '',
+                    'fingerprint' => 'chrome',
+                ],
+            ],
         ];
     }
     return [
@@ -228,6 +250,7 @@ function fetch_bootstrap_server(PDO $db): array {
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
         'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
+        'altProfiles' => [],
     ];
 }
 

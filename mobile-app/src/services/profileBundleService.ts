@@ -72,7 +72,7 @@ const DEFAULT_BUNDLE: ProfileBundle = {
     'images.unsplash.com',
     'cloudflare.com',
   ],
-  backup_ips:     ['5.249.252.221'],
+  backup_ips:     ['178.104.77.231'],
   backup_domains: ['edge.setalink.no'],
   profiles:       [],
 };
