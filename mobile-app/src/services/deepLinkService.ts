@@ -84,8 +84,15 @@ export function executeDeepLink(action: DeepLinkAction, navigation: any): void {
       navigation?.navigate?.('Settings');
       break;
 
-    case 'REFERRAL':
+    case 'REFERRAL': {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useSettingsStore } = require('../stores/settingsStore');
+      if (useSettingsStore.getState().setPendingReferralCode) {
+        useSettingsStore.getState().setPendingReferralCode(action.code);
+      }
       navigation?.navigate?.('Main');
+      setTimeout(() => navigation?.navigate?.('Main', { screen: 'Profile' }), 300);
       break;
+    }
   }
 }

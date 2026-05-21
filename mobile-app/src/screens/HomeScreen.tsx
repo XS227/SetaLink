@@ -14,6 +14,7 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
 import { useAIStore }          from '../stores/aiStore';
+import { useServerStore }      from '../stores/serverStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
@@ -23,7 +24,9 @@ import { useT }                from '../i18n';
 import { connectingPhaseLabel } from '../services/failureClassifier';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_SMALL = require('../assets/logo_mark.png') as number;
+const LOGO_CONNECTED    = require('../assets/logo_connected.png') as number;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const LOGO_DISCONNECTED = require('../assets/logo_disconnected.png') as number;
 
 const { width } = Dimensions.get('window');
 
@@ -50,6 +53,15 @@ interface Props {
   activeTab:  NavTab;
 }
 
+function parseRemoteFromConfig(configJson: string): { address: string; port: number } | null {
+  try {
+    const cfg = JSON.parse(configJson) as { outbounds?: Array<{ settings?: { vnext?: Array<{ address?: string; port?: number }> } }> };
+    const vnext = cfg.outbounds?.[0]?.settings?.vnext?.[0];
+    if (vnext?.address) return { address: vnext.address, port: vnext.port ?? 443 };
+  } catch {}
+  return null;
+}
+
 export function HomeScreen({ onNavigate, activeTab }: Props) {
   const { t, isRTL } = useT();
   const {
@@ -71,6 +83,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const { greeting } = useGreeting();
   const user = useAuthStore((s) => s.user);
   const autoConnect = useAIStore((s) => s.autoConnect);
+  const getImportedCreds = useServerStore((s) => s.getImportedCreds);
+  const selectedId = useServerStore((s) => s.selectedId);
   const timer = useSessionTimer(connectionState === 'connected', sessionStartedAt);
   const { uploadMbps, downloadMbps, pingMs } = useVpnStats();
 
@@ -139,7 +153,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
           <View style={styles.brandBlock}>
             <View style={styles.brandRow}>
-              <Image source={LOGO_SMALL} style={styles.brandLogoSmall} resizeMode="contain" />
+              <Image source={isConnected ? LOGO_CONNECTED : LOGO_DISCONNECTED} style={styles.brandLogoSmall} resizeMode="contain" />
               <Text style={styles.brandName}>SetaLink</Text>
             </View>
             <Text style={styles.greeting}>{greeting}</Text>
@@ -357,6 +371,34 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
                 )}
               </View>
             )}
+
+            {/* Connection debug panel */}
+            {(() => {
+              const winner = autoConnect.winningConfig;
+              const creds  = getImportedCreds(selectedId);
+              const remote = winner?.configJson ? parseRemoteFromConfig(winner.configJson) : null;
+              const addr   = remote?.address ?? creds?.address ?? '—';
+              const port   = remote?.port    ?? creds?.port    ?? 0;
+              const profileLabel = winner?.label ?? selectedServer?.protocol ?? '—';
+              const transport    = winner?.label?.includes('WebSocket')   ? 'WS'
+                                 : winner?.label?.includes('XHTTP')       ? 'XHTTP'
+                                 : winner?.label?.includes('HTTPUpgrade') ? 'HTTPUpgrade'
+                                 : 'Reality (TCP)';
+              return (
+                <View style={styles.debugPanel}>
+                  <Text style={styles.debugTitle}>CONNECTION DEBUG</Text>
+                  <View style={styles.debugRow}><Text style={styles.debugKey}>Profile</Text><Text style={styles.debugVal} numberOfLines={1}>{profileLabel}</Text></View>
+                  <View style={styles.debugRow}><Text style={styles.debugKey}>Transport</Text><Text style={styles.debugVal}>{transport}</Text></View>
+                  <View style={styles.debugRow}><Text style={styles.debugKey}>Remote</Text><Text style={styles.debugVal}>{addr}:{port}</Text></View>
+                  {traceTestResult?.routedIp && (
+                    <View style={styles.debugRow}><Text style={styles.debugKey}>Exit IP</Text><Text style={[styles.debugVal, traceTestResult.ok ? styles.debugValOk : styles.debugValErr]}>{traceTestResult.routedIp}</Text></View>
+                  )}
+                  {!traceTestResult && (
+                    <Text style={styles.debugHint}>Tap "Test routing" above to detect exit IP</Text>
+                  )}
+                </View>
+              );
+            })()}
           </GlassCard>
         )}
 
@@ -379,7 +421,7 @@ const styles = StyleSheet.create({
   header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
   brandBlock:   { flex: 1, gap: 2 },
   brandRow:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  brandLogoSmall: { width: 22, height: 22, tintColor: Colors.emerald[400] },
+  brandLogoSmall: { width: 22, height: 22 },
   brandName:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 0.5 },
   greeting:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
   userId:       { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5, marginTop: 1 },
@@ -441,4 +483,12 @@ const styles = StyleSheet.create({
   logEntry:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, lineHeight: 18 },
   logEntryOk:    { color: Colors.emerald[400] },
   logEntryError: { color: Colors.status.disconnected },
+  debugPanel:    { marginTop: Spacing[3], borderTopWidth: 1, borderTopColor: Colors.border.subtle, paddingTop: Spacing[3], gap: 6 },
+  debugTitle:    { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 2 },
+  debugRow:      { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing[2] },
+  debugKey:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, width: 72 },
+  debugVal:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary, flex: 1, textAlign: 'right' },
+  debugValOk:    { color: Colors.emerald[400] },
+  debugValErr:   { color: Colors.status.disconnected },
+  debugHint:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, fontStyle: 'italic', marginTop: 2 },
 });

@@ -329,7 +329,7 @@ export const useServerStore = create<ServerState>()(
         {
           id:        'server-ws',
           country:   'SetaLink Edge',
-          city:      'WebSocket',
+          city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      55,
           load:      25,
@@ -340,7 +340,7 @@ export const useServerStore = create<ServerState>()(
         {
           id:        'server-xhttp',
           country:   'SetaLink Edge',
-          city:      'XHTTP',
+          city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      50,
           load:      22,
@@ -471,7 +471,7 @@ export const useServerStore = create<ServerState>()(
   selectedRecord: () => get().servers.find((s) => s.id === get().selectedId),
     }),
     {
-      name:    'setalink-servers-v1',
+      name:    'setalink-servers-v2',
       storage: createJSONStorage(() => storage),
       // Only persist data — functions are recreated from the store definition
       partialize: (state) => ({

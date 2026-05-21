@@ -85,16 +85,35 @@ function init_device_tables(PDO $pdo): void {
         "ALTER TABLE devices ADD COLUMN rx_bytes INTEGER DEFAULT 0",
         "ALTER TABLE devices ADD COLUMN tx_bytes INTEGER DEFAULT 0",
         "ALTER TABLE devices ADD COLUMN latency_ms INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN last_failure_category TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN last_failure_at TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
     }
     $pdo->exec("CREATE TABLE IF NOT EXISTS referral_uses (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        referral_code TEXT,
-        used_by       TEXT,
-        used_at       TEXT DEFAULT (datetime('now'))
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        referral_code      TEXT DEFAULT '',
+        used_by            TEXT DEFAULT '',
+        referrer_device_id TEXT DEFAULT '',
+        new_device_id      TEXT DEFAULT '',
+        bonus_bytes        INTEGER DEFAULT 0,
+        used_at            TEXT DEFAULT (datetime('now')),
+        created_at         TEXT DEFAULT (datetime('now'))
     )");
+    foreach ([
+        "ALTER TABLE referral_uses ADD COLUMN referrer_device_id TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN new_device_id TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN bonus_bytes INTEGER DEFAULT 0",
+        "ALTER TABLE referral_uses ADD COLUMN created_at TEXT DEFAULT (datetime('now'))",
+        "ALTER TABLE referral_uses ADD COLUMN referrer_ip TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN new_user_ip TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN risk_score INTEGER DEFAULT 0",
+        "ALTER TABLE referral_uses ADD COLUMN risk_flags TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN status TEXT DEFAULT 'credited'",
+        "ALTER TABLE devices ADD COLUMN stealth_unlocked INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN invite_count INTEGER DEFAULT 0",
+    ] as $m) { try { $pdo->exec($m); } catch (\Exception $e) {} }
 }
 
 // Derive country from request IP using ip-api.com (free tier, 45 req/min, 2s timeout).
@@ -208,7 +227,7 @@ function fetch_bootstrap_server(PDO $pdo): array {
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
         'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
-        'altProfiles' => [],
+        'altProfiles' => json_decode($r['bootstrap_alt_profiles'] ?? '[]', true) ?: [],
     ];
 }
 
@@ -221,24 +240,48 @@ if ($method === 'GET') {
 
     if ($action === 'remote-config') {
         $pdo = db();
+        // Load all rc_* and support settings from DB
+        $rcRows = [];
         try {
-            $row = $pdo->query("SELECT value FROM settings WHERE key='remote_config' LIMIT 1")->fetch();
-        } catch (\Exception $e) { $row = null; }
-        if ($row) {
-            $cfg = json_decode($row['value'], true);
-            if (is_array($cfg)) { ok($cfg); }
-        }
-        // Return hardcoded defaults if no config saved yet
-        ok([
-            'version'        => 1,
-            'sni_priorities' => ['www.microsoft.com', 'www.bing.com', 'www.apple.com', 'www.samsung.com'],
-            'kill_switches'  => [],
-            'protocol_order' => ['Reality', 'XHTTP', 'WebSocket'],
-            'emergency_sni'  => 'www.microsoft.com',
-            'iran_sni_order' => ['www.microsoft.com', 'www.bing.com', 'www.apple.com'],
-            'ttl'            => 3600,
-            'updated_at'     => '',
-        ]);
+            $rcRows = $pdo->query("SELECT key, value FROM settings WHERE key LIKE 'rc_%' OR key IN ('support_url','edge_host')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        } catch (\Exception $e) {}
+        $decodeArr = function(string $key, array $def) use ($rcRows): array {
+            if (!isset($rcRows[$key])) return $def;
+            $v = json_decode($rcRows[$key], true);
+            return is_array($v) ? $v : $def;
+        };
+        // Build composite config from DB settings
+        $cfg = [
+            'version'                => (int)($rcRows['rc_version'] ?? 1),
+            'sni_priorities'         => $decodeArr('rc_sni_priorities', ['www.microsoft.com', 'www.bing.com', 'www.apple.com', 'www.samsung.com']),
+            'kill_switches'          => $decodeArr('rc_kill_switches', []),
+            'protocol_order'         => $decodeArr('rc_protocol_order', ['Reality', 'XHTTP', 'WebSocket']),
+            'emergency_sni'          => (string)($rcRows['rc_emergency_sni'] ?? 'www.microsoft.com'),
+            'iran_sni_order'         => $decodeArr('rc_iran_sni_order', ['www.microsoft.com', 'www.bing.com', 'www.apple.com']),
+            'ttl'                    => (int)($rcRows['rc_ttl'] ?? 3600),
+            'updated_at'             => (string)($rcRows['rc_updated_at'] ?? ''),
+            'support_url'            => (string)($rcRows['support_url'] ?? 'https://t.me/SetaLink3'),
+            'edge_host'              => (string)($rcRows['edge_host'] ?? 'edge.setalink.no'),
+            'emergency_profiles'     => $decodeArr('rc_emergency_profiles', []),
+            'stealth_profiles'       => $decodeArr('rc_stealth_profiles', []),
+            'update_required'        => (bool)(int)($rcRows['rc_update_required'] ?? '0'),
+            'min_supported_version'  => (string)($rcRows['rc_min_supported'] ?? '0.9.7'),
+            'profile_bundle_version' => (int)($rcRows['rc_profile_bundle_version'] ?? 1),
+        ];
+        // If there's a legacy composite blob, merge it but let per-key values win
+        try {
+            $blobRow = $pdo->query("SELECT value FROM settings WHERE key='remote_config' LIMIT 1")->fetch();
+            if ($blobRow) {
+                $blob = json_decode($blobRow['value'], true);
+                if (is_array($blob)) {
+                    // Only use blob fields not already populated by per-key settings
+                    foreach ($blob as $bk => $bv) {
+                        if (!array_key_exists($bk, $cfg)) $cfg[$bk] = $bv;
+                    }
+                }
+            }
+        } catch (\Exception $e) {}
+        ok($cfg);
     }
 
     if ($action === 'profile-bundle') {
@@ -248,7 +291,7 @@ if ($method === 'GET') {
         $sni_candidates = json_decode($rows['bundle_sni_candidates'] ?? '[]', true) ?: ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net'];
         $spoof_snis     = json_decode($rows['bundle_spoof_snis'] ?? '[]', true) ?: ['auth.vercel.com','cdn.jsdelivr.net','hcaptcha.com','assets.vercel.com','images.unsplash.com','cloudflare.com'];
         $backup_ips     = json_decode($rows['bundle_backup_ips'] ?? '[]', true) ?: ['178.104.77.231'];
-        $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['edge.setalink.no'];
+        $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['vpn.setalink.no'];
         ok([
             'version'        => (int)($rows['bundle_version'] ?? 1),
             'published_at'   => $rows['bundle_published_at'] ?? date('Y-m-d'),
@@ -302,6 +345,23 @@ if ($method === 'GET') {
             $dev['user_id'] = $uid;
         }
         $srv = fetch_bootstrap_server($pdo);
+        // Real-time invite count + stealth unlock
+        $ic = $pdo->prepare("SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=?");
+        $ic->execute([$deviceId]);
+        $inviteCount = (int)$ic->fetchColumn();
+        $activeIc = $pdo->prepare("
+            SELECT COUNT(*) FROM referral_uses ru
+            JOIN devices d ON d.device_id = ru.new_device_id
+            WHERE ru.referrer_device_id=?
+              AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))
+        ");
+        $activeIc->execute([$deviceId]);
+        $activeInvites = (int)$activeIc->fetchColumn();
+        $stealthUnlocked = (bool)($dev['stealth_unlocked'] ?? 0) || ($activeInvites >= 3);
+        if ($stealthUnlocked && !$dev['stealth_unlocked']) {
+            $pdo->prepare("UPDATE devices SET stealth_unlocked=1 WHERE device_id=?")->execute([$deviceId]);
+        }
+
         ok([
             'device_id'         => $dev['device_id'],
             'user_id'           => $dev['user_id']        ?? '',
@@ -312,6 +372,9 @@ if ($method === 'GET') {
             'valid_until'       => $dev['valid_until'],
             'blocked'           => (bool)$dev['blocked'],
             'server'            => $srv,
+            'invite_count'      => $inviteCount,
+            'active_invite_count' => $activeInvites,
+            'stealth_unlocked'  => $stealthUnlocked,
         ]);
     }
 
@@ -411,15 +474,18 @@ if ($method === 'POST') {
 
         $srv = fetch_bootstrap_server($pdo);
         ok([
-            'device_id'         => $dev['device_id'],
-            'user_id'           => $dev['user_id']        ?? '',
-            'referral_code'     => $dev['referral_code'],
-            'plan'              => $dev['plan'],
-            'quota_bytes_total' => (int)$dev['quota_bytes_total'],
-            'quota_bytes_used'  => (int)$dev['quota_bytes_used'],
-            'valid_until'       => $dev['valid_until'],
-            'blocked'           => (bool)$dev['blocked'],
-            'server'            => $srv,
+            'device_id'           => $dev['device_id'],
+            'user_id'             => $dev['user_id']        ?? '',
+            'referral_code'       => $dev['referral_code'],
+            'plan'                => $dev['plan'],
+            'quota_bytes_total'   => (int)$dev['quota_bytes_total'],
+            'quota_bytes_used'    => (int)$dev['quota_bytes_used'],
+            'valid_until'         => $dev['valid_until'],
+            'blocked'             => (bool)$dev['blocked'],
+            'server'              => $srv,
+            'invite_count'        => (int)($dev['invite_count'] ?? 0),
+            'active_invite_count' => 0,
+            'stealth_unlocked'    => (bool)($dev['stealth_unlocked'] ?? 0),
         ]);
     }
 
@@ -436,15 +502,51 @@ if ($method === 'POST') {
         if ($ownerRow['device_id'] === $deviceId) err('cannot use own referral code');
 
         $already = $pdo->prepare(
-            "SELECT 1 FROM referral_uses WHERE referral_code=? AND used_by=?"
+            "SELECT 1 FROM referral_uses WHERE new_device_id=? OR (new_device_id='' AND used_by=?)"
         );
-        $already->execute([$refCode, $deviceId]);
+        $already->execute([$deviceId, $deviceId]);
         if ($already->fetchColumn()) err('referral already used');
 
-        $bonus = 536870912; // 512 MB
+        // ── Anti-fraud scoring ─────────────────────────────────────────
+        $newUserIp   = client_ip();
+        $referrerRow = $pdo->prepare("SELECT last_ip, android_id_hash FROM devices WHERE device_id=?");
+        $referrerRow->execute([$ownerRow['device_id']]);
+        $referrerDev = $referrerRow->fetch();
+        $referrerIp  = $referrerDev['referrer_ip'] ?? $referrerDev['last_ip'] ?? '';
+
+        $riskScore = 0;
+        $riskFlags = [];
+        if ($newUserIp && $referrerIp && $newUserIp === $referrerIp) {
+            $riskScore += 50;
+            $riskFlags[] = 'same_ip';
+        }
+        // Rapid signups: >2 referrals from same new-user IP in last 24h
+        $rapidCheck = $pdo->prepare(
+            "SELECT COUNT(*) FROM referral_uses WHERE new_user_ip=? AND created_at >= datetime('now','-1 day')"
+        );
+        $rapidCheck->execute([$newUserIp]);
+        if ((int)$rapidCheck->fetchColumn() >= 2) {
+            $riskScore += 30;
+            $riskFlags[] = 'rapid_signup';
+        }
+        // Same android_id_hash on both devices
+        $newDevRow = $pdo->prepare("SELECT android_id_hash FROM devices WHERE device_id=?");
+        $newDevRow->execute([$deviceId]);
+        $newDev = $newDevRow->fetch();
+        if (!empty($referrerDev['android_id_hash']) && !empty($newDev['android_id_hash'])
+            && $referrerDev['android_id_hash'] === $newDev['android_id_hash']) {
+            $riskScore += 80;
+            $riskFlags[] = 'same_device';
+        }
+        $riskStatus = $riskScore >= 75 ? 'flagged' : 'credited';
+        $riskFlagsJson = json_encode($riskFlags);
+
+        $bonus = 1073741824; // 1 GB
         $pdo->prepare(
-            "INSERT INTO referral_uses (referral_code, used_by) VALUES (?, ?)"
-        )->execute([$refCode, $deviceId]);
+            "INSERT INTO referral_uses (referral_code, used_by, referrer_device_id, new_device_id, bonus_bytes,
+             referrer_ip, new_user_ip, risk_score, risk_flags, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+        )->execute([$refCode, $deviceId, $ownerRow['device_id'], $deviceId, $bonus,
+                    $referrerIp, $newUserIp, $riskScore, $riskFlagsJson, $riskStatus]);
         $pdo->prepare(
             "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
         )->execute([$bonus, $deviceId]);
@@ -452,12 +554,32 @@ if ($method === 'POST') {
             "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
         )->execute([$bonus, $ownerRow['device_id']]);
 
+        // ── Viral loop: check if referrer now has ≥3 active referred users ─
+        $activeRefs = $pdo->prepare("
+            SELECT COUNT(*) FROM referral_uses ru
+            JOIN devices d ON d.device_id = ru.new_device_id
+            WHERE ru.referrer_device_id=?
+              AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))
+        ");
+        $activeRefs->execute([$ownerRow['device_id']]);
+        if ((int)$activeRefs->fetchColumn() >= 3) {
+            $pdo->prepare("UPDATE devices SET stealth_unlocked=1 WHERE device_id=?")
+                ->execute([$ownerRow['device_id']]);
+        }
+        // Update invite_count cache on referrer
+        $invCount = $pdo->prepare("SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=?");
+        $invCount->execute([$ownerRow['device_id']]);
+        $pdo->prepare("UPDATE devices SET invite_count=? WHERE device_id=?")
+            ->execute([(int)$invCount->fetchColumn(), $ownerRow['device_id']]);
+
         $dev = $pdo->prepare("SELECT quota_bytes_total FROM devices WHERE device_id=?");
         $dev->execute([$deviceId]);
         $row = $dev->fetch();
         ok([
             'bonus_bytes'     => $bonus,
             'new_total_bytes' => (int)$row['quota_bytes_total'],
+            'risk_score'      => $riskScore,
+            'risk_flags'      => $riskFlags,
         ]);
     }
 
@@ -480,10 +602,11 @@ if ($method === 'POST') {
     }
 
     if ($action === 'update-status') {
-        $deviceId   = trim($_POST['device_id']       ?? '');
-        $status     = trim($_POST['status']           ?? 'offline');
-        $protocol   = substr(trim($_POST['active_protocol'] ?? ''), 0, 60);
-        $activeSni  = substr(trim($_POST['active_sni']      ?? ''), 0, 120);
+        $deviceId        = trim($_POST['device_id']          ?? '');
+        $status          = trim($_POST['status']              ?? 'offline');
+        $protocol        = substr(trim($_POST['active_protocol'] ?? ''), 0, 60);
+        $activeSni       = substr(trim($_POST['active_sni']      ?? ''), 0, 120);
+        $failureCat      = substr(trim($_POST['failure_category'] ?? ''), 0, 80);
         $dnsOk      = isset($_POST['dns_ok'])      ? (int)$_POST['dns_ok']      : null;
         $internetOk = isset($_POST['internet_ok']) ? (int)$_POST['internet_ok'] : null;
         $rxBytes    = isset($_POST['rx_bytes'])    ? (int)$_POST['rx_bytes']    : null;
@@ -499,14 +622,19 @@ if ($method === 'POST') {
         // to avoid clearing them on disconnect (client sends no protocol on offline).
         $sets = ["status=?", "last_seen=datetime('now')"];
         $vals = [$status];
-        if ($protocol !== '')      { $sets[] = "active_protocol=?"; $vals[] = $protocol; }
-        if ($activeSni !== '')     { $sets[] = "active_sni=?";      $vals[] = $activeSni; }
-        if ($dnsOk     !== null)   { $sets[] = "dns_ok=?";          $vals[] = $dnsOk; }
-        if ($internetOk !== null)  { $sets[] = "internet_ok=?";     $vals[] = $internetOk; }
-        if ($rxBytes   !== null)   { $sets[] = "rx_bytes=?";        $vals[] = $rxBytes; }
-        if ($txBytes   !== null)   { $sets[] = "tx_bytes=?";        $vals[] = $txBytes; }
-        if ($latencyMs !== null)   { $sets[] = "latency_ms=?";      $vals[] = $latencyMs; }
-        if ($clientIp)             { $sets[] = "last_ip=?";         $vals[] = $clientIp; }
+        if ($protocol !== '')      { $sets[] = "active_protocol=?";       $vals[] = $protocol; }
+        if ($activeSni !== '')     { $sets[] = "active_sni=?";            $vals[] = $activeSni; }
+        if ($dnsOk     !== null)   { $sets[] = "dns_ok=?";                $vals[] = $dnsOk; }
+        if ($internetOk !== null)  { $sets[] = "internet_ok=?";           $vals[] = $internetOk; }
+        if ($rxBytes   !== null)   { $sets[] = "rx_bytes=?";              $vals[] = $rxBytes; }
+        if ($txBytes   !== null)   { $sets[] = "tx_bytes=?";              $vals[] = $txBytes; }
+        if ($latencyMs !== null)   { $sets[] = "latency_ms=?";            $vals[] = $latencyMs; }
+        if ($clientIp)             { $sets[] = "last_ip=?";               $vals[] = $clientIp; }
+        // Track last failure category so admin can see per-device why routing fails
+        if ($failureCat !== '') {
+            $sets[] = "last_failure_category=?";   $vals[] = $failureCat;
+            $sets[] = "last_failure_at=datetime('now')";
+        }
         $vals[] = $deviceId;
 
         $pdo->prepare("UPDATE devices SET " . implode(', ', $sets) . " WHERE device_id=?")->execute($vals);
@@ -526,8 +654,8 @@ if ($method === 'POST') {
         $spoof_snis = json_decode($rows['bundle_spoof_snis'] ?? '[]', true) ?: [
             'auth.vercel.com','cdn.jsdelivr.net','hcaptcha.com','assets.vercel.com','images.unsplash.com','cloudflare.com',
         ];
-        $backup_ips     = json_decode($rows['bundle_backup_ips']     ?? '[]', true) ?: ['5.249.252.221'];
-        $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['edge.setalink.no'];
+        $backup_ips     = json_decode($rows['bundle_backup_ips']     ?? '[]', true) ?: ['178.104.77.231'];
+        $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['vpn.setalink.no'];
 
         ok([
             'version'        => (int)($rows['bundle_version'] ?? 1),

@@ -158,7 +158,11 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
     streamSettings: {
       network:     'ws',
       security:    'tls',
-      wsSettings:  { path: wsPath },
+      // Host header is required for nginx vhost routing — without it nginx
+      // does not recognise the WebSocket Upgrade request and rejects with
+      // "the client is not using the websocket protocol" / "'websocket' token
+      // not found in 'Upgrade' header".
+      wsSettings:  { path: wsPath, headers: { Host: edgeHost } },
       // Force HTTP/1.1 ALPN — WebSocket upgrade (RFC 6455) requires HTTP/1.1.
       // Without this, Xray may negotiate h2, causing nginx to reject the
       // Connection: Upgrade header with 400 Bad Request (forbidden in HTTP/2).
@@ -212,8 +216,11 @@ function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): 
     streamSettings: {
       network:       'xhttp',
       security:      'tls',
-      xhttpSettings: { path: xhttpPath, mode: 'auto' },
-      // Force HTTP/1.1 ALPN — XHTTP multiplexing uses HTTP/1.1 chunked transfer.
+      // mode: 'stream-one' — one HTTP/1.1 request per XHTTP session, most
+      // compatible with nginx reverse proxies and Iranian DPI — avoids the
+      // multiplexed chunked-transfer pattern that can be fingerprinted.
+      xhttpSettings: { path: xhttpPath, mode: 'stream-one' },
+      // Force HTTP/1.1 ALPN — XHTTP requires HTTP/1.1 chunked transfer.
       // Without this Xray may negotiate h2, causing nginx to reject the connection.
       tlsSettings:   { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
     },
@@ -237,6 +244,7 @@ function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredenti
     streamSettings: {
       network:             'httpupgrade',
       security:            'tls',
+      // host field sets the HTTP/1.1 Host header — required for nginx vhost routing.
       httpupgradeSettings: { path: httpupPath, host: edgeHost },
       // Force HTTP/1.1 ALPN — HTTPUpgrade requires HTTP/1.1 upgrade handshake.
       tlsSettings:         { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },

@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','iran','devices','logs','release','config'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','iran','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -43,6 +43,7 @@ function icon(string $name): string {
         'copy'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
         'save'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
         'plus'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+        'gift'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
     ];
     return $icons[$name] ?? '';
 }
@@ -83,6 +84,9 @@ function icon(string $name): string {
     <div class="nav-section">Manage</div>
     <div class="nav-item<?= $page==='devices'?' active':'' ?>" data-page="devices">
       <?= icon('devices') ?> Devices
+    </div>
+    <div class="nav-item<?= $page==='referrals'?' active':'' ?>" data-page="referrals">
+      <?= icon('gift') ?> Referrals
     </div>
     <div class="nav-item<?= $page==='logs'?' active':'' ?>" data-page="logs">
       <?= icon('log') ?> Logs
@@ -143,6 +147,16 @@ function icon(string $name): string {
           </div>
           <div class="panel-body" id="protocolHealth"><div class="panel-empty">Click "Run Probe" to test all protocol endpoints</div></div>
         </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><?= icon('alert') ?> Server NAT &amp; Routing</span>
+            <button class="btn btn-ghost btn-sm" id="natCheckBtn">Check</button>
+          </div>
+          <div class="panel-body" id="natHealth"><div class="panel-empty">Click "Check" to verify ip_forward and iptables MASQUERADE — required for VPN internet routing</div></div>
+        </div>
+      </div>
+
+      <div class="two-col">
         <div class="panel">
           <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Active Connections</span></div>
           <div class="panel-body" id="activeSessions"><div class="loading"><div class="spinner"></div></div></div>
@@ -295,8 +309,8 @@ function icon(string $name): string {
       <div class="panel">
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">Model</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
-            <tbody id="devTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">Routing</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
+            <tbody id="devTbl"><tr><td colspan="11" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -368,9 +382,107 @@ function icon(string $name): string {
         <div class="panel-body" id="versionJsonInfo"><div class="loading"><div class="spinner"></div></div></div>
       </div>
       <div id="releaseChannels"></div>
+
+      <!-- Force Update / Rollout card -->
+      <div class="panel" style="margin-bottom:1.25rem" id="forceUpdateCard">
+        <div class="panel-header"><span class="panel-title"><?= icon('alert') ?> Force Update &amp; Rollout</span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:flex-start">
+            <div class="form-group" style="min-width:180px">
+              <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer">
+                <input type="checkbox" id="vjForceUpdate" style="accent-color:var(--accent)">
+                Force Update (block old clients)
+              </label>
+            </div>
+            <div class="form-group" style="min-width:160px">
+              <label>Min Supported Version</label>
+              <input class="input" id="vjMinSupported" placeholder="0.9.7" style="max-width:160px">
+            </div>
+            <div class="form-group" style="min-width:200px">
+              <label>Rollout Strategy</label>
+              <select class="input" id="vjRolloutStrategy" style="max-width:220px">
+                <option value="all">All users</option>
+                <option value="iran_first">Iran first</option>
+                <option value="custom">Custom countries</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="vjSaveBtn" style="margin-top:.25rem"><?= icon('save') ?> Save Settings</button>
+          <span id="vjSaveStatus" style="margin-left:.75rem;font-size:.75rem;color:var(--muted)"></span>
+        </div>
+      </div>
+
+      <!-- Emergency Profiles card -->
+      <div class="panel" style="margin-bottom:1.25rem" id="emergencyProfilesCard">
+        <div class="panel-header"><span class="panel-title"><?= icon('alert') ?> Emergency Profiles</span><span class="panel-sub">pushed to mobile clients via remote-config</span></div>
+        <div class="panel-body">
+          <div class="form-group">
+            <label>Emergency Profiles JSON (array of profile objects)</label>
+            <textarea class="input" id="emergencyProfilesJson" rows="6" style="font-family:monospace;font-size:.72rem;resize:vertical" placeholder="[]"></textarea>
+          </div>
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <button class="btn btn-primary" id="pushEmergencyProfilesBtn"><?= icon('save') ?> Push Profiles</button>
+            <span id="emergencyPushStatus" style="font-size:.75rem;color:var(--muted)"></span>
+          </div>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="panel-header"><span class="panel-title">System Health</span></div>
         <div class="panel-body" id="debugStatus"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: REFERRALS                                             -->
+    <!-- ============================================================ -->
+    <div data-view="referrals" hidden>
+      <div class="stat-grid" id="refStatGrid">
+        <div class="stat-card"><div class="stat-label">Total Referrals</div><div class="stat-value" id="refTotal">—</div><div class="stat-sub" id="refFlagged">all-time conversions</div></div>
+        <div class="stat-card"><div class="stat-label">Unique Inviters</div><div class="stat-value" id="refInviters">—</div><div class="stat-sub" id="refIran">devices that referred</div></div>
+        <div class="stat-card"><div class="stat-label">Conversion Rate</div><div class="stat-value" id="refConversion">—</div><div class="stat-sub" id="refConvSub">referred / total</div></div>
+        <div class="stat-card"><div class="stat-label">Bonus Awarded</div><div class="stat-value" id="refBonus">—</div><div class="stat-sub">total rewarded</div></div>
+        <div class="stat-card"><div class="stat-label">Stealth Unlocked</div><div class="stat-value" id="refStealth">—</div><div class="stat-sub">3 active invites</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><?= icon('gift') ?> Top Inviters</span>
+            <span class="panel-sub">ranked by invite count</span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>#</th><th>User ID</th><th>Code</th><th>CC</th><th>Invites</th><th>Active</th><th>Bonus</th><th>Stealth</th></tr></thead>
+              <tbody id="refLeaderboard"><tr><td colspan="8" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header">
+            <span class="panel-title"><?= icon('globe') ?> By Country</span>
+            <span class="panel-sub">new referred users</span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Country</th><th>Referrals</th><th>Users</th></tr></thead>
+              <tbody id="refByCountry"><tr><td colspan="3" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title"><?= icon('log') ?> Recent Referrals</span>
+          <span class="panel-sub">last 50 · flagged rows have risk score &gt;= 75</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Inviter</th><th>Code</th><th>New User</th><th>CC</th><th>Bonus</th><th>Status</th><th>Risk</th></tr></thead>
+            <tbody id="refRecent"><tr><td colspan="8" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -645,6 +757,7 @@ const pageTitles = {
   logs:      ['Logs', 'structured log viewer'],
   release:   ['Release', 'APK channels · version.json · health'],
   config:    ['Config', 'remote config · bootstrap server · settings'],
+  referrals: ['Referrals', 'invite analytics · leaderboard · conversion'],
 };
 
 function navigate(page) {
@@ -800,6 +913,32 @@ $('probeBtn').addEventListener('click', async()=>{
         <span class="badge ${v.ok?'badge-ok':'badge-danger'}">${v.ok?'OK':'FAIL'}</span>
         <span style="font-size:.7rem;color:var(--muted)">${esc(v.detail||'')}</span>
       </div>`).join('');
+  } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
+});
+
+$('natCheckBtn').addEventListener('click', async()=>{
+  const el = $('natHealth');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Checking…</div>';
+  try {
+    const d = await api.get('nat-health');
+    const scoreColor = d.score>=90?'var(--ok)':d.score>=50?'var(--warn)':'var(--danger)';
+    el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.75rem">
+        <span style="font-size:1.5rem;font-weight:700;color:${scoreColor}">${d.score}/100</span>
+        <span style="font-size:.75rem;color:${d.ok?'var(--ok)':'var(--danger)'}">
+          ${d.ok?'✓ NAT routing OK':'✗ NAT broken — clients will connect but get NO internet'}
+        </span>
+      </div>
+      ${(d.checks||[]).map(c=>`<div style="display:flex;align-items:flex-start;gap:.6rem;padding:.3rem 0;border-bottom:1px solid var(--border)">
+        <span class="dot ${c.ok?'dot-ok':'dot-bad'}" style="margin-top:2px"></span>
+        <div style="flex:1">
+          <span style="font-weight:600;font-size:.8rem">${esc(c.label)}</span>
+          <div style="font-size:.68rem;color:${c.ok?'var(--muted)':'var(--danger)'};margin-top:1px">${esc(c.detail||'')}</div>
+          ${!c.ok&&c.fix?`<div style="font-size:.65rem;font-family:var(--mono);background:var(--bg-elevated);padding:.2rem .4rem;margin-top:.25rem;border-radius:3px;color:var(--warn)">${esc(c.fix)}</div>`:''}
+        </div>
+      </div>`).join('')}
+      <div style="font-size:.65rem;color:var(--muted-2);margin-top:.5rem">checked ${esc(d.checked_at||'')}</div>
+    `;
   } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
 });
 
@@ -1030,12 +1169,22 @@ views.devices = {
     if (status==='offline') rows = rows.filter(r=>r.status!=='online');
     if (status==='blocked') rows = rows.filter(r=>r.blocked);
     $('devTbl').innerHTML = !rows.length
-      ? '<tr><td colspan="10" class="tbl-empty">No devices match filter</td></tr>'
+      ? '<tr><td colspan="11" class="tbl-empty">No devices match filter</td></tr>'
       : rows.map(r=>{
           const usedPct = r.quota_bytes_total>0?Math.round(r.quota_bytes_used/r.quota_bytes_total*100):0;
           const uid     = r.user_id || r.device_id_short || '—';
           const flag    = countryFlag(r.country_code||'');
           const model   = [r.manufacturer, r.model].filter(Boolean).join(' ') || '—';
+          // Routing status — internet_ok vs dns_ok vs failure category
+          const rtOk    = r.internet_ok;
+          const rtColor = rtOk ? 'var(--ok)' : (r.last_failure_category ? 'var(--danger)' : 'var(--muted-2)');
+          const rtLabel = rtOk ? '✓ Routed'
+                        : (r.internet_ok === false && r.last_failure_category ? '✗ Failed' : '—');
+          // Failure category badge
+          const failCat = r.last_failure_category || '';
+          const failBadge = failCat
+            ? catBadge(failCat) + (r.last_failure_at ? `<div style="font-size:.6rem;color:var(--muted-2);margin-top:1px">${fmtRelative(r.last_failure_at)}</div>` : '')
+            : '<span style="color:var(--muted-2);font-size:.7rem">—</span>';
           return `<tr>
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
@@ -1049,7 +1198,8 @@ views.devices = {
             </td>
             <td><span class="dot ${r.status==='online'?'dot-ok':'dot-unk'}" style="display:inline-block"></span> ${esc(r.status)}</td>
             <td>${protoBadge(r.active_protocol)}</td>
-            <td class="mobile-hide" style="font-size:.72rem;color:var(--text)">${esc(model)}<br><span style="color:var(--muted-2);font-size:.65rem">${esc(r.app_version||'')}</span></td>
+            <td class="mobile-hide" style="font-size:.72rem;color:${rtColor};font-weight:${rtOk?'600':'400'}">${rtLabel}</td>
+            <td class="mobile-hide" style="font-size:.7rem">${failBadge}</td>
             <td class="mobile-hide" style="font-size:.75rem">${flag} ${esc(r.country_name||r.country||'—')}</td>
             <td class="mobile-hide mono" style="font-size:.65rem;color:var(--muted-2)">${esc(r.last_ip||'—')}</td>
             <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.last_seen)}</td>
@@ -1222,6 +1372,20 @@ views.release = {
       ${vj.changelog?`<ul style="margin-top:.5rem;font-size:.75rem;color:var(--muted);padding-left:1.25rem">${(vj.changelog||[]).map(c=>`<li>${esc(c)}</li>`).join('')}</ul>`:''}
     ` : '<div class="panel-empty">version.json not found</div>';
 
+    // Force Update / Rollout form — populate from version_json
+    if (vj) {
+      $('vjForceUpdate').checked   = !!vj.forceUpdate;
+      $('vjMinSupported').value    = vj.minSupported || '0.9.7';
+      const strategy = (vj.rollout && vj.rollout.strategy) ? vj.rollout.strategy : 'all';
+      $('vjRolloutStrategy').value = strategy;
+    }
+
+    // Emergency profiles — populate from remote-config if present
+    api.get('get-remote-config').then(rc => {
+      const ep = rc.emergency_profiles || [];
+      $('emergencyProfilesJson').value = JSON.stringify(ep, null, 2);
+    }).catch(()=>{});
+
     // Channels
     const html = ['stable','beta','hotfix'].map(ch=>{
       const info = (d.channels||{})[ch]||{};
@@ -1291,6 +1455,54 @@ window.deleteApk = async function(channel, filename) {
     } catch(e) { toast(e.message,'error'); }
   };
 };
+
+// Force Update / Rollout save
+$('vjSaveBtn').addEventListener('click', async()=>{
+  const strategy = $('vjRolloutStrategy').value;
+  const rollout = {
+    strategy,
+    countries: strategy === 'iran_first' ? ['IR'] : (strategy === 'all' ? [] : ['IR']),
+    percent: 100,
+    exclude_countries: [],
+  };
+  try {
+    $('vjSaveStatus').textContent = 'Saving…';
+    await api.post({
+      action:       'update-version-json',
+      forceUpdate:  $('vjForceUpdate').checked,
+      minSupported: $('vjMinSupported').value.trim() || '0.9.7',
+      rollout,
+    });
+    $('vjSaveStatus').textContent = 'Saved!';
+    toast('Version settings saved','ok');
+    setTimeout(()=>{ $('vjSaveStatus').textContent=''; }, 3000);
+  } catch(e) {
+    $('vjSaveStatus').textContent = 'Error: ' + e.message;
+    toast('Save failed: '+e.message,'error');
+  }
+});
+
+// Push Emergency Profiles
+$('pushEmergencyProfilesBtn').addEventListener('click', async()=>{
+  let profiles;
+  try {
+    profiles = JSON.parse($('emergencyProfilesJson').value || '[]');
+  } catch(e) {
+    toast('Invalid JSON: '+e.message,'error');
+    return;
+  }
+  if (!Array.isArray(profiles)) { toast('Must be a JSON array','error'); return; }
+  try {
+    $('emergencyPushStatus').textContent = 'Pushing…';
+    const r = await api.post({action:'push-emergency-profiles', profiles});
+    $('emergencyPushStatus').textContent = `Pushed ${r.saved} profile(s)`;
+    toast(`Emergency profiles pushed (${r.saved})`, 'ok');
+    setTimeout(()=>{ $('emergencyPushStatus').textContent=''; }, 4000);
+  } catch(e) {
+    $('emergencyPushStatus').textContent = 'Error: '+e.message;
+    toast('Push failed: '+e.message,'error');
+  }
+});
 // Inline icon string helper (for JS-rendered HTML)
 function icon_str(name) {
   const map={
@@ -1424,6 +1636,71 @@ $('cfgTestBootstrap').onclick = async()=>{
   } catch(e) {
     $('bsTestResult').innerHTML = `<span style="color:var(--danger)">✗ FAILED</span> — ${esc(e.message)}`;
   }
+};
+
+// ── VIEW: REFERRALS ──────────────────────────────────────────────────
+views.referrals = {
+  init() { this.load(); refreshTimer = setInterval(()=>this.load(), 30000); },
+  async load() {
+    try {
+      const d = await api.get('referral-stats');
+      $('refTotal').textContent      = fmtNum(d.total_referrals);
+      $('refFlagged').textContent    = d.flagged_referrals > 0 ? `⚠ ${d.flagged_referrals} flagged` : 'all-time conversions';
+      $('refInviters').textContent   = fmtNum(d.unique_referrers);
+      $('refIran').textContent       = d.iran_referrals > 0 ? `${d.iran_referrals} from Iran 🇮🇷` : 'devices that referred';
+      $('refConversion').textContent = d.conversion_rate + '%';
+      $('refConvSub').textContent    = `${fmtNum(d.referred_devices)} / ${fmtNum(d.total_devices)} devices`;
+      const gb = d.total_bonus_gb;
+      $('refBonus').textContent = gb >= 1 ? gb.toFixed(1)+' GB' : Math.round(d.total_bonus_bytes/1048576)+' MB';
+      $('refStealth').textContent = fmtNum(d.stealth_unlocked);
+      this.renderLeaderboard(d.top_inviters || []);
+      this.renderByCountry(d.by_country || []);
+      this.renderRecent(d.recent_referrals || []);
+    } catch(e) { toast(e.message,'error'); }
+  },
+  renderLeaderboard(rows) {
+    const el = $('refLeaderboard');
+    if (!rows.length) { el.innerHTML = '<tr><td colspan="8" class="tbl-empty">No referrals yet</td></tr>'; return; }
+    el.innerHTML = rows.map((r,i) => `<tr${r.flagged_count>0?' style="opacity:.7"':''}>
+      <td style="color:var(--muted);font-size:.75rem">${i+1}</td>
+      <td class="mono" style="font-size:.72rem">${esc(r.user_id||'—')}</td>
+      <td><span class="badge badge-info">${esc(r.referral_code||'—')}</span></td>
+      <td style="font-size:.75rem">${esc(r.country||'—')}</td>
+      <td style="font-weight:700;color:var(--ok)">${r.invite_count}</td>
+      <td style="color:${r.active_invites>=3?'var(--ok)':'var(--muted)'};font-weight:${r.active_invites>=3?'700':'400'}">${r.active_invites}</td>
+      <td style="color:var(--muted);font-size:.75rem">${r.total_bonus_gb>=1?r.total_bonus_gb.toFixed(1)+' GB':Math.round(r.total_bonus_bytes/1048576)+' MB'}</td>
+      <td>${r.stealth_unlocked?'<span class="badge badge-ok">🔓 ON</span>':'<span style="color:var(--muted-2);font-size:.7rem">—</span>'}</td>
+    </tr>`).join('');
+  },
+  renderByCountry(rows) {
+    const el = $('refByCountry');
+    if (!rows.length) { el.innerHTML = '<tr><td colspan="3" class="tbl-empty">No data</td></tr>'; return; }
+    el.innerHTML = rows.map(r => `<tr>
+      <td style="font-weight:600">${esc(r.country||'Unknown')}</td>
+      <td style="color:var(--ok);font-weight:700">${r.referral_count}</td>
+      <td style="color:var(--muted)">${r.unique_new_users}</td>
+    </tr>`).join('');
+  },
+  renderRecent(rows) {
+    const el = $('refRecent');
+    if (!rows.length) { el.innerHTML = '<tr><td colspan="8" class="tbl-empty">No referrals yet</td></tr>'; return; }
+    el.innerHTML = rows.map(r => {
+      const isFlagged = r.status==='flagged';
+      const flags = (r.risk_flags||[]).join(', ');
+      return `<tr${isFlagged?' style="background:rgba(200,16,46,.06)"':''}>
+        <td style="font-size:.72rem;color:var(--muted)">${esc((r.ts||'').slice(0,16).replace('T',' '))}</td>
+        <td class="mono" style="font-size:.72rem">${esc(r.referrer_user_id||'—')}</td>
+        <td><span class="badge badge-info">${esc(r.ref_code||'—')}</span></td>
+        <td class="mono" style="font-size:.72rem">${esc(r.new_user_id||'—')}</td>
+        <td style="font-size:.75rem">${esc(r.new_country||'—')}</td>
+        <td style="color:var(--ok);font-size:.75rem">${r.bonus_gb>=1?r.bonus_gb.toFixed(0)+' GB':Math.round(r.bonus_bytes/1048576)+' MB'}</td>
+        <td>${isFlagged?'<span class="badge badge-danger">flagged</span>':'<span class="badge badge-ok">ok</span>'}</td>
+        <td style="font-size:.72rem;color:${r.risk_score>50?'var(--danger)':r.risk_score>0?'var(--warn)':'var(--muted)'}">
+          ${r.risk_score>0?r.risk_score+(flags?' · '+esc(flags):''):'—'}
+        </td>
+      </tr>`;
+    }).join('');
+  },
 };
 
 // ── Debounce util ────────────────────────────────────────────────────
