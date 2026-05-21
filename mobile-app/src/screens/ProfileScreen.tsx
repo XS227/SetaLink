@@ -332,11 +332,12 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <View style={styles.subMeta}>
             {[
               { label: t('pr.totalQuota'), value: isUnlimited ? t('pr.unlimitedShort') : `${(user.quotaBytesTotal / 1e9).toFixed(1)} GB` },
-              { label: t('pr.usedTraffic'),  value: `${(liveQuotaUsed / 1e9).toFixed(2)} GB` },
+              // Cap displayed used at total so it never shows "used > total" visually
+              { label: t('pr.usedTraffic'), value: `${(Math.min(liveQuotaUsed, user.quotaBytesTotal) / 1e9).toFixed(2)} GB` },
               { label: t('pr.sessions'),    value: String(monthSessions.length) },
             ].map((item) => (
               <View key={item.label} style={styles.subMetaItem}>
-                <Text style={styles.subMetaValue}>{item.value}</Text>
+                <Text style={[styles.subMetaValue, item.label === t('pr.usedTraffic') && isQuotaExhausted && { color: Colors.status.disconnected }]}>{item.value}</Text>
                 <Text style={styles.subMetaLabel}>{item.label}</Text>
               </View>
             ))}
