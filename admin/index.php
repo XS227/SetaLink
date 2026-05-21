@@ -281,6 +281,30 @@ function icon(string $name): string {
           </table>
         </div>
       </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Transport Success Rate — Iran</span><span class="panel-sub">Reality · XHTTP · WS · HTTPUpgrade</span></div>
+          <div id="iranTransportStats"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Live Device Transport — Iran</span><span class="panel-sub">currently active protocols on Iranian devices</span></div>
+          <div id="iranLiveTransport"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Per-Device Failure Tracker — Iran</span>
+          <span class="panel-sub">last_failure_category from devices table · source IP ≠ VPN exit IP</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Device</th><th>Source IP (client)</th><th>Country</th><th>Transport</th><th>SNI</th><th>RX/TX</th><th>Failure Category</th><th>Last Failure</th><th>Last Seen</th></tr></thead>
+            <tbody id="iranDevFailTbl"><tr><td colspan="9" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->
@@ -989,6 +1013,8 @@ views.iran = {
     this.loadDebug();
     this.loadNoInternet();
     this.loadTransportMismatch();
+    this.loadTransportStats();
+    this.loadDeviceFailures();
   },
   async loadScore() {
     try {
@@ -1163,7 +1189,76 @@ views.iran = {
             <td style="color:var(--muted-2);font-size:.7rem;white-space:nowrap">${fmtRelative(r.last_seen)}</td>
           </tr>`;
         }).join('');
-  }
+  },
+  async loadTransportStats() {
+    try {
+      const d = await api.get('iran-transport-stats');
+      const rows = d.telemetry || [];
+      $('iranTransportStats').innerHTML = !rows.length
+        ? '<div class="panel-empty">No Iran transport telemetry yet</div>'
+        : `<div class="tbl-wrap"><table>
+            <thead><tr><th>Transport</th><th>Total</th><th>Success %</th><th>Probe OK</th><th>No Internet</th><th>Avg Latency</th></tr></thead>
+            <tbody>${rows.map(r=>{
+              const cls = r.success_rate>=70?'badge-ok':r.success_rate>=35?'badge-warn':'badge-danger';
+              return `<tr>
+                <td style="font-weight:600">${esc(r.transport)}</td>
+                <td>${fmtNum(r.total)}</td>
+                <td><span class="badge ${cls}">${r.success_rate!=null?r.success_rate+'%':'—'}</span></td>
+                <td>${fmtNum(r.probe_ok)}</td>
+                <td><span class="${+r.no_internet>0?'badge badge-warn':''}">${fmtNum(r.no_internet)}</span></td>
+                <td>${fmtMs(r.avg_latency)}</td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table></div>`;
+      const live = d.live_devices || [];
+      $('iranLiveTransport').innerHTML = !live.length
+        ? '<div class="panel-empty">No Iranian devices currently active</div>'
+        : `<div class="tbl-wrap"><table>
+            <thead><tr><th>Transport</th><th>Devices</th><th>Routed OK</th><th>Had Failures</th></tr></thead>
+            <tbody>${live.map(r=>`<tr>
+              <td style="font-weight:600">${esc(r.transport)}</td>
+              <td>${fmtNum(r.devices)}</td>
+              <td><span class="${+r.routed_ok>0?'badge badge-ok':''}">${fmtNum(r.routed_ok)}</span></td>
+              <td><span class="${+r.with_failures>0?'badge badge-warn':''}">${fmtNum(r.with_failures)}</span></td>
+            </tr>`).join('')}</tbody>
+          </table></div>`;
+    } catch(e) {
+      $('iranTransportStats').innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`;
+      $('iranLiveTransport').innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`;
+    }
+  },
+  async loadDeviceFailures() {
+    try {
+      const d = await api.get('iran-device-failures');
+      const rows = d.devices || [];
+      // Category summary badges
+      const cats = d.category_summary || {};
+      $('iranDevFailTbl').innerHTML = !rows.length
+        ? '<tr><td colspan="9" class="tbl-empty">No Iranian devices in database yet</td></tr>'
+        : rows.map(r=>{
+            const uid = r.user_id || (r.device_id||'').slice(-8).toUpperCase() || '—';
+            const failBadge = r.last_failure_category
+              ? `<span class="badge ${r.last_failure_category.includes('no')||r.last_failure_category.includes('fail')?'badge-danger':'badge-warn'}">${esc(r.last_failure_category)}</span>`
+              : '<span style="color:var(--muted-2);font-size:.7rem">—</span>';
+            const rxtx = (r.rx_bytes||0)+(r.tx_bytes||0)>0
+              ? `<div style="font-size:.65rem;font-family:var(--mono)">↓${fmtBytes(r.rx_bytes)} ↑${fmtBytes(r.tx_bytes)}</div>` : '—';
+            // SOURCE IP is client IP (r.last_ip), NOT VPN exit IP
+            return `<tr>
+              <td style="font-family:var(--mono);font-size:.7rem;font-weight:600">${esc(uid)}</td>
+              <td style="font-family:var(--mono);font-size:.65rem;color:var(--muted-2)" title="Source / client IP">${esc(r.last_ip||'—')}</td>
+              <td style="font-size:.75rem">${esc(r.country_name||r.country||'—')}</td>
+              <td>${protoBadge(r.active_protocol)}</td>
+              <td style="font-family:var(--mono);font-size:.65rem;color:var(--muted-2)">${esc(r.active_sni||'—')}</td>
+              <td>${rxtx}</td>
+              <td>${failBadge}</td>
+              <td style="font-size:.68rem;color:var(--muted-2)">${fmtRelative(r.last_failure_at)}</td>
+              <td style="font-size:.68rem;color:var(--muted-2)">${fmtRelative(r.last_seen)}</td>
+            </tr>`;
+          }).join('');
+    } catch(e) {
+      $('iranDevFailTbl').innerHTML = `<tr><td colspan="9" class="tbl-empty">${esc(e.message)}</td></tr>`;
+    }
+  },
 };
 
 // ── VIEW: DEVICES ────────────────────────────────────────────────────

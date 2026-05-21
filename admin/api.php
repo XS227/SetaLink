@@ -1150,6 +1150,93 @@ switch ($action) {
         ]);
         break;
 
+    case 'iran-device-failures':
+        // Per-device failure categories for Iranian devices (from devices table).
+        // Shows source IP (client) vs country. Does NOT confuse with VPN exit IP.
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $rows = $db->query(
+            "SELECT device_id, user_id, last_ip, country, country_name, model, manufacturer,
+                    active_protocol, active_sni, internet_ok, dns_ok,
+                    last_failure_category, last_failure_at, last_seen, status,
+                    rx_bytes, tx_bytes, latency_ms
+             FROM devices
+             WHERE UPPER(country) IN ('IR','IRN')
+                OR country_name LIKE '%Iran%'
+             ORDER BY last_seen DESC
+             LIMIT 100"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        // Category summary
+        $cats = [];
+        foreach ($rows as $r) {
+            $c = $r['last_failure_category'] ?: 'none';
+            $cats[$c] = ($cats[$c] ?? 0) + 1;
+        }
+        arsort($cats);
+        api_ok([
+            'devices'          => $rows,
+            'category_summary' => $cats,
+            'total'            => count($rows),
+            'checked_at'       => date('Y-m-d H:i:s'),
+        ]);
+        break;
+
+    case 'iran-transport-stats':
+        // Success rate per transport type for Iranian traffic.
+        // Derived from test_results + per-device active_protocol.
+        $db = open_analytics_db();
+        // From telemetry (test_results)
+        $tel = $db->query(
+            "SELECT
+               CASE
+                 WHEN protocol LIKE '%Reality%'     THEN 'Reality'
+                 WHEN protocol LIKE '%XHTTP%'       OR protocol LIKE '%SplitHTTP%' THEN 'XHTTP'
+                 WHEN protocol LIKE '%WebSocket%'   OR protocol LIKE '%WS%'        THEN 'WebSocket'
+                 WHEN protocol LIKE '%HTTPUpgrade%' OR protocol LIKE '%HTTPUp%'    THEN 'HTTPUpgrade'
+                 ELSE 'Other'
+               END as transport,
+               COUNT(*) as total,
+               SUM(CASE WHEN result='success' THEN 1 ELSE 0 END) as success,
+               SUM(CASE WHEN http_ok=1 THEN 1 ELSE 0 END) as probe_ok,
+               SUM(no_internet) as no_internet,
+               AVG(CASE WHEN latency_ms>0 THEN latency_ms ELSE NULL END) as avg_latency,
+               MAX(recorded_at) as last_seen
+             FROM test_results
+             WHERE country LIKE '%Iran%' OR country='IR'
+                OR network LIKE '%Hamrah%' OR network LIKE '%Irancell%'
+                OR network LIKE '%MCI%' OR network LIKE '%Mobin%'
+                OR network LIKE '%Shatel%' OR network LIKE '%Rightel%'
+             GROUP BY transport
+             ORDER BY success DESC"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        // From live devices (current active transport)
+        $live = $db->query(
+            "SELECT
+               CASE
+                 WHEN active_protocol LIKE '%Reality%'     THEN 'Reality'
+                 WHEN active_protocol LIKE '%XHTTP%'       THEN 'XHTTP'
+                 WHEN active_protocol LIKE '%WebSocket%'   OR active_protocol LIKE '%WS%' THEN 'WebSocket'
+                 WHEN active_protocol LIKE '%HTTPUpgrade%' THEN 'HTTPUpgrade'
+                 ELSE 'Other'
+               END as transport,
+               COUNT(*) as devices,
+               SUM(internet_ok) as routed_ok,
+               SUM(CASE WHEN last_failure_category!='' THEN 1 ELSE 0 END) as with_failures
+             FROM devices
+             WHERE (UPPER(country) IN ('IR','IRN') OR country_name LIKE '%Iran%')
+               AND active_protocol != ''
+             GROUP BY transport
+             ORDER BY devices DESC"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $tel = array_map(function($r) {
+            $t = (int)$r['total'];
+            $r['success_rate'] = $t > 0 ? round((int)$r['success'] / $t * 100) : null;
+            $r['avg_latency']  = $r['avg_latency'] ? (int)round((float)$r['avg_latency']) : null;
+            return $r;
+        }, $tel);
+        api_ok(['telemetry'=>$tel,'live_devices'=>$live,'checked_at'=>date('Y-m-d H:i:s')]);
+        break;
+
     case 'active-sessions':
         $log    = '/var/log/xray/access.log';
         $cutoff = time() - 300;
