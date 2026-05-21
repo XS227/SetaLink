@@ -1,6 +1,14 @@
 <?php
 header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
+// Referral code from ?ref= or ?start= (Telegram deep link)
+$ref_code = '';
+foreach (['ref', 'start'] as $key) {
+    $v = trim((string)($_GET[$key] ?? ''));
+    if (preg_match('/^[A-Z0-9]{4,20}$/i', $v)) { $ref_code = strtoupper($v); break; }
+}
+$dl_base  = '/download/setalink-latest.apk';
+$dl_link  = $ref_code ? '/download/setalink-latest.apk?ref=' . urlencode($ref_code) : $dl_base;
 ?><!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
@@ -45,12 +53,24 @@ header('X-Content-Type-Options: nosniff');
       </svg>
       <span class="btn-lang-text" data-t="nav.lang">فارسی</span>
     </button>
-    <a href="/download/setalink-latest.apk" class="btn-nav-dl">
+    <a href="<?= htmlspecialchars($dl_link) ?>" class="btn-nav-dl">
       <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12z"/><rect x="2" y="13" width="12" height="1.5" rx=".75"/></svg>
       <span data-t="nav.dl">Download APK</span>
     </a>
   </div>
 </nav>
+
+<!-- ══ REFERRAL INVITE BANNER ══════════════════════════════════ -->
+<?php if ($ref_code): ?>
+<div style="background:linear-gradient(90deg,rgba(0,232,122,.12),rgba(51,153,255,.12));border-bottom:1px solid rgba(0,232,122,.25);padding:.85rem 1.25rem;text-align:center">
+  <span style="font-size:.9rem;color:#e0ffe8">
+    🎁 You've been invited!
+    Download the app and enter code
+    <strong style="font-family:monospace;font-size:1rem;color:#00e87a;background:rgba(0,232,122,.12);padding:.1em .45em;border-radius:5px;border:1px solid rgba(0,232,122,.3)"><?= htmlspecialchars($ref_code) ?></strong>
+    — both you and your friend get <strong>+1 GB free</strong>.
+  </span>
+</div>
+<?php endif; ?>
 
 <!-- ══ HERO ════════════════════════════════════════════════════ -->
 <section class="hero">
@@ -76,7 +96,7 @@ header('X-Content-Type-Options: nosniff');
   </p>
 
   <div class="hero-btns">
-    <a href="/download/setalink-latest.apk" class="btn btn-primary">
+    <a href="<?= htmlspecialchars($dl_link) ?>" class="btn btn-primary">
       <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12z"/><rect x="2" y="13" width="12" height="1.5" rx=".75"/></svg>
       <span data-t="hero.cta1">Download APK</span>
     </a>
@@ -100,7 +120,7 @@ header('X-Content-Type-Options: nosniff');
       <div class="hero-stat-label" data-t="stat.3">Accounts needed</div>
     </div>
     <div class="hero-stat">
-      <div class="hero-stat-num">+512MB</div>
+      <div class="hero-stat-num">+1 GB</div>
       <div class="hero-stat-label" data-t="stat.4">Per referral</div>
     </div>
   </div>
@@ -123,7 +143,7 @@ header('X-Content-Type-Options: nosniff');
     <div class="step-card">
       <div class="step-num">2</div>
       <h3 data-t="how.s2.h">Invite &amp; Earn Data</h3>
-      <p data-t="how.s2.p">Share your referral code. Every person who joins adds 512 MB to both of you. The more people connect, the stronger and cheaper the network becomes.</p>
+      <p data-t="how.s2.p">Share your referral code. Every person who joins adds 1 GB to both of you. The more people connect, the stronger and cheaper the network becomes.</p>
     </div>
     <div class="step-card">
       <div class="step-num">3</div>
@@ -232,17 +252,17 @@ header('X-Content-Type-Options: nosniff');
         <li data-t="plan.free.f3">AI protocol selection</li>
         <li data-t="plan.free.f4">No account needed</li>
       </ul>
-      <a href="/download/setalink-latest.apk" class="price-cta price-cta-solid" data-t="plan.free.cta">Download APK</a>
+      <a href="<?= htmlspecialchars($dl_link) ?>" class="price-cta price-cta-solid" data-t="plan.free.cta">Download APK</a>
     </div>
 
     <div class="price-card featured">
       <div class="price-eyebrow" data-t="plan.comm.eyebrow">INVITE-BASED</div>
       <div class="price-title"   data-t="plan.comm.title">Community</div>
-      <div class="price-value">+512 MB <span class="price-suffix">per invite</span></div>
-      <div class="price-desc"    data-t="plan.comm.desc">Share your referral code. Every friend who joins gives both of you 512 MB extra.</div>
+      <div class="price-value">+1 GB <span class="price-suffix">per invite</span></div>
+      <div class="price-desc"    data-t="plan.comm.desc">Share your referral code. Every friend who joins gives both of you 1 GB extra.</div>
       <ul class="price-features">
-        <li data-t="plan.comm.f1">+512 MB per friend invited</li>
-        <li data-t="plan.comm.f2">Invitee also receives +512 MB</li>
+        <li data-t="plan.comm.f1">+1 GB per friend invited</li>
+        <li data-t="plan.comm.f2">Invitee also receives +1 GB</li>
         <li data-t="plan.comm.f3">No limit on referrals</li>
         <li data-t="plan.comm.f4">Network grows stronger with you</li>
       </ul>
@@ -345,7 +365,7 @@ header('X-Content-Type-Options: nosniff');
     <?php
     $faqs = [
       ['How does the invite system work?',
-       'When you install SetaLink, you receive a unique referral code. Share it with friends. When a friend installs the app using your code, both of you receive +512 MB of additional data. There is no limit on how many people you can invite.'],
+       'When you install SetaLink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. Invite 3 active friends to unlock stealth servers. There is no limit on how many people you can invite.'],
       ['What is the 1 GB emergency package?',
        'Every new device that installs SetaLink automatically receives 1 GB of free data — no account, no login, no credit card. This is designed so that anyone who suddenly loses internet access can get back online immediately.'],
       ['How does the AI protocol optimizer work?',
@@ -390,7 +410,7 @@ header('X-Content-Type-Options: nosniff');
       <a href="/faq.php" data-t="footer.faq">Full FAQ</a>
       <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" data-t="footer.tg">Telegram</a>
       <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener" data-t="footer.gh">GitHub</a>
-      <a href="/download/setalink-latest.apk" data-t="footer.dl">Download APK</a>
+      <a href="<?= htmlspecialchars($dl_link) ?>" data-t="footer.dl">Download APK</a>
     </nav>
     <p class="footer-copy">&copy; <?= date('Y') ?> SetaLink VPN · Android only</p>
   </div>

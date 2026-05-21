@@ -18,7 +18,7 @@ import { storage } from '../storage/storage';
 const BOOTSTRAP_URL =
   'https://setalink.no/api.php?mobile=1&action=bootstrap&_token=setalink-mobile-diag-v1';
 
-const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v4';
+const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v5';
 
 // vless://fd709d48-a983-484a-99e3-afc97e2c3692@178.104.77.231:443?type=tcp&encryption=none&security=reality&pbk=IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8&fp=chrome&sni=www.cloudflare.com&sid=d93af82f2ecb7f6a#SetaLink-Cloudflare
 const HARDCODED_PROFILE: EmergencyProfile = {

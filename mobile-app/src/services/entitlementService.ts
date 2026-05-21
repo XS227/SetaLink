@@ -96,13 +96,14 @@ export async function reportVpnStatus(
   deviceId: string,
   status: 'online' | 'offline',
   options?: string | {
-    protocol?:   string;
-    dnsOk?:      boolean;
-    internetOk?: boolean;
-    activeSni?:  string;
-    rxBytes?:    number;
-    txBytes?:    number;
-    latencyMs?:  number;
+    protocol?:         string;
+    dnsOk?:            boolean;
+    internetOk?:       boolean;
+    activeSni?:        string;
+    rxBytes?:          number;
+    txBytes?:          number;
+    latencyMs?:        number;
+    failureCategory?:  string;
   }
 ): Promise<void> {
   const body: Record<string, string | number> = { device_id: deviceId, status };
@@ -110,13 +111,14 @@ export async function reportVpnStatus(
   if (typeof options === 'string') {
     if (options) body.active_protocol = options;
   } else if (options) {
-    if (options.protocol)                  body.active_protocol = options.protocol;
-    if (options.dnsOk     !== undefined)  body.dns_ok          = options.dnsOk ? 1 : 0;
-    if (options.internetOk !== undefined) body.internet_ok     = options.internetOk ? 1 : 0;
-    if (options.activeSni)                body.active_sni      = options.activeSni;
-    if (options.rxBytes   !== undefined)  body.rx_bytes        = options.rxBytes;
-    if (options.txBytes   !== undefined)  body.tx_bytes        = options.txBytes;
-    if (options.latencyMs !== undefined)  body.latency_ms      = options.latencyMs;
+    if (options.protocol)                  body.active_protocol    = options.protocol;
+    if (options.dnsOk     !== undefined)  body.dns_ok             = options.dnsOk ? 1 : 0;
+    if (options.internetOk !== undefined) body.internet_ok        = options.internetOk ? 1 : 0;
+    if (options.activeSni)                body.active_sni         = options.activeSni;
+    if (options.rxBytes   !== undefined)  body.rx_bytes           = options.rxBytes;
+    if (options.txBytes   !== undefined)  body.tx_bytes           = options.txBytes;
+    if (options.latencyMs !== undefined)  body.latency_ms         = options.latencyMs;
+    if (options.failureCategory)          body.failure_category   = options.failureCategory;
   }
   await mobilePost('update-status', body);
 }

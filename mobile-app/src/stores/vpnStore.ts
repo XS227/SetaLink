@@ -224,8 +224,16 @@ export const useVpnStore = create<VpnState>((set, get) => {
         const { reportVpnStatus } = require('../services/entitlementService');
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAuthStore } = require('./authStore');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getLastConnectFailureCategory } = require('../services/vpnBridge');
         const user = useAuthStore.getState().user;
-        if (user) reportVpnStatus(user.deviceId, 'offline').catch(() => {});
+        if (user) {
+          const failCat = getLastConnectFailureCategory?.() || '';
+          reportVpnStatus(user.deviceId, 'offline', {
+            internetOk: false,
+            ...(failCat ? { failureCategory: failCat } : {}),
+          }).catch(() => {});
+        }
       } catch {}
     },
 
@@ -238,7 +246,9 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const nextIdx = _fallbackIdx + 1;
       if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length) {
         const nextProto = FALLBACK_PROTOCOLS[nextIdx]!;
-        set({ _fallbackIdx: nextIdx, smartStatus: analysis.userMessage, error: `Optimizing route… (${nextProto})` });
+        const step = nextIdx + 1;
+        const total = FALLBACK_PROTOCOLS.length;
+        set({ _fallbackIdx: nextIdx, smartStatus: `Route failed → trying ${nextProto} (${step}/${total})…`, error: `Optimizing route… (${nextProto})` });
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { getLastConnectLog } = require('../services/vpnBridge');

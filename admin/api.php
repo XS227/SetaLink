@@ -127,7 +127,7 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // ── Mobile API constants ──────────────────────────────────────────────────
 const MOBILE_REPORT_TOKEN  = 'setalink-mobile-diag-v1';
 const ONE_GB_BYTES         = 1073741824;
-const REFERRAL_BONUS_BYTES = 536870912;
+const REFERRAL_BONUS_BYTES = 1073741824;
 
 function init_device_tables(PDO $db): void {
     $db->exec("CREATE TABLE IF NOT EXISTS devices (
@@ -166,17 +166,38 @@ function init_device_tables(PDO $db): void {
         "ALTER TABLE devices ADD COLUMN rx_bytes INTEGER DEFAULT 0",
         "ALTER TABLE devices ADD COLUMN tx_bytes INTEGER DEFAULT 0",
         "ALTER TABLE devices ADD COLUMN latency_ms INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN last_failure_category TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN last_failure_at TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $db->exec($sql); } catch (Exception $e) {}
     }
     $db->exec('CREATE TABLE IF NOT EXISTS referral_uses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        referrer_device_id TEXT NOT NULL,
-        new_device_id TEXT NOT NULL,
+        referrer_device_id TEXT NOT NULL DEFAULT \'\',
+        new_device_id TEXT NOT NULL DEFAULT \'\',
         bonus_bytes INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        referral_code TEXT DEFAULT \'\',
+        used_by TEXT DEFAULT \'\',
+        used_at TEXT DEFAULT CURRENT_TIMESTAMP
     )');
+    foreach ([
+        "ALTER TABLE referral_uses ADD COLUMN referrer_device_id TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN new_device_id TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN bonus_bytes INTEGER DEFAULT 0",
+        "ALTER TABLE referral_uses ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE referral_uses ADD COLUMN referral_code TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN used_by TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN used_at TEXT DEFAULT CURRENT_TIMESTAMP",
+        "ALTER TABLE referral_uses ADD COLUMN referrer_ip TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN new_user_ip TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN risk_score INTEGER DEFAULT 0",
+        "ALTER TABLE referral_uses ADD COLUMN risk_flags TEXT DEFAULT ''",
+        "ALTER TABLE referral_uses ADD COLUMN status TEXT DEFAULT 'credited'",
+        "ALTER TABLE devices ADD COLUMN stealth_unlocked INTEGER DEFAULT 0",
+        "ALTER TABLE devices ADD COLUMN invite_count INTEGER DEFAULT 0",
+    ] as $m) { try { $db->exec($m); } catch (Exception $e) {} }
 }
 function generate_referral_code(PDO $db): string {
     $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -678,6 +699,34 @@ if ($method === 'POST') {
         if (!unlink($path)) api_err('delete failed', 500);
         api_ok(['deleted' => $filename]);
     }
+    if ($action === 'push-emergency-profiles') {
+        $profiles = $parsed['profiles'] ?? [];
+        if (!is_array($profiles)) api_err('profiles must be array');
+        $db = open_analytics_db();
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('rc_emergency_profiles',?,datetime('now'))")
+           ->execute([json_encode($profiles)]);
+        api_ok(['saved' => count($profiles)]);
+    }
+    if ($action === 'push-stealth-profiles') {
+        $profiles = $parsed['profiles'] ?? [];
+        if (!is_array($profiles)) api_err('profiles must be array');
+        $db = open_analytics_db();
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('rc_stealth_profiles',?,datetime('now'))")
+           ->execute([json_encode($profiles)]);
+        api_ok(['saved' => count($profiles)]);
+    }
+    if ($action === 'update-version-json') {
+        $vj_path = '/var/www/setalink/public/download/version.json';
+        $current = json_decode((string)@file_get_contents($vj_path), true) ?: [];
+        // Merge allowed fields
+        $allowed_vj = ['forceUpdate','minSupported','rollout','changelog','channels'];
+        foreach ($allowed_vj as $f) {
+            if (isset($parsed[$f])) $current[$f] = $parsed[$f];
+        }
+        $current['releaseDate'] = date('Y-m-d');
+        file_put_contents($vj_path, json_encode($current, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        api_ok(['saved' => true, 'version' => $current['version'] ?? '?']);
+    }
     $allowed = ['add','remove','disable','enable','reset-traffic','change-package','regen-link'];
     if (!in_array($action, $allowed, true)) api_err('unknown action');
     if (!preg_match(USERNAME_RE, $name))    api_err('invalid username');
@@ -765,7 +814,11 @@ switch ($action) {
             $cmd = '(curl -sk -o /dev/null -w "%{http_code}" --max-time 6' . $hargs . ' ' . escapeshellarg($pp['url']) . ') > ' . escapeshellarg($f) . ' 2>&1 &';
             exec($cmd);
         }
-        $reality_open = tcp_open($EDGE, 8443, 3);
+        // Check Reality by verifying the Xray SOCKS5 port (127.0.0.1:10808) — which only
+        // opens when Xray is running — rather than connecting to the Reality inbound
+        // directly. A plain TCP connect to the Reality port (8443) triggers Xray to log
+        // "REALITY: failed to read client hello" because the client closes without TLS.
+        $reality_open = tcp_open('127.0.0.1', 10808, 2);
         $ph_deadline = microtime(true) + 5.0;
         while (microtime(true) < $ph_deadline) {
             $all_done = true;
@@ -800,10 +853,50 @@ switch ($action) {
                     break;
             }
         }
-        $r['reality']    = ['ok'=>$reality_open,'code'=>null,'open'=>$reality_open,'name'=>'Reality','timeout'=>false,
-                            'detail'=>$reality_open?'port 8443 open':'port 8443 closed — check UFW + xray inbound'];
+        // Reality check via SOCKS5 (not direct TCP to avoid "failed to read client hello" log spam)
+        $r['reality']    = ['ok'=>$reality_open,'code'=>null,'open'=>$reality_open,'name'=>'Reality (via Xray SOCKS5)','timeout'=>false,
+                            'detail'=>$reality_open?'Xray running (SOCKS5:10808 open)':'SOCKS5:10808 closed — Xray not running'];
         $r['checked_at'] = date('Y-m-d H:i:s');
         api_ok($r);
+        break;
+
+    case 'nat-health':
+        // Server-side NAT / forwarding health check — critical for VPN traffic routing.
+        // If ip_forward=0 or MASQUERADE rule missing, clients connect but get no internet.
+        $checks = [];
+
+        // 1. IPv4 forwarding
+        $ip_fwd_raw = trim((string)@file_get_contents('/proc/sys/net/ipv4/ip_forward'));
+        $ip_fwd_ok  = ($ip_fwd_raw === '1');
+        $checks[] = ['label'=>'IPv4 forwarding (ip_forward)','ok'=>$ip_fwd_ok,
+            'detail'=>$ip_fwd_ok?'ip_forward=1 ✓':'ip_forward=0 — run: sysctl -w net.ipv4.ip_forward=1',
+            'fix'=>'echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf && sysctl -p'];
+
+        // 2. iptables POSTROUTING MASQUERADE
+        $ipt_out = shell_exec('iptables -t nat -L POSTROUTING -n 2>/dev/null') ?: '';
+        $masq_ok  = (stripos($ipt_out, 'MASQUERADE') !== false);
+        $checks[] = ['label'=>'iptables NAT MASQUERADE','ok'=>$masq_ok,
+            'detail'=>$masq_ok?'MASQUERADE rule found ✓':'No MASQUERADE — clients connect but no internet. Add: iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE',
+            'fix'=>'iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE && apt-get install -y iptables-persistent && netfilter-persistent save'];
+
+        // 3. nftables as alternative
+        $nft_out = shell_exec('nft list ruleset 2>/dev/null | grep -i masquerade') ?: '';
+        $nft_ok  = (stripos($nft_out, 'masquerade') !== false);
+        if (!$masq_ok && $nft_ok) {
+            $checks[] = ['label'=>'nftables MASQUERADE','ok'=>true,'detail'=>'nftables masquerade rule found (nftables used instead of iptables) ✓','fix'=>''];
+            $masq_ok = true; // accept nftables too
+        }
+
+        // 4. Default route
+        $route_out = shell_exec('ip route show default 2>/dev/null') ?: '';
+        $route_ok  = (stripos($route_out, 'default') !== false);
+        $outIface  = '';
+        if (preg_match('/default via .+ dev (\S+)/', $route_out, $m)) $outIface = $m[1];
+        $checks[] = ['label'=>'Default route','ok'=>$route_ok,'detail'=>$route_ok?"$route_out":'No default route — server has no internet'];
+
+        $overall_ok = $ip_fwd_ok && $masq_ok;
+        $score = (int)$ip_fwd_ok * 50 + (int)$masq_ok * 40 + (int)$route_ok * 10;
+        api_ok(['ok'=>$overall_ok,'score'=>$score,'checks'=>$checks,'out_iface'=>$outIface,'checked_at'=>date('Y-m-d H:i:s')]);
         break;
 
     case 'get-settings':
@@ -833,11 +926,14 @@ switch ($action) {
         $fp_ok = !empty($fp);
         $score += $fp_ok ? 15 : 0;
         $checks[] = ['label'=>'Fingerprint set','ok'=>$fp_ok,'detail'=>$fp ?: '—'];
-        $tcp_sock = @fsockopen('127.0.0.1', 8443, $e, $err, 2);
+        // Check Xray alive via SOCKS5 port (10808) — avoids "failed to read client hello"
+        // spam in Xray logs that appears when admin probes the Reality port (8443) with
+        // a plain TCP connect that closes without completing the TLS handshake.
+        $tcp_sock = @fsockopen('127.0.0.1', 10808, $e, $err, 2);
         $tcp_ok = $tcp_sock !== false;
         if ($tcp_ok) fclose($tcp_sock);
         $score += $tcp_ok ? 15 : 0;
-        $checks[] = ['label'=>'Port 8443 listening','ok'=>$tcp_ok,'detail'=>$tcp_ok?'open':'closed'];
+        $checks[] = ['label'=>'Xray running (SOCKS5 10808)','ok'=>$tcp_ok,'detail'=>$tcp_ok?'SOCKS5 port open':'SOCKS5 closed — Xray not running'];
         $grade = $score>=90?'A':($score>=70?'B':($score>=50?'C':'F'));
         api_ok(['score'=>$score,'grade'=>$grade,'checks'=>$checks,'checked_at'=>date('Y-m-d H:i:s')]);
         break;
@@ -1146,15 +1242,22 @@ switch ($action) {
             return ($v !== null) ? $v : $rows[$key];
         };
         api_ok([
-            'version'        => (int)($rows['rc_version'] ?? 1),
-            'sni_priorities' => $decode('rc_sni_priorities', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
-            'kill_switches'  => $decode('rc_kill_switches',  []),
-            'protocol_order' => $decode('rc_protocol_order', ['Reality','XHTTP','WebSocket']),
-            'emergency_sni'  => (string)($rows['rc_emergency_sni'] ?? 'www.microsoft.com'),
-            'iran_sni_order' => $decode('rc_iran_sni_order', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
-            'ttl'            => (int)($rows['rc_ttl'] ?? 3600),
-            'updated_at'     => (string)($rows['rc_updated_at'] ?? ''),
-            'bootstrap'      => fetch_bootstrap_server($db),
+            'version'                => (int)($rows['rc_version'] ?? 1),
+            'sni_priorities'         => $decode('rc_sni_priorities', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
+            'kill_switches'          => $decode('rc_kill_switches',  []),
+            'protocol_order'         => $decode('rc_protocol_order', ['Reality','XHTTP','WebSocket']),
+            'emergency_sni'          => (string)($rows['rc_emergency_sni'] ?? 'www.microsoft.com'),
+            'iran_sni_order'         => $decode('rc_iran_sni_order', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
+            'ttl'                    => (int)($rows['rc_ttl'] ?? 3600),
+            'updated_at'             => (string)($rows['rc_updated_at'] ?? ''),
+            'support_url'            => (string)($rows['support_url'] ?? 'https://t.me/SetaLink3'),
+            'edge_host'              => (string)($rows['edge_host'] ?? 'edge.setalink.no'),
+            'emergency_profiles'     => $decode('rc_emergency_profiles', []),
+            'stealth_profiles'       => $decode('rc_stealth_profiles', []),
+            'update_required'        => (bool)(int)($rows['rc_update_required'] ?? '0'),
+            'min_supported_version'  => (string)($rows['rc_min_supported'] ?? '0.9.7'),
+            'profile_bundle_version' => (int)($rows['rc_profile_bundle_version'] ?? 1),
+            'bootstrap'              => fetch_bootstrap_server($db),
         ]);
         break;
 
@@ -1223,19 +1326,130 @@ switch ($action) {
                 'manufacturer'      => $r['manufacturer']    ?? '',
                 'model'             => $r['model']           ?? '',
                 'last_ip'           => $r['last_ip']         ?? '',
-                'dns_ok'            => (bool)(int)($r['dns_ok']       ?? 0),
-                'internet_ok'       => (bool)(int)($r['internet_ok']  ?? 0),
-                'active_sni'        => $r['active_sni']      ?? '',
-                'rx_bytes'          => (int)($r['rx_bytes']  ?? 0),
-                'tx_bytes'          => (int)($r['tx_bytes']  ?? 0),
-                'latency_ms'        => (int)($r['latency_ms'] ?? 0),
-                'created_at'        => $r['created_at'],
-                'last_seen'         => $r['last_seen'],
-                'blocked'           => (bool)(int)($r['blocked'] ?? 0),
-                'referral_code'     => $r['referral_code']   ?? '',
+                'dns_ok'                 => (bool)(int)($r['dns_ok']       ?? 0),
+                'internet_ok'            => (bool)(int)($r['internet_ok']  ?? 0),
+                'active_sni'             => $r['active_sni']               ?? '',
+                'rx_bytes'               => (int)($r['rx_bytes']  ?? 0),
+                'tx_bytes'               => (int)($r['tx_bytes']  ?? 0),
+                'latency_ms'             => (int)($r['latency_ms'] ?? 0),
+                'last_failure_category'  => $r['last_failure_category']    ?? '',
+                'last_failure_at'        => $r['last_failure_at']          ?? '',
+                'created_at'             => $r['created_at'],
+                'last_seen'              => $r['last_seen'],
+                'blocked'                => (bool)(int)($r['blocked'] ?? 0),
+                'referral_code'          => $r['referral_code']            ?? '',
             ];
         }, $rows);
         api_ok($result);
+        break;
+
+    case 'referral-stats':
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $total_referrals     = (int)$db->query('SELECT COUNT(*) FROM referral_uses')->fetchColumn();
+        $flagged_referrals   = (int)$db->query("SELECT COUNT(*) FROM referral_uses WHERE status='flagged'")->fetchColumn();
+        $unique_referrers    = (int)$db->query("SELECT COUNT(DISTINCT referrer_device_id) FROM referral_uses WHERE referrer_device_id!=''")->fetchColumn();
+        $total_devices       = (int)$db->query('SELECT COUNT(*) FROM devices')->fetchColumn();
+        $referred_devices    = (int)$db->query("SELECT COUNT(DISTINCT new_device_id) FROM referral_uses WHERE new_device_id!=''")->fetchColumn();
+        $total_bonus         = (int)$db->query('SELECT COALESCE(SUM(bonus_bytes),0) FROM referral_uses')->fetchColumn();
+        $stealth_unlocked    = (int)$db->query('SELECT COUNT(*) FROM devices WHERE stealth_unlocked=1')->fetchColumn();
+        $conversion_rate     = $total_devices > 0 ? round($referred_devices / $total_devices * 100, 1) : 0.0;
+        // Iran-specific
+        $iran_referrals = (int)$db->query("
+            SELECT COUNT(*) FROM referral_uses ru
+            LEFT JOIN devices d ON d.device_id = ru.new_device_id
+            WHERE UPPER(d.country) IN ('IR','IRN')
+        ")->fetchColumn();
+        // Top inviters with active count and stealth status
+        $top_st = $db->query("
+            SELECT d.user_id, d.device_id, d.referral_code, d.country, d.stealth_unlocked,
+                   COUNT(ru.id) as invite_count,
+                   COALESCE(SUM(ru.bonus_bytes),0) as total_bonus_bytes,
+                   SUM(CASE WHEN ru.status='flagged' THEN 1 ELSE 0 END) as flagged_count,
+                   (SELECT COUNT(*) FROM referral_uses ru2
+                    JOIN devices d2 ON d2.device_id=ru2.new_device_id
+                    WHERE ru2.referrer_device_id=d.device_id
+                      AND (d2.internet_ok=1 OR d2.last_seen>=datetime('now','-7 days'))
+                   ) as active_invites
+            FROM devices d
+            INNER JOIN referral_uses ru ON d.device_id = ru.referrer_device_id
+            GROUP BY d.device_id
+            ORDER BY invite_count DESC
+            LIMIT 20
+        ");
+        $top_inviters = array_map(function($r) {
+            return [
+                'user_id'          => $r['user_id'] ?? '',
+                'device_id'        => $r['device_id'] ?? '',
+                'referral_code'    => $r['referral_code'] ?? '',
+                'country'          => $r['country'] ?? '',
+                'invite_count'     => (int)$r['invite_count'],
+                'active_invites'   => (int)$r['active_invites'],
+                'flagged_count'    => (int)$r['flagged_count'],
+                'stealth_unlocked' => (bool)(int)($r['stealth_unlocked'] ?? 0),
+                'total_bonus_gb'   => round((int)$r['total_bonus_bytes'] / 1073741824, 2),
+                'total_bonus_bytes'=> (int)$r['total_bonus_bytes'],
+            ];
+        }, $top_st->fetchAll(PDO::FETCH_ASSOC));
+        // Country breakdown
+        $country_st = $db->query("
+            SELECT d.country, COUNT(ru.id) as referral_count,
+                   COUNT(DISTINCT d.device_id) as unique_new_users
+            FROM referral_uses ru
+            LEFT JOIN devices d ON d.device_id = ru.new_device_id
+            WHERE d.country IS NOT NULL AND d.country != ''
+            GROUP BY d.country
+            ORDER BY referral_count DESC
+            LIMIT 30
+        ");
+        $by_country = $country_st->fetchAll(PDO::FETCH_ASSOC);
+        // Recent referrals with risk data
+        $recent_st = $db->query("
+            SELECT ru.id, ru.bonus_bytes, ru.risk_score, ru.risk_flags, ru.status,
+                   ru.referrer_ip, ru.new_user_ip,
+                   COALESCE(ru.created_at, ru.used_at) as ts,
+                   d1.user_id as referrer_user_id, d1.country as referrer_country,
+                   d1.referral_code as ref_code,
+                   d2.user_id as new_user_id, d2.country as new_country,
+                   d2.internet_ok as new_connected
+            FROM referral_uses ru
+            LEFT JOIN devices d1 ON d1.device_id = ru.referrer_device_id
+            LEFT JOIN devices d2 ON d2.device_id = ru.new_device_id
+            ORDER BY ts DESC
+            LIMIT 50
+        ");
+        $recent = array_map(function($r) {
+            return [
+                'id'               => (int)$r['id'],
+                'ts'               => $r['ts'] ?? '',
+                'bonus_gb'         => round((int)$r['bonus_bytes'] / 1073741824, 2),
+                'bonus_bytes'      => (int)$r['bonus_bytes'],
+                'status'           => $r['status'] ?? 'credited',
+                'risk_score'       => (int)$r['risk_score'],
+                'risk_flags'       => json_decode($r['risk_flags'] ?? '[]', true) ?: [],
+                'referrer_user_id' => $r['referrer_user_id'] ?? '',
+                'referrer_country' => $r['referrer_country'] ?? '',
+                'ref_code'         => $r['ref_code'] ?? '',
+                'new_user_id'      => $r['new_user_id'] ?? '',
+                'new_country'      => $r['new_country'] ?? '',
+                'new_connected'    => (bool)(int)($r['new_connected'] ?? 0),
+            ];
+        }, $recent_st->fetchAll(PDO::FETCH_ASSOC));
+        api_ok([
+            'total_referrals'    => $total_referrals,
+            'flagged_referrals'  => $flagged_referrals,
+            'unique_referrers'   => $unique_referrers,
+            'total_devices'      => $total_devices,
+            'referred_devices'   => $referred_devices,
+            'conversion_rate'    => $conversion_rate,
+            'total_bonus_bytes'  => $total_bonus,
+            'total_bonus_gb'     => round($total_bonus / 1073741824, 2),
+            'stealth_unlocked'   => $stealth_unlocked,
+            'iran_referrals'     => $iran_referrals,
+            'top_inviters'       => $top_inviters,
+            'recent_referrals'   => $recent,
+            'by_country'         => $by_country,
+        ]);
         break;
 
     case 'heartbeat':

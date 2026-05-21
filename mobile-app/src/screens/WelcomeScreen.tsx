@@ -1,12 +1,13 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Animated, ScrollView, Clipboard, Share,
+  Animated, ScrollView, Clipboard, Share, TextInput,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
+import { useReferral } from '../services/entitlementService';
 
 const ONE_GB = 1024 * 1024 * 1024;
 
@@ -19,8 +20,13 @@ interface Props {
 }
 
 export function WelcomeScreen({ onStart }: Props) {
-  const user     = useAuthStore((s) => s.user);
-  const showToast = useToastStore((s) => s.show);
+  const user          = useAuthStore((s) => s.user);
+  const addBonusBytes = useAuthStore((s) => s.addBonusBytes);
+  const showToast     = useToastStore((s) => s.show);
+
+  const [redeemCode, setRedeemCode] = useState('');
+  const [applying,   setApplying]   = useState(false);
+  const [redeemed,   setRedeemed]   = useState(false);
 
   const opacity   = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(32)).current;
@@ -34,6 +40,25 @@ export function WelcomeScreen({ onStart }: Props) {
 
   const referralCode = user?.referralCode ?? '—';
   const quotaGb      = formatGb(user?.quotaBytesTotal ?? ONE_GB);
+
+  const applyReferral = async () => {
+    const code = redeemCode.trim().toUpperCase();
+    if (!code || applying || redeemed) return;
+    const deviceId = user?.deviceId;
+    if (!deviceId) return;
+    setApplying(true);
+    try {
+      const result = await useReferral(deviceId, code);
+      addBonusBytes(result.bonus_bytes);
+      setRedeemed(true);
+      const mbBonus = Math.round(result.bonus_bytes / (1024 * 1024));
+      showToast(`+${mbBonus} MB bonus added!`, 'success', 3000);
+    } catch (e: any) {
+      showToast(e?.message ?? 'Invalid or already used code', 'error', 3000);
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const handleCopy = () => {
     Clipboard.setString(referralCode);
@@ -99,7 +124,7 @@ export function WelcomeScreen({ onStart }: Props) {
         <GlassCard glowColor={Colors.blue[400]} style={styles.referralCard}>
           <Text style={styles.referralTitle}>Invite friends — earn more traffic</Text>
           <Text style={styles.referralDesc}>
-            Each friend you invite gets 512 MB free — and so do you.
+            Each friend you invite gets 1 GB free — and so do you.
           </Text>
           <View style={styles.codeRow}>
             <Text style={styles.codeText}>{referralCode}</Text>
@@ -111,6 +136,39 @@ export function WelcomeScreen({ onStart }: Props) {
             <Text style={styles.shareBtnText}>Share invite link</Text>
           </TouchableOpacity>
         </GlassCard>
+
+        {/* Redeem a friend's referral code */}
+        {!redeemed ? (
+          <GlassCard style={styles.redeemCard}>
+            <Text style={styles.redeemTitle}>Have a friend's code?</Text>
+            <Text style={styles.redeemDesc}>Enter their referral code — you both get 1 GB free.</Text>
+            <View style={styles.redeemRow}>
+              <TextInput
+                style={styles.redeemInput}
+                value={redeemCode}
+                onChangeText={(v) => setRedeemCode(v.toUpperCase())}
+                placeholder="Enter code"
+                placeholderTextColor={Colors.text.muted}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                maxLength={20}
+                editable={!applying}
+              />
+              <TouchableOpacity
+                style={[styles.redeemBtn, (applying || !redeemCode.trim()) && styles.redeemBtnDisabled]}
+                onPress={applyReferral}
+                disabled={applying || !redeemCode.trim()}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.redeemBtnText}>{applying ? '…' : 'Apply'}</Text>
+              </TouchableOpacity>
+            </View>
+          </GlassCard>
+        ) : (
+          <View style={styles.redeemSuccess}>
+            <Text style={styles.redeemSuccessText}>Referral applied — bonus added to your account.</Text>
+          </View>
+        )}
 
         {/* Get started */}
         <TouchableOpacity style={styles.startBtn} onPress={onStart} activeOpacity={0.85}>
@@ -171,6 +229,21 @@ const styles = StyleSheet.create({
   copyBtnText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.inverse },
   shareBtn:      { borderWidth: 1, borderColor: Colors.blue[400], borderRadius: Radius.md, paddingVertical: Spacing[3], alignItems: 'center' },
   shareBtnText:  { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.blue[400], letterSpacing: 0.3 },
+  redeemCard:    { gap: Spacing[2] },
+  redeemTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.secondary },
+  redeemDesc:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, lineHeight: 18 },
+  redeemRow:     { flexDirection: 'row', gap: Spacing[2], alignItems: 'center' },
+  redeemInput:   {
+    flex: 1, height: 40, backgroundColor: Colors.bg.elevated, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.border.default,
+    paddingHorizontal: Spacing[3], color: Colors.text.primary,
+    fontSize: Typography.size.sm, fontFamily: Typography.family.mono, letterSpacing: 1.5,
+  },
+  redeemBtn:        { backgroundColor: Colors.blue[400], borderRadius: Radius.md, paddingHorizontal: Spacing[4], height: 40, justifyContent: 'center', alignItems: 'center' },
+  redeemBtnDisabled:{ opacity: 0.45 },
+  redeemBtnText:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.inverse },
+  redeemSuccess:    { alignItems: 'center', paddingVertical: Spacing[2] },
+  redeemSuccessText:{ fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.emerald[400], textAlign: 'center' },
   startBtn:      { backgroundColor: Colors.emerald[400], borderRadius: Radius.xl, paddingVertical: Spacing[5], alignItems: 'center' },
   startBtnText:  { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: 0.3 },
   footnote:      { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textAlign: 'center', lineHeight: 18 },

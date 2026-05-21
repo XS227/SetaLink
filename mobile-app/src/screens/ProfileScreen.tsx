@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Switch, Linking,
+  Modal, ActivityIndicator,
 } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { useAuthStore }    from '../stores/authStore';
+import { useSettingsStore } from '../stores/settingsStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
@@ -14,6 +17,7 @@ import { getRemoteConfig } from '../services/remoteConfigService';
 import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT } from '../i18n';
+import { useReferral } from '../services/entitlementService';
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
@@ -44,9 +48,11 @@ interface BandwidthBarProps {
   labelUsedMonth: string;
   labelGbUsed: string;
   labelRemaining: string;
+  isExhausted?: boolean;
+  noDataLabel?: string;
 }
 
-function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labelGbUsed, labelRemaining }: BandwidthBarProps) {
+function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labelGbUsed, labelRemaining, isExhausted, noDataLabel }: BandwidthBarProps) {
   if (limitGb === null) {
     return (
       <View style={bwStyles.unlimitedRow}>
@@ -58,8 +64,8 @@ function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labe
 
   const usedGb      = usedBytes / 1e9;
   const remainingGb = Math.max(0, limitGb - usedGb);
-  const pct         = Math.min(usedGb / limitGb, 1);
-  const color       = pct < 0.6 ? Colors.emerald[400] : pct < 0.85 ? '#FFB800' : Colors.status.disconnected;
+  const pct         = isExhausted ? 1 : Math.min(usedGb / limitGb, 1);
+  const color       = isExhausted ? Colors.status.disconnected : (pct < 0.6 ? Colors.emerald[400] : pct < 0.85 ? '#FFB800' : Colors.status.disconnected);
 
   return (
     <View style={bwStyles.wrapper}>
@@ -68,7 +74,10 @@ function BandwidthBar({ usedBytes, limitGb, labelUnlimited, labelUsedMonth, labe
       </View>
       <View style={bwStyles.labels}>
         <Text style={bwStyles.usedText}>{usedGb.toFixed(1)} {labelGbUsed}</Text>
-        <Text style={[bwStyles.total, { color }]}>{remainingGb.toFixed(1)} GB {labelRemaining}</Text>
+        {isExhausted
+          ? <Text style={[bwStyles.total, { color: Colors.status.disconnected }]}>{noDataLabel ?? 'No data remaining'}</Text>
+          : <Text style={[bwStyles.total, { color }]}>{remainingGb.toFixed(1)} GB {labelRemaining}</Text>
+        }
       </View>
     </View>
   );
@@ -95,13 +104,16 @@ interface Props {
 
 export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { t } = useT();
-  const { user, logout, setBiometricSecure } = useAuthStore();
+  const { user, logout, setBiometricSecure, addBonusBytes } = useAuthStore();
+  const { pendingReferralCode, setPendingReferralCode } = useSettingsStore();
   const { sessionsThisMonth } = useSessionStore();
   const showToast = useToastStore((s) => s.show);
   const { connectionState, sessionBytes } = useVpnStore();
 
   const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
   const [supportUrl, setSupportUrl] = useState('https://t.me/SetaLink3');
+  const [showQr, setShowQr] = useState(false);
+  const [applyingPending, setApplyingPending] = useState(false);
 
   useEffect(() => {
     BiometricService.isAvailable().then(setBiometricAvailable).catch(() => setBiometricAvailable(false));
@@ -118,6 +130,9 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const isUnlimited   = user.plan !== 'free';
   const planLabel     = PLAN_LABEL[user.plan] ?? 'Free Invite Trial';
   const limitGb       = isUnlimited ? null : user.quotaBytesTotal / 1e9;
+
+  const remainingBytes     = Math.max(0, user.quotaBytesTotal - liveQuotaUsed);
+  const isQuotaExhausted   = !isUnlimited && remainingBytes === 0;
 
   const primaryId  = user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`;
   // Referral code = unique suffix after SL-227- (matches identity system)
@@ -149,6 +164,22 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
     }
   };
   const referralLink = `https://setalink.no/?ref=${referralDisplayCode}`;
+
+  const handleApplyPending = async () => {
+    if (!pendingReferralCode || !user?.deviceId) return;
+    setApplyingPending(true);
+    try {
+      const result = await useReferral(user.deviceId, pendingReferralCode);
+      addBonusBytes(result.bonus_bytes);
+      setPendingReferralCode(null);
+      const gb = (result.bonus_bytes / (1024 * 1024 * 1024)).toFixed(0);
+      showToast(`+${gb} GB bonus credited!`, 'success', 3000);
+    } catch (e: any) {
+      showToast(e?.message || 'Could not apply referral code', 'error', 3000);
+    } finally {
+      setApplyingPending(false);
+    }
+  };
 
   const handleOpenSupport = async () => {
     try {
@@ -188,6 +219,31 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <Text style={styles.settingsIcon}>⚙</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Pending referral banner */}
+        {!!pendingReferralCode && (
+          <GlassCard style={styles.pendingBanner} glowColor={Colors.emerald[400]}>
+            <View style={styles.pendingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pendingTitle}>Referral code waiting</Text>
+                <Text style={styles.pendingDesc}>
+                  Apply code <Text style={styles.pendingCode}>{pendingReferralCode}</Text> to claim +1 GB
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.pendingBtn, applyingPending && styles.pendingBtnDisabled]}
+                activeOpacity={0.8}
+                disabled={applyingPending}
+                onPress={handleApplyPending}
+              >
+                {applyingPending
+                  ? <ActivityIndicator size="small" color="#fff" />
+                  : <Text style={styles.pendingBtnText}>Apply</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </GlassCard>
+        )}
 
         {/* User info */}
         <View style={styles.userCard}>
@@ -231,8 +287,12 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                     <Text style={styles.unlimitedPillText}>∞ Unlimited</Text>
                   </View>
                 ) : (
-                  <View style={styles.gbPill}>
-                    <Text style={styles.gbPillText}>{`${Math.max(0, (user.quotaBytesTotal - liveQuotaUsed) / 1e9).toFixed(1)} GB ${t('pr.remaining')}`}</Text>
+                  <View style={[styles.gbPill, isQuotaExhausted && styles.gbPillExhausted]}>
+                    <Text style={[styles.gbPillText, isQuotaExhausted && styles.gbPillTextExhausted]}>
+                      {isQuotaExhausted
+                        ? t('pr.noData')
+                        : `${Math.max(0, (user.quotaBytesTotal - liveQuotaUsed) / 1e9).toFixed(1)} GB ${t('pr.remaining')}`}
+                    </Text>
                   </View>
                 )}
                 {daysLeft !== null && (
@@ -244,10 +304,16 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
                 )}
               </View>
             </View>
-            <View style={styles.subStatus}>
-              <View style={styles.subDot} />
-              <Text style={styles.subStatusText}>{t('pr.active')}</Text>
-            </View>
+            {isQuotaExhausted ? (
+              <View style={styles.quotaExhaustedPill}>
+                <Text style={styles.quotaExhaustedPillText}>{t('pr.quotaExhausted')}</Text>
+              </View>
+            ) : (
+              <View style={styles.subStatus}>
+                <View style={styles.subDot} />
+                <Text style={styles.subStatusText}>{t('pr.active')}</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.subDivider} />
@@ -259,6 +325,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             labelUsedMonth={t('pr.usedMonth')}
             labelGbUsed={t('pr.gbUsed')}
             labelRemaining={t('pr.remaining')}
+            isExhausted={isQuotaExhausted}
+            noDataLabel={t('pr.noData')}
           />
 
           <View style={styles.subMeta}>
@@ -276,11 +344,13 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
           {user.plan === 'free' ? (
             <TouchableOpacity
-              style={styles.upgradeBtn}
+              style={[styles.upgradeBtn, isQuotaExhausted && styles.addDataBtn]}
               activeOpacity={0.85}
               onPress={() => (onNavigate as (tab: string) => void)('upgrade')}
             >
-              <Text style={styles.upgradeBtnText}>{t('pr.upgradePremium')}</Text>
+              <Text style={[styles.upgradeBtnText, isQuotaExhausted && styles.addDataBtnText]}>
+                {isQuotaExhausted ? t('pr.addData') : t('pr.upgradePremium')}
+              </Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.manageBtn} activeOpacity={0.8} onPress={() => showToast(t('pr.noSubscriptionManager'), 'info', 2500)}>
@@ -336,6 +406,9 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <Text style={styles.deviceOs}>{referralLink}</Text>
           <View style={styles.referralCode}>
             <Text style={styles.referralCodeText}>{referralDisplayCode}</Text>
+            <TouchableOpacity style={styles.qrBtn} activeOpacity={0.75} onPress={() => setShowQr(true)}>
+              <Text style={styles.qrBtnText}>QR</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
               <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
             </TouchableOpacity>
@@ -344,6 +417,44 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <Text style={styles.shareBtnText}>{t('pr.shareLink')}</Text>
           </TouchableOpacity>
         </GlassCard>
+
+        {/* Viral loop progress */}
+        <GlassCard style={styles.viralCard}>
+          <Text style={styles.cardLabel}>Stealth Servers</Text>
+          {user.stealthUnlocked ? (
+            <View style={styles.viralUnlockedRow}>
+              <Text style={styles.viralUnlockedIcon}>🔓</Text>
+              <View>
+                <Text style={styles.viralUnlockedText}>Stealth servers unlocked!</Text>
+                <Text style={styles.viralUnlockedSub}>You can now connect to stealth nodes</Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.viralDesc}>
+                Invite {Math.max(0, 3 - (user.activeInviteCount ?? 0))} more active friend{3 - (user.activeInviteCount ?? 0) === 1 ? '' : 's'} to unlock stealth servers
+              </Text>
+              <View style={styles.viralProgressRow}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={[styles.viralDot, i < (user.activeInviteCount ?? 0) && styles.viralDotFilled]} />
+                ))}
+                <Text style={styles.viralProgressText}>{user.activeInviteCount ?? 0}/3 active</Text>
+              </View>
+            </>
+          )}
+        </GlassCard>
+
+        {/* QR modal */}
+        <Modal visible={showQr} transparent animationType="fade" onRequestClose={() => setShowQr(false)}>
+          <TouchableOpacity style={styles.qrOverlay} activeOpacity={1} onPress={() => setShowQr(false)}>
+            <View style={styles.qrBox}>
+              <Text style={styles.qrTitle}>Scan to invite</Text>
+              <QRCode value={referralLink} size={200} backgroundColor="#ffffff" color="#000000" />
+              <Text style={styles.qrCodeLabel}>{referralDisplayCode}</Text>
+              <Text style={styles.qrHint}>Tap outside to close</Text>
+            </View>
+          </TouchableOpacity>
+        </Modal>
         <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={handleOpenSupport}>
           <Text style={styles.actionLabel}>{t('pr.support')}</Text>
           <Text style={styles.actionChevron}>›</Text>
@@ -416,6 +527,12 @@ const styles = StyleSheet.create({
   manageBtnText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.5 },
   upgradeBtn:       { backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[3], alignItems: 'center' },
   upgradeBtnText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: 0.5 },
+  addDataBtn:       { backgroundColor: '#FFB800' },
+  addDataBtnText:   { color: '#000' },
+  gbPillExhausted:  { backgroundColor: 'rgba(255,80,80,0.1)', borderColor: 'rgba(255,80,80,0.3)' },
+  gbPillTextExhausted: { color: Colors.status.disconnected },
+  quotaExhaustedPill:  { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,184,0,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.35)', paddingHorizontal: Spacing[3], paddingVertical: 5 },
+  quotaExhaustedPillText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FFB800', letterSpacing: 0.3 },
   cardLabel:        { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[3] },
   deviceRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing[3], gap: Spacing[3] },
   deviceIcon:       { width: 36, height: 36, borderRadius: Radius.md, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
@@ -455,4 +572,37 @@ const styles = StyleSheet.create({
   footerMeta:       { marginTop: 4, fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
   footerLink:       { marginTop: Spacing[2], fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.blue[400] },
   footerCopy:       { marginTop: Spacing[2], fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  // Pending referral banner
+  pendingBanner:    { gap: Spacing[2] },
+  pendingRow:       { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  pendingTitle:     { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400], marginBottom: 2 },
+  pendingDesc:      { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 16 },
+  pendingCode:      { fontFamily: Typography.family.mono, color: Colors.text.primary },
+  pendingBtn:       { backgroundColor: Colors.emerald[400], borderRadius: Radius.md, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], minWidth: 64, alignItems: 'center' },
+  pendingBtnDisabled: { opacity: 0.5 },
+  pendingBtnText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.inverse },
+
+  // QR button
+  qrBtn:            { backgroundColor: Colors.bg.elevated, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 6 },
+  qrBtnText:        { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary },
+
+  // QR modal
+  qrOverlay:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', alignItems: 'center', justifyContent: 'center' },
+  qrBox:            { backgroundColor: '#fff', borderRadius: Radius['2xl'], padding: Spacing[6], alignItems: 'center', gap: Spacing[4], marginHorizontal: Spacing[8] },
+  qrTitle:          { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: '#111' },
+  qrCodeLabel:      { fontSize: Typography.size.base, fontFamily: Typography.family.mono, color: '#333', letterSpacing: 2 },
+  qrHint:           { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: '#999' },
+
+  // Viral loop
+  viralCard:        { gap: Spacing[3] },
+  viralDesc:        { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 20 },
+  viralProgressRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  viralDot:         { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: Colors.border.default, backgroundColor: Colors.bg.elevated },
+  viralDotFilled:   { backgroundColor: Colors.emerald[400], borderColor: Colors.emerald[400] },
+  viralProgressText:{ fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted, marginLeft: Spacing[2] },
+  viralUnlockedRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  viralUnlockedIcon:{ fontSize: 28 },
+  viralUnlockedText:{ fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
+  viralUnlockedSub: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
 });

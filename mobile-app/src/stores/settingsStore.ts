@@ -16,6 +16,7 @@ interface SettingsState {
   hasOnboarded:         boolean;
   hasSelectedLanguage:  boolean;
   hasSeenWelcome:       boolean;
+  pendingReferralCode:  string | null;
 
   setProtocol:              (v: string) => void;
   setDnsMode:               (v: string) => void;
@@ -31,6 +32,7 @@ interface SettingsState {
   completeOnboarding:       () => void;
   completeLanguageSelection: () => void;
   markWelcomeSeen:           () => void;
+  setPendingReferralCode:    (code: string | null) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -46,9 +48,10 @@ export const useSettingsStore = create<SettingsState>()(
       ipv6:                false,
       pushNotifications:   true,
       biometricLock:       false,
-      hasOnboarded:        false,
-      hasSelectedLanguage: false,
-      hasSeenWelcome:      false,
+      hasOnboarded:         false,
+      hasSelectedLanguage:  false,
+      hasSeenWelcome:       false,
+      pendingReferralCode:  null,
 
       setProtocol: (v) => set({ protocol: v }),
       setDnsMode:  (v) => set({ dnsMode: v }),
@@ -65,6 +68,7 @@ export const useSettingsStore = create<SettingsState>()(
       completeOnboarding:        () => set({ hasOnboarded: true }),
       completeLanguageSelection: () => set({ hasSelectedLanguage: true }),
       markWelcomeSeen:           () => set({ hasSeenWelcome: true }),
+      setPendingReferralCode:    (code) => set({ pendingReferralCode: code }),
     }),
     {
       name:    'setalink-settings-v2',

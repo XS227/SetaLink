@@ -18,6 +18,9 @@ export interface AuthUser {
   status: 'active' | 'expired' | 'blocked';
   plan: 'free';
   planExpiry: string | null;
+  inviteCount: number;
+  activeInviteCount: number;
+  stealthUnlocked: boolean;
 }
 
 interface InvitePayload {
@@ -41,6 +44,7 @@ interface AuthState {
   fixQuotaOverflow:      () => void;
   setPin:                (pin: string | null) => void;
   verifyPin:             (pin: string) => boolean;
+  addBonusBytes:         (bytes: number) => void;
 }
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
@@ -81,6 +85,9 @@ export const useAuthStore = create<AuthState>()(
             status: 'active',
             plan: 'free',
             planExpiry: null,
+            inviteCount: 0,
+            activeInviteCount: 0,
+            stealthUnlocked: false,
           },
           token: `anon-token-${Date.now()}`,
           isAuthenticated: true,
@@ -105,6 +112,9 @@ export const useAuthStore = create<AuthState>()(
             status:               e.blocked ? 'blocked' : 'active',
             plan:                 'free',
             planExpiry:           e.valid_until ?? null,
+            inviteCount:          (e as any).invite_count ?? 0,
+            activeInviteCount:    (e as any).active_invite_count ?? 0,
+            stealthUnlocked:      (e as any).stealth_unlocked ?? false,
           },
           token:           `device-${e.device_id}`,
           isAuthenticated: true,
@@ -118,12 +128,15 @@ export const useAuthStore = create<AuthState>()(
           user: {
             ...prev.user,
             ...(e.user_id ? { userId: e.user_id } : {}),
-            referralCode:    deriveReferralCode(userId, e.referral_code),
-            quotaBytesTotal: e.quota_bytes_total,
-            quotaBytesUsed:  Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
-            status:          e.blocked ? 'blocked' : 'active',
-            plan:            'free',
-            planExpiry:      e.valid_until ?? null,
+            referralCode:      deriveReferralCode(userId, e.referral_code),
+            quotaBytesTotal:   e.quota_bytes_total,
+            quotaBytesUsed:    Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
+            status:            e.blocked ? 'blocked' : 'active',
+            plan:              'free',
+            planExpiry:        e.valid_until ?? null,
+            inviteCount:       (e as any).invite_count ?? prev.user.inviteCount,
+            activeInviteCount: (e as any).active_invite_count ?? prev.user.activeInviteCount,
+            stealthUnlocked:   (e as any).stealth_unlocked ?? prev.user.stealthUnlocked,
           },
         };
       }),
@@ -152,6 +165,10 @@ export const useAuthStore = create<AuthState>()(
         const { pinCode } = get();
         return pinCode !== null && pinCode === pin;
       },
+      addBonusBytes: (bytes) => set((prev) => {
+        if (!prev.user) return prev;
+        return { user: { ...prev.user, quotaBytesTotal: prev.user.quotaBytesTotal + bytes } };
+      }),
     }),
     {
       name: 'setalink-auth',

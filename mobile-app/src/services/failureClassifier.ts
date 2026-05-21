@@ -92,21 +92,34 @@ export function connectingPhaseLabel(
 ): string {
   if (phase === 'retrying') return 'Refreshing routes…';
   if (retryCount > 2) return 'Finding best route for your network…';
-
   if (phase === 'probe-validated') return 'Connected with Stealth Mode.';
 
   const l = profileLabel.toLowerCase();
-  if (l.includes('emergency')) return 'Trying backup connection…';
-  if (l.includes('stealth') || l.includes('vercel') || l.includes('jsdelivr') || l.includes('hcaptcha')) {
-    return 'Trying Stealth Mode…';
-  }
-  if (l.includes('reality')) return 'Trying stealth connection…';
-  if (l.includes('xhttp') || l.includes('splithttp')) return 'Trying encrypted tunnel…';
-  if (l.includes('websocket') || l.includes('ws ')) return 'Trying secure channel…';
-  if (l.includes('httpupgrade') || l.includes('httpup')) return 'Trying HTTPUpgrade…';
 
-  if (profileIndex > 0 && profileCount > 1) return `Testing route ${profileIndex + 1} of ${profileCount}…`;
-  return 'Establishing secure tunnel…';
+  // Resolve a short protocol name for progress display
+  const proto = l.includes('emergency')  ? 'Emergency backup'
+    : (l.includes('stealth') || l.includes('vercel') || l.includes('jsdelivr') || l.includes('hcaptcha')) ? 'Stealth CDN'
+    : l.includes('reality')              ? 'Reality'
+    : (l.includes('xhttp') || l.includes('splithttp')) ? 'XHTTP'
+    : (l.includes('websocket') || l.includes('ws '))   ? 'WebSocket'
+    : (l.includes('httpupgrade') || l.includes('httpup')) ? 'HTTPUpgrade'
+    : null;
+
+  // Show specific route progress when running through a profile list
+  if (profileCount > 1 && profileIndex >= 0) {
+    const n = profileIndex + 1;
+    return proto
+      ? `Testing route ${n} of ${profileCount} · ${proto}…`
+      : `Testing route ${n} of ${profileCount}…`;
+  }
+
+  if (!proto) return 'Establishing secure tunnel…';
+  if (proto === 'Emergency backup') return 'Trying backup connection…';
+  if (proto === 'Stealth CDN') return 'Trying Stealth Mode…';
+  if (proto === 'Reality')     return 'Trying stealth connection…';
+  if (proto === 'XHTTP')       return 'Trying encrypted tunnel…';
+  if (proto === 'WebSocket')   return 'Trying secure channel…';
+  return `Trying ${proto}…`;
 }
 
 // Maps a failure category to the user-facing error displayed after all retries exhausted.

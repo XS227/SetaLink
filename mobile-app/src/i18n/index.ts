@@ -206,6 +206,17 @@ const EN = {
   'pr.websiteUnavailable':'Unable to open website.',
   'pr.shareUnavailable':'Unable to share invite link.',
   'pr.noSubscriptionManager':'Subscription management is not available yet.',
+  'pr.noData':          'No data remaining',
+  'pr.addData':         'Add Data',
+  'pr.quotaExhausted':  'Quota exhausted',
+
+  // OTA update
+  'upd.newVersion':     'New version available',
+  'upd.updateNow':      'Update Now',
+  'upd.later':          'Later',
+  'upd.forceTitle':     'Update Required',
+  'upd.forceBody':      'A critical update is required to continue using SetaLink.',
+  'upd.downloading':    'Downloading update…',
 
   // Invite-only auth
   'auth.inviteOnlyTitle': 'Invite-only access',
@@ -451,6 +462,17 @@ const FA: typeof EN = {
   'pr.websiteUnavailable':'باز کردن وب‌سایت ممکن نیست.',
   'pr.shareUnavailable':'اشتراک‌گذاری لینک دعوت ممکن نیست.',
   'pr.noSubscriptionManager':'مدیریت اشتراک هنوز در دسترس نیست.',
+  'pr.noData':          'داده‌ای باقی نمانده',
+  'pr.addData':         'افزودن داده',
+  'pr.quotaExhausted':  'سهمیه تمام شده',
+
+  // OTA update
+  'upd.newVersion':     'نسخه جدید در دسترس است',
+  'upd.updateNow':      'به‌روزرسانی',
+  'upd.later':          'بعداً',
+  'upd.forceTitle':     'به‌روزرسانی ضروری',
+  'upd.forceBody':      'برای ادامه استفاده از SetaLink، نصب این به‌روزرسانی ضروری است.',
+  'upd.downloading':    'در حال دانلود…',
 
   // Invite-only auth
   'auth.inviteOnlyTitle': 'ورود فقط با دعوت‌نامه',

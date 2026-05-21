@@ -302,6 +302,15 @@ class XrayVpnService : VpnService() {
                 val category = tunProbe.category
                 val msg = "Server connected, but internet is not routed through VPN. ${tunProbe.message}"
                 broadcastStep("tun_probe", false, "[$category] $msg")
+                // Log UUID being used — helps detect UUID mismatches in admin diagnostics.
+                // "invalid request user id" in Xray log = UUID in this config doesn't match server.
+                runCatching {
+                    val cfg  = JSONObject(configJson)
+                    val uuid = cfg.getJSONArray("outbounds").getJSONObject(0)
+                        .getJSONObject("settings").getJSONArray("vnext").getJSONObject(0)
+                        .getJSONArray("users").getJSONObject(0).optString("id", "?")
+                    appendLog("[UUID-CHECK] uuid=${uuid.take(8)}… category=$category — if 'invalid request user id' appears above, UUID mismatch")
+                }.onFailure {}
                 appendLog("[TUN-PROBE FAILED] category=$category $msg")
                 sendBroadcast(Intent(BROADCAST_ROUTING_FAIL).apply {
                     setPackage(packageName)
@@ -599,29 +608,52 @@ class XrayVpnService : VpnService() {
 
         val probeOutcome = runCatching {
             withContext(Dispatchers.IO) {
-                val url  = URL("https://1.1.1.1/cdn-cgi/trace")
-                val conn = vpnNet.openConnection(url) as HttpURLConnection
-                conn.connectTimeout = 15_000
-                conn.readTimeout    = 15_000
-                conn.setRequestProperty("User-Agent", "SetaLink/1.0")
-                try {
-                    val code = conn.responseCode
-                    if (code == 200) {
-                        val body   = conn.inputStream.bufferedReader().readText()
-                        val ipLine = body.lines().firstOrNull { it.startsWith("ip=") } ?: "ip=?"
-                        appendLog("[TUN-PROBE] OK: HTTP $code $ipLine (${body.length}B)")
-                        ValidationResult(true, "HTTP $code — $ipLine (${body.length}B)", probeOk = true)
-                    } else {
-                        appendLog("[TUN-PROBE] Unexpected HTTP $code from 1.1.1.1/cdn-cgi/trace")
-                        ValidationResult(false, "HTTP $code from 1.1.1.1/cdn-cgi/trace (expected 200)")
+                // Try several captive-portal / trace endpoints — choose the first 200 response.
+                // Targets are chosen to be unrestricted in Iran and have minimal TLS overhead.
+                val targets = listOf(
+                    "https://1.1.1.1/cdn-cgi/trace",          // Cloudflare — primary
+                    "http://cp.cloudflare.com/",               // Cloudflare HTTP captive portal
+                    "http://connectivitycheck.gstatic.com/",   // Google Android captive check
+                    "https://captive.apple.com/hotspot-detect.html",
+                )
+                var lastErr = ""
+                var result: ValidationResult? = null
+                for (target in targets) {
+                    if (result != null) break
+                    runCatching {
+                        val url  = URL(target)
+                        val conn = vpnNet.openConnection(url) as HttpURLConnection
+                        // 25 s: Reality TLS (~50 ms RTT) + VLESS framing + target connection
+                        // under Iran latency (packet loss, censorship overhead).
+                        conn.connectTimeout = 25_000
+                        conn.readTimeout    = 25_000
+                        conn.setRequestProperty("User-Agent", "SetaLink/1.0")
+                        try {
+                            val code = conn.responseCode
+                            if (code in 200..299) {
+                                val body   = conn.inputStream.bufferedReader().readText()
+                                val ipLine = body.lines().firstOrNull { it.startsWith("ip=") } ?: ""
+                                val info   = if (ipLine.isNotEmpty()) ipLine else "HTTP $code ${body.length}B"
+                                appendLog("[TUN-PROBE] OK: $target → $info")
+                                result = ValidationResult(true, "$target → $info", probeOk = true)
+                            } else {
+                                appendLog("[TUN-PROBE] $target → HTTP $code (non-2xx)")
+                                lastErr = "HTTP $code from $target"
+                            }
+                        } finally {
+                            conn.disconnect()
+                        }
+                    }.onFailure { e ->
+                        lastErr = "${e.javaClass.simpleName}: ${e.message?.take(80)}"
+                        appendLog("[TUN-PROBE] $target failed: $lastErr")
                     }
-                } finally {
-                    conn.disconnect()
                 }
+                result ?: ValidationResult(false,
+                    "All TUN probes failed. Last: $lastErr")
             }
         }
 
-        probeOutcome.onSuccess { return it }
+        probeOutcome.onSuccess { r -> if (r.ok) return r }
 
         // vpnNet.openConnection() failed. Since our app UID is excluded from TUN via
         // addDisallowedApplication(), Network.openConnection() is inherently unreliable

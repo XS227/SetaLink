@@ -1,17 +1,32 @@
 {
-  "version": "0.9.17",
-  "versionCode": 27,
+  "version": "0.9.20",
+  "versionCode": 30,
   "releaseDate": "2026-05-21",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.17.apk",
+  "rollout": {
+    "strategy": "all",
+    "countries": ["IR"],
+    "percent": 100,
+    "exclude_countries": []
+  },
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.20.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "40b1db3e1a57d79b5bb3118f2737a4141f131023e0c01a7e24ce18677158e5e5", "algorithm": "sha256" },
-  "size": 53703544,
-  "changelog": [],
+  "checksum": { "sha256": "c0e5ac3ef1223d3f2ea32574dcd8f788eeaa684713edf9f6bb41d06beabf8e95", "algorithm": "sha256" },
+  "size": 54082992,
+  "changelog": [
+    "Iran connectivity fixes: WebSocket Host header, XHTTP stream-one mode",
+    "Improved probe: 4 HTTPS targets, 25s timeout, SOCKS5 fallback",
+    "Per-device failure tracking in admin panel",
+    "NAT health checker in admin dashboard",
+    "Admin: fixed Reality port probe spam (now checks SOCKS5 port)",
+    "Referral QR code and viral loop (v0.9.19 features)",
+    "Connecting progress: shows route N of M · Protocol",
+    "Route fallback shows step count: trying XHTTP (2/3)"
+  ],
   "channels": {
-    "stable":  { "version": "0.9.17",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.17.apk" },
+    "stable":  { "version": "0.9.20",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.20.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }

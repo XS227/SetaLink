@@ -30,6 +30,10 @@ export interface RemoteConfig {
   updated_at:       string;
   support_url:      string;           // Telegram or web support link
   edge_host:        string;           // nginx edge proxy hostname for WS/XHTTP transports
+  emergency_profiles?: any[];         // pushed via admin, takes priority over hardcoded
+  stealth_profiles?:   any[];         // stealth server configs
+  update_required?:    boolean;
+  min_supported_version?: string;
 }
 
 const DEFAULT_CONFIG: RemoteConfig = {
