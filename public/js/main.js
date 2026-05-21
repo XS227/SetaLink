@@ -226,15 +226,23 @@
 
   var lang = localStorage.getItem('sl-lang') || 'en';
 
+  // Analytics event stubs — populated by gtag() once GA is loaded.
+  function trackEvent(name, params) {
+    if (typeof gtag === 'function') {
+      gtag('event', name, params || {});
+    }
+  }
+
   function applyLang(l) {
     lang = l;
     localStorage.setItem('sl-lang', l);
+    var isRtl = (l === 'fa');
     document.documentElement.setAttribute('lang', l);
-    document.documentElement.setAttribute('dir', l === 'fa' ? 'rtl' : 'ltr');
-    document.body.setAttribute('dir', l === 'fa' ? 'rtl' : 'ltr');
-    var s = STRINGS[l];
+    document.documentElement.setAttribute('dir', isRtl ? 'rtl' : 'ltr');
+    document.body.setAttribute('dir', isRtl ? 'rtl' : 'ltr');
+    var s = STRINGS[l] || STRINGS['en'];
     document.querySelectorAll('[data-t]').forEach(function(el) {
-      var key = el.dataset.t;
+      var key = el.getAttribute('data-t');
       if (s[key] !== undefined) el.innerHTML = s[key];
     });
   }
@@ -243,7 +251,9 @@
     var btn = document.getElementById('btn-lang');
     if (!btn) return;
     btn.addEventListener('click', function() {
-      applyLang(lang === 'en' ? 'fa' : 'en');
+      var next = lang === 'en' ? 'fa' : 'en';
+      applyLang(next);
+      trackEvent('lang_switch', { from: lang === next ? 'en' : 'fa', to: next });
     });
   }
 
@@ -253,11 +263,13 @@
       if (!btn) return;
       btn.addEventListener('click', function() {
         var isOpen = item.classList.contains('open');
+        // Close all open items
         document.querySelectorAll('.faq-item.open').forEach(function(o) {
           o.classList.remove('open');
           var ob = o.querySelector('.faq-q');
           if (ob) ob.setAttribute('aria-expanded', 'false');
         });
+        // Toggle this one
         if (!isOpen) {
           item.classList.add('open');
           btn.setAttribute('aria-expanded', 'true');
@@ -266,9 +278,18 @@
     });
   }
 
+  function initDownloadTracking() {
+    document.querySelectorAll('a[href*=".apk"]').forEach(function(a) {
+      a.addEventListener('click', function() {
+        trackEvent('apk_download', { label: a.href });
+      });
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', function() {
     initLangToggle();
     initFAQ();
+    initDownloadTracking();
     applyLang(lang);
   });
 })();
