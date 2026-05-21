@@ -418,13 +418,6 @@ $dl_link  = $ref_code ? '/download/setalink-latest.apk?ref=' . urlencode($ref_co
 
 </div><!-- .page-wrap -->
 
-<script>
-document.addEventListener('contextmenu', function(e) { e.preventDefault(); });
-document.addEventListener('keydown', function(e) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 'u') { e.preventDefault(); }
-  if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j')) { e.preventDefault(); }
-  if (e.key === 'F12') { e.preventDefault(); }
-});
-</script>
+<script src="/js/main.js" defer></script>
 </body>
 </html>
