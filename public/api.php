@@ -142,22 +142,44 @@ function generate_user_id(PDO $pdo): string {
 
 function hardcoded_bootstrap(): array {
     return [
-        'uuid'        => 'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
-        'address'     => '5.249.252.221',
-        'port'        => 8443,
-        'publicKey'   => 'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
-        'shortId'     => '7f81892e',
-        'sni'         => 'www.microsoft.com',
-        'flow'        => 'xtls-rprx-vision',
+        'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
+        'address'     => '178.104.77.231',
+        'port'        => 443,
+        'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+        'shortId'     => 'd93af82f2ecb7f6a',
+        'sni'         => 'www.cloudflare.com',
+        'flow'        => '',
         'fingerprint' => 'chrome',
-        'country'     => 'Netherlands',
-        'flag'        => '🇳🇱',
-        'city'        => 'SetaLink Edge',
+        'country'     => 'Germany',
+        'flag'        => '🇩🇪',
+        'city'        => 'SetaLink Cloudflare',
         'edgeAddress' => 'edge.setalink.no',
         'edgePort'    => 443,
         'wsPath'      => '/ws',
         'xhttpPath'   => '/xhttp/',
         'httpupPath'  => '/httpup',
+        'altProfiles' => [
+            [
+                'uuid'        => 'c8af7366-b531-4f35-bea2-6fb70d1e4850',
+                'publicKey'   => '5eItT4D3ZmR8Nit_JWjpm9XfX4CzZGzvhovxF4n_6CY',
+                'shortId'     => '70df7a',
+                'sni'         => 'www.oracle.com',
+                'port'        => 8443,
+                'address'     => '178.104.77.231',
+                'flow'        => '',
+                'fingerprint' => 'chrome',
+            ],
+            [
+                'uuid'        => '1580e282-be00-4ddc-932b-9bbcd69f0dad',
+                'publicKey'   => 'Wo4-Iz8anzOfnQye9L1ARwDElePwwLPq1b82A_ZEsjo',
+                'shortId'     => 'a4',
+                'sni'         => 'www.amazon.com',
+                'port'        => 2052,
+                'address'     => '178.104.77.231',
+                'flow'        => '',
+                'fingerprint' => 'chrome',
+            ],
+        ],
     ];
 }
 
@@ -186,6 +208,7 @@ function fetch_bootstrap_server(PDO $pdo): array {
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
         'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
+        'altProfiles' => [],
     ];
 }
 
@@ -224,7 +247,7 @@ if ($method === 'GET') {
         try { $rows = $pdo->query("SELECT key, value FROM settings WHERE key LIKE 'bundle_%'")->fetchAll(PDO::FETCH_KEY_PAIR); } catch (\Exception $e) {}
         $sni_candidates = json_decode($rows['bundle_sni_candidates'] ?? '[]', true) ?: ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net'];
         $spoof_snis     = json_decode($rows['bundle_spoof_snis'] ?? '[]', true) ?: ['auth.vercel.com','cdn.jsdelivr.net','hcaptcha.com','assets.vercel.com','images.unsplash.com','cloudflare.com'];
-        $backup_ips     = json_decode($rows['bundle_backup_ips'] ?? '[]', true) ?: ['5.249.252.221'];
+        $backup_ips     = json_decode($rows['bundle_backup_ips'] ?? '[]', true) ?: ['178.104.77.231'];
         $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['edge.setalink.no'];
         ok([
             'version'        => (int)($rows['bundle_version'] ?? 1),
@@ -259,6 +282,7 @@ if ($method === 'GET') {
             'wsPath'      => $srv['wsPath']      ?? '/ws',
             'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp/',
             'httpupPath'  => $srv['httpupPath']  ?? '/httpup',
+            'altProfiles' => $srv['altProfiles'] ?? [],
         ]);
     }
 

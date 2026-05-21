@@ -217,14 +217,9 @@ async function tryAutoRegister(): Promise<boolean> {
     }
 
     useAuthStore.getState().loginWithDevice(entitlement);
-    if (entitlement.server?.uuid && entitlement.server?.address) {
-      const { importFromVless } = useServerStore.getState();
-      const vless = `vless://${entitlement.server.uuid}@${entitlement.server.address}:${entitlement.server.port}` +
-        `?security=reality&encryption=none&pbk=${entitlement.server.publicKey}` +
-        `&sid=${entitlement.server.shortId}&sni=${entitlement.server.sni}` +
-        `&flow=${entitlement.server.flow}&fp=${entitlement.server.fingerprint}&type=tcp#SetaLink-Auto`;
-      importFromVless(vless);
-    }
+    // Bootstrap profile loading is handled by loadBootstrapIfEmpty in MainTabs.
+    // Do not import a raw VLESS here — it creates stale single-profile entries that
+    // don't carry altProfiles and accumulate across server migrations.
     return true;
   } catch {
     return false;

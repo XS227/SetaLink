@@ -12,10 +12,23 @@
  * a syntactically valid (if non-functional) config for local testing.
  */
 
+// Secondary Reality inbound with independent keypair (different port/uuid/pubkey).
+// Used for Hetzner's multi-inbound setup: Cloudflare :443, Oracle :8443, Amazon :2052.
+export interface AltRealityProfile {
+  uuid:         string;
+  publicKey:    string;
+  shortId:      string;
+  sni:          string;
+  port:         number;
+  address?:     string;  // defaults to primary creds.address
+  flow?:        string;
+  fingerprint?: string;
+}
+
 export interface ServerCredentials {
   uuid:        string;
-  address:     string;   // Reality/VPN server hostname (port 8443)
-  port:        number;   // Reality port (e.g. 8443)
+  address:     string;   // Reality/VPN server hostname
+  port:        number;   // Primary Reality port
   publicKey:   string;   // X25519 Reality key
   shortId:     string;
   sni:         string;   // reality serverName
@@ -25,8 +38,10 @@ export interface ServerCredentials {
   edgeAddress?: string;  // nginx proxy host (e.g. edge.setalink.no)
   edgePort?:    number;  // nginx port (443)
   wsPath?:      string;  // WebSocket path (e.g. /ws)
-  xhttpPath?:   string;  // XHTTP path (e.g. /xhttp)
+  xhttpPath?:   string;  // XHTTP path (e.g. /xhttp/)
   httpupPath?:  string;  // HTTPUpgrade path (e.g. /httpup)
+  // Additional Reality inbounds with separate keypairs (Hetzner multi-inbound)
+  altProfiles?: AltRealityProfile[];
 }
 
 const CACHE_TTL_MS = 5 * 60_000;   // 5 min

@@ -257,13 +257,37 @@ export const useServerStore = create<ServerState>()(
   },
 
   loadBootstrapIfEmpty: async () => {
-    const BOOTSTRAP_IDS = ['server-reality', 'server-ws', 'server-xhttp', 'server-emergency', 'bootstrap-1'];
+    const BOOTSTRAP_IDS = [
+      'server-reality', 'server-reality-cf', 'server-reality-oracle', 'server-reality-amazon',
+      'server-ws', 'server-xhttp', 'server-emergency', 'bootstrap-1',
+    ];
+    const LEGACY_IPS = ['5.249.252.221'];
+
+    // Always purge stale auto-imported profiles (sub-* IDs) and any server using the
+    // old One.com/Uniweb IP before checking whether bootstrap needs to run.
+    {
+      const { servers: cur, importedCreds: curCreds, selectedId: curSelected } = get();
+      const staleIds = cur
+        .filter(
+          (s) => s.id.startsWith('sub-') ||
+                 LEGACY_IPS.includes(curCreds[s.id]?.address ?? ''),
+        )
+        .map((s) => s.id);
+
+      if (staleIds.length > 0) {
+        const cleanedCreds = { ...curCreds };
+        staleIds.forEach((id) => delete cleanedCreds[id]);
+        const cleanedServers = cur.filter((s) => !staleIds.includes(s.id));
+        const newSelected = staleIds.includes(curSelected) ? '' : curSelected;
+        set({ servers: cleanedServers, importedCreds: cleanedCreds, selectedId: newSelected });
+      }
+    }
+
     const { servers, importedCreds } = get();
 
-    // Check if all 3 real inbounds are present
-    const realIds = ['server-reality', 'server-ws', 'server-xhttp'];
-    const allExist = realIds.every((id) => servers.find((s) => s.id === id));
-    if (allExist) return false;
+    // Check if the primary Hetzner Reality inbound is present
+    const hasHetzner = servers.some((s) => s.id === 'server-reality-cf');
+    if (hasHetzner) return false;
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -271,7 +295,8 @@ export const useServerStore = create<ServerState>()(
       const profile = await getEmergencyProfile();
       if (!profile?.uuid || !profile?.address || !profile?.publicKey) return false;
 
-      const baseCreds: ServerCredentials = {
+      // Primary Hetzner Cloudflare creds (port 443 — standard HTTPS, best for Iran/restricted networks)
+      const cfCreds: ServerCredentials = {
         uuid:        profile.uuid,
         address:     profile.address,
         port:        profile.port,
@@ -280,20 +305,22 @@ export const useServerStore = create<ServerState>()(
         sni:         profile.sni,
         flow:        profile.flow,
         fingerprint: profile.fingerprint,
-        edgeAddress: profile.edgeAddress || '',
+        edgeAddress: profile.edgeAddress || 'edge.setalink.no',
         edgePort:    profile.edgePort    || 443,
         wsPath:      profile.wsPath      || '/ws',
-        xhttpPath:   profile.xhttpPath   || '/xhttp',
+        xhttpPath:   profile.xhttpPath   || '/xhttp/',
         httpupPath:  profile.httpupPath  || '/httpup',
+        // Alt Reality inbounds (Oracle :8443, Amazon :2052) — separate keypairs
+        altProfiles: profile.altProfiles ?? [],
       };
 
       const newServers: ServerRecord[] = [
         {
-          id:        'server-reality',
-          country:   'SetaLink Edge',
-          city:      'Reality',
-          flag:      '🌐',
-          ping:      45,
+          id:        'server-reality-cf',
+          country:   'Germany',
+          city:      'Hetzner · Cloudflare :443',
+          flag:      '🇩🇪',
+          ping:      40,
           load:      20,
           protocol:  'Reality',
           transport: 'TCP',
@@ -323,19 +350,85 @@ export const useServerStore = create<ServerState>()(
         },
       ];
 
+      // Add Oracle and Amazon as separate selectable servers if altProfiles are present
+      const altProfiles = profile.altProfiles ?? [];
+      if (altProfiles[0]) {
+        newServers.splice(1, 0, {
+          id:        'server-reality-oracle',
+          country:   'Germany',
+          city:      'Hetzner · Oracle :8443',
+          flag:      '🇩🇪',
+          ping:      45,
+          load:      22,
+          protocol:  'Reality',
+          transport: 'TCP',
+          tags:      ['Stealth'],
+        });
+      }
+      if (altProfiles[1]) {
+        newServers.splice(2, 0, {
+          id:        'server-reality-amazon',
+          country:   'Germany',
+          city:      'Hetzner · Amazon :2052',
+          flag:      '🇩🇪',
+          ping:      48,
+          load:      23,
+          protocol:  'Reality',
+          transport: 'TCP',
+          tags:      ['Stealth'],
+        });
+      }
+
       const newCreds: Record<string, ServerCredentials> = {
-        'server-reality': baseCreds,
-        'server-ws':      baseCreds,
-        'server-xhttp':   baseCreds,
+        'server-reality-cf': cfCreds,
+        // WS/XHTTP use same UUID as CF (whitelisted on edge.setalink.no Xray)
+        'server-ws':    cfCreds,
+        'server-xhttp': cfCreds,
       };
 
-      // Remove old bootstrap entries, keep any user-added servers (none now since import removed)
+      // Oracle and Amazon get their own creds if altProfiles available
+      if (altProfiles[0]) {
+        newCreds['server-reality-oracle'] = {
+          uuid:        altProfiles[0].uuid,
+          address:     altProfiles[0].address || profile.address,
+          port:        altProfiles[0].port,
+          publicKey:   altProfiles[0].publicKey,
+          shortId:     altProfiles[0].shortId,
+          sni:         altProfiles[0].sni,
+          flow:        altProfiles[0].flow        || '',
+          fingerprint: altProfiles[0].fingerprint || 'chrome',
+          edgeAddress: profile.edgeAddress || 'edge.setalink.no',
+          edgePort:    profile.edgePort    || 443,
+          wsPath:      profile.wsPath      || '/ws',
+          xhttpPath:   profile.xhttpPath   || '/xhttp/',
+          httpupPath:  profile.httpupPath  || '/httpup',
+        };
+      }
+      if (altProfiles[1]) {
+        newCreds['server-reality-amazon'] = {
+          uuid:        altProfiles[1].uuid,
+          address:     altProfiles[1].address || profile.address,
+          port:        altProfiles[1].port,
+          publicKey:   altProfiles[1].publicKey,
+          shortId:     altProfiles[1].shortId,
+          sni:         altProfiles[1].sni,
+          flow:        altProfiles[1].flow        || '',
+          fingerprint: altProfiles[1].fingerprint || 'chrome',
+          edgeAddress: profile.edgeAddress || 'edge.setalink.no',
+          edgePort:    profile.edgePort    || 443,
+          wsPath:      profile.wsPath      || '/ws',
+          xhttpPath:   profile.xhttpPath   || '/xhttp/',
+          httpupPath:  profile.httpupPath  || '/httpup',
+        };
+      }
+
+      // Remove all old bootstrap entries, preserve any user-imported servers
       const otherServers = servers.filter((s) => !BOOTSTRAP_IDS.includes(s.id));
       const otherCreds   = { ...importedCreds };
       BOOTSTRAP_IDS.forEach((id) => delete otherCreds[id]);
 
       const prevSelectedId = get().selectedId;
-      const defaultId = 'server-reality';
+      const defaultId = 'server-reality-cf';
       set({
         servers:       [...otherServers, ...newServers],
         importedCreds: { ...otherCreds, ...newCreds },
@@ -344,7 +437,8 @@ export const useServerStore = create<ServerState>()(
                        : defaultId,
       });
       if (!prevSelectedId || BOOTSTRAP_IDS.includes(prevSelectedId)) {
-        syncToVpnStore(newServers[0]);
+        const firstServer = newServers.find((s) => s.id === defaultId) ?? newServers[0];
+        if (firstServer) syncToVpnStore(firstServer);
       }
       return true;
     } catch {

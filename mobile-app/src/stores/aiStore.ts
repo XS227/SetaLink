@@ -92,10 +92,12 @@ export interface AutoConnectProfile {
   flow:        string;
   fingerprint: string;
   emergency:   boolean;
-  status:      'pending' | 'testing' | 'success' | 'fail' | 'skipped';
-  latencyMs?:  number;
-  error?:      string;
-  probeOk?:    boolean;
+  status:          'pending' | 'testing' | 'success' | 'fail' | 'skipped';
+  latencyMs?:      number;
+  error?:          string;
+  probeOk?:        boolean;
+  failureCategory?: string;
+  testedAt?:       number;
 }
 
 export interface AutoConnectWinner {
