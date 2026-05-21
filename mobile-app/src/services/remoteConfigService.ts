@@ -28,6 +28,8 @@ export interface RemoteConfig {
   iran_sni_order:   string[];
   ttl:              number;           // seconds until stale
   updated_at:       string;
+  support_url:      string;           // Telegram or web support link
+  edge_host:        string;           // nginx edge proxy hostname for WS/XHTTP transports
 }
 
 const DEFAULT_CONFIG: RemoteConfig = {
@@ -43,8 +45,10 @@ const DEFAULT_CONFIG: RemoteConfig = {
     'www.microsoft.com', 'www.bing.com', 'www.apple.com',
     'www.samsung.com', 'www.speedtest.net',
   ],
-  ttl:        3600,
-  updated_at: '',
+  ttl:         3600,
+  updated_at:  '',
+  support_url: 'https://t.me/setalink_support',
+  edge_host:   'edge.setalink.no',
 };
 
 let _inFlight: Promise<RemoteConfig> | null = null;

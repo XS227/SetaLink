@@ -46,6 +46,8 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
   const buttonColor = isConnected ? Colors.emerald[400] : Colors.bg.elevated;
   const borderColor = isConnected ? Colors.emerald[400] : Colors.border.default;
   const labelText   = isConnecting ? '' : isConnected ? 'Disconnect' : 'Connect';
+  // Logo: full color (white on emerald) when connected; grayscale dim when disconnected
+  const logoTint    = isConnected ? Colors.text.inverse : 'rgba(120,130,140,0.55)';
 
   const buttonStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -93,10 +95,7 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
             <>
               <Image
                 source={LOGO}
-                style={[
-                  styles.logoImg,
-                  { tintColor: isConnected ? Colors.text.inverse : Colors.emerald[400] },
-                ]}
+                style={[styles.logoImg, { tintColor: logoTint }]}
                 resizeMode="contain"
               />
               <Text style={[styles.label, {

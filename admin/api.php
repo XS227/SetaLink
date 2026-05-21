@@ -88,6 +88,7 @@ function open_analytics_db(): PDO {
         "ALTER TABLE test_results ADD COLUMN emergency INTEGER DEFAULT 0",
         "ALTER TABLE test_results ADD COLUMN fallback_chain TEXT DEFAULT ''",
         "ALTER TABLE test_results ADD COLUMN failure_category TEXT DEFAULT ''",
+        "ALTER TABLE test_results ADD COLUMN winning_inbound TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $db->exec($sql); } catch (Exception $e) { /* column exists */ }
@@ -253,6 +254,8 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
             'iran_sni_order' => $decode('rc_iran_sni_order', ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net']),
             'ttl'            => (int)($rows2['rc_ttl'] ?? 3600),
             'updated_at'     => (string)($rows2['rc_updated_at'] ?? ''),
+            'support_url'    => (string)($rows2['support_url'] ?? 'https://t.me/setalink_support'),
+            'edge_host'      => (string)($rows2['edge_host'] ?? 'edge.setalink.no'),
         ]);
     }
     if ($ma === 'bootstrap') {
@@ -441,6 +444,7 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     $emergency     = (int)(bool)($_POST['emergency']          ?? 0);
     $fallback_chain    = substr(trim((string)($_POST['fallback_chain']    ?? '')), 0, 500);
     $failure_category  = substr(trim((string)($_POST['failure_category']  ?? '')), 0, 80);
+    $winning_inbound   = substr(trim((string)($_POST['winning_inbound']   ?? '')), 0, 40);
     if (!in_array($result, $allowed_results, true)) $result = 'fail';
     if (!$server) api_err('server required');
     $db = open_analytics_db();
@@ -448,12 +452,12 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         (country,network,server,port,protocol,sni,flow,fingerprint,result,error_msg,
          tcp_ok,http_ok,latency_ms,tested_by,notes,
          device_model,android_version,android_sdk,ipv6_enabled,mtu,
-         reconnect_count,no_internet,is_winner,mode,emergency,fallback_chain,failure_category)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
+         reconnect_count,no_internet,is_winner,mode,emergency,fallback_chain,failure_category,winning_inbound)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
     $st->execute([$country,$network,$server,$port,$protocol,$sni,$flow,$fingerprint,$result,$error_msg,
                   $tcp_ok,$http_ok,$latency_ms,$tested_by,$notes,
                   $device_model,$android_ver,$android_sdk,$ipv6_enabled,$mtu,
-                  $reconnect_cnt,$no_internet,$is_winner,$mode,$emergency,$fallback_chain,$failure_category]);
+                  $reconnect_cnt,$no_internet,$is_winner,$mode,$emergency,$fallback_chain,$failure_category,$winning_inbound]);
     api_ok(['id' => (int)$db->lastInsertId()]);
 }
 
@@ -507,17 +511,14 @@ if ($method === 'POST') {
         $db = open_analytics_db();
         $db->exec("CREATE TABLE IF NOT EXISTS payment_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_id TEXT NOT NULL,
-            memo TEXT DEFAULT '',
-            package TEXT NOT NULL DEFAULT '30days',
-            amount_usdt REAL DEFAULT 0,
-            tx_hash TEXT DEFAULT '',
+            device_id TEXT NOT NULL, user_id TEXT DEFAULT '',
+            memo TEXT DEFAULT '', package TEXT NOT NULL DEFAULT '30days',
+            amount_usdt REAL DEFAULT 0, tx_hash TEXT DEFAULT '',
             status TEXT NOT NULL DEFAULT 'pending',
-            submitted_at TEXT DEFAULT (datetime('now')),
-            reviewed_at TEXT DEFAULT NULL,
-            reviewed_by TEXT DEFAULT '',
-            note TEXT DEFAULT ''
+            submitted_at TEXT DEFAULT (datetime('now')), reviewed_at TEXT DEFAULT NULL,
+            reviewed_by TEXT DEFAULT '', note TEXT DEFAULT ''
         )");
+        try { $db->exec("ALTER TABLE payment_queue ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception $e) {}
         $stmt = $db->prepare("SELECT * FROM payment_queue WHERE id=?");
         $stmt->execute([$pid]);
         $pay = $stmt->fetch();
@@ -544,27 +545,32 @@ if ($method === 'POST') {
     }
     if ($action === 'payment-submit') {
         $did  = trim((string)($parsed['device_id'] ?? ''));
+        $uid  = substr(trim((string)($parsed['user_id'] ?? '')), 0, 64);
         $pkg  = trim((string)($parsed['package'] ?? '30days'));
         $memo = substr(trim((string)($parsed['memo'] ?? '')), 0, 255);
         $tx   = substr(trim((string)($parsed['tx_hash'] ?? '')), 0, 100);
         $amt  = (float)($parsed['amount_usdt'] ?? 0);
         if (!$did) api_err('device_id required');
         if (!in_array($pkg, VALID_PKGS, true)) api_err('invalid package');
+        // Derive user_id from memo when not explicitly provided (memo = SL-xxx ID)
+        if (!$uid && preg_match('/^SL-\d+-[A-Z0-9]+$/i', $memo)) $uid = $memo;
         $db = open_analytics_db();
         $db->exec("CREATE TABLE IF NOT EXISTS payment_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_id TEXT NOT NULL, memo TEXT DEFAULT '',
-            package TEXT NOT NULL DEFAULT '30days', amount_usdt REAL DEFAULT 0,
-            tx_hash TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
+            device_id TEXT NOT NULL, user_id TEXT DEFAULT '',
+            memo TEXT DEFAULT '', package TEXT NOT NULL DEFAULT '30days',
+            amount_usdt REAL DEFAULT 0, tx_hash TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
             submitted_at TEXT DEFAULT (datetime('now')), reviewed_at TEXT DEFAULT NULL,
             reviewed_by TEXT DEFAULT '', note TEXT DEFAULT ''
         )");
-        $db->prepare("INSERT INTO payment_queue (device_id,package,memo,tx_hash,amount_usdt) VALUES (?,?,?,?,?)")
-           ->execute([$did, $pkg, $memo, $tx, $amt]);
+        try { $db->exec("ALTER TABLE payment_queue ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception $e) {}
+        $db->prepare("INSERT INTO payment_queue (device_id,user_id,package,memo,tx_hash,amount_usdt) VALUES (?,?,?,?,?,?)")
+           ->execute([$did, $uid, $pkg, $memo, $tx, $amt]);
         api_ok(['payment_id' => (int)$db->lastInsertId()]);
     }
     if ($action === 'save-settings') {
-        $allowed_keys = ['telegram_url','server_label'];
+        $allowed_keys = ['telegram_url','server_label','support_url','edge_host'];
         $db2 = open_analytics_db();
         $st = $db2->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
         foreach ($allowed_keys as $k) {
@@ -1420,16 +1426,20 @@ switch ($action) {
         $db = open_analytics_db();
         $db->exec("CREATE TABLE IF NOT EXISTS payment_queue (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            device_id TEXT NOT NULL, memo TEXT DEFAULT '',
-            package TEXT NOT NULL DEFAULT '30days', amount_usdt REAL DEFAULT 0,
-            tx_hash TEXT DEFAULT '', status TEXT NOT NULL DEFAULT 'pending',
+            device_id TEXT NOT NULL, user_id TEXT DEFAULT '',
+            memo TEXT DEFAULT '', package TEXT NOT NULL DEFAULT '30days',
+            amount_usdt REAL DEFAULT 0, tx_hash TEXT DEFAULT '',
+            status TEXT NOT NULL DEFAULT 'pending',
             submitted_at TEXT DEFAULT (datetime('now')), reviewed_at TEXT DEFAULT NULL,
             reviewed_by TEXT DEFAULT '', note TEXT DEFAULT ''
         )");
+        try { $db->exec("ALTER TABLE payment_queue ADD COLUMN user_id TEXT DEFAULT ''"); } catch (Exception $e) {}
         $sf    = $_GET['status'] ?? 'pending';
         if (!in_array($sf, ['pending','approved','rejected','all'], true)) $sf = 'pending';
         $where = $sf === 'all' ? '' : "WHERE p.status = '$sf'";
-        $rows  = $db->query("SELECT p.*,d.platform,d.plan,d.quota_bytes_total,d.quota_bytes_used
+        $rows  = $db->query("SELECT p.*,
+            COALESCE(NULLIF(p.user_id,''), p.memo, p.device_id) AS matched_user_id,
+            d.platform,d.plan,d.quota_bytes_total,d.quota_bytes_used
             FROM payment_queue p LEFT JOIN devices d ON d.device_id=p.device_id
             $where ORDER BY p.submitted_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
         api_ok(['payments'=>$rows,'filter'=>$sf]);

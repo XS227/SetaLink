@@ -152,16 +152,14 @@ export function ProfileImportScreen({ onBack }: Props) {
             <Text style={styles.sectionLabel}>IMPORTED PROFILES</Text>
             {importedEntries.map((s) => {
               const creds = importedCreds[s.id];
+              const friendlyName = s.country === 'Netherlands' || !s.country
+                ? 'SetaLink Edge'
+                : `${s.country}${s.city ? ' · ' + s.city : ''}`;
               return (
                 <View key={s.id} style={styles.profileRow}>
                   <View style={styles.profileInfo}>
-                    <Text style={styles.profileName}>{s.country} · {s.city}</Text>
-                    <Text style={styles.profileSub}>
-                      {creds?.address}:{creds?.port} · {s.protocol}
-                    </Text>
-                    {creds?.sni ? (
-                      <Text style={styles.profileSni}>SNI: {creds.sni}</Text>
-                    ) : null}
+                    <Text style={styles.profileName}>{friendlyName}</Text>
+                    <Text style={styles.profileSub}>{s.protocol}</Text>
                   </View>
                   <View style={styles.profileActions}>
                     <TouchableOpacity

@@ -140,12 +140,15 @@ export async function mobilePostPayment(
   deviceId: string,
   packageKey: string,
   memo: string,
+  userId?: string,
 ): Promise<{ payment_id: number }> {
-  const data = await mobilePost('submit-payment', {
+  const body: Record<string, string | number> = {
     device_id: deviceId,
     package:   packageKey,
     memo,
-  });
+  };
+  if (userId) body.user_id = userId;
+  const data = await mobilePost('payment-submit', body);
   return data as { payment_id: number };
 }
 

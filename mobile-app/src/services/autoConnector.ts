@@ -228,17 +228,38 @@ export function buildAutoProfiles(
 }
 
 function buildConfig(def: ProfileDef, server: VpnServer, creds: ServerCredentials): string {
+  const isTls =
+    def.protocol.includes('XHTTP') ||
+    def.protocol.includes('WebSocket') ||
+    def.protocol.includes('HTTPUpgrade');
+
   const patched: ServerCredentials = {
-    ...creds, sni: def.sni, port: def.port, flow: def.flow, fingerprint: def.fingerprint,
+    ...creds,
+    sni:         def.sni,
+    port:        def.port,
+    flow:        def.flow,
+    fingerprint: def.fingerprint,
+    // For TLS transport profiles the SNI is the edge proxy host — ensure edgeAddress
+    // matches so buildVlessXhttpOutbound/WsOutbound don't fall back to the Reality IP.
+    ...(isTls ? { edgeAddress: def.sni } : {}),
   };
   const protoKey =
-    def.protocol.includes('XHTTP')     ? 'VLESS+XHTTP'  :
-    def.protocol.includes('WebSocket') ? 'WebSocket'     :
-    def.protocol.includes('Reality')   ? 'Reality'       : 'Reality';
+    def.protocol.includes('XHTTP')        ? 'VLESS+XHTTP'       :
+    def.protocol.includes('WebSocket')    ? 'WebSocket'          :
+    def.protocol.includes('HTTPUpgrade')  ? 'VLESS+HTTPUpgrade'  :
+    def.protocol.includes('Reality')      ? 'Reality'            : 'Reality';
 
   return def.emergency
     ? buildEmergencyXrayConfigJson(server, protoKey, patched)
     : buildXrayConfigJson(server, protoKey, 'Cloudflare (DoH)', patched);
+}
+
+function winningInbound(protocol: string): string {
+  if (protocol.includes('XHTTP'))       return 'inbound-xhttp';
+  if (protocol.includes('WebSocket'))   return 'inbound-ws';
+  if (protocol.includes('HTTPUpgrade')) return 'inbound-httpup';
+  if (protocol.includes('Reality'))     return 'inbound-reality';
+  return 'unknown';
 }
 
 // ── Single pass runner ────────────────────────────────────────────────────────
@@ -521,6 +542,7 @@ async function reportToAdmin(
         reconnect_count:  String(result.retryCount),
         no_internet:      !p.probeOk ? '1' : '0',
         fallback_chain:   topHistory,
+        winning_inbound: p.id === result.winnerId ? winningInbound(p.protocol) : '',
         notes: `AutoConnector v2 mode=${mode} total=${result.durationMs}ms probeOk=${result.probeOk} retry=${result.retryCount}`,
       });
 

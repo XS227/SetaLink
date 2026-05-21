@@ -1073,13 +1073,14 @@ views.devices = {
       const d = await api.get('payment-queue', {status:sf});
       const rows = d.payments||[];
       $('payTbl').innerHTML = !rows.length
-        ? '<tr><td colspan="8" class="tbl-empty">No payments</td></tr>'
+        ? '<tr><td colspan="9" class="tbl-empty">No payments</td></tr>'
         : rows.map(r=>`<tr>
             <td>${r.id}</td>
-            <td class="mono" style="font-size:.7rem">${esc((r.device_id||'').substring(0,16)+'…')}</td>
+            <td class="mono" style="font-size:.7rem;color:var(--emerald)">${esc(r.matched_user_id||r.user_id||'—')}</td>
+            <td class="mono mobile-hide" style="font-size:.65rem;color:var(--muted-2)">${esc((r.device_id||'').substring(0,14)+'…')}</td>
             <td><span class="badge badge-info">${esc(r.package)}</span></td>
             <td>${r.amount_usdt||'—'} USDT</td>
-            <td class="mono mobile-hide" style="font-size:.68rem">${esc((r.tx_hash||'—').substring(0,16)+'…')}</td>
+            <td class="mono mobile-hide" style="font-size:.68rem">${esc((r.tx_hash||'—').substring(0,14)+'…')}</td>
             <td><span class="badge ${r.status==='approved'?'badge-ok':r.status==='rejected'?'badge-danger':'badge-warn'}">${esc(r.status)}</span></td>
             <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.submitted_at)}</td>
             <td>
