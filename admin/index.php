@@ -150,7 +150,10 @@ function icon(string $name): string {
         <div class="panel">
           <div class="panel-header">
             <span class="panel-title"><?= icon('alert') ?> Server NAT &amp; Routing</span>
-            <button class="btn btn-ghost btn-sm" id="natCheckBtn">Check</button>
+            <div style="display:flex;gap:.4rem">
+              <button class="btn btn-ghost btn-sm" id="natCheckBtn">Check</button>
+              <button class="btn btn-ghost btn-sm" id="natRepairBtn" style="color:var(--warn)">Repair NAT</button>
+            </div>
           </div>
           <div class="panel-body" id="natHealth"><div class="panel-empty">Click "Check" to verify ip_forward and iptables MASQUERADE — required for VPN internet routing</div></div>
         </div>
@@ -309,8 +312,8 @@ function icon(string $name): string {
       <div class="panel">
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">Routing</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
-            <tbody id="devTbl"><tr><td colspan="11" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">RX/TX</th><th class="mobile-hide">Routing</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
+            <tbody id="devTbl"><tr><td colspan="12" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -916,30 +919,67 @@ $('probeBtn').addEventListener('click', async()=>{
   } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
 });
 
+function renderNatChecks(d, headerHtml='') {
+  const scoreColor = d.score>=90?'var(--ok)':d.score>=50?'var(--warn)':'var(--danger)';
+  return `
+    ${headerHtml}
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.75rem">
+      <span style="font-size:1.5rem;font-weight:700;color:${scoreColor}">${d.score}/100</span>
+      <div>
+        <div style="font-size:.75rem;color:${d.ok?'var(--ok)':'var(--danger)'}">
+          ${d.ok?'✓ NAT routing OK':'✗ NAT broken — clients will connect but get NO internet'}
+        </div>
+        ${d.out_iface?`<div style="font-size:.65rem;color:var(--muted-2)">Egress interface: <b style="color:var(--text)">${esc(d.out_iface)}</b></div>`:''}
+      </div>
+    </div>
+    ${(d.checks||[]).map(c=>`<div style="display:flex;align-items:flex-start;gap:.6rem;padding:.3rem 0;border-bottom:1px solid var(--border)">
+      <span class="dot ${c.ok?'dot-ok':'dot-bad'}" style="margin-top:2px"></span>
+      <div style="flex:1">
+        <span style="font-weight:600;font-size:.8rem">${esc(c.label)}</span>
+        <div style="font-size:.68rem;color:${c.ok?'var(--muted)':'var(--danger)'};margin-top:1px">${esc(c.detail||'')}</div>
+        ${!c.ok&&c.fix?`<div style="font-size:.65rem;font-family:var(--mono);background:var(--bg-elevated);padding:.2rem .4rem;margin-top:.25rem;border-radius:3px;color:var(--warn)">${esc(c.fix)}</div>`:''}
+      </div>
+    </div>`).join('')}
+    <div style="font-size:.65rem;color:var(--muted-2);margin-top:.5rem">checked ${esc(d.checked_at||'')}</div>
+  `;
+}
+
 $('natCheckBtn').addEventListener('click', async()=>{
   const el = $('natHealth');
   el.innerHTML = '<div class="loading"><div class="spinner"></div> Checking…</div>';
   try {
     const d = await api.get('nat-health');
-    const scoreColor = d.score>=90?'var(--ok)':d.score>=50?'var(--warn)':'var(--danger)';
-    el.innerHTML = `
-      <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.75rem">
-        <span style="font-size:1.5rem;font-weight:700;color:${scoreColor}">${d.score}/100</span>
-        <span style="font-size:.75rem;color:${d.ok?'var(--ok)':'var(--danger)'}">
-          ${d.ok?'✓ NAT routing OK':'✗ NAT broken — clients will connect but get NO internet'}
-        </span>
-      </div>
-      ${(d.checks||[]).map(c=>`<div style="display:flex;align-items:flex-start;gap:.6rem;padding:.3rem 0;border-bottom:1px solid var(--border)">
-        <span class="dot ${c.ok?'dot-ok':'dot-bad'}" style="margin-top:2px"></span>
-        <div style="flex:1">
-          <span style="font-weight:600;font-size:.8rem">${esc(c.label)}</span>
-          <div style="font-size:.68rem;color:${c.ok?'var(--muted)':'var(--danger)'};margin-top:1px">${esc(c.detail||'')}</div>
-          ${!c.ok&&c.fix?`<div style="font-size:.65rem;font-family:var(--mono);background:var(--bg-elevated);padding:.2rem .4rem;margin-top:.25rem;border-radius:3px;color:var(--warn)">${esc(c.fix)}</div>`:''}
-        </div>
-      </div>`).join('')}
-      <div style="font-size:.65rem;color:var(--muted-2);margin-top:.5rem">checked ${esc(d.checked_at||'')}</div>
-    `;
+    el.innerHTML = renderNatChecks(d);
   } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
+});
+
+$('natRepairBtn').addEventListener('click', async()=>{
+  if (!confirm('Attempt automatic NAT repair? This will run iptables and sysctl commands on the server.')) return;
+  const el = $('natHealth');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div> Repairing NAT…</div>';
+  try {
+    const d = await api.get('nat-repair');
+    const allOk = d.ok;
+    let html = `<div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;padding:.5rem;background:${allOk?'rgba(0,232,122,.08)':'rgba(255,80,80,.08)'};border-radius:6px;border:1px solid ${allOk?'rgba(0,232,122,.25)':'rgba(255,80,80,.25)'}">
+      <span style="font-size:1.2rem">${allOk?'✓':'✗'}</span>
+      <div>
+        <div style="font-size:.8rem;font-weight:600;color:${allOk?'var(--ok)':'var(--danger)'}">${allOk?'NAT repair successful':'Partial repair — some steps need manual fix'}</div>
+        ${d.interface?`<div style="font-size:.65rem;color:var(--muted-2)">Interface: <b>${esc(d.interface)}</b></div>`:''}
+      </div>
+    </div>`;
+    (d.steps||[]).forEach(s=>{
+      html += `<div style="display:flex;align-items:flex-start;gap:.5rem;padding:.25rem 0;border-bottom:1px solid var(--border)">
+        <span class="dot ${s.ok?'dot-ok':'dot-bad'}" style="margin-top:2px"></span>
+        <div style="flex:1">
+          <span style="font-size:.75rem;font-weight:600">${esc(s.step.replace(/_/g,' '))}</span>
+          <div style="font-size:.65rem;color:${s.ok?'var(--muted)':'var(--danger)'}">${esc(s.detail||'')}</div>
+        </div>
+      </div>`;
+    });
+    html += `<div style="font-size:.65rem;color:var(--muted-2);margin-top:.5rem">repaired at ${esc(d.repaired_at||'')} — click Check to verify</div>`;
+    el.innerHTML = html;
+    toast(allOk?'NAT repair complete ✓':'Repair partial — check results','success');
+  } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast('Repair failed: '+e.message,'error'); }
 });
 
 // ── VIEW: IRAN DEBUG ─────────────────────────────────────────────────
@@ -1169,22 +1209,37 @@ views.devices = {
     if (status==='offline') rows = rows.filter(r=>r.status!=='online');
     if (status==='blocked') rows = rows.filter(r=>r.blocked);
     $('devTbl').innerHTML = !rows.length
-      ? '<tr><td colspan="11" class="tbl-empty">No devices match filter</td></tr>'
+      ? '<tr><td colspan="12" class="tbl-empty">No devices match filter</td></tr>'
       : rows.map(r=>{
-          const usedPct = r.quota_bytes_total>0?Math.round(r.quota_bytes_used/r.quota_bytes_total*100):0;
+          const usedPct = r.quota_bytes_total>0?Math.min(100,Math.round(r.quota_bytes_used/r.quota_bytes_total*100)):0;
           const uid     = r.user_id || r.device_id_short || '—';
           const flag    = countryFlag(r.country_code||'');
-          const model   = [r.manufacturer, r.model].filter(Boolean).join(' ') || '—';
+          // RX/TX traffic
+          const rxBytes = r.rx_bytes || 0;
+          const txBytes = r.tx_bytes || 0;
+          const hasTraffic = rxBytes > 0 || txBytes > 0;
+          const rxtxHtml = hasTraffic
+            ? `<div style="font-size:.65rem;font-family:var(--mono)">↓ ${fmtBytes(rxBytes)}</div><div style="font-size:.65rem;font-family:var(--mono);color:var(--muted-2)">↑ ${fmtBytes(txBytes)}</div>`
+            : `<span style="color:var(--muted-2);font-size:.7rem">—</span>`;
+          // DNS status
+          const dnsOk = r.dns_ok;
+          const dnsHtml = r.status === 'online'
+            ? `<span style="font-size:.6rem;color:${dnsOk?'var(--ok)':'var(--danger)'}">${dnsOk?'DNS ✓':'DNS ✗'}</span>`
+            : '';
           // Routing status — internet_ok vs dns_ok vs failure category
           const rtOk    = r.internet_ok;
           const rtColor = rtOk ? 'var(--ok)' : (r.last_failure_category ? 'var(--danger)' : 'var(--muted-2)');
-          const rtLabel = rtOk ? '✓ Routed'
-                        : (r.internet_ok === false && r.last_failure_category ? '✗ Failed' : '—');
+          const rtLabel = rtOk ? '✓ Routed' : (r.last_failure_category ? '✗ Failed' : '—');
           // Failure category badge
           const failCat = r.last_failure_category || '';
           const failBadge = failCat
             ? catBadge(failCat) + (r.last_failure_at ? `<div style="font-size:.6rem;color:var(--muted-2);margin-top:1px">${fmtRelative(r.last_failure_at)}</div>` : '')
             : '<span style="color:var(--muted-2);font-size:.7rem">—</span>';
+          // Source country vs VPN exit
+          const srcIp  = esc(r.last_ip||'—');
+          const srcCtry = flag + ' ' + esc(r.country_name||r.country||'—');
+          // Active SNI
+          const sniHtml = r.active_sni ? `<div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)">${esc(r.active_sni)}</div>` : '';
           return `<tr>
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
@@ -1193,15 +1248,15 @@ views.devices = {
             </td>
             <td><span class="badge ${r.plan==='premium'?'badge-accent':'badge-muted'}">${esc(r.plan)}</span></td>
             <td>
-              <div style="font-size:.7rem;margin-bottom:.2rem">${fmtBytes(r.quota_bytes_used)} / ${fmtBytes(r.quota_bytes_total)}</div>
-              <div class="progress" style="width:80px"><div class="progress-bar ${usedPct>90?'danger':usedPct>70?'warn':'ok'}" style="width:${usedPct}%"></div></div>
+              <div style="font-size:.7rem;margin-bottom:.2rem">${fmtBytes(Math.min(r.quota_bytes_used,r.quota_bytes_total))} / ${fmtBytes(r.quota_bytes_total)}</div>
+              <div class="progress" style="width:80px"><div class="progress-bar ${usedPct>=100?'danger':usedPct>70?'warn':'ok'}" style="width:${usedPct}%"></div></div>
             </td>
             <td><span class="dot ${r.status==='online'?'dot-ok':'dot-unk'}" style="display:inline-block"></span> ${esc(r.status)}</td>
-            <td>${protoBadge(r.active_protocol)}</td>
+            <td>${protoBadge(r.active_protocol)}${sniHtml}</td>
+            <td class="mobile-hide">${rxtxHtml}${dnsHtml}</td>
             <td class="mobile-hide" style="font-size:.72rem;color:${rtColor};font-weight:${rtOk?'600':'400'}">${rtLabel}</td>
             <td class="mobile-hide" style="font-size:.7rem">${failBadge}</td>
-            <td class="mobile-hide" style="font-size:.75rem">${flag} ${esc(r.country_name||r.country||'—')}</td>
-            <td class="mobile-hide mono" style="font-size:.65rem;color:var(--muted-2)">${esc(r.last_ip||'—')}</td>
+            <td class="mobile-hide" style="font-size:.75rem">${srcCtry}<div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)">${srcIp}</div></td>
             <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.last_seen)}</td>
             <td>
               <div style="display:flex;gap:.25rem">

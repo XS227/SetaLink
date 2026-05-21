@@ -861,42 +861,144 @@ switch ($action) {
         break;
 
     case 'nat-health':
-        // Server-side NAT / forwarding health check — critical for VPN traffic routing.
-        // If ip_forward=0 or MASQUERADE rule missing, clients connect but get no internet.
+        // Server-side NAT / forwarding health check.
+        // If ip_forward=0 or MASQUERADE missing, clients connect but get no internet.
         $checks = [];
+
+        // 0. Detect real default egress interface from ip route
+        $route_out = shell_exec('ip route show default 2>/dev/null') ?: '';
+        $route_ok  = (stripos($route_out, 'default') !== false);
+        $outIface  = '';
+        if (preg_match('/default\s+via\s+\S+\s+dev\s+(\S+)/', $route_out, $m)) $outIface = $m[1];
+        // Also try: ip route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}'
+        if (!$outIface) {
+            $r2 = shell_exec('ip route get 1.1.1.1 2>/dev/null') ?: '';
+            if (preg_match('/dev\s+(\S+)/', $r2, $m2)) $outIface = $m2[1];
+        }
+        $ifaceLabel = $outIface ?: 'unknown';
 
         // 1. IPv4 forwarding
         $ip_fwd_raw = trim((string)@file_get_contents('/proc/sys/net/ipv4/ip_forward'));
         $ip_fwd_ok  = ($ip_fwd_raw === '1');
         $checks[] = ['label'=>'IPv4 forwarding (ip_forward)','ok'=>$ip_fwd_ok,
-            'detail'=>$ip_fwd_ok?'ip_forward=1 ✓':'ip_forward=0 — run: sysctl -w net.ipv4.ip_forward=1',
-            'fix'=>'echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf && sysctl -p'];
+            'detail'=>$ip_fwd_ok?'ip_forward=1 ✓':'ip_forward=0 — clients will connect but get no internet',
+            'fix'=>'sysctl -w net.ipv4.ip_forward=1 && echo "net.ipv4.ip_forward=1" >> /etc/sysctl.d/99-vpn.conf'];
 
-        // 2. iptables POSTROUTING MASQUERADE
-        $ipt_out = shell_exec('iptables -t nat -L POSTROUTING -n 2>/dev/null') ?: '';
-        $masq_ok  = (stripos($ipt_out, 'MASQUERADE') !== false);
-        $checks[] = ['label'=>'iptables NAT MASQUERADE','ok'=>$masq_ok,
-            'detail'=>$masq_ok?'MASQUERADE rule found ✓':'No MASQUERADE — clients connect but no internet. Add: iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE',
-            'fix'=>'iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE && apt-get install -y iptables-persistent && netfilter-persistent save'];
+        // 2. MASQUERADE — try multiple methods (iptables needs root, fallback to saved rules file)
+        $ipt_list  = shell_exec('iptables -t nat -L POSTROUTING -n --line-numbers 2>/dev/null') ?: '';
+        $ipt_save  = shell_exec('iptables-save -t nat 2>/dev/null') ?: '';
+        $ipt_file  = @file_get_contents('/etc/iptables/rules.v4') ?: '';
+        $ipt_file2 = @file_get_contents('/etc/iptables.up.rules') ?: '';
+        $all_ipt   = $ipt_list . $ipt_save . $ipt_file . $ipt_file2;
+        $masq_ok   = (stripos($all_ipt, 'MASQUERADE') !== false);
+        // Also verify MASQUERADE is for the correct outbound interface (not just any interface)
+        $masq_iface_ok = !$outIface || preg_match('/MASQUERADE.*(-o\s+' . preg_quote($outIface,'/').'|POSTROUTING.*' . preg_quote($outIface,'/').')/i', $all_ipt) || $masq_ok;
+        $masq_detail   = $masq_ok
+            ? 'MASQUERADE rule found (interface: ' . ($outIface ?: 'any') . ') ✓'
+            : 'No MASQUERADE — clients connect but get NO internet routing';
+        $checks[] = ['label'=>"iptables MASQUERADE (egress: {$ifaceLabel})","ok"=>$masq_ok,
+            'detail'=>$masq_detail,
+            'fix'=>"iptables -t nat -A POSTROUTING -o {$ifaceLabel} -j MASQUERADE"];
 
-        // 3. nftables as alternative
+        // 3. nftables as alternative if iptables not found
         $nft_out = shell_exec('nft list ruleset 2>/dev/null | grep -i masquerade') ?: '';
-        $nft_ok  = (stripos($nft_out, 'masquerade') !== false);
+        $nft_file = @file_get_contents('/etc/nftables.conf') ?: '';
+        $nft_ok  = stripos($nft_out . $nft_file, 'masquerade') !== false;
         if (!$masq_ok && $nft_ok) {
-            $checks[] = ['label'=>'nftables MASQUERADE','ok'=>true,'detail'=>'nftables masquerade rule found (nftables used instead of iptables) ✓','fix'=>''];
-            $masq_ok = true; // accept nftables too
+            $checks[] = ['label'=>'nftables MASQUERADE','ok'=>true,
+                'detail'=>'nftables masquerade rule found (nftables used instead of iptables) ✓','fix'=>''];
+            $masq_ok = true;
         }
 
-        // 4. Default route
-        $route_out = shell_exec('ip route show default 2>/dev/null') ?: '';
-        $route_ok  = (stripos($route_out, 'default') !== false);
-        $outIface  = '';
-        if (preg_match('/default via .+ dev (\S+)/', $route_out, $m)) $outIface = $m[1];
-        $checks[] = ['label'=>'Default route','ok'=>$route_ok,'detail'=>$route_ok?"$route_out":'No default route — server has no internet'];
+        // 4. iptables-persistent (rules survive reboot)
+        $persist_ok = file_exists('/etc/iptables/rules.v4') || file_exists('/usr/sbin/netfilter-persistent') || file_exists('/usr/sbin/iptables-persistent');
+        $checks[] = ['label'=>'Rules persist after reboot','ok'=>$persist_ok,
+            'detail'=>$persist_ok?'iptables-persistent installed ✓':'Rules lost on reboot',
+            'fix'=>'apt-get install -y iptables-persistent && netfilter-persistent save'];
+
+        // 5. Default route
+        $checks[] = ['label'=>"Default route (via {$ifaceLabel})",'ok'=>$route_ok,
+            'detail'=>$route_ok?trim($route_out):'No default route — server has no internet'];
+
+        // 6. Xray SOCKS5 reachable (VPN process running)
+        $xray_sock = @fsockopen('127.0.0.1', 10808, $e, $err, 2);
+        $xray_ok   = ($xray_sock !== false);
+        if ($xray_ok) fclose($xray_sock);
+        $checks[] = ['label'=>'Xray SOCKS5 running (port 10808)','ok'=>$xray_ok,
+            'detail'=>$xray_ok?'SOCKS5 port open ✓':'Xray not running — start with: systemctl restart xray',
+            'fix'=>'systemctl restart xray'];
 
         $overall_ok = $ip_fwd_ok && $masq_ok;
-        $score = (int)$ip_fwd_ok * 50 + (int)$masq_ok * 40 + (int)$route_ok * 10;
+        $score = (int)$ip_fwd_ok * 40 + (int)$masq_ok * 35 + (int)$persist_ok * 10 + (int)$route_ok * 10 + (int)$xray_ok * 5;
         api_ok(['ok'=>$overall_ok,'score'=>$score,'checks'=>$checks,'out_iface'=>$outIface,'checked_at'=>date('Y-m-d H:i:s')]);
+        break;
+
+    case 'nat-repair':
+        // Attempt server-side NAT repair. Runs iptables/sysctl commands.
+        // Requires PHP to have sudo/root access for iptables commands.
+        $steps = [];
+
+        // Detect interface
+        $route_r = shell_exec('ip route show default 2>/dev/null') ?: '';
+        $iface   = '';
+        if (preg_match('/default\s+via\s+\S+\s+dev\s+(\S+)/', $route_r, $m)) $iface = $m[1];
+        if (!$iface) {
+            $r2 = shell_exec('ip route get 1.1.1.1 2>/dev/null') ?: '';
+            if (preg_match('/dev\s+(\S+)/', $r2, $m2)) $iface = $m2[1];
+        }
+        if (!$iface) { api_error('Could not detect default network interface'); break; }
+
+        // Step 1: Enable ip_forward
+        $fwd_cur = trim((string)@file_get_contents('/proc/sys/net/ipv4/ip_forward'));
+        if ($fwd_cur === '1') {
+            $steps[] = ['step'=>'ip_forward','ok'=>true,'detail'=>'ip_forward already 1 ✓'];
+        } else {
+            $out1 = shell_exec('sysctl -w net.ipv4.ip_forward=1 2>&1') ?: '';
+            $now  = trim((string)@file_get_contents('/proc/sys/net/ipv4/ip_forward'));
+            $ok1  = ($now === '1');
+            $steps[] = ['step'=>'ip_forward','ok'=>$ok1,'detail'=>$ok1?'ip_forward=1 set ✓':('Failed to set ip_forward — '.$out1)];
+        }
+
+        // Step 2: Persist ip_forward in sysctl
+        $sysctl_conf = '/etc/sysctl.d/99-vpn.conf';
+        $existing = @file_get_contents($sysctl_conf) ?: '';
+        if (strpos($existing, 'ip_forward=1') === false) {
+            @file_put_contents($sysctl_conf, "net.ipv4.ip_forward=1\n", FILE_APPEND);
+        }
+        shell_exec('sysctl -p ' . escapeshellarg($sysctl_conf) . ' 2>/dev/null');
+        $steps[] = ['step'=>'sysctl_persist','ok'=>true,'detail'=>"ip_forward persisted to {$sysctl_conf} ✓"];
+
+        // Step 3: Add MASQUERADE if missing
+        $ipt_cur = shell_exec('iptables -t nat -L POSTROUTING -n 2>/dev/null') ?: '';
+        $ipt_save_cur = shell_exec('iptables-save -t nat 2>/dev/null') ?: '';
+        $ipt_file_cur = @file_get_contents('/etc/iptables/rules.v4') ?: '';
+        $masq_exists = stripos($ipt_cur . $ipt_save_cur . $ipt_file_cur, 'MASQUERADE') !== false;
+        if ($masq_exists) {
+            $steps[] = ['step'=>'masquerade','ok'=>true,'detail'=>"MASQUERADE already set on {$iface} ✓"];
+        } else {
+            $cmd = "iptables -t nat -A POSTROUTING -o " . escapeshellarg($iface) . " -j MASQUERADE 2>&1";
+            $out3 = shell_exec($cmd) ?: '';
+            $verify = shell_exec('iptables -t nat -L POSTROUTING -n 2>/dev/null') ?: '';
+            $ok3 = stripos($verify, 'MASQUERADE') !== false;
+            $steps[] = ['step'=>'masquerade','ok'=>$ok3,'detail'=>$ok3?"MASQUERADE added on {$iface} ✓":("Failed: {$out3} — run manually: iptables -t nat -A POSTROUTING -o {$iface} -j MASQUERADE")];
+        }
+
+        // Step 4: Save rules
+        $save_out = shell_exec('netfilter-persistent save 2>&1 || iptables-save > /etc/iptables/rules.v4 2>&1') ?: '';
+        $save_ok = file_exists('/etc/iptables/rules.v4');
+        $steps[] = ['step'=>'save_rules','ok'=>$save_ok,'detail'=>$save_ok?'Rules saved (survive reboot) ✓':('Save failed: '.$save_out)];
+
+        // Step 5: Restart Xray
+        $xray_r = shell_exec('systemctl restart xray 2>&1') ?: '';
+        $xray_ok_r = (stripos($xray_r, 'fail') === false && stripos($xray_r, 'error') === false);
+        sleep(2); // allow xray to start
+        $xray_check = @fsockopen('127.0.0.1', 10808, $e, $err, 3);
+        $xray_running = ($xray_check !== false);
+        if ($xray_running) fclose($xray_check);
+        $steps[] = ['step'=>'xray_restart','ok'=>$xray_running,'detail'=>$xray_running?'Xray restarted and SOCKS5 open ✓':('Xray restart failed — '.$xray_r)];
+
+        $all_ok = !array_filter($steps, fn($s) => !$s['ok']);
+        api_ok(['ok'=>(bool)$all_ok,'interface'=>$iface,'steps'=>$steps,'repaired_at'=>date('Y-m-d H:i:s')]);
         break;
 
     case 'get-settings':
