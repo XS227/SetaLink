@@ -934,71 +934,58 @@ switch ($action) {
         break;
 
     case 'nat-repair':
-        // Attempt server-side NAT repair. Runs iptables/sysctl commands.
-        // Requires PHP to have sudo/root access for iptables commands.
+        // Calls /usr/local/sbin/setalink-nat-repair via sudo.
+        // www-data is allowed to run ONLY that one script (see /etc/sudoers.d/setalink-webserver).
+        // Script detects the real egress interface itself — no arbitrary args passed.
+        $wrapper = '/usr/local/sbin/setalink-nat-repair';
+        if (!file_exists($wrapper)) {
+            api_error('Repair wrapper not installed. Run: sudo bash /var/www/setalink/scripts/setup-sudoers.sh');
+            break;
+        }
+
+        // Run the wrapper; capture all output lines as key=value pairs
+        $raw = shell_exec('sudo ' . escapeshellarg($wrapper) . ' 2>&1') ?: '';
+        $out = array_filter(array_map('trim', explode("\n", $raw)));
+
+        // Parse key=value lines from the wrapper
+        $kv = [];
+        foreach ($out as $line) {
+            if (preg_match('/^([A-Z_]+)=(.*)$/', $line, $m)) $kv[$m[1]] = $m[2];
+        }
+
+        if (isset($kv['ERROR'])) { api_error($kv['ERROR']); break; }
+
+        $iface = $kv['IFACE'] ?? '';
         $steps = [];
 
-        // Detect interface
-        $route_r = shell_exec('ip route show default 2>/dev/null') ?: '';
-        $iface   = '';
-        if (preg_match('/default\s+via\s+\S+\s+dev\s+(\S+)/', $route_r, $m)) $iface = $m[1];
-        if (!$iface) {
-            $r2 = shell_exec('ip route get 1.1.1.1 2>/dev/null') ?: '';
-            if (preg_match('/dev\s+(\S+)/', $r2, $m2)) $iface = $m2[1];
-        }
-        if (!$iface) { api_error('Could not detect default network interface'); break; }
+        $steps[] = ['step'=>'detect_interface','ok'=>(bool)$iface,
+            'detail'=>$iface?"Egress interface: {$iface} ✓":"Could not detect interface — raw: ".implode(' | ', array_slice($out,0,3))];
 
-        // Step 1: Enable ip_forward
-        $fwd_cur = trim((string)@file_get_contents('/proc/sys/net/ipv4/ip_forward'));
-        if ($fwd_cur === '1') {
-            $steps[] = ['step'=>'ip_forward','ok'=>true,'detail'=>'ip_forward already 1 ✓'];
-        } else {
-            $out1 = shell_exec('sysctl -w net.ipv4.ip_forward=1 2>&1') ?: '';
-            $now  = trim((string)@file_get_contents('/proc/sys/net/ipv4/ip_forward'));
-            $ok1  = ($now === '1');
-            $steps[] = ['step'=>'ip_forward','ok'=>$ok1,'detail'=>$ok1?'ip_forward=1 set ✓':('Failed to set ip_forward — '.$out1)];
-        }
+        $steps[] = ['step'=>'ip_forward','ok'=>($kv['IP_FORWARD'] ?? '0') === '1',
+            'detail'=>($kv['IP_FORWARD'] ?? '0') === '1' ? 'ip_forward=1 ✓' : 'ip_forward not set'];
 
-        // Step 2: Persist ip_forward in sysctl
-        $sysctl_conf = '/etc/sysctl.d/99-vpn.conf';
-        $existing = @file_get_contents($sysctl_conf) ?: '';
-        if (strpos($existing, 'ip_forward=1') === false) {
-            @file_put_contents($sysctl_conf, "net.ipv4.ip_forward=1\n", FILE_APPEND);
-        }
-        shell_exec('sysctl -p ' . escapeshellarg($sysctl_conf) . ' 2>/dev/null');
-        $steps[] = ['step'=>'sysctl_persist','ok'=>true,'detail'=>"ip_forward persisted to {$sysctl_conf} ✓"];
+        $steps[] = ['step'=>'sysctl_persist','ok'=>isset($kv['SYSCTL_PERSISTED']),
+            'detail'=>isset($kv['SYSCTL_PERSISTED']) ? 'ip_forward persisted to /etc/sysctl.d/99-vpn-nat.conf ✓' : 'Persist skipped'];
 
-        // Step 3: Add MASQUERADE if missing
-        $ipt_cur = shell_exec('iptables -t nat -L POSTROUTING -n 2>/dev/null') ?: '';
-        $ipt_save_cur = shell_exec('iptables-save -t nat 2>/dev/null') ?: '';
-        $ipt_file_cur = @file_get_contents('/etc/iptables/rules.v4') ?: '';
-        $masq_exists = stripos($ipt_cur . $ipt_save_cur . $ipt_file_cur, 'MASQUERADE') !== false;
-        if ($masq_exists) {
-            $steps[] = ['step'=>'masquerade','ok'=>true,'detail'=>"MASQUERADE already set on {$iface} ✓"];
-        } else {
-            $cmd = "iptables -t nat -A POSTROUTING -o " . escapeshellarg($iface) . " -j MASQUERADE 2>&1";
-            $out3 = shell_exec($cmd) ?: '';
-            $verify = shell_exec('iptables -t nat -L POSTROUTING -n 2>/dev/null') ?: '';
-            $ok3 = stripos($verify, 'MASQUERADE') !== false;
-            $steps[] = ['step'=>'masquerade','ok'=>$ok3,'detail'=>$ok3?"MASQUERADE added on {$iface} ✓":("Failed: {$out3} — run manually: iptables -t nat -A POSTROUTING -o {$iface} -j MASQUERADE")];
-        }
+        $masq_added   = isset($kv['MASQUERADE_ADDED']);
+        $masq_existed = isset($kv['MASQUERADE_EXISTS']);
+        $steps[] = ['step'=>'masquerade','ok'=>($masq_added || $masq_existed),
+            'detail'=>$masq_added ? "MASQUERADE added on {$iface} ✓" : ($masq_existed ? "MASQUERADE already present on {$iface} ✓" : 'MASQUERADE step missing from output')];
 
-        // Step 4: Save rules
-        $save_out = shell_exec('netfilter-persistent save 2>&1 || iptables-save > /etc/iptables/rules.v4 2>&1') ?: '';
-        $save_ok = file_exists('/etc/iptables/rules.v4');
-        $steps[] = ['step'=>'save_rules','ok'=>$save_ok,'detail'=>$save_ok?'Rules saved (survive reboot) ✓':('Save failed: '.$save_out)];
+        $saved_by = $kv['RULES_SAVED'] ?? '';
+        $steps[] = ['step'=>'save_rules','ok'=>($saved_by !== '' && $saved_by !== 'failed'),
+            'detail'=>($saved_by && $saved_by !== 'failed') ? "Rules saved via {$saved_by} ✓" : 'Rule save failed — rules lost on reboot'];
 
-        // Step 5: Restart Xray
-        $xray_r = shell_exec('systemctl restart xray 2>&1') ?: '';
-        $xray_ok_r = (stripos($xray_r, 'fail') === false && stripos($xray_r, 'error') === false);
-        sleep(2); // allow xray to start
-        $xray_check = @fsockopen('127.0.0.1', 10808, $e, $err, 3);
-        $xray_running = ($xray_check !== false);
-        if ($xray_running) fclose($xray_check);
-        $steps[] = ['step'=>'xray_restart','ok'=>$xray_running,'detail'=>$xray_running?'Xray restarted and SOCKS5 open ✓':('Xray restart failed — '.$xray_r)];
+        $xray_ok = ($kv['XRAY_OK'] ?? '0') === '1';
+        // Verify SOCKS5 independently
+        $xsock = @fsockopen('127.0.0.1', 10808, $e2, $e2msg, 2);
+        $xray_socks = ($xsock !== false);
+        if ($xray_socks) fclose($xsock);
+        $steps[] = ['step'=>'xray_running','ok'=>($xray_ok || $xray_socks),
+            'detail'=>($xray_ok || $xray_socks) ? 'Xray running, SOCKS5 port 10808 open ✓' : 'Xray may not be running — check: systemctl status xray'];
 
-        $all_ok = !array_filter($steps, fn($s) => !$s['ok']);
-        api_ok(['ok'=>(bool)$all_ok,'interface'=>$iface,'steps'=>$steps,'repaired_at'=>date('Y-m-d H:i:s')]);
+        $all_ok = count(array_filter($steps, fn($s) => !$s['ok'])) === 0;
+        api_ok(['ok'=>$all_ok,'interface'=>$iface,'steps'=>$steps,'raw_lines'=>array_values($out),'repaired_at'=>date('Y-m-d H:i:s')]);
         break;
 
     case 'get-settings':
@@ -1148,6 +1135,42 @@ switch ($action) {
             'isp_breakdown' => $isp_rows,
             'checked_at'    => date('Y-m-d H:i:s'),
         ]);
+        break;
+
+    case 'dns-probe':
+        // Test DNS resolution against multiple resolvers with latency measurement.
+        // Uses dig (preferred) with fallback to gethostbyname().
+        $domains   = ['cloudflare.com', 'google.com'];
+        $resolvers = ['1.1.1.1', '8.8.8.8', '9.9.9.9'];
+        $has_dig   = (trim(shell_exec('which dig 2>/dev/null') ?: '') !== '');
+        $probe_results = [];
+
+        foreach ($resolvers as $ns) {
+            $domain_results = [];
+            foreach ($domains as $domain) {
+                $t0 = microtime(true);
+                if ($has_dig) {
+                    $cmd = 'dig @' . escapeshellarg($ns) . ' ' . escapeshellarg($domain) . ' A +short +time=3 +tries=1 2>/dev/null';
+                    $out = trim(shell_exec($cmd) ?: '');
+                    $first = strtok($out, "\n");
+                    $ok  = (bool)filter_var($first, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4);
+                    $ip  = $ok ? (string)$first : '';
+                } else {
+                    $ip  = gethostbyname($domain);
+                    $ok  = ($ip !== $domain) && (bool)filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4);
+                }
+                $ms = (int)round((microtime(true) - $t0) * 1000);
+                $domain_results[] = ['domain'=>$domain,'ok'=>$ok,'latency_ms'=>$ms,'ip'=>$ok?$ip:''];
+            }
+            $all_ok = count(array_filter($domain_results, fn($r) => $r['ok'])) === count($domain_results);
+            $avg_ms = count($domain_results) > 0
+                ? (int)round(array_sum(array_column($domain_results,'latency_ms')) / count($domain_results))
+                : 0;
+            $probe_results[] = ['resolver'=>$ns,'ok'=>$all_ok,'avg_latency_ms'=>$avg_ms,'domains'=>$domain_results];
+        }
+
+        $overall_ok = count(array_filter($probe_results, fn($r) => $r['ok'])) > 0;
+        api_ok(['ok'=>$overall_ok,'resolvers'=>$probe_results,'method'=>$has_dig?'dig':'gethostbyname','probed_at'=>date('Y-m-d H:i:s')]);
         break;
 
     case 'iran-device-failures':

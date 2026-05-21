@@ -1,6 +1,6 @@
 {
-  "version": "0.9.21",
-  "versionCode": 31,
+  "version": "0.9.22",
+  "versionCode": 32,
   "releaseDate": "2026-05-21",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
@@ -11,21 +11,20 @@
     "percent": 100,
     "exclude_countries": []
   },
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.21.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.22.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "a0461cd99aa8f14e00865bde41bcac29b700d59f56c3e354b4ac0a1970a4a665", "algorithm": "sha256" },
-  "size": 54085932,
+  "checksum": { "sha256": "74e85e4b8af6ddeacd9fa84e630439ecc5ea3ac086ceeaac4256a67ef6515318", "algorithm": "sha256" },
+  "size": 54086112,
   "changelog": [
-    "Admin NAT checker now detects real egress interface (ens3, eth0, etc.)",
-    "Admin Repair NAT button: auto-fixes ip_forward, MASQUERADE, saves rules",
-    "Admin devices table: RX/TX bytes, DNS status, active SNI columns",
-    "Admin Iran page: per-device failure tracker, transport success rates",
-    "App update banner + force-update blocking modal",
-    "Quota display fix: used never shows > total",
-    "Staged rollout: Iran-first support via version.json"
+    "DNS routing through VPN tunnel: DoH (1.1.1.1, 8.8.8.8, 9.9.9.9) replaces plain UDP DNS",
+    "DNS fallback list: 1.1.1.1 → 8.8.8.8 → 9.9.9.9 with IPv4-only strategy",
+    "Admin DNS probe: test resolvers from server with latency + per-domain results",
+    "Admin devices table: CONNECTED / ROUTED / DNS OK three-state status indicators",
+    "Admin NAT repair: sudo wrapper fixed (www-data can now run iptables via privileged script)",
+    "Admin Repair NAT button: auto-fixes ip_forward, MASQUERADE, saves rules, restarts Xray"
   ],
   "channels": {
-    "stable":  { "version": "0.9.21",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.21.apk" },
+    "stable":  { "version": "0.9.22",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.22.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }
