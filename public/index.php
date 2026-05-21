@@ -9,19 +9,70 @@ foreach (['ref', 'start'] as $key) {
 }
 $dl_base  = '/download/setalink-latest.apk';
 $dl_link  = $ref_code ? '/download/setalink-latest.apk?ref=' . urlencode($ref_code) : $dl_base;
+$canonical = 'https://setalink.no/';
+$og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-512.png';
 ?><!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SetaLink · Free Internet for Everyone</title>
-  <meta name="description" content="SetaLink — AI-powered VPN for censored regions. Android-only. 1 GB free on install. VLESS+Reality, real internet validation.">
-  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>SetaLink — Free VPN for Iran &amp; Turkey | Anti-Censorship Android VPN</title>
+  <meta name="description" content="SetaLink: AI-powered VLESS+Reality VPN for Iran, Turkey and censored regions. 1 GB free on install. No account. Bypasses DPI with DNS-over-HTTPS. Android APK.">
+  <meta name="keywords" content="VPN Iran, free VPN Iran, anti-censorship VPN, V2Ray Iran, Reality protocol, VLESS VPN, bypass DPI, Android VPN, VPN Turkey, فیلترشکن رایگان">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="<?= $canonical ?>">
+  <!-- Google verification -->
+  <meta name="google-site-verification" content="7LR7rEIJvSWpajIB1Ei5wGNNBlx2chBCNnsRKuQgLG4">
+  <!-- Open Graph -->
+  <meta property="og:type"        content="website">
+  <meta property="og:url"         content="<?= $canonical ?>">
+  <meta property="og:title"       content="SetaLink — Free VPN for Iran &amp; Turkey">
+  <meta property="og:description" content="AI-powered anti-censorship VPN. VLESS+Reality protocol. 1 GB free. No account. Android only.">
+  <meta property="og:image"       content="<?= $og_img ?>">
+  <meta property="og:locale"      content="en_US">
+  <meta property="og:locale:alternate" content="fa_IR">
+  <meta property="og:site_name"   content="SetaLink VPN">
+  <!-- Twitter / X -->
+  <meta name="twitter:card"        content="summary_large_image">
+  <meta name="twitter:title"       content="SetaLink — Free VPN for Iran &amp; Turkey">
+  <meta name="twitter:description" content="AI-powered anti-censorship VPN. VLESS+Reality. 1 GB free. Android only.">
+  <meta name="twitter:image"       content="<?= $og_img ?>">
+  <!-- Fonts + styles -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Vazirmatn:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="icon" type="image/x-icon" href="/assets/logo/shirokhorshid/favicon.ico">
+  <link rel="apple-touch-icon" href="/assets/logo/shirokhorshid/app-icon-connected-180.png">
   <link rel="stylesheet" href="/css/main.css">
+  <!-- Google Analytics -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-QVDJGX86KT"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-QVDJGX86KT');</script>
+  <!-- Schema.org JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "SetaLink VPN",
+        "url": "https://setalink.no",
+        "logo": "https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-512.png",
+        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink"]
+      },
+      {
+        "@type": "SoftwareApplication",
+        "name": "SetaLink VPN",
+        "operatingSystem": "Android",
+        "applicationCategory": "NetworkingApplication",
+        "description": "AI-powered VPN for censored regions. VLESS+Reality, DoH, XHTTP fallback. 1 GB free on install.",
+        "url": "https://setalink.no",
+        "downloadUrl": "https://setalink.no/download/setalink-latest.apk",
+        "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+        "author": {"@type": "Organization", "name": "SetaLink VPN"}
+      }
+    ]
+  }
+  </script>
 </head>
 <body dir="ltr">
 <div class="page-wrap">
@@ -419,5 +470,27 @@ $dl_link  = $ref_code ? '/download/setalink-latest.apk?ref=' . urlencode($ref_co
 </div><!-- .page-wrap -->
 
 <script src="/js/main.js" defer></script>
+<?php
+// FAQ schema — mirrors the FAQ items rendered in HTML above
+$faq_schema_items = [
+  ['How does the invite system work?', 'When you install SetaLink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. There is no limit on how many people you can invite.'],
+  ['What is the 1 GB emergency package?', 'Every new device that installs SetaLink automatically receives 1 GB of free data — no account, no login, no credit card. Anyone who suddenly loses internet access can get back online immediately.'],
+  ['How does the AI protocol optimizer work?', 'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins.'],
+  ['Does SetaLink keep logs?', 'No user activity logs are kept. Device IDs are anonymous hashes. Aggregate statistics are stored but cannot be traced to individual users.'],
+  ['Why Android only?', 'Android allows full TUN-based VPN without App Store restrictions. iOS requires App Store distribution incompatible with an anti-censorship tool. Android is the priority market for Iran and Turkey.'],
+  ['What happens when Iran blocks a new SNI?', 'The Remote Config system allows pushing updated SNI priority lists to all apps without requiring an update. The AI optimizer also drops blocked SNIs in priority automatically.'],
+  ['How is traffic different from normal HTTPS?', 'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain like www.microsoft.com. Deep Packet Inspection cannot tell it apart.'],
+];
+$faq_entities = array_map(fn($f) => [
+  '@type' => 'Question',
+  'name' => $f[0],
+  'acceptedAnswer' => ['@type' => 'Answer', 'text' => $f[1]],
+], $faq_schema_items);
+echo '<script type="application/ld+json">' . json_encode([
+  '@context' => 'https://schema.org',
+  '@type' => 'FAQPage',
+  'mainEntity' => $faq_entities,
+], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>' . "\n";
+?>
 </body>
 </html>

@@ -1,19 +1,32 @@
 <?php
 header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
+$canonical = 'https://setalink.no/faq.php';
+$og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-512.png';
 ?><!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SetaLink · FAQ</title>
-  <meta name="description" content="Frequently asked questions about SetaLink VPN — how it works, security, Android-only, invites, and more.">
-  <meta name="robots" content="noindex,nofollow">
+  <title>SetaLink FAQ — VPN for Iran, Anti-Censorship, Reality Protocol</title>
+  <meta name="description" content="Frequently asked questions about SetaLink VPN — how VLESS+Reality bypasses censorship, 1 GB free emergency package, invite system, Android-only, and more.">
+  <meta name="keywords" content="SetaLink FAQ, VPN Iran questions, Reality protocol explained, anti-censorship VPN FAQ, VLESS VPN">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="<?= $canonical ?>">
+  <meta name="google-site-verification" content="7LR7rEIJvSWpajIB1Ei5wGNNBlx2chBCNnsRKuQgLG4">
+  <meta property="og:type"        content="website">
+  <meta property="og:url"         content="<?= $canonical ?>">
+  <meta property="og:title"       content="SetaLink FAQ — VPN for Iran &amp; Anti-Censorship">
+  <meta property="og:description" content="How VLESS+Reality bypasses censorship, emergency 1 GB package, invite system, and more.">
+  <meta property="og:image"       content="<?= $og_img ?>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Vazirmatn:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="icon" type="image/x-icon" href="/assets/logo/shirokhorshid/favicon.ico">
+  <link rel="apple-touch-icon" href="/assets/logo/shirokhorshid/app-icon-connected-180.png">
   <link rel="stylesheet" href="/css/main.css">
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-QVDJGX86KT"></script>
+  <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-QVDJGX86KT');</script>
 </head>
 <body dir="ltr">
 <div class="page-wrap">
