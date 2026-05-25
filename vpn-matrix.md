@@ -2,7 +2,7 @@
 
 Updated: 2026-05-21  
 Server: 178.104.77.231 (Hetzner Nuremberg, Germany — Ubuntu 24.04, nginx 1.24, Xray 26.3.27)  
-Edge proxy: edge.setalink.no → 5.249.252.221 (WS / XHTTP / HTTPUpgrade, CF UUID whitelisted)
+Edge proxy: edge.setalink.no → 5.249.252.221 (WS / XHTTP / HTTPUpgrade, CF+Oracle+Amazon UUIDs whitelisted)
 
 **Active Reality inbounds — 3 independent keypairs:**
 - `fd709d48-a983-484a-99e3-afc97e2c3692` — SetaLink-Cloudflare :443
@@ -150,7 +150,7 @@ Test ONE profile at a time. Record for each:
 |------|--------|
 | 2026-05-19 | Fixed UUID/SNI mismatch on old server (One.com/5.249.252.221) |
 | 2026-05-21 | **Migrated to Hetzner Nuremberg (178.104.77.231)** — 3 Reality inbounds with independent keypairs |
-| 2026-05-21 | CF UUID (fd709d48) whitelisted on old server for WS/XHTTP/HTTPUpgrade continuity |
+| 2026-05-21 | CF UUID (fd709d48) whitelisted on old server for WS/XHTTP/HTTPUpgrade continuity |\n| 2026-05-25 | Oracle + Amazon UUIDs whitelisted on edge proxy — fixes fallback for Oracle/Amazon Reality profiles |
 | 2026-05-21 | Bootstrap hardcode + API updated to Hetzner CF inbound |
 
 ---

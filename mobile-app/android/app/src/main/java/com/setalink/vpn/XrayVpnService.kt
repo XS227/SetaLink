@@ -705,10 +705,20 @@ class XrayVpnService : VpnService() {
         }
 
         if (!probeOk) {
-            // Try plain HTTP fallback
+            // Try plain HTTP fallback with domain names
             val (ok, bytes, snippet) = runDeepHttpProbe("connectivitycheck.gstatic.com", 80, true)
             appendLog("[TUN-FALLBACK] SOCKS5 HTTP probe: ok=$ok bytes=$bytes snippet=$snippet")
             if (ok) { probeOk = true; probeNote = "HTTP OK via connectivitycheck.gstatic.com (${bytes}B)" }
+            else probeNote = "domain probes failed — last: $snippet"
+        }
+
+        // Final raw-IP fallback: 1.1.1.1:80 avoids DNS resolution entirely.
+        // If domain probes fail due to DNS being broken through this tunnel but the
+        // tunnel itself is forwarding TCP, this confirms connectivity exists.
+        if (!probeOk) {
+            val (ok, bytes, snippet) = runDeepHttpProbe("1.1.1.1", 80, false)
+            appendLog("[TUN-FALLBACK] SOCKS5 raw-IP probe 1.1.1.1:80: ok=$ok bytes=$bytes snippet=$snippet")
+            if (ok) { probeOk = true; probeNote = "HTTP OK via 1.1.1.1:80 raw-IP (${bytes}B)" }
             else probeNote = "All SOCKS5 probes failed — last: $snippet"
         }
 

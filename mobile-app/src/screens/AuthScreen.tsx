@@ -3,12 +3,29 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Linking } from 're
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useAuthStore } from '../stores/authStore';
 import { useT } from '../i18n';
+import { registerDevice } from '../services/entitlementService';
+import { getStableDeviceId } from '../services/deviceIdentityService';
 
 interface Props { onAuth: () => void; }
 
 // Admin/founder bootstrap codes that always pass validation
 const MASTER_CODES = new Set(['XS-227']);
 const INVITE_RE    = /^[A-Z0-9-]{6,32}$/;
+
+// After local invite login, attempt backend registration so userId is real (SL-227-XXXXXXXX)
+// before the user sees the welcome screen. Fire-and-forget — offline is fine.
+async function tryBackendRegister(inviteCode: string, referralParent?: string | null) {
+  try {
+    const deviceId    = await getStableDeviceId();
+    const entitlement = await registerDevice(deviceId, 'android', {
+      referralCode: referralParent ?? inviteCode,
+    });
+    useAuthStore.getState().loginWithDevice(entitlement);
+  } catch {
+    // Offline or server error — local invite login remains active; userId stays empty
+    // and will be backfilled on next app launch via AppNavigator's background sync.
+  }
+}
 
 export function AuthScreen({ onAuth }: Props) {
   const { t } = useT();
@@ -28,6 +45,7 @@ export function AuthScreen({ onAuth }: Props) {
         const parent = parsed.searchParams.get('ref');
         if (INVITE_RE.test(code)) {
           loginWithInvite({ inviteCode: code, referralParent: parent });
+          void tryBackendRegister(code, parent);
           onAuth();
         }
       } catch {}
@@ -44,6 +62,7 @@ export function AuthScreen({ onAuth }: Props) {
     }
     setError(null);
     loginWithInvite({ inviteCode: sanitized });
+    void tryBackendRegister(sanitized);
     onAuth();
   };
 
