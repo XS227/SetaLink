@@ -13,7 +13,7 @@
  * WS/XHTTP/HTTPUpgrade: edge.setalink.no → old server (UUID whitelisted)
  */
 
-import { storage } from '../storage/storage';
+import { storage, syncGet } from '../storage/storage';
 
 const BOOTSTRAP_URL =
   'https://setalink.no/api.php?mobile=1&action=bootstrap&_token=setalink-mobile-diag-v1';
@@ -96,7 +96,7 @@ export interface EmergencyProfile {
 /** Returns the bootstrapped emergency profile, or null if not available. */
 export async function getEmergencyProfile(): Promise<EmergencyProfile | null> {
   // Try cached bootstrap first
-  const cached = storage.getItem(BOOTSTRAP_CACHE_KEY);
+  const cached = syncGet(BOOTSTRAP_CACHE_KEY);
   if (cached) {
     try {
       const p = JSON.parse(cached) as EmergencyProfile;

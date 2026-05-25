@@ -4,7 +4,7 @@
  * Used by autoConnector to sort profiles by historical success rate.
  */
 
-import { storage } from '../storage/storage';
+import { storage, syncGet } from '../storage/storage';
 
 const HISTORY_KEY = 'profile_success_history_v2';
 const MAX_RECORDS = 200;
@@ -23,7 +23,7 @@ type HistoryMap = Record<string, ProfileRecord>;
 
 function loadHistory(): HistoryMap {
   try {
-    const raw = storage.getItem(HISTORY_KEY);
+    const raw = syncGet(HISTORY_KEY);
     if (raw) return JSON.parse(raw) as HistoryMap;
   } catch {}
   return {};

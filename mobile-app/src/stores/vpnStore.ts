@@ -126,7 +126,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
           reportVpnStatus(user.deviceId, 'online', {
             protocol,
             internetOk: getLastConnectProbeOk?.() ?? false,
-            activeSni:  server?.sni ?? '',
+            activeSni:  '',
           }).catch(() => {});
         }
       } catch {}

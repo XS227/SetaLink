@@ -14,7 +14,7 @@ export const ProfileAPI = {
   get: (token: string) =>
     apiGet<AuthUser>('/profile', token),
 
-  update: (token: string, data: Partial<Pick<AuthUser, 'name'>>) =>
+  update: (token: string, data: Partial<AuthUser>) =>
     apiPatch<AuthUser>('/profile', data, token),
 
   subscription: (token: string) =>

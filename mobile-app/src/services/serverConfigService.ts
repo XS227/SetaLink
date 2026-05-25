@@ -1,3 +1,6 @@
+// eslint-disable-next-line no-var
+declare var btoa: (data: string) => string;
+
 /**
  * Server config service — resolves per-server Xray credentials.
  *
@@ -93,7 +96,7 @@ function _mockCredentials(serverId: string): ServerCredentials {
     uuid:        `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`,
     address:     `${serverId}.edge.setalink.net`,
     port:        443,
-    publicKey:   `AAAA${Buffer.from(serverId + 'pubkey').toString('base64').slice(0, 40)}`,
+    publicKey:   `AAAA${btoa(serverId + 'pubkey').slice(0, 40)}`,
     shortId:     hex.slice(0, 8),
     sni:         'www.microsoft.com',
     flow:        'xtls-rprx-vision',

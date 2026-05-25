@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAuthStore } from '../stores/authStore';
 
 export function useGreeting(): { greeting: string; name: string } {
-  const name = useAuthStore((s) => s.user?.name ?? '');
+  const name = useAuthStore((s) => s.user?.userId ?? '');
 
   const greeting = useMemo(() => {
     const h = new Date().getHours();

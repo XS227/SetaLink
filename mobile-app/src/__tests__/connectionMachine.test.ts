@@ -27,10 +27,11 @@ function buildMachine(overrides?: Partial<{ adapter: VpnAdapter }>) {
 function makeAdapter(opts: { succeed?: boolean } = {}): VpnAdapter {
   const { succeed = true } = opts;
   return {
-    connect:    jest.fn(() => succeed ? Promise.resolve() : Promise.reject(new Error('fail'))),
-    disconnect: jest.fn(() => Promise.resolve()),
-    getStats:   jest.fn(() => Promise.resolve({ uploadBytes: 0, downloadBytes: 0, pingMs: 10, uptime: 0 })),
-    isRunning:  jest.fn(() => Promise.resolve(succeed)),
+    connect:          jest.fn(() => succeed ? Promise.resolve() : Promise.reject(new Error('fail'))),
+    connectEmergency: jest.fn(() => succeed ? Promise.resolve() : Promise.reject(new Error('fail'))),
+    disconnect:       jest.fn(() => Promise.resolve()),
+    getStats:         jest.fn(() => Promise.resolve({ uploadBytes: 0, downloadBytes: 0, pingMs: 10, uptime: 0 })),
+    isRunning:        jest.fn(() => Promise.resolve(succeed)),
   };
 }
 

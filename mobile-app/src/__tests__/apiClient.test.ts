@@ -1,7 +1,7 @@
 import { apiGet, apiPost, apiPatch, apiDelete, ApiError, API_BASE } from '../services/api/client';
 
 const mockFetch = jest.fn();
-(global as any).fetch = mockFetch;
+(globalThis as unknown as Record<string, unknown>).fetch = mockFetch;
 
 function okJson(body: unknown, status = 200) {
   return Promise.resolve({

@@ -11,7 +11,7 @@
  * Config is cached in MMKV with a TTL so the app survives offline.
  */
 
-import { storage } from '../storage/storage';
+import { storage, syncGet } from '../storage/storage';
 
 const REMOTE_CONFIG_URL =
   'https://setalink.no/api.php?mobile=1&action=remote-config&_token=setalink-mobile-diag-v1';
@@ -59,8 +59,8 @@ let _inFlight: Promise<RemoteConfig> | null = null;
 
 export async function getRemoteConfig(): Promise<RemoteConfig> {
   // Serve from cache if not expired
-  const cached  = storage.getItem(CACHE_KEY);
-  const ttlStr  = storage.getItem(CACHE_TTL_KEY);
+  const cached  = syncGet(CACHE_KEY);
+  const ttlStr  = syncGet(CACHE_TTL_KEY);
   const expiry  = ttlStr ? parseInt(ttlStr, 10) : 0;
 
   if (cached && Date.now() < expiry) {
@@ -90,7 +90,7 @@ async function _fetch(): Promise<RemoteConfig> {
   } catch { /* network unavailable — use cache or default */ }
 
   // Serve stale cache rather than default if available
-  const cached = storage.getItem(CACHE_KEY);
+  const cached = syncGet(CACHE_KEY);
   if (cached) {
     try { return { ...DEFAULT_CONFIG, ...JSON.parse(cached) }; } catch {}
   }

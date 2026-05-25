@@ -1,5 +1,5 @@
 import { Linking } from 'react-native';
-import { storage } from '../storage/storage';
+import { storage, syncGet } from '../storage/storage';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 
 export interface VersionInfo {
@@ -91,7 +91,7 @@ export async function checkForUpdate(deviceCountry?: string, channel: 'stable' |
     return { hasUpdate, forceUpdate, latestVersion: targetVersion, currentVersion: APP_VERSION, apkUrl: targetApkUrl, changelog: info.changelog ?? [], isInRollout: inRollout };
   } catch {
     // Serve cached
-    const cached = storage.getItem(CACHE_KEY);
+    const cached = syncGet(CACHE_KEY);
     if (cached) {
       try {
         const { result } = JSON.parse(cached) as { result: UpdateCheckResult; ts: number };
@@ -104,7 +104,7 @@ export async function checkForUpdate(deviceCountry?: string, channel: 'stable' |
 
 /** Returns true if the user has snoozed this update in the last 24 hours. */
 export function isUpdateSnoozed(): boolean {
-  const ts = storage.getItem(SNOOZE_KEY);
+  const ts = syncGet(SNOOZE_KEY);
   if (!ts) return false;
   return Date.now() - parseInt(ts, 10) < SNOOZE_TTL;
 }

@@ -38,3 +38,8 @@ export const storage: StateStorage = {
   setItem:    (key, value) => resolve().setItem(key, value),
   removeItem: (key) => resolve().removeItem(key),
 };
+
+/** Synchronous getItem — safe because both MMKV and the fallback Map are sync. */
+export function syncGet(key: string): string | null {
+  return storage.getItem(key) as string | null;
+}
