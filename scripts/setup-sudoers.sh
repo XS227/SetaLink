@@ -71,11 +71,14 @@ chmod 755 "$WRAPPER"
 chown root:root "$WRAPPER"
 echo "   OK: $WRAPPER"
 
+SYNC_SCRIPT=/usr/local/sbin/setalink-sync-edge-config
+
 echo "[2/3] Writing sudoers rule: $SUDOERS"
 cat > "$SUDOERS" <<SUDOERS_EOF
-# SetaLink admin NAT repair — www-data may run ONLY this one script as root.
-# The script itself is root-owned 755 so its contents cannot be modified by www-data.
+# SetaLink admin privileged scripts — www-data may run ONLY these two scripts as root.
+# Both scripts are root-owned 755 so their contents cannot be modified by www-data.
 www-data ALL=(ALL) NOPASSWD: $WRAPPER
+www-data ALL=(ALL) NOPASSWD: $SYNC_SCRIPT
 SUDOERS_EOF
 
 # Validate sudoers before activating (visudo -c on the new file)

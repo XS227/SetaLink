@@ -199,6 +199,21 @@ function init_device_tables(PDO $db): void {
         "ALTER TABLE devices ADD COLUMN invite_count INTEGER DEFAULT 0",
     ] as $m) { try { $db->exec($m); } catch (Exception $e) {} }
 }
+function generate_user_id(int $rowid): string {
+    $chars  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    $suffix = '';
+    for ($i = 0; $i < 8; $i++) $suffix .= $chars[random_int(0, strlen($chars) - 1)];
+    return 'SL-' . $rowid . '-' . $suffix;
+}
+function ensure_user_id(PDO $db, array &$dev): void {
+    if (!empty($dev['user_id'])) return;
+    // Fetch the rowid if we don't have it
+    $rowid = (int)$db->query("SELECT rowid FROM devices WHERE device_id = " . $db->quote($dev['device_id']))->fetchColumn();
+    if (!$rowid) return;
+    $uid = generate_user_id($rowid);
+    $db->prepare("UPDATE devices SET user_id=? WHERE device_id=?")->execute([$uid, $dev['device_id']]);
+    $dev['user_id'] = $uid;
+}
 function generate_referral_code(PDO $db): string {
     $chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     for ($i = 0; $i < 30; $i++) {
@@ -316,8 +331,10 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $dev = $st->fetch(PDO::FETCH_ASSOC);
         if (!$dev) api_err('device not found', 404);
         $db->prepare("UPDATE devices SET last_seen = datetime('now') WHERE device_id = ?")->execute([$device_id]);
+        ensure_user_id($db, $dev);
         api_ok([
             'device_id'         => $dev['device_id'],
+            'user_id'           => $dev['user_id'] ?? '',
             'referral_code'     => $dev['referral_code'],
             'plan'              => $dev['plan'],
             'quota_bytes_total' => (int)$dev['quota_bytes_total'],
@@ -356,11 +373,17 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
             $ref = generate_referral_code($db);
             $db->prepare("INSERT INTO devices (device_id,referral_code,plan,quota_bytes_total,quota_bytes_used,platform,app_version,language,country,status) VALUES (?,?,'free',?,0,?,?,?,?,'online')")
                ->execute([$device_id, $ref, ONE_GB_BYTES, $platform, $app_version, $language, $country]);
+            // Generate user_id immediately using the new rowid
+            $rowid = (int)$db->lastInsertId();
+            $uid   = generate_user_id($rowid);
+            $db->prepare("UPDATE devices SET user_id=? WHERE device_id=?")->execute([$uid, $device_id]);
             $st->execute([$device_id]);
             $dev = $st->fetch(PDO::FETCH_ASSOC);
         }
+        ensure_user_id($db, $dev);
         api_ok([
             'device_id'         => $dev['device_id'],
+            'user_id'           => $dev['user_id'] ?? '',
             'referral_code'     => $dev['referral_code'],
             'plan'              => $dev['plan'],
             'quota_bytes_total' => (int)$dev['quota_bytes_total'],
@@ -414,15 +437,36 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
                 'remaining_bytes' => max(0, (int)$dev['quota_bytes_total'] - $new_used)]);
     }
     if ($ma === 'update-status') {
-        $device_id       = trim((string)($_POST['device_id']       ?? ''));
-        $status          = trim((string)($_POST['status']          ?? 'offline'));
-        $active_protocol = substr(trim((string)($_POST['active_protocol'] ?? '')), 0, 60);
+        $device_id        = trim((string)($_POST['device_id']        ?? ''));
+        $status           = trim((string)($_POST['status']           ?? 'offline'));
+        $active_protocol  = substr(trim((string)($_POST['active_protocol']  ?? '')), 0, 60);
+        $active_sni       = substr(trim((string)($_POST['active_sni']       ?? '')), 0, 120);
+        $internet_ok      = isset($_POST['internet_ok'])  ? (int)(bool)$_POST['internet_ok']  : null;
+        $dns_ok           = isset($_POST['dns_ok'])       ? (int)(bool)$_POST['dns_ok']       : null;
+        $rx_bytes         = isset($_POST['rx_bytes'])     ? max(0, (int)$_POST['rx_bytes'])    : null;
+        $tx_bytes         = isset($_POST['tx_bytes'])     ? max(0, (int)$_POST['tx_bytes'])    : null;
+        $latency_ms       = isset($_POST['latency_ms'])   ? max(0, (int)$_POST['latency_ms'])  : null;
+        $failure_category = substr(trim((string)($_POST['failure_category'] ?? '')), 0, 80);
         if (!$device_id) api_err('device_id required');
         if (!in_array($status, ['online','offline'], true)) $status = 'offline';
         $db = open_analytics_db();
         init_device_tables($db);
-        $db->prepare("UPDATE devices SET status=?,active_protocol=?,last_seen=datetime('now') WHERE device_id=?")
-           ->execute([$status, $active_protocol, $device_id]);
+        // Build dynamic SET clause — only overwrite optional fields when provided
+        $sets   = ["status=?", "active_protocol=?", "last_seen=datetime('now')"];
+        $params = [$status, $active_protocol];
+        if ($active_sni !== '')       { $sets[] = 'active_sni=?';            $params[] = $active_sni; }
+        if ($internet_ok !== null)    { $sets[] = 'internet_ok=?';           $params[] = $internet_ok; }
+        if ($dns_ok !== null)         { $sets[] = 'dns_ok=?';                $params[] = $dns_ok; }
+        if ($rx_bytes !== null)       { $sets[] = 'rx_bytes=?';              $params[] = $rx_bytes; }
+        if ($tx_bytes !== null)       { $sets[] = 'tx_bytes=?';              $params[] = $tx_bytes; }
+        if ($latency_ms !== null)     { $sets[] = 'latency_ms=?';            $params[] = $latency_ms; }
+        if ($failure_category !== '') {
+            $sets[] = 'last_failure_category=?';  $params[] = $failure_category;
+            $sets[] = "last_failure_at=datetime('now')";
+        }
+        $params[] = $device_id;
+        $db->prepare("UPDATE devices SET " . implode(',', $sets) . " WHERE device_id=?")
+           ->execute($params);
         api_ok(['status' => $status]);
     }
     if ($ma === 'report-session') {
@@ -630,6 +674,7 @@ if ($method === 'POST') {
             'bootstrap_shortid','bootstrap_sni','bootstrap_flow','bootstrap_fp',
             'bootstrap_edge_address','bootstrap_edge_port',
             'bootstrap_ws_path','bootstrap_xhttp_path','bootstrap_httpup_path',
+            'bootstrap_alt_profiles',
         ];
         $db_rc = open_analytics_db();
         $st_rc = $db_rc->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
@@ -658,7 +703,27 @@ if ($method === 'POST') {
             'updated_at'     => date('Y-m-d H:i:s'),
         ];
         $st_rc->execute(['remote_config', json_encode($composite)]);
-        api_ok(['saved' => $saved]);
+
+        // Auto-sync edge proxy UUID whitelist whenever any bootstrap_* key is saved.
+        $sync_result = null;
+        $bootstrap_keys_saved = array_filter($saved, fn($k) => str_starts_with($k, 'bootstrap_'));
+        if (!empty($bootstrap_keys_saved)) {
+            $sync_wrapper = '/usr/local/sbin/setalink-sync-edge-config';
+            if (file_exists($sync_wrapper)) {
+                $sync_raw = shell_exec('sudo ' . escapeshellarg($sync_wrapper) . ' 2>&1') ?: '';
+                $sync_lines = array_values(array_filter(array_map('trim', explode("\n", $sync_raw))));
+                $sync_kv = [];
+                foreach ($sync_lines as $ln) {
+                    if (preg_match('/^([A-Z_]+)=(.*)$/', $ln, $m)) $sync_kv[$m[1]] = $m[2];
+                }
+                $sync_result = [
+                    'ok'    => isset($sync_kv['XRAY_OK']) && $sync_kv['XRAY_OK'] === '1',
+                    'lines' => $sync_lines,
+                ];
+            }
+        }
+
+        api_ok(['saved' => $saved, 'sync' => $sync_result]);
     }
     if ($action === 'record-test') {
         $country     = substr(trim((string)($parsed['country']     ?? '')), 0, 80);
@@ -986,6 +1051,25 @@ switch ($action) {
 
         $all_ok = count(array_filter($steps, fn($s) => !$s['ok'])) === 0;
         api_ok(['ok'=>$all_ok,'interface'=>$iface,'steps'=>$steps,'raw_lines'=>array_values($out),'repaired_at'=>date('Y-m-d H:i:s')]);
+        break;
+
+    case 'sync-edge-config':
+        // Reads bootstrap UUIDs from DB and rewrites the edge proxy Xray client lists.
+        // www-data is allowed to run ONLY that script (see /etc/sudoers.d/setalink-webserver).
+        $sync_wrapper = '/usr/local/sbin/setalink-sync-edge-config';
+        if (!file_exists($sync_wrapper)) {
+            api_error('Sync script not installed. Run: sudo bash /var/www/setalink/scripts/setup-sudoers.sh');
+            break;
+        }
+        $raw = shell_exec('sudo ' . escapeshellarg($sync_wrapper) . ' 2>&1') ?: '';
+        $out = array_values(array_filter(array_map('trim', explode("\n", $raw))));
+        $kv = [];
+        foreach ($out as $line) {
+            if (preg_match('/^([A-Z_]+)=(.*)$/', $line, $m)) $kv[$m[1]] = $m[2];
+        }
+        if (isset($kv['ERROR'])) { api_error($kv['ERROR']); break; }
+        $xray_ok = isset($kv['XRAY_OK']) && $kv['XRAY_OK'] === '1';
+        api_ok(['ok' => $xray_ok, 'lines' => $out, 'synced_at' => date('Y-m-d H:i:s')]);
         break;
 
     case 'get-settings':
