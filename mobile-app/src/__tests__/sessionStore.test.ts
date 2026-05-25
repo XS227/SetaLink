@@ -1,4 +1,5 @@
 import { act } from 'react-test-renderer';
+import type { useSessionStore as UseSessionStoreType } from '../stores/sessionStore';
 
 // Pull the raw creator so we can instantiate a fresh store per test
 // without polluting the singleton used by components
@@ -9,10 +10,11 @@ jest.mock('../storage/storage', () => ({
     setItem:    () => {},
     removeItem: () => {},
   },
+  syncGet: () => null,
 }));
 
 // Zustand persist requires storage; use the mock above
-let useSessionStore: ReturnType<typeof import('../stores/sessionStore')['useSessionStore']>;
+let useSessionStore: typeof UseSessionStoreType;
 
 beforeEach(() => {
   jest.resetModules();

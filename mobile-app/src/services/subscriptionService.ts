@@ -1,3 +1,6 @@
+// eslint-disable-next-line no-var
+declare var atob: (data: string) => string;
+
 // Fetches a Xray subscription URL and imports the encoded VLESS URI list.
 //
 // A subscription response is a base64-encoded text block where each line is

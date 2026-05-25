@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { useToastStore, ToastType } from '../stores/toastStore';
@@ -29,14 +29,15 @@ const TYPE_ICON: Record<ToastType, string> = {
 
 export function Toast() {
   const { current, dismiss } = useToastStore();
-  const translateY = useRef(new Animated.Value(-80)).current;
-  const opacity    = useRef(new Animated.Value(0)).current;
-  const prevId     = useRef<string | null>(null);
+  const translateY  = useRef(new Animated.Value(-80)).current;
+  const opacity     = useRef(new Animated.Value(0)).current;
+  const prevId      = useRef<string | null>(null);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (current && current.id !== prevId.current) {
       prevId.current = current.id;
-      // Slide in
+      setVisible(true);
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0, damping: 18, stiffness: 280, useNativeDriver: true,
@@ -46,7 +47,6 @@ export function Toast() {
         }),
       ]).start();
     } else if (!current) {
-      // Slide out
       Animated.parallel([
         Animated.timing(translateY, {
           toValue: -80, duration: 220, useNativeDriver: true,
@@ -54,11 +54,11 @@ export function Toast() {
         Animated.timing(opacity, {
           toValue: 0, duration: 180, useNativeDriver: true,
         }),
-      ]).start();
+      ]).start(() => setVisible(false));
     }
   }, [current?.id]);
 
-  if (!current && opacity.__getValue() === 0) return null;
+  if (!visible) return null;
 
   const type    = current?.type ?? 'info';
   const message = current?.message ?? '';
