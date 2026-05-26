@@ -20,6 +20,12 @@ const MOBILE_TOKEN = 'setalink-mobile-diag-v1';
 define('DB_PATH', __DIR__ . '/../data/analytics.db');
 
 header('Content-Type: application/json');
+// CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
+// proxies may. Token auth remains the gate regardless of Origin.
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { http_response_code(204); exit; }
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
@@ -175,7 +181,7 @@ function hardcoded_bootstrap(): array {
         'edgeAddress' => 'edge.setalink.no',
         'edgePort'    => 443,
         'wsPath'      => '/ws',
-        'xhttpPath'   => '/xhttp/',
+        'xhttpPath'   => '/xhttp',
         'httpupPath'  => '/httpup',
         'altProfiles' => [
             [
@@ -225,7 +231,7 @@ function fetch_bootstrap_server(PDO $pdo): array {
         'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
-        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
+        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
         'altProfiles' => json_decode($r['bootstrap_alt_profiles'] ?? '[]', true) ?: [],
     ];
@@ -323,7 +329,7 @@ if ($method === 'GET') {
             'edgeAddress' => $srv['edgeAddress'] ?? '',
             'edgePort'    => (int)($srv['edgePort'] ?? 443),
             'wsPath'      => $srv['wsPath']      ?? '/ws',
-            'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp/',
+            'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp',
             'httpupPath'  => $srv['httpupPath']  ?? '/httpup',
             'altProfiles' => $srv['altProfiles'] ?? [],
         ]);

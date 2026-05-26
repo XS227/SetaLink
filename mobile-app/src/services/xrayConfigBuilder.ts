@@ -93,7 +93,7 @@ const DNS_PROFILES: Record<string, XrayDns> = {
 const PLACEHOLDER_UUID       = '00000000-0000-0000-0000-000000000001';
 const PLACEHOLDER_PUBLIC_KEY = 'PLACEHOLDER_PUBLIC_KEY';
 const PLACEHOLDER_SHORT_ID   = 'PLACEHOLDER_SHORT_ID';
-const PLACEHOLDER_SNI        = 'www.microsoft.com';
+const PLACEHOLDER_SNI        = 'www.cloudflare.com';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -190,6 +190,10 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
       // Without this, Xray may negotiate h2, causing nginx to reject the
       // Connection: Upgrade header with 400 Bad Request (forbidden in HTTP/2).
       tlsSettings: { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
+      // Fragment TLS ClientHello into 100-200 byte chunks at 10-20 ms intervals.
+      // Iranian DPI inspects the full ClientHello to identify the SNI and protocol;
+      // fragmentation forces reassembly before analysis, bypassing shallow inspection.
+      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
     },
   };
 }
@@ -222,10 +226,9 @@ function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
 function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   const edgeHost  = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
   const edgePort  = creds?.edgePort  ?? 443;
-  // Canonical XHTTP path must have trailing slash — server config uses /xhttp/.
-  // Without it Xray server rejects with "failed to validate path, request:/xhttp, config:/xhttp/".
-  const rawPath   = creds?.xhttpPath ?? '/xhttp/';
-  const xhttpPath = rawPath.endsWith('/') ? rawPath : rawPath + '/';
+  // Strip trailing slash — server config uses /xhttp (no slash).
+  // A trailing slash causes "failed to validate path, request:/xhttp, config:/xhttp" mismatch.
+  const xhttpPath = (creds?.xhttpPath ?? '/xhttp').replace(/\/$/, '');
   return {
     tag:      'proxy',
     protocol: 'vless',
@@ -246,6 +249,7 @@ function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): 
       // Force HTTP/1.1 ALPN — XHTTP requires HTTP/1.1 chunked transfer.
       // Without this Xray may negotiate h2, causing nginx to reject the connection.
       tlsSettings:   { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
+      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
     },
   };
 }
@@ -271,6 +275,7 @@ function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredenti
       httpupgradeSettings: { path: httpupPath, host: edgeHost },
       // Force HTTP/1.1 ALPN — HTTPUpgrade requires HTTP/1.1 upgrade handshake.
       tlsSettings:         { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
+      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
     },
   };
 }
