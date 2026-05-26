@@ -35,7 +35,7 @@ const HARDCODED_PROFILE: EmergencyProfile = {
   edgeAddress: 'edge.setalink.no',
   edgePort:    443,
   wsPath:      '/ws',
-  xhttpPath:   '/xhttp/',
+  xhttpPath:   '/xhttp',
   httpupPath:  '/httpup',
   altProfiles: [
     {

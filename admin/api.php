@@ -243,7 +243,7 @@ function fetch_bootstrap_server(PDO $db): array {
             'edgeAddress' => 'edge.setalink.no',
             'edgePort'    => 443,
             'wsPath'      => '/ws',
-            'xhttpPath'   => '/xhttp/',
+            'xhttpPath'   => '/xhttp',
             'httpupPath'  => '/httpup',
             'altProfiles' => [
                 [
@@ -284,10 +284,21 @@ function fetch_bootstrap_server(PDO $db): array {
         'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
-        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
+        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
         'altProfiles' => [],
     ];
+}
+
+// ── Mobile API CORS ───────────────────────────────────────────────────────
+// React Native fetch() uses OkHttp (no browser CORS enforcement), but some
+// configurations use WebView or a reverse proxy that may enforce CORS.
+// Token auth remains the gate — these headers do not weaken security.
+if (isset($_GET['mobile']) && $_GET['mobile'] === '1') {
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+    if ($method === 'OPTIONS') { http_response_code(204); exit; }
 }
 
 // ── Mobile GET ────────────────────────────────────────────────────────────
@@ -764,6 +775,46 @@ if ($method === 'POST') {
         if (!unlink($path)) api_err('delete failed', 500);
         api_ok(['deleted' => $filename]);
     }
+    if ($action === 'apk-cleanup') {
+        $releases_dir = '/var/www/setalink/public/releases';
+        $keep_count   = 3;
+        $results      = [];
+        foreach (['stable','beta','hotfix'] as $channel) {
+            $ch_dir = "{$releases_dir}/{$channel}";
+            if (!is_dir($ch_dir)) { $results[$channel] = ['skipped'=>true]; continue; }
+            $apks = glob("{$ch_dir}/setalink-v*.apk") ?: [];
+            usort($apks, fn($a,$b) => filemtime($b) <=> filemtime($a));
+            $keep   = array_slice($apks, 0, $keep_count);
+            $remove = array_slice($apks, $keep_count);
+            $deleted = 0;
+            foreach ($remove as $f) { @unlink($f); $deleted++; }
+            // Repair symlink → newest APK
+            $sym = "{$ch_dir}/setalink-latest.apk";
+            $newest = $keep[0] ?? null;
+            $sym_fixed = false;
+            if ($newest) {
+                if (is_link($sym) || file_exists($sym)) @unlink($sym);
+                symlink(basename($newest), $sym);
+                $sym_fixed = true;
+            }
+            $results[$channel] = [
+                'kept'    => count($keep),
+                'deleted' => $deleted,
+                'newest'  => $newest ? basename($newest) : null,
+                'symlink' => $sym_fixed,
+            ];
+        }
+        // Repair top-level download/setalink-latest.apk → stable newest
+        $dl_link   = '/var/www/setalink/public/download/setalink-latest.apk';
+        $stable_apks = glob("{$releases_dir}/stable/setalink-v*.apk") ?: [];
+        if ($stable_apks) {
+            usort($stable_apks, fn($a,$b) => filemtime($b) <=> filemtime($a));
+            $target = '../releases/stable/' . basename($stable_apks[0]);
+            if (is_link($dl_link) || file_exists($dl_link)) @unlink($dl_link);
+            symlink($target, $dl_link);
+        }
+        api_ok(['results'=>$results,'cleaned_at'=>date('Y-m-d H:i:s')]);
+    }
     if ($action === 'push-emergency-profiles') {
         $profiles = $parsed['profiles'] ?? [];
         if (!is_array($profiles)) api_err('profiles must be array');
@@ -867,7 +918,7 @@ switch ($action) {
         $EDGE = 'edge.setalink.no';
         $ph_probes = [
             'ws'          => ['url' => "https://{$EDGE}/ws",     'hdrs' => ['-H','Upgrade: websocket','-H','Connection: Upgrade']],
-            'xhttp'       => ['url' => "https://{$EDGE}/xhttp/", 'hdrs' => []],
+            'xhttp'       => ['url' => "https://{$EDGE}/xhttp", 'hdrs' => []],
             'httpupgrade' => ['url' => "https://{$EDGE}/httpup", 'hdrs' => ['-H','Upgrade: XHTTP','-H','Connection: Upgrade']],
         ];
         $ph_files = [];
@@ -1088,9 +1139,11 @@ switch ($action) {
         $score += $sni_ok ? 30 : 0;
         $checks[] = ['label'=>'SNI not blocked in Iran','ok'=>$sni_ok,'detail'=>$sni ?: '—'];
         $port = (int)($r['port'] ?? 0);
-        $port_ok = ($port === 8443);
+        // Accept 443 (stream-routed) or 8443 (direct); both are valid after stream-module migration.
+        $port_ok = ($port === 443 || $port === 8443);
         $score += $port_ok ? 20 : 0;
-        $checks[] = ['label'=>'Reality port (8443)','ok'=>$port_ok,'detail'=>(string)$port];
+        $port_label = $port === 443 ? '443 (stream-routed ✓)' : ($port === 8443 ? '8443 (direct)' : (string)$port);
+        $checks[] = ['label'=>'Reality port (443 or 8443)','ok'=>$port_ok,'detail'=>$port_label];
         $flow = $r['flow'] ?? '';
         $flow_ok = ($flow === 'xtls-rprx-vision');
         $score += $flow_ok ? 20 : 0;
@@ -1099,14 +1152,17 @@ switch ($action) {
         $fp_ok = !empty($fp);
         $score += $fp_ok ? 15 : 0;
         $checks[] = ['label'=>'Fingerprint set','ok'=>$fp_ok,'detail'=>$fp ?: '—'];
-        // Check Xray alive via SOCKS5 port (10808) — avoids "failed to read client hello"
-        // spam in Xray logs that appears when admin probes the Reality port (8443) with
-        // a plain TCP connect that closes without completing the TLS handshake.
-        $tcp_sock = @fsockopen('127.0.0.1', 10808, $e, $err, 2);
-        $tcp_ok = $tcp_sock !== false;
+        // Check Xray alive via its internal API port (8344, dokodemo-door) — avoids
+        // "failed to read client hello" spam that a plain TCP probe to 8443 triggers.
+        $tcp_sock = @fsockopen('127.0.0.1', 8344, $e, $err, 2);
+        $tcp_ok   = $tcp_sock !== false;
         if ($tcp_ok) fclose($tcp_sock);
+        // Fallback: systemctl is-active
+        if (!$tcp_ok) {
+            $tcp_ok = trim((string)shell_exec('systemctl is-active xray 2>/dev/null')) === 'active';
+        }
         $score += $tcp_ok ? 15 : 0;
-        $checks[] = ['label'=>'Xray running (SOCKS5 10808)','ok'=>$tcp_ok,'detail'=>$tcp_ok?'SOCKS5 port open':'SOCKS5 closed — Xray not running'];
+        $checks[] = ['label'=>'Xray running (API port 8344)','ok'=>$tcp_ok,'detail'=>$tcp_ok?'Xray API port open ✓':'Xray API port closed — check: systemctl status xray'];
         $grade = $score>=90?'A':($score>=70?'B':($score>=50?'C':'F'));
         api_ok(['score'=>$score,'grade'=>$grade,'checks'=>$checks,'checked_at'=>date('Y-m-d H:i:s')]);
         break;
@@ -1500,7 +1556,7 @@ switch ($action) {
                     $warnings[] = [
                         'level'  => 'error',
                         'label'  => 'XHTTP path mismatch',
-                        'detail' => "Client requesting /xhttp but server expects /xhttp/ — {$r['cnt']} failures. Ensure xhttpPath in bootstrap ends with /.",
+                        'detail' => "Path mismatch on /xhttp — {$r['cnt']} failures. Ensure xhttpPath in bootstrap has no trailing slash (/xhttp not /xhttp/).",
                     ];
                     break;
                 case 'ws_upgrade_failed':
