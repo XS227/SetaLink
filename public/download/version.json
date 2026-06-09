@@ -1,17 +1,22 @@
 {
-  "version": "0.9.23",
-  "versionCode": 33,
-  "releaseDate": "2026-05-25",
+  "version": "0.9.24",
+  "versionCode": 34,
+  "releaseDate": "2026-06-09",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.23.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.24.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "0b0e89173462ae8c1bbe45e580c58e081bb9d045d2dba22bea29c5ed0aef4ae7", "algorithm": "sha256" },
-  "size": 54086588,
-  "changelog": [],
+  "checksum": { "sha256": "6bd22b1e1399c5779e9951808f22c671097bfb162a25344e21881f80551f8d57", "algorithm": "sha256" },
+  "size": 54086172,
+  "changelog": [
+    "fix: Reality credentials corrected (publicKey, shortId, flow, UUID)",
+    "fix: Removed broken Oracle/Amazon altProfiles",
+    "fix: flow=xtls-rprx-vision for all Reality connections",
+    "feat: Added microsoft.com as backup Reality SNI"
+  ],
   "channels": {
-    "stable":  { "version": "0.9.23",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.23.apk" },
+    "stable":  { "version": "0.9.24",  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.24.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }

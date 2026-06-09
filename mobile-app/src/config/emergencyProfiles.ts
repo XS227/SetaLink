@@ -18,49 +18,26 @@ import { storage, syncGet } from '../storage/storage';
 const BOOTSTRAP_URL =
   'https://setalink.no/api.php?mobile=1&action=bootstrap&_token=setalink-mobile-diag-v1';
 
-const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v5';
+const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v6';
 
-// vless://fd709d48-a983-484a-99e3-afc97e2c3692@178.104.77.231:443?type=tcp&encryption=none&security=reality&pbk=IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8&fp=chrome&sni=www.cloudflare.com&sid=d93af82f2ecb7f6a#SetaLink-Cloudflare
+// vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@178.104.77.231:443?type=tcp&encryption=none&security=reality&pbk=Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU&fp=chrome&sni=www.cloudflare.com&sid=7f81892e&flow=xtls-rprx-vision#SetaLink-Cloudflare
 const HARDCODED_PROFILE: EmergencyProfile = {
   id:          'server-emergency',
   label:       'SetaLink Hetzner DE',
-  uuid:        'fd709d48-a983-484a-99e3-afc97e2c3692',
+  uuid:        'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
   address:     '178.104.77.231',
   port:        443,
-  publicKey:   'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
-  shortId:     'd93af82f2ecb7f6a',
+  publicKey:   'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
+  shortId:     '7f81892e',
   sni:         'www.cloudflare.com',
-  flow:        '',
+  flow:        'xtls-rprx-vision',
   fingerprint: 'chrome',
   edgeAddress: 'edge.setalink.no',
   edgePort:    443,
   wsPath:      '/ws',
   xhttpPath:   '/xhttp',
   httpupPath:  '/httpup',
-  altProfiles: [
-    {
-      // vless://c8af7366-b531-4f35-bea2-6fb70d1e4850@178.104.77.231:8443?security=reality&pbk=5eItT4D3ZmR8Nit_JWjpm9XfX4CzZGzvhovxF4n_6CY&sid=70df7a&sni=www.oracle.com#SetaLink-Oracle
-      uuid:        'c8af7366-b531-4f35-bea2-6fb70d1e4850',
-      publicKey:   '5eItT4D3ZmR8Nit_JWjpm9XfX4CzZGzvhovxF4n_6CY',
-      shortId:     '70df7a',
-      sni:         'www.oracle.com',
-      port:        8443,
-      address:     '178.104.77.231',
-      flow:        '',
-      fingerprint: 'chrome',
-    },
-    {
-      // vless://1580e282-be00-4ddc-932b-9bbcd69f0dad@178.104.77.231:2052?security=reality&pbk=Wo4-Iz8anzOfnQye9L1ARwDElePwwLPq1b82A_ZEsjo&sid=a4&sni=www.amazon.com#SetaLink-Amazon
-      uuid:        '1580e282-be00-4ddc-932b-9bbcd69f0dad',
-      publicKey:   'Wo4-Iz8anzOfnQye9L1ARwDElePwwLPq1b82A_ZEsjo',
-      shortId:     'a4',
-      sni:         'www.amazon.com',
-      port:        2052,
-      address:     '178.104.77.231',
-      flow:        '',
-      fingerprint: 'chrome',
-    },
-  ],
+  altProfiles: [],
 };
 
 export interface AltProfile {
