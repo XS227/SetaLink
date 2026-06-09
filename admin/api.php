@@ -243,7 +243,7 @@ function fetch_bootstrap_server(PDO $db): array {
             'edgeAddress' => 'edge.setalink.no',
             'edgePort'    => 443,
             'wsPath'      => '/ws',
-            'xhttpPath'   => '/xhttp',
+            'xhttpPath'   => '/xhttp/',
             'httpupPath'  => '/httpup',
             'altProfiles' => [],
         ];
@@ -263,7 +263,7 @@ function fetch_bootstrap_server(PDO $db): array {
         'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
-        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp',
+        'xhttpPath'   => $r['bootstrap_xhttp_path'] ?? '/xhttp/',
         'httpupPath'  => $r['bootstrap_httpup_path'] ?? '/httpup',
         'altProfiles' => [],
     ];
@@ -1535,7 +1535,7 @@ switch ($action) {
                     $warnings[] = [
                         'level'  => 'error',
                         'label'  => 'XHTTP path mismatch',
-                        'detail' => "Path mismatch on /xhttp — {$r['cnt']} failures. Ensure xhttpPath in bootstrap has no trailing slash (/xhttp not /xhttp/).",
+                        'detail' => "Path mismatch on /xhttp/ — {$r['cnt']} failures. Ensure xhttpPath in bootstrap has trailing slash (/xhttp/ not /xhttp).",
                     ];
                     break;
                 case 'ws_upgrade_failed':

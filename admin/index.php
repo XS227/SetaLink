@@ -44,6 +44,7 @@ function icon(string $name): string {
         'save'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
         'plus'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
         'gift'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
+        'person'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     ];
     return $icons[$name] ?? '';
 }
@@ -411,7 +412,10 @@ function icon(string $name): string {
     <!-- ============================================================ -->
     <div data-view="release" hidden>
       <div class="panel" style="margin-bottom:1.25rem">
-        <div class="panel-header"><span class="panel-title">Download Symlink</span></div>
+        <div class="panel-header">
+          <span class="panel-title">Download Symlink</span>
+          <button class="btn btn-ghost btn-sm" id="apkCleanupBtn" title="Keep 3 newest APKs per channel, repair symlinks"><?= icon('trash') ?> Cleanup Old APKs</button>
+        </div>
         <div class="panel-body" id="dlSymlinkInfo"><div class="loading"><div class="spinner"></div></div></div>
       </div>
       <div class="panel" style="margin-bottom:1.25rem">
@@ -589,7 +593,7 @@ function icon(string $name): string {
             <div class="form-group"><label>Edge Address</label><input class="input" id="bsEdgeAddr"></div>
             <div class="form-group"><label>Edge Port</label><input class="input" id="bsEdgePort" type="number"></div>
             <div class="form-group"><label>/ws path</label><input class="input" id="bsWsPath" value="/ws"></div>
-            <div class="form-group"><label>/xhttp path</label><input class="input" id="bsXhttpPath" value="/xhttp/"></div>
+            <div class="form-group"><label>/xhttp path</label><input class="input" id="bsXhttpPath" value="/xhttp"></div>
           </div>
           <div style="display:flex;gap:.5rem;margin-top:.25rem">
             <button class="btn btn-primary" id="cfgSaveBootstrap"><?= icon('save') ?> Save Bootstrap</button>
@@ -1013,6 +1017,7 @@ $('natRepairBtn').addEventListener('click', async()=>{
     html += `<div style="font-size:.65rem;color:var(--muted-2);margin-top:.5rem">repaired at ${esc(d.repaired_at||'')} — click Check to verify</div>`;
     el.innerHTML = html;
     toast(allOk?'NAT repair complete ✓':'Repair partial — check results','success');
+    if (allOk && views.iran?.loadScore) views.iran.loadScore();
   } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast('Repair failed: '+e.message,'error'); }
 });
 
@@ -1383,7 +1388,8 @@ views.devices = {
           return `<tr>
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
-              <div style="font-size:.65rem;color:var(--muted-2);font-family:var(--mono)">${esc(r.device_id_short||'')}</div>
+              <div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)" title="Device fingerprint (sha256 of device_id)">FP: ${esc(r.device_id_short||'')}</div>
+              ${r.referral_code?`<div style="font-size:.6rem;color:var(--emerald);font-family:var(--mono)" title="Invite/referral code">INV: ${esc(r.referral_code)}</div>`:''}
               ${r.blocked?'<span class="badge badge-danger" style="margin-left:0">blocked</span>':''}
             </td>
             <td><span class="badge ${r.plan==='premium'?'badge-accent':'badge-muted'}">${esc(r.plan)}</span></td>
@@ -1651,6 +1657,28 @@ window.deleteApk = async function(channel, filename) {
   };
 };
 
+$('apkCleanupBtn').addEventListener('click', async () => {
+  $('confirmTitle').textContent = 'Cleanup Old APKs';
+  $('confirmMsg').textContent   = 'Keep only the 3 newest APKs per channel and repair all symlinks. Old APKs will be deleted permanently.';
+  $('confirmOk').className      = 'btn btn-danger';
+  openModal('modalConfirm');
+  $('confirmOk').onclick = async () => {
+    closeModal();
+    const btn = $('apkCleanupBtn');
+    btn.disabled = true; btn.textContent = 'Cleaning…';
+    try {
+      const d = await api.post({action:'apk-cleanup'});
+      const lines = Object.entries(d.results||{}).map(([ch,r])=>{
+        if (r.skipped) return `${ch}: skipped`;
+        return `${ch}: kept ${r.kept}, deleted ${r.deleted}${r.newest?` → ${r.newest}`:''}`;
+      });
+      toast(`Cleanup done — ${lines.join(' | ')}`, 'ok');
+      views.release.init();
+    } catch(e) { toast(`Cleanup failed: ${e.message}`, 'error'); }
+    finally { btn.disabled=false; btn.innerHTML = `${icon_str('trash')} Cleanup Old APKs`; }
+  };
+});
+
 // Force Update / Rollout save
 $('vjSaveBtn').addEventListener('click', async()=>{
   const strategy = $('vjRolloutStrategy').value;
@@ -1702,7 +1730,8 @@ $('pushEmergencyProfilesBtn').addEventListener('click', async()=>{
 function icon_str(name) {
   const map={
     download:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
-    trash:'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+    trash:   '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
+    person:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
   };
   return map[name]||'';
 }
@@ -1738,7 +1767,7 @@ views.config = {
       $('bsEdgeAddr').value  = bs.edgeAddress||'';
       $('bsEdgePort').value  = bs.edgePort||443;
       $('bsWsPath').value    = bs.wsPath||'/ws';
-      $('bsXhttpPath').value = bs.xhttpPath||'/xhttp/';
+      $('bsXhttpPath').value = bs.xhttpPath||'/xhttp';
     } catch(e) { toast('Config: '+e.message,'error'); }
   },
   renderRcTags(elId, arr) {

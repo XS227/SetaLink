@@ -226,9 +226,10 @@ function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
 function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   const edgeHost  = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
   const edgePort  = creds?.edgePort  ?? 443;
-  // Strip trailing slash — server config uses /xhttp (no slash).
-  // A trailing slash causes "failed to validate path, request:/xhttp, config:/xhttp" mismatch.
-  const xhttpPath = (creds?.xhttpPath ?? '/xhttp').replace(/\/$/, '');
+  // Ensure trailing slash — Xray server config uses /xhttp/ (with slash).
+  // Without it Xray rejects with "failed to validate path, request:/xhttp, config:/xhttp/".
+  const rawPath   = creds?.xhttpPath ?? '/xhttp/';
+  const xhttpPath = rawPath.endsWith('/') ? rawPath : rawPath + '/';
   return {
     tag:      'proxy',
     protocol: 'vless',
