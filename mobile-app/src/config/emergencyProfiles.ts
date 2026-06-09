@@ -7,10 +7,10 @@
  * Goal: Install → Open → Connect, zero user action required.
  *
  * Active server: Hetzner Nuremberg DE (178.104.77.231)
- * Primary inbound: SetaLink-Cloudflare :443 (no XTLS Vision, Cloudflare SNI)
- * Alt inbounds:    SetaLink-Oracle :8443, SetaLink-Amazon :2052
+ * Primary inbound: SetaLink-Cloudflare :443 (XTLS Vision, Cloudflare SNI)
+ * Alt inbound:     SetaLink-Microsoft :443 (XTLS Vision, Microsoft SNI)
  *
- * WS/XHTTP/HTTPUpgrade: edge.setalink.no → old server (UUID whitelisted)
+ * WS/XHTTP/HTTPUpgrade: edge.setalink.no (nginx TLS proxy)
  */
 
 import { storage, syncGet } from '../storage/storage';
@@ -37,7 +37,19 @@ const HARDCODED_PROFILE: EmergencyProfile = {
   wsPath:      '/ws',
   xhttpPath:   '/xhttp',
   httpupPath:  '/httpup',
-  altProfiles: [],
+  altProfiles: [
+    {
+      // vless://9280e04d-ffdb-45b4-9558-66b9d6f89b49@178.104.77.231:443?security=reality&pbk=Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU&sid=82ab1a310f0aeb06&sni=www.microsoft.com&flow=xtls-rprx-vision#SetaLink-Microsoft
+      uuid:        '9280e04d-ffdb-45b4-9558-66b9d6f89b49',
+      publicKey:   'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
+      shortId:     '82ab1a310f0aeb06',
+      sni:         'www.microsoft.com',
+      port:        443,
+      address:     '178.104.77.231',
+      flow:        'xtls-rprx-vision',
+      fingerprint: 'chrome',
+    },
+  ],
 };
 
 export interface AltProfile {
