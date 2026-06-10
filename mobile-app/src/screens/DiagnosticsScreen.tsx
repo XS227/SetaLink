@@ -271,7 +271,13 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             const socksActive = getStep('socks_handshake');
             const xrayActive  = getStep('xray_started');
             const dnsOk       = getStep('dns_check') === 'ok' || getStep('dns_resolve') === 'ok' ? 'ok' as const : getStep('dns_check') === 'fail' || getStep('dns_resolve') === 'fail' ? 'fail' as const : 'unknown' as const;
-            const internetOk  = getStep('tun_probe') === 'ok' || getStep('tun_fallback_ok') === 'ok' ? 'ok' as const : getStep('tun_probe') === 'fail' ? 'fail' as const : 'unknown' as const;
+            // internet: ok if direct TUN probe or SOCKS5 EPERM-fallback both confirmed real HTTP/HTTPS data.
+            // tun_fallback_ok is set when the EPERM path confirms internet via SOCKS5 (same tunnel, different binding).
+            const internetOk  = getStep('tun_probe') === 'ok' || getStep('tun_fallback_ok') === 'ok'
+              ? 'ok' as const
+              : getStep('tun_fallback_fail') === 'fail' || getStep('tun_probe') === 'fail'
+                ? 'fail' as const
+                : 'unknown' as const;
             const statusColor = (s: 'ok' | 'fail' | 'unknown') =>
               s === 'ok' ? Colors.emerald[400] : s === 'fail' ? Colors.status.disconnected : Colors.text.muted;
             const statusIcon  = (s: 'ok' | 'fail' | 'unknown') =>
@@ -428,6 +434,9 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         {showTechLog && connectionLog.length > 0 && (
           <GlassCard style={{ gap: 2 }}>
             <Text style={styles.cardLabel}>Raw Connection Log</Text>
+            <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, marginBottom: 4, lineHeight: 13 }}>
+              {'✗ lines are intermediate steps — if the final Tunnel Layer shows OK, the overall connection succeeded.'}
+            </Text>
             {connectionLog.map((line, i) => (
               <Text key={i} style={[
                 { fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted, lineHeight: 16 },
