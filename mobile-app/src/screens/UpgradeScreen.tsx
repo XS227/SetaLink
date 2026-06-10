@@ -11,7 +11,7 @@ import { useToastStore } from '../stores/toastStore';
 import { mobilePostPayment } from '../services/entitlementService';
 import { useT } from '../i18n';
 
-const WALLET_ADDRESS = 'UQBWUvIAvNpzjAR4BB1kjQFHXCLA1bSRPb_7B-ZMcRy65nIJ';
+const WALLET_ADDRESS = 'UQBWAwX1khMYZm3RobKKOm3460I6vLCA1c0wgb_68zdfBj5g';
 const USDT_CONTRACT  = 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs';
 const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.ton_keeper';
 
