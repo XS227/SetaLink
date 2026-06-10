@@ -1,17 +1,17 @@
 {
-  "version": "0.9.25",
-  "versionCode": 35,
-  "releaseDate": "2026-06-09",
+  "version": "0.9.26",
+  "versionCode": 36,
+  "releaseDate": "2026-06-10",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.25.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.26.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "dd19c39e490d88d483e69225779620c606e7dc9cae96249298e12889d5867e2f", "algorithm": "sha256" },
-  "size": 53381336,
-  "changelog": [],
+  "checksum": { "sha256": "246973e7710188ebbe9b8241d7abfed3ad11a81b7315c45ce4a7e0c9eb7ce674", "algorithm": "sha256" },
+  "size": 53382088,
+  "changelog": ["Fixed connectivity probe regression — profiles failing validation now correctly fall through to the next profile"],
   "channels": {
-    "stable":  { "version": "0.9.25", "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.25.apk" },
+    "stable":  { "version": "0.9.26", "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.26.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }
