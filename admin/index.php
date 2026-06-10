@@ -734,6 +734,19 @@ function protoBadge(p) {
   return proto ? `<span class="badge badge-muted">${esc(p)}</span>` : '—';
 }
 
+function catBadge(cat) {
+  const m = {
+    reality_clienthello_failed: ['badge-danger','Reality ClientHello'],
+    ws_upgrade_failed:          ['badge-warn','WS Upgrade'],
+    xhttp_path_mismatch:        ['badge-danger','XHTTP Path'],
+    socks_probe_timeout:        ['badge-warn','SOCKS Timeout'],
+    dns_failed:                 ['badge-warn','DNS Failed'],
+    no_internet_routed:         ['badge-muted','No Internet'],
+  };
+  const [cls, label] = m[cat] || ['badge-muted', cat||'unknown'];
+  return `<span class="badge ${cls}">${esc(label)}</span>`;
+}
+
 // ── API client ───────────────────────────────────────────────────────
 const api = {
   get: async (action, params={}) => {
@@ -1117,19 +1130,6 @@ views.iran = {
             <strong>${esc(w.label)}</strong>: ${esc(w.detail)}
           </div>`).join('')
         : '<span style="color:#2ecc71;font-size:.8rem">✓ No transport mismatches detected in last 48 h</span>';
-
-      const catBadge = cat => {
-        const m = {
-          reality_clienthello_failed: ['badge-danger','Reality ClientHello'],
-          ws_upgrade_failed:          ['badge-warn','WS Upgrade'],
-          xhttp_path_mismatch:        ['badge-danger','XHTTP Path'],
-          socks_probe_timeout:        ['badge-warn','SOCKS Timeout'],
-          dns_failed:                 ['badge-warn','DNS Failed'],
-          no_internet_routed:         ['badge-muted','No Internet'],
-        };
-        const [cls, label] = m[cat] || ['badge-muted', cat||'unknown'];
-        return `<span class="badge ${cls}">${esc(label)}</span>`;
-      };
 
       $('transportMismatchTbl').innerHTML = !rows.length
         ? '<tr><td colspan="6" class="tbl-empty">No transport failures recorded — good!</td></tr>'
