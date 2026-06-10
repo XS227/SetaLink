@@ -417,51 +417,94 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
 
     @ReactMethod
     override fun runTraceTest(promise: Promise) {
-        // Run https://1.1.1.1/cdn-cgi/trace through the active VPN network.
-        // Uses Network.openConnection() so the request goes through TUN → tun2socks
-        // → SOCKS5 → Xray, bypassing the UID exclusion on our own process.
+        // Probe https://1.1.1.1/cdn-cgi/trace to verify internet routes through the VPN.
+        //
+        // Strategy (two-tier):
+        //   1. Try vpnNet.openConnection() — goes TUN → tun2socks → Xray.
+        //      On some ROMs this fails with EPERM/timeout because our app UID is
+        //      excluded from TUN via addDisallowedApplication().
+        //   2. Fall back to a direct SOCKS5 probe through Xray on 127.0.0.1:10808.
+        //      This is always reachable by the app process regardless of UID exclusion
+        //      and is the same path used by the native connection validation.
         Thread {
-            try {
+            val vpnNetResult = runCatching {
                 val cm = reactContext.getSystemService(android.net.ConnectivityManager::class.java)
                 val vpnNet = cm?.allNetworks?.firstOrNull { net ->
                     cm.getNetworkCapabilities(net)
                         ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
                 }
-                if (vpnNet == null) {
-                    val map = WritableNativeMap().apply {
-                        putBoolean("ok",    false)
-                        putString("error",  "No active VPN network — is the tunnel running?")
+                if (vpnNet != null) {
+                    val url  = java.net.URL("https://1.1.1.1/cdn-cgi/trace")
+                    val conn = vpnNet.openConnection(url) as java.net.HttpURLConnection
+                    conn.connectTimeout = 10_000
+                    conn.readTimeout    = 10_000
+                    conn.setRequestProperty("User-Agent", "SetaLink/1.0")
+                    try {
+                        val code = conn.responseCode
+                        val body = conn.inputStream.bufferedReader().readText()
+                        val ip   = body.lines()
+                            .firstOrNull { it.startsWith("ip=") }?.removePrefix("ip=") ?: "?"
+                        WritableNativeMap().apply {
+                            putBoolean("ok",         code == 200)
+                            putInt("statusCode",     code)
+                            putString("body",        body.take(600))
+                            putString("routedIp",    ip)
+                            putDouble("bytesIn",     body.length.toDouble())
+                        }
+                    } finally {
+                        conn.disconnect()
                     }
-                    promise.resolve(map)
-                    return@Thread
-                }
+                } else null
+            }
+
+            val primary = vpnNetResult.getOrNull()
+            if (primary != null && primary.getBoolean("ok")) {
+                promise.resolve(primary)
+                return@Thread
+            }
+
+            // VPN network unavailable or openConnection() failed — use SOCKS5 fallback.
+            // This probe goes directly through Xray on localhost:10808, confirming the
+            // tunnel is forwarding traffic even when Android blocks network-binding for
+            // this UID.
+            val fallbackResult = runCatching {
+                val proxy = java.net.Proxy(
+                    java.net.Proxy.Type.SOCKS,
+                    java.net.InetSocketAddress("127.0.0.1", 10808)
+                )
                 val url  = java.net.URL("https://1.1.1.1/cdn-cgi/trace")
-                val conn = vpnNet.openConnection(url) as java.net.HttpURLConnection
-                conn.connectTimeout = 10_000
-                conn.readTimeout    = 10_000
+                val conn = url.openConnection(proxy) as java.net.HttpURLConnection
+                conn.connectTimeout = 12_000
+                conn.readTimeout    = 12_000
                 conn.setRequestProperty("User-Agent", "SetaLink/1.0")
                 try {
                     val code = conn.responseCode
                     val body = conn.inputStream.bufferedReader().readText()
                     val ip   = body.lines()
                         .firstOrNull { it.startsWith("ip=") }?.removePrefix("ip=") ?: "?"
-                    val map = WritableNativeMap().apply {
+                    WritableNativeMap().apply {
                         putBoolean("ok",         code == 200)
                         putInt("statusCode",     code)
                         putString("body",        body.take(600))
                         putString("routedIp",    ip)
                         putDouble("bytesIn",     body.length.toDouble())
+                        putString("via",         "socks5")
                     }
-                    promise.resolve(map)
                 } finally {
                     conn.disconnect()
                 }
-            } catch (e: Exception) {
-                val map = WritableNativeMap().apply {
+            }
+
+            val result = fallbackResult.getOrNull()
+            if (result != null) {
+                promise.resolve(result)
+            } else {
+                val vpnErr  = vpnNetResult.exceptionOrNull()?.message ?: "VPN network unavailable"
+                val sockErr = fallbackResult.exceptionOrNull()?.message ?: "SOCKS5 probe failed"
+                promise.resolve(WritableNativeMap().apply {
                     putBoolean("ok",   false)
-                    putString("error", e.message ?: "Unknown error")
-                }
-                promise.resolve(map)
+                    putString("error", "VPN: $vpnErr | SOCKS5: $sockErr")
+                })
             }
         }.start()
     }
