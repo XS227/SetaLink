@@ -135,11 +135,10 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const isQuotaExhausted   = !isUnlimited && remainingBytes === 0;
 
   const primaryId  = user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`;
-  // Referral code = unique suffix after SL-227- (matches identity system)
-  const referralDisplayCode = (() => {
-    const m = primaryId.match(/^SL-\d+-([A-Z0-9]+)$/i);
-    return m ? m[1]!.toUpperCase() : user.referralCode;
-  })();
+  // Referral code MUST be the backend `referral_code` — that is what use-referral
+  // looks up. The old code derived it from the user_id suffix, which never matched
+  // the stored referral_code, so every shared invite was rejected.
+  const referralDisplayCode = (user.referralCode || '').toUpperCase();
   const initial    = primaryId.slice(0, 2).toUpperCase();
   const monthSessions = sessionsThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);

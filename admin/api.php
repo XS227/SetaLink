@@ -6,7 +6,7 @@ declare(strict_types=1);
 
 const CLI          = '/usr/bin/sudo -n /var/www/setalink/admin/setalink-cli';
 const USERNAME_RE  = '/^[a-z0-9][a-z0-9._-]{0,31}$/';
-const VALID_PKGS   = ['7days', '30days', 'unlimited', '5GB', '10GB', '15GB'];
+const VALID_PKGS   = ['7days', '30days', 'unlimited', '10GB', '20GB', '30GB'];
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -610,9 +610,9 @@ if ($method === 'POST') {
                 '7days'     => ['plan' => 'premium', 'days' => 7,   'bytes' => 10737418240],
                 '30days'    => ['plan' => 'premium', 'days' => 30,  'bytes' => 32212254720],
                 'unlimited' => ['plan' => 'premium', 'days' => 365, 'bytes' => 1099511627776],
-                '5GB'       => ['plan' => 'premium', 'days' => 30,  'bytes' => 5368709120],
                 '10GB'      => ['plan' => 'premium', 'days' => 30,  'bytes' => 10737418240],
-                '15GB'      => ['plan' => 'premium', 'days' => 30,  'bytes' => 16106127360],
+                '20GB'      => ['plan' => 'premium', 'days' => 30,  'bytes' => 21474836480],
+                '30GB'      => ['plan' => 'premium', 'days' => 30,  'bytes' => 32212254720],
             ];
             $conf = $pkg_map[$pay['package']] ?? $pkg_map['30days'];
             $valid_until = date('Y-m-d H:i:s', strtotime('+' . $conf['days'] . ' days'));

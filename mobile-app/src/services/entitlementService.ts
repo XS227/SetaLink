@@ -162,6 +162,7 @@ export async function reportSessionEnd(
   durationSecs: number,
   probeResult:  'ok' | 'fail' | 'unknown' = 'unknown',
   errorReason   = '',
+  sessionId     = '',
 ): Promise<void> {
   await mobilePost('report-session', {
     device_id:     deviceId,
@@ -172,5 +173,6 @@ export async function reportSessionEnd(
     app_version:   APP_VERSION,
     probe_result:  probeResult,
     error_reason:  errorReason,
+    session_id:    sessionId,
   });
 }

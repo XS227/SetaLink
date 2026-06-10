@@ -170,10 +170,13 @@ export const useVpnStore = create<VpnState>((set, get) => {
         const user = useAuthStore.getState().user;
         if (user) {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const { reportUsage, reportSessionEnd } = require('../services/entitlementService');
-          if (totalBytes > 0) reportUsage(user.deviceId, useAuthStore.getState().user!.quotaBytesUsed).catch(() => {});
+          const { reportSessionEnd } = require('../services/entitlementService');
+          // report-session is the single quota writer (delta model, idempotent
+          // via session_id). We intentionally do NOT call report-usage with the
+          // cumulative total — that double-counted and inflated lifetime usage.
           if (state.sessionStartedAt && state.selectedServer) {
             const sessionDuration = Math.max(1, Math.floor((Date.now() - state.sessionStartedAt) / 1000));
+            const sessionId = `${user.deviceId}-${state.sessionStartedAt}`;
             // eslint-disable-next-line @typescript-eslint/no-var-requires
             const { getLastConnectProbeOk } = require('../services/vpnBridge');
             const probeResult: 'ok' | 'fail' | 'unknown' = getLastConnectProbeOk() ? 'ok' : 'fail';
@@ -184,6 +187,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
               state.sessionBytes.received,
               sessionDuration,
               probeResult,
+              '',
+              sessionId,
             ).catch(() => {});
           }
         }

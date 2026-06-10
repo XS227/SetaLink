@@ -1,6 +1,6 @@
 import { Linking } from 'react-native';
 import { storage, syncGet } from '../storage/storage';
-import { APP_VERSION, APP_BUILD } from '../utils/version';
+import { APP_VERSION, APP_BUILD, APP_BUILD_CODE } from '../utils/version';
 
 export interface VersionInfo {
   version: string;
@@ -17,9 +17,9 @@ export interface VersionInfo {
     exclude_countries?: string[];
   };
   channels?: {
-    stable?: { version: string; apkUrl: string };
-    beta?:   { version: string; apkUrl: string };
-    hotfix?: { version: string; apkUrl: string };
+    stable?: { version: string; versionCode?: number; apkUrl: string };
+    beta?:   { version: string; versionCode?: number; apkUrl: string };
+    hotfix?: { version: string; versionCode?: number; apkUrl: string };
   };
 }
 
@@ -38,7 +38,7 @@ const CACHE_KEY   = 'update_check_v1';
 const SNOOZE_KEY  = 'update_snoozed_v1';
 const SNOOZE_TTL  = 24 * 60 * 60 * 1000; // 24 hours
 
-function compareVersions(a: string, b: string): number {
+export function compareVersions(a: string, b: string): number {
   const pa = a.split('.').map(Number);
   const pb = b.split('.').map(Number);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
@@ -46,6 +46,25 @@ function compareVersions(a: string, b: string): number {
     if (diff !== 0) return diff;
   }
   return 0;
+}
+
+/**
+ * The single source of truth for "is there an update?". versionCode (build
+ * number) is the authoritative gate because it is monotonic and matches the
+ * installed APK exactly — so a build that is already installed can never be
+ * offered again. Falls back to semver only when no versionCode is published.
+ */
+export function isUpdateAvailable(opts: {
+  targetCode?: number;
+  targetVersion: string;
+  installedCode: number;
+  installedVersion: string;
+}): boolean {
+  const { targetCode, targetVersion, installedCode, installedVersion } = opts;
+  if (typeof targetCode === 'number' && targetCode > 0) {
+    return targetCode > installedCode;
+  }
+  return compareVersions(targetVersion, installedVersion) > 0;
 }
 
 /** Decides if this device is in the rollout group. Uses consistent hash of APP_BUILD. */
@@ -80,8 +99,12 @@ export async function checkForUpdate(deviceCountry?: string, channel: 'stable' |
     const channelInfo = channel === 'beta' ? info.channels?.beta : info.channels?.stable;
     const targetVersion = channelInfo?.version ?? info.version;
     const targetApkUrl  = channelInfo?.apkUrl  ?? info.apkUrl;
+    // versionCode is the authoritative gate (see isUpdateAvailable).
+    const targetCode    = channelInfo?.versionCode ?? info.versionCode;
 
-    const hasUpdate   = compareVersions(targetVersion, APP_VERSION) > 0;
+    const hasUpdate   = isUpdateAvailable({
+      targetCode, targetVersion, installedCode: APP_BUILD_CODE, installedVersion: APP_VERSION,
+    });
     const inRollout   = isInRollout(info, deviceCountry);
     const forceUpdate = info.forceUpdate && compareVersions(APP_VERSION, info.minSupported ?? '0') < 0;
 
