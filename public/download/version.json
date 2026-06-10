@@ -1,17 +1,22 @@
 {
-  "version": "0.9.26",
-  "versionCode": 36,
+  "version": "0.9.27",
+  "versionCode": 37,
   "releaseDate": "2026-06-10",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.26.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.27.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "checksum": { "sha256": "246973e7710188ebbe9b8241d7abfed3ad11a81b7315c45ce4a7e0c9eb7ce674", "algorithm": "sha256" },
-  "size": 53382088,
-  "changelog": ["Fixed connectivity probe regression — profiles failing validation now correctly fall through to the next profile"],
+  "checksum": { "sha256": "9098af7e0ac2609dc144ca0ef6a6d2bca01407495102a661ff3dd59e987c6b42", "algorithm": "sha256" },
+  "size": 53381400,
+  "changelog": [
+    "Fixed update checker so it no longer offers an update that is already installed",
+    "Fixed traffic accounting — usage is no longer over-counted",
+    "Referral codes shared from the app now work correctly",
+    "Data top-up packages (10/20/30 GB) now all work at checkout"
+  ],
   "channels": {
-    "stable":  { "version": "0.9.26", "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.26.apk" },
+    "stable":  { "version": "0.9.27", "versionCode": 37, "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.27.apk" },
     "beta":    { "version": "0.9.12",    "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk" },
     "hotfix":  { "version": "0.9.12",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk" }
   }

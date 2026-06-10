@@ -502,8 +502,13 @@ if ($method === 'POST') {
         if (!$deviceId || !$refCode) err('missing params');
 
         $pdo  = db();
-        $owner = $pdo->prepare("SELECT device_id FROM devices WHERE referral_code=?");
-        $owner->execute([$refCode]);
+        // Primary: the real referral_code. Fallback: the user_id suffix form that
+        // older app builds (≤0.9.26) shared, so invites from already-installed
+        // clients still resolve. user_id is SL-227-XXXXXXXX; the suffix is XXXXXXXX.
+        $owner = $pdo->prepare(
+            "SELECT device_id FROM devices WHERE referral_code=? OR UPPER(user_id) LIKE ? LIMIT 1"
+        );
+        $owner->execute([$refCode, 'SL-%-' . $refCode]);
         $ownerRow = $owner->fetch();
         if (!$ownerRow)                         err('invalid referral code');
         if ($ownerRow['device_id'] === $deviceId) err('cannot use own referral code');
@@ -591,14 +596,16 @@ if ($method === 'POST') {
     }
 
     if ($action === 'report-usage') {
+        // Heartbeat / remaining-quota read ONLY. Quota is accumulated server-side
+        // by report-session (single writer, delta model) — report-usage must NOT
+        // mutate quota or it double-counts. The client historically passed a
+        // cumulative total here, which a "+=" turned into runaway inflation.
         $deviceId  = trim($_POST['device_id']  ?? '');
-        $bytesUsed = (int)($_POST['bytes_used'] ?? 0);
         if (!$deviceId) err('missing device_id');
 
         $pdo = db();
-        $pdo->prepare(
-            "UPDATE devices SET quota_bytes_used=quota_bytes_used+?, last_seen=datetime('now') WHERE device_id=?"
-        )->execute([$bytesUsed, $deviceId]);
+        $pdo->prepare("UPDATE devices SET last_seen=datetime('now') WHERE device_id=?")
+            ->execute([$deviceId]);
 
         $dev = $pdo->prepare("SELECT quota_bytes_total, quota_bytes_used FROM devices WHERE device_id=?");
         $dev->execute([$deviceId]);
@@ -675,15 +682,21 @@ if ($method === 'POST') {
         ]);
     }
 
-    if ($action === 'submit-payment') {
+    // Accept both action names: the app posts 'payment-submit', older docs/handlers
+    // used 'submit-payment'. Supporting both prevents an "unknown action" failure
+    // for installed clients.
+    if ($action === 'submit-payment' || $action === 'payment-submit') {
         $deviceId = trim($_POST['device_id']  ?? '');
+        $uid      = substr(trim($_POST['user_id'] ?? ''), 0, 64);
         $pkg      = trim($_POST['package']     ?? '');
         $memo     = substr(trim($_POST['memo'] ?? ''), 0, 255);
         $tx       = substr(trim($_POST['tx_hash'] ?? ''), 0, 100);
         $amt      = (float)($_POST['amount_usdt'] ?? 0);
-        $validPkgs = ['7days','30days','unlimited','5GB','10GB','15GB'];
+        $validPkgs = ['7days','30days','unlimited','10GB','20GB','30GB'];
         if (!$deviceId) err('missing device_id');
         if (!in_array($pkg, $validPkgs, true)) err('invalid package');
+        // Derive user_id from memo when the client only sent it as the memo.
+        if (!$uid && preg_match('/^SL-\d+-[A-Z0-9]+$/i', $memo)) $uid = $memo;
 
         $pdo = db();
         $pdo->exec("CREATE TABLE IF NOT EXISTS payment_queue (
@@ -699,18 +712,23 @@ if ($method === 'POST') {
             reviewed_by  TEXT DEFAULT '',
             note         TEXT DEFAULT ''
         )");
-        $pdo->prepare("INSERT INTO payment_queue (device_id, package, memo, tx_hash, amount_usdt) VALUES (?,?,?,?,?)")
-            ->execute([$deviceId, $pkg, $memo, $tx, $amt]);
+        try { $pdo->exec("ALTER TABLE payment_queue ADD COLUMN user_id TEXT DEFAULT ''"); } catch (\Exception $e) {}
+        $pdo->prepare("INSERT INTO payment_queue (device_id, user_id, package, memo, tx_hash, amount_usdt) VALUES (?,?,?,?,?,?)")
+            ->execute([$deviceId, $uid, $pkg, $memo, $tx, $amt]);
         ok(['payment_id' => (int)$pdo->lastInsertId()]);
     }
 
     if ($action === 'report-session') {
+        // SINGLE source of quota accumulation (delta model). Each session adds its
+        // own bytes exactly once; report-usage does not touch quota. A client-supplied
+        // session_id makes retries idempotent so a re-sent disconnect cannot double-book.
         $deviceId     = trim($_POST['device_id']     ?? '');
         $protocol     = substr(trim($_POST['protocol']  ?? ''), 0, 60);
-        $bytesSent    = (int)($_POST['bytes_sent']    ?? 0);
-        $bytesRecv    = (int)($_POST['bytes_recv']    ?? 0);
+        $bytesSent    = max(0, (int)($_POST['bytes_sent']    ?? 0));
+        $bytesRecv    = max(0, (int)($_POST['bytes_recv']    ?? 0));
         $durationSecs = (int)($_POST['duration_secs'] ?? 0);
         $appVersion   = substr(trim($_POST['app_version'] ?? ''), 0, 20);
+        $sessionId    = substr(trim($_POST['session_id'] ?? ''), 0, 80);
         if (!$deviceId || $durationSecs < 1) err('invalid session data');
 
         $pdo = db();
@@ -727,24 +745,39 @@ if ($method === 'POST') {
             ended_at      TEXT    DEFAULT (datetime('now')),
             client_ip     TEXT    DEFAULT ''
         )");
-        $pdo->prepare(
-            "INSERT INTO vpn_sessions
-                (device_id, protocol, bytes_sent, bytes_recv, duration_secs, app_version, started_at, ended_at, client_ip)
-             VALUES (?, ?, ?, ?, ?, ?, datetime('now', ? || ' seconds'), datetime('now'), ?)"
-        )->execute([
+        // Idempotency column + unique index (added lazily for existing DBs).
+        try { $pdo->exec("ALTER TABLE vpn_sessions ADD COLUMN session_id TEXT DEFAULT ''"); } catch (\Exception $e) {}
+        try { $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_devsid ON vpn_sessions(device_id, session_id) WHERE session_id <> ''"); } catch (\Exception $e) {}
+
+        // Fall back to a synthetic key when the client sends none, so older clients
+        // still log (but without cross-retry dedup).
+        if ($sessionId === '') $sessionId = $deviceId . '-' . (string)(microtime(true));
+
+        $ins = $pdo->prepare(
+            "INSERT OR IGNORE INTO vpn_sessions
+                (device_id, protocol, bytes_sent, bytes_recv, duration_secs, app_version, started_at, ended_at, client_ip, session_id)
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now', ? || ' seconds'), datetime('now'), ?, ?)"
+        );
+        $ins->execute([
             $deviceId, $protocol, $bytesSent, $bytesRecv,
             $durationSecs, $appVersion,
             '-' . $durationSecs,
             $_SERVER['REMOTE_ADDR'] ?? '',
+            $sessionId,
         ]);
-        // Accumulate quota usage
+
+        // Accumulate quota ONLY when this is a new (non-duplicate) session row,
+        // and clamp so used can never exceed total.
         $total = $bytesSent + $bytesRecv;
-        if ($total > 0) {
+        if ($ins->rowCount() > 0 && $total > 0) {
             $pdo->prepare(
-                "UPDATE devices SET quota_bytes_used=quota_bytes_used+?, last_seen=datetime('now') WHERE device_id=?"
+                "UPDATE devices
+                    SET quota_bytes_used = MIN(quota_bytes_total, quota_bytes_used + ?),
+                        last_seen = datetime('now')
+                  WHERE device_id = ?"
             )->execute([$total, $deviceId]);
         }
-        ok(['recorded' => true]);
+        ok(['recorded' => $ins->rowCount() > 0]);
     }
 
     err('unknown action');

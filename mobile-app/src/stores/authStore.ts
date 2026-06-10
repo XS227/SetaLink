@@ -54,9 +54,11 @@ function randomId(prefix: string): string {
 }
 
 // Extract the unique suffix from SL-227-XXXXXXXX style user IDs
-function deriveReferralCode(userId: string, fallback: string): string {
-  const m = userId?.match(/^SL-\d+-([A-Z0-9]+)$/i);
-  return m ? m[1]!.toUpperCase() : fallback;
+// The referral code is whatever the backend stores in `referral_code` — that is
+// the only value use-referral looks up. Do NOT derive it from the user_id suffix;
+// the two are unrelated, and deriving made every shared invite fail to match.
+export function deriveReferralCode(_userId: string, referralCode: string): string {
+  return (referralCode || '').toUpperCase();
 }
 
 export const useAuthStore = create<AuthState>()(
