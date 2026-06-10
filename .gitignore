@@ -13,6 +13,10 @@ admin.bak/
 data/
 *.log
 logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 
 # ── APK files — tracked via Git LFS (see .gitattributes) ─────────────────────
 # Build outputs are ignored by mobile-app/.gitignore (android/app/build/).
