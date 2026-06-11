@@ -113,7 +113,24 @@ packets are unaffected).
   J8 tester must confirm install **and** a successful VPN connection before
   this is called fixed (see `feedback_verify_on_live_server`).
 
-## 7. Action for the tester
+## 7. Released artifacts — v0.9.28 verification matrix
+
+All verified with `aapt dump badging` + `apksigner verify` on 2026-06-11.
+Common: `com.setalink`, versionCode **38**, versionName **0.9.28**,
+minSdk **24**, targetSdk **34**, signature **valid** (production key).
+
+| Artifact | native-code | Size | SHA-256 |
+|---|---|---|---|
+| `setalink-v0.9.28.apk` (default / `setalink-latest.apk`) | arm64-v8a | 53,382,500 B (51 MB) | `832768aa35ca06131954894b86dee77532cade9c47b9e98b33f8072653e18e8c` |
+| `setalink-v0.9.28-arm32.apk` (`setalink-latest-arm32.apk`) | armeabi-v7a | 48,586,108 B (47 MB) | `bb6eb9440fd0925e37dcd259a13caac8b245ba322eb608b5d7fff53adbe252a1` |
+| `setalink-v0.9.28-universal.apk` (`setalink-latest-universal.apk`) | arm64-v8a + armeabi-v7a | 74,074,694 B (71 MB) | `a154889a2c19fd0b42711ecf47bfbc8e5ea617f3d003f1141d331a8b01e32303` |
+
+`setalink-latest.apk` (default download + OTA) still points to the **arm64**
+build — the same ABI users already run — so nothing was replaced blindly.
+The compat/universal APKs are opt-in links on the download page until a
+32-bit device confirms them in the field.
+
+## 8. Action for the tester
 
 Send the J8 tester: `https://setalink.no/releases/stable/setalink-latest-arm32.apk`
 (or the universal APK if in doubt about the device). Ask for: install result,
