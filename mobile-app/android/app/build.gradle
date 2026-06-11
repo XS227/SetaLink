@@ -27,10 +27,16 @@ android {
         applicationId "com.setalink"
         minSdk         rootProject.ext.minSdkVersion
         targetSdk      rootProject.ext.targetSdkVersion
-        versionCode    37
-        versionName    "0.9.27"
+        versionCode    38
+        versionName    "0.9.28"
 
         manifestPlaceholders = [appLabel: "@string/app_name"]
+
+        // ARM only — libxray/libtun2socks ship no x86 builds, so an x86 APK
+        // would install but never connect. Also keeps the universal APK small.
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
     }
 
     signingConfigs {
@@ -61,13 +67,15 @@ android {
     }
 
     // Per-architecture APKs — each is ~40 % smaller than a fat universal APK.
-    // For sideloading: use arm64-v8a (most Android phones since 2015).
+    // arm64-v8a covers most phones since 2015; armeabi-v7a covers 32-bit
+    // devices (Samsung J/A series ship 32-bit OS even on 64-bit chips).
+    // universalApk bundles both for users who can't pick an ABI.
     splits {
         abi {
             enable         true
             reset()
-            include        'arm64-v8a'
-            universalApk   false
+            include        'arm64-v8a', 'armeabi-v7a'
+            universalApk   true
         }
     }
 
@@ -92,6 +100,8 @@ android {
     packagingOptions {
         doNotStrip "*/arm64-v8a/libxray.so"
         doNotStrip "*/arm64-v8a/libtun2socks.so"
+        doNotStrip "*/armeabi-v7a/libxray.so"
+        doNotStrip "*/armeabi-v7a/libtun2socks.so"
         jniLibs {
             useLegacyPackaging true
         }
