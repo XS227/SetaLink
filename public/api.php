@@ -138,6 +138,12 @@ function detect_country_from_ip(string $ip): array {
     ];
 }
 
+// Egress IPs of our own infrastructure — a request arriving from one of
+// these travelled through the tunnel (or is a local test), so it does not
+// identify the client. 178.104.77.231 = live Reality box, 5.249.252.221 =
+// this panel/edge box itself.
+const VPN_EGRESS_IPS = ['178.104.77.231', '5.249.252.221'];
+
 function client_ip(): string {
     foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $h) {
         $v = $_SERVER[$h] ?? '';
@@ -148,9 +154,33 @@ function client_ip(): string {
         // private ranges so callers never overwrite a stored real IP.
         if (filter_var($ip, FILTER_VALIDATE_IP,
                 FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) continue;
+        if (in_array($ip, VPN_EGRESS_IPS, true)) continue;
         return $ip;
     }
     return '';
+}
+
+// Refresh last_ip (+ country/flag when missing) from any non-tunneled
+// request, so devices heal as soon as the app talks to us with the VPN off.
+function touch_ip_geo(PDO $pdo, string $deviceId, array $dev = []): void {
+    $ip = client_ip();
+    if (!$ip) return;
+    if (!array_key_exists('country', $dev)) {
+        $st = $pdo->prepare("SELECT last_ip, country FROM devices WHERE device_id=?");
+        $st->execute([$deviceId]);
+        $dev = $st->fetch() ?: [];
+    }
+    if (($dev['last_ip'] ?? null) === $ip && ($dev['country'] ?? '') !== '') return;
+    $cc = ''; $cn = '';
+    if (($dev['country'] ?? '') === '') {
+        $geo = detect_country_from_ip($ip);
+        $cc = $geo['code']; $cn = $geo['name'];
+    }
+    $pdo->prepare("UPDATE devices SET last_ip=?,
+                     country=CASE WHEN (country='' OR country IS NULL) AND ?!='' THEN ? ELSE country END,
+                     country_name=CASE WHEN (country_name='' OR country_name IS NULL) AND ?!='' THEN ? ELSE country_name END
+                   WHERE device_id=?")
+        ->execute([$ip, $cc, $cc, $cn, $cn, $deviceId]);
 }
 
 function generate_referral_code(PDO $pdo): string {
@@ -351,6 +381,7 @@ if ($method === 'GET') {
         $row->execute([$deviceId]);
         $dev = $row->fetch();
         if (!$dev) err('device not found');
+        touch_ip_geo($pdo, $deviceId, $dev);
         // Backfill user_id on sync if missing
         if (empty($dev['user_id'])) {
             $uid = generate_user_id($pdo);
@@ -659,6 +690,7 @@ if ($method === 'POST') {
         $vals[] = $deviceId;
 
         $pdo->prepare("UPDATE devices SET " . implode(', ', $sets) . " WHERE device_id=?")->execute($vals);
+        if ($clientIp) touch_ip_geo($pdo, $deviceId);
         ok(['status' => $status]);
     }
 
