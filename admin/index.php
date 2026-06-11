@@ -82,6 +82,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
       <?= icon('globe') ?> Iran Debug
     </div>
+    <div class="nav-item<?= $page==='installs'?' active':'' ?>" data-page="installs">
+      <?= icon('devices') ?> Install Diag
+    </div>
     <div class="nav-section">Manage</div>
     <div class="nav-item<?= $page==='devices'?' active':'' ?>" data-page="devices">
       <?= icon('devices') ?> Devices
@@ -132,12 +135,13 @@ function icon(string $name): string {
     <!-- VIEW: DASHBOARD                                              -->
     <!-- ============================================================ -->
     <div data-view="dashboard">
+      <div id="alertStrip"></div>
       <div class="stat-grid" id="dashStats">
-        <div class="stat-card"><div class="stat-label">Online Now</div><div class="stat-value" id="statOnline">—</div><div class="stat-sub">last 5 minutes</div></div>
+        <div class="stat-card"><div class="stat-label">Online Now</div><div class="stat-value" id="statOnline">—</div><div class="stat-sub">heartbeat &lt; 5 min</div></div>
         <div class="stat-card"><div class="stat-label">Total Devices</div><div class="stat-value" id="statTotal">—</div><div class="stat-sub" id="statNew">—</div></div>
         <div class="stat-card"><div class="stat-label">Active 7d</div><div class="stat-value" id="statActive7d">—</div><div class="stat-sub" id="statActiveToday">—</div></div>
         <div class="stat-card"><div class="stat-label">Failures 24h</div><div class="stat-value" id="statFailed">—</div><div class="stat-sub">test reports</div></div>
-        <div class="stat-card"><div class="stat-label">Live Events</div><div class="stat-value" id="statEvents">—</div><div class="stat-sub">5-min window</div></div>
+        <div class="stat-card"><div class="stat-label">Pending Payments</div><div class="stat-value" id="statPayments">—</div><div class="stat-sub">awaiting review</div></div>
       </div>
 
       <div class="two-col">
@@ -146,46 +150,58 @@ function icon(string $name): string {
             <span class="panel-title"><?= icon('globe') ?> Protocol Health</span>
             <button class="btn btn-ghost btn-sm" id="probeBtn">Run Probe</button>
           </div>
-          <div class="panel-body" id="protocolHealth"><div class="panel-empty">Click "Run Probe" to test all protocol endpoints</div></div>
+          <div class="panel-body" id="protocolHealth"><div class="panel-empty">Click "Run Probe" to test WS / XHTTP / HTTPUpgrade via the edge and the production Reality server</div></div>
         </div>
         <div class="panel">
           <div class="panel-header">
-            <span class="panel-title"><?= icon('alert') ?> Server NAT &amp; Routing</span>
-            <div style="display:flex;gap:.4rem">
-              <button class="btn btn-ghost btn-sm" id="natCheckBtn">Check</button>
-              <button class="btn btn-ghost btn-sm" id="natRepairBtn" style="color:var(--warn)">Repair NAT</button>
-            </div>
+            <span class="panel-title"><?= icon('alert') ?> Service Health</span>
+            <button class="btn btn-ghost btn-sm" id="svcCheckBtn">Re-check</button>
           </div>
-          <div class="panel-body" id="natHealth"><div class="panel-empty">Click "Check" to verify ip_forward and iptables MASQUERADE — required for VPN internet routing</div></div>
+          <div class="panel-body" id="svcHealth"><div class="loading"><div class="spinner"></div></div></div>
         </div>
       </div>
 
       <div class="two-col">
         <div class="panel">
-          <div class="panel-header">
-            <span class="panel-title"><?= icon('globe') ?> DNS Resolver Probe</span>
-            <button class="btn btn-ghost btn-sm" id="dnsProbeBtn">Probe DNS</button>
-          </div>
-          <div class="panel-body" id="dnsProbeResult"><div class="panel-empty">Click "Probe DNS" to test 1.1.1.1, 8.8.8.8, 9.9.9.9 from the server</div></div>
-        </div>
-      </div>
-
-      <div class="two-col">
-        <div class="panel">
-          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Active Connections</span></div>
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Live Usage</span></div>
           <div class="panel-body" id="activeSessions"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Transport Adoption <span class="panel-sub">active devices, 7d</span></span></div>
+          <div class="panel-body" id="adoptionPanel"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Protocol Success by Country <span class="panel-sub">telemetry, 30d</span></span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Country</th><th>Protocol</th><th>Success Rate</th><th>Tests</th></tr></thead>
+            <tbody id="protoCountryTbl"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Referrals</span></div>
+          <div class="panel-body" id="referralPanel"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Payments &amp; Quota</span></div>
+          <div class="panel-body" id="payQuotaPanel"><div class="loading"><div class="spinner"></div></div></div>
         </div>
       </div>
 
       <div class="panel">
         <div class="panel-header">
-          <span class="panel-title"><?= icon('log') ?> Inbound Ports</span>
+          <span class="panel-title"><?= icon('log') ?> Inbound Traffic <span class="panel-sub">accepted connections today (root log export, 2-min lag)</span></span>
           <span class="panel-sub" id="inboundTs"></span>
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Protocol</th><th>Port</th><th>Status</th><th>Accepted</th><th>UUID Rejections</th><th>Last IP</th><th>Last Accept</th></tr></thead>
-            <tbody id="inboundTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>Transport</th><th>Port</th><th>Listening</th><th>Accepted Today</th></tr></thead>
+            <tbody id="inboundTbl"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
         <div id="inboundErrors" style="padding:.5rem 1rem;display:none"></div>
@@ -367,6 +383,70 @@ function icon(string $name): string {
           <table>
             <thead><tr><th>ID</th><th>Device</th><th>Package</th><th>USDT</th><th>Tx Hash</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
             <tbody id="payTbl"><tr><td colspan="8" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: INSTALL DIAGNOSTICS                                    -->
+    <!-- ============================================================ -->
+    <div data-view="installs" hidden>
+      <div class="dev-stat-grid">
+        <div class="stat-card"><div class="stat-label">Total Devices</div><div class="stat-value" id="instTotal">—</div></div>
+        <div class="stat-card stat-warn"><div class="stat-label">32-bit Only</div><div class="stat-value" id="instArm32">—</div><div class="stat-sub">no arm64 — needs compat APK</div></div>
+        <div class="stat-card"><div class="stat-label">Android ≤ 9</div><div class="stat-value" id="instOldAndroid">—</div><div class="stat-sub">SDK ≤ 28</div></div>
+        <div class="stat-card"><div class="stat-label">ABI Unknown</div><div class="stat-value" id="instAbiUnknown">—</div><div class="stat-sub">pre-0.9.28 registrations</div></div>
+        <div class="stat-card stat-warn"><div class="stat-label">Install Failures 7d</div><div class="stat-value" id="instFailures">—</div><div class="stat-sub">OTA reports</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">App Versions</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Version</th><th>Devices</th></tr></thead>
+              <tbody id="instAppVerTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Android Versions</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Android</th><th>SDK</th><th>Devices</th></tr></thead>
+              <tbody id="instAndroidTbl"><tr><td colspan="3" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Architecture (ABI) Distribution</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Supported ABIs</th><th>Devices</th><th>Compatible APK</th></tr></thead>
+            <tbody id="instAbiTbl"><tr><td colspan="3" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Device Models</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Model</th><th>Android</th><th>SDK</th><th>ABI</th><th>App Ver</th><th>Count</th><th class="mobile-hide">Last Seen</th></tr></thead>
+            <tbody id="instModelTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Install Events (OTA reports)</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Event</th><th>From → To</th><th>Model</th><th>Android</th><th>ABI</th><th class="mobile-hide">Error</th></tr></thead>
+            <tbody id="instEventTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -807,6 +887,7 @@ let activeView='', refreshTimer=null;
 const pageTitles = {
   dashboard: ['Dashboard', 'live monitoring · auto-refresh 10s'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
+  installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
   release:   ['Release', 'APK channels · version.json · health'],
@@ -869,19 +950,41 @@ const views = {};
 views.dashboard = {
   init() {
     this.loadAll();
+    this.loadHealth();
     refreshTimer = setInterval(()=>this.loadAll(), 10000);
   },
   async loadAll() {
-    const [analytics, sessions, inbounds, sniLb] = await Promise.allSettled([
+    const [analytics, sessions, inbounds, sniLb, metrics] = await Promise.allSettled([
       api.get('app-analytics'),
       api.get('active-sessions'),
       api.get('inbound-stats'),
       api.get('sni-leaderboard'),
+      api.get('dash-metrics'),
     ]);
     if (analytics.status==='fulfilled') this.renderStats(analytics.value);
     if (sessions.status==='fulfilled')  this.renderSessions(sessions.value);
     if (inbounds.status==='fulfilled')  this.renderInbounds(inbounds.value);
     if (sniLb.status==='fulfilled')     this.renderSniLb(sniLb.value);
+    if (metrics.status==='fulfilled')   this.renderMetrics(metrics.value);
+  },
+  async loadHealth() {
+    const el = $('svcHealth');
+    el.innerHTML = '<div class="loading"><div class="spinner"></div> Checking services…</div>';
+    try {
+      const d = await api.get('service-health');
+      el.innerHTML = renderHealthChecks(d);
+      this.renderAlerts(d);
+    } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; }
+  },
+  renderAlerts(d) {
+    const fails = (d.checks||[]).filter(c=>!c.ok);
+    $('alertStrip').innerHTML = fails.length ? fails.map(c=>
+      `<div style="display:flex;align-items:center;gap:.6rem;padding:.5rem .8rem;margin-bottom:.6rem;background:rgba(255,80,80,.08);border:1px solid rgba(255,80,80,.3);border-radius:6px">
+        <span style="color:var(--danger);font-weight:700">⚠</span>
+        <span style="font-size:.78rem;font-weight:600">${esc(c.label)}</span>
+        <span style="font-size:.72rem;color:var(--muted);flex:1">${esc(c.detail||'')}</span>
+        ${c.fix?`<span class="mono" style="font-size:.65rem;color:var(--warn)">${esc(c.fix)}</span>`:''}
+      </div>`).join('') : '';
   },
   renderStats(d) {
     $('statOnline').textContent   = fmtNum(d.online_now);
@@ -890,22 +993,18 @@ views.dashboard = {
     $('statActiveToday').textContent = fmtNum(d.active_today)+' today';
     $('statNew').textContent      = fmtNum(d.new_this_month)+' this month';
     $('statFailed').textContent   = fmtNum(d.failed_24h);
-    $('statEvents').textContent   = fmtNum(d.online_now);
   },
   renderSessions(d) {
     const el = $('activeSessions');
-    const protos = d.protocols||{};
     let html = `<div style="margin-bottom:.5rem;font-size:.83rem">
-      <span style="font-weight:700;font-size:1.2rem">${esc(d.active_ips)}</span>
-      <span style="color:var(--muted);margin-left:.35rem">unique IPs (5-min window)</span>
+      <span style="font-weight:700;font-size:1.2rem">${esc(d.online_devices)}</span>
+      <span style="color:var(--muted);margin-left:.35rem">devices online (heartbeat &lt; 5 min)</span>
     </div>`;
-    html += `<div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem">${esc(d.recent_events)} events total</div>`;
-    if (Object.keys(protos).length) {
-      html += '<div style="display:flex;flex-wrap:wrap;gap:.3rem">';
-      for (const [p,c] of Object.entries(protos)) {
-        html += `<div style="font-size:.7rem;padding:.15rem .4rem;border-radius:4px;background:var(--bg-2);border:1px solid var(--border)">${esc(p)}: <strong>${c}</strong></div>`;
-      }
-      html += '</div>';
+    html += `<div style="font-size:.72rem;color:var(--muted);margin-bottom:.5rem">${fmtNum(d.sessions_24h)} sessions · ${fmtBytes(d.bytes_24h)} in last 24h</div>`;
+    const chips = (obj,prefix)=>Object.entries(obj||{}).map(([k,c])=>
+      `<div style="font-size:.7rem;padding:.15rem .4rem;border-radius:4px;background:var(--bg-2);border:1px solid var(--border)">${prefix}${esc(k)}: <strong>${c}</strong></div>`).join('');
+    if (Object.keys(d.protocols||{}).length || Object.keys(d.countries||{}).length) {
+      html += `<div style="display:flex;flex-wrap:wrap;gap:.3rem">${chips(d.protocols,'')}${chips(d.countries,'🌍 ')}</div>`;
     }
     el.innerHTML = html;
   },
@@ -918,20 +1017,68 @@ views.dashboard = {
         <td>${esc(p.label)}</td>
         <td class="mono">${p.port}</td>
         <td><span class="badge ${ok?'badge-ok':'badge-danger'}">${ok?'listening':'closed'}</span></td>
-        <td>${k==='reality'?esc(d.accepted_external):'—'}</td>
-        <td>${k==='reality'?esc(d.uuid_rejections):'—'}</td>
-        <td class="mono">${k==='reality'?esc(d.last_accepted_ip||'—'):'—'}</td>
-        <td>${k==='reality'?esc(d.last_accepted_at||'—'):'—'}</td>
+        <td>${d.stats_available?fmtNum(p.accepted):'—'}</td>
       </tr>`;
     }
-    $('inboundTbl').innerHTML = rows || '<tr><td colspan="7" class="tbl-empty">No data</td></tr>';
-    $('inboundTs').textContent = d.checked_at||'';
+    $('inboundTbl').innerHTML = rows || '<tr><td colspan="4" class="tbl-empty">No data</td></tr>';
+    $('inboundTs').textContent = d.stats_available
+      ? `${fmtNum(d.accepted_total)} total · ${fmtNum(d.uuid_rejections)} UUID rejections · exported ${d.stats_exported_at||''}`
+      : 'log export missing — run scripts/export-xray-stats.sh from root cron';
     if (d.last_errors&&d.last_errors.length) {
       const errDiv = $('inboundErrors');
       errDiv.style.display = 'block';
       errDiv.innerHTML = '<div style="font-size:.7rem;color:var(--muted);margin-bottom:.25rem;font-weight:600">RECENT XRAY ERRORS</div>' +
         d.last_errors.map(e=>`<div class="mono" style="font-size:.68rem;color:var(--danger);padding:.1rem 0">${esc(e)}</div>`).join('');
     }
+  },
+  renderMetrics(d) {
+    $('statPayments').textContent = fmtNum((d.payments||{}).pending||0);
+    // Protocol success by country
+    const psc = d.protocol_by_country||[];
+    $('protoCountryTbl').innerHTML = psc.length ? psc.map(r=>{
+      const cls = r.rate===null?'badge-muted':r.rate>=80?'badge-ok':r.rate>=50?'badge-warn':'badge-danger';
+      return `<tr>
+        <td>${esc(r.country)}</td>
+        <td>${protoBadge(r.protocol)}</td>
+        <td><span class="badge ${cls}">${r.rate!=null?r.rate+'%':'—'}</span></td>
+        <td>${fmtNum(r.total)}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="4" class="tbl-empty">No telemetry yet</td></tr>';
+    // Transport adoption
+    const ad = d.adoption||{};
+    const adTotal = Object.values(ad).reduce((a,b)=>a+b,0);
+    $('adoptionPanel').innerHTML = adTotal ? Object.entries(ad).map(([p,c])=>{
+      const pct = Math.round(c/adTotal*100);
+      return `<div style="display:flex;align-items:center;gap:.6rem;padding:.25rem 0">
+        <span style="font-size:.75rem;font-weight:600;width:110px">${esc(p)}</span>
+        <div class="progress" style="flex:1"><div class="progress-bar ok" style="width:${pct}%"></div></div>
+        <span style="font-size:.72rem;color:var(--muted);width:70px;text-align:right">${c} · ${pct}%</span>
+      </div>`;
+    }).join('') : '<div class="panel-empty">No active devices in last 7 days</div>';
+    // Referrals
+    const rf = d.referrals||{};
+    $('referralPanel').innerHTML = `
+      <div class="stat-grid" style="grid-template-columns:repeat(2,1fr);gap:.5rem">
+        <div><div class="stat-label">Total referrals</div><div style="font-size:1.1rem;font-weight:700">${fmtNum(rf.total)}</div></div>
+        <div><div class="stat-label">Last 30 days</div><div style="font-size:1.1rem;font-weight:700">${fmtNum(rf.last_30d)}</div></div>
+        <div><div class="stat-label">Unique referrers</div><div style="font-size:1.1rem;font-weight:700">${fmtNum(rf.referrers)}</div></div>
+        <div><div class="stat-label">Bonus granted</div><div style="font-size:1.1rem;font-weight:700">${fmtBytes(rf.bonus_bytes)}</div></div>
+      </div>
+      ${rf.flagged?`<div style="margin-top:.5rem;font-size:.72rem;color:var(--warn)">⚠ ${rf.flagged} flagged for fraud review</div>`:''}`;
+    // Payments + quota
+    const pay = d.payments||{}, q = d.quota||{};
+    const qPct = q.total_bytes ? Math.round(q.used_bytes/q.total_bytes*100) : 0;
+    $('payQuotaPanel').innerHTML = `
+      <div style="font-size:.78rem;margin-bottom:.6rem">
+        Payments: <strong>${fmtNum(pay.pending)}</strong> pending · ${fmtNum(pay.approved)} approved · ${fmtNum(pay.rejected)} rejected
+        <span style="color:var(--muted)"> · ${pay.amount_usdt_approved||0} USDT received</span>
+      </div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:.25rem">Quota across ${fmtNum(q.devices)} devices</div>
+      <div class="progress" style="margin-bottom:.35rem"><div class="progress-bar ${qPct>=80?'warn':'ok'}" style="width:${qPct}%"></div></div>
+      <div style="font-size:.72rem;color:var(--muted)">${fmtBytes(q.used_bytes)} / ${fmtBytes(q.total_bytes)} (${qPct}%)
+        ${q.exhausted?` · <span style="color:var(--danger)">${q.exhausted} exhausted</span>`:''}
+        ${q.near_limit?` · <span style="color:var(--warn)">${q.near_limit} near limit</span>`:''}
+      </div>`;
   },
   renderSniLb(rows) {
     if (!rows||!rows.length) { $('sniLeaderboard').innerHTML='<tr><td colspan="5" class="tbl-empty">No telemetry data yet</td></tr>'; return; }
@@ -970,17 +1117,12 @@ $('probeBtn').addEventListener('click', async()=>{
   } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
 });
 
-function renderNatChecks(d, headerHtml='') {
-  const scoreColor = d.score>=90?'var(--ok)':d.score>=50?'var(--warn)':'var(--danger)';
+function renderHealthChecks(d) {
   return `
-    ${headerHtml}
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.75rem">
-      <span style="font-size:1.5rem;font-weight:700;color:${scoreColor}">${d.score}/100</span>
-      <div>
-        <div style="font-size:.75rem;color:${d.ok?'var(--ok)':'var(--danger)'}">
-          ${d.ok?'✓ NAT routing OK':'✗ NAT broken — clients will connect but get NO internet'}
-        </div>
-        ${d.out_iface?`<div style="font-size:.65rem;color:var(--muted-2)">Egress interface: <b style="color:var(--text)">${esc(d.out_iface)}</b></div>`:''}
+      <span style="font-size:1.5rem;font-weight:700;color:${d.ok?'var(--ok)':'var(--danger)'}">${d.score}/100</span>
+      <div style="font-size:.75rem;color:${d.ok?'var(--ok)':'var(--danger)'}">
+        ${d.ok?'✓ All services healthy':`✗ ${d.failing} check${d.failing>1?'s':''} failing`}
       </div>
     </div>
     ${(d.checks||[]).map(c=>`<div style="display:flex;align-items:flex-start;gap:.6rem;padding:.3rem 0;border-bottom:1px solid var(--border)">
@@ -995,77 +1137,7 @@ function renderNatChecks(d, headerHtml='') {
   `;
 }
 
-$('natCheckBtn').addEventListener('click', async()=>{
-  const el = $('natHealth');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> Checking…</div>';
-  try {
-    const d = await api.get('nat-health');
-    el.innerHTML = renderNatChecks(d);
-  } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
-});
-
-$('natRepairBtn').addEventListener('click', async()=>{
-  if (!confirm('Attempt automatic NAT repair? This will run iptables and sysctl commands on the server.')) return;
-  const el = $('natHealth');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> Repairing NAT…</div>';
-  try {
-    const d = await api.get('nat-repair');
-    const allOk = d.ok;
-    let html = `<div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;padding:.5rem;background:${allOk?'rgba(0,232,122,.08)':'rgba(255,80,80,.08)'};border-radius:6px;border:1px solid ${allOk?'rgba(0,232,122,.25)':'rgba(255,80,80,.25)'}">
-      <span style="font-size:1.2rem">${allOk?'✓':'✗'}</span>
-      <div>
-        <div style="font-size:.8rem;font-weight:600;color:${allOk?'var(--ok)':'var(--danger)'}">${allOk?'NAT repair successful':'Partial repair — some steps need manual fix'}</div>
-        ${d.interface?`<div style="font-size:.65rem;color:var(--muted-2)">Interface: <b>${esc(d.interface)}</b></div>`:''}
-      </div>
-    </div>`;
-    (d.steps||[]).forEach(s=>{
-      html += `<div style="display:flex;align-items:flex-start;gap:.5rem;padding:.25rem 0;border-bottom:1px solid var(--border)">
-        <span class="dot ${s.ok?'dot-ok':'dot-bad'}" style="margin-top:2px"></span>
-        <div style="flex:1">
-          <span style="font-size:.75rem;font-weight:600">${esc(s.step.replace(/_/g,' '))}</span>
-          <div style="font-size:.65rem;color:${s.ok?'var(--muted)':'var(--danger)'}">${esc(s.detail||'')}</div>
-        </div>
-      </div>`;
-    });
-    html += `<div style="font-size:.65rem;color:var(--muted-2);margin-top:.5rem">repaired at ${esc(d.repaired_at||'')} — click Check to verify</div>`;
-    el.innerHTML = html;
-    toast(allOk?'NAT repair complete ✓':'Repair partial — check results','success');
-    if (allOk && views.iran?.loadScore) views.iran.loadScore();
-  } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast('Repair failed: '+e.message,'error'); }
-});
-
-$('dnsProbeBtn').addEventListener('click', async()=>{
-  const el = $('dnsProbeResult');
-  el.innerHTML = '<div class="loading"><div class="spinner"></div> Probing DNS resolvers…</div>';
-  try {
-    const d = await api.get('dns-probe');
-    let html = `<div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.75rem;padding:.5rem;background:${d.ok?'rgba(0,232,122,.08)':'rgba(255,80,80,.08)'};border-radius:6px;border:1px solid ${d.ok?'rgba(0,232,122,.25)':'rgba(255,80,80,.25)'}">
-      <span style="font-size:1.1rem">${d.ok?'✓':'✗'}</span>
-      <div>
-        <div style="font-size:.8rem;font-weight:600;color:${d.ok?'var(--ok)':'var(--danger)'}">${d.ok?'DNS resolvers reachable':'All resolvers failed'}</div>
-        <div style="font-size:.62rem;color:var(--muted-2)">method: ${esc(d.method||'?')} · ${esc(d.probed_at||'')}</div>
-      </div>
-    </div>`;
-    (d.resolvers||[]).forEach(ns=>{
-      html += `<div style="margin-bottom:.5rem;padding:.4rem .5rem;background:var(--bg-elevated);border-radius:5px">
-        <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem">
-          <span class="dot ${ns.ok?'dot-ok':'dot-bad'}"></span>
-          <span style="font-size:.78rem;font-weight:600;font-family:var(--mono)">${esc(ns.resolver)}</span>
-          <span style="font-size:.65rem;color:var(--muted-2)">${ns.avg_latency_ms}ms avg</span>
-        </div>`;
-      (ns.domains||[]).forEach(dr=>{
-        html += `<div style="font-size:.65rem;display:flex;gap:.5rem;padding:.1rem 0;padding-left:.75rem;color:${dr.ok?'var(--muted)':'var(--danger)'}">
-          <span>${dr.ok?'✓':'✗'}</span>
-          <span style="font-family:var(--mono);flex:1">${esc(dr.domain)}</span>
-          <span style="color:var(--muted-2)">${dr.latency_ms}ms</span>
-          ${dr.ip?`<span style="font-family:var(--mono);color:var(--muted-2)">${esc(dr.ip)}</span>`:''}
-        </div>`;
-      });
-      html += `</div>`;
-    });
-    el.innerHTML = html;
-  } catch(e) { el.innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`; toast(e.message,'error'); }
-});
+$('svcCheckBtn').addEventListener('click', ()=>views.dashboard.loadHealth());
 
 // ── VIEW: IRAN DEBUG ─────────────────────────────────────────────────
 views.iran = {
@@ -1310,6 +1382,73 @@ views.iran = {
 };
 
 // ── VIEW: DEVICES ────────────────────────────────────────────────────
+// ── VIEW: INSTALL DIAGNOSTICS ────────────────────────────────────────
+views.installs = {
+  init() { this.load(); },
+  async load() {
+    try {
+      const d = await api.get('install-diagnostics');
+      const s = d.summary || {};
+      $('instTotal').textContent      = s.total_devices ?? '—';
+      $('instArm32').textContent      = s.arm32_only ?? '—';
+      $('instOldAndroid').textContent = s.android9_or_older ?? '—';
+      $('instAbiUnknown').textContent = s.abi_unknown ?? '—';
+      $('instFailures').textContent   = s.install_failures_7d ?? '—';
+
+      $('instAppVerTbl').innerHTML = (d.app_versions||[]).length
+        ? d.app_versions.map(r=>`<tr><td>${esc(r.version)}</td><td>${r.cnt}</td></tr>`).join('')
+        : '<tr><td colspan="2" class="tbl-empty">No data</td></tr>';
+
+      // Android versions: prefer device registrations, fall back to probe telemetry
+      const av = (d.android_versions||[]).length ? d.android_versions : (d.android_versions_tests||[]);
+      $('instAndroidTbl').innerHTML = av.length
+        ? av.map(r=>`<tr><td>Android ${esc(r.android_version||'?')}</td><td>${r.sdk_version||'—'}</td><td>${r.cnt}</td></tr>`).join('')
+        : '<tr><td colspan="3" class="tbl-empty">No data — devices report this from v0.9.28</td></tr>';
+
+      $('instAbiTbl').innerHTML = (d.abis||[]).length
+        ? d.abis.map(r=>{
+            const has64 = (r.abi||'').includes('arm64-v8a');
+            const has32 = (r.abi||'').includes('armeabi');
+            const apk = has64 ? '<span class="badge badge-ok">default (arm64)</span>'
+                      : has32 ? '<span class="badge badge-warn">arm32 compat APK only</span>'
+                      : '<span class="badge badge-danger">unsupported</span>';
+            return `<tr><td style="font-family:var(--mono);font-size:.75rem">${esc(r.abi)}</td><td>${r.cnt}</td><td>${apk}</td></tr>`;
+          }).join('')
+        : '<tr><td colspan="3" class="tbl-empty">No ABI data yet — devices report this from v0.9.28</td></tr>';
+
+      $('instModelTbl').innerHTML = (d.models||[]).length
+        ? d.models.map(r=>{
+            const abi32 = r.abi && !r.abi.includes('arm64-v8a');
+            return `<tr>
+              <td>${esc((r.manufacturer||'')+' '+(r.model||''))}</td>
+              <td>${esc(r.android_version||'—')}</td>
+              <td>${r.sdk_version||'—'}</td>
+              <td>${r.abi ? `<span class="badge ${abi32?'badge-warn':'badge-ok'}">${esc(r.abi.split(',')[0])}${abi32?' (32-bit)':''}</span>` : '—'}</td>
+              <td>${esc(r.app_version||'—')}</td>
+              <td>${r.cnt}</td>
+              <td class="mobile-hide">${esc(r.last_seen||'')}</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="7" class="tbl-empty">No model data</td></tr>';
+
+      $('instEventTbl').innerHTML = (d.install_events||[]).length
+        ? d.install_events.map(r=>{
+            const cls = r.event==='install_success' ? 'badge-ok' : r.event==='install_failure' ? 'badge-danger' : 'badge-info';
+            return `<tr>
+              <td style="white-space:nowrap">${esc(r.created_at||'')}</td>
+              <td><span class="badge ${cls}">${esc(r.event)}</span></td>
+              <td>${esc(r.current_version||'?')} → ${esc(r.target_version||'?')}</td>
+              <td>${esc(r.device_model||'—')}</td>
+              <td>${esc(r.android_version||'—')}${r.android_sdk?` (SDK ${r.android_sdk})`:''}</td>
+              <td style="font-family:var(--mono);font-size:.72rem">${esc((r.abi||'').split(',')[0]||'—')}</td>
+              <td class="mobile-hide" style="font-size:.72rem;color:var(--muted)">${esc(r.error||'')}</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="7" class="tbl-empty">No install events reported yet</td></tr>';
+    } catch(e) { toast('Install diagnostics: '+e.message,'error'); }
+  },
+};
+
 views.devices = {
   devData: [],
   quotaDevId: '',
@@ -1548,16 +1687,17 @@ views.release = {
     else $('debugStatus').innerHTML = `<div class="panel-empty">${esc(ds.reason?.message)}</div>`;
   },
   renderRelease(d) {
-    // Download symlink
-    const dl  = d.download_symlink||{};
-    $('dlSymlinkInfo').innerHTML = `
-      <div style="display:flex;align-items:center;gap:.75rem;font-size:.8rem">
+    // Download symlinks — one per APK variant users can choose on the site
+    const links = d.download_symlinks || [{...(d.download_symlink||{}), name:'setalink-latest.apk', label:'arm64 (default)'}];
+    $('dlSymlinkInfo').innerHTML = links.map(dl => `
+      <div style="display:flex;align-items:center;gap:.75rem;font-size:.8rem;margin-bottom:.25rem">
         <span class="dot ${dl.valid?'dot-ok':'dot-bad'}"></span>
-        <span class="mono">/public/download/setalink-latest.apk</span>
+        <span class="badge badge-muted" style="min-width:9.5rem;text-align:center">${esc(dl.label||'')}</span>
+        <span class="mono">/download/${esc(dl.name)}</span>
         <span style="color:var(--muted)">→</span>
         <span class="mono">${esc(dl.target||'(not set)')}</span>
         <span class="badge ${dl.valid?'badge-ok':'badge-danger'}">${dl.valid?'valid':'BROKEN'}</span>
-      </div>`;
+      </div>`).join('');
 
     // version.json
     const vj = d.version_json;
@@ -1602,6 +1742,7 @@ views.release = {
         ${!apks.length?'<div style="font-size:.75rem;color:var(--muted)">No APKs in this channel</div>':
           apks.map(a=>`<div class="apk-row">
             <span class="apk-name">${esc(a.name)}</span>
+            ${a.variant?`<span class="badge ${a.variant==='arm64'?'badge-ok':a.variant==='arm32'?'badge-warn':'badge-info'}">${esc(a.variant)}</span>`:''}
             <span class="apk-size">${fmtBytes(a.size)}</span>
             <span class="apk-date">${esc(a.mtime)}</span>
             <span class="apk-sha256" title="${esc(a.sha256)}">${esc((a.sha256||'').substring(0,16)+'…')}</span>
