@@ -1857,9 +1857,10 @@ switch ($action) {
         $ls = $dev['last_seen'] ?? null;
         $dev['is_online'] = ($dev['status'] === 'online'
                              && $ls && (time()-(int)strtotime((string)$ls.' UTC')) < 10800);
+        // vpn_sessions is created by public/api.php — only select columns that
+        // actually exist there (no probe_result/error_reason).
         $sess = $db->prepare("SELECT protocol, bytes_sent, bytes_recv, duration_secs,
-                                     app_version, probe_result, error_reason, client_ip,
-                                     started_at, ended_at
+                                     app_version, client_ip, started_at, ended_at
                               FROM vpn_sessions WHERE device_id=?
                               ORDER BY id DESC LIMIT 20");
         $sess->execute([$did]);
