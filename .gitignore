@@ -41,3 +41,4 @@ mobile-app/*.jsbundle
 .env.*
 mobile-app/.env
 mobile-app/.env.*
+public/releases/**/*.apk
