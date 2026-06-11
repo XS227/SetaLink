@@ -93,6 +93,8 @@ function init_device_tables(PDO $pdo): void {
         "ALTER TABLE devices ADD COLUMN latency_ms INTEGER DEFAULT 0",
         "ALTER TABLE devices ADD COLUMN last_failure_category TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN last_failure_at TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN android_version TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN abi TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
@@ -438,6 +440,8 @@ if ($method === 'POST') {
         $manufacturer  = substr(trim($_POST['manufacturer']  ?? ''), 0, 80);
         $model         = substr(trim($_POST['model']         ?? ''), 0, 120);
         $sdkVersion    = (int)($_POST['sdk_version'] ?? 0);
+        $androidVer    = substr(trim($_POST['android_version'] ?? ''), 0, 20);
+        $abi           = substr(trim($_POST['abi']             ?? ''), 0, 80);
         if (!$deviceId) err('missing device_id');
 
         $clientIp = client_ip();
@@ -475,11 +479,11 @@ if ($method === 'POST') {
             $pdo->prepare(
                 "INSERT INTO devices
                     (device_id, user_id, referral_code, platform, app_version, language, country, country_name,
-                     manufacturer, model, sdk_version, android_id_hash, last_ip, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')"
+                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')"
             )->execute([$deviceId, $uid, $code, $platform, $appVersion, $language,
                         $country, $countryName, $manufacturer, $model, $sdkVersion,
-                        $androidIdHash, $clientIp]);
+                        $androidVer, $abi, $androidIdHash, $clientIp]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
         } else {
@@ -498,6 +502,8 @@ if ($method === 'POST') {
                     manufacturer=CASE WHEN ?!='' THEN ? ELSE manufacturer END,
                     model=CASE WHEN ?!='' THEN ? ELSE model END,
                     sdk_version=CASE WHEN ?>0 THEN ? ELSE sdk_version END,
+                    android_version=CASE WHEN ?!='' THEN ? ELSE android_version END,
+                    abi=CASE WHEN ?!='' THEN ? ELSE abi END,
                     android_id_hash=CASE WHEN ?!='' THEN ? ELSE android_id_hash END,
                     last_ip=CASE WHEN ?!='' THEN ? ELSE last_ip END,
                     status='online'
@@ -509,6 +515,8 @@ if ($method === 'POST') {
                 $manufacturer, $manufacturer,
                 $model, $model,
                 $sdkVersion, $sdkVersion,
+                $androidVer, $androidVer,
+                $abi, $abi,
                 $androidIdHash, $androidIdHash,
                 $clientIp, $clientIp,
                 $deviceId,
