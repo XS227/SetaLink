@@ -338,6 +338,7 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $dev = $st->fetch(PDO::FETCH_ASSOC);
         if (!$dev) api_err('device not found', 404);
         $db->prepare("UPDATE devices SET last_seen = datetime('now') WHERE device_id = ?")->execute([$device_id]);
+        touch_device_ip($db, $device_id);
         ensure_user_id($db, $dev);
         api_ok([
             'device_id'         => $dev['device_id'],
@@ -352,6 +353,57 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         ]);
     }
     api_err('unknown mobile action');
+}
+
+// ── Client IP / geo helpers ──────────────────────────────────────────────
+// Requests made while the VPN is connected exit xray's freedom outbound on
+// this same box, so PHP sees 127.0.0.1. That means "via VPN", not the
+// client's address — only a public REMOTE_ADDR identifies the client.
+function real_client_ip(): string {
+    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+    if ($ip === '') return '';
+    if (filter_var($ip, FILTER_VALIDATE_IP,
+            FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) return '';
+    return $ip;
+}
+
+// Country for a public IP, cached forever in geo_cache (IP→country rarely
+// changes; cache also stores failed lookups as '' to avoid re-querying).
+function geo_country(PDO $db, string $ip): array {
+    if ($ip === '') return ['', ''];
+    $db->exec('CREATE TABLE IF NOT EXISTS geo_cache (
+        ip TEXT PRIMARY KEY,
+        country TEXT NOT NULL DEFAULT "",
+        country_name TEXT NOT NULL DEFAULT "",
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)');
+    $st = $db->prepare('SELECT country, country_name FROM geo_cache WHERE ip=?');
+    $st->execute([$ip]);
+    if ($row = $st->fetch(PDO::FETCH_ASSOC)) return [$row['country'], $row['country_name']];
+    $ctx  = stream_context_create(['http' => ['timeout' => 2]]);
+    $resp = @file_get_contents('http://ip-api.com/json/' . urlencode($ip)
+            . '?fields=status,countryCode,country', false, $ctx);
+    $j  = json_decode((string)$resp, true) ?: [];
+    $ok = ($j['status'] ?? '') === 'success';
+    $cc = $ok ? strtoupper((string)($j['countryCode'] ?? '')) : '';
+    $cn = $ok ? (string)($j['country'] ?? '') : '';
+    if ($resp !== false) {
+        $db->prepare('INSERT OR REPLACE INTO geo_cache (ip,country,country_name) VALUES (?,?,?)')
+           ->execute([$ip, $cc, $cn]);
+    }
+    return [$cc, $cn];
+}
+
+// Record the requesting client's real IP (+ derive country when missing).
+// No-op for tunneled requests so a real IP is never overwritten by 127.0.0.1.
+function touch_device_ip(PDO $db, string $device_id): void {
+    $ip = real_client_ip();
+    if ($ip === '') return;
+    [$cc, $cn] = geo_country($db, $ip);
+    $db->prepare("UPDATE devices SET last_ip=?,
+                    country=CASE WHEN (country='' OR country IS NULL) AND ?!='' THEN ? ELSE country END,
+                    country_name=CASE WHEN (country_name='' OR country_name IS NULL) AND ?!='' THEN ? ELSE country_name END
+                  WHERE device_id=?")
+       ->execute([$ip, $cc, $cc, $cn, $cn, $device_id]);
 }
 
 // ── Mobile POST ───────────────────────────────────────────────────────────
@@ -402,6 +454,7 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
             $st->execute([$device_id]);
             $dev = $st->fetch(PDO::FETCH_ASSOC);
         }
+        touch_device_ip($db, $device_id);
         ensure_user_id($db, $dev);
         api_ok([
             'device_id'         => $dev['device_id'],
@@ -514,6 +567,7 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $params[] = $device_id;
         $db->prepare("UPDATE devices SET " . implode(',', $sets) . " WHERE device_id=?")
            ->execute($params);
+        touch_device_ip($db, $device_id);
         api_ok(['status' => $status]);
     }
     if ($ma === 'report-session') {
@@ -548,6 +602,7 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
             $db->prepare("UPDATE devices SET quota_bytes_used=quota_bytes_used+?,last_seen=datetime('now') WHERE device_id=?")
                ->execute([$total, $device_id]);
         }
+        touch_device_ip($db, $device_id);
         api_ok(['recorded' => true]);
     }
     // Mobile telemetry
@@ -1403,7 +1458,7 @@ switch ($action) {
         $as_devices = $db->query("
             SELECT active_protocol, country, COUNT(*) AS cnt
             FROM devices
-            WHERE last_seen >= datetime('now','-5 minutes')
+            WHERE status='online' AND last_seen >= datetime('now','-180 minutes')
             GROUP BY active_protocol, country")->fetchAll(PDO::FETCH_ASSOC);
         $protocols = []; $countries = []; $online = 0;
         foreach ($as_devices as $as_r) {
@@ -1615,7 +1670,7 @@ switch ($action) {
         $total       = (int)$db->query("SELECT COUNT(*) FROM devices")->fetchColumn();
         // Online = recent heartbeat only. The stored status flag sticks at 'online'
         // when the app is killed without an offline event, inflating the count.
-        $onlineNow   = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen>=datetime('now','-5 minutes')")->fetchColumn();
+        $onlineNow   = (int)$db->query("SELECT COUNT(*) FROM devices WHERE status='online' AND last_seen>=datetime('now','-180 minutes')")->fetchColumn();
         $activeToday = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen>=date('now')")->fetchColumn();
         $active7d    = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen>=datetime('now','-7 days')")->fetchColumn();
         $newMonth    = (int)$db->query("SELECT COUNT(*) FROM devices WHERE created_at>=datetime('now','-30 days')")->fetchColumn();
@@ -1726,8 +1781,8 @@ switch ($action) {
             $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%"]);
         }
         if ($plan)          { $where[] = 'plan=?';    $params[] = $plan; }
-        if ($status_filter === 'online')  { $where[] = "last_seen>=datetime('now','-5 minutes')"; }
-        if ($status_filter === 'offline') { $where[] = "last_seen<datetime('now','-5 minutes')"; }
+        if ($status_filter === 'online')  { $where[] = "(status='online' AND last_seen>=datetime('now','-180 minutes'))"; }
+        if ($status_filter === 'offline') { $where[] = "(status!='online' OR last_seen<datetime('now','-180 minutes'))"; }
         if ($status_filter === 'blocked') { $where[] = 'blocked=1'; }
         $sql = 'SELECT * FROM devices' . ($where ? ' WHERE '.implode(' AND ',$where) : '') . ' ORDER BY created_at DESC LIMIT 500';
         $st  = $db->prepare($sql);
@@ -1735,7 +1790,12 @@ switch ($action) {
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         $result = array_map(function($r) {
             $ls = $r['last_seen'] ?? null;
-            $is_online = ($ls && (time()-(int)strtotime((string)$ls.' UTC')) < 300);
+            // Online = app-reported 'online' that isn't stale. The app posts
+            // vpn-status online/offline at connect/disconnect but has no
+            // periodic heartbeat, so a 5-min last_seen window always read 0.
+            // 3h staleness guards against apps killed without a final report.
+            $is_online = (($r['status'] ?? '') === 'online'
+                          && $ls && (time()-(int)strtotime((string)$ls.' UTC')) < 10800);
             return [
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
@@ -1770,6 +1830,57 @@ switch ($action) {
         }, $rows);
         api_ok($result);
         break;
+
+    case 'traffic-categories': {
+        // Global traffic-by-app counts parsed from xray access log by
+        // scripts/export-xray-stats.sh. Per-device attribution is impossible
+        // today: all clients share one xray user and nginx fronts every
+        // inbound, so xray sees 127.0.0.1 as the source for everyone.
+        $ist = json_decode((string)@file_get_contents(__DIR__ . '/../data/xray-stats.json'), true) ?: [];
+        $cats = (array)($ist['traffic_categories'] ?? []);
+        arsort($cats);
+        api_ok(['categories'  => $cats,
+                'exported_at' => (string)($ist['exported_at'] ?? ''),
+                'scope'       => 'global']);
+        break;
+    }
+
+    case 'device-detail': {
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $did = trim((string)($_GET['device_id'] ?? ''));
+        if (!$did) api_err('device_id required');
+        $st = $db->prepare('SELECT * FROM devices WHERE device_id=?');
+        $st->execute([$did]);
+        $dev = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$dev) api_err('device not found', 404);
+        $ls = $dev['last_seen'] ?? null;
+        $dev['is_online'] = ($dev['status'] === 'online'
+                             && $ls && (time()-(int)strtotime((string)$ls.' UTC')) < 10800);
+        $sess = $db->prepare("SELECT protocol, bytes_sent, bytes_recv, duration_secs,
+                                     app_version, probe_result, error_reason, client_ip,
+                                     started_at, ended_at
+                              FROM vpn_sessions WHERE device_id=?
+                              ORDER BY id DESC LIMIT 20");
+        $sess->execute([$did]);
+        $sessions = $sess->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($sessions as &$s) {
+            // 127.0.0.1 means the report travelled through the VPN tunnel
+            $s['via_vpn'] = ($s['client_ip'] === '127.0.0.1');
+        }
+        unset($s);
+        $ev = $db->prepare("SELECT event, current_version, target_version, device_model,
+                                   android_version, android_sdk, abi, error, created_at
+                            FROM install_events WHERE device_id=?
+                            ORDER BY id DESC LIMIT 10");
+        $ev->execute([$did]);
+        api_ok([
+            'device'         => $dev,
+            'sessions'       => $sessions,
+            'install_events' => $ev->fetchAll(PDO::FETCH_ASSOC),
+        ]);
+        break;
+    }
 
     case 'install-diagnostics':
         $db = open_analytics_db();

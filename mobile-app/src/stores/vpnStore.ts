@@ -26,6 +26,16 @@ interface SessionBytes { sent: number; received: number }
 // Each entry is the protocol string that buildXrayConfigJson understands.
 const FALLBACK_PROTOCOLS = ['Reality', 'XHTTP', 'WebSocket'] as const;
 
+// Periodic "still connected" heartbeat. Without it the panel only hears from
+// a device at connect/disconnect, so the admin online count reads 0 for
+// long-running sessions (and stays stale when the app is killed).
+const HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
+let statusHeartbeat: ReturnType<typeof setInterval> | null = null;
+
+function stopStatusHeartbeat() {
+  if (statusHeartbeat) { clearInterval(statusHeartbeat); statusHeartbeat = null; }
+}
+
 interface TraceTestResult {
   ok: boolean;
   statusCode?: number;
@@ -128,11 +138,22 @@ export const useVpnStore = create<VpnState>((set, get) => {
             internetOk: getLastConnectProbeOk?.() ?? false,
             activeSni:  '',
           }).catch(() => {});
+          stopStatusHeartbeat();
+          statusHeartbeat = setInterval(() => {
+            const s = get();
+            if (s.connectionState !== 'connected') { stopStatusHeartbeat(); return; }
+            reportVpnStatus(user.deviceId, 'online', {
+              protocol,
+              rxBytes: s.sessionBytes.received,
+              txBytes: s.sessionBytes.sent,
+            }).catch(() => {});
+          }, HEARTBEAT_INTERVAL_MS);
         }
       } catch {}
     },
 
     onDisconnected: () => {
+      stopStatusHeartbeat();
       const state = get();
 
       // Always record the completed session, even during server switches

@@ -723,6 +723,19 @@ function icon(string $name): string {
   </div>
 </div>
 
+<div class="modal-dialog" id="modalDevice" style="max-width:680px;width:92vw">
+  <div class="modal-header">
+    <span class="modal-title" id="devDetailTitle">Device</span>
+    <button class="btn-close btn btn-icon" onclick="closeModal()"><?= icon('x') ?></button>
+  </div>
+  <div class="modal-body" id="devDetailBody" style="max-height:70vh;overflow-y:auto">
+    <p style="font-size:.8rem;color:var(--muted-2)">Loading…</p>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+  </div>
+</div>
+
 <!-- ── Toast container ───────────────────────────────────────────────── -->
 <div id="toast-container"></div>
 
@@ -1524,7 +1537,7 @@ views.devices = {
           const srcCtry = flag + ' ' + esc(r.country_name||r.country||'—');
           // Active SNI
           const sniHtml = r.active_sni ? `<div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)">${esc(r.active_sni)}</div>` : '';
-          return `<tr>
+          return `<tr style="cursor:pointer" onclick="devDetail('${esc(r.device_id)}')" title="Click for device details">
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
               <div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)" title="Device fingerprint (sha256 of device_id)">FP: ${esc(r.device_id_short||'')}</div>
@@ -1546,12 +1559,12 @@ views.devices = {
             <td>
               <div style="display:flex;gap:.25rem">
                 <button class="btn btn-ghost btn-sm" title="${r.blocked?'Unblock':'Block'}"
-                  onclick="devBlock('${esc(r.device_id)}','${r.blocked?'unblock':'block'}')"
+                  onclick="event.stopPropagation();devBlock('${esc(r.device_id)}','${r.blocked?'unblock':'block'}')"
                   style="color:${r.blocked?'var(--ok)':'var(--warn)'}">
                   ${r.blocked?'Unblock':'Block'}
                 </button>
                 <button class="btn btn-ghost btn-sm" title="Set Quota"
-                  onclick="devSetQuota('${esc(r.device_id)}','${esc(uid)}')">Quota</button>
+                  onclick="event.stopPropagation();devSetQuota('${esc(r.device_id)}','${esc(uid)}')">Quota</button>
               </div>
             </td>
           </tr>`;
@@ -1596,6 +1609,63 @@ window.devBlock = async function(did, action) {
       views.devices.loadDevices();
     } catch(e) { toast(e.message,'error'); }
   };
+};
+window.devDetail = async function(did) {
+  $('devDetailTitle').textContent = 'Device';
+  $('devDetailBody').innerHTML = '<p style="font-size:.8rem;color:var(--muted-2)">Loading…</p>';
+  openModal('modalDevice');
+  try {
+    const [d, t] = await Promise.all([
+      api.get('device-detail', {device_id: did}),
+      api.get('traffic-categories').catch(()=>({categories:{}}))
+    ]);
+    const dev = d.device || {};
+    const uid = dev.user_id || did.substring(0,16);
+    $('devDetailTitle').textContent = `${countryFlag(dev.country||'')} ${uid}`.trim();
+    const kv = (k,v) => `<div style="display:flex;justify-content:space-between;gap:1rem;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--muted-2)">${k}</span><span style="text-align:right;font-family:var(--mono)">${v||'—'}</span></div>`;
+    const gb = n => fmtBytes(n||0);
+    const devRows = [
+      kv('Model', esc((dev.manufacturer?dev.manufacturer+' ':'')+(dev.model||''))),
+      kv('Android', esc(dev.android_version ? `${dev.android_version} (SDK ${dev.sdk_version||'?'})` : (dev.sdk_version?`SDK ${dev.sdk_version}`:''))),
+      kv('ABI', esc(dev.abi||'') || '<span style="color:var(--muted-2)">unknown (pre-0.9.28 app)</span>'),
+      kv('App version', esc(dev.app_version)),
+      kv('Language', esc(dev.language)),
+      kv('Country', `${countryFlag(dev.country||'')} ${esc(dev.country_name||dev.country||'')}`),
+      kv('Real IP', esc(dev.last_ip) || '<span style="color:var(--muted-2)">unknown — all requests came via VPN tunnel</span>'),
+      kv('Status', dev.is_online ? '<span style="color:var(--ok)">● online</span>' : '○ offline'),
+      kv('Protocol / SNI', `${esc(dev.active_protocol||'')} ${esc(dev.active_sni||'')}`),
+      kv('Quota', `${gb(dev.quota_bytes_used)} / ${gb(dev.quota_bytes_total)} (${esc(dev.plan)})`),
+      kv('Referral code', esc(dev.referral_code)),
+      kv('First seen', esc(dev.created_at)),
+      kv('Last seen', `${esc(dev.last_seen)} (${fmtRelative(dev.last_seen)})`),
+    ].join('');
+    const sess = (d.sessions||[]).slice(0,10).map(s=>`<tr>
+        <td style="font-size:.68rem">${fmtRelative(s.ended_at)}</td>
+        <td style="font-size:.68rem">${protoBadge(s.protocol)}</td>
+        <td style="font-size:.68rem;font-family:var(--mono)">↓${fmtBytes(s.bytes_recv)} ↑${fmtBytes(s.bytes_sent)}</td>
+        <td style="font-size:.68rem">${Math.round((s.duration_secs||0)/60)}m</td>
+        <td style="font-size:.68rem">${s.via_vpn?'<span title="report sent through the tunnel — exits xray locally">via VPN</span>':esc(s.client_ip||'—')}</td>
+      </tr>`).join('') || '<tr><td colspan="5" class="tbl-empty">No sessions reported</td></tr>';
+    const cats = Object.entries(t.categories||{});
+    const catMax = Math.max(1, ...cats.map(c=>c[1]));
+    const catHtml = cats.length ? cats.map(([k,v])=>`
+        <div style="display:flex;align-items:center;gap:.5rem;font-size:.72rem;padding:.15rem 0">
+          <span style="width:80px">${esc(k)}</span>
+          <div class="progress" style="flex:1"><div class="progress-bar ok" style="width:${Math.round(v/catMax*100)}%"></div></div>
+          <span style="width:50px;text-align:right;font-family:var(--mono)">${fmtNum(v)}</span>
+        </div>`).join('')
+      : '<p style="font-size:.72rem;color:var(--muted-2)">No traffic data yet</p>';
+    $('devDetailBody').innerHTML = `
+      ${devRows}
+      <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">RECENT SESSIONS</div>
+      <table class="tbl" style="margin-top:.3rem"><thead><tr>
+        <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Reported from</th>
+      </tr></thead><tbody>${sess}</tbody></table>
+      <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">TRAFFIC BY APP <span style="font-weight:400;color:var(--muted-2)">— all users combined, 48h (per-device needs per-device UUIDs)</span></div>
+      ${catHtml}`;
+  } catch(e) {
+    $('devDetailBody').innerHTML = `<p style="font-size:.8rem;color:var(--danger)">${esc(e.message)}</p>`;
+  }
 };
 window.devSetQuota = function(did, short) {
   views.devices.quotaDevId = did;
