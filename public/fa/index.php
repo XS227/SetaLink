@@ -8,6 +8,9 @@ foreach (['ref','start'] as $key) {
     if (preg_match('/^[A-Z0-9]{4,20}$/i', $v)) { $ref_code = strtoupper($v); break; }
 }
 $dl_link   = '/download/setalink-latest.apk' . ($ref_code ? '?ref=' . urlencode($ref_code) : '');
+$dl_ref       = $ref_code ? '?ref=' . urlencode($ref_code) : '';
+$dl_arm32     = '/download/setalink-latest-arm32.apk' . $dl_ref;
+$dl_universal = '/download/setalink-latest-universal.apk' . $dl_ref;
 $title     = 'ستالینک — فیلترشکن رایگان برای ایران | VPN اندروید';
 $desc      = 'ستالینک: فیلترشکن هوشمند مبتنی بر هوش مصنوعی با پروتکل VLESS+Reality. ۱ گیگابایت رایگان بدون ثبت‌نام. بایپس DPI. اندروید.';
 $keywords  = 'فیلترشکن رایگان, VPN ایران, فیلتر شکن اندروید, ستالینک, v2ray ایران, VLESS Reality, وی‌پی‌ان رایگان, دانلود فیلترشکن';
@@ -84,6 +87,17 @@ $canonical = 'https://setalink.no/fa/';
       <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 0C5.372 0 0 5.373 0 12s5.372 12 12 12 12-5.373 12-12S18.628 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
       پیوستن به تلگرام
     </a>
+  </div>
+
+  <!-- نسخه‌های APK — دکمه اصلی نسخه ۶۴-بیتی است؛ گوشی‌های ۳۲-بیتی
+       (مثل سامسونگ سری J) با آن خطای «برنامه نصب نشد» می‌دهند. -->
+  <div class="dl-variants" style="margin-top:.8rem;font-size:.82rem;opacity:.85;direction:rtl">
+    <span>خطای «برنامه نصب نشد»؟ نوع گوشی خود را انتخاب کنید:</span><br>
+    <a href="<?= htmlspecialchars($dl_link) ?>" rel="nofollow">استاندارد — اندروید ۱۰ به بالا (۶۴-بیت)</a>
+    &nbsp;·&nbsp;
+    <a href="<?= htmlspecialchars($dl_arm32) ?>" rel="nofollow">گوشی‌های قدیمی / سامسونگ سری J (۳۲-بیت)</a>
+    &nbsp;·&nbsp;
+    <a href="<?= htmlspecialchars($dl_universal) ?>" rel="nofollow">نسخه جامع (همه گوشی‌ها، حجم بیشتر)</a>
   </div>
   <div class="hero-stats">
     <div class="hero-stat"><div class="hero-stat-num">۱ GB</div><div class="hero-stat-label">رایگان پس از نصب</div></div>

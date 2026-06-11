@@ -87,9 +87,42 @@ export async function registerDevice(
     if (fp.model)           body.model           = String(fp.model);
     if (fp.sdk_version)     body.sdk_version     = Number(fp.sdk_version);
     if (fp.android_version) body.android_version = String(fp.android_version);
+    if (fp.abi)             body.abi             = String(fp.abi);
   }
   const data = await mobilePost('register-device', body);
   return data as DeviceEntitlement;
+}
+
+/**
+ * Report an OTA install outcome (success/failure) so the admin install
+ * diagnostics page can surface devices where updates fail to install
+ * (wrong ABI, blocked installer, storage full, …). Fire-and-forget.
+ */
+export async function reportInstallEvent(event: {
+  event: 'install_success' | 'install_failure' | 'download_started';
+  deviceId?: string;
+  currentVersion?: string;
+  targetVersion?: string;
+  error?: string;
+  fingerprint?: Record<string, string | number>;
+}): Promise<void> {
+  try {
+    const body: Record<string, string | number> = { event: event.event };
+    if (event.deviceId)       body.device_id       = event.deviceId;
+    if (event.currentVersion) body.current_version = event.currentVersion;
+    if (event.targetVersion)  body.target_version  = event.targetVersion;
+    if (event.error)          body.error           = event.error;
+    const fp = event.fingerprint;
+    if (fp) {
+      if (fp.model)           body.device_model    = String(fp.model);
+      if (fp.android_version) body.android_version = String(fp.android_version);
+      if (fp.sdk_version)     body.android_sdk     = Number(fp.sdk_version);
+      if (fp.abi)             body.abi             = String(fp.abi);
+    }
+    await mobilePost('report-install', body);
+  } catch {
+    // never block the caller on telemetry
+  }
 }
 
 export async function reportVpnStatus(

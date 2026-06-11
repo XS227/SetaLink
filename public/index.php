@@ -9,6 +9,9 @@ foreach (['ref', 'start'] as $key) {
 }
 $dl_base  = '/download/setalink-latest.apk';
 $dl_link  = $ref_code ? '/download/setalink-latest.apk?ref=' . urlencode($ref_code) : $dl_base;
+$dl_ref       = $ref_code ? '?ref=' . urlencode($ref_code) : '';
+$dl_arm32     = '/download/setalink-latest-arm32.apk' . $dl_ref;
+$dl_universal = '/download/setalink-latest-universal.apk' . $dl_ref;
 $canonical = 'https://setalink.no/';
 $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-512.png';
 ?><!DOCTYPE html>
@@ -155,6 +158,17 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
       <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 0C5.372 0 0 5.373 0 12s5.372 12 12 12 12-5.373 12-12S18.628 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
       <span data-t="hero.cta2">Join Telegram</span>
     </a>
+  </div>
+
+  <!-- APK variants — the default button serves 64-bit; 32-bit phones
+       (Samsung J-series and similar) show "App not installed" with it. -->
+  <div class="dl-variants" style="margin-top:.8rem;font-size:.82rem;opacity:.85">
+    <span data-t="dl.variant.q">"App not installed"? Pick your device type:</span><br>
+    <a href="<?= htmlspecialchars($dl_link) ?>" rel="nofollow" data-t="dl.variant.std">Standard — Android 10+ (64-bit)</a>
+    &nbsp;·&nbsp;
+    <a href="<?= htmlspecialchars($dl_arm32) ?>" rel="nofollow" data-t="dl.variant.old">Older phones / Samsung J-series (32-bit)</a>
+    &nbsp;·&nbsp;
+    <a href="<?= htmlspecialchars($dl_universal) ?>" rel="nofollow" data-t="dl.variant.uni">Universal (works on all, larger)</a>
   </div>
 
   <div class="hero-stats">

@@ -87,19 +87,36 @@ cd "$APP_DIR/android"
 echo "    Build complete"
 
 # ── Copy to releases directory ────────────────────────────────────────────────
-APK_SRC="$APP_DIR/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk"
+APK_OUT="$APP_DIR/android/app/build/outputs/apk/release"
+APK_SRC="$APK_OUT/app-arm64-v8a-release.apk"
+APK_SRC_ARM32="$APK_OUT/app-armeabi-v7a-release.apk"
+APK_SRC_UNIVERSAL="$APK_OUT/app-universal-release.apk"
 CHANNEL_DIR="$RELEASES_DIR/$CHANNEL"
 APK_NAME="setalink-v${NEW_VERSION}.apk"
+APK_NAME_ARM32="setalink-v${NEW_VERSION}-arm32.apk"
+APK_NAME_UNIVERSAL="setalink-v${NEW_VERSION}-universal.apk"
 APK_DEST="$CHANNEL_DIR/$APK_NAME"
 
 mkdir -p "$CHANNEL_DIR"
 cp "$APK_SRC" "$APK_DEST"
 ln -sf "$APK_NAME" "$CHANNEL_DIR/setalink-latest.apk"
-echo "    APK → $APK_DEST"
+echo "    APK (arm64) → $APK_DEST"
 
-# Also update assets/ compatibility path and latest symlink
+# 32-bit compat APK (Samsung J/A series and other armeabi-v7a-only devices)
+# and universal APK (both ABIs, for users who can't determine their ABI).
+cp "$APK_SRC_ARM32" "$CHANNEL_DIR/$APK_NAME_ARM32"
+ln -sf "$APK_NAME_ARM32" "$CHANNEL_DIR/setalink-latest-arm32.apk"
+echo "    APK (arm32 compat) → $CHANNEL_DIR/$APK_NAME_ARM32"
+
+cp "$APK_SRC_UNIVERSAL" "$CHANNEL_DIR/$APK_NAME_UNIVERSAL"
+ln -sf "$APK_NAME_UNIVERSAL" "$CHANNEL_DIR/setalink-latest-universal.apk"
+echo "    APK (universal) → $CHANNEL_DIR/$APK_NAME_UNIVERSAL"
+
+# Also update assets/ compatibility path and latest symlinks
 cp "$APK_DEST" "$REPO_ROOT/public/assets/$APK_NAME"
 ln -sf "../releases/$CHANNEL/$APK_NAME" "$DOWNLOAD_DIR/setalink-latest.apk"
+ln -sf "../releases/$CHANNEL/$APK_NAME_ARM32" "$DOWNLOAD_DIR/setalink-latest-arm32.apk"
+ln -sf "../releases/$CHANNEL/$APK_NAME_UNIVERSAL" "$DOWNLOAD_DIR/setalink-latest-universal.apk"
 
 # ── Generate version.json ─────────────────────────────────────────────────────
 SHA=$(sha256sum "$APK_DEST" | awk '{print $1}')
@@ -128,6 +145,8 @@ cat > "$VERSION_JSON" << EOF
   "forceUpdate": false,
   "apkUrl": "https://setalink.no/releases/$CHANNEL/$APK_NAME",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
+  "apkUrlArm32": "https://setalink.no/releases/$CHANNEL/$APK_NAME_ARM32",
+  "apkUrlUniversal": "https://setalink.no/releases/$CHANNEL/$APK_NAME_UNIVERSAL",
   "checksum": { "sha256": "$SHA", "algorithm": "sha256" },
   "size": $SIZE,
   "changelog": [],

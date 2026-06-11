@@ -137,6 +137,54 @@ export function snoozeUpdate(): void {
 }
 
 /** Open the APK download URL in the system browser/download manager. */
-export async function downloadUpdate(apkUrl: string): Promise<void> {
+export async function downloadUpdate(apkUrl: string, targetVersion?: string, targetCode?: number): Promise<void> {
+  // Persist a pending-install marker; resolvePendingInstall() compares the
+  // running build against it on next boot to detect failed installs.
+  storage.setItem(PENDING_KEY, JSON.stringify({
+    targetVersion: targetVersion ?? '',
+    targetCode:    targetCode ?? 0,
+    fromVersion:   APP_VERSION,
+    fromCode:      APP_BUILD_CODE,
+    ts:            Date.now(),
+  }));
   await Linking.openURL(apkUrl);
+}
+
+const PENDING_KEY = 'update_pending_install_v1';
+// Give the user time to actually run the installer before judging the outcome.
+const PENDING_MIN_AGE = 10 * 60 * 1000; // 10 minutes
+const PENDING_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // discard stale markers after 7 days
+
+export interface PendingInstallOutcome {
+  outcome: 'install_success' | 'install_failure';
+  targetVersion: string;
+  fromVersion: string;
+}
+
+/**
+ * Checks the pending-install marker left by downloadUpdate(). Returns the
+ * outcome exactly once (marker is cleared), or null when there is nothing
+ * conclusive to report yet.
+ */
+export function resolvePendingInstall(): PendingInstallOutcome | null {
+  const raw = syncGet(PENDING_KEY);
+  if (!raw) return null;
+  try {
+    const p = JSON.parse(raw) as { targetVersion: string; targetCode: number; fromVersion: string; ts: number };
+    const updated = p.targetCode > 0
+      ? APP_BUILD_CODE >= p.targetCode
+      : compareVersions(APP_VERSION, p.targetVersion || '0') >= 0;
+    if (updated) {
+      storage.removeItem(PENDING_KEY);
+      return { outcome: 'install_success', targetVersion: p.targetVersion, fromVersion: p.fromVersion };
+    }
+    const age = Date.now() - p.ts;
+    if (age < PENDING_MIN_AGE) return null;     // installer may still be running
+    storage.removeItem(PENDING_KEY);
+    if (age > PENDING_MAX_AGE) return null;     // too old to be meaningful
+    return { outcome: 'install_failure', targetVersion: p.targetVersion, fromVersion: p.fromVersion };
+  } catch {
+    storage.removeItem(PENDING_KEY);
+    return null;
+  }
 }
