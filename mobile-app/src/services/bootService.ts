@@ -11,8 +11,35 @@ export interface BootResult {
   shouldAutoConnect: boolean;
 }
 
+// Reports the outcome of a previously started OTA update (success, or
+// failure when the app still runs the old build) to the install
+// diagnostics endpoint. Fire-and-forget — never blocks boot.
+function reportPendingInstallOutcome(): void {
+  (async () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { resolvePendingInstall } = require('./updateService');
+    const pending = resolvePendingInstall();
+    if (!pending) return;
+    Logger.info('Boot', `OTA outcome: ${pending.outcome} (${pending.fromVersion} → ${pending.targetVersion})`);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { reportInstallEvent } = require('./entitlementService');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getStableDeviceId, getDeviceFingerprint } = require('./deviceIdentityService');
+    const [deviceId, fingerprint] = await Promise.all([getStableDeviceId(), getDeviceFingerprint()]);
+    await reportInstallEvent({
+      event:          pending.outcome,
+      deviceId,
+      currentVersion: pending.fromVersion,
+      targetVersion:  pending.targetVersion,
+      fingerprint,
+    });
+  })().catch(() => {});
+}
+
 export async function runBootSequence(): Promise<BootResult> {
   Logger.info('Boot', 'Starting boot sequence');
+
+  reportPendingInstallOutcome();
 
   // Stores are synchronously hydrated from MMKV persist before this runs.
   // Lazy-require to avoid circular module graph at declaration time.

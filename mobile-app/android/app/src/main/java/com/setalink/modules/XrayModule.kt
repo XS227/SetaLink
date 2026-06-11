@@ -403,6 +403,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                 putString("model",            android.os.Build.MODEL)
                 putInt   ("sdk_version",      android.os.Build.VERSION.SDK_INT)
                 putString("android_version",  android.os.Build.VERSION.RELEASE)
+                putString("abi",              android.os.Build.SUPPORTED_ABIS.joinToString(","))
             })
         } catch (e: Exception) {
             promise.resolve(WritableNativeMap())

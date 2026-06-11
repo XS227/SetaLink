@@ -196,7 +196,7 @@ function MainTabs() {
           <View style={updStyles.bannerBtns}>
             <TouchableOpacity
               style={updStyles.bannerBtn}
-              onPress={() => { downloadUpdate(updateResult!.apkUrl).catch(() => {}); }}
+              onPress={() => { downloadUpdate(updateResult!.apkUrl, updateResult!.latestVersion).catch(() => {}); }}
             >
               <Text style={updStyles.bannerBtnText}>Download</Text>
             </TouchableOpacity>
@@ -230,7 +230,7 @@ function MainTabs() {
             <TouchableOpacity
               style={updStyles.forceBtn}
               activeOpacity={0.85}
-              onPress={() => { downloadUpdate(updateResult?.apkUrl ?? '').catch(() => {}); }}
+              onPress={() => { downloadUpdate(updateResult?.apkUrl ?? '', updateResult?.latestVersion).catch(() => {}); }}
             >
               <Text style={updStyles.forceBtnText}>Download Update</Text>
             </TouchableOpacity>
