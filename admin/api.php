@@ -168,6 +168,8 @@ function init_device_tables(PDO $db): void {
         "ALTER TABLE devices ADD COLUMN latency_ms INTEGER DEFAULT 0",
         "ALTER TABLE devices ADD COLUMN last_failure_category TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN last_failure_at TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN android_version TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN abi TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $db->exec($sql); } catch (Exception $e) {}
@@ -198,6 +200,21 @@ function init_device_tables(PDO $db): void {
         "ALTER TABLE devices ADD COLUMN stealth_unlocked INTEGER DEFAULT 0",
         "ALTER TABLE devices ADD COLUMN invite_count INTEGER DEFAULT 0",
     ] as $m) { try { $db->exec($m); } catch (Exception $e) {} }
+    // Install/update outcome reports from the app (OTA install success/failure).
+    $db->exec("CREATE TABLE IF NOT EXISTS install_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id TEXT DEFAULT '',
+        event TEXT NOT NULL DEFAULT '',
+        current_version TEXT DEFAULT '',
+        target_version TEXT DEFAULT '',
+        device_model TEXT DEFAULT '',
+        android_version TEXT DEFAULT '',
+        android_sdk INTEGER DEFAULT 0,
+        abi TEXT DEFAULT '',
+        error TEXT DEFAULT '',
+        client_ip TEXT DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )");
 }
 function generate_user_id(int $rowid): string {
     $chars  = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -349,6 +366,11 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $app_version = substr(trim((string)($_POST['app_version'] ?? '')), 0, 20);
         $language    = substr(trim((string)($_POST['language']    ?? '')), 0, 30);
         $country     = substr(trim((string)($_POST['country']     ?? '')), 0, 80);
+        $manufacturer = substr(trim((string)($_POST['manufacturer']    ?? '')), 0, 60);
+        $model        = substr(trim((string)($_POST['model']           ?? '')), 0, 120);
+        $sdk_version  = max(0, (int)($_POST['sdk_version'] ?? 0));
+        $android_ver  = substr(trim((string)($_POST['android_version'] ?? '')), 0, 20);
+        $abi          = substr(trim((string)($_POST['abi']             ?? '')), 0, 80);
         if (!$device_id || strlen($device_id) > 128) api_err('invalid device_id');
         if (!preg_match('/^[a-zA-Z0-9][a-zA-Z0-9\-_]{5,126}$/', $device_id)) api_err('invalid device_id format');
         $db = open_analytics_db();
@@ -357,12 +379,22 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $st->execute([$device_id]);
         $dev = $st->fetch(PDO::FETCH_ASSOC);
         if ($dev) {
-            $db->prepare("UPDATE devices SET last_seen=datetime('now'),platform=?,app_version=?,language=?,status='online',country=CASE WHEN ?!='' THEN ? ELSE country END WHERE device_id=?")
-               ->execute([$platform, $app_version, $language, $country, $country, $device_id]);
+            $db->prepare("UPDATE devices SET last_seen=datetime('now'),platform=?,app_version=?,language=?,status='online',
+                          country=CASE WHEN ?!='' THEN ? ELSE country END,
+                          manufacturer=CASE WHEN ?!='' THEN ? ELSE manufacturer END,
+                          model=CASE WHEN ?!='' THEN ? ELSE model END,
+                          sdk_version=CASE WHEN ?>0 THEN ? ELSE sdk_version END,
+                          android_version=CASE WHEN ?!='' THEN ? ELSE android_version END,
+                          abi=CASE WHEN ?!='' THEN ? ELSE abi END
+                          WHERE device_id=?")
+               ->execute([$platform, $app_version, $language, $country, $country,
+                          $manufacturer, $manufacturer, $model, $model,
+                          $sdk_version, $sdk_version, $android_ver, $android_ver,
+                          $abi, $abi, $device_id]);
         } else {
             $ref = generate_referral_code($db);
-            $db->prepare("INSERT INTO devices (device_id,referral_code,plan,quota_bytes_total,quota_bytes_used,platform,app_version,language,country,status) VALUES (?,?,'free',?,0,?,?,?,?,'online')")
-               ->execute([$device_id, $ref, ONE_GB_BYTES, $platform, $app_version, $language, $country]);
+            $db->prepare("INSERT INTO devices (device_id,referral_code,plan,quota_bytes_total,quota_bytes_used,platform,app_version,language,country,status,manufacturer,model,sdk_version,android_version,abi) VALUES (?,?,'free',?,0,?,?,?,?,'online',?,?,?,?,?)")
+               ->execute([$device_id, $ref, ONE_GB_BYTES, $platform, $app_version, $language, $country, $manufacturer, $model, $sdk_version, $android_ver, $abi]);
             // Generate user_id immediately using the new rowid
             $rowid = (int)$db->lastInsertId();
             $uid   = generate_user_id($rowid);
@@ -382,6 +414,31 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
             'blocked'           => (bool)(int)$dev['blocked'],
             'server'            => fetch_bootstrap_server($db),
         ]);
+    }
+    if ($ma === 'report-install') {
+        // App reports OTA install outcome: after tapping "update", the app
+        // persists the target version; on next boot it compares the running
+        // build against the target and reports success or failure here.
+        $event = trim((string)($_POST['event'] ?? ''));
+        if (!in_array($event, ['install_success', 'install_failure', 'download_started'], true)) {
+            api_err('invalid event');
+        }
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $db->prepare("INSERT INTO install_events (device_id,event,current_version,target_version,device_model,android_version,android_sdk,abi,error,client_ip) VALUES (?,?,?,?,?,?,?,?,?,?)")
+           ->execute([
+               substr(trim((string)($_POST['device_id']       ?? '')), 0, 128),
+               $event,
+               substr(trim((string)($_POST['current_version'] ?? '')), 0, 20),
+               substr(trim((string)($_POST['target_version']  ?? '')), 0, 20),
+               substr(trim((string)($_POST['device_model']    ?? '')), 0, 120),
+               substr(trim((string)($_POST['android_version'] ?? '')), 0, 20),
+               max(0, (int)($_POST['android_sdk'] ?? 0)),
+               substr(trim((string)($_POST['abi']             ?? '')), 0, 80),
+               substr(trim((string)($_POST['error']           ?? '')), 0, 300),
+               $_SERVER['REMOTE_ADDR'] ?? '',
+           ]);
+        api_ok(['recorded' => true]);
     }
     if ($ma === 'use-referral') {
         $device_id     = trim((string)($_POST['device_id'] ?? ''));
@@ -909,11 +966,14 @@ switch ($action) {
             $cmd = '(curl -sk -o /dev/null -w "%{http_code}" --max-time 6' . $hargs . ' ' . escapeshellarg($pp['url']) . ') > ' . escapeshellarg($f) . ' 2>&1 &';
             exec($cmd);
         }
-        // Check Reality by verifying the Xray SOCKS5 port (127.0.0.1:10808) — which only
-        // opens when Xray is running — rather than connecting to the Reality inbound
-        // directly. A plain TCP connect to the Reality port (8443) triggers Xray to log
-        // "REALITY: failed to read client hello" because the client closes without TLS.
-        $reality_open = tcp_open('127.0.0.1', 10808, 2);
+        // Check Reality against the PRODUCTION Reality server (bootstrap_address —
+        // a separate box, NOT this edge server). Clients connect there directly on :443.
+        // Local xray has no SOCKS inbound; 10808 is the CLIENT-side port in the app.
+        $ph_db = open_analytics_db();
+        $ph_bs = $ph_db->query("SELECT key,value FROM settings WHERE key IN ('bootstrap_address','bootstrap_port')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $ph_raddr = (string)($ph_bs['bootstrap_address'] ?? '178.104.77.231');
+        $ph_rport = (int)($ph_bs['bootstrap_port'] ?? 443);
+        $reality_open = tcp_open($ph_raddr, $ph_rport, 4);
         $ph_deadline = microtime(true) + 5.0;
         while (microtime(true) < $ph_deadline) {
             $all_done = true;
@@ -948,139 +1008,92 @@ switch ($action) {
                     break;
             }
         }
-        // Reality check via SOCKS5 (not direct TCP to avoid "failed to read client hello" log spam)
-        $r['reality']    = ['ok'=>$reality_open,'code'=>null,'open'=>$reality_open,'name'=>'Reality (via Xray SOCKS5)','timeout'=>false,
-                            'detail'=>$reality_open?'Xray running (SOCKS5:10808 open)':'SOCKS5:10808 closed — Xray not running'];
+        $r['reality']    = ['ok'=>$reality_open,'code'=>null,'open'=>$reality_open,'name'=>"Reality ({$ph_raddr}:{$ph_rport})",'timeout'=>false,
+                            'detail'=>$reality_open?'production Reality server reachable':'production Reality server UNREACHABLE — clients cannot connect'];
         $r['checked_at'] = date('Y-m-d H:i:s');
         api_ok($r);
         break;
 
-    case 'nat-health':
-        // Server-side NAT / forwarding health check.
-        // If ip_forward=0 or MASQUERADE missing, clients connect but get no internet.
+    case 'service-health':
+    case 'nat-health': // legacy alias — old NAT checks removed; xray proxies in
+        // userspace (freedom outbound), so kernel NAT/MASQUERADE never decides
+        // whether VPN clients get internet. The old check also ran iptables as
+        // www-data (permission denied) and false-alarmed "NAT broken".
         $checks = [];
 
-        // 0. Detect real default egress interface from ip route
-        $route_out = shell_exec('ip route show default 2>/dev/null') ?: '';
-        $route_ok  = (stripos($route_out, 'default') !== false);
-        $outIface  = '';
-        if (preg_match('/default\s+via\s+\S+\s+dev\s+(\S+)/', $route_out, $m)) $outIface = $m[1];
-        // Also try: ip route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if($i=="dev") print $(i+1)}'
-        if (!$outIface) {
-            $r2 = shell_exec('ip route get 1.1.1.1 2>/dev/null') ?: '';
-            if (preg_match('/dev\s+(\S+)/', $r2, $m2)) $outIface = $m2[1];
-        }
-        $ifaceLabel = $outIface ?: 'unknown';
-
-        // 1. IPv4 forwarding
-        $ip_fwd_raw = trim((string)@file_get_contents('/proc/sys/net/ipv4/ip_forward'));
-        $ip_fwd_ok  = ($ip_fwd_raw === '1');
-        $checks[] = ['label'=>'IPv4 forwarding (ip_forward)','ok'=>$ip_fwd_ok,
-            'detail'=>$ip_fwd_ok?'ip_forward=1 ✓':'ip_forward=0 — clients will connect but get no internet',
-            'fix'=>'sysctl -w net.ipv4.ip_forward=1 && echo "net.ipv4.ip_forward=1" >> /etc/sysctl.d/99-vpn.conf'];
-
-        // 2. MASQUERADE — try multiple methods (iptables needs root, fallback to saved rules file)
-        $ipt_list  = shell_exec('iptables -t nat -L POSTROUTING -n --line-numbers 2>/dev/null') ?: '';
-        $ipt_save  = shell_exec('iptables-save -t nat 2>/dev/null') ?: '';
-        $ipt_file  = @file_get_contents('/etc/iptables/rules.v4') ?: '';
-        $ipt_file2 = @file_get_contents('/etc/iptables.up.rules') ?: '';
-        $all_ipt   = $ipt_list . $ipt_save . $ipt_file . $ipt_file2;
-        $masq_ok   = (stripos($all_ipt, 'MASQUERADE') !== false);
-        // Also verify MASQUERADE is for the correct outbound interface (not just any interface)
-        $masq_iface_ok = !$outIface || preg_match('/MASQUERADE.*(-o\s+' . preg_quote($outIface,'/').'|POSTROUTING.*' . preg_quote($outIface,'/').')/i', $all_ipt) || $masq_ok;
-        $masq_detail   = $masq_ok
-            ? 'MASQUERADE rule found (interface: ' . ($outIface ?: 'any') . ') ✓'
-            : 'No MASQUERADE — clients connect but get NO internet routing';
-        $checks[] = ['label'=>"iptables MASQUERADE (egress: {$ifaceLabel})","ok"=>$masq_ok,
-            'detail'=>$masq_detail,
-            'fix'=>"iptables -t nat -A POSTROUTING -o {$ifaceLabel} -j MASQUERADE"];
-
-        // 3. nftables as alternative if iptables not found
-        $nft_out = shell_exec('nft list ruleset 2>/dev/null | grep -i masquerade') ?: '';
-        $nft_file = @file_get_contents('/etc/nftables.conf') ?: '';
-        $nft_ok  = stripos($nft_out . $nft_file, 'masquerade') !== false;
-        if (!$masq_ok && $nft_ok) {
-            $checks[] = ['label'=>'nftables MASQUERADE','ok'=>true,
-                'detail'=>'nftables masquerade rule found (nftables used instead of iptables) ✓','fix'=>''];
-            $masq_ok = true;
-        }
-
-        // 4. iptables-persistent (rules survive reboot)
-        $persist_ok = file_exists('/etc/iptables/rules.v4') || file_exists('/usr/sbin/netfilter-persistent') || file_exists('/usr/sbin/iptables-persistent');
-        $checks[] = ['label'=>'Rules persist after reboot','ok'=>$persist_ok,
-            'detail'=>$persist_ok?'iptables-persistent installed ✓':'Rules lost on reboot',
-            'fix'=>'apt-get install -y iptables-persistent && netfilter-persistent save'];
-
-        // 5. Default route
-        $checks[] = ['label'=>"Default route (via {$ifaceLabel})",'ok'=>$route_ok,
-            'detail'=>$route_ok?trim($route_out):'No default route — server has no internet'];
-
-        // 6. Xray SOCKS5 reachable (VPN process running)
-        $xray_sock = @fsockopen('127.0.0.1', 10808, $e, $err, 2);
-        $xray_ok   = ($xray_sock !== false);
-        if ($xray_ok) fclose($xray_sock);
-        $checks[] = ['label'=>'Xray SOCKS5 running (port 10808)','ok'=>$xray_ok,
-            'detail'=>$xray_ok?'SOCKS5 port open ✓':'Xray not running — start with: systemctl restart xray',
+        // 1. Xray service (the edge inbounds for WS/XHTTP/HTTPUpgrade live here)
+        $xr_active = trim((string)@shell_exec('systemctl is-active xray.service 2>/dev/null')) === 'active';
+        $checks[] = ['label'=>'Xray service (edge)','ok'=>$xr_active,
+            'detail'=>$xr_active?'active ✓':'xray.service not active — WS/XHTTP/HTTPUpgrade down',
             'fix'=>'systemctl restart xray'];
 
-        $overall_ok = $ip_fwd_ok && $masq_ok;
-        $score = (int)$ip_fwd_ok * 40 + (int)$masq_ok * 35 + (int)$persist_ok * 10 + (int)$route_ok * 10 + (int)$xray_ok * 5;
-        api_ok(['ok'=>$overall_ok,'score'=>$score,'checks'=>$checks,'out_iface'=>$outIface,'checked_at'=>date('Y-m-d H:i:s')]);
+        // 2. Nginx (fronts all edge transports on :443 and serves the API)
+        $ng_active = trim((string)@shell_exec('systemctl is-active nginx.service 2>/dev/null')) === 'active';
+        $checks[] = ['label'=>'Nginx service','ok'=>$ng_active,
+            'detail'=>$ng_active?'active ✓':'nginx not active — edge transports and API down',
+            'fix'=>'systemctl restart nginx'];
+
+        // 3. Xray edge inbounds listening (behind nginx on 127.0.0.1)
+        $sh_inbounds = ['WS'=>10000,'XHTTP'=>10001,'HTTPUpgrade'=>10002];
+        foreach ($sh_inbounds as $sh_name => $sh_port) {
+            $sh_s = @fsockopen('127.0.0.1', $sh_port, $sh_e, $sh_err, 2);
+            $sh_ok = ($sh_s !== false);
+            if ($sh_ok) fclose($sh_s);
+            $checks[] = ['label'=>"{$sh_name} inbound (127.0.0.1:{$sh_port})",'ok'=>$sh_ok,
+                'detail'=>$sh_ok?'listening ✓':"port {$sh_port} closed — {$sh_name} transport down",
+                'fix'=>'systemctl restart xray'];
+        }
+
+        // 4. Production Reality server (separate box clients connect to directly)
+        $sh_db = open_analytics_db();
+        $sh_bs = $sh_db->query("SELECT key,value FROM settings WHERE key IN ('bootstrap_address','bootstrap_port')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $sh_raddr = (string)($sh_bs['bootstrap_address'] ?? '178.104.77.231');
+        $sh_rport = (int)($sh_bs['bootstrap_port'] ?? 443);
+        $sh_rs = @fsockopen($sh_raddr, $sh_rport, $sh_e2, $sh_err2, 4);
+        $sh_rok = ($sh_rs !== false);
+        if ($sh_rok) fclose($sh_rs);
+        $checks[] = ['label'=>"Reality server ({$sh_raddr}:{$sh_rport})",'ok'=>$sh_rok,
+            'detail'=>$sh_rok?'reachable ✓':'UNREACHABLE — Reality clients cannot connect',
+            'fix'=>"Check the Reality box: ssh {$sh_raddr} → systemctl status xray"];
+
+        // 5. Server outbound internet (xray freedom outbound needs this)
+        $sh_net = @fsockopen('1.1.1.1', 443, $sh_e3, $sh_err3, 3);
+        $sh_net_ok = ($sh_net !== false);
+        if ($sh_net_ok) fclose($sh_net);
+        $checks[] = ['label'=>'Server outbound internet','ok'=>$sh_net_ok,
+            'detail'=>$sh_net_ok?'reachable ✓':'No outbound connectivity — proxied traffic will fail'];
+
+        // 6. TLS certificate expiry on :443
+        $sh_cert = (string)@shell_exec("echo | timeout 5 openssl s_client -connect 127.0.0.1:443 -servername edge.setalink.no 2>/dev/null | openssl x509 -noout -enddate 2>/dev/null");
+        $sh_days = null;
+        if (preg_match('/notAfter=(.+)/', $sh_cert, $sh_m)) {
+            $sh_exp = strtotime(trim($sh_m[1]));
+            if ($sh_exp) $sh_days = (int)floor(($sh_exp - time()) / 86400);
+        }
+        $sh_cert_ok = ($sh_days === null) ? true : $sh_days > 14; // null = could not check, don't false-alarm
+        $checks[] = ['label'=>'TLS certificate','ok'=>$sh_cert_ok,
+            'detail'=>$sh_days===null?'could not check (non-blocking)':($sh_days>14?"expires in {$sh_days} days ✓":"expires in {$sh_days} days — renew now"),
+            'fix'=>'certbot renew'];
+
+        // 7. Disk space
+        $sh_total = (float)@disk_total_space('/'); $sh_free = (float)@disk_free_space('/');
+        $sh_used_pct = $sh_total > 0 ? round((1 - $sh_free / $sh_total) * 100) : 0;
+        $sh_disk_ok = $sh_used_pct < 90;
+        $checks[] = ['label'=>'Disk space','ok'=>$sh_disk_ok,
+            'detail'=>"{$sh_used_pct}% used" . ($sh_disk_ok?' ✓':' — telemetry DB writes may fail'),
+            'fix'=>'journalctl --vacuum-size=200M && apt-get clean'];
+
+        $sh_fail = array_values(array_filter($checks, fn($c) => !$c['ok']));
+        $overall_ok = count($sh_fail) === 0;
+        $score = count($checks) ? (int)round((count($checks) - count($sh_fail)) / count($checks) * 100) : 0;
+        api_ok(['ok'=>$overall_ok,'score'=>$score,'checks'=>$checks,'failing'=>count($sh_fail),'checked_at'=>date('Y-m-d H:i:s')]);
         break;
 
     case 'nat-repair':
-        // Calls /usr/local/sbin/setalink-nat-repair via sudo.
-        // www-data is allowed to run ONLY that one script (see /etc/sudoers.d/setalink-webserver).
-        // Script detects the real egress interface itself — no arbitrary args passed.
-        $wrapper = '/usr/local/sbin/setalink-nat-repair';
-        if (!file_exists($wrapper)) {
-            api_error('Repair wrapper not installed. Run: sudo bash /var/www/setalink/scripts/setup-sudoers.sh');
-            break;
-        }
-
-        // Run the wrapper; capture all output lines as key=value pairs
-        $raw = shell_exec('sudo ' . escapeshellarg($wrapper) . ' 2>&1') ?: '';
-        $out = array_filter(array_map('trim', explode("\n", $raw)));
-
-        // Parse key=value lines from the wrapper
-        $kv = [];
-        foreach ($out as $line) {
-            if (preg_match('/^([A-Z_]+)=(.*)$/', $line, $m)) $kv[$m[1]] = $m[2];
-        }
-
-        if (isset($kv['ERROR'])) { api_error($kv['ERROR']); break; }
-
-        $iface = $kv['IFACE'] ?? '';
-        $steps = [];
-
-        $steps[] = ['step'=>'detect_interface','ok'=>(bool)$iface,
-            'detail'=>$iface?"Egress interface: {$iface} ✓":"Could not detect interface — raw: ".implode(' | ', array_slice($out,0,3))];
-
-        $steps[] = ['step'=>'ip_forward','ok'=>($kv['IP_FORWARD'] ?? '0') === '1',
-            'detail'=>($kv['IP_FORWARD'] ?? '0') === '1' ? 'ip_forward=1 ✓' : 'ip_forward not set'];
-
-        $steps[] = ['step'=>'sysctl_persist','ok'=>isset($kv['SYSCTL_PERSISTED']),
-            'detail'=>isset($kv['SYSCTL_PERSISTED']) ? 'ip_forward persisted to /etc/sysctl.d/99-vpn-nat.conf ✓' : 'Persist skipped'];
-
-        $masq_added   = isset($kv['MASQUERADE_ADDED']);
-        $masq_existed = isset($kv['MASQUERADE_EXISTS']);
-        $steps[] = ['step'=>'masquerade','ok'=>($masq_added || $masq_existed),
-            'detail'=>$masq_added ? "MASQUERADE added on {$iface} ✓" : ($masq_existed ? "MASQUERADE already present on {$iface} ✓" : 'MASQUERADE step missing from output')];
-
-        $saved_by = $kv['RULES_SAVED'] ?? '';
-        $steps[] = ['step'=>'save_rules','ok'=>($saved_by !== '' && $saved_by !== 'failed'),
-            'detail'=>($saved_by && $saved_by !== 'failed') ? "Rules saved via {$saved_by} ✓" : 'Rule save failed — rules lost on reboot'];
-
-        $xray_ok = ($kv['XRAY_OK'] ?? '0') === '1';
-        // Verify SOCKS5 independently
-        $xsock = @fsockopen('127.0.0.1', 10808, $e2, $e2msg, 2);
-        $xray_socks = ($xsock !== false);
-        if ($xray_socks) fclose($xsock);
-        $steps[] = ['step'=>'xray_running','ok'=>($xray_ok || $xray_socks),
-            'detail'=>($xray_ok || $xray_socks) ? 'Xray running, SOCKS5 port 10808 open ✓' : 'Xray may not be running — check: systemctl status xray'];
-
-        $all_ok = count(array_filter($steps, fn($s) => !$s['ok'])) === 0;
-        api_ok(['ok'=>$all_ok,'interface'=>$iface,'steps'=>$steps,'raw_lines'=>array_values($out),'repaired_at'=>date('Y-m-d H:i:s')]);
+        // Removed 2026-06-10: kernel NAT (ip_forward/MASQUERADE) is irrelevant to
+        // xray's userspace proxying, and the old "NAT broken" warning it answered
+        // was a www-data permission false positive. Use action=service-health.
+        api_err('nat-repair removed — kernel NAT does not affect xray. Use service-health.');
         break;
 
     case 'sync-edge-config':
@@ -1109,39 +1122,40 @@ switch ($action) {
         break;
 
     case 'iran-score':
-        $cfg = cli_json('status', [], 8);
-        $r   = $cfg['reality'] ?? [];
+        // Grades the BOOTSTRAP profile (settings table) — what clients actually
+        // receive — not the local xray config, which is a different machine's
+        // concern (production Reality runs on the bootstrap box, not here).
+        $is_db = open_analytics_db();
+        $is_bs = $is_db->query("SELECT key,value FROM settings WHERE key LIKE 'bootstrap_%'")->fetchAll(PDO::FETCH_KEY_PAIR);
         $score = 0; $checks = [];
-        $sni = $r['sni'] ?? '';
-        $safe_snis = ['www.microsoft.com','www.apple.com','www.speedtest.net','www.google.com'];
+        $sni = (string)($is_bs['bootstrap_sni'] ?? '');
+        // www.cloudflare.com confirmed working from Iran (2026-06-10);
+        // www.microsoft.com kept as experimental fallback.
+        $safe_snis = ['www.cloudflare.com','www.microsoft.com','www.apple.com','www.speedtest.net','www.google.com'];
         $sni_ok = in_array($sni, $safe_snis, true);
         $score += $sni_ok ? 30 : 0;
         $checks[] = ['label'=>'SNI not blocked in Iran','ok'=>$sni_ok,'detail'=>$sni ?: '—'];
-        $port = (int)($r['port'] ?? 0);
-        // Accept 443 (stream-routed) or 8443 (direct); both are valid after stream-module migration.
-        $port_ok = ($port === 443 || $port === 8443);
+        $port = (int)($is_bs['bootstrap_port'] ?? 0);
+        $port_ok = ($port === 443);
         $score += $port_ok ? 20 : 0;
-        $port_label = $port === 443 ? '443 (stream-routed ✓)' : ($port === 8443 ? '8443 (direct)' : (string)$port);
-        $checks[] = ['label'=>'Reality port (443 or 8443)','ok'=>$port_ok,'detail'=>$port_label];
-        $flow = $r['flow'] ?? '';
-        $flow_ok = ($flow === 'xtls-rprx-vision');
+        $checks[] = ['label'=>'Reality port 443','ok'=>$port_ok,'detail'=>(string)$port];
+        $flow = (string)($is_bs['bootstrap_flow'] ?? '');
+        // The live Reality box runs WITHOUT flow (see project_reality_credentials);
+        // score what is configured, label honestly.
+        $flow_ok = ($flow === 'xtls-rprx-vision' || $flow === '');
         $score += $flow_ok ? 20 : 0;
-        $checks[] = ['label'=>'Flow: xtls-rprx-vision','ok'=>$flow_ok,'detail'=>$flow ?: '(none)'];
-        $fp = $r['fingerprint'] ?? '';
+        $checks[] = ['label'=>'Flow setting consistent','ok'=>$flow_ok,'detail'=>$flow !== '' ? $flow : '(none — matches live Reality box)'];
+        $fp = (string)($is_bs['bootstrap_fp'] ?? '');
         $fp_ok = !empty($fp);
         $score += $fp_ok ? 15 : 0;
         $checks[] = ['label'=>'Fingerprint set','ok'=>$fp_ok,'detail'=>$fp ?: '—'];
-        // Check Xray alive via its internal API port (8344, dokodemo-door) — avoids
-        // "failed to read client hello" spam that a plain TCP probe to 8443 triggers.
-        $tcp_sock = @fsockopen('127.0.0.1', 8344, $e, $err, 2);
-        $tcp_ok   = $tcp_sock !== false;
-        if ($tcp_ok) fclose($tcp_sock);
-        // Fallback: systemctl is-active
-        if (!$tcp_ok) {
-            $tcp_ok = trim((string)shell_exec('systemctl is-active xray 2>/dev/null')) === 'active';
-        }
-        $score += $tcp_ok ? 15 : 0;
-        $checks[] = ['label'=>'Xray running (API port 8344)','ok'=>$tcp_ok,'detail'=>$tcp_ok?'Xray API port open ✓':'Xray API port closed — check: systemctl status xray'];
+        // Production Reality server reachable (the box clients connect to)
+        $is_addr = (string)($is_bs['bootstrap_address'] ?? '178.104.77.231');
+        $is_sock = @fsockopen($is_addr, $port ?: 443, $e, $err, 4);
+        $is_up   = $is_sock !== false;
+        if ($is_up) fclose($is_sock);
+        $score += $is_up ? 15 : 0;
+        $checks[] = ['label'=>"Reality server reachable ({$is_addr})",'ok'=>$is_up,'detail'=>$is_up?'reachable ✓':'UNREACHABLE — clients cannot connect'];
         $grade = $score>=90?'A':($score>=70?'B':($score>=50?'C':'F'));
         api_ok(['score'=>$score,'grade'=>$grade,'checks'=>$checks,'checked_at'=>date('Y-m-d H:i:s')]);
         break;
@@ -1380,34 +1394,37 @@ switch ($action) {
         break;
 
     case 'active-sessions':
-        $log    = '/var/log/xray/access.log';
-        $cutoff = time() - 300;
-        $sessions = []; $total_recent = 0; $protocols = [];
-        if (is_readable($log)) {
-            $lines = array_slice(file($log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -1000);
-            foreach ($lines as $line) {
-                if (!preg_match('/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})/', $line, $m)) continue;
-                $ts = strtotime(str_replace('/', '-', $m[1]));
-                if ($ts < $cutoff) continue;
-                if (strpos($line, '127.0.0.1') !== false || strpos($line, '::1') !== false) continue;
-                $total_recent++;
-                if (preg_match('/accepted\s+([\d\.a-f:]+):\d+/', $line, $ip)) {
-                    $sessions[$ip[1]] = ($sessions[$ip[1]] ?? 0) + 1;
-                }
-                if (preg_match('/using\s+\[([^\]]+)\]/', $line, $proto)) {
-                    $p = $proto[1];
-                    $protocols[$p] = ($protocols[$p] ?? 0) + 1;
-                }
-            }
+        // DB-driven. The old version parsed /var/log/xray/access.log, which is
+        // (a) root-only — unreadable as www-data, and (b) useless here anyway:
+        // nginx fronts every inbound, so xray logs all real users as 127.0.0.1
+        // and the old localhost filter discarded 100% of genuine traffic.
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $as_devices = $db->query("
+            SELECT active_protocol, country, COUNT(*) AS cnt
+            FROM devices
+            WHERE last_seen >= datetime('now','-5 minutes')
+            GROUP BY active_protocol, country")->fetchAll(PDO::FETCH_ASSOC);
+        $protocols = []; $countries = []; $online = 0;
+        foreach ($as_devices as $as_r) {
+            $online += (int)$as_r['cnt'];
+            $as_p = $as_r['active_protocol'] ?: 'unknown';
+            $as_c = strtoupper($as_r['country'] ?: '??');
+            $protocols[$as_p] = ($protocols[$as_p] ?? 0) + (int)$as_r['cnt'];
+            $countries[$as_c] = ($countries[$as_c] ?? 0) + (int)$as_r['cnt'];
         }
-        arsort($protocols);
+        arsort($protocols); arsort($countries);
+        $as_sess = $db->query("
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(bytes_sent+bytes_recv),0) AS bytes
+            FROM vpn_sessions WHERE started_at >= datetime('now','-1 day')")->fetch(PDO::FETCH_ASSOC) ?: ['cnt'=>0,'bytes'=>0];
         api_ok([
-            'active_ips'      => count($sessions),
-            'recent_events'   => $total_recent,
-            'top_ips'         => array_slice(array_keys($sessions), 0, 10),
-            'protocols'       => $protocols,
-            'window_seconds'  => 300,
-            'checked_at'      => date('Y-m-d H:i:s'),
+            'online_devices'   => $online,
+            'protocols'        => $protocols,
+            'countries'        => $countries,
+            'sessions_24h'     => (int)$as_sess['cnt'],
+            'bytes_24h'        => (int)$as_sess['bytes'],
+            'window_seconds'   => 300,
+            'checked_at'       => date('Y-m-d H:i:s'),
         ]);
         break;
 
@@ -1596,7 +1613,9 @@ switch ($action) {
         $db = open_analytics_db();
         init_device_tables($db);
         $total       = (int)$db->query("SELECT COUNT(*) FROM devices")->fetchColumn();
-        $onlineNow   = (int)$db->query("SELECT COUNT(*) FROM devices WHERE status='online' OR last_seen>=datetime('now','-5 minutes')")->fetchColumn();
+        // Online = recent heartbeat only. The stored status flag sticks at 'online'
+        // when the app is killed without an offline event, inflating the count.
+        $onlineNow   = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen>=datetime('now','-5 minutes')")->fetchColumn();
         $activeToday = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen>=date('now')")->fetchColumn();
         $active7d    = (int)$db->query("SELECT COUNT(*) FROM devices WHERE last_seen>=datetime('now','-7 days')")->fetchColumn();
         $newMonth    = (int)$db->query("SELECT COUNT(*) FROM devices WHERE created_at>=datetime('now','-30 days')")->fetchColumn();
@@ -1617,6 +1636,84 @@ switch ($action) {
         ]);
         break;
 
+    case 'dash-metrics':
+        // One call powering the redesigned dashboard: protocol success by
+        // country, transport adoption, referral / payment / quota analytics.
+        $db = open_analytics_db();
+        init_device_tables($db);
+
+        // Protocol success rate by country (telemetry, last 30 days)
+        $dm_psc = $db->query("
+            SELECT UPPER(COALESCE(NULLIF(country,''),'??')) AS country, protocol,
+                   SUM(CASE WHEN result='success' THEN 1 ELSE 0 END) AS success,
+                   COUNT(*) AS total
+            FROM test_results
+            WHERE recorded_at >= datetime('now','-30 days')
+            GROUP BY 1, 2 ORDER BY total DESC LIMIT 40")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($dm_psc as &$dm_r) {
+            $dm_r['success'] = (int)$dm_r['success']; $dm_r['total'] = (int)$dm_r['total'];
+            $dm_r['rate'] = $dm_r['total'] ? round($dm_r['success'] / $dm_r['total'] * 100) : null;
+        }
+        unset($dm_r);
+
+        // Transport adoption: what protocol active devices actually use
+        $dm_adopt = [];
+        foreach ($db->query("
+            SELECT COALESCE(NULLIF(active_protocol,''),'unknown') AS proto, COUNT(*) AS cnt
+            FROM devices WHERE last_seen >= datetime('now','-7 days')
+            GROUP BY 1 ORDER BY cnt DESC") as $dm_a) {
+            $dm_adopt[$dm_a['proto']] = (int)$dm_a['cnt'];
+        }
+
+        // Referrals
+        $dm_ref = [
+            'total'        => (int)$db->query("SELECT COUNT(*) FROM referral_uses")->fetchColumn(),
+            'last_30d'     => (int)$db->query("SELECT COUNT(*) FROM referral_uses WHERE used_at >= datetime('now','-30 days')")->fetchColumn(),
+            'flagged'      => (int)$db->query("SELECT COUNT(*) FROM referral_uses WHERE status='flagged'")->fetchColumn(),
+            'bonus_bytes'  => (int)$db->query("SELECT COALESCE(SUM(bonus_bytes),0) FROM referral_uses")->fetchColumn(),
+            'referrers'    => (int)$db->query("SELECT COUNT(DISTINCT referrer_device_id) FROM referral_uses WHERE referrer_device_id!=''")->fetchColumn(),
+        ];
+
+        // Payments
+        $dm_pay = ['pending'=>0,'approved'=>0,'rejected'=>0,'amount_usdt_approved'=>0.0,'last_30d'=>0];
+        foreach ($db->query("SELECT status, COUNT(*) AS cnt, COALESCE(SUM(amount_usdt),0) AS amt FROM payment_queue GROUP BY status") as $dm_p) {
+            $dm_s = (string)$dm_p['status'];
+            if (isset($dm_pay[$dm_s])) $dm_pay[$dm_s] = (int)$dm_p['cnt'];
+            if ($dm_s === 'approved') $dm_pay['amount_usdt_approved'] = round((float)$dm_p['amt'], 2);
+        }
+        $dm_pay['last_30d'] = (int)$db->query("SELECT COUNT(*) FROM payment_queue WHERE submitted_at >= datetime('now','-30 days')")->fetchColumn();
+
+        // Quota usage
+        $dm_q = $db->query("
+            SELECT COUNT(*) AS devices,
+                   COALESCE(SUM(quota_bytes_used),0)  AS used,
+                   COALESCE(SUM(quota_bytes_total),0) AS total,
+                   SUM(CASE WHEN quota_bytes_total>0 AND quota_bytes_used >= quota_bytes_total THEN 1 ELSE 0 END) AS exhausted,
+                   SUM(CASE WHEN quota_bytes_total>0 AND quota_bytes_used >= quota_bytes_total*0.8
+                            AND quota_bytes_used < quota_bytes_total THEN 1 ELSE 0 END) AS near_limit
+            FROM devices WHERE blocked=0")->fetch(PDO::FETCH_ASSOC) ?: [];
+        $dm_plans = [];
+        foreach ($db->query("SELECT plan, COUNT(*) AS cnt, COALESCE(SUM(quota_bytes_used),0) AS used FROM devices GROUP BY plan ORDER BY cnt DESC") as $dm_pl) {
+            $dm_plans[] = ['plan'=>$dm_pl['plan'],'devices'=>(int)$dm_pl['cnt'],'used_bytes'=>(int)$dm_pl['used']];
+        }
+
+        api_ok([
+            'protocol_by_country' => $dm_psc,
+            'adoption'            => $dm_adopt,
+            'referrals'           => $dm_ref,
+            'payments'            => $dm_pay,
+            'quota'               => [
+                'devices'     => (int)($dm_q['devices'] ?? 0),
+                'used_bytes'  => (int)($dm_q['used'] ?? 0),
+                'total_bytes' => (int)($dm_q['total'] ?? 0),
+                'exhausted'   => (int)($dm_q['exhausted'] ?? 0),
+                'near_limit'  => (int)($dm_q['near_limit'] ?? 0),
+                'by_plan'     => $dm_plans,
+            ],
+            'checked_at' => date('Y-m-d H:i:s'),
+        ]);
+        break;
+
     case 'devices-list':
         $db = open_analytics_db();
         init_device_tables($db);
@@ -1629,8 +1726,8 @@ switch ($action) {
             $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%"]);
         }
         if ($plan)          { $where[] = 'plan=?';    $params[] = $plan; }
-        if ($status_filter === 'online')  { $where[] = "(status='online' OR last_seen>=datetime('now','-5 minutes'))"; }
-        if ($status_filter === 'offline') { $where[] = "(status!='online' AND last_seen<datetime('now','-5 minutes'))"; }
+        if ($status_filter === 'online')  { $where[] = "last_seen>=datetime('now','-5 minutes')"; }
+        if ($status_filter === 'offline') { $where[] = "last_seen<datetime('now','-5 minutes')"; }
         if ($status_filter === 'blocked') { $where[] = 'blocked=1'; }
         $sql = 'SELECT * FROM devices' . ($where ? ' WHERE '.implode(' AND ',$where) : '') . ' ORDER BY created_at DESC LIMIT 500';
         $st  = $db->prepare($sql);
@@ -1638,7 +1735,7 @@ switch ($action) {
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         $result = array_map(function($r) {
             $ls = $r['last_seen'] ?? null;
-            $is_online = ($r['status']??'') === 'online' || ($ls && (time()-(int)strtotime((string)$ls)) < 300);
+            $is_online = ($ls && (time()-(int)strtotime((string)$ls.' UTC')) < 300);
             return [
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
@@ -1672,6 +1769,41 @@ switch ($action) {
             ];
         }, $rows);
         api_ok($result);
+        break;
+
+    case 'install-diagnostics':
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $total = (int)$db->query('SELECT COUNT(*) FROM devices')->fetchColumn();
+        // ABI distribution. abi holds Build.SUPPORTED_ABIS joined with ',' —
+        // a device without arm64-v8a in the list can only install 32-bit APKs.
+        $abi_rows = $db->query("SELECT abi, COUNT(*) AS cnt FROM devices WHERE abi!='' GROUP BY abi ORDER BY cnt DESC")->fetchAll(PDO::FETCH_ASSOC);
+        $arm32_only = (int)$db->query("SELECT COUNT(*) FROM devices WHERE abi!='' AND abi NOT LIKE '%arm64-v8a%'")->fetchColumn();
+        $abi_unknown = (int)$db->query("SELECT COUNT(*) FROM devices WHERE abi=''")->fetchColumn();
+        $app_versions = $db->query("SELECT app_version AS version, COUNT(*) AS cnt FROM devices WHERE app_version!='' GROUP BY app_version ORDER BY cnt DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+        $android_versions = $db->query("SELECT android_version, sdk_version, COUNT(*) AS cnt FROM devices WHERE android_version!='' OR sdk_version>0 GROUP BY android_version, sdk_version ORDER BY cnt DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+        // Fall back to probe telemetry for devices that registered before
+        // fingerprint columns were stored.
+        $android_versions_tests = $db->query("SELECT android_version, android_sdk AS sdk_version, COUNT(DISTINCT device_model) AS cnt FROM test_results WHERE android_version!='' GROUP BY android_version, android_sdk ORDER BY cnt DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+        $models = $db->query("SELECT manufacturer, model, MAX(android_version) AS android_version, MAX(sdk_version) AS sdk_version, MAX(abi) AS abi, MAX(app_version) AS app_version, COUNT(*) AS cnt, MAX(last_seen) AS last_seen FROM devices WHERE model!='' GROUP BY manufacturer, model ORDER BY cnt DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+        $events = $db->query("SELECT * FROM install_events ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
+        $failures_7d = (int)$db->query("SELECT COUNT(*) FROM install_events WHERE event='install_failure' AND created_at>=datetime('now','-7 days')")->fetchColumn();
+        $old_android = (int)$db->query("SELECT COUNT(*) FROM devices WHERE sdk_version>0 AND sdk_version<=28")->fetchColumn();
+        api_ok([
+            'summary' => [
+                'total_devices'   => $total,
+                'arm32_only'      => $arm32_only,
+                'abi_unknown'     => $abi_unknown,
+                'android9_or_older' => $old_android,
+                'install_failures_7d' => $failures_7d,
+            ],
+            'abis'              => $abi_rows,
+            'app_versions'      => $app_versions,
+            'android_versions'  => $android_versions,
+            'android_versions_tests' => $android_versions_tests,
+            'models'            => $models,
+            'install_events'    => $events,
+        ]);
         break;
 
     case 'referral-stats':
@@ -1815,13 +1947,18 @@ switch ($action) {
             $apks = [];
             if (is_dir($dir)) {
                 foreach (glob($dir . '*.apk') ?: [] as $f) {
-                    $sha = hash_file('sha256', $f) ?: '';
+                    if (is_link($f)) continue; // latest-* symlinks listed separately
+                    $sha  = hash_file('sha256', $f) ?: '';
+                    $name = basename($f);
+                    $variant = strpos($name, '-universal') !== false ? 'universal'
+                             : (strpos($name, '-arm32') !== false ? 'arm32' : 'arm64');
                     $apks[] = [
-                        'name'   => basename($f),
-                        'size'   => (int)filesize($f),
-                        'mtime'  => date('Y-m-d H:i:s', (int)filemtime($f)),
-                        'sha256' => $sha,
-                        'url'    => "https://setalink.no/releases/{$ch}/" . basename($f),
+                        'name'    => $name,
+                        'variant' => $variant,
+                        'size'    => (int)filesize($f),
+                        'mtime'   => date('Y-m-d H:i:s', (int)filemtime($f)),
+                        'sha256'  => $sha,
+                        'url'     => "https://setalink.no/releases/{$ch}/" . $name,
                     ];
                 }
             }
@@ -1834,6 +1971,20 @@ switch ($action) {
         $dl_sym     = $dl_dir . 'setalink-latest.apk';
         $dl_target  = is_link($dl_sym) ? readlink($dl_sym) : null;
         $dl_resolved = $dl_target ? realpath(dirname($dl_sym) . '/' . $dl_target) : null;
+        $dl_symlinks = [];
+        foreach (['setalink-latest.apk' => 'arm64 (default)',
+                  'setalink-latest-arm32.apk' => 'arm32 / older phones',
+                  'setalink-latest-universal.apk' => 'universal'] as $link => $label) {
+            $p = $dl_dir . $link;
+            $t = is_link($p) ? readlink($p) : null;
+            $r = $t ? realpath(dirname($p) . '/' . $t) : null;
+            $dl_symlinks[] = [
+                'name'   => $link,
+                'label'  => $label,
+                'target' => $t,
+                'valid'  => $r && file_exists($r),
+            ];
+        }
         $vj_path    = $dl_dir . 'version.json';
         $vj         = json_decode((string)@file_get_contents($vj_path), true) ?: null;
         api_ok([
@@ -1843,6 +1994,7 @@ switch ($action) {
                 'resolved' => $dl_resolved,
                 'valid'    => $dl_resolved && file_exists($dl_resolved),
             ],
+            'download_symlinks' => $dl_symlinks,
             'version_json'    => $vj,
             'checked_at'      => date('Y-m-d H:i:s'),
         ]);
@@ -2014,52 +2166,31 @@ switch ($action) {
         break;
 
     case 'inbound-stats':
-        $access_log = '/var/log/xray/access.log';
-        $error_log  = '/var/log/xray/error.log';
-        $ss_out = (string)@shell_exec('ss -tulpn 2>/dev/null');
+        // Listening state checked live; traffic counters come from
+        // data/xray-stats.json, exported every 2 min by a root cron
+        // (scripts/export-xray-stats.sh) because /var/log/xray is root-only.
+        $ss_out = (string)@shell_exec('ss -tuln 2>/dev/null');
         $ports = [
-            'reality' => ['port'=>8443,  'listening'=>false, 'label'=>'Reality (direct)'],
-            'ws'      => ['port'=>10000, 'listening'=>false, 'label'=>'WebSocket'],
-            'xhttp'   => ['port'=>10001, 'listening'=>false, 'label'=>'XHTTP'],
-            'httpup'  => ['port'=>10002, 'listening'=>false, 'label'=>'HTTPUpgrade'],
+            'ws'      => ['port'=>10000, 'tag'=>'inbound-ws',     'listening'=>false, 'label'=>'WebSocket (edge)'],
+            'xhttp'   => ['port'=>10001, 'tag'=>'inbound-xhttp',  'listening'=>false, 'label'=>'XHTTP (edge)'],
+            'httpup'  => ['port'=>10002, 'tag'=>'inbound-httpup', 'listening'=>false, 'label'=>'HTTPUpgrade (edge)'],
+            'reality' => ['port'=>8443,  'tag'=>'inbound-reality','listening'=>false, 'label'=>'Reality (via nginx SNI dispatch on :443)'],
         ];
         foreach ($ports as $k => &$p) $p['listening'] = str_contains($ss_out, ':'.$p['port']);
         unset($p);
-        $uuid_rejections = 0; $accepted_external = 0;
-        $last_accepted_ip = ''; $last_accepted_at = ''; $rejected_uuids = [];
-        if (is_readable($access_log)) {
-            $lines = array_slice(file($access_log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -2000);
-            foreach ($lines as $line) {
-                if (str_contains($line, 'invalid request user id')) {
-                    $uuid_rejections++;
-                    if (preg_match('/user id: ([0-9a-f\-]{36})/', $line, $m))
-                        $rejected_uuids[$m[1]] = ($rejected_uuids[$m[1]] ?? 0) + 1;
-                }
-                if (str_contains($line,'accepted') && !str_contains($line,'127.0.0.1') && !str_contains($line,'::1')) {
-                    $accepted_external++;
-                    if (preg_match('/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2})/',$line,$ts) &&
-                        preg_match('/accepted\s+([\d\.a-f:]+):\d+/',$line,$ip)) {
-                        $last_accepted_at = $ts[1]; $last_accepted_ip = $ip[1];
-                    }
-                }
-            }
-        }
-        arsort($rejected_uuids);
-        $last_errors = [];
-        if (is_readable($error_log)) {
-            $elines = array_slice(file($error_log, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES), -500);
-            foreach (array_reverse($elines) as $el) {
-                if (str_contains($el,'[Warning]') && str_contains($el,'started')) continue;
-                if (str_contains($el,'[Info]')) continue;
-                $last_errors[] = $el;
-                if (count($last_errors) >= 8) break;
-            }
-        }
-        api_ok(['ports'=>$ports,'uuid_rejections'=>$uuid_rejections,
-                'rejected_uuids'=>array_slice(array_keys($rejected_uuids),0,5),
-                'accepted_external'=>$accepted_external,
-                'last_accepted_ip'=>$last_accepted_ip,'last_accepted_at'=>$last_accepted_at,
-                'last_errors'=>$last_errors,'checked_at'=>date('Y-m-d H:i:s')]);
+        $ist = json_decode((string)@file_get_contents(__DIR__ . '/../data/xray-stats.json'), true) ?: [];
+        $per_inbound = $ist['per_inbound'] ?? [];
+        foreach ($ports as $k => &$p) $p['accepted'] = (int)($per_inbound[$p['tag']] ?? 0);
+        unset($p);
+        api_ok(['ports'=>$ports,
+                'uuid_rejections'=>(int)($ist['uuid_rejections'] ?? 0),
+                'rejected_uuids'=>array_slice((array)($ist['rejected_uuids'] ?? []),0,5),
+                'accepted_total'=>(int)($ist['accepted_total'] ?? 0),
+                'last_accepted_at'=>(string)($ist['last_accept'] ?? ''),
+                'last_errors'=>(array)($ist['recent_errors'] ?? []),
+                'stats_exported_at'=>(string)($ist['exported_at'] ?? ''),
+                'stats_available'=>!empty($ist),
+                'checked_at'=>date('Y-m-d H:i:s')]);
         break;
 
     case 'debug-status':
