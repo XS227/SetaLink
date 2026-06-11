@@ -141,7 +141,14 @@ function detect_country_from_ip(string $ip): array {
 function client_ip(): string {
     foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $h) {
         $v = $_SERVER[$h] ?? '';
-        if ($v) return trim(explode(',', $v)[0]);
+        if (!$v) continue;
+        $ip = trim(explode(',', $v)[0]);
+        // Requests sent while the VPN is up exit xray's freedom outbound on
+        // this box, so REMOTE_ADDR is 127.0.0.1. Return '' for loopback or
+        // private ranges so callers never overwrite a stored real IP.
+        if (filter_var($ip, FILTER_VALIDATE_IP,
+                FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) continue;
+        return $ip;
     }
     return '';
 }
