@@ -2,13 +2,23 @@ import { Linking } from 'react-native';
 import { storage, syncGet } from '../storage/storage';
 import { APP_VERSION, APP_BUILD, APP_BUILD_CODE } from '../utils/version';
 
+export interface ChannelInfo {
+  version: string;
+  versionCode?: number;
+  apkUrl: string;
+  apkUrlArm32?: string;
+  apkUrlUniversal?: string;
+}
+
 export interface VersionInfo {
   version: string;
   versionCode: number;
   forceUpdate: boolean;
   minSupported: string;
-  apkUrl: string;
+  apkUrl: string;            // arm64 build (the default)
   apkUrlFallback: string;
+  apkUrlArm32?: string;      // 32-bit build for pre-2018 devices
+  apkUrlUniversal?: string;  // both ABIs, larger
   changelog: string[];
   rollout?: {
     strategy?: string;
@@ -16,10 +26,74 @@ export interface VersionInfo {
     percent?: number;
     exclude_countries?: string[];
   };
-  channels?: Record<string, { version: string; versionCode?: number; apkUrl: string } | undefined>;
+  channels?: Record<string, ChannelInfo | undefined>;
 }
 
 export type UpdateChannel = 'stable' | 'beta' | 'experimental';
+
+// ── ABI-aware APK selection ───────────────────────────────────────────────────
+// The default apkUrl is the arm64 build; serving it to a 32-bit device fails
+// with "App not installed" (the v0.9.28 Samsung J8 incident — but on the OTA
+// path). Each architecture must get its own package.
+
+export interface AbiUrlSet {
+  apkUrl: string;
+  apkUrlArm32?: string;
+  apkUrlUniversal?: string;
+}
+
+/**
+ * Picks the APK URL matching the device ABI list (Build.SUPPORTED_ABIS,
+ * comma-joined, most-preferred first).
+ *   arm64-capable      → arm64 build
+ *   32-bit-only ARM    → arm32 build, else universal, else arm64 (will fail,
+ *                        but it is the only URL published — better than none)
+ *   unknown/x86/other  → universal when available, else default
+ */
+export function pickApkUrlForAbi(urls: AbiUrlSet, abi: string): string {
+  const a = (abi || '').toLowerCase();
+  if (a.includes('arm64-v8a')) return urls.apkUrl;
+  if (a.includes('armeabi'))   return urls.apkUrlArm32 ?? urls.apkUrlUniversal ?? urls.apkUrl;
+  return urls.apkUrlUniversal ?? urls.apkUrl;
+}
+
+/**
+ * Effective URL set for a channel. Channel-level ABI URLs win; when the
+ * channel has none but its apkUrl is the same release as the top level
+ * (e.g. stable/experimental mirroring the main release), the top-level ABI
+ * URLs apply. Otherwise only the channel's own apkUrl is safe to use —
+ * mixing top-level ABI URLs from a different version would install a
+ * mismatched build.
+ */
+export function effectiveUrlSet(info: VersionInfo, channelInfo?: ChannelInfo): AbiUrlSet {
+  if (!channelInfo) {
+    return { apkUrl: info.apkUrl, apkUrlArm32: info.apkUrlArm32, apkUrlUniversal: info.apkUrlUniversal };
+  }
+  const sameRelease = channelInfo.apkUrl === info.apkUrl;
+  return {
+    apkUrl:          channelInfo.apkUrl,
+    apkUrlArm32:     channelInfo.apkUrlArm32     ?? (sameRelease ? info.apkUrlArm32     : undefined),
+    apkUrlUniversal: channelInfo.apkUrlUniversal ?? (sameRelease ? info.apkUrlUniversal : undefined),
+  };
+}
+
+// Device ABI string (e.g. "arm64-v8a,armeabi-v7a,armeabi"), cached after the
+// first native fingerprint call. Empty string when native is unavailable —
+// pickApkUrlForAbi then prefers the universal build, which installs anywhere.
+let _cachedAbi: string | null = null;
+
+export async function getDeviceAbi(): Promise<string> {
+  if (_cachedAbi !== null) return _cachedAbi;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getDeviceFingerprint } = require('./deviceIdentityService');
+    const fp = await getDeviceFingerprint();
+    _cachedAbi = String(fp?.abi ?? '');
+  } catch {
+    _cachedAbi = '';
+  }
+  return _cachedAbi;
+}
 
 export interface UpdateCheckResult {
   hasUpdate: boolean;
@@ -97,7 +171,10 @@ export async function checkForUpdate(deviceCountry?: string, channel: UpdateChan
     // then to the top-level fields.
     const channelInfo = info.channels?.[channel] ?? info.channels?.stable;
     const targetVersion = channelInfo?.version ?? info.version;
-    const targetApkUrl  = channelInfo?.apkUrl  ?? info.apkUrl;
+    // Resolve the APK for THIS device's architecture — arm32 phones must
+    // never be offered the arm64 build.
+    const abi           = await getDeviceAbi();
+    const targetApkUrl  = pickApkUrlForAbi(effectiveUrlSet(info, channelInfo), abi);
     // versionCode is the authoritative gate (see isUpdateAvailable).
     const targetCode    = channelInfo?.versionCode ?? info.versionCode;
 
