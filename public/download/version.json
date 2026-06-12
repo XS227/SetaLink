@@ -1,44 +1,40 @@
 {
-    "version": "0.9.28",
-    "versionCode": 38,
-    "releaseDate": "2026-06-11",
-    "rolloutChannel": "stable",
-    "minSupported": "0.9.7",
-    "forceUpdate": false,
-    "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.28.apk",
-    "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-    "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.28-arm32.apk",
-    "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.28-universal.apk",
-    "checksum": {
-        "sha256": "832768aa35ca06131954894b86dee77532cade9c47b9e98b33f8072653e18e8c",
-        "algorithm": "sha256"
+  "version": "0.9.28",
+  "versionCode": 38,
+  "releaseDate": "2026-06-11",
+  "rolloutChannel": "stable",
+  "minSupported": "0.9.7",
+  "forceUpdate": false,
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.28.apk",
+  "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
+  "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.28-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.28-universal.apk",
+  "checksum": {
+    "sha256": "832768aa35ca06131954894b86dee77532cade9c47b9e98b33f8072653e18e8c",
+    "algorithm": "sha256"
+  },
+  "size": 53382500,
+  "changelog": [],
+  "channels": {
+    "stable": {
+      "version": "0.9.28",
+      "versionCode": 38,
+      "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.28.apk",
+      "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.28-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.28-universal.apk"
     },
-    "size": 53382500,
-    "changelog": [],
-    "channels": {
-        "stable": {
-            "version": "0.9.28",
-            "versionCode": 38,
-            "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.28.apk"
-        },
-        "beta": {
-            "version": "0.9.12",
-            "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.12.apk"
-        },
-        "hotfix": {
-            "version": "0.9.12",
-            "apkUrl": "https://setalink.no/releases/hotfix/setalink-v0.9.12.apk"
-        },
-        "experimental": {
-            "version": "0.9.28",
-            "versionCode": 38,
-            "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.28.apk"
-        }
-    },
-    "rollout": {
-        "strategy": "all",
-        "countries": [],
-        "percent": 100,
-        "exclude_countries": []
+    "experimental": {
+      "version": "0.9.28",
+      "versionCode": 38,
+      "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.28.apk",
+      "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.28-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.28-universal.apk"
     }
+  },
+  "rollout": {
+    "strategy": "all",
+    "countries": [],
+    "percent": 100,
+    "exclude_countries": []
+  }
 }

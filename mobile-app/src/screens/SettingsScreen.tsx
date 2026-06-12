@@ -9,8 +9,8 @@ import { useServerStore }   from '../stores/serverStore';
 import { BiometricService } from '../services/biometricService';
 import { useT } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
-const VERSION_URL     = 'https://setalink.no/download/version.json';
-const DOWNLOAD_URL    = 'https://setalink.no/download/setalink-latest.apk';
+import { checkForUpdate, downloadUpdate } from '../services/updateService';
+import type { UpdateCheckResult } from '../services/updateService';
 const GITHUB_URL      = 'https://github.com/XS227/SetaLink';
 const WEBSITE_URL     = 'https://setalink.no';
 
@@ -131,18 +131,19 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
   const { clearImportedServers, loadBootstrapIfEmpty } = useServerStore();
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'uptodate' | 'available'>('idle');
   const [latestVersion, setLatestVersion] = useState('');
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
 
+  // Uses the central checker: respects the selected channel, versionCode
+  // gating, and — critically — resolves the APK for THIS device's ABI so
+  // 32-bit phones are never handed the arm64 build.
   const handleCheckUpdate = async () => {
     setUpdateStatus('checking');
     try {
-      const controller = new AbortController();
-      const tid = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch(VERSION_URL, { signal: controller.signal });
-      clearTimeout(tid);
-      const json = await res.json() as { version: string };
-      const latest = json.version ?? '';
-      setLatestVersion(latest);
-      setUpdateStatus(latest !== APP_VERSION ? 'available' : 'uptodate');
+      const result = await checkForUpdate(undefined, updateChannel);
+      if (!result) throw new Error('unreachable');
+      setUpdateResult(result);
+      setLatestVersion(result.latestVersion);
+      setUpdateStatus(result.hasUpdate ? 'available' : 'uptodate');
     } catch {
       setUpdateStatus('idle');
       Alert.alert('Update check failed', 'Could not reach setalink.no. Try again later.');
@@ -150,7 +151,8 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
   };
 
   const handleDownloadUpdate = () => {
-    Linking.openURL(DOWNLOAD_URL);
+    if (!updateResult) return;
+    downloadUpdate(updateResult.apkUrl, updateResult.latestVersion).catch(() => {});
   };
 
   const handleBiometricToggle = async () => {

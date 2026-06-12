@@ -123,41 +123,55 @@ SHA=$(sha256sum "$APK_DEST" | awk '{print $1}')
 SIZE=$(stat -c%s "$APK_DEST")
 DATE=$(date +%Y-%m-%d)
 
-# Read existing version.json for other channels
-STABLE_VER=$(python3 -c "import json,sys; d=json.load(open('$VERSION_JSON')); print(d.get('channels',{}).get('stable',{}).get('version','$NEW_VERSION'))" 2>/dev/null || echo "$NEW_VERSION")
-BETA_VER=$(python3 -c "import json,sys; d=json.load(open('$VERSION_JSON')); print(d.get('channels',{}).get('beta',{}).get('version','$NEW_VERSION'))" 2>/dev/null || echo "$NEW_VERSION")
-HOTFIX_VER=$(python3 -c "import json,sys; d=json.load(open('$VERSION_JSON')); print(d.get('channels',{}).get('hotfix',{}).get('version','$NEW_VERSION'))" 2>/dev/null || echo "$NEW_VERSION")
+# Merge into existing version.json instead of regenerating from scratch:
+#  - the published channel gets version/versionCode + per-ABI URLs (arm64 /
+#    arm32 / universal) so OTA serves each architecture the right package
+#  - other channel entries are preserved verbatim
+#  - admin-panel settings survive (forceUpdate, minSupported, rollout)
+VJ_PATH="$VERSION_JSON" NEW_VERSION="$NEW_VERSION" NEW_CODE="$NEW_CODE" \
+CHANNEL="$CHANNEL" DATE="$DATE" SHA="$SHA" SIZE="$SIZE" \
+APK_NAME="$APK_NAME" APK_NAME_ARM32="$APK_NAME_ARM32" APK_NAME_UNIVERSAL="$APK_NAME_UNIVERSAL" \
+python3 << 'PYEOF'
+import json, os
 
-# Override the updated channel
-case "$CHANNEL" in
-  stable)  STABLE_VER="$NEW_VERSION"  ;;
-  beta)    BETA_VER="$NEW_VERSION"    ;;
-  hotfix)  HOTFIX_VER="$NEW_VERSION"  ;;
-esac
+p = os.environ['VJ_PATH']
+try:
+    with open(p) as f: d = json.load(f)
+except Exception:
+    d = {}
 
-cat > "$VERSION_JSON" << EOF
-{
-  "version": "$NEW_VERSION",
-  "versionCode": $NEW_CODE,
-  "releaseDate": "$DATE",
-  "rolloutChannel": "$CHANNEL",
-  "minSupported": "0.9.7",
-  "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/$CHANNEL/$APK_NAME",
-  "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/$CHANNEL/$APK_NAME_ARM32",
-  "apkUrlUniversal": "https://setalink.no/releases/$CHANNEL/$APK_NAME_UNIVERSAL",
-  "checksum": { "sha256": "$SHA", "algorithm": "sha256" },
-  "size": $SIZE,
-  "changelog": [],
-  "channels": {
-    "stable":  { "version": "$STABLE_VER",  "versionCode": $NEW_CODE, "apkUrl": "https://setalink.no/releases/stable/setalink-v${STABLE_VER}.apk" },
-    "beta":    { "version": "$BETA_VER",    "apkUrl": "https://setalink.no/releases/beta/setalink-v${BETA_VER}.apk" },
-    "hotfix":  { "version": "$HOTFIX_VER",  "apkUrl": "https://setalink.no/releases/hotfix/setalink-v${HOTFIX_VER}.apk" }
-  }
+ch   = os.environ['CHANNEL']
+ver  = os.environ['NEW_VERSION']
+code = int(os.environ['NEW_CODE'])
+base = f"https://setalink.no/releases/{ch}"
+urls = {
+    'apkUrl':          f"{base}/{os.environ['APK_NAME']}",
+    'apkUrlArm32':     f"{base}/{os.environ['APK_NAME_ARM32']}",
+    'apkUrlUniversal': f"{base}/{os.environ['APK_NAME_UNIVERSAL']}",
 }
-EOF
-echo "    version.json updated"
+
+d.update({
+    'version':        ver,
+    'versionCode':    code,
+    'releaseDate':    os.environ['DATE'],
+    'rolloutChannel': ch,
+    'apkUrlFallback': 'https://setalink.no/download/setalink-latest.apk',
+    'checksum':       {'sha256': os.environ['SHA'], 'algorithm': 'sha256'},
+    'size':           int(os.environ['SIZE']),
+    'changelog':      [],            # old changelog described the old version
+    **urls,
+})
+d.setdefault('minSupported', '0.9.7')
+d.setdefault('forceUpdate', False)
+
+d.setdefault('channels', {})
+d['channels'][ch] = {'version': ver, 'versionCode': code, **urls}
+
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2)
+    f.write('\n')
+PYEOF
+echo "    version.json updated (channel=$CHANNEL, per-ABI URLs)"
 
 # ── Git tag ───────────────────────────────────────────────────────────────────
 cd "$REPO_ROOT"
