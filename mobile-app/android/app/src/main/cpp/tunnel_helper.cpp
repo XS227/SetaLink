@@ -102,12 +102,28 @@ extern "C"
 JNIEXPORT void JNICALL
 Java_com_setalink_vpn_XrayVpnService_nativeStopTun2socks(JNIEnv *, jobject, jint pid) {
     if (pid <= 0) return;
-    kill((pid_t) pid, SIGTERM);
-    usleep(200 * 1000);
     int status = 0;
-    int ret = waitpid((pid_t) pid, &status, WNOHANG);
-    if (ret == 0) {
-        kill((pid_t) pid, SIGKILL);
-        waitpid((pid_t) pid, &status, 0);
+
+    kill((pid_t) pid, SIGTERM);
+    // Up to 600ms grace for a clean exit (go runtime flushes + closes TUN fd).
+    for (int i = 0; i < 12; i++) {
+        usleep(50 * 1000);
+        int ret = waitpid((pid_t) pid, &status, WNOHANG);
+        if (ret != 0) {
+            __android_log_print(ANDROID_LOG_INFO, TAG,
+                "tun2socks pid=%d exited after SIGTERM (waitpid=%d)", pid, ret);
+            return; // reaped (ret==pid) or not our child anymore (ret<0)
+        }
     }
+
+    kill((pid_t) pid, SIGKILL);
+    // Bounded reap — never block the caller forever. If the child is not
+    // ours (orphan re-parented after app restart) waitpid returns -1 and
+    // SIGKILL alone is sufficient; init reaps it.
+    for (int i = 0; i < 20; i++) {
+        int ret = waitpid((pid_t) pid, &status, WNOHANG);
+        if (ret != 0) break;
+        usleep(50 * 1000);
+    }
+    __android_log_print(ANDROID_LOG_INFO, TAG, "tun2socks pid=%d SIGKILL sent", pid);
 }

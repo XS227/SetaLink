@@ -17,6 +17,8 @@ if (($_GET['mobile'] ?? '') !== '1') {
 }
 
 const MOBILE_TOKEN = 'setalink-mobile-diag-v1';
+// Referrals scoring at or above this are held for admin review (no auto-reward).
+const RISK_HOLD_THRESHOLD = 75;
 define('DB_PATH', __DIR__ . '/../data/analytics.db');
 
 header('Content-Type: application/json');
@@ -138,6 +140,21 @@ function detect_country_from_ip(string $ip): array {
         'code' => substr((string)($data['countryCode'] ?? ''), 0, 4),
         'name' => substr((string)($data['country']     ?? ''), 0, 80),
     ];
+}
+
+// Admin → user in-app messages (same tables as admin/api.php).
+function init_message_tables(PDO $pdo): void {
+    $pdo->exec('CREATE TABLE IF NOT EXISTS admin_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_device_id TEXT NOT NULL DEFAULT "",
+        title TEXT NOT NULL DEFAULT "",
+        body  TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime(\'now\')))');
+    $pdo->exec('CREATE TABLE IF NOT EXISTS admin_message_acks (
+        message_id INTEGER NOT NULL,
+        device_id  TEXT NOT NULL,
+        acked_at   TEXT NOT NULL DEFAULT (datetime(\'now\')),
+        PRIMARY KEY (message_id, device_id))');
 }
 
 // Egress IPs of our own infrastructure — a request arriving from one of
@@ -375,6 +392,25 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'get-messages') {
+        // Unacked admin messages for this device (targeted or broadcast),
+        // max 30 days back. Polled at app launch and on the heartbeat.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        init_message_tables($pdo);
+        $st = $pdo->prepare(
+            "SELECT m.id, m.title, m.body, m.created_at
+             FROM admin_messages m
+             WHERE (m.target_device_id='' OR m.target_device_id=?)
+               AND m.created_at >= datetime('now','-30 days')
+               AND NOT EXISTS (SELECT 1 FROM admin_message_acks a
+                               WHERE a.message_id=m.id AND a.device_id=?)
+             ORDER BY m.id ASC LIMIT 10");
+        $st->execute([$deviceId, $deviceId]);
+        ok(['messages' => $st->fetchAll()]);
+    }
+
     if ($action === 'sync-entitlement') {
         $deviceId = trim($_GET['device_id'] ?? '');
         if (!$deviceId) err('missing device_id');
@@ -392,14 +428,17 @@ if ($method === 'GET') {
             $dev['user_id'] = $uid;
         }
         $srv = fetch_bootstrap_server($pdo);
-        // Real-time invite count + stealth unlock
-        $ic = $pdo->prepare("SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=?");
+        // Real-time invite count + stealth unlock — granted referrals only;
+        // pending/rejected rows never count toward rewards or unlocks.
+        $ic = $pdo->prepare(
+            "SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=? AND status IN ('credited','approved')");
         $ic->execute([$deviceId]);
         $inviteCount = (int)$ic->fetchColumn();
         $activeIc = $pdo->prepare("
             SELECT COUNT(*) FROM referral_uses ru
             JOIN devices d ON d.device_id = ru.new_device_id
             WHERE ru.referrer_device_id=?
+              AND ru.status IN ('credited','approved')
               AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))
         ");
         $activeIc->execute([$deviceId]);
@@ -422,6 +461,7 @@ if ($method === 'GET') {
             'invite_count'      => $inviteCount,
             'active_invite_count' => $activeInvites,
             'stealth_unlocked'  => $stealthUnlocked,
+            'country'           => $dev['country'] ?? '',
         ]);
     }
 
@@ -539,7 +579,48 @@ if ($method === 'POST') {
             'invite_count'        => (int)($dev['invite_count'] ?? 0),
             'active_invite_count' => 0,
             'stealth_unlocked'    => (bool)($dev['stealth_unlocked'] ?? 0),
+            'country'             => $dev['country'] ?? '',
         ]);
+    }
+
+    if ($action === 'report-install') {
+        // OTA install outcome telemetry. Mirrors admin/api.php?mobile=1 —
+        // the app posts here (setalink.no), so the action must exist here too.
+        $event = trim($_POST['event'] ?? '');
+        if (!in_array($event, ['install_success', 'install_failure', 'download_started'], true)) {
+            err('invalid event');
+        }
+        $pdo = db();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS install_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id       TEXT DEFAULT '',
+            event           TEXT DEFAULT '',
+            current_version TEXT DEFAULT '',
+            target_version  TEXT DEFAULT '',
+            device_model    TEXT DEFAULT '',
+            android_version TEXT DEFAULT '',
+            android_sdk     INTEGER DEFAULT 0,
+            abi             TEXT DEFAULT '',
+            error           TEXT DEFAULT '',
+            client_ip       TEXT DEFAULT '',
+            created_at      TEXT DEFAULT (datetime('now'))
+        )");
+        $pdo->prepare("INSERT INTO install_events
+                (device_id,event,current_version,target_version,device_model,android_version,android_sdk,abi,error,client_ip)
+             VALUES (?,?,?,?,?,?,?,?,?,?)")
+            ->execute([
+                substr(trim($_POST['device_id']       ?? ''), 0, 128),
+                $event,
+                substr(trim($_POST['current_version'] ?? ''), 0, 20),
+                substr(trim($_POST['target_version']  ?? ''), 0, 20),
+                substr(trim($_POST['device_model']    ?? ''), 0, 120),
+                substr(trim($_POST['android_version'] ?? ''), 0, 20),
+                max(0, (int)($_POST['android_sdk'] ?? 0)),
+                substr(trim($_POST['abi']             ?? ''), 0, 80),
+                substr(trim($_POST['error']           ?? ''), 0, 300),
+                client_ip(),
+            ]);
+        ok(['recorded' => true]);
     }
 
     if ($action === 'use-referral') {
@@ -596,7 +677,11 @@ if ($method === 'POST') {
             $riskScore += 80;
             $riskFlags[] = 'same_device';
         }
-        $riskStatus = $riskScore >= 75 ? 'flagged' : 'credited';
+        // Risk gate: at or above the threshold the reward is HELD, not granted.
+        // 'pending' rows carry the intended bonus in bonus_bytes but credit
+        // nothing until an admin approves (admin/api.php referral-approve).
+        // Statuses: credited (auto) | pending | approved (by admin) | rejected.
+        $riskStatus = $riskScore >= RISK_HOLD_THRESHOLD ? 'pending' : 'credited';
         $riskFlagsJson = json_encode($riskFlags);
 
         $bonus = 1073741824; // 1 GB
@@ -605,40 +690,57 @@ if ($method === 'POST') {
              referrer_ip, new_user_ip, risk_score, risk_flags, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )->execute([$refCode, $deviceId, $ownerRow['device_id'], $deviceId, $bonus,
                     $referrerIp, $newUserIp, $riskScore, $riskFlagsJson, $riskStatus]);
-        $pdo->prepare(
-            "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
-        )->execute([$bonus, $deviceId]);
-        $pdo->prepare(
-            "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
-        )->execute([$bonus, $ownerRow['device_id']]);
 
-        // ── Viral loop: check if referrer now has ≥3 active referred users ─
-        $activeRefs = $pdo->prepare("
-            SELECT COUNT(*) FROM referral_uses ru
-            JOIN devices d ON d.device_id = ru.new_device_id
-            WHERE ru.referrer_device_id=?
-              AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))
-        ");
-        $activeRefs->execute([$ownerRow['device_id']]);
-        if ((int)$activeRefs->fetchColumn() >= 3) {
-            $pdo->prepare("UPDATE devices SET stealth_unlocked=1 WHERE device_id=?")
-                ->execute([$ownerRow['device_id']]);
+        if ($riskStatus === 'credited') {
+            $pdo->prepare(
+                "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
+            )->execute([$bonus, $deviceId]);
+            $pdo->prepare(
+                "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
+            )->execute([$bonus, $ownerRow['device_id']]);
+
+            // ── Viral loop: ≥3 active GRANTED referrals unlock stealth ─────
+            $activeRefs = $pdo->prepare("
+                SELECT COUNT(*) FROM referral_uses ru
+                JOIN devices d ON d.device_id = ru.new_device_id
+                WHERE ru.referrer_device_id=?
+                  AND ru.status IN ('credited','approved')
+                  AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))
+            ");
+            $activeRefs->execute([$ownerRow['device_id']]);
+            if ((int)$activeRefs->fetchColumn() >= 3) {
+                $pdo->prepare("UPDATE devices SET stealth_unlocked=1 WHERE device_id=?")
+                    ->execute([$ownerRow['device_id']]);
+            }
+            // Update invite_count cache on referrer (granted referrals only)
+            $invCount = $pdo->prepare(
+                "SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=? AND status IN ('credited','approved')");
+            $invCount->execute([$ownerRow['device_id']]);
+            $pdo->prepare("UPDATE devices SET invite_count=? WHERE device_id=?")
+                ->execute([(int)$invCount->fetchColumn(), $ownerRow['device_id']]);
         }
-        // Update invite_count cache on referrer
-        $invCount = $pdo->prepare("SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=?");
-        $invCount->execute([$ownerRow['device_id']]);
-        $pdo->prepare("UPDATE devices SET invite_count=? WHERE device_id=?")
-            ->execute([(int)$invCount->fetchColumn(), $ownerRow['device_id']]);
 
         $dev = $pdo->prepare("SELECT quota_bytes_total FROM devices WHERE device_id=?");
         $dev->execute([$deviceId]);
         $row = $dev->fetch();
         ok([
-            'bonus_bytes'     => $bonus,
+            'status'          => $riskStatus === 'credited' ? 'approved' : 'pending_review',
+            'bonus_bytes'     => $riskStatus === 'credited' ? $bonus : 0,
             'new_total_bytes' => (int)$row['quota_bytes_total'],
             'risk_score'      => $riskScore,
             'risk_flags'      => $riskFlags,
         ]);
+    }
+
+    if ($action === 'ack-message') {
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $messageId = (int)($_POST['message_id'] ?? 0);
+        if (!$deviceId || $messageId <= 0) err('missing params');
+        $pdo = db();
+        init_message_tables($pdo);
+        $pdo->prepare('INSERT OR IGNORE INTO admin_message_acks (message_id, device_id) VALUES (?,?)')
+            ->execute([$messageId, $deviceId]);
+        ok(['acked' => $messageId]);
     }
 
     if ($action === 'report-usage') {

@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.setalink",
+      "sha256_cert_fingerprints": [
+        "99:70:56:49:46:61:48:DB:CC:57:45:7E:A5:AF:CD:45:92:AB:81:98:DB:43:9A:A8:51:BB:10:42:FB:72:09:A0"
+      ]
+    }
+  }
+]

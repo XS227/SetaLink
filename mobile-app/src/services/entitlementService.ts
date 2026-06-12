@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { APP_VERSION } from '../utils/version';
 
 const BASE_URL = 'https://setalink.no/api.php';
@@ -82,6 +83,9 @@ export async function registerDevice(
   if (options.country)      body.country       = options.country;
   if (options.fingerprint) {
     const fp = options.fingerprint;
+    // SIM country survives the tunnel (request IP does not) — send it as the
+    // country when the caller didn't supply one explicitly.
+    if (!body.country && fp.sim_country) body.country = String(fp.sim_country);
     if (fp.android_id_hash) body.android_id_hash = String(fp.android_id_hash);
     if (fp.manufacturer)    body.manufacturer    = String(fp.manufacturer);
     if (fp.model)           body.model           = String(fp.model);
@@ -161,9 +165,44 @@ export async function syncEntitlement(deviceId: string): Promise<DeviceEntitleme
   return data as DeviceEntitlement;
 }
 
-export async function useReferral(deviceId: string, referralCode: string): Promise<{ bonus_bytes: number; new_total_bytes: number }> {
+export interface AdminMessage { id: number; title: string; body: string; created_at: string; }
+
+export async function getMessages(deviceId: string): Promise<AdminMessage[]> {
+  const data = await mobileGet('get-messages', { device_id: deviceId }) as { messages?: AdminMessage[] };
+  return data.messages ?? [];
+}
+
+export async function ackMessage(deviceId: string, messageId: number): Promise<void> {
+  await mobilePost('ack-message', { device_id: deviceId, message_id: messageId });
+}
+
+// Poll-based "push": fetch unread admin messages and show them one at a
+// time; each is acked when dismissed so it never reappears. Called at app
+// launch and on the connected heartbeat. Never throws.
+export async function checkAdminMessages(deviceId: string): Promise<void> {
+  try {
+    const msgs = await getMessages(deviceId);
+    for (const m of msgs) {
+      await new Promise<void>((resolve) => {
+        Alert.alert(m.title || 'SetaLink', m.body,
+          [{ text: 'OK', onPress: () => resolve() }], { cancelable: false });
+      });
+      ackMessage(deviceId, m.id).catch(() => {});
+    }
+  } catch { /* offline — retry on next poll */ }
+}
+
+export interface ReferralResult {
+  /** 'approved' = bonus granted now; 'pending_review' = held for anti-fraud
+   *  review, bonus_bytes is 0 and may be granted later by an admin. */
+  status?: 'approved' | 'pending_review';
+  bonus_bytes: number;
+  new_total_bytes: number;
+}
+
+export async function useReferral(deviceId: string, referralCode: string): Promise<ReferralResult> {
   const data = await mobilePost('use-referral', { device_id: deviceId, referral_code: referralCode });
-  return data as { bonus_bytes: number; new_total_bytes: number };
+  return data as ReferralResult;
 }
 
 export async function reportUsage(deviceId: string, bytesUsed: number): Promise<{ remaining_bytes: number }> {

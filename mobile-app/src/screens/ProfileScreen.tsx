@@ -18,6 +18,7 @@ import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT } from '../i18n';
 import { useReferral } from '../services/entitlementService';
+import { useInboxStore } from '../stores/inboxStore';
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
@@ -114,11 +115,15 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const [supportUrl, setSupportUrl] = useState('https://t.me/SetaLink3');
   const [showQr, setShowQr] = useState(false);
   const [applyingPending, setApplyingPending] = useState(false);
+  const inboxMessages = useInboxStore((s) => s.messages);
+  const markRead      = useInboxStore((s) => s.markRead);
+  const refreshInbox  = useInboxStore((s) => s.refresh);
 
   useEffect(() => {
     BiometricService.isAvailable().then(setBiometricAvailable).catch(() => setBiometricAvailable(false));
     getRemoteConfig().then(cfg => { if (cfg.support_url) setSupportUrl(cfg.support_url); }).catch(() => {});
-  }, []);
+    if (user?.deviceId) refreshInbox(user.deviceId).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user) return null;
 
@@ -169,10 +174,15 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
     setApplyingPending(true);
     try {
       const result = await useReferral(user.deviceId, pendingReferralCode);
-      addBonusBytes(result.bonus_bytes);
       setPendingReferralCode(null);
-      const gb = (result.bonus_bytes / (1024 * 1024 * 1024)).toFixed(0);
-      showToast(`+${gb} GB bonus credited!`, 'success', 3000);
+      if (result.status === 'pending_review') {
+        // Anti-fraud hold — bonus is granted only after admin approval.
+        showToast('Code received — bonus is pending review', 'info', 4000);
+      } else {
+        addBonusBytes(result.bonus_bytes);
+        const gb = (result.bonus_bytes / (1024 * 1024 * 1024)).toFixed(0);
+        showToast(`+${gb} GB bonus credited!`, 'success', 3000);
+      }
     } catch (e: any) {
       showToast(e?.message || 'Could not apply referral code', 'error', 3000);
     } finally {
@@ -382,6 +392,40 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </View>
         </GlassCard>
 
+        {/* Inbox — admin announcements */}
+        {inboxMessages.length > 0 && (
+          <GlassCard style={styles.inboxCard}>
+            <View style={styles.referralHeader}>
+              <Text style={styles.cardLabel}>Inbox</Text>
+              {inboxMessages.some(m => !m.read) && (
+                <View style={styles.inboxUnreadBadge}>
+                  <Text style={styles.inboxUnreadText}>
+                    {inboxMessages.filter(m => !m.read).length} new
+                  </Text>
+                </View>
+              )}
+            </View>
+            {inboxMessages.slice(0, 5).map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                style={[styles.inboxItem, !m.read && styles.inboxItemUnread]}
+                activeOpacity={0.8}
+                onPress={() => { if (!m.read) markRead(user.deviceId, m.id); }}
+              >
+                <View style={styles.inboxItemHeader}>
+                  {!m.read && <View style={styles.inboxDot} />}
+                  <Text style={[styles.inboxTitle, !m.read && styles.inboxTitleUnread]} numberOfLines={1}>
+                    {m.title}
+                  </Text>
+                  <Text style={styles.inboxDate}>{m.createdAt.slice(0, 10)}</Text>
+                </View>
+                <Text style={styles.inboxBody}>{m.body}</Text>
+                {!m.read && <Text style={styles.inboxMarkHint}>Tap to mark as read</Text>}
+              </TouchableOpacity>
+            ))}
+          </GlassCard>
+        )}
+
         {/* User ID */}
         <GlassCard>
           <Text style={styles.cardLabel}>{t('pr.yourUserId')}</Text>
@@ -544,6 +588,18 @@ const styles = StyleSheet.create({
   deviceStatus:     { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
   deviceStatusText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label },
   referralCard:     { gap: Spacing[3] },
+  inboxCard:        { gap: Spacing[3] },
+  inboxUnreadBadge: { backgroundColor: 'rgba(255,80,80,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.35)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
+  inboxUnreadText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FF5050' },
+  inboxItem:        { borderRadius: Radius.lg, padding: Spacing[3], backgroundColor: Colors.bg.elevated, gap: 4 },
+  inboxItemUnread:  { borderWidth: 1, borderColor: 'rgba(0,232,122,0.25)', backgroundColor: 'rgba(0,232,122,0.05)' },
+  inboxItemHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  inboxDot:         { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.emerald[400] },
+  inboxTitle:       { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.secondary },
+  inboxTitleUnread: { color: Colors.text.primary },
+  inboxDate:        { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  inboxBody:        { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 19 },
+  inboxMarkHint:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400], marginTop: 2 },
   referralHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rewardBadge:      { backgroundColor: 'rgba(51,153,255,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(51,153,255,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
   rewardBadgeText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.blue[400] },

@@ -13,15 +13,16 @@ $dl_ref       = $ref_code ? '?ref=' . urlencode($ref_code) : '';
 $dl_arm32     = '/download/setalink-latest-arm32.apk' . $dl_ref;
 $dl_universal = '/download/setalink-latest-universal.apk' . $dl_ref;
 $canonical = 'https://setalink.no/';
-$og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-512.png';
+$logo      = '/assets/logo/setalink-mark-256.png';   // current brand mark (2026)
+$og_img    = 'https://setalink.no' . $logo;
 ?><!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SetaLink — Free VPN for Iran &amp; Turkey | Anti-Censorship Android VPN</title>
-  <meta name="description" content="SetaLink: AI-powered VLESS+Reality VPN for Iran, Turkey and censored regions. 1 GB free on install. No account. Bypasses DPI with DNS-over-HTTPS. Android APK.">
-  <meta name="keywords" content="VPN Iran, free VPN Iran, anti-censorship VPN, V2Ray Iran, Reality protocol, VLESS VPN, bypass DPI, Android VPN, VPN Turkey, فیلترشکن رایگان">
+  <title>SetaLink — Free VPN for Iran | Anti-Censorship Android VPN</title>
+  <meta name="description" content="SetaLink: AI-powered VLESS+Reality VPN for Iran and censored regions. 1 GB free on install. No account. Bypasses DPI with DNS-over-HTTPS. Android APK.">
+  <meta name="keywords" content="VPN Iran, free VPN Iran, anti-censorship VPN, V2Ray Iran, Reality protocol, VLESS VPN, bypass DPI, Android VPN, فیلترشکن رایگان">
   <meta name="robots" content="index,follow">
   <link rel="canonical" href="<?= $canonical ?>">
   <!-- Google verification -->
@@ -29,7 +30,7 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
   <!-- Open Graph -->
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="<?= $canonical ?>">
-  <meta property="og:title"       content="SetaLink — Free VPN for Iran &amp; Turkey">
+  <meta property="og:title"       content="SetaLink — Free VPN for Iran">
   <meta property="og:description" content="AI-powered anti-censorship VPN. VLESS+Reality protocol. 1 GB free. No account. Android only.">
   <meta property="og:image"       content="<?= $og_img ?>">
   <meta property="og:locale"      content="en_US">
@@ -37,15 +38,15 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
   <meta property="og:site_name"   content="SetaLink VPN">
   <!-- Twitter / X -->
   <meta name="twitter:card"        content="summary_large_image">
-  <meta name="twitter:title"       content="SetaLink — Free VPN for Iran &amp; Turkey">
+  <meta name="twitter:title"       content="SetaLink — Free VPN for Iran">
   <meta name="twitter:description" content="AI-powered anti-censorship VPN. VLESS+Reality. 1 GB free. Android only.">
   <meta name="twitter:image"       content="<?= $og_img ?>">
   <!-- Fonts + styles -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Vazirmatn:wght@400;600;700;800&display=swap" rel="stylesheet">
-  <link rel="icon" type="image/x-icon" href="/assets/logo/shirokhorshid/favicon.ico">
-  <link rel="apple-touch-icon" href="/assets/logo/shirokhorshid/app-icon-connected-180.png">
+  <link rel="icon" type="image/png" href="<?= $logo ?>">
+  <link rel="apple-touch-icon" href="<?= $logo ?>">
   <link rel="stylesheet" href="/css/main.css">
   <!-- Google Analytics -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-QVDJGX86KT"></script>
@@ -59,7 +60,7 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
         "@type": "Organization",
         "name": "SetaLink VPN",
         "url": "https://setalink.no",
-        "logo": "https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-512.png",
+        "logo": "<?= $og_img ?>",
         "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink"]
       },
       {
@@ -83,7 +84,7 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
 <!-- ══ NAVIGATION ══════════════════════════════════════════════ -->
 <nav class="nav">
   <a href="/" class="nav-logo">
-    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="32" height="32" alt="SetaLink">
+    <img src="<?= $logo ?>" width="32" height="32" alt="SetaLink">
     <span class="brand-seta">Seta</span><span class="brand-link">Link</span>
   </a>
   <div class="nav-actions">
@@ -131,13 +132,13 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
   <div class="hero-glow"></div>
 
   <div class="hero-ring">
-    <img src="/assets/logo/shirokhorshid/logo-mark-connected-128.png"
+    <img src="<?= $logo ?>"
          class="hero-logo" width="112" height="112" alt="SetaLink">
   </div>
 
   <div class="hero-badge">
     <span class="dot-live"></span>
-    <span data-t="hero.badge">Server Online &mdash; Norway &amp; Turkey nodes</span>
+    <span data-t="hero.badge">Server Online &mdash; secure global nodes</span>
   </div>
 
   <h1>
@@ -160,15 +161,27 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
     </a>
   </div>
 
-  <!-- APK variants — the default button serves 64-bit; 32-bit phones
-       (Samsung J-series and similar) show "App not installed" with it. -->
-  <div class="dl-variants" style="margin-top:.8rem;font-size:.82rem;opacity:.85">
-    <span data-t="dl.variant.q">"App not installed"? Pick your device type:</span><br>
-    <a href="<?= htmlspecialchars($dl_link) ?>" rel="nofollow" data-t="dl.variant.std">Standard — Android 10+ (64-bit)</a>
-    &nbsp;·&nbsp;
-    <a href="<?= htmlspecialchars($dl_arm32) ?>" rel="nofollow" data-t="dl.variant.old">Older phones / Samsung J-series (32-bit)</a>
-    &nbsp;·&nbsp;
-    <a href="<?= htmlspecialchars($dl_universal) ?>" rel="nofollow" data-t="dl.variant.uni">Universal (works on all, larger)</a>
+  <!-- APK variants — three clear options so visitors pick the right build
+       (64-bit-only APK shows "App not installed" on 32-bit phones). -->
+  <div class="dl-options" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.8rem;margin-top:1.4rem;max-width:860px;width:100%">
+    <a href="<?= htmlspecialchars($dl_link) ?>" rel="nofollow"
+       style="display:block;text-decoration:none;background:rgba(0,232,122,.07);border:1px solid rgba(0,232,122,.35);border-radius:14px;padding:1rem 1.1rem;text-align:left">
+      <div style="font-size:.7rem;letter-spacing:.08em;color:#00e87a;font-weight:800;text-transform:uppercase" data-t="dl.card1.tag">✓ Recommended</div>
+      <div style="font-size:.95rem;color:#fff;font-weight:700;margin:.25rem 0" data-t="dl.card1.h">Modern phones (64-bit)</div>
+      <div style="font-size:.78rem;color:#9ab0c5;line-height:1.45" data-t="dl.card1.p">Most phones from 2018+ — Samsung A/S, Xiaomi, Poco, Huawei. Smallest download.</div>
+    </a>
+    <a href="<?= htmlspecialchars($dl_arm32) ?>" rel="nofollow"
+       style="display:block;text-decoration:none;background:rgba(255,184,0,.06);border:1px solid rgba(255,184,0,.3);border-radius:14px;padding:1rem 1.1rem;text-align:left">
+      <div style="font-size:.7rem;letter-spacing:.08em;color:#ffb800;font-weight:800;text-transform:uppercase" data-t="dl.card2.tag">Older phones</div>
+      <div style="font-size:.95rem;color:#fff;font-weight:700;margin:.25rem 0" data-t="dl.card2.h">32-bit devices</div>
+      <div style="font-size:.78rem;color:#9ab0c5;line-height:1.45" data-t="dl.card2.p">Samsung J-series and phones before ~2018. Use this if you see "App not installed".</div>
+    </a>
+    <a href="<?= htmlspecialchars($dl_universal) ?>" rel="nofollow"
+       style="display:block;text-decoration:none;background:rgba(51,153,255,.06);border:1px solid rgba(51,153,255,.3);border-radius:14px;padding:1rem 1.1rem;text-align:left">
+      <div style="font-size:.7rem;letter-spacing:.08em;color:#39f;font-weight:800;text-transform:uppercase" data-t="dl.card3.tag">Not sure?</div>
+      <div style="font-size:.95rem;color:#fff;font-weight:700;margin:.25rem 0" data-t="dl.card3.h">Universal APK</div>
+      <div style="font-size:.78rem;color:#9ab0c5;line-height:1.45" data-t="dl.card3.p">Works on every Android device. Larger file — pick this when in doubt.</div>
+    </a>
   </div>
 
   <div class="hero-stats">
@@ -250,7 +263,7 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 18 0 9 9 0 0 0-18 0"/><path d="M3.6 9h16.8M3.6 15h16.8M12 3a15.3 15.3 0 0 1 4 9 15.3 15.3 0 0 1-4 9 15.3 15.3 0 0 1-4-9 15.3 15.3 0 0 1 4-9z"/></svg>
       </div>
       <h4 data-t="ai.f3.h">Adaptive Routing</h4>
-      <p data-t="ai.f3.p">The network learns which SNIs work from your region. Turkey and Iran have different blocking patterns — the app adapts and remembers what works where, improving over time.</p>
+      <p data-t="ai.f3.p">The network learns which SNIs work from your region. Different networks have different blocking patterns — the app adapts and remembers what works where, improving over time.</p>
     </div>
 
     <div class="bento-cell">
@@ -269,7 +282,7 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
 <section class="section" id="why">
   <div class="section-label" data-t="why.label">WHY SETALINK</div>
   <h2 class="section-title" data-t="why.title">Built for Real Censorship</h2>
-  <p class="section-sub" data-t="why.sub">Not a generic VPN wrapper. Built from scratch for the realities of Iran and Turkey.</p>
+  <p class="section-sub" data-t="why.sub">Not a generic VPN wrapper. Built from scratch for the realities of internet censorship in Iran.</p>
 
   <div class="why-grid">
     <div class="why-card">
@@ -352,6 +365,20 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
 
 <div class="divider"></div>
 
+<!-- ══ SHAHNAMEH PROMO ═════════════════════════════════════════ -->
+<section class="section" id="shahnameh">
+  <div style="max-width:720px;margin:0 auto;background:linear-gradient(135deg,rgba(201,164,42,.1),rgba(200,16,46,.06));border:1px solid rgba(201,164,42,.35);border-radius:18px;padding:2rem;text-align:center">
+    <div class="section-label" style="color:#c9a42a" data-t="shah.label">COMMUNITY GAME</div>
+    <h2 class="section-title" style="margin:.4rem 0" data-t="shah.title">Play Shahnameh — earn REAL</h2>
+    <p class="section-sub" style="margin:0 auto 1.2rem" data-t="shah.sub">Battle as a Persian warrior in the Shahnameh Telegram game and earn REAL rewards.</p>
+    <a href="https://t.me/shahnameh_bot?start=warrior_5629291605" target="_blank" rel="noopener" class="btn btn-primary" style="background:#c9a42a;border-color:#c9a42a">
+      ⚔️ <span data-t="shah.cta">Play on Telegram</span>
+    </a>
+  </div>
+</section>
+
+<div class="divider"></div>
+
 <!-- ══ SUPPORT THE PROJECT ═════════════════════════════════════ -->
 <section class="section" id="support">
   <div class="support-section">
@@ -366,7 +393,7 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
       </div>
       <h4 data-t="support.s1.h">Server Costs</h4>
-      <p data-t="support.s1.p">VPS hosting in Norway and Turkey. More nodes = better speed and resilience for every user in the network.</p>
+      <p data-t="support.s1.p">Secure VPS infrastructure. More nodes = better speed and resilience for every user in the network.</p>
     </div>
     <div class="support-card">
       <div class="support-icon" style="background:var(--gold-dim);border:1px solid rgba(201,164,42,.2)">
@@ -468,7 +495,7 @@ $og_img    = 'https://setalink.no/assets/logo/shirokhorshid/app-icon-connected-5
 <footer class="footer">
   <div class="footer-inner">
     <div class="footer-brand">
-      <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="28" height="28" alt="SetaLink" style="border-radius:7px">
+      <img src="<?= $logo ?>" width="28" height="28" alt="SetaLink" style="border-radius:7px">
       <span class="brand-seta">Seta</span><span class="brand-link">Link</span>
     </div>
     <nav class="footer-links">

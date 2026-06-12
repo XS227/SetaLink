@@ -17,6 +17,7 @@ interface SettingsState {
   hasSelectedLanguage:  boolean;
   hasSeenWelcome:       boolean;
   pendingReferralCode:  string | null;
+  updateChannel:        'stable' | 'beta' | 'experimental';
 
   setProtocol:              (v: string) => void;
   setDnsMode:               (v: string) => void;
@@ -33,6 +34,7 @@ interface SettingsState {
   completeLanguageSelection: () => void;
   markWelcomeSeen:           () => void;
   setPendingReferralCode:    (code: string | null) => void;
+  setUpdateChannel:          (c: 'stable' | 'beta' | 'experimental') => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -52,6 +54,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasSelectedLanguage:  false,
       hasSeenWelcome:       false,
       pendingReferralCode:  null,
+      updateChannel:        'stable',
 
       setProtocol: (v) => set({ protocol: v }),
       setDnsMode:  (v) => set({ dnsMode: v }),
@@ -69,6 +72,7 @@ export const useSettingsStore = create<SettingsState>()(
       completeLanguageSelection: () => set({ hasSelectedLanguage: true }),
       markWelcomeSeen:           () => set({ hasSeenWelcome: true }),
       setPendingReferralCode:    (code) => set({ pendingReferralCode: code }),
+      setUpdateChannel:          (c) => set({ updateChannel: c }),
     }),
     {
       name:    'setalink-settings-v2',

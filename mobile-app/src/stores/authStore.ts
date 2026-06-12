@@ -21,6 +21,7 @@ export interface AuthUser {
   inviteCount: number;
   activeInviteCount: number;
   stealthUnlocked: boolean;
+  country: string;          // ISO code geo-detected by the backend ('' if unknown)
 }
 
 interface InvitePayload {
@@ -90,6 +91,7 @@ export const useAuthStore = create<AuthState>()(
             inviteCount: 0,
             activeInviteCount: 0,
             stealthUnlocked: false,
+            country: '',
           },
           token: `anon-token-${Date.now()}`,
           isAuthenticated: true,
@@ -117,6 +119,7 @@ export const useAuthStore = create<AuthState>()(
             inviteCount:          (e as any).invite_count ?? 0,
             activeInviteCount:    (e as any).active_invite_count ?? 0,
             stealthUnlocked:      (e as any).stealth_unlocked ?? false,
+            country:              (e as any).country ?? '',
           },
           token:           `device-${e.device_id}`,
           isAuthenticated: true,
@@ -139,6 +142,7 @@ export const useAuthStore = create<AuthState>()(
             inviteCount:       (e as any).invite_count ?? prev.user.inviteCount,
             activeInviteCount: (e as any).active_invite_count ?? prev.user.activeInviteCount,
             stealthUnlocked:   (e as any).stealth_unlocked ?? prev.user.stealthUnlocked,
+            country:           (e as any).country || prev.user.country,
           },
         };
       }),

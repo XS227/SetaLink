@@ -283,6 +283,66 @@ export function buildAutoProfiles(
   return profiles;
 }
 
+// ── Admin-pushed live profiles (remote config) ───────────────────────────────
+// Profiles pushed via admin "push-emergency-profiles" / "push-stealth-profiles"
+// become connectable WITHOUT an APK update. They carry full credentials
+// (uuid/publicKey/shortId/address), applied per-profile via credOverride.
+// Emergency profiles are tried FIRST (admin pushes them when the defaults are
+// burned); stealth profiles slot in after the built-in Reality candidates.
+
+interface RemoteProfileJson {
+  id?:          string;
+  label?:       string;
+  protocol?:    string;   // 'Reality' | 'WebSocket' | 'XHTTP' | 'HTTPUpgrade'
+  uuid?:        string;
+  address?:     string;
+  port?:        number;
+  publicKey?:   string;
+  shortId?:     string;
+  sni?:         string;
+  flow?:        string;
+  fingerprint?: string;
+  emergency?:   boolean;
+}
+
+export function buildRemoteProfiles(
+  raw:    unknown[] | undefined,
+  prefix: string,
+): ProfileDef[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProfileDef[] = [];
+  raw.forEach((entry, i) => {
+    const p = entry as RemoteProfileJson;
+    if (!p || !p.uuid || !p.sni) return;          // not connectable without these
+    const protoRaw = (p.protocol ?? 'Reality').toLowerCase();
+    const protocol =
+      protoRaw.includes('xhttp')       ? 'VLESS+XHTTP'        :
+      protoRaw.includes('websocket') ||
+      protoRaw.includes('ws')          ? 'VLESS + WebSocket'  :
+      protoRaw.includes('httpup')      ? 'VLESS+HTTPUpgrade'  :
+                                         'VLESS + Reality';
+    out.push({
+      id:          p.id ?? `${prefix}-${i}`,
+      label:       p.label ?? `${prefix === 'rc-emrg' ? 'Emergency' : 'Stealth'} · ${p.sni}`,
+      protocol,
+      sni:         p.sni,
+      port:        p.port ?? 443,
+      flow:        p.flow ?? '',
+      fingerprint: p.fingerprint ?? 'chrome',
+      emergency:   p.emergency ?? false,
+      ...(p.publicKey && p.shortId ? {
+        credOverride: {
+          uuid:      p.uuid,
+          publicKey: p.publicKey,
+          shortId:   p.shortId,
+          ...(p.address ? { address: p.address } : {}),
+        },
+      } : {}),
+    });
+  });
+  return out;
+}
+
 function buildConfig(def: ProfileDef, server: VpnServer, creds: ServerCredentials): string {
   const isTls =
     def.protocol.includes('XHTTP') ||
@@ -413,7 +473,13 @@ async function _runPass(
     ? remoteCfg.iran_sni_order
     : remoteCfg.sni_priorities;
 
-  const defs = buildAutoProfiles(server, creds, mode, sniPriorities);
+  const builtinDefs = buildAutoProfiles(server, creds, mode, sniPriorities);
+
+  // Admin-pushed live profiles: emergency first (pushed when defaults are
+  // burned — must win), stealth after the built-ins as extra candidates.
+  const rcEmergency = buildRemoteProfiles(remoteCfg.emergency_profiles, 'rc-emrg');
+  const rcStealth   = buildRemoteProfiles(remoteCfg.stealth_profiles,   'rc-stealth');
+  const defs = [...rcEmergency, ...builtinDefs, ...rcStealth];
 
   // Apply kill-switches: skip profiles that are known broken
   const filteredDefs = defs.filter(d => !isKillSwitched(d.sni, d.protocol, remoteCfg));

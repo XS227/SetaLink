@@ -359,6 +359,7 @@ function icon(string $name): string {
           <option value="blocked">Blocked</option>
         </select>
         <button class="btn btn-secondary btn-sm" id="devRefreshBtn"><?= icon('refresh') ?></button>
+        <button class="btn btn-secondary btn-sm" id="devGeoBackfillBtn" title="Re-resolve country/flag for devices with an IP but no country">🌍 Fix flags</button>
       </div>
       <div class="panel">
         <div class="tbl-wrap">
@@ -366,6 +367,16 @@ function icon(string $name): string {
             <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">RX/TX</th><th class="mobile-hide">Connectivity</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
             <tbody id="devTbl"><tr><td colspan="12" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Messages <span class="panel-sub">in-app — delivered at launch / heartbeat (app ≥ next release)</span></span>
+          <button class="btn btn-secondary btn-sm" onclick="devMessage('','all devices')">+ Broadcast</button>
+        </div>
+        <div class="panel-body" id="msgListPanel" style="padding:.6rem 1rem">
+          <div class="spinner"></div>
         </div>
       </div>
 
@@ -536,6 +547,10 @@ function icon(string $name): string {
                 <option value="custom">Custom countries</option>
               </select>
             </div>
+            <div class="form-group" style="min-width:140px">
+              <label>Rollout %</label>
+              <input class="input" id="vjRolloutPercent" type="number" min="1" max="100" value="100" style="max-width:100px">
+            </div>
           </div>
           <button class="btn btn-primary" id="vjSaveBtn" style="margin-top:.25rem"><?= icon('save') ?> Save Settings</button>
           <span id="vjSaveStatus" style="margin-left:.75rem;font-size:.75rem;color:var(--muted)"></span>
@@ -573,6 +588,21 @@ function icon(string $name): string {
         <div class="stat-card"><div class="stat-label">Conversion Rate</div><div class="stat-value" id="refConversion">—</div><div class="stat-sub" id="refConvSub">referred / total</div></div>
         <div class="stat-card"><div class="stat-label">Bonus Awarded</div><div class="stat-value" id="refBonus">—</div><div class="stat-sub">total rewarded</div></div>
         <div class="stat-card"><div class="stat-label">Stealth Unlocked</div><div class="stat-value" id="refStealth">—</div><div class="stat-sub">3 active invites</div></div>
+        <div class="stat-card stat-warn"><div class="stat-label">Pending Review</div><div class="stat-value" id="refPending">—</div><div class="stat-sub" id="refRejected">held rewards</div></div>
+      </div>
+
+      <!-- Pending Review queue — held rewards awaiting an admin decision -->
+      <div class="panel" style="margin-bottom:1.25rem" id="refPendingPanel" hidden>
+        <div class="panel-header">
+          <span class="panel-title"><?= icon('alert') ?> Pending Review</span>
+          <span class="panel-sub">risk ≥ 75 — reward is HELD until approved · reject = never rewarded</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Inviter</th><th>Code</th><th>New User</th><th>Device</th><th>IPs</th><th>Risk</th><th>Bonus</th><th>Action</th></tr></thead>
+            <tbody id="refPendingQueue"></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="two-col">
@@ -605,12 +635,26 @@ function icon(string $name): string {
       <div class="panel">
         <div class="panel-header">
           <span class="panel-title"><?= icon('log') ?> Recent Referrals</span>
-          <span class="panel-sub">last 50 · flagged rows have risk score &gt;= 75</span>
+          <span class="panel-sub">last 50 · risk ≥ 75 is held as Pending Review</span>
         </div>
         <div class="tbl-wrap">
           <table>
             <thead><tr><th>When</th><th>Inviter</th><th>Code</th><th>New User</th><th>CC</th><th>Bonus</th><th>Status</th><th>Risk</th></tr></thead>
             <tbody id="refRecent"><tr><td colspan="8" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Review decisions audit trail -->
+      <div class="panel" style="margin-top:1.25rem">
+        <div class="panel-header">
+          <span class="panel-title"><?= icon('log') ?> Review Audit Log</span>
+          <span class="panel-sub">every approve / reject decision</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Referral</th><th>Action</th><th>By</th><th>Detail</th></tr></thead>
+            <tbody id="refAuditLog"><tr><td colspan="5" class="tbl-empty">No review decisions yet</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -732,6 +776,32 @@ function icon(string $name): string {
   </div>
 </div>
 
+<div class="modal-dialog" id="modalMessage">
+  <div class="modal-header">
+    <span class="modal-title" id="msgModalTitle">Send Message</span>
+    <button class="btn-close btn btn-icon" onclick="closeModal()"><?= icon('x') ?></button>
+  </div>
+  <div class="modal-body">
+    <div class="form-group">
+      <label>To: <strong id="msgTarget">all devices</strong></label>
+    </div>
+    <div class="form-group">
+      <label>Title (optional)</label>
+      <input class="input" id="msgTitle" maxlength="120" placeholder="e.g. New version available">
+    </div>
+    <div class="form-group">
+      <label>Message</label>
+      <textarea class="input" id="msgBody" rows="4" maxlength="1000" style="resize:vertical"></textarea>
+    </div>
+    <p style="font-size:.68rem;color:var(--muted-2)">Delivered when the app next checks in (launch or 10-min heartbeat).
+    Requires app ≥ the next release — current installs cannot receive messages.</p>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-primary" id="msgSend">Send</button>
+  </div>
+</div>
+
 <div class="modal-dialog" id="modalDevice" style="max-width:680px;width:92vw">
   <div class="modal-header">
     <span class="modal-title" id="devDetailTitle">Device</span>
@@ -742,6 +812,7 @@ function icon(string $name): string {
   </div>
   <div class="modal-footer">
     <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    <button class="btn btn-primary" id="devMsgBtn" style="display:none">Send message</button>
   </div>
 </div>
 
@@ -822,8 +893,19 @@ function classHint(cat) {
 }
 
 function countryFlag(code) {
-  if (!code || code.length !== 2) return '';
-  const c = code.toUpperCase();
+  if (!code) return '';
+  let c = String(code).trim().toUpperCase();
+  // Some rows store full names (app-supplied) instead of ISO codes — map the
+  // common ones so flags (especially 🇮🇷) always render.
+  if (c.length !== 2) {
+    const NAMES = { 'IRAN':'IR', 'ISLAMIC REPUBLIC OF IRAN':'IR', 'IRAN, ISLAMIC REPUBLIC OF':'IR',
+                    'TURKEY':'TR', 'TÜRKIYE':'TR', 'TURKIYE':'TR', 'GERMANY':'DE', 'NORWAY':'NO',
+                    'NETHERLANDS':'NL', 'THE NETHERLANDS':'NL', 'UNITED STATES':'US', 'IRAQ':'IQ',
+                    'AFGHANISTAN':'AF', 'AZERBAIJAN':'AZ', 'ARMENIA':'AM', 'UNITED KINGDOM':'GB' };
+    c = NAMES[c] || '';
+    if (!c) return '';
+  }
+  if (!/^[A-Z]{2}$/.test(c)) return '';
   return String.fromCodePoint(...[...c].map(ch => 0x1F1E6 + ch.charCodeAt(0) - 65));
 }
 
@@ -1480,11 +1562,21 @@ views.devices = {
     this.loadDevices();
     this.loadPayments();
     this.loadTraffic();
+    this.loadMessages();
     // Wire controls
     $('devSearch').oninput = debounce(()=>this.renderDevices(), 250);
     $('devPlan').onchange = ()=>this.renderDevices();
     $('devStatus').onchange = ()=>this.renderDevices();
     $('devRefreshBtn').onclick = ()=>{ this.loadDevices(); this.loadPayments(); this.loadTraffic(); };
+    $('devGeoBackfillBtn').onclick = async()=>{
+      const btn = $('devGeoBackfillBtn'); btn.disabled = true;
+      try {
+        const r = await api.post({action:'geo-backfill'});
+        toast(`Geo backfill: ${r.fixed}/${r.checked} devices fixed`, 'ok');
+        this.loadDevices();
+      } catch(e) { toast('Geo backfill failed: '+e.message,'error'); }
+      finally { btn.disabled = false; }
+    };
     $('payFilter').onchange = ()=>this.loadPayments();
   },
   async loadDevices() {
@@ -1580,6 +1672,22 @@ views.devices = {
           </tr>`;
         }).join('');
   },
+  async loadMessages() {
+    try {
+      const d = await api.get('messages-list');
+      const rows = d.messages||[];
+      $('msgListPanel').innerHTML = rows.length ? rows.map(m=>`
+        <div style="display:flex;gap:.6rem;align-items:baseline;font-size:.74rem;padding:.25rem 0;border-bottom:1px solid var(--border)">
+          <span style="color:var(--muted-2);font-family:var(--mono);font-size:.66rem">${fmtRelative(m.created_at)}</span>
+          <span class="badge ${m.target_device_id?'badge-accent':'badge-muted'}">${m.target_device_id?esc(m.target_user_id||m.target_device_id.substring(0,14)):'all'}</span>
+          <span style="flex:1">${m.title?`<strong>${esc(m.title)}</strong> — `:''}${esc(m.body)}</span>
+          <span style="color:var(--muted-2);font-size:.66rem" title="devices that have seen it">✓ ${m.ack_count}</span>
+        </div>`).join('')
+        : '<p style="font-size:.74rem;color:var(--muted-2)">No messages sent yet</p>';
+    } catch(e) {
+      $('msgListPanel').innerHTML = `<p style="font-size:.74rem;color:var(--muted-2)">${esc(e.message)}</p>`;
+    }
+  },
   async loadTraffic() {
     try {
       const t = await api.get('traffic-categories');
@@ -1645,6 +1753,8 @@ window.devDetail = async function(did) {
     const dev = d.device || {};
     const uid = dev.user_id || did.substring(0,16);
     $('devDetailTitle').textContent = `${countryFlag(dev.country||'')} ${uid}`.trim();
+    $('devMsgBtn').style.display = '';
+    $('devMsgBtn').onclick = ()=>devMessage(did, uid);
     const kv = (k,v) => `<div style="display:flex;justify-content:space-between;gap:1rem;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--muted-2)">${k}</span><span style="text-align:right;font-family:var(--mono)">${v||'—'}</span></div>`;
     const gb = n => fmtBytes(n||0);
     const devRows = [
@@ -1680,6 +1790,25 @@ window.devDetail = async function(did) {
   } catch(e) {
     $('devDetailBody').innerHTML = `<p style="font-size:.8rem;color:var(--danger)">${esc(e.message)}</p>`;
   }
+};
+window.devMessage = function(did, label) {
+  views.devices.msgTargetId = did || '';
+  $('msgTarget').textContent = label || (did ? did.substring(0,20) : 'all devices');
+  $('msgTitle').value = '';
+  $('msgBody').value  = '';
+  closeModal();
+  openModal('modalMessage');
+};
+$('msgSend').onclick = async()=>{
+  const body = $('msgBody').value.trim();
+  if (!body) { toast('Message body required','error'); return; }
+  try {
+    const r = await api.post({action:'send-message', device_id: views.devices.msgTargetId||'',
+                              title: $('msgTitle').value.trim(), body_text: body});
+    closeModal();
+    toast(`Message queued for ${r.target}`,'ok');
+    views.devices.loadMessages();
+  } catch(e) { toast(e.message,'error'); }
 };
 window.devSetQuota = function(did, short) {
   views.devices.quotaDevId = did;
@@ -1803,6 +1932,7 @@ views.release = {
       $('vjMinSupported').value    = vj.minSupported || '0.9.7';
       const strategy = (vj.rollout && vj.rollout.strategy) ? vj.rollout.strategy : 'all';
       $('vjRolloutStrategy').value = strategy;
+      $('vjRolloutPercent').value  = (vj.rollout && vj.rollout.percent) ? vj.rollout.percent : 100;
     }
 
     // Emergency profiles — populate from remote-config if present
@@ -1907,10 +2037,11 @@ $('apkCleanupBtn').addEventListener('click', async () => {
 // Force Update / Rollout save
 $('vjSaveBtn').addEventListener('click', async()=>{
   const strategy = $('vjRolloutStrategy').value;
+  const percent  = Math.min(100, Math.max(1, parseInt($('vjRolloutPercent').value, 10) || 100));
   const rollout = {
     strategy,
     countries: strategy === 'iran_first' ? ['IR'] : (strategy === 'all' ? [] : ['IR']),
-    percent: 100,
+    percent,
     exclude_countries: [],
   };
   try {
@@ -2102,10 +2233,60 @@ views.referrals = {
       const gb = d.total_bonus_gb;
       $('refBonus').textContent = gb >= 1 ? gb.toFixed(1)+' GB' : Math.round(d.total_bonus_bytes/1048576)+' MB';
       $('refStealth').textContent = fmtNum(d.stealth_unlocked);
+      $('refPending').textContent  = fmtNum(d.pending_referrals || 0);
+      $('refRejected').textContent = (d.rejected_referrals||0) > 0
+        ? `${d.rejected_referrals} rejected all-time` : 'held rewards';
+      this.renderPendingQueue(d.pending_queue || []);
+      this.renderAuditLog(d.audit_log || []);
       this.renderLeaderboard(d.top_inviters || []);
       this.renderByCountry(d.by_country || []);
       this.renderRecent(d.recent_referrals || []);
     } catch(e) { toast(e.message,'error'); }
+  },
+  renderPendingQueue(rows) {
+    const panel = $('refPendingPanel');
+    panel.hidden = !rows.length;
+    if (!rows.length) return;
+    $('refPendingQueue').innerHTML = rows.map(r => {
+      const flags = (r.risk_flags||[]).join(', ');
+      const sameIp = r.referrer_ip && r.referrer_ip === r.new_user_ip;
+      return `<tr style="background:rgba(255,184,0,.05)">
+        <td style="font-size:.72rem;color:var(--muted)">${esc((r.ts||'').slice(0,16).replace('T',' '))}</td>
+        <td class="mono" style="font-size:.72rem">${esc(r.referrer_user_id||'—')}<div style="font-size:.62rem;color:var(--muted-2)">${countryFlag(r.referrer_country||'')} ${esc(r.referrer_country||'')}</div></td>
+        <td><span class="badge badge-info">${esc(r.referral_code||'—')}</span></td>
+        <td class="mono" style="font-size:.72rem">${esc(r.new_user_id||'—')}<div style="font-size:.62rem;color:var(--muted-2)">${countryFlag(r.new_country||'')} ${esc(r.new_country||'')}</div></td>
+        <td style="font-size:.68rem;color:var(--muted)">${esc(r.new_model||'—')}</td>
+        <td class="mono" style="font-size:.62rem;color:${sameIp?'var(--danger)':'var(--muted)'}">${esc(r.referrer_ip||'—')}<br>${esc(r.new_user_ip||'—')}${sameIp?' ⚠':''}</td>
+        <td style="font-weight:700;color:var(--danger)">${r.risk_score}<div style="font-size:.6rem;font-weight:400;color:var(--warn)">${esc(flags)}</div></td>
+        <td style="font-size:.72rem;color:var(--muted)">${r.bonus_gb.toFixed(0)} GB held</td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-primary btn-sm" onclick="views.referrals.review(${r.id},'approve',this)">✓ Approve</button>
+          <button class="btn btn-secondary btn-sm" style="color:var(--danger);border-color:var(--danger)" onclick="views.referrals.review(${r.id},'reject',this)">✗ Reject</button>
+        </td>
+      </tr>`;
+    }).join('');
+  },
+  async review(id, decision, btn) {
+    if (decision === 'reject' && !confirm('Reject this referral? The reward is permanently denied.')) return;
+    btn.disabled = true;
+    try {
+      const r = await api.post({action: decision === 'approve' ? 'referral-approve' : 'referral-reject', id});
+      toast(decision === 'approve'
+        ? `Approved — ${(r.bonus_bytes/1073741824).toFixed(0)} GB granted to both devices`
+        : 'Rejected — reward denied', 'ok');
+      this.init();   // reload queue, stats, audit log
+    } catch(e) { toast(`${decision} failed: ${e.message}`,'error'); btn.disabled = false; }
+  },
+  renderAuditLog(rows) {
+    const el = $('refAuditLog');
+    if (!rows.length) { el.innerHTML = '<tr><td colspan="5" class="tbl-empty">No review decisions yet</td></tr>'; return; }
+    el.innerHTML = rows.map(r => `<tr>
+      <td style="font-size:.72rem;color:var(--muted)">${esc((r.acted_at||'').slice(0,16).replace('T',' '))}</td>
+      <td class="mono" style="font-size:.72rem">#${r.referral_id}</td>
+      <td>${r.action==='approve'?'<span class="badge badge-ok">approved</span>':'<span class="badge badge-danger">rejected</span>'}</td>
+      <td style="font-size:.75rem">${esc(r.acted_by||'admin')}</td>
+      <td style="font-size:.68rem;color:var(--muted)">${esc(r.detail||'')}</td>
+    </tr>`).join('');
   },
   renderLeaderboard(rows) {
     const el = $('refLeaderboard');
@@ -2134,16 +2315,32 @@ views.referrals = {
     const el = $('refRecent');
     if (!rows.length) { el.innerHTML = '<tr><td colspan="8" class="tbl-empty">No referrals yet</td></tr>'; return; }
     el.innerHTML = rows.map(r => {
-      const isFlagged = r.status==='flagged';
       const flags = (r.risk_flags||[]).join(', ');
-      return `<tr${isFlagged?' style="background:rgba(200,16,46,.06)"':''}>
+      // Status semantics: credited/approved = granted; pending = HELD (no
+      // reward yet); rejected = denied forever; flagged = legacy auto-credit.
+      const statusBadge =
+        r.status==='pending'  ? '<span class="badge badge-warn">Pending Review</span>' :
+        r.status==='rejected' ? '<span class="badge badge-danger">Rejected</span>'     :
+        r.status==='approved' ? '<span class="badge badge-ok">Approved ✓</span>'       :
+        r.status==='flagged'  ? '<span class="badge badge-danger">flagged (legacy)</span>' :
+                                '<span class="badge badge-ok">Approved</span>';
+      const rowTint =
+        r.status==='pending'  ? ' style="background:rgba(255,184,0,.05)"' :
+        r.status==='rejected' ? ' style="background:rgba(200,16,46,.06);opacity:.65"' :
+        r.status==='flagged'  ? ' style="background:rgba(200,16,46,.06)"' : '';
+      // Pending/rejected rows never granted anything — show held/denied, not GB
+      const bonusCell =
+        r.status==='pending'  ? `<span style="color:var(--warn)">${r.bonus_gb.toFixed(0)} GB held</span>` :
+        r.status==='rejected' ? '<span style="color:var(--muted-2)">denied</span>' :
+        `<span style="color:var(--ok)">${r.bonus_gb>=1?r.bonus_gb.toFixed(0)+' GB':Math.round(r.bonus_bytes/1048576)+' MB'}</span>`;
+      return `<tr${rowTint}>
         <td style="font-size:.72rem;color:var(--muted)">${esc((r.ts||'').slice(0,16).replace('T',' '))}</td>
         <td class="mono" style="font-size:.72rem">${esc(r.referrer_user_id||'—')}</td>
         <td><span class="badge badge-info">${esc(r.ref_code||'—')}</span></td>
         <td class="mono" style="font-size:.72rem">${esc(r.new_user_id||'—')}</td>
         <td style="font-size:.75rem">${esc(r.new_country||'—')}</td>
-        <td style="color:var(--ok);font-size:.75rem">${r.bonus_gb>=1?r.bonus_gb.toFixed(0)+' GB':Math.round(r.bonus_bytes/1048576)+' MB'}</td>
-        <td>${isFlagged?'<span class="badge badge-danger">flagged</span>':'<span class="badge badge-ok">ok</span>'}</td>
+        <td style="font-size:.75rem">${bonusCell}</td>
+        <td>${statusBadge}</td>
         <td style="font-size:.72rem;color:${r.risk_score>50?'var(--danger)':r.risk_score>0?'var(--warn)':'var(--muted)'}">
           ${r.risk_score>0?r.risk_score+(flags?' · '+esc(flags):''):'—'}
         </td>

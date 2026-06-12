@@ -16,12 +16,10 @@ export interface VersionInfo {
     percent?: number;
     exclude_countries?: string[];
   };
-  channels?: {
-    stable?: { version: string; versionCode?: number; apkUrl: string };
-    beta?:   { version: string; versionCode?: number; apkUrl: string };
-    hotfix?: { version: string; versionCode?: number; apkUrl: string };
-  };
+  channels?: Record<string, { version: string; versionCode?: number; apkUrl: string } | undefined>;
 }
+
+export type UpdateChannel = 'stable' | 'beta' | 'experimental';
 
 export interface UpdateCheckResult {
   hasUpdate: boolean;
@@ -87,7 +85,7 @@ function isInRollout(info: VersionInfo, deviceCountry?: string): boolean {
 }
 
 /** Check for available update. Returns null on network failure. */
-export async function checkForUpdate(deviceCountry?: string, channel: 'stable' | 'beta' = 'stable'): Promise<UpdateCheckResult | null> {
+export async function checkForUpdate(deviceCountry?: string, channel: UpdateChannel = 'stable'): Promise<UpdateCheckResult | null> {
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), 8_000);
@@ -95,8 +93,9 @@ export async function checkForUpdate(deviceCountry?: string, channel: 'stable' |
     clearTimeout(tid);
     const info: VersionInfo = await res.json();
 
-    // Pick target version from channel
-    const channelInfo = channel === 'beta' ? info.channels?.beta : info.channels?.stable;
+    // Pick target version from channel; unknown channels fall back to stable,
+    // then to the top-level fields.
+    const channelInfo = info.channels?.[channel] ?? info.channels?.stable;
     const targetVersion = channelInfo?.version ?? info.version;
     const targetApkUrl  = channelInfo?.apkUrl  ?? info.apkUrl;
     // versionCode is the authoritative gate (see isUpdateAvailable).
@@ -107,6 +106,7 @@ export async function checkForUpdate(deviceCountry?: string, channel: 'stable' |
     });
     const inRollout   = isInRollout(info, deviceCountry);
     const forceUpdate = info.forceUpdate && compareVersions(APP_VERSION, info.minSupported ?? '0') < 0;
+    setVpnUpdateBlocked(forceUpdate);
 
     // Cache result
     storage.setItem(CACHE_KEY, JSON.stringify({ result: { hasUpdate, forceUpdate, latestVersion: targetVersion, currentVersion: APP_VERSION, apkUrl: targetApkUrl, changelog: info.changelog ?? [], isInRollout: inRollout }, ts: Date.now() }));
@@ -125,6 +125,22 @@ export async function checkForUpdate(deviceCountry?: string, channel: 'stable' |
   }
 }
 
+// ── Forced-update VPN gate ────────────────────────────────────────────────────
+// When appVersion < minSupported (forceUpdate), connecting is blocked until the
+// user installs the update. Persisted so the block survives app restarts and
+// offline launches; cleared automatically once a non-forced check succeeds.
+
+const VPN_BLOCK_KEY = 'update_vpn_blocked_v1';
+
+export function setVpnUpdateBlocked(blocked: boolean): void {
+  if (blocked) storage.setItem(VPN_BLOCK_KEY, '1');
+  else         storage.removeItem(VPN_BLOCK_KEY);
+}
+
+export function isVpnUpdateBlocked(): boolean {
+  return syncGet(VPN_BLOCK_KEY) === '1';
+}
+
 /** Returns true if the user has snoozed this update in the last 24 hours. */
 export function isUpdateSnoozed(): boolean {
   const ts = syncGet(SNOOZE_KEY);
@@ -136,7 +152,11 @@ export function snoozeUpdate(): void {
   storage.setItem(SNOOZE_KEY, String(Date.now()));
 }
 
-/** Open the APK download URL in the system browser/download manager. */
+/**
+ * Download the APK and open the installer. Prefers the in-app path
+ * (DownloadManager + package-installer prompt — no browser round-trip);
+ * falls back to the system browser when the native method is unavailable.
+ */
 export async function downloadUpdate(apkUrl: string, targetVersion?: string, targetCode?: number): Promise<void> {
   // Persist a pending-install marker; resolvePendingInstall() compares the
   // running build against it on next boot to detect failed installs.
@@ -147,6 +167,16 @@ export async function downloadUpdate(apkUrl: string, targetVersion?: string, tar
     fromCode:      APP_BUILD_CODE,
     ts:            Date.now(),
   }));
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('../specs/NativeXrayModule').default;
+    if (mod?.downloadAndInstallApk) {
+      await mod.downloadAndInstallApk(apkUrl);
+      return;
+    }
+  } catch {
+    // native download failed — browser fallback below
+  }
   await Linking.openURL(apkUrl);
 }
 
