@@ -62,6 +62,24 @@ class XrayVpnService : VpnService() {
         // Metrics polling interval
         private const val METRICS_INTERVAL_MS = 3_000L
 
+        // PIDs of spawned processes survive here across service-instance
+        // recreation (HyperOS/MIUI kill the service object but the forked
+        // children live on holding the TUN fd — the reboot-only bug).
+        private const val PID_FILE = "vpn_pids.txt"
+
+        // Direct in-process handle for XrayModule.stop(). Intent delivery via
+        // startService(ACTION_STOP) is unreliable on HyperOS when the app is
+        // backgrounded; a direct method call cannot be deferred or dropped.
+        @Volatile private var activeInstance: XrayVpnService? = null
+
+        /** Stops the tunnel via the live service instance. Returns false when
+         *  no instance exists (caller should fall back to the stop intent). */
+        fun requestStop(): Boolean {
+            val inst = activeInstance ?: return false
+            Thread { inst.tearDownTunnel("module-direct") }.start()
+            return true
+        }
+
         init {
             System.loadLibrary("setalink_vpn")
         }
@@ -79,10 +97,33 @@ class XrayVpnService : VpnService() {
     private var tunFd:         ParcelFileDescriptor? = null
     private var xrayProcess:   Process?              = null
     private var tun2socksPid:  Int?                  = null
+    private var connectJob:    Job?                  = null
+
+    // Set while tearDownTunnel runs — makes it idempotent and lets the
+    // metrics/watchdog loops bail out instead of re-triggering teardown.
+    private val tearingDown = java.util.concurrent.atomic.AtomicBoolean(false)
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+    override fun onCreate() {
+        super.onCreate()
+        activeInstance = this
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Always enter foreground first: a stop request may arrive via
+        // startForegroundService() (HyperOS fallback path) and Android kills
+        // the app with ForegroundServiceDidNotStartInTimeException if we skip it.
+        val notification = NotificationHelper.buildConnected(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NotificationHelper.NOTIFICATION_ID, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NotificationHelper.NOTIFICATION_ID, notification)
+        }
+
         when (intent?.action) {
             ACTION_START -> {
                 val config = intent.getStringExtra(EXTRA_CONFIG)
@@ -90,31 +131,23 @@ class XrayVpnService : VpnService() {
                 val emergency = intent.getBooleanExtra(EXTRA_EMERGENCY_MODE, false)
 
                 killStaleProcesses()
-
-                val notification = NotificationHelper.buildConnected(this)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    startForeground(
-                        NotificationHelper.NOTIFICATION_ID, notification,
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-                    )
-                } else {
-                    startForeground(NotificationHelper.NOTIFICATION_ID, notification)
-                }
-                scope.launch { establishTunnel(config, emergency) }
+                tearingDown.set(false)
+                connectJob = scope.launch { establishTunnel(config, emergency) }
             }
-            ACTION_STOP -> tearDownTunnel()
+            ACTION_STOP -> Thread { tearDownTunnel("stop-intent") }.start()
         }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        if (activeInstance === this) activeInstance = null
+        tearDownTunnel("on-destroy")
         scope.cancel()
-        tearDownTunnel()
     }
 
     override fun onRevoke() {
-        tearDownTunnel()
+        tearDownTunnel("on-revoke")
         super.onRevoke()
     }
 
@@ -191,8 +224,9 @@ class XrayVpnService : VpnService() {
                 redirectErrorStream(true)
                 directory(filesDir)
             }.start()
+            writePidFile()
             scope.launch { streamToLog(xrayProcess!!, "Xray") }
-            broadcastStep("xray_started", true, "Xray process launched")
+            broadcastStep("xray_started", true, "Xray process launched (pid=${processPid(xrayProcess)})")
 
             // 5. Wait for SOCKS5
             if (!waitForPort(10808, 10_000L)) {
@@ -270,6 +304,7 @@ class XrayVpnService : VpnService() {
             )
             if (pid <= 0) throw Exception("nativeStartTun2socks failed (pid=$pid)")
             tun2socksPid = pid
+            writePidFile()
             appendLog("[tun2socks] forked pid=$pid")
 
             // Start streaming tun2socks.log → xray.log
@@ -318,7 +353,7 @@ class XrayVpnService : VpnService() {
                     putExtra("failure_category", category)
                 })
                 broadcastError(msg, category)
-                tearDownTunnel()
+                tearDownTunnel("tun-probe-failed")
                 return
             }
 
@@ -346,7 +381,7 @@ class XrayVpnService : VpnService() {
             val t2sLog = runCatching { readTun2socksLog() }.getOrDefault("(unavailable)")
             appendLog("[tun2socks output at failure]\n$t2sLog")
             broadcastError(e.message ?: "Unknown VPN error")
-            tearDownTunnel()
+            tearDownTunnel("setup-failed")
         }
     }
 
@@ -900,15 +935,17 @@ class XrayVpnService : VpnService() {
         scope.launch {
             while (isActive) {
                 delay(3_000L)
+                if (tearingDown.get()) break
                 val xAlive = xrayProcess?.isAlive == true
                 val tAlive = tun2socksPid?.let { nativeTun2socksExitCode(it) == -2 } == true
                 if (!xAlive || !tAlive) {
+                    if (tearingDown.get()) break   // teardown already killing them
                     val t2sLog  = readTun2socksLog()
                     val logTail = readLogTail(20)
                     val msg = "Process died (xray=$xAlive tun2socks=$tAlive)\nt2s output:\n$t2sLog\nxray log:\n$logTail"
                     Log.e(TAG, msg)
                     broadcastError(msg)
-                    tearDownTunnel()
+                    tearDownTunnel("watchdog-process-died")
                     break
                 }
             }
@@ -1004,6 +1041,63 @@ class XrayVpnService : VpnService() {
 
     // ── Teardown ──────────────────────────────────────────────────────────────
 
+    // Extracts the OS pid from a java.lang.Process via reflection (the field
+    // exists on Android's UNIXProcess/ProcessImpl on every API level we ship).
+    private fun processPid(p: Process?): Int {
+        if (p == null) return -1
+        return runCatching {
+            val f = p.javaClass.getDeclaredField("pid")
+            f.isAccessible = true
+            f.getInt(p)
+        }.getOrElse { -1 }
+    }
+
+    // PID file lets a NEW service instance (after HyperOS killed this one)
+    // find and kill processes the dead instance spawned.
+    private fun writePidFile() {
+        runCatching {
+            File(filesDir, PID_FILE).writeText(
+                "xray=${processPid(xrayProcess)}\ntun2socks=${tun2socksPid ?: -1}\n")
+        }
+    }
+
+    private fun clearPidFile() { runCatching { File(filesDir, PID_FILE).delete() } }
+
+    // True when /proc/<pid>/cmdline identifies one of OUR spawned binaries —
+    // guards against killing an unrelated process on a recycled pid.
+    private fun isOurVpnProcess(pid: Int): Boolean {
+        if (pid <= 0) return false
+        return runCatching {
+            // argv entries are NUL-separated; argv[0] is the binary path
+            val argv0 = File("/proc/$pid/cmdline").readText().substringBefore('\u0000')
+            argv0.endsWith("libxray.so") || argv0.endsWith("libtun2socks.so")
+        }.getOrDefault(false)
+    }
+
+    private fun killPidIfOurs(pid: Int, label: String) {
+        if (!isOurVpnProcess(pid)) return
+        appendLog("[CLEANUP] killing leftover $label pid=$pid")
+        runCatching { android.os.Process.killProcess(pid) }   // SIGKILL, same-UID only
+    }
+
+    // Scans /proc for orphaned libxray.so / libtun2socks.so processes that no
+    // pid bookkeeping knows about (app process was killed and restarted). Only
+    // same-UID processes are visible/killable, so this can never touch other apps.
+    private fun sweepOrphanVpnProcesses(reason: String) {
+        val myPid = android.os.Process.myPid()
+        var killed = 0
+        File("/proc").listFiles()?.forEach { dir ->
+            val pid = dir.name.toIntOrNull() ?: return@forEach
+            if (pid == myPid) return@forEach
+            if (isOurVpnProcess(pid)) {
+                runCatching { android.os.Process.killProcess(pid) }
+                killed++
+                appendLog("[SWEEP:$reason] killed orphan vpn process pid=$pid")
+            }
+        }
+        if (killed > 0) Log.i(TAG, "SETALINK_ORPHAN_SWEEP reason=$reason killed=$killed")
+    }
+
     private fun killStaleProcesses() {
         xrayProcess?.let { it.destroyForcibly(); appendLog("[CLEANUP] killed stale xray") }
         xrayProcess = null
@@ -1011,16 +1105,91 @@ class XrayVpnService : VpnService() {
         tun2socksPid = null
         runCatching { tunFd?.close() }
         tunFd = null
+        // Kill children recorded by a previous (dead) service instance.
+        runCatching {
+            File(filesDir, PID_FILE).takeIf { it.exists() }?.readLines()?.forEach { line ->
+                val pid = line.substringAfter('=').trim().toIntOrNull() ?: return@forEach
+                killPidIfOurs(pid, line.substringBefore('='))
+            }
+        }
+        clearPidFile()
+        sweepOrphanVpnProcesses("pre-start")
     }
 
-    private fun tearDownTunnel() {
-        xrayProcess?.destroyForcibly();              xrayProcess  = null
-        tun2socksPid?.let { nativeStopTun2socks(it) }; tun2socksPid = null
+    // Blocks up to timeoutMs while cond() stays true. Returns false on timeout.
+    private fun waitUntilGone(timeoutMs: Long, cond: () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (!cond()) return true
+            Thread.sleep(50)
+        }
+        return !cond()
+    }
+
+    internal fun tearDownTunnel(reason: String = "unspecified") {
+        if (!tearingDown.compareAndSet(false, true)) {
+            appendLog("[DISCONNECT] already in progress — ignoring duplicate ($reason)")
+            return
+        }
+        Log.i(TAG, "SETALINK_DISCONNECT_START reason=$reason")
+        appendLog("[DISCONNECT_START] reason=$reason xrayPid=${processPid(xrayProcess)} t2sPid=${tun2socksPid ?: -1}")
+
+        // 0. Cancel an in-flight connect so it can't resurrect processes mid-teardown.
+        runCatching { connectJob?.cancel() }
+        connectJob = null
+
+        // 1. Stop tun2socks FIRST — it holds the TUN fd; while it lives the
+        //    kernel keeps the tun device (and the system VPN state) alive.
+        val t2sPid = tun2socksPid
+        if (t2sPid != null) {
+            nativeStopTun2socks(t2sPid)
+            val gone = waitUntilGone(1_500) { nativeTun2socksExitCode(t2sPid) == -2 }
+            if (!gone) {
+                appendLog("[DISCONNECT] tun2socks pid=$t2sPid survived SIGTERM+SIGKILL — direct killProcess")
+                runCatching { android.os.Process.killProcess(t2sPid) }
+            }
+        }
+        tun2socksPid = null
+
+        // 2. Close our copy of the TUN fd.
         runCatching { tunFd?.close() }
         tunFd = null
+        Log.i(TAG, "SETALINK_TUN_CLOSED")
+        appendLog("[TUN_CLOSED]")
+
+        // 3. Kill Xray and confirm it actually died.
+        val xp = xrayProcess
+        if (xp != null) {
+            val xPid = processPid(xp)
+            runCatching { xp.destroy() }                       // SIGTERM — clean exit
+            val exitedClean = waitUntilGone(700) { xp.isAlive }
+            if (!exitedClean) {
+                runCatching { xp.destroyForcibly() }           // SIGKILL
+                val exitedForced = waitUntilGone(1_300) { xp.isAlive }
+                if (!exitedForced && xPid > 0) {
+                    appendLog("[DISCONNECT] xray pid=$xPid survived destroyForcibly — direct killProcess")
+                    runCatching { android.os.Process.killProcess(xPid) }
+                }
+            }
+        }
+        xrayProcess = null
+        Log.i(TAG, "SETALINK_XRAY_STOPPED")
+        appendLog("[XRAY_STOPPED]")
+
+        // 4. Sweep any orphans this bookkeeping missed (previous app process).
+        sweepOrphanVpnProcesses("teardown")
+        clearPidFile()
+
+        // 5. Tell the app, drop foreground, stop.
         sendBroadcast(Intent(BROADCAST_DISCONNECTED).setPackage(packageName))
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+        Log.i(TAG, "SETALINK_VPN_SERVICE_STOPPED")
+        appendLog("[VPN_SERVICE_STOPPED]")
+        runCatching { stopSelf() }
+
+        Log.i(TAG, "SETALINK_DISCONNECT_COMPLETE reason=$reason")
+        appendLog("[DISCONNECT_COMPLETE] reason=$reason")
+        tearingDown.set(false)
     }
 
     // ── Broadcast helpers ─────────────────────────────────────────────────────

@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
+import { useInboxStore } from '../stores/inboxStore';
 
 export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile';
 
@@ -22,6 +23,8 @@ interface Props {
 
 export function BottomNav({ active, onPress }: Props) {
   const { t } = useT();
+  // Unread admin messages → badge on the Profile tab (inbox lives there)
+  const unread = useInboxStore((s) => s.messages.filter(m => !m.read).length);
 
   const LABEL_KEYS: Record<NavTab, Parameters<typeof t>[0]> = {
     home:     'nav.home',
@@ -59,9 +62,16 @@ export function BottomNav({ active, onPress }: Props) {
               onPress={() => onPress(tab.key)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.icon, isActive && styles.activeIcon]}>
-                {tab.icon}
-              </Text>
+              <View>
+                <Text style={[styles.icon, isActive && styles.activeIcon]}>
+                  {tab.icon}
+                </Text>
+                {tab.key === 'profile' && unread > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={[styles.label, isActive && styles.activeLabel]}>
                 {t(LABEL_KEYS[tab.key])}
               </Text>
@@ -123,6 +133,23 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.emerald[400],
     position: 'absolute',
     bottom: -6,
+  },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -10,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 8,
+    paddingHorizontal: 3,
+    backgroundColor: '#FF5050',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: 9,
+    fontFamily: Typography.family.label,
+    color: '#FFFFFF',
   },
   // AI center button — elevated pill
   aiButton: {

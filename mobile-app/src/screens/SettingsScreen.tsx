@@ -124,6 +124,7 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
   const {
     protocol, dnsMode, language,
     autoConnect, biometricLock,
+    updateChannel, setUpdateChannel,
     setProtocol, setDnsMode, setLanguage,
     toggleAutoConnect, toggleBiometricLock, setBiometricLock,
   } = useSettingsStore();
@@ -327,6 +328,13 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
               </Text>
             </View>
           )}
+          <Divider />
+          <SelectRow
+            label="Update channel"
+            value={updateChannel}
+            options={['stable', 'beta', 'experimental']}
+            onChange={(v: string) => setUpdateChannel(v as 'stable' | 'beta' | 'experimental')}
+          />
           <Divider />
           <View style={selStyles.row}>
             <View style={{ gap: 3 }}>

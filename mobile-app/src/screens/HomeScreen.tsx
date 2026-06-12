@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Dimensions, Animated, Image,
+  StyleSheet, Dimensions, Animated, Image, Linking,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { ConnectButton } from '../components/ConnectButton';
@@ -20,6 +20,8 @@ import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { formatBytes }         from '../utils/formatters';
+import { computeHealthScore, dnsOkFromConnectionLog } from '../utils/healthScore';
+import { getLastConnectProbeOk } from '../services/vpnBridge';
 import { useT }                from '../i18n';
 import { connectingPhaseLabel } from '../services/failureClassifier';
 
@@ -276,12 +278,16 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           />
         </Animated.View>
 
-        {/* Network quality */}
+        {/* Network quality — composite score (route + DNS + ping + traffic) */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
           <GlassCard glowColor={isConnected ? Colors.emerald[400] : undefined}>
-            <NetworkQualityBar quality={isConnected
-              ? Math.min(100, Math.max(0, Math.round(100 - (pingMs || selectedServer?.ping || 100) * 0.4)))
-              : 0}
+            <NetworkQualityBar quality={computeHealthScore({
+              connected:    isConnected,
+              probeOk:      isConnected && (traceTestResult?.ok ?? getLastConnectProbeOk()),
+              dnsOk:        dnsOkFromConnectionLog(connectionLog),
+              pingMs:       pingMs || selectedServer?.ping || 0,
+              downloadMbps, uploadMbps,
+            })}
             />
           </GlassCard>
         </Animated.View>
@@ -311,6 +317,22 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             <View style={styles.aiArrow}>
               <Text style={styles.aiArrowText}>›</Text>
             </View>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Shahnameh promo */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+          <TouchableOpacity
+            style={styles.shahnamehCard}
+            onPress={() => Linking.openURL('https://t.me/shahnameh_bot?start=warrior_5629291605').catch(() => {})}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.shahnamehIcon}>⚔️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.shahnamehTitle}>Play Shahnameh — earn REAL</Text>
+              <Text style={styles.shahnamehSub}>Battle as a Persian warrior on Telegram</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
         </Animated.View>
 
@@ -462,6 +484,10 @@ const styles = StyleSheet.create({
   aiBtnSub:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   aiArrow:      { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
   aiArrowText:  { fontSize: 18, color: Colors.emerald[400] },
+  shahnamehCard:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], backgroundColor: 'rgba(201,164,42,0.07)', borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(201,164,42,0.3)', padding: Spacing[4] },
+  shahnamehIcon:  { fontSize: 26 },
+  shahnamehTitle: { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: '#C9A42A' },
+  shahnamehSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   trafficCard:  { gap: Spacing[3] },
   cardLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 },
   trafficRow:   { flexDirection: 'row', alignItems: 'center' },

@@ -39,10 +39,12 @@ import { UpgradeScreen }            from '../screens/UpgradeScreen';
 import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
 
 import { runBootSequence }       from '../services/bootService';
+import { claimPendingReferral }  from '../services/deepLinkService';
 import { checkForUpdate, isUpdateSnoozed, snoozeUpdate, downloadUpdate } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
 import { getStableDeviceId, getOrCreateDeviceId, enrichDeviceId, getDeviceFingerprint, saveStableDeviceId } from '../services/deviceIdentityService';
-import { registerDevice }        from '../services/entitlementService';
+import { registerDevice } from '../services/entitlementService';
+import { useInboxStore }  from '../stores/inboxStore';
 import { BiometricService }      from '../services/biometricService';
 import { getAdapter }            from '../services/vpnBridge';
 import { useAuthStore }          from '../stores/authStore';
@@ -97,7 +99,10 @@ function MainTabs() {
   const setBiometricLock    = useSettingsStore((s) => s.setBiometricLock);
   const connectionState     = useVpnStore((s) => s.connectionState);
   const setSessionBytes     = useVpnStore((s) => s.setSessionBytes);
-  const userCountry         = undefined; // country not stored on client; rollout defaults to include
+  const updateChannel       = useSettingsStore((s) => s.updateChannel);
+  // Country comes from the backend entitlement (geo-detected server-side);
+  // used for staged per-country rollouts (e.g. Iran-first releases).
+  const userCountry         = useAuthStore((s) => s.user?.country) || undefined;
 
   const [isLocked, setIsLocked] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
@@ -138,7 +143,7 @@ function MainTabs() {
   useEffect(() => {
     const tid = setTimeout(async () => {
       try {
-        const result = await checkForUpdate(userCountry);
+        const result = await checkForUpdate(userCountry, updateChannel);
         if (result && result.hasUpdate && result.isInRollout) {
           if (!result.forceUpdate && isUpdateSnoozed()) return;
           setUpdateResult(result);
@@ -146,6 +151,20 @@ function MainTabs() {
       } catch {}
     }, 4_000);
     return () => clearTimeout(tid);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Inbox poll — on shell mount and every time the app returns to foreground,
+  // so admin messages reach users who never connect the VPN.
+  useEffect(() => {
+    const fetchInbox = () => {
+      const deviceId = useAuthStore.getState().user?.deviceId;
+      if (deviceId) useInboxStore.getState().refresh(deviceId).catch(() => {});
+    };
+    fetchInbox();
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') fetchInbox();
+    });
+    return () => sub.remove();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Global traffic poller — runs at the shell level regardless of which tab is active.
@@ -307,6 +326,9 @@ async function tryAutoRegister(): Promise<boolean> {
     }
 
     useAuthStore.getState().loginWithDevice(entitlement);
+    // Auto-claim a referral that arrived via install link / deep link before
+    // the device existed on the backend (item: referral must claim on first start).
+    claimPendingReferral().catch(() => {});
     // Bootstrap profile loading is handled by loadBootstrapIfEmpty in MainTabs.
     // Do not import a raw VLESS here — it creates stale single-profile entries that
     // don't carry altProfiles and accumulate across server migrations.
@@ -353,6 +375,8 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
             await saveStableDeviceId(entitlement.device_id).catch(() => {});
           }
           useAuthStore.getState().updateFromEntitlement(entitlement);
+          useInboxStore.getState().refresh(entitlement.device_id || deviceId).catch(() => {});
+          claimPendingReferral().catch(() => {});
         }).catch(() => {});
 
         if (!hasSeenWelcome) {

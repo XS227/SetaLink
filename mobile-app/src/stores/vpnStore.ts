@@ -147,6 +147,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
               rxBytes: s.sessionBytes.received,
               txBytes: s.sessionBytes.sent,
             }).catch(() => {});
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { useInboxStore } = require('./inboxStore');
+              useInboxStore.getState().refresh(user.deviceId).catch(() => {});
+            } catch {}
           }, HEARTBEAT_INTERVAL_MS);
         }
       } catch {}
@@ -373,6 +378,15 @@ export const useVpnStore = create<VpnState>((set, get) => {
     _fallbackActive:   false,
 
     connect: () => {
+      // Forced-update gate: a build below minSupported must not connect.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { isVpnUpdateBlocked } = require('../services/updateService');
+        if (isVpnUpdateBlocked()) {
+          set({ error: 'A critical update is required before connecting. Please update the app.' });
+          return;
+        }
+      } catch {}
       // Start auto-fallback only on a fresh connect (not during a fallback retry).
       if (!get()._fallbackActive) {
         set({ _fallbackActive: true, _fallbackIdx: 0, error: null, smartStatus: 'Establishing secure tunnel…' });

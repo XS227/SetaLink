@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
     borderWidth:     1.5,
     alignItems:      'center',
     justifyContent:  'center',
-    gap:             10,
+    gap:             2,
   },
   innerRing: {
     position:        'absolute',
@@ -141,15 +141,18 @@ const styles = StyleSheet.create({
     borderRadius:    SIZE,
     borderWidth:     1,
   },
+  // Logo fills most of the inner ring (SIZE-24 = 164px) for a premium,
+  // brand-forward look; the label tucks under it inside the remaining arc.
   logoImg: {
-    width:  64,
-    height: 64,
+    width:  118,
+    height: 118,
+    marginTop: -6,
   },
   label: {
     fontSize:         Typography.size.sm,
     fontFamily:       Typography.family.label,
     letterSpacing:    Typography.tracking.wider,
     textTransform:    'uppercase',
-    marginTop:        4,
+    marginTop:        0,
   },
 });

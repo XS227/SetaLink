@@ -11,6 +11,42 @@ function activeServerHint(): ServerHint | undefined {
   } catch { return undefined; }
 }
 
+// Overlays LIVE DNS state from the native connect step log onto the snapshot's
+// health checks: DNS OK / DNS FAILED / DNS TIMEOUT / fallback DNS used.
+function withLiveDns(snap: DiagnosticsSnapshot): DiagnosticsSnapshot {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useVpnStore } = require('../stores/vpnStore');
+    const { connectionLog, connectionState } = useVpnStore.getState();
+    if (connectionState !== 'connected' || !connectionLog?.length) return snap;
+
+    let dnsLine: string | null = null;
+    for (let i = connectionLog.length - 1; i >= 0; i--) {
+      const l = connectionLog[i]!;
+      if (l.includes('dns_check') || l.includes('dns_resolve')) { dnsLine = l; break; }
+    }
+    // Emergency profiles route DNS to the 1.1.1.1-only fallback resolver.
+    let fallbackDns = false;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useAIStore } = require('../stores/aiStore');
+      fallbackDns = !!useAIStore.getState().autoConnect.winningConfig?.label?.includes('Emergency');
+    } catch {}
+
+    const dnsCheck =
+      dnsLine === null                      ? { status: 'warn' as const, detail: 'DNS check pending…' } :
+      dnsLine.toLowerCase().includes('timeout') ? { status: 'fail' as const, detail: 'DNS TIMEOUT — resolver not answering through tunnel' } :
+      dnsLine.startsWith('✓')               ? { status: 'ok'   as const, detail: fallbackDns ? 'DNS OK · fallback DNS used (1.1.1.1)' : 'DNS OK — resolution working through tunnel' } :
+                                              { status: 'fail' as const, detail: 'DNS FAILED — hostnames may not resolve' };
+
+    return {
+      ...snap,
+      healthChecks: snap.healthChecks.map(h =>
+        h.label === 'DNS Resolution' ? { ...h, ...dnsCheck } : h),
+    };
+  } catch { return snap; }
+}
+
 const POLL_INTERVAL_MS = 2000;
 
 interface LiveStats { ping: number; uploadMbps: number; downloadMbps: number }
@@ -40,10 +76,10 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
   startMonitor: () => {
     if (_pollTimer) return; // already running
 
-    set({ isRunning: true, elapsedSecs: 0, snapshot: takeSnapshot(activeServerHint()) });
+    set({ isRunning: true, elapsedSecs: 0, snapshot: withLiveDns(takeSnapshot(activeServerHint())) });
 
     _pollTimer = setInterval(() => {
-      set({ snapshot: takeSnapshot(activeServerHint()) });
+      set({ snapshot: withLiveDns(takeSnapshot(activeServerHint())) });
     }, POLL_INTERVAL_MS);
 
     _elapsedTimer = setInterval(() => {
@@ -57,7 +93,7 @@ export const useDiagnosticsStore = create<DiagnosticsState>((set) => ({
     set({ isRunning: false });
   },
 
-  runOnce: () => set({ snapshot: takeSnapshot(activeServerHint()) }),
+  runOnce: () => set({ snapshot: withLiveDns(takeSnapshot(activeServerHint())) }),
 
   pushLiveStats: (s) => set({ liveStats: s }),
   clearLiveStats: () => set({ liveStats: null }),

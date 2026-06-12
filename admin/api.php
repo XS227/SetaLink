@@ -355,6 +355,33 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     api_err('unknown mobile action');
 }
 
+// ── Admin → user in-app messages ─────────────────────────────────────────
+function init_message_tables(PDO $db): void {
+    $db->exec('CREATE TABLE IF NOT EXISTS admin_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        target_device_id TEXT NOT NULL DEFAULT "",
+        title TEXT NOT NULL DEFAULT "",
+        body  TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime(\'now\')))');
+    $db->exec('CREATE TABLE IF NOT EXISTS admin_message_acks (
+        message_id INTEGER NOT NULL,
+        device_id  TEXT NOT NULL,
+        acked_at   TEXT NOT NULL DEFAULT (datetime(\'now\')),
+        PRIMARY KEY (message_id, device_id))');
+}
+
+// ── Referral review audit log ────────────────────────────────────────────
+// One row per admin approve/reject decision on a held (pending) referral.
+function init_referral_audit(PDO $db): void {
+    $db->exec('CREATE TABLE IF NOT EXISTS referral_audit (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        referral_id INTEGER NOT NULL,
+        action      TEXT NOT NULL,
+        acted_by    TEXT NOT NULL DEFAULT "admin",
+        detail      TEXT NOT NULL DEFAULT "",
+        acted_at    TEXT NOT NULL DEFAULT (datetime(\'now\')))');
+}
+
 // ── Client IP / geo helpers ──────────────────────────────────────────────
 // Requests made while the VPN is connected exit xray's freedom outbound on
 // this same box, so PHP sees 127.0.0.1. That means "via VPN", not the
@@ -511,13 +538,47 @@ if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
         $st3 = $db->prepare('SELECT id FROM referral_uses WHERE new_device_id = ?');
         $st3->execute([$device_id]);
         if ($st3->fetchColumn()) api_err('referral already used');
-        $db->prepare('INSERT INTO referral_uses (referrer_device_id,new_device_id,bonus_bytes) VALUES (?,?,?)')
-           ->execute([$referrer['device_id'], $device_id, REFERRAL_BONUS_BYTES]);
+
+        // Anti-fraud gate — same policy as the public API (setalink.no/api.php):
+        // score ≥75 = HOLD for review, no automatic reward. Without this the
+        // admin-host endpoint would be a bypass around the fraud hold.
+        $risk_score = 0;
+        $risk_flags = [];
+        $cli_ip = real_client_ip();
+        if ($cli_ip && ($referrer['last_ip'] ?? '') === $cli_ip) {
+            $risk_score += 50; $risk_flags[] = 'same_ip';
+        }
+        if (!empty($referrer['android_id_hash']) && !empty($new_dev['android_id_hash'])
+            && $referrer['android_id_hash'] === $new_dev['android_id_hash']) {
+            $risk_score += 80; $risk_flags[] = 'same_device';
+        }
+        $rapid = $db->prepare(
+            "SELECT COUNT(*) FROM referral_uses WHERE new_user_ip=? AND new_user_ip!='' AND created_at >= datetime('now','-1 day')");
+        $rapid->execute([$cli_ip]);
+        if ($cli_ip && (int)$rapid->fetchColumn() >= 2) {
+            $risk_score += 30; $risk_flags[] = 'rapid_signup';
+        }
+        $hold = $risk_score >= 75;
+        $ru_status = $hold ? 'pending' : 'credited';
+
+        $db->prepare('INSERT INTO referral_uses
+                (referrer_device_id,new_device_id,bonus_bytes,referral_code,used_by,
+                 referrer_ip,new_user_ip,risk_score,risk_flags,status)
+             VALUES (?,?,?,?,?,?,?,?,?,?)')
+           ->execute([$referrer['device_id'], $device_id, REFERRAL_BONUS_BYTES, $referral_code, $device_id,
+                      $referrer['last_ip'] ?? '', $cli_ip, $risk_score, json_encode($risk_flags), $ru_status]);
+
+        if ($hold) {
+            api_ok(['status' => 'pending_review', 'bonus_bytes' => 0, 'referrer_credited' => false,
+                    'new_total_bytes' => (int)$new_dev['quota_bytes_total'],
+                    'risk_score' => $risk_score, 'risk_flags' => $risk_flags]);
+        }
+
         $db->prepare('UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?')
            ->execute([REFERRAL_BONUS_BYTES, $referrer['device_id']]);
         $db->prepare('UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?')
            ->execute([REFERRAL_BONUS_BYTES, $device_id]);
-        api_ok(['bonus_bytes' => REFERRAL_BONUS_BYTES, 'referrer_credited' => true,
+        api_ok(['status' => 'approved', 'bonus_bytes' => REFERRAL_BONUS_BYTES, 'referrer_credited' => true,
                 'new_total_bytes' => (int)$new_dev['quota_bytes_total'] + REFERRAL_BONUS_BYTES]);
     }
     if ($ma === 'report-usage') {
@@ -670,6 +731,25 @@ if ($method === 'POST') {
         init_device_tables($db);
         $db->prepare("UPDATE devices SET blocked=? WHERE device_id=?")->execute([$block, $did]);
         api_ok(['blocked' => (bool)$block]);
+    }
+    if ($action === 'send-message') {
+        // In-app message to one device ('' target = broadcast to all).
+        // No real push transport exists (no FCM): clients poll get-messages
+        // at launch and on the 10-min connected heartbeat (app ≥ next release).
+        $target = trim((string)($parsed['device_id'] ?? ''));
+        $title  = substr(trim((string)($parsed['title'] ?? '')), 0, 120);
+        $msg    = substr(trim((string)($parsed['body_text'] ?? '')), 0, 1000);
+        if ($msg === '') api_err('message body required');
+        $db = open_analytics_db();
+        init_message_tables($db);
+        if ($target !== '') {
+            $chk = $db->prepare('SELECT 1 FROM devices WHERE device_id=?');
+            $chk->execute([$target]);
+            if (!$chk->fetchColumn()) api_err('device not found', 404);
+        }
+        $db->prepare('INSERT INTO admin_messages (target_device_id,title,body) VALUES (?,?,?)')
+           ->execute([$target, $title, $msg]);
+        api_ok(['id' => (int)$db->lastInsertId(), 'target' => $target ?: 'all']);
     }
     if ($action === 'device-set-quota') {
         $did   = trim((string)($parsed['device_id'] ?? ''));
@@ -905,6 +985,87 @@ if ($method === 'POST') {
             symlink($target, $dl_link);
         }
         api_ok(['results'=>$results,'cleaned_at'=>date('Y-m-d H:i:s')]);
+    }
+    // ── Referral review queue ─────────────────────────────────────────────
+    // High-risk referrals land in status='pending' (no reward granted by the
+    // public API). Approve grants the held bonus to BOTH devices; Reject
+    // denies it permanently. Every decision is written to referral_audit.
+
+    if ($action === 'referral-approve' || $action === 'referral-reject') {
+        $refId = (int)($parsed['id'] ?? 0);
+        if ($refId <= 0) api_err('id required');
+        $db = open_analytics_db();
+        init_device_tables($db);
+        init_referral_audit($db);
+
+        $st = $db->prepare("SELECT * FROM referral_uses WHERE id=?");
+        $st->execute([$refId]);
+        $ru = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$ru) api_err('referral not found', 404);
+        if (($ru['status'] ?? '') !== 'pending') {
+            api_err("referral is '{$ru['status']}' — only pending referrals can be reviewed", 409);
+        }
+
+        $admin = $auth_user !== '' ? $auth_user : 'admin';
+
+        if ($action === 'referral-approve') {
+            $bonus = (int)($ru['bonus_bytes'] ?: REFERRAL_BONUS_BYTES);
+            $db->prepare("UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?")
+               ->execute([$bonus, $ru['new_device_id']]);
+            $db->prepare("UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?")
+               ->execute([$bonus, $ru['referrer_device_id']]);
+            $db->prepare("UPDATE referral_uses SET status='approved' WHERE id=?")->execute([$refId]);
+
+            // Refresh referrer's granted-invite cache + stealth unlock
+            $inv = $db->prepare(
+                "SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=? AND status IN ('credited','approved')");
+            $inv->execute([$ru['referrer_device_id']]);
+            $invCount = (int)$inv->fetchColumn();
+            $db->prepare("UPDATE devices SET invite_count=? WHERE device_id=?")
+               ->execute([$invCount, $ru['referrer_device_id']]);
+            $act = $db->prepare("
+                SELECT COUNT(*) FROM referral_uses ru
+                JOIN devices d ON d.device_id = ru.new_device_id
+                WHERE ru.referrer_device_id=?
+                  AND ru.status IN ('credited','approved')
+                  AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))");
+            $act->execute([$ru['referrer_device_id']]);
+            if ((int)$act->fetchColumn() >= 3) {
+                $db->prepare("UPDATE devices SET stealth_unlocked=1 WHERE device_id=?")
+                   ->execute([$ru['referrer_device_id']]);
+            }
+
+            $db->prepare("INSERT INTO referral_audit (referral_id, action, acted_by, detail) VALUES (?,?,?,?)")
+               ->execute([$refId, 'approve', $admin,
+                          "granted {$bonus}B to referrer {$ru['referrer_device_id']} + new {$ru['new_device_id']} (risk={$ru['risk_score']})"]);
+            api_ok(['status' => 'approved', 'bonus_bytes' => $bonus, 'invite_count' => $invCount]);
+        }
+
+        // referral-reject
+        $db->prepare("UPDATE referral_uses SET status='rejected' WHERE id=?")->execute([$refId]);
+        $db->prepare("INSERT INTO referral_audit (referral_id, action, acted_by, detail) VALUES (?,?,?,?)")
+           ->execute([$refId, 'reject', $admin,
+                      "denied reward for {$ru['new_device_id']} via code {$ru['referral_code']} (risk={$ru['risk_score']} flags={$ru['risk_flags']})"]);
+        api_ok(['status' => 'rejected']);
+    }
+
+    if ($action === 'geo-backfill') {
+        // Re-resolve country for devices that have a public last_ip but no
+        // country (their first lookups failed or every request was tunneled).
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $rows = $db->query("SELECT device_id, last_ip FROM devices
+                            WHERE (country='' OR country IS NULL) AND last_ip!=''")
+                   ->fetchAll(PDO::FETCH_ASSOC);
+        $fixed = 0;
+        foreach ($rows as $r) {
+            [$cc, $cn] = geo_country($db, $r['last_ip']);
+            if ($cc === '') continue;
+            $db->prepare("UPDATE devices SET country=?, country_name=? WHERE device_id=?")
+               ->execute([$cc, $cn, $r['device_id']]);
+            $fixed++;
+        }
+        api_ok(['checked' => count($rows), 'fixed' => $fixed]);
     }
     if ($action === 'push-emergency-profiles') {
         $profiles = $parsed['profiles'] ?? [];
@@ -1831,6 +1992,19 @@ switch ($action) {
         api_ok($result);
         break;
 
+    case 'messages-list': {
+        $db = open_analytics_db();
+        init_message_tables($db);
+        $rows = $db->query(
+            "SELECT m.id, m.target_device_id, m.title, m.body, m.created_at,
+                    (SELECT COUNT(*) FROM admin_message_acks a WHERE a.message_id=m.id) AS ack_count,
+                    (SELECT user_id FROM devices d WHERE d.device_id=m.target_device_id) AS target_user_id
+             FROM admin_messages m ORDER BY m.id DESC LIMIT 50"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        api_ok(['messages' => $rows]);
+        break;
+    }
+
     case 'traffic-categories': {
         // Global traffic-by-app counts parsed from xray access log by
         // scripts/export-xray-stats.sh. Per-device attribution is impossible
@@ -1921,12 +2095,19 @@ switch ($action) {
     case 'referral-stats':
         $db = open_analytics_db();
         init_device_tables($db);
+        init_referral_audit($db);
         $total_referrals     = (int)$db->query('SELECT COUNT(*) FROM referral_uses')->fetchColumn();
-        $flagged_referrals   = (int)$db->query("SELECT COUNT(*) FROM referral_uses WHERE status='flagged'")->fetchColumn();
+        // 'flagged' is the legacy pre-hold status (those were auto-credited);
+        // 'pending' rows are HELD and never credited until approved.
+        $pending_referrals   = (int)$db->query("SELECT COUNT(*) FROM referral_uses WHERE status='pending'")->fetchColumn();
+        $rejected_referrals  = (int)$db->query("SELECT COUNT(*) FROM referral_uses WHERE status='rejected'")->fetchColumn();
+        $flagged_referrals   = (int)$db->query("SELECT COUNT(*) FROM referral_uses WHERE status IN ('flagged','pending','rejected')")->fetchColumn();
         $unique_referrers    = (int)$db->query("SELECT COUNT(DISTINCT referrer_device_id) FROM referral_uses WHERE referrer_device_id!=''")->fetchColumn();
         $total_devices       = (int)$db->query('SELECT COUNT(*) FROM devices')->fetchColumn();
         $referred_devices    = (int)$db->query("SELECT COUNT(DISTINCT new_device_id) FROM referral_uses WHERE new_device_id!=''")->fetchColumn();
-        $total_bonus         = (int)$db->query('SELECT COALESCE(SUM(bonus_bytes),0) FROM referral_uses')->fetchColumn();
+        // GRANTED bonus only — held/rejected rows carry the intended amount
+        // in bonus_bytes but no quota was ever credited for them.
+        $total_bonus         = (int)$db->query("SELECT COALESCE(SUM(bonus_bytes),0) FROM referral_uses WHERE status IN ('credited','approved','flagged')")->fetchColumn();
         $stealth_unlocked    = (int)$db->query('SELECT COUNT(*) FROM devices WHERE stealth_unlocked=1')->fetchColumn();
         $conversion_rate     = $total_devices > 0 ? round($referred_devices / $total_devices * 100, 1) : 0.0;
         // Iran-specific
@@ -1939,8 +2120,9 @@ switch ($action) {
         $top_st = $db->query("
             SELECT d.user_id, d.device_id, d.referral_code, d.country, d.stealth_unlocked,
                    COUNT(ru.id) as invite_count,
-                   COALESCE(SUM(ru.bonus_bytes),0) as total_bonus_bytes,
-                   SUM(CASE WHEN ru.status='flagged' THEN 1 ELSE 0 END) as flagged_count,
+                   COALESCE(SUM(CASE WHEN ru.status IN ('credited','approved','flagged')
+                                     THEN ru.bonus_bytes ELSE 0 END),0) as total_bonus_bytes,
+                   SUM(CASE WHEN ru.status IN ('flagged','pending','rejected') THEN 1 ELSE 0 END) as flagged_count,
                    (SELECT COUNT(*) FROM referral_uses ru2
                     JOIN devices d2 ON d2.device_id=ru2.new_device_id
                     WHERE ru2.referrer_device_id=d.device_id
@@ -2010,8 +2192,48 @@ switch ($action) {
                 'new_connected'    => (bool)(int)($r['new_connected'] ?? 0),
             ];
         }, $recent_st->fetchAll(PDO::FETCH_ASSOC));
+        // Pending Review queue — ALL held referrals (not capped like recent)
+        $pending_st = $db->query("
+            SELECT ru.id, ru.bonus_bytes, ru.risk_score, ru.risk_flags,
+                   ru.referrer_ip, ru.new_user_ip, ru.referral_code,
+                   COALESCE(ru.created_at, ru.used_at) as ts,
+                   d1.user_id as referrer_user_id, d1.country as referrer_country,
+                   d2.user_id as new_user_id, d2.country as new_country,
+                   d2.model as new_model, d2.internet_ok as new_connected
+            FROM referral_uses ru
+            LEFT JOIN devices d1 ON d1.device_id = ru.referrer_device_id
+            LEFT JOIN devices d2 ON d2.device_id = ru.new_device_id
+            WHERE ru.status='pending'
+            ORDER BY ts ASC
+        ");
+        $pending_queue = array_map(function($r) {
+            return [
+                'id'               => (int)$r['id'],
+                'ts'               => $r['ts'] ?? '',
+                'bonus_gb'         => round((int)$r['bonus_bytes'] / 1073741824, 2),
+                'risk_score'       => (int)$r['risk_score'],
+                'risk_flags'       => json_decode($r['risk_flags'] ?? '[]', true) ?: [],
+                'referral_code'    => $r['referral_code'] ?? '',
+                'referrer_user_id' => $r['referrer_user_id'] ?? '',
+                'referrer_country' => $r['referrer_country'] ?? '',
+                'referrer_ip'      => $r['referrer_ip'] ?? '',
+                'new_user_id'      => $r['new_user_id'] ?? '',
+                'new_country'      => $r['new_country'] ?? '',
+                'new_user_ip'      => $r['new_user_ip'] ?? '',
+                'new_model'        => $r['new_model'] ?? '',
+                'new_connected'    => (bool)(int)($r['new_connected'] ?? 0),
+            ];
+        }, $pending_st->fetchAll(PDO::FETCH_ASSOC));
+        // Recent review decisions (audit trail)
+        $audit = $db->query(
+            "SELECT id, referral_id, action, acted_by, detail, acted_at
+             FROM referral_audit ORDER BY id DESC LIMIT 30")->fetchAll(PDO::FETCH_ASSOC);
         api_ok([
             'total_referrals'    => $total_referrals,
+            'pending_referrals'  => $pending_referrals,
+            'rejected_referrals' => $rejected_referrals,
+            'pending_queue'      => $pending_queue,
+            'audit_log'          => $audit,
             'flagged_referrals'  => $flagged_referrals,
             'unique_referrers'   => $unique_referrers,
             'total_devices'      => $total_devices,

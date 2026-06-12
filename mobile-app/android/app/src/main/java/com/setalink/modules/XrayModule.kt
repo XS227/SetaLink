@@ -222,11 +222,27 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     override fun stop(promise: Promise) {
         try {
-            reactContext.startService(
-                Intent(reactContext, XrayVpnService::class.java).apply {
+            // 1. Direct in-process call — immune to HyperOS/MIUI background
+            //    start-service restrictions that silently drop the stop intent.
+            val direct = XrayVpnService.requestStop()
+            Log.i(TAG, "stop(): direct=$direct")
+
+            // 2. Belt-and-braces intent for a service instance the static
+            //    handle doesn't know about (recreated process).
+            if (!direct) {
+                val stopIntent = Intent(reactContext, XrayVpnService::class.java).apply {
                     action = XrayVpnService.ACTION_STOP
                 }
-            )
+                try {
+                    reactContext.startService(stopIntent)
+                } catch (e: Exception) {
+                    // Background-start restriction — FGS start is always allowed
+                    // for an exempted VPN app; service calls startForeground()
+                    // first thing in onStartCommand so this is safe.
+                    Log.w(TAG, "startService(STOP) failed (${e.message}) — using startForegroundService")
+                    reactContext.startForegroundService(stopIntent)
+                }
+            }
             running = false
             promise.resolve(null)
         } catch (e: Exception) {
@@ -397,6 +413,15 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                 val sha = java.security.MessageDigest.getInstance("SHA-256")
                 sha.digest(androidId.toByteArray()).joinToString("") { "%02x".format(it) }.substring(0, 16)
             } else ""
+            // SIM/network country is the only geo signal that survives the
+            // tunnel: requests through the VPN exit in Germany, but the SIM
+            // still says IR/TR. Used for the admin country analytics + flags.
+            val simCountry = runCatching {
+                val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE)
+                    as android.telephony.TelephonyManager
+                (tm.simCountryIso.takeIf { it.isNotBlank() } ?: tm.networkCountryIso ?: "")
+                    .uppercase()
+            }.getOrDefault("")
             promise.resolve(WritableNativeMap().apply {
                 putString("android_id_hash",  androidIdHash)
                 putString("manufacturer",     android.os.Build.MANUFACTURER)
@@ -404,6 +429,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                 putInt   ("sdk_version",      android.os.Build.VERSION.SDK_INT)
                 putString("android_version",  android.os.Build.VERSION.RELEASE)
                 putString("abi",              android.os.Build.SUPPORTED_ABIS.joinToString(","))
+                putString("sim_country",      simCountry)
             })
         } catch (e: Exception) {
             promise.resolve(WritableNativeMap())
@@ -414,6 +440,89 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     override fun reportTelemetry(payload: String, promise: Promise) {
         // Telemetry is sent from JS directly via fetch(); this stub satisfies the spec.
         promise.resolve(null)
+    }
+
+    // ── In-app APK self-update ────────────────────────────────────────────────
+    // Downloads the APK with DownloadManager (survives app backgrounding, shows
+    // a system progress notification) and fires the package-installer prompt
+    // when the file is complete. Resolves the promise when the installer opens.
+
+    private var apkDownloadId: Long = -1
+    private var apkReceiver: BroadcastReceiver? = null
+
+    @ReactMethod
+    fun downloadAndInstallApk(url: String, promise: Promise) {
+        try {
+            val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+
+            val updatesDir = java.io.File(reactContext.getExternalFilesDir(null), "updates")
+            updatesDir.mkdirs()
+            // One stable filename — repeated update attempts overwrite instead of piling up.
+            val target = java.io.File(updatesDir, "setalink-update.apk")
+            if (target.exists()) target.delete()
+
+            val request = android.app.DownloadManager.Request(android.net.Uri.parse(url)).apply {
+                setTitle("SetaLink update")
+                setDescription("Downloading new version…")
+                setNotificationVisibility(
+                    android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationUri(android.net.Uri.fromFile(target))
+                setMimeType("application/vnd.android.package-archive")
+            }
+
+            // Clean up a receiver from a previous attempt
+            apkReceiver?.let { runCatching { reactContext.unregisterReceiver(it) } }
+
+            val receiver = object : BroadcastReceiver() {
+                override fun onReceive(ctx: Context, intent: Intent) {
+                    val id = intent.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                    if (id != apkDownloadId) return
+                    runCatching { reactContext.unregisterReceiver(this) }
+                    apkReceiver = null
+
+                    val ok = runCatching {
+                        val q = android.app.DownloadManager.Query().setFilterById(id)
+                        dm.query(q).use { c ->
+                            c.moveToFirst() && c.getInt(
+                                c.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS)
+                            ) == android.app.DownloadManager.STATUS_SUCCESSFUL
+                        }
+                    }.getOrDefault(false)
+
+                    if (!ok || !target.exists() || target.length() < 1_000_000) {
+                        Log.e(TAG, "APK download failed or file too small (${target.length()}B)")
+                        promise.reject("APK_DOWNLOAD_FAILED", "Download failed — try again or use browser download")
+                        return
+                    }
+
+                    try {
+                        val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                            reactContext, "com.setalink.fileprovider", target)
+                        val install = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(apkUri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        reactContext.startActivity(install)
+                        promise.resolve(true)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Installer launch failed: ${e.message}")
+                        promise.reject("APK_INSTALL_FAILED", e.message ?: "Could not open installer")
+                    }
+                }
+            }
+            apkReceiver = receiver
+            ContextCompat.registerReceiver(
+                reactContext, receiver,
+                IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+                ContextCompat.RECEIVER_EXPORTED,   // DownloadManager broadcast comes from the system
+            )
+
+            apkDownloadId = dm.enqueue(request)
+            Log.i(TAG, "APK download enqueued id=$apkDownloadId url=$url")
+        } catch (e: Exception) {
+            Log.e(TAG, "downloadAndInstallApk failed: ${e.message}", e)
+            promise.reject("APK_DOWNLOAD_ERROR", e.message ?: "Download error")
+        }
     }
 
     @ReactMethod

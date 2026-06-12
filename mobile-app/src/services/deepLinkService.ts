@@ -1,5 +1,4 @@
-// Deep link parser for the setalink:// URL scheme.
-// Future: register in AndroidManifest.xml intent-filter and Info.plist CFBundleURLTypes.
+// Deep link parser for the setalink:// scheme AND https://setalink.no App Links.
 //
 // Supported URLs:
 //   setalink://connect?server=<serverId>
@@ -7,6 +6,9 @@
 //   setalink://tab/<home|servers|ai|activity|profile>
 //   setalink://settings
 //   setalink://referral?code=<referralCode>
+//   https://setalink.no/?ref=<code>          (website / Telegram invite links)
+//   https://setalink.no/?start=<code>        (Telegram bot start param)
+//   https://setalink.no/invite/<code>
 
 export type DeepLinkAction =
   | { type: 'CONNECT';    serverId: string }
@@ -15,8 +17,19 @@ export type DeepLinkAction =
   | { type: 'SETTINGS'                    }
   | { type: 'REFERRAL';  code: string     };
 
-/** Parses a setalink:// URL into a typed action. Returns null for unknown URLs. */
+const REF_CODE_RE = /^[A-Z0-9]{4,20}$/i;
+
+/** Parses a deep link URL into a typed action. Returns null for unknown URLs. */
 export function parseDeepLink(url: string): DeepLinkAction | null {
+  // https App Links: invite/referral entry points from website and Telegram.
+  if (url.startsWith('https://setalink.no') || url.startsWith('http://setalink.no')) {
+    const m = url.match(/[?&](?:ref|start)=([^&#]+)/)
+           ?? url.match(/\/invite\/([^/?#]+)/);
+    const code = m ? decodeURIComponent(m[1]!) : '';
+    if (REF_CODE_RE.test(code)) return { type: 'REFERRAL', code: code.toUpperCase() };
+    return { type: 'NAVIGATE', tab: 'home' };  // plain website link — just open the app
+  }
+
   if (!url.startsWith('setalink://')) return null;
 
   const withoutScheme = url.slice('setalink://'.length);
@@ -90,9 +103,59 @@ export function executeDeepLink(action: DeepLinkAction, navigation: any): void {
       if (useSettingsStore.getState().setPendingReferralCode) {
         useSettingsStore.getState().setPendingReferralCode(action.code);
       }
+      // Auto-claim immediately when the device is already registered; the
+      // pending code stays stored as a fallback for pre-registration links
+      // (claimed by claimPendingReferral() right after auto-register).
+      claimPendingReferral().catch(() => {});
       navigation?.navigate?.('Main');
       setTimeout(() => navigation?.navigate?.('Main', { screen: 'Profile' }), 300);
       break;
     }
+  }
+}
+
+/**
+ * Claims the stored pending referral code against the backend, exactly once.
+ * Safe to call any time: no-ops when there is no code or no registered device;
+ * clears the code on success or on a permanent rejection (already used /
+ * invalid / own code), keeps it for transient network errors so a later call
+ * can retry. Returns true when a bonus was credited.
+ */
+export async function claimPendingReferral(): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useSettingsStore } = require('../stores/settingsStore');
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { useAuthStore } = require('../stores/authStore');
+
+  const code = useSettingsStore.getState().pendingReferralCode;
+  const user = useAuthStore.getState().user;
+  if (!code || !user?.deviceId) return false;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useReferral } = require('./entitlementService');
+    const result = await useReferral(user.deviceId, code);
+    // Code is consumed either way (granted or held) — never retry it.
+    useSettingsStore.getState().setPendingReferralCode(null);
+    const held = result.status === 'pending_review';
+    if (!held && (result.bonus_bytes ?? 0) > 0) {
+      useAuthStore.getState().addBonusBytes?.(result.bonus_bytes);
+    }
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useToastStore } = require('../stores/toastStore');
+      useToastStore.getState().show(
+        held ? 'Invite received — bonus pending review' : 'Invite accepted — +1 GB added 🎉',
+        held ? 'info' : 'success',
+      );
+    } catch {}
+    return true;
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // Permanent rejections — drop the code so we never spam the backend.
+    if (/already used|invalid|own referral|not found/i.test(msg)) {
+      useSettingsStore.getState().setPendingReferralCode(null);
+    }
+    return false;
   }
 }
