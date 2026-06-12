@@ -61,11 +61,14 @@ for PORT in 8443 10000 10001 10002; do
     fi
 done
 
-# ── Reality TCP reachability ──────────────────────────────────────────────────
-if timeout 4 bash -c "echo > /dev/tcp/${EDGE_HOST}/8443" 2>/dev/null; then
-    log "OK   port 8443 TCP reachable from server"
+# ── Reality inbound (loopback-only by design; nginx stream dispatches
+# www.cloudflare.com / www.microsoft.com SNI on :443 to 127.0.0.1:8443) ───────
+if ss -tln 2>/dev/null | grep -q '127.0.0.1:8443'; then
+    log "OK   Reality inbound listening on 127.0.0.1:8443 (behind nginx stream :443)"
 else
-    log "WARN port 8443 not reachable (may be external firewall — check ufw)"
+    log "WARN Reality inbound 127.0.0.1:8443 not listening — restarting xray"
+    systemctl restart xray
+    RESTARTED="$RESTARTED xray-reality"
 fi
 
 # ── Nginx WS route ────────────────────────────────────────────────────────────
@@ -82,7 +85,7 @@ fi
 
 # ── Nginx XHTTP route ─────────────────────────────────────────────────────────
 XHTTP_CODE=$(curl -sk -o /dev/null -w "%{http_code}" --max-time 5 "https://${EDGE_HOST}/xhttp" 2>/dev/null || echo "000")
-if [[ "$XHTTP_CODE" == "404" || "$XHTTP_CODE" == "200" ]]; then
+if [[ "$XHTTP_CODE" == "404" || "$XHTTP_CODE" == "200" || "$XHTTP_CODE" == "400" ]]; then
     log "OK   /xhttp route → HTTP ${XHTTP_CODE} (xray reachable)"
 elif [[ "$XHTTP_CODE" == "502" ]]; then
     log "FAIL /xhttp → 502 — restarting xray"
