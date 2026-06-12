@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetaLink — Ecosystem (Banner · Profile · Redeem)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg-void:#030609;--bg-base:#070D18;--bg-surface:#0D1828;--bg-elevated:#111F35;
+  --gold-300:#F0D060;--gold-400:#D4AF37;
+  --slate-500:#5A6B85;
+  --text-primary:#F0F6FF;--text-secondary:#8FA8C8;--text-muted:#3D5570;
+  --radius-xl:20px;--radius-full:9999px;
+}
+body{
+  background:
+    radial-gradient(ellipse 900px 600px at 50% -80px,rgba(212,175,55,0.07),transparent 65%),#010204;
+  display:flex;gap:48px;justify-content:center;align-items:flex-start;flex-wrap:wrap;
+  min-height:100vh;padding:48px 20px 60px;font-family:'Inter',system-ui,sans-serif;
+}
+h2.label{width:390px;text-align:center;color:var(--text-secondary);font-size:13px;
+  font-weight:500;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;}
+.col{display:flex;flex-direction:column;align-items:center;}
+.phone{
+  width:390px;height:844px;border-radius:44px;overflow:hidden;position:relative;
+  background:var(--bg-base);display:flex;flex-direction:column;
+  border:1.5px solid rgba(255,255,255,0.1);
+  box-shadow:0 0 0 1px rgba(0,0,0,0.7),0 40px 100px rgba(0,0,0,0.65);
+}
+.di{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:120px;height:34px;background:#000;border-radius:20px;z-index:100;}
+.header{display:flex;align-items:center;gap:10px;padding:64px 24px 8px;}
+.mark{width:20px;height:20px;border-radius:50%;border:2px solid var(--gold-400);
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--gold-400);}
+.wordmark{font-size:17px;font-weight:600;color:var(--text-primary);letter-spacing:.02em;}
+.main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:18px;padding-top:14px;position:relative;}
+.main.centered{justify-content:center;}
+
+/* compact connected ring (context for banner placement) */
+.ring{width:170px;height:170px;border-radius:var(--radius-full);
+  display:flex;align-items:center;justify-content:center;position:relative;
+  border:4px solid var(--gold-400);
+  box-shadow:0 0 50px rgba(212,175,55,.28),inset 0 0 40px rgba(212,175,55,.08);}
+.real{width:74px;height:74px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-weight:700;font-size:17px;letter-spacing:.06em;color:var(--gold-300);
+  border:2.5px solid var(--gold-400);text-shadow:0 0 16px rgba(212,175,55,.6);}
+.statusline{text-align:center;}
+.statusline .s1{font-size:15px;font-weight:600;color:var(--gold-300);}
+.statusline .s2{font-size:12.5px;color:var(--text-muted);margin-top:6px;font-family:'JetBrains Mono',monospace;}
+
+/* borderless cards, radius 20 */
+.card{width:330px;background:var(--bg-surface);border-radius:var(--radius-xl);padding:18px 20px;}
+
+/* §B1 ecosystem banner — below connect, above stats; dismissible */
+.banner{width:330px;border-radius:var(--radius-xl);padding:16px 18px;position:relative;
+  background:linear-gradient(105deg,rgba(212,175,55,.14),rgba(212,175,55,.04) 70%),var(--bg-surface);
+  display:flex;align-items:center;gap:14px;}
+.banner .real-sm{flex:none;width:38px;height:38px;border-radius:50%;border:2px solid var(--gold-400);
+  color:var(--gold-300);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;}
+.banner .t1{font-size:13.5px;font-weight:600;color:var(--text-primary);}
+.banner .t2{font-size:12px;color:var(--text-secondary);margin-top:3px;line-height:1.45;}
+.banner .t2 b{color:var(--gold-300);font-weight:500;}
+.banner .x{position:absolute;top:10px;right:14px;font-size:13px;color:var(--text-muted);}
+
+.quota .row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-secondary);margin-bottom:8px;}
+.bar{height:6px;border-radius:3px;background:var(--bg-elevated);overflow:hidden;}
+.fill-gold{height:100%;width:38%;background:linear-gradient(90deg,var(--gold-400),var(--gold-300));border-radius:3px;}
+
+/* §B2 + §A — profile: wallet card + ecosystem section */
+.title{width:330px;font-size:22px;font-weight:600;color:var(--text-primary);}
+.sect{width:330px;font-size:11px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--text-muted);margin-top:6px;}
+.wallet{width:330px;border-radius:var(--radius-xl);padding:20px;
+  background:linear-gradient(135deg,rgba(212,175,55,.16),rgba(212,175,55,.03) 60%),var(--bg-surface);}
+.wallet .row1{display:flex;align-items:center;gap:12px;}
+.wallet .real-sm{width:34px;height:34px;border-radius:50%;border:2px solid var(--gold-400);
+  color:var(--gold-300);display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;}
+.wallet .lbl{font-size:12px;color:var(--text-secondary);}
+.wallet .bal{font-size:26px;font-weight:600;color:var(--gold-300);font-family:'JetBrains Mono',monospace;margin-top:2px;}
+.wallet .btn-redeem{margin-top:16px;padding:12px 0;border-radius:var(--radius-full);text-align:center;
+  background:var(--gold-400);color:#070D18;font-weight:600;font-size:13.5px;}
+.eco-card{display:flex;align-items:center;gap:14px;padding:16px 20px;}
+.eco-card .ic{flex:none;width:38px;height:38px;border-radius:50%;border:2px solid var(--slate-500);
+  display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--text-secondary);}
+.eco-card.hero .ic{border-color:var(--gold-400);color:var(--gold-300);}
+.eco-card .n{font-size:14px;font-weight:600;color:var(--text-primary);}
+.eco-card .d{font-size:12px;color:var(--text-secondary);margin-top:2px;}
+.eco-card .go{margin-left:auto;font-size:14px;color:var(--text-muted);}
+
+/* §A — redeem sheet over dimmed profile */
+.dim{position:absolute;inset:0;background:rgba(1,2,4,.62);z-index:5;}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:6;background:var(--bg-elevated);
+  border-radius:28px 28px 0 0;padding:14px 28px 40px;display:flex;flex-direction:column;gap:18px;}
+.grab{width:42px;height:4px;border-radius:2px;background:var(--slate-500);opacity:.5;align-self:center;}
+.sheet .h{font-size:17px;font-weight:600;color:var(--text-primary);text-align:center;}
+.sheet .amount{font-size:34px;font-weight:600;color:var(--gold-300);text-align:center;
+  font-family:'JetBrains Mono',monospace;}
+.sheet .amount span{font-size:14px;color:var(--text-secondary);font-family:'Inter',sans-serif;font-weight:400;}
+.slider{position:relative;height:28px;display:flex;align-items:center;}
+.slider .track{width:100%;height:6px;border-radius:3px;background:var(--bg-surface);}
+.slider .done{position:absolute;left:0;width:60%;height:6px;border-radius:3px;
+  background:linear-gradient(90deg,var(--gold-400),var(--gold-300));}
+.slider .thumb{position:absolute;left:calc(60% - 11px);width:22px;height:22px;border-radius:50%;
+  background:var(--gold-300);box-shadow:0 0 14px rgba(212,175,55,.55);}
+.steps{display:flex;justify-content:space-between;font-size:11px;color:var(--text-muted);
+  font-family:'JetBrains Mono',monospace;}
+.cost{display:flex;justify-content:space-between;font-size:13px;color:var(--text-secondary);
+  background:var(--bg-surface);border-radius:14px;padding:14px 16px;}
+.cost b{color:var(--gold-300);font-weight:600;font-family:'JetBrains Mono',monospace;}
+.sheet .confirm{padding:15px 0;border-radius:var(--radius-full);text-align:center;
+  background:var(--gold-400);color:#070D18;font-weight:600;font-size:14.5px;}
+.sheet .fine{font-size:11px;color:var(--text-muted);text-align:center;line-height:1.5;}
+
+/* tab bar */
+.tabs{display:flex;justify-content:space-around;padding:16px 28px 34px;}
+.tab{font-size:20px;color:var(--slate-500);}
+.tab.active{color:var(--gold-400);}
+.note{width:390px;margin-top:16px;font-size:12px;color:var(--text-muted);line-height:1.6;text-align:center;}
+</style>
+</head>
+<body>
+
+<div class="col">
+  <h2 class="label">Home — Ecosystem Banner (§B1)</h2>
+  <div class="phone">
+    <div class="di"></div>
+    <div class="header"><div class="mark">◈</div><div class="wordmark">SetaLink</div></div>
+    <div class="main">
+      <div class="ring"><div class="real">REAL</div></div>
+      <div class="statusline">
+        <div class="s1">Connected · Oslo</div>
+        <div class="s2">00:42:13 · ↓ 1.2 GB · ↑ 184 MB</div>
+      </div>
+      <div class="banner">
+        <div class="x">✕</div>
+        <div class="real-sm">REAL</div>
+        <div>
+          <div class="t1">Earn REAL with Shahnameh</div>
+          <div class="t2">Read &amp; earn, then <b>redeem for free data</b> here.</div>
+        </div>
+      </div>
+      <div class="card quota">
+        <div class="row"><span>Data remaining</span><span>7.6 / 10 GB</span></div>
+        <div class="bar"><div class="fill-gold"></div></div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab active">◈</div><div class="tab">▤</div><div class="tab">⌖</div><div class="tab">◍</div>
+    </div>
+  </div>
+  <div class="note">Banner sits below the connect ring, above stats. Dismissible (✕),<br>reappears after 14 days; copy + URL from remote config — no app release.</div>
+</div>
+
+<div class="col">
+  <h2 class="label">Profile — Wallet + Ecosystem (§B2 · §A)</h2>
+  <div class="phone">
+    <div class="di"></div>
+    <div class="header"><div class="mark">◈</div><div class="wordmark">SetaLink</div></div>
+    <div class="main" style="gap:14px;">
+      <div class="title">Profile</div>
+      <div class="wallet">
+        <div class="row1">
+          <div class="real-sm">REAL</div>
+          <div>
+            <div class="lbl">REAL balance · linked wallet</div>
+            <div class="bal">142.50</div>
+          </div>
+        </div>
+        <div class="btn-redeem">Redeem for data</div>
+      </div>
+      <div class="sect">Ecosystem</div>
+      <div class="card eco-card hero">
+        <div class="ic">◈</div>
+        <div><div class="n">SetaLink</div><div class="d">Private internet, anywhere</div></div>
+        <div class="go"></div>
+      </div>
+      <div class="card eco-card">
+        <div class="ic">📖</div>
+        <div><div class="n">Shahnameh</div><div class="d">Read &amp; play — earn REAL</div></div>
+        <div class="go">›</div>
+      </div>
+      <div class="card eco-card">
+        <div class="ic">✓</div>
+        <div><div class="n">TrustAI</div><div class="d">Trusted referrals, better rewards</div></div>
+        <div class="go">›</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab">◈</div><div class="tab">▤</div><div class="tab">⌖</div><div class="tab active">◍</div>
+    </div>
+  </div>
+  <div class="note">Wallet card shows server-verified REAL balance once the account is linked.<br>Three ecosystem cards with one-line value props; REAL mark is the anchor.</div>
+</div>
+
+<div class="col">
+  <h2 class="label">Redeem Sheet (§A)</h2>
+  <div class="phone">
+    <div class="di"></div>
+    <div class="header"><div class="mark">◈</div><div class="wordmark">SetaLink</div></div>
+    <div class="main" style="gap:14px;">
+      <div class="title">Profile</div>
+      <div class="wallet">
+        <div class="row1">
+          <div class="real-sm">REAL</div>
+          <div>
+            <div class="lbl">REAL balance · linked wallet</div>
+            <div class="bal">142.50</div>
+          </div>
+        </div>
+        <div class="btn-redeem">Redeem for data</div>
+      </div>
+    </div>
+    <div class="dim"></div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <div class="h">Redeem REAL for data</div>
+      <div class="amount">3 GB <span>top-up</span></div>
+      <div class="slider">
+        <div class="track"></div><div class="done"></div><div class="thumb"></div>
+      </div>
+      <div class="steps"><span>1 GB</span><span>2</span><span>3</span><span>4</span><span>5 GB</span></div>
+      <div class="cost"><span>Cost</span><b>30.00 REAL</b></div>
+      <div class="cost"><span>Balance after</span><b>112.50 REAL</b></div>
+      <div class="confirm">Confirm — get 3 GB</div>
+      <div class="fine">Spend is verified server-to-server; quota updates via entitlement sync.<br>Daily redemption cap applies.</div>
+    </div>
+  </div>
+  <div class="note">Slider in 1 GB steps; rate from <code>real_per_gb</code> setting.<br>Confirm → redeem endpoint (idempotent tx_ref) → ledger row → quota refresh.</div>
+</div>
+
+</body>
+</html>

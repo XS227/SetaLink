@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetaLink — Home (Gold Redesign)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg-void:#030609;--bg-base:#070D18;--bg-surface:#0D1828;--bg-elevated:#111F35;
+  --gold-300:#F0D060;--gold-400:#D4AF37;
+  --slate-500:#5A6B85;
+  --text-primary:#F0F6FF;--text-secondary:#8FA8C8;--text-muted:#3D5570;
+  --radius-xl:20px;--radius-full:9999px;
+}
+body{
+  background:
+    radial-gradient(ellipse 900px 600px at 50% -80px,rgba(212,175,55,0.07),transparent 65%),#010204;
+  display:flex;gap:48px;justify-content:center;align-items:flex-start;flex-wrap:wrap;
+  min-height:100vh;padding:48px 20px 60px;font-family:'Inter',system-ui,sans-serif;
+}
+h2.label{width:390px;text-align:center;color:var(--text-secondary);font-size:13px;
+  font-weight:500;letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;}
+.col{display:flex;flex-direction:column;align-items:center;}
+.phone{
+  width:390px;height:844px;border-radius:44px;overflow:hidden;position:relative;
+  background:var(--bg-base);display:flex;flex-direction:column;
+  border:1.5px solid rgba(255,255,255,0.1);
+  box-shadow:0 0 0 1px rgba(0,0,0,0.7),0 40px 100px rgba(0,0,0,0.65);
+}
+.di{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:120px;height:34px;background:#000;border-radius:20px;z-index:100;}
+.header{display:flex;align-items:center;gap:10px;padding:64px 24px 8px;}
+.mark{width:20px;height:20px;border-radius:50%;border:2px solid var(--gold-400);
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--gold-400);}
+.wordmark{font-size:17px;font-weight:600;color:var(--text-primary);letter-spacing:.02em;}
+.main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:28px;position:relative;}
+
+/* Connect ring — 220dp, REAL logo 96dp */
+.ring{width:220px;height:220px;border-radius:var(--radius-full);
+  display:flex;align-items:center;justify-content:center;position:relative;}
+.real{width:96px;height:96px;border-radius:50%;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-weight:700;font-size:22px;letter-spacing:.06em;}
+
+/* state: disconnected */
+.ring.off{border:3px solid var(--slate-500);}
+.ring.off .real{color:var(--slate-500);border:2px solid var(--slate-500);opacity:.65;}
+/* state: connected (gold) */
+.ring.on{border:4px solid var(--gold-400);
+  box-shadow:0 0 60px rgba(212,175,55,.30),inset 0 0 50px rgba(212,175,55,.08);}
+.ring.on .real{color:var(--gold-300);border:2.5px solid var(--gold-400);
+  text-shadow:0 0 18px rgba(212,175,55,.6);}
+.halo{position:absolute;inset:-90px;border-radius:50%;
+  background:radial-gradient(circle,rgba(212,175,55,.10) 0%,transparent 70%);pointer-events:none;}
+
+.statusline{text-align:center;}
+.statusline .s1{font-size:15px;font-weight:600;}
+.off-text .s1{color:var(--text-secondary);}
+.on-text .s1{color:var(--gold-300);}
+.statusline .s2{font-size:12.5px;color:var(--text-muted);margin-top:6px;font-family:'JetBrains Mono',monospace;}
+
+/* server row + quota — borderless cards, radius 20 */
+.card{width:330px;background:var(--bg-surface);border-radius:var(--radius-xl);padding:18px 20px;}
+.server{display:flex;align-items:center;gap:12px;}
+.server .flag{font-size:20px;}
+.server .name{flex:1;font-size:14px;color:var(--text-primary);font-weight:500;}
+.server .lat{font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;}
+.quota{margin-top:0;}
+.quota .row{display:flex;justify-content:space-between;font-size:11.5px;color:var(--text-secondary);margin-bottom:8px;}
+.bar{height:6px;border-radius:3px;background:var(--bg-elevated);overflow:hidden;}
+.fill-idle{height:100%;width:38%;background:var(--slate-500);border-radius:3px;}
+.fill-gold{height:100%;width:38%;background:linear-gradient(90deg,var(--gold-400),var(--gold-300));border-radius:3px;}
+
+/* tab bar — icon-only home, gold active */
+.tabs{display:flex;justify-content:space-around;padding:16px 28px 34px;}
+.tab{font-size:20px;color:var(--slate-500);}
+.tab.active{color:var(--gold-400);}
+.note{width:390px;margin-top:16px;font-size:12px;color:var(--text-muted);line-height:1.6;text-align:center;}
+</style>
+</head>
+<body>
+
+<div class="col">
+  <h2 class="label">Disconnected</h2>
+  <div class="phone">
+    <div class="di"></div>
+    <div class="header"><div class="mark">◈</div><div class="wordmark">SetaLink</div></div>
+    <div class="main">
+      <div class="ring off"><div class="real">REAL</div></div>
+      <div class="statusline off-text">
+        <div class="s1">Tap to connect</div>
+        <div class="s2">last session · 1.2 GB</div>
+      </div>
+      <div class="card server">
+        <span class="flag">🇳🇴</span><span class="name">Oslo · Automatic</span><span class="lat">—</span>
+      </div>
+      <div class="card quota">
+        <div class="row"><span>Data remaining</span><span>7.6 / 10 GB</span></div>
+        <div class="bar"><div class="fill-idle"></div></div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab active">◈</div><div class="tab">▤</div><div class="tab">⌖</div><div class="tab">◍</div>
+    </div>
+  </div>
+  <div class="note">Idle: slate ring, dim REAL logo, no halo.<br>Protocol chips removed from default view.</div>
+</div>
+
+<div class="col">
+  <h2 class="label">Connected — Gold</h2>
+  <div class="phone">
+    <div class="di"></div>
+    <div class="header"><div class="mark">◈</div><div class="wordmark">SetaLink</div></div>
+    <div class="main">
+      <div class="halo"></div>
+      <div class="ring on"><div class="real">REAL</div></div>
+      <div class="statusline on-text">
+        <div class="s1">Connected · Oslo</div>
+        <div class="s2">00:42:13 · ↓ 1.2 GB · ↑ 184 MB</div>
+      </div>
+      <div class="card server">
+        <span class="flag">🇳🇴</span><span class="name">Oslo · Reality</span><span class="lat">38 ms</span>
+      </div>
+      <div class="card quota">
+        <div class="row"><span>Data remaining</span><span>7.6 / 10 GB</span></div>
+        <div class="bar"><div class="fill-gold"></div></div>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab active">◈</div><div class="tab">▤</div><div class="tab">⌖</div><div class="tab">◍</div>
+    </div>
+  </div>
+  <div class="note">Connected: gold ring (#D4AF37) + glow halo, gold REAL logo,<br>gold quota fill and status text (#F0D060). Green retired from this surface.</div>
+</div>
+
+</body>
+</html>

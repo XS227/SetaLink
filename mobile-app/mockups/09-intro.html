@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SetaLink — Intro Screens (Branding)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg-base:#070D18;--bg-surface:#0D1828;
+  --gold-300:#F0D060;--gold-400:#D4AF37;--slate-500:#5A6B85;
+  --text-primary:#F0F6FF;--text-secondary:#8FA8C8;--text-muted:#3D5570;
+}
+body{background:#010204;display:flex;gap:40px;justify-content:center;align-items:flex-start;
+  flex-wrap:wrap;min-height:100vh;padding:48px 20px;font-family:'Inter',system-ui,sans-serif;}
+h2.label{width:340px;text-align:center;color:var(--text-secondary);font-size:13px;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;margin-bottom:14px;}
+.col{display:flex;flex-direction:column;align-items:center;}
+.phone{width:340px;height:736px;border-radius:40px;overflow:hidden;position:relative;
+  background:var(--bg-base);display:flex;flex-direction:column;align-items:center;
+  border:1.5px solid rgba(255,255,255,0.1);box-shadow:0 30px 80px rgba(0,0,0,.6);}
+.real-logo{border-radius:50%;border:3px solid var(--gold-400);color:var(--gold-300);
+  display:flex;align-items:center;justify-content:center;font-weight:700;letter-spacing:.06em;
+  box-shadow:0 0 50px rgba(212,175,55,.25);}
+.lg{width:128px;height:128px;font-size:26px;}
+.sm{width:44px;height:44px;font-size:12px;}
+.center{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:0 32px;text-align:center;}
+.wordmark{font-size:24px;font-weight:600;color:var(--text-primary);letter-spacing:.04em;}
+.tag{font-size:13px;color:var(--text-muted);}
+.headline{font-size:26px;font-weight:300;color:var(--text-primary);line-height:1.35;}
+.map{width:240px;height:150px;border-radius:20px;background:
+  radial-gradient(circle at 30% 40%,rgba(212,175,55,.25) 2px,transparent 3px),
+  radial-gradient(circle at 65% 30%,rgba(212,175,55,.25) 2px,transparent 3px),
+  radial-gradient(circle at 50% 70%,rgba(212,175,55,.25) 2px,transparent 3px),
+  var(--bg-surface);}
+.eco{display:flex;gap:14px;}
+.eco .app{width:110px;padding:18px 10px;border-radius:18px;background:var(--bg-surface);
+  display:flex;flex-direction:column;align-items:center;gap:10px;font-size:12.5px;color:var(--text-secondary);}
+.arrow{font-size:12px;color:var(--gold-300);letter-spacing:.08em;}
+.btn{width:260px;padding:15px 0;border-radius:9999px;background:var(--gold-400);color:#070D18;
+  font-weight:600;font-size:14.5px;text-align:center;margin-bottom:26px;}
+.btn.ghost{background:transparent;border:1.5px solid var(--slate-500);color:var(--text-secondary);}
+.dots{display:flex;gap:8px;margin-bottom:22px;}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--slate-500);opacity:.5;}
+.dot.on{background:var(--gold-400);opacity:1;}
+.skip{position:absolute;top:26px;right:24px;font-size:12.5px;color:var(--text-muted);}
+</style>
+</head>
+<body>
+
+<div class="col">
+  <h2 class="label">1 · Brand</h2>
+  <div class="phone">
+    <div class="center">
+      <div class="real-logo lg">REAL</div>
+      <div>
+        <div class="wordmark">SetaLink</div>
+        <div class="tag" style="margin-top:8px">part of the REAL ecosystem</div>
+      </div>
+    </div>
+    <div class="dots"><div class="dot on"></div><div class="dot"></div><div class="dot"></div></div>
+    <div class="btn">Continue</div>
+  </div>
+</div>
+
+<div class="col">
+  <h2 class="label">2 · Promise</h2>
+  <div class="phone">
+    <div class="skip">Skip</div>
+    <div class="center">
+      <div class="map"></div>
+      <div class="headline">Open internet.<br><span style="color:var(--gold-300);font-weight:500">Anywhere.</span></div>
+      <div class="tag">Reality · WebSocket · XHTTP — picked automatically for your network</div>
+    </div>
+    <div class="dots"><div class="dot"></div><div class="dot on"></div><div class="dot"></div></div>
+    <div class="btn">Continue</div>
+  </div>
+</div>
+
+<div class="col">
+  <h2 class="label">3 · Ecosystem</h2>
+  <div class="phone">
+    <div class="skip">Skip</div>
+    <div class="center">
+      <div class="real-logo sm">REAL</div>
+      <div class="headline" style="font-size:21px">Earn REAL.<br>Redeem for data.</div>
+      <div class="eco">
+        <div class="app"><div class="real-logo sm" style="border-color:var(--slate-500);color:var(--text-secondary);box-shadow:none">◈</div>SetaLink<br>VPN</div>
+        <div class="app"><div class="real-logo sm">📖</div>Shahnameh<br>earn REAL</div>
+      </div>
+      <div class="arrow">earn ↔ redeem</div>
+    </div>
+    <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot on"></div></div>
+    <div class="btn">Get started</div>
+  </div>
+</div>
+
+</body>
+</html>
