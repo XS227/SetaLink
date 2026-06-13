@@ -200,8 +200,6 @@ const EN = {
   'pr.totalQuota':      'Total quota',
   'pr.usedTraffic':     'Used traffic',
   'pr.unlimitedShort':  'Unlimited',
-  'pr.biometricLock':   'App Lock',
-  'pr.biometricLockDesc':'Lock with biometrics or PIN (off by default)',
   'pr.supportUnavailable':'Support link is not available right now.',
   'pr.websiteUnavailable':'Unable to open website.',
   'pr.shareUnavailable':'Unable to share invite link.',
@@ -265,6 +263,104 @@ const EN = {
   'lock.wrongPin':        'Incorrect PIN — try again',
   'lock.pinMismatch':     'PINs do not match — start over',
   'lock.tryBio':          'Try biometrics instead',
+
+  // Home — v0.9.30 localization sweep
+  'home.stealthActive':   'Stealth Active',
+  'home.findingRoute':    'Finding best route…',
+  'home.optimalRoute':    'Optimal route active',
+  'home.autoRoute':       'Auto-route selection',
+  'home.testingRoutes':   'Testing {n} routes',
+  'home.connectedVia':    'Connected via {label}',
+  'home.tapAdvanced':     'Tap for advanced options',
+  'home.testRouting':     'Test routing',
+  'home.testing':         'Testing…',
+  'home.routingOk':       'Routing OK',
+  'home.routingFailed':   'Routing failed',
+  'home.routingFailedHint': 'Server connected, but internet is not routed through VPN.',
+
+  // Smart AI — auto connect / optimizer
+  'ai.autoIranTitle':     'Iran Mode · Auto Connect',
+  'ai.autoSmartTitle':    'Smart Auto Connect',
+  'ai.autoIranDesc':      'Tests Iran-optimised profiles · connects with first working route',
+  'ai.autoSmartDesc':     'Tests all profiles · auto-selects the best working route',
+  'ai.autoConnectBtn':    'Auto Connect',
+  'ai.rerun':             'Re-run',
+  'ai.allFailed':         'All profiles failed — check server config',
+  'ai.importFirst':       'Import a server config first',
+  'ai.disconnectFirst':   'Disconnect VPN before running Auto Connect',
+  'ai.iranHint':          'Tests 9 Iran-optimised routes in priority order',
+  'ai.autoHint':          'Tests 8 profiles — Reality, XHTTP, WebSocket, Emergency',
+  'ai.optimizer':         'Connection Optimizer',
+  'ai.optimizerDesc':     'Test and rank all profiles without connecting',
+  'ai.optimizerHint':     'Tests multiple SNIs and transports to rank what works from your location',
+  'ai.disconnectOptimizer': 'Disconnect VPN to run optimizer',
+  'ai.runOptimizer':      'Run Optimizer',
+  'ai.testingProfiles':   'Testing profiles…',
+  'ai.noWorkingProfile':  'No working profile found',
+  'ai.bestProfileFound':  'Best profile found',
+  'ai.vpnConnectedVia':   'VPN connected via this profile',
+  'ai.internetConfirmed': 'Internet confirmed · real traffic validated',
+  'ai.completedIn':       'Completed in {s}s',
+  'ai.connectedIn':       'Connected in {ms}ms',
+  'ai.probeValidated':    'Probe validated',
+  'ai.tcpConnected':      'TCP connected',
+  'ai.skipped':           'Skipped',
+
+  // Activity — session log
+  'ac.live':              'Live',
+  'ac.statusOk':          'OK',
+  'ac.statusDrop':        'Drop',
+  'ac.statusTimeout':     'Timeout',
+
+  // Profile — packages / quota sources
+  'pr.packages':          'Your Packages',
+  'pr.starterPack':       'Starter Pack',
+  'pr.starterPackDesc':   'Free welcome gift',
+  'pr.notTransferable':   'Not transferable',
+  'pr.referralPack':      'Referral Rewards',
+  'pr.referralPackDesc':  'Earned from approved invites',
+  'pr.purchasedPack':     'Purchased',
+  'pr.purchasedPackDesc': 'Your paid packages',
+  'pr.totalLabel':        'Total',
+
+  // Profile — inbox entry
+  'pr.inbox':             'Inbox',
+  'pr.inboxOpen':         'View all messages',
+  'pr.inboxEmpty':        'No messages yet',
+  'pr.inboxNew':          'new',
+  'pr.markAllRead':       'Mark all read',
+  'pr.tapToMarkRead':     'Tap to mark as read',
+
+  // Profile — invite milestones
+  'pr.inviteRewards':     'Invite Rewards',
+  'pr.activeInvites':     'active invites',
+  'pr.nextMilestone':     'Next milestone',
+  'pr.inviteMore':        'Invite {n} more active friends to unlock:',
+  'pr.msStealth':         'First stealth servers',
+  'pr.msBonus2':          '+2 GB bonus',
+  'pr.msPriority':        'Priority routes',
+  'pr.msBonus5':          '+5 GB bonus',
+  'pr.msVip':             'VIP elite access',
+  'pr.unlockedTag':       'Unlocked',
+  'pr.stealthUnlockedMsg': 'Stealth servers unlocked!',
+  'pr.stealthUnlockedSub': 'You can now connect to stealth nodes',
+  'pr.allMilestones':     'All milestones',
+
+  // Profile — misc
+  'pr.scanToInvite':      'Scan to invite',
+  'pr.tapToClose':        'Tap outside to close',
+  'pr.pendingRefTitle':   'Referral code waiting',
+  'pr.pendingRefDesc':    'Apply code {code} to claim +1 GB',
+  'pr.apply':             'Apply',
+  'pr.pendingReview':     'Code received — bonus is pending review',
+  'pr.bonusCredited':     '+{gb} GB bonus credited!',
+  'pr.refError':          'Could not apply referral code',
+
+  // OTA update — banner
+  'upd.updateAvailable':  'Update {v} available',
+  'upd.download':         'Download',
+  'upd.requiredBody':     'A critical update is required to continue using SetaLink.\nVersion {v} is now available.',
+  'upd.downloadUpdate':   'Download Update',
 };
 
 const FA: typeof EN = {
@@ -456,8 +552,6 @@ const FA: typeof EN = {
   'pr.totalQuota':      'کل سهمیه',
   'pr.usedTraffic':     'ترافیک مصرف‌شده',
   'pr.unlimitedShort':  'نامحدود',
-  'pr.biometricLock':   'قفل برنامه',
-  'pr.biometricLockDesc':'قفل با اثر انگشت یا کد PIN (پیش‌فرض خاموش)',
   'pr.supportUnavailable':'لینک پشتیبانی در حال حاضر در دسترس نیست.',
   'pr.websiteUnavailable':'باز کردن وب‌سایت ممکن نیست.',
   'pr.shareUnavailable':'اشتراک‌گذاری لینک دعوت ممکن نیست.',
@@ -521,6 +615,104 @@ const FA: typeof EN = {
   'lock.wrongPin':        'کد PIN اشتباه است — دوباره امتحان کنید',
   'lock.pinMismatch':     'کدها یکسان نیستند — از ابتدا شروع کنید',
   'lock.tryBio':          'استفاده از بیومتریک',
+
+  // Home — v0.9.30 localization sweep
+  'home.stealthActive':   'حالت مخفی فعال',
+  'home.findingRoute':    'در حال یافتن بهترین مسیر…',
+  'home.optimalRoute':    'مسیر بهینه فعال است',
+  'home.autoRoute':       'انتخاب خودکار مسیر',
+  'home.testingRoutes':   'آزمایش {n} مسیر',
+  'home.connectedVia':    'متصل از طریق {label}',
+  'home.tapAdvanced':     'برای گزینه‌های پیشرفته لمس کنید',
+  'home.testRouting':     'آزمایش مسیریابی',
+  'home.testing':         'در حال آزمایش…',
+  'home.routingOk':       'مسیریابی صحیح است',
+  'home.routingFailed':   'مسیریابی ناموفق',
+  'home.routingFailedHint': 'سرور متصل است، اما اینترنت از طریق VPN عبور نمی‌کند.',
+
+  // Smart AI — auto connect / optimizer
+  'ai.autoIranTitle':     'حالت ایران · اتصال خودکار',
+  'ai.autoSmartTitle':    'اتصال خودکار هوشمند',
+  'ai.autoIranDesc':      'آزمایش پروفایل‌های بهینه ایران · اتصال با اولین مسیر سالم',
+  'ai.autoSmartDesc':     'آزمایش همه پروفایل‌ها · انتخاب خودکار بهترین مسیر سالم',
+  'ai.autoConnectBtn':    'اتصال خودکار',
+  'ai.rerun':             'اجرای مجدد',
+  'ai.allFailed':         'همه پروفایل‌ها ناموفق — تنظیمات سرور را بررسی کنید',
+  'ai.importFirst':       'ابتدا یک پیکربندی سرور وارد کنید',
+  'ai.disconnectFirst':   'قبل از اتصال خودکار، VPN را قطع کنید',
+  'ai.iranHint':          'آزمایش ۹ مسیر بهینه‌شده برای ایران به ترتیب اولویت',
+  'ai.autoHint':          'آزمایش ۸ پروفایل — Reality، XHTTP، WebSocket، اضطراری',
+  'ai.optimizer':         'بهینه‌ساز اتصال',
+  'ai.optimizerDesc':     'آزمایش و رتبه‌بندی همه پروفایل‌ها بدون اتصال',
+  'ai.optimizerHint':     'چند SNI و انتقال مختلف را آزمایش می‌کند تا مشخص شود از موقعیت شما چه چیزی کار می‌کند',
+  'ai.disconnectOptimizer': 'برای اجرای بهینه‌ساز، VPN را قطع کنید',
+  'ai.runOptimizer':      'اجرای بهینه‌ساز',
+  'ai.testingProfiles':   'در حال آزمایش پروفایل‌ها…',
+  'ai.noWorkingProfile':  'پروفایل سالمی یافت نشد',
+  'ai.bestProfileFound':  'بهترین پروفایل پیدا شد',
+  'ai.vpnConnectedVia':   'VPN از طریق این پروفایل متصل است',
+  'ai.internetConfirmed': 'اینترنت تأیید شد · ترافیک واقعی بررسی شد',
+  'ai.completedIn':       'در {s} ثانیه کامل شد',
+  'ai.connectedIn':       'اتصال در {ms} میلی‌ثانیه',
+  'ai.probeValidated':    'اینترنت تأیید شد',
+  'ai.tcpConnected':      'اتصال TCP برقرار شد',
+  'ai.skipped':           'رد شد',
+
+  // Activity — session log
+  'ac.live':              'زنده',
+  'ac.statusOk':          'موفق',
+  'ac.statusDrop':        'قطع شد',
+  'ac.statusTimeout':     'تایم‌اوت',
+
+  // Profile — packages / quota sources
+  'pr.packages':          'بسته‌های شما',
+  'pr.starterPack':       'بسته شروع',
+  'pr.starterPackDesc':   'هدیه رایگان خوش‌آمدگویی',
+  'pr.notTransferable':   'غیرقابل انتقال',
+  'pr.referralPack':      'پاداش دعوت',
+  'pr.referralPackDesc':  'از دعوت‌های تأییدشده',
+  'pr.purchasedPack':     'خریداری‌شده',
+  'pr.purchasedPackDesc': 'بسته‌های خریداری‌شده شما',
+  'pr.totalLabel':        'مجموع',
+
+  // Profile — inbox entry
+  'pr.inbox':             'صندوق پیام',
+  'pr.inboxOpen':         'مشاهده همه پیام‌ها',
+  'pr.inboxEmpty':        'هنوز پیامی ندارید',
+  'pr.inboxNew':          'جدید',
+  'pr.markAllRead':       'خواندن همه',
+  'pr.tapToMarkRead':     'برای علامت خوانده‌شده لمس کنید',
+
+  // Profile — invite milestones
+  'pr.inviteRewards':     'پاداش دعوت دوستان',
+  'pr.activeInvites':     'دعوت فعال',
+  'pr.nextMilestone':     'هدف بعدی',
+  'pr.inviteMore':        'با دعوت {n} دوست فعال دیگر باز می‌شود:',
+  'pr.msStealth':         'اولین سرورهای مخفی',
+  'pr.msBonus2':          '۲+ گیگابایت هدیه',
+  'pr.msPriority':        'مسیرهای اولویت‌دار',
+  'pr.msBonus5':          '۵+ گیگابایت هدیه',
+  'pr.msVip':             'دسترسی ویژه VIP',
+  'pr.unlockedTag':       'باز شد',
+  'pr.stealthUnlockedMsg': 'سرورهای مخفی باز شدند!',
+  'pr.stealthUnlockedSub': 'اکنون می‌توانید به سرورهای مخفی متصل شوید',
+  'pr.allMilestones':     'همه اهداف',
+
+  // Profile — misc
+  'pr.scanToInvite':      'برای دعوت اسکن کنید',
+  'pr.tapToClose':        'برای بستن، بیرون کادر را لمس کنید',
+  'pr.pendingRefTitle':   'کد دعوت در انتظار',
+  'pr.pendingRefDesc':    'کد {code} را اعمال کنید و ۱ گیگابایت هدیه بگیرید',
+  'pr.apply':             'اعمال',
+  'pr.pendingReview':     'کد دریافت شد — هدیه در انتظار بررسی است',
+  'pr.bonusCredited':     '{gb}+ گیگابایت هدیه اضافه شد!',
+  'pr.refError':          'اعمال کد دعوت ممکن نبود',
+
+  // OTA update — banner
+  'upd.updateAvailable':  'نسخه {v} در دسترس است',
+  'upd.download':         'دانلود',
+  'upd.requiredBody':     'برای ادامه استفاده از SetaLink، یک به‌روزرسانی مهم لازم است.\nنسخه {v} اکنون در دسترس است.',
+  'upd.downloadUpdate':   'دانلود به‌روزرسانی',
 };
 
 export type TKey = keyof typeof EN;
@@ -543,4 +735,65 @@ export function useT() {
   }
 
   return { t, isRTL, lang };
+}
+
+// ── Dynamic phrase translation ────────────────────────────────────────────────
+// Services (failureClassifier, autoConnector) emit English status strings at
+// runtime. Rather than threading i18n through the connection engine (which has
+// its own tests), the UI passes those strings through trPhrase() at render
+// time: exact-match lookup first, then a few parameterised patterns, and an
+// unknown phrase falls back to the original English text.
+
+const FA_PHRASES: Record<string, string> = {
+  'Establishing secure tunnel…':              'در حال برقراری تونل امن…',
+  'Refreshing routes…':                       'به‌روزرسانی مسیرها…',
+  'Finding best route for your network…':     'در حال یافتن بهترین مسیر برای شبکه شما…',
+  'Connected with Stealth Mode.':             'با حالت مخفی متصل شد.',
+  'Trying backup connection…':                'در حال آزمایش اتصال پشتیبان…',
+  'Trying Stealth Mode…':                     'در حال آزمایش حالت مخفی…',
+  'Trying stealth mode…':                     'در حال آزمایش حالت مخفی…',
+  'Trying stealth connection…':               'در حال آزمایش اتصال مخفی…',
+  'Trying encrypted tunnel…':                 'در حال آزمایش تونل رمزگذاری‌شده…',
+  'Trying secure channel…':                   'در حال آزمایش کانال امن…',
+  'Trying alternate route…':                  'در حال آزمایش مسیر جایگزین…',
+  'Trying backup route…':                     'در حال آزمایش مسیر پشتیبان…',
+  'Changing DNS route…':                      'در حال تغییر مسیر DNS…',
+  'Switching encryption…':                    'در حال تغییر رمزگذاری…',
+  'Finding open path…':                       'در حال یافتن مسیر باز…',
+  'Verifying connection quality…':            'در حال بررسی کیفیت اتصال…',
+  'Optimizing route…':                        'در حال بهینه‌سازی مسیر…',
+  'Optimizing connection…':                   'در حال بهینه‌سازی اتصال…',
+  'Reloading configuration…':                 'در حال بارگذاری مجدد تنظیمات…',
+  'Data limit reached. Tap to upgrade.':      'حجم شما تمام شد. برای ارتقا لمس کنید.',
+  'Server unreachable. Check your internet.': 'سرور در دسترس نیست. اینترنت خود را بررسی کنید.',
+  'Connection timed out. Tap to retry.':      'زمان اتصال تمام شد. برای تلاش مجدد لمس کنید.',
+  'Could not connect. Tap to retry.':         'اتصال برقرار نشد. برای تلاش مجدد لمس کنید.',
+  'All profiles failed — retrying…':          'همه پروفایل‌ها ناموفق — تلاش مجدد…',
+  'All profiles failed — check server config':'همه پروفایل‌ها ناموفق — تنظیمات سرور را بررسی کنید',
+};
+
+const FA_PHRASE_PATTERNS: Array<{ re: RegExp; out: (m: RegExpMatchArray) => string }> = [
+  // "Testing route 3 of 9 · Reality…" / "Testing route 3 of 9…"
+  { re: /^Testing route (\d+) of (\d+)(?: · (.+?))?…$/,
+    out: (m) => m[3] ? `آزمایش مسیر ${m[1]} از ${m[2]} · ${m[3]}…` : `آزمایش مسیر ${m[1]} از ${m[2]}…` },
+  // "Testing profile 2/9: Reality direct"
+  { re: /^Testing profile (\d+)\/(\d+): (.+)$/,
+    out: (m) => `آزمایش پروفایل ${m[1]} از ${m[2]}: ${m[3]}` },
+  // "Internet confirmed: Reality direct"
+  { re: /^Internet confirmed: (.+)$/,
+    out: (m) => `اینترنت تأیید شد: ${m[1]}` },
+  // "Trying XHTTP…" generic fallback from connectingPhaseLabel
+  { re: /^Trying (.+)…$/,
+    out: (m) => `در حال آزمایش ${m[1]}…` },
+];
+
+export function trPhrase(s: string): string {
+  if (!s || getCurrentLang() !== 'fa') return s;
+  const exact = FA_PHRASES[s];
+  if (exact) return exact;
+  for (const p of FA_PHRASE_PATTERNS) {
+    const m = s.match(p.re);
+    if (m) return p.out(m);
+  }
+  return s;
 }

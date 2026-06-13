@@ -70,6 +70,10 @@ export function useVpnStats(): VpnStatsResult {
           pingMs:       s.pingMs,
         });
 
+        // Keep last latency sample in the store so the session record can
+        // capture it at disconnect time (Activity log shows per-session ping).
+        if (s.pingMs > 0) useVpnStore.getState().setLastPingMs(s.pingMs);
+
         // Push live metrics to diagnosticsStore so DiagnosticsScreen stays in sync
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires

@@ -1,12 +1,12 @@
 import React, { useEffect } from 'react';
 import {
-  View, Text, Pressable, StyleSheet, ActivityIndicator, Image,
+  View, Pressable, StyleSheet, ActivityIndicator, Image,
 } from 'react-native';
 import Animated, {
   useSharedValue, useAnimatedStyle,
   withTiming, withSpring,
 } from 'react-native-reanimated';
-import { Colors, Typography, Shadow, Animation } from '../design/tokens';
+import { Colors, Shadow, Animation } from '../design/tokens';
 import { AnimatedRing } from './AnimatedRing';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -45,7 +45,6 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
 
   const buttonColor = isConnected ? Colors.emerald[400] : Colors.bg.elevated;
   const borderColor = isConnected ? Colors.emerald[400] : Colors.border.default;
-  const labelText   = isConnecting ? '' : isConnected ? 'Disconnect' : 'Connect';
   // Logo: white on emerald when connected; visible light gray when disconnected
   const logoTint    = isConnected ? Colors.text.inverse : 'rgba(200,210,218,0.9)';
 
@@ -92,18 +91,11 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
           {isConnecting ? (
             <ActivityIndicator size="large" color={Colors.emerald[400]} />
           ) : (
-            <>
-              <Image
-                source={LOGO}
-                style={[styles.logoImg, { tintColor: logoTint }]}
-                resizeMode="contain"
-              />
-              <Text style={[styles.label, {
-                color: isConnected ? Colors.text.inverse : Colors.text.secondary,
-              }]}>
-                {labelText}
-              </Text>
-            </>
+            <Image
+              source={LOGO}
+              style={[styles.logoImg, { tintColor: logoTint }]}
+              resizeMode="contain"
+            />
           )}
         </Animated.View>
       </Pressable>
@@ -141,18 +133,11 @@ const styles = StyleSheet.create({
     borderRadius:    SIZE,
     borderWidth:     1,
   },
-  // Logo fills most of the inner ring (SIZE-24 = 164px) for a premium,
-  // brand-forward look; the label tucks under it inside the remaining arc.
+  // No text inside the circle — the logo IS the button. It fills nearly the
+  // whole inner ring (SIZE-24 = 164px) so the connect circle reads as the
+  // brand mark itself.
   logoImg: {
-    width:  118,
-    height: 118,
-    marginTop: -6,
-  },
-  label: {
-    fontSize:         Typography.size.sm,
-    fontFamily:       Typography.family.label,
-    letterSpacing:    Typography.tracking.wider,
-    textTransform:    'uppercase',
-    marginTop:        0,
+    width:  152,
+    height: 152,
   },
 });

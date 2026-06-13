@@ -37,6 +37,7 @@ import { Toast }                    from '../components/Toast';
 import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { UpgradeScreen }            from '../screens/UpgradeScreen';
 import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
+import { InboxScreen }             from '../screens/InboxScreen';
 
 import { runBootSequence }       from '../services/bootService';
 import { claimPendingReferral }  from '../services/deepLinkService';
@@ -53,6 +54,7 @@ import { useVpnStore }           from '../stores/vpnStore';
 import { useServerStore }        from '../stores/serverStore';
 import { useAppBoot }            from '../hooks/useAppBoot';
 import { useDeepLinks }          from '../hooks/useDeepLinks';
+import { useT }                   from '../i18n';
 
 import type { RootStackParamList, MainTabParamList } from './types';
 
@@ -83,6 +85,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'diagnostics')    { navigation.navigate('Diagnostics');    return; }
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'profileImport')  { navigation.navigate('ProfileImport'); return; }
+    if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };
 }
@@ -92,6 +95,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
 function MainTabs() {
   useAppBoot(); // registers AppState listener for kill-switch / reconnect logic
 
+  const { t } = useT();
   const token               = useAuthStore((s) => s.token);
   const fetchServers        = useServerStore((s) => s.fetchServers);
   const loadBootstrapIfEmpty = useServerStore((s) => s.loadBootstrapIfEmpty);
@@ -210,20 +214,20 @@ function MainTabs() {
       {/* Optional update banner — dismissible */}
       {showBanner && (
         <View style={updStyles.banner}>
-          <Text style={updStyles.bannerTitle}>Update {updateResult!.latestVersion} available</Text>
+          <Text style={updStyles.bannerTitle}>{t('upd.updateAvailable').replace('{v}', updateResult!.latestVersion)}</Text>
           <Text style={updStyles.bannerSub} numberOfLines={1}>{updateResult!.changelog?.[0] ?? ''}</Text>
           <View style={updStyles.bannerBtns}>
             <TouchableOpacity
               style={updStyles.bannerBtn}
               onPress={() => { downloadUpdate(updateResult!.apkUrl, updateResult!.latestVersion).catch(() => {}); }}
             >
-              <Text style={updStyles.bannerBtnText}>Download</Text>
+              <Text style={updStyles.bannerBtnText}>{t('upd.download')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={updStyles.bannerDismiss}
               onPress={() => { snoozeUpdate(); setUpdateBannerDismissed(true); }}
             >
-              <Text style={updStyles.bannerDismissText}>Later</Text>
+              <Text style={updStyles.bannerDismissText}>{t('upd.later')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -238,10 +242,9 @@ function MainTabs() {
       >
         <View style={updStyles.forceOverlay}>
           <View style={updStyles.forceCard}>
-            <Text style={updStyles.forceTitle}>Update Required</Text>
+            <Text style={updStyles.forceTitle}>{t('upd.forceTitle')}</Text>
             <Text style={updStyles.forceBody}>
-              A critical update is required to continue using SetaLink.{'\n'}
-              Version {updateResult?.latestVersion ?? ''} is now available.
+              {t('upd.requiredBody').replace('{v}', updateResult?.latestVersion ?? '')}
             </Text>
             {(updateResult?.changelog ?? []).slice(0, 3).map((line, i) => (
               <Text key={i} style={updStyles.forceChange}>• {line}</Text>
@@ -251,7 +254,7 @@ function MainTabs() {
               activeOpacity={0.85}
               onPress={() => { downloadUpdate(updateResult?.apkUrl ?? '', updateResult?.latestVersion).catch(() => {}); }}
             >
-              <Text style={updStyles.forceBtnText}>Download Update</Text>
+              <Text style={updStyles.forceBtnText}>{t('upd.downloadUpdate')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -498,6 +501,14 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <ProfileImportScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Inbox"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <InboxScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
       </Stack.Navigator>

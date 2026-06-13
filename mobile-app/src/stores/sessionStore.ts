@@ -14,6 +14,9 @@ export interface SessionRecord {
   sentBytes:  number;
   recvBytes:  number;
   status:     'success' | 'dropped' | 'timeout';
+  // Optional connection-quality stats (v0.9.30+) — absent on older persisted records
+  pingMs?:    number;  // last measured latency during the session
+  route?:     string;  // winning route/profile label, e.g. "Reality direct"
 }
 
 type NewSession = Omit<SessionRecord, 'id'>;

@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Animated, ActivityIndicator,
+  StyleSheet, Animated, ActivityIndicator, Image,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard }         from '../components/GlassCard';
@@ -9,7 +9,7 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 
 import { useAIStore, AI_MODES, AIFeatures } from '../stores/aiStore';
 import { formatRelativeTime }               from '../utils/formatters';
-import { useT }                             from '../i18n';
+import { useT, trPhrase }                   from '../i18n';
 import { runOptimizer }                     from '../services/connectionOptimizer';
 import { runAutoConnectLoop }               from '../services/autoConnector';
 import { getAdapter }                       from '../services/vpnBridge';
@@ -17,6 +17,9 @@ import { useVpnStore }                      from '../stores/vpnStore';
 import { useServerStore }                   from '../stores/serverStore';
 
 // ── AI Orb ────────────────────────────────────────────────────────────────────
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const LOGO_MARK = require('../assets/logo_mark.png') as number;
 
 function AIOrb({ active, color }: { active: boolean; color: string }) {
   const pulse1 = useRef(new Animated.Value(1)).current;
@@ -60,7 +63,7 @@ function AIOrb({ active, color }: { active: boolean; color: string }) {
       <Animated.View style={[orbStyles.orbit, { borderColor: color + '40', transform: [{ rotate: rotateStr }] }]} />
       <View style={[orbStyles.core, { shadowColor: color, backgroundColor: color + '15', borderColor: color + '60' }]}>
         <View style={[orbStyles.innerCore, { backgroundColor: color + '30' }]}>
-          <Text style={[orbStyles.icon, { color }]}>◎</Text>
+          <Image source={LOGO_MARK} style={[orbStyles.logo, { tintColor: color }]} resizeMode="contain" />
         </View>
       </View>
     </View>
@@ -73,7 +76,7 @@ const orbStyles = StyleSheet.create({
   orbit:     { position: 'absolute', width: 130, height: 130, borderRadius: 65, borderWidth: 1, borderStyle: 'dashed' },
   core:      { width: 80, height: 80, borderRadius: 40, borderWidth: 1, alignItems: 'center', justifyContent: 'center', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 8 },
   innerCore: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
-  icon:      { fontSize: 28 },
+  logo:      { width: 36, height: 36 },
 });
 
 // ── Shared status helpers ─────────────────────────────────────────────────────
@@ -365,13 +368,11 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
         {isAutoMode && (
           <View>
             <Text style={styles.sectionTitle}>
-              {activeMode === 'iran' ? 'Iran Mode · Auto Connect' : 'Smart Auto Connect'}
+              {activeMode === 'iran' ? t('ai.autoIranTitle') : t('ai.autoSmartTitle')}
             </Text>
             <GlassCard glowColor={mode.accentColor}>
               <Text style={styles.cardLabel}>
-                {activeMode === 'iran'
-                  ? 'Tests Iran-optimised profiles · connects with first working route'
-                  : 'Tests all profiles · auto-selects the best working route'}
+                {activeMode === 'iran' ? t('ai.autoIranDesc') : t('ai.autoSmartDesc')}
               </Text>
 
               {/* Status / action row */}
@@ -381,12 +382,12 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                     <View style={autoStyles.runningRow}>
                       <ActivityIndicator size="small" color={mode.accentColor} />
                       <Text style={[autoStyles.runningLabel, { color: mode.accentColor }]}>
-                        {phaseLabel(
+                        {trPhrase(phaseLabel(
                           autoConnect.phase,
                           autoConnect.currentLabel,
                           autoConnect.currentIndex,
                           autoConnect.profiles.length || 9,
-                        )}
+                        ))}
                       </Text>
                     </View>
                   ) : autoConnect.result ? (
@@ -398,30 +399,30 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                           </Text>
                           <View>
                             <Text style={[autoStyles.winnerLabel, { color: Colors.emerald[400] }]}>
-                              {autoConnect.winningConfig?.label ?? 'Best profile found'}
+                              {autoConnect.winningConfig?.label ?? t('ai.bestProfileFound')}
                             </Text>
                             <Text style={autoStyles.winnerSub}>
-                              {'Internet confirmed · real traffic validated'}
+                              {t('ai.internetConfirmed')}
                               {' · '}{(autoConnect.result.durationMs / 1000).toFixed(1)}s
                             </Text>
                           </View>
                         </View>
                         {connectionState === 'connected' && (
-                          <Text style={autoStyles.connectedNote}>VPN connected via this profile</Text>
+                          <Text style={autoStyles.connectedNote}>{t('ai.vpnConnectedVia')}</Text>
                         )}
                       </View>
                     ) : (
-                      <Text style={autoStyles.failLabel}>All profiles failed — check server config</Text>
+                      <Text style={autoStyles.failLabel}>{t('ai.allFailed')}</Text>
                     )
                   ) : (
                     <Text style={autoStyles.hintLabel}>
                       {!selectedServer
-                        ? 'Import a server config first'
+                        ? t('ai.importFirst')
                         : !isVpnIdle
-                        ? 'Disconnect VPN before running Auto Connect'
+                        ? t('ai.disconnectFirst')
                         : activeMode === 'iran'
-                        ? 'Tests 9 Iran-optimised routes in priority order'
-                        : 'Tests 8 profiles — Reality, XHTTP, WebSocket, Emergency'}
+                        ? t('ai.iranHint')
+                        : t('ai.autoHint')}
                     </Text>
                   )}
                 </View>
@@ -438,7 +439,7 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                     activeOpacity={0.75}
                   >
                     <Text style={[autoStyles.runBtnText, { color: mode.accentColor }]}>
-                      {autoConnect.result?.winnerId ? 'Re-run' : 'Auto Connect'}
+                      {autoConnect.result?.winnerId ? t('ai.rerun') : t('ai.autoConnectBtn')}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -461,11 +462,11 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                       <View style={{ flex: 1, minWidth: 0 }}>
                         <Text style={autoStyles.profileLabel} numberOfLines={1}>{p.label}</Text>
                         {p.status === 'testing' && (
-                          <Text style={autoStyles.profileSub}>Testing…</Text>
+                          <Text style={autoStyles.profileSub}>{t('home.testing')}</Text>
                         )}
                         {p.status === 'success' && (
                           <Text style={[autoStyles.profileSub, { color: Colors.emerald[400] }]}>
-                            {p.probeOk ? `Probe validated · ${p.latencyMs}ms` : `TCP connected · ${p.latencyMs}ms`}
+                            {p.probeOk ? `${t('ai.probeValidated')} · ${p.latencyMs}ms` : `${t('ai.tcpConnected')} · ${p.latencyMs}ms`}
                           </Text>
                         )}
                         {p.status === 'fail' && p.error && (
@@ -474,7 +475,7 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                           </Text>
                         )}
                         {p.status === 'skipped' && (
-                          <Text style={autoStyles.profileSub}>Skipped</Text>
+                          <Text style={autoStyles.profileSub}>{t('ai.skipped')}</Text>
                         )}
                       </View>
                     </View>
@@ -487,9 +488,9 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
 
         {/* ── Connection Optimizer (rank profiles, stays disconnected) ─────── */}
         <View>
-          <Text style={styles.sectionTitle}>Connection Optimizer</Text>
+          <Text style={styles.sectionTitle}>{t('ai.optimizer')}</Text>
           <GlassCard>
-            <Text style={styles.cardLabel}>Test and rank all profiles without connecting</Text>
+            <Text style={styles.cardLabel}>{t('ai.optimizerDesc')}</Text>
 
             <View style={optStyles.actionRow}>
               <View style={{ flex: 1 }}>
@@ -497,23 +498,23 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                   <View style={optStyles.bestBadge}>
                     <Text style={optStyles.bestIcon}>✓</Text>
                     <Text style={optStyles.bestLabel}>
-                      {optimizer.profiles.find(p => p.id === optimizer.bestProfileId)?.label ?? 'Best profile found'}
+                      {optimizer.profiles.find(p => p.id === optimizer.bestProfileId)?.label ?? t('ai.bestProfileFound')}
                     </Text>
                   </View>
                 ) : optimizer.isRunning ? (
                   <View style={optStyles.runningRow}>
                     <ActivityIndicator size="small" color="#FFB800" />
-                    <Text style={optStyles.runningLabel}>Testing profiles…</Text>
+                    <Text style={optStyles.runningLabel}>{t('ai.testingProfiles')}</Text>
                   </View>
                 ) : optimizer.profiles.length > 0 ? (
-                  <Text style={optStyles.noResultLabel}>No working profile found</Text>
+                  <Text style={optStyles.noResultLabel}>{t('ai.noWorkingProfile')}</Text>
                 ) : (
                   <Text style={optStyles.hintLabel}>
                     {!selectedServer
-                      ? 'Import a server config first'
+                      ? t('ai.importFirst')
                       : !isVpnIdle
-                      ? 'Disconnect VPN to run optimizer'
-                      : 'Tests multiple SNIs and transports to rank what works from your location'}
+                      ? t('ai.disconnectOptimizer')
+                      : t('ai.optimizerHint')}
                   </Text>
                 )}
               </View>
@@ -529,7 +530,7 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                   activeOpacity={0.75}
                 >
                   <Text style={optStyles.runBtnText}>
-                    {optimizer.profiles.length > 0 ? 'Re-run' : 'Run Optimizer'}
+                    {optimizer.profiles.length > 0 ? t('ai.rerun') : t('ai.runOptimizer')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -546,10 +547,10 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                     </View>
                     <View style={{ flex: 1, minWidth: 0 }}>
                       <Text style={optStyles.profileLabel} numberOfLines={1}>{p.label}</Text>
-                      {p.status === 'testing' && <Text style={optStyles.profileSub}>Testing…</Text>}
+                      {p.status === 'testing' && <Text style={optStyles.profileSub}>{t('home.testing')}</Text>}
                       {p.status === 'success' && (
                         <Text style={[optStyles.profileSub, { color: Colors.emerald[400] }]}>
-                          Connected in {p.latencyMs}ms
+                          {t('ai.connectedIn').replace('{ms}', String(p.latencyMs))}
                         </Text>
                       )}
                       {p.status === 'fail' && p.error && (
@@ -557,7 +558,7 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
                           {p.error}
                         </Text>
                       )}
-                      {p.status === 'skipped' && <Text style={optStyles.profileSub}>Skipped</Text>}
+                      {p.status === 'skipped' && <Text style={optStyles.profileSub}>{t('ai.skipped')}</Text>}
                     </View>
                     {p.status === 'pending' && <View style={optStyles.pendingDot} />}
                     {p.status === 'testing' && (
@@ -570,7 +571,7 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
 
             {optimizer.lastResult && (
               <Text style={optStyles.durationLabel}>
-                Completed in {(optimizer.lastResult.durationMs / 1000).toFixed(1)}s
+                {t('ai.completedIn').replace('{s}', (optimizer.lastResult.durationMs / 1000).toFixed(1))}
               </Text>
             )}
           </GlassCard>
