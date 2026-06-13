@@ -13,6 +13,7 @@ export type RootStackParamList = {
   Diagnostics:   undefined;
   Upgrade:       undefined;
   ProfileImport: undefined;
+  Inbox:         undefined;
 };
 
 export type MainTabParamList = {

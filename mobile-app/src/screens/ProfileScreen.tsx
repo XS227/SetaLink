@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Switch, Linking,
-  Modal, ActivityIndicator,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Linking,
+  Modal, ActivityIndicator, Image,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
@@ -12,13 +12,15 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
-import { BiometricService } from '../services/biometricService';
 import { getRemoteConfig } from '../services/remoteConfigService';
 import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
-import { useT } from '../i18n';
+import { useT, TKey } from '../i18n';
 import { useReferral } from '../services/entitlementService';
 import { useInboxStore } from '../stores/inboxStore';
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const LOGO_MARK = require('../assets/logo_mark.png') as number;
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
@@ -27,6 +29,18 @@ const PLAN_LABEL: Record<string, string> = {
   premium: 'Unlimited',
   team:    'Paid Package',
 };
+
+const ONE_GB_BYTES = 1024 * 1024 * 1024;
+
+// Referral/stealth milestone progression. The reward labels are i18n keys so
+// both languages stay in sync; counts follow the agreed 3·5·8·13·21 ladder.
+const MILESTONES: Array<{ count: number; rewardKey: TKey }> = [
+  { count: 3,  rewardKey: 'pr.msStealth'  },
+  { count: 5,  rewardKey: 'pr.msBonus2'   },
+  { count: 8,  rewardKey: 'pr.msPriority' },
+  { count: 13, rewardKey: 'pr.msBonus5'   },
+  { count: 21, rewardKey: 'pr.msVip'      },
+];
 
 function formatExpiry(iso: string | null): string {
   if (!iso) return 'No expiry';
@@ -39,6 +53,8 @@ function getDaysRemaining(iso: string | null): number | null {
   const diff = new Date(iso).getTime() - Date.now();
   return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
 }
+
+const gb = (bytes: number) => `${(Math.max(0, bytes) / 1e9).toFixed(1)} GB`;
 
 // ── BandwidthBar ──────────────────────────────────────────────────────────────
 
@@ -95,6 +111,37 @@ const bwStyles = StyleSheet.create({
   total:         { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
 });
 
+// ── Package card ────────────────────────────────────────────────────────────--
+
+function PackageCard({ title, desc, bytes, accent, tag, dimmed }: {
+  title: string; desc: string; bytes: number; accent: string; tag?: string; dimmed?: boolean;
+}) {
+  return (
+    <View style={[pkgStyles.card, { borderColor: accent + '40' }, dimmed && pkgStyles.cardDimmed]}>
+      <View style={[pkgStyles.accentDot, { backgroundColor: accent }]} />
+      <Text style={pkgStyles.cardTitle} numberOfLines={1}>{title}</Text>
+      <Text style={[pkgStyles.cardValue, { color: accent }]}>{gb(bytes)}</Text>
+      <Text style={pkgStyles.cardDesc} numberOfLines={2}>{desc}</Text>
+      {tag && (
+        <View style={pkgStyles.cardTag}>
+          <Text style={pkgStyles.cardTagText}>{tag}</Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
+const pkgStyles = StyleSheet.create({
+  card:        { width: 150, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, borderWidth: 1, padding: Spacing[3], gap: 4 },
+  cardDimmed:  { opacity: 0.55 },
+  accentDot:   { width: 8, height: 8, borderRadius: 4, marginBottom: 2 },
+  cardTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  cardValue:   { fontSize: Typography.size.xl, fontFamily: Typography.family.heading },
+  cardDesc:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, lineHeight: 15 },
+  cardTag:     { alignSelf: 'flex-start', marginTop: 2, backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: 8, paddingVertical: 2 },
+  cardTagText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary },
+});
+
 // ── Screen ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -105,22 +152,21 @@ interface Props {
 
 export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { t } = useT();
-  const { user, logout, setBiometricSecure, addBonusBytes } = useAuthStore();
+  const { user, logout, addBonusBytes } = useAuthStore();
   const { pendingReferralCode, setPendingReferralCode } = useSettingsStore();
   const { sessionsThisMonth } = useSessionStore();
   const showToast = useToastStore((s) => s.show);
   const { connectionState, sessionBytes } = useVpnStore();
 
-  const [biometricAvailable, setBiometricAvailable] = useState<boolean | null>(null);
   const [supportUrl, setSupportUrl] = useState('https://t.me/SetaLink3');
   const [showQr, setShowQr] = useState(false);
   const [applyingPending, setApplyingPending] = useState(false);
   const inboxMessages = useInboxStore((s) => s.messages);
-  const markRead      = useInboxStore((s) => s.markRead);
   const refreshInbox  = useInboxStore((s) => s.refresh);
 
+  const navTo = onNavigate as (tab: string) => void;
+
   useEffect(() => {
-    BiometricService.isAvailable().then(setBiometricAvailable).catch(() => setBiometricAvailable(false));
     getRemoteConfig().then(cfg => { if (cfg.support_url) setSupportUrl(cfg.support_url); }).catch(() => {});
     if (user?.deviceId) refreshInbox(user.deviceId).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -139,19 +185,30 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const remainingBytes     = Math.max(0, user.quotaBytesTotal - liveQuotaUsed);
   const isQuotaExhausted   = !isUnlimited && remainingBytes === 0;
 
+  // Package breakdown. The backend exposes only quota_bytes_total today (no
+  // per-source ledger), so we derive the buckets: the first 1 GB is the
+  // non-transferable welcome grant, and in the current free-only model every
+  // byte above that is referral-earned. `purchased` stays 0 until a purchase
+  // flow credits a dedicated bucket — at which point replace this with the
+  // server-provided breakdown.
+  const starterBytes   = Math.min(ONE_GB_BYTES, user.quotaBytesTotal);
+  const referralBytes  = Math.max(0, user.quotaBytesTotal - starterBytes);
+  const purchasedBytes = 0;
+
   const primaryId  = user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`;
   // Referral code MUST be the backend `referral_code` — that is what use-referral
   // looks up. The old code derived it from the user_id suffix, which never matched
   // the stored referral_code, so every shared invite was rejected.
   const referralDisplayCode = (user.referralCode || '').toUpperCase();
-  const initial    = primaryId.slice(0, 2).toUpperCase();
   const monthSessions = sessionsThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);
 
-  const handleCopyUserId = () => {
-    Clipboard.setString(primaryId);
-    showToast('User ID copied', 'success', 2000);
-  };
+  const unreadCount = inboxMessages.filter(m => !m.read).length;
+
+  // Milestone progression
+  const invites = user.activeInviteCount ?? 0;
+  const nextMs  = MILESTONES.find(m => invites < m.count);
+  const nextProgress = nextMs ? Math.min(1, invites / nextMs.count) : 1;
 
   const handleCopyReferral = () => {
     Clipboard.setString(referralDisplayCode);
@@ -177,14 +234,14 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
       setPendingReferralCode(null);
       if (result.status === 'pending_review') {
         // Anti-fraud hold — bonus is granted only after admin approval.
-        showToast('Code received — bonus is pending review', 'info', 4000);
+        showToast(t('pr.pendingReview'), 'info', 4000);
       } else {
         addBonusBytes(result.bonus_bytes);
-        const gb = (result.bonus_bytes / (1024 * 1024 * 1024)).toFixed(0);
-        showToast(`+${gb} GB bonus credited!`, 'success', 3000);
+        const earned = (result.bonus_bytes / (1024 * 1024 * 1024)).toFixed(0);
+        showToast(t('pr.bonusCredited').replace('{gb}', earned), 'success', 3000);
       }
     } catch (e: any) {
-      showToast(e?.message || 'Could not apply referral code', 'error', 3000);
+      showToast(e?.message || t('pr.refError'), 'error', 3000);
     } finally {
       setApplyingPending(false);
     }
@@ -234,9 +291,9 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           <GlassCard style={styles.pendingBanner} glowColor={Colors.emerald[400]}>
             <View style={styles.pendingRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.pendingTitle}>Referral code waiting</Text>
+                <Text style={styles.pendingTitle}>{t('pr.pendingRefTitle')}</Text>
                 <Text style={styles.pendingDesc}>
-                  Apply code <Text style={styles.pendingCode}>{pendingReferralCode}</Text> to claim +1 GB
+                  {t('pr.pendingRefDesc').replace('{code}', pendingReferralCode)}
                 </Text>
               </View>
               <TouchableOpacity
@@ -247,38 +304,21 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               >
                 {applyingPending
                   ? <ActivityIndicator size="small" color="#fff" />
-                  : <Text style={styles.pendingBtnText}>Apply</Text>
+                  : <Text style={styles.pendingBtnText}>{t('pr.apply')}</Text>
                 }
               </TouchableOpacity>
             </View>
           </GlassCard>
         )}
 
-        {/* User info */}
-        <View style={styles.userCard}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarInitial}>{initial}</Text>
-            {user.plan !== 'free' && (
-              <View style={styles.premiumBadge}>
-                <Text style={styles.premiumIcon}>★</Text>
-              </View>
-            )}
+        {/* Brand header — logo replaces the old SL initials circle */}
+        <View style={styles.brandHeader}>
+          <View style={styles.brandLogoRing}>
+            <Image source={LOGO_MARK} style={styles.brandLogo} resizeMode="contain" />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.userName} numberOfLines={1}>{primaryId}</Text>
-            <View style={styles.planRow}>
-              <View style={[
-                styles.planBadge,
-                user.plan === 'free' && { borderColor: Colors.border.default, backgroundColor: Colors.bg.elevated },
-              ]}>
-                <Text style={[
-                  styles.planText,
-                  user.plan === 'free' && { color: Colors.text.muted },
-                ]}>
-                  {planLabel}
-                </Text>
-              </View>
-            </View>
+          <Text style={styles.brandId} numberOfLines={1}>{primaryId}</Text>
+          <View style={styles.planBadge}>
+            <Text style={styles.planText}>{planLabel}</Text>
           </View>
         </View>
 
@@ -356,7 +396,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <TouchableOpacity
               style={[styles.upgradeBtn, isQuotaExhausted && styles.addDataBtn]}
               activeOpacity={0.85}
-              onPress={() => (onNavigate as (tab: string) => void)('upgrade')}
+              onPress={() => navTo('upgrade')}
             >
               <Text style={[styles.upgradeBtnText, isQuotaExhausted && styles.addDataBtnText]}>
                 {isQuotaExhausted ? t('pr.addData') : t('pr.upgradePremium')}
@@ -369,74 +409,61 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           )}
         </GlassCard>
 
-        <GlassCard>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flex: 1, marginRight: Spacing[3] }}>
-              <Text style={styles.cardLabel}>{t('pr.biometricLock')}</Text>
-              <Text style={styles.deviceOs}>{t('pr.biometricLockDesc')}</Text>
-              {biometricAvailable === false && (
-                <Text style={styles.biometricWarning}>
-                  Biometric authentication is not available on this device.
-                </Text>
-              )}
-            </View>
-            <Switch
-              value={biometricAvailable === true && user.securedWithBiometric}
-              disabled={biometricAvailable === false}
-              onValueChange={(v) => {
-                if (!biometricAvailable) return;
-                setBiometricSecure(v);
-              }}
-              trackColor={{ true: Colors.emerald[400], false: Colors.bg.elevated }}
+        {/* Package / quota overview */}
+        <GlassCard style={styles.packagesCard}>
+          <Text style={styles.cardLabel}>{t('pr.packages')}</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.pkgRow}
+          >
+            <PackageCard
+              title={t('pr.starterPack')}
+              desc={t('pr.starterPackDesc')}
+              bytes={starterBytes}
+              accent={Colors.emerald[400]}
+              tag={t('pr.notTransferable')}
             />
+            <PackageCard
+              title={t('pr.referralPack')}
+              desc={t('pr.referralPackDesc')}
+              bytes={referralBytes}
+              accent={Colors.blue[400]}
+            />
+            <PackageCard
+              title={t('pr.purchasedPack')}
+              desc={t('pr.purchasedPackDesc')}
+              bytes={purchasedBytes}
+              accent="#FFB800"
+              dimmed={purchasedBytes === 0}
+            />
+          </ScrollView>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>{t('pr.totalLabel')}</Text>
+            <Text style={styles.totalValue}>{gb(user.quotaBytesTotal)}</Text>
           </View>
         </GlassCard>
 
-        {/* Inbox — admin announcements */}
-        {inboxMessages.length > 0 && (
+        {/* Inbox entry */}
+        <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('inbox')}>
           <GlassCard style={styles.inboxCard}>
-            <View style={styles.referralHeader}>
-              <Text style={styles.cardLabel}>Inbox</Text>
-              {inboxMessages.some(m => !m.read) && (
-                <View style={styles.inboxUnreadBadge}>
-                  <Text style={styles.inboxUnreadText}>
-                    {inboxMessages.filter(m => !m.read).length} new
-                  </Text>
+            <View style={styles.inboxRow}>
+              <Text style={styles.inboxIcon}>📬</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inboxTitle}>{t('pr.inbox')}</Text>
+                <Text style={styles.inboxSub}>
+                  {inboxMessages.length > 0 ? t('pr.inboxOpen') : t('pr.inboxEmpty')}
+                </Text>
+              </View>
+              {unreadCount > 0 && (
+                <View style={styles.inboxBadge}>
+                  <Text style={styles.inboxBadgeText}>{unreadCount} {t('pr.inboxNew')}</Text>
                 </View>
               )}
+              <Text style={styles.actionChevron}>›</Text>
             </View>
-            {inboxMessages.slice(0, 5).map((m) => (
-              <TouchableOpacity
-                key={m.id}
-                style={[styles.inboxItem, !m.read && styles.inboxItemUnread]}
-                activeOpacity={0.8}
-                onPress={() => { if (!m.read) markRead(user.deviceId, m.id); }}
-              >
-                <View style={styles.inboxItemHeader}>
-                  {!m.read && <View style={styles.inboxDot} />}
-                  <Text style={[styles.inboxTitle, !m.read && styles.inboxTitleUnread]} numberOfLines={1}>
-                    {m.title}
-                  </Text>
-                  <Text style={styles.inboxDate}>{m.createdAt.slice(0, 10)}</Text>
-                </View>
-                <Text style={styles.inboxBody}>{m.body}</Text>
-                {!m.read && <Text style={styles.inboxMarkHint}>Tap to mark as read</Text>}
-              </TouchableOpacity>
-            ))}
           </GlassCard>
-        )}
-
-        {/* User ID */}
-        <GlassCard>
-          <Text style={styles.cardLabel}>{t('pr.yourUserId')}</Text>
-          <View style={styles.referralCode}>
-            <Text style={styles.referralCodeText} numberOfLines={1}>{primaryId}</Text>
-            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyUserId}>
-              <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.deviceOs, { marginTop: 6 }]}>{t('pr.userIdHint')}</Text>
-        </GlassCard>
+        </TouchableOpacity>
 
         {/* Referral */}
         <GlassCard style={styles.referralCard} glowColor={Colors.blue[400]}>
@@ -462,43 +489,78 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </TouchableOpacity>
         </GlassCard>
 
-        {/* Viral loop progress */}
-        <GlassCard style={styles.viralCard}>
-          <Text style={styles.cardLabel}>Stealth Servers</Text>
-          {user.stealthUnlocked ? (
-            <View style={styles.viralUnlockedRow}>
-              <Text style={styles.viralUnlockedIcon}>🔓</Text>
-              <View>
-                <Text style={styles.viralUnlockedText}>Stealth servers unlocked!</Text>
-                <Text style={styles.viralUnlockedSub}>You can now connect to stealth nodes</Text>
+        {/* Invite reward milestones */}
+        <GlassCard style={styles.msCard}>
+          <View style={styles.referralHeader}>
+            <Text style={styles.cardLabel}>{t('pr.inviteRewards')}</Text>
+            <View style={styles.msInviteBadge}>
+              <Text style={styles.msInviteBadgeText}>{invites} {t('pr.activeInvites')}</Text>
+            </View>
+          </View>
+
+          {user.stealthUnlocked && (
+            <View style={styles.stealthRow}>
+              <Text style={styles.stealthIcon}>🔓</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.stealthTitle}>{t('pr.stealthUnlockedMsg')}</Text>
+                <Text style={styles.stealthSub}>{t('pr.stealthUnlockedSub')}</Text>
               </View>
             </View>
-          ) : (
-            <>
-              <Text style={styles.viralDesc}>
-                Invite {Math.max(0, 3 - (user.activeInviteCount ?? 0))} more active friend{3 - (user.activeInviteCount ?? 0) === 1 ? '' : 's'} to unlock stealth servers
-              </Text>
-              <View style={styles.viralProgressRow}>
-                {[0, 1, 2].map((i) => (
-                  <View key={i} style={[styles.viralDot, i < (user.activeInviteCount ?? 0) && styles.viralDotFilled]} />
-                ))}
-                <Text style={styles.viralProgressText}>{user.activeInviteCount ?? 0}/3 active</Text>
-              </View>
-            </>
           )}
+
+          {nextMs ? (
+            <>
+              <Text style={styles.msNextLabel}>{t('pr.nextMilestone')}</Text>
+              <Text style={styles.msNextText}>
+                {t('pr.inviteMore').replace('{n}', String(nextMs.count - invites))}{' '}
+                <Text style={styles.msReward}>{t(nextMs.rewardKey)}</Text>
+              </Text>
+              <View style={styles.msTrack}>
+                <View style={[styles.msFill, { width: `${nextProgress * 100}%` as any }]} />
+              </View>
+              <Text style={styles.msCount}>{invites}/{nextMs.count}</Text>
+            </>
+          ) : (
+            <Text style={styles.msAllDone}>✓ {t('pr.allMilestones')}</Text>
+          )}
+
+          {/* Milestone ladder */}
+          <View style={styles.msList}>
+            {MILESTONES.map((m) => {
+              const reached = invites >= m.count;
+              return (
+                <View key={m.count} style={styles.msItem}>
+                  <View style={[styles.msDot, reached && styles.msDotReached]}>
+                    <Text style={[styles.msDotText, reached && styles.msDotTextReached]}>
+                      {reached ? '✓' : m.count}
+                    </Text>
+                  </View>
+                  <Text style={[styles.msItemLabel, reached && styles.msItemLabelReached]}>
+                    {t(m.rewardKey)}
+                  </Text>
+                  {reached && (
+                    <View style={styles.msUnlockedTag}>
+                      <Text style={styles.msUnlockedText}>{t('pr.unlockedTag')}</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
         </GlassCard>
 
         {/* QR modal */}
         <Modal visible={showQr} transparent animationType="fade" onRequestClose={() => setShowQr(false)}>
           <TouchableOpacity style={styles.qrOverlay} activeOpacity={1} onPress={() => setShowQr(false)}>
             <View style={styles.qrBox}>
-              <Text style={styles.qrTitle}>Scan to invite</Text>
+              <Text style={styles.qrTitle}>{t('pr.scanToInvite')}</Text>
               <QRCode value={referralLink} size={200} backgroundColor="#ffffff" color="#000000" />
               <Text style={styles.qrCodeLabel}>{referralDisplayCode}</Text>
-              <Text style={styles.qrHint}>Tap outside to close</Text>
+              <Text style={styles.qrHint}>{t('pr.tapToClose')}</Text>
             </View>
           </TouchableOpacity>
         </Modal>
+
         <TouchableOpacity style={styles.actionRow} activeOpacity={0.7} onPress={handleOpenSupport}>
           <Text style={styles.actionLabel}>{t('pr.support')}</Text>
           <Text style={styles.actionChevron}>›</Text>
@@ -506,7 +568,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
         <GlassCard>
           <Text style={styles.footerBrand}>SetaLink</Text>
-          <TouchableOpacity onLongPress={() => (onNavigate as (tab: string) => void)('diagnostics')} delayLongPress={1500}>
+          <TouchableOpacity onLongPress={() => navTo('diagnostics')} delayLongPress={1500}>
             <Text style={styles.footerMeta}>v{APP_VERSION} ({APP_BUILD})</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleOpenWebsite}>
@@ -536,16 +598,15 @@ const styles = StyleSheet.create({
   title:            { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   settingsBtn:      { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   settingsIcon:     { fontSize: 18, color: Colors.text.secondary },
-  userCard:         { flexDirection: 'row', alignItems: 'center', gap: Spacing[4] },
-  avatar:           { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.emerald[700], alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.emerald[400], position: 'relative' },
-  avatarInitial:    { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary },
-  premiumBadge:     { position: 'absolute', bottom: -2, right: -2, width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFB800', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: Colors.bg.base },
-  premiumIcon:      { fontSize: 9, color: '#000' },
-  userName:         { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  userEmail:        { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  planRow:          { marginTop: 6 },
-  planBadge:        { backgroundColor: 'rgba(255,184,0,0.15)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3, alignSelf: 'flex-start' },
+
+  // Brand header (logo)
+  brandHeader:      { alignItems: 'center', gap: Spacing[2], paddingVertical: Spacing[2] },
+  brandLogoRing:    { width: 84, height: 84, borderRadius: 42, backgroundColor: 'rgba(0,232,122,0.08)', borderWidth: 1, borderColor: Colors.border.glow, alignItems: 'center', justifyContent: 'center' },
+  brandLogo:        { width: 52, height: 52, tintColor: Colors.emerald[400] },
+  brandId:          { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  planBadge:        { backgroundColor: 'rgba(255,184,0,0.15)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3, alignSelf: 'center' },
   planText:         { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FFB800', letterSpacing: 0.5 },
+
   subCard:          { gap: Spacing[4] },
   subHeader:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   subTitle:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
@@ -578,28 +639,25 @@ const styles = StyleSheet.create({
   quotaExhaustedPill:  { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,184,0,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.35)', paddingHorizontal: Spacing[3], paddingVertical: 5 },
   quotaExhaustedPillText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FFB800', letterSpacing: 0.3 },
   cardLabel:        { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[3] },
-  deviceRow:        { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing[3], gap: Spacing[3] },
-  deviceIcon:       { width: 36, height: 36, borderRadius: Radius.md, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
-  deviceIconText:   { fontSize: 20, color: Colors.text.secondary },
-  deviceInfo:       { flex: 1 },
-  deviceName:       { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.primary },
   deviceOs:         { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  biometricWarning: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: '#FFB800', marginTop: 4, lineHeight: 16 },
-  deviceStatus:     { borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4 },
-  deviceStatusText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label },
+
+  // Packages
+  packagesCard:     { gap: Spacing[3] },
+  pkgRow:           { gap: Spacing[3], paddingRight: Spacing[2] },
+  totalRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: Colors.border.subtle, paddingTop: Spacing[3] },
+  totalLabel:       { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  totalValue:       { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+
+  // Inbox entry
+  inboxCard:        { paddingVertical: Spacing[3] },
+  inboxRow:         { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  inboxIcon:        { fontSize: 22 },
+  inboxTitle:       { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  inboxSub:         { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  inboxBadge:       { backgroundColor: 'rgba(255,80,80,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.35)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
+  inboxBadgeText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FF5050' },
+
   referralCard:     { gap: Spacing[3] },
-  inboxCard:        { gap: Spacing[3] },
-  inboxUnreadBadge: { backgroundColor: 'rgba(255,80,80,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.35)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
-  inboxUnreadText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FF5050' },
-  inboxItem:        { borderRadius: Radius.lg, padding: Spacing[3], backgroundColor: Colors.bg.elevated, gap: 4 },
-  inboxItemUnread:  { borderWidth: 1, borderColor: 'rgba(0,232,122,0.25)', backgroundColor: 'rgba(0,232,122,0.05)' },
-  inboxItemHeader:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  inboxDot:         { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.emerald[400] },
-  inboxTitle:       { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.secondary },
-  inboxTitleUnread: { color: Colors.text.primary },
-  inboxDate:        { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
-  inboxBody:        { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 19 },
-  inboxMarkHint:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400], marginTop: 2 },
   referralHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rewardBadge:      { backgroundColor: 'rgba(51,153,255,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(51,153,255,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
   rewardBadgeText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.blue[400] },
@@ -610,15 +668,33 @@ const styles = StyleSheet.create({
   copyBtnText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.inverse },
   shareBtn:         { borderWidth: 1, borderColor: Colors.blue[400], borderRadius: Radius.md, paddingVertical: Spacing[3], alignItems: 'center' },
   shareBtnText:     { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.blue[400], letterSpacing: 0.3 },
-  referralStats:    { flexDirection: 'row', gap: Spacing[6] },
-  referralStat:     { gap: 2 },
-  referralStatValue:{ fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  referralStatLabel:{ fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  rewardsRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  rewardsTitle:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  rewardsSub:       { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  comingSoon:       { backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  comingSoonText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted },
+
+  // Milestones
+  msCard:           { gap: Spacing[3] },
+  msInviteBadge:    { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(0,232,122,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
+  msInviteBadgeText:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+  stealthRow:       { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], backgroundColor: 'rgba(0,232,122,0.06)', borderRadius: Radius.lg, padding: Spacing[3] },
+  stealthIcon:      { fontSize: 24 },
+  stealthTitle:     { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
+  stealthSub:       { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  msNextLabel:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  msNextText:       { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 20 },
+  msReward:         { fontFamily: Typography.family.heading, color: Colors.text.primary },
+  msTrack:          { height: 6, borderRadius: 3, backgroundColor: Colors.bg.elevated, overflow: 'hidden', marginTop: 2 },
+  msFill:           { height: '100%', borderRadius: 3, backgroundColor: Colors.emerald[400] },
+  msCount:          { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end' },
+  msAllDone:        { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
+  msList:           { gap: Spacing[2], marginTop: Spacing[2] },
+  msItem:           { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  msDot:            { width: 26, height: 26, borderRadius: 13, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
+  msDotReached:     { backgroundColor: Colors.emerald[400], borderColor: Colors.emerald[400] },
+  msDotText:        { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  msDotTextReached: { color: Colors.text.inverse, fontFamily: Typography.family.heading },
+  msItemLabel:      { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary },
+  msItemLabelReached: { color: Colors.text.primary },
+  msUnlockedTag:    { backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(0,232,122,0.3)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
+  msUnlockedText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+
   actionRow:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[4] },
   actionLabel:      { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary },
   actionChevron:    { fontSize: 20, color: Colors.text.muted },
@@ -634,7 +710,6 @@ const styles = StyleSheet.create({
   pendingRow:       { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   pendingTitle:     { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400], marginBottom: 2 },
   pendingDesc:      { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 16 },
-  pendingCode:      { fontFamily: Typography.family.mono, color: Colors.text.primary },
   pendingBtn:       { backgroundColor: Colors.emerald[400], borderRadius: Radius.md, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], minWidth: 64, alignItems: 'center' },
   pendingBtnDisabled: { opacity: 0.5 },
   pendingBtnText:   { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.inverse },
@@ -649,16 +724,4 @@ const styles = StyleSheet.create({
   qrTitle:          { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: '#111' },
   qrCodeLabel:      { fontSize: Typography.size.base, fontFamily: Typography.family.mono, color: '#333', letterSpacing: 2 },
   qrHint:           { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: '#999' },
-
-  // Viral loop
-  viralCard:        { gap: Spacing[3] },
-  viralDesc:        { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 20 },
-  viralProgressRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  viralDot:         { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: Colors.border.default, backgroundColor: Colors.bg.elevated },
-  viralDotFilled:   { backgroundColor: Colors.emerald[400], borderColor: Colors.emerald[400] },
-  viralProgressText:{ fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted, marginLeft: Spacing[2] },
-  viralUnlockedRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  viralUnlockedIcon:{ fontSize: 28 },
-  viralUnlockedText:{ fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
-  viralUnlockedSub: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
 });

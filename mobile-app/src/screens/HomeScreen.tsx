@@ -22,13 +22,15 @@ import { useVpnStats }         from '../hooks/useVpnStats';
 import { formatBytes }         from '../utils/formatters';
 import { computeHealthScore, dnsOkFromConnectionLog } from '../utils/healthScore';
 import { getLastConnectProbeOk } from '../services/vpnBridge';
-import { useT }                from '../i18n';
+import { useT, trPhrase }     from '../i18n';
 import { connectingPhaseLabel } from '../services/failureClassifier';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_CONNECTED    = require('../assets/logo_connected.png') as number;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_DISCONNECTED = require('../assets/logo_disconnected.png') as number;
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const LOGO_MARK         = require('../assets/logo_mark.png') as number;
 
 const { width } = Dimensions.get('window');
 
@@ -111,6 +113,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     }
     return 'Establishing secure tunnel…';
   })();
+  const localizedConnectingLabel = connectingLabel ? trPhrase(connectingLabel) : null;
 
   const headerOpacity    = useRef(new Animated.Value(0)).current;
   const contentTranslate = useRef(new Animated.Value(20)).current;
@@ -187,7 +190,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           )}
           {isConnected && autoConnect.winningConfig && (
             <View style={styles.stealthBadge}>
-              <Text style={styles.stealthBadgeText}>Stealth Active</Text>
+              <Text style={styles.stealthBadgeText}>{t('home.stealthActive')}</Text>
             </View>
           )}
         </Animated.View>
@@ -206,11 +209,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         </Animated.View>
 
         {/* Smart status — friendly message while connecting */}
-        {connectionState === 'connecting' && connectingLabel && (
+        {connectionState === 'connecting' && localizedConnectingLabel && (
           <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
             <View style={styles.smartStatusRow}>
               <View style={styles.smartStatusDot} />
-              <Text style={styles.smartStatusText}>{connectingLabel}</Text>
+              <Text style={styles.smartStatusText}>{localizedConnectingLabel}</Text>
             </View>
           </Animated.View>
         )}
@@ -223,8 +226,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               onPress={() => useVpnStore.getState().clearError()}
               activeOpacity={0.85}
             >
-              <Text style={styles.errorCardText}>{error}</Text>
-              <Text style={styles.errorCardHint}>Tap to retry</Text>
+              <Text style={styles.errorCardText}>{trPhrase(error)}</Text>
+              <Text style={styles.errorCardHint}>{t('home.tapToRetry')}</Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -300,17 +303,19 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             activeOpacity={0.8}
           >
             <View style={styles.aiBtnLeft}>
-              <View style={[styles.aiOrb, autoConnect.isRunning && { borderColor: '#FFB800', shadowColor: '#FFB800' }]} />
+              <View style={[styles.aiOrb, autoConnect.isRunning && { borderColor: '#FFB800', shadowColor: '#FFB800' }]}>
+                <Image source={LOGO_MARK} style={styles.aiOrbLogo} resizeMode="contain" />
+              </View>
               <View>
                 <Text style={styles.aiBtnTitle}>
-                  {autoConnect.isRunning ? 'Finding best route…' : isConnected ? 'Optimal route active' : 'Auto-route selection'}
+                  {autoConnect.isRunning ? t('home.findingRoute') : isConnected ? t('home.optimalRoute') : t('home.autoRoute')}
                 </Text>
                 <Text style={styles.aiBtnSub}>
                   {autoConnect.isRunning
-                    ? `Testing ${autoConnect.profiles.length} routes`
+                    ? t('home.testingRoutes').replace('{n}', String(autoConnect.profiles.length))
                     : isConnected && autoConnect.winningConfig
-                      ? `Connected via ${autoConnect.winningConfig.label}`
-                      : 'Tap for advanced options'}
+                      ? t('home.connectedVia').replace('{label}', autoConnect.winningConfig.label)
+                      : t('home.tapAdvanced')}
                 </Text>
               </View>
             </View>
@@ -368,7 +373,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               activeOpacity={0.75}
             >
               <Text style={styles.traceBtnText}>
-                {traceTestRunning ? 'Testing…' : 'Test routing'}
+                {traceTestRunning ? t('home.testing') : t('home.testRouting')}
               </Text>
             </TouchableOpacity>
 
@@ -376,18 +381,18 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <View style={[styles.traceResult, traceTestResult.ok ? styles.traceResultOk : styles.traceResultFail]}>
                 {traceTestResult.ok ? (
                   <>
-                    <Text style={styles.traceResultTitle}>Routing OK</Text>
+                    <Text style={styles.traceResultTitle}>{t('home.routingOk')}</Text>
                     <Text style={styles.traceResultLine}>IP: {traceTestResult.routedIp}</Text>
                     <Text style={styles.traceResultLine}>HTTP {traceTestResult.statusCode} · {traceTestResult.bytesIn} B</Text>
                   </>
                 ) : (
                   <>
-                    <Text style={styles.traceResultTitle}>Routing failed</Text>
+                    <Text style={styles.traceResultTitle}>{t('home.routingFailed')}</Text>
                     <Text style={styles.traceResultLine}>
                       {traceTestResult.error ?? `HTTP ${traceTestResult.statusCode}`}
                     </Text>
                     <Text style={styles.traceResultHint}>
-                      Server connected, but internet is not routed through VPN.
+                      {t('home.routingFailedHint')}
                     </Text>
                   </>
                 )}
@@ -479,7 +484,8 @@ const styles = StyleSheet.create({
   metricRow:    { flexDirection: 'row', gap: Spacing[3] },
   aiBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(0,232,122,0.15)', padding: Spacing[4], ...Shadow.card },
   aiBtnLeft:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  aiOrb:        { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,232,122,0.12)', borderWidth: 1, borderColor: Colors.border.glow, shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4 },
+  aiOrb:        { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,232,122,0.12)', borderWidth: 1, borderColor: Colors.border.glow, shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4, alignItems: 'center', justifyContent: 'center' },
+  aiOrbLogo:    { width: 26, height: 26, tintColor: Colors.emerald[400] },
   aiBtnTitle:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
   aiBtnSub:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   aiArrow:      { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },

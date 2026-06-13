@@ -58,6 +58,7 @@ interface VpnState {
   connectionLog:      string[];        // step log from most recent connect attempt
   traceTestResult:    TraceTestResult | null;
   traceTestRunning:   boolean;
+  lastPingMs:         number;          // last live latency sample; recorded into session history
   // Protocol auto-fallback state (internal — not persisted)
   _fallbackIdx:       number;
   _fallbackActive:    boolean;
@@ -72,6 +73,7 @@ interface VpnState {
   setProtocol:        (p: string) => void;
   clearError:         () => void;
   setConnectionLog:   (log: string[]) => void;
+  setLastPingMs:      (ms: number) => void;
   runTraceTest:       () => Promise<void>;
   // kept for backward compat in tests / adapters
   setConnectionState: (s: ConnectionState) => void;
@@ -168,6 +170,13 @@ export const useVpnStore = create<VpnState>((set, get) => {
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { useSessionStore } = require('./sessionStore');
+          // Winning auto-connect route label (if the session came from auto-connect)
+          let route: string | undefined;
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { useAIStore } = require('./aiStore');
+            route = useAIStore.getState().autoConnect?.winningConfig?.label || undefined;
+          } catch {}
           useSessionStore.getState().addSession({
             serverId:   state.selectedServer.id,
             serverName: `${state.selectedServer.city}, ${state.selectedServer.country}`,
@@ -179,6 +188,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
             sentBytes:  state.sessionBytes.sent,
             recvBytes:  state.sessionBytes.received,
             status:     'success',
+            pingMs:     state.lastPingMs || state.selectedServer.ping || undefined,
+            route,
           });
         } catch {}
       }
@@ -374,6 +385,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     connectionLog:     [],
     traceTestResult:   null,
     traceTestRunning:  false,
+    lastPingMs:        0,
     _fallbackIdx:      0,
     _fallbackActive:   false,
 
@@ -409,6 +421,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
     setSelectedServer: (server) => set({ selectedServer: server }),
 
     setSessionBytes: (b) => set({ sessionBytes: b }),
+
+    setLastPingMs: (ms) => set({ lastPingMs: ms }),
 
     addSessionBytes: (sent, received) => set((prev) => ({
       sessionBytes: {

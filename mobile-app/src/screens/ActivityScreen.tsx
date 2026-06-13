@@ -10,20 +10,52 @@ import { useVpnStore }     from '../stores/vpnStore';
 import { formatBytes, formatDuration } from '../utils/formatters';
 import { useT } from '../i18n';
 
-function groupLabel(ts: number, todayStr: string, yesterdayStr: string): string {
+function groupLabel(ts: number, todayStr: string, yesterdayStr: string, locale: string): string {
   const d         = new Date(ts);
   const today     = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
   if (d.toDateString() === today.toDateString())     return todayStr;
   if (d.toDateString() === yesterday.toDateString()) return yesterdayStr;
-  return d.toLocaleDateString('en-US', { weekday: 'short' });
+  return d.toLocaleDateString(locale, { weekday: 'short' });
 }
 
 function timeLabel(ts: number): string {
   return new Date(ts).toLocaleTimeString('en-US', {
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
+}
+
+// Ping color — competitive feel: green when fast, amber mid, red slow
+function pingColor(ms: number): string {
+  if (ms <= 0)   return Colors.text.muted;
+  if (ms < 150)  return Colors.emerald[400];
+  if (ms < 400)  return '#FFB800';
+  return Colors.status.disconnected;
+}
+
+// Per-session stat chips: ping (the brag number), up, down, duration
+function SessionStats({ pingMs, sent, recv, duration }: {
+  pingMs?: number; sent: number; recv: number; duration: number;
+}) {
+  return (
+    <View style={styles.statsRow}>
+      <View style={styles.statChip}>
+        <Text style={[styles.statPing, { color: pingColor(pingMs ?? 0) }]}>
+          {pingMs && pingMs > 0 ? `${pingMs}ms` : '—'}
+        </Text>
+      </View>
+      <View style={styles.statChip}>
+        <Text style={styles.statValue}>↑ {formatBytes(sent)}</Text>
+      </View>
+      <View style={styles.statChip}>
+        <Text style={styles.statValue}>↓ {formatBytes(recv)}</Text>
+      </View>
+      <View style={styles.statChip}>
+        <Text style={styles.statValue}>⏱ {formatDuration(duration)}</Text>
+      </View>
+    </View>
+  );
 }
 
 function Sparkline({ data }: { data: number[] }) {
@@ -59,19 +91,13 @@ const STATUS_COLOR: Record<string, string> = {
   timeout: Colors.status.disconnected,
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  success: 'OK',
-  dropped: 'Drop',
-  timeout: 'Timeout',
-};
-
 interface Props {
   onNavigate: (tab: NavTab) => void;
   activeTab:  NavTab;
 }
 
 export function ActivityScreen({ onNavigate, activeTab }: Props) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const { sessions, sessionsToday, totalBytesToday, totalDurationToday, hourlyDownload } =
     useSessionStore();
 
@@ -80,7 +106,15 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
     sessionStartedAt,
     sessionBytes,
     selectedServer,
+    lastPingMs,
   } = useVpnStore();
+
+  const dateLocale = lang === 'fa' ? 'fa-IR' : 'en-US';
+  const STATUS_LABEL: Record<string, string> = {
+    success: t('ac.statusOk'),
+    dropped: t('ac.statusDrop'),
+    timeout: t('ac.statusTimeout'),
+  };
 
   // Tick every second to keep live duration accurate
   const [, setTick] = useState(0);
@@ -110,8 +144,8 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
 
   const dateHeader = useMemo(() => {
     const d = new Date();
-    return `${todayLabel}, ${d.toLocaleDateString('en-US', { day: 'numeric', month: 'long' })}`;
-  }, [todayLabel]);
+    return `${todayLabel}, ${d.toLocaleDateString(dateLocale, { day: 'numeric', month: 'long' })}`;
+  }, [todayLabel, dateLocale]);
 
   return (
     <View style={styles.screen}>
@@ -179,22 +213,19 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
                     <Text style={styles.logFlag}>{selectedServer.flag}</Text>
                     <View>
                       <Text style={styles.logServer}>{selectedServer.city}, {selectedServer.country}</Text>
-                      <Text style={styles.logProtocol}>{selectedServer.protocol}</Text>
+                      <Text style={styles.logProtocol}>{selectedServer.protocol} · {timeLabel(sessionStartedAt!)}</Text>
                     </View>
                   </View>
                   <View style={[styles.statusPill, { backgroundColor: 'rgba(0,232,122,0.12)', borderColor: 'rgba(0,232,122,0.4)' }]}>
-                    <Text style={[styles.statusText, { color: Colors.emerald[400] }]}>Live</Text>
+                    <Text style={[styles.statusText, { color: Colors.emerald[400] }]}>{t('ac.live')}</Text>
                   </View>
                 </View>
-                <View style={styles.logMeta}>
-                  <Text style={styles.metaItem}>⏱ {formatDuration(liveDuration)}</Text>
-                  <Text style={styles.metaDivider}>·</Text>
-                  <Text style={styles.metaItem}>↑ {formatBytes(sessionBytes.sent)}</Text>
-                  <Text style={styles.metaDivider}>·</Text>
-                  <Text style={styles.metaItem}>↓ {formatBytes(sessionBytes.received)}</Text>
-                  <Text style={styles.metaDivider}>·</Text>
-                  <Text style={styles.metaItem}>{timeLabel(sessionStartedAt!)}</Text>
-                </View>
+                <SessionStats
+                  pingMs={lastPingMs || selectedServer.ping}
+                  sent={sessionBytes.sent}
+                  recv={sessionBytes.received}
+                  duration={liveDuration}
+                />
               </GlassCard>
             </View>
           )}
@@ -205,8 +236,8 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
             </GlassCard>
           ) : (
             sessions.map((session, i) => {
-              const label     = groupLabel(session.startedAt, todayLabel, yesterdayLabel);
-              const prevLabel = i > 0 ? groupLabel(sessions[i - 1].startedAt, todayLabel, yesterdayLabel) : null;
+              const label     = groupLabel(session.startedAt, todayLabel, yesterdayLabel, dateLocale);
+              const prevLabel = i > 0 ? groupLabel(sessions[i - 1].startedAt, todayLabel, yesterdayLabel, dateLocale) : null;
               const showSep   = i === 0 || label !== prevLabel;
 
               return (
@@ -225,7 +256,10 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
                           <Text style={styles.logFlag}>{session.serverFlag}</Text>
                           <View>
                             <Text style={styles.logServer}>{session.serverName}</Text>
-                            <Text style={styles.logProtocol}>{session.protocol}</Text>
+                            <Text style={styles.logProtocol} numberOfLines={1}>
+                              {session.route ? `${session.protocol} · ${session.route}` : session.protocol}
+                              {' · '}{timeLabel(session.startedAt)}
+                            </Text>
                           </View>
                         </View>
                         <View style={[
@@ -241,15 +275,12 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
                         </View>
                       </View>
 
-                      <View style={styles.logMeta}>
-                        <Text style={styles.metaItem}>⏱ {formatDuration(session.duration)}</Text>
-                        <Text style={styles.metaDivider}>·</Text>
-                        <Text style={styles.metaItem}>↑ {formatBytes(session.sentBytes)}</Text>
-                        <Text style={styles.metaDivider}>·</Text>
-                        <Text style={styles.metaItem}>↓ {formatBytes(session.recvBytes)}</Text>
-                        <Text style={styles.metaDivider}>·</Text>
-                        <Text style={styles.metaItem}>{timeLabel(session.startedAt)}</Text>
-                      </View>
+                      <SessionStats
+                        pingMs={session.pingMs}
+                        sent={session.sentBytes}
+                        recv={session.recvBytes}
+                        duration={session.duration}
+                      />
                     </GlassCard>
                   </View>
                 </View>
@@ -430,19 +461,30 @@ const styles = StyleSheet.create({
     fontFamily:    Typography.family.label,
     letterSpacing: 0.5,
   },
-  logMeta: {
+  statsRow: {
     flexDirection: 'row',
     alignItems:    'center',
-    gap:           6,
+    gap:           8,
     flexWrap:      'wrap',
+    marginTop:     10,
   },
-  metaItem: {
+  statChip: {
+    flexDirection:   'row',
+    alignItems:      'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius:    Radius.sm,
+    paddingHorizontal: 8,
+    paddingVertical:   3,
+  },
+  statPing: {
+    fontSize:      Typography.size.xs,
+    fontFamily:    Typography.family.mono,
+    fontWeight:    '700',
+    letterSpacing: 0.3,
+  },
+  statValue: {
     fontSize:   Typography.size.xs,
     fontFamily: Typography.family.mono,
     color:      Colors.text.muted,
-  },
-  metaDivider: {
-    color:    Colors.text.muted,
-    fontSize: Typography.size.xs,
   },
 });
