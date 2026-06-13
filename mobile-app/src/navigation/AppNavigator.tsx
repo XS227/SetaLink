@@ -38,6 +38,7 @@ import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { UpgradeScreen }            from '../screens/UpgradeScreen';
 import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
+import { TransferScreen }          from '../screens/TransferScreen';
 
 import { runBootSequence }       from '../services/bootService';
 import { claimPendingReferral }  from '../services/deepLinkService';
@@ -86,6 +87,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'profileImport')  { navigation.navigate('ProfileImport'); return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
+    if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };
 }
@@ -509,6 +511,14 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <InboxScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Transfer"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <TransferScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
       </Stack.Navigator>

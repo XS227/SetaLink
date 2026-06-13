@@ -15,6 +15,85 @@ export interface DeviceEntitlement {
   valid_until:       string | null;
   blocked:           boolean;
   server:            BootstrapServer | null;
+  // v0.9.31 server-side quota ledger (optional — older endpoints omit these).
+  quota?:            QuotaSummary;
+  milestones?:       MilestoneProgress;
+  packages?:         PurchasedPackage[];
+}
+
+/** Server-side quota ledger breakdown (bytes). All profile cards read this. */
+export interface QuotaSummary {
+  starter_quota:      number;  // non-transferable welcome grant
+  referral_quota:     number;
+  purchased_quota:    number;
+  promotion_quota:    number;
+  transfer_in_quota:  number;
+  transfer_out_quota: number;  // negative
+  adjustment_quota:   number;
+  total_quota:        number;
+  used_quota:         number;
+  remaining_quota:    number;
+  transferable_quota: number;  // available to send (starter excluded)
+}
+
+export interface MilestoneItem {
+  count:     number;
+  bytes:     number;
+  badge:     string;
+  rewardKey: string;
+  reached:   boolean;
+  claimed:   boolean;
+}
+
+export interface MilestoneProgress {
+  invite_count:      number;
+  current_milestone: number;
+  next_milestone:    number | null;
+  next_reward_key:   string | null;
+  next_reward_bytes: number;
+  progress:          number;  // 0..1 toward next milestone
+  milestones:        MilestoneItem[];
+}
+
+export interface PurchasedPackage {
+  id:                number;
+  package_name:      string;
+  bytes:             number;
+  purchase_date:     string;
+  payment_reference: string;
+}
+
+export interface QuotaSummaryResponse {
+  quota:      QuotaSummary;
+  milestones: MilestoneProgress;
+  packages:   PurchasedPackage[];
+}
+
+export interface TransferRecipient {
+  device_id: string;
+  user_id:   string;
+  country:   string;
+  blocked:   boolean;
+}
+
+export interface TransferResult {
+  transfer_id:      number;
+  bytes:            number;
+  receiver_device:  string;
+  receiver_user_id: string;
+  sender:           QuotaSummary;
+}
+
+export interface TransferRecord {
+  id:               number;
+  direction:        'in' | 'out';
+  sender_device:    string;
+  receiver_device:  string;
+  sender_user_id:   string;
+  receiver_user_id: string;
+  bytes:            number;
+  status:           string;
+  created_at:       string;
 }
 
 export interface BootstrapServer {
@@ -224,6 +303,41 @@ export async function mobilePostPayment(
   if (userId) body.user_id = userId;
   const data = await mobilePost('payment-submit', body);
   return data as { payment_id: number };
+}
+
+// ── Quota economy (v0.9.31) ───────────────────────────────────────────────────
+
+/** Minimum transferable amount, in bytes (100 MiB). Mirrors QE_MIN_TRANSFER. */
+export const MIN_TRANSFER_BYTES = 104857600;
+
+/** Server-side quota ledger breakdown + milestone progress + purchased packages. */
+export async function getQuotaSummary(deviceId: string): Promise<QuotaSummaryResponse> {
+  const data = await mobileGet('quota-summary', { device_id: deviceId });
+  return data as QuotaSummaryResponse;
+}
+
+export async function getPackages(deviceId: string): Promise<PurchasedPackage[]> {
+  const data = await mobileGet('get-packages', { device_id: deviceId }) as { packages?: PurchasedPackage[] };
+  return data.packages ?? [];
+}
+
+export async function getTransfers(deviceId: string): Promise<TransferRecord[]> {
+  const data = await mobileGet('get-transfers', { device_id: deviceId }) as { transfers?: TransferRecord[] };
+  return data.transfers ?? [];
+}
+
+/** Resolve a recipient (device_id | user_id | referral_code) before transferring. */
+export async function resolveRecipient(recipient: string): Promise<TransferRecipient> {
+  const data = await mobileGet('resolve-recipient', { recipient });
+  return data as TransferRecipient;
+}
+
+/** Send quota to another device. Atomic + audited server-side. */
+export async function transferQuota(
+  deviceId: string, recipient: string, bytes: number,
+): Promise<TransferResult> {
+  const data = await mobilePost('transfer-quota', { device_id: deviceId, recipient, bytes });
+  return data as TransferResult;
 }
 
 export async function reportSessionEnd(

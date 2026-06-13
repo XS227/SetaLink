@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { storage } from '../storage/storage';
-import type { DeviceEntitlement } from '../services/entitlementService';
+import type {
+  DeviceEntitlement, QuotaSummary, MilestoneProgress, PurchasedPackage,
+} from '../services/entitlementService';
 
 export interface AuthUser {
   id: string;
@@ -22,6 +24,11 @@ export interface AuthUser {
   activeInviteCount: number;
   stealthUnlocked: boolean;
   country: string;          // ISO code geo-detected by the backend ('' if unknown)
+  // v0.9.31 server-side quota ledger. Null until the entitlement carries it;
+  // the profile cards prefer this over any client-side derivation.
+  quota: QuotaSummary | null;
+  milestones: MilestoneProgress | null;
+  packages: PurchasedPackage[];
 }
 
 interface InvitePayload {
@@ -46,6 +53,7 @@ interface AuthState {
   setPin:                (pin: string | null) => void;
   verifyPin:             (pin: string) => boolean;
   addBonusBytes:         (bytes: number) => void;
+  applyQuotaSummary:     (summary: QuotaSummary) => void;
 }
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
@@ -92,6 +100,9 @@ export const useAuthStore = create<AuthState>()(
             activeInviteCount: 0,
             stealthUnlocked: false,
             country: '',
+            quota: null,
+            milestones: null,
+            packages: [],
           },
           token: `anon-token-${Date.now()}`,
           isAuthenticated: true,
@@ -120,6 +131,9 @@ export const useAuthStore = create<AuthState>()(
             activeInviteCount:    (e as any).active_invite_count ?? 0,
             stealthUnlocked:      (e as any).stealth_unlocked ?? false,
             country:              (e as any).country ?? '',
+            quota:                e.quota ?? null,
+            milestones:           e.milestones ?? null,
+            packages:             e.packages ?? [],
           },
           token:           `device-${e.device_id}`,
           isAuthenticated: true,
@@ -143,6 +157,9 @@ export const useAuthStore = create<AuthState>()(
             activeInviteCount: (e as any).active_invite_count ?? prev.user.activeInviteCount,
             stealthUnlocked:   (e as any).stealth_unlocked ?? prev.user.stealthUnlocked,
             country:           (e as any).country || prev.user.country,
+            quota:             e.quota ?? prev.user.quota,
+            milestones:        e.milestones ?? prev.user.milestones,
+            packages:          e.packages ?? prev.user.packages,
           },
         };
       }),
@@ -174,6 +191,19 @@ export const useAuthStore = create<AuthState>()(
       addBonusBytes: (bytes) => set((prev) => {
         if (!prev.user) return prev;
         return { user: { ...prev.user, quotaBytesTotal: prev.user.quotaBytesTotal + bytes } };
+      }),
+      // Apply a fresh server quota breakdown (e.g. right after a transfer) so the
+      // profile cards reflect the new balances without a full re-sync.
+      applyQuotaSummary: (summary) => set((prev) => {
+        if (!prev.user) return prev;
+        return {
+          user: {
+            ...prev.user,
+            quota:           summary,
+            quotaBytesTotal: summary.total_quota,
+            quotaBytesUsed:  Math.min(summary.total_quota, Math.max(0, summary.used_quota)),
+          },
+        };
       }),
     }),
     {

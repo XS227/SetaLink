@@ -21,6 +21,9 @@ const MOBILE_TOKEN = 'setalink-mobile-diag-v1';
 const RISK_HOLD_THRESHOLD = 75;
 define('DB_PATH', __DIR__ . '/../data/analytics.db');
 
+// Shared quota-economy ledger / transfer / milestone / package logic.
+require_once __DIR__ . '/../lib/quota_economy.php';
+
 header('Content-Type: application/json');
 // CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
 // proxies may. Token auth remains the gate regardless of Origin.
@@ -53,6 +56,7 @@ function db(): PDO {
     ]);
     $pdo->exec("PRAGMA journal_mode=WAL");
     init_device_tables($pdo);
+    qe_init_tables($pdo);
     return $pdo;
 }
 
@@ -448,6 +452,16 @@ if ($method === 'GET') {
             $pdo->prepare("UPDATE devices SET stealth_unlocked=1 WHERE device_id=?")->execute([$deviceId]);
         }
 
+        // Grant any newly-reached milestone rewards (idempotent), then read the
+        // server-side quota ledger breakdown the profile screen renders.
+        try { qe_evaluate_milestones($pdo, $deviceId); } catch (\Exception $e) {}
+        $summary   = qe_summary($pdo, $deviceId);
+        $milestones = qe_milestone_progress($pdo, $deviceId);
+        $packages  = qe_packages($pdo, $deviceId);
+        // Re-read total — a milestone grant may have just changed it.
+        $row->execute([$deviceId]);
+        $dev = $row->fetch() ?: $dev;
+
         ok([
             'device_id'         => $dev['device_id'],
             'user_id'           => $dev['user_id']        ?? '',
@@ -460,8 +474,56 @@ if ($method === 'GET') {
             'server'            => $srv,
             'invite_count'      => $inviteCount,
             'active_invite_count' => $activeInvites,
-            'stealth_unlocked'  => $stealthUnlocked,
+            'stealth_unlocked'  => (bool)($dev['stealth_unlocked'] ?? 0),
             'country'           => $dev['country'] ?? '',
+            'quota'             => $summary,
+            'milestones'        => $milestones,
+            'packages'          => $packages,
+        ]);
+    }
+
+    if ($action === 'quota-summary') {
+        // Server-side quota ledger breakdown + milestone progress + packages.
+        // All profile cards read from this — no client-side derivation.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        try { qe_evaluate_milestones($pdo, $deviceId); } catch (\Exception $e) {}
+        ok([
+            'quota'      => qe_summary($pdo, $deviceId),
+            'milestones' => qe_milestone_progress($pdo, $deviceId),
+            'packages'   => qe_packages($pdo, $deviceId),
+        ]);
+    }
+
+    if ($action === 'get-packages') {
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        ok(['packages' => qe_packages($pdo, $deviceId)]);
+    }
+
+    if ($action === 'get-transfers') {
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        ok(['transfers' => qe_transfer_history($pdo, $deviceId, 50)]);
+    }
+
+    if ($action === 'resolve-recipient') {
+        // Look up a transfer recipient by device_id / user_id / referral_code so
+        // the Send-GB confirmation screen can show who will receive the quota.
+        $param = trim($_GET['recipient'] ?? '');
+        if ($param === '') err('missing recipient');
+        $pdo = db();
+        $r = qe_resolve_device($pdo, $param);
+        if (!$r) err('recipient not found');
+        ok([
+            'device_id' => $r['device_id'],
+            'user_id'   => $r['user_id'] ?? '',
+            'country'   => $r['country'] ?? '',
+            'blocked'   => (bool)($r['blocked'] ?? 0),
         ]);
     }
 
@@ -692,12 +754,9 @@ if ($method === 'POST') {
                     $referrerIp, $newUserIp, $riskScore, $riskFlagsJson, $riskStatus]);
 
         if ($riskStatus === 'credited') {
-            $pdo->prepare(
-                "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
-            )->execute([$bonus, $deviceId]);
-            $pdo->prepare(
-                "UPDATE devices SET quota_bytes_total=quota_bytes_total+? WHERE device_id=?"
-            )->execute([$bonus, $ownerRow['device_id']]);
+            // Credit both parties through the ledger (keeps the breakdown invariant).
+            qe_ledger_add($pdo, $deviceId,            'referral_reward', $bonus, 'referral ' . $refCode);
+            qe_ledger_add($pdo, $ownerRow['device_id'], 'referral_reward', $bonus, 'referrer of ' . $deviceId);
 
             // ── Viral loop: ≥3 active GRANTED referrals unlock stealth ─────
             $activeRefs = $pdo->prepare("
@@ -718,6 +777,9 @@ if ($method === 'POST') {
             $invCount->execute([$ownerRow['device_id']]);
             $pdo->prepare("UPDATE devices SET invite_count=? WHERE device_id=?")
                 ->execute([(int)$invCount->fetchColumn(), $ownerRow['device_id']]);
+
+            // Referrer just gained an approved invite — grant any milestone it crossed.
+            try { qe_evaluate_milestones($pdo, $ownerRow['device_id']); } catch (\Exception $e) {}
         }
 
         $dev = $pdo->prepare("SELECT quota_bytes_total FROM devices WHERE device_id=?");
@@ -927,6 +989,22 @@ if ($method === 'POST') {
             )->execute([$total, $deviceId]);
         }
         ok(['recorded' => $ins->rowCount() > 0]);
+    }
+
+    if ($action === 'transfer-quota') {
+        // Send GB to a friend. Atomic, audited (quota_transfer + two ledger rows).
+        // Starter quota is never transferable; min 100 MB; max = transferable balance.
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $recipient = trim($_POST['recipient'] ?? '');  // device_id | user_id | referral_code
+        $bytes     = (int)($_POST['bytes'] ?? 0);
+        if (!$deviceId || $recipient === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = qe_transfer($pdo, $deviceId, $recipient, $bytes, 'mobile transfer');
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
     }
 
     err('unknown action');
