@@ -16,7 +16,7 @@ import { getRemoteConfig } from '../services/remoteConfigService';
 import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
-import { useReferral } from '../services/entitlementService';
+import { useReferral, syncEntitlement } from '../services/entitlementService';
 import { useInboxStore } from '../stores/inboxStore';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -24,22 +24,36 @@ const LOGO_MARK = require('../assets/logo_mark.png') as number;
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
-const PLAN_LABEL: Record<string, string> = {
-  free:    'Free Invite Trial',
-  premium: 'Unlimited',
-  team:    'Paid Package',
+// Plan → localized label key. Resolved through t() in the component.
+const PLAN_LABEL_KEY: Record<string, TKey> = {
+  free:    'pr.planFree',
+  premium: 'pr.planPremium',
+  team:    'pr.planTeam',
 };
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
 
-// Referral/stealth milestone progression. The reward labels are i18n keys so
-// both languages stay in sync; counts follow the agreed 3·5·8·13·21 ladder.
-const MILESTONES: Array<{ count: number; rewardKey: TKey }> = [
+// Maps the server milestone reward keys (lib/quota_economy.php qe_milestones)
+// to localized i18n keys so both languages stay in sync.
+const REWARD_KEY_TO_TKEY: Record<string, TKey> = {
+  first_stealth: 'pr.msStealth',
+  bonus2:        'pr.msBonus2',
+  priority:      'pr.msPriority',
+  bonus5:        'pr.msBonus5',
+  vip:           'pr.msVip',
+  bonus13:       'pr.msBonus13',
+  elite:         'pr.msElite',
+};
+
+// Fallback ladder used only when the server has not yet returned milestone data.
+const FALLBACK_MILESTONES: Array<{ count: number; rewardKey: TKey }> = [
   { count: 3,  rewardKey: 'pr.msStealth'  },
   { count: 5,  rewardKey: 'pr.msBonus2'   },
   { count: 8,  rewardKey: 'pr.msPriority' },
   { count: 13, rewardKey: 'pr.msBonus5'   },
   { count: 21, rewardKey: 'pr.msVip'      },
+  { count: 34, rewardKey: 'pr.msBonus13'  },
+  { count: 55, rewardKey: 'pr.msElite'    },
 ];
 
 function formatExpiry(iso: string | null): string {
@@ -152,7 +166,7 @@ interface Props {
 
 export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const { t } = useT();
-  const { user, logout, addBonusBytes } = useAuthStore();
+  const { user, logout, addBonusBytes, updateFromEntitlement } = useAuthStore();
   const { pendingReferralCode, setPendingReferralCode } = useSettingsStore();
   const { sessionsThisMonth } = useSessionStore();
   const showToast = useToastStore((s) => s.show);
@@ -168,7 +182,12 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
   useEffect(() => {
     getRemoteConfig().then(cfg => { if (cfg.support_url) setSupportUrl(cfg.support_url); }).catch(() => {});
-    if (user?.deviceId) refreshInbox(user.deviceId).catch(() => {});
+    if (user?.deviceId) {
+      refreshInbox(user.deviceId).catch(() => {});
+      // Pull the server-side quota ledger (breakdown + milestones + packages)
+      // so all profile cards render from authoritative server data.
+      syncEntitlement(user.deviceId).then(updateFromEntitlement).catch(() => {});
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!user) return null;
@@ -179,21 +198,23 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
   // Quota limits derived from the entitlement returned by backend, not hardcoded
   const isUnlimited   = user.plan !== 'free';
-  const planLabel     = PLAN_LABEL[user.plan] ?? 'Free Invite Trial';
+  const planLabel     = t(PLAN_LABEL_KEY[user.plan] ?? 'pr.planFree');
   const limitGb       = isUnlimited ? null : user.quotaBytesTotal / 1e9;
 
   const remainingBytes     = Math.max(0, user.quotaBytesTotal - liveQuotaUsed);
   const isQuotaExhausted   = !isUnlimited && remainingBytes === 0;
 
-  // Package breakdown. The backend exposes only quota_bytes_total today (no
-  // per-source ledger), so we derive the buckets: the first 1 GB is the
-  // non-transferable welcome grant, and in the current free-only model every
-  // byte above that is referral-earned. `purchased` stays 0 until a purchase
-  // flow credits a dedicated bucket — at which point replace this with the
-  // server-provided breakdown.
-  const starterBytes   = Math.min(ONE_GB_BYTES, user.quotaBytesTotal);
-  const referralBytes  = Math.max(0, user.quotaBytesTotal - starterBytes);
-  const purchasedBytes = 0;
+  // Package breakdown — read from the server-side quota ledger (v0.9.31). The
+  // client no longer derives buckets; it falls back to a local estimate only
+  // when an older entitlement carries no ledger yet.
+  const q              = user.quota;
+  const starterBytes   = q ? q.starter_quota   : Math.min(ONE_GB_BYTES, user.quotaBytesTotal);
+  const referralBytes  = q ? q.referral_quota  : Math.max(0, user.quotaBytesTotal - starterBytes);
+  const purchasedBytes = q ? q.purchased_quota : 0;
+  const transferableBytes = q
+    ? q.transferable_quota
+    : Math.max(0, Math.min(user.quotaBytesTotal - user.quotaBytesUsed, user.quotaBytesTotal - starterBytes));
+  const purchasedPackages = user.packages ?? [];
 
   const primaryId  = user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`;
   // Referral code MUST be the backend `referral_code` — that is what use-referral
@@ -205,10 +226,21 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
   const unreadCount = inboxMessages.filter(m => !m.read).length;
 
-  // Milestone progression
-  const invites = user.activeInviteCount ?? 0;
-  const nextMs  = MILESTONES.find(m => invites < m.count);
-  const nextProgress = nextMs ? Math.min(1, invites / nextMs.count) : 1;
+  // Milestone progression — server-driven (only approved referrals count).
+  const msData  = user.milestones;
+  const invites = msData ? msData.invite_count : (user.inviteCount ?? 0);
+  const ladder: Array<{ count: number; rewardKey: TKey; reached: boolean }> = msData
+    ? msData.milestones.map(m => ({
+        count: m.count,
+        rewardKey: REWARD_KEY_TO_TKEY[m.rewardKey] ?? 'pr.msStealth',
+        reached: m.reached,
+      }))
+    : FALLBACK_MILESTONES.map(m => ({ ...m, reached: invites >= m.count }));
+  const nextCount = msData
+    ? msData.next_milestone
+    : (FALLBACK_MILESTONES.find(m => invites < m.count)?.count ?? null);
+  const nextMs = nextCount != null ? (ladder.find(m => m.count === nextCount) ?? null) : null;
+  const nextProgress = msData ? msData.progress : (nextCount ? Math.min(1, invites / nextCount) : 1);
 
   const handleCopyReferral = () => {
     Clipboard.setString(referralDisplayCode);
@@ -218,7 +250,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const handleShareReferral = async () => {
     try {
       await Share.share({
-        message: `Join SetaLink — invite-only VPN for Iran.\nUse my code: ${referralDisplayCode}\nhttps://setalink.no/?ref=${referralDisplayCode}\n\nWe both get +1 GB when you join.`,
+        message: t('pr.shareMessage').replace(/\{code\}/g, referralDisplayCode),
       });
     } catch {
       showToast(t('pr.shareUnavailable'), 'error', 2500);
@@ -333,7 +365,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               <View style={styles.subPills}>
                 {isUnlimited ? (
                   <View style={styles.unlimitedPill}>
-                    <Text style={styles.unlimitedPillText}>∞ Unlimited</Text>
+                    <Text style={styles.unlimitedPillText}>∞ {t('pr.unlimitedShort')}</Text>
                   </View>
                 ) : (
                   <View style={[styles.gbPill, isQuotaExhausted && styles.gbPillExhausted]}>
@@ -438,11 +470,38 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               dimmed={purchasedBytes === 0}
             />
           </ScrollView>
+          {/* Purchased packages — listed separately when present */}
+          {purchasedPackages.length > 0 && (
+            <View style={styles.pkgList}>
+              {purchasedPackages.map((p) => (
+                <View key={p.id} style={styles.pkgListRow}>
+                  <Text style={styles.pkgListName} numberOfLines={1}>{p.package_name}</Text>
+                  <Text style={styles.pkgListBytes}>{gb(p.bytes)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>{t('pr.transferable')}</Text>
+            <Text style={styles.totalValueSub}>{gb(transferableBytes)}</Text>
+          </View>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>{t('pr.totalLabel')}</Text>
             <Text style={styles.totalValue}>{gb(user.quotaBytesTotal)}</Text>
           </View>
         </GlassCard>
+
+        {/* Send GB to a friend */}
+        <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('transfer')}>
+          <GlassCard style={styles.sendGbCard} glowColor={Colors.emerald[400]}>
+            <Text style={styles.sendGbIcon}>🎁</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.sendGbTitle}>{t('pr.sendGb')}</Text>
+              <Text style={styles.sendGbDesc}>{t('pr.sendGbDesc')}</Text>
+            </View>
+            <Text style={styles.actionChevron}>›</Text>
+          </GlassCard>
+        </TouchableOpacity>
 
         {/* Inbox entry */}
         <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('inbox')}>
@@ -526,26 +585,23 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
           {/* Milestone ladder */}
           <View style={styles.msList}>
-            {MILESTONES.map((m) => {
-              const reached = invites >= m.count;
-              return (
-                <View key={m.count} style={styles.msItem}>
-                  <View style={[styles.msDot, reached && styles.msDotReached]}>
-                    <Text style={[styles.msDotText, reached && styles.msDotTextReached]}>
-                      {reached ? '✓' : m.count}
-                    </Text>
-                  </View>
-                  <Text style={[styles.msItemLabel, reached && styles.msItemLabelReached]}>
-                    {t(m.rewardKey)}
+            {ladder.map((m) => (
+              <View key={m.count} style={styles.msItem}>
+                <View style={[styles.msDot, m.reached && styles.msDotReached]}>
+                  <Text style={[styles.msDotText, m.reached && styles.msDotTextReached]}>
+                    {m.reached ? '✓' : m.count}
                   </Text>
-                  {reached && (
-                    <View style={styles.msUnlockedTag}>
-                      <Text style={styles.msUnlockedText}>{t('pr.unlockedTag')}</Text>
-                    </View>
-                  )}
                 </View>
-              );
-            })}
+                <Text style={[styles.msItemLabel, m.reached && styles.msItemLabelReached]}>
+                  {t(m.rewardKey)}
+                </Text>
+                {m.reached && (
+                  <View style={styles.msUnlockedTag}>
+                    <Text style={styles.msUnlockedText}>{t('pr.unlockedTag')}</Text>
+                  </View>
+                )}
+              </View>
+            ))}
           </View>
         </GlassCard>
 
@@ -647,6 +703,17 @@ const styles = StyleSheet.create({
   totalRow:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: Colors.border.subtle, paddingTop: Spacing[3] },
   totalLabel:       { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
   totalValue:       { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  totalValueSub:    { fontSize: Typography.size.base, fontFamily: Typography.family.mono, color: Colors.emerald[400] },
+  pkgList:          { gap: Spacing[2] },
+  pkgListRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bg.elevated, borderRadius: Radius.md, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
+  pkgListName:      { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary },
+  pkgListBytes:     { fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: '#FFB800' },
+
+  // Send GB entry
+  sendGbCard:       { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], paddingVertical: Spacing[3] },
+  sendGbIcon:       { fontSize: 24 },
+  sendGbTitle:      { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  sendGbDesc:       { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
 
   // Inbox entry
   inboxCard:        { paddingVertical: Spacing[3] },

@@ -14,6 +14,7 @@ export type RootStackParamList = {
   Upgrade:       undefined;
   ProfileImport: undefined;
   Inbox:         undefined;
+  Transfer:      undefined;
 };
 
 export type MainTabParamList = {

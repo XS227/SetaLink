@@ -8,6 +8,9 @@ const CLI          = '/usr/bin/sudo -n /var/www/setalink/admin/setalink-cli';
 const USERNAME_RE  = '/^[a-z0-9][a-z0-9._-]{0,31}$/';
 const VALID_PKGS   = ['7days', '30days', 'unlimited', '10GB', '20GB', '30GB'];
 
+// Shared quota-economy ledger / transfer / milestone / package logic.
+require_once __DIR__ . '/../lib/quota_economy.php';
+
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -757,8 +760,52 @@ if ($method === 'POST') {
         if (!$did) api_err('device_id required');
         $db = open_analytics_db();
         init_device_tables($db);
+        qe_init_tables($db);
         $db->prepare("UPDATE devices SET quota_bytes_total=? WHERE device_id=?")->execute([$quota, $did]);
+        // Keep the ledger invariant after a direct quota write.
+        try { qe_reconcile($db, $did, 'admin set-quota'); } catch (Exception $e) {}
         api_ok(['quota_bytes_total' => $quota]);
+    }
+
+    if ($action === 'credit-package') {
+        // Manually credit a data package to a device (no payment gateway).
+        // Additive — records purchased_packages + a 'purchase' ledger entry.
+        $did   = trim((string)($parsed['device_id'] ?? ''));
+        $name  = substr(trim((string)($parsed['package_name'] ?? '')), 0, 80);
+        $bytes = (int)($parsed['bytes'] ?? 0);
+        $ref   = substr(trim((string)($parsed['payment_reference'] ?? '')), 0, 120);
+        if (!$did)         api_err('device_id required');
+        if ($name === '')  api_err('package_name required');
+        if ($bytes <= 0)   api_err('bytes must be positive');
+        $db = open_analytics_db();
+        init_device_tables($db);
+        qe_init_tables($db);
+        try { $total = qe_credit_purchase($db, $did, $name, $bytes, $ref); }
+        catch (Exception $e) { api_err($e->getMessage()); }
+        api_ok(['device_id' => $did, 'quota_bytes_total' => $total]);
+    }
+
+    if ($action === 'transfer-reverse') {
+        // Admin review tool: claw back a completed quota transfer.
+        $tid = (int)($parsed['transfer_id'] ?? 0);
+        if (!$tid) api_err('transfer_id required');
+        $db = open_analytics_db();
+        qe_init_tables($db);
+        try { $res = qe_reverse_transfer($db, $tid, 'reversed by ' . $auth_user); }
+        catch (Exception $e) { api_err($e->getMessage()); }
+        api_ok($res);
+    }
+
+    if ($action === 'transfer-flag') {
+        // Admin review tool: flag a transfer for review (does not move quota).
+        $tid  = (int)($parsed['transfer_id'] ?? 0);
+        $note = substr(trim((string)($parsed['note'] ?? '')), 0, 200);
+        if (!$tid) api_err('transfer_id required');
+        $db = open_analytics_db();
+        qe_init_tables($db);
+        $db->prepare("UPDATE quota_transfer SET status='flagged', metadata=? WHERE id=? AND status='completed'")
+           ->execute(['flagged by ' . $auth_user . ($note ? ': ' . $note : ''), $tid]);
+        api_ok(['transfer_id' => $tid, 'status' => 'flagged']);
     }
     if ($action === 'save-bundle') {
         $allowed = ['bundle_sni_candidates','bundle_spoof_snis','bundle_backup_ips','bundle_backup_domains'];
@@ -807,9 +854,26 @@ if ($method === 'POST') {
                 '30GB'      => ['plan' => 'premium', 'days' => 30,  'bytes' => 32212254720],
             ];
             $conf = $pkg_map[$pay['package']] ?? $pkg_map['30days'];
-            $valid_until = date('Y-m-d H:i:s', strtotime('+' . $conf['days'] . ' days'));
-            $db->prepare("UPDATE devices SET plan=?,quota_bytes_total=?,quota_bytes_used=0,valid_until=? WHERE device_id=?")
-               ->execute([$conf['plan'], $conf['bytes'], $valid_until, $pay['device_id']]);
+            qe_init_tables($db);
+            $payRef = ($pay['tx_hash'] ?? '') ?: ('payment#' . $pid);
+            if (in_array($pay['package'], ['10GB', '20GB', '30GB'], true)) {
+                // Additive data package — credit through the ledger, record the
+                // purchased package, keep the device on its current plan.
+                try { qe_credit_purchase($db, $pay['device_id'], $pay['package'], (int)$conf['bytes'], $payRef); }
+                catch (Exception $e) {}
+            } else {
+                // Time-based subscription — replace quota + set premium plan, then
+                // reconcile the ledger so the breakdown invariant holds, and record
+                // the purchase for the packages list.
+                $valid_until = date('Y-m-d H:i:s', strtotime('+' . $conf['days'] . ' days'));
+                $db->prepare("UPDATE devices SET plan=?,quota_bytes_total=?,quota_bytes_used=0,valid_until=? WHERE device_id=?")
+                   ->execute([$conf['plan'], $conf['bytes'], $valid_until, $pay['device_id']]);
+                try {
+                    $db->prepare("INSERT INTO purchased_packages (device_id, package_name, bytes, payment_reference) VALUES (?,?,?,?)")
+                       ->execute([$pay['device_id'], $pay['package'], (int)$conf['bytes'], $payRef]);
+                    qe_reconcile($db, $pay['device_id'], 'subscription ' . $pay['package']);
+                } catch (Exception $e) {}
+            }
         }
         api_ok(['status' => $new_status, 'payment_id' => $pid]);
     }
@@ -2497,6 +2561,46 @@ switch ($action) {
             FROM payment_queue p LEFT JOIN devices d ON d.device_id=p.device_id
             $where ORDER BY p.submitted_at DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
         api_ok(['payments'=>$rows,'filter'=>$sf]);
+        break;
+
+    case 'quota-transfers':
+        // Admin review: recent quota transfers between devices (P5 marketplace).
+        $db = open_analytics_db();
+        qe_init_tables($db);
+        $sf = $_GET['status'] ?? 'all';
+        if (!in_array($sf, ['completed','reversed','flagged','all'], true)) $sf = 'all';
+        $where = $sf === 'all' ? '' : "WHERE t.status = '$sf'";
+        $rows = $db->query("SELECT t.id,t.sender_device,t.receiver_device,t.bytes,t.status,t.created_at,t.metadata,
+            ds.user_id AS sender_user_id, dr.user_id AS receiver_user_id,
+            ds.last_ip AS sender_ip, dr.last_ip AS receiver_ip
+            FROM quota_transfer t
+            LEFT JOIN devices ds ON ds.device_id=t.sender_device
+            LEFT JOIN devices dr ON dr.device_id=t.receiver_device
+            $where ORDER BY t.id DESC LIMIT 200")->fetchAll(PDO::FETCH_ASSOC);
+        // Lightweight anti-fraud signal: senders/receivers sharing an IP.
+        foreach ($rows as &$r) {
+            $r['same_ip'] = ($r['sender_ip'] ?? '') !== '' && ($r['sender_ip'] ?? '') === ($r['receiver_ip'] ?? '');
+        }
+        unset($r);
+        api_ok(['transfers' => $rows, 'filter' => $sf]);
+        break;
+
+    case 'device-ledger':
+        // Admin device detail: full quota breakdown + ledger + packages + transfers.
+        $did = trim((string)($_GET['device_id'] ?? ''));
+        if (!$did) api_err('device_id required');
+        $db = open_analytics_db();
+        qe_init_tables($db);
+        if (!qe_fetch_device($db, $did)) api_err('device not found');
+        $st = $db->prepare("SELECT id,type,bytes,created_at,metadata FROM quota_transactions WHERE device_id=? ORDER BY id DESC LIMIT 200");
+        $st->execute([$did]);
+        api_ok([
+            'summary'    => qe_summary($db, $did),
+            'milestones' => qe_milestone_progress($db, $did),
+            'packages'   => qe_packages($db, $did),
+            'ledger'     => $st->fetchAll(PDO::FETCH_ASSOC),
+            'transfers'  => qe_transfer_history($db, $did, 50),
+        ]);
         break;
 
     case 'inbound-stats':
