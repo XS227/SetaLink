@@ -271,6 +271,53 @@ export async function checkAdminMessages(deviceId: string): Promise<void> {
   } catch { /* offline — retry on next poll */ }
 }
 
+// ── User-to-user direct messages (v0.9.33) ────────────────────────────────────
+
+export interface DirectMessage {
+  id:          number;
+  direction:   'in' | 'out';
+  peerUserId:  string;   // SetaLink ID of the other party (sender for 'in')
+  peerDevice:  string;
+  body:        string;
+  read:        boolean;
+  createdAt:   string;
+}
+
+/** Max characters per direct message — mirrors MSG_MAX_LEN server-side. */
+export const DM_MAX_LEN = 2000;
+
+/** Send a direct message addressed by SetaLink ID (user_id / device_id / referral code). */
+export async function sendMessage(
+  deviceId: string, recipient: string, body: string,
+): Promise<{ message_id: number; recipient_user_id: string; created_at: string }> {
+  const data = await mobilePost('send-message', { device_id: deviceId, recipient, body });
+  return data as { message_id: number; recipient_user_id: string; created_at: string };
+}
+
+/** Fetch this device's direct-message thread (inbox + sent), newest first. */
+export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
+  const data = await mobileGet('list-messages', { device_id: deviceId }) as {
+    messages?: Array<{
+      id: number; direction: 'in' | 'out'; peer_user_id: string;
+      peer_device: string; body: string; read: boolean; created_at: string;
+    }>;
+  };
+  return (data.messages ?? []).map(m => ({
+    id:         m.id,
+    direction:  m.direction,
+    peerUserId: m.peer_user_id,
+    peerDevice: m.peer_device,
+    body:       m.body,
+    read:       m.read,
+    createdAt:  m.created_at,
+  }));
+}
+
+/** Mark a received direct message as read. */
+export async function markMessageRead(deviceId: string, messageId: number): Promise<void> {
+  await mobilePost('mark-message-read', { device_id: deviceId, message_id: messageId });
+}
+
 export interface ReferralResult {
   /** 'approved' = bonus granted now; 'pending_review' = held for anti-fraud
    *  review, bonus_bytes is 0 and may be granted later by an admin. */

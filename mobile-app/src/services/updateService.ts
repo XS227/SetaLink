@@ -229,12 +229,61 @@ export function snoozeUpdate(): void {
   storage.setItem(SNOOZE_KEY, String(Date.now()));
 }
 
+// ── OTA step logging ──────────────────────────────────────────────────────────
+// The OTA download path is the one place we MUST be able to diagnose from the
+// field, so these logs are unconditional (not gated by __DEV__ like Logger) —
+// they surface under the ReactNativeJS tag in `adb logcat` on release builds.
+// eslint-disable-next-line no-console
+function otaLog(step: string, detail?: unknown): void {
+  // eslint-disable-next-line no-console
+  console.log(`[SetaLink:OTA] ${step}`, detail ?? '');
+}
+
+/**
+ * Explicit "Open in browser" action. Opens the SAME ABI-resolved apkUrl that
+ * checkForUpdate() picked for this device (never a hardcoded setalink-latest),
+ * so a 32-bit phone still gets the arm32 build. Logs every outcome; throws on
+ * failure so the caller can surface it.
+ */
+export async function openUpdateInBrowser(apkUrl: string): Promise<void> {
+  otaLog('OTA_BROWSER_FALLBACK_PRESSED', apkUrl);
+  if (!apkUrl) {
+    otaLog('OTA_BROWSER_FALLBACK_FAILED', 'empty apkUrl');
+    throw new Error('No download URL available for this device.');
+  }
+  try {
+    await Linking.openURL(apkUrl);
+    otaLog('OTA_BROWSER_FALLBACK_OPENED', apkUrl);
+  } catch (e: unknown) {
+    const message = (e as { message?: string })?.message ?? 'Could not open browser';
+    otaLog('OTA_BROWSER_FALLBACK_FAILED', message);
+    throw Object.assign(new Error(message), { code: 'BROWSER_OPEN_FAILED' });
+  }
+}
+
+export type DownloadOutcome =
+  | { method: 'native'; ok: true }
+  | { method: 'browser'; ok: true }
+  | { method: 'native' | 'browser'; ok: false; code: string; message: string };
+
 /**
  * Download the APK and open the installer. Prefers the in-app path
  * (DownloadManager + package-installer prompt — no browser round-trip);
  * falls back to the system browser when the native method is unavailable.
+ *
+ * Throws on failure so the caller can surface it — do NOT wrap the call in
+ * `.catch(() => {})`, that is exactly what hid the original "Download does
+ * nothing" bug. The native side rejects with a coded error
+ * (INSTALL_PERMISSION_REQUIRED / APK_DOWNLOAD_FAILED / APK_INSTALL_FAILED / …).
  */
-export async function downloadUpdate(apkUrl: string, targetVersion?: string, targetCode?: number): Promise<void> {
+export async function downloadUpdate(apkUrl: string, targetVersion?: string, targetCode?: number): Promise<DownloadOutcome> {
+  otaLog('button pressed', { apkUrl, targetVersion, targetCode });
+  if (!apkUrl) {
+    otaLog('aborted: empty apkUrl');
+    throw new Error('No download URL available for this device.');
+  }
+  otaLog('url resolved', apkUrl);
+
   // Persist a pending-install marker; resolvePendingInstall() compares the
   // running build against it on next boot to detect failed installs.
   storage.setItem(PENDING_KEY, JSON.stringify({
@@ -244,17 +293,45 @@ export async function downloadUpdate(apkUrl: string, targetVersion?: string, tar
     fromCode:      APP_BUILD_CODE,
     ts:            Date.now(),
   }));
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  let mod: { downloadAndInstallApk?: (url: string) => Promise<unknown> } | undefined;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mod = require('../specs/NativeXrayModule').default;
-    if (mod?.downloadAndInstallApk) {
-      await mod.downloadAndInstallApk(apkUrl);
-      return;
-    }
-  } catch {
-    // native download failed — browser fallback below
+    mod = require('../specs/NativeXrayModule').default;
+  } catch (e) {
+    otaLog('native module require failed', String(e));
   }
-  await Linking.openURL(apkUrl);
+
+  if (mod?.downloadAndInstallApk) {
+    otaLog('native path: calling downloadAndInstallApk');
+    try {
+      await mod.downloadAndInstallApk(apkUrl);
+      otaLog('native path: installer launched / download enqueued');
+      return { method: 'native', ok: true };
+    } catch (e: unknown) {
+      // e.code is set by the native promise.reject(code, message)
+      const code    = (e as { code?: string })?.code ?? 'NATIVE_DOWNLOAD_ERROR';
+      const message = (e as { message?: string })?.message ?? 'Download failed';
+      otaLog('native path: exception', { code, message });
+      // Permission gate is recoverable — the native side has already opened
+      // the "Install unknown apps" settings screen; tell the caller so it can
+      // ask the user to grant it and tap Download again.
+      throw Object.assign(new Error(message), { code, method: 'native' });
+    }
+  }
+
+  // Native method absent (pre-0.9.29 build) → system browser download.
+  otaLog('native method unavailable — falling back to browser', apkUrl);
+  try {
+    await Linking.openURL(apkUrl);
+    otaLog('browser path: opened');
+    return { method: 'browser', ok: true };
+  } catch (e: unknown) {
+    const message = (e as { message?: string })?.message ?? 'Could not open browser';
+    otaLog('browser path: exception', message);
+    throw Object.assign(new Error(message), { code: 'BROWSER_OPEN_FAILED', method: 'browser' });
+  }
 }
 
 const PENDING_KEY = 'update_pending_install_v1';

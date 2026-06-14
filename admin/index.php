@@ -144,6 +144,14 @@ function icon(string $name): string {
         <div class="stat-card"><div class="stat-label">Pending Payments</div><div class="stat-value" id="statPayments">—</div><div class="stat-sub">awaiting review</div></div>
       </div>
 
+      <div class="panel" id="dmPanel">
+        <div class="panel-header">
+          <span class="panel-title">💬 Messaging (DM)</span>
+          <button class="btn btn-ghost btn-sm" id="dmRefreshBtn">Refresh</button>
+        </div>
+        <div class="panel-body" id="dmStatsBody"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+
       <div class="two-col">
         <div class="panel">
           <div class="panel-header">
@@ -1018,6 +1026,7 @@ function navigate(page) {
 window.addEventListener('popstate', e => navigate(e.state?.page||'dashboard'));
 document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
 $('refreshBtn').addEventListener('click', ()=>views[activeView]?.init?.());
+$('dmRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadMessaging(false));
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -1055,6 +1064,7 @@ views.dashboard = {
   init() {
     this.loadAll();
     this.loadHealth();
+    this.loadMessaging(false);
     refreshTimer = setInterval(()=>this.loadAll(), 10000);
   },
   async loadAll() {
@@ -1070,6 +1080,31 @@ views.dashboard = {
     if (inbounds.status==='fulfilled')  this.renderInbounds(inbounds.value);
     if (sniLb.status==='fulfilled')     this.renderSniLb(sniLb.value);
     if (metrics.status==='fulfilled')   this.renderMetrics(metrics.value);
+    this.loadMessaging(true);   // live-refresh without flashing the spinner
+  },
+  // User-to-user messaging — metadata only, never message content (bodies are
+  // encrypted at rest; the endpoint never selects them).
+  async loadMessaging(silent) {
+    const el = $('dmStatsBody');
+    if (!el) return;
+    if (!silent) el.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    try {
+      const d = await api.post({action:'user-messages-stats'});
+      const card = (label, val, sub) =>
+        `<div class="stat-card"><div class="stat-label">${esc(label)}</div><div class="stat-value">${fmtNum(val)}</div>${sub?`<div class="stat-sub">${esc(sub)}</div>`:''}</div>`;
+      el.innerHTML =
+        `<div class="stat-grid">
+          ${card('Total', d.total, 'all messages')}
+          ${card('Unread', d.delivered_unread, 'delivered · not read')}
+          ${card('Read', d.read, 'opened')}
+          ${card('Sent 24h', d.last_24h, 'last 24 hours')}
+          ${card('Senders', d.senders, 'distinct devices')}
+          ${card('Recipients', d.recipients, 'distinct devices')}
+        </div>
+        <div style="font-size:.68rem;color:var(--muted);margin-top:.55rem">🔒 Metadata only — message content is encrypted at rest and never shown here. No IP / email / phone / device data.</div>`;
+    } catch(e) {
+      el.innerHTML = `<div class="panel-empty" style="color:var(--danger)">Failed to load messaging stats: ${esc(e.message)}</div>`;
+    }
   },
   async loadHealth() {
     const el = $('svcHealth');

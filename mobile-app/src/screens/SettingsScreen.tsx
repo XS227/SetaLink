@@ -9,7 +9,7 @@ import { useServerStore }   from '../stores/serverStore';
 import { BiometricService } from '../services/biometricService';
 import { useT } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
-import { checkForUpdate, downloadUpdate } from '../services/updateService';
+import { checkForUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
 const GITHUB_URL      = 'https://github.com/XS227/SetaLink';
 const WEBSITE_URL     = 'https://setalink.no';
@@ -150,9 +150,29 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
     }
   };
 
+  const handleOpenInBrowser = () => {
+    if (!updateResult) return;
+    openUpdateInBrowser(updateResult.apkUrl).catch((err: { message?: string }) => {
+      Alert.alert(t('upd.downloadFailedTitle'), err?.message || t('upd.downloadFailedBody'));
+    });
+  };
+
   const handleDownloadUpdate = () => {
     if (!updateResult) return;
-    downloadUpdate(updateResult.apkUrl, updateResult.latestVersion).catch(() => {});
+    downloadUpdate(updateResult.apkUrl, updateResult.latestVersion).catch(
+      (err: { code?: string; message?: string }) => {
+        const isPerm = err?.code === 'INSTALL_PERMISSION_REQUIRED';
+        Alert.alert(
+          isPerm ? t('upd.installPermTitle') : t('upd.downloadFailedTitle'),
+          isPerm ? t('upd.installPermBody')  : (err?.message || t('upd.downloadFailedBody')),
+          [
+            { text: t('upd.retry'),         onPress: handleDownloadUpdate },
+            { text: t('upd.openInBrowser'), onPress: handleOpenInBrowser },
+            { text: t('upd.later'),         style: 'cancel' },
+          ],
+        );
+      },
+    );
   };
 
   const handleBiometricToggle = async () => {

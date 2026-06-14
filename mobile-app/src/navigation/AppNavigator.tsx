@@ -15,7 +15,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Alert } from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
@@ -42,11 +42,12 @@ import { TransferScreen }          from '../screens/TransferScreen';
 
 import { runBootSequence }       from '../services/bootService';
 import { claimPendingReferral }  from '../services/deepLinkService';
-import { checkForUpdate, isUpdateSnoozed, snoozeUpdate, downloadUpdate } from '../services/updateService';
+import { checkForUpdate, isUpdateSnoozed, snoozeUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
 import { getStableDeviceId, getOrCreateDeviceId, enrichDeviceId, getDeviceFingerprint, saveStableDeviceId } from '../services/deviceIdentityService';
 import { registerDevice } from '../services/entitlementService';
 import { useInboxStore }  from '../stores/inboxStore';
+import { useDMStore }     from '../stores/dmStore';
 import { BiometricService }      from '../services/biometricService';
 import { getAdapter }            from '../services/vpnBridge';
 import { useAuthStore }          from '../stores/authStore';
@@ -115,6 +116,38 @@ function MainTabs() {
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
   const appStateRef = React.useRef(AppState.currentState);
 
+  // Opens the SAME ABI-resolved apkUrl externally (never hardcoded
+  // setalink-latest). Surfaces failure — no silent path.
+  const handleOpenInBrowser = React.useCallback(() => {
+    const r = updateResult;
+    if (!r) return;
+    openUpdateInBrowser(r.apkUrl).catch((err: { message?: string }) => {
+      Alert.alert(t('upd.downloadFailedTitle'), err?.message || t('upd.downloadFailedBody'));
+    });
+  }, [updateResult, t]);
+
+  // Kicks off the OTA download and, crucially, surfaces failures to the user.
+  // The old `.catch(() => {})` swallowed every error (missing install
+  // permission, failed download, blocked DownloadManager) — which is why
+  // "Download did nothing" with no visible feedback. On failure we offer
+  // Retry and the browser fallback so the user is never stuck.
+  const handleDownloadUpdate = React.useCallback(() => {
+    const r = updateResult;
+    if (!r) return;
+    downloadUpdate(r.apkUrl, r.latestVersion).catch((err: { code?: string; message?: string }) => {
+      const isPerm = err?.code === 'INSTALL_PERMISSION_REQUIRED';
+      Alert.alert(
+        isPerm ? t('upd.installPermTitle') : t('upd.downloadFailedTitle'),
+        isPerm ? t('upd.installPermBody')  : (err?.message || t('upd.downloadFailedBody')),
+        [
+          { text: t('upd.retry'),         onPress: handleDownloadUpdate },
+          { text: t('upd.openInBrowser'), onPress: handleOpenInBrowser },
+          { text: t('upd.later'),         style: 'cancel' },
+        ],
+      );
+    });
+  }, [updateResult, t, handleOpenInBrowser]);
+
   useEffect(() => {
     if (token) { fetchServers(token).catch(() => {}); }
   }, [token, fetchServers]);
@@ -164,7 +197,10 @@ function MainTabs() {
   useEffect(() => {
     const fetchInbox = () => {
       const deviceId = useAuthStore.getState().user?.deviceId;
-      if (deviceId) useInboxStore.getState().refresh(deviceId).catch(() => {});
+      if (deviceId) {
+        useInboxStore.getState().refresh(deviceId).catch(() => {});
+        useDMStore.getState().refresh(deviceId).catch(() => {});
+      }
     };
     fetchInbox();
     const sub = AppState.addEventListener('change', (next) => {
@@ -221,9 +257,15 @@ function MainTabs() {
           <View style={updStyles.bannerBtns}>
             <TouchableOpacity
               style={updStyles.bannerBtn}
-              onPress={() => { downloadUpdate(updateResult!.apkUrl, updateResult!.latestVersion).catch(() => {}); }}
+              onPress={handleDownloadUpdate}
             >
               <Text style={updStyles.bannerBtnText}>{t('upd.download')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={updStyles.bannerDismiss}
+              onPress={handleOpenInBrowser}
+            >
+              <Text style={updStyles.bannerDismissText}>{t('upd.openInBrowser')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={updStyles.bannerDismiss}
@@ -254,9 +296,16 @@ function MainTabs() {
             <TouchableOpacity
               style={updStyles.forceBtn}
               activeOpacity={0.85}
-              onPress={() => { downloadUpdate(updateResult?.apkUrl ?? '', updateResult?.latestVersion).catch(() => {}); }}
+              onPress={handleDownloadUpdate}
             >
               <Text style={updStyles.forceBtnText}>{t('upd.downloadUpdate')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={updStyles.forceSecondaryBtn}
+              activeOpacity={0.85}
+              onPress={handleOpenInBrowser}
+            >
+              <Text style={updStyles.forceSecondaryBtnText}>{t('upd.openInBrowser')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -283,6 +332,8 @@ const updStyles = StyleSheet.create({
   forceChange:    { fontSize: 12, color: '#8A9BBF', lineHeight: 20 },
   forceBtn:       { marginTop: 8, backgroundColor: '#00E87A', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   forceBtnText:   { fontSize: 15, fontWeight: '700', color: '#030609' },
+  forceSecondaryBtn:     { marginTop: 4, borderRadius: 12, paddingVertical: 12, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  forceSecondaryBtnText: { fontSize: 14, fontWeight: '600', color: '#C8D8F0' },
 });
 
 // ── Tab adapters ──────────────────────────────────────────────────────────────
@@ -381,6 +432,7 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
           }
           useAuthStore.getState().updateFromEntitlement(entitlement);
           useInboxStore.getState().refresh(entitlement.device_id || deviceId).catch(() => {});
+          useDMStore.getState().refresh(entitlement.device_id || deviceId).catch(() => {});
           claimPendingReferral().catch(() => {});
         }).catch(() => {});
 

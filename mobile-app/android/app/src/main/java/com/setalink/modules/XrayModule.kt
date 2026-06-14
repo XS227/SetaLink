@@ -8,6 +8,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.TrafficStats
 import android.net.VpnService
+import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.facebook.react.bridge.*
@@ -453,7 +455,43 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun downloadAndInstallApk(url: String, promise: Promise) {
         try {
-            val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+            Log.i(TAG, "downloadAndInstallApk start url=$url sdk=${Build.VERSION.SDK_INT}")
+
+            // ── Install-unknown-apps gate (Android 8+) ────────────────────────
+            // REQUEST_INSTALL_PACKAGES in the manifest is NOT enough: the user
+            // must grant per-app "Install unknown apps" special access, or the
+            // package installer silently refuses to open the downloaded APK.
+            // Without this check the download could complete but the installer
+            // never appeared — and the JS error was swallowed. Send the user to
+            // the right Settings screen and reject so the UI can explain.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !reactContext.packageManager.canRequestPackageInstalls()) {
+                Log.w(TAG, "install-unknown-apps not granted — opening settings")
+                try {
+                    val settings = Intent(
+                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:${reactContext.packageName}"),
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    (currentActivity ?: reactContext).startActivity(settings)
+                } catch (e: Exception) {
+                    Log.e(TAG, "could not open unknown-apps settings: ${e.message}")
+                }
+                promise.reject(
+                    "INSTALL_PERMISSION_REQUIRED",
+                    "Enable 'Install unknown apps' for SetaLink, then tap Download again.",
+                )
+                return
+            }
+
+            val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as? android.app.DownloadManager
+            if (dm == null) {
+                Log.e(TAG, "DownloadManager unavailable/disabled on this device")
+                promise.reject(
+                    "DOWNLOAD_MANAGER_UNAVAILABLE",
+                    "Download service is disabled on this device — download from setalink.no in a browser.",
+                )
+                return
+            }
 
             val updatesDir = java.io.File(reactContext.getExternalFilesDir(null), "updates")
             updatesDir.mkdirs()
@@ -490,14 +528,16 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                     }.getOrDefault(false)
 
                     if (!ok || !target.exists() || target.length() < 1_000_000) {
-                        Log.e(TAG, "APK download failed or file too small (${target.length()}B)")
+                        Log.e(TAG, "APK download failed or file too small (${target.length()}B) ok=$ok")
                         promise.reject("APK_DOWNLOAD_FAILED", "Download failed — try again or use browser download")
                         return
                     }
+                    Log.i(TAG, "APK download complete: ${target.length()}B at ${target.absolutePath}")
 
                     try {
                         val apkUri = androidx.core.content.FileProvider.getUriForFile(
                             reactContext, "com.setalink.fileprovider", target)
+                        Log.i(TAG, "launching installer for $apkUri")
                         val install = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(apkUri, "application/vnd.android.package-archive")
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
