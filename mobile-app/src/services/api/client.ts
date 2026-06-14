@@ -5,7 +5,11 @@
  * 401 auto-logout are handled in one place.
  */
 
-export const API_BASE = 'https://api.setalink.net/v1';
+// Multi-node API base. MUST be a domain we actually own/control.
+// NOTE: `api.setalink.net` was the old hardcoded value — we do NOT own setalink.net
+// (its NS is Namecheap's, not our proisp.no), so it never resolved and every
+// /v1 call silently failed and fell back. Do not use .net. We own setalink.no.
+export const API_BASE = 'https://api.setalink.no/v1';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
