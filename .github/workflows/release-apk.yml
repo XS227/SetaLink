@@ -1,0 +1,134 @@
+name: Release APK
+
+# Release builds are intentional: trigger manually (Actions ▸ Run workflow) or by
+# pushing a version tag. They are NOT run on every push (android-debug.yml covers
+# per-push validation). Signing uses the production key via repo Secrets so the
+# artifacts install as an OTA update over the previous release.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build-release:
+    name: Build release APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      # ── Source ──────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Toolchain (mirrors android-debug.yml, which is proven to build) ───────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK and CMake
+        run: yes | sdkmanager "ndk;26.1.10909125" "cmake;3.22.1"
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      # ── JS dependencies ─────────────────────────────────────────────────────
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/node_modules
+          key: node-modules-${{ hashFiles('mobile-app/package.json') }}
+          restore-keys: node-modules-
+
+      - name: Install JS dependencies
+        working-directory: mobile-app
+        run: npm install
+
+      # ── Android build setup ─────────────────────────────────────────────────
+      - name: Download Gradle wrapper jar
+        working-directory: mobile-app/android
+        run: |
+          curl -fsSL \
+            "https://raw.githubusercontent.com/gradle/gradle/v8.7.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+
+      - name: Generate local.properties
+        working-directory: mobile-app/android
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      # ── Release signing (production key from repo Secrets) ────────────────────
+      - name: Verify signing secrets are present
+        env:
+          KS: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          SP: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KP: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          missing=
+          [ -z "$KS" ] && missing="$missing RELEASE_KEYSTORE_BASE64"
+          [ -z "$SP" ] && missing="$missing RELEASE_STORE_PASSWORD"
+          [ -z "$KP" ] && missing="$missing RELEASE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required repo secret(s):$missing"
+            exit 1
+          fi
+
+      - name: Decode release keystore
+        working-directory: mobile-app/android/app
+        run: echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+
+      - name: Write keystore.properties
+        working-directory: mobile-app/android
+        run: |
+          {
+            echo "storeFile=release.keystore"
+            echo "storePassword=${{ secrets.RELEASE_STORE_PASSWORD }}"
+            echo "keyAlias=${{ secrets.RELEASE_KEY_ALIAS }}"
+            echo "keyPassword=${{ secrets.RELEASE_KEY_PASSWORD }}"
+          } > keystore.properties
+
+      # ── Build ────────────────────────────────────────────────────────────────
+      - name: Build release APKs
+        working-directory: mobile-app/android
+        run: ./gradlew assembleRelease --stacktrace
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
+
+      # ── Artifacts ─────────────────────────────────────────────────────────────
+      # ABI splits (arm64-v8a, armeabi-v7a) + universalApk → three signed APKs.
+      - name: List built APKs
+        working-directory: mobile-app/android/app/build/outputs/apk/release
+        run: ls -lh *.apk
+
+      - name: Upload release APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: setalink-release-${{ github.run_number }}
+          path: |
+            mobile-app/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            mobile-app/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk
+            mobile-app/android/app/build/outputs/apk/release/app-universal-release.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Print APK sizes
+        working-directory: mobile-app/android/app/build/outputs/apk/release
+        run: du -sh *.apk
+
+      # Always remove the decoded signing material from the runner workspace.
+      - name: Clean up signing material
+        if: always()
+        working-directory: mobile-app/android
+        run: rm -f app/release.keystore keystore.properties
