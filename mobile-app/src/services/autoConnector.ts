@@ -78,7 +78,9 @@ export interface AutoConnectResult {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const ADMIN_REPORT_URL   = 'https://admin.setalink.no/api.php?mobile=1';
+// admin.setalink.no has no DNS record → these best-effort diagnostics POSTs used
+// to always fail. Point at setalink.no/api.php (the live backend we control).
+const ADMIN_REPORT_URL   = 'https://setalink.no/api.php?mobile=1';
 const MOBILE_TOKEN       = 'setalink-mobile-diag-v1';
 // Increased to 120s: HTTPS probe (12s × 4 hosts) + HTTP probe (10s × 3 hosts) + tunnel setup.
 // Validation now runs HTTPS first (for Vision), then HTTP — worst-case ~90s total.

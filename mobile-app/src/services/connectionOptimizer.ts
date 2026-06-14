@@ -47,8 +47,9 @@ export interface OptimizerResult {
 // still resolve in under 10 s and move to the next profile immediately.
 const PROBE_TIMEOUT_MS = 70_000;
 
-// Admin API endpoint for anonymized diagnostics reporting.
-const ADMIN_REPORT_URL = 'https://admin.setalink.no/api.php?mobile=1';
+// Anonymized diagnostics reporting. admin.setalink.no has no DNS record, so the
+// old value always failed; use setalink.no/api.php (live backend we control).
+const ADMIN_REPORT_URL = 'https://setalink.no/api.php?mobile=1';
 const MOBILE_TOKEN = 'setalink-mobile-diag-v1';
 
 // Post anonymized probe results to the admin panel.

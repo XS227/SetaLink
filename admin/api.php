@@ -736,6 +736,23 @@ if ($method === 'POST') {
         $db->prepare("UPDATE devices SET blocked=? WHERE device_id=?")->execute([$block, $did]);
         api_ok(['blocked' => (bool)$block]);
     }
+    // Multi-node test allowlist — grant/revoke a device access to a test node
+    // (e.g. node_id="fi-hel" for Helsinki). Does NOT route anyone automatically.
+    if ($action === 'node-allowlist-add' || $action === 'node-allowlist-remove') {
+        $did = trim((string)($parsed['device_id'] ?? ''));
+        $nid = trim((string)($parsed['node_id'] ?? ''));
+        if (!$did || !$nid) api_err('device_id and node_id required');
+        $db = open_analytics_db();
+        $db->exec("CREATE TABLE IF NOT EXISTS node_allowlist (device_id TEXT, node_id TEXT, added_at TEXT, PRIMARY KEY(device_id,node_id))");
+        if ($action === 'node-allowlist-add') {
+            $db->prepare("INSERT OR IGNORE INTO node_allowlist (device_id,node_id,added_at) VALUES (?,?,?)")
+               ->execute([$did, $nid, gmdate('c')]);
+            api_ok(['allowed' => true, 'device_id' => $did, 'node_id' => $nid]);
+        } else {
+            $db->prepare("DELETE FROM node_allowlist WHERE device_id=? AND node_id=?")->execute([$did, $nid]);
+            api_ok(['allowed' => false, 'device_id' => $did, 'node_id' => $nid]);
+        }
+    }
     if ($action === 'send-message') {
         // In-app message to one device ('' target = broadcast to all).
         // No real push transport exists (no FCM): clients poll get-messages
@@ -1203,6 +1220,27 @@ switch ($action) {
 
     case 'server-stats':        api_ok(cli_json('server-stats', [], 8)); break;
     case 'connection-analytics': api_ok(cli_json('connection-analytics', [], 8)); break;
+
+    // Multi-node visibility: which device is using which node + the test allowlist.
+    case 'node-usage': {
+        $db = open_analytics_db();
+        $usage = $allow = [];
+        try {
+            $usage = $db->query(
+                "SELECT u.device_id, u.node_id, u.first_seen, u.last_seen, u.hits,
+                        d.user_id, d.country
+                   FROM node_usage u LEFT JOIN devices d ON d.device_id = u.device_id
+                  ORDER BY u.last_seen DESC LIMIT 500"
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {}
+        try {
+            $allow = $db->query(
+                "SELECT device_id, node_id, added_at FROM node_allowlist ORDER BY added_at DESC"
+            )->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {}
+        api_ok(['usage' => $usage, 'allowlist' => $allow]);
+        break;
+    }
 
     case 'test-results':
         $db = open_analytics_db();
