@@ -6,6 +6,7 @@ on:
     tags:     ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:        # allow manual runs from the Actions tab
 
 jobs:
   build:
@@ -22,16 +23,16 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Set up Node 18
+      - name: Set up Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'yarn'
-          cache-dependency-path: mobile-app/yarn.lock
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: mobile-app/package-lock.json
 
       - name: Install JS dependencies
         working-directory: mobile-app
-        run: yarn install --frozen-lockfile
+        run: npm ci
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -44,16 +45,24 @@ jobs:
 
       - name: Build release APK
         working-directory: mobile-app/android
-        run: ./gradlew assembleRelease --no-daemon
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
         env:
-          GRADLE_OPTS: "-Xmx1g -XX:MaxMetaspaceSize=256m"
+          GRADLE_OPTS: "-Xmx2g -XX:MaxMetaspaceSize=512m"
 
-      - name: Upload APK artifact
+      - name: List built APKs
+        working-directory: mobile-app/android/app/build/outputs/apk/release
+        run: ls -lh *.apk
+
+      - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
-          path: mobile-app/android/app/build/outputs/apk/release/*.apk
+          path: |
+            mobile-app/android/app/build/outputs/apk/release/app-arm64-v8a-release.apk
+            mobile-app/android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk
+            mobile-app/android/app/build/outputs/apk/release/app-universal-release.apk
           retention-days: 14
+          if-no-files-found: error
 
       # Only create a GitHub Release on version tags
       - name: Create GitHub Release

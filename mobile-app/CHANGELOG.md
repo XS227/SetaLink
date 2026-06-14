@@ -2,6 +2,17 @@
 
 All notable changes to SetaLink are documented here.
 
+## [0.9.33] — 2026-06-14
+
+### Added
+- **User-to-user messaging (MVP)** — the Inbox is now a two-way chat surface. Users message each other by SetaLink ID only (`SL-227-…` user_id / device_id / referral code); no phone, email, or IP is involved.
+  - Inbox gains **Messages / Announcements** tabs and a **＋ New message** compose modal (recipient ID + body, 2000-char cap).
+  - New backend endpoints (`public/api.php`): `send-message`, `list-messages`, `mark-message-read`; shared logic in `lib/messaging.php`.
+  - Messages stored server-side in `data/analytics.db` (`user_messages`), **bodies encrypted at rest** (libsodium secretbox, AES-256-GCM fallback).
+  - **Anti-spam**: recipient existence validated, self-send blocked, rate limit 10/min + 300/day per device.
+  - `user_blocks` / `user_reports` tables created (structure-only) for a later block/report feature.
+- **Admin dashboard "Messaging (DM)" card** — total / unread / read / sent-24h / distinct senders & recipients. Metadata only — message content is never shown (the stats endpoint never reads the encrypted body).
+
 ## [Unreleased]
 
 ### Fixed

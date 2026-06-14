@@ -10,6 +10,7 @@ const VALID_PKGS   = ['7days', '30days', 'unlimited', '10GB', '20GB', '30GB'];
 
 // Shared quota-economy ledger / transfer / milestone / package logic.
 require_once __DIR__ . '/../lib/quota_economy.php';
+require_once __DIR__ . '/../lib/messaging.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -753,6 +754,13 @@ if ($method === 'POST') {
         $db->prepare('INSERT INTO admin_messages (target_device_id,title,body) VALUES (?,?,?)')
            ->execute([$target, $title, $msg]);
         api_ok(['id' => (int)$db->lastInsertId(), 'target' => $target ?: 'all']);
+    }
+    if ($action === 'user-messages-stats') {
+        // User-to-user messaging overview (v0.9.33): counts + delivery status
+        // only. dm_admin_stats() never selects the (encrypted) body, so message
+        // content can never surface in the admin panel.
+        $db = open_analytics_db();
+        api_ok(dm_admin_stats($db, 50));
     }
     if ($action === 'device-set-quota') {
         $did   = trim((string)($parsed['device_id'] ?? ''));

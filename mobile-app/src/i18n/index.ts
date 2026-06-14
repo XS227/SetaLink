@@ -331,6 +331,24 @@ const EN = {
   'pr.markAllRead':       'Mark all read',
   'pr.tapToMarkRead':     'Tap to mark as read',
 
+  // Inbox — user-to-user direct messages (v0.9.33)
+  'dm.tabDirect':            'Messages',
+  'dm.tabAnnounce':         'Announcements',
+  'dm.new':                 'New message',
+  'dm.composeTitle':        'New message',
+  'dm.recipientLabel':      'Recipient SetaLink ID',
+  'dm.recipientPlaceholder': 'e.g. SL-227-XXXXXXXX',
+  'dm.messagePlaceholder':  'Write a message…',
+  'dm.send':                'Send',
+  'dm.sending':             'Sending…',
+  'dm.cancel':              'Cancel',
+  'dm.empty':               'No messages yet. Tap + to start a conversation.',
+  'dm.you':                 'You',
+  'dm.yourId':              'Your ID',
+  'dm.sentToast':           'Message sent',
+  'dm.recipientRequired':   'Enter a recipient SetaLink ID',
+  'dm.messageRequired':     'Write a message first',
+
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
   'pr.activeInvites':     'active invites',
@@ -361,6 +379,12 @@ const EN = {
   'upd.download':         'Download',
   'upd.requiredBody':     'A critical update is required to continue using SetaLink.\nVersion {v} is now available.',
   'upd.downloadUpdate':   'Download Update',
+  'upd.installPermTitle': 'Allow app installs',
+  'upd.installPermBody':  'SetaLink needs permission to install updates. Enable "Install unknown apps" on the screen that just opened, then tap Download again.',
+  'upd.downloadFailedTitle': 'Download failed',
+  'upd.downloadFailedBody':  'Could not download the update. Check your connection and try again, or download from setalink.no.',
+  'upd.openInBrowser':    'Open in browser',
+  'upd.retry':            'Retry',
 
   // Profile — quota economy (v0.9.31)
   'pr.sendGb':            'Send GB to a friend',
@@ -742,6 +766,24 @@ const FA: typeof EN = {
   'pr.markAllRead':       'خواندن همه',
   'pr.tapToMarkRead':     'برای علامت خوانده‌شده لمس کنید',
 
+  // Inbox — user-to-user direct messages (v0.9.33)
+  'dm.tabDirect':            'پیام‌ها',
+  'dm.tabAnnounce':         'اعلان‌ها',
+  'dm.new':                 'پیام جدید',
+  'dm.composeTitle':        'پیام جدید',
+  'dm.recipientLabel':      'شناسه ستالینک گیرنده',
+  'dm.recipientPlaceholder': 'مثلاً SL-227-XXXXXXXX',
+  'dm.messagePlaceholder':  'پیام خود را بنویسید…',
+  'dm.send':                'ارسال',
+  'dm.sending':             'در حال ارسال…',
+  'dm.cancel':              'انصراف',
+  'dm.empty':               'هنوز پیامی نیست. برای شروع گفتگو + را لمس کنید.',
+  'dm.you':                 'شما',
+  'dm.yourId':              'شناسه شما',
+  'dm.sentToast':           'پیام ارسال شد',
+  'dm.recipientRequired':   'شناسه ستالینک گیرنده را وارد کنید',
+  'dm.messageRequired':     'ابتدا یک پیام بنویسید',
+
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
   'pr.activeInvites':     'دعوت فعال',
@@ -772,6 +814,12 @@ const FA: typeof EN = {
   'upd.download':         'دانلود',
   'upd.requiredBody':     'برای ادامه استفاده از SetaLink، یک به‌روزرسانی مهم لازم است.\nنسخه {v} اکنون در دسترس است.',
   'upd.downloadUpdate':   'دانلود به‌روزرسانی',
+  'upd.installPermTitle': 'اجازهٔ نصب برنامه',
+  'upd.installPermBody':  'برای نصب به‌روزرسانی، SetaLink به اجازه نیاز دارد. در صفحه‌ای که باز شد گزینهٔ «نصب برنامه‌های ناشناس» را فعال کنید و دوباره دانلود را بزنید.',
+  'upd.downloadFailedTitle': 'دانلود ناموفق بود',
+  'upd.downloadFailedBody':  'دانلود به‌روزرسانی ممکن نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید یا از setalink.no دانلود کنید.',
+  'upd.openInBrowser':    'باز کردن در مرورگر',
+  'upd.retry':            'تلاش دوباره',
 
   // Profile — quota economy (v0.9.31)
   'pr.sendGb':            'ارسال گیگابایت به دوست',

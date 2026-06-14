@@ -23,6 +23,8 @@ define('DB_PATH', __DIR__ . '/../data/analytics.db');
 
 // Shared quota-economy ledger / transfer / milestone / package logic.
 require_once __DIR__ . '/../lib/quota_economy.php';
+// User-to-user messaging (v0.9.33).
+require_once __DIR__ . '/../lib/messaging.php';
 
 header('Content-Type: application/json');
 // CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
@@ -57,6 +59,7 @@ function db(): PDO {
     $pdo->exec("PRAGMA journal_mode=WAL");
     init_device_tables($pdo);
     qe_init_tables($pdo);
+    dm_init_tables($pdo);
     return $pdo;
 }
 
@@ -524,6 +527,19 @@ if ($method === 'GET') {
             'user_id'   => $r['user_id'] ?? '',
             'country'   => $r['country'] ?? '',
             'blocked'   => (bool)($r['blocked'] ?? 0),
+        ]);
+    }
+
+    if ($action === 'list-messages') {
+        // Direct-message inbox/outbox for this device (v0.9.33). Bodies are
+        // decrypted server-side; peers are identified by SetaLink ID only.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        ok([
+            'messages' => dm_list($pdo, $deviceId),
+            'unread'   => dm_unread_count($pdo, $deviceId),
         ]);
     }
 
@@ -1005,6 +1021,31 @@ if ($method === 'POST') {
             err($e->getMessage());
         }
         ok($result);
+    }
+
+    if ($action === 'send-message') {
+        // User-to-user direct message (v0.9.33). Recipient addressed by
+        // SetaLink ID (device_id | user_id | referral_code). Rate-limited,
+        // body encrypted at rest. No phone/email/IP is touched.
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $recipient = trim($_POST['recipient'] ?? '');
+        $body      = (string)($_POST['body'] ?? '');
+        if (!$deviceId || $recipient === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = dm_send($pdo, $deviceId, $recipient, $body);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
+    if ($action === 'mark-message-read') {
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $messageId = (int)($_POST['message_id'] ?? 0);
+        if (!$deviceId || $messageId <= 0) err('missing params');
+        $pdo = db();
+        ok(['updated' => dm_mark_read($pdo, $deviceId, $messageId)]);
     }
 
     err('unknown action');
