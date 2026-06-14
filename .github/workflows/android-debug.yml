@@ -94,15 +94,23 @@ jobs:
           ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/26.1.10909125
 
       # ── Artifact ─────────────────────────────────────────────────────────────
-      - name: Upload debug APK
+      # ABI splits are enabled (arm64-v8a, armeabi-v7a) + universalApk, so
+      # assembleDebug emits per-ABI APKs — there is no single app-debug.apk.
+      - name: List built APKs
+        working-directory: mobile-app/android/app/build/outputs/apk/debug
+        run: ls -lh *.apk
+
+      - name: Upload debug APKs
         uses: actions/upload-artifact@v4
         with:
           name: setalink-debug-${{ github.run_number }}
-          path: mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            mobile-app/android/app/build/outputs/apk/debug/app-arm64-v8a-debug.apk
+            mobile-app/android/app/build/outputs/apk/debug/app-armeabi-v7a-debug.apk
+            mobile-app/android/app/build/outputs/apk/debug/app-universal-debug.apk
           retention-days: 30
           if-no-files-found: error
 
-      - name: Print APK size
-        run: |
-          APK=mobile-app/android/app/build/outputs/apk/debug/app-debug.apk
-          echo "APK size: $(du -sh "$APK" | cut -f1)"
+      - name: Print APK sizes
+        working-directory: mobile-app/android/app/build/outputs/apk/debug
+        run: du -sh *.apk
