@@ -1669,9 +1669,10 @@ views.devices = {
           const failBadge = failCat
             ? catBadge(failCat) + (r.last_failure_at ? `<div style="font-size:.6rem;color:var(--muted-2);margin-top:1px">${fmtRelative(r.last_failure_at)}</div>` : '')
             : '<span style="color:var(--muted-2);font-size:.7rem">—</span>';
-          // Source country vs VPN exit
+          // Source country vs VPN exit — show latest known country, or Unknown.
           const srcIp  = esc(r.last_ip||'—');
-          const srcCtry = flag + ' ' + esc(r.country_name||r.country||'—');
+          const ctryName = r.country_name || r.country || '';
+          const srcCtry = ctryName ? (flag + ' ' + esc(ctryName)) : '<span style="color:var(--muted-2)">Unknown</span>';
           // Active SNI
           const sniHtml = r.active_sni ? `<div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)">${esc(r.active_sni)}</div>` : '';
           return `<tr style="cursor:pointer" onclick="devDetail('${esc(r.device_id)}')" title="Click for device details">
@@ -1798,7 +1799,11 @@ window.devDetail = async function(did) {
       kv('ABI', esc(dev.abi||'') || '<span style="color:var(--muted-2)">unknown — fills on next app launch</span>'),
       kv('App version', esc(dev.app_version)),
       kv('Language', esc(dev.language)),
-      kv('Country', `${countryFlag(dev.country||'')} ${esc(dev.country_name||dev.country||'')}`),
+      kv('Country', (dev.country_name||dev.country)
+            ? `${countryFlag(dev.country||'')} ${esc(dev.country_name||dev.country||'')}`
+              + (dev.country_updated_at ? `<span style="color:var(--muted-2);font-size:.7rem"> · updated ${fmtRelative(dev.country_updated_at)}</span>` : '')
+              + (dev.first_country && dev.first_country!==dev.country ? `<div style="font-size:.7rem;color:var(--muted-2)">first seen: ${countryFlag(dev.first_country)} ${esc(dev.first_country)}</div>` : '')
+            : '<span style="color:var(--muted-2)">Unknown</span>'),
       kv('Real IP', esc(dev.last_ip) || '<span style="color:var(--muted-2)">unknown — all requests came via VPN tunnel</span>'),
       kv('Status', dev.is_online ? '<span style="color:var(--ok)">● online</span>' : '○ offline'),
       kv('Protocol / SNI', `${esc(dev.active_protocol||'')} ${esc(dev.active_sni||'')}`),

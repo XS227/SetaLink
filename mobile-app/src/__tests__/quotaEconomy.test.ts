@@ -1,5 +1,5 @@
 import {
-  ONE_GB, MIN_TRANSFER_BYTES, computeTransferable, validateTransferAmount,
+  ONE_GB, MIN_TRANSFER_BYTES, computeTransferable, validateTransferAmount, normalizeDigits,
 } from '../utils/quotaEconomy';
 import type { QuotaSummary } from '../services/entitlementService';
 
@@ -79,5 +79,38 @@ describe('validateTransferAmount', () => {
     const r = validateTransferAmount('1,5', avail);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.bytes).toBe(Math.round(1.5 * ONE_GB));
+  });
+
+  // BUG-2: Farsi/Arabic keyboards send localized digits. parseFloat would read
+  // "۱۰" as NaN, leaving the Continue button effectively dead.
+  it('accepts Persian (Farsi) digits — the dead-button repro', () => {
+    const r = validateTransferAmount('۱۰', avail); // ۱۰ = 10, but available is 5
+    expect(r).toEqual({ ok: false, error: 'above_max' }); // parsed as 10, not NaN
+  });
+
+  it('accepts a valid Persian-digit amount within balance', () => {
+    const r = validateTransferAmount('۲', avail); // ۲ = 2
+    expect(r).toEqual({ ok: true, bytes: 2 * ONE_GB });
+  });
+
+  it('accepts Arabic-Indic digits with the Arabic decimal separator', () => {
+    const r = validateTransferAmount('١٫٥', avail); // ١٫٥ = 1.5
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.bytes).toBe(Math.round(1.5 * ONE_GB));
+  });
+});
+
+describe('normalizeDigits', () => {
+  it('converts Persian digits to ASCII', () => {
+    expect(normalizeDigits('۰۱۲۳۴۵۶۷۸۹')).toBe('0123456789');
+  });
+  it('converts Arabic-Indic digits to ASCII', () => {
+    expect(normalizeDigits('٠١٢٣٤٥٦٧٨٩')).toBe('0123456789');
+  });
+  it('converts the Arabic decimal separator to a dot', () => {
+    expect(normalizeDigits('۱٫۵')).toBe('1.5');
+  });
+  it('leaves ASCII input unchanged', () => {
+    expect(normalizeDigits('12.5')).toBe('12.5');
   });
 });
