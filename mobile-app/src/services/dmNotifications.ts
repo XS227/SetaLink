@@ -34,7 +34,7 @@ export function newIncomingToNotify(
   const seen = new Set(alreadyNotified);
   return messages
     .filter(m => m.direction === 'in' && !m.read && !seen.has(m.id))
-    .map(m => ({ id: m.id, sender: m.peerUserId || m.peerDevice || 'SetaLink' }));
+    .map(m => ({ id: m.id, sender: m.peerUserId || m.peerDevice || 'Realink' }));
 }
 
 function loadNotified(): number[] {
@@ -90,6 +90,17 @@ export async function notifyNewIncoming(
   }
   saveNotified([...notified, ...toNotify.map(m => m.id)]);
   return posted;
+}
+
+/**
+ * Enable/disable the native periodic background poll (WorkManager, ~15 min) that
+ * delivers DM notifications even when the app is killed (Phase 2, no FCM). Mirror
+ * of the user's push-notifications setting.
+ */
+export async function setBackgroundPolling(enabled: boolean): Promise<void> {
+  const mod = nativeModule();
+  if (!mod?.setBackgroundPolling) return;
+  try { await mod.setBackgroundPolling(enabled); } catch { /* best-effort */ }
 }
 
 /** Route the app was opened into via a notification tap ('inbox'), else null. */

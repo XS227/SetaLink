@@ -191,25 +191,25 @@ function buildEntry(cfg: ParsedVlessConfig, index: number): ImportedServer {
   const countryFromAddress = detectCountry(cfg.address);
   const countryInfo        = countryFromName ?? countryFromAddress;
 
-  // 2. Build display name in "SetaLink X N" format (max ~22 chars before dedup)
+  // 2. Build display name in "Realink X N" format (max ~22 chars before dedup)
   let titleBase: string;
   let flagChar: string;
 
   if (provider) {
-    // Known cloud/hosting provider: "SetaLink Oracle", "SetaLink Hetzner"
-    titleBase = `SetaLink ${provider.label}`;
+    // Known cloud/hosting provider: "Realink Oracle", "Realink Hetzner"
+    titleBase = `Realink ${provider.label}`;
     flagChar  = countryInfo?.flag ?? provider.flag;
   } else if (countryInfo) {
-    // Detected country: "SetaLink Germany", "SetaLink Finland"
-    titleBase = `SetaLink ${countryInfo.country}`;
+    // Detected country: "Realink Germany", "Realink Finland"
+    titleBase = `Realink ${countryInfo.country}`;
     flagChar  = countryInfo.flag;
   } else if (rawName && rawName.length <= 32 && !rawName.includes(':')) {
     // Fragment is a user-given label — use up to 14 chars after stripping flags
     const stripped = rawName.replace(/\p{Regional_Indicator}{2}/gu, '').trim();
-    titleBase = stripped.length > 1 ? `SetaLink ${stripped.slice(0, 14)}` : 'SetaLink Custom';
+    titleBase = stripped.length > 1 ? `Realink ${stripped.slice(0, 14)}` : 'Realink Custom';
     flagChar  = extractFlag(rawName) ?? '⚡';
   } else {
-    titleBase = 'SetaLink Custom';
+    titleBase = 'Realink Custom';
     flagChar  = '⚡';
   }
 

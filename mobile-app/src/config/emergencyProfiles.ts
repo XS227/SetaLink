@@ -23,7 +23,7 @@ const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v6';
 // vless://b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3@178.104.77.231:443?type=tcp&encryption=none&security=reality&pbk=Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU&fp=chrome&sni=www.cloudflare.com&sid=7f81892e&flow=xtls-rprx-vision#SetaLink-Cloudflare
 const HARDCODED_PROFILE: EmergencyProfile = {
   id:          'server-emergency',
-  label:       'SetaLink Hetzner DE',
+  label:       'Realink Hetzner DE',
   uuid:        'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
   address:     '178.104.77.231',
   port:        443,

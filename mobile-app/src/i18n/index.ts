@@ -1,4 +1,4 @@
-// Zero-dependency i18n for SetaLink.
+// Zero-dependency i18n for Realink.
 // Reads language from settingsStore — no external packages needed.
 // Add new keys to EN first, then mirror in FA.
 
@@ -19,7 +19,7 @@ const EN = {
 
   // Onboarding
   'ob.s1.title':      'Bypass any\nrestriction.',
-  'ob.s1.sub':        'SetaLink uses next-gen VLESS+Reality protocols that are\nindistinguishable from normal HTTPS traffic.',
+  'ob.s1.sub':        'Realink uses next-gen VLESS+Reality protocols that are\nindistinguishable from normal HTTPS traffic.',
   'ob.s2.title':      'AI-powered\nrouting.',
   'ob.s2.sub':        'Our Smart AI engine picks the fastest server and protocol\nautomatically — no configuration needed.',
   'ob.s3.title':      'Zero logs,\never.',
@@ -213,7 +213,7 @@ const EN = {
   'upd.updateNow':      'Update Now',
   'upd.later':          'Later',
   'upd.forceTitle':     'Update Required',
-  'upd.forceBody':      'A critical update is required to continue using SetaLink.',
+  'upd.forceBody':      'A critical update is required to continue using Realink.',
   'upd.downloading':    'Downloading update…',
 
   // Invite-only auth
@@ -336,7 +336,7 @@ const EN = {
   'dm.tabAnnounce':         'Announcements',
   'dm.new':                 'New message',
   'dm.composeTitle':        'New message',
-  'dm.recipientLabel':      'Recipient SetaLink ID',
+  'dm.recipientLabel':      'Recipient Realink ID',
   'dm.recipientPlaceholder': 'e.g. SL-227-XXXXXXXX',
   'dm.messagePlaceholder':  'Write a message…',
   'dm.send':                'Send',
@@ -346,7 +346,7 @@ const EN = {
   'dm.you':                 'You',
   'dm.yourId':              'Your ID',
   'dm.sentToast':           'Message sent',
-  'dm.recipientRequired':   'Enter a recipient SetaLink ID',
+  'dm.recipientRequired':   'Enter a recipient Realink ID',
   'dm.messageRequired':     'Write a message first',
   'dm.detailTitle':         'Message',
   'dm.from':                'From',
@@ -386,10 +386,10 @@ const EN = {
   // OTA update — banner
   'upd.updateAvailable':  'Update {v} available',
   'upd.download':         'Download',
-  'upd.requiredBody':     'A critical update is required to continue using SetaLink.\nVersion {v} is now available.',
+  'upd.requiredBody':     'A critical update is required to continue using Realink.\nVersion {v} is now available.',
   'upd.downloadUpdate':   'Download Update',
   'upd.installPermTitle': 'Allow app installs',
-  'upd.installPermBody':  'SetaLink needs permission to install updates. Enable "Install unknown apps" on the screen that just opened, then tap Download again.',
+  'upd.installPermBody':  'Realink needs permission to install updates. Enable "Install unknown apps" on the screen that just opened, then tap Download again.',
   'upd.downloadFailedTitle': 'Download failed',
   'upd.downloadFailedBody':  'Could not download the update. Check your connection and try again, or download from setalink.no.',
   'upd.openInBrowser':    'Open in browser',
@@ -397,7 +397,7 @@ const EN = {
 
   // Profile — quota economy (v0.9.31)
   'pr.sendGb':            'Send GB to a friend',
-  'pr.sendGbDesc':        'Share transferable data with another SetaLink user',
+  'pr.sendGbDesc':        'Share transferable data with another Realink user',
   'pr.transferable':      'Transferable',
   'pr.purchasedEmpty':    'No purchased packages yet',
   'pr.msBonus13':         '+13 GB bonus',
@@ -406,7 +406,7 @@ const EN = {
   'pr.planFree':          'Free Invite Trial',
   'pr.planPremium':       'Unlimited',
   'pr.planTeam':          'Paid Package',
-  'pr.shareMessage':      'Join SetaLink — invite-only VPN for Iran.\nUse my code: {code}\nhttps://setalink.no/?ref={code}\n\nWe both get +1 GB when you join.',
+  'pr.shareMessage':      'Join Realink — invite-only VPN for Iran.\nUse my code: {code}\nhttps://setalink.no/?ref={code}\n\nWe both get +1 GB when you join.',
 
   // Send GB / transfer screen
   'tr.title':             'Send GB',
@@ -440,6 +440,8 @@ const EN = {
   'tr.errInvalidAmount':  'Enter a valid amount',
   'tr.errBelowMin':       'Minimum transfer is 100 MB',
   'tr.errAboveMax':       'Amount exceeds your transferable balance',
+  'tr.needRecipient':     'Enter a recipient ID to continue',
+  'tr.needAmount':        'Enter an amount to continue',
   'tr.errRecipient':      'Recipient not found',
   'tr.errSelf':           'You cannot send to yourself',
   'tr.errBlocked':        'This recipient cannot receive transfers',
@@ -657,7 +659,7 @@ const FA: typeof EN = {
   'upd.updateNow':      'به‌روزرسانی',
   'upd.later':          'بعداً',
   'upd.forceTitle':     'به‌روزرسانی ضروری',
-  'upd.forceBody':      'برای ادامه استفاده از SetaLink، نصب این به‌روزرسانی ضروری است.',
+  'upd.forceBody':      'برای ادامه استفاده از Realink، نصب این به‌روزرسانی ضروری است.',
   'upd.downloading':    'در حال دانلود…',
 
   // Invite-only auth
@@ -830,10 +832,10 @@ const FA: typeof EN = {
   // OTA update — banner
   'upd.updateAvailable':  'نسخه {v} در دسترس است',
   'upd.download':         'دانلود',
-  'upd.requiredBody':     'برای ادامه استفاده از SetaLink، یک به‌روزرسانی مهم لازم است.\nنسخه {v} اکنون در دسترس است.',
+  'upd.requiredBody':     'برای ادامه استفاده از Realink، یک به‌روزرسانی مهم لازم است.\nنسخه {v} اکنون در دسترس است.',
   'upd.downloadUpdate':   'دانلود به‌روزرسانی',
   'upd.installPermTitle': 'اجازهٔ نصب برنامه',
-  'upd.installPermBody':  'برای نصب به‌روزرسانی، SetaLink به اجازه نیاز دارد. در صفحه‌ای که باز شد گزینهٔ «نصب برنامه‌های ناشناس» را فعال کنید و دوباره دانلود را بزنید.',
+  'upd.installPermBody':  'برای نصب به‌روزرسانی، Realink به اجازه نیاز دارد. در صفحه‌ای که باز شد گزینهٔ «نصب برنامه‌های ناشناس» را فعال کنید و دوباره دانلود را بزنید.',
   'upd.downloadFailedTitle': 'دانلود ناموفق بود',
   'upd.downloadFailedBody':  'دانلود به‌روزرسانی ممکن نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید یا از setalink.no دانلود کنید.',
   'upd.openInBrowser':    'باز کردن در مرورگر',
@@ -884,6 +886,8 @@ const FA: typeof EN = {
   'tr.errInvalidAmount':  'مقدار معتبر وارد کنید',
   'tr.errBelowMin':       'حداقل انتقال ۱۰۰ مگابایت است',
   'tr.errAboveMax':       'مقدار از موجودی قابل‌انتقال شما بیشتر است',
+  'tr.needRecipient':     'برای ادامه شناسه گیرنده را وارد کنید',
+  'tr.needAmount':        'برای ادامه مقدار را وارد کنید',
   'tr.errRecipient':      'گیرنده یافت نشد',
   'tr.errSelf':           'نمی‌توانید به خودتان ارسال کنید',
   'tr.errBlocked':        'این گیرنده نمی‌تواند انتقال دریافت کند',

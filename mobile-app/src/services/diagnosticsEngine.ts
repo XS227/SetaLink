@@ -83,7 +83,7 @@ const STATIC_HOPS: RouteHop[] = [
   { hop: 1, ip: '10.0.0.1',       rtt: '1ms',  label: 'Local Gateway' },
   { hop: 2, ip: '185.220.101.34', rtt: '8ms',  label: 'ISP Transit' },
   { hop: 3, ip: '104.26.12.55',   rtt: '14ms', label: 'CDN Edge (CF)' },
-  { hop: 4, ip: '5.180.62.12',    rtt: '22ms', label: 'SetaLink DE·01' },
+  { hop: 4, ip: '5.180.62.12',    rtt: '22ms', label: 'Realink DE·01' },
   { hop: 5, ip: '0.0.0.0',        rtt: '—',    label: 'Destination (hidden)' },
 ];
 
@@ -128,7 +128,7 @@ export function snapshot(server?: ServerHint): DiagnosticsSnapshot {
     { hop: 1, ip: '10.0.0.1',       rtt: '1ms',        label: 'Local Gateway' },
     { hop: 2, ip: '185.220.101.34', rtt: '8ms',        label: 'ISP Transit' },
     { hop: 3, ip: '104.26.12.55',   rtt: `${edgeRtt}ms`, label: 'CDN Edge (CF)' },
-    { hop: 4, ip: '5.180.62.12',    rtt: `${nodeRtt}ms`, label: `SetaLink ${cc}·0${nodeNum}` },
+    { hop: 4, ip: '5.180.62.12',    rtt: `${nodeRtt}ms`, label: `Realink ${cc}·0${nodeNum}` },
     { hop: 5, ip: '0.0.0.0',        rtt: '—',          label: 'Destination (hidden)' },
   ];
 

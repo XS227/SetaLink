@@ -1,5 +1,6 @@
 import {
   ONE_GB, MIN_TRANSFER_BYTES, computeTransferable, validateTransferAmount, normalizeDigits,
+  transferFormReady,
 } from '../utils/quotaEconomy';
 import type { QuotaSummary } from '../services/entitlementService';
 
@@ -97,6 +98,27 @@ describe('validateTransferAmount', () => {
     const r = validateTransferAmount('١٫٥', avail); // ١٫٥ = 1.5
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.bytes).toBe(Math.round(1.5 * ONE_GB));
+  });
+});
+
+describe('transferFormReady (Send-GB Continue enable, v0.9.36 #2)', () => {
+  it('enables for a typed recipient + valid amount (the bug repro)', () => {
+    expect(transferFormReady('SL-227-8547F1F9', '10')).toBe(true);
+  });
+  it('does not require the ✓ verify step — just text + amount', () => {
+    expect(transferFormReady('android-abc', '0.5')).toBe(true);
+  });
+  it('disabled with no recipient', () => {
+    expect(transferFormReady('', '10')).toBe(false);
+    expect(transferFormReady('   ', '10')).toBe(false);
+  });
+  it('disabled with no / zero / invalid amount', () => {
+    expect(transferFormReady('SL-A', '')).toBe(false);
+    expect(transferFormReady('SL-A', '0')).toBe(false);
+    expect(transferFormReady('SL-A', 'abc')).toBe(false);
+  });
+  it('enables for Farsi-digit amount', () => {
+    expect(transferFormReady('SL-A', '۱۰')).toBe(true);
   });
 });
 

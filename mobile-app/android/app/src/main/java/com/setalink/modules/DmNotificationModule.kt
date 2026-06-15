@@ -5,7 +5,14 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import androidx.core.app.NotificationManagerCompat
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.setalink.notification.DmPollWorker
 import com.setalink.notification.NotificationHelper
+import java.util.concurrent.TimeUnit
 
 /**
  * Thin JS bridge for direct-message local notifications (old-arch NativeModule,
@@ -23,6 +30,32 @@ class DmNotificationModule(private val context: ReactApplicationContext) :
     fun notifyMessage(title: String, body: String?, id: Double, promise: Promise) {
         try {
             NotificationHelper.showMessage(context, title, body, id.toInt())
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.resolve(false)
+        }
+    }
+
+    /** Enable/disable the periodic background DM poll (WorkManager, ~15 min).
+     *  Delivers notifications even when the app is killed — no FCM needed. */
+    @ReactMethod
+    fun setBackgroundPolling(enabled: Boolean, promise: Promise) {
+        try {
+            val wm = WorkManager.getInstance(context)
+            if (enabled) {
+                val req = PeriodicWorkRequestBuilder<DmPollWorker>(15, TimeUnit.MINUTES)
+                    .setConstraints(
+                        Constraints.Builder()
+                            .setRequiredNetworkType(NetworkType.CONNECTED)
+                            .build()
+                    )
+                    .build()
+                wm.enqueueUniquePeriodicWork(
+                    DmPollWorker.UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, req
+                )
+            } else {
+                wm.cancelUniqueWork(DmPollWorker.UNIQUE_NAME)
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.resolve(false)

@@ -6,9 +6,19 @@ export type BiometricStatus =
   | 'available' | 'none_enrolled' | 'no_hardware' | 'hw_unavailable'
   | 'update_required' | 'unknown';
 
+export interface BiometricStatusDetail {
+  strong?: number;            // raw canAuthenticate() code per class
+  weak?: number;
+  deviceCredential?: number;
+  sdkInt?: number;
+  available?: boolean;
+  error?: string;
+}
+
 export interface BiometricService {
   isAvailable(): Promise<boolean>;
   getStatus(): Promise<BiometricStatus>;
+  getStatusDetail(): Promise<BiometricStatusDetail>;
   authenticate(title?: string, subtitle?: string): Promise<boolean>;
 }
 
@@ -31,8 +41,17 @@ export const BiometricService: BiometricService = {
     }
   },
 
+  async getStatusDetail(): Promise<BiometricStatusDetail> {
+    if (Platform.OS !== 'android' || !BiometricModule?.getStatusDetail) return { error: 'module_unavailable' };
+    try {
+      return (await BiometricModule.getStatusDetail()) as BiometricStatusDetail;
+    } catch (e: any) {
+      return { error: String(e?.message ?? 'error') };
+    }
+  },
+
   async authenticate(
-    title = 'SetaLink',
+    title = 'Realink',
     subtitle = 'Verify your identity to unlock',
   ): Promise<boolean> {
     if (Platform.OS !== 'android' || !BiometricModule) return false;

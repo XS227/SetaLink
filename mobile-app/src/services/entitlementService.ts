@@ -263,7 +263,7 @@ export async function checkAdminMessages(deviceId: string): Promise<void> {
     const msgs = await getMessages(deviceId);
     for (const m of msgs) {
       await new Promise<void>((resolve) => {
-        Alert.alert(m.title || 'SetaLink', m.body,
+        Alert.alert(m.title || 'Realink', m.body,
           [{ text: 'OK', onPress: () => resolve() }], { cancelable: false });
       });
       ackMessage(deviceId, m.id).catch(() => {});
@@ -276,7 +276,7 @@ export async function checkAdminMessages(deviceId: string): Promise<void> {
 export interface DirectMessage {
   id:          number;
   direction:   'in' | 'out';
-  peerUserId:  string;   // SetaLink ID of the other party (sender for 'in')
+  peerUserId:  string;   // Realink ID of the other party (sender for 'in')
   peerDevice:  string;
   body:        string;
   read:        boolean;
@@ -286,7 +286,7 @@ export interface DirectMessage {
 /** Max characters per direct message — mirrors MSG_MAX_LEN server-side. */
 export const DM_MAX_LEN = 2000;
 
-/** Send a direct message addressed by SetaLink ID (user_id / device_id / referral code). */
+/** Send a direct message addressed by Realink ID (user_id / device_id / referral code). */
 export async function sendMessage(
   deviceId: string, recipient: string, body: string,
 ): Promise<{ message_id: number; recipient_user_id: string; created_at: string }> {
@@ -323,7 +323,7 @@ export async function deleteMessage(deviceId: string, messageId: number): Promis
   await mobilePost('delete-message', { device_id: deviceId, message_id: messageId });
 }
 
-/** Soft-delete a whole thread (by peer SetaLink ID) from this device only. */
+/** Soft-delete a whole thread (by peer Realink ID) from this device only. */
 export async function deleteThread(deviceId: string, peer: string): Promise<void> {
   await mobilePost('delete-thread', { device_id: deviceId, peer });
 }

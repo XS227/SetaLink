@@ -56,7 +56,7 @@ import { useVpnStore }           from '../stores/vpnStore';
 import { useServerStore }        from '../stores/serverStore';
 import { useAppBoot }            from '../hooks/useAppBoot';
 import { useDeepLinks }          from '../hooks/useDeepLinks';
-import { ensureNotificationPermission, consumeInitialRoute } from '../services/dmNotifications';
+import { ensureNotificationPermission, consumeInitialRoute, setBackgroundPolling } from '../services/dmNotifications';
 import { useT }                   from '../i18n';
 
 import type { RootStackParamList, MainTabParamList } from './types';
@@ -517,6 +517,12 @@ function NotificationRouteHandler() {
   useEffect(() => {
     let mounted = true;
     ensureNotificationPermission().catch(() => {});
+    // Start/stop the background DM poll to match the push-notifications setting.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useSettingsStore } = require('../stores/settingsStore');
+      setBackgroundPolling(!!useSettingsStore.getState().pushNotifications).catch(() => {});
+    } catch {}
     const route = async () => {
       const r = await consumeInitialRoute();
       if (mounted && r === 'inbox') {
