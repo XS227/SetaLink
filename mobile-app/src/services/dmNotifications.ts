@@ -92,17 +92,6 @@ export async function notifyNewIncoming(
   return posted;
 }
 
-/**
- * Enable/disable the native periodic background poll (WorkManager, ~15 min) that
- * delivers DM notifications even when the app is killed (Phase 2, no FCM). Mirror
- * of the user's push-notifications setting.
- */
-export async function setBackgroundPolling(enabled: boolean): Promise<void> {
-  const mod = nativeModule();
-  if (!mod?.setBackgroundPolling) return;
-  try { await mod.setBackgroundPolling(enabled); } catch { /* best-effort */ }
-}
-
 /** Route the app was opened into via a notification tap ('inbox'), else null. */
 export async function consumeInitialRoute(): Promise<string | null> {
   const mod = nativeModule();
