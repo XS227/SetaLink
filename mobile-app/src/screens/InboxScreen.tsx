@@ -9,7 +9,7 @@ import { useAuthStore }  from '../stores/authStore';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
 import { useToastStore } from '../stores/toastStore';
-import { DM_MAX_LEN } from '../services/entitlementService';
+import { DM_MAX_LEN, type DirectMessage } from '../services/entitlementService';
 import { useT } from '../i18n';
 
 interface Props {
@@ -47,6 +47,22 @@ export function InboxScreen({ onBack }: Props) {
   const [composeOpen, setCompose] = useState(false);
   const [recipient, setRecipient] = useState('');
   const [draft, setDraft]         = useState('');
+  const [detail, setDetail]       = useState<DirectMessage | null>(null);
+
+  // Open a DM in the detail view. Mark read only when opening a received,
+  // still-unread message (BUG-1). Distinct from the + compose action.
+  const openDetail = (m: DirectMessage) => {
+    if (m.direction === 'in' && !m.read) dmMarkRead(deviceId, m.id);
+    setDetail(m);
+  };
+
+  // Reply to the open message: prefill the sender's ID and switch to compose.
+  const replyTo = (m: DirectMessage) => {
+    setDetail(null);
+    setRecipient(m.peerUserId || m.peerDevice);
+    setDraft('');
+    setCompose(true);
+  };
 
   useEffect(() => {
     if (!deviceId) return;
@@ -130,9 +146,10 @@ export function InboxScreen({ onBack }: Props) {
               return (
                 <TouchableOpacity
                   key={m.id}
+                  testID={`dm-row-${m.id}`}
                   style={[styles.item, unread && styles.itemUnread]}
                   activeOpacity={0.8}
-                  onPress={() => { if (unread) dmMarkRead(deviceId, m.id); }}
+                  onPress={() => openDetail(m)}
                 >
                   <View style={styles.itemHeader}>
                     {unread && <View style={styles.dot} />}
@@ -141,7 +158,7 @@ export function InboxScreen({ onBack }: Props) {
                     </Text>
                     <Text style={styles.itemDate}>{m.createdAt.slice(5, 16)}</Text>
                   </View>
-                  <Text style={styles.itemBody}>{m.body}</Text>
+                  <Text style={styles.itemBody} numberOfLines={2}>{m.body}</Text>
                 </TouchableOpacity>
               );
             })
@@ -177,8 +194,41 @@ export function InboxScreen({ onBack }: Props) {
         <View style={{ height: Spacing[8] }} />
       </ScrollView>
 
+      {/* Message detail modal (BUG-1: tapping a row opens this, not compose) */}
+      <Modal testID="dm-detail-modal" visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
+        <View style={styles.modalRoot}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t('dm.detailTitle')}</Text>
+            {!!detail && (
+              <>
+                <View style={styles.detailMeta}>
+                  <Text style={styles.detailMetaLabel}>
+                    {detail.direction === 'in' ? t('dm.from') : t('dm.to')}
+                  </Text>
+                  <Text style={styles.detailMetaId} numberOfLines={1}>
+                    {detail.peerUserId || detail.peerDevice}
+                  </Text>
+                </View>
+                <Text style={styles.detailDate}>{detail.createdAt.slice(0, 16).replace('T', ' ')}</Text>
+                <ScrollView style={styles.detailBodyScroll} contentContainerStyle={styles.detailBodyWrap}>
+                  <Text style={styles.detailBody}>{detail.body}</Text>
+                </ScrollView>
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={styles.cancelBtn} activeOpacity={0.8} onPress={() => setDetail(null)}>
+                    <Text style={styles.cancelText}>{t('dm.close')}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity testID="dm-reply-btn" style={styles.sendBtn} activeOpacity={0.85} onPress={() => replyTo(detail)}>
+                    <Text style={styles.sendText}>{t('dm.reply')}</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* Compose modal */}
-      <Modal visible={composeOpen} transparent animationType="slide" onRequestClose={() => setCompose(false)}>
+      <Modal testID="dm-compose-modal" visible={composeOpen} transparent animationType="slide" onRequestClose={() => setCompose(false)}>
         <KeyboardAvoidingView
           style={styles.modalRoot}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -189,6 +239,7 @@ export function InboxScreen({ onBack }: Props) {
 
             <Text style={styles.fieldLabel}>{t('dm.recipientLabel')}</Text>
             <TextInput
+              testID="dm-recipient-input"
               style={styles.input}
               value={recipient}
               onChangeText={setRecipient}
@@ -268,6 +319,13 @@ const styles = StyleSheet.create({
   modalCard:     { backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Layout.screenPadding, paddingBottom: Spacing[8], gap: Spacing[2] },
   modalTitle:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, marginBottom: 2 },
   modalYourId:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, marginBottom: Spacing[2] },
+  detailMeta:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], marginTop: Spacing[2] },
+  detailMetaLabel: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 },
+  detailMetaId:  { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.emerald[400], writingDirection: 'ltr' },
+  detailDate:    { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, marginTop: 2 },
+  detailBodyScroll: { maxHeight: 280, marginTop: Spacing[3] },
+  detailBodyWrap: { paddingVertical: Spacing[2] },
+  detailBody:    { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary, lineHeight: 24 },
   fieldLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, marginTop: Spacing[2] },
   input:         { borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
   inputMultiline: { minHeight: 110, textAlignVertical: 'top', marginTop: Spacing[2] },

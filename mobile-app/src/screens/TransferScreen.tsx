@@ -11,7 +11,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { useT } from '../i18n';
 import { formatBytes } from '../utils/formatters';
-import { ONE_GB, computeTransferable, validateTransferAmount } from '../utils/quotaEconomy';
+import { ONE_GB, computeTransferable, validateTransferAmount, normalizeDigits } from '../utils/quotaEconomy';
 import {
   resolveRecipient, transferQuota, getTransfers, getQuotaSummary,
   type TransferRecipient, type TransferRecord,
@@ -43,6 +43,9 @@ export function TransferScreen({ onBack }: Props) {
   const myCode      = user?.userId || deviceId;
   const available   = computeTransferable(user);
   const maxGb       = available / ONE_GB;
+  // Reflect real validity (digits already normalized) so Continue isn't enabled
+  // for un-parseable / out-of-range amounts — see BUG-2.
+  const amountValid = validateTransferAmount(amountStr, available).ok;
 
   useEffect(() => {
     if (!deviceId) return;
@@ -201,7 +204,7 @@ export function TransferScreen({ onBack }: Props) {
                 <TextInput
                   style={styles.amountInput}
                   value={amountStr}
-                  onChangeText={setAmountStr}
+                  onChangeText={(v) => setAmountStr(normalizeDigits(v))}
                   placeholder="0.0"
                   placeholderTextColor={Colors.text.muted}
                   keyboardType="decimal-pad"
@@ -221,10 +224,10 @@ export function TransferScreen({ onBack }: Props) {
             </GlassCard>
 
             <TouchableOpacity
-              style={[styles.primaryBtn, (!recipient || !amountStr) && styles.primaryBtnDisabled]}
+              style={[styles.primaryBtn, (!recipient || !amountValid) && styles.primaryBtnDisabled]}
               activeOpacity={0.85}
               onPress={handleContinue}
-              disabled={!recipient || !amountStr}
+              disabled={!recipient || !amountValid}
             >
               <Text style={styles.primaryBtnText}>{t('tr.continue')}</Text>
             </TouchableOpacity>

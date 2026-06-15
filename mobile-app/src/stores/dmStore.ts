@@ -51,6 +51,16 @@ export const useDMStore = create<DMState>()(
               useToastStore.getState().show(
                 n === 1 ? '💬 New message' : `💬 ${n} new messages`, 'info');
             } catch {}
+            // OS notification for newly received messages (Issue 2). Gated by the
+            // user's push-notifications setting; title-only, never the body.
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { notifyNewIncoming } = require('../services/dmNotifications');
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { useSettingsStore } = require('./settingsStore');
+              const enabled = !!useSettingsStore.getState().pushNotifications;
+              notifyNewIncoming(fetched, enabled).catch(() => {});
+            } catch {}
           }
           return unread;
         } catch {

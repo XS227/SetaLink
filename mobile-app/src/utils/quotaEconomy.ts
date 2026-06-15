@@ -34,11 +34,26 @@ export type AmountValidation =
   | { ok: false; error: AmountError };
 
 /**
+ * Normalize a numeric string typed on a localized (Farsi/Arabic) keyboard to
+ * ASCII so parseFloat works. Converts Persian (۰-۹, U+06F0–U+06F9) and
+ * Arabic-Indic (٠-٩, U+0660–U+0669) digits, and the Arabic decimal separator
+ * (٫, U+066B) to '.'. Without this, a Farsi keypad sends "۱۰" which parseFloat
+ * reads as NaN — the root cause of the dead "Continue" button (BUG-2).
+ */
+export function normalizeDigits(input: string): string {
+  return String(input)
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06F0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/٫/g, '.');
+}
+
+/**
  * Validate a GB amount string against the available transferable balance.
- * Accepts comma or dot decimal separators. Returns the byte amount on success.
+ * Accepts comma or dot decimal separators and Farsi/Arabic digits. Returns the
+ * byte amount on success.
  */
 export function validateTransferAmount(amountStr: string, availableBytes: number): AmountValidation {
-  const gb = parseFloat(String(amountStr).replace(',', '.'));
+  const gb = parseFloat(normalizeDigits(String(amountStr)).replace(',', '.'));
   if (!isFinite(gb) || gb <= 0) return { ok: false, error: 'invalid' };
   const bytes = Math.round(gb * ONE_GB);
   if (bytes < MIN_TRANSFER_BYTES) return { ok: false, error: 'below_min' };

@@ -1,15 +1,19 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, Animated, TouchableOpacity, Alert,
+  Share, Clipboard, Platform,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useDiagnosticsStore } from '../stores/diagnosticsStore';
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAIStore }          from '../stores/aiStore';
+import { useAuthStore }        from '../stores/authStore';
 import { formatElapsed } from '../hooks/useSessionTimer';
 import { getNetworkInfo } from '../services/networkInfoService';
 import { classifyFailure } from '../services/failureClassifier';
+import { buildDiagnosticsReport } from '../services/diagnosticsExport';
+import { APP_VERSION, APP_BUILD } from '../utils/version';
 
 // ── PulsingDot — unchanged visual primitive ────────────────────────────────────
 
@@ -109,6 +113,37 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
       return;
     }
     await runTraceTest();
+  };
+
+  // Build a diagnostic report from current state, then let the user share or copy
+  // it (BUG-3, Issue 2: the button previously had no handler).
+  const buildReport = () => {
+    const dns = (snapshot?.healthChecks ?? []).find(h => h.label === 'DNS Resolution');
+    const dnsStatus = dns
+      ? (dns.status === 'ok' ? 'Healthy' : dns.status === 'warn' ? 'Degraded' : 'Failed')
+      : 'Unknown';
+    return buildDiagnosticsReport({
+      appVersion:   APP_VERSION,
+      appBuild:     APP_BUILD,
+      deviceId:     useAuthStore.getState().user?.deviceId ?? '',
+      platform:     Platform.OS,
+      osVersion:    Platform.Version,
+      tunnelStatus: connectionState,
+      exitIp:       traceTestResult?.routedIp ?? networkInfo?.publicIp ?? null,
+      dnsStatus,
+      healthChecks: snapshot?.healthChecks ?? [],
+      routeHops:    snapshot?.routeHops ?? [],
+      connection:   snapshot?.connection ?? null,
+    });
+  };
+
+  const handleExport = () => {
+    const report = buildReport();
+    Alert.alert('Export Diagnostic Report', 'Share the report or copy it to the clipboard.', [
+      { text: 'Copy', onPress: () => { Clipboard.setString(report); Alert.alert('Copied', 'Diagnostic report copied to clipboard.'); } },
+      { text: 'Share', onPress: () => { Share.share({ message: report, title: 'SetaLink Diagnostic Report' }).catch(() => {}); } },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   useEffect(() => {
@@ -270,7 +305,6 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             const tunActive   = getStep('tun_created');
             const socksActive = getStep('socks_handshake');
             const xrayActive  = getStep('xray_started');
-            const dnsOk       = getStep('dns_check') === 'ok' || getStep('dns_resolve') === 'ok' ? 'ok' as const : getStep('dns_check') === 'fail' || getStep('dns_resolve') === 'fail' ? 'fail' as const : 'unknown' as const;
             // internet: ok if direct TUN probe or SOCKS5 EPERM-fallback both confirmed real HTTP/HTTPS data.
             // tun_fallback_ok is set when the EPERM path confirms internet via SOCKS5 (same tunnel, different binding).
             const internetOk  = getStep('tun_probe') === 'ok' || getStep('tun_fallback_ok') === 'ok'
@@ -278,6 +312,12 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
               : getStep('tun_fallback_fail') === 'fail' || getStep('tun_probe') === 'fail'
                 ? 'fail' as const
                 : 'unknown' as const;
+            // DNS: prefer explicit dns_check/dns_resolve; otherwise infer from the
+            // internet probe — reaching a hostname proves DNS resolved (BUG-3).
+            const dnsOk       = getStep('dns_check') === 'ok' || getStep('dns_resolve') === 'ok' ? 'ok' as const
+              : getStep('dns_check') === 'fail' || getStep('dns_resolve') === 'fail' ? 'fail' as const
+              : internetOk === 'ok' ? 'ok' as const
+              : 'unknown' as const;
             const statusColor = (s: 'ok' | 'fail' | 'unknown') =>
               s === 'ok' ? Colors.emerald[400] : s === 'fail' ? Colors.status.disconnected : Colors.text.muted;
             const statusIcon  = (s: 'ok' | 'fail' | 'unknown') =>
@@ -501,7 +541,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         </GlassCard>
 
         {/* Export */}
-        <TouchableOpacity style={styles.exportBtn} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.exportBtn} activeOpacity={0.8} onPress={handleExport}>
           <Text style={styles.exportText}>Export Diagnostic Report</Text>
         </TouchableOpacity>
 
