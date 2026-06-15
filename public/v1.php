@@ -119,7 +119,7 @@ function v1_primary_node(PDO $pdo): array {
 function v1_helsinki_node(): array {
     return [
         'id'   => 'fi-hel',
-        'test' => true,
+        'test' => false,   // promoted to public routing (v0.9.35) — visible & connectable to all
         'meta' => [
             'id'       => 'fi-hel',
             'country'  => 'Finland',
@@ -129,7 +129,7 @@ function v1_helsinki_node(): array {
             'load'     => 0,
             'protocol' => 'Reality',
             'transport'=> 'reality',
-            'tags'     => ['Test'],
+            'tags'     => ['New'],
             'premium'  => false,
         ],
         'creds' => [
