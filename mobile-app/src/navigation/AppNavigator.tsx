@@ -56,6 +56,7 @@ import { useVpnStore }           from '../stores/vpnStore';
 import { useServerStore }        from '../stores/serverStore';
 import { useAppBoot }            from '../hooks/useAppBoot';
 import { useDeepLinks }          from '../hooks/useDeepLinks';
+import { ensureNotificationPermission, consumeInitialRoute } from '../services/dmNotifications';
 import { useT }                   from '../i18n';
 
 import type { RootStackParamList, MainTabParamList } from './types';
@@ -509,12 +510,33 @@ function DeepLinkHandler() {
   return null;
 }
 
+// Opens the Inbox when the app is launched/resumed via a message notification
+// tap (Issue 2), and requests POST_NOTIFICATIONS once on Android 13+.
+function NotificationRouteHandler() {
+  const navigation = useNavigation<any>();
+  useEffect(() => {
+    let mounted = true;
+    ensureNotificationPermission().catch(() => {});
+    const route = async () => {
+      const r = await consumeInitialRoute();
+      if (mounted && r === 'inbox') {
+        try { navigation.navigate('Inbox'); } catch {}
+      }
+    };
+    route();
+    const sub = AppState.addEventListener('change', (next) => { if (next === 'active') route(); });
+    return () => { mounted = false; sub.remove(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
 // ── Root navigator ────────────────────────────────────────────────────────────
 
 export function AppNavigator() {
   return (
     <NavigationContainer>
       <DeepLinkHandler />
+      <NotificationRouteHandler />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="Splash"      component={SplashAdapter} />
         <Stack.Screen name="Language"    component={LanguageAdapter} />

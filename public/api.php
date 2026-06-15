@@ -104,6 +104,10 @@ function init_device_tables(PDO $pdo): void {
         "ALTER TABLE devices ADD COLUMN last_failure_at TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN android_version TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN abi TEXT DEFAULT ''",
+        // Geo: country/country_name now track the LATEST location; first_country
+        // preserves the first-seen one; country_updated_at = when it last changed.
+        "ALTER TABLE devices ADD COLUMN first_country TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN country_updated_at TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
@@ -164,6 +168,23 @@ function init_message_tables(PDO $pdo): void {
         PRIMARY KEY (message_id, device_id))');
 }
 
+/** Deliver a system notification to one device's Inbox (Announcements tab),
+ *  reusing the admin_messages poll transport. Best-effort; never throws. */
+function push_device_message(PDO $pdo, string $deviceId, string $title, string $body): void {
+    if ($deviceId === '') return;
+    try {
+        init_message_tables($pdo);
+        $pdo->prepare('INSERT INTO admin_messages (target_device_id,title,body) VALUES (?,?,?)')
+            ->execute([$deviceId, $title, $body]);
+    } catch (\Throwable $e) { /* notification is non-critical */ }
+}
+
+/** Format a byte count as a compact GB string (matches the client's 1024^3 GB). */
+function fmt_gb(int $bytes): string {
+    $gb = $bytes / (1024 * 1024 * 1024);
+    return rtrim(rtrim(number_format($gb, 2, '.', ''), '0'), '.');
+}
+
 // Egress IPs of our own infrastructure — a request arriving from one of
 // these travelled through the tunnel (or is a local test), so it does not
 // identify the client. 178.104.77.231 = live Reality box, 5.249.252.221 =
@@ -186,27 +207,44 @@ function client_ip(): string {
     return '';
 }
 
-// Refresh last_ip (+ country/flag when missing) from any non-tunneled
-// request, so devices heal as soon as the app talks to us with the VPN off.
+// Refresh last_ip + country from any non-tunneled request, so the admin always
+// reflects the user's LATEST location (not the first-seen one). When the public
+// IP changes we re-geo and overwrite country/country_name; first_country keeps
+// the original. Devices also heal as soon as the app talks to us with the VPN off.
 function touch_ip_geo(PDO $pdo, string $deviceId, array $dev = []): void {
     $ip = client_ip();
     if (!$ip) return;
     if (!array_key_exists('country', $dev)) {
-        $st = $pdo->prepare("SELECT last_ip, country FROM devices WHERE device_id=?");
+        $st = $pdo->prepare("SELECT last_ip, country, first_country FROM devices WHERE device_id=?");
         $st->execute([$deviceId]);
         $dev = $st->fetch() ?: [];
     }
-    if (($dev['last_ip'] ?? null) === $ip && ($dev['country'] ?? '') !== '') return;
+    $hasCountry = ($dev['country'] ?? '') !== '';
+    $ipChanged  = ($dev['last_ip'] ?? null) !== $ip;
+    // Nothing to do: same IP and we already know the country.
+    if (!$ipChanged && $hasCountry) return;
+
+    // Re-geo when the IP changed or we have no country yet.
     $cc = ''; $cn = '';
-    if (($dev['country'] ?? '') === '') {
+    if ($ipChanged || !$hasCountry) {
         $geo = detect_country_from_ip($ip);
         $cc = $geo['code']; $cn = $geo['name'];
     }
-    $pdo->prepare("UPDATE devices SET last_ip=?,
-                     country=CASE WHEN (country='' OR country IS NULL) AND ?!='' THEN ? ELSE country END,
-                     country_name=CASE WHEN (country_name='' OR country_name IS NULL) AND ?!='' THEN ? ELSE country_name END
-                   WHERE device_id=?")
-        ->execute([$ip, $cc, $cc, $cn, $cn, $deviceId]);
+
+    if ($cc !== '') {
+        // New reliable signal → overwrite latest country, seed first_country once.
+        $pdo->prepare(
+            "UPDATE devices SET last_ip=?, country=?, country_name=?,
+                 first_country=CASE WHEN (first_country='' OR first_country IS NULL) THEN ? ELSE first_country END,
+                 country_updated_at=datetime('now')
+             WHERE device_id=?")
+            ->execute([$ip, $cc, $cn, $cc, $deviceId]);
+    } else {
+        // Geo lookup failed (rate-limited / private IP): still record the new IP,
+        // keep the previously known country rather than blanking it.
+        $pdo->prepare("UPDATE devices SET last_ip=? WHERE device_id=?")
+            ->execute([$ip, $deviceId]);
+    }
 }
 
 function generate_referral_code(PDO $pdo): string {
@@ -1020,6 +1058,17 @@ if ($method === 'POST') {
         } catch (\RuntimeException $e) {
             err($e->getMessage());
         }
+        // Inbox notifications for both parties (BUG-2). Best-effort.
+        $senderId   = '';
+        $sIdRow = $pdo->prepare('SELECT user_id FROM devices WHERE device_id=?');
+        $sIdRow->execute([$deviceId]);
+        $senderId   = (string)($sIdRow->fetchColumn() ?: $deviceId);
+        $receiverId = (string)($result['receiver_user_id'] ?: $result['receiver_device']);
+        $gbStr      = fmt_gb((int)$result['bytes']);
+        push_device_message($pdo, $result['receiver_device'], 'Gigabytes received',
+            "User {$senderId} sent you {$gbStr} GB.");
+        push_device_message($pdo, $deviceId, 'Gigabytes sent',
+            "You sent {$gbStr} GB to {$receiverId}.");
         ok($result);
     }
 

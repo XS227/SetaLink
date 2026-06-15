@@ -174,6 +174,8 @@ function init_device_tables(PDO $db): void {
         "ALTER TABLE devices ADD COLUMN last_failure_at TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN android_version TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN abi TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN first_country TEXT DEFAULT ''",
+        "ALTER TABLE devices ADD COLUMN country_updated_at TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $db->exec($sql); } catch (Exception $e) {}
@@ -424,17 +426,31 @@ function geo_country(PDO $db, string $ip): array {
     return [$cc, $cn];
 }
 
-// Record the requesting client's real IP (+ derive country when missing).
-// No-op for tunneled requests so a real IP is never overwritten by 127.0.0.1.
+// Record the requesting client's real IP and LATEST country. No-op for tunneled
+// requests so a real IP is never overwritten by 127.0.0.1. When the IP changes
+// we re-geo and overwrite country/country_name (latest-wins); first_country
+// keeps the original. Mirrors touch_ip_geo() in public/api.php.
 function touch_device_ip(PDO $db, string $device_id): void {
     $ip = real_client_ip();
     if ($ip === '') return;
+    $cur = $db->prepare("SELECT last_ip, country FROM devices WHERE device_id=?");
+    $cur->execute([$device_id]);
+    $row = $cur->fetch(PDO::FETCH_ASSOC) ?: [];
+    $hasCountry = ($row['country'] ?? '') !== '';
+    $ipChanged  = ($row['last_ip'] ?? null) !== $ip;
+    if (!$ipChanged && $hasCountry) return;
+
     [$cc, $cn] = geo_country($db, $ip);
-    $db->prepare("UPDATE devices SET last_ip=?,
-                    country=CASE WHEN (country='' OR country IS NULL) AND ?!='' THEN ? ELSE country END,
-                    country_name=CASE WHEN (country_name='' OR country_name IS NULL) AND ?!='' THEN ? ELSE country_name END
-                  WHERE device_id=?")
-       ->execute([$ip, $cc, $cc, $cn, $cn, $device_id]);
+    if ($cc !== '') {
+        $db->prepare(
+            "UPDATE devices SET last_ip=?, country=?, country_name=?,
+                 first_country=CASE WHEN (first_country='' OR first_country IS NULL) THEN ? ELSE first_country END,
+                 country_updated_at=datetime('now')
+             WHERE device_id=?")
+           ->execute([$ip, $cc, $cn, $cc, $device_id]);
+    } else {
+        $db->prepare("UPDATE devices SET last_ip=? WHERE device_id=?")->execute([$ip, $device_id]);
+    }
 }
 
 // ── Mobile POST ───────────────────────────────────────────────────────────
@@ -2081,6 +2097,8 @@ switch ($action) {
                 'country_code'      => $r['country']         ?? '',
                 'country'           => $r['country']         ?? '',
                 'country_name'      => $r['country_name']    ?? '',
+                'first_country'     => $r['first_country']      ?? '',
+                'country_updated_at'=> $r['country_updated_at'] ?? '',
                 'language'          => $r['language']        ?? '',
                 'manufacturer'      => $r['manufacturer']    ?? '',
                 'model'             => $r['model']           ?? '',
