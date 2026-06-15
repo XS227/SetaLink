@@ -348,6 +348,11 @@ const EN = {
   'dm.sentToast':           'Message sent',
   'dm.recipientRequired':   'Enter a recipient SetaLink ID',
   'dm.messageRequired':     'Write a message first',
+  'dm.detailTitle':         'Message',
+  'dm.from':                'From',
+  'dm.to':                  'To',
+  'dm.reply':               'Reply',
+  'dm.close':               'Close',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -783,6 +788,11 @@ const FA: typeof EN = {
   'dm.sentToast':           'پیام ارسال شد',
   'dm.recipientRequired':   'شناسه ستالینک گیرنده را وارد کنید',
   'dm.messageRequired':     'ابتدا یک پیام بنویسید',
+  'dm.detailTitle':         'پیام',
+  'dm.from':                'از',
+  'dm.to':                  'به',
+  'dm.reply':               'پاسخ',
+  'dm.close':               'بستن',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',

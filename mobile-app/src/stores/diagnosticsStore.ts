@@ -33,8 +33,18 @@ function withLiveDns(snap: DiagnosticsSnapshot): DiagnosticsSnapshot {
       fallbackDns = !!useAIStore.getState().autoConnect.winningConfig?.label?.includes('Emergency');
     } catch {}
 
+    // When the native log carries no explicit DNS line, infer from the internet
+    // probe: a confirmed HTTP/HTTPS fetch through the tunnel proves DNS resolved
+    // (a hostname can't be reached without it). This avoids the false-positive
+    // "DNS check pending… / Degraded" while the internet test passes (BUG-3).
+    const internetConfirmed = connectionLog.some(
+      (l: string) => (l.includes(' tun_probe:') || l.includes(' tun_fallback_ok:')) && l.startsWith('✓'));
+
     const dnsCheck =
-      dnsLine === null                      ? { status: 'warn' as const, detail: 'DNS check pending…' } :
+      dnsLine === null
+        ? (internetConfirmed
+            ? { status: 'ok'   as const, detail: 'DNS OK — confirmed via internet test' }
+            : { status: 'warn' as const, detail: 'DNS check pending…' }) :
       dnsLine.toLowerCase().includes('timeout') ? { status: 'fail' as const, detail: 'DNS TIMEOUT — resolver not answering through tunnel' } :
       dnsLine.startsWith('✓')               ? { status: 'ok'   as const, detail: fallbackDns ? 'DNS OK · fallback DNS used (1.1.1.1)' : 'DNS OK — resolution working through tunnel' } :
                                               { status: 'fail' as const, detail: 'DNS FAILED — hostnames may not resolve' };
