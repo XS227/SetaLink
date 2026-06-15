@@ -1258,6 +1258,19 @@ switch ($action) {
         break;
     }
 
+    case 'node-health': {
+        // Latest per-node health written by scripts/check-node-health.sh (cron).
+        $path = realpath(__DIR__ . '/../data') . '/node_health.json';
+        $raw  = @file_get_contents($path);
+        $data = $raw !== false ? json_decode($raw, true) : null;
+        if (!is_array($data)) { api_ok(['updated_at' => null, 'nodes' => new \stdClass()]); break; }
+        // Flag stale data so the dashboard can warn if the cron stopped.
+        $age = isset($data['updated_at']) ? (time() - strtotime((string)$data['updated_at'])) : null;
+        $data['stale'] = ($age === null || $age > 900);
+        api_ok($data);
+        break;
+    }
+
     case 'test-results':
         $db = open_analytics_db();
         $limit = min(500, max(10, (int)($_GET['limit'] ?? 100)));

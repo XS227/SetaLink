@@ -157,6 +157,29 @@ function v1_nodes(PDO $pdo): array {
     return [$p['id'] => $p, $h['id'] => $h];
 }
 
+// Per-node health written by scripts/check-node-health.sh (cron). Returns the
+// node map, or [] when missing/unreadable.
+function v1_health(): array {
+    static $h;
+    if ($h !== null) return $h;
+    $h = [];
+    $raw = @file_get_contents(__DIR__ . '/../data/node_health.json');
+    if ($raw !== false) {
+        $j = json_decode($raw, true);
+        if (is_array($j) && isset($j['nodes']) && is_array($j['nodes'])) $h = $j['nodes'];
+    }
+    return $h;
+}
+
+// A node is considered DOWN only on a FRESH 'down' reading (≤15 min old). Stale
+// health (cron stopped) fails OPEN — we keep serving rather than hide everything.
+function v1_node_down(string $id): bool {
+    $n = v1_health()[$id] ?? null;
+    if (!$n || ($n['status'] ?? '') !== 'down') return false;
+    $age = time() - strtotime((string)($n['checked_at'] ?? '1970-01-01'));
+    return $age >= 0 && $age <= 900;
+}
+
 function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId): bool {
     if ($deviceId === null || $deviceId === '') return false;
     $st = $pdo->prepare("SELECT 1 FROM node_allowlist WHERE device_id = ? AND node_id = ?");
@@ -197,10 +220,18 @@ $pdo   = v1_db();
 $nodes = v1_nodes($pdo);
 
 if ($rel === '/servers') {
+    $health = v1_health();
     $out = [];
     foreach ($nodes as $id => $n) {
         if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) continue; // hide test nodes
-        $out[] = $n['meta'];
+        // Auto-hide a non-primary node that is freshly DOWN, so users aren't
+        // routed to a dead box. Primary is never hidden (last-resort default).
+        if ($id !== 'primary' && v1_node_down($id)) continue;
+        $meta = $n['meta'];
+        // Annotate live ping from the latest health probe when available.
+        $rtt = $health[$id]['rtt_ms'] ?? null;
+        if (is_int($rtt)) $meta['ping'] = $rtt;
+        $out[] = $meta;
     }
     v1_send($out);
 }
@@ -211,6 +242,11 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     $n = $nodes[$id];
     if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) {
         v1_send(['message' => 'device not authorized for this node'], 403);
+    }
+    // Refuse to hand out creds for a node that is freshly down (clients fall back
+    // to primary / saved bootstrap). Primary is exempt — it's the last resort.
+    if ($id !== 'primary' && v1_node_down($id)) {
+        v1_send(['message' => 'node temporarily unavailable'], 503);
     }
     v1_record_usage($pdo, $deviceId, $id);
     v1_send($n['creds']);
