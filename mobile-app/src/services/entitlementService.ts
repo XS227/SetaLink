@@ -318,6 +318,16 @@ export async function markMessageRead(deviceId: string, messageId: number): Prom
   await mobilePost('mark-message-read', { device_id: deviceId, message_id: messageId });
 }
 
+/** Soft-delete one message from this device's inbox only (v0.9.35). */
+export async function deleteMessage(deviceId: string, messageId: number): Promise<void> {
+  await mobilePost('delete-message', { device_id: deviceId, message_id: messageId });
+}
+
+/** Soft-delete a whole thread (by peer SetaLink ID) from this device only. */
+export async function deleteThread(deviceId: string, peer: string): Promise<void> {
+  await mobilePost('delete-thread', { device_id: deviceId, peer });
+}
+
 export interface ReferralResult {
   /** 'approved' = bonus granted now; 'pending_review' = held for anti-fraud
    *  review, bonus_bytes is 0 and may be granted later by an admin. */
