@@ -38,6 +38,16 @@ function dm_init_tables(PDO $pdo): void {
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_um_recipient ON user_messages(recipient_device, id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_um_sender    ON user_messages(sender_device, id)");
 
+    // Per-user soft-delete (v0.9.35): a row hides one message from ONE device's
+    // inbox only. The message and the other party's copy are untouched (no global
+    // hard-delete), and the encrypted body is never removed by this path.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_message_deletes (
+        message_id INTEGER NOT NULL,
+        device_id  TEXT NOT NULL,
+        deleted_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (message_id, device_id)
+    )");
+
     // Reserved for the abuse/report/block feature (shipped later) — structure
     // only, nothing in the MVP writes to these yet.
     $pdo->exec("CREATE TABLE IF NOT EXISTS user_blocks (
@@ -208,11 +218,13 @@ function dm_list(PDO $pdo, string $deviceId, int $limit = MSG_LIST_LIMIT): array
         "SELECT id, sender_device, sender_user_id, recipient_device, recipient_user_id,
                 body_enc, status, created_at, read_at
          FROM user_messages
-         WHERE sender_device=? OR recipient_device=?
+         WHERE (sender_device=? OR recipient_device=?)
+           AND id NOT IN (SELECT message_id FROM user_message_deletes WHERE device_id=?)
          ORDER BY id DESC LIMIT ?");
     $st->bindValue(1, $deviceId);
     $st->bindValue(2, $deviceId);
-    $st->bindValue(3, $limit, PDO::PARAM_INT);
+    $st->bindValue(3, $deviceId);
+    $st->bindValue(4, $limit, PDO::PARAM_INT);
     $st->execute();
     $out = [];
     foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
@@ -240,12 +252,46 @@ function dm_mark_read(PDO $pdo, string $deviceId, int $messageId): bool {
     return $st->rowCount() > 0;
 }
 
+/** Soft-delete one message from this device's inbox only (per-user, v0.9.35).
+ *  Only a participant (sender or recipient) may hide a message. Returns true if
+ *  the device was a participant. The other party's copy and the encrypted body
+ *  are left intact. */
+function dm_delete_message(PDO $pdo, string $deviceId, int $messageId): bool {
+    dm_init_tables($pdo);
+    $chk = $pdo->prepare(
+        "SELECT 1 FROM user_messages WHERE id=? AND (sender_device=? OR recipient_device=?)");
+    $chk->execute([$messageId, $deviceId, $deviceId]);
+    if (!$chk->fetchColumn()) return false;
+    $pdo->prepare(
+        "INSERT OR IGNORE INTO user_message_deletes (message_id, device_id) VALUES (?, ?)")
+        ->execute([$messageId, $deviceId]);
+    return true;
+}
+
+/** Soft-delete an entire thread (all messages with one peer) from this device's
+ *  inbox only. Peer is matched by device_id or user_id on either side. Returns
+ *  the number of messages hidden. */
+function dm_delete_thread(PDO $pdo, string $deviceId, string $peer): int {
+    dm_init_tables($pdo);
+    $st = $pdo->prepare(
+        "SELECT id FROM user_messages
+         WHERE (sender_device=? OR recipient_device=?)
+           AND (sender_device=? OR recipient_device=? OR sender_user_id=? OR recipient_user_id=?)");
+    $st->execute([$deviceId, $deviceId, $peer, $peer, $peer, $peer]);
+    $ids = $st->fetchAll(PDO::FETCH_COLUMN);
+    if (!$ids) return 0;
+    $ins = $pdo->prepare("INSERT OR IGNORE INTO user_message_deletes (message_id, device_id) VALUES (?, ?)");
+    foreach ($ids as $id) $ins->execute([(int)$id, $deviceId]);
+    return count($ids);
+}
+
 /** Count unread (incoming, status='sent') messages for a device. */
 function dm_unread_count(PDO $pdo, string $deviceId): int {
     dm_init_tables($pdo);
     $st = $pdo->prepare(
-        "SELECT COUNT(*) FROM user_messages WHERE recipient_device=? AND status='sent'");
-    $st->execute([$deviceId]);
+        "SELECT COUNT(*) FROM user_messages WHERE recipient_device=? AND status='sent'
+           AND id NOT IN (SELECT message_id FROM user_message_deletes WHERE device_id=?)");
+    $st->execute([$deviceId, $deviceId]);
     return (int)$st->fetchColumn();
 }
 

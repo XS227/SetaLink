@@ -1097,6 +1097,24 @@ if ($method === 'POST') {
         ok(['updated' => dm_mark_read($pdo, $deviceId, $messageId)]);
     }
 
+    if ($action === 'delete-message') {
+        // Per-user soft-delete (v0.9.35): hides the message from this device only.
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $messageId = (int)($_POST['message_id'] ?? 0);
+        if (!$deviceId || $messageId <= 0) err('missing params');
+        $pdo = db();
+        ok(['deleted' => dm_delete_message($pdo, $deviceId, $messageId)]);
+    }
+
+    if ($action === 'delete-thread') {
+        // Per-user soft-delete of a whole conversation (by peer SetaLink ID).
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $peer     = trim($_POST['peer'] ?? '');
+        if (!$deviceId || $peer === '') err('missing params');
+        $pdo = db();
+        ok(['deleted' => dm_delete_thread($pdo, $deviceId, $peer)]);
+    }
+
     err('unknown action');
 }
 

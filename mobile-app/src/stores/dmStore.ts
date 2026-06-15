@@ -22,6 +22,8 @@ interface DMState {
   refresh:     (deviceId: string) => Promise<number>;            // returns # unread
   send:        (deviceId: string, recipient: string, body: string) => Promise<void>;
   markRead:    (deviceId: string, messageId: number) => void;
+  deleteMessage: (deviceId: string, messageId: number) => void;
+  deleteThread:  (deviceId: string, peer: string) => void;
 }
 
 const MAX_STORED = 200;
@@ -88,6 +90,25 @@ export const useDMStore = create<DMState>()(
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { markMessageRead } = require('../services/entitlementService');
           markMessageRead(deviceId, messageId).catch(() => {});
+        } catch {}
+      },
+
+      deleteMessage: (deviceId, messageId) => {
+        set(s => ({ messages: s.messages.filter(m => m.id !== messageId) }));
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { deleteMessage } = require('../services/entitlementService');
+          deleteMessage(deviceId, messageId).catch(() => {});
+        } catch {}
+      },
+
+      deleteThread: (deviceId, peer) => {
+        // Optimistically drop every message with this peer (by device or user id).
+        set(s => ({ messages: s.messages.filter(m => m.peerDevice !== peer && m.peerUserId !== peer) }));
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { deleteThread } = require('../services/entitlementService');
+          deleteThread(deviceId, peer).catch(() => {});
         } catch {}
       },
     }),

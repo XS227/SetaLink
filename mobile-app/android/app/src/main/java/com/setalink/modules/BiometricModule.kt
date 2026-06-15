@@ -17,17 +17,46 @@ class BiometricModule(private val reactContext: ReactApplicationContext) :
 
     override fun getName(): String = NAME
 
+    // androidx.biometric 1.1.0 returns BIOMETRIC_STATUS_UNKNOWN for a combined
+    // STRONG|WEAK query on some Android 10 / OEM builds even with a fingerprint
+    // enrolled. Query each class separately so a usable authenticator is detected
+    // (v0.9.35 #5).
+    private fun bestStatus(): Int {
+        val bm = BiometricManager.from(reactContext)
+        val strong = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        val weak   = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        return if (strong == BiometricManager.BIOMETRIC_SUCCESS ||
+                   weak   == BiometricManager.BIOMETRIC_SUCCESS)
+            BiometricManager.BIOMETRIC_SUCCESS
+        // Prefer the more informative of the two non-success codes.
+        else if (weak != BiometricManager.BIOMETRIC_STATUS_UNKNOWN) weak else strong
+    }
+
     @ReactMethod
     fun isAvailable(promise: Promise) {
         try {
-            val bm = BiometricManager.from(reactContext)
-            val result = bm.canAuthenticate(
-                BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.BIOMETRIC_WEAK
-            )
-            promise.resolve(result == BiometricManager.BIOMETRIC_SUCCESS)
+            promise.resolve(bestStatus() == BiometricManager.BIOMETRIC_SUCCESS)
         } catch (e: Exception) {
             promise.resolve(false)
+        }
+    }
+
+    /** Detailed status string so the UI can show the right guidance
+     *  (enroll a fingerprint vs. no hardware). */
+    @ReactMethod
+    fun getStatus(promise: Promise) {
+        try {
+            val status = when (bestStatus()) {
+                BiometricManager.BIOMETRIC_SUCCESS                         -> "available"
+                BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED            -> "none_enrolled"
+                BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE              -> "no_hardware"
+                BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE          -> "hw_unavailable"
+                BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED -> "update_required"
+                else                                                      -> "unknown"
+            }
+            promise.resolve(status)
+        } catch (e: Exception) {
+            promise.resolve("unknown")
         }
     }
 

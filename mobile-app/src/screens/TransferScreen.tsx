@@ -43,9 +43,12 @@ export function TransferScreen({ onBack }: Props) {
   const myCode      = user?.userId || deviceId;
   const available   = computeTransferable(user);
   const maxGb       = available / ONE_GB;
-  // Reflect real validity (digits already normalized) so Continue isn't enabled
-  // for un-parseable / out-of-range amounts — see BUG-2.
-  const amountValid = validateTransferAmount(amountStr, available).ok;
+  // Enable Continue for any positive amount so the button is never a silent
+  // dead-end (v0.9.34 over-gated it on the full max check, which left it
+  // disabled with no feedback when the amount exceeded the transferable
+  // balance — v0.9.35 #1). handleContinue surfaces the precise reason.
+  const amountNum   = parseFloat(normalizeDigits(amountStr).replace(',', '.'));
+  const canContinue = !!recipient && isFinite(amountNum) && amountNum > 0;
 
   useEffect(() => {
     if (!deviceId) return;
@@ -84,9 +87,12 @@ export function TransferScreen({ onBack }: Props) {
     if (!recipient) { showToast(t('tr.errRecipient'), 'error', 2500); return; }
     const v = validateTransferAmount(amountStr, available);
     if (!v.ok) {
-      const key = v.error === 'below_min' ? 'tr.errBelowMin'
-        : v.error === 'above_max' ? 'tr.errAboveMax' : 'tr.errInvalidAmount';
-      showToast(t(key), 'error', 2500);
+      if (v.error === 'above_max') {
+        // Make the limit explicit so the user knows exactly how much they can send.
+        showToast(`${t('tr.errAboveMax')} (${t('tr.maxBtn')} ${maxGb.toFixed(2)})`, 'error', 3000);
+      } else {
+        showToast(t(v.error === 'below_min' ? 'tr.errBelowMin' : 'tr.errInvalidAmount'), 'error', 2500);
+      }
       return;
     }
     setStep('review');
@@ -224,10 +230,10 @@ export function TransferScreen({ onBack }: Props) {
             </GlassCard>
 
             <TouchableOpacity
-              style={[styles.primaryBtn, (!recipient || !amountValid) && styles.primaryBtnDisabled]}
+              style={[styles.primaryBtn, !canContinue && styles.primaryBtnDisabled]}
               activeOpacity={0.85}
               onPress={handleContinue}
-              disabled={!recipient || !amountValid}
+              disabled={!canContinue}
             >
               <Text style={styles.primaryBtnText}>{t('tr.continue')}</Text>
             </TouchableOpacity>

@@ -1,8 +1,8 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
-// BUG-1 regression: tapping a received message must open the message DETAIL
-// view (and mark it read), NOT the "New message" compose modal.
+// BUG-1 / v0.9.35 #2 regression: tapping a conversation opens the chat THREAD
+// (showing the message body, marking it read), NOT the compose modal.
 
 const mockDmMarkRead = jest.fn();
 
@@ -26,49 +26,54 @@ jest.mock('../stores/dmStore', () => ({
   useDMStore: (sel: any) => sel({
     messages: [{
       id: 1, direction: 'in', peerUserId: 'SL-227-62DAC5F0', peerDevice: 'dev-x',
-      body: 'hello there', read: false, createdAt: '2026-06-14T12:00:00',
+      body: 'hello there', read: false, createdAt: '2026-06-15T12:00:00',
     }],
     refresh: () => Promise.resolve(0),
     send: () => Promise.resolve(),
     markRead: mockDmMarkRead,
+    deleteMessage: () => {},
+    deleteThread: () => {},
     sending: false,
   }),
 }));
 
 import { InboxScreen } from '../screens/InboxScreen';
 
-describe('InboxScreen — received message tap (BUG-1)', () => {
+function textValues(root: any): string[] {
+  return root.findAllByType('Text').flatMap((n: any) => {
+    const c = n.props.children;
+    return typeof c === 'string' ? [c] : Array.isArray(c) ? c.filter((x: any) => typeof x === 'string') : [];
+  });
+}
+
+describe('InboxScreen — conversation tap (v0.9.35 threads)', () => {
   beforeEach(() => mockDmMarkRead.mockClear());
 
-  it('opens the detail modal (not compose) and marks the message read', () => {
+  it('groups by peer and opens the chat thread (not compose), marking read', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<InboxScreen onBack={() => {}} />); });
     const root = tree.root;
 
-    // Before tapping: both modals closed.
-    expect(root.findByProps({ testID: 'dm-detail-modal' }).props.visible).toBe(false);
+    expect(root.findByProps({ testID: 'dm-thread-modal' }).props.visible).toBe(false);
     expect(root.findByProps({ testID: 'dm-compose-modal' }).props.visible).toBe(false);
 
-    // Tap the received message row.
-    act(() => { root.findByProps({ testID: 'dm-row-1' }).props.onPress(); });
+    // One thread row keyed by peer device.
+    act(() => { root.findByProps({ testID: 'dm-thread-dev-x' }).props.onPress(); });
 
-    // Detail opens; compose stays closed; read marked once.
-    expect(root.findByProps({ testID: 'dm-detail-modal' }).props.visible).toBe(true);
+    expect(root.findByProps({ testID: 'dm-thread-modal' }).props.visible).toBe(true);
     expect(root.findByProps({ testID: 'dm-compose-modal' }).props.visible).toBe(false);
-    expect(mockDmMarkRead).toHaveBeenCalledTimes(1);
+    // Body is shown in the conversation.
+    expect(textValues(root)).toContain('hello there');
+    // Marked read on open.
     expect(mockDmMarkRead).toHaveBeenCalledWith('dev-me', 1);
   });
 
-  it('Reply prefills the sender ID and switches to compose', () => {
+  it('exposes a delete-thread control in the open thread', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<InboxScreen onBack={() => {}} />); });
     const root = tree.root;
-
-    act(() => { root.findByProps({ testID: 'dm-row-1' }).props.onPress(); });
-    act(() => { root.findByProps({ testID: 'dm-reply-btn' }).props.onPress(); });
-
-    expect(root.findByProps({ testID: 'dm-detail-modal' }).props.visible).toBe(false);
-    expect(root.findByProps({ testID: 'dm-compose-modal' }).props.visible).toBe(true);
-    expect(root.findByProps({ testID: 'dm-recipient-input' }).props.value).toBe('SL-227-62DAC5F0');
+    act(() => { root.findByProps({ testID: 'dm-thread-dev-x' }).props.onPress(); });
+    expect(root.findByProps({ testID: 'dm-thread-delete' })).toBeTruthy();
+    expect(root.findByProps({ testID: 'dm-thread-input' })).toBeTruthy();
   });
 });
