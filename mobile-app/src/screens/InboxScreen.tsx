@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet,
   Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
@@ -10,6 +10,7 @@ import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
 import { useToastStore } from '../stores/toastStore';
 import { DM_MAX_LEN, type DirectMessage } from '../services/entitlementService';
+import { groupDmsByPeer, type DmThread } from '../utils/dmThreads';
 import { useT } from '../i18n';
 
 interface Props {
@@ -31,11 +32,13 @@ export function InboxScreen({ onBack }: Props) {
   const myId        = user?.userId ?? '';
 
   // Direct messages
-  const dms         = useDMStore((s) => s.messages);
-  const dmRefresh   = useDMStore((s) => s.refresh);
-  const dmSend      = useDMStore((s) => s.send);
-  const dmMarkRead  = useDMStore((s) => s.markRead);
-  const sending     = useDMStore((s) => s.sending);
+  const dms           = useDMStore((s) => s.messages);
+  const dmRefresh     = useDMStore((s) => s.refresh);
+  const dmSend        = useDMStore((s) => s.send);
+  const dmMarkRead    = useDMStore((s) => s.markRead);
+  const dmDeleteMsg   = useDMStore((s) => s.deleteMessage);
+  const dmDeleteThread= useDMStore((s) => s.deleteThread);
+  const sending       = useDMStore((s) => s.sending);
 
   // Admin announcements
   const messages     = useInboxStore((s) => s.messages);
@@ -47,21 +50,48 @@ export function InboxScreen({ onBack }: Props) {
   const [composeOpen, setCompose] = useState(false);
   const [recipient, setRecipient] = useState('');
   const [draft, setDraft]         = useState('');
-  const [detail, setDetail]       = useState<DirectMessage | null>(null);
+  const [openKey, setOpenKey]     = useState<string | null>(null);
+  const [threadDraft, setThreadDraft] = useState('');
 
-  // Open a DM in the detail view. Mark read only when opening a received,
-  // still-unread message (BUG-1). Distinct from the + compose action.
-  const openDetail = (m: DirectMessage) => {
-    if (m.direction === 'in' && !m.read) dmMarkRead(deviceId, m.id);
-    setDetail(m);
+  // One thread per peer (v0.9.35 #2) — collapses the flat message list.
+  const threads = useMemo(() => groupDmsByPeer(dms), [dms]);
+  // Derive the open thread by key each render so it tracks new/sent messages.
+  const openThread = openKey ? threads.find(th => th.peerKey === openKey) ?? null : null;
+
+  // Open a conversation: mark all its unread incoming messages read.
+  const openThreadView = (th: DmThread) => {
+    th.messages.forEach(m => { if (m.direction === 'in' && !m.read) dmMarkRead(deviceId, m.id); });
+    setThreadDraft('');
+    setOpenKey(th.peerKey);
   };
 
-  // Reply to the open message: prefill the sender's ID and switch to compose.
-  const replyTo = (m: DirectMessage) => {
-    setDetail(null);
-    setRecipient(m.peerUserId || m.peerDevice);
-    setDraft('');
-    setCompose(true);
+  const sendInThread = async () => {
+    const body = threadDraft.trim();
+    if (!body || !openThread) return;
+    const peer = openThread.peerUserId || openThread.peerDevice;
+    try {
+      await dmSend(deviceId, peer, body);
+      setThreadDraft('');
+    } catch (e: any) {
+      Alert.alert('', String(e?.message ?? 'Error'));
+    }
+  };
+
+  const confirmDeleteThread = (th: DmThread) => {
+    Alert.alert(t('dm.deleteThread'), t('dm.deleteChatConfirm'), [
+      { text: t('dm.cancel'), style: 'cancel' },
+      { text: t('dm.deleteThread'), style: 'destructive', onPress: () => {
+        dmDeleteThread(deviceId, th.peerDevice);
+        setOpenKey(null);
+      } },
+    ]);
+  };
+
+  const confirmDeleteMessage = (m: DirectMessage) => {
+    Alert.alert(t('dm.deleteMessage'), t('dm.deleteMsgConfirm'), [
+      { text: t('dm.cancel'), style: 'cancel' },
+      { text: t('dm.deleteMessage'), style: 'destructive', onPress: () => dmDeleteMsg(deviceId, m.id) },
+    ]);
   };
 
   useEffect(() => {
@@ -134,31 +164,38 @@ export function InboxScreen({ onBack }: Props) {
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {tab === 'direct' ? (
-          dms.length === 0 ? (
+          threads.length === 0 ? (
             <GlassCard style={styles.emptyCard}>
               <Text style={styles.emptyIcon}>💬</Text>
               <Text style={styles.emptyText}>{t('dm.empty')}</Text>
             </GlassCard>
           ) : (
-            dms.map((m) => {
-              const incoming = m.direction === 'in';
-              const unread = incoming && !m.read;
+            threads.map((th) => {
+              const preview = th.latest.direction === 'out'
+                ? `${t('dm.you')}: ${th.latest.body}`
+                : th.latest.body;
               return (
                 <TouchableOpacity
-                  key={m.id}
-                  testID={`dm-row-${m.id}`}
-                  style={[styles.item, unread && styles.itemUnread]}
+                  key={th.peerKey}
+                  testID={`dm-thread-${th.peerKey}`}
+                  style={[styles.item, th.unread > 0 && styles.itemUnread]}
                   activeOpacity={0.8}
-                  onPress={() => openDetail(m)}
+                  onPress={() => openThreadView(th)}
+                  onLongPress={() => confirmDeleteThread(th)}
                 >
                   <View style={styles.itemHeader}>
-                    {unread && <View style={styles.dot} />}
-                    <Text style={[styles.itemTitle, unread && styles.itemTitleUnread]} numberOfLines={1}>
-                      {incoming ? (m.peerUserId || m.peerDevice) : `${t('dm.you')} → ${m.peerUserId || m.peerDevice}`}
+                    {th.unread > 0 && <View style={styles.dot} />}
+                    <Text style={[styles.itemTitle, th.unread > 0 && styles.itemTitleUnread]} numberOfLines={1}>
+                      {th.peerUserId || th.peerDevice}
                     </Text>
-                    <Text style={styles.itemDate}>{m.createdAt.slice(5, 16)}</Text>
+                    <Text style={styles.itemDate}>{th.latest.createdAt.slice(5, 16)}</Text>
                   </View>
-                  <Text style={styles.itemBody} numberOfLines={2}>{m.body}</Text>
+                  <View style={styles.threadPreviewRow}>
+                    <Text style={styles.itemBody} numberOfLines={1}>{preview}</Text>
+                    {th.unread > 0 && (
+                      <View style={styles.unreadBadge}><Text style={styles.unreadBadgeText}>{th.unread}</Text></View>
+                    )}
+                  </View>
                 </TouchableOpacity>
               );
             })
@@ -194,37 +231,70 @@ export function InboxScreen({ onBack }: Props) {
         <View style={{ height: Spacing[8] }} />
       </ScrollView>
 
-      {/* Message detail modal (BUG-1: tapping a row opens this, not compose) */}
-      <Modal testID="dm-detail-modal" visible={!!detail} transparent animationType="slide" onRequestClose={() => setDetail(null)}>
-        <View style={styles.modalRoot}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{t('dm.detailTitle')}</Text>
-            {!!detail && (
-              <>
-                <View style={styles.detailMeta}>
-                  <Text style={styles.detailMetaLabel}>
-                    {detail.direction === 'in' ? t('dm.from') : t('dm.to')}
-                  </Text>
-                  <Text style={styles.detailMetaId} numberOfLines={1}>
-                    {detail.peerUserId || detail.peerDevice}
-                  </Text>
-                </View>
-                <Text style={styles.detailDate}>{detail.createdAt.slice(0, 16).replace('T', ' ')}</Text>
-                <ScrollView style={styles.detailBodyScroll} contentContainerStyle={styles.detailBodyWrap}>
-                  <Text style={styles.detailBody}>{detail.body}</Text>
-                </ScrollView>
-                <View style={styles.modalActions}>
-                  <TouchableOpacity style={styles.cancelBtn} activeOpacity={0.8} onPress={() => setDetail(null)}>
-                    <Text style={styles.cancelText}>{t('dm.close')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity testID="dm-reply-btn" style={styles.sendBtn} activeOpacity={0.85} onPress={() => replyTo(detail)}>
-                    <Text style={styles.sendText}>{t('dm.reply')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
+      {/* Chat thread modal (v0.9.35 #2 — Telegram-style conversation) */}
+      <Modal testID="dm-thread-modal" visible={!!openThread} transparent animationType="slide" onRequestClose={() => setOpenKey(null)}>
+        <KeyboardAvoidingView
+          style={styles.threadRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          {!!openThread && (
+            <View style={styles.threadCard}>
+              {/* Thread header: peer + delete */}
+              <View style={styles.threadHeader}>
+                <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
+                  <Text style={styles.backIcon}>‹</Text>
+                </TouchableOpacity>
+                <Text style={styles.threadPeer} numberOfLines={1}>{openThread.peerUserId || openThread.peerDevice}</Text>
+                <TouchableOpacity testID="dm-thread-delete" style={styles.threadDeleteBtn} activeOpacity={0.7} onPress={() => confirmDeleteThread(openThread)}>
+                  <Text style={styles.threadDeleteIcon}>🗑</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Conversation */}
+              <ScrollView style={styles.threadScroll} contentContainerStyle={styles.threadScrollContent}>
+                {openThread.messages.map((m) => {
+                  const out = m.direction === 'out';
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      activeOpacity={0.9}
+                      onLongPress={() => confirmDeleteMessage(m)}
+                      style={[styles.bubbleRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}
+                    >
+                      <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn]}>
+                        <Text style={[styles.bubbleText, out && styles.bubbleTextOut]}>{m.body}</Text>
+                        <Text style={[styles.bubbleTime, out && styles.bubbleTimeOut]}>{m.createdAt.slice(11, 16)}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+
+              {/* Reply input */}
+              <View style={styles.threadInputRow}>
+                <TextInput
+                  testID="dm-thread-input"
+                  style={styles.threadInput}
+                  value={threadDraft}
+                  onChangeText={(v) => setThreadDraft(v.slice(0, DM_MAX_LEN))}
+                  placeholder={t('dm.messagePlaceholder')}
+                  placeholderTextColor={Colors.text.muted}
+                  multiline
+                  maxLength={DM_MAX_LEN}
+                />
+                <TouchableOpacity
+                  testID="dm-thread-send"
+                  style={[styles.threadSendBtn, (sending || !threadDraft.trim()) && styles.sendBtnDisabled]}
+                  activeOpacity={0.85}
+                  disabled={sending || !threadDraft.trim()}
+                  onPress={sendInThread}
+                >
+                  {sending ? <ActivityIndicator color="#021b10" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Compose modal */}
@@ -326,6 +396,35 @@ const styles = StyleSheet.create({
   detailBodyScroll: { maxHeight: 280, marginTop: Spacing[3] },
   detailBodyWrap: { paddingVertical: Spacing[2] },
   detailBody:    { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.primary, lineHeight: 24 },
+
+  // Thread list preview + unread badge
+  threadPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+  unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
+  unreadBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#021b10', fontWeight: '700' },
+
+  // Chat thread modal
+  threadRoot:    { flex: 1, backgroundColor: Colors.bg.base },
+  threadCard:    { flex: 1 },
+  threadHeader:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[3], borderBottomWidth: 1, borderBottomColor: Colors.border.subtle },
+  threadPeer:    { flex: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  threadDeleteBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
+  threadDeleteIcon: { fontSize: 16 },
+  threadScroll:  { flex: 1 },
+  threadScrollContent: { padding: Layout.screenPadding, gap: Spacing[2] },
+  bubbleRow:     { flexDirection: 'row' },
+  bubbleRowOut:  { justifyContent: 'flex-end' },
+  bubbleRowIn:   { justifyContent: 'flex-start' },
+  bubble:        { maxWidth: '82%', borderRadius: Radius.lg, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
+  bubbleIn:      { backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle, borderTopLeftRadius: 4 },
+  bubbleOut:     { backgroundColor: Colors.emerald[400], borderTopRightRadius: 4 },
+  bubbleText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.primary, lineHeight: 20, writingDirection: 'rtl' },
+  bubbleTextOut: { color: '#021b10' },
+  bubbleTime:    { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end', marginTop: 2 },
+  bubbleTimeOut: { color: 'rgba(2,27,16,0.6)' },
+  threadInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing[2], paddingHorizontal: Layout.screenPadding, paddingVertical: Spacing[3], paddingBottom: Spacing[6], borderTopWidth: 1, borderTopColor: Colors.border.subtle },
+  threadInput:   { flex: 1, maxHeight: 110, borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
+  threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
+  threadSendText:{ fontSize: 20, color: '#021b10', fontWeight: '700' },
   fieldLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, marginTop: Spacing[2] },
   input:         { borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
   inputMultiline: { minHeight: 110, textAlignVertical: 'top', marginTop: Spacing[2] },

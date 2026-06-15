@@ -131,7 +131,21 @@ export const useServerStore = create<ServerState>()(
       const { ServersAPI } = require('../services/api/servers.api');
       const data: ServerRecord[] = await ServersAPI.list(token);
       if (Array.isArray(data) && data.length > 0) {
-        set({ servers: data, isLoading: false });
+        // Fetch each /v1 node's credentials so backend-provided nodes (e.g.
+        // Finland) are actually connectable — the connect builder reads from
+        // importedCreds (v0.9.35 #4). Only real creds (uuid+publicKey) are kept.
+        const fetchedCreds: Record<string, ServerCredentials> = {};
+        await Promise.all(data.map(async (s) => {
+          try {
+            const c: Partial<ServerCredentials> = await ServersAPI.getConfig(s.id, token);
+            if (c?.uuid && c?.publicKey) fetchedCreds[s.id] = c as ServerCredentials;
+          } catch { /* node has no public config — skip */ }
+        }));
+        set((state) => ({
+          servers:       data,
+          importedCreds: { ...state.importedCreds, ...fetchedCreds },
+          isLoading:     false,
+        }));
       } else {
         set({ isLoading: false });
       }
