@@ -152,6 +152,14 @@ function icon(string $name): string {
         <div class="panel-body" id="dmStatsBody"><div class="loading"><div class="spinner"></div></div></div>
       </div>
 
+      <div class="panel" id="nodesPanel">
+        <div class="panel-header">
+          <span class="panel-title">🛰️ VPN Nodes</span>
+          <button class="btn btn-ghost btn-sm" id="nodesRefreshBtn">Refresh</button>
+        </div>
+        <div class="panel-body" id="nodesBody"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+
       <div class="two-col">
         <div class="panel">
           <div class="panel-header">
@@ -1027,6 +1035,7 @@ window.addEventListener('popstate', e => navigate(e.state?.page||'dashboard'));
 document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
 $('refreshBtn').addEventListener('click', ()=>views[activeView]?.init?.());
 $('dmRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadMessaging(false));
+$('nodesRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadNodes());
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -1065,7 +1074,41 @@ views.dashboard = {
     this.loadAll();
     this.loadHealth();
     this.loadMessaging(false);
-    refreshTimer = setInterval(()=>this.loadAll(), 10000);
+    this.loadNodes();
+    refreshTimer = setInterval(()=>{ this.loadAll(); this.loadNodes(); }, 10000);
+  },
+  // VPN node health — written by scripts/check-node-health.sh (cron, 2 min).
+  async loadNodes() {
+    const el = $('nodesBody');
+    if (!el) return;
+    try {
+      const d = await api.get('node-health');
+      const nodes = d.nodes || {};
+      const ids = Object.keys(nodes);
+      if (!ids.length) { el.innerHTML = '<div class="panel-empty">No node-health data yet (cron may not have run).</div>'; return; }
+      const dot = s => s==='up' ? '<span style="color:var(--ok)">●</span>'
+                     : s==='degraded' ? '<span style="color:var(--warn)">●</span>'
+                     : '<span style="color:var(--danger)">●</span>';
+      const rows = ids.map(id => {
+        const n = nodes[id];
+        const rtt = (n.rtt_ms===null||n.rtt_ms===undefined) ? '—' : n.rtt_ms+' ms';
+        const badge = n.status==='up' ? 'badge-success' : n.status==='degraded' ? 'badge-warn' : 'badge-danger';
+        return `<tr>
+          <td>${dot(n.status)} <strong>${esc(id)}</strong></td>
+          <td><span class="badge ${badge}">${esc((n.status||'').toUpperCase())}</span></td>
+          <td class="mono">${rtt}</td>
+          <td class="mono" style="font-size:.72rem">${esc(n.address||'')}</td>
+          <td class="mono" style="font-size:.72rem">TLS ${n.tls?'✓':'✗'} · ${esc(n.edge||'')}</td>
+          <td style="font-size:.7rem;color:var(--muted-2)">${esc((n.checked_at||'').replace('T',' ').replace('Z',''))}</td>
+        </tr>`;
+      }).join('');
+      const staleWarn = d.stale ? '<div style="color:var(--warn);font-size:.72rem;margin-bottom:.5rem">⚠ Health data is stale — the cron may have stopped.</div>' : '';
+      el.innerHTML = staleWarn + `<table class="data-table"><thead><tr>
+        <th>Node</th><th>Status</th><th>RTT</th><th>Address</th><th>Edge / TLS</th><th>Checked</th>
+        </tr></thead><tbody>${rows}</tbody></table>`;
+    } catch (e) {
+      el.innerHTML = `<div class="panel-empty">Failed to load node health: ${esc(e.message||e)}</div>`;
+    }
   },
   async loadAll() {
     const [analytics, sessions, inbounds, sniLb, metrics] = await Promise.allSettled([

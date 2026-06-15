@@ -236,7 +236,7 @@ export function snoozeUpdate(): void {
 // eslint-disable-next-line no-console
 function otaLog(step: string, detail?: unknown): void {
   // eslint-disable-next-line no-console
-  console.log(`[SetaLink:OTA] ${step}`, detail ?? '');
+  console.log(`[Realink:OTA] ${step}`, detail ?? '');
 }
 
 /**

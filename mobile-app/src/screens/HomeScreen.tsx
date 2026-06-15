@@ -159,7 +159,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           <View style={styles.brandBlock}>
             <View style={styles.brandRow}>
               <Image source={isConnected ? LOGO_CONNECTED : LOGO_DISCONNECTED} style={styles.brandLogoSmall} resizeMode="contain" />
-              <Text style={styles.brandName}>SetaLink</Text>
+              <Text style={styles.brandName}>Realink</Text>
             </View>
             <Text style={styles.greeting}>{greeting}</Text>
             {user && (user.userId || user.deviceId) && (

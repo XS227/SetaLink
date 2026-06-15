@@ -22,7 +22,7 @@ type Tab = 'direct' | 'announce';
 /**
  * Inbox — two surfaces:
  *   • Messages     — user-to-user direct messages (v0.9.33), addressed by
- *                    SetaLink ID. Compose via the + button.
+ *                    Realink ID. Compose via the + button.
  *   • Announcements — admin broadcast/announcement center (existing).
  */
 export function InboxScreen({ onBack }: Props) {

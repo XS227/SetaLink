@@ -1,4 +1,4 @@
-// SetaLink Design System — V1
+// Realink Design System — V1
 // Scandinavian · Futuristic · Minimal · Cinematic
 
 export const Colors = {

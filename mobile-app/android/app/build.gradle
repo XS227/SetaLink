@@ -27,8 +27,8 @@ android {
         applicationId "com.setalink"
         minSdk         rootProject.ext.minSdkVersion
         targetSdk      rootProject.ext.targetSdkVersion
-        versionCode    52
-        versionName    "0.9.35"
+        versionCode    53
+        versionName    "0.9.36"
 
         manifestPlaceholders = [appLabel: "@string/app_name"]
 
@@ -126,4 +126,6 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.biometric:biometric:1.1.0")
+    // Background DM polling → local notifications when the app is closed (no FCM).
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 }

@@ -342,7 +342,7 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-ws',
-          country:   'SetaLink Edge',
+          country:   'Realink Edge',
           city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      55,
@@ -353,7 +353,7 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-xhttp',
-          country:   'SetaLink Edge',
+          country:   'Realink Edge',
           city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      50,

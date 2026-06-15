@@ -3,7 +3,7 @@
  *
  * The output is passed to XrayModule.start(config) to launch the tunnel.
  * Server-side credentials (uuid, publicKey, shortId, host) are placeholders —
- * replace with real values fetched from the SetaLink API.
+ * replace with real values fetched from the Realink API.
  */
 
 import type { VpnServer }        from '../stores/vpnStore';

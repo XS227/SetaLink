@@ -182,16 +182,20 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
       return;
     }
     // Turning on — verify device support first. Use the detailed status so the
-    // message matches reality (enroll vs. no hardware) — v0.9.35 #5.
+    // message matches reality (enroll vs. no hardware); availability now also
+    // accepts the device PIN/pattern as a fallback (v0.9.36 #3).
     const status = await BiometricService.getStatus().catch(() => 'unknown' as const);
     if (status !== 'available') {
+      const detail = await BiometricService.getStatusDetail().catch(() => ({} as any));
       const msg =
-        status === 'none_enrolled'  ? 'No fingerprint or face is enrolled. Add one in your device settings, then try again.'
+        status === 'none_enrolled'  ? 'No fingerprint, face, or screen lock is set up. Add one in your device settings, then try again.'
       : status === 'no_hardware'    ? 'This device has no biometric hardware.'
       : status === 'hw_unavailable' ? 'Biometric hardware is temporarily unavailable. Try again in a moment.'
       : status === 'update_required'? 'A security update is required before biometrics can be used.'
-      : 'Biometric lock is unavailable on this device. Make sure a fingerprint or face unlock is set up.';
-      Alert.alert('Biometric Unavailable', msg, [{ text: 'OK' }]);
+      : 'App lock is unavailable on this device. Make sure a fingerprint, face, or screen-lock PIN is set up.';
+      // Append the raw status codes so issues can be diagnosed from a screenshot.
+      const dbg = `\n\nDebug: status=${status}, strong=${detail.strong}, weak=${detail.weak}, cred=${detail.deviceCredential}, sdk=${detail.sdkInt}`;
+      Alert.alert('App Lock Unavailable', msg + dbg, [{ text: 'OK' }]);
       return;
     }
     setBiometricLock(true);
@@ -372,9 +376,9 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
         </Section>
 
         <View style={styles.about}>
-          <Text style={styles.appName}>SetaLink</Text>
+          <Text style={styles.appName}>Realink</Text>
           <Text style={styles.version}>v{APP_VERSION} · Build {APP_BUILD}</Text>
-          <Text style={styles.legal}>© 2026 SetaLink. {t('st.allRights')}</Text>
+          <Text style={styles.legal}>© 2026 Realink. {t('st.allRights')}</Text>
         </View>
 
         <View style={{ height: Spacing[12] }} />
