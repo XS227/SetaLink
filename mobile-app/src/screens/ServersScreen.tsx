@@ -59,6 +59,14 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
     onNavigate('home');
   }, [isTransitioning, connectionState, connect, onNavigate]);
 
+  // Hide a "Coming soon" placeholder once a live server for that country exists
+  // (e.g. Finland appears as an active node from /v1 for enabled devices) — v0.9.35 #4.
+  const liveCountries = useMemo(
+    () => new Set(servers.filter((s) => !s.comingSoon).map((s) => s.country.toLowerCase())),
+    [servers],
+  );
+  const comingSoon = COMING_SOON_SERVERS.filter((s) => !liveCountries.has(s.country.toLowerCase()));
+
   const picks   = aiPicks(activeMode);
   const filtered = filteredServers(activeMode)
     .filter((s) => !s.comingSoon)
@@ -187,24 +195,26 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           )}
         </View>
 
-        {/* Coming soon countries */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Coming soon</Text>
-          </View>
-          {COMING_SOON_SERVERS.map((s) => (
-            <View key={s.id} style={styles.comingSoonRow}>
-              <Text style={styles.comingSoonFlag}>{s.flag}</Text>
-              <View style={styles.comingSoonInfo}>
-                <Text style={styles.comingSoonCountry}>{s.country}</Text>
-                <Text style={styles.comingSoonCity}>{s.city}</Text>
-              </View>
-              <View style={styles.comingSoonBadge}>
-                <Text style={styles.comingSoonBadgeText}>Soon</Text>
-              </View>
+        {/* Coming soon countries — only those without a live server yet */}
+        {comingSoon.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Coming soon</Text>
             </View>
-          ))}
-        </View>
+            {comingSoon.map((s) => (
+              <View key={s.id} style={styles.comingSoonRow}>
+                <Text style={styles.comingSoonFlag}>{s.flag}</Text>
+                <View style={styles.comingSoonInfo}>
+                  <Text style={styles.comingSoonCountry}>{s.country}</Text>
+                  <Text style={styles.comingSoonCity}>{s.city}</Text>
+                </View>
+                <View style={styles.comingSoonBadge}>
+                  <Text style={styles.comingSoonBadgeText}>Soon</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
 
         <View style={{ height: Layout.bottomNavHeight + 64 }} />
       </ScrollView>

@@ -181,14 +181,17 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
       toggleBiometricLock();
       return;
     }
-    // Turning on — verify device support first
-    const available = await BiometricService.isAvailable().catch(() => false);
-    if (!available) {
-      Alert.alert(
-        'Biometric Unavailable',
-        'This device does not have enrolled biometrics. Please set up fingerprint or face unlock in your device settings first.',
-        [{ text: 'OK' }]
-      );
+    // Turning on — verify device support first. Use the detailed status so the
+    // message matches reality (enroll vs. no hardware) — v0.9.35 #5.
+    const status = await BiometricService.getStatus().catch(() => 'unknown' as const);
+    if (status !== 'available') {
+      const msg =
+        status === 'none_enrolled'  ? 'No fingerprint or face is enrolled. Add one in your device settings, then try again.'
+      : status === 'no_hardware'    ? 'This device has no biometric hardware.'
+      : status === 'hw_unavailable' ? 'Biometric hardware is temporarily unavailable. Try again in a moment.'
+      : status === 'update_required'? 'A security update is required before biometrics can be used.'
+      : 'Biometric lock is unavailable on this device. Make sure a fingerprint or face unlock is set up.';
+      Alert.alert('Biometric Unavailable', msg, [{ text: 'OK' }]);
       return;
     }
     setBiometricLock(true);

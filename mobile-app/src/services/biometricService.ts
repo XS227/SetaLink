@@ -2,8 +2,13 @@ import { NativeModules, Platform } from 'react-native';
 
 const { BiometricModule } = NativeModules;
 
+export type BiometricStatus =
+  | 'available' | 'none_enrolled' | 'no_hardware' | 'hw_unavailable'
+  | 'update_required' | 'unknown';
+
 export interface BiometricService {
   isAvailable(): Promise<boolean>;
+  getStatus(): Promise<BiometricStatus>;
   authenticate(title?: string, subtitle?: string): Promise<boolean>;
 }
 
@@ -14,6 +19,15 @@ export const BiometricService: BiometricService = {
       return await BiometricModule.isAvailable();
     } catch {
       return false;
+    }
+  },
+
+  async getStatus(): Promise<BiometricStatus> {
+    if (Platform.OS !== 'android' || !BiometricModule?.getStatus) return 'unknown';
+    try {
+      return (await BiometricModule.getStatus()) as BiometricStatus;
+    } catch {
+      return 'unknown';
     }
   },
 

@@ -353,6 +353,10 @@ const EN = {
   'dm.to':                  'To',
   'dm.reply':               'Reply',
   'dm.close':               'Close',
+  'dm.deleteThread':        'Delete chat',
+  'dm.deleteMessage':       'Delete message',
+  'dm.deleteChatConfirm':   'Delete this conversation? It is removed from your inbox only.',
+  'dm.deleteMsgConfirm':    'Delete this message from your inbox?',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -793,6 +797,10 @@ const FA: typeof EN = {
   'dm.to':                  'به',
   'dm.reply':               'پاسخ',
   'dm.close':               'بستن',
+  'dm.deleteThread':        'حذف گفتگو',
+  'dm.deleteMessage':       'حذف پیام',
+  'dm.deleteChatConfirm':   'این گفتگو حذف شود؟ فقط از صندوق شما حذف می‌شود.',
+  'dm.deleteMsgConfirm':    'این پیام از صندوق شما حذف شود؟',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
