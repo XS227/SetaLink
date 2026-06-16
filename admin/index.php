@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','iran','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','iran','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -45,6 +45,7 @@ function icon(string $name): string {
         'plus'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
         'gift'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
         'person'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+        'chart'   => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
     ];
     return $icons[$name] ?? '';
 }
@@ -78,6 +79,9 @@ function icon(string $name): string {
     <div class="nav-section">Monitor</div>
     <div class="nav-item<?= $page==='dashboard'?' active':'' ?>" data-page="dashboard">
       <?= icon('grid') ?> Dashboard
+    </div>
+    <div class="nav-item<?= $page==='analytics'?' active':'' ?>" data-page="analytics">
+      <?= icon('chart') ?> Analytics
     </div>
     <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
       <?= icon('globe') ?> Iran Debug
@@ -230,6 +234,51 @@ function icon(string $name): string {
             <thead><tr><th>Protocol / SNI</th><th>Success Rate</th><th>Total</th><th>Avg Latency</th><th>Devices</th></tr></thead>
             <tbody id="sniLeaderboard"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: ANALYTICS                                              -->
+    <!-- ============================================================ -->
+    <div data-view="analytics" hidden>
+      <div class="stat-grid" id="anaStats">
+        <div class="stat-card"><div class="stat-label">Installs (30d)</div><div class="stat-value" id="anaInstalls">—</div><div class="stat-sub">new devices</div></div>
+        <div class="stat-card"><div class="stat-label">VPN Sessions (30d)</div><div class="stat-value" id="anaSessions">—</div><div class="stat-sub">connections</div></div>
+        <div class="stat-card"><div class="stat-label">Data Volume (30d)</div><div class="stat-value" id="anaGb">—</div><div class="stat-sub">sent + received</div></div>
+        <div class="stat-card"><div class="stat-label">Avg GB / Session</div><div class="stat-value" id="anaAvg">—</div><div class="stat-sub">last 30 days</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> New Installs <span class="panel-sub">per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chInstalls"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> VPN Sessions <span class="panel-sub">per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chSessions"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Data Volume <span class="panel-sub">GB per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chGb"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Protocol Mix <span class="panel-sub">sessions, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chProto"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('package') ?> Package Distribution <span class="panel-sub">all devices</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chPkg"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> App Versions <span class="panel-sub">top 10</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chVer"></canvas></div></div>
         </div>
       </div>
     </div>
@@ -836,6 +885,7 @@ function icon(string $name): string {
 <div id="toast-container"></div>
 
 <!-- ── Script ────────────────────────────────────────────────────────── -->
+<script src="vendor/chart.umd.min.js"></script>
 <script>
 'use strict';
 const CSRF     = <?= json_encode($csrf_token) ?>;
@@ -1006,6 +1056,7 @@ $('sidebarOverlay').addEventListener('click', closeSidebar);
 let activeView='', refreshTimer=null;
 const pageTitles = {
   dashboard: ['Dashboard', 'live monitoring · auto-refresh 10s'],
+  analytics: ['Analytics', 'growth & usage trends · 30-day charts'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
@@ -1069,6 +1120,104 @@ setInterval(runHeartbeat, 30000);
 
 // ── VIEW: DASHBOARD ──────────────────────────────────────────────────
 const views = {};
+
+// ── VIEW: ANALYTICS ──────────────────────────────────────────────────
+// Chart.js (vendored, /vendor/chart.umd.min.js) over existing analytics-db
+// timestamps. No extra logging: series come from dash-timeseries + the
+// app-analytics / dash-metrics snapshots. Charts are destroyed and rebuilt
+// on every load() so re-navigating / Refresh never double-binds a canvas.
+views.analytics = {
+  charts: {},
+  PALETTE: ['#5b8cff','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899','#84cc16'],
+  init() { this.load(); },
+  _destroy() {
+    Object.values(this.charts).forEach(c => { try { c.destroy(); } catch (e) {} });
+    this.charts = {};
+  },
+  _baseOpts(extra) {
+    const grid = 'rgba(138,155,191,.12)', tick = '#8a9bbf';
+    return Object.assign({
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: tick, boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        x: { grid: { color: grid }, ticks: { color: tick, maxRotation: 0, autoSkip: true, font: { size: 10 } } },
+        y: { grid: { color: grid }, ticks: { color: tick, font: { size: 10 } }, beginAtZero: true },
+      },
+    }, extra || {});
+  },
+  async load() {
+    if (typeof Chart === 'undefined') return; // vendor script failed to load
+    this._destroy();
+    const [tsR, anaR, dmR] = await Promise.allSettled([
+      api.get('dash-timeseries'),
+      api.get('app-analytics'),
+      api.get('dash-metrics'),
+    ]);
+    if (tsR.status === 'fulfilled') { this.renderSummary(tsR.value); this.renderTrends(tsR.value); }
+    this.renderDistributions(
+      anaR.status === 'fulfilled' ? anaR.value : {},
+      dmR.status  === 'fulfilled' ? dmR.value  : {},
+    );
+  },
+  renderSummary(ts) {
+    const sum = a => (a || []).reduce((x, y) => x + (+y || 0), 0);
+    const inst = sum(ts.installs), sess = sum(ts.sessions), gb = sum(ts.gb);
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set('anaInstalls', inst);
+    set('anaSessions', sess);
+    set('anaGb', gb.toFixed(1) + ' GB');
+    set('anaAvg', (sess ? (gb / sess) : 0).toFixed(2) + ' GB');
+  },
+  renderTrends(ts) {
+    const labels = (ts.days || []).map(d => (d || '').slice(5)); // MM-DD
+    const blue = this.PALETTE[0], green = this.PALETTE[1], amber = this.PALETTE[2];
+    this.charts.installs = new Chart($('chInstalls'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Installs', data: ts.installs || [], borderColor: blue,
+        backgroundColor: 'rgba(91,140,255,.15)', fill: true, tension: .3, pointRadius: 2 }] },
+      options: this._baseOpts({ plugins: { legend: { display: false } } }),
+    });
+    this.charts.sessions = new Chart($('chSessions'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Sessions', data: ts.sessions || [], backgroundColor: green, borderRadius: 3 }] },
+      options: this._baseOpts({ plugins: { legend: { display: false } } }),
+    });
+    this.charts.gb = new Chart($('chGb'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'GB', data: ts.gb || [], borderColor: amber,
+        backgroundColor: 'rgba(245,158,11,.15)', fill: true, tension: .3, pointRadius: 2 }] },
+      options: this._baseOpts({ plugins: { legend: { display: false } } }),
+    });
+    const proto = ts.protocol_mix || {};
+    this.charts.proto = this._doughnut('chProto', Object.keys(proto), Object.values(proto));
+  },
+  renderDistributions(ana, dm) {
+    const pkg = ana.package_distribution || {};
+    this.charts.pkg = this._doughnut('chPkg', Object.keys(pkg), Object.values(pkg));
+    const vers = (ana.version_distribution || []).slice(0, 10);
+    this.charts.ver = new Chart($('chVer'), {
+      type: 'bar',
+      data: { labels: vers.map(v => v.version || '?'), datasets: [{ label: 'Devices',
+        data: vers.map(v => +v.cnt || 0), backgroundColor: this.PALETTE[5], borderRadius: 3 }] },
+      options: this._baseOpts({ indexAxis: 'y', plugins: { legend: { display: false } } }),
+    });
+  },
+  _doughnut(canvasId, labels, data) {
+    const el = $(canvasId); if (!el) return null;
+    if (!labels.length) {
+      return new Chart(el, { type: 'doughnut',
+        data: { labels: ['No data'], datasets: [{ data: [1], backgroundColor: ['#2a3550'] }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
+    }
+    return new Chart(el, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data, backgroundColor: this.PALETTE, borderColor: '#0f1626', borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '58%',
+        plugins: { legend: { position: 'right', labels: { color: '#8a9bbf', boxWidth: 12, font: { size: 11 } } } } },
+    });
+  },
+};
+
 views.dashboard = {
   init() {
     this.loadAll();
