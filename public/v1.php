@@ -298,6 +298,7 @@ if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
     if ($rel === '/payments/packages' && $method === 'GET') {
         v1_send([
             'packages' => pay_packages($pdo),
+            'methods'  => pay_methods_status($pcfg),   // app hides methods that aren't ready
             'real'     => [
                 'discount_percent' => (float)$pcfg['real_discount_percent'],
                 'token_address'    => $pcfg['real_token_address'],

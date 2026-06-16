@@ -22,11 +22,13 @@ const PAY_METHODS = ['USDT', 'REAL'];
 function pay_defaults(): array {
     return [
         // REAL token (the ecosystem jetton)
+        'real_enabled'              => 1,                          // REAL token is known → on by default
         'real_token_address'        => 'EQDhq_DjQUMJqfXLP8K8J6SlOvon08XQQK0T49xon2e0xU8p',
         'real_destination_wallet'   => 'UQBWAwX1khMYZm3RobKKOm3460I6vLCA1c0wgb_68zdfBj5g',
         'real_decimals'             => 9,
         'real_discount_percent'     => 20,
-        // USDT (chain not finalised — placeholders)
+        // USDT — OFF by default until chain/wallet/token are confirmed (safe default).
+        'usdt_enabled'              => 0,
         'usdt_chain'                => 'ton',
         'usdt_token_address'        => 'EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs',
         'usdt_destination_wallet'   => 'UQBWAwX1khMYZm3RobKKOm3460I6vLCA1c0wgb_68zdfBj5g',
@@ -56,6 +58,30 @@ function pay_config(PDO $pdo): array {
         else                   $cfg[$k] = (string)$rows[$k];
     }
     return $cfg;
+}
+
+/**
+ * Is a payment method ready to use? A method requires its explicit enable flag AND a
+ * configured token address AND a destination wallet. USDT defaults OFF — so until its
+ * chain/token/wallet are confirmed it stays disabled (safe default).
+ */
+function pay_method_ready(array $cfg, string $method): bool {
+    if ($method === 'REAL') {
+        return (int)$cfg['real_enabled'] === 1
+            && trim((string)$cfg['real_token_address']) !== ''
+            && trim((string)$cfg['real_destination_wallet']) !== '';
+    }
+    if ($method === 'USDT') {
+        return (int)$cfg['usdt_enabled'] === 1
+            && trim((string)$cfg['usdt_token_address']) !== ''
+            && trim((string)$cfg['usdt_destination_wallet']) !== '';
+    }
+    return false;
+}
+
+/** Per-method readiness map for the catalog/app. */
+function pay_methods_status(array $cfg): array {
+    return ['REAL' => pay_method_ready($cfg, 'REAL'), 'USDT' => pay_method_ready($cfg, 'USDT')];
 }
 
 /** Token address / recipient / decimals for a method, from config. */
@@ -159,6 +185,7 @@ function pay_create_intent(PDO $pdo, string $deviceId, string $packageId, string
     pay_init_tables($pdo);
     if ($deviceId === '')                     throw new \RuntimeException('missing device_id');
     if (!in_array($method, PAY_METHODS, true)) throw new \RuntimeException('invalid payment_method');
+    if (!pay_method_ready($cfg, $method))      throw new \RuntimeException($method . ' payments are not available');
     $pkg = pay_get_package($pdo, $packageId);
     if (!$pkg) throw new \RuntimeException('unknown or inactive package');
 
