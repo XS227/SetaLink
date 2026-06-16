@@ -27,11 +27,32 @@ declare(strict_types=1);
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Authorization, Content-Type, X-Client');
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(204); exit; }
 
 define('V1_DB_PATH', __DIR__ . '/../data/analytics.db');
+
+// Rewarded ads + hidden recovery quota (shared logic; brings quota_economy too).
+require_once __DIR__ . '/../lib/ads_recovery.php';
+
+/** Read a POST field from form-encoded body or a JSON body. */
+function v1_body(string $key, string $default = ''): string {
+    if (isset($_POST[$key])) return trim((string)$_POST[$key]);
+    static $json;
+    if ($json === null) {
+        $raw  = file_get_contents('php://input') ?: '';
+        $json = json_decode($raw, true) ?: [];
+    }
+    return isset($json[$key]) ? trim((string)$json[$key]) : $default;
+}
+
+/** Best-effort client IP (honours a single proxy hop) for ad anti-abuse. */
+function v1_client_ip(): string {
+    $xff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+    if ($xff !== '') { $p = trim(explode(',', $xff)[0]); if ($p !== '') return $p; }
+    return $_SERVER['REMOTE_ADDR'] ?? '';
+}
 
 // ── DB ───────────────────────────────────────────────────────────────────────
 function v1_db(): PDO {
@@ -217,6 +238,56 @@ if ($rel === '') {
 $rel = '/' . ltrim($rel, '/');
 
 $pdo   = v1_db();
+
+// ── Rewarded ads + recovery quota ────────────────────────────────────────────
+// These require a registered device identity (device-<id> bearer). Server is the
+// single source of truth; the client never grants quota locally.
+if ($rel === '/quota/status' || strncmp($rel, '/ads/', 5) === 0 || $rel === '/quota/recovery/enter') {
+    ar_init_tables($pdo);
+    $cfg = ar_config($pdo);
+    if ($deviceId === null || $deviceId === '') v1_send(['message' => 'device identity required'], 403);
+
+    if ($rel === '/quota/status' && $method === 'GET') {
+        $state = ar_recovery_state($pdo, $deviceId, $cfg);
+        v1_send([
+            'visible_remaining_bytes'  => $state['visible_remaining_bytes'],
+            'visible_total_bytes'      => $state['visible_total_bytes'],
+            'in_recovery_eligible'     => $state['eligible'],
+            'recovery_remaining_bytes' => $state['recovery_remaining_bytes'],
+            'recovery_total_bytes'     => $state['recovery_total_bytes'],
+            'ads'                      => ar_ad_stats($pdo, $deviceId, $cfg),
+        ]);
+    }
+
+    if ($rel === '/ads/reward/init' && $method === 'POST') {
+        $nonce = v1_body('nonce');
+        v1_send(ar_init_reward($pdo, $deviceId, $nonce, v1_client_ip(), $cfg));
+    }
+
+    if ($rel === '/ads/reward/confirm' && $method === 'POST') {
+        // Trusted grants come from AdMob SSV (ssv.php). This client path only
+        // grants when explicitly enabled for staging; otherwise it is a no-op
+        // acknowledgement so the app can poll status for the SSV-applied reward.
+        $nonce = v1_body('nonce');
+        if ((int)$cfg['dev_allow_client_confirm'] === 1) {
+            v1_send(ar_confirm_reward($pdo, $deviceId, $nonce, 'client', false, $cfg));
+        }
+        v1_send(['granted' => false, 'pending_ssv' => true,
+                 'state' => ar_recovery_state($pdo, $deviceId, $cfg),
+                 'ads'   => ar_ad_stats($pdo, $deviceId, $cfg)]);
+    }
+
+    if ($rel === '/quota/recovery/enter' && $method === 'POST') {
+        try {
+            v1_send(ar_recovery_enter($pdo, $deviceId, $cfg));
+        } catch (\RuntimeException $e) {
+            v1_send(['message' => $e->getMessage()], 409);
+        }
+    }
+
+    v1_send(['message' => 'method not allowed'], 405);
+}
+
 $nodes = v1_nodes($pdo);
 
 if ($rel === '/servers') {
