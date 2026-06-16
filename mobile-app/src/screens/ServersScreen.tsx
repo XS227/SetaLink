@@ -8,6 +8,7 @@ import { ServerRow } from '../components/ServerRow';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { EcosystemBanner } from '../components/EcosystemBanner';
+import { WatchAdCard } from '../components/WatchAdCard';
 
 import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
@@ -120,6 +121,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         )}
 
         <EcosystemBanner seed={1} style={styles.ecoBanner} />
+        <WatchAdCard style={styles.ecoBanner} />
 
         {/* Filter tabs */}
         <ScrollView

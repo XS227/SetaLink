@@ -17,7 +17,7 @@ import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
-import { initAds, showRewardedForData } from '../services/adsService';
+import { WatchAdCard } from '../components/WatchAdCard';
 import { useInboxStore } from '../stores/inboxStore';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -176,39 +176,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const [supportUrl, setSupportUrl] = useState('https://t.me/SetaLink3');
   const [showQr, setShowQr] = useState(false);
   const [applyingPending, setApplyingPending] = useState(false);
-  const [watchingAd, setWatchingAd] = useState(false);
   const inboxMessages = useInboxStore((s) => s.messages);
   const refreshInbox  = useInboxStore((s) => s.refresh);
-
-  // Pre-warm the ad SDK so the first "watch ad" tap is fast.
-  useEffect(() => { initAds(); }, []);
-
-  // Watch a rewarded ad → quota is credited server-side via AdMob SSV (ssv.php).
-  // We poll syncEntitlement until the SSV credit lands (Google calls back async).
-  const handleWatchAd = async () => {
-    const deviceId = user?.deviceId;
-    if (!deviceId || watchingAd) return;
-    setWatchingAd(true);
-    try {
-      const before = user?.quotaBytesTotal ?? 0;
-      const { earned } = await showRewardedForData(deviceId);
-      if (!earned) { setWatchingAd(false); return; }
-      let credited = false;
-      for (let i = 0; i < 6 && !credited; i++) {
-        await new Promise<void>((r) => setTimeout(() => r(), 2500));
-        try {
-          const ent = await syncEntitlement(deviceId);
-          updateFromEntitlement(ent);
-          if ((ent.quota_bytes_total ?? 0) > before) credited = true;
-        } catch {}
-      }
-      showToast(t(credited ? 'pr.adRewarded' : 'pr.adPending'), 'success', 3500);
-    } catch {
-      showToast(t('pr.adFailed'), 'error', 3000);
-    } finally {
-      setWatchingAd(false);
-    }
-  };
 
   const navTo = onNavigate as (tab: string) => void;
 
@@ -524,16 +493,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         </GlassCard>
 
         {/* Watch a rewarded ad → earn bonus data (credited via AdMob SSV) */}
-        <TouchableOpacity activeOpacity={0.85} onPress={handleWatchAd} disabled={watchingAd}>
-          <GlassCard style={styles.sendGbCard} glowColor={Colors.gold[400]}>
-            <Text style={styles.sendGbIcon}>🎬</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sendGbTitle}>{t('pr.watchAd')}</Text>
-              <Text style={styles.sendGbDesc}>{watchingAd ? t('pr.adLoading') : t('pr.watchAdDesc')}</Text>
-            </View>
-            <Text style={styles.actionChevron}>›</Text>
-          </GlassCard>
-        </TouchableOpacity>
+        <WatchAdCard />
 
         {/* Send GB to a friend */}
         <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('transfer')}>
