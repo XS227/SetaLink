@@ -107,10 +107,23 @@ check('duplicate tx rejected', $dupTry['status'], 'rejected');
 check('reason tx_already_used', $dupTry['reason'] ?? '', 'tx_already_used');
 check('buyer3 got nothing', dev_total($db, 'buyer3'), 0);
 
-// ── 8. Confirmed USDT grants correct GB ───────────────────────────────────────
+// ── Safe defaults: USDT disabled until configured; auto-verify off w/o indexer ──
+echo "Safe defaults:\n";
+$def = pay_defaults();
+check('REAL enabled by default', pay_method_ready($def, 'REAL'), true);
+check('USDT disabled by default', pay_method_ready($def, 'USDT'), false);
+mk_device($db, 'buyerU0');
+$blocked = false;
+try { pay_create_intent($db, 'buyerU0', 'prem_10gb', 'USDT', $def); }
+catch (\RuntimeException $e) { $blocked = (strpos($e->getMessage(), 'not available') !== false); }
+check('USDT intent refused when disabled', $blocked, true);
+check('auto-verify off without indexer key', $def['ton_indexer_key'] === '', true);
+
+// ── 8. Confirmed USDT grants correct GB (USDT explicitly enabled) ─────────────
 echo "8. USDT grant:\n";
+$cfgU = $cfg; $cfgU['usdt_enabled'] = 1;   // operator enabled USDT after confirming chain/wallet
 mk_device($db, 'buyer4');
-$iu = pay_create_intent($db, 'buyer4', 'prem_50gb', 'USDT', $cfg);
+$iu = pay_create_intent($db, 'buyer4', 'prem_50gb', 'USDT', $cfgU);
 check('USDT amount = 10', $iu['amount'], 10.0);
 check('USDT units = 10 * 1e6', $iu['amount_units'], 10000000);
 $ru = pay_confirm($db, (int)$iu['payment_id'], 'txUSDT001', $cfg);

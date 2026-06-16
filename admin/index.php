@@ -1446,11 +1446,18 @@ views.payments = {
     set('payCounts', (c.confirmed || 0) + ' / ' + (c.pending || 0));
     set('payFailed', ((c.expired || 0) + (c.rejected || 0)) + ' failed/expired');
 
-    // Config banner.
+    // Config banner — clear status of each activation gate.
     const cf = d.config || {}, warn = [];
-    if (!cf.ton_indexer_configured) warn.push('TON indexer key not set — on-chain auto-verify disabled (manual approve still works).');
+    warn.push(cf.real_ready ? '✓ REAL enabled' : '✗ REAL not ready (enable + token + wallet)');
+    warn.push(cf.usdt_ready ? '✓ USDT enabled' : '✗ USDT disabled (safe default until chain/wallet/token set)');
+    warn.push(cf.auto_verify ? '✓ on-chain auto-verify ON' : '✗ auto-verify OFF (set ton_indexer_key; manual approve still works)');
+    const allReady = cf.real_ready && cf.auto_verify;
     const banner = $('payConfigBanner');
-    if (banner) { banner.style.display = warn.length ? '' : 'none'; if (warn.length) $('payConfigBannerText').textContent = '⚠ ' + warn.join('  '); }
+    if (banner) {
+      banner.style.display = '';
+      $('payConfigBannerText').style.color = allReady ? '#22c55e' : '#f59e0b';
+      $('payConfigBannerText').textContent = (allReady ? '● ' : '⚠ ') + warn.join('   ·   ');
+    }
 
     this.renderPackages(d.packages || []);
     this.renderConfig(d.editable || {});
