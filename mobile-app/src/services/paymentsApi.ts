@@ -26,6 +26,7 @@ export interface PremiumPackage {
 
 export interface PackagesResponse {
   packages: PremiumPackage[];
+  methods: { REAL: boolean; USDT: boolean };
   real: { discount_percent: number; token_address: string };
 }
 
