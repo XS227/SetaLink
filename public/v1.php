@@ -238,6 +238,7 @@ if ($rel === '') {
     $rel = preg_replace('#^.*?/v1#', '', $uri);
 }
 $rel = '/' . ltrim($rel, '/');
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 $pdo   = v1_db();
 
