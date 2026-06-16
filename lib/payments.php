@@ -33,7 +33,9 @@ function pay_defaults(): array {
         // static real_price column. Set by admin or refreshed from real_rate_source.
         'real_usd_rate'             => 0.0,
         'real_rate_updated_at'      => '',
-        'real_rate_source'          => '',   // optional URL a cron polls (e.g. 3real.no API)
+        'real_rate_source'          => '',   // set by scripts/update-real-rate.php (e.g. dyor.io)
+        'real_rate_min_liquidity_usd' => 0.0,  // refuse to price off a pool thinner than this (0 = off)
+        'real_price_markup_percent' => 0.0,  // safety buffer added on top (slippage/volatility)
         // USDT — OFF by default until chain/wallet/token are confirmed (safe default).
         'usdt_enabled'              => 0,
         'usdt_chain'                => 'ton',
@@ -74,9 +76,12 @@ function pay_config(PDO $pdo): array {
  */
 function pay_method_ready(array $cfg, string $method): bool {
     if ($method === 'REAL') {
+        // Require a live rate (> 0): without it we cannot price REAL safely, so the
+        // method is hidden rather than sold at a stale/static give-away price.
         return (int)$cfg['real_enabled'] === 1
             && trim((string)$cfg['real_token_address']) !== ''
-            && trim((string)$cfg['real_destination_wallet']) !== '';
+            && trim((string)$cfg['real_destination_wallet']) !== ''
+            && (float)$cfg['real_usd_rate'] > 0;
     }
     if ($method === 'USDT') {
         return (int)$cfg['usdt_enabled'] === 1
@@ -191,10 +196,11 @@ function pay_real_amount(array $pkg, array $cfg): float {
     $disc = (float)($pkg['real_discount_percent'] ?: $cfg['real_discount_percent']);
     $rate = (float)$cfg['real_usd_rate'];
     if ($usdt > 0 && $rate > 0) {
-        $targetUsd = $usdt * (1 - $disc / 100);
+        $markup    = (float)($cfg['real_price_markup_percent'] ?? 0);
+        $targetUsd = $usdt * (1 - $disc / 100) * (1 + $markup / 100);
         return round($targetUsd / $rate, 4);
     }
-    return (float)$pkg['real_price'];   // rate not set → static fallback
+    return (float)$pkg['real_price'];   // rate not set → static fallback (REAL is gated off anyway)
 }
 
 function pay_get_package(PDO $pdo, string $packageId): ?array {
