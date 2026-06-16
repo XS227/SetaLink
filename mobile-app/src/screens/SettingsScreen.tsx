@@ -117,9 +117,15 @@ const selStyles = StyleSheet.create({
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
-interface SettingsProps { onBack?: () => void; onProfileImport?: () => void }
+interface SettingsProps {
+  onBack?: () => void;
+  onProfileImport?: () => void;
+  onSmartConnect?: () => void;   // relocated AI / smart-connection controls
+  onDiagnostics?: () => void;    // connection tests & server config
+  onActivity?: () => void;       // activity & usage
+}
 
-export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
+export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiagnostics, onActivity }: SettingsProps) {
   const { t } = useT();
   const {
     protocol, dnsMode, language,
@@ -274,6 +280,41 @@ export function SettingsScreen({ onBack, onProfileImport }: SettingsProps) {
         </Section>
 
         <Section label={t('st.diagnostics')}>
+          {onSmartConnect && (
+            <>
+              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onSmartConnect}>
+                <View>
+                  <Text style={selStyles.label}>{t('set.smartConnect')}</Text>
+                  <Text style={rowStyles.desc}>{t('set.smartConnectDesc')}</Text>
+                </View>
+                <Text style={selStyles.chevron}>›</Text>
+              </TouchableOpacity>
+              <Divider />
+            </>
+          )}
+          {onActivity && (
+            <>
+              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onActivity}>
+                <View>
+                  <Text style={selStyles.label}>{t('set.activity')}</Text>
+                </View>
+                <Text style={selStyles.chevron}>›</Text>
+              </TouchableOpacity>
+              <Divider />
+            </>
+          )}
+          {onDiagnostics && (
+            <>
+              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onDiagnostics}>
+                <View>
+                  <Text style={selStyles.label}>{t('set.diagnostics')}</Text>
+                  <Text style={rowStyles.desc}>{t('set.diagnosticsDesc')}</Text>
+                </View>
+                <Text style={selStyles.chevron}>›</Text>
+              </TouchableOpacity>
+              <Divider />
+            </>
+          )}
           {onProfileImport && (
             <>
               <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onProfileImport}>

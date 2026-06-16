@@ -7,6 +7,7 @@ import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { ServerRow } from '../components/ServerRow';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
+import { EcosystemBanner } from '../components/EcosystemBanner';
 
 import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
@@ -99,6 +100,13 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             {isLoading && (
               <ActivityIndicator size="small" color={Colors.emerald[400]} style={{ marginRight: Spacing[1] }} />
             )}
+            <TouchableOpacity
+              style={styles.activityBtn}
+              onPress={() => onNavigate('activity')}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.activityBtnText}>≡ {t('set.activity')}</Text>
+            </TouchableOpacity>
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{servers.length} {t('sv.locations')}</Text>
             </View>
@@ -110,6 +118,8 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.cachedBannerText}>◎ {t('sv.usingSaved')}</Text>
           </View>
         )}
+
+        <EcosystemBanner seed={1} style={styles.ecoBanner} />
 
         {/* Filter tabs */}
         <ScrollView
@@ -251,6 +261,9 @@ const styles = StyleSheet.create({
   countBadge:  { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
   countText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
 
+  activityBtn:      { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[3], paddingVertical: Spacing[1] + 2 },
+  activityBtnText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary },
+  ecoBanner:        { marginHorizontal: Spacing[5], marginBottom: Spacing[3] },
   cachedBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
   cachedBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
 

@@ -35,6 +35,19 @@ const EN = {
   'nav.activity': 'Activity',
   'nav.profile':  'Profile',
 
+  // Ecosystem banner (Shahnameh + 3real)
+  'bn.shahTitle': 'Play Shahnameh — earn REAL',
+  'bn.shahSub':   'Battle as a Persian warrior on Telegram',
+  'bn.realTitle': 'Trade REAL on 3real',
+  'bn.realSub':   'Our REAL exchange — 3real.no',
+
+  // Settings: relocated entries (AI / diagnostics)
+  'set.smartConnect':     'Smart connection',
+  'set.smartConnectDesc': 'Auto SNI / protocol optimization',
+  'set.diagnostics':      'Diagnostics',
+  'set.diagnosticsDesc':  'Connection tests & server config',
+  'set.activity':         'Activity & usage',
+
   // Home screen
   'home.selectServer':    'Select server',
   'home.tapToChoose':     'Tap to choose',
@@ -511,6 +524,19 @@ const FA: typeof EN = {
   'nav.ai':       'هوش مصنوعی',
   'nav.activity': 'فعالیت',
   'nav.profile':  'پروفایل',
+
+  // Ecosystem banner (Shahnameh + 3real)
+  'bn.shahTitle': 'شاهنامه را بازی کن — REAL کسب کن',
+  'bn.shahSub':   'به‌عنوان پهلوان ایرانی در تلگرام نبرد کن',
+  'bn.realTitle': 'معامله REAL در 3real',
+  'bn.realSub':   'صرافی REAL ما — 3real.no',
+
+  // Settings: relocated entries (AI / diagnostics)
+  'set.smartConnect':     'اتصال هوشمند',
+  'set.smartConnectDesc': 'بهینه‌سازی خودکار SNI / پروتکل',
+  'set.diagnostics':      'عیب‌یابی',
+  'set.diagnosticsDesc':  'تست اتصال و پیکربندی سرور',
+  'set.activity':         'فعالیت و مصرف',
 
   // Home screen
   'home.selectServer':    'انتخاب سرور',
