@@ -19,18 +19,15 @@ import mobileAds, {
 export const ADMOB_APP_ID  = 'ca-app-pub-5788265416382988~2740153482';
 const REWARDED_UNIT_PROD   = 'ca-app-pub-5788265416382988/5769978218';
 
-// ⚠️ DIAGNOSTICS BUILD ONLY (v0.9.45): force Google's TEST rewarded unit, which
-// always fills. If a video plays, the SDK/integration is confirmed and the prod
-// no-fill is purely account/new-unit/inventory. NOTE: the test unit does NOT call
-// our SSV, so this build does not credit quota. SET BACK TO false BEFORE ANY OTA.
-const FORCE_TEST_REWARDED = true;
+// Diagnostics escape hatch: force Google's always-fill TEST rewarded unit even in
+// release. Confirmed the SDK/integration once (v0.9.45) — keep OFF for production;
+// the test unit does not call our SSV so it never credits quota.
+const FORCE_TEST_REWARDED = false;
 
 export const REWARDED_UNIT_ID =
   (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.REWARDED : REWARDED_UNIT_PROD;
 
 let _initialized = false;
-let _adapterStatuses: Record<string, { state: number; description: string }> = {};
-let _initError = '';
 
 /** Initialize the Mobile Ads SDK once (safe to call repeatedly). */
 export async function initAds(): Promise<void> {
@@ -41,15 +38,10 @@ export async function initAds(): Promise<void> {
       tagForChildDirectedTreatment: false,
       tagForUnderAgeOfConsent: false,
     });
-    const statuses = await mobileAds().initialize();
-    // statuses is an array of AdapterStatus { name, state, description }
-    _adapterStatuses = {};
-    (statuses as any[] || []).forEach((s) => {
-      if (s?.name) _adapterStatuses[s.name] = { state: s.state, description: s.description };
-    });
+    await mobileAds().initialize();
     _initialized = true;
-  } catch (e) {
-    _initError = (e as Error)?.message || String(e);
+  } catch {
+    // leave _initialized false so a later attempt can retry
   }
 }
 
@@ -89,58 +81,5 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
     }));
 
     ad.load();
-  });
-}
-
-export type AdDiagnostics = {
-  sdkInitialized: boolean;
-  initError: string;
-  adapters: Record<string, { state: number; description: string }>;
-  appId: string;
-  adUnitId: string;
-  isDevUnit: boolean;
-  loadOk: boolean;
-  errorCode: string;
-  errorMessage: string;
-};
-
-/**
- * Standalone diagnostics: (re)initialize, then attempt a single rewarded load and
- * capture the exact outcome — SDK init, adapter states, the app/ad-unit ids actually
- * used, and any load error code/message. Distinguishes no-fill from misconfiguration.
- */
-export function runAdDiagnostics(deviceId: string, timeoutMs = 20000): Promise<AdDiagnostics> {
-  return new Promise<AdDiagnostics>(async (resolve) => {
-    await initAds();
-    const base: AdDiagnostics = {
-      sdkInitialized: _initialized,
-      initError: _initError,
-      adapters: _adapterStatuses,
-      appId: ADMOB_APP_ID,
-      adUnitId: REWARDED_UNIT_ID,
-      isDevUnit: __DEV__,
-      loadOk: false,
-      errorCode: '',
-      errorMessage: '',
-    };
-
-    const ad = RewardedAd.createForAdRequest(REWARDED_UNIT_ID, {
-      serverSideVerificationOptions: { userId: deviceId },
-      requestNonPersonalizedAdsOnly: true,
-    });
-    let done = false;
-    const subs: Array<() => void> = [];
-    const cleanup = () => subs.forEach((u) => { try { u(); } catch {} });
-    const finish = (patch: Partial<AdDiagnostics>) => {
-      if (done) return; done = true; clearTimeout(timer); cleanup();
-      resolve({ ...base, ...patch });
-    };
-    const timer = setTimeout(() => finish({ errorCode: 'timeout', errorMessage: 'load timed out' }), timeoutMs);
-
-    subs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => finish({ loadOk: true })));
-    subs.push(ad.addAdEventListener(AdEventType.ERROR, (e: any) =>
-      finish({ errorCode: e?.code || 'error', errorMessage: e?.message || 'unknown' })));
-
-    try { ad.load(); } catch (e) { finish({ errorCode: 'throw', errorMessage: (e as Error).message }); }
   });
 }
