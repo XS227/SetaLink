@@ -10,6 +10,7 @@ const VALID_PKGS   = ['7days', '30days', 'unlimited', '10GB', '20GB', '30GB'];
 
 // Shared quota-economy ledger / transfer / milestone / package logic.
 require_once __DIR__ . '/../lib/quota_economy.php';
+require_once __DIR__ . '/../lib/ads_recovery.php';
 require_once __DIR__ . '/../lib/messaging.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -2058,6 +2059,85 @@ switch ($action) {
             'protocol_mix' => $ts_proto,
             'window_days'  => $ts_days,
             'checked_at'   => date('Y-m-d H:i:s'),
+        ]);
+        break;
+
+    case 'ads-metrics':
+        // Rewarded-ads revenue + recovery-quota overview for the admin dashboard.
+        // All numbers derive from ad_reward_events / recovery_sessions / the ledger;
+        // revenue & cost are estimates driven by remote config (ecpm, egress cost).
+        $db = open_analytics_db();
+        ar_init_tables($db);
+        $cfg = ar_config($db);
+
+        $confirmed = "status='confirmed'";
+        $cnt = function (string $extra) use ($db, $confirmed): int {
+            return (int)$db->query("SELECT COUNT(*) FROM ad_reward_events WHERE $confirmed $extra")->fetchColumn();
+        };
+        $ads_today = $cnt("AND confirmed_at >= date('now')");
+        $ads_7d    = $cnt("AND confirmed_at >= datetime('now','-7 days')");
+        $ads_30d   = $cnt("AND confirmed_at >= datetime('now','-30 days')");
+        $ads_all   = $cnt("");
+
+        // GB granted from ads (ledger is source of truth for granted bytes).
+        $ad_granted_bytes = (int)$db->query(
+            "SELECT COALESCE(SUM(bytes),0) FROM quota_transactions WHERE type='ad_reward'")->fetchColumn();
+        // Recovery GB used (metered against the hidden reserve).
+        $recovery_used_bytes = (int)$db->query(
+            "SELECT COALESCE(SUM(recovery_used_bytes),0) FROM devices")->fetchColumn();
+        // Distinct devices that ever entered recovery = saved from zero-data deadlock.
+        $users_saved = (int)$db->query(
+            "SELECT COUNT(DISTINCT device_id) FROM recovery_sessions")->fetchColumn();
+        // Suspicious events awaiting review.
+        $review_cnt = (int)$db->query(
+            "SELECT COUNT(*) FROM ad_reward_events WHERE status='review'")->fetchColumn();
+        $review = $db->query(
+            "SELECT device_id, nonce, risk_score, risk_flags, source, created_at
+             FROM ad_reward_events WHERE status='review' ORDER BY id DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+
+        // Revenue / cost estimates.
+        $ecpm     = (float)$cfg['ecpm_usd'];
+        $cost_gb  = (float)$cfg['egress_cost_per_gb_usd'];
+        $rev_all  = round($ads_all * $ecpm / 1000, 2);
+        $rev_30d  = round($ads_30d * $ecpm / 1000, 2);
+        $ad_gb    = $ad_granted_bytes / 1073741824.0;
+        $rev_per_gb = $ad_gb > 0 ? round($rev_all / $ad_gb, 4) : 0.0;
+
+        // 30-day contiguous ads/day series + reward GB/day.
+        $axis = []; $idx = [];
+        for ($i = 29; $i >= 0; $i--) { $d = gmdate('Y-m-d', strtotime("-$i days")); $idx[$d] = count($axis); $axis[] = $d; }
+        $series = array_fill(0, count($axis), 0);
+        foreach ($db->query("SELECT date(confirmed_at) d, COUNT(*) c FROM ad_reward_events
+                             WHERE status='confirmed' AND confirmed_at >= datetime('now','-30 days')
+                             GROUP BY d") as $r) {
+            if (isset($idx[(string)$r['d']])) $series[$idx[(string)$r['d']]] = (int)$r['c'];
+        }
+
+        api_ok([
+            'ads_watched'      => ['today' => $ads_today, 'week' => $ads_7d, 'month' => $ads_30d, 'all' => $ads_all],
+            'est_revenue_usd'  => ['month' => $rev_30d, 'all' => $rev_all],
+            'ad_gb_granted'    => round($ad_gb, 3),
+            'recovery_gb_used' => round($recovery_used_bytes / 1073741824.0, 3),
+            'users_saved'      => $users_saved,
+            'review_count'     => $review_cnt,
+            'review'           => $review,
+            'revenue_per_gb'   => $rev_per_gb,
+            'cost_per_gb'      => $cost_gb,
+            'config'           => [
+                'ecpm_usd'                  => $ecpm,
+                'egress_cost_per_gb_usd'    => $cost_gb,
+                'ad_reward_bytes'           => (int)$cfg['ad_reward_bytes'],
+                'ad_daily_cap'              => (int)$cfg['ad_daily_cap'],
+                'ad_cooldown_secs'          => (int)$cfg['ad_cooldown_secs'],
+                'hidden_recovery_bytes'     => (int)$cfg['hidden_recovery_bytes'],
+                'recovery_throttle_kbps'    => (int)$cfg['recovery_throttle_kbps'],
+                'admob_ssv_enabled'         => (int)$cfg['admob_ssv_enabled'],
+                'admob_configured'          => ($cfg['admob_rewarded_unit_id'] !== '' ? 1 : 0),
+                'recovery_node_configured'  => ($cfg['recovery_exit_uuid'] !== '' ? 1 : 0),
+            ],
+            'days'             => $axis,
+            'ads_series'       => $series,
+            'checked_at'       => date('Y-m-d H:i:s'),
         ]);
         break;
 

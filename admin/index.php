@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','iran','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','iran','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -46,6 +46,7 @@ function icon(string $name): string {
         'gift'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
         'person'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
         'chart'   => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+        'dollar'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
     ];
     return $icons[$name] ?? '';
 }
@@ -82,6 +83,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='analytics'?' active':'' ?>" data-page="analytics">
       <?= icon('chart') ?> Analytics
+    </div>
+    <div class="nav-item<?= $page==='ads'?' active':'' ?>" data-page="ads">
+      <?= icon('dollar') ?> Ads &amp; Revenue
     </div>
     <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
       <?= icon('globe') ?> Iran Debug
@@ -280,6 +284,55 @@ function icon(string $name): string {
           <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> App Versions <span class="panel-sub">top 10</span></span></div>
           <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chVer"></canvas></div></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: ADS & REVENUE                                          -->
+    <!-- ============================================================ -->
+    <div data-view="ads" hidden>
+      <div id="adsConfigBanner" class="panel" style="margin-bottom:1rem;display:none">
+        <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="adsConfigBannerText"></div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Ads Watched (today)</div><div class="stat-value" id="adsToday">—</div><div class="stat-sub" id="adsWeek">— this week</div></div>
+        <div class="stat-card"><div class="stat-label">Est. Revenue (30d)</div><div class="stat-value" id="adsRev30">—</div><div class="stat-sub" id="adsRevAll">— all time</div></div>
+        <div class="stat-card"><div class="stat-label">GB Granted from Ads</div><div class="stat-value" id="adsGbGranted">—</div><div class="stat-sub">ledger credited</div></div>
+        <div class="stat-card"><div class="stat-label">Users Saved</div><div class="stat-value" id="adsSaved">—</div><div class="stat-sub">from zero-data deadlock</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Rewarded Ads <span class="panel-sub">per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chAds"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Recovery Quota <span class="panel-sub">hidden-reserve usage</span></span></div>
+          <div class="panel-body">
+            <div class="stat-grid" style="grid-template-columns:1fr 1fr">
+              <div class="stat-card"><div class="stat-label">Recovery GB Used</div><div class="stat-value" id="adsRecGb">—</div><div class="stat-sub">metered to reserve</div></div>
+              <div class="stat-card"><div class="stat-label">Revenue / GB</div><div class="stat-value" id="adsRevGb">—</div><div class="stat-sub">est., from ads</div></div>
+              <div class="stat-card"><div class="stat-label">Cost / GB</div><div class="stat-value" id="adsCostGb">—</div><div class="stat-sub">egress estimate</div></div>
+              <div class="stat-card"><div class="stat-label">Margin / GB</div><div class="stat-value" id="adsMarginGb">—</div><div class="stat-sub">revenue − cost</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('person') ?> Suspicious Reward Events <span class="panel-sub" id="adsReviewCount">review queue</span></span></div>
+        <div class="panel-body">
+          <table class="data-table" style="width:100%">
+            <thead><tr><th>Device</th><th>Risk</th><th>Flags</th><th>Source</th><th>When</th></tr></thead>
+            <tbody id="adsReviewBody"><tr><td colspan="5" style="opacity:.6">No events under review.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Active Config <span class="panel-sub">remote-configurable · settings table</span></span></div>
+        <div class="panel-body" id="adsConfig" style="font-size:.82rem;line-height:1.9;font-family:monospace"></div>
       </div>
     </div>
 
@@ -1057,6 +1110,7 @@ let activeView='', refreshTimer=null;
 const pageTitles = {
   dashboard: ['Dashboard', 'live monitoring · auto-refresh 10s'],
   analytics: ['Analytics', 'growth & usage trends · 30-day charts'],
+  ads:       ['Ads & Revenue', 'rewarded ads · recovery quota · revenue vs cost'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
@@ -1215,6 +1269,68 @@ views.analytics = {
       options: { responsive: true, maintainAspectRatio: false, cutout: '58%',
         plugins: { legend: { position: 'right', labels: { color: '#8a9bbf', boxWidth: 12, font: { size: 11 } } } } },
     });
+  },
+};
+
+// ── VIEW: ADS & REVENUE ──────────────────────────────────────────────
+// Rewarded-ads revenue + recovery-quota overview. Reuses the Chart.js infra.
+views.ads = {
+  chart: null,
+  init() { this.load(); },
+  fmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+  async load() {
+    let d;
+    try { d = await api.get('ads-metrics'); } catch (e) { return; }
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    const aw = d.ads_watched || {}, rev = d.est_revenue_usd || {};
+    set('adsToday', aw.today ?? 0);
+    set('adsWeek', (aw.week ?? 0) + ' this week · ' + (aw.month ?? 0) + ' this month');
+    set('adsRev30', this.fmtUsd(rev.month));
+    set('adsRevAll', this.fmtUsd(rev.all) + ' all time');
+    set('adsGbGranted', (d.ad_gb_granted ?? 0) + ' GB');
+    set('adsSaved', d.users_saved ?? 0);
+    set('adsRecGb', (d.recovery_gb_used ?? 0) + ' GB');
+    set('adsRevGb', this.fmtUsd(d.revenue_per_gb));
+    set('adsCostGb', this.fmtUsd(d.cost_per_gb));
+    set('adsMarginGb', this.fmtUsd((+d.revenue_per_gb || 0) - (+d.cost_per_gb || 0)));
+
+    // Config banner: warn if AdMob / recovery node not yet configured.
+    const c = d.config || {}, warn = [];
+    if (!c.admob_configured)         warn.push('AdMob ad-unit not configured — rewards inert until set.');
+    if (!c.admob_ssv_enabled)        warn.push('AdMob SSV disabled — no trusted server-side verification yet.');
+    if (!c.recovery_node_configured) warn.push('Recovery exit node not configured — recovery/enter will refuse.');
+    const banner = $('adsConfigBanner');
+    if (banner) { banner.style.display = warn.length ? '' : 'none'; $('adsConfigBannerText').textContent = '⚠ ' + warn.join('  '); }
+
+    // Config dump.
+    const cfgEl = $('adsConfig');
+    if (cfgEl) {
+      cfgEl.innerHTML = Object.entries(c).map(([k, v]) => `<span style="opacity:.6">${k}</span> = <b>${v}</b>`).join('<br>');
+    }
+
+    // Review queue.
+    const rows = d.review || [];
+    const tb = $('adsReviewBody');
+    $('adsReviewCount').textContent = (d.review_count ?? 0) + ' under review';
+    if (tb) {
+      tb.innerHTML = rows.length
+        ? rows.map(r => `<tr><td>${(r.device_id||'').slice(0,16)}</td><td>${r.risk_score}</td><td>${r.risk_flags||'—'}</td><td>${r.source||'—'}</td><td>${r.created_at||''}</td></tr>`).join('')
+        : '<tr><td colspan="5" style="opacity:.6">No events under review.</td></tr>';
+    }
+
+    // Ads/day trend.
+    if (typeof Chart !== 'undefined') {
+      if (this.chart) { try { this.chart.destroy(); } catch (e) {} }
+      const labels = (d.days || []).map(x => (x || '').slice(5));
+      this.chart = new Chart($('chAds'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Ads', data: d.ads_series || [], backgroundColor: '#22c55e', borderRadius: 3 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { grid: { color: 'rgba(138,155,191,.12)' }, ticks: { color: '#8a9bbf', maxRotation: 0, autoSkip: true, font: { size: 10 } } },
+                    y: { grid: { color: 'rgba(138,155,191,.12)' }, ticks: { color: '#8a9bbf', font: { size: 10 } }, beginAtZero: true } } },
+      });
+    }
   },
 };
 
