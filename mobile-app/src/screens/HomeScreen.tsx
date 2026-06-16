@@ -11,6 +11,7 @@ import { NetworkQualityBar } from '../components/NetworkQualityBar';
 import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { EcosystemBanner } from '../components/EcosystemBanner';
+import { WatchAdCard } from '../components/WatchAdCard';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
@@ -329,6 +330,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         {/* Ecosystem promo (Shahnameh + 3real, rotating) */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
           <EcosystemBanner seed={0} />
+        </Animated.View>
+
+        {/* Watch ad → earn data */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }], marginTop: Spacing[3] }}>
+          <WatchAdCard />
         </Animated.View>
 
         {/* Traffic stats (connected only) */}
