@@ -31,6 +31,7 @@ const QE_DAILY_MAX_COUNT = 10;                    // 10 transfers/day per device
 const QE_CREDIT_TYPES = [
     'starter_bonus', 'referral_reward', 'referral_level2',
     'purchase', 'transfer_in', 'admin_adjustment', 'promotion',
+    'ad_reward',
 ];
 
 /**
@@ -214,7 +215,8 @@ function qe_summary(PDO $pdo, string $deviceId): array {
     if (!$dev) {
         return [
             'starter_quota' => 0, 'referral_quota' => 0, 'purchased_quota' => 0,
-            'promotion_quota' => 0, 'transfer_in_quota' => 0, 'transfer_out_quota' => 0,
+            'promotion_quota' => 0, 'ad_reward_quota' => 0,
+            'transfer_in_quota' => 0, 'transfer_out_quota' => 0,
             'adjustment_quota' => 0, 'total_quota' => 0, 'used_quota' => 0,
             'remaining_quota' => 0, 'transferable_quota' => 0,
         ];
@@ -228,6 +230,7 @@ function qe_summary(PDO $pdo, string $deviceId): array {
     $referral  = ($sums['referral_reward'] ?? 0) + ($sums['referral_level2'] ?? 0);
     $purchased = $sums['purchase']          ?? 0;
     $promotion = $sums['promotion']         ?? 0;
+    $adReward  = $sums['ad_reward']         ?? 0;
     $transIn   = $sums['transfer_in']       ?? 0;
     $transOut  = $sums['transfer_out']      ?? 0; // negative
     $adjust    = $sums['admin_adjustment']  ?? 0;
@@ -243,6 +246,7 @@ function qe_summary(PDO $pdo, string $deviceId): array {
         'referral_quota'     => $referral,
         'purchased_quota'    => $purchased,
         'promotion_quota'    => $promotion,
+        'ad_reward_quota'    => $adReward,
         'transfer_in_quota'  => $transIn,
         'transfer_out_quota' => $transOut,
         'adjustment_quota'   => $adjust,
