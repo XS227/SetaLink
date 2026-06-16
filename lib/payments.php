@@ -27,6 +27,13 @@ function pay_defaults(): array {
         'real_destination_wallet'   => 'UQBWAwX1khMYZm3RobKKOm3460I6vLCA1c0wgb_68zdfBj5g',
         'real_decimals'             => 9,
         'real_discount_percent'     => 20,
+        // Dynamic pricing: USD value of 1 REAL token. The REAL amount charged is
+        // computed so it covers (usdt_price − discount) at the CURRENT rate — never
+        // sold cheap regardless of how REAL moves. 0 = rate unknown → fall back to the
+        // static real_price column. Set by admin or refreshed from real_rate_source.
+        'real_usd_rate'             => 0.0,
+        'real_rate_updated_at'      => '',
+        'real_rate_source'          => '',   // optional URL a cron polls (e.g. 3real.no API)
         // USDT — OFF by default until chain/wallet/token are confirmed (safe default).
         'usdt_enabled'              => 0,
         'usdt_chain'                => 'ton',
@@ -151,13 +158,15 @@ function pay_seed_packages(PDO $pdo): void {
 
 // ── Packages ───────────────────────────────────────────────────────────────────
 
-/** Active packages for the app (ordered). Discount % derived for display safety. */
-function pay_packages(PDO $pdo, bool $activeOnly = true): array {
+/** Active packages for the app (ordered). REAL price computed off the live rate. */
+function pay_packages(PDO $pdo, bool $activeOnly = true, ?array $cfg = null): array {
     pay_init_tables($pdo);
+    $cfg = $cfg ?? pay_config($pdo);
     $sql = "SELECT * FROM premium_packages" . ($activeOnly ? " WHERE is_active=1" : "") . " ORDER BY display_order, gb_amount";
-    return array_map(static function ($r) {
-        $usdt = (float)$r['usdt_price']; $real = (float)$r['real_price'];
-        $disc = $usdt > 0 ? round((1 - $real / $usdt) * 100, 1) : (float)$r['real_discount_percent'];
+    return array_map(static function ($r) use ($cfg) {
+        $usdt = (float)$r['usdt_price'];
+        $real = pay_real_amount($r, $cfg);             // dynamic (or static fallback)
+        $disc = (float)($r['real_discount_percent'] ?: $cfg['real_discount_percent']);
         return [
             'package_id'            => $r['package_id'],
             'gb_amount'             => (int)$r['gb_amount'],
@@ -169,6 +178,23 @@ function pay_packages(PDO $pdo, bool $activeOnly = true): array {
             'display_order'         => (int)$r['display_order'],
         ];
     }, $pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC));
+}
+
+/**
+ * REAL token amount to charge for a package, priced off the LIVE rate so the package
+ * is never sold below its USD value. target_usd = usdt_price × (1 − discount%); the
+ * REAL amount = target_usd / real_usd_rate. When the rate is unknown (0) we fall back
+ * to the static real_price column so nothing breaks. Returns REAL token units (float).
+ */
+function pay_real_amount(array $pkg, array $cfg): float {
+    $usdt = (float)$pkg['usdt_price'];
+    $disc = (float)($pkg['real_discount_percent'] ?: $cfg['real_discount_percent']);
+    $rate = (float)$cfg['real_usd_rate'];
+    if ($usdt > 0 && $rate > 0) {
+        $targetUsd = $usdt * (1 - $disc / 100);
+        return round($targetUsd / $rate, 4);
+    }
+    return (float)$pkg['real_price'];   // rate not set → static fallback
 }
 
 function pay_get_package(PDO $pdo, string $packageId): ?array {
@@ -189,7 +215,7 @@ function pay_create_intent(PDO $pdo, string $deviceId, string $packageId, string
     $pkg = pay_get_package($pdo, $packageId);
     if (!$pkg) throw new \RuntimeException('unknown or inactive package');
 
-    $price    = $method === 'REAL' ? (float)$pkg['real_price'] : (float)$pkg['usdt_price'];
+    $price    = $method === 'REAL' ? pay_real_amount($pkg, $cfg) : (float)$pkg['usdt_price'];
     if ($price <= 0) throw new \RuntimeException('package not priced for this method');
     $mp       = pay_method_params($cfg, $method);
     $units    = (int)round($price * (10 ** $mp['decimals']));

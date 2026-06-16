@@ -329,11 +329,13 @@ if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
     // Catalog is public (no device needed) so the Premium screen can render prices.
     if ($rel === '/payments/packages' && $method === 'GET') {
         v1_send([
-            'packages' => pay_packages($pdo),
+            'packages' => pay_packages($pdo, true, $pcfg),
             'methods'  => pay_methods_status($pcfg),   // app hides methods that aren't ready
             'real'     => [
                 'discount_percent' => (float)$pcfg['real_discount_percent'],
                 'token_address'    => $pcfg['real_token_address'],
+                'usd_rate'         => (float)$pcfg['real_usd_rate'],      // USD value of 1 REAL (0 = unknown)
+                'rate_updated_at'  => (string)$pcfg['real_rate_updated_at'],
             ],
         ]);
     }
