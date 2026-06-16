@@ -19,6 +19,70 @@ tx_hash**; this is **REAL-specific**, not a generic crypto integration.
 
 ---
 
+## OPERATOR STEPS (payments activation — do in order)
+
+All config is on **Admin → Payments → "Token / Wallet Config"** (writes the `settings`
+table via `save-payments-config`). Safe defaults: **REAL on, USDT off, auto-verify off**.
+
+### A. Choose / confirm the receiving wallet
+1. Default REAL recipient is `real_destination_wallet = UQBWAwX1khMYZm3RobKKOm3460I6vLCA1c0wgb_68zdfBj5g`.
+2. **Confirm you control it** (import the seed in Tonkeeper; send yourself a tiny test).
+   If you want a different wallet, set `real_destination_wallet` in admin. Keep the same
+   wallet for USDT (`usdt_destination_wallet`) or set a separate one.
+
+### B. Verify the REAL jetton address
+3. Open a TON explorer: `https://tonviewer.com/EQDhq_DjQUMJqfXLP8K8J6SlOvon08XQQK0T49xon2e0xU8p`
+   — confirm it's the REAL jetton (name/symbol) and note its **decimals**.
+4. In admin set `real_decimals` to that value (default 9). Wrong decimals → wrong amount math.
+5. Confirm `real_token_address` in admin equals the jetton above (it is, by default).
+
+### C. Set the TON indexer key (enables on-chain auto-verify)
+6. Get a toncenter API key (toncenter.com / @tonapibot on Telegram).
+7. Admin → set `ton_indexer_key`. Until this is set, **auto-verify is OFF** and the admin
+   banner shows it; the legacy manual-approve path still works in the meantime.
+8. (Optional) `ton_indexer_url` defaults to `https://toncenter.com/api/v2`.
+
+### D. Safe small REAL test (no wrong GB)
+9. In **Premium Packages** editor, add a throwaway package: `package_id=test_real`,
+   `gb_amount=1`, `real_price=0.01`, `is_active=1`, high `display_order`. Save.
+10. On a **throwaway device id** (e.g. `device-PAYTEST`), create a REAL intent for `test_real`
+    (via the app build later, or by calling `/v1/payments/intent`). Pay the **0.01 REAL** to the
+    wallet **with the exact memo** (`RLK-<id>-…`) from the intent.
+11. Tap "Check payment" / call `/v1/payments/status?id=<id>`. With `ton_indexer_key` set the
+    server verifies on-chain and grants **1 GB** to `device-PAYTEST` only.
+12. Verify idempotency: re-check → no extra GB; reusing that tx for another intent → rejected.
+
+### E. Reverse the test ledger
+13. Claw back the 1 GB with a negative `admin_adjustment` for `device-PAYTEST` (admin device
+    tools / quota set), or delete the throwaway device. The ledger invariant stays intact.
+14. Set `test_real` package `is_active=0` (or delete it).
+
+### F. Keep USDT disabled until ready
+15. Leave `usdt_enabled = 0` (default). While off, `/v1/payments/intent` for USDT returns
+    **"USDT payments are not available" (400)** and the catalog reports `methods.USDT=false`,
+    so the app hides it. When the USDT chain/token/wallet are confirmed: set
+    `usdt_chain`, `usdt_token_address`, `usdt_destination_wallet`, `usdt_decimals`, then
+    `usdt_enabled=1`. The same on-chain verification applies.
+
+---
+
+## READY-FOR-MOBILE GATE (all must be true before the mobile round)
+
+- [ ] `real_destination_wallet` confirmed under your control
+- [ ] REAL jetton verified on explorer; `real_decimals` correct
+- [ ] `ton_indexer_key` set → admin banner shows **auto-verify ON** (or you accept manual
+      approve for launch and document it)
+- [ ] Small REAL test: confirmed → 1 GB granted → idempotency proven → **reversed**
+- [ ] Packages finalized & active; prices correct (REAL < USDT)
+- [ ] USDT either fully configured + `usdt_enabled=1` **or** intentionally left disabled
+      (app hides it)
+- [ ] Admin Payments banner is **green** (REAL ready + auto-verify on)
+
+When green: the mobile round wires `PremiumScreen` into the navigator, adds i18n, builds via
+CI, and ships via OTA. **Do not build mobile before this gate is green.**
+
+---
+
 ## 1. Current architecture (verified)
 
 - Mobile `UpgradeScreen.tsx`: hardcoded wallet + USDT jetton + packages, Tonkeeper deeplink,
