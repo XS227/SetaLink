@@ -11,6 +11,7 @@ const VALID_PKGS   = ['7days', '30days', 'unlimited', '10GB', '20GB', '30GB'];
 // Shared quota-economy ledger / transfer / milestone / package logic.
 require_once __DIR__ . '/../lib/quota_economy.php';
 require_once __DIR__ . '/../lib/ads_recovery.php';
+require_once __DIR__ . '/../lib/payments.php';
 require_once __DIR__ . '/../lib/messaging.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -967,6 +968,45 @@ if ($method === 'POST') {
             $saved[] = $k;
         }
         api_ok(['saved' => $saved]);
+    }
+    if ($action === 'save-payments-config') {
+        // Remote-tune REAL/USDT token addresses, wallets, discount, window, indexer.
+        $allowed = array_keys(pay_defaults());
+        $db2 = open_analytics_db();
+        $st = $db2->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
+        $saved = [];
+        foreach ($allowed as $k) {
+            if (!array_key_exists($k, $parsed)) continue;
+            $st->execute([$k, (string)$parsed[$k]]);
+            $saved[] = $k;
+        }
+        api_ok(['saved' => $saved]);
+    }
+    if ($action === 'save-package') {
+        // Upsert a premium package (admin package editor). package_id required.
+        $pid = trim((string)($parsed['package_id'] ?? ''));
+        if ($pid === '') api_err('package_id required');
+        $db2 = open_analytics_db();
+        pay_init_tables($db2);
+        $db2->prepare(
+            "INSERT INTO premium_packages
+                (package_id, gb_amount, usdt_price, real_price, real_discount_percent, is_recommended, is_active, display_order, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+             ON CONFLICT(package_id) DO UPDATE SET
+                gb_amount=excluded.gb_amount, usdt_price=excluded.usdt_price, real_price=excluded.real_price,
+                real_discount_percent=excluded.real_discount_percent, is_recommended=excluded.is_recommended,
+                is_active=excluded.is_active, display_order=excluded.display_order, updated_at=datetime('now')"
+        )->execute([
+            $pid,
+            max(0, (int)($parsed['gb_amount'] ?? 0)),
+            max(0, (float)($parsed['usdt_price'] ?? 0)),
+            max(0, (float)($parsed['real_price'] ?? 0)),
+            max(0, (float)($parsed['real_discount_percent'] ?? 0)),
+            (int)(bool)($parsed['is_recommended'] ?? 0),
+            array_key_exists('is_active', $parsed) ? (int)(bool)$parsed['is_active'] : 1,
+            max(0, (int)($parsed['display_order'] ?? 0)),
+        ]);
+        api_ok(['saved' => $pid]);
     }
     if ($action === 'save-remote-config') {
         $allowed_rc_keys = [
@@ -2154,6 +2194,62 @@ switch ($action) {
             // Raw editable config (admin-only surface) for the inline config form.
             'editable'         => array_intersect_key($cfg, ar_defaults()),
             'checked_at'       => date('Y-m-d H:i:s'),
+        ]);
+        break;
+
+    case 'payments-metrics':
+        // Premium payments overview: packages, REAL vs USDT revenue/GB, discount
+        // cost/value, and intent lists (pending/confirmed/failed).
+        $db = open_analytics_db();
+        pay_init_tables($db);
+        $pcfg = pay_config($db);
+
+        // Revenue (USD-equivalent; real_price is a USD-equivalent) + GB sold, by method.
+        $byMethod = ['REAL' => ['revenue' => 0.0, 'gb' => 0, 'count' => 0],
+                     'USDT' => ['revenue' => 0.0, 'gb' => 0, 'count' => 0]];
+        foreach ($db->query("SELECT method, COALESCE(SUM(amount),0) rev, COALESCE(SUM(gb_amount),0) gb, COUNT(*) c
+                             FROM payment_intents WHERE status='confirmed' GROUP BY method") as $r) {
+            $m = $r['method'] === 'REAL' ? 'REAL' : 'USDT';
+            $byMethod[$m] = ['revenue' => round((float)$r['rev'], 2), 'gb' => (int)$r['gb'], 'count' => (int)$r['c']];
+        }
+
+        // REAL discount cost/value: USDT-equivalent foregone vs REAL volume taken.
+        $disc = $db->query("SELECT COALESCE(SUM(p.usdt_price - i.amount),0) cost, COALESCE(SUM(i.amount),0) vol
+                            FROM payment_intents i JOIN premium_packages p ON p.package_id=i.package_id
+                            WHERE i.status='confirmed' AND i.method='REAL'")->fetch(PDO::FETCH_ASSOC)
+                ?: ['cost' => 0, 'vol' => 0];
+
+        $counts = [];
+        foreach ($db->query("SELECT status, COUNT(*) c FROM payment_intents GROUP BY status") as $r) {
+            $counts[(string)$r['status']] = (int)$r['c'];
+        }
+        $lst = function (string $where) use ($db): array {
+            return $db->query(
+                "SELECT payment_id, device_id, package_id, method, amount, gb_amount, status, tx_hash, created_at, confirmed_at
+                 FROM payment_intents WHERE $where ORDER BY payment_id DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+        };
+
+        api_ok([
+            'packages'      => pay_packages($db, false),   // all, incl inactive (admin)
+            'by_method'     => $byMethod,
+            'discount_cost' => round((float)$disc['cost'], 2),
+            'real_volume'   => round((float)$disc['vol'], 2),
+            'counts'        => $counts,
+            'pending'       => $lst("status='pending'"),
+            'confirmed'     => $lst("status='confirmed'"),
+            'failed'        => $lst("status IN ('expired','rejected')"),
+            'config'        => [
+                'real_token_address'      => $pcfg['real_token_address'],
+                'real_destination_wallet' => $pcfg['real_destination_wallet'],
+                'real_discount_percent'   => $pcfg['real_discount_percent'],
+                'usdt_token_address'      => $pcfg['usdt_token_address'],
+                'usdt_destination_wallet' => $pcfg['usdt_destination_wallet'],
+                'usdt_chain'              => $pcfg['usdt_chain'],
+                'payment_window_secs'     => (int)$pcfg['payment_window_secs'],
+                'ton_indexer_configured'  => ($pcfg['ton_indexer_key'] !== '' ? 1 : 0),
+            ],
+            'editable'      => array_intersect_key($pcfg, pay_defaults()),
+            'checked_at'    => date('Y-m-d H:i:s'),
         ]);
         break;
 

@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','iran','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -47,6 +47,7 @@ function icon(string $name): string {
         'person'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
         'chart'   => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
         'dollar'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        'card'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
     ];
     return $icons[$name] ?? '';
 }
@@ -86,6 +87,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='ads'?' active':'' ?>" data-page="ads">
       <?= icon('dollar') ?> Ads &amp; Revenue
+    </div>
+    <div class="nav-item<?= $page==='payments'?' active':'' ?>" data-page="payments">
+      <?= icon('card') ?> Payments
     </div>
     <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
       <?= icon('globe') ?> Iran Debug
@@ -336,6 +340,64 @@ function icon(string $name): string {
         <div class="panel-body">
           <div id="adsConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.6rem .9rem"></div>
           <div id="adsCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: PAYMENTS                                               -->
+    <!-- ============================================================ -->
+    <div data-view="payments" hidden>
+      <div id="payConfigBanner" class="panel" style="margin-bottom:1rem;display:none">
+        <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="payConfigBannerText"></div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card" style="border:1px solid #caa53a55"><div class="stat-label">REAL Revenue</div><div class="stat-value" id="payRealRev" style="color:#e8c45a">—</div><div class="stat-sub" id="payRealGb">— GB sold</div></div>
+        <div class="stat-card"><div class="stat-label">USDT Revenue</div><div class="stat-value" id="payUsdtRev">—</div><div class="stat-sub" id="payUsdtGb">— GB sold</div></div>
+        <div class="stat-card"><div class="stat-label">REAL Discount Cost</div><div class="stat-value" id="payDiscCost">—</div><div class="stat-sub">USDT-equiv. foregone</div></div>
+        <div class="stat-card"><div class="stat-label">Confirmed / Pending</div><div class="stat-value" id="payCounts">—</div><div class="stat-sub" id="payFailed">— failed/expired</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('card') ?> Revenue by Method <span class="panel-sub">USD-equivalent</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:260px"><canvas id="chPayMethod"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> GB Sold by Method</span></div>
+          <div class="panel-body"><div style="position:relative;height:260px"><canvas id="chPayGb"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Premium Packages <span class="panel-sub">remote-editable · prices never hardcoded in app</span></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="data-table" style="width:100%;min-width:720px">
+            <thead><tr><th>package_id</th><th>GB</th><th>USDT $</th><th>REAL $</th><th>Disc %</th><th>Rec</th><th>Active</th><th>Order</th><th></th></tr></thead>
+            <tbody id="payPkgBody"></tbody>
+          </table>
+          <div id="payPkgMsg" style="margin-top:.5rem;font-size:.8rem;opacity:.7"></div>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Pending Intents</span></div>
+          <div class="panel-body" style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr><th>#</th><th>Device</th><th>Pkg</th><th>Method</th><th>$</th><th>Created</th></tr></thead><tbody id="payPendingBody"><tr><td colspan="6" style="opacity:.6">none</td></tr></tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Confirmed Payments</span></div>
+          <div class="panel-body" style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr><th>#</th><th>Device</th><th>Pkg</th><th>Method</th><th>GB</th><th>tx</th></tr></thead><tbody id="payConfirmedBody"><tr><td colspan="6" style="opacity:.6">none</td></tr></tbody></table></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Token / Wallet Config <span class="panel-sub">REAL + USDT · remote</span></span>
+          <button class="btn btn-small" id="payCfgSave" type="button">Save config</button></div>
+        <div class="panel-body">
+          <div id="payConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.6rem .9rem"></div>
+          <div id="payCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
         </div>
       </div>
     </div>
@@ -1115,6 +1177,7 @@ const pageTitles = {
   dashboard: ['Dashboard', 'live monitoring · auto-refresh 10s'],
   analytics: ['Analytics', 'growth & usage trends · 30-day charts'],
   ads:       ['Ads & Revenue', 'rewarded ads · recovery quota · revenue vs cost'],
+  payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
@@ -1360,6 +1423,94 @@ views.ads = {
                     y: { grid: { color: 'rgba(138,155,191,.12)' }, ticks: { color: '#8a9bbf', font: { size: 10 } }, beginAtZero: true } } },
       });
     }
+  },
+};
+
+// ── VIEW: PAYMENTS ───────────────────────────────────────────────────
+views.payments = {
+  charts: {},
+  init() {
+    const b = $('payCfgSave'); if (b) b.onclick = () => this.saveConfig();
+    this.load();
+  },
+  fmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+  async load() {
+    let d;
+    try { d = await api.get('payments-metrics'); } catch (e) { return; }
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    const bm = d.by_method || {}, real = bm.REAL || {}, usdt = bm.USDT || {};
+    set('payRealRev', this.fmtUsd(real.revenue)); set('payRealGb', (real.gb || 0) + ' GB sold');
+    set('payUsdtRev', this.fmtUsd(usdt.revenue)); set('payUsdtGb', (usdt.gb || 0) + ' GB sold');
+    set('payDiscCost', this.fmtUsd(d.discount_cost));
+    const c = d.counts || {};
+    set('payCounts', (c.confirmed || 0) + ' / ' + (c.pending || 0));
+    set('payFailed', ((c.expired || 0) + (c.rejected || 0)) + ' failed/expired');
+
+    // Config banner.
+    const cf = d.config || {}, warn = [];
+    if (!cf.ton_indexer_configured) warn.push('TON indexer key not set — on-chain auto-verify disabled (manual approve still works).');
+    const banner = $('payConfigBanner');
+    if (banner) { banner.style.display = warn.length ? '' : 'none'; if (warn.length) $('payConfigBannerText').textContent = '⚠ ' + warn.join('  '); }
+
+    this.renderPackages(d.packages || []);
+    this.renderConfig(d.editable || {});
+    this.renderIntents(d.pending || [], d.confirmed || []);
+    this.renderCharts(real, usdt);
+  },
+  renderPackages(pkgs) {
+    const tb = $('payPkgBody'); if (!tb) return;
+    const cell = (pid, f, v, t) => `<input data-pid="${pid}" data-f="${f}" type="${t}" value="${String(v).replace(/"/g,'&quot;')}" style="width:${t==='number'?'70px':'90px'};padding:.3rem;border-radius:5px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff">`;
+    tb.innerHTML = pkgs.map(p => `<tr>
+      <td>${p.package_id}</td>
+      <td>${cell(p.package_id,'gb_amount',p.gb_amount,'number')}</td>
+      <td>${cell(p.package_id,'usdt_price',p.usdt_price,'number')}</td>
+      <td>${cell(p.package_id,'real_price',p.real_price,'number')}</td>
+      <td>${(+p.real_discount_percent).toFixed(0)}%</td>
+      <td><input data-pid="${p.package_id}" data-f="is_recommended" type="checkbox" ${p.is_recommended?'checked':''}></td>
+      <td><input data-pid="${p.package_id}" data-f="is_active" type="checkbox" ${p.is_active?'checked':''}></td>
+      <td>${cell(p.package_id,'display_order',p.display_order,'number')}</td>
+      <td><button class="btn btn-small" onclick="views.payments.savePackage('${p.package_id}')">Save</button></td>
+    </tr>`).join('');
+  },
+  async savePackage(pid) {
+    const body = { action: 'save-package', package_id: pid };
+    document.querySelectorAll(`[data-pid="${pid}"]`).forEach(i => {
+      body[i.dataset.f] = i.type === 'checkbox' ? (i.checked ? 1 : 0) : i.value;
+    });
+    try { await api.post(body); $('payPkgMsg').textContent = '✓ saved ' + pid; if (typeof toast==='function') toast('Package saved','ok'); this.load(); }
+    catch (e) { $('payPkgMsg').textContent = '✗ ' + e.message; }
+  },
+  renderConfig(ed) {
+    const form = $('payConfigForm'); if (!form) return;
+    form.innerHTML = Object.keys(ed).sort().map(k => `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem">
+      <span style="opacity:.6;font-family:monospace">${k}</span>
+      <input data-cfg="${k}" type="text" value="${String(ed[k]).replace(/"/g,'&quot;')}" style="padding:.4rem;border-radius:6px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff"></label>`).join('');
+  },
+  async saveConfig() {
+    const body = { action: 'save-payments-config' };
+    document.querySelectorAll('#payConfigForm input[data-cfg]').forEach(i => { body[i.dataset.cfg] = i.value; });
+    try { const r = await api.post(body); $('payCfgMsg').textContent = '✓ saved ' + (r.saved||[]).length + ' keys'; if (typeof toast==='function') toast('Payments config saved','ok'); this.load(); }
+    catch (e) { $('payCfgMsg').textContent = '✗ ' + e.message; }
+  },
+  renderIntents(pending, confirmed) {
+    const pb = $('payPendingBody');
+    if (pb) pb.innerHTML = pending.length ? pending.map(i => `<tr><td>${i.payment_id}</td><td>${(i.device_id||'').slice(0,12)}</td><td>${i.package_id}</td><td>${i.method}</td><td>${(+i.amount).toFixed(2)}</td><td>${i.created_at||''}</td></tr>`).join('') : '<tr><td colspan="6" style="opacity:.6">none</td></tr>';
+    const cb = $('payConfirmedBody');
+    if (cb) cb.innerHTML = confirmed.length ? confirmed.map(i => `<tr><td>${i.payment_id}</td><td>${(i.device_id||'').slice(0,12)}</td><td>${i.package_id}</td><td>${i.method}</td><td>${i.gb_amount}</td><td>${(i.tx_hash||'').slice(0,12)}</td></tr>`).join('') : '<tr><td colspan="6" style="opacity:.6">none</td></tr>';
+  },
+  renderCharts(real, usdt) {
+    if (typeof Chart === 'undefined') return;
+    Object.values(this.charts).forEach(c => { try { c.destroy(); } catch (e) {} });
+    this.charts = {};
+    const gold = '#e8c45a', blue = '#5b8cff';
+    const dough = (id, vals) => new Chart($(id), {
+      type: 'doughnut',
+      data: { labels: ['REAL', 'USDT'], datasets: [{ data: vals, backgroundColor: [gold, blue], borderColor: '#0f1626', borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '58%',
+        plugins: { legend: { position: 'right', labels: { color: '#8a9bbf', boxWidth: 12, font: { size: 11 } } } } },
+    });
+    this.charts.method = dough('chPayMethod', [real.revenue || 0, usdt.revenue || 0]);
+    this.charts.gb     = dough('chPayGb', [real.gb || 0, usdt.gb || 0]);
   },
 };
 
