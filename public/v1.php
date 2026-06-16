@@ -169,7 +169,32 @@ function v1_helsinki_node(): array {
             'wsPath'      => '/ws',
             'xhttpPath'   => '/xhttp/',
             'httpupPath'  => '/httpup',
-            'altProfiles' => [],
+            // Real multi-SNI: each is a dedicated Reality inbound on the node with a
+            // matching dest cert (8444=microsoft, 8445=apple), routed by nginx SNI on
+            // :443. Same keypair/UUID/shortId as the cloudflare profile — only the SNI
+            // (and client fingerprint) differs. Verified end-to-end 2026-06-16.
+            'altProfiles' => [
+                [
+                    'uuid'        => '92a861cd-6029-4882-9de5-35d9291e0828',
+                    'address'     => '65.109.183.7',
+                    'port'        => 443,
+                    'publicKey'   => 'eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU',
+                    'shortId'     => 'b3a824bd',
+                    'sni'         => 'www.microsoft.com',
+                    'flow'        => 'xtls-rprx-vision',
+                    'fingerprint' => 'chrome',
+                ],
+                [
+                    'uuid'        => '92a861cd-6029-4882-9de5-35d9291e0828',
+                    'address'     => '65.109.183.7',
+                    'port'        => 443,
+                    'publicKey'   => 'eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU',
+                    'shortId'     => 'b3a824bd',
+                    'sni'         => 'www.apple.com',
+                    'flow'        => 'xtls-rprx-vision',
+                    'fingerprint' => 'safari',
+                ],
+            ],
         ],
     ];
 }
