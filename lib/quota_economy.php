@@ -30,7 +30,8 @@ const QE_DAILY_MAX_COUNT = 10;                    // 10 transfers/day per device
 
 const QE_CREDIT_TYPES = [
     'starter_bonus', 'referral_reward', 'referral_level2',
-    'purchase', 'transfer_in', 'admin_adjustment', 'promotion',
+    'purchase', 'purchase_real', 'purchase_usdt',
+    'transfer_in', 'admin_adjustment', 'promotion',
     'ad_reward',
 ];
 
@@ -463,6 +464,23 @@ function qe_credit_purchase(PDO $pdo, string $deviceId, string $packageName, int
          VALUES (?, ?, ?, ?)"
     )->execute([$deviceId, $packageName, $bytes, $paymentRef]);
     return qe_ledger_add($pdo, $deviceId, 'purchase', $bytes, 'package ' . $packageName . ($paymentRef ? ' ref ' . $paymentRef : ''));
+}
+
+/**
+ * Credit a package paid on-chain (REAL or USDT). Records the purchased_packages row
+ * and a typed ledger entry ('purchase_real' | 'purchase_usdt') whose metadata carries
+ * the payment_id and tx_hash for audit. Returns new total. $type is validated.
+ */
+function qe_credit_payment(PDO $pdo, string $deviceId, string $packageName, int $bytes, string $type, int $paymentId, string $txHash): int {
+    qe_init_tables($pdo);
+    if ($bytes <= 0) throw new \RuntimeException('package bytes must be positive');
+    if (!in_array($type, ['purchase_real', 'purchase_usdt'], true)) throw new \RuntimeException('invalid payment type');
+    $pdo->prepare(
+        "INSERT INTO purchased_packages (device_id, package_name, bytes, payment_reference)
+         VALUES (?, ?, ?, ?)"
+    )->execute([$deviceId, $packageName, $bytes, ($txHash ?: 'payment#' . $paymentId)]);
+    $meta = 'payment#' . $paymentId . ($txHash ? ' tx ' . $txHash : '');
+    return qe_ledger_add($pdo, $deviceId, $type, $bytes, $meta);
 }
 
 /**

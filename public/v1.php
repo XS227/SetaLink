@@ -35,6 +35,8 @@ define('V1_DB_PATH', __DIR__ . '/../data/analytics.db');
 
 // Rewarded ads + hidden recovery quota (shared logic; brings quota_economy too).
 require_once __DIR__ . '/../lib/ads_recovery.php';
+// Premium payments (USDT + REAL token).
+require_once __DIR__ . '/../lib/payments.php';
 
 /** Read a POST field from form-encoded body or a JSON body. */
 function v1_body(string $key, string $default = ''): string {
@@ -283,6 +285,42 @@ if ($rel === '/quota/status' || strncmp($rel, '/ads/', 5) === 0 || $rel === '/qu
         } catch (\RuntimeException $e) {
             v1_send(['message' => $e->getMessage()], 409);
         }
+    }
+
+    v1_send(['message' => 'method not allowed'], 405);
+}
+
+// ── Premium payments (USDT + REAL) ────────────────────────────────────────────
+if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
+    $pcfg = pay_config($pdo);
+
+    // Catalog is public (no device needed) so the Premium screen can render prices.
+    if ($rel === '/payments/packages' && $method === 'GET') {
+        v1_send([
+            'packages' => pay_packages($pdo),
+            'real'     => [
+                'discount_percent' => (float)$pcfg['real_discount_percent'],
+                'token_address'    => $pcfg['real_token_address'],
+            ],
+        ]);
+    }
+
+    // Intent + status require a registered device identity.
+    if ($deviceId === null || $deviceId === '') v1_send(['message' => 'device identity required'], 403);
+
+    if ($rel === '/payments/intent' && $method === 'POST') {
+        try {
+            v1_send(pay_create_intent($pdo, $deviceId, v1_body('package_id'), strtoupper(v1_body('payment_method')), $pcfg));
+        } catch (\RuntimeException $e) {
+            v1_send(['message' => $e->getMessage()], 400);
+        }
+    }
+
+    if ($rel === '/payments/status' && $method === 'GET') {
+        $pid = (int)($_GET['id'] ?? 0);
+        $i = pay_intent($pdo, $pid);
+        if (!$i || $i['device_id'] !== $deviceId) v1_send(['message' => 'payment not found'], 404);
+        v1_send(pay_check($pdo, $pid, $pcfg));
     }
 
     v1_send(['message' => 'method not allowed'], 405);
