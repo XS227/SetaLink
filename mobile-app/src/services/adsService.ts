@@ -18,7 +18,15 @@ import mobileAds, {
 // in dev so we never serve live ads against test traffic.
 export const ADMOB_APP_ID  = 'ca-app-pub-5788265416382988~2740153482';
 const REWARDED_UNIT_PROD   = 'ca-app-pub-5788265416382988/5769978218';
-export const REWARDED_UNIT_ID = __DEV__ ? TestIds.REWARDED : REWARDED_UNIT_PROD;
+
+// ⚠️ DIAGNOSTICS BUILD ONLY (v0.9.45): force Google's TEST rewarded unit, which
+// always fills. If a video plays, the SDK/integration is confirmed and the prod
+// no-fill is purely account/new-unit/inventory. NOTE: the test unit does NOT call
+// our SSV, so this build does not credit quota. SET BACK TO false BEFORE ANY OTA.
+const FORCE_TEST_REWARDED = true;
+
+export const REWARDED_UNIT_ID =
+  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.REWARDED : REWARDED_UNIT_PROD;
 
 let _initialized = false;
 let _adapterStatuses: Record<string, { state: number; description: string }> = {};
