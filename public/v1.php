@@ -246,17 +246,8 @@ function v1_record_usage(PDO $pdo, ?string $deviceId, string $nodeId): void {
 }
 
 // ── Route ──────────────────────────────────────────────────────────────────────
-$tok = v1_bearer();
-if ($tok === '') {
-    // 401 makes the app log out; only do it when there is no credential at all.
-    v1_send(['message' => 'missing bearer token'], 401);
-}
-$deviceId = null;
-if (strncmp($tok, 'device-', 7) === 0)      $deviceId = substr($tok, 7);
-elseif (strncmp($tok, 'anon-token-', 11) === 0) $deviceId = null;          // valid but anonymous
-// Unknown token shapes are treated as anonymous (NOT 401) to avoid logging users out.
-
 // Relative path after /v1 (works with PATH_INFO or a rewritten REQUEST_URI).
+// Computed BEFORE the bearer guard so genuinely public routes can be exempted.
 $rel = $_SERVER['PATH_INFO'] ?? '';
 if ($rel === '') {
     $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
@@ -264,6 +255,21 @@ if ($rel === '') {
 }
 $rel = '/' . ltrim($rel, '/');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+// Public, no-bearer routes: the Premium catalog must render prices before a user
+// has any identity. A 401 here makes the app log out (and blanks the Profile tab),
+// so these are exempt from the bearer guard.
+$publicRoutes = ($rel === '/payments/packages' && $method === 'GET');
+
+$tok = v1_bearer();
+if ($tok === '' && !$publicRoutes) {
+    // 401 makes the app log out; only do it when there is no credential at all.
+    v1_send(['message' => 'missing bearer token'], 401);
+}
+$deviceId = null;
+if (strncmp($tok, 'device-', 7) === 0)      $deviceId = substr($tok, 7);
+elseif (strncmp($tok, 'anon-token-', 11) === 0) $deviceId = null;          // valid but anonymous
+// Unknown token shapes are treated as anonymous (NOT 401) to avoid logging users out.
 
 $pdo   = v1_db();
 
