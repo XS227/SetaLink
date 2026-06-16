@@ -9,20 +9,31 @@
  * Compliance: utility/payment token only — no investment language, no price/profit claims.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Linking,
+  Image, AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Spacing } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { EcosystemBanner, REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
 import { useAuthStore } from '../stores/authStore';
+import { syncEntitlement } from '../services/entitlementService';
 import { useT } from '../i18n';
 import { trackEvent, Events } from '../services/analytics';
 import {
   getPremiumPackages, createPaymentIntent, getPaymentStatus, tonkeeperLink,
   PremiumPackage, PaymentMethod, PaymentIntent,
 } from '../services/paymentsApi';
+
+/** Compact REAL token amount (e.g. 368.7M) — REAL trades at micro-USD so amounts are large. */
+function fmtReal(n: number): string {
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(2) + 'K';
+  return n.toFixed(2);
+}
 
 const GOLD = Colors.gold[400];
 const GOLD_SOFT = 'rgba(212,175,55,0.12)';
@@ -35,6 +46,7 @@ export function PremiumScreen({ onBack }: Props) {
   const { t, isRTL } = useT();
   const { bottom: bottomInset } = useSafeAreaInsets();
   const deviceId = useAuthStore((s) => s.user?.deviceId) || '';
+  const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
 
   const [packages, setPackages] = useState<PremiumPackage[]>([]);
   const [methods, setMethods]   = useState<{ REAL: boolean; USDT: boolean }>({ REAL: true, USDT: false });
@@ -88,13 +100,16 @@ export function PremiumScreen({ onBack }: Props) {
     } finally { setBusy(false); }
   };
 
-  const handleCheck = async () => {
+  // auto = silent poll (on return from wallet / interval); manual = button tap (shows hints).
+  const handleCheck = useCallback(async (auto = false) => {
     if (!intent || busy || !deviceId) return;
-    setBusy(true); setNote('');
+    if (!auto) { setBusy(true); setNote(''); }
     try {
       const s = await getPaymentStatus(deviceId, intent.payment_id);
       if (s.status === 'confirmed') {
         setDone(true); setNote(t('pm.confirmed'));
+        // Refresh the device entitlement so the new quota shows on Home/Profile.
+        syncEntitlement(deviceId).then(updateFromEntitlement).catch(() => {});
         trackEvent(intent.method === 'REAL' ? Events.PAYMENT_CONFIRMED_REAL : Events.PAYMENT_CONFIRMED_USDT,
           deviceId, { payment_id: intent.payment_id, gb: s.gb_amount });
       } else if (s.status === 'expired') {
@@ -103,13 +118,27 @@ export function PremiumScreen({ onBack }: Props) {
       } else if (s.status === 'rejected') {
         setNote(t('pm.rejected'));
         trackEvent(Events.PAYMENT_FAILED, deviceId, { payment_id: intent.payment_id, status: 'rejected', reason: s.reason });
-      } else {
+      } else if (!auto) {
         setNote(t('pm.notDetected'));
       }
     } catch (e) {
-      setNote((e as Error).message || t('pm.startError'));
-    } finally { setBusy(false); }
-  };
+      if (!auto) setNote((e as Error).message || t('pm.startError'));
+    } finally { if (!auto) setBusy(false); }
+  }, [intent, busy, deviceId, t, updateFromEntitlement]);
+
+  // Auto-detect: when there's a pending intent, poll while the screen is open and
+  // re-check the moment the app returns to the foreground (i.e. back from Tonkeeper),
+  // so the user doesn't have to tap "Check payment" manually.
+  const checkRef = useRef(handleCheck);
+  checkRef.current = handleCheck;
+  useEffect(() => {
+    if (!intent || done) return;
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active') checkRef.current(true);
+    });
+    const poll = setInterval(() => checkRef.current(true), 5000);
+    return () => { sub.remove(); clearInterval(poll); };
+  }, [intent, done]);
 
   const showUsdt = methods.USDT; // hide USDT entirely when backend says it's unavailable
   const ta = isRTL ? ('right' as const) : ('left' as const);
@@ -135,7 +164,10 @@ export function PremiumScreen({ onBack }: Props) {
             onPress={() => setMethod('REAL')} activeOpacity={0.85}
           >
             <View style={styles.methodTop}>
-              <Text style={[styles.methodName, method === 'REAL' && { color: GOLD }]}>REAL</Text>
+              <View style={styles.methodNameRow}>
+                <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.realToken} />
+                <Text style={[styles.methodName, method === 'REAL' && { color: GOLD }]}>REAL</Text>
+              </View>
               <View style={styles.badge}><Text style={styles.badgeText}>{t('pm.bestValue')}</Text></View>
             </View>
             <Text style={styles.methodSaveBig}>{t('pm.saveWithReal').replace('{pct}', String(discount))}</Text>
@@ -164,7 +196,11 @@ export function PremiumScreen({ onBack }: Props) {
             {packages.map((p) => {
               const isSel = p.package_id === selected;
               const pr = priceOf(p);
-              const ppg = p.gb_amount > 0 ? `$${(pr / p.gb_amount).toFixed(2)}/GB` : '';
+              // REAL trades at micro-USD → price card shows REAL token amount + its USD value.
+              const usdValue = method === 'REAL'
+                ? p.usdt_price * (1 - p.real_discount_percent / 100)
+                : p.usdt_price;
+              const ppg = p.gb_amount > 0 ? `$${(usdValue / p.gb_amount).toFixed(2)}/GB` : '';
               return (
                 <TouchableOpacity
                   key={p.package_id}
@@ -176,13 +212,21 @@ export function PremiumScreen({ onBack }: Props) {
                     {ppg ? <Text style={styles.pkgPerGb}>{ppg}</Text> : null}
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={[styles.pkgPrice, method === 'REAL' && { color: GOLD }]}>${pr.toFixed(2)}</Text>
                     {method === 'REAL' ? (
-                      <Text style={styles.pkgWas}>
-                        USDT ${p.usdt_price.toFixed(2)} · {t('pm.save').replace('{pct}', String(Math.round(p.real_discount_percent)))}
-                      </Text>
+                      <>
+                        <View style={styles.pkgPriceRow}>
+                          <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.pkgToken} />
+                          <Text style={[styles.pkgPrice, { color: GOLD }]}>{fmtReal(pr)}</Text>
+                        </View>
+                        <Text style={styles.pkgWas}>
+                          ≈ ${usdValue.toFixed(2)} · {t('pm.save').replace('{pct}', String(Math.round(p.real_discount_percent)))}
+                        </Text>
+                      </>
                     ) : (
-                      <Text style={styles.pkgWas}>USDT</Text>
+                      <>
+                        <Text style={styles.pkgPrice}>${pr.toFixed(2)}</Text>
+                        <Text style={styles.pkgWas}>USDT</Text>
+                      </>
                     )}
                   </View>
                 </TouchableOpacity>
@@ -211,6 +255,8 @@ export function PremiumScreen({ onBack }: Props) {
         ) : null}
 
         {note && !intent ? <Text style={styles.note}>{note}</Text> : null}
+
+        <EcosystemBanner seed={1} style={{ marginTop: Spacing[5] }} />
         <View style={{ height: 180 + bottomInset }} />
       </ScrollView>
 
@@ -225,11 +271,13 @@ export function PremiumScreen({ onBack }: Props) {
             onPress={handleContinue} disabled={busy || !pkg} activeOpacity={0.9}
           >
             <Text style={[styles.ctaText, method === 'REAL' && { color: '#1a1304' }]}>
-              {busy ? t('pm.starting') : pkg ? `${t('pm.pay')} ${priceOf(pkg).toFixed(2)} ${method}` : t('pm.selectPackage')}
+              {busy ? t('pm.starting')
+                : pkg ? `${t('pm.pay')} ${method === 'REAL' ? `${fmtReal(priceOf(pkg))} REAL` : `${priceOf(pkg).toFixed(2)} USDT`}`
+                : t('pm.selectPackage')}
             </Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={[styles.cta, styles.ctaReal, busy && { opacity: 0.5 }]} onPress={handleCheck} disabled={busy} activeOpacity={0.9}>
+          <TouchableOpacity style={[styles.cta, styles.ctaReal, busy && { opacity: 0.5 }]} onPress={() => handleCheck(false)} disabled={busy} activeOpacity={0.9}>
             <Text style={[styles.ctaText, { color: '#1a1304' }]}>{busy ? t('pm.checking') : t('pm.checkPayment')}</Text>
           </TouchableOpacity>
         )}
@@ -252,6 +300,8 @@ const styles = StyleSheet.create({
   methodReal: { borderColor: GOLD, backgroundColor: GOLD_SOFT },
   methodUsdt: { borderColor: Colors.blue[400] },
   methodTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  methodNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  realToken: { width: 20, height: 20, borderRadius: 10, backgroundColor: GOLD_SOFT },
   methodName: { color: INK, fontSize: 18, fontWeight: '800' },
   badge: { backgroundColor: GOLD, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2 },
   badgeText: { color: '#1a1304', fontSize: 10, fontWeight: '800' },
@@ -266,6 +316,8 @@ const styles = StyleSheet.create({
   pkgGb: { color: INK, fontSize: 16, fontWeight: '700' },
   pkgPerGb: { color: DIM, fontSize: 12, marginTop: 2 },
   pkgPrice: { color: INK, fontSize: 18, fontWeight: '800' },
+  pkgPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  pkgToken: { width: 18, height: 18, borderRadius: 9, backgroundColor: GOLD_SOFT },
   pkgWas: { color: DIM, fontSize: 11, marginTop: 2 },
 
   kv: { color: INK, fontSize: 13, marginTop: 4 },

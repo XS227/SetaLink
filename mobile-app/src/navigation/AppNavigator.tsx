@@ -583,6 +583,9 @@ export function AppNavigator() {
             <SettingsScreen
               onBack={() => navigation.goBack()}
               onProfileImport={() => navigation.navigate('ProfileImport')}
+              onSmartConnect={() => navigation.navigate('Main', { screen: 'AI' })}
+              onActivity={() => navigation.navigate('Main', { screen: 'Activity' })}
+              onDiagnostics={() => navigation.navigate('Diagnostics')}
             />
           )}
         </Stack.Screen>

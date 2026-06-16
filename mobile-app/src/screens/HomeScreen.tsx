@@ -10,6 +10,7 @@ import { MetricPill }    from '../components/MetricPill';
 import { NetworkQualityBar } from '../components/NetworkQualityBar';
 import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
+import { EcosystemBanner } from '../components/EcosystemBanner';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
@@ -325,20 +326,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Shahnameh promo */}
+        {/* Ecosystem promo (Shahnameh + 3real, rotating) */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <TouchableOpacity
-            style={styles.shahnamehCard}
-            onPress={() => Linking.openURL('https://t.me/shahnameh_bot?start=warrior_5629291605').catch(() => {})}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.shahnamehIcon}>⚔️</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.shahnamehTitle}>Play Shahnameh — earn REAL</Text>
-              <Text style={styles.shahnamehSub}>Battle as a Persian warrior on Telegram</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          <EcosystemBanner seed={0} />
         </Animated.View>
 
         {/* Traffic stats (connected only) */}
