@@ -12,6 +12,77 @@ table via `save-ads-config`). All keys are also listed in `lib/ads_recovery.php 
 
 ---
 
+## OPERATOR STEPS (do these in order)
+
+### A. Get your AdMob IDs
+1. Go to **https://apps.admob.com** → **Apps** → select (or create) the Realink Android app.
+2. **App ID**: *App settings* → top of page, format `ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY`
+   (note the **`~`**). Copy it.
+3. **Rewarded Ad Unit ID**: left menu *Ad units* → **Add ad unit** → format **Rewarded**
+   → name it e.g. `realink-rewarded` → Create. Copy the unit id
+   `ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ` (note the **`/`**).
+
+### B. Enable SSV + paste the callback
+4. Still in that **Rewarded ad unit** → scroll to **Server-side verification (SSV)**.
+5. **Callback URL** → paste exactly:
+   ```
+   https://setalink.no/ssv.php
+   ```
+6. Save. (Custom data `user_id={deviceId}` is set by the app later — mobile round.)
+
+### C. Fill the fields in Realink admin
+7. Open **Admin → Ads & Revenue → Config** and set:
+   - `admob_app_id`            = the `~` value from step 2
+   - `admob_rewarded_unit_id`  = the `/` value from step 3
+   - leave `admob_ssv_enabled` = `0` **for now** (turn on in step F)
+   - leave `ssv_keys_url` default
+8. Click **Save config**.
+
+### D. Recovery node — values I need from the server
+Run these **on the recovery exit node** (default Helsinki `65.109.183.7`) and send me / paste into admin:
+```bash
+xray uuid                       # → recovery_exit_uuid
+xray x25519                     # → "Private key" = server side, "Public key" = recovery_exit_pbk
+openssl rand -hex 8             # → recovery_exit_sid  (short id)
+```
+9. In **Admin → Ads & Revenue → Config** set:
+   - `recovery_exit_host`  = `65.109.183.7` (or chosen node)
+   - `recovery_exit_port`  = `8444`
+   - `recovery_exit_uuid`  = from `xray uuid`
+   - `recovery_exit_pbk`   = the **Public key** from `xray x25519`
+   - `recovery_exit_sid`   = from `openssl rand -hex 8`
+   - `recovery_exit_sni`   = `www.cloudflare.com`
+   - (leave throttle 512 / session 1200)
+   - **Save config**.
+   > The matching xray inbound is generated with `scripts/gen-recovery-xray.php`
+   > (uses the **Private** key) and deployed per §5 — do that step separately, not now.
+
+### E. Safe SSV test (1 MB, throwaway device — zero real-GB risk)
+10. In Config set `ad_reward_bytes` = `1048576` (1 MB) → **Save**.
+11. Trigger a test SSV from AdMob (ad unit SSV section → *Send test*), using a throwaway
+    `user_id=SSVTEST` and any unique `transaction_id`.
+12. Check **Admin → Ads & Revenue**: event count rises; `SSVTEST` got 1 MB.
+13. Replay the same test callback → no extra GB (idempotent).
+14. **Reset**: reverse the `SSVTEST` grant (admin device tools), then set
+    `ad_reward_bytes` back to `262144000` (250 MB) → **Save**.
+
+### F. Flip SSV on
+15. In Config set `admob_ssv_enabled` = `1` → **Save**.
+16. Confirm `dev_allow_client_confirm` = `0` (it is by default).
+
+### G. How you know it's ready for the mobile round
+17. Open **Admin → Ads & Revenue**: the **yellow warning banner is gone** (all of
+    AdMob unit / SSV / recovery node now configured).
+18. Quick endpoint sanity (anyone with shell):
+    ```bash
+    curl -s https://setalink.no/ssv.php        # expect: rejected: no signature
+    ```
+19. When the banner is gone and steps A–F are checked, **ping me to start the mobile round.**
+
+> Still no deploy of the recovery inbound and no mobile/OTA until you say go.
+
+---
+
 ## 1. AdMob fields to fill in
 
 From the AdMob console (https://apps.admob.com):
