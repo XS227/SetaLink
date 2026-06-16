@@ -954,6 +954,20 @@ if ($method === 'POST') {
         }
         api_ok(['saved' => true]);
     }
+    if ($action === 'save-ads-config') {
+        // Remote-tune rewarded-ads + recovery economy without DB access or an APK
+        // update. Allowlist = the ad/recovery config keys (see lib/ads_recovery.php).
+        $allowed = array_keys(ar_defaults());
+        $db2 = open_analytics_db();
+        $st = $db2->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
+        $saved = [];
+        foreach ($allowed as $k) {
+            if (!array_key_exists($k, $parsed)) continue;
+            $st->execute([$k, (string)$parsed[$k]]);
+            $saved[] = $k;
+        }
+        api_ok(['saved' => $saved]);
+    }
     if ($action === 'save-remote-config') {
         $allowed_rc_keys = [
             'rc_version','rc_sni_priorities','rc_kill_switches','rc_protocol_order',
@@ -2137,6 +2151,8 @@ switch ($action) {
             ],
             'days'             => $axis,
             'ads_series'       => $series,
+            // Raw editable config (admin-only surface) for the inline config form.
+            'editable'         => array_intersect_key($cfg, ar_defaults()),
             'checked_at'       => date('Y-m-d H:i:s'),
         ]);
         break;
