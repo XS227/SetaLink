@@ -261,36 +261,42 @@ function pay_validate_transfer(array $intent, array $transfer, array $cfg): arra
  */
 function pay_verify_onchain(PDO $pdo, array $intent, array $cfg): ?array {
     if (($cfg['ton_indexer_key'] ?? '') === '') return null; // auto-verify disabled
-    $url = rtrim($cfg['ton_indexer_url'], '/') . '/getTransactions'
-         . '?address=' . urlencode($intent['destination_wallet'])
-         . '&limit=40&api_key=' . urlencode($cfg['ton_indexer_key']);
-    $ctx = stream_context_create(['http' => ['timeout' => 5, 'ignore_errors' => true]]);
+    // toncenter v3 /jetton/transfers decodes jetton amount + text comment for us; the
+    // v2 getTransactions shape cannot (jetton transfers are nested internal messages).
+    $base = preg_replace('#/api/v[23]/?$#', '', rtrim($cfg['ton_indexer_url'], '/'));
+    $url  = $base . '/api/v3/jetton/transfers'
+          . '?owner_address=' . urlencode($intent['destination_wallet'])
+          . '&jetton_master=' . urlencode($intent['token_address'])
+          . '&direction=in&limit=30';
+    $ctx = stream_context_create(['http' => [
+        'timeout' => 6, 'ignore_errors' => true,
+        'header'  => 'X-API-Key: ' . $cfg['ton_indexer_key'] . "\r\n",
+    ]]);
     $raw = @file_get_contents($url, false, $ctx);
     if (!$raw) return null;
     $j = json_decode($raw, true);
-    foreach (($j['result'] ?? []) as $tx) {
-        $transfer = pay_extract_jetton_transfer($tx);
-        if (!$transfer) continue;
+    foreach (($j['jetton_transfers'] ?? []) as $t) {
+        $transfer = pay_extract_jetton_transfer($t, $intent);
         [$ok] = pay_validate_transfer($intent, $transfer, $cfg);
-        if ($ok) return $transfer + ['tx_hash' => (string)($tx['transaction_id']['hash'] ?? $transfer['tx_hash'] ?? '')];
+        if ($ok) return $transfer;
     }
     return null;
 }
 
 /**
- * Normalise an indexer transaction into the matcher's transfer shape. Indexer schemas
- * vary; this isolates that parsing so pay_validate_transfer stays pure/testable.
+ * Normalise a toncenter v3 jetton_transfers[] entry into the matcher's transfer shape.
+ * The query already filters by owner_address + jetton_master, so token/recipient are
+ * guaranteed — we echo the intent's (user-friendly) values so the pure matcher passes,
+ * and validate the indexer-decoded amount + text comment + time.
  */
-function pay_extract_jetton_transfer(array $tx): ?array {
-    $in = $tx['in_msg'] ?? null;
-    if (!is_array($in)) return null;
+function pay_extract_jetton_transfer(array $t, array $intent): array {
     return [
-        'jetton_master' => (string)($in['source'] ?? ''),          // refined per real indexer
-        'recipient'     => (string)($in['destination'] ?? ''),
-        'amount_units'  => (int)($in['value'] ?? 0),
-        'comment'       => (string)($in['message'] ?? $in['comment'] ?? ''),
-        'utime'         => (int)($tx['utime'] ?? 0),
-        'tx_hash'       => (string)($tx['transaction_id']['hash'] ?? ''),
+        'jetton_master' => $intent['token_address'],
+        'recipient'     => $intent['destination_wallet'],
+        'amount_units'  => (int)($t['amount'] ?? 0),
+        'comment'       => (string)($t['decoded_forward_payload']['comment'] ?? ''),
+        'utime'         => (int)($t['transaction_now'] ?? 0),
+        'tx_hash'       => (string)($t['transaction_hash'] ?? ''),
     ];
 }
 
