@@ -331,8 +331,12 @@ function icon(string $name): string {
       </div>
 
       <div class="panel" style="margin-top:1rem">
-        <div class="panel-header"><span class="panel-title">Active Config <span class="panel-sub">remote-configurable · settings table</span></span></div>
-        <div class="panel-body" id="adsConfig" style="font-size:.82rem;line-height:1.9;font-family:monospace"></div>
+        <div class="panel-header"><span class="panel-title">Config <span class="panel-sub">remote-tunable · no APK update needed</span></span>
+          <button class="btn btn-small" id="adsCfgSave" type="button">Save config</button></div>
+        <div class="panel-body">
+          <div id="adsConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.6rem .9rem"></div>
+          <div id="adsCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
+        </div>
       </div>
     </div>
 
@@ -1276,7 +1280,24 @@ views.analytics = {
 // Rewarded-ads revenue + recovery-quota overview. Reuses the Chart.js infra.
 views.ads = {
   chart: null,
-  init() { this.load(); },
+  init() {
+    const btn = $('adsCfgSave');
+    if (btn) btn.onclick = () => this.save();   // onclick = idempotent across re-inits
+    this.load();
+  },
+  async save() {
+    const body = { action: 'save-ads-config' };
+    document.querySelectorAll('#adsConfigForm input[data-cfg]').forEach(i => { body[i.dataset.cfg] = i.value; });
+    const msg = $('adsCfgMsg');
+    try {
+      const r = await api.post(body);
+      if (msg) msg.textContent = '✓ saved ' + (r.saved || []).length + ' keys';
+      if (typeof toast === 'function') toast('Ads config saved', 'ok');
+      this.load();
+    } catch (e) {
+      if (msg) msg.textContent = '✗ ' + e.message;
+    }
+  },
   fmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
   async load() {
     let d;
@@ -1302,10 +1323,18 @@ views.ads = {
     const banner = $('adsConfigBanner');
     if (banner) { banner.style.display = warn.length ? '' : 'none'; $('adsConfigBannerText').textContent = '⚠ ' + warn.join('  '); }
 
-    // Config dump.
-    const cfgEl = $('adsConfig');
-    if (cfgEl) {
-      cfgEl.innerHTML = Object.entries(c).map(([k, v]) => `<span style="opacity:.6">${k}</span> = <b>${v}</b>`).join('<br>');
+    // Editable config form (remote-tunable settings).
+    const ed = d.editable || {};
+    const form = $('adsConfigForm');
+    if (form) {
+      const secret = k => /uuid|pbk|sid|app_id|unit_id/.test(k);
+      form.innerHTML = Object.keys(ed).sort().map(k => {
+        const v = ed[k] ?? '';
+        return `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem">
+          <span style="opacity:.6;font-family:monospace">${k}</span>
+          <input data-cfg="${k}" type="${secret(k)?'text':(typeof v==='number'?'number':'text')}" value="${String(v).replace(/"/g,'&quot;')}" style="padding:.4rem;border-radius:6px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff">
+        </label>`;
+      }).join('');
     }
 
     // Review queue.
