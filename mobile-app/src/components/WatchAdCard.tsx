@@ -8,14 +8,15 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Text, TouchableOpacity, StyleSheet, View } from 'react-native';
+import { Text, TouchableOpacity, StyleSheet, View, Alert } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { GlassCard } from './GlassCard';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { useT } from '../i18n';
-import { initAds, showRewardedForData } from '../services/adsService';
+import { initAds, showRewardedForData, runAdDiagnostics } from '../services/adsService';
 import { syncEntitlement } from '../services/entitlementService';
+import { trackEvent } from '../services/analytics';
 
 export function WatchAdCard({ style }: { style?: object }) {
   const { t } = useT();
@@ -25,6 +26,34 @@ export function WatchAdCard({ style }: { style?: object }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { initAds(); }, []);
+
+  // Temporary diagnostics (v0.9.44): show the exact SDK/ad state on screen and POST
+  // it to the backend (app_events) so we can tell no-fill apart from misconfig.
+  const runDiag = async () => {
+    const deviceId = user?.deviceId;
+    if (!deviceId || busy) return;
+    setBusy(true);
+    try {
+      const d = await runAdDiagnostics(deviceId);
+      trackEvent('AD_DIAGNOSTICS', deviceId, d as unknown as Record<string, unknown>);
+      const adapters = Object.entries(d.adapters)
+        .map(([k, v]) => `${k}: state=${v.state}`).join('\n') || '(none)';
+      Alert.alert(
+        'Ad diagnostics',
+        `SDK init: ${d.sdkInitialized}${d.initError ? ` (${d.initError})` : ''}\n` +
+        `App id: ${d.appId}\n` +
+        `Ad unit: ${d.adUnitId}\n` +
+        `Dev/test unit: ${d.isDevUnit}\n` +
+        `Load ok: ${d.loadOk}\n` +
+        `Error: ${d.errorCode || '-'} ${d.errorMessage || ''}\n` +
+        `Adapters:\n${adapters}`,
+      );
+    } catch (e) {
+      Alert.alert('Ad diagnostics', 'failed: ' + ((e as Error)?.message || 'unknown'));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const onPress = async () => {
     const deviceId = user?.deviceId;
@@ -44,15 +73,18 @@ export function WatchAdCard({ style }: { style?: object }) {
         } catch {}
       }
       showToast(t(credited ? 'pr.adRewarded' : 'pr.adPending'), 'success', 3500);
-    } catch {
-      showToast(t('pr.adFailed'), 'error', 3000);
-    } finally {
       setBusy(false);
+    } catch (e) {
+      // Surface the exact failure instead of a generic "no ad" so we can diagnose.
+      setBusy(false);
+      const err = e as Error & { code?: string };
+      trackEvent('AD_LOAD_ERROR', deviceId, { code: err?.code || '', message: err?.message || '' });
+      await runDiag();
     }
   };
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={onPress} disabled={busy} style={style}>
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} onLongPress={runDiag} disabled={busy} style={style}>
       <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
         <Text style={styles.icon}>🎬</Text>
         <View style={{ flex: 1 }}>
