@@ -1056,6 +1056,28 @@ if ($method === 'POST') {
         ok(['recorded' => $ins->rowCount() > 0, 'recovery' => $isRecovery]);
     }
 
+    if ($action === 'track-event') {
+        // Lightweight client analytics sink (fire-and-forget). Used by the Premium
+        // screen and others. Best-effort logging only — never authoritative.
+        $deviceId   = trim($_POST['device_id'] ?? '');
+        $event      = substr(trim($_POST['event'] ?? ''), 0, 64);
+        $props      = substr((string)($_POST['props'] ?? ''), 0, 1000);
+        $appVersion = substr(trim($_POST['app_version'] ?? ''), 0, 20);
+        if ($event === '') err('missing event');
+        $pdo = db();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS app_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id   TEXT NOT NULL DEFAULT '',
+            event       TEXT NOT NULL,
+            props       TEXT NOT NULL DEFAULT '',
+            app_version TEXT NOT NULL DEFAULT '',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        )");
+        $pdo->prepare("INSERT INTO app_events (device_id, event, props, app_version) VALUES (?,?,?,?)")
+            ->execute([$deviceId, $event, $props, $appVersion]);
+        ok(['logged' => true]);
+    }
+
     if ($action === 'transfer-quota') {
         // Send GB to a friend. Atomic, audited (quota_transfer + two ledger rows).
         // Starter quota is never transferable; min 100 MB; max = transferable balance.

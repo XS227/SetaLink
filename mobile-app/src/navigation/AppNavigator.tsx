@@ -35,7 +35,7 @@ import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
 import { BottomNav, NavTab }        from '../components/BottomNav';
 import { Toast }                    from '../components/Toast';
 import { BiometricLockScreen }      from '../components/BiometricLockScreen';
-import { UpgradeScreen }            from '../screens/UpgradeScreen';
+import { PremiumScreen }            from '../screens/PremiumScreen';
 import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
 import { TransferScreen }          from '../screens/TransferScreen';
@@ -599,7 +599,7 @@ export function AppNavigator() {
           options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
         >
           {({ navigation }) => (
-            <UpgradeScreen onBack={() => navigation.goBack()} />
+            <PremiumScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen
