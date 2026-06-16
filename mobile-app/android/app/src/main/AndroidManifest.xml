@@ -30,17 +30,9 @@
         android:supportsRtl="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
-        <!-- Google Mobile Ads (AdMob) app id — required or the SDK throws on init. -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-5788265416382988~2740153482" />
-        <!-- Defer ad SDK init until we call initialize() (avoids slow cold start). -->
-        <meta-data
-            android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION"
-            android:value="true" />
-        <meta-data
-            android:name="com.google.android.gms.ads.flag.OPTIMIZE_AD_LOADING"
-            android:value="true" />
+        <!-- AdMob APPLICATION_ID is injected by react-native-google-mobile-ads from
+             app.json (react-native-google-mobile-ads.android_app_id) — do NOT declare
+             it here too, or the manifest merger fails with a duplicate. -->
 
         <activity
             android:name=".MainActivity"
