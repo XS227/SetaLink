@@ -1991,6 +1991,76 @@ switch ($action) {
         ]);
         break;
 
+    case 'dash-timeseries':
+        // 30-day daily series for the Analytics charts. Built from existing
+        // timestamp columns (no extra logging) — new installs, VPN sessions,
+        // data volume, plus a 30-day protocol mix. A contiguous date axis is
+        // generated in PHP so days with zero activity still render on the chart.
+        $db = open_analytics_db();
+        init_device_tables($db);
+        // vpn_sessions is normally created by public/api.php on first session;
+        // create it defensively so the charts render on a fresh analytics DB.
+        $db->exec("CREATE TABLE IF NOT EXISTS vpn_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT, protocol TEXT,
+            bytes_sent INTEGER DEFAULT 0, bytes_recv INTEGER DEFAULT 0,
+            duration_secs INTEGER DEFAULT 0, app_version TEXT DEFAULT '',
+            probe_result TEXT DEFAULT 'unknown', error_reason TEXT DEFAULT '',
+            started_at TEXT, ended_at TEXT DEFAULT (datetime('now')), client_ip TEXT DEFAULT ''
+        )");
+
+        $ts_days = (int)($_GET['days'] ?? 30);
+        if ($ts_days < 7)   $ts_days = 7;
+        if ($ts_days > 180) $ts_days = 180;
+
+        // Contiguous axis: oldest → today (UTC, matching datetime('now')).
+        $axis = [];
+        $idx  = [];
+        for ($i = $ts_days - 1; $i >= 0; $i--) {
+            $d = gmdate('Y-m-d', strtotime("-$i days"));
+            $idx[$d] = count($axis);
+            $axis[]  = $d;
+        }
+        $fill = function (string $sql) use ($db, $axis, $idx): array {
+            $out = array_fill(0, count($axis), 0);
+            foreach ($db->query($sql) as $row) {
+                $d = (string)$row['d'];
+                if (isset($idx[$d])) $out[$idx[$d]] = (float)$row['v'] + 0;
+            }
+            return $out;
+        };
+
+        $since = "datetime('now','-" . $ts_days . " days')";
+
+        $installs = $fill("SELECT date(created_at) d, COUNT(*) v FROM devices
+                           WHERE created_at >= $since GROUP BY d");
+        $sessions = $fill("SELECT date(COALESCE(started_at,ended_at)) d, COUNT(*) v FROM vpn_sessions
+                           WHERE COALESCE(started_at,ended_at) >= $since GROUP BY d");
+        // Bytes → GB, rounded to 2 decimals client-side; send raw GB float here.
+        $gb_raw   = $fill("SELECT date(COALESCE(started_at,ended_at)) d,
+                                  SUM(bytes_sent+bytes_recv)/1073741824.0 v FROM vpn_sessions
+                           WHERE COALESCE(started_at,ended_at) >= $since GROUP BY d");
+        $gb = array_map(function ($x) { return round($x, 3); }, $gb_raw);
+
+        // 30-day protocol mix from real sessions (doughnut).
+        $ts_proto = [];
+        foreach ($db->query("SELECT COALESCE(NULLIF(protocol,''),'unknown') p, COUNT(*) c
+                             FROM vpn_sessions WHERE COALESCE(started_at,ended_at) >= $since
+                             GROUP BY 1 ORDER BY c DESC") as $pr) {
+            $ts_proto[(string)$pr['p']] = (int)$pr['c'];
+        }
+
+        api_ok([
+            'days'         => $axis,
+            'installs'     => $installs,
+            'sessions'     => $sessions,
+            'gb'           => $gb,
+            'protocol_mix' => $ts_proto,
+            'window_days'  => $ts_days,
+            'checked_at'   => date('Y-m-d H:i:s'),
+        ]);
+        break;
+
     case 'dash-metrics':
         // One call powering the redesigned dashboard: protocol success by
         // country, transport adoption, referral / payment / quota analytics.
