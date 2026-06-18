@@ -1,7 +1,6 @@
 import UIKit
 import React
 import React_RCTAppDelegate
-import ReactAppDependencyProvider
 
 @main
 class AppDelegate: RCTAppDelegate {
@@ -10,10 +9,7 @@ class AppDelegate: RCTAppDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        self.moduleName        = "Realink"
-        self.dependencyProvider = RCTAppDependencyProvider()
-
-        // Initial props passed to the root React component (none needed)
+        self.moduleName   = "Realink"
         self.initialProps = [:]
 
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
