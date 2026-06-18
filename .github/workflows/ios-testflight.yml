@@ -1,15 +1,24 @@
 name: iOS — TestFlight
 
+# Secrets required (Settings → Secrets → Actions) — enter in GitHub UI only:
+#   ASC_KEY_ID        App Store Connect API Key ID
+#   ASC_ISSUER_ID     App Store Connect Issuer ID
+#   ASC_PRIVATE_KEY   Full contents of AuthKey_XXXX.p8 (multiline — paste as-is)
+#   APPLE_TEAM_ID     10-character Apple Team ID
+#
+# No certificate, no provisioning profile, no P12 stored anywhere.
+# fastlane cert + sigh generate them fresh on the macOS runner using the API key.
+
 on:
   push:
     tags:
-      - 'v*-ios'          # trigger on tags like v0.9.47-ios
+      - 'v*-ios'
   workflow_dispatch:
     inputs:
       build_number:
-        description: 'Build number (CFBundleVersion)'
-        required: true
-        default: '1'
+        description: 'CFBundleVersion override (leave blank to use run number)'
+        required: false
+        default: ''
 
 concurrency:
   group: ios-testflight-${{ github.ref }}
@@ -18,15 +27,18 @@ concurrency:
 jobs:
   build-and-upload:
     name: Build & Upload to TestFlight
-    runs-on: macos-14          # Apple Silicon — fastest iOS builds
+    runs-on: macos-14
     timeout-minutes: 60
+
+    env:
+      BUNDLE_ID: no.setalink.realink
 
     steps:
       # ── Checkout ────────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── Node ────────────────────────────────────────────────────────────────
+      # ── Node ─────────────────────────────────────────────────────────────────
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -38,141 +50,171 @@ jobs:
         working-directory: mobile-app
         run: npm ci --prefer-offline
 
-      # ── Ruby / CocoaPods ────────────────────────────────────────────────────
+      # ── Ruby + fastlane ──────────────────────────────────────────────────────
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.2'
-          bundler-cache: true
-          working-directory: mobile-app
+          bundler-cache: false
 
-      - name: Install CocoaPods
+      - name: Install fastlane + CocoaPods
+        run: gem install fastlane cocoapods --no-document
+
+      # ── CocoaPods ────────────────────────────────────────────────────────────
+      - name: pod install
         working-directory: mobile-app/ios
-        run: |
-          gem install cocoapods --no-document
-          pod install --repo-update
+        run: pod install --repo-update
 
-      # ── Signing — import certificate & provisioning profile ─────────────────
-      - name: Import signing certificate
+      # ── App Store Connect API key file ────────────────────────────────────────
+      # Written to a temp file; never printed, never committed.
+      - name: Write ASC API key
         env:
-          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
-          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: tempkeychain
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          mkdir -p "$RUNNER_TEMP/asc"
+          # Write the .p8 key file (fastlane reads it from here)
+          printf '%s' "$ASC_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
+          # Write the JSON key descriptor that fastlane cert/sigh accept
+          cat > "$RUNNER_TEMP/asc/api_key.json" <<JSON
+          {
+            "key_id":    "$ASC_KEY_ID",
+            "issuer_id": "$ASC_ISSUER_ID",
+            "key":       "$(cat $RUNNER_TEMP/asc/AuthKey.p8 | awk '{printf "%s\\n", $0}')",
+            "duration":  1200,
+            "in_house":  false
+          }
+          JSON
+          chmod 600 "$RUNNER_TEMP/asc/api_key.json"
+          echo "ASC_API_KEY_PATH=$RUNNER_TEMP/asc/api_key.json" >> "$GITHUB_ENV"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8"        >> "$GITHUB_ENV"
+
+      # ── Create temporary signing keychain ────────────────────────────────────
+      - name: Create signing keychain
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASS="$(openssl rand -hex 16)"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          echo "$CERTIFICATE_BASE64" | base64 --decode -o $RUNNER_TEMP/certificate.p12
-          security import $RUNNER_TEMP/certificate.p12 \
-            -P "$CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"   >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASS=$KEYCHAIN_PASS"   >> "$GITHUB_ENV"
 
-      - name: Install provisioning profile
+      # ── Generate Apple Distribution Certificate ──────────────────────────────
+      # fastlane cert calls the ASC API, creates the cert if it does not exist,
+      # downloads it, and imports it (with its private key) into the keychain.
+      - name: Generate / fetch Distribution Certificate (fastlane cert)
+        working-directory: mobile-app
         env:
-          PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          PP_PATH=$RUNNER_TEMP/realink.mobileprovision
-          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o "$PP_PATH"
+          fastlane cert \
+            --api_key_path      "$ASC_API_KEY_PATH" \
+            --team_id           "$APPLE_TEAM_ID" \
+            --output_path       "$RUNNER_TEMP/asc" \
+            --keychain_path     "$KEYCHAIN_PATH" \
+            --keychain_password "$KEYCHAIN_PASS" \
+            --platform          "ios"
+          # Capture the certificate name fastlane installed (for xcodebuild)
+          CERT_NAME=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep -o '"Apple Distribution[^"]*"' | head -1 | tr -d '"')
+          echo "CERT_NAME=${CERT_NAME:-Apple Distribution}" >> "$GITHUB_ENV"
+
+      # ── Generate App Store Provisioning Profile ──────────────────────────────
+      # fastlane sigh creates or renews the profile, downloads it, and installs it.
+      - name: Generate / fetch Provisioning Profile (fastlane sigh)
+        working-directory: mobile-app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          fastlane sigh \
+            --api_key_path      "$ASC_API_KEY_PATH" \
+            --app_identifier    "$BUNDLE_ID" \
+            --team_id           "$APPLE_TEAM_ID" \
+            --provisioning_name "Realink AppStore" \
+            --output_path       "$RUNNER_TEMP/asc" \
+            --filename          "Realink_AppStore.mobileprovision" \
+            --platform          "ios" \
+            --force
+          PROFILE_PATH="$RUNNER_TEMP/asc/Realink_AppStore.mobileprovision"
+          # Install into the standard location xcodebuild expects
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          UUID=$(security cms -D -i "$PP_PATH" | plutil -extract UUID raw -)
-          cp "$PP_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-          echo "PROVISIONING_UUID=$UUID" >> $GITHUB_ENV
+          PROFILE_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
 
       # ── Build number ─────────────────────────────────────────────────────────
       - name: Set build number
-        id: build_num
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "BUILD_NUMBER=${{ github.event.inputs.build_number }}" >> $GITHUB_ENV
-          else
-            # Tag-based: extract build number from tag (v0.9.47-ios → use run number)
-            echo "BUILD_NUMBER=${{ github.run_number }}" >> $GITHUB_ENV
-          fi
+          INPUT="${{ github.event.inputs.build_number }}"
+          echo "BUILD_NUMBER=${INPUT:-${{ github.run_number }}}" >> "$GITHUB_ENV"
 
       # ── Archive ──────────────────────────────────────────────────────────────
       - name: Archive (Release)
         working-directory: mobile-app
         env:
-          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
-          PROVISIONING_PROFILE_SPECIFIER: ${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           xcodebuild archive \
-            -workspace ios/Realink.xcworkspace \
-            -scheme Realink \
-            -configuration Release \
-            -archivePath $RUNNER_TEMP/Realink.xcarchive \
-            CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
-            DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM \
-            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
+            -workspace               ios/Realink.xcworkspace \
+            -scheme                  Realink \
+            -configuration           Release \
+            -archivePath             "$RUNNER_TEMP/Realink.xcarchive" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            MARKETING_VERSION=0.9.47 \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE="$PROFILE_UUID" \
             CODE_SIGN_STYLE=Manual \
-            -allowProvisioningUpdates \
-            | xcbeautify || xcodebuild archive \
-              -workspace ios/Realink.xcworkspace \
-              -scheme Realink \
-              -configuration Release \
-              -archivePath $RUNNER_TEMP/Realink.xcarchive \
-              CURRENT_PROJECT_VERSION=$BUILD_NUMBER \
-              DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM \
-              PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_SPECIFIER" \
-              CODE_SIGN_STYLE=Manual
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
       # ── Export IPA ───────────────────────────────────────────────────────────
-      - name: Create ExportOptions.plist
+      - name: Export IPA
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          cat > $RUNNER_TEMP/ExportOptions.plist <<EOF
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>teamID</key>
-            <string>${{ secrets.APPLE_TEAM_ID }}</string>
-            <key>uploadBitcode</key>
-            <false/>
-            <key>uploadSymbols</key>
-            <true/>
-            <key>signingStyle</key>
-            <string>manual</string>
+            <key>method</key>             <string>app-store</string>
+            <key>teamID</key>             <string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key>       <string>manual</string>
+            <key>uploadBitcode</key>      <false/>
+            <key>uploadSymbols</key>      <true/>
             <key>provisioningProfiles</key>
             <dict>
-              <key>no.setalink.realink</key>
-              <string>${{ secrets.IOS_PROVISIONING_PROFILE_NAME }}</string>
+              <key>$BUNDLE_ID</key>
+              <string>Realink AppStore</string>
             </dict>
           </dict>
           </plist>
-          EOF
+          PLIST
 
-      - name: Export IPA
-        run: |
           xcodebuild -exportArchive \
-            -archivePath $RUNNER_TEMP/Realink.xcarchive \
-            -exportPath $RUNNER_TEMP/ipa \
-            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist
+            -archivePath        "$RUNNER_TEMP/Realink.xcarchive" \
+            -exportPath         "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
       # ── Upload to TestFlight ─────────────────────────────────────────────────
       - name: Upload to TestFlight
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
         run: |
-          # Write API key to file
           mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_PRIVATE_KEY" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
-
+          cp "$ASC_KEY_PATH" ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           xcrun altool --upload-app \
-            --type ios \
-            --file $RUNNER_TEMP/ipa/Realink.ipa \
-            --apiKey "$ASC_KEY_ID" \
-            --apiIssuer "$ASC_ISSUER_ID" \
-            --verbose
+            --type      ios \
+            --file      "$RUNNER_TEMP/ipa/Realink.ipa" \
+            --apiKey    "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
 
-      # ── Artifact (keep IPA for manual download) ──────────────────────────────
+      # ── Keep IPA as artifact ─────────────────────────────────────────────────
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         if: always()
@@ -180,3 +222,10 @@ jobs:
           name: Realink-${{ env.BUILD_NUMBER }}.ipa
           path: ${{ runner.temp }}/ipa/Realink.ipa
           retention-days: 14
+
+      # ── Cleanup — wipe all credential material from the runner ───────────────
+      - name: Wipe credentials
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/asc"
