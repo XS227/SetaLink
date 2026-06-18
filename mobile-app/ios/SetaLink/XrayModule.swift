@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import NetworkExtension
 
 typealias RCTPromiseResolveBlock = (Any?) -> Void
