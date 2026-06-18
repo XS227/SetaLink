@@ -35,6 +35,12 @@ class XrayModule: NSObject {
         resolve(nil)
     }
 
+    // MARK: - startEmergency (stub — same behaviour as start until real tunnel exists)
+
+    @objc func startEmergency(_ config: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        start(config, resolver: resolve, rejecter: reject)
+    }
+
     // MARK: - Stop
 
     @objc func stop(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
@@ -67,6 +73,51 @@ class XrayModule: NSObject {
     @objc func validateConfig(_ config: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
         let trimmed = config.trimmingCharacters(in: .whitespaces)
         resolve(trimmed.hasPrefix("{"))
+    }
+
+    // MARK: - Stub methods (spec-required; real impl needs Packet Tunnel Provider)
+
+    @objc func getLastError(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(nil)
+    }
+
+    @objc func getLastProbeResult(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(false)
+    }
+
+    @objc func getConnectionLog(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(["[iOS stub] No real tunnel active"])
+    }
+
+    @objc func getTun2socksLog(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve("(iOS stub)")
+    }
+
+    @objc func getXrayLog(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve("(iOS stub)")
+    }
+
+    @objc func getGeneratedConfig(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve("(iOS stub)")
+    }
+
+    @objc func getDeviceInfo(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let info: [String: Any] = [
+            "model":           UIDevice.current.model,
+            "manufacturer":    "Apple",
+            "brand":           "Apple",
+            "androidSdk":      0,
+            "androidRelease":  UIDevice.current.systemVersion,
+        ]
+        resolve(info)
+    }
+
+    @objc func reportTelemetry(_ payload: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(nil)
+    }
+
+    @objc func runTraceTest(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(["ok": false, "error": "runTraceTest not implemented on iOS stub"])
     }
 
     // MARK: - Thread safety

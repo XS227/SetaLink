@@ -10,7 +10,7 @@ prepare_react_native_project!
 # React Native New Architecture — enable Fabric + TurboModules
 ENV['RCT_NEW_ARCH_ENABLED'] = '1'
 
-target 'SetaLink' do
+target 'Realink' do
   config = use_native_modules!
 
   use_react_native!(

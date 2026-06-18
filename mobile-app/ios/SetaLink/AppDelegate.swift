@@ -10,7 +10,7 @@ class AppDelegate: RCTAppDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        self.moduleName        = "SetaLink"
+        self.moduleName        = "Realink"
         self.dependencyProvider = RCTAppDependencyProvider()
 
         // Initial props passed to the root React component (none needed)

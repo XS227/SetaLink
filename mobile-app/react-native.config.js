@@ -3,6 +3,9 @@ module.exports = {
     android: {
       packageName: 'com.setalink',
     },
+    ios: {
+      project: './ios/Realink.xcodeproj',
+    },
   },
   dependencies: {
     // react-native-network-info 5.x is pre-autolinking-era and ships Java
