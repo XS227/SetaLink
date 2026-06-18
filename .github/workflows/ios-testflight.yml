@@ -117,7 +117,8 @@ jobs:
             --output_path       "$RUNNER_TEMP/asc" \
             --keychain_path     "$KEYCHAIN_PATH" \
             --keychain_password "$KEYCHAIN_PASS" \
-            --platform          "ios"
+            --platform          "ios" \
+            --force
           # Capture the certificate name fastlane installed (for xcodebuild)
           CERT_NAME=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
             | grep -o '"Apple Distribution[^"]*"' | head -1 | tr -d '"')
