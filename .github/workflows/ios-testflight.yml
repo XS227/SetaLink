@@ -63,7 +63,7 @@ jobs:
       # ── CocoaPods ────────────────────────────────────────────────────────────
       - name: pod install
         working-directory: mobile-app
-        run: pod install --project-directory ios --repo-update
+        run: pod install --project-directory=ios --repo-update
 
       # ── App Store Connect API key file ────────────────────────────────────────
       # Written to a temp file; never printed, never committed.
