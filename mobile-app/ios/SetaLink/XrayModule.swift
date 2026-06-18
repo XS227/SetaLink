@@ -1,6 +1,9 @@
 import Foundation
 import NetworkExtension
 
+typealias RCTPromiseResolveBlock = (Any?) -> Void
+typealias RCTPromiseRejectBlock  = (String?, String?, Error?) -> Void
+
 /**
  * iOS stub for the XrayModule TurboModule spec.
  *
