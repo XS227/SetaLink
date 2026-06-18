@@ -18,7 +18,7 @@
     "react": "18.3.1",
     "react-native": "0.75.4",
     "react-native-gesture-handler": "~2.20.0",
-    "react-native-google-mobile-ads": "^14.11.0",
+    "react-native-google-mobile-ads": "13.6.1",
     "react-native-haptic-feedback": "^2.2.0",
     "react-native-mmkv": "~2.12.2",
     "react-native-network-info": "^5.2.2",
