@@ -2,16 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- Packet Tunnel Provider — required for VLESS/Xray VPN protocol -->
+    <!-- Packet Tunnel Provider — required for VLESS/Xray custom VPN protocol -->
     <key>com.apple.developer.networking.networkextension</key>
     <array>
         <string>packet-tunnel-provider</string>
-    </array>
-
-    <!-- Keychain sharing for auth token storage -->
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(AppIdentifierPrefix)no.setalink.realink</string>
     </array>
 </dict>
 </plist>
