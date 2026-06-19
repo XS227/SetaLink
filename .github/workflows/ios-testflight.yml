@@ -26,6 +26,10 @@ on:
         description: 'CFBundleVersion override (leave blank to use run number)'
         required: false
         default: ''
+      force_bootstrap:
+        description: 'Force bootstrap: regenerate Distribution cert + P12 (use when cert revoked)'
+        required: false
+        default: 'false'
 
 concurrency:
   group: ios-testflight-${{ github.ref }}
@@ -119,7 +123,8 @@ jobs:
           DISTRIBUTION_CERT_P12_BASE64: ${{ secrets.DISTRIBUTION_CERT_P12_BASE64 }}
           DISTRIBUTION_CERT_PASSWORD:   ${{ secrets.DISTRIBUTION_CERT_PASSWORD }}
         run: |
-          if [ -n "$DISTRIBUTION_CERT_P12_BASE64" ]; then
+          FORCE_BOOTSTRAP="${{ github.event.inputs.force_bootstrap }}"
+          if [ -n "$DISTRIBUTION_CERT_P12_BASE64" ] && [ "$FORCE_BOOTSTRAP" != "true" ]; then
             echo "Using stored P12 from secret."
             echo "$DISTRIBUTION_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/asc/dist.p12"
             security import "$RUNNER_TEMP/asc/dist.p12" \
