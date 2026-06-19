@@ -88,10 +88,14 @@ function dm_key(): string {
         if ($raw !== false && strlen($raw) >= 32) { $key = substr($raw, 0, 32); return $key; }
     }
     $key = random_bytes(32);
-    // Best-effort persist; 0600 so only the web user can read it.
-    $old = umask(0077);
+    // Best-effort persist as 0640 (owner+group) so the web user can read it on
+    // the NEXT request. 0600 here was the v0.9.35 bug: when the file was owned by
+    // a different user than php-fpm (www-data), the web process couldn't read it
+    // and silently used a fresh ephemeral key every request — so message bodies
+    // could never be decrypted across requests. Keep the file group = web user.
+    $old = umask(0027);
     @file_put_contents($path, $key);
-    @chmod($path, 0600);
+    @chmod($path, 0640);
     umask($old);
     return $key;
 }

@@ -1,4 +1,10 @@
 {
-  "name": "SetaLink",
-  "displayName": "SetaLink"
+  "name": "Realink",
+  "displayName": "Realink",
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-5788265416382988~2740153482",
+    "ios_app_id": "ca-app-pub-5788265416382988~9590370979",
+    "optimize_initialization": true,
+    "optimize_ad_loading": true
+  }
 }

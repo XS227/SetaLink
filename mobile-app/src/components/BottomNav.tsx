@@ -8,11 +8,11 @@ export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile';
 
 type NavItem = { key: NavTab; icon: string };
 
+// AI + Activity were demoted (v0.9.41): Activity lives under Servers, the smart-connect
+// engine runs under the hood with its controls under Settings. Bottom bar = 3 tabs.
 const TAB_KEYS: NavItem[] = [
   { key: 'home',     icon: '⬡' },
   { key: 'servers',  icon: '◈' },
-  { key: 'ai',       icon: '◎' },
-  { key: 'activity', icon: '≡' },
   { key: 'profile',  icon: '○' },
 ];
 

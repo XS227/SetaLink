@@ -25,11 +25,17 @@ class BiometricModule(private val reactContext: ReactApplicationContext) :
         val bm = BiometricManager.from(reactContext)
         val strong = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         val weak   = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+        val cred   = bm.canAuthenticate(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+        // Available if ANY usable authenticator exists — fingerprint, face, OR the
+        // device PIN/pattern/password (device-credential fallback, v0.9.36 #3).
         return if (strong == BiometricManager.BIOMETRIC_SUCCESS ||
-                   weak   == BiometricManager.BIOMETRIC_SUCCESS)
+                   weak   == BiometricManager.BIOMETRIC_SUCCESS ||
+                   cred   == BiometricManager.BIOMETRIC_SUCCESS)
             BiometricManager.BIOMETRIC_SUCCESS
-        // Prefer the more informative of the two non-success codes.
-        else if (weak != BiometricManager.BIOMETRIC_STATUS_UNKNOWN) weak else strong
+        // Prefer the most informative of the non-success codes.
+        else if (weak != BiometricManager.BIOMETRIC_STATUS_UNKNOWN) weak
+        else if (strong != BiometricManager.BIOMETRIC_STATUS_UNKNOWN) strong
+        else cred
     }
 
     @ReactMethod
@@ -39,6 +45,27 @@ class BiometricModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             promise.resolve(false)
         }
+    }
+
+    /** Raw diagnostic — the exact canAuthenticate() code for each authenticator
+     *  class plus the SDK level, so the in-app debug panel can show precisely what
+     *  this device reports (v0.9.36 #3). Codes: 0=SUCCESS, 1=HW_UNAVAILABLE,
+     *  11=NONE_ENROLLED, 12=NO_HARDWARE, 15=SECURITY_UPDATE_REQUIRED, -1=UNKNOWN,
+     *  -2=UNSUPPORTED. */
+    @ReactMethod
+    fun getStatusDetail(promise: Promise) {
+        val map = Arguments.createMap()
+        try {
+            val bm = BiometricManager.from(reactContext)
+            map.putInt("strong", bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG))
+            map.putInt("weak",   bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK))
+            map.putInt("deviceCredential", bm.canAuthenticate(BiometricManager.Authenticators.DEVICE_CREDENTIAL))
+            map.putInt("sdkInt", android.os.Build.VERSION.SDK_INT)
+            map.putBoolean("available", bestStatus() == BiometricManager.BIOMETRIC_SUCCESS)
+        } catch (e: Exception) {
+            map.putString("error", e.message ?: "unknown")
+        }
+        promise.resolve(map)
     }
 
     /** Detailed status string so the UI can show the right guidance
@@ -92,17 +119,27 @@ class BiometricModule(private val reactContext: ReactApplicationContext) :
                 }
 
                 val prompt = BiometricPrompt(activity as FragmentActivity, executor, callback)
-                val info = BiometricPrompt.PromptInfo.Builder()
+                // Choose authenticators that actually exist on this device. Using
+                // BIOMETRIC_WEAK|DEVICE_CREDENTIAL crashes pre-API30, so fall back to
+                // DEVICE_CREDENTIAL alone (PIN/pattern) when no biometric is enrolled
+                // (v0.9.36 #3). A negative button is only valid WITHOUT device cred.
+                val bm = BiometricManager.from(reactContext)
+                val hasBio =
+                    bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS ||
+                    bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)   == BiometricManager.BIOMETRIC_SUCCESS
+                val builder = BiometricPrompt.PromptInfo.Builder()
                     .setTitle(title)
                     .setSubtitle(subtitle)
-                    .setNegativeButtonText("Cancel")
-                    .setAllowedAuthenticators(
+                if (hasBio) {
+                    builder.setAllowedAuthenticators(
                         BiometricManager.Authenticators.BIOMETRIC_STRONG or
                         BiometricManager.Authenticators.BIOMETRIC_WEAK
-                    )
-                    .build()
-
-                prompt.authenticate(info)
+                    ).setNegativeButtonText("Cancel")
+                } else {
+                    // PIN/pattern/password — supplies its own cancel affordance.
+                    builder.setAllowedAuthenticators(BiometricManager.Authenticators.DEVICE_CREDENTIAL)
+                }
+                prompt.authenticate(builder.build())
             } catch (e: Exception) {
                 Log.e(TAG, "BiometricPrompt error: ${e.message}", e)
                 promise.reject("PROMPT_ERROR", e.message ?: "Biometric prompt failed")

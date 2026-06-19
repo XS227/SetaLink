@@ -20,8 +20,8 @@ $og_img    = 'https://setalink.no' . $logo;
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SetaLink — Free VPN for Iran | Anti-Censorship Android VPN</title>
-  <meta name="description" content="SetaLink: AI-powered VLESS+Reality VPN for Iran and censored regions. 1 GB free on install. No account. Bypasses DPI with DNS-over-HTTPS. Android APK.">
+  <title>Realink — Free VPN for Iran | Anti-Censorship Android VPN</title>
+  <meta name="description" content="Realink: AI-powered VLESS+Reality VPN for Iran and censored regions. 1 GB free on install. No account. Bypasses DPI with DNS-over-HTTPS. Android APK.">
   <meta name="keywords" content="VPN Iran, free VPN Iran, anti-censorship VPN, V2Ray Iran, Reality protocol, VLESS VPN, bypass DPI, Android VPN, فیلترشکن رایگان">
   <meta name="robots" content="index,follow">
   <link rel="canonical" href="<?= $canonical ?>">
@@ -30,15 +30,15 @@ $og_img    = 'https://setalink.no' . $logo;
   <!-- Open Graph -->
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="<?= $canonical ?>">
-  <meta property="og:title"       content="SetaLink — Free VPN for Iran">
+  <meta property="og:title"       content="Realink — Free VPN for Iran">
   <meta property="og:description" content="AI-powered anti-censorship VPN. VLESS+Reality protocol. 1 GB free. No account. Android only.">
   <meta property="og:image"       content="<?= $og_img ?>">
   <meta property="og:locale"      content="en_US">
   <meta property="og:locale:alternate" content="fa_IR">
-  <meta property="og:site_name"   content="SetaLink VPN">
+  <meta property="og:site_name"   content="Realink VPN">
   <!-- Twitter / X -->
   <meta name="twitter:card"        content="summary_large_image">
-  <meta name="twitter:title"       content="SetaLink — Free VPN for Iran">
+  <meta name="twitter:title"       content="Realink — Free VPN for Iran">
   <meta name="twitter:description" content="AI-powered anti-censorship VPN. VLESS+Reality. 1 GB free. Android only.">
   <meta name="twitter:image"       content="<?= $og_img ?>">
   <!-- Fonts + styles -->
@@ -58,21 +58,21 @@ $og_img    = 'https://setalink.no' . $logo;
     "@graph": [
       {
         "@type": "Organization",
-        "name": "SetaLink VPN",
+        "name": "Realink VPN",
         "url": "https://setalink.no",
         "logo": "<?= $og_img ?>",
         "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink"]
       },
       {
         "@type": "SoftwareApplication",
-        "name": "SetaLink VPN",
+        "name": "Realink VPN",
         "operatingSystem": "Android",
         "applicationCategory": "NetworkingApplication",
         "description": "AI-powered VPN for censored regions. VLESS+Reality, DoH, XHTTP fallback. 1 GB free on install.",
         "url": "https://setalink.no",
         "downloadUrl": "https://setalink.no/download/setalink-latest.apk",
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-        "author": {"@type": "Organization", "name": "SetaLink VPN"}
+        "author": {"@type": "Organization", "name": "Realink VPN"}
       }
     ]
   }
@@ -84,8 +84,8 @@ $og_img    = 'https://setalink.no' . $logo;
 <!-- ══ NAVIGATION ══════════════════════════════════════════════ -->
 <nav class="nav">
   <a href="/" class="nav-logo">
-    <img src="<?= $logo ?>" width="32" height="32" alt="SetaLink">
-    <span class="brand-seta">Seta</span><span class="brand-link">Link</span>
+    <img src="<?= $logo ?>" width="32" height="32" alt="Realink">
+    <span class="brand-seta">Rea</span><span class="brand-link">link</span>
   </a>
   <div class="nav-actions">
     <button class="btn-lang" id="btn-lang" aria-label="Toggle language">
@@ -133,7 +133,7 @@ $og_img    = 'https://setalink.no' . $logo;
 
   <div class="hero-ring">
     <img src="<?= $logo ?>"
-         class="hero-logo" width="112" height="112" alt="SetaLink">
+         class="hero-logo" width="112" height="112" alt="Realink">
   </div>
 
   <div class="hero-badge">
@@ -238,7 +238,7 @@ $og_img    = 'https://setalink.no' . $logo;
   <div class="ai-section">
     <div class="section-label" data-t="ai.label">INTELLIGENT ROUTING</div>
     <h2 class="section-title" data-t="ai.title">Not Just a Tunnel</h2>
-    <p class="section-sub" data-t="ai.sub">SetaLink actively validates every connection and picks the best path — every single time.</p>
+    <p class="section-sub" data-t="ai.sub">Realink actively validates every connection and picks the best path — every single time.</p>
   </div>
 
   <div class="bento-grid">
@@ -384,7 +384,7 @@ $og_img    = 'https://setalink.no' . $logo;
   <div class="support-section">
     <div class="section-label" data-t="support.label">INFRASTRUCTURE FUNDING</div>
     <h2 class="section-title" data-t="support.title">Support the Project</h2>
-    <p class="section-sub" style="margin:0 auto" data-t="support.sub">SetaLink runs on real servers that cost real money. Every contribution helps add nodes, improve reliability, and expand to new regions.</p>
+    <p class="section-sub" style="margin:0 auto" data-t="support.sub">Realink runs on real servers that cost real money. Every contribution helps add nodes, improve reliability, and expand to new regions.</p>
   </div>
 
   <div class="support-grid">
@@ -450,19 +450,19 @@ $og_img    = 'https://setalink.no' . $logo;
   <div class="faq-section">
     <div class="section-label" data-t="faq.label">FAQ</div>
     <h2 class="section-title" data-t="faq.title">Common Questions</h2>
-    <p class="section-sub" style="margin:0 auto" data-t="faq.sub">Real questions about how SetaLink actually works.</p>
+    <p class="section-sub" style="margin:0 auto" data-t="faq.sub">Real questions about how Realink actually works.</p>
   </div>
 
   <div class="faq-list">
     <?php
     $faqs = [
       ['How does the invite system work?',
-       'When you install SetaLink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. Invite 3 active friends to unlock stealth servers. There is no limit on how many people you can invite.'],
+       'When you install Realink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. Invite 3 active friends to unlock stealth servers. There is no limit on how many people you can invite.'],
       ['What is the 1 GB emergency package?',
-       'Every new device that installs SetaLink automatically receives 1 GB of free data — no account, no login, no credit card. This is designed so that anyone who suddenly loses internet access can get back online immediately.'],
+       'Every new device that installs Realink automatically receives 1 GB of free data — no account, no login, no credit card. This is designed so that anyone who suddenly loses internet access can get back online immediately.'],
       ['How does the AI protocol optimizer work?',
        'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins. Fake "connected" states are impossible.'],
-      ['Does SetaLink keep logs?',
+      ['Does Realink keep logs?',
        'No user activity logs. The xray core logs connection events internally for diagnostic purposes but no user-identifiable content is stored. Device IDs are anonymous hashes. The admin can see aggregate connection statistics but not who connected to what.'],
       ['Why Android only? What about iPhone?',
        'Android allows full TUN-based VPN without App Store restrictions. iOS requires App Store distribution, a developer account, and Apple policy compliance — none of which are compatible with operating a censorship-circumvention tool openly. Android is the priority market for Iran and Turkey.'],
@@ -495,8 +495,8 @@ $og_img    = 'https://setalink.no' . $logo;
 <footer class="footer">
   <div class="footer-inner">
     <div class="footer-brand">
-      <img src="<?= $logo ?>" width="28" height="28" alt="SetaLink" style="border-radius:7px">
-      <span class="brand-seta">Seta</span><span class="brand-link">Link</span>
+      <img src="<?= $logo ?>" width="28" height="28" alt="Realink" style="border-radius:7px">
+      <span class="brand-seta">Rea</span><span class="brand-link">link</span>
     </div>
     <nav class="footer-links">
       <a href="/faq.php" data-t="footer.faq">Full FAQ</a>
@@ -504,7 +504,7 @@ $og_img    = 'https://setalink.no' . $logo;
       <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener" data-t="footer.gh">GitHub</a>
       <a href="<?= htmlspecialchars($dl_link) ?>" data-t="footer.dl">Download APK</a>
     </nav>
-    <p class="footer-copy">&copy; <?= date('Y') ?> SetaLink VPN · Android only</p>
+    <p class="footer-copy">&copy; <?= date('Y') ?> Realink VPN · Android only</p>
   </div>
 </footer>
 
@@ -514,10 +514,10 @@ $og_img    = 'https://setalink.no' . $logo;
 <?php
 // FAQ schema — mirrors the FAQ items rendered in HTML above
 $faq_schema_items = [
-  ['How does the invite system work?', 'When you install SetaLink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. There is no limit on how many people you can invite.'],
-  ['What is the 1 GB emergency package?', 'Every new device that installs SetaLink automatically receives 1 GB of free data — no account, no login, no credit card. Anyone who suddenly loses internet access can get back online immediately.'],
+  ['How does the invite system work?', 'When you install Realink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. There is no limit on how many people you can invite.'],
+  ['What is the 1 GB emergency package?', 'Every new device that installs Realink automatically receives 1 GB of free data — no account, no login, no credit card. Anyone who suddenly loses internet access can get back online immediately.'],
   ['How does the AI protocol optimizer work?', 'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins.'],
-  ['Does SetaLink keep logs?', 'No user activity logs are kept. Device IDs are anonymous hashes. Aggregate statistics are stored but cannot be traced to individual users.'],
+  ['Does Realink keep logs?', 'No user activity logs are kept. Device IDs are anonymous hashes. Aggregate statistics are stored but cannot be traced to individual users.'],
   ['Why Android only?', 'Android allows full TUN-based VPN without App Store restrictions. iOS requires App Store distribution incompatible with an anti-censorship tool. Android is the priority market for Iran and Turkey.'],
   ['What happens when Iran blocks a new SNI?', 'The Remote Config system allows pushing updated SNI priority lists to all apps without requiring an update. The AI optimizer also drops blocked SNIs in priority automatically.'],
   ['How is traffic different from normal HTTPS?', 'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain like www.microsoft.com. Deep Packet Inspection cannot tell it apart.'],

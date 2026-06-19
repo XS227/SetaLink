@@ -17,6 +17,7 @@ import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
+import { WatchAdCard } from '../components/WatchAdCard';
 import { useInboxStore } from '../stores/inboxStore';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -491,6 +492,9 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </View>
         </GlassCard>
 
+        {/* Watch a rewarded ad → earn bonus data (credited via AdMob SSV) */}
+        <WatchAdCard />
+
         {/* Send GB to a friend */}
         <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('transfer')}>
           <GlassCard style={styles.sendGbCard} glowColor={Colors.emerald[400]}>
@@ -623,14 +627,14 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         </TouchableOpacity>
 
         <GlassCard>
-          <Text style={styles.footerBrand}>SetaLink</Text>
+          <Text style={styles.footerBrand}>Realink</Text>
           <TouchableOpacity onLongPress={() => navTo('diagnostics')} delayLongPress={1500}>
             <Text style={styles.footerMeta}>v{APP_VERSION} ({APP_BUILD})</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleOpenWebsite}>
             <Text style={styles.footerLink}>https://setalink.no</Text>
           </TouchableOpacity>
-          <Text style={styles.footerCopy}>© 2026 SetaLink. {t('st.allRights')}</Text>
+          <Text style={styles.footerCopy}>© 2026 Realink. {t('st.allRights')}</Text>
         </GlassCard>
 
         {/* Sign out */}

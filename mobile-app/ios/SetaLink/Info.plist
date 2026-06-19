@@ -6,7 +6,7 @@
     <string>$(DEVELOPMENT_LANGUAGE)</string>
 
     <key>CFBundleDisplayName</key>
-    <string>SetaLink</string>
+    <string>Realink</string>
 
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
@@ -24,37 +24,100 @@
     <string>APPL</string>
 
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$(MARKETING_VERSION)</string>
 
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
+
+    <!-- Supported localizations -->
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>fa</string>
+    </array>
 
     <!-- Deep link URL scheme -->
     <key>CFBundleURLTypes</key>
     <array>
         <dict>
             <key>CFBundleURLName</key>
-            <string>com.setalink.deeplink</string>
+            <string>no.setalink.realink.deeplink</string>
             <key>CFBundleURLSchemes</key>
             <array>
-                <string>setalink</string>
+                <string>realink</string>
             </array>
         </dict>
     </array>
 
-    <!-- VPN usage descriptions (required by App Store) -->
+    <!-- VPN usage description (required by App Store) -->
     <key>NSVPNUsageDescription</key>
-    <string>SetaLink uses a VPN connection to encrypt your traffic and protect your privacy.</string>
+    <string>Realink uses a VPN connection to secure your internet traffic and bypass network restrictions.</string>
 
+    <!-- Face ID -->
     <key>NSFaceIDUsageDescription</key>
-    <string>SetaLink uses Face ID to protect your account.</string>
+    <string>Realink uses Face ID to protect your account.</string>
 
-    <!-- Network Extension entitlement companion key -->
+    <!-- ATT prompt — required by AdMob 14+ on iOS 14+; app rejected without this -->
+    <key>NSUserTrackingUsageDescription</key>
+    <string>Realink shows ads to keep the service free. Your data is never sold or shared.</string>
+
+    <!-- AdMob iOS App ID — REQUIRED: app crashes on launch without this key.
+         1. Go to admob.google.com → Apps → Add App → iOS
+         2. Replace the placeholder below with your real ca-app-pub-XXXX~YYYY ID -->
+    <key>GADApplicationIdentifier</key>
+    <string>ca-app-pub-5788265416382988~9590370979</string>
+
+    <!-- AdMob SKAdNetwork IDs — required for iOS 14+ conversion tracking -->
+    <key>SKAdNetworkItems</key>
+    <array>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>cstr6suwn9.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>4fzdc2evr5.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>2fnua5tdw4.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>ydx93a7ass.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>5a6flpkh64.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>p78axxw29g.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>v72qych5uu.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>ludvb6z4gh.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>cp8zw746q7.skadnetwork</string>
+        </dict>
+        <dict>
+            <key>SKAdNetworkIdentifier</key>
+            <string>3sh42y64l3.skadnetwork</string>
+        </dict>
+    </array>
+
+    <!-- Network Extension companion key -->
     <key>NEVPNEnabled</key>
     <true/>
 
-    <key>UILaunchStoryboardName</key>
-    <string>LaunchScreen</string>
+    <key>UILaunchScreen</key>
+    <dict/>
 
     <key>UIRequiredDeviceCapabilities</key>
     <array>
@@ -69,11 +132,12 @@
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
 
-    <!-- Allow arbitrary loads only in Debug via xcconfig override -->
+    <!-- Allow local networking in debug; disable arbitrary loads -->
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
         <true/>
     </dict>
+
 </dict>
 </plist>

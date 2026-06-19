@@ -10,6 +10,8 @@ import { MetricPill }    from '../components/MetricPill';
 import { NetworkQualityBar } from '../components/NetworkQualityBar';
 import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
+import { EcosystemBanner } from '../components/EcosystemBanner';
+import { WatchAdCard } from '../components/WatchAdCard';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
@@ -159,7 +161,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           <View style={styles.brandBlock}>
             <View style={styles.brandRow}>
               <Image source={isConnected ? LOGO_CONNECTED : LOGO_DISCONNECTED} style={styles.brandLogoSmall} resizeMode="contain" />
-              <Text style={styles.brandName}>SetaLink</Text>
+              <Text style={styles.brandName}>Realink</Text>
             </View>
             <Text style={styles.greeting}>{greeting}</Text>
             {user && (user.userId || user.deviceId) && (
@@ -325,20 +327,14 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Shahnameh promo */}
+        {/* Ecosystem promo (Shahnameh + 3real, rotating) */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <TouchableOpacity
-            style={styles.shahnamehCard}
-            onPress={() => Linking.openURL('https://t.me/shahnameh_bot?start=warrior_5629291605').catch(() => {})}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.shahnamehIcon}>⚔️</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.shahnamehTitle}>Play Shahnameh — earn REAL</Text>
-              <Text style={styles.shahnamehSub}>Battle as a Persian warrior on Telegram</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          <EcosystemBanner seed={0} />
+        </Animated.View>
+
+        {/* Watch ad → earn data */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }], marginTop: Spacing[3] }}>
+          <WatchAdCard />
         </Animated.View>
 
         {/* Traffic stats (connected only) */}

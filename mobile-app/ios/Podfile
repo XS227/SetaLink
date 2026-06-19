@@ -1,23 +1,21 @@
-# Resolve react_native_pods.rb from the react-native gem
+# Resolve react_native_pods.rb via node (RN 0.73+ pattern)
 require Pod::Executable.execute_command('node', ['-e',
-  "process.stdout.write(require('react-native/scripts/react_native_pods').podsPath)",
+  "process.stdout.write(require('path').dirname(require.resolve('react-native/package.json')))",
   '--no-warnings'
-]).strip
+]).strip + '/scripts/react_native_pods.rb'
 
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
-# React Native New Architecture — enable Fabric + TurboModules
-ENV['RCT_NEW_ARCH_ENABLED'] = '1'
+ENV['RCT_NEW_ARCH_ENABLED'] = '0'
 
-target 'SetaLink' do
+target 'Realink' do
   config = use_native_modules!
 
   use_react_native!(
-    path:            config[:reactNativePath],
-    hermes_enabled:  true,
-    fabric_enabled:  true,
-    app_path:        "#{Pod::Config.instance.installation_root}/.."
+    path:           config[:reactNativePath],
+    hermes_enabled: true,
+    app_path:       "#{Pod::Config.instance.installation_root}/.."
   )
 
   post_install do |installer|

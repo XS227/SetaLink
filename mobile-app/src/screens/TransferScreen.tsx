@@ -11,7 +11,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { useT } from '../i18n';
 import { formatBytes } from '../utils/formatters';
-import { ONE_GB, computeTransferable, validateTransferAmount, normalizeDigits } from '../utils/quotaEconomy';
+import { ONE_GB, computeTransferable, validateTransferAmount, normalizeDigits, transferFormReady } from '../utils/quotaEconomy';
 import {
   resolveRecipient, transferQuota, getTransfers, getQuotaSummary,
   type TransferRecipient, type TransferRecord,
@@ -43,12 +43,18 @@ export function TransferScreen({ onBack }: Props) {
   const myCode      = user?.userId || deviceId;
   const available   = computeTransferable(user);
   const maxGb       = available / ONE_GB;
-  // Enable Continue for any positive amount so the button is never a silent
-  // dead-end (v0.9.34 over-gated it on the full max check, which left it
-  // disabled with no feedback when the amount exceeded the transferable
-  // balance — v0.9.35 #1). handleContinue surfaces the precise reason.
-  const amountNum   = parseFloat(normalizeDigits(amountStr).replace(',', '.'));
-  const canContinue = !!recipient && isFinite(amountNum) && amountNum > 0;
+  // Enable Continue on recipient TEXT + a positive amount — NOT on the separately
+  // resolved recipient object. v0.9.35 still required the user to press the ✓
+  // verify button first; users who just typed an ID + amount saw a disabled
+  // button with no explanation (v0.9.36 #2). Resolution now happens on Continue.
+  const amountNum        = parseFloat(normalizeDigits(amountStr).replace(',', '.'));
+  const amountOk         = isFinite(amountNum) && amountNum > 0;
+  const recipientEntered = recipientInput.trim() !== '';
+  const canContinue      = transferFormReady(recipientInput, amountStr) && !verifying;
+  // Visible reason when the button is disabled (debug/UX aid requested in #2).
+  const disabledReason   = !recipientEntered ? t('tr.needRecipient')
+    : !amountOk           ? t('tr.needAmount')
+    : '';
 
   useEffect(() => {
     if (!deviceId) return;
@@ -59,22 +65,30 @@ export function TransferScreen({ onBack }: Props) {
 
   if (!user) return null;
 
-  const handleVerify = async () => {
+  // Resolve a recipient ID → TransferRecipient, surfacing self/blocked/not-found
+  // errors. Returns null on any failure (toast already shown). Shared by the ✓
+  // button and Continue so a transfer can proceed without a separate verify tap.
+  const resolveNow = async (): Promise<TransferRecipient | null> => {
     const param = recipientInput.trim();
-    if (!param) return;
+    if (!param) { showToast(t('tr.errRecipient'), 'error', 2500); return null; }
+    if (recipient && (recipient.user_id === param || recipient.device_id === param)) return recipient;
     setVerifying(true);
     setResolved(null);
     try {
       const r = await resolveRecipient(param);
-      if (r.device_id === deviceId) { showToast(t('tr.errSelf'), 'error', 2500); return; }
-      if (r.blocked)                { showToast(t('tr.errBlocked'), 'error', 2500); return; }
+      if (r.device_id === deviceId) { showToast(t('tr.errSelf'), 'error', 2500); return null; }
+      if (r.blocked)                { showToast(t('tr.errBlocked'), 'error', 2500); return null; }
       setResolved(r);
+      return r;
     } catch {
       showToast(t('tr.errRecipient'), 'error', 2500);
+      return null;
     } finally {
       setVerifying(false);
     }
   };
+
+  const handleVerify = () => { resolveNow(); };
 
   const handleScanQr = () => {
     // Live camera scanning requires a native scanner dependency that this build
@@ -83,8 +97,7 @@ export function TransferScreen({ onBack }: Props) {
     showToast(t('tr.scanUnavailable'), 'info', 3500);
   };
 
-  const handleContinue = () => {
-    if (!recipient) { showToast(t('tr.errRecipient'), 'error', 2500); return; }
+  const handleContinue = async () => {
     const v = validateTransferAmount(amountStr, available);
     if (!v.ok) {
       if (v.error === 'above_max') {
@@ -95,6 +108,9 @@ export function TransferScreen({ onBack }: Props) {
       }
       return;
     }
+    // Resolve the recipient now if it wasn't verified via the ✓ button.
+    const rcpt = await resolveNow();
+    if (!rcpt) return;
     setStep('review');
   };
 
@@ -235,8 +251,11 @@ export function TransferScreen({ onBack }: Props) {
               onPress={handleContinue}
               disabled={!canContinue}
             >
-              <Text style={styles.primaryBtnText}>{t('tr.continue')}</Text>
+              {verifying
+                ? <ActivityIndicator size="small" color={Colors.text.inverse} />
+                : <Text style={styles.primaryBtnText}>{t('tr.continue')}</Text>}
             </TouchableOpacity>
+            {!!disabledReason && <Text style={styles.disabledHint}>{disabledReason}</Text>}
 
             {/* My receive code */}
             <TouchableOpacity activeOpacity={0.85} onPress={() => setShowMyCode(true)}>
@@ -374,6 +393,7 @@ const styles = StyleSheet.create({
 
   primaryBtn:    { backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', marginTop: Spacing[2] },
   primaryBtnDisabled: { opacity: 0.5 },
+  disabledHint:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textAlign: 'center', marginTop: -Spacing[1] },
   primaryBtnText:{ fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: 0.5 },
   secondaryBtn:  { paddingVertical: Spacing[3], alignItems: 'center' },
   secondaryBtnText: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted },

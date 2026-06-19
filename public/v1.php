@@ -27,11 +27,34 @@ declare(strict_types=1);
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, OPTIONS');
+header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Authorization, Content-Type, X-Client');
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'OPTIONS') { http_response_code(204); exit; }
 
 define('V1_DB_PATH', __DIR__ . '/../data/analytics.db');
+
+// Rewarded ads + hidden recovery quota (shared logic; brings quota_economy too).
+require_once __DIR__ . '/../lib/ads_recovery.php';
+// Premium payments (USDT + REAL token).
+require_once __DIR__ . '/../lib/payments.php';
+
+/** Read a POST field from form-encoded body or a JSON body. */
+function v1_body(string $key, string $default = ''): string {
+    if (isset($_POST[$key])) return trim((string)$_POST[$key]);
+    static $json;
+    if ($json === null) {
+        $raw  = file_get_contents('php://input') ?: '';
+        $json = json_decode($raw, true) ?: [];
+    }
+    return isset($json[$key]) ? trim((string)$json[$key]) : $default;
+}
+
+/** Best-effort client IP (honours a single proxy hop) for ad anti-abuse. */
+function v1_client_ip(): string {
+    $xff = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+    if ($xff !== '') { $p = trim(explode(',', $xff)[0]); if ($p !== '') return $p; }
+    return $_SERVER['REMOTE_ADDR'] ?? '';
+}
 
 // ── DB ───────────────────────────────────────────────────────────────────────
 function v1_db(): PDO {
@@ -146,7 +169,32 @@ function v1_helsinki_node(): array {
             'wsPath'      => '/ws',
             'xhttpPath'   => '/xhttp/',
             'httpupPath'  => '/httpup',
-            'altProfiles' => [],
+            // Real multi-SNI: each is a dedicated Reality inbound on the node with a
+            // matching dest cert (8444=microsoft, 8445=apple), routed by nginx SNI on
+            // :443. Same keypair/UUID/shortId as the cloudflare profile — only the SNI
+            // (and client fingerprint) differs. Verified end-to-end 2026-06-16.
+            'altProfiles' => [
+                [
+                    'uuid'        => '92a861cd-6029-4882-9de5-35d9291e0828',
+                    'address'     => '65.109.183.7',
+                    'port'        => 443,
+                    'publicKey'   => 'eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU',
+                    'shortId'     => 'b3a824bd',
+                    'sni'         => 'www.microsoft.com',
+                    'flow'        => 'xtls-rprx-vision',
+                    'fingerprint' => 'chrome',
+                ],
+                [
+                    'uuid'        => '92a861cd-6029-4882-9de5-35d9291e0828',
+                    'address'     => '65.109.183.7',
+                    'port'        => 443,
+                    'publicKey'   => 'eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU',
+                    'shortId'     => 'b3a824bd',
+                    'sni'         => 'www.apple.com',
+                    'flow'        => 'xtls-rprx-vision',
+                    'fingerprint' => 'safari',
+                ],
+            ],
         ],
     ];
 }
@@ -198,8 +246,23 @@ function v1_record_usage(PDO $pdo, ?string $deviceId, string $nodeId): void {
 }
 
 // ── Route ──────────────────────────────────────────────────────────────────────
+// Relative path after /v1 (works with PATH_INFO or a rewritten REQUEST_URI).
+// Computed BEFORE the bearer guard so genuinely public routes can be exempted.
+$rel = $_SERVER['PATH_INFO'] ?? '';
+if ($rel === '') {
+    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
+    $rel = preg_replace('#^.*?/v1#', '', $uri);
+}
+$rel = '/' . ltrim($rel, '/');
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+// Public, no-bearer routes: the Premium catalog must render prices before a user
+// has any identity. A 401 here makes the app log out (and blanks the Profile tab),
+// so these are exempt from the bearer guard.
+$publicRoutes = ($rel === '/payments/packages' && $method === 'GET');
+
 $tok = v1_bearer();
-if ($tok === '') {
+if ($tok === '' && !$publicRoutes) {
     // 401 makes the app log out; only do it when there is no credential at all.
     v1_send(['message' => 'missing bearer token'], 401);
 }
@@ -208,15 +271,96 @@ if (strncmp($tok, 'device-', 7) === 0)      $deviceId = substr($tok, 7);
 elseif (strncmp($tok, 'anon-token-', 11) === 0) $deviceId = null;          // valid but anonymous
 // Unknown token shapes are treated as anonymous (NOT 401) to avoid logging users out.
 
-// Relative path after /v1 (works with PATH_INFO or a rewritten REQUEST_URI).
-$rel = $_SERVER['PATH_INFO'] ?? '';
-if ($rel === '') {
-    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '';
-    $rel = preg_replace('#^.*?/v1#', '', $uri);
-}
-$rel = '/' . ltrim($rel, '/');
-
 $pdo   = v1_db();
+
+// ── Rewarded ads + recovery quota ────────────────────────────────────────────
+// These require a registered device identity (device-<id> bearer). Server is the
+// single source of truth; the client never grants quota locally.
+if ($rel === '/quota/status' || strncmp($rel, '/ads/', 5) === 0 || $rel === '/quota/recovery/enter') {
+    ar_init_tables($pdo);
+    $cfg = ar_config($pdo);
+    if ($deviceId === null || $deviceId === '') v1_send(['message' => 'device identity required'], 403);
+
+    if ($rel === '/quota/status' && $method === 'GET') {
+        $state = ar_recovery_state($pdo, $deviceId, $cfg);
+        v1_send([
+            'visible_remaining_bytes'  => $state['visible_remaining_bytes'],
+            'visible_total_bytes'      => $state['visible_total_bytes'],
+            'in_recovery_eligible'     => $state['eligible'],
+            'recovery_remaining_bytes' => $state['recovery_remaining_bytes'],
+            'recovery_total_bytes'     => $state['recovery_total_bytes'],
+            'ads'                      => ar_ad_stats($pdo, $deviceId, $cfg),
+        ]);
+    }
+
+    if ($rel === '/ads/reward/init' && $method === 'POST') {
+        $nonce = v1_body('nonce');
+        v1_send(ar_init_reward($pdo, $deviceId, $nonce, v1_client_ip(), $cfg));
+    }
+
+    if ($rel === '/ads/reward/confirm' && $method === 'POST') {
+        // Trusted grants come from AdMob SSV (ssv.php). This client path only
+        // grants when explicitly enabled for staging; otherwise it is a no-op
+        // acknowledgement so the app can poll status for the SSV-applied reward.
+        $nonce = v1_body('nonce');
+        if ((int)$cfg['dev_allow_client_confirm'] === 1) {
+            v1_send(ar_confirm_reward($pdo, $deviceId, $nonce, 'client', false, $cfg));
+        }
+        v1_send(['granted' => false, 'pending_ssv' => true,
+                 'state' => ar_recovery_state($pdo, $deviceId, $cfg),
+                 'ads'   => ar_ad_stats($pdo, $deviceId, $cfg)]);
+    }
+
+    if ($rel === '/quota/recovery/enter' && $method === 'POST') {
+        try {
+            v1_send(ar_recovery_enter($pdo, $deviceId, $cfg));
+        } catch (\RuntimeException $e) {
+            v1_send(['message' => $e->getMessage()], 409);
+        }
+    }
+
+    v1_send(['message' => 'method not allowed'], 405);
+}
+
+// ── Premium payments (USDT + REAL) ────────────────────────────────────────────
+if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
+    $pcfg = pay_config($pdo);
+
+    // Catalog is public (no device needed) so the Premium screen can render prices.
+    if ($rel === '/payments/packages' && $method === 'GET') {
+        v1_send([
+            'packages' => pay_packages($pdo, true, $pcfg),
+            'methods'  => pay_methods_status($pcfg),   // app hides methods that aren't ready
+            'real'     => [
+                'discount_percent' => (float)$pcfg['real_discount_percent'],
+                'token_address'    => $pcfg['real_token_address'],
+                'usd_rate'         => (float)$pcfg['real_usd_rate'],      // USD value of 1 REAL (0 = unknown)
+                'rate_updated_at'  => (string)$pcfg['real_rate_updated_at'],
+            ],
+        ]);
+    }
+
+    // Intent + status require a registered device identity.
+    if ($deviceId === null || $deviceId === '') v1_send(['message' => 'device identity required'], 403);
+
+    if ($rel === '/payments/intent' && $method === 'POST') {
+        try {
+            v1_send(pay_create_intent($pdo, $deviceId, v1_body('package_id'), strtoupper(v1_body('payment_method')), $pcfg));
+        } catch (\RuntimeException $e) {
+            v1_send(['message' => $e->getMessage()], 400);
+        }
+    }
+
+    if ($rel === '/payments/status' && $method === 'GET') {
+        $pid = (int)($_GET['id'] ?? 0);
+        $i = pay_intent($pdo, $pid);
+        if (!$i || $i['device_id'] !== $deviceId) v1_send(['message' => 'payment not found'], 404);
+        v1_send(pay_check($pdo, $pid, $pcfg));
+    }
+
+    v1_send(['message' => 'method not allowed'], 405);
+}
+
 $nodes = v1_nodes($pdo);
 
 if ($rel === '/servers') {
