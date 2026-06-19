@@ -139,10 +139,5 @@
         <true/>
     </dict>
 
-    <!-- Background modes for VPN keepalive -->
-    <key>UIBackgroundModes</key>
-    <array>
-        <string>network-authentication</string>
-    </array>
 </dict>
 </plist>
