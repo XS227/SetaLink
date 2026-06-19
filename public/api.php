@@ -23,6 +23,8 @@ define('DB_PATH', __DIR__ . '/../data/analytics.db');
 
 // Shared quota-economy ledger / transfer / milestone / package logic.
 require_once __DIR__ . '/../lib/quota_economy.php';
+// Rewarded ads + hidden recovery quota (shared logic).
+require_once __DIR__ . '/../lib/ads_recovery.php';
 // User-to-user messaging (v0.9.33).
 require_once __DIR__ . '/../lib/messaging.php';
 
@@ -994,6 +996,8 @@ if ($method === 'POST') {
         $durationSecs = (int)($_POST['duration_secs'] ?? 0);
         $appVersion   = substr(trim($_POST['app_version'] ?? ''), 0, 20);
         $sessionId    = substr(trim($_POST['session_id'] ?? ''), 0, 80);
+        // recovery=1 → bytes are metered against the hidden reserve, NOT visible quota.
+        $isRecovery   = (int)($_POST['recovery'] ?? 0) === 1;
         if (!$deviceId || $durationSecs < 1) err('invalid session data');
 
         $pdo = db();
@@ -1032,17 +1036,46 @@ if ($method === 'POST') {
         ]);
 
         // Accumulate quota ONLY when this is a new (non-duplicate) session row,
-        // and clamp so used can never exceed total.
+        // and clamp so used can never exceed total. Recovery-mode bytes are metered
+        // against the hidden reserve instead of the visible package.
         $total = $bytesSent + $bytesRecv;
         if ($ins->rowCount() > 0 && $total > 0) {
-            $pdo->prepare(
-                "UPDATE devices
-                    SET quota_bytes_used = MIN(quota_bytes_total, quota_bytes_used + ?),
-                        last_seen = datetime('now')
-                  WHERE device_id = ?"
-            )->execute([$total, $deviceId]);
+            if ($isRecovery) {
+                ar_meter_recovery($pdo, $deviceId, $total);
+                $pdo->prepare("UPDATE devices SET last_seen=datetime('now') WHERE device_id=?")
+                    ->execute([$deviceId]);
+            } else {
+                $pdo->prepare(
+                    "UPDATE devices
+                        SET quota_bytes_used = MIN(quota_bytes_total, quota_bytes_used + ?),
+                            last_seen = datetime('now')
+                      WHERE device_id = ?"
+                )->execute([$total, $deviceId]);
+            }
         }
-        ok(['recorded' => $ins->rowCount() > 0]);
+        ok(['recorded' => $ins->rowCount() > 0, 'recovery' => $isRecovery]);
+    }
+
+    if ($action === 'track-event') {
+        // Lightweight client analytics sink (fire-and-forget). Used by the Premium
+        // screen and others. Best-effort logging only — never authoritative.
+        $deviceId   = trim($_POST['device_id'] ?? '');
+        $event      = substr(trim($_POST['event'] ?? ''), 0, 64);
+        $props      = substr((string)($_POST['props'] ?? ''), 0, 1000);
+        $appVersion = substr(trim($_POST['app_version'] ?? ''), 0, 20);
+        if ($event === '') err('missing event');
+        $pdo = db();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS app_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id   TEXT NOT NULL DEFAULT '',
+            event       TEXT NOT NULL,
+            props       TEXT NOT NULL DEFAULT '',
+            app_version TEXT NOT NULL DEFAULT '',
+            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        )");
+        $pdo->prepare("INSERT INTO app_events (device_id, event, props, app_version) VALUES (?,?,?,?)")
+            ->execute([$deviceId, $event, $props, $appVersion]);
+        ok(['logged' => true]);
     }
 
     if ($action === 'transfer-quota') {

@@ -35,7 +35,7 @@ import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
 import { BottomNav, NavTab }        from '../components/BottomNav';
 import { Toast }                    from '../components/Toast';
 import { BiometricLockScreen }      from '../components/BiometricLockScreen';
-import { UpgradeScreen }            from '../screens/UpgradeScreen';
+import { PremiumScreen }            from '../screens/PremiumScreen';
 import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
 import { TransferScreen }          from '../screens/TransferScreen';
@@ -370,6 +370,21 @@ function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
 
 // ── Stack adapters ────────────────────────────────────────────────────────────
 
+// Converts a silent boot failure (the old white screen) into a visible,
+// screenshot-able alert and runs a safe recovery so the app never dead-ends.
+// Diagnostic aid for the v0.9.3x first-run flow.
+function reportBootFailure(where: string, err: unknown, recover?: () => void) {
+  const detail = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : (err ? String(err) : '');
+  // eslint-disable-next-line no-console
+  console.error('[Boot]', where, detail);
+  Alert.alert(
+    'Startup diagnostic',
+    `${where}\n\n${detail.slice(0, 600) || '(no error message — likely a hung network/native call)'}`,
+    [{ text: 'Continue', onPress: () => recover?.() }],
+    { cancelable: false },
+  );
+}
+
 async function tryAutoRegister(): Promise<boolean> {
   try {
     const deviceId    = await getStableDeviceId();
@@ -399,53 +414,55 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
   return (
     <SplashScreen
       onFinish={async () => {
-        const result = await runBootSequence();
-        const { hasOnboarded, hasSelectedLanguage, hasSeenWelcome } = useSettingsStore.getState();
+        // The splash has already faded to opacity 0 by the time this runs, so any
+        // unhandled throw OR a hung await here leaves a silent white screen that the
+        // root ErrorBoundary can't catch (async). Track the step, run a watchdog,
+        // and surface failures on-screen so boot can never dead-end invisibly.
+        let step = 'runBootSequence';
+        const watchdog = setTimeout(() => {
+          reportBootFailure(`Splash stalled at: ${step}`, null, () => navigation.replace('Auth'));
+        }, 12_000);
+        try {
+          const result = await runBootSequence();
+          step = 'readSettings';
+          const { hasOnboarded, hasSelectedLanguage, hasSeenWelcome } = useSettingsStore.getState();
 
-        if (!hasSelectedLanguage) {
-          navigation.replace('Language');
-          return;
-        }
+          if (!hasSelectedLanguage) { clearTimeout(watchdog); navigation.replace('Language'); return; }
+          if (!hasOnboarded)        { clearTimeout(watchdog); navigation.replace('Onboarding'); return; }
 
-        if (!hasOnboarded) {
-          navigation.replace('Onboarding');
-          return;
-        }
-
-        if (result.status === 'auth_required') {
-          const registered = await tryAutoRegister();
-          if (registered) {
-            navigation.replace('Welcome');
-          } else {
-            navigation.replace('Auth');
+          if (result.status === 'auth_required') {
+            step = 'autoRegister';
+            const registered = await tryAutoRegister();
+            clearTimeout(watchdog);
+            navigation.replace(registered ? 'Welcome' : 'Auth');
+            return;
           }
-          return;
-        }
 
-        // Already authenticated — refresh registration in background so admin shows
-        // current device/version immediately, even if the user never logged out.
-        getStableDeviceId().then(async (deviceId) => {
-          const fingerprint = await getDeviceFingerprint().catch(() => ({}));
-          const { language } = useSettingsStore.getState();
-          const entitlement = await registerDevice(deviceId, 'android', { language, fingerprint });
-          if (entitlement.device_id && entitlement.device_id !== deviceId) {
-            await saveStableDeviceId(entitlement.device_id).catch(() => {});
+          // Already authenticated — refresh registration in background so admin shows
+          // current device/version immediately, even if the user never logged out.
+          getStableDeviceId().then(async (deviceId) => {
+            const fingerprint = await getDeviceFingerprint().catch(() => ({}));
+            const { language } = useSettingsStore.getState();
+            const entitlement = await registerDevice(deviceId, 'android', { language, fingerprint });
+            if (entitlement.device_id && entitlement.device_id !== deviceId) {
+              await saveStableDeviceId(entitlement.device_id).catch(() => {});
+            }
+            useAuthStore.getState().updateFromEntitlement(entitlement);
+            useInboxStore.getState().refresh(entitlement.device_id || deviceId).catch(() => {});
+            useDMStore.getState().refresh(entitlement.device_id || deviceId).catch(() => {});
+            claimPendingReferral().catch(() => {});
+          }).catch(() => {});
+
+          clearTimeout(watchdog);
+          if (!hasSeenWelcome) { navigation.replace('Welcome'); return; }
+
+          navigation.replace('Main');
+          if (result.shouldAutoConnect) {
+            setTimeout(() => useVpnStore.getState().connect(), 600);
           }
-          useAuthStore.getState().updateFromEntitlement(entitlement);
-          useInboxStore.getState().refresh(entitlement.device_id || deviceId).catch(() => {});
-          useDMStore.getState().refresh(entitlement.device_id || deviceId).catch(() => {});
-          claimPendingReferral().catch(() => {});
-        }).catch(() => {});
-
-        if (!hasSeenWelcome) {
-          navigation.replace('Welcome');
-          return;
-        }
-
-        navigation.replace('Main');
-
-        if (result.shouldAutoConnect) {
-          setTimeout(() => useVpnStore.getState().connect(), 600);
+        } catch (err) {
+          clearTimeout(watchdog);
+          reportBootFailure(`Splash threw at: ${step}`, err, () => navigation.replace('Auth'));
         }
       }}
     />
@@ -479,12 +496,26 @@ function OnboardingAdapter({ navigation }: ScreenAdapterProps) {
   return (
     <OnboardingScreen
       onFinish={async () => {
-        completeOnboarding();
-        if (useAuthStore.getState().isAuthenticated) {
-          navigation.replace('Main');
-        } else {
-          const registered = await tryAutoRegister();
-          navigation.replace(registered ? 'Welcome' : 'Auth');
+        // Same hazard as SplashAdapter: an unhandled throw/hang here would strand
+        // the user on the last slide. Watchdog + try/catch make it visible + safe.
+        let step = 'completeOnboarding';
+        const watchdog = setTimeout(() => {
+          reportBootFailure(`Onboarding stalled at: ${step}`, null, () => navigation.replace('Auth'));
+        }, 12_000);
+        try {
+          completeOnboarding();
+          if (useAuthStore.getState().isAuthenticated) {
+            clearTimeout(watchdog);
+            navigation.replace('Main');
+          } else {
+            step = 'autoRegister';
+            const registered = await tryAutoRegister();
+            clearTimeout(watchdog);
+            navigation.replace(registered ? 'Welcome' : 'Auth');
+          }
+        } catch (err) {
+          clearTimeout(watchdog);
+          reportBootFailure(`Onboarding threw at: ${step}`, err, () => navigation.replace('Auth'));
         }
       }}
     />
@@ -552,6 +583,9 @@ export function AppNavigator() {
             <SettingsScreen
               onBack={() => navigation.goBack()}
               onProfileImport={() => navigation.navigate('ProfileImport')}
+              onSmartConnect={() => navigation.navigate('Main', { screen: 'AI' })}
+              onActivity={() => navigation.navigate('Main', { screen: 'Activity' })}
+              onDiagnostics={() => navigation.navigate('Diagnostics')}
             />
           )}
         </Stack.Screen>
@@ -568,7 +602,7 @@ export function AppNavigator() {
           options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
         >
           {({ navigation }) => (
-            <UpgradeScreen onBack={() => navigation.goBack()} />
+            <PremiumScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen

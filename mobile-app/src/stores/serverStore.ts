@@ -19,12 +19,9 @@ export interface ServerRecord {
 }
 
 // Coming-soon placeholder entries — shown greyed out, never selectable
-export const COMING_SOON_SERVERS: ServerRecord[] = [
-  { id: 'cs-finland',     country: 'Finland',     city: 'Helsinki', flag: '🇫🇮', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
-  { id: 'cs-norway',      country: 'Norway',      city: 'Oslo',     flag: '🇳🇴', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
-  { id: 'cs-greece',      country: 'Greece',      city: 'Athens',   flag: '🇬🇷', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
-  { id: 'cs-netherlands', country: 'Netherlands', city: 'Amsterdam',flag: '🇳🇱', ping: 0, load: 0, protocol: 'Reality', comingSoon: true },
-];
+// "Coming soon" placeholders removed from the Servers page (v0.9.43) — show only
+// real, connectable nodes. Keep the export (empty) so the screen's filter no-ops.
+export const COMING_SOON_SERVERS: ServerRecord[] = [];
 
 export type FilterTab = 'All' | 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming';
 export const FILTER_TABS: FilterTab[] = ['All', 'Recommended', 'Fastest', 'Stealth', 'Streaming'];
@@ -342,7 +339,7 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-ws',
-          country:   'SetaLink Edge',
+          country:   'Realink Edge',
           city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      55,
@@ -353,7 +350,7 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-xhttp',
-          country:   'SetaLink Edge',
+          country:   'Realink Edge',
           city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      50,

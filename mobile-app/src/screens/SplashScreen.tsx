@@ -14,6 +14,7 @@ import {
   View, Text, Animated, StyleSheet, Dimensions,
 } from 'react-native';
 import { Colors, Typography, Animation } from '../design/tokens';
+import { APP_VERSION } from '../utils/version';
 
 const { width, height } = Dimensions.get('window');
 
@@ -148,8 +149,7 @@ export function SplashScreen({ onFinish }: Props) {
         {/* Wordmark */}
         <Animated.View style={{ opacity: wordOpacity }}>
           <Text style={styles.wordmark}>
-            <Text style={styles.wordmarkAccent}>S</Text>eta
-            <Text style={styles.wordmarkAccent}>L</Text>ink
+            <Text style={styles.wordmarkAccent}>R</Text>ealink
           </Text>
 
         </Animated.View>
@@ -162,7 +162,7 @@ export function SplashScreen({ onFinish }: Props) {
 
       {/* Version tag */}
       <Animated.Text style={[styles.version, { opacity: tagOpacity }]}>
-        v0.7.0
+        v{APP_VERSION}
       </Animated.Text>
     </Animated.View>
   );

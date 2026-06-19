@@ -19,7 +19,7 @@ object NotificationHelper {
     // Separate channel for direct messages so users can mute VPN status and keep
     // message alerts (or vice-versa). Body is kept off the lock screen (PRIVATE).
     const val MESSAGES_CHANNEL_ID   = "setalink_messages"
-    private const val MESSAGES_CHANNEL_NAME = "SetaLink Messages"
+    private const val MESSAGES_CHANNEL_NAME = "Realink Messages"
     private const val MESSAGES_BASE_ID = 2000
 
     fun createChannel(context: Context) {
@@ -92,7 +92,7 @@ object NotificationHelper {
         )
 
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setContentTitle("SetaLink VPN")
+            .setContentTitle("Realink VPN")
             .setContentText("Connected — your traffic is protected")
             .setSmallIcon(R.drawable.ic_stat_vpn)
             .setOngoing(true)
@@ -104,7 +104,7 @@ object NotificationHelper {
         createChannel(context)
 
         return NotificationCompat.Builder(context, CHANNEL_ID)
-            .setContentTitle("SetaLink VPN")
+            .setContentTitle("Realink VPN")
             .setContentText("Connecting…")
             .setSmallIcon(R.drawable.ic_stat_vpn)
             .setOngoing(true)

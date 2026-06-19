@@ -10,6 +10,8 @@ const VALID_PKGS   = ['7days', '30days', 'unlimited', '10GB', '20GB', '30GB'];
 
 // Shared quota-economy ledger / transfer / milestone / package logic.
 require_once __DIR__ . '/../lib/quota_economy.php';
+require_once __DIR__ . '/../lib/ads_recovery.php';
+require_once __DIR__ . '/../lib/payments.php';
 require_once __DIR__ . '/../lib/messaging.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -952,6 +954,59 @@ if ($method === 'POST') {
             if (array_key_exists($k, $parsed)) $st->execute([$k, (string)$parsed[$k]]);
         }
         api_ok(['saved' => true]);
+    }
+    if ($action === 'save-ads-config') {
+        // Remote-tune rewarded-ads + recovery economy without DB access or an APK
+        // update. Allowlist = the ad/recovery config keys (see lib/ads_recovery.php).
+        $allowed = array_keys(ar_defaults());
+        $db2 = open_analytics_db();
+        $st = $db2->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
+        $saved = [];
+        foreach ($allowed as $k) {
+            if (!array_key_exists($k, $parsed)) continue;
+            $st->execute([$k, (string)$parsed[$k]]);
+            $saved[] = $k;
+        }
+        api_ok(['saved' => $saved]);
+    }
+    if ($action === 'save-payments-config') {
+        // Remote-tune REAL/USDT token addresses, wallets, discount, window, indexer.
+        $allowed = array_keys(pay_defaults());
+        $db2 = open_analytics_db();
+        $st = $db2->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
+        $saved = [];
+        foreach ($allowed as $k) {
+            if (!array_key_exists($k, $parsed)) continue;
+            $st->execute([$k, (string)$parsed[$k]]);
+            $saved[] = $k;
+        }
+        api_ok(['saved' => $saved]);
+    }
+    if ($action === 'save-package') {
+        // Upsert a premium package (admin package editor). package_id required.
+        $pid = trim((string)($parsed['package_id'] ?? ''));
+        if ($pid === '') api_err('package_id required');
+        $db2 = open_analytics_db();
+        pay_init_tables($db2);
+        $db2->prepare(
+            "INSERT INTO premium_packages
+                (package_id, gb_amount, usdt_price, real_price, real_discount_percent, is_recommended, is_active, display_order, updated_at)
+             VALUES (?,?,?,?,?,?,?,?,datetime('now'))
+             ON CONFLICT(package_id) DO UPDATE SET
+                gb_amount=excluded.gb_amount, usdt_price=excluded.usdt_price, real_price=excluded.real_price,
+                real_discount_percent=excluded.real_discount_percent, is_recommended=excluded.is_recommended,
+                is_active=excluded.is_active, display_order=excluded.display_order, updated_at=datetime('now')"
+        )->execute([
+            $pid,
+            max(0, (int)($parsed['gb_amount'] ?? 0)),
+            max(0, (float)($parsed['usdt_price'] ?? 0)),
+            max(0, (float)($parsed['real_price'] ?? 0)),
+            max(0, (float)($parsed['real_discount_percent'] ?? 0)),
+            (int)(bool)($parsed['is_recommended'] ?? 0),
+            array_key_exists('is_active', $parsed) ? (int)(bool)$parsed['is_active'] : 1,
+            max(0, (int)($parsed['display_order'] ?? 0)),
+        ]);
+        api_ok(['saved' => $pid]);
     }
     if ($action === 'save-remote-config') {
         $allowed_rc_keys = [
@@ -1988,6 +2043,216 @@ switch ($action) {
             'blocked'              => $blocked,
             'package_distribution' => array_column($pkgRows, 'cnt', 'plan'),
             'version_distribution' => $verRows,
+        ]);
+        break;
+
+    case 'dash-timeseries':
+        // 30-day daily series for the Analytics charts. Built from existing
+        // timestamp columns (no extra logging) — new installs, VPN sessions,
+        // data volume, plus a 30-day protocol mix. A contiguous date axis is
+        // generated in PHP so days with zero activity still render on the chart.
+        $db = open_analytics_db();
+        init_device_tables($db);
+        // vpn_sessions is normally created by public/api.php on first session;
+        // create it defensively so the charts render on a fresh analytics DB.
+        $db->exec("CREATE TABLE IF NOT EXISTS vpn_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT, protocol TEXT,
+            bytes_sent INTEGER DEFAULT 0, bytes_recv INTEGER DEFAULT 0,
+            duration_secs INTEGER DEFAULT 0, app_version TEXT DEFAULT '',
+            probe_result TEXT DEFAULT 'unknown', error_reason TEXT DEFAULT '',
+            started_at TEXT, ended_at TEXT DEFAULT (datetime('now')), client_ip TEXT DEFAULT ''
+        )");
+
+        $ts_days = (int)($_GET['days'] ?? 30);
+        if ($ts_days < 7)   $ts_days = 7;
+        if ($ts_days > 180) $ts_days = 180;
+
+        // Contiguous axis: oldest → today (UTC, matching datetime('now')).
+        $axis = [];
+        $idx  = [];
+        for ($i = $ts_days - 1; $i >= 0; $i--) {
+            $d = gmdate('Y-m-d', strtotime("-$i days"));
+            $idx[$d] = count($axis);
+            $axis[]  = $d;
+        }
+        $fill = function (string $sql) use ($db, $axis, $idx): array {
+            $out = array_fill(0, count($axis), 0);
+            foreach ($db->query($sql) as $row) {
+                $d = (string)$row['d'];
+                if (isset($idx[$d])) $out[$idx[$d]] = (float)$row['v'] + 0;
+            }
+            return $out;
+        };
+
+        $since = "datetime('now','-" . $ts_days . " days')";
+
+        $installs = $fill("SELECT date(created_at) d, COUNT(*) v FROM devices
+                           WHERE created_at >= $since GROUP BY d");
+        $sessions = $fill("SELECT date(COALESCE(started_at,ended_at)) d, COUNT(*) v FROM vpn_sessions
+                           WHERE COALESCE(started_at,ended_at) >= $since GROUP BY d");
+        // Bytes → GB, rounded to 2 decimals client-side; send raw GB float here.
+        $gb_raw   = $fill("SELECT date(COALESCE(started_at,ended_at)) d,
+                                  SUM(bytes_sent+bytes_recv)/1073741824.0 v FROM vpn_sessions
+                           WHERE COALESCE(started_at,ended_at) >= $since GROUP BY d");
+        $gb = array_map(function ($x) { return round($x, 3); }, $gb_raw);
+
+        // 30-day protocol mix from real sessions (doughnut).
+        $ts_proto = [];
+        foreach ($db->query("SELECT COALESCE(NULLIF(protocol,''),'unknown') p, COUNT(*) c
+                             FROM vpn_sessions WHERE COALESCE(started_at,ended_at) >= $since
+                             GROUP BY 1 ORDER BY c DESC") as $pr) {
+            $ts_proto[(string)$pr['p']] = (int)$pr['c'];
+        }
+
+        api_ok([
+            'days'         => $axis,
+            'installs'     => $installs,
+            'sessions'     => $sessions,
+            'gb'           => $gb,
+            'protocol_mix' => $ts_proto,
+            'window_days'  => $ts_days,
+            'checked_at'   => date('Y-m-d H:i:s'),
+        ]);
+        break;
+
+    case 'ads-metrics':
+        // Rewarded-ads revenue + recovery-quota overview for the admin dashboard.
+        // All numbers derive from ad_reward_events / recovery_sessions / the ledger;
+        // revenue & cost are estimates driven by remote config (ecpm, egress cost).
+        $db = open_analytics_db();
+        ar_init_tables($db);
+        $cfg = ar_config($db);
+
+        $confirmed = "status='confirmed'";
+        $cnt = function (string $extra) use ($db, $confirmed): int {
+            return (int)$db->query("SELECT COUNT(*) FROM ad_reward_events WHERE $confirmed $extra")->fetchColumn();
+        };
+        $ads_today = $cnt("AND confirmed_at >= date('now')");
+        $ads_7d    = $cnt("AND confirmed_at >= datetime('now','-7 days')");
+        $ads_30d   = $cnt("AND confirmed_at >= datetime('now','-30 days')");
+        $ads_all   = $cnt("");
+
+        // GB granted from ads (ledger is source of truth for granted bytes).
+        $ad_granted_bytes = (int)$db->query(
+            "SELECT COALESCE(SUM(bytes),0) FROM quota_transactions WHERE type='ad_reward'")->fetchColumn();
+        // Recovery GB used (metered against the hidden reserve).
+        $recovery_used_bytes = (int)$db->query(
+            "SELECT COALESCE(SUM(recovery_used_bytes),0) FROM devices")->fetchColumn();
+        // Distinct devices that ever entered recovery = saved from zero-data deadlock.
+        $users_saved = (int)$db->query(
+            "SELECT COUNT(DISTINCT device_id) FROM recovery_sessions")->fetchColumn();
+        // Suspicious events awaiting review.
+        $review_cnt = (int)$db->query(
+            "SELECT COUNT(*) FROM ad_reward_events WHERE status='review'")->fetchColumn();
+        $review = $db->query(
+            "SELECT device_id, nonce, risk_score, risk_flags, source, created_at
+             FROM ad_reward_events WHERE status='review' ORDER BY id DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+
+        // Revenue / cost estimates.
+        $ecpm     = (float)$cfg['ecpm_usd'];
+        $cost_gb  = (float)$cfg['egress_cost_per_gb_usd'];
+        $rev_all  = round($ads_all * $ecpm / 1000, 2);
+        $rev_30d  = round($ads_30d * $ecpm / 1000, 2);
+        $ad_gb    = $ad_granted_bytes / 1073741824.0;
+        $rev_per_gb = $ad_gb > 0 ? round($rev_all / $ad_gb, 4) : 0.0;
+
+        // 30-day contiguous ads/day series + reward GB/day.
+        $axis = []; $idx = [];
+        for ($i = 29; $i >= 0; $i--) { $d = gmdate('Y-m-d', strtotime("-$i days")); $idx[$d] = count($axis); $axis[] = $d; }
+        $series = array_fill(0, count($axis), 0);
+        foreach ($db->query("SELECT date(confirmed_at) d, COUNT(*) c FROM ad_reward_events
+                             WHERE status='confirmed' AND confirmed_at >= datetime('now','-30 days')
+                             GROUP BY d") as $r) {
+            if (isset($idx[(string)$r['d']])) $series[$idx[(string)$r['d']]] = (int)$r['c'];
+        }
+
+        api_ok([
+            'ads_watched'      => ['today' => $ads_today, 'week' => $ads_7d, 'month' => $ads_30d, 'all' => $ads_all],
+            'est_revenue_usd'  => ['month' => $rev_30d, 'all' => $rev_all],
+            'ad_gb_granted'    => round($ad_gb, 3),
+            'recovery_gb_used' => round($recovery_used_bytes / 1073741824.0, 3),
+            'users_saved'      => $users_saved,
+            'review_count'     => $review_cnt,
+            'review'           => $review,
+            'revenue_per_gb'   => $rev_per_gb,
+            'cost_per_gb'      => $cost_gb,
+            'config'           => [
+                'ecpm_usd'                  => $ecpm,
+                'egress_cost_per_gb_usd'    => $cost_gb,
+                'ad_reward_bytes'           => (int)$cfg['ad_reward_bytes'],
+                'ad_daily_cap'              => (int)$cfg['ad_daily_cap'],
+                'ad_cooldown_secs'          => (int)$cfg['ad_cooldown_secs'],
+                'hidden_recovery_bytes'     => (int)$cfg['hidden_recovery_bytes'],
+                'recovery_throttle_kbps'    => (int)$cfg['recovery_throttle_kbps'],
+                'admob_ssv_enabled'         => (int)$cfg['admob_ssv_enabled'],
+                'admob_configured'          => ($cfg['admob_rewarded_unit_id'] !== '' ? 1 : 0),
+                'recovery_node_configured'  => ($cfg['recovery_exit_uuid'] !== '' ? 1 : 0),
+            ],
+            'days'             => $axis,
+            'ads_series'       => $series,
+            // Raw editable config (admin-only surface) for the inline config form.
+            'editable'         => array_intersect_key($cfg, ar_defaults()),
+            'checked_at'       => date('Y-m-d H:i:s'),
+        ]);
+        break;
+
+    case 'payments-metrics':
+        // Premium payments overview: packages, REAL vs USDT revenue/GB, discount
+        // cost/value, and intent lists (pending/confirmed/failed).
+        $db = open_analytics_db();
+        pay_init_tables($db);
+        $pcfg = pay_config($db);
+
+        // Revenue (USD-equivalent; real_price is a USD-equivalent) + GB sold, by method.
+        $byMethod = ['REAL' => ['revenue' => 0.0, 'gb' => 0, 'count' => 0],
+                     'USDT' => ['revenue' => 0.0, 'gb' => 0, 'count' => 0]];
+        foreach ($db->query("SELECT method, COALESCE(SUM(amount),0) rev, COALESCE(SUM(gb_amount),0) gb, COUNT(*) c
+                             FROM payment_intents WHERE status='confirmed' GROUP BY method") as $r) {
+            $m = $r['method'] === 'REAL' ? 'REAL' : 'USDT';
+            $byMethod[$m] = ['revenue' => round((float)$r['rev'], 2), 'gb' => (int)$r['gb'], 'count' => (int)$r['c']];
+        }
+
+        // REAL discount cost/value: USDT-equivalent foregone vs REAL volume taken.
+        $disc = $db->query("SELECT COALESCE(SUM(p.usdt_price - i.amount),0) cost, COALESCE(SUM(i.amount),0) vol
+                            FROM payment_intents i JOIN premium_packages p ON p.package_id=i.package_id
+                            WHERE i.status='confirmed' AND i.method='REAL'")->fetch(PDO::FETCH_ASSOC)
+                ?: ['cost' => 0, 'vol' => 0];
+
+        $counts = [];
+        foreach ($db->query("SELECT status, COUNT(*) c FROM payment_intents GROUP BY status") as $r) {
+            $counts[(string)$r['status']] = (int)$r['c'];
+        }
+        $lst = function (string $where) use ($db): array {
+            return $db->query(
+                "SELECT payment_id, device_id, package_id, method, amount, gb_amount, status, tx_hash, created_at, confirmed_at
+                 FROM payment_intents WHERE $where ORDER BY payment_id DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+        };
+
+        api_ok([
+            'packages'      => pay_packages($db, false),   // all, incl inactive (admin)
+            'by_method'     => $byMethod,
+            'discount_cost' => round((float)$disc['cost'], 2),
+            'real_volume'   => round((float)$disc['vol'], 2),
+            'counts'        => $counts,
+            'pending'       => $lst("status='pending'"),
+            'confirmed'     => $lst("status='confirmed'"),
+            'failed'        => $lst("status IN ('expired','rejected')"),
+            'config'        => [
+                'real_token_address'      => $pcfg['real_token_address'],
+                'real_destination_wallet' => $pcfg['real_destination_wallet'],
+                'real_discount_percent'   => $pcfg['real_discount_percent'],
+                'usdt_token_address'      => $pcfg['usdt_token_address'],
+                'usdt_destination_wallet' => $pcfg['usdt_destination_wallet'],
+                'usdt_chain'              => $pcfg['usdt_chain'],
+                'payment_window_secs'     => (int)$pcfg['payment_window_secs'],
+                'ton_indexer_configured'  => ($pcfg['ton_indexer_key'] !== '' ? 1 : 0),
+                'real_ready'              => pay_method_ready($pcfg, 'REAL') ? 1 : 0,
+                'usdt_ready'              => pay_method_ready($pcfg, 'USDT') ? 1 : 0,
+                'auto_verify'             => ($pcfg['ton_indexer_key'] !== '' ? 1 : 0),
+            ],
+            'editable'      => array_intersect_key($pcfg, pay_defaults()),
+            'checked_at'    => date('Y-m-d H:i:s'),
         ]);
         break;
 

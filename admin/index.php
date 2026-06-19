@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','iran','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -45,6 +45,9 @@ function icon(string $name): string {
         'plus'    => '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
         'gift'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>',
         'person'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+        'chart'   => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
+        'dollar'  => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+        'card'    => '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
     ];
     return $icons[$name] ?? '';
 }
@@ -78,6 +81,15 @@ function icon(string $name): string {
     <div class="nav-section">Monitor</div>
     <div class="nav-item<?= $page==='dashboard'?' active':'' ?>" data-page="dashboard">
       <?= icon('grid') ?> Dashboard
+    </div>
+    <div class="nav-item<?= $page==='analytics'?' active':'' ?>" data-page="analytics">
+      <?= icon('chart') ?> Analytics
+    </div>
+    <div class="nav-item<?= $page==='ads'?' active':'' ?>" data-page="ads">
+      <?= icon('dollar') ?> Ads &amp; Revenue
+    </div>
+    <div class="nav-item<?= $page==='payments'?' active':'' ?>" data-page="payments">
+      <?= icon('card') ?> Payments
     </div>
     <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
       <?= icon('globe') ?> Iran Debug
@@ -152,6 +164,14 @@ function icon(string $name): string {
         <div class="panel-body" id="dmStatsBody"><div class="loading"><div class="spinner"></div></div></div>
       </div>
 
+      <div class="panel" id="nodesPanel">
+        <div class="panel-header">
+          <span class="panel-title">🛰️ VPN Nodes</span>
+          <button class="btn btn-ghost btn-sm" id="nodesRefreshBtn">Refresh</button>
+        </div>
+        <div class="panel-body" id="nodesBody"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+
       <div class="two-col">
         <div class="panel">
           <div class="panel-header">
@@ -222,6 +242,162 @@ function icon(string $name): string {
             <thead><tr><th>Protocol / SNI</th><th>Success Rate</th><th>Total</th><th>Avg Latency</th><th>Devices</th></tr></thead>
             <tbody id="sniLeaderboard"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: ANALYTICS                                              -->
+    <!-- ============================================================ -->
+    <div data-view="analytics" hidden>
+      <div class="stat-grid" id="anaStats">
+        <div class="stat-card"><div class="stat-label">Installs (30d)</div><div class="stat-value" id="anaInstalls">—</div><div class="stat-sub">new devices</div></div>
+        <div class="stat-card"><div class="stat-label">VPN Sessions (30d)</div><div class="stat-value" id="anaSessions">—</div><div class="stat-sub">connections</div></div>
+        <div class="stat-card"><div class="stat-label">Data Volume (30d)</div><div class="stat-value" id="anaGb">—</div><div class="stat-sub">sent + received</div></div>
+        <div class="stat-card"><div class="stat-label">Avg GB / Session</div><div class="stat-value" id="anaAvg">—</div><div class="stat-sub">last 30 days</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> New Installs <span class="panel-sub">per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chInstalls"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> VPN Sessions <span class="panel-sub">per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chSessions"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Data Volume <span class="panel-sub">GB per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chGb"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Protocol Mix <span class="panel-sub">sessions, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chProto"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('package') ?> Package Distribution <span class="panel-sub">all devices</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chPkg"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> App Versions <span class="panel-sub">top 10</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chVer"></canvas></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: ADS & REVENUE                                          -->
+    <!-- ============================================================ -->
+    <div data-view="ads" hidden>
+      <div id="adsConfigBanner" class="panel" style="margin-bottom:1rem;display:none">
+        <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="adsConfigBannerText"></div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Ads Watched (today)</div><div class="stat-value" id="adsToday">—</div><div class="stat-sub" id="adsWeek">— this week</div></div>
+        <div class="stat-card"><div class="stat-label">Est. Revenue (30d)</div><div class="stat-value" id="adsRev30">—</div><div class="stat-sub" id="adsRevAll">— all time</div></div>
+        <div class="stat-card"><div class="stat-label">GB Granted from Ads</div><div class="stat-value" id="adsGbGranted">—</div><div class="stat-sub">ledger credited</div></div>
+        <div class="stat-card"><div class="stat-label">Users Saved</div><div class="stat-value" id="adsSaved">—</div><div class="stat-sub">from zero-data deadlock</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Rewarded Ads <span class="panel-sub">per day, 30d</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chAds"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Recovery Quota <span class="panel-sub">hidden-reserve usage</span></span></div>
+          <div class="panel-body">
+            <div class="stat-grid" style="grid-template-columns:1fr 1fr">
+              <div class="stat-card"><div class="stat-label">Recovery GB Used</div><div class="stat-value" id="adsRecGb">—</div><div class="stat-sub">metered to reserve</div></div>
+              <div class="stat-card"><div class="stat-label">Revenue / GB</div><div class="stat-value" id="adsRevGb">—</div><div class="stat-sub">est., from ads</div></div>
+              <div class="stat-card"><div class="stat-label">Cost / GB</div><div class="stat-value" id="adsCostGb">—</div><div class="stat-sub">egress estimate</div></div>
+              <div class="stat-card"><div class="stat-label">Margin / GB</div><div class="stat-value" id="adsMarginGb">—</div><div class="stat-sub">revenue − cost</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('person') ?> Suspicious Reward Events <span class="panel-sub" id="adsReviewCount">review queue</span></span></div>
+        <div class="panel-body">
+          <table class="data-table" style="width:100%">
+            <thead><tr><th>Device</th><th>Risk</th><th>Flags</th><th>Source</th><th>When</th></tr></thead>
+            <tbody id="adsReviewBody"><tr><td colspan="5" style="opacity:.6">No events under review.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Config <span class="panel-sub">remote-tunable · no APK update needed</span></span>
+          <button class="btn btn-small" id="adsCfgSave" type="button">Save config</button></div>
+        <div class="panel-body">
+          <div id="adsConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.6rem .9rem"></div>
+          <div id="adsCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: PAYMENTS                                               -->
+    <!-- ============================================================ -->
+    <div data-view="payments" hidden>
+      <div id="payConfigBanner" class="panel" style="margin-bottom:1rem;display:none">
+        <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="payConfigBannerText"></div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card" style="border:1px solid #caa53a55"><div class="stat-label">REAL Revenue</div><div class="stat-value" id="payRealRev" style="color:#e8c45a">—</div><div class="stat-sub" id="payRealGb">— GB sold</div></div>
+        <div class="stat-card"><div class="stat-label">USDT Revenue</div><div class="stat-value" id="payUsdtRev">—</div><div class="stat-sub" id="payUsdtGb">— GB sold</div></div>
+        <div class="stat-card"><div class="stat-label">REAL Discount Cost</div><div class="stat-value" id="payDiscCost">—</div><div class="stat-sub">USDT-equiv. foregone</div></div>
+        <div class="stat-card"><div class="stat-label">Confirmed / Pending</div><div class="stat-value" id="payCounts">—</div><div class="stat-sub" id="payFailed">— failed/expired</div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('card') ?> Revenue by Method <span class="panel-sub">USD-equivalent</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:260px"><canvas id="chPayMethod"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> GB Sold by Method</span></div>
+          <div class="panel-body"><div style="position:relative;height:260px"><canvas id="chPayGb"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Premium Packages <span class="panel-sub">remote-editable · prices never hardcoded in app</span></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="data-table" style="width:100%;min-width:720px">
+            <thead><tr><th>package_id</th><th>GB</th><th>USDT $</th><th>REAL $</th><th>Disc %</th><th>Rec</th><th>Active</th><th>Order</th><th></th></tr></thead>
+            <tbody id="payPkgBody"></tbody>
+          </table>
+          <div id="payPkgMsg" style="margin-top:.5rem;font-size:.8rem;opacity:.7"></div>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Pending Intents</span></div>
+          <div class="panel-body" style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr><th>#</th><th>Device</th><th>Pkg</th><th>Method</th><th>$</th><th>Created</th></tr></thead><tbody id="payPendingBody"><tr><td colspan="6" style="opacity:.6">none</td></tr></tbody></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Confirmed Payments</span></div>
+          <div class="panel-body" style="overflow-x:auto"><table class="data-table" style="width:100%"><thead><tr><th>#</th><th>Device</th><th>Pkg</th><th>Method</th><th>GB</th><th>tx</th></tr></thead><tbody id="payConfirmedBody"><tr><td colspan="6" style="opacity:.6">none</td></tr></tbody></table></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Token / Wallet Config <span class="panel-sub">REAL + USDT · remote</span></span>
+          <button class="btn btn-small" id="payCfgSave" type="button">Save config</button></div>
+        <div class="panel-body">
+          <div id="payConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:.6rem .9rem"></div>
+          <div id="payCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
         </div>
       </div>
     </div>
@@ -828,6 +1004,7 @@ function icon(string $name): string {
 <div id="toast-container"></div>
 
 <!-- ── Script ────────────────────────────────────────────────────────── -->
+<script src="vendor/chart.umd.min.js"></script>
 <script>
 'use strict';
 const CSRF     = <?= json_encode($csrf_token) ?>;
@@ -998,6 +1175,9 @@ $('sidebarOverlay').addEventListener('click', closeSidebar);
 let activeView='', refreshTimer=null;
 const pageTitles = {
   dashboard: ['Dashboard', 'live monitoring · auto-refresh 10s'],
+  analytics: ['Analytics', 'growth & usage trends · 30-day charts'],
+  ads:       ['Ads & Revenue', 'rewarded ads · recovery quota · revenue vs cost'],
+  payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
@@ -1027,6 +1207,7 @@ window.addEventListener('popstate', e => navigate(e.state?.page||'dashboard'));
 document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.addEventListener('click',()=>navigate(el.dataset.page)));
 $('refreshBtn').addEventListener('click', ()=>views[activeView]?.init?.());
 $('dmRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadMessaging(false));
+$('nodesRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadNodes());
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -1060,12 +1241,326 @@ setInterval(runHeartbeat, 30000);
 
 // ── VIEW: DASHBOARD ──────────────────────────────────────────────────
 const views = {};
+
+// ── VIEW: ANALYTICS ──────────────────────────────────────────────────
+// Chart.js (vendored, /vendor/chart.umd.min.js) over existing analytics-db
+// timestamps. No extra logging: series come from dash-timeseries + the
+// app-analytics / dash-metrics snapshots. Charts are destroyed and rebuilt
+// on every load() so re-navigating / Refresh never double-binds a canvas.
+views.analytics = {
+  charts: {},
+  PALETTE: ['#5b8cff','#22c55e','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899','#84cc16'],
+  init() { this.load(); },
+  _destroy() {
+    Object.values(this.charts).forEach(c => { try { c.destroy(); } catch (e) {} });
+    this.charts = {};
+  },
+  _baseOpts(extra) {
+    const grid = 'rgba(138,155,191,.12)', tick = '#8a9bbf';
+    return Object.assign({
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: tick, boxWidth: 12, font: { size: 11 } } } },
+      scales: {
+        x: { grid: { color: grid }, ticks: { color: tick, maxRotation: 0, autoSkip: true, font: { size: 10 } } },
+        y: { grid: { color: grid }, ticks: { color: tick, font: { size: 10 } }, beginAtZero: true },
+      },
+    }, extra || {});
+  },
+  async load() {
+    if (typeof Chart === 'undefined') return; // vendor script failed to load
+    this._destroy();
+    const [tsR, anaR, dmR] = await Promise.allSettled([
+      api.get('dash-timeseries'),
+      api.get('app-analytics'),
+      api.get('dash-metrics'),
+    ]);
+    if (tsR.status === 'fulfilled') { this.renderSummary(tsR.value); this.renderTrends(tsR.value); }
+    this.renderDistributions(
+      anaR.status === 'fulfilled' ? anaR.value : {},
+      dmR.status  === 'fulfilled' ? dmR.value  : {},
+    );
+  },
+  renderSummary(ts) {
+    const sum = a => (a || []).reduce((x, y) => x + (+y || 0), 0);
+    const inst = sum(ts.installs), sess = sum(ts.sessions), gb = sum(ts.gb);
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set('anaInstalls', inst);
+    set('anaSessions', sess);
+    set('anaGb', gb.toFixed(1) + ' GB');
+    set('anaAvg', (sess ? (gb / sess) : 0).toFixed(2) + ' GB');
+  },
+  renderTrends(ts) {
+    const labels = (ts.days || []).map(d => (d || '').slice(5)); // MM-DD
+    const blue = this.PALETTE[0], green = this.PALETTE[1], amber = this.PALETTE[2];
+    this.charts.installs = new Chart($('chInstalls'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'Installs', data: ts.installs || [], borderColor: blue,
+        backgroundColor: 'rgba(91,140,255,.15)', fill: true, tension: .3, pointRadius: 2 }] },
+      options: this._baseOpts({ plugins: { legend: { display: false } } }),
+    });
+    this.charts.sessions = new Chart($('chSessions'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Sessions', data: ts.sessions || [], backgroundColor: green, borderRadius: 3 }] },
+      options: this._baseOpts({ plugins: { legend: { display: false } } }),
+    });
+    this.charts.gb = new Chart($('chGb'), {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'GB', data: ts.gb || [], borderColor: amber,
+        backgroundColor: 'rgba(245,158,11,.15)', fill: true, tension: .3, pointRadius: 2 }] },
+      options: this._baseOpts({ plugins: { legend: { display: false } } }),
+    });
+    const proto = ts.protocol_mix || {};
+    this.charts.proto = this._doughnut('chProto', Object.keys(proto), Object.values(proto));
+  },
+  renderDistributions(ana, dm) {
+    const pkg = ana.package_distribution || {};
+    this.charts.pkg = this._doughnut('chPkg', Object.keys(pkg), Object.values(pkg));
+    const vers = (ana.version_distribution || []).slice(0, 10);
+    this.charts.ver = new Chart($('chVer'), {
+      type: 'bar',
+      data: { labels: vers.map(v => v.version || '?'), datasets: [{ label: 'Devices',
+        data: vers.map(v => +v.cnt || 0), backgroundColor: this.PALETTE[5], borderRadius: 3 }] },
+      options: this._baseOpts({ indexAxis: 'y', plugins: { legend: { display: false } } }),
+    });
+  },
+  _doughnut(canvasId, labels, data) {
+    const el = $(canvasId); if (!el) return null;
+    if (!labels.length) {
+      return new Chart(el, { type: 'doughnut',
+        data: { labels: ['No data'], datasets: [{ data: [1], backgroundColor: ['#2a3550'] }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
+    }
+    return new Chart(el, {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data, backgroundColor: this.PALETTE, borderColor: '#0f1626', borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '58%',
+        plugins: { legend: { position: 'right', labels: { color: '#8a9bbf', boxWidth: 12, font: { size: 11 } } } } },
+    });
+  },
+};
+
+// ── VIEW: ADS & REVENUE ──────────────────────────────────────────────
+// Rewarded-ads revenue + recovery-quota overview. Reuses the Chart.js infra.
+views.ads = {
+  chart: null,
+  init() {
+    const btn = $('adsCfgSave');
+    if (btn) btn.onclick = () => this.save();   // onclick = idempotent across re-inits
+    this.load();
+  },
+  async save() {
+    const body = { action: 'save-ads-config' };
+    document.querySelectorAll('#adsConfigForm input[data-cfg]').forEach(i => { body[i.dataset.cfg] = i.value; });
+    const msg = $('adsCfgMsg');
+    try {
+      const r = await api.post(body);
+      if (msg) msg.textContent = '✓ saved ' + (r.saved || []).length + ' keys';
+      if (typeof toast === 'function') toast('Ads config saved', 'ok');
+      this.load();
+    } catch (e) {
+      if (msg) msg.textContent = '✗ ' + e.message;
+    }
+  },
+  fmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+  async load() {
+    let d;
+    try { d = await api.get('ads-metrics'); } catch (e) { return; }
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    const aw = d.ads_watched || {}, rev = d.est_revenue_usd || {};
+    set('adsToday', aw.today ?? 0);
+    set('adsWeek', (aw.week ?? 0) + ' this week · ' + (aw.month ?? 0) + ' this month');
+    set('adsRev30', this.fmtUsd(rev.month));
+    set('adsRevAll', this.fmtUsd(rev.all) + ' all time');
+    set('adsGbGranted', (d.ad_gb_granted ?? 0) + ' GB');
+    set('adsSaved', d.users_saved ?? 0);
+    set('adsRecGb', (d.recovery_gb_used ?? 0) + ' GB');
+    set('adsRevGb', this.fmtUsd(d.revenue_per_gb));
+    set('adsCostGb', this.fmtUsd(d.cost_per_gb));
+    set('adsMarginGb', this.fmtUsd((+d.revenue_per_gb || 0) - (+d.cost_per_gb || 0)));
+
+    // Config banner: warn if AdMob / recovery node not yet configured.
+    const c = d.config || {}, warn = [];
+    if (!c.admob_configured)         warn.push('AdMob ad-unit not configured — rewards inert until set.');
+    if (!c.admob_ssv_enabled)        warn.push('AdMob SSV disabled — no trusted server-side verification yet.');
+    if (!c.recovery_node_configured) warn.push('Recovery exit node not configured — recovery/enter will refuse.');
+    const banner = $('adsConfigBanner');
+    if (banner) { banner.style.display = warn.length ? '' : 'none'; $('adsConfigBannerText').textContent = '⚠ ' + warn.join('  '); }
+
+    // Editable config form (remote-tunable settings).
+    const ed = d.editable || {};
+    const form = $('adsConfigForm');
+    if (form) {
+      const secret = k => /uuid|pbk|sid|app_id|unit_id/.test(k);
+      form.innerHTML = Object.keys(ed).sort().map(k => {
+        const v = ed[k] ?? '';
+        return `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem">
+          <span style="opacity:.6;font-family:monospace">${k}</span>
+          <input data-cfg="${k}" type="${secret(k)?'text':(typeof v==='number'?'number':'text')}" value="${String(v).replace(/"/g,'&quot;')}" style="padding:.4rem;border-radius:6px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff">
+        </label>`;
+      }).join('');
+    }
+
+    // Review queue.
+    const rows = d.review || [];
+    const tb = $('adsReviewBody');
+    $('adsReviewCount').textContent = (d.review_count ?? 0) + ' under review';
+    if (tb) {
+      tb.innerHTML = rows.length
+        ? rows.map(r => `<tr><td>${(r.device_id||'').slice(0,16)}</td><td>${r.risk_score}</td><td>${r.risk_flags||'—'}</td><td>${r.source||'—'}</td><td>${r.created_at||''}</td></tr>`).join('')
+        : '<tr><td colspan="5" style="opacity:.6">No events under review.</td></tr>';
+    }
+
+    // Ads/day trend.
+    if (typeof Chart !== 'undefined') {
+      if (this.chart) { try { this.chart.destroy(); } catch (e) {} }
+      const labels = (d.days || []).map(x => (x || '').slice(5));
+      this.chart = new Chart($('chAds'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Ads', data: d.ads_series || [], backgroundColor: '#22c55e', borderRadius: 3 }] },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { x: { grid: { color: 'rgba(138,155,191,.12)' }, ticks: { color: '#8a9bbf', maxRotation: 0, autoSkip: true, font: { size: 10 } } },
+                    y: { grid: { color: 'rgba(138,155,191,.12)' }, ticks: { color: '#8a9bbf', font: { size: 10 } }, beginAtZero: true } } },
+      });
+    }
+  },
+};
+
+// ── VIEW: PAYMENTS ───────────────────────────────────────────────────
+views.payments = {
+  charts: {},
+  init() {
+    const b = $('payCfgSave'); if (b) b.onclick = () => this.saveConfig();
+    this.load();
+  },
+  fmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+  async load() {
+    let d;
+    try { d = await api.get('payments-metrics'); } catch (e) { return; }
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    const bm = d.by_method || {}, real = bm.REAL || {}, usdt = bm.USDT || {};
+    set('payRealRev', this.fmtUsd(real.revenue)); set('payRealGb', (real.gb || 0) + ' GB sold');
+    set('payUsdtRev', this.fmtUsd(usdt.revenue)); set('payUsdtGb', (usdt.gb || 0) + ' GB sold');
+    set('payDiscCost', this.fmtUsd(d.discount_cost));
+    const c = d.counts || {};
+    set('payCounts', (c.confirmed || 0) + ' / ' + (c.pending || 0));
+    set('payFailed', ((c.expired || 0) + (c.rejected || 0)) + ' failed/expired');
+
+    // Config banner — clear status of each activation gate.
+    const cf = d.config || {}, warn = [];
+    warn.push(cf.real_ready ? '✓ REAL enabled' : '✗ REAL not ready (enable + token + wallet)');
+    warn.push(cf.usdt_ready ? '✓ USDT enabled' : '✗ USDT disabled (safe default until chain/wallet/token set)');
+    warn.push(cf.auto_verify ? '✓ on-chain auto-verify ON' : '✗ auto-verify OFF (set ton_indexer_key; manual approve still works)');
+    const allReady = cf.real_ready && cf.auto_verify;
+    const banner = $('payConfigBanner');
+    if (banner) {
+      banner.style.display = '';
+      $('payConfigBannerText').style.color = allReady ? '#22c55e' : '#f59e0b';
+      $('payConfigBannerText').textContent = (allReady ? '● ' : '⚠ ') + warn.join('   ·   ');
+    }
+
+    this.renderPackages(d.packages || []);
+    this.renderConfig(d.editable || {});
+    this.renderIntents(d.pending || [], d.confirmed || []);
+    this.renderCharts(real, usdt);
+  },
+  renderPackages(pkgs) {
+    const tb = $('payPkgBody'); if (!tb) return;
+    const cell = (pid, f, v, t) => `<input data-pid="${pid}" data-f="${f}" type="${t}" value="${String(v).replace(/"/g,'&quot;')}" style="width:${t==='number'?'70px':'90px'};padding:.3rem;border-radius:5px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff">`;
+    tb.innerHTML = pkgs.map(p => `<tr>
+      <td>${p.package_id}</td>
+      <td>${cell(p.package_id,'gb_amount',p.gb_amount,'number')}</td>
+      <td>${cell(p.package_id,'usdt_price',p.usdt_price,'number')}</td>
+      <td>${cell(p.package_id,'real_price',p.real_price,'number')}</td>
+      <td>${(+p.real_discount_percent).toFixed(0)}%</td>
+      <td><input data-pid="${p.package_id}" data-f="is_recommended" type="checkbox" ${p.is_recommended?'checked':''}></td>
+      <td><input data-pid="${p.package_id}" data-f="is_active" type="checkbox" ${p.is_active?'checked':''}></td>
+      <td>${cell(p.package_id,'display_order',p.display_order,'number')}</td>
+      <td><button class="btn btn-small" onclick="views.payments.savePackage('${p.package_id}')">Save</button></td>
+    </tr>`).join('');
+  },
+  async savePackage(pid) {
+    const body = { action: 'save-package', package_id: pid };
+    document.querySelectorAll(`[data-pid="${pid}"]`).forEach(i => {
+      body[i.dataset.f] = i.type === 'checkbox' ? (i.checked ? 1 : 0) : i.value;
+    });
+    try { await api.post(body); $('payPkgMsg').textContent = '✓ saved ' + pid; if (typeof toast==='function') toast('Package saved','ok'); this.load(); }
+    catch (e) { $('payPkgMsg').textContent = '✗ ' + e.message; }
+  },
+  renderConfig(ed) {
+    const form = $('payConfigForm'); if (!form) return;
+    form.innerHTML = Object.keys(ed).sort().map(k => `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem">
+      <span style="opacity:.6;font-family:monospace">${k}</span>
+      <input data-cfg="${k}" type="text" value="${String(ed[k]).replace(/"/g,'&quot;')}" style="padding:.4rem;border-radius:6px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff"></label>`).join('');
+  },
+  async saveConfig() {
+    const body = { action: 'save-payments-config' };
+    document.querySelectorAll('#payConfigForm input[data-cfg]').forEach(i => { body[i.dataset.cfg] = i.value; });
+    try { const r = await api.post(body); $('payCfgMsg').textContent = '✓ saved ' + (r.saved||[]).length + ' keys'; if (typeof toast==='function') toast('Payments config saved','ok'); this.load(); }
+    catch (e) { $('payCfgMsg').textContent = '✗ ' + e.message; }
+  },
+  renderIntents(pending, confirmed) {
+    const pb = $('payPendingBody');
+    if (pb) pb.innerHTML = pending.length ? pending.map(i => `<tr><td>${i.payment_id}</td><td>${(i.device_id||'').slice(0,12)}</td><td>${i.package_id}</td><td>${i.method}</td><td>${(+i.amount).toFixed(2)}</td><td>${i.created_at||''}</td></tr>`).join('') : '<tr><td colspan="6" style="opacity:.6">none</td></tr>';
+    const cb = $('payConfirmedBody');
+    if (cb) cb.innerHTML = confirmed.length ? confirmed.map(i => `<tr><td>${i.payment_id}</td><td>${(i.device_id||'').slice(0,12)}</td><td>${i.package_id}</td><td>${i.method}</td><td>${i.gb_amount}</td><td>${(i.tx_hash||'').slice(0,12)}</td></tr>`).join('') : '<tr><td colspan="6" style="opacity:.6">none</td></tr>';
+  },
+  renderCharts(real, usdt) {
+    if (typeof Chart === 'undefined') return;
+    Object.values(this.charts).forEach(c => { try { c.destroy(); } catch (e) {} });
+    this.charts = {};
+    const gold = '#e8c45a', blue = '#5b8cff';
+    const dough = (id, vals) => new Chart($(id), {
+      type: 'doughnut',
+      data: { labels: ['REAL', 'USDT'], datasets: [{ data: vals, backgroundColor: [gold, blue], borderColor: '#0f1626', borderWidth: 2 }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: '58%',
+        plugins: { legend: { position: 'right', labels: { color: '#8a9bbf', boxWidth: 12, font: { size: 11 } } } } },
+    });
+    this.charts.method = dough('chPayMethod', [real.revenue || 0, usdt.revenue || 0]);
+    this.charts.gb     = dough('chPayGb', [real.gb || 0, usdt.gb || 0]);
+  },
+};
+
 views.dashboard = {
   init() {
     this.loadAll();
     this.loadHealth();
     this.loadMessaging(false);
-    refreshTimer = setInterval(()=>this.loadAll(), 10000);
+    this.loadNodes();
+    refreshTimer = setInterval(()=>{ this.loadAll(); this.loadNodes(); }, 10000);
+  },
+  // VPN node health — written by scripts/check-node-health.sh (cron, 2 min).
+  async loadNodes() {
+    const el = $('nodesBody');
+    if (!el) return;
+    try {
+      const d = await api.get('node-health');
+      const nodes = d.nodes || {};
+      const ids = Object.keys(nodes);
+      if (!ids.length) { el.innerHTML = '<div class="panel-empty">No node-health data yet (cron may not have run).</div>'; return; }
+      const dot = s => s==='up' ? '<span style="color:var(--ok)">●</span>'
+                     : s==='degraded' ? '<span style="color:var(--warn)">●</span>'
+                     : '<span style="color:var(--danger)">●</span>';
+      const rows = ids.map(id => {
+        const n = nodes[id];
+        const rtt = (n.rtt_ms===null||n.rtt_ms===undefined) ? '—' : n.rtt_ms+' ms';
+        const badge = n.status==='up' ? 'badge-success' : n.status==='degraded' ? 'badge-warn' : 'badge-danger';
+        return `<tr>
+          <td>${dot(n.status)} <strong>${esc(id)}</strong></td>
+          <td><span class="badge ${badge}">${esc((n.status||'').toUpperCase())}</span></td>
+          <td class="mono">${rtt}</td>
+          <td class="mono" style="font-size:.72rem">${esc(n.address||'')}</td>
+          <td class="mono" style="font-size:.72rem">TLS ${n.tls?'✓':'✗'} · ${esc(n.edge||'')}</td>
+          <td style="font-size:.7rem;color:var(--muted-2)">${esc((n.checked_at||'').replace('T',' ').replace('Z',''))}</td>
+        </tr>`;
+      }).join('');
+      const staleWarn = d.stale ? '<div style="color:var(--warn);font-size:.72rem;margin-bottom:.5rem">⚠ Health data is stale — the cron may have stopped.</div>' : '';
+      el.innerHTML = staleWarn + `<table class="data-table"><thead><tr>
+        <th>Node</th><th>Status</th><th>RTT</th><th>Address</th><th>Edge / TLS</th><th>Checked</th>
+        </tr></thead><tbody>${rows}</tbody></table>`;
+    } catch (e) {
+      el.innerHTML = `<div class="panel-empty">Failed to load node health: ${esc(e.message||e)}</div>`;
+    }
   },
   async loadAll() {
     const [analytics, sessions, inbounds, sniLb, metrics] = await Promise.allSettled([

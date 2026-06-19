@@ -48,6 +48,17 @@ export function normalizeDigits(input: string): string {
 }
 
 /**
+ * Whether the Send-GB Continue button should be enabled: a recipient ID has been
+ * typed and the amount parses to a positive number. Recipient resolution happens
+ * on Continue, so this does NOT require the separate ✓ verify step (v0.9.36 #2).
+ */
+export function transferFormReady(recipientInput: string, amountStr: string): boolean {
+  if (recipientInput.trim() === '') return false;
+  const n = parseFloat(normalizeDigits(amountStr).replace(',', '.'));
+  return isFinite(n) && n > 0;
+}
+
+/**
  * Validate a GB amount string against the available transferable balance.
  * Accepts comma or dot decimal separators and Farsi/Arabic digits. Returns the
  * byte amount on success.

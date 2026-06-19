@@ -23,7 +23,7 @@ const DEFAULT_THEME = buildTheme(true, false);
 const ThemeContext  = createContext<Theme>(DEFAULT_THEME);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // SetaLink is dark-only; isDark is constant until we add light mode
+  // Realink is dark-only; isDark is constant until we add light mode
   const theme = useMemo(() => buildTheme(true, false), []);
   return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
 }

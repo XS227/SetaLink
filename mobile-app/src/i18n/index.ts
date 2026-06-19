@@ -1,4 +1,4 @@
-// Zero-dependency i18n for SetaLink.
+// Zero-dependency i18n for Realink.
 // Reads language from settingsStore — no external packages needed.
 // Add new keys to EN first, then mirror in FA.
 
@@ -19,7 +19,7 @@ const EN = {
 
   // Onboarding
   'ob.s1.title':      'Bypass any\nrestriction.',
-  'ob.s1.sub':        'SetaLink uses next-gen VLESS+Reality protocols that are\nindistinguishable from normal HTTPS traffic.',
+  'ob.s1.sub':        'Realink uses next-gen VLESS+Reality protocols that are\nindistinguishable from normal HTTPS traffic.',
   'ob.s2.title':      'AI-powered\nrouting.',
   'ob.s2.sub':        'Our Smart AI engine picks the fastest server and protocol\nautomatically — no configuration needed.',
   'ob.s3.title':      'Zero logs,\never.',
@@ -34,6 +34,19 @@ const EN = {
   'nav.ai':       'AI',
   'nav.activity': 'Activity',
   'nav.profile':  'Profile',
+
+  // Ecosystem banner (Shahnameh + 3real)
+  'bn.shahTitle': 'Play Shahnameh — earn REAL',
+  'bn.shahSub':   'Battle as a Persian warrior on Telegram',
+  'bn.realTitle': 'Trade REAL on 3real',
+  'bn.realSub':   'Our REAL exchange — 3real.no',
+
+  // Settings: relocated entries (AI / diagnostics)
+  'set.smartConnect':     'Smart connection',
+  'set.smartConnectDesc': 'Auto SNI / protocol optimization',
+  'set.diagnostics':      'Diagnostics',
+  'set.diagnosticsDesc':  'Connection tests & server config',
+  'set.activity':         'Activity & usage',
 
   // Home screen
   'home.selectServer':    'Select server',
@@ -213,7 +226,7 @@ const EN = {
   'upd.updateNow':      'Update Now',
   'upd.later':          'Later',
   'upd.forceTitle':     'Update Required',
-  'upd.forceBody':      'A critical update is required to continue using SetaLink.',
+  'upd.forceBody':      'A critical update is required to continue using Realink.',
   'upd.downloading':    'Downloading update…',
 
   // Invite-only auth
@@ -249,6 +262,37 @@ const EN = {
   'up.paymentSubmittedMsg':'Your payment of {amount} for {label} has been submitted.\n\nActivation within 24 hours after verification.',
   'up.submitError':        'Could not submit — please contact support',
   'up.cannotOpenTonkeeper':'Could not open Tonkeeper',
+  // Premium (REAL / USDT payments)
+  'pm.title':            'Upgrade with REAL',
+  'pm.subtitle':         'Pay with REAL and get more data for less.',
+  'pm.bestValue':        'Best Value',
+  'pm.saveWithReal':     'Pay with REAL and save {pct}%',
+  'pm.standard':         'Standard',
+  'pm.ecosystemCopy':    'Native token of the SETAEI / Shahnameh / Realink ecosystem.',
+  'pm.usdtCopy':         'Pay the regular price in USDT.',
+  'pm.choosePackage':    'Choose a package',
+  'pm.gbPremium':        '{gb} GB Premium',
+  'pm.save':             'save {pct}%',
+  'pm.completePayment':  'Complete your payment',
+  'pm.paid':             'Payment received',
+  'pm.amount':           'Amount',
+  'pm.estGb':            'Estimated {gb} GB',
+  'pm.sendTo':           'Send to',
+  'pm.memoRequired':     'Memo (required)',
+  'pm.payInstructions':  'Open Tonkeeper, send the exact amount with the memo, then tap "Check payment".',
+  'pm.pay':              'Pay',
+  'pm.checkPayment':     'Check payment',
+  'pm.checking':         'Checking…',
+  'pm.starting':         'Starting…',
+  'pm.selectPackage':    'Select a package',
+  'pm.done':             'Done',
+  'pm.confirmed':        '✓ Payment confirmed — data added to your account.',
+  'pm.expired':          'This payment expired. Start again.',
+  'pm.rejected':         'Payment could not be verified.',
+  'pm.notDetected':      'Not detected yet. After paying, wait a moment and check again.',
+  'pm.loadError':        'Could not load packages. Check your connection.',
+  'pm.openTkError':      'Open Tonkeeper and send the exact amount with the memo shown.',
+  'pm.startError':       'Could not start payment.',
 
   // Lock screen & PIN
   'lock.locked':          'App is locked',
@@ -336,7 +380,7 @@ const EN = {
   'dm.tabAnnounce':         'Announcements',
   'dm.new':                 'New message',
   'dm.composeTitle':        'New message',
-  'dm.recipientLabel':      'Recipient SetaLink ID',
+  'dm.recipientLabel':      'Recipient Realink ID',
   'dm.recipientPlaceholder': 'e.g. SL-227-XXXXXXXX',
   'dm.messagePlaceholder':  'Write a message…',
   'dm.send':                'Send',
@@ -346,7 +390,7 @@ const EN = {
   'dm.you':                 'You',
   'dm.yourId':              'Your ID',
   'dm.sentToast':           'Message sent',
-  'dm.recipientRequired':   'Enter a recipient SetaLink ID',
+  'dm.recipientRequired':   'Enter a recipient Realink ID',
   'dm.messageRequired':     'Write a message first',
   'dm.detailTitle':         'Message',
   'dm.from':                'From',
@@ -386,10 +430,10 @@ const EN = {
   // OTA update — banner
   'upd.updateAvailable':  'Update {v} available',
   'upd.download':         'Download',
-  'upd.requiredBody':     'A critical update is required to continue using SetaLink.\nVersion {v} is now available.',
+  'upd.requiredBody':     'A critical update is required to continue using Realink.\nVersion {v} is now available.',
   'upd.downloadUpdate':   'Download Update',
   'upd.installPermTitle': 'Allow app installs',
-  'upd.installPermBody':  'SetaLink needs permission to install updates. Enable "Install unknown apps" on the screen that just opened, then tap Download again.',
+  'upd.installPermBody':  'Realink needs permission to install updates. Enable "Install unknown apps" on the screen that just opened, then tap Download again.',
   'upd.downloadFailedTitle': 'Download failed',
   'upd.downloadFailedBody':  'Could not download the update. Check your connection and try again, or download from setalink.no.',
   'upd.openInBrowser':    'Open in browser',
@@ -397,7 +441,13 @@ const EN = {
 
   // Profile — quota economy (v0.9.31)
   'pr.sendGb':            'Send GB to a friend',
-  'pr.sendGbDesc':        'Share transferable data with another SetaLink user',
+  'pr.sendGbDesc':        'Share transferable data with another Realink user',
+  'pr.watchAd':           'Watch ad — earn data',
+  'pr.watchAdDesc':       'Watch a short video to get bonus data',
+  'pr.adLoading':         'Loading ad…',
+  'pr.adRewarded':        'Bonus data credited!',
+  'pr.adPending':         'Reward on its way — will appear shortly',
+  'pr.adFailed':          'No ad available right now — try again later',
   'pr.transferable':      'Transferable',
   'pr.purchasedEmpty':    'No purchased packages yet',
   'pr.msBonus13':         '+13 GB bonus',
@@ -406,7 +456,7 @@ const EN = {
   'pr.planFree':          'Free Invite Trial',
   'pr.planPremium':       'Unlimited',
   'pr.planTeam':          'Paid Package',
-  'pr.shareMessage':      'Join SetaLink — invite-only VPN for Iran.\nUse my code: {code}\nhttps://setalink.no/?ref={code}\n\nWe both get +1 GB when you join.',
+  'pr.shareMessage':      'Join Realink — invite-only VPN for Iran.\nUse my code: {code}\nhttps://setalink.no/?ref={code}\n\nWe both get +1 GB when you join.',
 
   // Send GB / transfer screen
   'tr.title':             'Send GB',
@@ -440,6 +490,8 @@ const EN = {
   'tr.errInvalidAmount':  'Enter a valid amount',
   'tr.errBelowMin':       'Minimum transfer is 100 MB',
   'tr.errAboveMax':       'Amount exceeds your transferable balance',
+  'tr.needRecipient':     'Enter a recipient ID to continue',
+  'tr.needAmount':        'Enter an amount to continue',
   'tr.errRecipient':      'Recipient not found',
   'tr.errSelf':           'You cannot send to yourself',
   'tr.errBlocked':        'This recipient cannot receive transfers',
@@ -478,6 +530,19 @@ const FA: typeof EN = {
   'nav.ai':       'هوش مصنوعی',
   'nav.activity': 'فعالیت',
   'nav.profile':  'پروفایل',
+
+  // Ecosystem banner (Shahnameh + 3real)
+  'bn.shahTitle': 'شاهنامه را بازی کن — REAL کسب کن',
+  'bn.shahSub':   'به‌عنوان پهلوان ایرانی در تلگرام نبرد کن',
+  'bn.realTitle': 'معامله REAL در 3real',
+  'bn.realSub':   'صرافی REAL ما — 3real.no',
+
+  // Settings: relocated entries (AI / diagnostics)
+  'set.smartConnect':     'اتصال هوشمند',
+  'set.smartConnectDesc': 'بهینه‌سازی خودکار SNI / پروتکل',
+  'set.diagnostics':      'عیب‌یابی',
+  'set.diagnosticsDesc':  'تست اتصال و پیکربندی سرور',
+  'set.activity':         'فعالیت و مصرف',
 
   // Home screen
   'home.selectServer':    'انتخاب سرور',
@@ -657,7 +722,7 @@ const FA: typeof EN = {
   'upd.updateNow':      'به‌روزرسانی',
   'upd.later':          'بعداً',
   'upd.forceTitle':     'به‌روزرسانی ضروری',
-  'upd.forceBody':      'برای ادامه استفاده از SetaLink، نصب این به‌روزرسانی ضروری است.',
+  'upd.forceBody':      'برای ادامه استفاده از Realink، نصب این به‌روزرسانی ضروری است.',
   'upd.downloading':    'در حال دانلود…',
 
   // Invite-only auth
@@ -693,6 +758,37 @@ const FA: typeof EN = {
   'up.paymentSubmittedMsg':'پرداخت {amount} برای {label} ثبت شد.\n\nفعال‌سازی ظرف ۲۴ ساعت پس از تأیید.',
   'up.submitError':        'ارسال ناموفق — لطفاً با پشتیبانی تماس بگیرید',
   'up.cannotOpenTonkeeper':'باز کردن Tonkeeper ممکن نیست',
+  // Premium (REAL / USDT payments)
+  'pm.title':            'ارتقا با REAL',
+  'pm.subtitle':         'با REAL پرداخت کنید و داده بیشتری با هزینه کمتر بگیرید.',
+  'pm.bestValue':        'بهترین ارزش',
+  'pm.saveWithReal':     'با REAL پرداخت کنید و {pct}٪ صرفه‌جویی کنید',
+  'pm.standard':         'استاندارد',
+  'pm.ecosystemCopy':    'توکن بومی اکوسیستم سِتائی / شاهنامه / Realink.',
+  'pm.usdtCopy':         'پرداخت با قیمت معمول به USDT.',
+  'pm.choosePackage':    'یک بسته انتخاب کنید',
+  'pm.gbPremium':        '{gb} گیگابایت پریمیوم',
+  'pm.save':             '{pct}٪ صرفه‌جویی',
+  'pm.completePayment':  'پرداخت خود را تکمیل کنید',
+  'pm.paid':             'پرداخت دریافت شد',
+  'pm.amount':           'مبلغ',
+  'pm.estGb':            'حدود {gb} گیگابایت',
+  'pm.sendTo':           'ارسال به',
+  'pm.memoRequired':     'یادداشت (ضروری)',
+  'pm.payInstructions':  'برنامه Tonkeeper را باز کنید، مبلغ دقیق را همراه با یادداشت ارسال کنید، سپس روی «بررسی پرداخت» ضربه بزنید.',
+  'pm.pay':              'پرداخت',
+  'pm.checkPayment':     'بررسی پرداخت',
+  'pm.checking':         'در حال بررسی…',
+  'pm.starting':         'در حال شروع…',
+  'pm.selectPackage':    'یک بسته انتخاب کنید',
+  'pm.done':             'تمام',
+  'pm.confirmed':        '✓ پرداخت تأیید شد — داده به حساب شما اضافه شد.',
+  'pm.expired':          'این پرداخت منقضی شد. دوباره شروع کنید.',
+  'pm.rejected':         'پرداخت قابل تأیید نبود.',
+  'pm.notDetected':      'هنوز شناسایی نشد. پس از پرداخت کمی صبر کنید و دوباره بررسی کنید.',
+  'pm.loadError':        'بارگذاری بسته‌ها ممکن نشد. اتصال خود را بررسی کنید.',
+  'pm.openTkError':      'برنامه Tonkeeper را باز کنید و مبلغ دقیق را با یادداشت نمایش‌داده‌شده ارسال کنید.',
+  'pm.startError':       'شروع پرداخت ممکن نشد.',
 
   // Lock screen & PIN
   'lock.locked':          'برنامه قفل شده',
@@ -830,10 +926,10 @@ const FA: typeof EN = {
   // OTA update — banner
   'upd.updateAvailable':  'نسخه {v} در دسترس است',
   'upd.download':         'دانلود',
-  'upd.requiredBody':     'برای ادامه استفاده از SetaLink، یک به‌روزرسانی مهم لازم است.\nنسخه {v} اکنون در دسترس است.',
+  'upd.requiredBody':     'برای ادامه استفاده از Realink، یک به‌روزرسانی مهم لازم است.\nنسخه {v} اکنون در دسترس است.',
   'upd.downloadUpdate':   'دانلود به‌روزرسانی',
   'upd.installPermTitle': 'اجازهٔ نصب برنامه',
-  'upd.installPermBody':  'برای نصب به‌روزرسانی، SetaLink به اجازه نیاز دارد. در صفحه‌ای که باز شد گزینهٔ «نصب برنامه‌های ناشناس» را فعال کنید و دوباره دانلود را بزنید.',
+  'upd.installPermBody':  'برای نصب به‌روزرسانی، Realink به اجازه نیاز دارد. در صفحه‌ای که باز شد گزینهٔ «نصب برنامه‌های ناشناس» را فعال کنید و دوباره دانلود را بزنید.',
   'upd.downloadFailedTitle': 'دانلود ناموفق بود',
   'upd.downloadFailedBody':  'دانلود به‌روزرسانی ممکن نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید یا از setalink.no دانلود کنید.',
   'upd.openInBrowser':    'باز کردن در مرورگر',
@@ -842,6 +938,12 @@ const FA: typeof EN = {
   // Profile — quota economy (v0.9.31)
   'pr.sendGb':            'ارسال گیگابایت به دوست',
   'pr.sendGbDesc':        'داده‌ی قابل‌انتقال خود را با کاربر دیگر ستالینک به اشتراک بگذارید',
+  'pr.watchAd':           'تماشای تبلیغ — دریافت داده',
+  'pr.watchAdDesc':       'یک ویدیوی کوتاه ببین و داده‌ی جایزه بگیر',
+  'pr.adLoading':         'در حال بارگذاری تبلیغ…',
+  'pr.adRewarded':        'داده‌ی جایزه اضافه شد!',
+  'pr.adPending':         'جایزه در راه است — به‌زودی نمایش داده می‌شود',
+  'pr.adFailed':          'تبلیغی در دسترس نیست — بعداً دوباره امتحان کن',
   'pr.transferable':      'قابل انتقال',
   'pr.purchasedEmpty':    'هنوز بسته‌ای خریداری نشده',
   'pr.msBonus13':         '۱۳+ گیگابایت هدیه',
@@ -884,6 +986,8 @@ const FA: typeof EN = {
   'tr.errInvalidAmount':  'مقدار معتبر وارد کنید',
   'tr.errBelowMin':       'حداقل انتقال ۱۰۰ مگابایت است',
   'tr.errAboveMax':       'مقدار از موجودی قابل‌انتقال شما بیشتر است',
+  'tr.needRecipient':     'برای ادامه شناسه گیرنده را وارد کنید',
+  'tr.needAmount':        'برای ادامه مقدار را وارد کنید',
   'tr.errRecipient':      'گیرنده یافت نشد',
   'tr.errSelf':           'نمی‌توانید به خودتان ارسال کنید',
   'tr.errBlocked':        'این گیرنده نمی‌تواند انتقال دریافت کند',

@@ -34,7 +34,7 @@ export function newIncomingToNotify(
   const seen = new Set(alreadyNotified);
   return messages
     .filter(m => m.direction === 'in' && !m.read && !seen.has(m.id))
-    .map(m => ({ id: m.id, sender: m.peerUserId || m.peerDevice || 'SetaLink' }));
+    .map(m => ({ id: m.id, sender: m.peerUserId || m.peerDevice || 'Realink' }));
 }
 
 function loadNotified(): number[] {
