@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		13B07FBC1A68108700A75B9A /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.swift */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB31A68108700A75B9A /* Images.xcassets */; };
-		13B07FC11A68108700A75B9A /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB41A68108700A75B9A /* LaunchScreen.storyboard */; };
 		00E356F31AD99517003FC87E /* XrayModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* XrayModule.swift */; };
 		00E356F41AD99517003FC87E /* XrayModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F11AD99517003FC87E /* XrayModule.m */; };
 /* End PBXBuildFile section */
@@ -19,7 +18,6 @@
 		13B07FB01A68108700A75B9A /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = SetaLink/AppDelegate.swift; sourceTree = "<group>"; };
 		13B07FB21A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = SetaLink/Info.plist; sourceTree = "<group>"; };
 		13B07FB31A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = SetaLink/Images.xcassets; sourceTree = "<group>"; };
-		13B07FB41A68108700A75B9A /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = SetaLink/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		A1B2C3D4E5F600001A2B3C4D /* Realink.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = Realink.entitlements; path = SetaLink/Realink.entitlements; sourceTree = "<group>"; };
 		00E356F21AD99517003FC87E /* XrayModule.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = XrayModule.swift; path = SetaLink/XrayModule.swift; sourceTree = "<group>"; };
 		00E356F11AD99517003FC87E /* XrayModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = XrayModule.m; path = SetaLink/XrayModule.m; sourceTree = "<group>"; };
@@ -59,7 +57,6 @@
 				00E356F21AD99517003FC87E /* XrayModule.swift */,
 				00E356F11AD99517003FC87E /* XrayModule.m */,
 				13B07FB31A68108700A75B9A /* Images.xcassets */,
-				13B07FB41A68108700A75B9A /* LaunchScreen.storyboard */,
 				13B07FB21A68108700A75B9A /* Info.plist */,
 				A1B2C3D4E5F600001A2B3C4D /* Realink.entitlements */,
 			);
@@ -126,7 +123,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
-				13B07FC11A68108700A75B9A /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
