@@ -207,6 +207,16 @@ jobs:
           INPUT="${{ github.event.inputs.build_number }}"
           echo "BUILD_NUMBER=${INPUT:-${{ github.run_number }}}" >> "$GITHUB_ENV"
 
+      # ── Upgrade storyboard to native Xcode format ────────────────────────────
+      # ibtool --upgrade rewrites the file using the runner's exact Xcode version,
+      # avoiding "Unknown target runtime" rejections caused by version mismatches.
+      - name: Upgrade storyboard format
+        working-directory: mobile-app
+        run: |
+          ibtool --upgrade \
+            --write ios/SetaLink/LaunchScreen.storyboard \
+            ios/SetaLink/LaunchScreen.storyboard
+
       # ── Archive ──────────────────────────────────────────────────────────────
       - name: Archive (Release)
         working-directory: mobile-app
