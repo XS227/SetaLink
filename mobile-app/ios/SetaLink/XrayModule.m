@@ -3,7 +3,7 @@
 
 #import <React/RCTBridgeModule.h>
 
-RCT_EXTERN_MODULE(XrayModule, NSObject)
+@interface RCT_EXTERN_MODULE(XrayModule, NSObject)
 
 RCT_EXTERN_METHOD(start:(NSString *)config resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(startEmergency:(NSString *)config resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
@@ -20,3 +20,5 @@ RCT_EXTERN_METHOD(getGeneratedConfig:(RCTPromiseResolveBlock)resolve rejecter:(R
 RCT_EXTERN_METHOD(getDeviceInfo:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(reportTelemetry:(NSString *)payload resolver:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(runTraceTest:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject)
+
+@end
