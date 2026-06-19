@@ -46,8 +46,7 @@ jobs:
 
     steps:
       # ── Select Xcode ─────────────────────────────────────────────────────────
-      # Xcode 15.4's ibtool rejects "AppleCocoa Touch" as an unknown runtime.
-      # Xcode 16.x fixes this. Pick the highest 16.x available on the runner.
+      # Prefer Xcode 16.x for best Swift/RN compatibility on macos-14 runners.
       - name: Select Xcode 16
         run: |
           XCODE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
