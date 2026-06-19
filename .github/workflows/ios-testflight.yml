@@ -45,6 +45,20 @@ jobs:
       BUNDLE_ID: no.setalink.realink
 
     steps:
+      # ── Select Xcode ─────────────────────────────────────────────────────────
+      # Xcode 15.4's ibtool rejects "AppleCocoa Touch" as an unknown runtime.
+      # Xcode 16.x fixes this. Pick the highest 16.x available on the runner.
+      - name: Select Xcode 16
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            echo "No Xcode 16 found, using default"; xcodebuild -version
+          else
+            echo "Using $XCODE"
+            sudo xcode-select -s "$XCODE/Contents/Developer"
+            xcodebuild -version
+          fi
+
       # ── Checkout ────────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
@@ -206,16 +220,6 @@ jobs:
         run: |
           INPUT="${{ github.event.inputs.build_number }}"
           echo "BUILD_NUMBER=${INPUT:-${{ github.run_number }}}" >> "$GITHUB_ENV"
-
-      # ── Upgrade storyboard to native Xcode format ────────────────────────────
-      # ibtool --upgrade rewrites the file using the runner's exact Xcode version,
-      # avoiding "Unknown target runtime" rejections caused by version mismatches.
-      - name: Upgrade storyboard format
-        working-directory: mobile-app
-        run: |
-          ibtool --upgrade \
-            --write ios/SetaLink/LaunchScreen.storyboard \
-            ios/SetaLink/LaunchScreen.storyboard
 
       # ── Archive ──────────────────────────────────────────────────────────────
       - name: Archive (Release)
