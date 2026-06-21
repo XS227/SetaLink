@@ -399,7 +399,7 @@ export function buildEmergencyXrayConfigJson(
 
     dns: {
       queryStrategy: 'UseIPv4',
-      servers: ['https://1.1.1.1/dns-query', '8.8.8.8', '9.9.9.9'],
+      servers: ['1.1.1.1', '8.8.8.8', '9.9.9.9'],
     },
 
     inbounds: [
