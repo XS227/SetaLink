@@ -138,11 +138,27 @@ export const useServerStore = create<ServerState>()(
             if (c?.uuid && c?.publicKey) fetchedCreds[s.id] = c as ServerCredentials;
           } catch { /* node has no public config — skip */ }
         }));
+
+        const prevSelectedId = get().selectedId;
         set((state) => ({
           servers:       data,
           importedCreds: { ...state.importedCreds, ...fetchedCreds },
           isLoading:     false,
         }));
+
+        // Auto-select the fastest connectable server when the user has no valid
+        // selection (new install, or previously selected node was removed).
+        // Respects an existing manual choice — never overrides it.
+        const newIds = new Set(data.map((s) => s.id));
+        if (!prevSelectedId || !newIds.has(prevSelectedId)) {
+          const best = data
+            .filter((s) => fetchedCreds[s.id])
+            .sort((a, b) => a.ping - b.ping)[0];
+          if (best) {
+            set({ selectedId: best.id });
+            syncToVpnStore(best);
+          }
+        }
       } else {
         set({ isLoading: false });
       }

@@ -63,27 +63,19 @@ interface XrayRouting {
 }
 
 // DNS profiles keyed by settingsStore.dnsMode.
-// DoH URLs (https://…) route through the proxy tunnel so ISP DNS poisoning/blocking
-// cannot intercept them. Plain IP fallbacks (8.8.8.8, etc.) are tried if DoH fails.
+// Plain UDP DNS (port 53) — routed via the dns-out rule, which resolves directly
+// without an extra proxy hop. DoH (https://…) was removed because it uses port 443
+// and is routed through the proxy outbound, adding a full VPN round-trip to every
+// cold DNS lookup and measurably increasing page-load latency.
 // queryStrategy: 'UseIPv4' prevents IPv6 DNS leaks on devices with no IPv6 routing.
 const DNS_PROFILES: Record<string, XrayDns> = {
   'Cloudflare (DoH)': {
     queryStrategy: 'UseIPv4',
-    servers: [
-      'https://1.1.1.1/dns-query',
-      'https://1.0.0.1/dns-query',
-      '8.8.8.8',
-      '9.9.9.9',
-    ],
+    servers: ['1.1.1.1', '1.0.0.1', '8.8.8.8'],
   },
   'Google (DoH)': {
     queryStrategy: 'UseIPv4',
-    servers: [
-      'https://8.8.8.8/dns-query',
-      'https://8.8.4.4/dns-query',
-      '1.1.1.1',
-      '9.9.9.9',
-    ],
+    servers: ['8.8.8.8', '8.8.4.4', '1.1.1.1'],
   },
   'System': {
     servers: ['localhost'],
@@ -311,8 +303,7 @@ export function buildXrayConfig(
   const dns = DNS_PROFILES[dnsMode] ?? DNS_PROFILES['Cloudflare (DoH)']!;
 
   return {
-    // Always debug so Reality handshake errors appear in xray.log for diagnostics.
-    log: { loglevel: debugMode ? 'debug' : 'info' },
+    log: { loglevel: debugMode ? 'debug' : 'warning' },
 
     dns,
 
@@ -390,7 +381,7 @@ export function buildXrayConfigJson(
   dnsMode:  string,
   creds?:   ServerCredentials,
 ): string {
-  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, true, creds));
+  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, false, creds));
 }
 
 /**
