@@ -1,0 +1,369 @@
+{
+  "log": {
+    "loglevel": "info",
+    "access": "/var/log/xray/access.log",
+    "error": "/var/log/xray/error.log"
+  },
+  "stats": {},
+  "api": {
+    "tag": "api",
+    "services": [
+      "StatsService"
+    ]
+  },
+  "policy": {
+    "levels": {
+      "0": {
+        "statsUserUplink": true,
+        "statsUserDownlink": true
+      }
+    },
+    "system": {
+      "statsInboundUplink": true,
+      "statsInboundDownlink": true,
+      "statsOutboundUplink": true,
+      "statsOutboundDownlink": true
+    }
+  },
+  "inbounds": [
+    {
+      "tag": "inbound-ws",
+      "listen": "127.0.0.1",
+      "port": 10000,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "92a861cd-6029-4882-9de5-35d9291e0828",
+            "email": "fi-tester"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/ws"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      }
+    },
+    {
+      "tag": "inbound-xhttp",
+      "listen": "127.0.0.1",
+      "port": 10001,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "92a861cd-6029-4882-9de5-35d9291e0828",
+            "email": "fi-tester"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "path": "/xhttp/",
+          "host": "fi.setalink.no",
+          "mode": "auto"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      }
+    },
+    {
+      "tag": "inbound-httpup",
+      "listen": "127.0.0.1",
+      "port": 10002,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "92a861cd-6029-4882-9de5-35d9291e0828",
+            "email": "fi-tester"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "httpupgrade",
+        "security": "none",
+        "httpupgradeSettings": {
+          "path": "/httpup",
+          "host": "fi.setalink.no"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls",
+          "quic"
+        ]
+      }
+    },
+    {
+      "tag": "inbound-reality",
+      "listen": "127.0.0.1",
+      "port": 8443,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "92a861cd-6029-4882-9de5-35d9291e0828",
+            "flow": "xtls-rprx-vision",
+            "email": "fi-tester"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.cloudflare.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.cloudflare.com"
+          ],
+          "privateKey": "UNy8wWlG87wXivPr1npLMirInS8MYL-EX3X2NYYwOEs",
+          "shortIds": [
+            "b3a824bd",
+            "e14a573fcbfcce4c"
+          ],
+          "fingerprint": "chrome"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+    {
+      "listen": "127.0.0.1",
+      "port": 8344,
+      "protocol": "dokodemo-door",
+      "settings": {
+        "address": "127.0.0.1"
+      },
+      "tag": "api"
+    },
+    {
+      "tag": "inbound-reality-ms",
+      "listen": "127.0.0.1",
+      "port": 8444,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "92a861cd-6029-4882-9de5-35d9291e0828",
+            "flow": "xtls-rprx-vision",
+            "email": "fi-tester"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.microsoft.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.microsoft.com"
+          ],
+          "privateKey": "UNy8wWlG87wXivPr1npLMirInS8MYL-EX3X2NYYwOEs",
+          "shortIds": [
+            "b3a824bd",
+            "e14a573fcbfcce4c"
+          ],
+          "fingerprint": "chrome"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+    {
+      "tag": "inbound-reality-apple",
+      "listen": "127.0.0.1",
+      "port": 8445,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "92a861cd-6029-4882-9de5-35d9291e0828",
+            "flow": "xtls-rprx-vision",
+            "email": "fi-tester"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.apple.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.apple.com"
+          ],
+          "privateKey": "UNy8wWlG87wXivPr1npLMirInS8MYL-EX3X2NYYwOEs",
+          "shortIds": [
+            "b3a824bd",
+            "e14a573fcbfcce4c"
+          ],
+          "fingerprint": "chrome"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    },
+    {
+      "tag": "inbound-recovery",
+      "listen": "127.0.0.1",
+      "port": 8446,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "92a861cd-6029-4882-9de5-35d9291e0828",
+            "flow": "xtls-rprx-vision",
+            "email": "recovery"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "www.google.com:443",
+          "xver": 0,
+          "serverNames": [
+            "www.google.com"
+          ],
+          "privateKey": "UNy8wWlG87wXivPr1npLMirInS8MYL-EX3X2NYYwOEs",
+          "shortIds": [
+            "b3a824bd",
+            "e14a573fcbfcce4c"
+          ],
+          "fingerprint": "chrome"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "tls",
+          "http"
+        ],
+        "routeOnly": true
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "tag": "direct"
+    },
+    {
+      "protocol": "blackhole",
+      "tag": "block"
+    }
+  ],
+  "routing": {
+    "domainStrategy": "AsIs",
+    "rules": [
+      {
+        "type": "field",
+        "inboundTag": [
+          "api"
+        ],
+        "outboundTag": "api"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "inbound-recovery"
+        ],
+        "domain": [
+          "domain:setalink.no",
+          "domain:setalink.net",
+          "domain:setalink.com",
+          "domain:googleads.g.doubleclick.net",
+          "domain:googlesyndication.com",
+          "domain:doubleclick.net",
+          "domain:google.com",
+          "domain:gstatic.com",
+          "domain:googleapis.com",
+          "domain:admob.com",
+          "domain:app-measurement.com",
+          "domain:tonkeeper.com",
+          "domain:toncenter.com",
+          "domain:tonapi.io",
+          "domain:ton.org",
+          "domain:telegram.org",
+          "domain:t.me",
+          "domain:core.telegram.org",
+          "domain:telegram.me",
+          "domain:setaei.no"
+        ],
+        "outboundTag": "direct"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "inbound-recovery"
+        ],
+        "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "ip": [
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16",
+          "127.0.0.0/8",
+          "169.254.0.0/16",
+          "::1/128",
+          "fc00::/7",
+          "fe80::/10"
+        ],
+        "outboundTag": "block"
+      }
+    ]
+  }
+}
