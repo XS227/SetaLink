@@ -141,12 +141,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         cfg.timeoutIntervalForRequest  = 12
         cfg.timeoutIntervalForResource = 12
         cfg.connectionProxyDictionary = [
-            kCFNetworkProxiesHTTPEnable  as String: 1,
-            kCFNetworkProxiesHTTPProxy   as String: "127.0.0.1",
-            kCFNetworkProxiesHTTPPort    as String: kHttpPort,
-            kCFNetworkProxiesHTTPSEnable as String: 1,
-            kCFNetworkProxiesHTTPSProxy  as String: "127.0.0.1",
-            kCFNetworkProxiesHTTPSPort   as String: kHttpPort,
+            kCFNetworkProxiesHTTPEnable as String: 1,
+            kCFNetworkProxiesHTTPProxy  as String: "127.0.0.1",
+            kCFNetworkProxiesHTTPPort   as String: kHttpPort,
         ]
 
         // cp.cloudflare.com returns HTTP 200 with a tiny JSON body from all regions.
