@@ -18,6 +18,7 @@ android/app/.cxx/
 ios/Pods/
 ios/build/
 ios/DerivedData/
+ios/LibXray.xcframework/
 *.xcworkspace
 *.xcuserdata
 

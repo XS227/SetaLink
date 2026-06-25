@@ -314,8 +314,16 @@ export function buildXrayConfig(
         listen:   '127.0.0.1',
         protocol: 'socks',
         settings: { auth: 'noauth', udp: true },
-        // Sniffing extracts the destination domain from TLS SNI / HTTP Host so
-        // routing rules can match by domain name even when tun2socks sends raw IPs.
+        sniffing: { enabled: true, destOverride: ['http', 'tls'] },
+      },
+      // HTTP proxy inbound — used by iOS PacketTunnelProvider via NEProxySettings.
+      // iOS routes all HTTPS/HTTP app traffic to this port; no tun2socks required.
+      {
+        tag:      'http-in',
+        port:     10809,
+        listen:   '127.0.0.1',
+        protocol: 'http',
+        settings: {},
         sniffing: { enabled: true, destOverride: ['http', 'tls'] },
       },
     ],
@@ -409,6 +417,14 @@ export function buildEmergencyXrayConfigJson(
         listen:   '127.0.0.1',
         protocol: 'socks',
         settings: { auth: 'noauth', udp: true },
+        sniffing: { enabled: true, destOverride: ['http', 'tls'] },
+      },
+      {
+        tag:      'http-in',
+        port:     10809,
+        listen:   '127.0.0.1',
+        protocol: 'http',
+        settings: {},
         sniffing: { enabled: true, destOverride: ['http', 'tls'] },
       },
     ],
