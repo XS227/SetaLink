@@ -248,7 +248,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(SRCROOT)/LibXray.xcframework/Info.plist",
+				"$(DERIVED_FILE_DIR)/libxray_stub.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
