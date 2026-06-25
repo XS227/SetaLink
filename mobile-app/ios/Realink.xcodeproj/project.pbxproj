@@ -14,7 +14,6 @@
 		CE000001CE000001CE000001 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE000004CE000004CE000004 /* PacketTunnelProvider.swift */; };
 		CE000002CE000002CE000002 /* RealinkTunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = CE000003CE000003CE000003 /* RealinkTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; };
-		CE000014CE000014CE000014 /* LibXray.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		CE000018CE000018CE000018 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000017CE000017CE000017 /* libresolv.tbd */; };
 /* End PBXBuildFile section */
 
@@ -52,7 +51,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 10;
 			files = (
-				CE000014CE000014CE000014 /* LibXray.xcframework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
