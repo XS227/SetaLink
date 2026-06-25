@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useAuthStore } from '../stores/authStore';
 import { useT } from '../i18n';
@@ -17,7 +17,7 @@ const INVITE_RE    = /^[A-Z0-9-]{6,32}$/;
 async function tryBackendRegister(inviteCode: string, referralParent?: string | null) {
   try {
     const deviceId    = await getStableDeviceId();
-    const entitlement = await registerDevice(deviceId, 'android', {
+    const entitlement = await registerDevice(deviceId, Platform.OS, {
       referralCode: referralParent ?? inviteCode,
     });
     useAuthStore.getState().loginWithDevice(entitlement);

@@ -15,7 +15,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Alert } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Alert, Platform } from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
@@ -390,7 +390,7 @@ async function tryAutoRegister(): Promise<boolean> {
     const deviceId    = await getStableDeviceId();
     const fingerprint = await getDeviceFingerprint().catch(() => ({}));
     const { language } = useSettingsStore.getState();
-    const entitlement = await registerDevice(deviceId, 'android', { language, fingerprint });
+    const entitlement = await registerDevice(deviceId, Platform.OS, { language, fingerprint });
 
     // If backend returned a canonical device_id (fingerprint dedup), persist it
     if (entitlement.device_id && entitlement.device_id !== deviceId) {
@@ -443,7 +443,7 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
           getStableDeviceId().then(async (deviceId) => {
             const fingerprint = await getDeviceFingerprint().catch(() => ({}));
             const { language } = useSettingsStore.getState();
-            const entitlement = await registerDevice(deviceId, 'android', { language, fingerprint });
+            const entitlement = await registerDevice(deviceId, Platform.OS, { language, fingerprint });
             if (entitlement.device_id && entitlement.device_id !== deviceId) {
               await saveStableDeviceId(entitlement.device_id).catch(() => {});
             }
