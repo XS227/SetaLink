@@ -319,8 +319,8 @@ jobs:
           CODE_SIGN_IDENTITY = Apple Distribution
           DEVELOPMENT_TEAM = $APPLE_TEAM_ID
           PROVISIONING_PROFILE_SPECIFIER = \$(PROVISIONING_PROFILE_SPECIFIER_\$(TARGET_NAME:identifier))
-          PROVISIONING_PROFILE_SPECIFIER_Realink = Realink AppStore
-          PROVISIONING_PROFILE_SPECIFIER_RealinkTunnel = Realink Tunnel AppStore
+          PROVISIONING_PROFILE_SPECIFIER_Realink = $PROFILE_UUID
+          PROVISIONING_PROFILE_SPECIFIER_RealinkTunnel = $TUNNEL_PROFILE_UUID
           XCCONFIG
 
           xcodebuild archive \
