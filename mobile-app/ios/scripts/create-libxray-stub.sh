@@ -17,6 +17,7 @@ XCFW="$SRCROOT/LibXray.xcframework"
 
 # Fast-path: real (or previously generated stub) xcframework is present.
 if [ -f "$XCFW/Info.plist" ]; then
+    touch "${DERIVED_FILE_DIR}/libxray_stub.stamp"
     exit 0
 fi
 
@@ -27,6 +28,7 @@ SIM_SDK=$(xcrun --sdk iphonesimulator --show-sdk-path 2>/dev/null || true)
 
 if [ -z "$IOS_SDK" ]; then
     echo "warning: iphoneos SDK not found; is Xcode installed?" >&2
+    touch "${DERIVED_FILE_DIR}/libxray_stub.stamp"
     exit 0  # Soft-fail — don't break CI if SDK is unavailable
 fi
 
@@ -122,6 +124,7 @@ rm -f "$STUB_C"
 
 if [ "$HAVE_DEVICE" = 0 ] && [ "$HAVE_SIMULATOR" = 0 ]; then
     echo "warning: could not create any LibXray slices; build may fail" >&2
+    touch "${DERIVED_FILE_DIR}/libxray_stub.stamp"
     exit 0
 fi
 
@@ -154,4 +157,5 @@ printf '  <key>XCFrameworkFormatVersion</key><string>1.0</string>\n'
 printf '</dict></plist>\n'
 } > "$XCFW/Info.plist"
 
+touch "${DERIVED_FILE_DIR}/libxray_stub.stamp"
 echo "note: LibXray stub xcframework ready (device=$HAVE_DEVICE simulator=$HAVE_SIMULATOR)"
