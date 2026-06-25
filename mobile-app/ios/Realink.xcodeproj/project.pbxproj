@@ -11,6 +11,10 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB31A68108700A75B9A /* Images.xcassets */; };
 		00E356F31AD99517003FC87E /* XrayModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* XrayModule.swift */; };
 		00E356F41AD99517003FC87E /* XrayModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F11AD99517003FC87E /* XrayModule.m */; };
+		CE000001CE000001CE000001 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE000004CE000004CE000004 /* PacketTunnelProvider.swift */; };
+		CE000002CE000002CE000002 /* RealinkTunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = CE000003CE000003CE000003 /* RealinkTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; };
+		CE000014CE000014CE000014 /* LibXray.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,13 +25,51 @@
 		A1B2C3D4E5F600001A2B3C4D /* Realink.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = Realink.entitlements; path = SetaLink/Realink.entitlements; sourceTree = "<group>"; };
 		00E356F21AD99517003FC87E /* XrayModule.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = XrayModule.swift; path = SetaLink/XrayModule.swift; sourceTree = "<group>"; };
 		00E356F11AD99517003FC87E /* XrayModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = XrayModule.m; path = SetaLink/XrayModule.m; sourceTree = "<group>"; };
+		CE000003CE000003CE000003 /* RealinkTunnel.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RealinkTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		CE000004CE000004CE000004 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PacketTunnelProvider.swift; path = PacketTunnelExtension/PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		CE000005CE000005CE000005 /* PacketTunnelExtension-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "PacketTunnelExtension-Info.plist"; path = "PacketTunnelExtension/PacketTunnelExtension-Info.plist"; sourceTree = "<group>"; };
+		CE000006CE000006CE000006 /* PacketTunnelExtension.entitlements */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.entitlements; name = PacketTunnelExtension.entitlements; path = PacketTunnelExtension/PacketTunnelExtension.entitlements; sourceTree = "<group>"; };
+		CE000012CE000012CE000012 /* LibXray.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = LibXray.xcframework; path = LibXray.xcframework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		CE000010CE000010CE000010 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				CE000002CE000002CE000002 /* RealinkTunnel.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE000015CE000015CE000015 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				CE000014CE000014CE000014 /* LibXray.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		13B07F8C1A680F5B00A75B9A /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE000008CE000008CE000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -38,6 +80,8 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* Realink */,
+				CE00000BCE00000BCE00000B /* PacketTunnelExtension */,
+				CE000012CE000012CE000012 /* LibXray.xcframework */,
 				83CBB9F71A601CBA00E9B192 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -46,6 +90,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* Realink.app */,
+				CE000003CE000003CE000003 /* RealinkTunnel.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -63,6 +108,16 @@
 			name = Realink;
 			sourceTree = "<group>";
 		};
+		CE00000BCE00000BCE00000B /* PacketTunnelExtension */ = {
+			isa = PBXGroup;
+			children = (
+				CE000004CE000004CE000004 /* PacketTunnelProvider.swift */,
+				CE000005CE000005CE000005 /* PacketTunnelExtension-Info.plist */,
+				CE000006CE000006CE000006 /* PacketTunnelExtension.entitlements */,
+			);
+			name = PacketTunnelExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -75,15 +130,36 @@
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
+				CE000010CE000010CE000010 /* Embed App Extensions */,
+				CE000015CE000015CE000015 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				CE00000FCE00000FCE00000F /* PBXTargetDependency */,
 			);
 			name = Realink;
 			productName = Realink;
 			productReference = 13B07F961A680F5B00A75B9A /* Realink.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CE00000CCE00000CCE00000C /* RealinkTunnel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CE000011CE000011CE000011 /* Build configuration list for PBXNativeTarget "RealinkTunnel" */;
+			buildPhases = (
+				CE000016CE000016CE000016 /* Create LibXray Stub */,
+				CE000007CE000007CE000007 /* Sources */,
+				CE000008CE000008CE000008 /* Frameworks */,
+				CE000009CE000009CE000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RealinkTunnel;
+			productName = RealinkTunnel;
+			productReference = CE000003CE000003CE000003 /* RealinkTunnel.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -94,6 +170,9 @@
 				LastUpgradeCheck = 1500;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
+						LastSwiftMigration = 1100;
+					};
+					CE00000CCE00000CCE00000C = {
 						LastSwiftMigration = 1100;
 					};
 				};
@@ -113,9 +192,28 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* Realink */,
+				CE00000CCE00000CCE00000C /* RealinkTunnel */,
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXContainerItemProxy section */
+		CE00000ACE00000ACE00000A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B190 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE00000CCE00000CCE00000C;
+			remoteInfo = RealinkTunnel;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		CE00000FCE00000FCE00000F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CE00000CCE00000CCE00000C /* RealinkTunnel */;
+			targetProxy = CE00000ACE00000ACE00000A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXResourcesBuildPhase section */
 		13B07F8E1A680F5B00A75B9A /* Resources */ = {
@@ -126,9 +224,37 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CE000009CE000009CE000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		CE000016CE000016CE000016 /* Create LibXray Stub */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 0;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Create LibXray Stub";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/LibXray.xcframework/Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "bash \"${SRCROOT}/scripts/create-libxray-stub.sh\"";
+			showEnvVarsInLog = 0;
+		};
 		FD10A7F022414F080027D42C /* Start Packager */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -181,6 +307,14 @@
 				13B07FBC1A68108700A75B9A /* AppDelegate.swift in Sources */,
 				00E356F31AD99517003FC87E /* XrayModule.swift in Sources */,
 				00E356F41AD99517003FC87E /* XrayModule.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CE000007CE000007CE000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE000001CE000001CE000001 /* PacketTunnelProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -331,7 +465,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.47;
+				MARKETING_VERSION = 0.9.48;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -363,7 +497,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.47;
+				MARKETING_VERSION = 0.9.48;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -372,6 +506,72 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "no.setalink.realink";
 				PRODUCT_NAME = Realink;
 				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		CE00000DCE00000DCE00000D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = PacketTunnelExtension/PacketTunnelExtension.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = UKDJ53B464;
+				ENABLE_BITCODE = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(SRCROOT)",
+					"$(inherited)",
+				);
+				INFOPLIST_FILE = PacketTunnelExtension/PacketTunnelExtension-Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.9.48;
+				PRODUCT_BUNDLE_IDENTIFIER = "no.setalink.realink.tunnel";
+				PRODUCT_NAME = RealinkTunnel;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = PacketTunnelExtension/PacketTunnelExtension-Bridging-Header.h;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		CE00000ECE00000ECE00000E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = PacketTunnelExtension/PacketTunnelExtension.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = UKDJ53B464;
+				ENABLE_BITCODE = NO;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(SRCROOT)",
+					"$(inherited)",
+				);
+				INFOPLIST_FILE = PacketTunnelExtension/PacketTunnelExtension-Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.9.48;
+				PRODUCT_BUNDLE_IDENTIFIER = "no.setalink.realink.tunnel";
+				PRODUCT_NAME = RealinkTunnel;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = PacketTunnelExtension/PacketTunnelExtension-Bridging-Header.h;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 				VALIDATE_PRODUCT = YES;
@@ -395,6 +595,15 @@
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
 				13B07F951A680F5B00A75B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CE000011CE000011CE000011 /* Build configuration list for PBXNativeTarget "RealinkTunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CE00000DCE00000DCE00000D /* Debug */,
+				CE00000ECE00000ECE00000E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

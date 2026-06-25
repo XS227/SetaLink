@@ -42,7 +42,8 @@ jobs:
     timeout-minutes: 60
 
     env:
-      BUNDLE_ID: no.setalink.realink
+      BUNDLE_ID:        no.setalink.realink
+      TUNNEL_BUNDLE_ID: no.setalink.realink.tunnel
 
     steps:
       # ── Select Xcode ─────────────────────────────────────────────────────────
@@ -215,6 +216,87 @@ jobs:
           cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
 
+      # ── Tunnel Extension Provisioning Profile ────────────────────────────────
+      # The tunnel extension has its own bundle ID and needs a separate profile.
+      # Requires App ID 'no.setalink.realink.tunnel' to exist in App Store Connect
+      # with the 'Network Extensions' and 'App Groups' capabilities enabled.
+      - name: Generate / fetch Tunnel Extension Provisioning Profile
+        working-directory: mobile-app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          fastlane sigh \
+            --api_key_path      "$ASC_API_KEY_PATH" \
+            --app_identifier    "$TUNNEL_BUNDLE_ID" \
+            --team_id           "$APPLE_TEAM_ID" \
+            --provisioning_name "Realink Tunnel AppStore" \
+            --output_path       "$RUNNER_TEMP/asc" \
+            --filename          "Realink_Tunnel_AppStore.mobileprovision" \
+            --platform          "ios" \
+            --force
+          TUNNEL_PROFILE_PATH="$RUNNER_TEMP/asc/Realink_Tunnel_AppStore.mobileprovision"
+          TUNNEL_PROFILE_UUID=$(security cms -D -i "$TUNNEL_PROFILE_PATH" \
+            | plutil -extract UUID raw -)
+          cp "$TUNNEL_PROFILE_PATH" \
+            ~/Library/MobileDevice/Provisioning\ Profiles/"$TUNNEL_PROFILE_UUID".mobileprovision
+          echo "TUNNEL_PROFILE_UUID=$TUNNEL_PROFILE_UUID" >> "$GITHUB_ENV"
+
+      # ── libXray — resolve latest tag ─────────────────────────────────────────
+      # Checks XTLS/libXray releases on every run. The cache key includes the tag,
+      # so a new release triggers a rebuild; unchanged versions use the cache.
+      - name: Resolve latest libXray tag
+        run: |
+          LIBXRAY_TAG=$(curl -sSf \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/xtls/libxray/releases/latest" \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+          echo "Resolved libXray tag: $LIBXRAY_TAG"
+          echo "LIBXRAY_TAG=$LIBXRAY_TAG" >> "$GITHUB_ENV"
+
+      # ── libXray — restore cached xcframework ─────────────────────────────────
+      - name: Cache LibXray.xcframework
+        id: cache-libxray
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/ios/LibXray.xcframework
+          key: libxray-xcframework-${{ env.LIBXRAY_TAG }}-macos15
+
+      # ── libXray — build from source (cache miss only) ────────────────────────
+      # gomobile bind produces LibXray.xcframework for arm64 iOS device + simulator.
+      # The build takes ~10 min on a fresh runner; subsequent runs hit the cache.
+      - name: Setup Go (for libXray build)
+        if: steps.cache-libxray.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: false
+
+      - name: Build LibXray.xcframework
+        if: steps.cache-libxray.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          WORK_DIR="$RUNNER_TEMP/libxray-src"
+          git clone --depth=1 --branch "$LIBXRAY_TAG" \
+            https://github.com/xtls/libxray.git "$WORK_DIR"
+          cd "$WORK_DIR"
+          # Install gomobile toolchain
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+          # Build for iOS (device + simulator, both arm64)
+          python3 build/main.py apple gomobile
+          # Locate the produced xcframework (output dir varies by libXray version)
+          XCFW=$(find . -name "LibXray.xcframework" -maxdepth 6 -type d 2>/dev/null | head -1)
+          if [ -z "$XCFW" ]; then
+            echo "ERROR: LibXray.xcframework not found after build. Directory listing:"
+            find . -maxdepth 4 -type d | head -40
+            exit 1
+          fi
+          echo "Found: $XCFW"
+          cp -R "$XCFW" "$GITHUB_WORKSPACE/mobile-app/ios/LibXray.xcframework"
+          echo "LibXray.xcframework copied to ios/"
+
       # ── Build number ─────────────────────────────────────────────────────────
       - name: Set build number
         run: |
@@ -222,22 +304,34 @@ jobs:
           echo "BUILD_NUMBER=${INPUT:-${{ github.run_number }}}" >> "$GITHUB_ENV"
 
       # ── Archive ──────────────────────────────────────────────────────────────
+      # Uses an xcconfig to set per-target provisioning profiles (Realink vs
+      # RealinkTunnel have different bundle IDs and therefore different profiles).
+      # The $(TARGET_NAME:identifier) macro expands to the target name per build,
+      # so each target picks up its own PROVISIONING_PROFILE_SPECIFIER value.
       - name: Archive (Release)
         working-directory: mobile-app
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # Generate per-target signing xcconfig
+          cat > "$RUNNER_TEMP/ci_signing.xcconfig" <<XCCONFIG
+          CODE_SIGN_STYLE = Manual
+          CODE_SIGN_IDENTITY = Apple Distribution
+          DEVELOPMENT_TEAM = $APPLE_TEAM_ID
+          PROVISIONING_PROFILE_SPECIFIER = \$(PROVISIONING_PROFILE_SPECIFIER_\$(TARGET_NAME:identifier))
+          PROVISIONING_PROFILE_SPECIFIER_Realink = Realink AppStore
+          PROVISIONING_PROFILE_SPECIFIER_RealinkTunnel = Realink Tunnel AppStore
+          XCCONFIG
+
           xcodebuild archive \
             -workspace               ios/Realink.xcworkspace \
             -scheme                  Realink \
             -configuration           Release \
             -archivePath             "$RUNNER_TEMP/Realink.xcarchive" \
+            -xcconfig                "$RUNNER_TEMP/ci_signing.xcconfig" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
-            MARKETING_VERSION=0.9.47 \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            PROVISIONING_PROFILE="$PROFILE_UUID" \
-            CODE_SIGN_STYLE=Manual \
+            MARKETING_VERSION=0.9.48 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS=LIBXRAY_AVAILABLE \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
       # ── Export IPA ───────────────────────────────────────────────────────────
@@ -259,6 +353,8 @@ jobs:
             <dict>
               <key>$BUNDLE_ID</key>
               <string>$PROFILE_UUID</string>
+              <key>$TUNNEL_BUNDLE_ID</key>
+              <string>$TUNNEL_PROFILE_UUID</string>
             </dict>
           </dict>
           </plist>
