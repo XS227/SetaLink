@@ -15,6 +15,7 @@
 		CE000002CE000002CE000002 /* RealinkTunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = CE000003CE000003CE000003 /* RealinkTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; };
 		CE000014CE000014CE000014 /* LibXray.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		CE000018CE000018CE000018 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000017CE000017CE000017 /* libresolv.tbd */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 		CE000005CE000005CE000005 /* PacketTunnelExtension-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "PacketTunnelExtension-Info.plist"; path = "PacketTunnelExtension/PacketTunnelExtension-Info.plist"; sourceTree = "<group>"; };
 		CE000006CE000006CE000006 /* PacketTunnelExtension.entitlements */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.entitlements; name = PacketTunnelExtension.entitlements; path = PacketTunnelExtension/PacketTunnelExtension.entitlements; sourceTree = "<group>"; };
 		CE000012CE000012CE000012 /* LibXray.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = LibXray.xcframework; path = LibXray.xcframework; sourceTree = SOURCE_ROOT; };
+		CE000017CE000017CE000017 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -70,6 +72,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */,
+				CE000018CE000018CE000018 /* libresolv.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
