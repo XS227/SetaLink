@@ -528,9 +528,11 @@ function icon(string $name): string {
         <div class="stat-card"><div class="stat-label">Free</div><div class="stat-value" id="devFree">—</div></div>
         <div class="stat-card stat-accent"><div class="stat-label">Premium</div><div class="stat-value" id="devPremium">—</div></div>
         <div class="stat-card stat-warn"><div class="stat-label">Blocked</div><div class="stat-value" id="devBlocked">—</div></div>
+        <div class="stat-card"><div class="stat-label">🍎 iOS</div><div class="stat-value" id="devIos">—</div></div>
+        <div class="stat-card"><div class="stat-label">🤖 Android</div><div class="stat-value" id="devAndroid">—</div></div>
       </div>
       <div class="search-row">
-        <input class="input" id="devSearch" placeholder="Search User ID, device ID, country, model, version…" type="search">
+        <input class="input" id="devSearch" placeholder="Search User ID, device ID, country, model, version, platform…" type="search">
         <select class="select" id="devPlan" style="width:130px">
           <option value="">All plans</option>
           <option value="free">Free</option>
@@ -541,6 +543,11 @@ function icon(string $name): string {
           <option value="online">Online</option>
           <option value="offline">Offline</option>
           <option value="blocked">Blocked</option>
+        </select>
+        <select class="select" id="devPlatform" style="width:140px">
+          <option value="">All platforms</option>
+          <option value="ios">🍎 iOS</option>
+          <option value="android">🤖 Android</option>
         </select>
         <button class="btn btn-secondary btn-sm" id="devRefreshBtn"><?= icon('refresh') ?></button>
         <button class="btn btn-secondary btn-sm" id="devGeoBackfillBtn" title="Re-resolve country/flag for devices with an IP but no country">🌍 Fix flags</button>
@@ -1114,6 +1121,16 @@ function catBadge(cat) {
   };
   const [cls, label] = m[cat] || ['badge-muted', cat||'unknown'];
   return `<span class="badge ${cls}">${esc(label)}</span>`;
+}
+function platformBadge(p) {
+  if ((p||'').toLowerCase() === 'ios')
+    return '<span class="badge badge-info" title="iOS (TestFlight / App Store)" style="font-size:.65rem">🍎 iOS</span>';
+  return '<span class="badge badge-muted" title="Android" style="font-size:.65rem">🤖 Android</span>';
+}
+function probeBadge(r) {
+  if (r === 'ok')   return '<span class="badge badge-ok"  title="Probe reached internet through tunnel">✓ probe ok</span>';
+  if (r === 'fail') return '<span class="badge badge-danger" title="Tunnel connected but internet unreachable">✗ probe fail</span>';
+  return '<span style="color:var(--muted-2);font-size:.7rem">—</span>';
 }
 
 // ── API client ───────────────────────────────────────────────────────
@@ -2052,12 +2069,19 @@ views.installs = {
 
       $('instModelTbl').innerHTML = (d.models||[]).length
         ? d.models.map(r=>{
-            const abi32 = r.abi && !r.abi.includes('arm64-v8a');
+            const isIos = r.platform === 'ios';
+            const abi32 = !isIos && r.abi && !r.abi.includes('arm64-v8a');
+            const platformBadge = isIos
+              ? '<span class="badge badge-info" style="font-size:.65rem">🍎 iOS</span> '
+              : '';
+            const abiCell = isIos ? '<span class="badge badge-info" style="font-size:.65rem">N/A</span>'
+              : r.abi ? `<span class="badge ${abi32?'badge-warn':'badge-ok'}">${esc(r.abi.split(',')[0])}${abi32?' (32-bit)':''}</span>`
+              : '—';
             return `<tr>
-              <td>${esc((r.manufacturer||'')+' '+(r.model||''))}</td>
-              <td>${esc(r.android_version||'—')}</td>
-              <td>${r.sdk_version||'—'}</td>
-              <td>${r.abi ? `<span class="badge ${abi32?'badge-warn':'badge-ok'}">${esc(r.abi.split(',')[0])}${abi32?' (32-bit)':''}</span>` : '—'}</td>
+              <td>${platformBadge}${esc((r.manufacturer||'')+' '+(r.model||''))}</td>
+              <td>${isIos ? '<span style="color:var(--muted)">—</span>' : esc(r.android_version||'—')}</td>
+              <td>${isIos ? '<span style="color:var(--muted)">—</span>' : (r.sdk_version||'—')}</td>
+              <td>${abiCell}</td>
               <td>${esc(r.app_version||'—')}</td>
               <td>${r.cnt}</td>
               <td class="mobile-hide">${esc(r.last_seen||'')}</td>
@@ -2097,6 +2121,7 @@ views.devices = {
     $('devSearch').oninput = debounce(()=>this.renderDevices(), 250);
     $('devPlan').onchange = ()=>this.renderDevices();
     $('devStatus').onchange = ()=>this.renderDevices();
+    $('devPlatform').onchange = ()=>this.renderDevices();
     $('devRefreshBtn').onclick = ()=>{ this.loadDevices(); this.loadPayments(); this.loadTraffic(); };
     $('devGeoBackfillBtn').onclick = async()=>{
       const btn = $('devGeoBackfillBtn'); btn.disabled = true;
@@ -2113,28 +2138,34 @@ views.devices = {
     try {
       const rows = await api.get('devices-list');
       this.devData = rows;
-      const online  = rows.filter(r=>r.status==='online').length;
-      const free    = rows.filter(r=>r.plan==='free').length;
-      const premium = rows.filter(r=>r.plan==='premium').length;
-      const blocked = rows.filter(r=>r.blocked).length;
+      const online   = rows.filter(r=>r.status==='online').length;
+      const free     = rows.filter(r=>r.plan==='free').length;
+      const premium  = rows.filter(r=>r.plan==='premium').length;
+      const blocked  = rows.filter(r=>r.blocked).length;
+      const iosCount = rows.filter(r=>(r.platform||'').toLowerCase()==='ios').length;
       $('devTotal').textContent   = rows.length;
       $('devOnline').textContent  = online;
       $('devFree').textContent    = free;
       $('devPremium').textContent = premium;
       $('devBlocked').textContent = blocked;
+      $('devIos').textContent     = iosCount;
+      $('devAndroid').textContent = rows.length - iosCount;
       this.renderDevices();
     } catch(e) { toast('Devices: '+e.message,'error'); }
   },
   renderDevices() {
-    const q     = ($('devSearch').value||'').toLowerCase();
-    const plan  = $('devPlan').value;
-    const status= $('devStatus').value;
+    const q        = ($('devSearch').value||'').toLowerCase();
+    const plan     = $('devPlan').value;
+    const status   = $('devStatus').value;
+    const platform = $('devPlatform').value;
     let rows = this.devData;
-    if (q)              rows = rows.filter(r=>((r.user_id||'')+(r.device_id_short||'')+(r.country||'')+(r.app_version||'')+(r.device_id||'')+(r.model||'')).toLowerCase().includes(q));
+    if (q)              rows = rows.filter(r=>((r.user_id||'')+(r.device_id_short||'')+(r.country||'')+(r.app_version||'')+(r.device_id||'')+(r.model||'')+(r.platform||'')).toLowerCase().includes(q));
     if (plan)           rows = rows.filter(r=>r.plan===plan);
     if (status==='online')  rows = rows.filter(r=>r.status==='online');
     if (status==='offline') rows = rows.filter(r=>r.status!=='online');
     if (status==='blocked') rows = rows.filter(r=>r.blocked);
+    if (platform==='ios')     rows = rows.filter(r=>(r.platform||'').toLowerCase()==='ios');
+    if (platform==='android') rows = rows.filter(r=>(r.platform||'').toLowerCase()!=='ios');
     $('devTbl').innerHTML = !rows.length
       ? '<tr><td colspan="12" class="tbl-empty">No devices match filter</td></tr>'
       : rows.map(r=>{
@@ -2173,7 +2204,11 @@ views.devices = {
           return `<tr style="cursor:pointer" onclick="devDetail('${esc(r.device_id)}')" title="Click for device details">
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
-              <div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)" title="Device fingerprint (sha256 of device_id)">FP: ${esc(r.device_id_short||'')}</div>
+              <div style="display:flex;gap:.25rem;align-items:center;margin:.18rem 0;flex-wrap:wrap">
+                ${platformBadge(r.platform)}
+                ${r.app_version?`<span class="badge badge-muted" style="font-family:var(--mono);font-size:.62rem" title="App version">${esc(r.app_version)}</span>`:''}
+              </div>
+              <div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)" title="Device fingerprint">FP: ${esc(r.device_id_short||'')}</div>
               ${r.referral_code?`<div style="font-size:.6rem;color:var(--emerald);font-family:var(--mono)" title="Invite/referral code">INV: ${esc(r.referral_code)}</div>`:''}
               ${r.blocked?'<span class="badge badge-danger" style="margin-left:0">blocked</span>':''}
             </td>
@@ -2288,10 +2323,16 @@ window.devDetail = async function(did) {
     $('devMsgBtn').onclick = ()=>devMessage(did, uid);
     const kv = (k,v) => `<div style="display:flex;justify-content:space-between;gap:1rem;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--muted-2)">${k}</span><span style="text-align:right;font-family:var(--mono)">${v||'—'}</span></div>`;
     const gb = n => fmtBytes(n||0);
+    const isIos = (dev.platform||'').toLowerCase() === 'ios';
     const devRows = [
+      kv('Platform', platformBadge(dev.platform)),
       kv('Model', esc((dev.manufacturer?dev.manufacturer+' ':'')+(dev.model||''))),
-      kv('Android', esc(dev.android_version ? `${dev.android_version} (SDK ${dev.sdk_version||'?'})` : (dev.sdk_version?`SDK ${dev.sdk_version}`:''))),
-      kv('ABI', esc(dev.abi||'') || '<span style="color:var(--muted-2)">unknown — fills on next app launch</span>'),
+      isIos
+        ? kv('iOS', '<span style="color:var(--muted-2)">updates via TestFlight / App Store</span>')
+        : kv('Android', esc(dev.android_version ? `${dev.android_version} (SDK ${dev.sdk_version||'?'})` : (dev.sdk_version?`SDK ${dev.sdk_version}`:''))),
+      isIos
+        ? kv('ABI', '<span style="color:var(--muted-2)">N/A — native iOS binary (arm64)</span>')
+        : kv('ABI', esc(dev.abi||'') || '<span style="color:var(--muted-2)">unknown — fills on next app launch</span>'),
       kv('App version', esc(dev.app_version)),
       kv('Language', esc(dev.language)),
       kv('Country', (dev.country_name||dev.country)
@@ -2312,13 +2353,15 @@ window.devDetail = async function(did) {
         <td style="font-size:.68rem">${protoBadge(s.protocol)}</td>
         <td style="font-size:.68rem;font-family:var(--mono)">↓${fmtBytes(s.bytes_recv)} ↑${fmtBytes(s.bytes_sent)}</td>
         <td style="font-size:.68rem">${Math.round((s.duration_secs||0)/60)}m</td>
-        <td style="font-size:.68rem">${s.via_vpn?'<span title="report sent through the tunnel — exits xray locally">via VPN</span>':esc(s.client_ip||'—')}</td>
-      </tr>`).join('') || '<tr><td colspan="5" class="tbl-empty">No sessions reported</td></tr>';
+        <td style="font-size:.68rem">${probeBadge(s.probe_result)}</td>
+        <td style="font-size:.65rem;color:var(--muted-2)">${esc(s.error_reason||'')}</td>
+        <td style="font-size:.68rem">${s.via_vpn?'<span title="report sent through the tunnel">via VPN</span>':esc(s.client_ip||'—')}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="tbl-empty">No sessions reported</td></tr>';
     $('devDetailBody').innerHTML = `
       ${devRows}
       <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">RECENT SESSIONS <span style="font-weight:400;color:var(--muted-2)">— this device only</span></div>
       <table class="tbl" style="margin-top:.3rem"><thead><tr>
-        <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Reported from</th>
+        <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Probe</th><th>Error</th><th>Reported from</th>
       </tr></thead><tbody>${sess}</tbody></table>
       <p style="margin-top:.7rem;font-size:.68rem;color:var(--muted-2)">Per-device app breakdown (Instagram/Telegram…) is not collected yet —
       all clients share one xray identity. The combined view for all users is on the Devices page.</p>`;
