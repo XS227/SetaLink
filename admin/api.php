@@ -455,6 +455,19 @@ function touch_device_ip(PDO $db, string $device_id): void {
     }
 }
 
+// Returns the canonical platform for a device row, using hardware markers as
+// a fallback so legacy devices that registered before Platform.OS was wired
+// up are still displayed correctly without requiring re-registration.
+function normalize_platform(array $r): string {
+    if (($r['platform'] ?? '') === 'ios') return 'ios';
+    $mfr   = strtolower($r['manufacturer'] ?? '');
+    $model = strtolower($r['model'] ?? '');
+    if ($mfr === 'apple'
+        || str_starts_with($model, 'iphone')
+        || str_starts_with($model, 'ipad')) return 'ios';
+    return 'android';
+}
+
 // ── Mobile POST ───────────────────────────────────────────────────────────
 if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     $tok = (string)($_POST['_token'] ?? $_GET['_token'] ?? '');
@@ -2365,7 +2378,7 @@ switch ($action) {
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
                 'user_id'           => $r['user_id']         ?? '',
-                'platform'          => $r['platform']        ?? 'android',
+                'platform'          => normalize_platform($r),
                 'plan'              => $r['plan']            ?? 'free',
                 'quota_bytes_total' => (int)($r['quota_bytes_total'] ?? 0),
                 'quota_bytes_used'  => (int)($r['quota_bytes_used']  ?? 0),
@@ -2437,10 +2450,12 @@ switch ($action) {
         $ls = $dev['last_seen'] ?? null;
         $dev['is_online'] = ($dev['status'] === 'online'
                              && $ls && (time()-(int)strtotime((string)$ls.' UTC')) < 10800);
-        // vpn_sessions is created by public/api.php — only select columns that
-        // actually exist there (no probe_result/error_reason).
+        // probe_result / error_reason added lazily by public/api.php; absent on
+        // older rows — COALESCE to '' so the UI never sees NULL.
         $sess = $db->prepare("SELECT protocol, bytes_sent, bytes_recv, duration_secs,
-                                     app_version, client_ip, started_at, ended_at
+                                     app_version, client_ip, started_at, ended_at,
+                                     COALESCE(probe_result,'') AS probe_result,
+                                     COALESCE(error_reason,'') AS error_reason
                               FROM vpn_sessions WHERE device_id=?
                               ORDER BY id DESC LIMIT 20");
         $sess->execute([$did]);
@@ -2455,6 +2470,7 @@ switch ($action) {
                             FROM install_events WHERE device_id=?
                             ORDER BY id DESC LIMIT 10");
         $ev->execute([$did]);
+        $dev['platform'] = normalize_platform($dev);
         api_ok([
             'device'         => $dev,
             'sessions'       => $sessions,
@@ -2471,13 +2487,18 @@ switch ($action) {
         // a device without arm64-v8a in the list can only install 32-bit APKs.
         $abi_rows = $db->query("SELECT abi, COUNT(*) AS cnt FROM devices WHERE abi!='' GROUP BY abi ORDER BY cnt DESC")->fetchAll(PDO::FETCH_ASSOC);
         $arm32_only = (int)$db->query("SELECT COUNT(*) FROM devices WHERE abi!='' AND abi NOT LIKE '%arm64-v8a%'")->fetchColumn();
-        $abi_unknown = (int)$db->query("SELECT COUNT(*) FROM devices WHERE abi=''")->fetchColumn();
+        // Exclude iOS/Apple devices — they have no ABI concept; counting them as
+        // "unknown" would mislead the Android install health stats.
+        $abi_unknown = (int)$db->query("SELECT COUNT(*) FROM devices WHERE abi=''
+            AND platform!='ios' AND manufacturer!='Apple'
+            AND model NOT LIKE 'iPhone%' AND model NOT LIKE 'iPad%'")->fetchColumn();
         $app_versions = $db->query("SELECT app_version AS version, COUNT(*) AS cnt FROM devices WHERE app_version!='' GROUP BY app_version ORDER BY cnt DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
         $android_versions = $db->query("SELECT android_version, sdk_version, COUNT(*) AS cnt FROM devices WHERE android_version!='' OR sdk_version>0 GROUP BY android_version, sdk_version ORDER BY cnt DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
         // Fall back to probe telemetry for devices that registered before
         // fingerprint columns were stored.
         $android_versions_tests = $db->query("SELECT android_version, android_sdk AS sdk_version, COUNT(DISTINCT device_model) AS cnt FROM test_results WHERE android_version!='' GROUP BY android_version, android_sdk ORDER BY cnt DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
-        $models = $db->query("SELECT manufacturer, model, MAX(android_version) AS android_version, MAX(sdk_version) AS sdk_version, MAX(abi) AS abi, MAX(app_version) AS app_version, COUNT(*) AS cnt, MAX(last_seen) AS last_seen FROM devices WHERE model!='' GROUP BY manufacturer, model ORDER BY cnt DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+        $models_raw = $db->query("SELECT manufacturer, model, MAX(platform) AS platform, MAX(android_version) AS android_version, MAX(sdk_version) AS sdk_version, MAX(abi) AS abi, MAX(app_version) AS app_version, COUNT(*) AS cnt, MAX(last_seen) AS last_seen FROM devices WHERE model!='' GROUP BY manufacturer, model ORDER BY cnt DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
+        $models = array_map(function($r) { $r['platform'] = normalize_platform($r); return $r; }, $models_raw);
         $events = $db->query("SELECT * FROM install_events ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
         $failures_7d = (int)$db->query("SELECT COUNT(*) FROM install_events WHERE event='install_failure' AND created_at>=datetime('now','-7 days')")->fetchColumn();
         $old_android = (int)$db->query("SELECT COUNT(*) FROM devices WHERE sdk_version>0 AND sdk_version<=28")->fetchColumn();
