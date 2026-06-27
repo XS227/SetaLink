@@ -92,8 +92,13 @@ export const useVpnStore = create<VpnState>((set, get) => {
       set({ sessionStartedAt: Date.now(), error: null, smartStatus: null, _fallbackActive: false, _fallbackIdx: 0 });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { getLastConnectLog } = require('../services/vpnBridge');
-        set({ connectionLog: getLastConnectLog() });
+        const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAuthStore } = require('./authStore');
+        const log = getLastConnectLog();
+        set({ connectionLog: log });
+        const user = useAuthStore.getState().user;
+        if (user?.deviceId) uploadTunnelLog(user.deviceId, log);
       } catch {}
 
       const server = get().selectedServer;
@@ -304,8 +309,13 @@ export const useVpnStore = create<VpnState>((set, get) => {
       appendMetric({ type: message.toLowerCase().includes('routing') ? 'routing_failed' : 'connect_failed', at: Date.now(), reason: message, country: get().selectedServer?.country });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { getLastConnectLog } = require('../services/vpnBridge');
-        set({ connectionLog: getLastConnectLog() });
+        const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAuthStore } = require('./authStore');
+        const log = getLastConnectLog();
+        set({ connectionLog: log });
+        const user = useAuthStore.getState().user;
+        if (user?.deviceId) uploadTunnelLog(user.deviceId, log);
       } catch {}
 
       try {
@@ -403,6 +413,19 @@ export const useVpnStore = create<VpnState>((set, get) => {
       if (!get()._fallbackActive) {
         set({ _fallbackActive: true, _fallbackIdx: 0, error: null, smartStatus: 'Establishing secure tunnel…' });
       }
+      // Write device_id + country to App Group before the extension starts.
+      // PacketTunnelProvider reads these to include in the diagnostic upload.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { setDiagnosticContext } = require('../services/vpnBridge');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAuthStore } = require('./authStore');
+        const user   = useAuthStore.getState().user;
+        const server = get().selectedServer;
+        if (user?.deviceId) {
+          setDiagnosticContext(user.deviceId, server?.country ?? '').catch(() => {});
+        }
+      } catch {}
       machine.send('CONNECT');
     },
 

@@ -72,6 +72,12 @@ export interface Spec extends TurboModule {
   reportTelemetry(payload: string): Promise<void>;
 
   /**
+   * Write device_id and country to the App Group before each connect so the
+   * PacketTunnelProvider can include them in the diagnostic upload payload.
+   */
+  setDiagnosticContext(deviceId: string, country: string): Promise<void>;
+
+  /**
    * Probe https://1.1.1.1/cdn-cgi/trace through the active VPN network.
    * Returns ok=true + routedIp when traffic flows through TUN correctly.
    */

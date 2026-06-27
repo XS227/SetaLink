@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Linking,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Linking, Platform,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -377,41 +377,48 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
               <Text style={selStyles.label}>App version</Text>
               <Text style={rowStyles.desc}>v{APP_VERSION} · Build {APP_BUILD}</Text>
             </View>
-            <TouchableOpacity
-              onPress={updateStatus === 'available' ? handleDownloadUpdate : handleCheckUpdate}
-              style={[styles.updateBtn, updateStatus === 'available' && styles.updateBtnAvailable]}
-              activeOpacity={0.75}
-              disabled={updateStatus === 'checking'}
-            >
-              <Text style={[styles.updateBtnText, updateStatus === 'available' && styles.updateBtnTextAvailable]}>
-                {updateStatus === 'checking'  ? 'Checking…'        :
-                 updateStatus === 'available' ? `Update ${latestVersion}` :
-                 updateStatus === 'uptodate'  ? 'Up to date ✓'    :
-                 'Check update'}
-              </Text>
-            </TouchableOpacity>
+            {Platform.OS === 'android' ? (
+              <TouchableOpacity
+                onPress={updateStatus === 'available' ? handleDownloadUpdate : handleCheckUpdate}
+                style={[styles.updateBtn, updateStatus === 'available' && styles.updateBtnAvailable]}
+                activeOpacity={0.75}
+                disabled={updateStatus === 'checking'}
+              >
+                <Text style={[styles.updateBtnText, updateStatus === 'available' && styles.updateBtnTextAvailable]}>
+                  {updateStatus === 'checking'  ? 'Checking…'        :
+                   updateStatus === 'available' ? `Update ${latestVersion}` :
+                   updateStatus === 'uptodate'  ? 'Up to date ✓'    :
+                   'Check update'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={rowStyles.desc}>via TestFlight</Text>
+            )}
           </View>
-          {updateStatus === 'available' && (
+          {Platform.OS === 'android' && updateStatus === 'available' && (
             <View style={styles.updateBanner}>
               <Text style={styles.updateBannerText}>
                 Version {latestVersion} is available. Tap "Update" to download.
               </Text>
             </View>
           )}
-          <Divider />
-          <SelectRow
-            label="Update channel"
-            value={updateChannel}
-            options={['stable', 'beta', 'experimental']}
-            onChange={(v: string) => setUpdateChannel(v as 'stable' | 'beta' | 'experimental')}
-          />
+          {Platform.OS === 'android' && (
+            <>
+              <Divider />
+              <SelectRow
+                label="Update channel"
+                value={updateChannel}
+                options={['stable', 'beta', 'experimental']}
+                onChange={(v: string) => setUpdateChannel(v as 'stable' | 'beta' | 'experimental')}
+              />
+            </>
+          )}
           <Divider />
           <View style={selStyles.row}>
             <View style={{ gap: 3 }}>
               <Text style={selStyles.label}>Version debug</Text>
               <Text style={rowStyles.desc}>Manifest version: v{APP_VERSION} (Build {APP_BUILD})</Text>
               <Text style={rowStyles.desc}>JS bundle version: v{APP_VERSION} (Build {APP_BUILD})</Text>
-              <Text style={rowStyles.desc}>OTA version: {latestVersion ? `v${latestVersion}` : '(tap Check update)'}</Text>
             </View>
           </View>
         </Section>
