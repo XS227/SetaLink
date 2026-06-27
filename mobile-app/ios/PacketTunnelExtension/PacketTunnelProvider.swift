@@ -33,13 +33,25 @@ private let kHttpPort:  Int = 10809
 class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private var log: [String] = []
+    private let startTime = Date()
 
     // MARK: - Start
 
     override func startTunnel(options: [String: NSObject]? = nil,
                               completionHandler: @escaping (Error?) -> Void) {
-        appendLog("startTunnel")
 
+        // ── Phase 0: extension boot ───────────────────────────────────────────
+        let pi = ProcessInfo.processInfo
+        appendLog("STATE: start")
+        appendLog("Extension: \(Bundle.main.bundleIdentifier ?? "unknown") pid=\(pi.processIdentifier)")
+        appendLog("iOS: \(pi.operatingSystemVersionString)")
+        appendLog("App Group: \(kAppGroup)")
+
+        // Log the xray-core version embedded in the xcframework so we know
+        // exactly which binary we are running, without requiring a connect attempt.
+        logXrayVersion()
+
+        // ── Phase 1: load config from App Group ───────────────────────────────
         guard let shared = UserDefaults(suiteName: kAppGroup) else {
             fail("App Group \(kAppGroup) inaccessible — check entitlements", completionHandler)
             return
@@ -49,35 +61,43 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                  completionHandler)
             return
         }
-        appendLog("Config: \(configJson.count) bytes")
+        appendLog("STATE: config loaded (\(configJson.count) bytes)")
 
-        // Start xray-core first — we need the HTTP proxy up before the probe.
+        // ── Phase 2: validate + start xray-core ──────────────────────────────
+        appendLog("STATE: xray starting")
+        let xrayT0 = Date()
         if let xrayError = startXrayCore(configJson: configJson) {
             fail(xrayError, completionHandler)
             return
         }
-        appendLog("xray-core started")
+        appendLog("STATE: xray started (\(elapsed(since: xrayT0)))")
 
-        // Apply tunnel settings (proxy mode — no default TUN route needed).
+        // ── Phase 3: apply NEPacketTunnelNetworkSettings ──────────────────────
+        appendLog("STATE: applying network settings")
         applyNetworkSettings { [weak self] error in
             guard let self = self else { return }
             if let error = error {
+                self.appendLog("STATE: network settings FAILED — \(error.localizedDescription)")
                 self.fail("NEPacketTunnelNetworkSettings: \(error.localizedDescription)",
                           completionHandler)
                 return
             }
-            self.appendLog("Network settings applied")
+            self.appendLog("STATE: network settings applied (\(self.elapsed(since: self.startTime)) total)")
 
-            // Probe through xray's HTTP proxy to confirm end-to-end connectivity.
-            self.probe { ok in
+            // ── Phase 4: diagnostic probes ───────────────────────────────────
+            // Two-leg probe separates proxy failures from DNS failures:
+            //   Leg 1 (IP-direct)  — bypasses DNS; tests xray forwarding only.
+            //   Leg 2 (DNS+proxy)  — uses hostname; tests DNS resolution end-to-end.
+            self.appendLog("STATE: probing")
+            self.runDualProbe { ok, summary in
                 shared.set(ok, forKey: kProbeOkKey)
                 if ok {
-                    self.appendLog("Probe OK — tunnel active")
+                    self.appendLog("STATE: connected (\(self.elapsed(since: self.startTime)) total)")
                     self.flushLog(to: shared)
                     completionHandler(nil)
                 } else {
-                    self.fail("Probe failed — xray is not forwarding traffic",
-                              completionHandler)
+                    self.appendLog("STATE: failed — \(summary)")
+                    self.fail(summary, completionHandler)
                 }
             }
         }
@@ -87,7 +107,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
-        appendLog("stopTunnel reason=\(reason.rawValue)")
+        appendLog("STATE: stop reason=\(reason.rawValue) (\(stopReasonDescription(reason)))")
         stopXrayCore()
         if let shared = UserDefaults(suiteName: kAppGroup) { flushLog(to: shared) }
         completionHandler()
@@ -101,18 +121,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // A minimal TUN address is required to keep the NEVPNManager connection alive.
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.255.0.1")
         settings.mtu = 1280
+        appendLog("NetSettings: tunnelRemoteAddress=10.255.0.1 mtu=1280")
 
         // Minimal IPv4 — loopback-only range, no default route.
         let ipv4 = NEIPv4Settings(addresses: ["10.255.0.2"], subnetMasks: ["255.255.255.0"])
         ipv4.includedRoutes = []          // no TUN routing; proxy handles traffic
         ipv4.excludedRoutes = []
         settings.ipv4Settings = ipv4
+        appendLog("NetSettings: IPv4=10.255.0.2/24 includedRoutes=[] (proxy mode — no default route)")
+
         settings.ipv6Settings = nil       // xray outbounds are IPv4-only
+        appendLog("NetSettings: IPv6=disabled")
 
         // DNS via xray's dns-out rule — resolves via 1.1.1.1 through the VPN server.
         let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
         dns.matchDomains = [""]           // catch-all: all DNS goes through this
         settings.dnsSettings = dns
+        appendLog("NetSettings: DNS=[1.1.1.1,8.8.8.8] matchDomains=[all]")
 
         // Route all HTTP/HTTPS through xray's local HTTP proxy (port 10809).
         // Covers Safari, App Store, social apps, and anything using URLSession.
@@ -124,36 +149,94 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // Exclude plain hostnames (LAN devices) — avoids proxying e.g. "printer.local".
         proxy.excludeSimpleHostnames = true
         settings.proxySettings = proxy
+        appendLog("NetSettings: HTTP proxy=127.0.0.1:\(kHttpPort) HTTPS proxy=127.0.0.1:\(kHttpPort) excludeSimpleHostnames=true")
 
-        setTunnelNetworkSettings(settings, completionHandler: completion)
+        appendLog("NetSettings: calling setTunnelNetworkSettings…")
+        setTunnelNetworkSettings(settings) { error in
+            if let error = error {
+                self.appendLog("NetSettings: setTunnelNetworkSettings ERROR — \(error.localizedDescription) (code=\((error as NSError).code))")
+            } else {
+                self.appendLog("NetSettings: setTunnelNetworkSettings OK — route installed")
+            }
+            completion(error)
+        }
     }
 
-    // MARK: - Probe
+    // MARK: - Dual probe
 
-    // Sends an HTTPS request through xray's HTTP proxy to confirm end-to-end
-    // connectivity through the VPN server.  Uses URLSession with an explicit
-    // connectionProxyDictionary so the request goes through xray regardless of
-    // whether the system proxy is fully applied yet.
-    private func probe(completion: @escaping (Bool) -> Void) {
-        appendLog("Probe: HTTPS via 127.0.0.1:\(kHttpPort) …")
-
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest  = 12
-        cfg.timeoutIntervalForResource = 12
-        cfg.connectionProxyDictionary = [
+    // Leg 1 probes an IP address directly — bypasses DNS, tests xray TCP forwarding.
+    // Leg 2 probes a hostname — requires both DNS resolution AND xray TCP forwarding.
+    // Comparing results isolates DNS failures from proxy failures.
+    private func runDualProbe(completion: @escaping (Bool, String) -> Void) {
+        let proxyDict: [AnyHashable: Any] = [
             kCFNetworkProxiesHTTPEnable as String: 1,
             kCFNetworkProxiesHTTPProxy  as String: "127.0.0.1",
             kCFNetworkProxiesHTTPPort   as String: kHttpPort,
         ]
 
-        // cp.cloudflare.com returns HTTP 200 with a tiny JSON body from all regions.
-        let url = URL(string: "https://cp.cloudflare.com/")!
-        let session = URLSession(configuration: cfg)
-        let task = session.dataTask(with: URLRequest(url: url)) { [weak self] _, resp, err in
-            let ok = err == nil && (resp as? HTTPURLResponse)?.statusCode == 200
-            let detail = err?.localizedDescription ?? (ok ? "200 OK" : "unexpected status")
-            self?.appendLog("Probe: \(ok ? "OK" : "FAIL") — \(detail)")
-            completion(ok)
+        // Leg 1: plain HTTP to a known IP (no TLS cert issue, no DNS needed).
+        // 1.0.0.1 is Cloudflare's anycast DNS IP; port 80 returns a redirect page.
+        let ipURL = URL(string: "http://1.0.0.1/")!
+        appendLog("Probe TX[1]: HTTP to 1.0.0.1 (IP-direct, DNS bypass) via 127.0.0.1:\(kHttpPort)")
+        fetchURL(ipURL, via: proxyDict, timeout: 10) { [weak self] status, bytes, err, t in
+            guard let self = self else { return }
+            let ipOk = err == nil && status != nil
+            if ipOk {
+                self.appendLog("Probe RX[1]: IP-direct OK — status=\(status!) bytes=\(bytes) elapsed=\(t)")
+                self.appendLog("Outbound: established — xray is forwarding TCP to internet")
+            } else {
+                let reason = err?.localizedDescription ?? "status=\(status.map{"\($0)"} ?? "nil")"
+                self.appendLog("Probe RX[1]: IP-direct FAIL — \(reason) elapsed=\(t)")
+                self.appendLog("Outbound: xray is NOT forwarding traffic (proxy or xray itself failed)")
+            }
+
+            // Leg 2: HTTPS to hostname — requires DNS + xray forwarding.
+            let cpURL = URL(string: "https://cp.cloudflare.com/")!
+            self.appendLog("Probe TX[2]: HTTPS to cp.cloudflare.com (DNS+proxy) via 127.0.0.1:\(kHttpPort)")
+            self.fetchURL(cpURL, via: proxyDict, timeout: 12) { status2, bytes2, err2, t2 in
+                let dnsOk = err2 == nil && status2 == 200
+                if dnsOk {
+                    self.appendLog("Probe RX[2]: DNS+proxy OK — status=200 bytes=\(bytes2) elapsed=\(t2)")
+                    self.appendLog("DNS: resolution OK (cp.cloudflare.com resolved through xray dns-out)")
+                    self.appendLog("First packet sent+received — end-to-end connectivity confirmed")
+                    completion(true, "ok")
+                } else {
+                    let reason2 = err2?.localizedDescription ?? "status=\(status2.map{"\($0)"} ?? "nil")"
+                    self.appendLog("Probe RX[2]: DNS+proxy FAIL — \(reason2) elapsed=\(t2)")
+                    // Interpret combined result
+                    let errCode = (err2 as NSError?)?.code
+                    let dnsHint: String
+                    if errCode == NSURLErrorCannotFindHost || errCode == NSURLErrorDNSLookupFailed {
+                        dnsHint = "DNS: FAILED — NSURLError \(errCode!) (cannot resolve hostname)"
+                    } else if ipOk {
+                        dnsHint = "DNS: likely FAILED (IP probe passed, hostname probe failed)"
+                    } else {
+                        dnsHint = "DNS: unknown (IP probe also failed — xray itself may be down)"
+                    }
+                    self.appendLog(dnsHint)
+                    let summary = ipOk
+                        ? "DNS probe failed: \(reason2)"
+                        : "Proxy probe failed: \(reason2)"
+                    completion(false, summary)
+                }
+            }
+        }
+    }
+
+    // Generic single URL fetch through an explicit proxy dict with timing.
+    // Returns (httpStatus, bodyBytes, error, elapsedString) on the calling queue.
+    private func fetchURL(_ url: URL,
+                          via proxyDict: [AnyHashable: Any],
+                          timeout: TimeInterval,
+                          completion: @escaping (Int?, Int, Error?, String) -> Void) {
+        let t0  = Date()
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest  = timeout
+        cfg.timeoutIntervalForResource = timeout
+        cfg.connectionProxyDictionary  = proxyDict
+        let task = URLSession(configuration: cfg).dataTask(with: URLRequest(url: url)) { data, resp, err in
+            let t = self.elapsed(since: t0)
+            completion((resp as? HTTPURLResponse)?.statusCode, data?.count ?? 0, err, t)
         }
         task.resume()
     }
@@ -162,7 +245,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // Returns nil on success, or a human-readable error string.
     //
-    // libxray v26+ API:
+    // libxray v25+ API (unchanged through v26.6.1):
     //   RunXrayFromJSON(base64({ datDir, configJSON })) → base64({ success, data, error })
     //
     // datDir points to geoip/geosite .dat files; our routing rules use IP ranges +
@@ -172,20 +255,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Local dev (no LIBXRAY_AVAILABLE) fails fast with a clear message.
     private func startXrayCore(configJson: String) -> String? {
         #if LIBXRAY_AVAILABLE
-        // --- Defensive validation + structured logging ---
-        // Catch missing/null protocol fields before xray-core sees them, so the
-        // error is readable rather than an opaque xray-core/base64 parse failure.
-        // Also log key config fields so every tunnel start is diagnosable from logs.
+        // Validate + log key config fields before calling libxray so every failure
+        // is diagnosable without needing a second build.
         if let validationError = validateAndLogConfig(configJson) {
             appendLog("Config validation FAILED: \(validationError)")
             appendLog("Config dump: \(configJson.prefix(600))")
             return "Config validation: \(validationError)"
         }
 
-        // Encode request for libxray v26+ RunXrayFromJSON.
+        // Encode request for libxray v25+ RunXrayFromJSON.
         // Input:  base64({ datDir: "", configJSON: "<raw xray json>" })
         // Output: base64({ success: bool, data: "", error: "..." })
-        // datDir is empty — our routing rules use IP/port only, no geo dat files.
+        // datDir is empty — routing rules use IP/port only, no geo dat files needed.
         guard let requestData = try? JSONSerialization.data(withJSONObject: [
             "datDir":     "",
             "configJSON": configJson,
@@ -208,7 +289,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         let success = json["success"] as? Bool ?? false
         let errMsg  = json["error"]   as? String ?? ""
-        appendLog("libxray response: success=\(success)\(errMsg.isEmpty ? "" : " error=\(errMsg)")")
+        appendLog("libxray CallResponse: success=\(success)\(errMsg.isEmpty ? "" : " error=\"\(errMsg)\"")")
 
         if success { return nil }
         return errMsg.isEmpty ? "xray-core failed (no error detail)" : errMsg
@@ -217,8 +298,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         #endif
     }
 
-    // Validates the xray-core JSON config and logs key fields for every tunnel start.
-    // Returns nil if valid, or a short error string describing the problem.
+    // Reads the xray-core version string from the embedded xcframework.
+    // Called before RunXrayFromJSON so the version appears even on config failures.
+    private func logXrayVersion() {
+        #if LIBXRAY_AVAILABLE
+        let raw = LibXrayXrayVersion()
+        if let data = Data(base64Encoded: raw),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let ver  = json["data"] as? String, !ver.isEmpty {
+            appendLog("xray-core version: \(ver)")
+        } else {
+            appendLog("xray-core version: (unreadable — base64=\(raw.prefix(60)))")
+        }
+        #else
+        appendLog("xray-core version: (stub — LIBXRAY_AVAILABLE not set)")
+        #endif
+    }
+
+    // Validates the xray-core JSON config and logs key outbound fields.
+    // Returns nil if valid, or a short error string describing the first problem.
     private func validateAndLogConfig(_ configJson: String) -> String? {
         guard let data = configJson.data(using: .utf8),
               let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -229,17 +327,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // Log the proxy outbound's key fields so every connect attempt is diagnosable.
         if let outbounds = obj["outbounds"] as? [[String: Any]],
            let proxy = outbounds.first(where: { ($0["tag"] as? String) == "proxy" }) {
-            let proto  = proxy["protocol"] as? String ?? "(nil)"
-            let ss     = proxy["streamSettings"] as? [String: Any]
-            let net    = ss?["network"]  as? String ?? "(nil)"
-            let sec    = ss?["security"] as? String ?? "(nil)"
-            let rs     = ss?["realitySettings"] as? [String: Any]
-            let sni    = rs?["serverName"] as? String ?? ss?["tlsSettings"].flatMap { ($0 as? [String: Any])?["serverName"] as? String } ?? "(nil)"
-            let vnext  = (proxy["settings"] as? [String: Any])?["vnext"] as? [[String: Any]]
-            let addr   = vnext?.first?["address"] as? String ?? "(nil)"
-            let port   = vnext?.first?["port"] ?? "(nil)"
+            let proto = proxy["protocol"] as? String ?? "(nil)"
+            let ss    = proxy["streamSettings"] as? [String: Any]
+            let net   = ss?["network"]  as? String ?? "(nil)"
+            let sec   = ss?["security"] as? String ?? "(nil)"
+            let rs    = ss?["realitySettings"] as? [String: Any]
+            let sni   = rs?["serverName"] as? String
+                     ?? (ss?["tlsSettings"] as? [String: Any])?["serverName"] as? String
+                     ?? "(nil)"
+            let vnext = (proxy["settings"] as? [String: Any])?["vnext"] as? [[String: Any]]
+            let addr  = vnext?.first?["address"] as? String ?? "(nil)"
+            let port  = vnext?.first?["port"] ?? "(nil)"
+            let users = vnext?.first?["users"] as? [[String: Any]]
+            let flow  = users?.first?["flow"] as? String ?? "(absent)"
             appendLog("Outbound: protocol=\(proto) network=\(net) security=\(sec)")
-            appendLog("Server: \(addr):\(port) sni=\(sni)")
+            appendLog("Server: \(addr):\(port) sni=\(sni) flow=\(flow)")
         }
 
         guard let outbounds = obj["outbounds"] as? [[String: Any]], !outbounds.isEmpty else {
@@ -258,13 +360,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 return "inbounds[\(i)] missing or empty 'protocol' field"
             }
         }
-        appendLog("Config OK (\(configJson.count) bytes): \(outbounds.count) outbounds, \(inbounds.count) inbounds")
+        let outProtos = (obj["outbounds"] as? [[String: Any]])?.compactMap { $0["protocol"] as? String } ?? []
+        let inProtos  = (obj["inbounds"]  as? [[String: Any]])?.compactMap { $0["protocol"] as? String } ?? []
+        appendLog("Config OK (\(configJson.count) bytes): out=[\(outProtos.joined(separator: ","))] in=[\(inProtos.joined(separator: ","))]")
         return nil
     }
 
     private func stopXrayCore() {
         #if LIBXRAY_AVAILABLE
-        _ = LibXrayStopXray()   // v26+: returns base64 response; discard it on stop
+        _ = LibXrayStopXray()   // v26+: returns base64 CallResponse; discard on stop
         #endif
     }
 
@@ -288,5 +392,32 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         flushLog(to: shared ?? .standard)
         completionHandler(NSError(domain: "no.setalink.tunnel", code: -1,
                                   userInfo: [NSLocalizedDescriptionKey: message]))
+    }
+
+    private func elapsed(since t0: Date) -> String {
+        return String(format: "%.2fs", -t0.timeIntervalSinceNow)
+    }
+
+    private func stopReasonDescription(_ reason: NEProviderStopReason) -> String {
+        switch reason {
+        case .none:                   return "none"
+        case .userInitiated:          return "userInitiated"
+        case .providerFailed:         return "providerFailed"
+        case .noNetworkAvailable:     return "noNetworkAvailable"
+        case .unrecoverableNetworkChange: return "unrecoverableNetworkChange"
+        case .providerDisabled:       return "providerDisabled"
+        case .authenticationCanceled: return "authenticationCanceled"
+        case .configurationFailed:    return "configurationFailed"
+        case .idleTimeout:            return "idleTimeout"
+        case .configurationDisabled:  return "configurationDisabled"
+        case .configurationRemoved:   return "configurationRemoved"
+        case .superceded:             return "superceded"
+        case .userLogout:             return "userLogout"
+        case .userSwitch:             return "userSwitch"
+        case .connectionFailed:       return "connectionFailed"
+        case .sleep:                  return "sleep"
+        case .appUpdate:              return "appUpdate"
+        @unknown default:             return "unknown(\(reason.rawValue))"
+        }
     }
 }
