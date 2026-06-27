@@ -256,3 +256,34 @@ export function getAdapter(): VpnAdapter {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// ── Diagnostic context ────────────────────────────────────────────────────────
+
+/** Write device_id + country to App Group before each connect attempt. */
+export async function setDiagnosticContext(deviceId: string, country: string): Promise<void> {
+  // Try TurboModule path first, fall back to old-arch NativeModules.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('../specs/NativeXrayModule').default;
+    await mod?.setDiagnosticContext?.(deviceId, country);
+    return;
+  } catch {}
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NativeModules } = require('react-native');
+    await NativeModules?.XrayModule?.setDiagnosticContext?.(deviceId, country);
+  } catch {}
+}
+
+// ── Tunnel log upload ─────────────────────────────────────────────────────────
+
+const TUNNEL_LOG_URL = 'https://setalink.no/api.php?mobile=1&action=submit-tunnel-log';
+
+/** Fire-and-forget upload of the connection log to the server for remote diagnosis. */
+export function uploadTunnelLog(deviceId: string, log: string[]): void {
+  if (!deviceId || log.length === 0) return;
+  const body = new FormData();
+  body.append('device_id', deviceId);
+  body.append('log', JSON.stringify(log));
+  fetch(TUNNEL_LOG_URL, { method: 'POST', body }).catch(() => {});
+}

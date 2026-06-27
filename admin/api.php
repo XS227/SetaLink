@@ -2903,6 +2903,73 @@ switch ($action) {
         api_ok(['lines'=>$lines,'count'=>count($lines)]);
         break;
 
+    case 'tunnel-logs':
+        // Serves uploaded PacketTunnelProvider diagnostic bundles.
+        //
+        // GET ?action=tunnel-logs                       → list all (newest first, max 100)
+        // GET ?action=tunnel-logs&device_id=SL-227-...  → filter to one device
+        // GET ?action=tunnel-logs&stem=SL-227_20260627_120000_123
+        //                                               → return log + meta + config for one stem
+        $dir       = dirname(__DIR__) . '/data/tunnel-logs';
+        $stemParam = trim($_GET['stem']      ?? '');
+        $devFilter = trim($_GET['device_id'] ?? '');
+
+        if ($stemParam !== '') {
+            // Sanitize: alphanumeric + _ -
+            $safe = preg_replace('/[^A-Za-z0-9_\-]/', '', $stemParam);
+            if ($safe === '') api_error('invalid stem');
+
+            $logPath  = $dir . '/' . $safe . '.txt';
+            $metaPath = $dir . '/' . $safe . '.meta.json';
+            $cfgPath  = $dir . '/' . $safe . '.config.json';
+
+            if (!is_readable($logPath)) api_error('log not found');
+            $lines = file($logPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            $meta  = is_readable($metaPath) ? json_decode(file_get_contents($metaPath), true) : null;
+            $cfg   = is_readable($cfgPath)  ? file_get_contents($cfgPath)                      : null;
+
+            api_ok([
+                'stem'   => $safe,
+                'lines'  => $lines,
+                'count'  => count($lines),
+                'meta'   => $meta,
+                'config' => $cfg,
+            ]);
+        }
+
+        if (!is_dir($dir)) { api_ok(['files' => []]); }
+
+        $files = glob($dir . '/*.txt') ?: [];
+        rsort($files);  // newest first
+        $files = array_slice($files, 0, 100);
+        $result = [];
+        foreach ($files as $f) {
+            $base = basename($f, '.txt');  // stem without extension
+            $deviceId = preg_replace('/_\d{8}_\d{6}(_\d{3})?$/', '', $base);
+            if ($devFilter && strpos($base, $devFilter) !== 0) continue;
+
+            $metaPath = $dir . '/' . $base . '.meta.json';
+            $cfgPath  = $dir . '/' . $base . '.config.json';
+
+            // Embed meta inline so the listing carries key diagnostic fields.
+            $meta = null;
+            if (is_readable($metaPath)) {
+                $meta = json_decode(file_get_contents($metaPath), true);
+            }
+
+            $result[] = [
+                'stem'      => $base,
+                'device_id' => $deviceId,
+                'size'      => filesize($f),
+                'mtime'     => date('Y-m-d H:i:s', filemtime($f)),
+                'has_meta'  => is_readable($metaPath),
+                'has_config'=> is_readable($cfgPath),
+                'meta'      => $meta,
+            ];
+        }
+        api_ok(['files' => $result, 'count' => count($result)]);
+        break;
+
     case 'payment-queue':
         $db = open_analytics_db();
         $db->exec("CREATE TABLE IF NOT EXISTS payment_queue (

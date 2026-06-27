@@ -27,10 +27,13 @@ class XrayModule: NSObject {
 
     private static let appGroupID  = "group.no.setalink.realink"
     private static let extensionID = "no.setalink.realink.tunnel"
-    private static let configKey   = "xray_config_json"
-    private static let errorKey    = "last_tunnel_error"
-    private static let probeKey    = "last_probe_ok"
-    private static let logKey      = "connection_log"
+    private static let configKey      = "xray_config_json"
+    private static let errorKey       = "last_tunnel_error"
+    private static let probeKey       = "last_probe_ok"
+    private static let logKey         = "connection_log"
+    private static let diagDeviceIdKey = "diag_device_id"
+    private static let diagCountryKey  = "diag_country"
+    private static let diagAppVerKey   = "diag_app_version"
 
     private var shared: UserDefaults? {
         UserDefaults(suiteName: Self.appGroupID)
@@ -50,6 +53,10 @@ class XrayModule: NSObject {
         shared?.set(config, forKey: Self.configKey)
         shared?.removeObject(forKey: Self.errorKey)
         shared?.removeObject(forKey: Self.logKey)
+        // Write app version for diagnostic upload (read by PacketTunnelProvider).
+        let ver   = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        shared?.set("\(ver) (\(build))", forKey: Self.diagAppVerKey)
 
         DispatchQueue.main.async {
             NEVPNManager.shared().loadFromPreferences { [weak self] loadError in
@@ -225,6 +232,19 @@ class XrayModule: NSObject {
                             rejecter reject: @escaping RCTPromiseRejectBlock) {
         resolve(["ok": false,
                  "error": "runTraceTest requires libXray embedded in PacketTunnelExtension"])
+    }
+
+    // MARK: - setDiagnosticContext
+
+    // Called from JS before each connect attempt with device_id and country.
+    // Stored in App Group so PacketTunnelProvider can include them in the upload.
+    @objc func setDiagnosticContext(_ deviceId: String,
+                                    country: String,
+                                    resolver resolve: @escaping RCTPromiseResolveBlock,
+                                    rejecter reject: @escaping RCTPromiseRejectBlock) {
+        shared?.set(deviceId, forKey: Self.diagDeviceIdKey)
+        shared?.set(country,  forKey: Self.diagCountryKey)
+        resolve(nil)
     }
 
     @objc static func requiresMainQueueSetup() -> Bool { false }

@@ -996,6 +996,9 @@ if ($method === 'POST') {
         $durationSecs = (int)($_POST['duration_secs'] ?? 0);
         $appVersion   = substr(trim($_POST['app_version'] ?? ''), 0, 20);
         $sessionId    = substr(trim($_POST['session_id'] ?? ''), 0, 80);
+        $rawProbe     = trim($_POST['probe_result'] ?? '');
+        $probeResult  = in_array($rawProbe, ['ok', 'fail', 'unknown'], true) ? $rawProbe : 'unknown';
+        $errorReason  = substr(trim($_POST['error_reason'] ?? ''), 0, 300);
         // recovery=1 → bytes are metered against the hidden reserve, NOT visible quota.
         $isRecovery   = (int)($_POST['recovery'] ?? 0) === 1;
         if (!$deviceId || $durationSecs < 1) err('invalid session data');
@@ -1017,6 +1020,9 @@ if ($method === 'POST') {
         // Idempotency column + unique index (added lazily for existing DBs).
         try { $pdo->exec("ALTER TABLE vpn_sessions ADD COLUMN session_id TEXT DEFAULT ''"); } catch (\Exception $e) {}
         try { $pdo->exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_devsid ON vpn_sessions(device_id, session_id) WHERE session_id <> ''"); } catch (\Exception $e) {}
+        // Probe + error diagnostics (added lazily — surfaced in device-detail modal).
+        try { $pdo->exec("ALTER TABLE vpn_sessions ADD COLUMN probe_result TEXT DEFAULT ''"); } catch (\Exception $e) {}
+        try { $pdo->exec("ALTER TABLE vpn_sessions ADD COLUMN error_reason TEXT DEFAULT ''"); } catch (\Exception $e) {}
 
         // Fall back to a synthetic key when the client sends none, so older clients
         // still log (but without cross-retry dedup).
@@ -1024,8 +1030,9 @@ if ($method === 'POST') {
 
         $ins = $pdo->prepare(
             "INSERT OR IGNORE INTO vpn_sessions
-                (device_id, protocol, bytes_sent, bytes_recv, duration_secs, app_version, started_at, ended_at, client_ip, session_id)
-             VALUES (?, ?, ?, ?, ?, ?, datetime('now', ? || ' seconds'), datetime('now'), ?, ?)"
+                (device_id, protocol, bytes_sent, bytes_recv, duration_secs, app_version,
+                 started_at, ended_at, client_ip, session_id, probe_result, error_reason)
+             VALUES (?, ?, ?, ?, ?, ?, datetime('now', ? || ' seconds'), datetime('now'), ?, ?, ?, ?)"
         );
         $ins->execute([
             $deviceId, $protocol, $bytesSent, $bytesRecv,
@@ -1033,6 +1040,8 @@ if ($method === 'POST') {
             '-' . $durationSecs,
             $_SERVER['REMOTE_ADDR'] ?? '',
             $sessionId,
+            $probeResult,
+            $errorReason,
         ]);
 
         // Accumulate quota ONLY when this is a new (non-duplicate) session row,
@@ -1146,6 +1155,48 @@ if ($method === 'POST') {
         if (!$deviceId || $peer === '') err('missing params');
         $pdo = db();
         ok(['deleted' => dm_delete_thread($pdo, $deviceId, $peer)]);
+    }
+
+    if ($action === 'submit-tunnel-log') {
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $rawLog   = trim($_POST['log']       ?? '');
+        $rawMeta  = trim($_POST['meta']      ?? '');
+        $rawCfg   = trim($_POST['config']    ?? '');
+
+        if (!$deviceId || !preg_match('/^[A-Za-z0-9_\-]{4,80}$/', $deviceId)) err('invalid device_id');
+        if ($rawLog === '') err('missing log');
+
+        $lines = json_decode($rawLog, true);
+        if (!is_array($lines)) err('log must be JSON array');
+
+        // Clamp to 500 lines, 500 chars each.
+        $lines = array_slice($lines, 0, 500);
+        $lines = array_map(fn($l) => substr((string)$l, 0, 500), $lines);
+
+        $dir  = __DIR__ . '/../data/tunnel-logs';
+        if (!is_dir($dir)) err('log dir missing');
+
+        $safe = preg_replace('/[^A-Za-z0-9_\-]/', '', $deviceId);
+        $ts   = gmdate('Ymd_His') . '_' . sprintf('%03d', (int)(microtime(true) * 1000) % 1000);
+        $base = $dir . '/' . $safe . '_' . $ts;
+
+        // .txt — human-readable log lines
+        if (file_put_contents($base . '.txt', implode("\n", $lines) . "\n") === false) err('write failed');
+
+        // .meta.json — structured diagnostic fields
+        if ($rawMeta !== '') {
+            $meta = json_decode($rawMeta, true);
+            if (is_array($meta)) {
+                file_put_contents($base . '.meta.json', json_encode($meta, JSON_PRETTY_PRINT) . "\n");
+            }
+        }
+
+        // .config.json — sanitized xray config (secrets masked by client)
+        if ($rawCfg !== '' && strlen($rawCfg) <= 32768) {
+            file_put_contents($base . '.config.json', $rawCfg);
+        }
+
+        ok(['saved' => $safe . '_' . $ts, 'lines' => count($lines)]);
     }
 
     err('unknown action');

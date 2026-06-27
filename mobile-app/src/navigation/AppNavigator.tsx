@@ -179,8 +179,10 @@ function MainTabs() {
     return () => sub.remove();
   }, []);
 
-  // Update check — runs once on launch, after a short delay so it doesn't block boot.
+  // Update check — Android only. iOS ships through TestFlight/App Store; APK
+  // versionCode and build numbers are incomparable across the two platforms.
   useEffect(() => {
+    if (Platform.OS !== 'android') return;
     const tid = setTimeout(async () => {
       try {
         const result = await checkForUpdate(userCountry, updateChannel);
