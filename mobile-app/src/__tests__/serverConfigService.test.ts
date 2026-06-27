@@ -11,7 +11,7 @@ const mockGetConfig = ServersAPI.getConfig as jest.Mock;
 
 const REAL_CREDS = {
   uuid:      'aaaaaaaa-bbbb-4000-8000-cccccccccccc',
-  address:   'de1.edge.setalink.net',
+  address:   'de1.edge.setalink.no',
   port:      443,
   publicKey: 'LtXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
   shortId:   'aabbccdd',

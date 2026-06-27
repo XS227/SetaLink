@@ -131,7 +131,7 @@ export function buildAutoProfiles(
   mode:   'auto' | 'iran',
   sniPriorities?: string[],
 ): ProfileDef[] {
-  const addr     = creds.address || `${server.id}.setalink.net`;
+  const addr     = creds.address || `${server.id}.setalink.no`;
   // Edge host is the nginx proxy used for WebSocket/XHTTP transports.
   // Falls back to deriving from VPN address if not explicitly set.
   const edgeAddr = creds.edgeAddress || addr;
