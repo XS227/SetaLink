@@ -70,8 +70,8 @@ function vary(base: number, range: number, dp = 1): number {
 const STATIC_HEALTH: HealthCheck[] = [
   { label: 'TLS Certificate',    status: 'ok',   detail: 'Valid · Expires 2027-03-01' },
   { label: 'CDN Edge (DE)',      status: 'ok',   detail: 'Cloudflare · 104.26.12.55' },
-  { label: 'SNI Consistency',    status: 'ok',   detail: 'cdn.setalink.net ↔ cert match' },
-  { label: 'Domain Health',      status: 'ok',   detail: 'setalink.net · A record live' },
+  { label: 'SNI Consistency',    status: 'ok',   detail: 'www.cloudflare.com · Reality SNI camouflage' },
+  { label: 'Domain Health',      status: 'ok',   detail: 'setalink.no · A record live' },
   { label: 'Fallback Domain',    status: 'ok',   detail: 'alt.setalink.no · reachable' },
   { label: 'DNS Resolution',     status: 'ok',   detail: 'Cloudflare DoH · 1ms' },
   { label: 'TCP HTTPS',          status: 'ok',   detail: 'example.com · TCP/443 · TLS 1.3 · HTTP/2' },
@@ -89,9 +89,9 @@ const STATIC_HOPS: RouteHop[] = [
 
 const STATIC_CONNECTION: ConnectionInfo = {
   protocol:    'VLESS + Reality',
-  transport:   'TCP (XHTTP)',
-  serverSni:   'cdn.setalink.net',
-  destination: '5.180.62.12:443',
+  transport:   'TCP',
+  serverSni:   'www.cloudflare.com',
+  destination: '178.104.77.231:443',
   tlsVersion:  'TLS 1.3',
   cipher:      'TLS_AES_256_GCM_SHA384',
   alpn:        'h2, http/1.1',
@@ -112,9 +112,9 @@ export function snapshot(server?: ServerHint): DiagnosticsSnapshot {
 
   const connection: ConnectionInfo = server ? {
     protocol:    server.protocol === 'Reality' ? 'VLESS + Reality' : `${server.protocol} + TLS`,
-    transport:   server.protocol === 'Reality' ? 'TCP (XHTTP)' : 'WebSocket',
-    serverSni:   'cdn.setalink.net',
-    destination: '5.180.62.12:443',
+    transport:   server.protocol === 'Reality' ? 'TCP' : 'WebSocket',
+    serverSni:   'www.cloudflare.com',
+    destination: '178.104.77.231:443',
     tlsVersion:  'TLS 1.3',
     cipher:      'TLS_AES_256_GCM_SHA384',
     alpn:        'h2, http/1.1',

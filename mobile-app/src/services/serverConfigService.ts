@@ -94,7 +94,7 @@ function _mockCredentials(serverId: string): ServerCredentials {
 
   return {
     uuid:        `00000000-0000-4000-8000-${hex.padEnd(12, '0')}`,
-    address:     `${serverId}.edge.setalink.net`,
+    address:     `${serverId}.edge.setalink.no`,
     port:        443,
     publicKey:   `AAAA${btoa(serverId + 'pubkey').slice(0, 40)}`,
     shortId:     hex.slice(0, 8),

@@ -127,7 +127,7 @@ function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials)
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: creds?.address ?? `${server.id}.setalink.net`,
+        address: creds?.address ?? `${server.id}.setalink.no`,
         port:    creds?.port    ?? 443,
         users: [{
           id:         creds?.uuid      ?? PLACEHOLDER_UUID,
@@ -154,7 +154,7 @@ function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials)
 
 function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   // WebSocket goes through the nginx edge proxy, not directly to the Reality port.
-  const edgeHost = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
+  const edgeHost = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.no`;
   const edgePort = creds?.edgePort ?? 443;
   const wsPath   = creds?.wsPath   ?? '/ws';
   return {
@@ -191,7 +191,7 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
 }
 
 function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
-  const host = creds?.address ?? `${server.id}.setalink.net`;
+  const host = creds?.address ?? `${server.id}.setalink.no`;
   return {
     tag:      'proxy',
     protocol: 'vmess',
@@ -216,7 +216,7 @@ function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
 }
 
 function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
-  const edgeHost  = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
+  const edgeHost  = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.no`;
   const edgePort  = creds?.edgePort  ?? 443;
   // Ensure trailing slash — Xray server config uses /xhttp/ (with slash).
   // Without it Xray rejects with "failed to validate path, request:/xhttp, config:/xhttp/".
@@ -248,7 +248,7 @@ function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): 
 }
 
 function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
-  const edgeHost   = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.net`;
+  const edgeHost   = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.no`;
   const edgePort   = creds?.edgePort   ?? 443;
   const httpupPath = creds?.httpupPath ?? '/httpup';
   return {
