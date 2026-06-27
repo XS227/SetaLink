@@ -160,21 +160,111 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // MARK: - libXray integration
 
-    // Returns nil on success, or an error string to surface in the connect log.
+    // Returns nil on success, or a human-readable error string.
+    //
+    // libxray v26+ API:
+    //   RunXrayFromJSON(base64({ datDir, configJSON })) → base64({ success, data, error })
+    //
+    // datDir points to geoip/geosite .dat files; our routing rules use IP ranges +
+    // port numbers only, so passing "" is safe (no geo dat files needed).
+    //
     // LIBXRAY_AVAILABLE is set by CI via SWIFT_ACTIVE_COMPILATION_CONDITIONS.
     // Local dev (no LIBXRAY_AVAILABLE) fails fast with a clear message.
     private func startXrayCore(configJson: String) -> String? {
         #if LIBXRAY_AVAILABLE
-        let result = LibXrayRunXray(configJson)
-        return result.isEmpty ? nil : result
+        // --- Defensive validation + structured logging ---
+        // Catch missing/null protocol fields before xray-core sees them, so the
+        // error is readable rather than an opaque xray-core/base64 parse failure.
+        // Also log key config fields so every tunnel start is diagnosable from logs.
+        if let validationError = validateAndLogConfig(configJson) {
+            appendLog("Config validation FAILED: \(validationError)")
+            appendLog("Config dump: \(configJson.prefix(600))")
+            return "Config validation: \(validationError)"
+        }
+
+        // Encode request for libxray v26+ RunXrayFromJSON.
+        // Input:  base64({ datDir: "", configJSON: "<raw xray json>" })
+        // Output: base64({ success: bool, data: "", error: "..." })
+        // datDir is empty — our routing rules use IP/port only, no geo dat files.
+        guard let requestData = try? JSONSerialization.data(withJSONObject: [
+            "datDir":     "",
+            "configJSON": configJson,
+        ]) else {
+            return "Failed to serialize libxray request"
+        }
+        let base64Request = requestData.base64EncodedString()
+        appendLog("Calling LibXrayRunXrayFromJSON (base64-wrapped, \(base64Request.count) chars)")
+
+        let base64Response = LibXrayRunXrayFromJSON(base64Request)
+
+        // Decode the base64 CallResponse and log both fields regardless of outcome.
+        guard !base64Response.isEmpty,
+              let responseData = Data(base64Encoded: base64Response),
+              let json = try? JSONSerialization.jsonObject(with: responseData) as? [String: Any]
+        else {
+            appendLog("libxray raw response (undecodable): \(base64Response.prefix(300))")
+            return "libxray returned unreadable response (xcframework version mismatch?)"
+        }
+
+        let success = json["success"] as? Bool ?? false
+        let errMsg  = json["error"]   as? String ?? ""
+        appendLog("libxray response: success=\(success)\(errMsg.isEmpty ? "" : " error=\(errMsg)")")
+
+        if success { return nil }
+        return errMsg.isEmpty ? "xray-core failed (no error detail)" : errMsg
         #else
         return "libXray not embedded — CI build required for real VPN."
         #endif
     }
 
+    // Validates the xray-core JSON config and logs key fields for every tunnel start.
+    // Returns nil if valid, or a short error string describing the problem.
+    private func validateAndLogConfig(_ configJson: String) -> String? {
+        guard let data = configJson.data(using: .utf8),
+              let obj  = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return "Config is not valid JSON"
+        }
+
+        // Log the proxy outbound's key fields so every connect attempt is diagnosable.
+        if let outbounds = obj["outbounds"] as? [[String: Any]],
+           let proxy = outbounds.first(where: { ($0["tag"] as? String) == "proxy" }) {
+            let proto  = proxy["protocol"] as? String ?? "(nil)"
+            let ss     = proxy["streamSettings"] as? [String: Any]
+            let net    = ss?["network"]  as? String ?? "(nil)"
+            let sec    = ss?["security"] as? String ?? "(nil)"
+            let rs     = ss?["realitySettings"] as? [String: Any]
+            let sni    = rs?["serverName"] as? String ?? ss?["tlsSettings"].flatMap { ($0 as? [String: Any])?["serverName"] as? String } ?? "(nil)"
+            let vnext  = (proxy["settings"] as? [String: Any])?["vnext"] as? [[String: Any]]
+            let addr   = vnext?.first?["address"] as? String ?? "(nil)"
+            let port   = vnext?.first?["port"] ?? "(nil)"
+            appendLog("Outbound: protocol=\(proto) network=\(net) security=\(sec)")
+            appendLog("Server: \(addr):\(port) sni=\(sni)")
+        }
+
+        guard let outbounds = obj["outbounds"] as? [[String: Any]], !outbounds.isEmpty else {
+            return "outbounds array is missing or empty"
+        }
+        for (i, ob) in outbounds.enumerated() {
+            guard let proto = ob["protocol"] as? String, !proto.isEmpty else {
+                return "outbounds[\(i)] missing or empty 'protocol' field"
+            }
+        }
+        guard let inbounds = obj["inbounds"] as? [[String: Any]], !inbounds.isEmpty else {
+            return "inbounds array is missing or empty"
+        }
+        for (i, ib) in inbounds.enumerated() {
+            guard let proto = ib["protocol"] as? String, !proto.isEmpty else {
+                return "inbounds[\(i)] missing or empty 'protocol' field"
+            }
+        }
+        appendLog("Config OK (\(configJson.count) bytes): \(outbounds.count) outbounds, \(inbounds.count) inbounds")
+        return nil
+    }
+
     private func stopXrayCore() {
         #if LIBXRAY_AVAILABLE
-        LibXrayStopXray()
+        _ = LibXrayStopXray()   // v26+: returns base64 response; discard it on stop
         #endif
     }
 
