@@ -241,17 +241,22 @@ jobs:
             ~/Library/MobileDevice/Provisioning\ Profiles/"$TUNNEL_PROFILE_UUID".mobileprovision
           echo "TUNNEL_PROFILE_UUID=$TUNNEL_PROFILE_UUID" >> "$GITHUB_ENV"
 
-      # ── libXray — resolve latest tag ─────────────────────────────────────────
-      # Checks XTLS/libXray releases on every run. The cache key includes the tag,
-      # so a new release triggers a rebuild; unchanged versions use the cache.
-      - name: Resolve latest libXray tag
+      # ── libXray — pinned tag ─────────────────────────────────────────────────
+      # PINNED to v26.6.1 — do NOT change to 'latest'.
+      #
+      # Why pinned: libxray changed its gomobile API from raw-JSON input to
+      # base64-encoded CallRequest/CallResponse in v25.x+. Silently upgrading
+      # to a future version that changes the API again would break the iOS VPN
+      # tunnel with no compile-time warning (the function signature stays the
+      # same; only the expected encoding changes).
+      #
+      # To upgrade: read the new xray_wrapper.go, verify RunXrayFromJSON still
+      # accepts base64({datDir, configJSON}), update PacketTunnelProvider.swift
+      # if needed, then bump this pin.
+      - name: Set libXray tag
         run: |
-          LIBXRAY_TAG=$(curl -sSf \
-            -H "Authorization: Bearer ${{ github.token }}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/xtls/libxray/releases/latest" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
-          echo "Resolved libXray tag: $LIBXRAY_TAG"
+          LIBXRAY_TAG="v26.6.1"
+          echo "Using pinned libXray tag: $LIBXRAY_TAG"
           echo "LIBXRAY_TAG=$LIBXRAY_TAG" >> "$GITHUB_ENV"
 
       # ── libXray — restore cached xcframework ─────────────────────────────────
