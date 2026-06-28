@@ -72,7 +72,7 @@ const STATIC_HEALTH: HealthCheck[] = [
   { label: 'CDN Edge (DE)',      status: 'ok',   detail: 'Cloudflare · 104.26.12.55' },
   { label: 'SNI Consistency',    status: 'ok',   detail: 'www.cloudflare.com · Reality SNI camouflage' },
   { label: 'Domain Health',      status: 'ok',   detail: 'setalink.no · A record live' },
-  { label: 'Fallback Domain',    status: 'ok',   detail: 'alt.setalink.no · reachable' },
+  { label: 'Edge Fallback',      status: 'ok',   detail: 'edge.setalink.no · reachable' },
   { label: 'DNS Resolution',     status: 'ok',   detail: 'Cloudflare DoH · 1ms' },
   { label: 'TCP HTTPS',          status: 'ok',   detail: 'example.com · TCP/443 · TLS 1.3 · HTTP/2' },
   { label: 'UDP/QUIC Port 443',  status: 'ok',   detail: 'Blocked → Chrome uses TCP/TLS fallback' },
