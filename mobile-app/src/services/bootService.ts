@@ -66,6 +66,19 @@ export async function runBootSequence(): Promise<BootResult> {
     resetSession();
   }
 
+  // Persist the device_id into the App Group at boot so the PacketTunnel extension
+  // always has it for diagnostic uploads — including the auto-fallback connect path
+  // (autoConnector calls adapter.connect directly and never sets the diag context),
+  // which is why earlier tunnel logs showed device_id="unknown".
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { setDiagnosticContext } = require('./vpnBridge');
+    const user = useAuthStore.getState().user;
+    if (user?.deviceId) {
+      setDiagnosticContext(user.deviceId, '').catch(() => {});
+    }
+  } catch {}
+
   Logger.info('Boot', `Ready (autoConnect=${autoConnect})`);
   return { status: 'ready', shouldAutoConnect: autoConnect };
 }
