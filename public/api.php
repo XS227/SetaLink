@@ -44,7 +44,13 @@ $token = ($method === 'POST')
     ? ($_POST['_token'] ?? $_GET['_token'] ?? '')
     : ($_GET['_token'] ?? '');
 
-if (!hash_equals(MOBILE_TOKEN, $token)) {
+// Diagnostic-only endpoints are exempt from the token gate: they are written by
+// the PacketTunnelExtension / VPN service, which has no access to the app's token
+// store, and they are device_id-validated + size-clamped in their handlers. The
+// token itself ships inside the app binary, so it is not a real secret anyway.
+const NO_TOKEN_ACTIONS = ['submit-tunnel-log'];
+
+if (!in_array($action, NO_TOKEN_ACTIONS, true) && !hash_equals(MOBILE_TOKEN, $token)) {
     echo json_encode(['ok' => false, 'error' => 'invalid token']);
     exit;
 }
