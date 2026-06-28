@@ -8,11 +8,11 @@ typealias RCTPromiseRejectBlock  = (String?, String?, Error?) -> Void
 // XrayModule — bridges React Native JS to the PacketTunnelProvider extension.
 //
 // Architecture:
-//   1. JS calls start(configJson) → config saved to App Group → NEVPNManager
+//   1. JS calls start(configJson) → config saved to App Group → NETunnelProviderManager
 //      tells the OS to launch PacketTunnelExtension/PacketTunnelProvider.
 //   2. PacketTunnelProvider reads the config, sets up the TUN, starts xray-core,
 //      probes for connectivity, and reports success/failure via completionHandler.
-//   3. JS polls isRunning() → NEVPNManager.connection.status == .connected.
+//   3. JS polls isRunning() → tunnel manager .connection.status == .connected.
 //   4. On failure the extension writes the error to the App Group; JS reads it
 //      via getLastError() and surfaces it in the connect log.
 //
@@ -39,6 +39,34 @@ class XrayModule: NSObject {
         UserDefaults(suiteName: Self.appGroupID)
     }
 
+    // MARK: - tunnel manager resolution
+    //
+    // CRITICAL: a Packet Tunnel Provider MUST be managed via NETunnelProviderManager,
+    // NOT NEVPNManager.shared(). NEVPNManager is for Personal VPN (IKEv2/IPSec) only.
+    // Assigning a NETunnelProviderProtocol to it makes saveToPreferences fail with
+    // "Missing protocol or protocol has invalid type", so startVPNTunnel() is never
+    // reached and the extension never launches. (Apple DevForums thread 96777.)
+
+    // Cached after the first resolve so stop/isRunning/getStats reuse the same manager
+    // object — its .connection reflects live tunnel state, no extra preference load.
+    private static var cachedManager: NETunnelProviderManager?
+
+    // Loads the tunnel manager that owns our extension, or (when create=true) makes a
+    // fresh one. Calls back with nil + nil error when none exists and create=false.
+    private func resolveManager(create: Bool,
+                                completion: @escaping (NETunnelProviderManager?, Error?) -> Void) {
+        NETunnelProviderManager.loadAllFromPreferences { managers, error in
+            if let error = error { completion(nil, error); return }
+            var manager = managers?.first { mgr in
+                (mgr.protocolConfiguration as? NETunnelProviderProtocol)?
+                    .providerBundleIdentifier == Self.extensionID
+            } ?? managers?.first
+            if manager == nil && create { manager = NETunnelProviderManager() }
+            if let m = manager { Self.cachedManager = m }
+            completion(manager, nil)
+        }
+    }
+
     // MARK: - start
 
     @objc func start(_ config: String,
@@ -58,42 +86,54 @@ class XrayModule: NSObject {
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
         shared?.set("\(ver) (\(build))", forKey: Self.diagAppVerKey)
 
-        DispatchQueue.main.async {
-            NEVPNManager.shared().loadFromPreferences { [weak self] loadError in
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.resolveManager(create: true) { manager, loadError in
                 if let err = loadError {
                     reject("LOAD_PREFS_FAILED", err.localizedDescription, err)
                     return
                 }
-                self?.configureAndLaunch(resolve: resolve, reject: reject)
+                guard let manager = manager else {
+                    reject("LOAD_PREFS_FAILED", "Could not create NETunnelProviderManager", nil)
+                    return
+                }
+                self.configureAndLaunch(manager, resolve: resolve, reject: reject)
             }
         }
     }
 
-    private func configureAndLaunch(resolve: @escaping RCTPromiseResolveBlock,
+    private func configureAndLaunch(_ manager: NETunnelProviderManager,
+                                    resolve: @escaping RCTPromiseResolveBlock,
                                     reject:  @escaping RCTPromiseRejectBlock) {
-        let manager = NEVPNManager.shared()
-
         let proto = NETunnelProviderProtocol()
         proto.providerBundleIdentifier = Self.extensionID
         proto.serverAddress = "vpn.setalink.no"
 
         manager.protocolConfiguration = proto
-        manager.localizedDescription   = "Realink VPN"
-        manager.isEnabled              = true
+        manager.localizedDescription  = "Realink VPN"
+        manager.isEnabled             = true
 
-        manager.saveToPreferences { error in
-            if let err = error {
+        manager.saveToPreferences { saveError in
+            if let err = saveError {
                 reject("SAVE_PREFS_FAILED", err.localizedDescription, err)
                 return
             }
-            // startVPNTunnel() asks iOS to launch the PacketTunnelProvider extension.
-            // It returns immediately; the extension runs asynchronously.
-            // JS polls isRunning() every 500 ms (vpnBridge.ts) until connected or timeout.
-            do {
-                try NEVPNManager.shared().connection.startVPNTunnel()
-                resolve(nil)
-            } catch {
-                reject("START_TUNNEL_FAILED", error.localizedDescription, error)
+            // A save invalidates the in-memory config; iOS requires a reload before
+            // startVPNTunnel() or it throws NEVPNError "configuration is stale".
+            manager.loadFromPreferences { reloadError in
+                if let err = reloadError {
+                    reject("LOAD_PREFS_FAILED", err.localizedDescription, err)
+                    return
+                }
+                // startVPNTunnel() asks iOS to launch the PacketTunnelProvider extension.
+                // It returns immediately; the extension runs asynchronously.
+                // JS polls isRunning() every 500 ms (vpnBridge.ts) until connected or timeout.
+                do {
+                    try manager.connection.startVPNTunnel()
+                    resolve(nil)
+                } catch {
+                    reject("START_TUNNEL_FAILED", error.localizedDescription, error)
+                }
             }
         }
     }
@@ -110,9 +150,16 @@ class XrayModule: NSObject {
 
     @objc func stop(_ resolve: @escaping RCTPromiseResolveBlock,
                     rejecter reject: @escaping RCTPromiseRejectBlock) {
-        DispatchQueue.main.async {
-            NEVPNManager.shared().connection.stopVPNTunnel()
-            resolve(nil)
+        DispatchQueue.main.async { [weak self] in
+            if let m = Self.cachedManager {
+                m.connection.stopVPNTunnel()
+                resolve(nil)
+            } else {
+                self?.resolveManager(create: false) { manager, _ in
+                    manager?.connection.stopVPNTunnel()
+                    resolve(nil)
+                }
+            }
         }
     }
 
@@ -120,9 +167,14 @@ class XrayModule: NSObject {
 
     @objc func isRunning(_ resolve: @escaping RCTPromiseResolveBlock,
                          rejecter reject: @escaping RCTPromiseRejectBlock) {
-        DispatchQueue.main.async {
-            let status = NEVPNManager.shared().connection.status
-            resolve(status == .connected)
+        DispatchQueue.main.async { [weak self] in
+            if let m = Self.cachedManager {
+                resolve(m.connection.status == .connected)
+            } else {
+                self?.resolveManager(create: false) { manager, _ in
+                    resolve(manager?.connection.status == .connected)
+                }
+            }
         }
     }
 
@@ -130,22 +182,29 @@ class XrayModule: NSObject {
 
     @objc func getStats(_ resolve: @escaping RCTPromiseResolveBlock,
                         rejecter reject: @escaping RCTPromiseRejectBlock) {
-        DispatchQueue.main.async {
-            let conn = NEVPNManager.shared().connection
+        // Byte counters require libXray to report them via App Group.
+        // Until then, report 0 so the UI shows "connected" without fake numbers.
+        let report: (NETunnelProviderManager?) -> Void = { manager in
+            let conn = manager?.connection
             let uptime: Int
-            if conn.status == .connected, let since = conn.connectedDate {
+            if let conn = conn, conn.status == .connected, let since = conn.connectedDate {
                 uptime = Int(Date().timeIntervalSince(since))
             } else {
                 uptime = 0
             }
-            // Byte counters require libXray to report them via App Group.
-            // Until then, report 0 so the UI shows "connected" without fake numbers.
             resolve([
                 "uploadBytes":   0,
                 "downloadBytes": 0,
                 "pingMs":        0,
                 "uptime":        uptime,
             ])
+        }
+        DispatchQueue.main.async { [weak self] in
+            if let m = Self.cachedManager {
+                report(m)
+            } else {
+                self?.resolveManager(create: false) { manager, _ in report(manager) }
+            }
         }
     }
 
