@@ -67,24 +67,25 @@ function vary(base: number, range: number, dp = 1): number {
   return Math.round(Math.max(1, raw) * factor) / factor;
 }
 
+// NOTE: SIMULATED values for layout/demo only — not live measurements. Specific
+// IPs/dates were removed because testers read them as real (e.g. the fake exit IP
+// 5.180.62.12 derailed a debugging session). Real per-connection truth comes from
+// the native tunnel log + admin Tunnel Logs, not this engine.
 const STATIC_HEALTH: HealthCheck[] = [
-  { label: 'TLS Certificate',    status: 'ok',   detail: 'Valid · Expires 2027-03-01' },
-  { label: 'CDN Edge (DE)',      status: 'ok',   detail: 'Cloudflare · 104.26.12.55' },
-  { label: 'SNI Consistency',    status: 'ok',   detail: 'www.cloudflare.com · Reality SNI camouflage' },
-  { label: 'Domain Health',      status: 'ok',   detail: 'setalink.no · A record live' },
-  { label: 'Edge Fallback',      status: 'ok',   detail: 'edge.setalink.no · reachable' },
-  { label: 'DNS Resolution',     status: 'ok',   detail: 'Cloudflare DoH · 1ms' },
-  { label: 'TCP HTTPS',          status: 'ok',   detail: 'example.com · TCP/443 · TLS 1.3 · HTTP/2' },
-  { label: 'UDP/QUIC Port 443',  status: 'ok',   detail: 'Blocked → Chrome uses TCP/TLS fallback' },
-  { label: 'Browser Compat',     status: 'ok',   detail: 'Chrome/Firefox TCP HTTPS confirmed' },
+  { label: 'Protocol',           status: 'ok',   detail: 'VLESS + Reality (illustrative)' },
+  { label: 'SNI Camouflage',     status: 'ok',   detail: 'www.cloudflare.com' },
+  { label: 'Domain Health',      status: 'ok',   detail: 'setalink.no' },
+  { label: 'Edge Fallback',      status: 'ok',   detail: 'edge.setalink.no' },
+  { label: 'UDP/QUIC Port 443',  status: 'ok',   detail: 'Forced to TCP/TLS fallback' },
+  { label: 'Note',               status: 'warn', detail: 'Simulated values — see app log for live status' },
 ];
 
 const STATIC_HOPS: RouteHop[] = [
-  { hop: 1, ip: '10.0.0.1',       rtt: '1ms',  label: 'Local Gateway' },
-  { hop: 2, ip: '185.220.101.34', rtt: '8ms',  label: 'ISP Transit' },
-  { hop: 3, ip: '104.26.12.55',   rtt: '14ms', label: 'CDN Edge (CF)' },
-  { hop: 4, ip: '5.180.62.12',    rtt: '22ms', label: 'Realink DE·01' },
-  { hop: 5, ip: '0.0.0.0',        rtt: '—',    label: 'Destination (hidden)' },
+  { hop: 1, ip: '10.0.0.1',     rtt: '1ms', label: 'Local Gateway' },
+  { hop: 2, ip: '(ISP)',        rtt: '—',   label: 'ISP Transit' },
+  { hop: 3, ip: '(CDN edge)',   rtt: '—',   label: 'CDN Edge' },
+  { hop: 4, ip: '(VPN exit)',   rtt: '—',   label: 'Realink Node' },
+  { hop: 5, ip: '(hidden)',     rtt: '—',   label: 'Destination' },
 ];
 
 const STATIC_CONNECTION: ConnectionInfo = {
@@ -124,12 +125,13 @@ export function snapshot(server?: ServerHint): DiagnosticsSnapshot {
   const nodeRtt  = basePing;
   const cc       = server ? countryCode(server.country) : 'DE';
   const nodeNum  = server?.id.replace(/[^0-9]/g, '') ?? '01';
+  // Simulated hops (no fabricated IPs). RTTs reflect the real selected-server ping.
   const routeHops: RouteHop[] = [
-    { hop: 1, ip: '10.0.0.1',       rtt: '1ms',        label: 'Local Gateway' },
-    { hop: 2, ip: '185.220.101.34', rtt: '8ms',        label: 'ISP Transit' },
-    { hop: 3, ip: '104.26.12.55',   rtt: `${edgeRtt}ms`, label: 'CDN Edge (CF)' },
-    { hop: 4, ip: '5.180.62.12',    rtt: `${nodeRtt}ms`, label: `Realink ${cc}·0${nodeNum}` },
-    { hop: 5, ip: '0.0.0.0',        rtt: '—',          label: 'Destination (hidden)' },
+    { hop: 1, ip: '10.0.0.1',   rtt: '1ms',          label: 'Local Gateway' },
+    { hop: 2, ip: '(ISP)',      rtt: '—',            label: 'ISP Transit' },
+    { hop: 3, ip: '(CDN edge)', rtt: `${edgeRtt}ms`, label: 'CDN Edge' },
+    { hop: 4, ip: '(VPN exit)', rtt: `${nodeRtt}ms`, label: `Realink ${cc}·0${nodeNum}` },
+    { hop: 5, ip: '(hidden)',   rtt: '—',            label: 'Destination' },
   ];
 
   return {

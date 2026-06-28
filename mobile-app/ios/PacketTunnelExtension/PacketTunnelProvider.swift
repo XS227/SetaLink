@@ -167,14 +167,36 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         settings.mtu = 1280
         appendLog("NetSettings: tunnelRemoteAddress=10.255.0.1 mtu=1280")
 
+        // ── IPv4: claim the DEFAULT route so iOS applies NEProxySettings to ALL app
+        // traffic (Safari, etc.). With includedRoutes=[] the proxy was installed but
+        // NOT applied to apps — the connect probe passed only because it set the proxy
+        // explicitly, while real browsing went direct and stalled (CONNECTED-but-hangs).
+        // The VPN server IP is excluded so xray's own outbound to the node does not loop
+        // back into the tunnel (iOS has no Android-style socket protect()).
         let ipv4 = NEIPv4Settings(addresses: ["10.255.0.2"], subnetMasks: ["255.255.255.0"])
-        ipv4.includedRoutes = []
-        ipv4.excludedRoutes = []
+        ipv4.includedRoutes = [NEIPv4Route.default()]
+        var excluded4: [NEIPv4Route] = []
+        if isIPv4Literal(configMeta.addr) {
+            excluded4.append(NEIPv4Route(destinationAddress: configMeta.addr,
+                                         subnetMask: "255.255.255.255"))
+            appendLog("NetSettings: excludedRoute(server)=\(configMeta.addr)/32 (loop prevention)")
+        } else {
+            appendLog("NetSettings: ⚠️ server addr \"\(configMeta.addr)\" is not an IPv4 literal — cannot exclude (edge transport?); risk of routing loop")
+        }
+        ipv4.excludedRoutes = excluded4
         settings.ipv4Settings = ipv4
-        appendLog("NetSettings: IPv4=10.255.0.2/24 includedRoutes=[] (proxy mode)")
+        appendLog("NetSettings: IPv4=10.255.0.2/24 includedRoutes=[default] excluded=\(excluded4.count) (full-tunnel proxy)")
 
-        settings.ipv6Settings = nil
-        appendLog("NetSettings: IPv6=disabled")
+        // ── IPv6: claim + drop. Iranian LTE carries IPv6; if the tunnel ignores it,
+        // Safari (Happy Eyeballs) prefers IPv6, connects DIRECTLY (bypassing the IPv4
+        // proxy), hits blocked/poisoned routes and hangs. Claiming ::/0 with no IPv6
+        // packet handler fast-fails IPv6 so the OS immediately falls back to IPv4
+        // (which is proxied). This also kills direct QUIC/UDP-443 over IPv6.
+        let ipv6 = NEIPv6Settings(addresses: ["fd00::2"], networkPrefixLengths: [64])
+        ipv6.includedRoutes = [NEIPv6Route.default()]
+        ipv6.excludedRoutes = []
+        settings.ipv6Settings = ipv6
+        appendLog("NetSettings: IPv6=fd00::2/64 includedRoutes=[default] (claim+drop → force IPv4 fallback)")
 
         let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
         dns.matchDomains = [""]
@@ -244,8 +266,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 if dnsOk {
                     self.appendLog("Probe RX[2]: DNS+proxy OK — status=\(status2!) bytes=\(bytes2) elapsed=\(t2)")
                     self.appendLog("DNS: resolution OK (cp.cloudflare.com resolved through xray dns-out)")
-                    self.appendLog("First packet sent+received — end-to-end connectivity confirmed")
-                    completion(true, "ok")
+                    // ── Probe 3 (diagnostic, NON-gating): system-routed, NO explicit
+                    // proxy dict. Tests whether iOS actually applies the tunnel's
+                    // NEProxySettings to ordinary app traffic (what Safari does). If this
+                    // FAILS while probe 2 passed, the proxy isn't reaching apps → browsers
+                    // hang despite CONNECTED. (May under-report inside the extension's own
+                    // process, so it warns rather than fails the tunnel.)
+                    self.step("system probe")
+                    self.appendLog("Probe TX[3]: HTTPS → cp.cloudflare.com (SYSTEM-routed, no explicit proxy)")
+                    self.fetchURL(URL(string: "https://cp.cloudflare.com/")!, via: [:], timeout: 10) { s3, _, e3, t3 in
+                        let sysOk = e3 == nil && (s3 == 200 || s3 == 204)
+                        if sysOk {
+                            self.appendLog("Probe RX[3]: SYSTEM-routed OK — status=\(s3!) elapsed=\(t3) — app traffic IS using the tunnel")
+                        } else {
+                            let r3 = e3?.localizedDescription ?? "status=\(s3.map { "\($0)" } ?? "nil")"
+                            self.appendLog("Probe RX[3]: SYSTEM-routed FAIL — \(r3) elapsed=\(t3)")
+                            self.appendLog("⚠️ Proxy may NOT be applied to app traffic — browsers (Safari) could hang despite CONNECTED")
+                        }
+                        self.appendLog("First packet sent+received — end-to-end connectivity confirmed")
+                        completion(true, "ok")
+                    }
                 } else {
                     let reason2 = err2?.localizedDescription ?? "status=\(status2.map{"\($0)"} ?? "nil")"
                     self.appendLog("Probe RX[2]: DNS+proxy FAIL — \(reason2) elapsed=\(t2)")
@@ -753,6 +793,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
               let raw    = String(data: data, encoding: .utf8)
         else { return nil }
         return sanitizeConfig(raw)
+    }
+
+    // True only for dotted-quad IPv4 literals (e.g. "178.104.77.231"). Used to decide
+    // whether the server address can be added to excludedRoutes for loop prevention.
+    private func isIPv4Literal(_ s: String) -> Bool {
+        let parts = s.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 4 else { return false }
+        return parts.allSatisfy { p in
+            guard let n = Int(p), n >= 0, n <= 255, String(n) == p else { return false }
+            return true
+        }
     }
 
     private func stopReasonDescription(_ reason: NEProviderStopReason) -> String {
