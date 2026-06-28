@@ -303,6 +303,9 @@ class XrayModule: NSObject {
                                     rejecter reject: @escaping RCTPromiseRejectBlock) {
         shared?.set(deviceId, forKey: Self.diagDeviceIdKey)
         shared?.set(country,  forKey: Self.diagCountryKey)
+        // Force a cross-process flush so the extension (separate process) reliably
+        // sees the device_id before it reads the App Group on startTunnel.
+        shared?.synchronize()
         resolve(nil)
     }
 
