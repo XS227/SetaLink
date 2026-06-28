@@ -264,7 +264,7 @@ function fetch_bootstrap_server(PDO $db): array {
             'fingerprint' => 'chrome',
             'country'     => 'Germany',
             'flag'        => '🇩🇪',
-            'city'        => 'SetaLink Cloudflare',
+            'city'        => 'Realink Cloudflare',
             'edgeAddress' => 'edge.setalink.no',
             'edgePort'    => 443,
             'wsPath'      => '/ws',
@@ -284,7 +284,7 @@ function fetch_bootstrap_server(PDO $db): array {
         'fingerprint' => $r['bootstrap_fp'] ?? 'chrome',
         'country'     => $r['bootstrap_country'] ?? 'Germany',
         'flag'        => $r['bootstrap_flag']    ?? '🇩🇪',
-        'city'        => $r['bootstrap_city']    ?? 'SetaLink Cloudflare',
+        'city'        => $r['bootstrap_city']    ?? 'Realink Cloudflare',
         'edgeAddress' => $r['bootstrap_edge_address'] ?? '',
         'edgePort'    => (int)($r['bootstrap_edge_port'] ?? 443),
         'wsPath'      => $r['bootstrap_ws_path']    ?? '/ws',
@@ -334,7 +334,7 @@ if ($method === 'GET' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     }
     if ($ma === 'bootstrap') {
         $db3 = open_analytics_db();
-        api_ok(array_merge(['id' => 'server-emergency', 'label' => 'SetaLink Edge'], fetch_bootstrap_server($db3)));
+        api_ok(array_merge(['id' => 'server-emergency', 'label' => 'Realink Edge'], fetch_bootstrap_server($db3)));
     }
     if ($ma === 'sync-entitlement') {
         $device_id = trim((string)($_GET['device_id'] ?? ''));
@@ -1541,7 +1541,7 @@ switch ($action) {
     case 'get-settings':
         $db = open_analytics_db();
         $rows = $db->query('SELECT key,value FROM settings')->fetchAll(PDO::FETCH_KEY_PAIR);
-        api_ok(array_merge(['telegram_url'=>'https://t.me/SetaLink3','server_label'=>'SetaLink VPN'], $rows));
+        api_ok(array_merge(['telegram_url'=>'https://t.me/SetaLink3','server_label'=>'Realink VPN'], $rows));
         break;
 
     case 'iran-score':
@@ -3096,7 +3096,7 @@ switch ($action) {
         $reality = $cfg['reality'] ?? [];
         $xray_ok = isset($cfg['services']['xray']) && $cfg['services']['xray'] === 'active';
         $db_nl   = open_analytics_db();
-        $srv_label = (string)($db_nl->query("SELECT value FROM settings WHERE key='server_label'")->fetchColumn() ?: 'SetaLink VPN');
+        $srv_label = (string)($db_nl->query("SELECT value FROM settings WHERE key='server_label'")->fetchColumn() ?: 'Realink VPN');
         api_ok([[
             'id'=>'main','label'=>$srv_label,'host'=>(string)($reality['address']??'5.249.252.221'),
             'country'=>'NO','city'=>'Oslo','flag'=>'🇳🇴','protocol'=>'Reality+XHTTP+WS',

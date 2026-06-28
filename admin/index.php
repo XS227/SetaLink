@@ -57,7 +57,7 @@ function icon(string $name): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>SetaLink Admin</title>
+  <title>Realink Admin</title>
   <link rel="icon" href="/assets/logo/shirokhorshid/favicon.ico">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -73,7 +73,7 @@ function icon(string $name): string {
   <div class="sidebar-logo">
     <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" alt="SL">
     <div>
-      <div class="sidebar-logo-text">SetaLink</div>
+      <div class="sidebar-logo-text">Realink</div>
       <div class="sidebar-logo-sub">Admin Panel</div>
     </div>
   </div>
@@ -115,7 +115,7 @@ function icon(string $name): string {
       <?= icon('settings') ?> Config
     </div>
   </nav>
-  <div class="sidebar-footer">SetaLink v0.9.12 &middot; <?= h($auth_user) ?></div>
+  <div class="sidebar-footer">Realink v0.9.12 &middot; <?= h($auth_user) ?></div>
 </aside>
 
 <!-- ── Main ─────────────────────────────────────────────────────────── -->
@@ -861,7 +861,7 @@ function icon(string $name): string {
           <div class="panel-body">
             <div class="form-group">
               <label>Server Label</label>
-              <input class="input" id="cfgLabel" placeholder="SetaLink VPN">
+              <input class="input" id="cfgLabel" placeholder="Realink VPN">
             </div>
             <div class="form-group">
               <label>Telegram Support URL</label>
@@ -1212,7 +1212,7 @@ function navigate(page) {
   const [title, sub] = pageTitles[page];
   $('pageTitle').textContent = title;
   $('pageSub').textContent = sub;
-  document.title = `SetaLink Admin — ${title}`;
+  document.title = `Realink Admin — ${title}`;
   const url = new URL(location.href);
   url.searchParams.set('page', page);
   history.pushState({page}, '', url);
