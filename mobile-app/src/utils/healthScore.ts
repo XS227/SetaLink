@@ -44,12 +44,30 @@ export function computeHealthScore(i: HealthInputs): number {
   return Math.min(100, Math.max(0, Math.round(score)));
 }
 
-/** Derives the DNS state from the native connect step log ("✓ dns_check: …"). */
+/**
+ * Derives the DNS state from the native connect step log.
+ *
+ * Two log dialects exist:
+ *   • Android service: "✓ dns_check: …" / "✗ dns_resolve: …"
+ *   • iOS PacketTunnelProvider: "Probe RX[2]: DNS+proxy OK|FAIL …",
+ *     "DNS: resolution OK", "DNS: FAILED …"
+ * The iOS wording was previously unrecognised, so a working iOS tunnel reported
+ * dns_ok=null → surfaced as a false "DNS red" in admin even with internet OK.
+ * Scans newest-first so the latest verdict wins.
+ */
 export function dnsOkFromConnectionLog(log: string[]): boolean | null {
   for (let k = log.length - 1; k >= 0; k--) {
     const line = log[k]!;
+    // Android native steps
     if (line.includes('dns_check') || line.includes('dns_resolve')) {
       return line.startsWith('✓');
+    }
+    // iOS PacketTunnelProvider wording
+    if (line.includes('DNS+proxy OK') || line.includes('DNS: resolution OK')) {
+      return true;
+    }
+    if (line.includes('DNS+proxy FAIL') || line.includes('DNS: FAILED')) {
+      return false;
     }
   }
   return null;
