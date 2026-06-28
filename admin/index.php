@@ -107,6 +107,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='logs'?' active':'' ?>" data-page="logs">
       <?= icon('log') ?> Logs
     </div>
+    <div class="nav-item<?= $page==='tunnellogs'?' active':'' ?>" data-page="tunnellogs">
+      <?= icon('log') ?> Tunnel Logs
+    </div>
     <div class="nav-section">System</div>
     <div class="nav-item<?= $page==='release'?' active':'' ?>" data-page="release">
       <?= icon('package') ?> Release
@@ -699,6 +702,34 @@ function icon(string $name): string {
     </div>
 
     <!-- ============================================================ -->
+    <!-- VIEW: TUNNEL LOGS (PacketTunnelProvider diagnostic bundles)  -->
+    <!-- ============================================================ -->
+    <div data-view="tunnellogs" hidden>
+      <div class="filter-row">
+        <input class="input" id="tlDevice" placeholder="Filter by device id (e.g. SL-227 or sl-ec58…)" type="search" style="flex:1">
+        <button class="btn btn-secondary btn-sm" id="tlRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+      </div>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header">
+          <span class="panel-title">Uploaded Tunnel Logs</span>
+          <span class="panel-sub" id="tlCount"></span>
+        </div>
+        <div id="tlList" style="max-height:42vh;overflow-y:auto">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Detail</span>
+          <span class="panel-sub" id="tlDetailStem">select a row above</span>
+        </div>
+        <div id="tlDetail" style="padding:.5rem;max-height:55vh;overflow-y:auto;font-size:.72rem">
+          <div class="panel-empty">No log selected.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
     <!-- VIEW: RELEASE                                                -->
     <!-- ============================================================ -->
     <div data-view="release" hidden>
@@ -1199,6 +1230,7 @@ const pageTitles = {
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
+  tunnellogs:['Tunnel Logs', 'per-device PacketTunnelProvider diagnostics · stage · server · final error'],
   release:   ['Release', 'APK channels · version.json · health'],
   config:    ['Config', 'remote config · bootstrap server · settings'],
   referrals: ['Referrals', 'invite analytics · leaderboard · conversion'],
@@ -2467,6 +2499,89 @@ views.logs = {
 };
 $('logType').onchange   = ()=>views.logs.load?.();
 $('logLines').onchange  = ()=>views.logs.load?.();
+
+// ── VIEW: TUNNEL LOGS ────────────────────────────────────────────────
+// Reads uploaded PacketTunnelProvider diagnostic bundles (data/tunnel-logs)
+// via admin api action=tunnel-logs. The .meta.json carries the structured
+// fields (step = last stage reached, server, protocol, success, error).
+views.tunnellogs = {
+  files: [],
+  async init() {
+    this.load();
+    $('tlRefreshBtn').onclick = ()=>this.load();
+    $('tlDevice').oninput = debounce(()=>this.load(), 350);
+  },
+  async load() {
+    const dev = ($('tlDevice').value||'').trim();
+    $('tlList').innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+    try {
+      const d = await api.get('tunnel-logs', dev ? {device_id:dev} : {});
+      this.files = Array.isArray(d.files) ? d.files : [];
+      this.render();
+    } catch(e) {
+      $('tlList').innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`;
+      toast('Tunnel logs: '+e.message,'error');
+    }
+  },
+  render() {
+    $('tlCount').textContent = this.files.length + ' bundles';
+    if (!this.files.length) {
+      $('tlList').innerHTML = '<div class="panel-empty">No tunnel logs uploaded yet. Have the tester reconnect — the extension uploads on every attempt.</div>';
+      return;
+    }
+    const rows = this.files.map(f=>{
+      const m = f.meta || {};
+      const ok = m.success===true;
+      const badge = ok
+        ? '<span class="log-sev sev-info">OK</span>'
+        : '<span class="log-sev sev-err">FAIL</span>';
+      const stage = esc(m.step||'?');
+      const proto = esc([m.protocol,m.security].filter(Boolean).join('/')||'—');
+      const server = esc(m.server||'—');
+      const err = esc((m.error||'').substring(0,80));
+      return `<div class="log-line" style="cursor:pointer;gap:.6rem" onclick="views.tunnellogs.open('${esc(f.stem)}')">
+        <span class="log-ts">${esc(f.mtime)}</span>
+        ${badge}
+        <span class="log-body"><b>${esc(f.device_id)}</b> · stage=<b>${stage}</b> · ${proto} · ${server}${err?` · <span style="color:var(--bad,#e66)">${err}</span>`:''}</span>
+      </div>`;
+    }).join('');
+    $('tlList').innerHTML = rows;
+  },
+  async open(stem) {
+    $('tlDetailStem').textContent = stem;
+    $('tlDetail').innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
+    try {
+      const d = await api.get('tunnel-logs', {stem});
+      const m = d.meta || {};
+      const metaRows = [
+        ['Device', m.device_id], ['App version', m.app_version],
+        ['Stage reached (step)', m.step], ['Success', String(m.success)],
+        ['Final error', m.error], ['Server', m.server],
+        ['Protocol', m.protocol], ['Network', m.network], ['Security', m.security],
+        ['Server name (SNI)', m.server_name], ['Flow', m.flow],
+        ['libxray version', m.libxray_version],
+        ['config valid', String(m.config_valid)], ['config len', m.config_length],
+        ['config sha256', m.config_sha256], ['country', m.country],
+      ].filter(r=>r[1]!==undefined && r[1]!=='' && r[1]!==null)
+       .map(r=>`<tr><td style="color:var(--muted);padding:.1rem .6rem .1rem 0;white-space:nowrap">${esc(r[0])}</td><td><b>${esc(String(r[1]))}</b></td></tr>`).join('');
+      const logHtml = (d.lines||[]).map(l=>{
+        const line = String(l);
+        const sev = /FAIL|✗|error|⚠️/i.test(line)?'err':/✓|OK|connected/i.test(line)?'info':'';
+        return `<div class="log-line"><span class="log-body${sev==='err'?'" style="color:var(--bad,#e66)':''}">${esc(line)}</span></div>`;
+      }).join('');
+      const cfgHtml = d.config
+        ? `<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--muted)">Sanitized xray config</summary><pre class="raw-detail shown" style="white-space:pre-wrap">${esc(d.config)}</pre></details>`
+        : '';
+      $('tlDetail').innerHTML =
+        `<table style="margin-bottom:.8rem;border-collapse:collapse">${metaRows}</table>
+         <div style="color:var(--muted);margin:.4rem 0">Log (${(d.lines||[]).length} lines)</div>
+         <div style="border-top:1px solid var(--border,#333);padding-top:.4rem">${logHtml||'<div class="panel-empty">empty</div>'}</div>
+         ${cfgHtml}`;
+    } catch(e) {
+      $('tlDetail').innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`;
+    }
+  }
+};
 
 // ── VIEW: RELEASE ────────────────────────────────────────────────────
 views.release = {
