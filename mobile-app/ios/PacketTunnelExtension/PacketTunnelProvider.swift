@@ -210,8 +210,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             kCFNetworkProxiesHTTPPort   as String: kHttpPort,
         ]
 
-        let ipURL = URL(string: "http://1.0.0.1/")!
-        appendLog("Probe TX[1]: HTTP → 1.0.0.1 (IP-direct, DNS bypass) via 127.0.0.1:\(kHttpPort)")
+        // IP-direct probe MUST be HTTPS: iOS App Transport Security blocks plain
+        // http:// ("requires the use of a secure connection"), so an http:// probe
+        // fails inside URLSession before it ever reaches xray — a false negative
+        // that made a working tunnel look like "xray is NOT forwarding traffic".
+        // 1.1.1.1 presents a valid certificate for the IP literal, so this stays a
+        // genuine DNS-free reachability test while satisfying ATS.
+        let ipURL = URL(string: "https://1.1.1.1/cdn-cgi/trace")!
+        appendLog("Probe TX[1]: HTTPS → 1.1.1.1/cdn-cgi/trace (IP-direct, DNS bypass) via 127.0.0.1:\(kHttpPort)")
         fetchURL(ipURL, via: proxyDict, timeout: 10) { [weak self] status, bytes, err, t in
             guard let self = self else { return }
             let ipOk = err == nil && status != nil
@@ -228,9 +234,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             let cpURL = URL(string: "https://cp.cloudflare.com/")!
             self.appendLog("Probe TX[2]: HTTPS → cp.cloudflare.com (DNS+proxy) via 127.0.0.1:\(kHttpPort)")
             self.fetchURL(cpURL, via: proxyDict, timeout: 12) { status2, bytes2, err2, t2 in
-                let dnsOk = err2 == nil && status2 == 200
+                // cp.cloudflare.com is a captive-portal / connectivity-check endpoint:
+                // it returns 204 No Content BY DESIGN (the same contract as Google's
+                // generate_204). Requiring exactly 200 here made a fully working tunnel
+                // report failure — the request reached cp.cloudflare.com through xray
+                // and got its genuine 204 reply. Accept 200 or 204; both prove the
+                // first packet went out and a real response came back.
+                let dnsOk = err2 == nil && (status2 == 200 || status2 == 204)
                 if dnsOk {
-                    self.appendLog("Probe RX[2]: DNS+proxy OK — status=200 bytes=\(bytes2) elapsed=\(t2)")
+                    self.appendLog("Probe RX[2]: DNS+proxy OK — status=\(status2!) bytes=\(bytes2) elapsed=\(t2)")
                     self.appendLog("DNS: resolution OK (cp.cloudflare.com resolved through xray dns-out)")
                     self.appendLog("First packet sent+received — end-to-end connectivity confirmed")
                     completion(true, "ok")
