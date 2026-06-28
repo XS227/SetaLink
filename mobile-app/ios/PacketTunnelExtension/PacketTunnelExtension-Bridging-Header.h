@@ -1,8 +1,11 @@
 // Bridging header for PacketTunnelExtension.
-// Imports the LibXray ObjC interface when the xcframework is present.
-// The #if __has_include guard means the extension still compiles when
-// LibXray.xcframework has not yet been built (local dev / LIBXRAY_AVAILABLE not set).
+// Imports C headers guarded by __has_include so local dev builds compile
+// even when the xcframeworks have not been built yet.
 
 #if __has_include(<LibXray/LibXray.h>)
 #import <LibXray/LibXray.h>
+#endif
+
+#if __has_include(<HevSocks5Tunnel/hev-main.h>)
+#import <HevSocks5Tunnel/hev-main.h>
 #endif

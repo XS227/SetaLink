@@ -302,6 +302,45 @@ jobs:
           cp -R "$XCFW" "$GITHUB_WORKSPACE/mobile-app/ios/LibXray.xcframework"
           echo "LibXray.xcframework copied to ios/"
 
+      # ── hev-socks5-tunnel (tun2socks) — pinned tag ───────────────────────────
+      # Full-TUN packet forwarder: reads the utun fd and forwards ALL TCP+UDP to
+      # xray's local SOCKS inbound (127.0.0.1:10808). Required because NEProxySettings
+      # only carries HTTP/HTTPS — Telegram (raw TCP) and Instagram (QUIC/UDP) need a
+      # real tun2socks. Same architecture as Streisand / FoXray / V2Box.
+      # build-apple.sh produces a library-style HevSocks5Tunnel.xcframework
+      # (module HevSocks5Tunnel, header hev-main.h, ios device + simulator).
+      - name: Set hev-socks5-tunnel tag
+        run: |
+          HEV_TAG="2.15.0"
+          echo "Using pinned hev-socks5-tunnel tag: $HEV_TAG"
+          echo "HEV_TAG=$HEV_TAG" >> "$GITHUB_ENV"
+
+      - name: Cache HevSocks5Tunnel.xcframework
+        id: cache-hev
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/ios/HevSocks5Tunnel.xcframework
+          key: hev-xcframework-${{ env.HEV_TAG }}-macos15
+
+      - name: Build HevSocks5Tunnel.xcframework
+        if: steps.cache-hev.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          WORK_DIR="$RUNNER_TEMP/hev-src"
+          git clone --recursive --depth=1 --branch "$HEV_TAG" \
+            https://github.com/heiher/hev-socks5-tunnel.git "$WORK_DIR"
+          cd "$WORK_DIR"
+          ./build-apple.sh
+          XCFW=$(find . -name "HevSocks5Tunnel.xcframework" -maxdepth 4 -type d 2>/dev/null | head -1)
+          if [ -z "$XCFW" ]; then
+            echo "ERROR: HevSocks5Tunnel.xcframework not found after build. Listing:"
+            find . -maxdepth 3 \( -name "*.xcframework" -o -name "*.a" \) 2>/dev/null | head -40
+            exit 1
+          fi
+          echo "Found: $XCFW"
+          cp -R "$XCFW" "$GITHUB_WORKSPACE/mobile-app/ios/HevSocks5Tunnel.xcframework"
+          echo "HevSocks5Tunnel.xcframework copied to ios/"
+
       # ── Build number ─────────────────────────────────────────────────────────
       - name: Set build number
         run: |
@@ -351,7 +390,7 @@ jobs:
             -xcconfig                "$RUNNER_TEMP/ci_signing.xcconfig" \
             CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             MARKETING_VERSION=0.9.50 \
-            SWIFT_ACTIVE_COMPILATION_CONDITIONS=LIBXRAY_AVAILABLE \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="LIBXRAY_AVAILABLE HEV_AVAILABLE" \
             OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
 
       # ── Export IPA ───────────────────────────────────────────────────────────

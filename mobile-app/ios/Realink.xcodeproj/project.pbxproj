@@ -15,6 +15,7 @@
 		CE000002CE000002CE000002 /* RealinkTunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = CE000003CE000003CE000003 /* RealinkTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; };
 		CE000018CE000018CE000018 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000017CE000017CE000017 /* libresolv.tbd */; };
+		CE000020CE000020CE000020 /* HevSocks5Tunnel.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000019CE000019CE000019 /* HevSocks5Tunnel.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +32,7 @@
 		CE000006CE000006CE000006 /* PacketTunnelExtension.entitlements */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.entitlements; name = PacketTunnelExtension.entitlements; path = PacketTunnelExtension/PacketTunnelExtension.entitlements; sourceTree = "<group>"; };
 		CE000012CE000012CE000012 /* LibXray.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = LibXray.xcframework; path = LibXray.xcframework; sourceTree = SOURCE_ROOT; };
 		CE000017CE000017CE000017 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
+		CE000019CE000019CE000019 /* HevSocks5Tunnel.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = HevSocks5Tunnel.xcframework; path = HevSocks5Tunnel.xcframework; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -71,6 +73,7 @@
 			files = (
 				CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */,
 				CE000018CE000018CE000018 /* libresolv.tbd in Frameworks */,
+				CE000020CE000020CE000020 /* HevSocks5Tunnel.xcframework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +86,7 @@
 				13B07FAE1A68108700A75B9A /* Realink */,
 				CE00000BCE00000BCE00000B /* PacketTunnelExtension */,
 				CE000012CE000012CE000012 /* LibXray.xcframework */,
+				CE000019CE000019CE000019 /* HevSocks5Tunnel.xcframework */,
 				83CBB9F71A601CBA00E9B192 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -149,6 +153,7 @@
 			buildConfigurationList = CE000011CE000011CE000011 /* Build configuration list for PBXNativeTarget "RealinkTunnel" */;
 			buildPhases = (
 				CE000016CE000016CE000016 /* Create LibXray Stub */,
+				CE000021CE000021CE000021 /* Create HEV Stub */,
 				CE000007CE000007CE000007 /* Sources */,
 				CE000008CE000008CE000008 /* Frameworks */,
 				CE000009CE000009CE000009 /* Resources */,
@@ -254,6 +259,27 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/bash;
 			shellScript = "bash \"${SRCROOT}/scripts/create-libxray-stub.sh\"";
+			showEnvVarsInLog = 0;
+		};
+		CE000021CE000021CE000021 /* Create HEV Stub */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 0;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Create HEV Stub";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/hev_stub.stamp",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "bash \"${SRCROOT}/scripts/create-hev-stub.sh\"";
 			showEnvVarsInLog = 0;
 		};
 		FD10A7F022414F080027D42C /* Start Packager */ = {

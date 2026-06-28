@@ -4,9 +4,16 @@ import CryptoKit
 
 // PacketTunnelProvider — routes device traffic through xray-core (VLESS/Reality).
 //
-// Architecture: NEProxySettings proxy mode (no tun2socks).
-//   iOS apps → HTTP proxy 127.0.0.1:10809
-//           → xray http-in → xray proxy outbound → VPN server
+// Two compile-time modes (selected by SWIFT_ACTIVE_COMPILATION_CONDITIONS):
+//
+//   HEV_AVAILABLE (CI build — full-TUN):
+//     packetFlow ↔ socketpair ↔ hev-socks5-tunnel → xray SOCKS 127.0.0.1:10808
+//     All TCP+UDP tunneled; Telegram/QUIC work; no NEProxySettings needed.
+//
+//   default (local dev — proxy mode):
+//     iOS apps → NEProxySettings HTTP proxy 127.0.0.1:10809
+//              → xray http-in → xray proxy outbound → VPN server
+//     HTTP/HTTPS only; simpler, no native library required.
 //
 // IPC contract with XrayModule.swift (main app):
 //   App Group: group.no.setalink.realink
@@ -55,6 +62,27 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var configLength   = 0
     private var configValid    = false
     private var sanitizedCfg   = ""
+
+    // HEV tun2socks relay state (only used when HEV_AVAILABLE)
+    #if HEV_AVAILABLE
+    private var hevBridgeFd:    Int32               = -1
+    private var hevRelaySource: DispatchSourceRead?  = nil
+    private var hevStatsTimer:  DispatchSourceTimer? = nil
+
+    // Traffic counters — updated inline in the relay; diagnostic accuracy is
+    // sufficient (no locking needed for approximate counts).
+    private struct HevStats {
+        var txPackets: Int = 0   // device → TUN → socket → hev
+        var txBytes:   Int = 0
+        var txTCP:     Int = 0
+        var txUDP:     Int = 0
+        var txQUIC:    Int = 0   // UDP dst-port 443 (QUIC/Meta/Instagram)
+        var txOther:   Int = 0
+        var rxPackets: Int = 0   // hev → socket → TUN → device
+        var rxBytes:   Int = 0
+    }
+    private var hevStats = HevStats()
+    #endif
 
     // MARK: - Start
 
@@ -125,7 +153,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.step("route installed")
             self.appendLog("Route installed (\(self.elapsed(since: self.startTime)) total)")
 
-            // ── Phase 5: dual probe ───────────────────────────────────────────
+            // ── Phase 5 (HEV only): start tun2socks relay ────────────────────
+            #if HEV_AVAILABLE
+            self.startHevMode()
+            #endif
+
+            // ── Phase 6: dual probe ───────────────────────────────────────────
             self.step("probing")
             self.runDualProbe { ok, summary in
                 shared.set(ok, forKey: kProbeOkKey)
@@ -155,6 +188,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
         appendLog("STATE: stop reason=\(reason.rawValue) (\(stopReasonDescription(reason)))")
+        #if HEV_AVAILABLE
+        stopHevMode()
+        #endif
         stopXrayCore()
         if let shared = UserDefaults(suiteName: kAppGroup) { flushLog(to: shared) }
         completionHandler()
@@ -203,6 +239,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         settings.dnsSettings = dns
         appendLog("NetSettings: DNS=[1.1.1.1,8.8.8.8] matchDomains=[all]")
 
+        #if HEV_AVAILABLE
+        // HEV mode: hev-socks5-tunnel reads raw IP packets from the TUN and forwards
+        // ALL traffic (TCP+UDP) to xray SOCKS 10808 — no HTTP proxy needed.
+        appendLog("NetSettings: HEV mode — no NEProxySettings (all traffic via TUN→hev→xray SOCKS)")
+        #else
         let proxy = NEProxySettings()
         proxy.httpEnabled  = true
         proxy.httpServer   = NEProxyServer(address: "127.0.0.1", port: kHttpPort)
@@ -211,6 +252,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         proxy.excludeSimpleHostnames = true
         settings.proxySettings = proxy
         appendLog("NetSettings: HTTP/HTTPS proxy=127.0.0.1:\(kHttpPort) excludeSimpleHostnames=true")
+        #endif
 
         appendLog("NetSettings: calling setTunnelNetworkSettings…")
         setTunnelNetworkSettings(settings) { error in
@@ -266,12 +308,34 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 if dnsOk {
                     self.appendLog("Probe RX[2]: DNS+proxy OK — status=\(status2!) bytes=\(bytes2) elapsed=\(t2)")
                     self.appendLog("DNS: resolution OK (cp.cloudflare.com resolved through xray dns-out)")
-                    // ── Probe 3 (diagnostic, NON-gating): system-routed, NO explicit
-                    // proxy dict. Tests whether iOS actually applies the tunnel's
-                    // NEProxySettings to ordinary app traffic (what Safari does). If this
-                    // FAILS while probe 2 passed, the proxy isn't reaching apps → browsers
-                    // hang despite CONNECTED. (May under-report inside the extension's own
-                    // process, so it warns rather than fails the tunnel.)
+                    // ── Probe 3 (diagnostic, NON-gating) ──────────────────────
+                    #if HEV_AVAILABLE
+                    // HEV mode: extension process bypasses the TUN, so a bare URLSession
+                    // request is NOT routed through hev. Instead probe via SOCKS5 directly —
+                    // this verifies hev is actually forwarding packets through xray SOCKS.
+                    self.step("hev socks probe")
+                    let socksDict: [AnyHashable: Any] = [
+                        "SOCKSEnable": 1,
+                        "SOCKSProxy":  "127.0.0.1",
+                        "SOCKSPort":   kSocksPort,
+                    ]
+                    self.appendLog("Probe TX[3]: HTTPS → cp.cloudflare.com via SOCKS5 127.0.0.1:\(kSocksPort) (HEV path)")
+                    self.fetchURL(URL(string: "https://cp.cloudflare.com/")!, via: socksDict, timeout: 10) { s3, _, e3, t3 in
+                        let socks5Ok = e3 == nil && (s3 == 200 || s3 == 204)
+                        if socks5Ok {
+                            self.appendLog("Probe RX[3]: SOCKS5 OK — status=\(s3!) elapsed=\(t3) — HEV relay is forwarding traffic")
+                        } else {
+                            let r3 = e3?.localizedDescription ?? "status=\(s3.map { "\($0)" } ?? "nil")"
+                            self.appendLog("Probe RX[3]: SOCKS5 FAIL — \(r3) elapsed=\(t3)")
+                            self.appendLog("⚠️ HEV relay may not be active — app traffic (Safari/Telegram) could fail")
+                        }
+                        self.appendLog("First packet sent+received — end-to-end connectivity confirmed")
+                        completion(true, "ok")
+                    }
+                    #else
+                    // Proxy mode: system-routed, NO explicit proxy dict.
+                    // Tests whether iOS actually applies NEProxySettings to app traffic.
+                    // May under-report inside the extension's own process — warns, doesn't fail.
                     self.step("system probe")
                     self.appendLog("Probe TX[3]: HTTPS → cp.cloudflare.com (SYSTEM-routed, no explicit proxy)")
                     self.fetchURL(URL(string: "https://cp.cloudflare.com/")!, via: [:], timeout: 10) { s3, _, e3, t3 in
@@ -286,6 +350,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         self.appendLog("First packet sent+received — end-to-end connectivity confirmed")
                         completion(true, "ok")
                     }
+                    #endif
                 } else {
                     let reason2 = err2?.localizedDescription ?? "status=\(status2.map{"\($0)"} ?? "nil")"
                     self.appendLog("Probe RX[2]: DNS+proxy FAIL — \(reason2) elapsed=\(t2)")
@@ -721,6 +786,237 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             URLSession(configuration: cfg).dataTask(with: req) { _, _, _ in }.resume()
         }
     }
+
+    // MARK: - HEV tun2socks relay (HEV_AVAILABLE only)
+
+    #if HEV_AVAILABLE
+
+    // Build the YAML config for hev-socks5-tunnel.
+    // tunnel.ipv4/ipv6 must match the virtual addresses in NEIPv4Settings / NEIPv6Settings.
+    private func buildHevConfig() -> Data {
+        let yaml = """
+        misc:
+          task-stack-size: 81920
+          connect-timeout: 4000
+          read-write-timeout: 8000
+          log-level: warning
+        socks5:
+          port: \(kSocksPort)
+          address: '127.0.0.1'
+          udp: 'udp'
+        tunnel:
+          mtu: 1500
+          ipv4: '10.255.0.2'
+          ipv6: 'fd00::2'
+        """
+        return yaml.data(using: .utf8)!
+    }
+
+    // Start the bidirectional relay: packetFlow ↔ socketpair ↔ hev-socks5-tunnel.
+    //
+    // Architecture:
+    //   [iOS apps] → kernel → [TUN / packetFlow]
+    //                               ↕  (this relay, Swift side)
+    //                         [socketpair swift end]
+    //                               ↕  (SOCK_SEQPACKET — one datagram = one IP packet)
+    //                         [socketpair hev end]
+    //                               ↕  (read/write, inside hev-socks5-tunnel)
+    //                         [SOCKS5 client → 127.0.0.1:10808 xray SOCKS inbound]
+    //                               ↕
+    //                         [xray outbound → VPN server → internet]
+    private func startHevMode() {
+        var fds = [Int32](repeating: -1, count: 2)
+        guard socketpair(AF_UNIX, SOCK_SEQPACKET, 0, &fds) == 0 else {
+            appendLog("HEV: socketpair failed errno=\(errno) — falling back to proxy probe only")
+            return
+        }
+        let hevFd   = fds[0]
+        hevBridgeFd = fds[1]
+        appendLog("HEV: socketpair ok hevFd=\(hevFd) bridgeFd=\(hevBridgeFd)")
+
+        let configData = buildHevConfig()
+        appendLog("HEV: config \(configData.count)B — socks5=127.0.0.1:\(kSocksPort) mtu=1500")
+
+        // hev_socks5_tunnel_main_from_str blocks until hev_socks5_tunnel_quit() is called.
+        let configCopy = configData
+        Thread.detachNewThread {
+            configCopy.withUnsafeBytes { ptr in
+                let base = ptr.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                _ = hev_socks5_tunnel_main_from_str(base, UInt32(configCopy.count), hevFd)
+            }
+            close(hevFd)
+        }
+        appendLog("HEV: tunnel thread started")
+
+        // ── socket → packetFlow (inbound from internet) ──────────────────────
+        let bridgeFd = hevBridgeFd
+        let queue    = DispatchQueue(label: "no.setalink.hev.rx", qos: .userInitiated)
+        let source   = DispatchSource.makeReadSource(fileDescriptor: bridgeFd, queue: queue)
+        source.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            var buffer = [UInt8](repeating: 0, count: 65536)
+            let n = recv(bridgeFd, &buffer, buffer.count, 0)
+            guard n > 0 else { return }
+            let packet  = Data(buffer[..<n])
+            self.hevStats.rxPackets += 1
+            self.hevStats.rxBytes   += n
+            let version = (packet[0] >> 4) & 0xF
+            let proto: NSNumber = version == 6
+                ? NSNumber(value: AF_INET6)
+                : NSNumber(value: AF_INET)
+            self.packetFlow.writePackets([packet], withProtocols: [proto])
+        }
+        source.resume()
+        hevRelaySource = source
+        appendLog("HEV: rx relay started (socket→packetFlow)")
+
+        // ── packetFlow → socket (outbound from device) ───────────────────────
+        readNextPackets(to: bridgeFd)
+        appendLog("HEV: tx relay started (packetFlow→socket)")
+
+        // ── periodic stats log (60s interval) ────────────────────────────────
+        startHevStatsTimer()
+    }
+
+    // Chain continuous reads from packetFlow, writing each IP packet to the socket.
+    // Classifies every packet by protocol/port for traffic verification logging.
+    private func readNextPackets(to fd: Int32) {
+        packetFlow.readPackets { [weak self] packets, _ in
+            guard let self = self, self.hevBridgeFd != -1 else { return }
+            for packet in packets {
+                let (proto, dstPort) = self.classifyPacket(packet)
+                self.hevStats.txPackets += 1
+                self.hevStats.txBytes   += packet.count
+                switch proto {
+                case 6:
+                    self.hevStats.txTCP += 1
+                case 17:
+                    self.hevStats.txUDP += 1
+                    if dstPort == 443 { self.hevStats.txQUIC += 1 }
+                default:
+                    self.hevStats.txOther += 1
+                }
+                packet.withUnsafeBytes { ptr in
+                    _ = send(fd, ptr.baseAddress!, ptr.count, 0)
+                }
+            }
+            self.readNextPackets(to: fd)
+        }
+    }
+
+    // Extract IP protocol number and destination port from a raw IP packet.
+    // Supports both IPv4 and IPv6 headers.
+    private func classifyPacket(_ data: Data) -> (proto: UInt8, dstPort: UInt16?) {
+        guard data.count >= 1 else { return (0, nil) }
+        let version = (data[0] >> 4) & 0xF
+        var proto: UInt8 = 0
+        var toff = 0
+        if version == 4 {
+            guard data.count >= 10 else { return (0, nil) }
+            proto = data[9]
+            toff  = Int(data[0] & 0xF) * 4
+        } else if version == 6 {
+            guard data.count >= 7 else { return (0, nil) }
+            proto = data[6]
+            toff  = 40
+        } else { return (0, nil) }
+        // Only TCP(6) and UDP(17) carry a 4-byte port header immediately after IP.
+        guard proto == 6 || proto == 17, data.count >= toff + 4 else { return (proto, nil) }
+        let dstPort = UInt16(data[toff + 2]) << 8 | UInt16(data[toff + 3])
+        return (proto, dstPort)
+    }
+
+    private func stopHevMode() {
+        hevStatsTimer?.cancel()
+        hevStatsTimer = nil
+        hevRelaySource?.cancel()
+        hevRelaySource = nil
+        logHevStats(final: true)   // final stats before hev quits
+        hev_socks5_tunnel_quit()
+        if hevBridgeFd != -1 {
+            close(hevBridgeFd)
+            hevBridgeFd = -1
+        }
+        appendLog("HEV: stopped")
+    }
+
+    // ── Diagnostic logging gate ───────────────────────────────────────────────
+
+    // True in DEBUG and TestFlight builds; false in App Store (production) releases.
+    // Verbose per-packet stats and the 60-second timer are disabled in production to
+    // keep logs clean and avoid overhead. A lightweight verify line is always written
+    // at disconnect so failures remain diagnosable in production tunnel logs.
+    private var verboseHevLogging: Bool {
+        #if DEBUG
+        return true
+        #else
+        // TestFlight distributions carry a sandboxReceipt inside the containing app.
+        // Extension bundle: Realink.app/PlugIns/RealinkTunnel.appex
+        // App bundle:       Realink.app/
+        let appBundle = Bundle.main.bundleURL
+            .deletingLastPathComponent()   // .appex → PlugIns
+            .deletingLastPathComponent()   // PlugIns → Realink.app
+        let sandboxReceipt = appBundle
+            .appendingPathComponent("StoreKit/sandboxReceipt").path
+        return FileManager.default.fileExists(atPath: sandboxReceipt)
+        #endif
+    }
+
+    // ── Stats logging ─────────────────────────────────────────────────────────
+
+    private func startHevStatsTimer() {
+        guard verboseHevLogging else { return }   // no periodic logs in production
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .background))
+        timer.schedule(deadline: .now() + 60, repeating: 60)
+        timer.setEventHandler { [weak self] in self?.logHevStats(final: false) }
+        timer.resume()
+        hevStatsTimer = timer
+    }
+
+    // Logs relay counters (Swift side) AND hev-lib counters (C side).
+    //
+    // The hev-lib numbers are the authoritative proof that traffic reached SOCKS5 →
+    // xray → internet. If hev-lib TX > 0 after a session, traffic went through the VPN.
+    //
+    // Comparison table (verbose mode):
+    //   relay TX ≈ hev-lib TX  → relay ↔ hev in sync, no drops before SOCKS5
+    //   relay TX >> hev-lib TX → hev dropped packets (SOCKS5/xray overloaded?)
+    //   relay TX == 0          → no app traffic reached TUN (route not applied?)
+    private func logHevStats(final: Bool) {
+        var hTxP: size_t = 0, hTxB: size_t = 0
+        var hRxP: size_t = 0, hRxB: size_t = 0
+        hev_socks5_tunnel_stats(&hTxP, &hTxB, &hRxP, &hRxB)
+
+        if verboseHevLogging {
+            let tag = final ? "HEV FINAL" : "HEV STATS"
+            appendLog("\(tag): relay→ TX=\(hevStats.txPackets)pkts \(hevStats.txBytes)B  TCP=\(hevStats.txTCP) UDP=\(hevStats.txUDP) QUIC(UDP:443)=\(hevStats.txQUIC) other=\(hevStats.txOther)")
+            appendLog("\(tag): relay← RX=\(hevStats.rxPackets)pkts \(hevStats.rxBytes)B")
+            appendLog("\(tag): hev-lib TX=\(hTxP)pkts \(hTxB)B  RX=\(hRxP)pkts \(hRxB)B")
+        }
+
+        guard final else { return }
+
+        // ── Verify summary — always written (production + TestFlight/debug) ──
+        if hTxP > 0 {
+            appendLog("HEV VERIFY ✓: \(hTxP)pkts SOCKS5→xray (TCP=\(hevStats.txTCP) UDP=\(hevStats.txUDP) QUIC=\(hevStats.txQUIC))")
+            if verboseHevLogging {
+                if hevStats.txQUIC > 0 {
+                    appendLog("HEV VERIFY ✓: QUIC/UDP-443 seen (\(hevStats.txQUIC) pkts) — Meta/Instagram/WhatsApp traffic tunneled")
+                }
+                let drops = hevStats.txPackets - Int(hTxP)
+                if drops > 10 {
+                    appendLog("HEV VERIFY ⚠️: \(drops) relay→hev drops (SOCKS5/xray overload?)")
+                }
+                appendLog("HEV LEAK CHECK: TUN claims IPv4 default + IPv6 ::/0 — iOS enforces routes; no app bypass path")
+            }
+        } else if hevStats.txPackets > 0 {
+            appendLog("HEV VERIFY ⚠️: \(hevStats.txPackets) relay TX but hev-lib forwarded 0 — SOCKS5 path broken?")
+        } else {
+            appendLog("HEV VERIFY: 0 TX packets (session too short or no app traffic)")
+        }
+    }
+
+    #endif
 
     // MARK: - fail() helper
 
