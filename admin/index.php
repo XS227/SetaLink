@@ -2722,12 +2722,218 @@ views.tunnellogs = {
     }).join('');
     $('tlList').innerHTML = rows;
   },
+  // Parse raw log lines into a structured timeline of key events.
+  // Each entry: { ts, hms, label, detail, status }
+  // status: 'ok' | 'fail' | 'warn' | 'neutral'
+  buildTimeline(lines) {
+    // Extract [YYYY-MM-DDTHH:MM:SSZ] prefix from a log line.
+    const tsRe = /^\[(\d{4}-\d{2}-\d{2}T(\d{2}:\d{2}:\d{2})Z)\]/;
+
+    // Event matchers: first match wins per line.
+    // Each entry: { re, label, detail? (fn line→string), status, dedup? }
+    const MATCHERS = [
+      { re: /STATE:\s*start\b/,
+        label: 'Tunnel started', status: 'neutral' },
+      { re: /xray-core started/,
+        label: 'xray-core started',
+        detail: l => { const m = l.match(/started in ([\d.]+s)/); return m?.[1]||''; },
+        status: 'ok' },
+      // HEV bridge — new format (build 40+) and old format (build 38-39)
+      { re: /HEV-START:.*socketpair.*OK|HEV:\s*socketpair ok/i,
+        label: 'HEV bridge started (SOCK_DGRAM)',
+        detail: l => { const m = l.match(/hevFd=(\d+)\s+bridgeFd=(\d+)/i); return m?`hevFd=${m[1]} bridgeFd=${m[2]}`:''; },
+        status: 'ok', dedup: 'hev-bridge' },
+      { re: /HEV-START:.*FAILED|HEV:\s*socketpair failed/i,
+        label: 'HEV bridge FAILED',
+        detail: l => { const m = l.match(/errno=(\d+)/); return m?`errno=${m[1]} (EPROTOTYPE — SOCK_DGRAM not tried yet?)`:''; },
+        status: 'fail', terminal: true, dedup: 'hev-bridge' },
+      { re: /setTunnelNetworkSettings OK/,
+        label: 'Routes installed',
+        status: 'ok' },
+      { re: /NetSettings: DNS=/,
+        label: 'DNS configured',
+        detail: l => { const m = l.match(/DNS=\[([^\]]+)\]/); return m?.[1]||''; },
+        status: 'ok' },
+      { re: /HEV:\s*(?:rx relay|tx relay|tunnel thread) started/,
+        label: 'HEV relay threads running',
+        status: 'ok', dedup: 'hev-relay' },
+      { re: /S5-PROBE:.*OPEN/,
+        label: 'xray SOCKS5 port open',
+        status: 'ok' },
+      { re: /S5-PROBE:.*CLOSED|S5-PROBE:.*REFUSED/,
+        label: 'xray SOCKS5 port CLOSED',
+        detail: l => { const m = l.match(/errno=(\d+)/); return m?`errno=${m[1]}`:''; },
+        status: 'fail' },
+      { re: /FIRST-PKT-OUT:/,
+        label: 'First outbound packet',
+        detail: l => l.replace(/.*FIRST-PKT-OUT:\s*/,'').trim(),
+        status: 'ok' },
+      { re: /FIRST-PKT-DROP:/,
+        label: 'First packet DROPPED at S3',
+        detail: l => l.replace(/.*FIRST-PKT-DROP:\s*/,'').trim(),
+        status: 'fail' },
+      { re: /FIRST-PKT-IN:/,
+        label: 'First inbound packet',
+        detail: l => l.replace(/.*FIRST-PKT-IN:\s*/,'').trim(),
+        status: 'ok' },
+      // Probe results
+      { re: /Probe RX\[1\]:.*IP-direct OK/,
+        label: 'IP-direct probe OK',
+        detail: l => { const m = l.match(/elapsed=([\d.]+s)/); return m?.[1]||''; },
+        status: 'ok' },
+      { re: /Probe RX\[1\]:.*IP-direct FAIL/,
+        label: 'IP-direct probe failed',
+        detail: l => { const m = l.match(/FAIL — (.+?) elapsed/); return m?.[1]?.substring(0,60)||''; },
+        status: 'warn' },
+      { re: /Probe RX\[2\]:.*DNS\+proxy OK/,
+        label: 'DNS+proxy probe OK',
+        detail: l => { const m = l.match(/elapsed=([\d.]+s)/); return m?.[1]||''; },
+        status: 'ok' },
+      { re: /Probe RX\[2\]:.*DNS\+proxy FAIL/,
+        label: 'DNS+proxy probe failed',
+        detail: l => { const m = l.match(/FAIL — (.+?) elapsed/); return m?.[1]?.substring(0,60)||''; },
+        status: 'fail' },
+      { re: /Probe RX\[3\]:.*SOCKS5 OK/,
+        label: 'SOCKS5 relay probe OK',
+        detail: l => { const m = l.match(/elapsed=([\d.]+s)/); return m?.[1]||''; },
+        status: 'ok' },
+      { re: /Probe RX\[3\]:.*SOCKS5 FAIL/,
+        label: 'SOCKS5 relay probe failed',
+        detail: l => { const m = l.match(/FAIL — (.+?) elapsed/); return m?.[1]?.substring(0,60)||''; },
+        status: 'warn' },
+      { re: /STATE:\s*connected/,
+        label: 'Connected',
+        detail: l => { const m = l.match(/connected \((.+)\)/); return m?.[1]||''; },
+        status: 'ok' },
+      { re: /STATE:\s*failed/,
+        label: 'FAILED',
+        detail: l => { const m = l.match(/failed — (.+)/); return m?.[1]?.substring(0,80)||''; },
+        status: 'fail', terminal: true },
+    ];
+
+    const events = [];
+    const seen   = new Set();   // dedup keys
+    let t0 = null;              // epoch ms of first timestamped line
+
+    // Pass 1: extract events in log order.
+    for (const rawLine of lines) {
+      const line = String(rawLine);
+      const tsMatch = line.match(tsRe);
+      const hms  = tsMatch?.[2] || null;
+      const iso  = tsMatch?.[1] || null;
+      const epMs = iso ? Date.parse(iso) : null;
+      if (epMs && !t0) t0 = epMs;
+
+      for (const m of MATCHERS) {
+        if (!m.re.test(line)) continue;
+        const key = m.dedup || m.label;
+        if (seen.has(key)) break;
+        seen.add(key);
+        events.push({
+          hms,
+          offsetMs: (epMs && t0) ? (epMs - t0) : null,
+          label:    m.label,
+          detail:   m.detail ? m.detail(line) : '',
+          status:   m.status,
+          terminal: !!m.terminal,
+        });
+        break;
+      }
+    }
+
+    // Pass 2: synthesise "No inbound packets" if outbound fired but inbound didn't.
+    // Detect from PIPE/PIPE-FINAL lines: S7 hev←SOCKS5 (lib) : 0 pkts
+    const hasTx     = events.some(e => e.label === 'First outbound packet');
+    const hasRx     = events.some(e => e.label === 'First inbound packet');
+    const hasPipe   = lines.some(l => /\[PIPE/.test(l));
+    const pipeZeroS7 = lines.some(l => /\[PIPE/.test(l) && /S7 hev[^:]*:\s*0 pkts/.test(l));
+    const connected  = events.some(e => e.label === 'Connected');
+
+    if (hasTx && !hasRx && (hasPipe || !connected)) {
+      const lastPipeTs = (() => {
+        for (let i = lines.length - 1; i >= 0; i--) {
+          if (/\[PIPE/.test(lines[i])) {
+            const m = String(lines[i]).match(tsRe);
+            return { hms: m?.[2]||null, epMs: m?.[1] ? Date.parse(m[1]) : null };
+          }
+        }
+        return { hms: null, epMs: null };
+      })();
+      events.push({
+        hms:      lastPipeTs.hms,
+        offsetMs: (lastPipeTs.epMs && t0) ? (lastPipeTs.epMs - t0) : null,
+        label:    'No inbound packets received',
+        detail:   pipeZeroS7 ? 'S7=0 confirmed in pipeline stats — hev→xray→internet path broken' : 'FIRST-PKT-IN never logged',
+        status:   'fail',
+        terminal: false,
+      });
+    }
+
+    return events;
+  },
+
+  renderTimeline(events) {
+    if (!events.length) return '';
+    const dot = s => {
+      const c = s==='ok'?'#22c55e':s==='fail'?'#ef4444':s==='warn'?'#f59e0b':'#4b5563';
+      const icon = s==='ok'?'✓':s==='fail'?'✗':s==='warn'?'⚠':' ';
+      return `<span style="display:inline-flex;align-items:center;justify-content:center;
+        width:1.1rem;height:1.1rem;border-radius:50%;background:${c};
+        color:#fff;font-size:.6rem;font-weight:700;flex-shrink:0">${icon}</span>`;
+    };
+    const rows = events.map((e, i) => {
+      const isLast = i === events.length - 1;
+      const tsCell = e.hms
+        ? `<span class="mono" style="color:var(--muted);font-size:.68rem;min-width:4.5rem;flex-shrink:0">${esc(e.hms)}</span>`
+        : `<span style="min-width:4.5rem;flex-shrink:0"></span>`;
+      const labelColor = e.status==='ok'?'inherit':e.status==='fail'?'var(--bad,#ef4444)':e.status==='warn'?'#f59e0b':'var(--muted)';
+      const detail = e.detail ? `<span style="color:var(--muted);font-size:.68rem;margin-left:.4rem">${esc(e.detail)}</span>` : '';
+      // Vertical connector line below every row except the last.
+      const connector = !isLast
+        ? `<div style="width:1.1rem;display:flex;justify-content:center;flex-shrink:0">
+             <div style="width:1px;height:.75rem;background:var(--border,#2a3550)"></div>
+           </div>`
+        : '';
+      return `<div style="display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;gap:.5rem;padding:.15rem 0">
+          ${tsCell}
+          ${dot(e.status)}
+          <span style="color:${labelColor};font-size:.78rem;font-weight:${e.status!=='neutral'?600:400}">${esc(e.label)}</span>
+          ${detail}
+        </div>
+        <div style="display:flex;gap:.5rem">
+          <div style="min-width:4.5rem;flex-shrink:0"></div>
+          ${connector}
+        </div>
+      </div>`;
+    }).join('');
+    const overallOk  = events.some(e => e.label === 'Connected');
+    const overallFail = events.some(e => e.status === 'fail' && e.terminal);
+    const summaryColor = overallOk ? '#22c55e' : overallFail ? '#ef4444' : '#f59e0b';
+    const summaryText  = overallOk ? '✅ Connected' : overallFail ? '❌ Failed' : '⚠️ Partial';
+    return `<div style="margin-bottom:.75rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+        <span style="font-size:.72rem;font-weight:600;letter-spacing:.06em;color:var(--muted);text-transform:uppercase">Connection Timeline</span>
+        <span style="font-size:.75rem;font-weight:700;color:${summaryColor}">${summaryText}</span>
+      </div>
+      <div style="background:var(--bg-2,#0f1626);border:1px solid var(--border,#2a3550);border-radius:6px;padding:.6rem .8rem">
+        ${rows}
+      </div>
+    </div>`;
+  },
+
   async open(stem) {
     $('tlDetailStem').textContent = stem;
     $('tlDetail').innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
     try {
       const d = await api.get('tunnel-logs', {stem});
       const m = d.meta || {};
+      const lines = d.lines || [];
+
+      // ── Connection Timeline ──────────────────────────────────────────
+      const timelineHtml = this.renderTimeline(this.buildTimeline(lines));
+
+      // ── Meta table ───────────────────────────────────────────────────
       const metaRows = [
         ['Device', m.device_id], ['App version', m.app_version],
         ['Stage reached (step)', m.step], ['Success', String(m.success)],
@@ -2739,18 +2945,28 @@ views.tunnellogs = {
         ['config sha256', m.config_sha256], ['country', m.country],
       ].filter(r=>r[1]!==undefined && r[1]!=='' && r[1]!==null)
        .map(r=>`<tr><td style="color:var(--muted);padding:.1rem .6rem .1rem 0;white-space:nowrap">${esc(r[0])}</td><td><b>${esc(String(r[1]))}</b></td></tr>`).join('');
-      const logHtml = (d.lines||[]).map(l=>{
+
+      // ── Raw log ──────────────────────────────────────────────────────
+      const logHtml = lines.map(l=>{
         const line = String(l);
         const sev = /FAIL|✗|error|⚠️/i.test(line)?'err':/✓|OK|connected/i.test(line)?'info':'';
         return `<div class="log-line"><span class="log-body${sev==='err'?'" style="color:var(--bad,#e66)':''}">${esc(line)}</span></div>`;
       }).join('');
+
       const cfgHtml = d.config
         ? `<details style="margin-top:.6rem"><summary style="cursor:pointer;color:var(--muted)">Sanitized xray config</summary><pre class="raw-detail shown" style="white-space:pre-wrap">${esc(d.config)}</pre></details>`
         : '';
+
       $('tlDetail').innerHTML =
-        `<table style="margin-bottom:.8rem;border-collapse:collapse">${metaRows}</table>
-         <div style="color:var(--muted);margin:.4rem 0">Log (${(d.lines||[]).length} lines)</div>
-         <div style="border-top:1px solid var(--border,#333);padding-top:.4rem">${logHtml||'<div class="panel-empty">empty</div>'}</div>
+        `${timelineHtml}
+         <details open>
+           <summary style="cursor:pointer;font-size:.72rem;color:var(--muted);margin-bottom:.4rem">Meta fields</summary>
+           <table style="margin-bottom:.8rem;border-collapse:collapse">${metaRows}</table>
+         </details>
+         <details>
+           <summary style="cursor:pointer;font-size:.72rem;color:var(--muted);margin:.3rem 0">Raw log (${lines.length} lines)</summary>
+           <div style="border-top:1px solid var(--border,#333);padding-top:.4rem;margin-top:.3rem">${logHtml||'<div class="panel-empty">empty</div>'}</div>
+         </details>
          ${cfgHtml}`;
     } catch(e) {
       $('tlDetail').innerHTML = `<div class="panel-empty">${esc(e.message)}</div>`;
