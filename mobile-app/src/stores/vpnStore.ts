@@ -98,9 +98,25 @@ export const useVpnStore = create<VpnState>((set, get) => {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAuthStore } = require('./authStore');
         const log = getLastConnectLog();
-        set({ connectionLog: log });
         const user = useAuthStore.getState().user;
-        if (user?.deviceId) uploadTunnelLog(user.deviceId, log);
+        if (log.length > 0) {
+          set({ connectionLog: log });
+          if (user?.deviceId) uploadTunnelLog(user.deviceId, log);
+        } else {
+          // App Group UserDefaults cross-process write may not have propagated yet
+          // (extension calls synchronize() but iOS still has a small window).
+          // Retry once after 300 ms — keeps DNS/probe status from showing "Unknown".
+          set({ connectionLog: [] });
+          setTimeout(() => {
+            try {
+              const retried: string[] = getLastConnectLog();
+              if (retried.length > 0) {
+                set({ connectionLog: retried });
+                if (user?.deviceId) uploadTunnelLog(user.deviceId, retried);
+              }
+            } catch {}
+          }, 300);
+        }
       } catch {}
 
       const server = get().selectedServer;
