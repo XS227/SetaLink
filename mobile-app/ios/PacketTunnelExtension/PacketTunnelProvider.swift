@@ -1,4 +1,5 @@
 import NetworkExtension
+import Network
 import Foundation
 import CryptoKit
 
@@ -34,6 +35,7 @@ private let kHttpPort:  Int = 10809
 
 private let kUploadURL      = "https://setalink.no/api.php?mobile=1&action=submit-tunnel-log"
 private let kTunnelStateKey = "tunnel_state"
+private let kHeartbeatKey   = "extension_heartbeat"  // unix ts written every 30s; main app can detect frozen extension
 
 // Formal connection lifecycle. completionHandler(nil) is called ONLY from the
 // connectedVerified transition — never add a shortcut that bypasses probe 3.
@@ -86,6 +88,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var hevRelaySource:      DispatchSourceRead?   = nil
     private var hevStatsTimer:       DispatchSourceTimer?  = nil
     private var postConnectWatchdog: DispatchWorkItem?     = nil
+    private var pathMonitor:         NWPathMonitor?        = nil   // #5 #18 network-change detection
+    private var livenessTimer:       DispatchSourceTimer?  = nil   // #6 #8 30s heartbeat
 
     // Per-stage pipeline counters.
     // S1 = packetFlow.readPackets delivered
@@ -131,6 +135,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         appendLog("Extension: \(Bundle.main.bundleIdentifier ?? "unknown") pid=\(pi.processIdentifier)")
         appendLog("iOS: \(pi.operatingSystemVersionString)")
         appendLog("App Group: \(kAppGroup)")
+        // #17 Low Power Mode throttles background processing; log so admin can correlate with degraded tunnels.
+        appendLog("Device: lowPower=\(pi.isLowPowerModeEnabled) thermalState=\(pi.thermalState.rawValue)")
 
         // xray-core version — logged before RunXrayFromJSON so it appears even on config failures.
         captureXrayVersion()
@@ -145,6 +151,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                  completionHandler)
             return
         }
+        // #16 Verify App Group is bidirectionally readable by the extension process.
+        // If this write+read roundtrip fails, all IPC with the main app is broken.
+        let ipcKey = "_ipc_\(pi.processIdentifier)"
+        shared.set("ok", forKey: ipcKey)
+        let ipcOk = shared.string(forKey: ipcKey) == "ok"
+        shared.removeObject(forKey: ipcKey)
+        appendLog("AppGroup: \(kAppGroup) IPC=\(ipcOk ? "OK" : "FAIL — extension cannot write to shared container")")
+
+        // #7 Clear stale tunnel_state from the previous session so a crashed/interrupted
+        // prior attempt never makes this attempt appear to be in a wrong state.
+        shared.removeObject(forKey: kTunnelStateKey)
+
         guard let configJson = shared.string(forKey: kConfigKey), !configJson.isEmpty else {
             fail("No xray config in App Group — XrayModule.start() must be called first",
                  shared: shared, completionHandler)
@@ -948,6 +966,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // ── periodic pipeline stats (5s interval, always on for diagnosis) ───
         startHevStatsTimer()
+
+        // ── #5 #18 Network path monitor: logs WiFi↔cellular switches and IPv6-only paths ──
+        startNetworkMonitor()
+
+        // ── #6 #8 Liveness heartbeat: extension writes ts every 30s so main app can ──
+        // detect a frozen extension (no heartbeat update = extension may have crashed).
+        startLivenessTimer()
+
         return true
     }
 
@@ -1024,6 +1050,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     private func stopHevMode() {
+        pathMonitor?.cancel();   pathMonitor   = nil
+        livenessTimer?.cancel(); livenessTimer = nil
         hevStatsTimer?.cancel()
         hevStatsTimer = nil
         hevRelaySource?.cancel()
@@ -1035,6 +1063,57 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             hevBridgeFd = -1
         }
         appendLog("HEV: stopped")
+    }
+
+    // ── #5 #18 Network path monitor ───────────────────────────────────────────
+    // Logs every path change so admin can correlate "tunnel silently failed" reports
+    // with WiFi→cellular switches or IPv6-only paths (e.g. some 5G carriers).
+    private func startNetworkMonitor() {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self = self else { return }
+            let status = path.status == .satisfied ? "satisfied" : "unsatisfied"
+            let ifaces = path.availableInterfaces.map { iface -> String in
+                switch iface.type {
+                case .wifi:          return "wifi"
+                case .cellular:      return "cellular"
+                case .wiredEthernet: return "ethernet"
+                case .loopback:      return "loopback"
+                default:             return "other"
+                }
+            }.joined(separator: ",")
+            let proto = [path.supportsIPv4 ? "ipv4" : "", path.supportsIPv6 ? "ipv6" : ""]
+                .filter { !$0.isEmpty }.joined(separator: "+")
+            self.appendLog("NETCHANGE: path=\(status) interfaces=[\(ifaces.isEmpty ? "none" : ifaces)] proto=[\(proto)]")
+            if path.status != .satisfied {
+                self.appendLog("NETCHANGE: ⚠️ network path lost — tunnel may silently drop packets until path restores (#5)")
+            }
+            if !path.supportsIPv4 && path.supportsIPv6 {
+                self.appendLog("NETCHANGE: ⚠️ IPv6-only path — if VPN server at \(self.configMeta.addr) is IPv4-only, connection will fail (#18)")
+            }
+        }
+        monitor.start(queue: DispatchQueue(label: "no.setalink.pathmonitor", qos: .background))
+        pathMonitor = monitor
+        appendLog("NETMONITOR: NWPathMonitor started")
+    }
+
+    // ── #6 #8 Extension liveness heartbeat ────────────────────────────────────
+    // Writes a unix timestamp every 30s to shared UserDefaults. The main app can
+    // read kHeartbeatKey and compare with current time: delta > 60s means the
+    // extension process has likely frozen or been killed by iOS (#6 sleep, #8 crash).
+    private func startLivenessTimer() {
+        guard let shared = UserDefaults(suiteName: kAppGroup) else { return }
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .background))
+        timer.schedule(deadline: .now() + 30, repeating: 30)
+        timer.setEventHandler { [weak self] in
+            guard self != nil else { return }
+            shared.set(Int(Date().timeIntervalSince1970), forKey: kHeartbeatKey)
+        }
+        timer.resume()
+        livenessTimer = timer
+        // Write immediately so the first read from the main app has a baseline value.
+        shared.set(Int(Date().timeIntervalSince1970), forKey: kHeartbeatKey)
+        appendLog("HEARTBEAT: liveness timer started (30s interval) key=\(kHeartbeatKey)")
     }
 
     // ── Diagnostic logging gate ───────────────────────────────────────────────
