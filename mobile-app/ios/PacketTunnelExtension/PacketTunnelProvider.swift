@@ -922,9 +922,48 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Returns false if the bridge cannot start; caller must fail the tunnel.
     // SOCK_SEQPACKET is permanently banned — it triggers errno=43 (EPROTOTYPE)
     // in the iOS NE sandbox. SOCK_DGRAM has identical message boundaries.
+    // Poll 127.0.0.1:kSocksPort with a blocking TCP connect until xray is ready.
+    // Callers must NOT hold any lock — this blocks the calling thread for up to maxWait.
+    @discardableResult
+    private func waitForXraySocks5Ready(maxWait: TimeInterval = 3.0) -> Bool {
+        let deadline = Date().addingTimeInterval(maxWait)
+        var tries = 0
+        while true {
+            tries += 1
+            let sock = socket(AF_INET, SOCK_STREAM, 0)
+            if sock != -1 {
+                var addr = sockaddr_in()
+                addr.sin_family      = sa_family_t(AF_INET)
+                addr.sin_port        = UInt16(kSocksPort).bigEndian
+                addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+                let connected = withUnsafePointer(to: &addr) { ptr in
+                    ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                        connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                    }
+                } == 0
+                close(sock)
+                if connected {
+                    appendLog("XRAY-READY: SOCKS5 port \(kSocksPort) open after \(tries) poll(s) (≤\(Int(Double(tries) * 50))ms)")
+                    return true
+                }
+            }
+            if Date() >= deadline { break }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        appendLog("XRAY-READY: port \(kSocksPort) not ready after \(tries) tries (\(Int(maxWait))s) — S3→S4 race likely")
+        return false
+    }
+
     @discardableResult
     private func startHevMode() -> Bool {
         appendLog("HEV-START: build=\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?") mode=HEV_AVAILABLE socket=AF_UNIX/SOCK_DGRAM")
+
+        // Block until xray's SOCKS5 inbound is listening (max 3s).
+        // HEV attempts to connect to 127.0.0.1:10808 on its very first packet.
+        // If xray isn't ready, that connect() fails and HEV never retries — S4 stays 0.
+        let xrayUp = waitForXraySocks5Ready()
+        appendLog("HEV-START: xray SOCKS5 \(xrayUp ? "ready ✓" : "not ready — proceeding (watchdog will catch this)")")
+
         var fds = [Int32](repeating: -1, count: 2)
         guard socketpair(AF_UNIX, SOCK_DGRAM, 0, &fds) == 0 else {
             appendLog("HEV-START: socketpair(AF_UNIX,SOCK_DGRAM) FAILED errno=\(errno) — caller must fail tunnel")
