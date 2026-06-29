@@ -402,19 +402,21 @@ jobs:
           fi
           echo "✓ STATE: connected_verified present"
 
-          # 4. NEProxySettings must only appear inside the #else block (proxy mode)
+          # 4. NEProxySettings() constructor must only appear inside the #else block (proxy mode)
           # HEV_AVAILABLE mode must NOT set a system HTTP proxy — it silently masks
           # full-tunnel failures because extension URLSession bypasses the TUN (#19)
-          PROXY_IN_ELSE=$(awk '/^        #else/{in_else=1} /^        #endif/{in_else=0} /NEProxySettings/ && in_else{c++} END{print c+0}' "$EXT")
-          PROXY_TOTAL=$(grep -c "NEProxySettings" "$EXT" || true)
+          # We check the constructor call specifically to avoid false positives from
+          # comments and log strings that mention the class name.
+          PROXY_IN_ELSE=$(awk '/^        #else/{in_else=1} /^        #endif/{in_else=0} /NEProxySettings\(\)/ && in_else{c++} END{print c+0}' "$EXT")
+          PROXY_TOTAL=$(grep -n "NEProxySettings()" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//" | wc -l | tr -d ' ')
           if [ "$PROXY_TOTAL" -ne "$PROXY_IN_ELSE" ]; then
-            echo "❌ NEProxySettings appears $PROXY_TOTAL times but only $PROXY_IN_ELSE are inside #else"
-            echo "   NEProxySettings must ONLY appear in the #else (proxy-mode) block."
+            echo "❌ NEProxySettings() constructor appears $PROXY_TOTAL times in non-comment code but only $PROXY_IN_ELSE are inside #else"
+            echo "   NEProxySettings must ONLY be instantiated in the #else (proxy-mode) block."
             echo "   In HEV_AVAILABLE mode the proxy setting silently masks full-tunnel failures."
-            grep -n "NEProxySettings" "$EXT"
+            grep -n "NEProxySettings()" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//"
             exit 1
           fi
-          echo "✓ NEProxySettings: all $PROXY_TOTAL occurrences are inside #else (proxy mode only)"
+          echo "✓ NEProxySettings(): all $PROXY_TOTAL instantiations are inside #else (proxy mode only)"
 
           # 5. Both entitlements files must declare the same App Group (#15 #16)
           MAIN_ENT="mobile-app/ios/SetaLink/Realink.entitlements"
