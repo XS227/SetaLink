@@ -14,6 +14,7 @@ import { getNetworkInfo } from '../services/networkInfoService';
 import { classifyFailure } from '../services/failureClassifier';
 import { buildDiagnosticsReport } from '../services/diagnosticsExport';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
+import { getAdapter, type SelfTestResult } from '../services/vpnBridge';
 
 // ── PulsingDot — unchanged visual primitive ────────────────────────────────────
 
@@ -106,6 +107,8 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
   const [networkInfo, setNetworkInfo] = useState<{ localIp: string | null; publicIp: string | null } | null>(null);
   const [showTechLog, setShowTechLog] = useState(false);
+  const [selfTestResults, setSelfTestResults] = useState<SelfTestResult[] | null>(null);
+  const [selfTestRunning, setSelfTestRunning] = useState(false);
 
   const handleRealInternetTest = async () => {
     if (connectionState !== 'connected') {
@@ -113,6 +116,22 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
       return;
     }
     await runTraceTest();
+  };
+
+  const handleSelfTest = async () => {
+    if (connectionState !== 'connected') {
+      Alert.alert('Not Connected', 'Connect to the VPN first, then run the self test.');
+      return;
+    }
+    setSelfTestRunning(true);
+    try {
+      const results = await getAdapter().runSelfTest?.() ?? [];
+      setSelfTestResults(results);
+    } catch (e) {
+      setSelfTestResults([{ test: 'error', label: 'Self Test', ok: false, detail: String(e) }]);
+    } finally {
+      setSelfTestRunning(false);
+    }
   };
 
   // Build a diagnostic report from current state, then let the user share or copy
@@ -536,6 +555,44 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           >
             <Text style={[styles.exportText, traceTestRunning && { color: Colors.text.muted }]}>
               {traceTestRunning ? 'Testing…' : 'Run Real Internet Test'}
+            </Text>
+          </TouchableOpacity>
+        </GlassCard>
+
+        {/* Self Test */}
+        <GlassCard>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
+            <Text style={styles.cardLabel}>Tunnel Self Test</Text>
+            <View style={{ backgroundColor: 'rgba(0,232,122,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
+              <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>4 CHECKS</Text>
+            </View>
+          </View>
+          <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginBottom: Spacing[3] }}>
+            Tests DNS, HTTPS, tunnel route verification, and exit IP — all through the active tunnel.
+          </Text>
+          {selfTestResults && selfTestResults.map((r, i) => (
+            <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing[2], gap: Spacing[2] }}>
+              <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: r.ok ? Colors.emerald[400] : Colors.status.disconnected, width: 16 }}>
+                {r.ok ? '✓' : '✗'}
+              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: r.ok ? Colors.text.primary : Colors.status.disconnected }}>
+                  {r.label}
+                </Text>
+                <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted, lineHeight: 14 }}>
+                  {r.detail}
+                </Text>
+              </View>
+            </View>
+          ))}
+          <TouchableOpacity
+            style={[styles.exportBtn, { marginBottom: 0, borderColor: selfTestRunning ? Colors.border.default : Colors.border.glow }]}
+            onPress={handleSelfTest}
+            activeOpacity={0.8}
+            disabled={selfTestRunning}
+          >
+            <Text style={[styles.exportText, selfTestRunning && { color: Colors.text.muted }]}>
+              {selfTestRunning ? 'Testing…' : 'Run Self Test'}
             </Text>
           </TouchableOpacity>
         </GlassCard>
