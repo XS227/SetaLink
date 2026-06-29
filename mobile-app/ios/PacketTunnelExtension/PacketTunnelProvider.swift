@@ -69,17 +69,32 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var hevRelaySource: DispatchSourceRead?  = nil
     private var hevStatsTimer:  DispatchSourceTimer? = nil
 
-    // Traffic counters — updated inline in the relay; diagnostic accuracy is
-    // sufficient (no locking needed for approximate counts).
+    // Per-stage pipeline counters.
+    // S1 = packetFlow.readPackets delivered
+    // S3 = successfully written to HEV socket (send() returned > 0)
+    // S3drop = send() returned -1 (socket full / closed)
+    // S7 = recv() from HEV socket returned > 0 (response from internet)
+    // S8 = writePackets called back into packetFlow
+    // S4/S7 authoritative totals come from hev_socks5_tunnel_stats() (C counters).
+    // Rate tracking: snapshots taken each timer tick to compute pkts/s.
     private struct HevStats {
-        var txPackets: Int = 0   // device → TUN → socket → hev
+        var s1Packets: Int = 0   // S1 packetFlow.readPackets delivered
         var txBytes:   Int = 0
         var txTCP:     Int = 0
         var txUDP:     Int = 0
         var txQUIC:    Int = 0   // UDP dst-port 443 (QUIC/Meta/Instagram)
         var txOther:   Int = 0
-        var rxPackets: Int = 0   // hev → socket → TUN → device
-        var rxBytes:   Int = 0
+        var s3Written: Int = 0   // S3 send() to HEV socket succeeded
+        var s3Drop:    Int = 0   // S3 send() returned -1 or wrong size
+        var s7Packets: Int = 0   // S7 recv() from HEV socket (from internet)
+        var s7Bytes:   Int = 0
+        var s8Packets: Int = 0   // S8 writePackets back into packetFlow
+
+        // Snapshots at last timer tick — used to compute per-second rates.
+        var snapS1: Int = 0
+        var snapS3: Int = 0
+        var snapS7: Int = 0
+        var snapTime: Date = Date()
     }
     private var hevStats = HevStats()
     #endif
@@ -858,13 +873,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             let n = recv(bridgeFd, &buffer, buffer.count, 0)
             guard n > 0 else { return }
             let packet  = Data(buffer[..<n])
-            self.hevStats.rxPackets += 1
-            self.hevStats.rxBytes   += n
+            self.hevStats.s7Packets += 1          // S7: received from HEV (from internet)
+            self.hevStats.s7Bytes   += n
             let version = (packet[0] >> 4) & 0xF
             let proto: NSNumber = version == 6
                 ? NSNumber(value: AF_INET6)
                 : NSNumber(value: AF_INET)
             self.packetFlow.writePackets([packet], withProtocols: [proto])
+            self.hevStats.s8Packets += 1          // S8: written back into packetFlow
         }
         source.resume()
         hevRelaySource = source
@@ -874,7 +890,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         readNextPackets(to: bridgeFd)
         appendLog("HEV: tx relay started (packetFlow→socket)")
 
-        // ── periodic stats log (60s interval) ────────────────────────────────
+        // ── S5 liveness: confirm xray is listening on SOCKS5 port ────────────
+        // Fires 1s after HEV thread starts (give hev time to open its SOCKS client).
+        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.probeXraySocksPort()
+        }
+
+        // ── periodic pipeline stats (5s interval, always on for diagnosis) ───
         startHevStatsTimer()
     }
 
@@ -885,7 +907,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let self = self, self.hevBridgeFd != -1 else { return }
             for packet in packets {
                 let (proto, dstPort) = self.classifyPacket(packet)
-                self.hevStats.txPackets += 1
+                self.hevStats.s1Packets += 1      // S1: packetFlow delivered this packet
                 self.hevStats.txBytes   += packet.count
                 switch proto {
                 case 6:
@@ -896,8 +918,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 default:
                     self.hevStats.txOther += 1
                 }
-                packet.withUnsafeBytes { ptr in
-                    _ = send(fd, ptr.baseAddress!, ptr.count, 0)
+                // S3: write to HEV bridge socket — capture return value to detect drops.
+                let sent = packet.withUnsafeBytes { ptr -> Int in
+                    Int(send(fd, ptr.baseAddress!, ptr.count, 0))
+                }
+                if sent == packet.count {
+                    self.hevStats.s3Written += 1   // S3: socket accepted the packet
+                } else {
+                    self.hevStats.s3Drop += 1      // S3 drop: send() short/error
                 }
             }
             self.readNextPackets(to: fd)
@@ -943,76 +971,127 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // ── Diagnostic logging gate ───────────────────────────────────────────────
 
     // True in DEBUG and TestFlight builds; false in App Store (production) releases.
-    // Verbose per-packet stats and the 60-second timer are disabled in production to
-    // keep logs clean and avoid overhead. A lightweight verify line is always written
-    // at disconnect so failures remain diagnosable in production tunnel logs.
     private var verboseHevLogging: Bool {
         #if DEBUG
         return true
         #else
-        // TestFlight distributions carry a sandboxReceipt inside the containing app.
-        // Extension bundle: Realink.app/PlugIns/RealinkTunnel.appex
-        // App bundle:       Realink.app/
         let appBundle = Bundle.main.bundleURL
-            .deletingLastPathComponent()   // .appex → PlugIns
-            .deletingLastPathComponent()   // PlugIns → Realink.app
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
         let sandboxReceipt = appBundle
             .appendingPathComponent("StoreKit/sandboxReceipt").path
         return FileManager.default.fileExists(atPath: sandboxReceipt)
         #endif
     }
 
+    // ── Stage 5 probe: confirm xray is listening on the SOCKS5 port ──────────
+    // A TCP connect to 127.0.0.1:10808 tells us whether xray's inbound is up.
+    // This does NOT send data — it only verifies the port is open.
+    private func probeXraySocksPort() {
+        let sock = socket(AF_INET, SOCK_STREAM, 0)
+        guard sock != -1 else {
+            appendLog("S5-PROBE: socket() failed errno=\(errno)")
+            return
+        }
+        defer { close(sock) }
+        var addr = sockaddr_in()
+        addr.sin_family      = sa_family_t(AF_INET)
+        addr.sin_port        = UInt16(kSocksPort).bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let connectResult = withUnsafePointer(to: &addr) { ptr in
+            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { saddr in
+                connect(sock, saddr, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        if connectResult == 0 {
+            appendLog("S5-PROBE: xray SOCKS5 port \(kSocksPort) OPEN — xray inbound is listening ✓")
+        } else {
+            appendLog("S5-PROBE: xray SOCKS5 port \(kSocksPort) CLOSED/REFUSED errno=\(errno) — xray may not be running ✗")
+        }
+    }
+
     // ── Stats logging ─────────────────────────────────────────────────────────
 
+    // Fires every 5 seconds during diagnosis — no verboseHevLogging gate here.
+    // In production (App Store), reduce to 60s after the pipeline is confirmed working.
     private func startHevStatsTimer() {
-        guard verboseHevLogging else { return }   // no periodic logs in production
+        let interval: Double = verboseHevLogging ? 5.0 : 60.0
         let timer = DispatchSource.makeTimerSource(queue: .global(qos: .background))
-        timer.schedule(deadline: .now() + 60, repeating: 60)
+        timer.schedule(deadline: .now() + interval, repeating: interval)
         timer.setEventHandler { [weak self] in self?.logHevStats(final: false) }
         timer.resume()
         hevStatsTimer = timer
     }
 
-    // Logs relay counters (Swift side) AND hev-lib counters (C side).
+    // Logs all 8 pipeline stages in order.
     //
-    // The hev-lib numbers are the authoritative proof that traffic reached SOCKS5 →
-    // xray → internet. If hev-lib TX > 0 after a session, traffic went through the VPN.
+    // S1 = packetFlow.readPackets delivered (Swift counter)
+    // S2 = per-second rate since last tick (computed from snapshot delta)
+    // S3 = written to HEV socket (Swift counter) + drops
+    // S4 = HEV forwarded to SOCKS5 (C counter via hev_socks5_tunnel_stats)
+    // S5 = xray SOCKS5 liveness (one-shot at startup, see probeXraySocksPort)
+    // S6 = xray → Reality server (no direct counter; inferred if S4>0 and S7>0)
+    // S7 = received back from HEV socket (Swift counter) + C counter cross-check
+    // S8 = written back into packetFlow (Swift counter)
     //
-    // Comparison table (verbose mode):
-    //   relay TX ≈ hev-lib TX  → relay ↔ hev in sync, no drops before SOCKS5
-    //   relay TX >> hev-lib TX → hev dropped packets (SOCKS5/xray overloaded?)
-    //   relay TX == 0          → no app traffic reached TUN (route not applied?)
+    // The first stage that stays at zero identifies the broken component.
     private func logHevStats(final: Bool) {
         var hTxP: size_t = 0, hTxB: size_t = 0
         var hRxP: size_t = 0, hRxB: size_t = 0
         hev_socks5_tunnel_stats(&hTxP, &hTxB, &hRxP, &hRxB)
 
-        if verboseHevLogging {
-            let tag = final ? "HEV FINAL" : "HEV STATS"
-            appendLog("\(tag): relay→ TX=\(hevStats.txPackets)pkts \(hevStats.txBytes)B  TCP=\(hevStats.txTCP) UDP=\(hevStats.txUDP) QUIC(UDP:443)=\(hevStats.txQUIC) other=\(hevStats.txOther)")
-            appendLog("\(tag): relay← RX=\(hevStats.rxPackets)pkts \(hevStats.rxBytes)B")
-            appendLog("\(tag): hev-lib TX=\(hTxP)pkts \(hTxB)B  RX=\(hRxP)pkts \(hRxB)B")
+        let tag  = final ? "PIPE-FINAL" : "PIPE"
+        let now  = Date()
+        let dt   = now.timeIntervalSince(hevStats.snapTime)
+        let s1ps = dt > 0 ? Double(hevStats.s1Packets - hevStats.snapS1) / dt : 0
+        let s3ps = dt > 0 ? Double(hevStats.s3Written  - hevStats.snapS3)  / dt : 0
+        let s7ps = dt > 0 ? Double(hevStats.s7Packets  - hevStats.snapS7)  / dt : 0
+
+        appendLog("[\(tag)] ──── pipeline counters ────────────────────────────")
+        appendLog("[\(tag)] S1 packetFlow→relay : \(hevStats.s1Packets) pkts total | \(String(format:"%.1f",s1ps)) pkt/s")
+        appendLog("[\(tag)] S2 rate (pkt/s)     : \(String(format:"%.1f",s1ps)) [TCP=\(hevStats.txTCP) UDP=\(hevStats.txUDP) QUIC=\(hevStats.txQUIC)]")
+        appendLog("[\(tag)] S3 relay→hev socket : \(hevStats.s3Written) written | \(hevStats.s3Drop) dropped | \(String(format:"%.1f",s3ps)) pkt/s")
+        appendLog("[\(tag)] S4 hev→SOCKS5 (lib) : \(hTxP) pkts \(hTxB) bytes (C counter — authoritative)")
+        appendLog("[\(tag)] S5 xray SOCKS5 up   : see S5-PROBE line at tunnel start")
+        appendLog("[\(tag)] S6 xray→Reality     : no direct counter (inferred: S4=\(hTxP)>0 && S7=\(hRxP)>0 → ok)")
+        appendLog("[\(tag)] S7 hev←SOCKS5 (lib) : \(hRxP) pkts \(hRxB) bytes (C counter) | swift=\(hevStats.s7Packets) pkts")
+        appendLog("[\(tag)] S8 relay→packetFlow  : \(hevStats.s8Packets) pkts | \(String(format:"%.1f",s7ps)) pkt/s")
+        appendLog("[\(tag)] ── first zero stage = broken component ───────────")
+
+        // S1=0 → routes not applied (TUN never receives app packets)
+        // S3=0 (S1>0) → socketpair bridge broken
+        // S4=0 (S3>0) → hev not reading socket or SOCKS5 connection failed
+        // S7=0 (S4>0) → xray not forwarding (check xray config, Reality server)
+        // S8=0 (S7>0) → writePackets path broken
+        if hevStats.s1Packets == 0 {
+            appendLog("[\(tag)] DIAGNOSIS: S1=0 → packetFlow delivers NO packets — routes not applied to app traffic. Check includedRoutes/excludedRoutes and NEIPv4Settings.")
+        } else if hevStats.s3Written == 0 {
+            appendLog("[\(tag)] DIAGNOSIS: S1>0 S3=0 → relay receives packets but socket send() fails — HEV bridge broken. Check socketpair fd validity.")
+        } else if hTxP == 0 {
+            appendLog("[\(tag)] DIAGNOSIS: S3>0 S4=0 → packets reach socket but hev-lib forwards 0 — hev not reading socket, or SOCKS5 connect to xray failed. See S5-PROBE.")
+        } else if hRxP == 0 {
+            appendLog("[\(tag)] DIAGNOSIS: S4>0 S7=0 → hev sent to SOCKS5/xray but received 0 back — xray not responding (Reality server down? Xray config error?)")
+        } else if hevStats.s8Packets == 0 {
+            appendLog("[\(tag)] DIAGNOSIS: S7>0 S8=0 — internal counter bug; responses arrive but writePackets count is 0.")
+        } else {
+            appendLog("[\(tag)] DIAGNOSIS: all stages > 0 — pipeline appears healthy (S1=\(hevStats.s1Packets) S4=\(hTxP) S7=\(hRxP) S8=\(hevStats.s8Packets))")
         }
+
+        // Update rate snapshot
+        hevStats.snapS1   = hevStats.s1Packets
+        hevStats.snapS3   = hevStats.s3Written
+        hevStats.snapS7   = hevStats.s7Packets
+        hevStats.snapTime = now
 
         guard final else { return }
 
-        // ── Verify summary — always written (production + TestFlight/debug) ──
+        // ── Final summary (always written, production + TestFlight) ──────────
         if hTxP > 0 {
             appendLog("HEV VERIFY ✓: \(hTxP)pkts SOCKS5→xray (TCP=\(hevStats.txTCP) UDP=\(hevStats.txUDP) QUIC=\(hevStats.txQUIC))")
-            if verboseHevLogging {
-                if hevStats.txQUIC > 0 {
-                    appendLog("HEV VERIFY ✓: QUIC/UDP-443 seen (\(hevStats.txQUIC) pkts) — Meta/Instagram/WhatsApp traffic tunneled")
-                }
-                let drops = hevStats.txPackets - Int(hTxP)
-                if drops > 10 {
-                    appendLog("HEV VERIFY ⚠️: \(drops) relay→hev drops (SOCKS5/xray overload?)")
-                }
-                appendLog("HEV LEAK CHECK: TUN claims IPv4 default + IPv6 ::/0 — iOS enforces routes; no app bypass path")
-            }
-        } else if hevStats.txPackets > 0 {
-            appendLog("HEV VERIFY ⚠️: \(hevStats.txPackets) relay TX but hev-lib forwarded 0 — SOCKS5 path broken?")
+        } else if hevStats.s1Packets > 0 {
+            appendLog("HEV VERIFY ✗: S1=\(hevStats.s1Packets) packets from packetFlow, S4=0 reached SOCKS5 — pipeline broke between S3 and S4")
         } else {
-            appendLog("HEV VERIFY: 0 TX packets (session too short or no app traffic)")
+            appendLog("HEV VERIFY: S1=0 — no app traffic reached TUN during session")
         }
     }
 
