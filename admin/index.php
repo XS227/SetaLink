@@ -533,6 +533,8 @@ function icon(string $name): string {
         <div class="stat-card stat-warn"><div class="stat-label">Blocked</div><div class="stat-value" id="devBlocked">—</div></div>
         <div class="stat-card"><div class="stat-label">🍎 iOS</div><div class="stat-value" id="devIos">—</div></div>
         <div class="stat-card"><div class="stat-label">🤖 Android</div><div class="stat-value" id="devAndroid">—</div></div>
+        <div class="stat-card stat-warn"><div class="stat-label">🔍 Apple Review</div><div class="stat-value" id="devAppleReview">—</div></div>
+        <div class="stat-card"><div class="stat-label">🔌 Never Connected</div><div class="stat-value" id="devNeverConnected">—</div></div>
       </div>
       <div class="search-row">
         <input class="input" id="devSearch" placeholder="Search User ID, device ID, country, model, version, platform…" type="search">
@@ -547,10 +549,17 @@ function icon(string $name): string {
           <option value="offline">Offline</option>
           <option value="blocked">Blocked</option>
         </select>
-        <select class="select" id="devPlatform" style="width:140px">
+        <select class="select" id="devPlatform" style="width:160px">
           <option value="">All platforms</option>
           <option value="ios">🍎 iOS</option>
           <option value="android">🤖 Android</option>
+        </select>
+        <select class="select" id="devSource" style="width:170px">
+          <option value="">All sources</option>
+          <option value="apple_review">🔍 Apple Review</option>
+          <option value="testflight">🧪 TestFlight tester</option>
+          <option value="never_connected">🔌 Never connected</option>
+          <option value="inactive_30">💤 Inactive 30+ days</option>
         </select>
         <button class="btn btn-secondary btn-sm" id="devRefreshBtn"><?= icon('refresh') ?></button>
         <button class="btn btn-secondary btn-sm" id="devGeoBackfillBtn" title="Re-resolve country/flag for devices with an IP but no country">🌍 Fix flags</button>
@@ -558,7 +567,7 @@ function icon(string $name): string {
       <div class="panel">
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">RX/TX</th><th class="mobile-hide">Connectivity</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">Last IP</th><th class="mobile-hide">Last Seen</th><th>Actions</th></tr></thead>
+            <thead><tr><th>User ID</th><th>Plan</th><th>Quota</th><th>Status</th><th>Protocol</th><th class="mobile-hide">Sessions</th><th class="mobile-hide">RX/TX</th><th class="mobile-hide">Connectivity</th><th class="mobile-hide">Last Failure</th><th class="mobile-hide">Country</th><th class="mobile-hide">First / Last Seen</th><th>Actions</th></tr></thead>
             <tbody id="devTbl"><tr><td colspan="12" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
@@ -2154,6 +2163,7 @@ views.devices = {
     $('devPlan').onchange = ()=>this.renderDevices();
     $('devStatus').onchange = ()=>this.renderDevices();
     $('devPlatform').onchange = ()=>this.renderDevices();
+    $('devSource').onchange = ()=>this.renderDevices();
     $('devRefreshBtn').onclick = ()=>{ this.loadDevices(); this.loadPayments(); this.loadTraffic(); };
     $('devGeoBackfillBtn').onclick = async()=>{
       const btn = $('devGeoBackfillBtn'); btn.disabled = true;
@@ -2174,14 +2184,18 @@ views.devices = {
       const free     = rows.filter(r=>r.plan==='free').length;
       const premium  = rows.filter(r=>r.plan==='premium').length;
       const blocked  = rows.filter(r=>r.blocked).length;
-      const iosCount = rows.filter(r=>(r.platform||'').toLowerCase()==='ios').length;
-      $('devTotal').textContent   = rows.length;
-      $('devOnline').textContent  = online;
-      $('devFree').textContent    = free;
-      $('devPremium').textContent = premium;
-      $('devBlocked').textContent = blocked;
-      $('devIos').textContent     = iosCount;
-      $('devAndroid').textContent = rows.length - iosCount;
+      const iosCount        = rows.filter(r=>(r.platform||'').toLowerCase()==='ios').length;
+      const appleReview     = rows.filter(r=>r.registration_source==='apple_review').length;
+      const neverConnected  = rows.filter(r=>!r.ever_connected).length;
+      $('devTotal').textContent        = rows.length;
+      $('devOnline').textContent       = online;
+      $('devFree').textContent         = free;
+      $('devPremium').textContent      = premium;
+      $('devBlocked').textContent      = blocked;
+      $('devIos').textContent          = iosCount;
+      $('devAndroid').textContent      = rows.length - iosCount;
+      $('devAppleReview').textContent  = appleReview;
+      $('devNeverConnected').textContent = neverConnected;
       this.renderDevices();
     } catch(e) { toast('Devices: '+e.message,'error'); }
   },
@@ -2190,6 +2204,7 @@ views.devices = {
     const plan     = $('devPlan').value;
     const status   = $('devStatus').value;
     const platform = $('devPlatform').value;
+    const source   = $('devSource').value;
     let rows = this.devData;
     if (q)              rows = rows.filter(r=>((r.user_id||'')+(r.device_id_short||'')+(r.country||'')+(r.app_version||'')+(r.device_id||'')+(r.model||'')+(r.platform||'')).toLowerCase().includes(q));
     if (plan)           rows = rows.filter(r=>r.plan===plan);
@@ -2198,6 +2213,10 @@ views.devices = {
     if (status==='blocked') rows = rows.filter(r=>r.blocked);
     if (platform==='ios')     rows = rows.filter(r=>(r.platform||'').toLowerCase()==='ios');
     if (platform==='android') rows = rows.filter(r=>(r.platform||'').toLowerCase()!=='ios');
+    if (source==='apple_review')   rows = rows.filter(r=>r.registration_source==='apple_review');
+    if (source==='testflight')     rows = rows.filter(r=>r.registration_source==='testflight');
+    if (source==='never_connected')rows = rows.filter(r=>!r.ever_connected);
+    if (source==='inactive_30')    rows = rows.filter(r=>(r.days_inactive||0)>=30);
     $('devTbl').innerHTML = !rows.length
       ? '<tr><td colspan="12" class="tbl-empty">No devices match filter</td></tr>'
       : rows.map(r=>{
@@ -2233,11 +2252,33 @@ views.devices = {
           const srcCtry = ctryName ? (flag + ' ' + esc(ctryName)) : '<span style="color:var(--muted-2)">Unknown</span>';
           // Active SNI
           const sniHtml = r.active_sni ? `<div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)">${esc(r.active_sni)}</div>` : '';
+          // Sessions column — shows count + session traffic; Apple Review badge when 0
+          const sessCount = r.session_count || 0;
+          const sessBytesHtml = r.session_bytes > 0
+            ? `<div style="font-size:.6rem;color:var(--muted-2)">${fmtBytes(r.session_bytes)}</div>` : '';
+          const sessHtml = sessCount > 0
+            ? `<div style="font-size:.75rem;font-weight:600;color:var(--ok)">${sessCount}</div>${sessBytesHtml}${r.last_session_at?`<div style="font-size:.58rem;color:var(--muted-2)">${fmtRelative(r.last_session_at)}</div>`:''}`
+            : (r.registration_source==='apple_review'
+                ? '<span class="badge badge-warn" style="font-size:.58rem" title="Apple Review bot — never connected">🔍 Review</span>'
+                : '<span style="color:var(--muted-2);font-size:.7rem">0</span>');
+          // Source badge shown in User ID cell
+          const srcBadge = r.registration_source==='apple_review'
+            ? '<span class="badge badge-warn" style="font-size:.58rem;margin-left:.1rem" title="Apple App Review bot — fresh install each run">🔍 Review</span>'
+            : r.registration_source==='testflight'
+              ? '<span class="badge badge-info" style="font-size:.58rem;margin-left:.1rem">🧪 TF</span>'
+              : '';
+          // First Seen / Last Seen combined cell
+          const daysAgo = r.days_inactive != null
+            ? (r.days_inactive < 1 ? 'today' : `${r.days_inactive}d ago`)
+            : '—';
+          const seenHtml = `<div style="font-size:.65rem;color:var(--muted-2)">first: ${esc((r.created_at||'').substring(0,10))}</div>`
+            + `<div style="font-size:.65rem;color:var(--muted-2)">last: ${fmtRelative(r.last_seen)}</div>`
+            + (r.days_inactive>=7?`<div style="font-size:.6rem;color:var(--warn)">${daysAgo}</div>`:'');
           return `<tr style="cursor:pointer" onclick="devDetail('${esc(r.device_id)}')" title="Click for device details">
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
               <div style="display:flex;gap:.25rem;align-items:center;margin:.18rem 0;flex-wrap:wrap">
-                ${platformBadge(r.platform)}
+                ${platformBadge(r.platform)}${srcBadge}
                 ${r.app_version?`<span class="badge badge-muted" style="font-family:var(--mono);font-size:.62rem" title="App version">${esc(r.app_version)}</span>`:''}
               </div>
               <div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)" title="Device fingerprint">FP: ${esc(r.device_id_short||'')}</div>
@@ -2251,11 +2292,12 @@ views.devices = {
             </td>
             <td><span class="dot ${r.status==='online'?'dot-ok':'dot-unk'}" style="display:inline-block"></span> ${esc(r.status)}</td>
             <td>${protoBadge(r.active_protocol)}${sniHtml}</td>
+            <td class="mobile-hide">${sessHtml}</td>
             <td class="mobile-hide">${rxtxHtml}</td>
             <td class="mobile-hide">${connHtml}</td>
             <td class="mobile-hide" style="font-size:.7rem">${failBadge}</td>
             <td class="mobile-hide" style="font-size:.75rem">${srcCtry}<div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)">${srcIp}</div></td>
-            <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.last_seen)}</td>
+            <td class="mobile-hide">${seenHtml}</td>
             <td>
               <div style="display:flex;gap:.25rem">
                 <button class="btn btn-ghost btn-sm" title="${r.blocked?'Unblock':'Block'}"
