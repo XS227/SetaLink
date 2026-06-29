@@ -223,14 +223,32 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             #endif
 
             // ── Phase 6: dual probe ───────────────────────────────────────────
+            // Capture a baseline pipeline snapshot before probe traffic starts.
+            // The extension is suspended immediately after completionHandler(nil),
+            // so the periodic stats timer never fires post-connect. These two
+            // explicit snapshots (pre- and post-probe) are the only pipeline records
+            // available in every tunnel log.
+            #if HEV_AVAILABLE
+            self.logHevStats(final: false)
+            #endif
             self.step("probing")
             self.runDualProbe { ok, summary in
                 shared.set(ok, forKey: kProbeOkKey)
                 if ok {
+                    // Capture final pipeline counters before the log is saved.
+                    // After completionHandler(nil) the process is suspended and the
+                    // stats timer never gets another tick.
+                    #if HEV_AVAILABLE
+                    self.logHevStats(final: true)
+                    #endif
                     self.step("connected_verified")
                     self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
                     shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
                     self.flushLog(to: shared)
+                    // Force UserDefaults to disk so the main-app process reads the
+                    // current log immediately on the VPN-state-change notification,
+                    // avoiding a cross-process race that produces "DNS: Unknown".
+                    shared.synchronize()
                     // Upload async — do not block tunnel establishment for diagnostics.
                     let (deviceId, appVersion, country) = self.readDiagContext(from: shared)
                     DispatchQueue.global(qos: .background).async {
@@ -1255,6 +1273,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         shared?.set(false,                       forKey: kProbeOkKey)
         shared?.set(TunnelState.failed.rawValue, forKey: kTunnelStateKey)
         flushLog(to: shared ?? .standard)
+        // Same cross-process synchronize as the success path — ensures the error
+        // is visible to the main app before completionHandler fires.
+        (shared ?? .standard).synchronize()
 
         // Upload synchronously — extension process will be killed after completionHandler.
         let (deviceId, appVersion, country) = readDiagContext(from: shared ?? .standard)
