@@ -43,7 +43,7 @@
 
       'ai.label': 'INTELLIGENT ROUTING',
       'ai.title': 'Not Just a Tunnel',
-      'ai.sub':   'SetaLink actively validates every connection and picks the best path — every single time.',
+      'ai.sub':   'ReaLink actively validates every connection and picks the best path — every single time.',
       'ai.f1.h':  'AI Protocol Optimizer',
       'ai.f1.p':  'Tests Reality, XHTTP, and WebSocket in parallel. Selects the fastest protocol that actually delivers internet — not the last one that worked, the one that works right now.',
       'ai.f2.h':  'Real Internet Validation',
@@ -53,7 +53,7 @@
       'ai.f4.h':  'Remote Config Push',
       'ai.f4.p':  'Admin can push protocol priority updates without requiring an app update. When censorship patterns change, routing rules are updated automatically for all users.',
 
-      'why.label':      'WHY SETALINK',
+      'why.label':      'WHY REALINK',
       'why.title':      'Built for Real Censorship',
       'why.sub':        'Not a generic VPN wrapper. Built from scratch for the realities of internet censorship in Iran.',
       'why.tech.label': 'TECHNICAL EXCELLENCE',
@@ -103,7 +103,7 @@
 
       'support.label': 'INFRASTRUCTURE FUNDING',
       'support.title': 'Support the Project',
-      'support.sub':   'SetaLink runs on real servers that cost real money. Every contribution helps add nodes, improve reliability, and expand to new regions.',
+      'support.sub':   'ReaLink runs on real servers that cost real money. Every contribution helps add nodes, improve reliability, and expand to new regions.',
       'support.s1.h':  'Server Costs',
       'support.s1.p':  'Secure VPS infrastructure. More nodes = better speed and resilience for every user in the network.',
       'support.s2.h':  'Censorship Resilience',
@@ -118,7 +118,7 @@
 
       'faq.label': 'FAQ',
       'faq.title': 'Common Questions',
-      'faq.sub':   'Real questions about how SetaLink actually works.',
+      'faq.sub':   'Real questions about how ReaLink actually works.',
 
       'footer.faq': 'Full FAQ',
       'footer.tg':  'Telegram',
