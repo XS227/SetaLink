@@ -148,7 +148,10 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
       platform:     Platform.OS,
       osVersion:    Platform.Version,
       tunnelStatus: connectionState,
-      exitIp:       traceTestResult?.routedIp ?? networkInfo?.publicIp ?? null,
+      // Only use a VPN-verified exit IP (traceTestResult goes through the tunnel).
+      // Never use networkInfo.publicIp here — it is fetched over the direct network,
+      // not through the VPN, so it would show the device's real IP when disconnected.
+      exitIp:       connectionState === 'connected' ? (traceTestResult?.routedIp ?? null) : null,
       dnsStatus,
       healthChecks: snapshot?.healthChecks ?? [],
       routeHops:    snapshot?.routeHops ?? [],
@@ -257,7 +260,11 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           <Text style={styles.cardLabel}>Network</Text>
           {[
             { key: 'Local IP',   val: networkInfo?.localIp  ?? 'Detecting…' },
-            { key: 'Exit IP',    val: networkInfo?.publicIp ?? (connectionState === 'connected' ? 'Detecting…' : 'Not connected') },
+            // Exit IP must come from a VPN-verified trace test, not networkInfo.publicIp
+            // (which is fetched over the direct network and shows the real device IP).
+            { key: 'Exit IP',    val: connectionState === 'connected'
+                ? (traceTestResult?.routedIp ?? 'Run internet test ↓')
+                : 'N/A — tunnel not connected' },
             { key: 'VPN Server', val: selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : '—' },
             { key: 'Protocol',   val: selectedServer ? selectedServer.protocol : '—' },
           ].map((item) => (
@@ -289,17 +296,22 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           )}
         </GlassCard>
 
-        {/* Health checks */}
+        {/* Health checks — simulated until real probes are wired */}
         <GlassCard>
           <View style={styles.healthHeader}>
             <Text style={styles.cardLabel}>Health Checks</Text>
-            {isScanning && (
-              <View style={styles.scanningBadge}>
-                <Text style={styles.scanningText}>
-                  {visibleCount}/{allChecks.length}
-                </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ backgroundColor: 'rgba(255,200,0,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+                <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>SIMULATED</Text>
               </View>
-            )}
+              {isScanning && (
+                <View style={styles.scanningBadge}>
+                  <Text style={styles.scanningText}>
+                    {visibleCount}/{allChecks.length}
+                  </Text>
+                </View>
+              )}
+            </View>
           </View>
           {visibleChecks.map((hc) => (
             <HealthRow key={hc.label} label={hc.label} status={hc.status} detail={hc.detail} />
@@ -381,9 +393,14 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           </View>
         </GlassCard>
 
-        {/* Route trace */}
+        {/* Route trace — simulated until real traceroute is wired */}
         <View>
-          <Text style={styles.sectionTitle}>Route Trace</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Text style={styles.sectionTitle}>Route Trace</Text>
+            <View style={{ backgroundColor: 'rgba(255,200,0,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>SIMULATED</Text>
+            </View>
+          </View>
           <GlassCard noPadding>
             {(snapshot?.routeHops ?? []).map((hop, i, arr) => (
               <View key={hop.hop} style={[
