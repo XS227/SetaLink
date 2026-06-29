@@ -833,7 +833,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     //   [iOS apps] → kernel → [TUN / packetFlow]
     //                               ↕  (this relay, Swift side)
     //                         [socketpair swift end]
-    //                               ↕  (SOCK_SEQPACKET — one datagram = one IP packet)
+    //                               ↕  (SOCK_DGRAM — one datagram = one IP packet)
     //                         [socketpair hev end]
     //                               ↕  (read/write, inside hev-socks5-tunnel)
     //                         [SOCKS5 client → 127.0.0.1:10808 xray SOCKS inbound]
@@ -841,7 +841,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     //                         [xray outbound → VPN server → internet]
     private func startHevMode() {
         var fds = [Int32](repeating: -1, count: 2)
-        guard socketpair(AF_UNIX, SOCK_SEQPACKET, 0, &fds) == 0 else {
+        // SOCK_SEQPACKET is rejected in the iOS NE sandbox (errno=43 EPROTOTYPE).
+        // SOCK_DGRAM has identical message boundaries — one send() = one IP packet —
+        // so hev-socks5-tunnel sees no difference in framing.
+        guard socketpair(AF_UNIX, SOCK_DGRAM, 0, &fds) == 0 else {
             appendLog("HEV: socketpair failed errno=\(errno) — falling back to proxy probe only")
             return
         }

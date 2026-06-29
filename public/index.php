@@ -278,9 +278,9 @@ $og_img    = 'https://setalink.no' . $logo;
 
 <div class="divider"></div>
 
-<!-- ══ WHY SETALINK ════════════════════════════════════════════ -->
+<!-- ══ WHY REALINK ════════════════════════════════════════════ -->
 <section class="section" id="why">
-  <div class="section-label" data-t="why.label">WHY SETALINK</div>
+  <div class="section-label" data-t="why.label">WHY REALINK</div>
   <h2 class="section-title" data-t="why.title">Built for Real Censorship</h2>
   <p class="section-sub" data-t="why.sub">Not a generic VPN wrapper. Built from scratch for the realities of internet censorship in Iran.</p>
 

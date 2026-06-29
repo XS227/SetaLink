@@ -260,6 +260,14 @@ function icon(string $name): string {
         <div class="stat-card"><div class="stat-label">Avg GB / Session</div><div class="stat-value" id="anaAvg">—</div><div class="stat-sub">last 30 days</div></div>
       </div>
 
+      <!-- Platform breakdown -->
+      <div class="stat-grid" style="margin-top:.5rem">
+        <div class="stat-card"><div class="stat-label">🍎 iOS Devices</div><div class="stat-value" id="anaIos">—</div><div class="stat-sub">TestFlight / App Store</div></div>
+        <div class="stat-card"><div class="stat-label">🤖 Android Devices</div><div class="stat-value" id="anaAndroid">—</div><div class="stat-sub">total registered</div></div>
+        <div class="stat-card"><div class="stat-label">iOS Tunnel OK</div><div class="stat-value" id="anaIosOk">—</div><div class="stat-sub" id="anaIosFail">— failed</div></div>
+        <div class="stat-card"><div class="stat-label">iOS Stage Failures</div><div class="stat-value" id="anaIosStages">—</div><div class="stat-sub">from tunnel logs</div></div>
+      </div>
+
       <div class="two-col">
         <div class="panel">
           <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> New Installs <span class="panel-sub">per day, 30d</span></span></div>
@@ -288,8 +296,30 @@ function icon(string $name): string {
           <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chPkg"></canvas></div></div>
         </div>
         <div class="panel">
-          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> App Versions <span class="panel-sub">top 10</span></span></div>
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> App Versions <span class="panel-sub">Android top 10</span></span></div>
           <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chVer"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">🍎 iOS Versions <span class="panel-sub">by app version + build</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chIosVer"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">🍎 iOS Tunnel Stage Failures <span class="panel-sub">from uploaded logs</span></span></div>
+          <div class="panel-body" id="iosStagePanel"><div class="panel-empty">No stage failures logged yet</div></div>
+        </div>
+      </div>
+
+      <!-- iOS recent devices table -->
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">🍎 iOS Recent Devices</span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="tbl" id="iosRecentTbl">
+            <thead><tr><th>Device ID</th><th>App Version</th><th>Model</th><th>Last Seen</th></tr></thead>
+            <tbody id="iosRecentBody"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -714,8 +744,24 @@ function icon(string $name): string {
     <!-- VIEW: TUNNEL LOGS (PacketTunnelProvider diagnostic bundles)  -->
     <!-- ============================================================ -->
     <div data-view="tunnellogs" hidden>
-      <div class="filter-row">
-        <input class="input" id="tlDevice" placeholder="Filter by device id (e.g. SL-227 or sl-ec58…)" type="search" style="flex:1">
+      <div class="filter-row" style="flex-wrap:wrap;gap:.5rem">
+        <input class="input" id="tlDevice" placeholder="Filter by device id (e.g. sl-ec58…)" type="search" style="flex:1;min-width:180px">
+        <select class="input" id="tlPlatform" style="width:auto">
+          <option value="">All platforms</option>
+          <option value="ios">🍎 iOS</option>
+          <option value="android">🤖 Android</option>
+        </select>
+        <select class="input" id="tlStatus" style="width:auto">
+          <option value="">All status</option>
+          <option value="ok">✓ OK</option>
+          <option value="fail">✗ FAIL</option>
+        </select>
+        <select class="input" id="tlStage" style="width:auto">
+          <option value="">All stages</option>
+          <option value="connected">connected</option>
+          <option value="failed">failed</option>
+        </select>
+        <input class="input" id="tlAppVer" placeholder="App version (e.g. 0.9.50)" type="search" style="width:120px">
         <button class="btn btn-secondary btn-sm" id="tlRefreshBtn"><?= icon('refresh') ?> Refresh</button>
       </div>
       <div class="panel" style="margin-bottom:1rem">
@@ -1373,6 +1419,8 @@ views.analytics = {
   renderDistributions(ana, dm) {
     const pkg = ana.package_distribution || {};
     this.charts.pkg = this._doughnut('chPkg', Object.keys(pkg), Object.values(pkg));
+
+    // Android version distribution
     const vers = (ana.version_distribution || []).slice(0, 10);
     this.charts.ver = new Chart($('chVer'), {
       type: 'bar',
@@ -1380,6 +1428,68 @@ views.analytics = {
         data: vers.map(v => +v.cnt || 0), backgroundColor: this.PALETTE[5], borderRadius: 3 }] },
       options: this._baseOpts({ indexAxis: 'y', plugins: { legend: { display: false } } }),
     });
+
+    // Platform counts
+    const plat = ana.platform_counts || {};
+    const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+    set('anaIos', plat.ios ?? '—');
+    set('anaAndroid', plat.android ?? '—');
+
+    // iOS tunnel stats
+    const iosSess = ana.ios_tunnel_stats || {};
+    set('anaIosOk', iosSess.success ?? '—');
+    const failEl = $('anaIosFail');
+    if (failEl) failEl.textContent = (iosSess.fail ?? '—') + ' failed';
+
+    // iOS version distribution
+    const iosVers = (ana.ios_version_distribution || []).slice(0, 10);
+    if ($('chIosVer')) {
+      this.charts.iosver = new Chart($('chIosVer'), {
+        type: 'bar',
+        data: { labels: iosVers.map(v => v.version || '?'), datasets: [{ label: 'iOS Devices',
+          data: iosVers.map(v => +v.cnt || 0), backgroundColor: this.PALETTE[3], borderRadius: 3 }] },
+        options: this._baseOpts({ indexAxis: 'y', plugins: { legend: { display: false } } }),
+      });
+    }
+
+    // iOS stage failure breakdown
+    const stages = ana.ios_stage_breakdown || {};
+    const stageKeys = Object.keys(stages);
+    const stagePanel = $('iosStagePanel');
+    set('anaIosStages', stageKeys.length);
+    if (stagePanel) {
+      if (!stageKeys.length) {
+        stagePanel.innerHTML = '<div class="panel-empty">No stage failures in uploaded tunnel logs</div>';
+      } else {
+        const maxV = Math.max(...Object.values(stages));
+        stagePanel.innerHTML = stageKeys.map(k => {
+          const v = stages[k];
+          const pct = maxV > 0 ? Math.round(v / maxV * 100) : 0;
+          return `<div style="margin:.3rem 0">
+            <div style="display:flex;justify-content:space-between;font-size:.78rem;margin-bottom:.15rem">
+              <span style="color:var(--muted)">${esc(k)}</span><span><b>${v}</b></span>
+            </div>
+            <div style="height:5px;background:var(--border,#2a3550);border-radius:3px">
+              <div style="height:5px;background:var(--bad,#ef4444);border-radius:3px;width:${pct}%"></div>
+            </div>
+          </div>`;
+        }).join('');
+      }
+    }
+
+    // iOS recent devices table
+    const iosRecent = ana.ios_recent_devices || [];
+    const body = $('iosRecentBody');
+    if (body) {
+      body.innerHTML = iosRecent.length
+        ? iosRecent.map(r => `<tr>
+            <td><span class="mono" style="font-size:.72rem">${esc(r.device_id||'—')}</span></td>
+            <td>${esc(r.app_version||'—')}</td>
+            <td>${esc(r.model||'—')}</td>
+            <td>${esc(r.last_seen||'—')}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="4" class="tbl-empty">No iOS devices yet</td></tr>';
+    }
   },
   _doughnut(canvasId, labels, data) {
     const el = $(canvasId); if (!el) return null;
@@ -2551,13 +2661,28 @@ views.tunnellogs = {
   async init() {
     this.load();
     $('tlRefreshBtn').onclick = ()=>this.load();
-    $('tlDevice').oninput = debounce(()=>this.load(), 350);
+    const debouncedLoad = debounce(()=>this.load(), 350);
+    $('tlDevice').oninput = debouncedLoad;
+    $('tlPlatform').onchange = ()=>this.load();
+    $('tlStatus').onchange   = ()=>this.load();
+    $('tlStage').onchange    = ()=>this.load();
+    $('tlAppVer').oninput    = debouncedLoad;
   },
   async load() {
-    const dev = ($('tlDevice').value||'').trim();
+    const dev  = ($('tlDevice').value||'').trim();
+    const plat = ($('tlPlatform').value||'').trim();
+    const stat = ($('tlStatus').value||'').trim();
+    const stg  = ($('tlStage').value||'').trim();
+    const ver  = ($('tlAppVer').value||'').trim();
     $('tlList').innerHTML = '<div class="loading"><div class="spinner"></div> Loading…</div>';
     try {
-      const d = await api.get('tunnel-logs', dev ? {device_id:dev} : {});
+      const params = {};
+      if (dev)  params.device_id   = dev;
+      if (plat) params.platform    = plat;
+      if (stat) params.status      = stat;
+      if (stg)  params.stage       = stg;
+      if (ver)  params.app_version = ver;
+      const d = await api.get('tunnel-logs', params);
       this.files = Array.isArray(d.files) ? d.files : [];
       this.render();
     } catch(e) {
@@ -2568,7 +2693,7 @@ views.tunnellogs = {
   render() {
     $('tlCount').textContent = this.files.length + ' bundles';
     if (!this.files.length) {
-      $('tlList').innerHTML = '<div class="panel-empty">No tunnel logs uploaded yet. Have the tester reconnect — the extension uploads on every attempt.</div>';
+      $('tlList').innerHTML = '<div class="panel-empty">No tunnel logs match the current filters.</div>';
       return;
     }
     const rows = this.files.map(f=>{
@@ -2581,10 +2706,18 @@ views.tunnellogs = {
       const proto = esc([m.protocol,m.security].filter(Boolean).join('/')||'—');
       const server = esc(m.server||'—');
       const err = esc((m.error||'').substring(0,80));
-      return `<div class="log-line" style="cursor:pointer;gap:.6rem" onclick="views.tunnellogs.open('${esc(f.stem)}')">
+      const appVer = esc(m.app_version||'');
+      // iOS badge: has build number in parentheses
+      const isIos = f.build != null;
+      const platBadge = isIos
+        ? '<span style="font-size:.65rem;color:#60a5fa">🍎</span>'
+        : '<span style="font-size:.65rem;color:#4ade80">🤖</span>';
+      const buildBadge = isIos && f.build ? `<span class="badge badge-muted" style="font-size:.6rem">b${f.build}</span>` : '';
+      return `<div class="log-line" style="cursor:pointer;gap:.5rem" onclick="views.tunnellogs.open('${esc(f.stem)}')">
         <span class="log-ts">${esc(f.mtime)}</span>
         ${badge}
-        <span class="log-body"><b>${esc(f.device_id)}</b> · stage=<b>${stage}</b> · ${proto} · ${server}${err?` · <span style="color:var(--bad,#e66)">${err}</span>`:''}</span>
+        ${platBadge}
+        <span class="log-body"><b>${esc(f.device_id)}</b>${buildBadge} · stage=<b>${stage}</b> · ${appVer} · ${server}${err?` · <span style="color:var(--bad,#e66)">${err}</span>`:''}</span>
       </div>`;
     }).join('');
     $('tlList').innerHTML = rows;

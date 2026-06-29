@@ -2046,6 +2046,72 @@ switch ($action) {
         $blocked     = (int)$db->query("SELECT COUNT(*) FROM devices WHERE blocked=1")->fetchColumn();
         $pkgRows     = $db->query("SELECT plan,COUNT(*) as cnt FROM devices GROUP BY plan ORDER BY cnt DESC")->fetchAll(PDO::FETCH_ASSOC);
         $verRows     = $db->query("SELECT app_version as version,COUNT(*) as cnt FROM devices WHERE app_version!='' GROUP BY app_version ORDER BY cnt DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
+
+        // Platform breakdown — detect iOS from platform field or Apple hardware signals.
+        $platRows = $db->query("SELECT platform, manufacturer, model FROM devices")->fetchAll(PDO::FETCH_ASSOC);
+        $iosCnt = $androidCnt = $unknownCnt = 0;
+        foreach ($platRows as $pr) {
+            $p = normalize_platform($pr);
+            if ($p === 'ios')         $iosCnt++;
+            elseif ($p === 'android') $androidCnt++;
+            else                      $unknownCnt++;
+        }
+
+        // iOS version distribution (app version on iOS devices).
+        $iosVerRows = $db->query("
+            SELECT app_version AS version, COUNT(*) AS cnt
+            FROM devices
+            WHERE platform='ios' OR LOWER(manufacturer)='apple'
+                  OR LOWER(model) LIKE 'iphone%' OR LOWER(model) LIKE 'ipad%'
+            GROUP BY app_version ORDER BY cnt DESC LIMIT 10
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        // iOS last-seen (most recent active iOS devices).
+        $iosRecentRows = $db->query("
+            SELECT device_id, app_version, last_seen, model
+            FROM devices
+            WHERE platform='ios' OR LOWER(manufacturer)='apple'
+                  OR LOWER(model) LIKE 'iphone%' OR LOWER(model) LIKE 'ipad%'
+            ORDER BY last_seen DESC LIMIT 10
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        // iOS tunnel stats from vpn_sessions.
+        $iosSessions = $db->query("
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN probe_result='ok'   THEN 1 ELSE 0 END) AS success,
+                SUM(CASE WHEN probe_result!='ok' AND probe_result!='' THEN 1 ELSE 0 END) AS fail,
+                SUM(CASE WHEN probe_result='' OR probe_result IS NULL THEN 1 ELSE 0 END) AS unknown
+            FROM vpn_sessions vs
+            JOIN devices d ON d.device_id = vs.device_id
+            WHERE d.platform='ios' OR LOWER(d.manufacturer)='apple'
+                  OR LOWER(d.model) LIKE 'iphone%' OR LOWER(d.model) LIKE 'ipad%'
+        ")->fetch(PDO::FETCH_ASSOC);
+
+        // iOS stage failure breakdown from tunnel logs directory.
+        $tlDir = dirname(__DIR__) . '/data/tunnel-logs';
+        $iosStageBreakdown = [];
+        if (is_dir($tlDir)) {
+            foreach (glob($tlDir . '/*.meta.json') ?: [] as $mf) {
+                $m = json_decode(file_get_contents($mf), true);
+                if (!is_array($m)) continue;
+                if (($m['success'] ?? true) === true) continue; // only failures
+                $err = (string)($m['error'] ?? '');
+                // Classify by error string into stage bucket.
+                if (strpos($err, 'socketpair') !== false)           $bucket = 'HEV bridge (socketpair)';
+                elseif (strpos($err, 'status=204') !== false)       $bucket = 'Proxy probe status=204';
+                elseif (strpos($err, 'Proxy probe') !== false)      $bucket = 'Proxy probe failed';
+                elseif (strpos($err, 'SOCKS5') !== false)           $bucket = 'SOCKS5 probe failed';
+                elseif (strpos($err, 'ATS') !== false || strpos($err, 'App Transport') !== false) $bucket = 'ATS block (HTTP probe)';
+                elseif (strpos($err, 'DNS') !== false)              $bucket = 'DNS unknown';
+                elseif (strpos($err, 'kCFErrorDomainCFNetwork') !== false) $bucket = 'CFNetwork timeout';
+                elseif ($err !== '')                                $bucket = 'Other: '.substr($err,0,40);
+                else                                                $bucket = 'Unknown';
+                $iosStageBreakdown[$bucket] = ($iosStageBreakdown[$bucket] ?? 0) + 1;
+            }
+            arsort($iosStageBreakdown);
+        }
+
         api_ok([
             'total_installs'       => $total,
             'online_now'           => $onlineNow,
@@ -2056,6 +2122,11 @@ switch ($action) {
             'blocked'              => $blocked,
             'package_distribution' => array_column($pkgRows, 'cnt', 'plan'),
             'version_distribution' => $verRows,
+            'platform_counts'      => ['ios' => $iosCnt, 'android' => $androidCnt, 'unknown' => $unknownCnt],
+            'ios_version_distribution' => $iosVerRows,
+            'ios_recent_devices'   => $iosRecentRows,
+            'ios_tunnel_stats'     => $iosSessions,
+            'ios_stage_breakdown'  => $iosStageBreakdown,
         ]);
         break;
 
@@ -2944,16 +3015,22 @@ switch ($action) {
     case 'tunnel-logs':
         // Serves uploaded PacketTunnelProvider diagnostic bundles.
         //
-        // GET ?action=tunnel-logs                       → list all (newest first, max 100)
-        // GET ?action=tunnel-logs&device_id=SL-227-...  → filter to one device
-        // GET ?action=tunnel-logs&stem=SL-227_20260627_120000_123
+        // GET ?action=tunnel-logs                       → list all (newest first, max 200)
+        // GET ?action=tunnel-logs&device_id=sl-xxx      → filter to one device
+        // GET ?action=tunnel-logs&stem=sl-xxx_20260627_120000_123
         //                                               → return log + meta + config for one stem
-        $dir       = dirname(__DIR__) . '/data/tunnel-logs';
-        $stemParam = trim($_GET['stem']      ?? '');
-        $devFilter = trim($_GET['device_id'] ?? '');
+        // GET ?action=tunnel-logs&platform=ios|android  → filter by platform
+        // GET ?action=tunnel-logs&status=ok|fail        → filter by success flag
+        // GET ?action=tunnel-logs&stage=failed|connected → filter by meta.step
+        $dir        = dirname(__DIR__) . '/data/tunnel-logs';
+        $stemParam  = trim($_GET['stem']      ?? '');
+        $devFilter  = trim($_GET['device_id'] ?? '');
+        $platFilter = trim($_GET['platform']  ?? '');
+        $statFilter = trim($_GET['status']    ?? '');
+        $stageFilter= trim($_GET['stage']     ?? '');
+        $verFilter  = trim($_GET['app_version'] ?? '');
 
         if ($stemParam !== '') {
-            // Sanitize: alphanumeric + _ -
             $safe = preg_replace('/[^A-Za-z0-9_\-]/', '', $stemParam);
             if ($safe === '') api_error('invalid stem');
 
@@ -2979,30 +3056,50 @@ switch ($action) {
 
         $files = glob($dir . '/*.txt') ?: [];
         rsort($files);  // newest first
-        $files = array_slice($files, 0, 100);
+        $files = array_slice($files, 0, 200);
         $result = [];
         foreach ($files as $f) {
-            $base = basename($f, '.txt');  // stem without extension
+            $base = basename($f, '.txt');
+            // Extract device_id from stem: strip trailing _YYYYMMDD_HHMMSS_mmm
             $deviceId = preg_replace('/_\d{8}_\d{6}(_\d{3})?$/', '', $base);
-            if ($devFilter && strpos($base, $devFilter) !== 0) continue;
 
             $metaPath = $dir . '/' . $base . '.meta.json';
             $cfgPath  = $dir . '/' . $base . '.config.json';
 
-            // Embed meta inline so the listing carries key diagnostic fields.
             $meta = null;
             if (is_readable($metaPath)) {
                 $meta = json_decode(file_get_contents($metaPath), true);
+                // If the filename stem starts with "unknown" but the meta carries the real
+                // device_id, use it so the listing links to the correct device.
+                if ($deviceId === 'unknown' && !empty($meta['device_id']) && $meta['device_id'] !== 'unknown') {
+                    $deviceId = $meta['device_id'];
+                }
             }
 
+            // Extract iOS build number from app_version string like "0.9.50 (39)"
+            $appVer  = (string)($meta['app_version'] ?? '');
+            $build   = null;
+            if (preg_match('/\((\d+)\)/', $appVer, $bm)) $build = (int)$bm[1];
+
+            // Apply filters
+            if ($devFilter  && stripos($deviceId, $devFilter) === false) continue;
+            if ($stageFilter && ($meta['step'] ?? '') !== $stageFilter) continue;
+            if ($statFilter === 'ok'   && ($meta['success'] ?? null) !== true)  continue;
+            if ($statFilter === 'fail' && ($meta['success'] ?? null) !== false) continue;
+            if ($verFilter  && stripos($appVer, $verFilter) === false)           continue;
+            // Platform filter: iOS logs have a build number in parentheses (Android does not)
+            if ($platFilter === 'ios'     && $build === null)  continue;
+            if ($platFilter === 'android' && $build !== null)  continue;
+
             $result[] = [
-                'stem'      => $base,
-                'device_id' => $deviceId,
-                'size'      => filesize($f),
-                'mtime'     => date('Y-m-d H:i:s', filemtime($f)),
-                'has_meta'  => is_readable($metaPath),
-                'has_config'=> is_readable($cfgPath),
-                'meta'      => $meta,
+                'stem'       => $base,
+                'device_id'  => $deviceId,
+                'size'       => filesize($f),
+                'mtime'      => date('Y-m-d H:i:s', filemtime($f)),
+                'has_meta'   => is_readable($metaPath),
+                'has_config' => is_readable($cfgPath),
+                'build'      => $build,
+                'meta'       => $meta,
             ];
         }
         api_ok(['files' => $result, 'count' => count($result)]);

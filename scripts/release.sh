@@ -145,6 +145,9 @@ cp "$APK_SRC_UNIVERSAL" "$CHANNEL_DIR/$APK_NAME_UNIVERSAL"
 ln -sf "$APK_NAME_UNIVERSAL" "$CHANNEL_DIR/setalink-latest-universal.apk"
 echo "    APK (universal) → $CHANNEL_DIR/$APK_NAME_UNIVERSAL"
 
+# Ensure www-data (the PHP process) can delete old APKs from admin panel.
+sudo chown -R www-data:www-data "$CHANNEL_DIR" 2>/dev/null || true
+
 # Also update assets/ compatibility path and latest symlinks
 cp "$APK_DEST" "$REPO_ROOT/public/assets/$APK_NAME"
 ln -sf "../releases/$CHANNEL/$APK_NAME" "$DOWNLOAD_DIR/setalink-latest.apk"
