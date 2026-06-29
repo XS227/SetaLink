@@ -383,16 +383,16 @@ jobs:
           fi
           echo "✓ SOCK_SEQPACKET: not found in non-comment code"
 
-          # 2. completionHandler(nil) must appear exactly once (the connected_verified path)
-          COUNT=$(grep -c "completionHandler(nil)" "$EXT" || true)
+          # 2. completionHandler(nil) must appear exactly once in non-comment code
+          COUNT=$(grep -n "completionHandler(nil)" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//" | wc -l | tr -d ' ')
           if [ "$COUNT" -ne 1 ]; then
-            echo "❌ completionHandler(nil) appears $COUNT times in $EXT (expected exactly 1)"
+            echo "❌ completionHandler(nil) appears $COUNT times in non-comment code in $EXT (expected exactly 1)"
             echo "   Every call to completionHandler(nil) reports 'Connected' to iOS."
             echo "   Only one path is allowed: after connected_verified (all probes passed)."
-            grep -n "completionHandler(nil)" "$EXT"
+            grep -n "completionHandler(nil)" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//"
             exit 1
           fi
-          echo "✓ completionHandler(nil): appears exactly 1 time"
+          echo "✓ completionHandler(nil): appears exactly 1 time in non-comment code"
 
           # 3. connected_verified must be logged before the single completionHandler call
           if ! grep -q "connected_verified" "$EXT"; then
