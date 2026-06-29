@@ -296,59 +296,79 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           )}
         </GlassCard>
 
-        {/* Health checks — simulated until real probes are wired */}
-        <GlassCard>
-          <View style={styles.healthHeader}>
-            <Text style={styles.cardLabel}>Health Checks</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ backgroundColor: 'rgba(255,200,0,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
-                <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>SIMULATED</Text>
-              </View>
-              {isScanning && (
-                <View style={styles.scanningBadge}>
-                  <Text style={styles.scanningText}>
-                    {visibleCount}/{allChecks.length}
-                  </Text>
+        {/* Health checks — hidden on iOS (simulated, not real measurements) */}
+        {Platform.OS !== 'ios' && (
+          <GlassCard>
+            <View style={styles.healthHeader}>
+              <Text style={styles.cardLabel}>Health Checks</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <View style={{ backgroundColor: 'rgba(255,200,0,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
+                  <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>SIMULATED</Text>
                 </View>
-              )}
+                {isScanning && (
+                  <View style={styles.scanningBadge}>
+                    <Text style={styles.scanningText}>
+                      {visibleCount}/{allChecks.length}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
-          {visibleChecks.map((hc) => (
-            <HealthRow key={hc.label} label={hc.label} status={hc.status} detail={hc.detail} />
-          ))}
-          {isScanning && (
-            <View style={styles.scanningRow}>
-              <Text style={styles.scanningRowText}>Running checks…</Text>
-            </View>
-          )}
-          <View style={{ height: 1 }} />
-        </GlassCard>
+            {visibleChecks.map((hc) => (
+              <HealthRow key={hc.label} label={hc.label} status={hc.status} detail={hc.detail} />
+            ))}
+            {isScanning && (
+              <View style={styles.scanningRow}>
+                <Text style={styles.scanningRowText}>Running checks…</Text>
+              </View>
+            )}
+            <View style={{ height: 1 }} />
+          </GlassCard>
+        )}
 
         {/* Low-level tunnel layer */}
         <GlassCard>
           <Text style={styles.cardLabel}>Tunnel Layer</Text>
           {(() => {
-            const getStep = (key: string) => {
-              const line = [...connectionLog].reverse().find(l => l.includes(` ${key}:`));
-              if (!line) return 'unknown' as const;
-              return line.startsWith('✓') ? 'ok' as const : 'fail' as const;
-            };
-            const tunActive   = getStep('tun_created');
-            const socksActive = getStep('socks_handshake');
-            const xrayActive  = getStep('xray_started');
-            // internet: ok if direct TUN probe or SOCKS5 EPERM-fallback both confirmed real HTTP/HTTPS data.
-            // tun_fallback_ok is set when the EPERM path confirms internet via SOCKS5 (same tunnel, different binding).
-            const internetOk  = getStep('tun_probe') === 'ok' || getStep('tun_fallback_ok') === 'ok'
-              ? 'ok' as const
-              : getStep('tun_fallback_fail') === 'fail' || getStep('tun_probe') === 'fail'
-                ? 'fail' as const
-                : 'unknown' as const;
-            // DNS: prefer explicit dns_check/dns_resolve; otherwise infer from the
-            // internet probe — reaching a hostname proves DNS resolved (BUG-3).
-            const dnsOk       = getStep('dns_check') === 'ok' || getStep('dns_resolve') === 'ok' ? 'ok' as const
-              : getStep('dns_check') === 'fail' || getStep('dns_resolve') === 'fail' ? 'fail' as const
-              : internetOk === 'ok' ? 'ok' as const
-              : 'unknown' as const;
+            // iOS and Android write completely different connection log formats.
+            // iOS: raw tunnel extension log lines like "[2026-...] STATE: xray started"
+            // Android: prefixed step lines like "✓ tun_created: ..." or "✗ socks_handshake: ..."
+            const has = (substr: string) => connectionLog.some(l => l.includes(substr));
+            let tunActive:   'ok' | 'fail' | 'unknown';
+            let socksActive: 'ok' | 'fail' | 'unknown';
+            let xrayActive:  'ok' | 'fail' | 'unknown';
+            let dnsOk:       'ok' | 'fail' | 'unknown';
+            let internetOk:  'ok' | 'fail' | 'unknown';
+            if (Platform.OS === 'ios') {
+              // Derive status from iOS tunnel log keywords written by PacketTunnelProvider.
+              tunActive   = has('HEV-START:') && has('socketpair(AF_UNIX,SOCK_DGRAM) OK')
+                ? 'ok' : has('HEV-START:') && has('socketpair') && has('FAILED') ? 'fail' : 'unknown';
+              socksActive = has('S5-PROBE:') && has('OPEN') ? 'ok'
+                : has('S5-PROBE:') && has('CLOSED') ? 'fail' : 'unknown';
+              xrayActive  = has('STATE: xray started') || has('xray-core started') ? 'ok'
+                : has('libxray CallResponse: success=false') ? 'fail' : 'unknown';
+              dnsOk       = has('DNS: resolution OK') ? 'ok'
+                : has('DNS: FAILED') || has('DNS: likely FAILED') ? 'fail' : 'unknown';
+              internetOk  = has('TUN-CHECK OK:') ? 'ok'
+                : has('TUN-CHECK FAIL:') || has('STATE: failed') || has('WATCHDOG-FAIL') ? 'fail'
+                : 'unknown';
+            } else {
+              // Android: step lines prefixed with ✓ or ✗
+              const getStep = (key: string) => {
+                const line = [...connectionLog].reverse().find(l => l.includes(` ${key}:`));
+                if (!line) return 'unknown' as const;
+                return line.startsWith('✓') ? 'ok' as const : 'fail' as const;
+              };
+              tunActive   = getStep('tun_created');
+              socksActive = getStep('socks_handshake');
+              xrayActive  = getStep('xray_started');
+              internetOk  = getStep('tun_probe') === 'ok' || getStep('tun_fallback_ok') === 'ok'
+                ? 'ok' : getStep('tun_fallback_fail') === 'fail' || getStep('tun_probe') === 'fail'
+                ? 'fail' : 'unknown';
+              dnsOk       = getStep('dns_check') === 'ok' || getStep('dns_resolve') === 'ok' ? 'ok'
+                : getStep('dns_check') === 'fail' || getStep('dns_resolve') === 'fail' ? 'fail'
+                : internetOk === 'ok' ? 'ok' : 'unknown';
+            }
             const statusColor = (s: 'ok' | 'fail' | 'unknown') =>
               s === 'ok' ? Colors.emerald[400] : s === 'fail' ? Colors.status.disconnected : Colors.text.muted;
             const statusIcon  = (s: 'ok' | 'fail' | 'unknown') =>
