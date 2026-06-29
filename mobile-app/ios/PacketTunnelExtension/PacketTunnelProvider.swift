@@ -68,6 +68,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private var log: [String]  = []
     private let startTime      = Date()
+    private var routeInstalledAt: Date? = nil
 
     // Captured during the attempt — assembled into the upload payload on finish.
     private var xrayVersion    = "(not reached)"
@@ -89,7 +90,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var hevStatsTimer:       DispatchSourceTimer?  = nil
     private var postConnectWatchdog: DispatchWorkItem?     = nil
     private var pathMonitor:         NWPathMonitor?        = nil   // #5 #18 network-change detection
-    private var livenessTimer:       DispatchSourceTimer?  = nil   // #6 #8 30s heartbeat
+    private var livenessTimer:         DispatchSourceTimer?  = nil   // #6 #8 30s heartbeat
+    private var propagationProbeTimer: DispatchSourceTimer?  = nil   // build-44 experiment
 
     // Per-stage pipeline counters.
     // S1 = packetFlow.readPackets delivered
@@ -207,6 +209,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
             self.step("route installed")
             self.appendLog("Route installed (\(self.elapsed(since: self.startTime)) total)")
+            self.routeInstalledAt = Date()
 
             // ── Phase 5 (HEV only): start tun2socks relay ────────────────────
             // HEV is REQUIRED in HEV_AVAILABLE builds — all app traffic routes through
@@ -235,28 +238,38 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.runDualProbe { ok, summary in
                 shared.set(ok, forKey: kProbeOkKey)
                 if ok {
-                    // Capture final pipeline counters before the log is saved.
-                    // After completionHandler(nil) the process is suspended and the
-                    // stats timer never gets another tick.
-                    #if HEV_AVAILABLE
-                    self.logHevStats(final: true)
-                    #endif
-                    self.step("connected_verified")
-                    self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
-                    shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
-                    self.flushLog(to: shared)
-                    // Force UserDefaults to disk so the main-app process reads the
-                    // current log immediately on the VPN-state-change notification,
-                    // avoiding a cross-process race that produces "DNS: Unknown".
-                    shared.synchronize()
-                    // Upload async — do not block tunnel establishment for diagnostics.
-                    let (deviceId, appVersion, country) = self.readDiagContext(from: shared)
-                    DispatchQueue.global(qos: .background).async {
-                        self.uploadDiagnostics(deviceId: deviceId, appVersion: appVersion,
-                                               country: country, success: true, errorMsg: "",
-                                               waitForCompletion: false)
+                    // Single call site for completionHandler(nil) — CI guard requires exactly 1.
+                    // In HEV builds: deferred 60s via runPropagationProbe (build-44 experiment).
+                    // In non-HEV builds: called immediately via proceed().
+                    let proceed: () -> Void = {
+                        #if HEV_AVAILABLE
+                        self.logHevStats(final: true)
+                        #endif
+                        self.step("connected_verified")
+                        self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
+                        shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
+                        self.flushLog(to: shared)
+                        // Force UserDefaults to disk so the main-app process reads the
+                        // current log immediately on the VPN-state-change notification,
+                        // avoiding a cross-process race that produces "DNS: Unknown".
+                        shared.synchronize()
+                        // Upload async — do not block tunnel establishment for diagnostics.
+                        let (deviceId, appVersion, country) = self.readDiagContext(from: shared)
+                        DispatchQueue.global(qos: .background).async {
+                            self.uploadDiagnostics(deviceId: deviceId, appVersion: appVersion,
+                                                   country: country, success: true, errorMsg: "",
+                                                   waitForCompletion: false)
+                        }
+                        completionHandler(nil)
                     }
-                    completionHandler(nil)
+                    #if HEV_AVAILABLE
+                    // Run 60-second propagation measurement BEFORE calling completionHandler(nil).
+                    // Extension stays fully active (not suspended) for reliable S1 sampling.
+                    self.runPropagationProbe(routeT0: self.routeInstalledAt ?? self.startTime,
+                                             completion: proceed)
+                    #else
+                    proceed()
+                    #endif
                 } else {
                     self.step("failed")
                     self.appendLog("STATE: failed — \(summary)")
@@ -1259,6 +1272,62 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         } else {
             appendLog("HEV VERIFY: S1=0 — no app traffic reached TUN during session")
         }
+    }
+
+    // BUILD-44 EXPERIMENT: measures when iOS cellular routes propagate to TUN.
+    // Runs for 60 seconds before completionHandler(nil) while extension is fully active.
+    // S1 counter = TUN arrivals (authoritative); SOCKS5 probes test xray path only.
+    private func runPropagationProbe(routeT0: Date, completion: @escaping () -> Void) {
+        appendLog("PROP-START: 60s measurement — S1=TUN arrivals (propagation delay); SOCKS5=xray health (NOT TUN path)")
+
+        let socksDict: [AnyHashable: Any] = [
+            "SOCKSEnable": 1,
+            "SOCKSProxy":  "127.0.0.1",
+            "SOCKSPort":   kSocksPort,
+        ]
+        let probeURL = URL(string: "https://cp.cloudflare.com/")!
+        var tick      = 0
+        var firstS1At: Int? = nil
+
+        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
+        timer.schedule(deadline: .now() + 1, repeating: 1.0, leeway: .milliseconds(200))
+        propagationProbeTimer = timer
+
+        timer.setEventHandler { [weak self, weak timer] in
+            guard let self = self else { timer?.cancel(); return }
+            tick += 1
+            let tSec = Int((-routeT0.timeIntervalSinceNow).rounded())
+            let s1 = self.hevStats.s1Packets
+            let s3 = self.hevStats.s3Written
+            var hTxP: size_t = 0, hTxB: size_t = 0
+            var hRxP: size_t = 0, hRxB: size_t = 0
+            hev_socks5_tunnel_stats(&hTxP, &hTxB, &hRxP, &hRxB)
+
+            if s1 > 0 && firstS1At == nil {
+                firstS1At = tSec
+                self.appendLog("PROP[T+\(tSec)s] FIRST-TUN-PKT: S1=\(s1) — iOS route propagated to TUN after ~\(tSec)s ✓")
+            }
+            self.appendLog("PROP[T+\(tSec)s] S1=\(s1) S3=\(s3) S4=\(hTxP) S7=\(hRxP)")
+
+            // SOCKS5 probe: tests xray→Reality path; does NOT route through TUN.
+            self.fetchURL(probeURL, via: socksDict, timeout: 3.0) { status, _, err, elapsed in
+                let ok = err == nil && (status == 200 || status == 204)
+                self.appendLog("PROP[T+\(tSec)s] SOCKS5: \(ok ? "OK \(status ?? 0)" : "FAIL (\(err?.localizedDescription ?? "?"))") \(elapsed)")
+            }
+
+            guard tick < 60 else {
+                timer?.cancel()
+                self.propagationProbeTimer = nil
+                if let t = firstS1At {
+                    self.appendLog("PROP-DONE: CONFIRMED — first TUN pkt at T+\(t)s; iOS cellular propagation delay ≈ \(t)s")
+                } else {
+                    self.appendLog("PROP-DONE: S1=0 after 60s — TUN never received app traffic (no app active? WiFi? Propagation hypothesis NEGATED)")
+                }
+                completion()
+                return
+            }
+        }
+        timer.resume()
     }
 
     #endif
