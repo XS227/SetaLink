@@ -2355,25 +2355,55 @@ switch ($action) {
         $status_filter = trim((string)($_GET['status'] ?? ''));
         $where = []; $params = [];
         if ($q) {
-            $where[] = "(device_id LIKE ? OR user_id LIKE ? OR country LIKE ? OR app_version LIKE ? OR model LIKE ?)";
+            $where[] = "(d.device_id LIKE ? OR d.user_id LIKE ? OR d.country LIKE ? OR d.app_version LIKE ? OR d.model LIKE ?)";
             $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%"]);
         }
-        if ($plan)          { $where[] = 'plan=?';    $params[] = $plan; }
-        if ($status_filter === 'online')  { $where[] = "(status='online' AND last_seen>=datetime('now','-180 minutes'))"; }
-        if ($status_filter === 'offline') { $where[] = "(status!='online' OR last_seen<datetime('now','-180 minutes'))"; }
-        if ($status_filter === 'blocked') { $where[] = 'blocked=1'; }
-        $sql = 'SELECT * FROM devices' . ($where ? ' WHERE '.implode(' AND ',$where) : '') . ' ORDER BY created_at DESC LIMIT 500';
+        if ($plan)          { $where[] = 'd.plan=?';    $params[] = $plan; }
+        if ($status_filter === 'online')  { $where[] = "(d.status='online' AND d.last_seen>=datetime('now','-180 minutes'))"; }
+        if ($status_filter === 'offline') { $where[] = "(d.status!='online' OR d.last_seen<datetime('now','-180 minutes'))"; }
+        if ($status_filter === 'blocked') { $where[] = 'd.blocked=1'; }
+        // Join vpn_sessions aggregate so we can show session counts and classify sources
+        $sql = 'SELECT d.*,
+                       COALESCE(s.session_count,0) AS session_count,
+                       COALESCE(s.session_bytes,0) AS session_bytes,
+                       s.last_session_at
+                FROM devices d
+                LEFT JOIN (
+                    SELECT device_id,
+                           COUNT(*)                       AS session_count,
+                           SUM(bytes_sent+bytes_recv)     AS session_bytes,
+                           MAX(ended_at)                  AS last_session_at
+                    FROM vpn_sessions GROUP BY device_id
+                ) s ON s.device_id = d.device_id'
+              . ($where ? ' WHERE '.implode(' AND ',$where) : '')
+              . ' ORDER BY d.created_at DESC LIMIT 500';
         $st  = $db->prepare($sql);
         $st->execute($params);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
         $result = array_map(function($r) {
             $ls = $r['last_seen'] ?? null;
-            // Online = app-reported 'online' that isn't stale. The app posts
-            // vpn-status online/offline at connect/disconnect but has no
-            // periodic heartbeat, so a 5-min last_seen window always read 0.
-            // 3h staleness guards against apps killed without a final report.
+            $ca = $r['created_at'] ?? null;
+            // Online = app-reported 'online' that isn't stale.
             $is_online = (($r['status'] ?? '') === 'online'
                           && $ls && (time()-(int)strtotime((string)$ls.' UTC')) < 10800);
+            // Phantom-online: registered and marked online but never had any real
+            // activity after the initial call (created_at ≈ last_seen within 2 min).
+            $phantom = ($r['status'] === 'online'
+                        && $ca && $ls
+                        && abs(strtotime((string)$ls.' UTC') - strtotime((string)$ca.' UTC')) < 120);
+            $sessionCount = (int)($r['session_count'] ?? 0);
+            $isApple = (normalize_platform($r) === 'ios');
+            // Registration source classification:
+            //   apple_review  — iOS, never connected, only opened the app briefly
+            //   testflight    — iOS, has real VPN sessions
+            //   android       — non-Apple device
+            //   unknown       — unclear
+            if ($isApple) {
+                $source = $sessionCount === 0 ? 'apple_review' : 'testflight';
+            } else {
+                $source = 'android';
+            }
+            $daysSince = $ls ? round((time()-strtotime((string)$ls.' UTC'))/86400, 1) : null;
             return [
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
@@ -2406,6 +2436,14 @@ switch ($action) {
                 'last_seen'              => $r['last_seen'],
                 'blocked'                => (bool)(int)($r['blocked'] ?? 0),
                 'referral_code'          => $r['referral_code']            ?? '',
+                // New fields
+                'session_count'          => $sessionCount,
+                'session_bytes'          => (int)($r['session_bytes'] ?? 0),
+                'last_session_at'        => $r['last_session_at'] ?? null,
+                'ever_connected'         => $sessionCount > 0,
+                'days_inactive'          => $daysSince,
+                'registration_source'    => $source,
+                'phantom_online'         => $phantom,
             ];
         }, $rows);
         api_ok($result);
