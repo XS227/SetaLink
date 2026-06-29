@@ -116,8 +116,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         var s8Packets: Int = 0   // S8 writePackets back into packetFlow
 
         // One-shot flags for immediate per-event logging (fire exactly once).
-        var loggedFirstTx: Bool = false   // first outbound packet through S3
-        var loggedFirstRx: Bool = false   // first inbound packet through S7
+        var loggedFirstTx:       Bool = false   // first outbound packet through S3
+        var loggedFirstRx:       Bool = false   // first inbound packet through S7
+        var rxRelayEventsFired:  Int  = 0       // DispatchSource fires on bridgeFd
 
         // Snapshots at last timer tick — used to compute per-second rates.
         var snapS1: Int = 0
@@ -1006,6 +1007,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let source   = DispatchSource.makeReadSource(fileDescriptor: bridgeFd, queue: queue)
         source.setEventHandler { [weak self] in
             guard let self = self else { return }
+            // Count and log DispatchSource fires — proves bridgeFd has data vs. event never arrives.
+            self.hevStats.rxRelayEventsFired += 1
+            let evN = self.hevStats.rxRelayEventsFired
+            if evN <= 5 {
+                self.appendLog("RX-RELAY-EVENT[\(evN)]: DispatchSource fired — about to recv() bridgeFd=\(bridgeFd)")
+            }
             var buffer = [UInt8](repeating: 0, count: 65536)
             let n = recv(bridgeFd, &buffer, buffer.count, 0)
             guard n > 0 else {
@@ -1063,10 +1070,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         // ── S5 liveness: confirm xray is listening on SOCKS5 port ────────────
-        // Fires 1s after HEV thread starts (give hev time to open its SOCKS client).
         DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 1.0) { [weak self] in
             self?.probeXraySocksPort()
         }
+
+        // ── Raw SOCKS5 probes: test xray routing at the protocol level ─────────
+        // Port 53 (DNS) hits the port-53→dns-out routing rule; port 443 (HTTPS)
+        // falls through to the proxy outbound. Comparing the two shows exactly
+        // where the pipeline breaks inside xray, independent of HEV.
+        let bridgeFdCopy = bridgeFd
+        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 5.0) { [weak self] in
+            self?.rawSocks5Probe(toIP: "1.1.1.1", port: 53,  label: "DNS-p53")
+            self?.rawSocks5Probe(toIP: "1.1.1.1", port: 443, label: "HTTPS-p443")
+        }
+        startBridgeFdPoller(bridgeFd: bridgeFdCopy)
 
         // ── periodic pipeline stats (5s interval, always on for diagnosis) ───
         startHevStatsTimer()
@@ -1120,6 +1137,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         self.hevStats.loggedFirstTx = true
                         let protoName = proto == 6 ? "TCP" : proto == 17 ? "UDP" : "IP(\(proto))"
                         self.appendLog("FIRST-PKT-OUT: S3 sent \(packet.count)B \(protoName)\(dstPort.map { " dstPort=\($0)" } ?? "") → HEV socket")
+                        let hexDump = packet.prefix(24).map { String(format: "%02x", $0) }.joined(separator: " ")
+                        self.appendLog("FIRST-PKT-HEX: [\(hexDump)] (first \(min(packet.count,24)) of \(packet.count)B)")
                         // Arm 30s watchdog (extended from 8s in build-45 for deeper observation).
                         // Fires only when outbound traffic hits TUN with no inbound response.
                         let watchdog = DispatchWorkItem { [weak self] in
@@ -1162,6 +1181,133 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         guard proto == 6 || proto == 17, data.count >= toff + 4 else { return (proto, nil) }
         let dstPort = UInt16(data[toff + 2]) << 8 | UInt16(data[toff + 3])
         return (proto, dstPort)
+    }
+
+    // ── Raw SOCKS5 protocol probe ──────────────────────────────────────────────
+    // Makes a complete SOCKS5 handshake using BSD sockets (not URLSession) to
+    // 127.0.0.1:kSocksPort and then issues CONNECT to toIP:port.
+    // Tests xray SOCKS5 routing at the protocol level, independent of HEV.
+    //
+    // Expected results with the current routing config:
+    //   port=53  → hits "port:53 → dns-out" rule → dns-out cannot handle transparent
+    //              TCP proxy → CONNECT response hangs or returns failure rep code
+    //   port=443 → falls through to "proxy" (vless/Reality) → CONNECT succeeds
+    //              meaning the Reality server path works
+    private func rawSocks5Probe(toIP: String, port: Int, label: String) {
+        appendLog("RAW-SOCKS5[\(label)]: probe start — CONNECT to \(toIP):\(port) via 127.0.0.1:\(kSocksPort)")
+        let sock = socket(AF_INET, SOCK_STREAM, 0)
+        guard sock != -1 else {
+            appendLog("RAW-SOCKS5[\(label)]: socket() failed errno=\(errno)")
+            return
+        }
+        defer { close(sock) }
+
+        var tv = timeval(tv_sec: 8, tv_usec: 0)
+        setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+        setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port   = UInt16(kSocksPort).bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let connected = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(sock, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        } == 0
+        guard connected else {
+            appendLog("RAW-SOCKS5[\(label)]: TCP connect FAILED errno=\(errno) — xray SOCKS5 port not reachable")
+            return
+        }
+        appendLog("RAW-SOCKS5[\(label)]: TCP connect OK")
+
+        // Step 1 — SOCKS5 greeting (no auth)
+        var greeting: [UInt8] = [0x05, 0x01, 0x00]
+        guard send(sock, &greeting, 3, 0) == 3 else {
+            appendLog("RAW-SOCKS5[\(label)]: send(greeting) failed errno=\(errno)")
+            return
+        }
+        var gresp = [UInt8](repeating: 0, count: 2)
+        let gn = recv(sock, &gresp, 2, MSG_WAITALL)
+        guard gn == 2 else {
+            appendLog("RAW-SOCKS5[\(label)]: recv(greeting_resp) n=\(gn) errno=\(errno) — xray closed or timed out on greeting")
+            return
+        }
+        let gHex = gresp.map { String(format: "%02x", $0) }.joined(separator: " ")
+        appendLog("RAW-SOCKS5[\(label)]: greeting resp=[\(gHex)]")
+        guard gresp[0] == 0x05 && gresp[1] == 0x00 else {
+            appendLog("RAW-SOCKS5[\(label)]: auth method=0x\(String(format:"%02x",gresp[1])) — no-auth rejected")
+            return
+        }
+
+        // Step 2 — SOCKS5 CONNECT to toIP:port
+        var ipBytes = [UInt8](repeating: 0, count: 4)
+        inet_pton(AF_INET, toIP, &ipBytes)
+        var req: [UInt8] = [
+            0x05, 0x01, 0x00, 0x01,          // VER CMD(CONNECT) RSV ATYP(IPv4)
+            ipBytes[0], ipBytes[1], ipBytes[2], ipBytes[3],
+            UInt8((port >> 8) & 0xFF), UInt8(port & 0xFF),
+        ]
+        guard send(sock, &req, req.count, 0) == req.count else {
+            appendLog("RAW-SOCKS5[\(label)]: send(CONNECT) failed errno=\(errno)")
+            return
+        }
+        appendLog("RAW-SOCKS5[\(label)]: CONNECT request sent → waiting for xray response (8s timeout)…")
+
+        var cresp = [UInt8](repeating: 0, count: 10)
+        let cn = recv(sock, &cresp, 10, MSG_WAITALL)
+        guard cn >= 4 else {
+            appendLog("RAW-SOCKS5[\(label)]: recv(CONNECT_resp) n=\(cn) errno=\(errno) — xray did NOT respond to CONNECT (timeout or closed) ✗")
+            return
+        }
+        let rep    = cresp[1]
+        let cHex   = cresp[..<min(cn, 10)].map { String(format: "%02x", $0) }.joined(separator: " ")
+        let repMsg = rep == 0x00 ? "SUCCESS" :
+                     rep == 0x01 ? "FAIL(general)" :
+                     rep == 0x02 ? "FAIL(not-allowed)" :
+                     rep == 0x03 ? "FAIL(net-unreachable)" :
+                     rep == 0x04 ? "FAIL(host-unreachable)" :
+                     rep == 0x05 ? "FAIL(conn-refused)" : "FAIL(0x\(String(format:"%02x",rep)))"
+        appendLog("RAW-SOCKS5[\(label)]: CONNECT resp=[\(cHex)] rep=\(repMsg)")
+
+        // Step 3 — if CONNECT succeeded on port 443, confirm data flows
+        if rep == 0x00 && port == 443 {
+            // Send a minimal TLS ClientHello to confirm the channel is open.
+            // Not a real handshake — we just want to see if xray echos something back.
+            var tlsHello: [UInt8] = [
+                0x16, 0x03, 0x01, 0x00, 0x05,        // ContentType=Handshake TLS1.0 len=5
+                0x01, 0x00, 0x00, 0x01, 0x00,         // ClientHello (minimal, invalid but sends bytes)
+            ]
+            send(sock, &tlsHello, tlsHello.count, 0)
+            var tlsResp = [UInt8](repeating: 0, count: 16)
+            let tn = recv(sock, &tlsResp, 16, 0)
+            // Any response (even a TLS Alert) proves the channel is alive.
+            appendLog("RAW-SOCKS5[\(label)]: data channel test — recv=\(tn) bytes\(tn > 0 ? " → channel is LIVE ✓" : " (0 or error errno=\(errno))")")
+        }
+    }
+
+    // ── bridgeFd availability poller ───────────────────────────────────────────
+    // Uses poll(2) to check if bridgeFd has data every 10s for 60s.
+    // If poll() never returns POLLIN, HEV is not writing any packets to the socket.
+    private func startBridgeFdPoller(bridgeFd: Int32) {
+        Thread.detachNewThread { [weak self] in
+            guard let self = self else { return }
+            for i in 1...6 {
+                Thread.sleep(forTimeInterval: 10.0)
+                var pfd = pollfd(fd: bridgeFd, events: Int16(POLLIN), revents: 0)
+                let result = poll(&pfd, 1, 200)   // 200ms
+                let dataReady = result > 0 && (pfd.revents & Int16(POLLIN)) != 0
+                let errFlag   = result > 0 && (pfd.revents & Int16(POLLERR | POLLHUP | POLLNVAL)) != 0
+                self.appendLog(
+                    "RX-POLL[\(i*10)s]: poll(bridgeFd=\(bridgeFd)) result=\(result)" +
+                    (dataReady ? " DATA_PENDING ← HEV wrote something" :
+                     errFlag   ? " ERR/HUP/NVAL (bridgeFd closed?)" :
+                     result == 0 ? " TIMEOUT (no data from HEV in 200ms)" :
+                                   " errno=\(errno)")
+                )
+            }
+            self.appendLog("RX-POLL: 60s done — if all TIMEOUT, HEV wrote nothing to bridgeFd")
+        }
     }
 
     private func stopHevMode() {
