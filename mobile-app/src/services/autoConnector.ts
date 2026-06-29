@@ -25,6 +25,9 @@ import { getLastConnectProbeOk, getLastConnectFailureCategory } from './vpnBridg
 import { recordSuccess, recordFailure, sortByHistory, getTopProfiles } from './successHistory';
 import { getRemoteConfig, isKillSwitched, invalidateRemoteConfig } from './remoteConfigService';
 import { getSpoofSnisSync, prefetchBundle } from './profileBundleService';
+import { uploadConnectTelemetry } from './api/telemetry.api';
+import type { TelemetryEvent }    from './api/telemetry.api';
+import { APP_VERSION, APP_BUILD_CODE } from '../utils/version';
 
 // Kick off bundle prefetch at import time (non-blocking)
 prefetchBundle();
@@ -483,8 +486,12 @@ async function _runPass(
   const rcStealth   = buildRemoteProfiles(remoteCfg.stealth_profiles,   'rc-stealth');
   const defs = [...rcEmergency, ...builtinDefs, ...rcStealth];
 
-  // Apply kill-switches: skip profiles that are known broken
-  const filteredDefs = defs.filter(d => !isKillSwitched(d.sni, d.protocol, remoteCfg));
+  // Apply kill-switches and disabled-node list: skip profiles that are known broken
+  const nodesDisabled = remoteCfg.nodes_disabled ?? [];
+  const filteredDefs = defs.filter(d =>
+    !isKillSwitched(d.sni, d.protocol, remoteCfg) &&
+    !nodesDisabled.includes(server.id),
+  );
 
   // Sort by historical success (puts previously successful profiles first)
   const profileIds = filteredDefs.map(d => d.id);
@@ -506,6 +513,7 @@ async function _runPass(
     retryCount,
   }, [...profiles]);
 
+  const telemetryEnabled = remoteCfg.telemetry_enabled !== false;
   let probeWinnerId:  string | null = null;
   let probeWinnerCfg: string | null = null;
 
@@ -544,6 +552,7 @@ async function _runPass(
         probeWinnerId  = p.id;
         probeWinnerCfg = p.configJson;
         recordSuccess(p.id, p.latencyMs, p.sni, p.protocol);
+        _reportTelemetry(p, server.id, telemetryEnabled);
         onUpdate({
           phase: 'probe-validated', profileIndex: i,
           profileCount: profiles.length, profileLabel: p.label, retryCount,
@@ -558,6 +567,7 @@ async function _runPass(
       p.error           = `No internet through tunnel [${failureCategory}]`;
       p.failureCategory = failureCategory;
       recordFailure(p.id, p.sni, p.protocol);
+      _reportTelemetry(p, server.id, telemetryEnabled);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
       onUpdate({
@@ -573,6 +583,7 @@ async function _runPass(
       p.status = 'fail';
       p.error  = errMsg;
       recordFailure(p.id, p.sni, p.protocol);
+      _reportTelemetry(p, server.id, telemetryEnabled);
       try { await adapter.disconnect(); } catch {}
       await sleep(BETWEEN_ATTEMPTS_MS);
       onUpdate({
@@ -612,6 +623,49 @@ async function _runPass(
   };
   reportToAdmin(result, server.id, mode).catch(() => {});
   return result;
+}
+
+// ── Node-intelligence telemetry (Phase 6) ────────────────────────────────────
+// Uploads anonymous connect outcomes to /v1/telemetry/connect.
+// Fire-and-forget: never throws; never blocks the user flow.
+
+function profileTelemetryEvent(p: AutoProfile): TelemetryEvent {
+  if (p.status === 'success') return 'connect_ok';
+  if (p.error?.startsWith('No internet through tunnel')) return 'internet_fail';
+  return 'connect_fail';
+}
+
+function _reportTelemetry(
+  p:       AutoProfile,
+  nodeId:  string,
+  telemetryEnabled: boolean,
+): void {
+  if (!telemetryEnabled) return;
+  // Only upload tested profiles (skip pending/skipped — they have no data)
+  if (p.status === 'pending' || p.status === 'skipped') return;
+
+  let token: string | undefined;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useAuthStore } = require('../stores/authStore');
+    token = useAuthStore.getState().user?.deviceId
+      ? `device-${useAuthStore.getState().user.deviceId}`
+      : undefined;
+  } catch {}
+
+  uploadConnectTelemetry({
+    event:         profileTelemetryEvent(p),
+    node_id:       nodeId,
+    profile_id:    p.id,
+    sni:           p.sni,
+    protocol:      p.protocol,
+    platform:      Platform.OS as 'android' | 'ios',
+    app_version:   APP_VERSION,
+    build_number:  APP_BUILD_CODE,
+    failure_stage: p.failureCategory ?? undefined,
+    latency_ms:    p.latencyMs,
+    internet_ok:   p.probeOk ?? false,
+  }, token);
 }
 
 // ── Admin telemetry reporting (Phase 2) ───────────────────────────────────────

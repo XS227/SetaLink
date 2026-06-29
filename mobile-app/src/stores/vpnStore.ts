@@ -62,6 +62,8 @@ interface VpnState {
   // Protocol auto-fallback state (internal — not persisted)
   _fallbackIdx:       number;
   _fallbackActive:    boolean;
+  // Node failover state — tracks which nodes were tried in this connect cycle
+  _triedNodeIds:      string[];
 
   connect:            () => void;
   disconnect:         () => void;
@@ -89,7 +91,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     onConnected: () => {
-      set({ sessionStartedAt: Date.now(), error: null, smartStatus: null, _fallbackActive: false, _fallbackIdx: 0 });
+      set({ sessionStartedAt: Date.now(), error: null, smartStatus: null, _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [] });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');
@@ -289,7 +291,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const analysis = classifyFailure(message);
 
       // Protocol auto-fallback: silently try next protocol before surfacing the error.
-      const { _fallbackActive, _fallbackIdx } = get();
+      const { _fallbackActive, _fallbackIdx, _triedNodeIds } = get();
       const nextIdx = _fallbackIdx + 1;
       if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length) {
         const nextProto = FALLBACK_PROTOCOLS[nextIdx]!;
@@ -304,8 +306,52 @@ export const useVpnStore = create<VpnState>((set, get) => {
         setTimeout(() => machine.send('CONNECT'), 800);
         return;
       }
-      // All protocols exhausted (or not in fallback mode) — surface the error.
-      set({ _fallbackActive: false, _fallbackIdx: 0, error: analysis.userMessage, smartStatus: null });
+
+      // All protocols exhausted (or AI-mode single-shot) — try next node before giving up.
+      // Reads failover_max_nodes from cached remote config (sync, never blocks).
+      let nodeFailoverAttempted = false;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getCachedConfig } = require('../services/remoteConfigService') as typeof import('../services/remoteConfigService');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useServerStore } = require('./serverStore') as typeof import('./serverStore');
+        const cfg = getCachedConfig();
+        const maxExtra = cfg.failover_max_nodes ?? 2;
+        const nodesDisabled = cfg.nodes_disabled ?? [];
+
+        if (_triedNodeIds.length < maxExtra) {
+          const sst = useServerStore.getState();
+          const curId = sst.selectedId;
+          const newTried = [..._triedNodeIds, curId].filter(Boolean);
+          const nextServer = [...sst.servers]
+            .filter(s =>
+              s.id !== curId &&
+              !newTried.includes(s.id) &&
+              !nodesDisabled.includes(s.id) &&
+              sst.importedCreds[s.id],
+            )
+            .sort((a, b) => (b.successScore ?? 0) - (a.successScore ?? 0))[0];
+
+          if (nextServer) {
+            set({
+              _triedNodeIds:  newTried,
+              _fallbackActive: false,
+              _fallbackIdx:   0,
+              isSwitchingServer: true,
+              smartStatus: `${nextServer.flag} Trying ${nextServer.city}…`,
+              error: null,
+            });
+            sst.selectServer(nextServer.id);
+            machine.send('DISCONNECT');
+            nodeFailoverAttempted = true;
+          }
+        }
+      } catch {}
+
+      if (nodeFailoverAttempted) return;
+
+      // All nodes and protocols exhausted — surface the final error.
+      set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], error: analysis.userMessage, smartStatus: null });
       appendMetric({ type: message.toLowerCase().includes('routing') ? 'routing_failed' : 'connect_failed', at: Date.now(), reason: message, country: get().selectedServer?.country });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -398,6 +444,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     lastPingMs:        0,
     _fallbackIdx:      0,
     _fallbackActive:   false,
+    _triedNodeIds:     [],
 
     connect: () => {
       // Forced-update gate: a build below minSupported must not connect.
@@ -430,7 +477,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     disconnect: () => {
-      set({ _fallbackActive: false, _fallbackIdx: 0, smartStatus: null });
+      set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], smartStatus: null });
       machine.send('DISCONNECT');
     },
 

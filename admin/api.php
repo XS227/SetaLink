@@ -1030,6 +1030,9 @@ if ($method === 'POST') {
             'bootstrap_edge_address','bootstrap_edge_port',
             'bootstrap_ws_path','bootstrap_xhttp_path','bootstrap_httpup_path',
             'bootstrap_alt_profiles',
+            // Adaptive network flags
+            'rc_failover_max_nodes','rc_nodes_disabled','rc_telemetry_enabled',
+            'rc_rollout','rc_extra_logging_platform','rc_extra_logging_node',
         ];
         $db_rc = open_analytics_db();
         $st_rc = $db_rc->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
@@ -1336,6 +1339,28 @@ switch ($action) {
         $age = isset($data['updated_at']) ? (time() - strtotime((string)$data['updated_at'])) : null;
         $data['stale'] = ($age === null || $age > 900);
         api_ok($data);
+        break;
+    }
+
+    case 'node-intel': {
+        // Telemetry-based node intelligence: success rates, platform & ISP breakdowns,
+        // failure timeline, and per-profile scores derived from connect_telemetry table.
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db   = open_analytics_db();
+        $days = max(1, min(90, (int)($_GET['days'] ?? 7)));
+        $node = trim((string)($_GET['node'] ?? ''));
+        ni_init_tables($db);
+        api_ok([
+            'days'                => $days,
+            'node_scores'         => ni_node_scores($db, $days),
+            'node_profile_scores' => ni_node_profile_scores($db, $days),
+            'platform_breakdown'  => ni_platform_breakdown($db, $days),
+            'isp_breakdown'       => ni_isp_breakdown($db, $node ?: null, $days),
+            'network_breakdown'   => ni_network_breakdown($db, $days),
+            'country_breakdown'   => ni_country_breakdown($db, $days),
+            'recent_failures'     => ni_recent_failures($db, 100),
+            'timeline'            => ni_timeline($db, min(30, $days)),
+        ]);
         break;
     }
 

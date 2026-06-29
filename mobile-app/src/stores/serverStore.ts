@@ -5,17 +5,19 @@ import type { AIModeKey }            from './aiStore';
 import type { ServerCredentials }    from '../services/serverConfigService';
 
 export interface ServerRecord {
-  id:        string;
-  country:   string;
-  city:      string;
-  flag:      string;
-  ping:      number;
-  load:      number;  // 0–100
-  protocol:  string;
-  transport?: string;
-  tags?:     string[];
-  premium?:  boolean;
-  comingSoon?: boolean;
+  id:           string;
+  country:      string;
+  city:         string;
+  flag:         string;
+  ping:         number;
+  load:         number;       // 0–100
+  protocol:     string;
+  transport?:   string;
+  tags?:        string[];
+  premium?:     boolean;
+  comingSoon?:  boolean;
+  /** Telemetry-derived success rate (0–100) from the last 7 days. Backend-provided. */
+  successScore?: number;
 }
 
 // Coming-soon placeholder entries — shown greyed out, never selectable
@@ -33,6 +35,9 @@ export const SERVER_CATALOG: ServerRecord[] = [];
 export function scoreServer(s: ServerRecord, mode: AIModeKey): number {
   const pingScore = (150 - s.ping) * 0.5;
   const loadScore = (100 - s.load) * 0.3;
+  // successScore weight: shifts score by ±20 around the neutral point (80% = +0, 100% = +20, 0% = -32).
+  // Only applied when the backend has provided telemetry data (>= 5 events).
+  const successBonus = s.successScore !== undefined ? ((s.successScore - 80) * 0.4) : 0;
   let bonus = 0;
 
   switch (mode) {
@@ -44,7 +49,7 @@ export function scoreServer(s: ServerRecord, mode: AIModeKey): number {
     case 'fallback':  bonus = 0; break;
   }
 
-  return pingScore + loadScore + bonus;
+  return pingScore + loadScore + successBonus + bonus;
 }
 
 interface ServerState {

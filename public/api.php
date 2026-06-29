@@ -383,6 +383,13 @@ if ($method === 'GET') {
             'update_required'        => (bool)(int)($rcRows['rc_update_required'] ?? '0'),
             'min_supported_version'  => (string)($rcRows['rc_min_supported'] ?? '0.9.7'),
             'profile_bundle_version' => (int)($rcRows['rc_profile_bundle_version'] ?? 1),
+            // Adaptive network flags
+            'failover_max_nodes'     => (int)($rcRows['rc_failover_max_nodes'] ?? 2),
+            'nodes_disabled'         => $decodeArr('rc_nodes_disabled', []),
+            'telemetry_enabled'      => (bool)(int)($rcRows['rc_telemetry_enabled'] ?? 1),
+            'rollout'                => json_decode((string)($rcRows['rc_rollout'] ?? '{}'), true) ?: (object)[],
+            'extra_logging_platform' => ($rcRows['rc_extra_logging_platform'] ?? '') ?: null,
+            'extra_logging_node'     => ($rcRows['rc_extra_logging_node'] ?? '') ?: null,
         ];
         // If there's a legacy composite blob, merge it but let per-key values win
         try {
