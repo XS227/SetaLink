@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import NetworkExtension
+import Security
 
 typealias RCTPromiseResolveBlock = (Any?) -> Void
 typealias RCTPromiseRejectBlock  = (String?, String?, Error?) -> Void
@@ -421,6 +422,95 @@ class XrayModule: NSObject {
         // Force a cross-process flush so the extension (separate process) reliably
         // sees the device_id before it reads the App Group on startTunnel.
         shared?.synchronize()
+        resolve(nil)
+    }
+
+    // MARK: - Stable device ID (Keychain-backed)
+    //
+    // The device ID must survive:
+    //   • App updates         (app container preserved — MMKV alone would work)
+    //   • TestFlight reinstalls (app container wiped — MMKV fails, Keychain survives)
+    //   • Device backups/restores (kSecAttrAccessibleAfterFirstUnlock)
+    //
+    // Only cleared by a full device reset or explicit Keychain wipe — never by
+    // deleting/reinstalling the app.
+
+    private static let keychainService = "no.setaei.realink.stable-id"
+    private static let keychainAccount = "device_id"
+
+    private func keychainRead() -> String? {
+        let q: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: Self.keychainService,
+            kSecAttrAccount: Self.keychainAccount,
+            kSecReturnData:  kCFBooleanTrue as Any,
+            kSecMatchLimit:  kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data,
+              let str  = String(data: data, encoding: .utf8),
+              !str.isEmpty else { return nil }
+        return str
+    }
+
+    @discardableResult
+    private func keychainWrite(_ value: String) -> Bool {
+        guard let data = value.data(using: .utf8) else { return false }
+        let q: [CFString: Any] = [
+            kSecClass:       kSecClassGenericPassword,
+            kSecAttrService: Self.keychainService,
+            kSecAttrAccount: Self.keychainAccount,
+        ]
+        let attrs: [CFString: Any] = [
+            kSecValueData:      data,
+            kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
+        ]
+        let status = SecItemUpdate(q as CFDictionary, attrs as CFDictionary)
+        if status == errSecItemNotFound {
+            var insert = q
+            insert[kSecValueData]       = data
+            insert[kSecAttrAccessible]  = kSecAttrAccessibleAfterFirstUnlock
+            SecItemAdd(insert as CFDictionary, nil)
+        }
+        return true
+    }
+
+    // Returns the stable device ID stored in Keychain, or generates and persists
+    // a new one. Migration: also checks App Group UserDefaults for any ID that
+    // was written there by older builds before migrating it to Keychain.
+    @objc func getOrCreateStableDeviceId(
+        _ resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        // 1. Keychain (survives reinstalls)
+        if let existing = keychainRead() {
+            resolve(existing)
+            return
+        }
+        // 2. App Group UserDefaults migration (written by older builds via setDiagnosticContext)
+        if let ud = UserDefaults(suiteName: Self.appGroupID),
+           let migrated = ud.string(forKey: "setalink_stable_device_id"),
+           migrated.hasPrefix("sl-"), migrated.count > 8 {
+            keychainWrite(migrated)
+            resolve(migrated)
+            return
+        }
+        // 3. Generate a new ID and store in Keychain
+        let newId = "sl-\(UUID().uuidString.lowercased())"
+        keychainWrite(newId)
+        resolve(newId)
+    }
+
+    // Persists a device ID (returned by the backend after registration) to Keychain.
+    // Called from JS after every successful registration so the canonical server-side
+    // ID is always in Keychain regardless of how it was generated.
+    @objc func saveStableDeviceId(
+        _ deviceId: String,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        keychainWrite(deviceId)
         resolve(nil)
     }
 
