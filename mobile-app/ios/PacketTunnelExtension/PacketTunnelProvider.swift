@@ -68,7 +68,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private var log: [String]  = []
     private let startTime      = Date()
-    private var routeInstalledAt: Date? = nil
+    private var postConnectTime: Date? = nil
 
     // Captured during the attempt — assembled into the upload payload on finish.
     private var xrayVersion    = "(not reached)"
@@ -209,7 +209,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
             self.step("route installed")
             self.appendLog("Route installed (\(self.elapsed(since: self.startTime)) total)")
-            self.routeInstalledAt = Date()
 
             // ── Phase 5 (HEV only): start tun2socks relay ────────────────────
             // HEV is REQUIRED in HEV_AVAILABLE builds — all app traffic routes through
@@ -238,37 +237,30 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.runDualProbe { ok, summary in
                 shared.set(ok, forKey: kProbeOkKey)
                 if ok {
-                    // Single call site for completionHandler(nil) — CI guard requires exactly 1.
-                    // In HEV builds: deferred 60s via runPropagationProbe (build-44 experiment).
-                    // In non-HEV builds: called immediately via proceed().
-                    let proceed: () -> Void = {
-                        #if HEV_AVAILABLE
-                        self.logHevStats(final: true)
-                        #endif
-                        self.step("connected_verified")
-                        self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
-                        shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
-                        self.flushLog(to: shared)
-                        // Force UserDefaults to disk so the main-app process reads the
-                        // current log immediately on the VPN-state-change notification,
-                        // avoiding a cross-process race that produces "DNS: Unknown".
-                        shared.synchronize()
-                        // Upload async — do not block tunnel establishment for diagnostics.
-                        let (deviceId, appVersion, country) = self.readDiagContext(from: shared)
-                        DispatchQueue.global(qos: .background).async {
-                            self.uploadDiagnostics(deviceId: deviceId, appVersion: appVersion,
-                                                   country: country, success: true, errorMsg: "",
-                                                   waitForCompletion: false)
-                        }
-                        completionHandler(nil)
-                    }
                     #if HEV_AVAILABLE
-                    // Run 60-second propagation measurement BEFORE calling completionHandler(nil).
-                    // Extension stays fully active (not suspended) for reliable S1 sampling.
-                    self.runPropagationProbe(routeT0: self.routeInstalledAt ?? self.startTime,
-                                             completion: proceed)
-                    #else
-                    proceed()
+                    self.logHevStats(final: true)
+                    #endif
+                    self.step("connected_verified")
+                    self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
+                    shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
+                    self.flushLog(to: shared)
+                    // Force UserDefaults to disk so the main-app process reads the
+                    // current log immediately on the VPN-state-change notification,
+                    // avoiding a cross-process race that produces "DNS: Unknown".
+                    shared.synchronize()
+                    // Upload async — do not block tunnel establishment for diagnostics.
+                    let (deviceId, appVersion, country) = self.readDiagContext(from: shared)
+                    DispatchQueue.global(qos: .background).async {
+                        self.uploadDiagnostics(deviceId: deviceId, appVersion: appVersion,
+                                               country: country, success: true, errorMsg: "",
+                                               waitForCompletion: false)
+                    }
+                    // Mark connect time, signal iOS the tunnel is ready, then start
+                    // the post-connect background monitor (build-45 packet-path debug).
+                    self.postConnectTime = Date()
+                    completionHandler(nil)
+                    #if HEV_AVAILABLE
+                    self.startPostConnectMonitor(shared: shared)
                     #endif
                 } else {
                     self.step("failed")
@@ -964,10 +956,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let self = self else { return }
             var buffer = [UInt8](repeating: 0, count: 65536)
             let n = recv(bridgeFd, &buffer, buffer.count, 0)
-            guard n > 0 else { return }
+            guard n > 0 else {
+                // n==0 → EOF (socket closed); n<0 → error. Both indicate broken bridge.
+                if n == 0 {
+                    self.appendLog("RX-RELAY: recv()=0 EOF — bridgeFd=\(bridgeFd) closed (HEV quit?)")
+                } else {
+                    self.appendLog("RX-RELAY: recv()=-1 errno=\(errno) — bridgeFd=\(bridgeFd) broken")
+                }
+                return
+            }
             let packet  = Data(buffer[..<n])
             self.hevStats.s7Packets += 1          // S7: received from HEV (from internet)
             self.hevStats.s7Bytes   += n
+            let s7 = self.hevStats.s7Packets
+            // Log first 5 post-connect inbound packets — proves full S7→S8 path is alive.
+            if self.postConnectTime != nil && s7 <= 5 {
+                let tPc = self.postConnectTime.map { Int((-$0.timeIntervalSinceNow).rounded()) } ?? -1
+                self.appendLog("RX-RELAY[S7=\(s7)] +\(tPc)s recv \(n)B ← HEV (internet)")
+            }
             if !self.hevStats.loggedFirstRx {
                 self.hevStats.loggedFirstRx = true
                 self.appendLog("FIRST-PKT-IN: S7 recv \(n)B from HEV ← internet — end-to-end relay confirmed ✓")
@@ -988,6 +994,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // ── packetFlow → socket (outbound from device) ───────────────────────
         readNextPackets(to: bridgeFd)
         appendLog("HEV: tx relay started (packetFlow→socket)")
+
+        // ── startup relay watcher: every 500ms for 10s, log S1/S3/S4 ─────────
+        // Catches the S3→S4 race where xray isn't ready when first packets arrive.
+        // Uses Thread.sleep (not DispatchSource timer) to survive busy GCD queues.
+        Thread.detachNewThread { [weak self] in
+            for tick in 1...20 {
+                Thread.sleep(forTimeInterval: 0.5)
+                guard let self = self else { return }
+                let s1 = self.hevStats.s1Packets
+                let s3 = self.hevStats.s3Written
+                var hTxP: size_t = 0, hTxB: size_t = 0, hRxP: size_t = 0, hRxB: size_t = 0
+                hev_socks5_tunnel_stats(&hTxP, &hTxB, &hRxP, &hRxB)
+                self.appendLog("STARTUP[\(String(format:"%.1f",Double(tick)*0.5))s] S1=\(s1) S3=\(s3) S4=\(hTxP) S7=\(hRxP)")
+            }
+        }
 
         // ── S5 liveness: confirm xray is listening on SOCKS5 port ────────────
         // Fires 1s after HEV thread starts (give hev time to open its SOCKS client).
@@ -1013,6 +1034,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private func readNextPackets(to fd: Int32) {
         packetFlow.readPackets { [weak self] packets, _ in
             guard let self = self, self.hevBridgeFd != -1 else { return }
+            // Log when callback fires with 0 packets — may indicate stall or fd closure.
+            if packets.isEmpty {
+                self.appendLog("RX-CB: readPackets delivered 0 pkts — stall? S1=\(self.hevStats.s1Packets) fd=\(fd) postConnect=\(self.postConnectTime != nil)")
+            }
             for packet in packets {
                 let (proto, dstPort) = self.classifyPacket(packet)
                 self.hevStats.s1Packets += 1      // S1: packetFlow delivered this packet
@@ -1026,6 +1051,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 default:
                     self.hevStats.txOther += 1
                 }
+                let s1 = self.hevStats.s1Packets
+                // Post-connect: log first 5 packets + every 50th. Proves readPackets is alive.
+                if self.postConnectTime != nil && (s1 <= 5 || s1 % 50 == 0) {
+                    let tPc = self.postConnectTime.map { Int((-$0.timeIntervalSinceNow).rounded()) } ?? -1
+                    let pn = proto == 6 ? "TCP" : proto == 17 ? "UDP" : "IP(\(proto))"
+                    self.appendLog("TX-PKT[S1=\(s1)] +\(tPc)s \(pn)\(dstPort.map{" dst=\($0)"} ?? "") \(packet.count)B")
+                }
                 // S3: write to HEV bridge socket — capture return value to detect drops.
                 let sent = packet.withUnsafeBytes { ptr -> Int in
                     Int(send(fd, ptr.baseAddress!, ptr.count, 0))
@@ -1036,21 +1068,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         self.hevStats.loggedFirstTx = true
                         let protoName = proto == 6 ? "TCP" : proto == 17 ? "UDP" : "IP(\(proto))"
                         self.appendLog("FIRST-PKT-OUT: S3 sent \(packet.count)B \(protoName)\(dstPort.map { " dstPort=\($0)" } ?? "") → HEV socket")
-                        // Arm 8s watchdog: outbound traffic is flowing but if no
-                        // inbound response arrives, the HEV→internet path is broken.
-                        // Fires only when traffic reaches the TUN; idle tunnels are safe.
+                        // Arm 30s watchdog (extended from 8s in build-45 for deeper observation).
+                        // Fires only when outbound traffic hits TUN with no inbound response.
                         let watchdog = DispatchWorkItem { [weak self] in
                             guard let self = self, !self.hevStats.loggedFirstRx else { return }
-                            self.appendLog("WATCHDOG: 8s since FIRST-PKT-OUT with no FIRST-PKT-IN — internet unreachable through tunnel")
-                            self.cancelTunnel(reason: "No internet response in 8s after first outbound packet — HEV relay or Reality server unreachable")
+                            self.appendLog("WATCHDOG: 30s since FIRST-PKT-OUT with no FIRST-PKT-IN — internet unreachable through tunnel")
+                            self.cancelTunnel(reason: "No internet response in 30s after first outbound packet — HEV relay or Reality server unreachable")
                         }
                         self.postConnectWatchdog = watchdog
-                        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 8.0, execute: watchdog)
+                        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 30.0, execute: watchdog)
                     }
                 } else {
                     self.hevStats.s3Drop += 1      // S3 drop: send() short/error
-                    if !self.hevStats.loggedFirstTx && self.hevStats.s3Drop == 1 {
-                        self.appendLog("FIRST-PKT-DROP: S3 send() returned \(sent) (expected \(packet.count)) errno=\(errno) — HEV socket may be closed")
+                    let drop = self.hevStats.s3Drop
+                    if drop <= 5 || drop % 100 == 0 {
+                        self.appendLog("TX-DROP[S3drop=\(drop)]: send()=\(sent) expected=\(packet.count) errno=\(errno) fd=\(fd)")
                     }
                 }
             }
@@ -1274,60 +1306,39 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
-    // BUILD-44 EXPERIMENT: measures when iOS cellular routes propagate to TUN.
-    // Runs for 60 seconds before completionHandler(nil) while extension is fully active.
-    // S1 counter = TUN arrivals (authoritative); SOCKS5 probes test xray path only.
-    private func runPropagationProbe(routeT0: Date, completion: @escaping () -> Void) {
-        appendLog("PROP-START: 60s measurement — S1=TUN arrivals (propagation delay); SOCKS5=xray health (NOT TUN path)")
-
-        let socksDict: [AnyHashable: Any] = [
-            "SOCKSEnable": 1,
-            "SOCKSProxy":  "127.0.0.1",
-            "SOCKSPort":   kSocksPort,
-        ]
-        let probeURL = URL(string: "https://cp.cloudflare.com/")!
-        var tick      = 0
-        var firstS1At: Int? = nil
-
-        let timer = DispatchSource.makeTimerSource(queue: .global(qos: .utility))
-        timer.schedule(deadline: .now() + 1, repeating: 1.0, leeway: .milliseconds(200))
-        propagationProbeTimer = timer
-
-        timer.setEventHandler { [weak self, weak timer] in
-            guard let self = self else { timer?.cancel(); return }
-            tick += 1
-            let tSec = Int((-routeT0.timeIntervalSinceNow).rounded())
-            let s1 = self.hevStats.s1Packets
-            let s3 = self.hevStats.s3Written
-            var hTxP: size_t = 0, hTxB: size_t = 0
-            var hRxP: size_t = 0, hRxB: size_t = 0
-            hev_socks5_tunnel_stats(&hTxP, &hTxB, &hRxP, &hRxB)
-
-            if s1 > 0 && firstS1At == nil {
-                firstS1At = tSec
-                self.appendLog("PROP[T+\(tSec)s] FIRST-TUN-PKT: S1=\(s1) — iOS route propagated to TUN after ~\(tSec)s ✓")
-            }
-            self.appendLog("PROP[T+\(tSec)s] S1=\(s1) S3=\(s3) S4=\(hTxP) S7=\(hRxP)")
-
-            // SOCKS5 probe: tests xray→Reality path; does NOT route through TUN.
-            self.fetchURL(probeURL, via: socksDict, timeout: 3.0) { status, _, err, elapsed in
-                let ok = err == nil && (status == 200 || status == 204)
-                self.appendLog("PROP[T+\(tSec)s] SOCKS5: \(ok ? "OK \(status ?? 0)" : "FAIL (\(err?.localizedDescription ?? "?"))") \(elapsed)")
-            }
-
-            guard tick < 60 else {
-                timer?.cancel()
-                self.propagationProbeTimer = nil
-                if let t = firstS1At {
-                    self.appendLog("PROP-DONE: CONFIRMED — first TUN pkt at T+\(t)s; iOS cellular propagation delay ≈ \(t)s")
-                } else {
-                    self.appendLog("PROP-DONE: S1=0 after 60s — TUN never received app traffic (no app active? WiFi? Propagation hypothesis NEGATED)")
+    // BUILD-45: post-connect background thread — logs S1/S3/S4/S7/S8 every second for 120s.
+    // Runs AFTER completionHandler(nil). Thread.sleep survives longer than DispatchSourceTimer
+    // under iOS extension suspension (timers stop firing; threads continue, just infrequently).
+    // Key questions answered:
+    //   - Does S1 increase post-connect? (readPackets alive?)
+    //   - Does S4 increase? (HEV forwarding to xray?)
+    //   - Do POST[T+Xs] lines appear in log? (thread alive despite iOS suspension?)
+    //   - Timestamps reveal actual CPU scheduling delay (Thread.sleep(1) ≠ exactly 1s).
+    private func startPostConnectMonitor(shared: UserDefaults) {
+        var prev = (s1: hevStats.s1Packets, s3: hevStats.s3Written, s4: 0, s7: 0)
+        appendLog("POST-MONITOR: started — S1/S3/S4/S7/S8 every 1s for 120s via Thread.sleep")
+        Thread.detachNewThread { [weak self] in
+            guard let self = self else { return }
+            for sec in 1...120 {
+                Thread.sleep(forTimeInterval: 1.0)
+                let s1 = self.hevStats.s1Packets
+                let s3 = self.hevStats.s3Written
+                let s8 = self.hevStats.s8Packets
+                var hTxP: size_t = 0, hTxB: size_t = 0, hRxP: size_t = 0, hRxB: size_t = 0
+                hev_socks5_tunnel_stats(&hTxP, &hTxB, &hRxP, &hRxB)
+                let s4 = Int(hTxP), s7 = Int(hRxP)
+                let d1 = s1-prev.s1, d3 = s3-prev.s3, d4 = s4-prev.s4, d7 = s7-prev.s7
+                self.appendLog("POST[T+\(sec)s] S1=\(s1)(+\(d1)) S3=\(s3)(+\(d3)) S4=\(s4)(+\(d4)) S7=\(s7)(+\(d7)) S8=\(s8)")
+                prev = (s1, s3, s4, s7)
+                if sec % 15 == 0 {
+                    self.flushLog(to: shared)
+                    shared.synchronize()
                 }
-                completion()
-                return
             }
+            self.appendLog("POST-MONITOR: 120s done")
+            self.flushLog(to: shared)
+            shared.synchronize()
         }
-        timer.resume()
     }
 
     #endif
