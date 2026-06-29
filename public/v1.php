@@ -37,6 +37,8 @@ define('V1_DB_PATH', __DIR__ . '/../data/analytics.db');
 require_once __DIR__ . '/../lib/ads_recovery.php';
 // Premium payments (USDT + REAL token).
 require_once __DIR__ . '/../lib/payments.php';
+// Node intelligence — connect telemetry.
+require_once __DIR__ . '/../lib/node_intel.php';
 
 /** Read a POST field from form-encoded body or a JSON body. */
 function v1_body(string $key, string $default = ''): string {
@@ -363,8 +365,62 @@ if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
 
 $nodes = v1_nodes($pdo);
 
+// ── Connect telemetry ─────────────────────────────────────────────────────────
+// POST /v1/telemetry/connect — anonymous connect outcome upload.
+// No PII stored: country is geo-derived server-side; ISP/carrier are hashed.
+// Intentionally lenient: always returns 200 so a failed telemetry POST never
+// interrupts the user experience.
+if ($rel === '/telemetry/connect' && $method === 'POST') {
+    try {
+        ni_init_tables($pdo);
+        // Derive country from the client IP (best-effort, may be empty).
+        $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+        if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
+        $country = '';
+        if ($clientIp && $clientIp !== '127.0.0.1' && $clientIp !== '::1'
+            && !str_starts_with($clientIp, '10.') && !str_starts_with($clientIp, '192.168.')) {
+            // Use cached geo lookup if available in the analytics DB
+            try {
+                $gc = $pdo->prepare("SELECT country FROM geo_cache WHERE ip=? LIMIT 1");
+                $gc->execute([$clientIp]);
+                $country = (string)($gc->fetchColumn() ?: '');
+            } catch (\Throwable $_) {}
+            if ($country === '') {
+                $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+                $raw = @file_get_contents("http://ip-api.com/json/{$clientIp}?fields=countryCode", false, $ctx);
+                if ($raw) {
+                    $j = json_decode($raw, true);
+                    $country = substr((string)($j['countryCode'] ?? ''), 0, 4);
+                }
+            }
+        }
+        ni_record($pdo, [
+            'event'         => v1_body('event'),
+            'node_id'       => v1_body('node_id') ?: 'primary',
+            'profile_id'    => v1_body('profile_id') ?: null,
+            'sni'           => v1_body('sni'),
+            'protocol'      => v1_body('protocol'),
+            'platform'      => v1_body('platform'),
+            'app_version'   => v1_body('app_version'),
+            'build_number'  => (int)v1_body('build_number'),
+            'network_type'  => v1_body('network_type'),
+            'isp'           => v1_body('isp'),
+            'carrier'       => v1_body('carrier'),
+            'country'       => $country,
+            'failure_stage' => v1_body('failure_stage'),
+            'latency_ms'    => v1_body('latency_ms') !== '' ? v1_body('latency_ms') : null,
+            'internet_ok'   => v1_body('internet_ok') !== '' ? v1_body('internet_ok') : null,
+            'exit_ip_ok'    => v1_body('exit_ip_ok')  !== '' ? v1_body('exit_ip_ok')  : null,
+        ]);
+    } catch (\Throwable $_) { /* swallow — telemetry must never break the user flow */ }
+    v1_send(['ok' => true]);
+}
+
 if ($rel === '/servers') {
     $health = v1_health();
+    // Load telemetry-derived success scores (last 7 days) for ranking.
+    $scores = [];
+    try { ni_init_tables($pdo); $scores = ni_node_scores($pdo, 7); } catch (\Throwable $_) {}
     $out = [];
     foreach ($nodes as $id => $n) {
         if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) continue; // hide test nodes
@@ -375,6 +431,10 @@ if ($rel === '/servers') {
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
         if (is_int($rtt)) $meta['ping'] = $rtt;
+        // Annotate telemetry-based success score (0-100) when data exists.
+        if (isset($scores[$id]['success_rate'])) {
+            $meta['successScore'] = (float)$scores[$id]['success_rate'];
+        }
         $out[] = $meta;
     }
     v1_send($out);

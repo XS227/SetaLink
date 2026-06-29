@@ -34,6 +34,20 @@ export interface RemoteConfig {
   stealth_profiles?:   any[];         // stealth server configs
   update_required?:    boolean;
   min_supported_version?: string;
+
+  // ── Adaptive network flags ────────────────────────────────────────────
+  /** Max additional nodes to try on failover after the primary fails. Default: 2. */
+  failover_max_nodes?: number;
+  /** Node IDs to skip entirely during auto-selection and failover. */
+  nodes_disabled?: string[];
+  /** Set false to pause anonymous connect telemetry uploads. Default: true. */
+  telemetry_enabled?: boolean;
+  /** Fractional rollout per feature ID (0.0 – 1.0). */
+  rollout?: Record<string, number>;
+  /** Enable verbose logging for this platform ('ios' | 'android' | null). */
+  extra_logging_platform?: string | null;
+  /** Enable verbose logging for this specific node ID (null = all nodes). */
+  extra_logging_node?: string | null;
 }
 
 const DEFAULT_CONFIG: RemoteConfig = {
@@ -99,6 +113,31 @@ async function _fetch(): Promise<RemoteConfig> {
 
 export function isKillSwitched(sni: string, protocol: string, cfg: RemoteConfig): boolean {
   return cfg.kill_switches.some(ks => ks === sni || ks === protocol || ks === `${protocol}/${sni}`);
+}
+
+/** Synchronously return the last-cached config without waiting for a fetch. */
+export function getCachedConfig(): RemoteConfig {
+  const cached = syncGet(CACHE_KEY);
+  if (cached) {
+    try { return { ...DEFAULT_CONFIG, ...JSON.parse(cached) }; } catch {}
+  }
+  return DEFAULT_CONFIG;
+}
+
+/**
+ * Deterministic per-device rollout gate.
+ * Returns true if this device should receive the feature.
+ * fraction=1 → everyone, fraction=0 → nobody.
+ */
+export function isInRollout(featureId: string, cfg: RemoteConfig, deviceId?: string): boolean {
+  const fraction = cfg.rollout?.[featureId];
+  if (fraction === undefined || fraction >= 1.0) return true;
+  if (fraction <= 0) return false;
+  if (!deviceId) return Math.random() < fraction;
+  // Stable per-device hash: sum of char codes mod 100
+  const seed = `${deviceId}:${featureId}`;
+  const hash = [...seed].reduce((s, c) => s + c.charCodeAt(0), 0);
+  return (hash % 100) < fraction * 100;
 }
 
 /** Force a fresh fetch on next call (e.g. after VPN failure). */

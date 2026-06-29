@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -93,6 +93,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
       <?= icon('globe') ?> Iran Debug
+    </div>
+    <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
+      <?= icon('chart') ?> Network Intel
     </div>
     <div class="nav-item<?= $page==='installs'?' active':'' ?>" data-page="installs">
       <?= icon('devices') ?> Install Diag
@@ -552,6 +555,117 @@ function icon(string $name): string {
     </div>
 
     <!-- ============================================================ -->
+    <!-- VIEW: NETWORK INTEL                                          -->
+    <!-- ============================================================ -->
+    <div data-view="intel" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:1.1rem;font-weight:700">Iran Network Intelligence</span>
+        <select class="select btn-sm" id="intelDays" style="width:110px">
+          <option value="1">Last 24h</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="intelRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <span style="font-size:.72rem;color:var(--muted)" id="intelNote">Anonymous telemetry from app connects</span>
+      </div>
+
+      <!-- Node health scores from telemetry -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header">
+          <span class="panel-title">Node Health — Telemetry Scores</span>
+          <span class="panel-sub">success rate from real connect attempts</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Node</th><th>Total Events</th><th>OK</th><th>Fail</th><th>Success Rate</th><th>Avg Latency</th><th>Last Event</th></tr></thead>
+            <tbody id="intelNodeTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Timeline chart -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">Connect Success Timeline</span><span class="panel-sub">daily success rate %</span></div>
+        <div class="panel-body" style="height:200px;position:relative">
+          <canvas id="intelTimelineChart"></canvas>
+          <div id="intelTimelineEmpty" style="display:none;text-align:center;color:var(--muted);padding:2rem">No telemetry data yet</div>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-bottom:1rem">
+        <!-- Platform breakdown -->
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Success by Platform</span><span class="panel-sub">Android vs iOS</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Node</th><th>Platform</th><th>Total</th><th>OK</th><th>Rate</th></tr></thead>
+              <tbody id="intelPlatformTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Network type breakdown -->
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Success by Network Type</span><span class="panel-sub">WiFi vs mobile data</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Network</th><th>Total</th><th>OK</th><th>Rate</th></tr></thead>
+              <tbody id="intelNetworkTbl"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ISP breakdown -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header">
+          <span class="panel-title">ISP / Carrier Breakdown</span>
+          <span class="panel-sub">anonymised ISP hash · top 50 by volume</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ISP Hash</th><th>Country</th><th>Total</th><th>OK</th><th>Fail</th><th>Rate</th><th>Avg Latency</th></tr></thead>
+            <tbody id="intelIspTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Profile scores -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">Profile Success Scores</span><span class="panel-sub">per node + SNI profile</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Node</th><th>Profile</th><th>Total</th><th>OK</th><th>Rate</th><th>Avg Latency</th></tr></thead>
+            <tbody id="intelProfileTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Country breakdown -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">Country Breakdown</span><span class="panel-sub">geo-derived from client IP</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Country</th><th>Total</th><th>OK</th><th>Rate</th></tr></thead>
+            <tbody id="intelCountryTbl"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent failures -->
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">Recent Failures</span><span class="panel-sub">last 100 non-OK events</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Event</th><th>Node</th><th>Profile</th><th>SNI</th><th>Platform</th><th>Network</th><th>Country</th><th>Stage</th><th>Latency</th></tr></thead>
+            <tbody id="intelFailTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
     <!-- VIEW: DEVICES                                                -->
     <!-- ============================================================ -->
     <div data-view="devices" hidden>
@@ -989,6 +1103,61 @@ function icon(string $name): string {
       </div>
 
       <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Adaptive Network Flags</span>
+          <span class="panel-sub">pushed to mobile clients via remote-config · no APK needed</span>
+        </div>
+        <div class="panel-body">
+          <div class="two-col" style="gap:.75rem">
+            <div class="form-group">
+              <label>Max Failover Nodes</label>
+              <input class="input" id="rcFailoverMax" type="number" min="0" max="5" value="2"
+                     title="How many extra nodes to try automatically when the selected node fails. 0 = disabled.">
+              <div style="font-size:.68rem;color:var(--muted);margin-top:.2rem">0 = disabled · 2 = try 2 extra nodes</div>
+            </div>
+            <div class="form-group">
+              <label>Telemetry</label>
+              <label style="display:flex;align-items:center;gap:.4rem;margin-top:.4rem">
+                <input type="checkbox" id="rcTelemetryEnabled" checked> Enable anonymous connect telemetry
+              </label>
+              <div style="font-size:.68rem;color:var(--muted);margin-top:.25rem">Uncheck to pause telemetry collection without an APK update</div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Disabled Nodes (skip entirely)</label>
+            <div class="tag-list" id="rcNodesDisabled"></div>
+            <div style="display:flex;gap:.35rem;margin-top:.4rem">
+              <input class="input input-sm" id="rcNodeDisInput" placeholder="node-id e.g. fi-hel" style="flex:1;padding:.3rem .5rem;font-size:.75rem">
+              <button class="btn btn-ghost btn-sm" id="rcNodeDisAdd"><?= icon('plus') ?></button>
+            </div>
+            <div style="font-size:.68rem;color:var(--muted);margin-top:.2rem">Nodes listed here are skipped in auto-selection and failover. Use to kill a node without a new APK.</div>
+          </div>
+          <div class="two-col" style="gap:.75rem">
+            <div class="form-group">
+              <label>Extra Logging — Platform</label>
+              <select class="select" id="rcExtraLogPlatform">
+                <option value="">Off</option>
+                <option value="android">Android</option>
+                <option value="ios">iOS</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Extra Logging — Node ID</label>
+              <input class="input" id="rcExtraLogNode" placeholder="primary or fi-hel">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Rollout Fractions (JSON)</label>
+            <textarea class="input" id="rcRollout" rows="3" style="font-family:var(--font-mono);font-size:.72rem;resize:vertical"
+              placeholder='{"node_auto_failover": 1.0, "telemetry_v2": 0.5}'></textarea>
+            <div style="font-size:.68rem;color:var(--muted);margin-top:.2rem">Feature → fraction (0.0–1.0). 1.0 = everyone · 0.5 = 50% · 0.0 = no one</div>
+          </div>
+          <button class="btn btn-primary" id="cfgSaveAdaptive"><?= icon('save') ?> Save Adaptive Flags</button>
+          <span id="adaptiveSaveMsg" style="margin-left:.75rem;font-size:.75rem;color:var(--ok)"></span>
+        </div>
+      </div>
+
+      <div class="panel">
         <div class="panel-header"><span class="panel-title">Bootstrap Server</span><span class="panel-sub">emergency profile used by app on first launch</span></div>
         <div class="panel-body">
           <div class="bootstrap-grid">
@@ -1282,6 +1451,7 @@ const pageTitles = {
   ads:       ['Ads & Revenue', 'rewarded ads · recovery quota · revenue vs cost'],
   payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
+  intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
@@ -2180,6 +2350,163 @@ views.iran = {
     } catch(e) {
       $('iranDevFailTbl').innerHTML = `<tr><td colspan="9" class="tbl-empty">${esc(e.message)}</td></tr>`;
     }
+  },
+};
+
+// ── VIEW: NETWORK INTEL ──────────────────────────────────────────────
+views.intel = {
+  chart: null,
+  init() {
+    $('intelRefreshBtn').addEventListener('click', ()=>this.load());
+    $('intelDays').addEventListener('change', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    const days = $('intelDays').value;
+    $('intelNote').textContent = 'Loading…';
+    try {
+      const d = await api.get('node-intel', {days});
+      this.renderNodes(d.node_scores || {});
+      this.renderPlatform(d.platform_breakdown || []);
+      this.renderNetwork(d.network_breakdown || []);
+      this.renderIsp(d.isp_breakdown || []);
+      this.renderProfiles(d.node_profile_scores || []);
+      this.renderCountry(d.country_breakdown || []);
+      this.renderFailures(d.recent_failures || []);
+      this.renderTimeline(d.timeline || []);
+      $('intelNote').textContent = `Anonymous telemetry · ${days}-day window`;
+    } catch(e) {
+      $('intelNote').textContent = 'Error: ' + esc(e.message);
+    }
+  },
+  renderNodes(scores) {
+    const ids = Object.keys(scores);
+    if (!ids.length) {
+      $('intelNodeTbl').innerHTML = '<tr><td colspan="7" class="tbl-empty">No telemetry data yet — connect events will appear here once the app uploads them.</td></tr>';
+      return;
+    }
+    const rateColor = r => r===null?'var(--muted)':r>=80?'var(--ok)':r>=50?'var(--warn)':'var(--danger)';
+    $('intelNodeTbl').innerHTML = ids.map(id => {
+      const n = scores[id];
+      const rate = n.success_rate;
+      return `<tr>
+        <td><strong>${esc(id)}</strong></td>
+        <td>${fmtNum(n.total)}</td>
+        <td style="color:var(--ok)">${fmtNum(n.ok)}</td>
+        <td style="color:var(--danger)">${fmtNum(n.fail)}</td>
+        <td style="color:${rateColor(rate)};font-weight:700">${rate !== null ? rate+'%' : '—'}</td>
+        <td>${n.avg_latency_ms !== null ? n.avg_latency_ms+' ms' : '—'}</td>
+        <td style="font-size:.7rem;color:var(--muted)">${esc((n.last_event_at||'').replace('T',' ').replace('Z',''))}</td>
+      </tr>`;
+    }).join('');
+  },
+  renderPlatform(rows) {
+    if (!rows.length) { $('intelPlatformTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">No data</td></tr>'; return; }
+    const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
+    $('intelPlatformTbl').innerHTML = rows.map(r => `<tr>
+      <td>${esc(r.node_id)}</td>
+      <td>${r.platform==='ios'?'🍎':r.platform==='android'?'🤖':'?'} ${esc(r.platform)}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
+      <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderNetwork(rows) {
+    if (!rows.length) { $('intelNetworkTbl').innerHTML = '<tr><td colspan="4" class="tbl-empty">No data</td></tr>'; return; }
+    const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
+    $('intelNetworkTbl').innerHTML = rows.map(r => `<tr>
+      <td>${r.network_type==='wifi'?'📶':r.network_type==='mobile'?'📡':'?'} ${esc(r.network_type)}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
+      <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderIsp(rows) {
+    if (!rows.length) { $('intelIspTbl').innerHTML = '<tr><td colspan="7" class="tbl-empty">No ISP data yet (requires isp field in telemetry payload)</td></tr>'; return; }
+    const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
+    $('intelIspTbl').innerHTML = rows.map(r => `<tr>
+      <td class="mono" style="font-size:.72rem">${esc(r.isp_hash)}</td>
+      <td>${esc(r.country||'?')}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
+      <td style="color:var(--danger)">${fmtNum(r.fail)}</td>
+      <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+      <td>${r.avg_latency_ms !== null ? r.avg_latency_ms+' ms' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderProfiles(rows) {
+    if (!rows.length) { $('intelProfileTbl').innerHTML = '<tr><td colspan="6" class="tbl-empty">No data</td></tr>'; return; }
+    const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
+    $('intelProfileTbl').innerHTML = rows.map(r => `<tr>
+      <td>${esc(r.node_id)}</td>
+      <td class="mono" style="font-size:.72rem">${esc(r.profile_id)}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
+      <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+      <td>${r.avg_latency_ms !== null ? r.avg_latency_ms+' ms' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderCountry(rows) {
+    if (!rows.length) { $('intelCountryTbl').innerHTML = '<tr><td colspan="4" class="tbl-empty">No data</td></tr>'; return; }
+    const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
+    $('intelCountryTbl').innerHTML = rows.map(r => `<tr>
+      <td><strong>${esc(r.country)}</strong></td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
+      <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderFailures(rows) {
+    if (!rows.length) { $('intelFailTbl').innerHTML = '<tr><td colspan="10" class="tbl-empty">No recent failures</td></tr>'; return; }
+    const evtColor = e => e==='connect_ok'?'var(--ok)':e==='internet_fail'?'var(--warn)':'var(--danger)';
+    $('intelFailTbl').innerHTML = rows.slice(0,100).map(r => `<tr>
+      <td style="font-size:.68rem;color:var(--muted)">${esc((r.created_at||'').replace('T',' ').replace('Z',''))}</td>
+      <td><span style="color:${evtColor(r.event)};font-size:.72rem;font-weight:700">${esc(r.event)}</span></td>
+      <td>${esc(r.node_id||'')}</td>
+      <td class="mono" style="font-size:.68rem">${esc(r.profile_id||'—')}</td>
+      <td class="mono" style="font-size:.68rem">${esc(r.sni||'—')}</td>
+      <td>${r.platform==='ios'?'🍎':r.platform==='android'?'🤖':'?'} ${esc(r.platform||'?')}</td>
+      <td>${esc(r.network_type||'?')}</td>
+      <td>${esc(r.country||'?')}</td>
+      <td style="font-size:.68rem;color:var(--warn)">${esc(r.failure_stage||'—')}</td>
+      <td>${r.latency_ms !== null && r.latency_ms !== undefined ? r.latency_ms+' ms' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderTimeline(rows) {
+    const canvas = document.getElementById('intelTimelineChart');
+    const emptyEl = $('intelTimelineEmpty');
+    if (!rows.length) {
+      canvas.style.display = 'none';
+      emptyEl.style.display = 'block';
+      return;
+    }
+    canvas.style.display = '';
+    emptyEl.style.display = 'none';
+    if (this.chart) { this.chart.destroy(); this.chart = null; }
+    try {
+      const labels = rows.map(r => r.day);
+      const rates  = rows.map(r => r.success_rate);
+      const totals = rows.map(r => r.total);
+      this.chart = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            { label: 'Success Rate %', data: rates, borderColor: '#4ade80', backgroundColor: 'rgba(74,222,128,.08)', tension: 0.3, yAxisID: 'y' },
+            { label: 'Total Events',   data: totals, borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,.06)', tension: 0.3, yAxisID: 'y2', borderDash: [4,3] },
+          ],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { labels: { color: '#8a9bbf', font: { size: 11 } } } },
+          scales: {
+            x:  { ticks: { color: '#8a9bbf', maxRotation: 45, font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.05)' } },
+            y:  { min: 0, max: 100, position: 'left',  ticks: { color: '#8a9bbf', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.05)' }, title: { display: true, text: 'Success %', color: '#8a9bbf', font: { size: 10 } } },
+            y2: { position: 'right', ticks: { color: '#60a5fa', font: { size: 10 } }, grid: { drawOnChartArea: false }, title: { display: true, text: 'Events', color: '#60a5fa', font: { size: 10 } } },
+          },
+        },
+      });
+    } catch(e) { /* Chart.js not yet loaded / canvas issue */ }
   },
 };
 
@@ -3248,6 +3575,13 @@ views.config = {
       $('bsEdgePort').value  = bs.edgePort||443;
       $('bsWsPath').value    = bs.wsPath||'/ws';
       $('bsXhttpPath').value = bs.xhttpPath||'/xhttp';
+      // Adaptive flags
+      $('rcFailoverMax').value       = rc.failover_max_nodes ?? 2;
+      $('rcTelemetryEnabled').checked = rc.telemetry_enabled !== false;
+      this.renderRcTags('rcNodesDisabled', rc.nodes_disabled||[]);
+      $('rcExtraLogPlatform').value  = rc.extra_logging_platform || '';
+      $('rcExtraLogNode').value      = rc.extra_logging_node || '';
+      $('rcRollout').value           = JSON.stringify(rc.rollout||{}, null, 2);
     } catch(e) { toast('Config: '+e.message,'error'); }
   },
   renderRcTags(elId, arr) {
@@ -3264,9 +3598,8 @@ views.config = {
       </span>`).join('');
   },
   removeTag(elId, idx) {
-    const key = elId==='rcSniPriorities'?'sni_priorities':'kill_switches';
-    this.rcData[key].splice(idx,1);
-    this.renderRcTags(elId, this.rcData[key]);
+    const key = elId==='rcSniPriorities'?'sni_priorities':elId==='rcNodesDisabled'?'nodes_disabled':'kill_switches';
+    if (this.rcData[key]) { this.rcData[key].splice(idx,1); this.renderRcTags(elId, this.rcData[key]); }
   },
   removeProto(idx) {
     this.rcData.protocol_order.splice(idx,1);
@@ -3285,10 +3618,24 @@ views.config = {
     this.rcData.kill_switches.push(v);
     $('rcKsInput').value='';
     this.renderRcTags('rcKillSwitches', this.rcData.kill_switches);
+  },
+  addNodeDis() {
+    const v = $('rcNodeDisInput').value.trim();
+    if (!v) return;
+    if (!this.rcData.nodes_disabled) this.rcData.nodes_disabled = [];
+    this.rcData.nodes_disabled.push(v);
+    $('rcNodeDisInput').value='';
+    this.renderRcTags('rcNodesDisabled', this.rcData.nodes_disabled);
+  },
+  removeNodeDis(idx) {
+    this.rcData.nodes_disabled.splice(idx,1);
+    this.renderRcTags('rcNodesDisabled', this.rcData.nodes_disabled);
   }
 };
-$('rcSniAdd').onclick   = ()=>views.config.addSni();
-$('rcKsAdd').onclick    = ()=>views.config.addKs();
+$('rcSniAdd').onclick        = ()=>views.config.addSni();
+$('rcKsAdd').onclick         = ()=>views.config.addKs();
+$('rcNodeDisAdd').onclick    = ()=>views.config.addNodeDis();
+$('rcNodeDisInput').onkeydown = e=>{ if(e.key==='Enter'){e.preventDefault();views.config.addNodeDis();} };
 $('rcSniInput').onkeydown = e=>{ if(e.key==='Enter'){e.preventDefault();views.config.addSni();} };
 $('rcKsInput').onkeydown  = e=>{ if(e.key==='Enter'){e.preventDefault();views.config.addKs();} };
 
@@ -3310,6 +3657,25 @@ $('cfgSaveRc').onclick = async()=>{
       rc_version: (+(rc.version||1)+1),
     });
     toast('Remote config saved','ok');
+    views.config.load();
+  } catch(e) { toast(e.message,'error'); }
+};
+$('cfgSaveAdaptive').onclick = async()=>{
+  let rollout = {};
+  try { rollout = JSON.parse($('rcRollout').value||'{}'); } catch { toast('Rollout JSON is invalid','error'); return; }
+  const rc = views.config.rcData;
+  try {
+    await api.post({action:'save-remote-config',
+      rc_failover_max_nodes:    parseInt($('rcFailoverMax').value)||2,
+      rc_telemetry_enabled:     $('rcTelemetryEnabled').checked ? '1' : '0',
+      rc_nodes_disabled:        rc.nodes_disabled || [],
+      rc_extra_logging_platform: $('rcExtraLogPlatform').value || '',
+      rc_extra_logging_node:    $('rcExtraLogNode').value || '',
+      rc_rollout:               JSON.stringify(rollout),
+      rc_version: (+(rc.version||1)+1),
+    });
+    $('adaptiveSaveMsg').textContent = '✓ saved';
+    setTimeout(()=>{ $('adaptiveSaveMsg').textContent=''; }, 3000);
     views.config.load();
   } catch(e) { toast(e.message,'error'); }
 };
