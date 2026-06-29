@@ -374,14 +374,14 @@ jobs:
           set -e
           EXT="mobile-app/ios/PacketTunnelExtension/PacketTunnelProvider.swift"
 
-          # 1. SOCK_SEQPACKET is permanently banned in the NE sandbox
-          if grep -n "SOCK_SEQPACKET" "$EXT"; then
-            echo "❌ SOCK_SEQPACKET found in $EXT"
+          # 1. SOCK_SEQPACKET is permanently banned in the NE sandbox (comments are OK)
+          if grep -n "SOCK_SEQPACKET" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//" ; then
+            echo "❌ SOCK_SEQPACKET found in non-comment code in $EXT"
             echo "   This type triggers errno=43 (EPROTOTYPE) in the iOS NE sandbox."
             echo "   Use SOCK_DGRAM — it has identical message boundaries and sandbox-allowed."
             exit 1
           fi
-          echo "✓ SOCK_SEQPACKET: not found"
+          echo "✓ SOCK_SEQPACKET: not found in non-comment code"
 
           # 2. completionHandler(nil) must appear exactly once (the connected_verified path)
           COUNT=$(grep -c "completionHandler(nil)" "$EXT" || true)
