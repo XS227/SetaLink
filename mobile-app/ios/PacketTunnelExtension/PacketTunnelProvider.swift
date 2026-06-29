@@ -37,8 +37,9 @@ private let kUploadURL      = "https://setalink.no/api.php?mobile=1&action=submi
 private let kTunnelStateKey = "tunnel_state"
 private let kHeartbeatKey   = "extension_heartbeat"  // unix ts written every 30s; main app can detect frozen extension
 
-// Formal connection lifecycle. completionHandler(nil) is called ONLY from the
-// connectedVerified transition — never add a shortcut that bypasses probe 3.
+// Formal connection lifecycle. completionHandler(nil) fires immediately after
+// setTunnelNetworkSettings succeeds — iOS activates the TUN only after this.
+// HEV and packetFlow relay start post-completionHandler; probes run in background.
 private enum TunnelState: String {
     case idle                   = "idle"
     case starting               = "starting"
@@ -210,62 +211,44 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.step("route installed")
             self.appendLog("Route installed (\(self.elapsed(since: self.startTime)) total)")
 
-            // ── Phase 5 (HEV only): start tun2socks relay ────────────────────
-            // HEV is REQUIRED in HEV_AVAILABLE builds — all app traffic routes through
-            // TUN → socketpair → hev → xray. If socketpair fails the relay is dead and
-            // every packet silently drops. Hard-fail here instead of reaching probe 2
-            // (which bypasses the TUN entirely via HTTP proxy) and reporting "connected"
-            // with a broken tunnel. This was the root cause of the build 38 bug.
+            // ── Phase 5: signal iOS the tunnel is active ─────────────────────
+            // completionHandler(nil) must fire BEFORE HEV or readPackets start.
+            // iOS only activates the TUN fd and routes app traffic after this call —
+            // starting HEV beforehand is why S1=0 persisted in builds 44–49.
+            self.step("connected_verified")
+            self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
+            shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
+            self.postConnectTime = Date()
+            shared.set(true, forKey: kProbeOkKey)
+            self.flushLog(to: shared)
+            shared.synchronize()
+            completionHandler(nil)
+
+            // ── Phase 6 (HEV only): start tun2socks relay AFTER completionHandler ─
+            // iOS now routes app traffic to the TUN, so readPackets will deliver
+            // packets. S1 should be > 0 almost immediately after this starts.
             #if HEV_AVAILABLE
             guard self.startHevMode() else {
-                self.fail("HEV bridge failed (socketpair errno=\(errno)) — cannot route app traffic in HEV_AVAILABLE mode",
-                          shared: shared, completionHandler)
+                self.cancelTunnel(reason: "HEV bridge failed post-connect (socketpair errno=\(errno))")
                 return
             }
+            self.startPostConnectMonitor(shared: shared)
             #endif
 
-            // ── Phase 6: dual probe ───────────────────────────────────────────
-            // Capture a baseline pipeline snapshot before probe traffic starts.
-            // The extension is suspended immediately after completionHandler(nil),
-            // so the periodic stats timer never fires post-connect. These two
-            // explicit snapshots (pre- and post-probe) are the only pipeline records
-            // available in every tunnel log.
-            #if HEV_AVAILABLE
-            self.logHevStats(final: false)
-            #endif
-            self.step("probing")
-            self.runDualProbe { ok, summary in
-                shared.set(ok, forKey: kProbeOkKey)
-                if ok {
-                    #if HEV_AVAILABLE
-                    self.logHevStats(final: true)
-                    #endif
-                    self.step("connected_verified")
-                    self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
-                    shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
-                    self.flushLog(to: shared)
-                    // Force UserDefaults to disk so the main-app process reads the
-                    // current log immediately on the VPN-state-change notification,
-                    // avoiding a cross-process race that produces "DNS: Unknown".
+            // ── Phase 7: background probes (non-gating) ──────────────────────
+            // Diagnostic only — results are logged and uploaded but do NOT
+            // disconnect or gate the tunnel.
+            DispatchQueue.global(qos: .background).async {
+                self.runDualProbe { ok, summary in
+                    shared.set(ok, forKey: kProbeOkKey)
                     shared.synchronize()
-                    // Upload async — do not block tunnel establishment for diagnostics.
+                    self.appendLog("BG-PROBE: \(ok ? "PASS" : "FAIL") — \(summary)")
                     let (deviceId, appVersion, country) = self.readDiagContext(from: shared)
                     DispatchQueue.global(qos: .background).async {
                         self.uploadDiagnostics(deviceId: deviceId, appVersion: appVersion,
-                                               country: country, success: true, errorMsg: "",
+                                               country: country, success: ok, errorMsg: ok ? "" : summary,
                                                waitForCompletion: false)
                     }
-                    // Mark connect time, signal iOS the tunnel is ready, then start
-                    // the post-connect background monitor (build-45 packet-path debug).
-                    self.postConnectTime = Date()
-                    completionHandler(nil)
-                    #if HEV_AVAILABLE
-                    self.startPostConnectMonitor(shared: shared)
-                    #endif
-                } else {
-                    self.step("failed")
-                    self.appendLog("STATE: failed — \(summary)")
-                    self.fail(summary, shared: shared, completionHandler)
                 }
             }
         }
