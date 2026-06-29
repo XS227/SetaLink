@@ -19,15 +19,26 @@ export async function saveStableDeviceId(deviceId: string): Promise<void> {
   } catch {}
 }
 
-// Returns a stable device ID that survives app restarts, reconnects, and updates.
-// Source priority: SharedPreferences (native) → MMKV mirror → random UUID fallback.
-// Generated once only — never replaced after first creation.
+// Returns a stable device ID that survives app restarts, OTA updates, and
+// TestFlight reinstalls.
+// Source priority: Keychain (via native) → MMKV mirror → random UUID fallback.
+// Migration: if MMKV already has an ID from a pre-Keychain build, we write it
+// to Keychain before calling getOrCreateStableDeviceId so the native side finds
+// it and returns it unchanged rather than generating a new UUID.
 export async function getStableDeviceId(): Promise<string> {
+  const mmkvId = storage.getItem(STABLE_KEY);
+  const hasMmkv = typeof mmkvId === 'string' && (mmkvId as string).length > 4;
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { NativeModules } = require('react-native');
     const mod = NativeModules?.XrayModule;
     if (mod?.getOrCreateStableDeviceId) {
+      // Seed Keychain with the MMKV value so the first run after an OTA upgrade
+      // from a pre-Keychain build doesn't generate a new ID.
+      if (hasMmkv && mod?.saveStableDeviceId) {
+        try { await mod.saveStableDeviceId(mmkvId as string); } catch {}
+      }
       const nativeId: string = await mod.getOrCreateStableDeviceId();
       if (nativeId && nativeId.length > 4) {
         storage.setItem(STABLE_KEY, nativeId);
@@ -36,8 +47,7 @@ export async function getStableDeviceId(): Promise<string> {
     }
   } catch {}
 
-  const existing = storage.getItem(STABLE_KEY);
-  if (existing && typeof existing === 'string' && existing.length > 4) return existing;
+  if (hasMmkv) return mmkvId as string;
 
   const id = `sl-${generateUUID()}`;
   storage.setItem(STABLE_KEY, id);
