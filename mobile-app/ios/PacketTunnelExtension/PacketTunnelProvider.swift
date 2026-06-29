@@ -418,8 +418,35 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         let socks5Ok = e3 == nil && (s3 == 200 || s3 == 204)
                         if socks5Ok {
                             self.appendLog("Probe RX[3]: SOCKS5 OK — status=\(s3!) elapsed=\(t3) — xray SOCKS5 relay confirmed ✓")
-                            self.appendLog("STATE: internet_reachable — all 3 probes passed")
-                            completion(true, "ok")
+                            // Probe 3 goes extension→URLSession→SOCKS5→xray directly.
+                            // It does NOT flow through packetFlow/HEV. S7 > 0 is the
+                            // only proof that the TUN→HEV→xray return path is alive.
+                            // Without it, app traffic goes in but nothing comes back.
+                            var hTxP: size_t = 0, hTxB: size_t = 0
+                            var hRxP: size_t = 0, hRxB: size_t = 0
+                            hev_socks5_tunnel_stats(&hTxP, &hTxB, &hRxP, &hRxB)
+                            let s7C = Int(hRxP)   // authoritative C counter
+                            let s7S = self.hevStats.s7Packets  // swift recv() counter
+                            if s7C == 0 && s7S == 0 {
+                                let s4C = Int(hTxP)
+                                let s1  = self.hevStats.s1Packets
+                                let why: String
+                                if s4C > 0 {
+                                    why = "S4=\(s4C) packets sent by HEV to xray but S7=0 returned — " +
+                                          "xray response path through HEV broken (UDP TCP-path failed?)"
+                                } else if s1 > 0 {
+                                    why = "S1=\(s1) packets entered TUN but S4=0 — HEV socket send() failing"
+                                } else {
+                                    why = "S1=0 — iOS did not route any app traffic through TUN"
+                                }
+                                self.appendLog("TUN-CHECK FAIL: \(why)")
+                                self.appendLog("FAIL: probe 3 passed via direct extension path but TUN→HEV path delivers no return traffic — user apps have no internet")
+                                completion(false, "TUN path broken: \(why)")
+                            } else {
+                                self.appendLog("TUN-CHECK OK: S7=\(max(s7C, s7S)) packets returned through HEV ✓ — full TUN→HEV→xray path confirmed")
+                                self.appendLog("STATE: internet_reachable — all 3 probes passed, TUN path verified")
+                                completion(true, "ok")
+                            }
                         } else {
                             let r3 = e3?.localizedDescription ?? "status=\(s3.map { "\($0)" } ?? "nil")"
                             self.appendLog("Probe RX[3]: SOCKS5 FAIL — \(r3) elapsed=\(t3) — xray SOCKS5 port \(kSocksPort) unreachable ✗")
@@ -898,12 +925,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         socks5:
           port: \(kSocksPort)
           address: '127.0.0.1'
-          udp: 'udp'
+          udp: 'tcp'
         tunnel:
           mtu: 1500
           ipv4: '10.255.0.2'
           ipv6: 'fd00::2'
         """
+        // udp: 'tcp' — routes UDP (DNS) through SOCKS5 TCP CONNECT instead of UDP
+        // ASSOCIATE. iOS NE sandbox blocks UDP ASSOCIATE's response path (S7=0).
+        // TCP CONNECT to the same SOCKS5 port is proven working (probe 3 uses it).
         return yaml.data(using: .utf8)!
     }
 
