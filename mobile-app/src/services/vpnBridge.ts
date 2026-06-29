@@ -27,6 +27,13 @@ export interface TraceTestResult {
   error?: string;
 }
 
+export interface SelfTestResult {
+  test:   string;
+  label:  string;
+  ok:     boolean;
+  detail: string;
+}
+
 export interface VpnAdapter {
   connect(configJson: string): Promise<void>;
   connectEmergency(configJson: string): Promise<void>;
@@ -36,6 +43,8 @@ export interface VpnAdapter {
   getTun2socksLog?(): Promise<string>;
   getGeneratedConfig?(): Promise<string>;
   runTraceTest?(): Promise<TraceTestResult>;
+  runSelfTest?(): Promise<SelfTestResult[]>;
+  getTunnelState?(): Promise<string>;
 }
 
 // ── Mock adapter (used when native module is unavailable) ─────────────────────
@@ -81,6 +90,16 @@ class MockAdapter implements VpnAdapter {
     await sleep(800);
     return { ok: true, statusCode: 200, routedIp: '104.28.0.1', bytesIn: 312, body: 'ip=104.28.0.1\nts=1234567890\n(mock)' };
   }
+  async runSelfTest(): Promise<SelfTestResult[]> {
+    await sleep(1000);
+    return [
+      { test: 'dns',     label: 'DNS Resolution',       ok: true,  detail: 'HTTP 204 · 0B · 0.80s (mock)' },
+      { test: 'https',   label: 'HTTPS (IP-direct)',     ok: true,  detail: 'HTTP 200 · 312B · 0.90s (mock)' },
+      { test: 'route',   label: 'Tunnel Route Verified', ok: true,  detail: 'state=connected_verified probe_ok=true (mock)' },
+      { test: 'exit_ip', label: 'Exit IP',               ok: true,  detail: 'exit IP: 104.28.0.1 (mock)' },
+    ];
+  }
+  async getTunnelState(): Promise<string> { return 'connected_verified'; }
 }
 
 // ── Native adapter (wraps XrayModule TurboModule) ────────────────────────────
@@ -216,6 +235,22 @@ class NativeAdapter implements VpnAdapter {
       return await this.module.runTraceTest();
     } catch {
       return { ok: false, error: 'runTraceTest not available on this platform' };
+    }
+  }
+
+  async runSelfTest(): Promise<SelfTestResult[]> {
+    try {
+      return (await this.module.runSelfTest?.()) ?? [];
+    } catch {
+      return [{ test: 'error', label: 'Self Test', ok: false, detail: 'runSelfTest not available on this platform' }];
+    }
+  }
+
+  async getTunnelState(): Promise<string> {
+    try {
+      return (await this.module.getTunnelState?.()) ?? 'unknown';
+    } catch {
+      return 'unknown';
     }
   }
 }

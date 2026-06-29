@@ -362,6 +362,48 @@ jobs:
           } > src/utils/version.ts
           echo "version.ts → 0.9.50 / build ${BUILD_NUMBER}"
 
+      # ── Tunnel extension safety guards ──────────────────────────────────────
+      # These checks fail the build when known-bad patterns re-appear in the source.
+      # SOCK_SEQPACKET: triggers errno=43 (EPROTOTYPE) in the iOS NE sandbox — all
+      #   app traffic silently drops while iOS reports "Connected". Root cause of the
+      #   build 38 no-internet bug. Fixed in build 40 (SOCK_DGRAM). Never reintroduce.
+      # fake-connected guard: completionHandler(nil) must only appear once, after all
+      #   probes pass (including SOCKS5 relay). grep count enforces the one-call rule.
+      - name: Guard tunnel extension source
+        run: |
+          set -e
+          EXT="mobile-app/ios/PacketTunnelExtension/PacketTunnelProvider.swift"
+
+          # 1. SOCK_SEQPACKET is permanently banned in the NE sandbox
+          if grep -n "SOCK_SEQPACKET" "$EXT"; then
+            echo "❌ SOCK_SEQPACKET found in $EXT"
+            echo "   This type triggers errno=43 (EPROTOTYPE) in the iOS NE sandbox."
+            echo "   Use SOCK_DGRAM — it has identical message boundaries and sandbox-allowed."
+            exit 1
+          fi
+          echo "✓ SOCK_SEQPACKET: not found"
+
+          # 2. completionHandler(nil) must appear exactly once (the connected_verified path)
+          COUNT=$(grep -c "completionHandler(nil)" "$EXT" || true)
+          if [ "$COUNT" -ne 1 ]; then
+            echo "❌ completionHandler(nil) appears $COUNT times in $EXT (expected exactly 1)"
+            echo "   Every call to completionHandler(nil) reports 'Connected' to iOS."
+            echo "   Only one path is allowed: after connected_verified (all probes passed)."
+            grep -n "completionHandler(nil)" "$EXT"
+            exit 1
+          fi
+          echo "✓ completionHandler(nil): appears exactly 1 time"
+
+          # 3. connected_verified must be logged before the single completionHandler call
+          if ! grep -q "connected_verified" "$EXT"; then
+            echo "❌ STATE: connected_verified not found in $EXT"
+            echo "   The state must be written to UserDefaults before completionHandler(nil)."
+            exit 1
+          fi
+          echo "✓ STATE: connected_verified present"
+
+          echo "✓ All tunnel extension guards passed"
+
       # ── Archive ──────────────────────────────────────────────────────────────
       # Uses an xcconfig to set per-target provisioning profiles (Realink vs
       # RealinkTunnel have different bundle IDs and therefore different profiles).

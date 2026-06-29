@@ -32,7 +32,22 @@ private let kDiagAppVer    = "diag_app_version"
 private let kSocksPort: Int = 10808
 private let kHttpPort:  Int = 10809
 
-private let kUploadURL = "https://setalink.no/api.php?mobile=1&action=submit-tunnel-log"
+private let kUploadURL      = "https://setalink.no/api.php?mobile=1&action=submit-tunnel-log"
+private let kTunnelStateKey = "tunnel_state"
+
+// Formal connection lifecycle. completionHandler(nil) is called ONLY from the
+// connectedVerified transition — never add a shortcut that bypasses probe 3.
+private enum TunnelState: String {
+    case idle                   = "idle"
+    case starting               = "starting"
+    case networkSettingsApplied = "network_settings_applied"
+    case hevStarted             = "hev_started"
+    case firstPacketOut         = "first_packet_out"
+    case firstPacketIn          = "first_packet_in"
+    case internetReachable      = "internet_reachable"
+    case connectedVerified      = "connected_verified"
+    case failed                 = "failed"
+}
 
 // ── Parsed fields from the proxy outbound ──────────────────────────────────────
 private struct ConfigMeta {
@@ -63,11 +78,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var configValid    = false
     private var sanitizedCfg   = ""
 
+    private var tunnelState: TunnelState = .idle
+
     // HEV tun2socks relay state (only used when HEV_AVAILABLE)
     #if HEV_AVAILABLE
-    private var hevBridgeFd:    Int32               = -1
-    private var hevRelaySource: DispatchSourceRead?  = nil
-    private var hevStatsTimer:  DispatchSourceTimer? = nil
+    private var hevBridgeFd:         Int32                = -1
+    private var hevRelaySource:      DispatchSourceRead?   = nil
+    private var hevStatsTimer:       DispatchSourceTimer?  = nil
+    private var postConnectWatchdog: DispatchWorkItem?     = nil
 
     // Per-stage pipeline counters.
     // S1 = packetFlow.readPackets delivered
@@ -173,8 +191,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.appendLog("Route installed (\(self.elapsed(since: self.startTime)) total)")
 
             // ── Phase 5 (HEV only): start tun2socks relay ────────────────────
+            // HEV is REQUIRED in HEV_AVAILABLE builds — all app traffic routes through
+            // TUN → socketpair → hev → xray. If socketpair fails the relay is dead and
+            // every packet silently drops. Hard-fail here instead of reaching probe 2
+            // (which bypasses the TUN entirely via HTTP proxy) and reporting "connected"
+            // with a broken tunnel. This was the root cause of the build 38 bug.
             #if HEV_AVAILABLE
-            self.startHevMode()
+            guard self.startHevMode() else {
+                self.fail("HEV bridge failed (socketpair errno=\(errno)) — cannot route app traffic in HEV_AVAILABLE mode",
+                          shared: shared, completionHandler)
+                return
+            }
             #endif
 
             // ── Phase 6: dual probe ───────────────────────────────────────────
@@ -182,8 +209,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.runDualProbe { ok, summary in
                 shared.set(ok, forKey: kProbeOkKey)
                 if ok {
-                    self.step("connected")
-                    self.appendLog("STATE: connected (\(self.elapsed(since: self.startTime)) total)")
+                    self.step("connected_verified")
+                    self.appendLog("STATE: connected_verified (\(self.elapsed(since: self.startTime)) total)")
+                    shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
                     self.flushLog(to: shared)
                     // Upload async — do not block tunnel establishment for diagnostics.
                     let (deviceId, appVersion, country) = self.readDiagContext(from: shared)
@@ -208,6 +236,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                              completionHandler: @escaping () -> Void) {
         appendLog("STATE: stop reason=\(reason.rawValue) (\(stopReasonDescription(reason)))")
         #if HEV_AVAILABLE
+        postConnectWatchdog?.cancel()
+        postConnectWatchdog = nil
         stopHevMode()
         #endif
         stopXrayCore()
@@ -339,17 +369,22 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         "SOCKSPort":   kSocksPort,
                     ]
                     self.appendLog("Probe TX[3]: HTTPS → cp.cloudflare.com via SOCKS5 127.0.0.1:\(kSocksPort) (HEV path)")
+                    // Probe 3 is GATING in HEV mode: the SOCKS5 port (10808) is
+                    // the interface between hev-socks5-tunnel and xray. If it's
+                    // unreachable, HEV cannot forward any app traffic regardless
+                    // of what probe 2 (HTTP proxy 10809) reported.
                     self.fetchURL(URL(string: "https://cp.cloudflare.com/")!, via: socksDict, timeout: 10) { s3, _, e3, t3 in
                         let socks5Ok = e3 == nil && (s3 == 200 || s3 == 204)
                         if socks5Ok {
-                            self.appendLog("Probe RX[3]: SOCKS5 OK — status=\(s3!) elapsed=\(t3) — HEV relay is forwarding traffic")
+                            self.appendLog("Probe RX[3]: SOCKS5 OK — status=\(s3!) elapsed=\(t3) — xray SOCKS5 relay confirmed ✓")
+                            self.appendLog("STATE: internet_reachable — all 3 probes passed")
+                            completion(true, "ok")
                         } else {
                             let r3 = e3?.localizedDescription ?? "status=\(s3.map { "\($0)" } ?? "nil")"
-                            self.appendLog("Probe RX[3]: SOCKS5 FAIL — \(r3) elapsed=\(t3)")
-                            self.appendLog("⚠️ HEV relay may not be active — app traffic (Safari/Telegram) could fail")
+                            self.appendLog("Probe RX[3]: SOCKS5 FAIL — \(r3) elapsed=\(t3) — xray SOCKS5 port \(kSocksPort) unreachable ✗")
+                            self.appendLog("FAIL: HEV mode requires working SOCKS5 relay — cannot verify end-to-end path")
+                            completion(false, "SOCKS5 relay probe failed: \(r3)")
                         }
-                        self.appendLog("First packet sent+received — end-to-end connectivity confirmed")
-                        completion(true, "ok")
                     }
                     #else
                     // Proxy mode: system-routed, NO explicit proxy dict.
@@ -843,15 +878,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     //                         [SOCKS5 client → 127.0.0.1:10808 xray SOCKS inbound]
     //                               ↕
     //                         [xray outbound → VPN server → internet]
-    private func startHevMode() {
+    // Returns false if the bridge cannot start; caller must fail the tunnel.
+    // SOCK_SEQPACKET is permanently banned — it triggers errno=43 (EPROTOTYPE)
+    // in the iOS NE sandbox. SOCK_DGRAM has identical message boundaries.
+    @discardableResult
+    private func startHevMode() -> Bool {
         appendLog("HEV-START: build=\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?") mode=HEV_AVAILABLE socket=AF_UNIX/SOCK_DGRAM")
         var fds = [Int32](repeating: -1, count: 2)
-        // SOCK_SEQPACKET is rejected in the iOS NE sandbox (errno=43 EPROTOTYPE).
-        // SOCK_DGRAM has identical message boundaries — one send() = one IP packet —
-        // so hev-socks5-tunnel sees no difference in framing.
         guard socketpair(AF_UNIX, SOCK_DGRAM, 0, &fds) == 0 else {
-            appendLog("HEV-START: socketpair(AF_UNIX,SOCK_DGRAM) FAILED errno=\(errno) — HEV bridge dead, app traffic will drop")
-            return
+            appendLog("HEV-START: socketpair(AF_UNIX,SOCK_DGRAM) FAILED errno=\(errno) — caller must fail tunnel")
+            return false
         }
         let hevFd   = fds[0]
         hevBridgeFd = fds[1]
@@ -886,6 +922,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             if !self.hevStats.loggedFirstRx {
                 self.hevStats.loggedFirstRx = true
                 self.appendLog("FIRST-PKT-IN: S7 recv \(n)B from HEV ← internet — end-to-end relay confirmed ✓")
+                self.postConnectWatchdog?.cancel()
+                self.postConnectWatchdog = nil
             }
             let version = (packet[0] >> 4) & 0xF
             let proto: NSNumber = version == 6
@@ -910,6 +948,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // ── periodic pipeline stats (5s interval, always on for diagnosis) ───
         startHevStatsTimer()
+        return true
     }
 
     // Chain continuous reads from packetFlow, writing each IP packet to the socket.
@@ -940,6 +979,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         self.hevStats.loggedFirstTx = true
                         let protoName = proto == 6 ? "TCP" : proto == 17 ? "UDP" : "IP(\(proto))"
                         self.appendLog("FIRST-PKT-OUT: S3 sent \(packet.count)B \(protoName)\(dstPort.map { " dstPort=\($0)" } ?? "") → HEV socket")
+                        // Arm 8s watchdog: outbound traffic is flowing but if no
+                        // inbound response arrives, the HEV→internet path is broken.
+                        // Fires only when traffic reaches the TUN; idle tunnels are safe.
+                        let watchdog = DispatchWorkItem { [weak self] in
+                            guard let self = self, !self.hevStats.loggedFirstRx else { return }
+                            self.appendLog("WATCHDOG: 8s since FIRST-PKT-OUT with no FIRST-PKT-IN — internet unreachable through tunnel")
+                            self.cancelTunnel(reason: "No internet response in 8s after first outbound packet — HEV relay or Reality server unreachable")
+                        }
+                        self.postConnectWatchdog = watchdog
+                        DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 8.0, execute: watchdog)
                     }
                 } else {
                     self.hevStats.s3Drop += 1      // S3 drop: send() short/error
@@ -1123,8 +1172,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                       shared: UserDefaults?,
                       _ completionHandler: @escaping (Error?) -> Void) {
         appendLog("FAIL: \(message)")
-        shared?.set(message, forKey: kErrorKey)
-        shared?.set(false,   forKey: kProbeOkKey)
+        shared?.set(message,                     forKey: kErrorKey)
+        shared?.set(false,                       forKey: kProbeOkKey)
+        shared?.set(TunnelState.failed.rawValue, forKey: kTunnelStateKey)
         flushLog(to: shared ?? .standard)
 
         // Upload synchronously — extension process will be killed after completionHandler.
@@ -1135,6 +1185,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         completionHandler(NSError(domain: "no.setalink.tunnel", code: -1,
                                   userInfo: [NSLocalizedDescriptionKey: message]))
+    }
+
+    // Called post-connect when the watchdog detects a dead tunnel (connected but
+    // no internet response). Uploads diagnostics then disconnects via cancelTunnelWithError().
+    private func cancelTunnel(reason: String) {
+        appendLog("WATCHDOG-FAIL: \(reason)")
+        if let shared = UserDefaults(suiteName: kAppGroup) {
+            shared.set(reason,                       forKey: kErrorKey)
+            shared.set(false,                        forKey: kProbeOkKey)
+            shared.set(TunnelState.failed.rawValue,  forKey: kTunnelStateKey)
+            flushLog(to: shared)
+            let (deviceId, appVersion, country) = readDiagContext(from: shared)
+            DispatchQueue.global(qos: .background).async {
+                self.uploadDiagnostics(deviceId: deviceId, appVersion: appVersion,
+                                       country: country, success: false, errorMsg: reason,
+                                       waitForCompletion: false)
+            }
+        }
+        cancelTunnelWithError(NSError(domain: "no.setalink.tunnel", code: -2,
+                                      userInfo: [NSLocalizedDescriptionKey: reason]))
     }
 
     // MARK: - Helpers

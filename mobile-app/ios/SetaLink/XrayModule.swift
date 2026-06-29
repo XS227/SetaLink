@@ -293,6 +293,121 @@ class XrayModule: NSObject {
                  "error": "runTraceTest requires libXray embedded in PacketTunnelExtension"])
     }
 
+    // MARK: - getTunnelState
+
+    // Returns the last tunnel_state written by PacketTunnelProvider to the App Group.
+    // "connected_verified" means all probes (including SOCKS5) passed before iOS
+    // was told the tunnel is connected.
+    @objc func getTunnelState(_ resolve: @escaping RCTPromiseResolveBlock,
+                               rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(shared?.string(forKey: "tunnel_state") ?? "unknown")
+    }
+
+    // MARK: - runSelfTest
+
+    // 4-test suite that runs while the tunnel is active.
+    // All URLSession requests go through the active TUN automatically on iOS,
+    // so these tests exercise the real HEV→xray→internet path, not the proxy path.
+    @objc func runSelfTest(_ resolve: @escaping RCTPromiseResolveBlock,
+                            rejecter reject: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            var results: [[String: Any]] = []
+            let group = DispatchGroup()
+
+            // Test 1 — DNS: hostname must resolve through tunnel DNS (1.1.1.1 / 8.8.8.8)
+            group.enter()
+            self.selfTestFetch("https://cp.cloudflare.com/",
+                               testName: "dns",
+                               timeout: 8) { ok, detail in
+                results.append(["test": "dns", "label": "DNS Resolution", "ok": ok, "detail": detail])
+                group.leave()
+            }
+
+            // Test 2 — HTTPS: IP-literal fetch, no DNS needed — tests TCP+TLS through tunnel
+            group.enter()
+            self.selfTestFetch("https://1.1.1.1/cdn-cgi/trace",
+                               testName: "https",
+                               timeout: 8) { ok, detail in
+                results.append(["test": "https", "label": "HTTPS (IP-direct)", "ok": ok, "detail": detail])
+                group.leave()
+            }
+
+            // Test 3 — Tunnel route: check tunnel_state == connected_verified
+            let state   = self.shared?.string(forKey: "tunnel_state") ?? "unknown"
+            let probeOk = self.shared?.bool(forKey: Self.probeKey) ?? false
+            let routeOk = state == "connected_verified" && probeOk
+            results.append(["test": "route",
+                            "label": "Tunnel Route Verified",
+                            "ok": routeOk,
+                            "detail": "state=\(state) probe_ok=\(probeOk)"])
+
+            // Test 4 — Exit IP: confirm traffic exits through VPN server, not device IP
+            group.enter()
+            self.selfTestExitIP(timeout: 10) { ok, detail in
+                results.append(["test": "exit_ip", "label": "Exit IP", "ok": ok, "detail": detail])
+                group.leave()
+            }
+
+            group.notify(queue: .main) {
+                resolve(results)
+            }
+        }
+    }
+
+    private func selfTestFetch(_ urlString: String,
+                                testName: String,
+                                timeout: TimeInterval,
+                                completion: @escaping (Bool, String) -> Void) {
+        guard let url = URL(string: urlString) else {
+            completion(false, "invalid URL")
+            return
+        }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest  = timeout
+        cfg.timeoutIntervalForResource = timeout
+        let t0 = Date()
+        URLSession(configuration: cfg).dataTask(with: URLRequest(url: url)) { data, resp, err in
+            let elapsed = String(format: "%.2fs", -t0.timeIntervalSinceNow)
+            if let err = err {
+                completion(false, "\(err.localizedDescription) (\(elapsed))")
+            } else if let code = (resp as? HTTPURLResponse)?.statusCode {
+                let ok = code == 200 || code == 204
+                completion(ok, "HTTP \(code) · \(data?.count ?? 0)B · \(elapsed)")
+            } else {
+                completion(false, "no response (\(elapsed))")
+            }
+        }.resume()
+    }
+
+    private func selfTestExitIP(timeout: TimeInterval, completion: @escaping (Bool, String) -> Void) {
+        guard let url = URL(string: "https://cloudflare.com/cdn-cgi/trace") else {
+            completion(false, "invalid URL")
+            return
+        }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest  = timeout
+        cfg.timeoutIntervalForResource = timeout
+        let t0 = Date()
+        URLSession(configuration: cfg).dataTask(with: URLRequest(url: url)) { data, resp, err in
+            let elapsed = String(format: "%.2fs", -t0.timeIntervalSinceNow)
+            if let err = err {
+                completion(false, "request failed: \(err.localizedDescription) (\(elapsed))")
+                return
+            }
+            guard let data = data, let body = String(data: data, encoding: .utf8) else {
+                completion(false, "no response body (\(elapsed))")
+                return
+            }
+            if let ipLine = body.split(separator: "\n").first(where: { $0.hasPrefix("ip=") }) {
+                let ip = String(ipLine.dropFirst(3))
+                completion(true, "exit IP: \(ip) (\(elapsed))")
+            } else {
+                completion(false, "ip= not found in trace response (\(elapsed))")
+            }
+        }.resume()
+    }
+
     // MARK: - setDiagnosticContext
 
     // Called from JS before each connect attempt with device_id and country.

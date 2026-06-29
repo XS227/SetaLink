@@ -89,6 +89,28 @@ export interface Spec extends TurboModule {
     bytesIn?: number;
     error?: string;
   }>;
+
+  /**
+   * Returns the last tunnel_state written by PacketTunnelProvider to the App Group.
+   * "connected_verified" means all probes (incl. SOCKS5 relay) passed before iOS
+   * reported the tunnel as connected. iOS-only; Android returns "n/a".
+   */
+  getTunnelState(): Promise<string>;
+
+  /**
+   * 4-test in-app self-test suite. Runs while tunnel is active — URLSession traffic
+   * is automatically routed through the TUN on iOS, exercising the real HEV path.
+   *   dns      — hostname resolves via tunnel DNS
+   *   https    — IP-direct HTTPS through tunnel (no DNS needed)
+   *   route    — tunnel_state == connected_verified in App Group
+   *   exit_ip  — traffic exits through VPN server (shows exit IP)
+   */
+  runSelfTest(): Promise<Array<{
+    test:   string;
+    label:  string;
+    ok:     boolean;
+    detail: string;
+  }>>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');
