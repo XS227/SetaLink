@@ -90,6 +90,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         var s7Bytes:   Int = 0
         var s8Packets: Int = 0   // S8 writePackets back into packetFlow
 
+        // One-shot flags for immediate per-event logging (fire exactly once).
+        var loggedFirstTx: Bool = false   // first outbound packet through S3
+        var loggedFirstRx: Bool = false   // first inbound packet through S7
+
         // Snapshots at last timer tick — used to compute per-second rates.
         var snapS1: Int = 0
         var snapS3: Int = 0
@@ -840,17 +844,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     //                               ↕
     //                         [xray outbound → VPN server → internet]
     private func startHevMode() {
+        appendLog("HEV-START: build=\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?") mode=HEV_AVAILABLE socket=AF_UNIX/SOCK_DGRAM")
         var fds = [Int32](repeating: -1, count: 2)
         // SOCK_SEQPACKET is rejected in the iOS NE sandbox (errno=43 EPROTOTYPE).
         // SOCK_DGRAM has identical message boundaries — one send() = one IP packet —
         // so hev-socks5-tunnel sees no difference in framing.
         guard socketpair(AF_UNIX, SOCK_DGRAM, 0, &fds) == 0 else {
-            appendLog("HEV: socketpair failed errno=\(errno) — falling back to proxy probe only")
+            appendLog("HEV-START: socketpair(AF_UNIX,SOCK_DGRAM) FAILED errno=\(errno) — HEV bridge dead, app traffic will drop")
             return
         }
         let hevFd   = fds[0]
         hevBridgeFd = fds[1]
-        appendLog("HEV: socketpair ok hevFd=\(hevFd) bridgeFd=\(hevBridgeFd)")
+        appendLog("HEV-START: socketpair(AF_UNIX,SOCK_DGRAM) OK — hevFd=\(hevFd) bridgeFd=\(hevBridgeFd) ✓")
 
         let configData = buildHevConfig()
         appendLog("HEV: config \(configData.count)B — socks5=127.0.0.1:\(kSocksPort) mtu=1500")
@@ -878,6 +883,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             let packet  = Data(buffer[..<n])
             self.hevStats.s7Packets += 1          // S7: received from HEV (from internet)
             self.hevStats.s7Bytes   += n
+            if !self.hevStats.loggedFirstRx {
+                self.hevStats.loggedFirstRx = true
+                self.appendLog("FIRST-PKT-IN: S7 recv \(n)B from HEV ← internet — end-to-end relay confirmed ✓")
+            }
             let version = (packet[0] >> 4) & 0xF
             let proto: NSNumber = version == 6
                 ? NSNumber(value: AF_INET6)
@@ -927,8 +936,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 if sent == packet.count {
                     self.hevStats.s3Written += 1   // S3: socket accepted the packet
+                    if !self.hevStats.loggedFirstTx {
+                        self.hevStats.loggedFirstTx = true
+                        let protoName = proto == 6 ? "TCP" : proto == 17 ? "UDP" : "IP(\(proto))"
+                        self.appendLog("FIRST-PKT-OUT: S3 sent \(packet.count)B \(protoName)\(dstPort.map { " dstPort=\($0)" } ?? "") → HEV socket")
+                    }
                 } else {
                     self.hevStats.s3Drop += 1      // S3 drop: send() short/error
+                    if !self.hevStats.loggedFirstTx && self.hevStats.s3Drop == 1 {
+                        self.appendLog("FIRST-PKT-DROP: S3 send() returned \(sent) (expected \(packet.count)) errno=\(errno) — HEV socket may be closed")
+                    }
                 }
             }
             self.readNextPackets(to: fd)
