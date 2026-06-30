@@ -29,6 +29,15 @@ export function useVpnStats(): VpnStatsResult {
     if (connectionState !== 'connected') {
       prevBytesRef.current = null;
       setStats({ uploadMbps: 0, downloadMbps: 0, pingMs: 0 });
+      // Clear stale throughput from diagnosticsStore. Without this the Diagnostics
+      // screen keeps showing the last MB/s values after disconnect, while
+      // connectionState is already 'idle' — causing the throughput widget and the
+      // Self Test / Real Internet Test guards to disagree about VPN state.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useDiagnosticsStore } = require('../stores/diagnosticsStore');
+        useDiagnosticsStore.getState().clearLiveStats();
+      } catch {}
       return;
     }
 
