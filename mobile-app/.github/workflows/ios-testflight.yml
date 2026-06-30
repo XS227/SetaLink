@@ -1,0 +1,195 @@
+name: iOS TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobile-app/ios/**'
+      - 'mobile-app/src/**'
+      - 'mobile-app/package*.json'
+  workflow_dispatch:
+    inputs:
+      marketing_version:
+        description: 'Marketing version (e.g. 0.9.50)'
+        required: false
+        default: '0.9.50'
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: true
+
+# Required GitHub secrets:
+#   APPLE_TEAM_ID                     — 10-char Apple Team ID
+#   APPLE_DISTRIBUTION_CERTIFICATE    — base64-encoded .p12 file
+#   APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD — .p12 password
+#   PROVISIONING_PROFILE              — base64-encoded main app .mobileprovision
+#   PROVISIONING_PROFILE_NAME         — exact name, e.g. "Realink AppStore"
+#   PROVISIONING_PROFILE_TUNNEL       — base64-encoded tunnel extension .mobileprovision
+#   PROVISIONING_PROFILE_TUNNEL_NAME  — exact name, e.g. "Realink Tunnel AppStore"
+#   ASC_API_KEY_ID                    — App Store Connect API Key ID
+#   ASC_ISSUER_ID                     — App Store Connect Issuer ID
+#   ASC_PRIVATE_KEY                   — base64-encoded AuthKey_XXXXX.p8
+
+jobs:
+  build-and-upload:
+    name: Archive → TestFlight
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: mobile-app
+
+    env:
+      MARKETING_VERSION: ${{ inputs.marketing_version || '0.9.50' }}
+      KEYCHAIN_NAME: build.keychain
+      KEYCHAIN_PASS: ci-keychain-${{ github.run_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile-app/package-lock.json
+
+      - name: Select Xcode 16
+        run: sudo xcode-select -s /Applications/Xcode_16.3.app/Contents/Developer
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('mobile-app/ios/Podfile.lock') }}
+          restore-keys: ${{ runner.os }}-pods-
+
+      - name: Pod install
+        run: pod install
+        working-directory: mobile-app/ios
+
+      # ── Code signing ──────────────────────────────────────────────────────────
+
+      - name: Create keychain
+        run: |
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_NAME"
+          security default-keychain -s "$KEYCHAIN_NAME"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_NAME"
+          security set-keychain-settings -t 3600 -u "$KEYCHAIN_NAME"
+
+      - name: Import distribution certificate
+        env:
+          P12: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE }}
+          P12_PASS: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$P12" | base64 --decode > /tmp/dist.p12
+          security import /tmp/dist.p12 \
+            -k "$KEYCHAIN_NAME" -P "$P12_PASS" \
+            -T /usr/bin/codesign -T /usr/bin/xcodebuild
+          security set-key-partition-list \
+            -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_NAME"
+          rm /tmp/dist.p12
+
+      - name: Install provisioning profiles
+        env:
+          PROFILE_MAIN: ${{ secrets.PROVISIONING_PROFILE }}
+          PROFILE_TUNNEL: ${{ secrets.PROVISIONING_PROFILE_TUNNEL }}
+        run: |
+          PP_DIR=~/Library/MobileDevice/Provisioning\ Profiles
+          mkdir -p "$PP_DIR"
+          for B64 in "$PROFILE_MAIN" "$PROFILE_TUNNEL"; do
+            echo "$B64" | base64 --decode > /tmp/pp.mobileprovision
+            UUID=$(security cms -D -i /tmp/pp.mobileprovision | \
+                   plutil -extract UUID raw -)
+            cp /tmp/pp.mobileprovision "$PP_DIR/$UUID.mobileprovision"
+          done
+          rm -f /tmp/pp.mobileprovision
+
+      - name: Install ASC API key
+        env:
+          KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$KEY" | base64 --decode \
+            > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+
+      # ── Build ─────────────────────────────────────────────────────────────────
+
+      - name: Set build number
+        id: build
+        run: echo "number=$(date +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+
+      - name: Archive
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
+          TUNNEL_PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_TUNNEL_NAME }}
+        run: |
+          set -o pipefail
+          xcodebuild archive \
+            -workspace ios/Realink.xcworkspace \
+            -scheme Realink \
+            -configuration Release \
+            -archivePath /tmp/Realink.xcarchive \
+            CURRENT_PROJECT_VERSION="${{ steps.build.outputs.number }}" \
+            MARKETING_VERSION="$MARKETING_VERSION" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            CODE_SIGN_STYLE=Manual \
+            2>&1 | tee /tmp/xcodebuild-archive.log | \
+            grep -E "(error:|warning:|Archive Succeeded|Build Succeeded|FAILED)" || true
+
+      - name: Export IPA
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
+          TUNNEL_PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_TUNNEL_NAME }}
+        run: |
+          cat > /tmp/ExportOptions.plist << PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store</string>
+            <key>teamID</key><string>${TEAM_ID}</string>
+            <key>uploadBitcode</key><false/>
+            <key>uploadSymbols</key><true/>
+            <key>signingStyle</key><string>manual</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>no.setalink.realink</key><string>${PROFILE_NAME}</string>
+              <key>no.setalink.realink.tunnel</key><string>${TUNNEL_PROFILE_NAME}</string>
+            </dict>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath /tmp/Realink.xcarchive \
+            -exportPath /tmp/Realink-ipa \
+            -exportOptionsPlist /tmp/ExportOptions.plist \
+            2>&1 | tail -30
+
+      - name: Upload to TestFlight
+        env:
+          KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app \
+            --type ios \
+            --file /tmp/Realink-ipa/Realink.ipa \
+            --apiKey "$KEY_ID" \
+            --apiIssuer "$ISSUER"
+          echo "Uploaded build ${{ steps.build.outputs.number }} v$MARKETING_VERSION"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: /tmp/xcodebuild-archive.log
+
+      - name: Clean keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN_NAME" || true
