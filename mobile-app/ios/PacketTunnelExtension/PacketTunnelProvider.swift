@@ -17,7 +17,8 @@ private let kLogKey         = "connection_log"
 private let kTunnelStateKey = "tunnel_state"
 private let kHeartbeatKey   = "tunnel_heartbeat"
 
-private let kSocksPort: Int = 10808
+private let kSocksPort: Int  = 10808
+private let kHttpPort:  Int  = 10809
 
 private enum TunnelState: String {
     case connecting         = "connecting"
@@ -82,10 +83,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         appendLog("XRAY: started")
 
-        // 3. Poll SOCKS5 port (up to 5 s)
+        // 3. Log config details for diagnostics
+        if let info = parseConfigInfo(from: configJSON) {
+            appendLog("Outbound: protocol=\(info.protocol) network=\(info.network) security=\(info.security)")
+            appendLog("Server: \(info.address):\(info.port) sni=\(info.sni) flow=\(info.flow.isEmpty ? "(absent)" : info.flow)")
+        }
+
+        // 4. Poll SOCKS5 port (up to 5 s)
         var portReady = false
         for _ in 0 ..< 25 {
-            if isSocksPortOpen() { portReady = true; break }
+            if isPortOpen(kSocksPort) { portReady = true; break }
             Thread.sleep(forTimeInterval: 0.2)
         }
         guard portReady else {
@@ -93,7 +100,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         appendLog("XRAY: SOCKS5 :\(kSocksPort) ready")
 
-        // 4. Apply network settings (proxy → xray)
+        // 5. Poll HTTP proxy port (up to 5 s) — this is the port iOS NEProxySettings uses
+        var httpReady = false
+        for _ in 0 ..< 25 {
+            if isPortOpen(kHttpPort) { httpReady = true; break }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        guard httpReady else {
+            return fail("HTTP port \(kHttpPort) not ready after 5 s", shared: shared, completionHandler)
+        }
+        appendLog("XRAY: HTTP :\(kHttpPort) ready")
+
+        // 6. Apply network settings (proxy → xray)
         let serverAddr = parseServerAddress(from: configJSON)
         setTunnelNetworkSettings(buildNetworkSettings(serverAddr: serverAddr)) { [weak self] error in
             guard let self = self else { return }
@@ -108,8 +126,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             shared.set("",    forKey: kErrorKey)
             self.flushLog(to: shared)
             shared.synchronize()
-            self.appendLog("CONNECTED: HTTP 127.0.0.1:10809 / SOCKS5 127.0.0.1:\(kSocksPort)")
+            self.appendLog("CONNECTED: HTTP 127.0.0.1:\(kHttpPort) / SOCKS5 127.0.0.1:\(kSocksPort)")
             completionHandler(nil)
+
+            // Background probe: verify xray actually forwards traffic to the VPN server.
+            // Extension traffic bypasses the system VPN, so we explicitly configure
+            // URLSession to use the HTTP proxy at :10809, sending a request through xray.
+            // Updates kProbeOkKey so the main app can show a real connectivity indicator.
+            self.performConnectivityProbe(shared: shared)
 
             // Drain the TUN queue so iOS does not kill the extension for an
             // unresponsive tunnel, and so QUIC/UDP packets are fast-rejected
@@ -216,13 +240,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // MARK: - Helpers
 
-    private func isSocksPortOpen() -> Bool {
+    private func isPortOpen(_ port: Int) -> Bool {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd != -1 else { return false }
         defer { close(fd) }
         var addr        = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port   = UInt16(kSocksPort).bigEndian
+        addr.sin_port   = UInt16(port).bigEndian
         addr.sin_addr.s_addr = inet_addr("127.0.0.1")
         let rc = withUnsafePointer(to: &addr) { p in
             p.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -230,6 +254,87 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
         }
         return rc == 0
+    }
+
+    private struct ConfigInfo {
+        var `protocol`: String
+        var network:    String
+        var security:   String
+        var address:    String
+        var port:       Int
+        var sni:        String
+        var flow:       String
+    }
+
+    private func parseConfigInfo(from json: String) -> ConfigInfo? {
+        guard let data  = json.data(using: .utf8),
+              let root  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let outs  = root["outbounds"] as? [[String: Any]],
+              let first = outs.first
+        else { return nil }
+
+        let proto    = first["protocol"]  as? String ?? "?"
+        let stream   = first["streamSettings"] as? [String: Any] ?? [:]
+        let network  = stream["network"]  as? String ?? "?"
+        let security = stream["security"] as? String ?? "?"
+
+        let reality  = stream["realitySettings"] as? [String: Any] ?? [:]
+        let sni      = reality["serverName"] as? String ?? "?"
+
+        let sett  = first["settings"]   as? [String: Any] ?? [:]
+        let vnext = sett["vnext"]       as? [[String: Any]] ?? []
+        let srv   = vnext.first ?? [:]
+        let addr  = srv["address"]      as? String ?? "?"
+        let port  = srv["port"]         as? Int    ?? 0
+        let user  = (srv["users"] as? [[String: Any]])?.first ?? [:]
+        let flow  = user["flow"]        as? String ?? ""
+
+        return ConfigInfo(protocol: proto, network: network, security: security,
+                          address: addr, port: port, sni: sni, flow: flow)
+    }
+
+    private func performConnectivityProbe(shared: UserDefaults) {
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            guard let self = self else { return }
+            guard let url = URL(string: "https://cp.cloudflare.com/") else { return }
+
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.connectionProxyDictionary = [
+                kCFNetworkProxiesHTTPSEnable as String: 1,
+                kCFNetworkProxiesHTTPSProxy  as String: "127.0.0.1",
+                kCFNetworkProxiesHTTPSPort   as String: kHttpPort,
+                kCFNetworkProxiesHTTPEnable  as String: 1,
+                kCFNetworkProxiesHTTPProxy   as String: "127.0.0.1",
+                kCFNetworkProxiesHTTPPort    as String: kHttpPort,
+            ]
+            cfg.timeoutIntervalForRequest = 10.0
+            let session = URLSession(configuration: cfg)
+
+            let sem   = DispatchSemaphore(value: 0)
+            let start = Date()
+            var probeOk     = false
+            var probeStatus = 0
+
+            let task = session.dataTask(with: URLRequest(url: url)) { _, resp, _ in
+                if let h = resp as? HTTPURLResponse {
+                    probeOk     = true
+                    probeStatus = h.statusCode
+                }
+                sem.signal()
+            }
+            task.resume()
+            _ = sem.wait(timeout: .now() + 10)
+
+            let ms = Int(Date().timeIntervalSince(start) * 1000)
+            if probeOk {
+                self.appendLog("PROBE: cp.cloudflare.com → HTTP \(probeStatus) in \(ms)ms ✓")
+            } else {
+                self.appendLog("PROBE: cp.cloudflare.com → FAIL in \(ms)ms — xray not forwarding traffic")
+                shared.set(false, forKey: kProbeOkKey)
+            }
+            self.flushLog(to: shared)
+            shared.synchronize()
+        }
     }
 
     // Parse outbound server address from xray JSON (VLESS vnext format)
