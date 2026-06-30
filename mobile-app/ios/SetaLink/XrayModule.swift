@@ -307,8 +307,8 @@ class XrayModule: NSObject {
     // MARK: - runSelfTest
 
     // 4-test suite that runs while the tunnel is active.
-    // All URLSession requests go through the active TUN automatically on iOS,
-    // so these tests exercise the real HEV→xray→internet path, not the proxy path.
+    // URLSession requests go through the active NEProxySettings (HTTP CONNECT on :10809),
+    // which routes through xray to the Reality server.
     @objc func runSelfTest(_ resolve: @escaping RCTPromiseResolveBlock,
                             rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
