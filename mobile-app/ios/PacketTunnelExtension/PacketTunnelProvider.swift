@@ -100,17 +100,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         appendLog("XRAY: SOCKS5 :\(kSocksPort) ready")
 
-        // 5. Poll HTTP proxy port (up to 5 s) — this is the port iOS NEProxySettings uses
-        var httpReady = false
-        for _ in 0 ..< 25 {
-            if isPortOpen(kHttpPort) { httpReady = true; break }
-            Thread.sleep(forTimeInterval: 0.2)
-        }
-        guard httpReady else {
-            return fail("HTTP port \(kHttpPort) not ready after 5 s", shared: shared, completionHandler)
-        }
-        appendLog("XRAY: HTTP :\(kHttpPort) ready")
-
         // 6. Apply network settings (proxy → xray)
         let serverAddr = parseServerAddress(from: configJSON)
         setTunnelNetworkSettings(buildNetworkSettings(serverAddr: serverAddr)) { [weak self] error in
@@ -126,24 +115,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             shared.set("",    forKey: kErrorKey)
             self.flushLog(to: shared)
             shared.synchronize()
-            self.appendLog("CONNECTED: HTTP 127.0.0.1:\(kHttpPort) / SOCKS5 127.0.0.1:\(kSocksPort)")
+            self.appendLog("CONNECTED: SOCKS5 127.0.0.1:\(kSocksPort)")
             completionHandler(nil)
 
-            // Background probe: verify xray actually forwards traffic to the VPN server.
-            // Extension traffic bypasses the system VPN, so we explicitly configure
-            // URLSession to use the HTTP proxy at :10809, sending a request through xray.
-            // Updates kProbeOkKey so the main app can show a real connectivity indicator.
+            // Background probe: verify xray SOCKS5 actually forwards traffic.
+            // Extension traffic bypasses the system VPN, so we configure URLSession
+            // explicitly with SOCKS5 proxy dictionary. Updates kProbeOkKey.
             self.performConnectivityProbe(shared: shared)
 
             // Drain the TUN queue so iOS does not kill the extension for an
-            // unresponsive tunnel, and so QUIC/UDP packets are fast-rejected
-            // (Safari falls back from QUIC to TCP/HTTPS in ~1 s instead of
-            // waiting 30 s for the OS socket timeout).
-            //
-            // We discard all packets — the proxy handles HTTP/HTTPS at the
-            // URL loading layer before they reach the TUN. Everything else
-            // (QUIC/UDP, MTProto) is intentionally blocked: xray's routing
-            // rules blackhole udp/443 and IPv6 anyway.
+            // unresponsive tunnel. QUIC/UDP-443 hits TUN and is dropped here —
+            // Safari falls back to TCP in ~1 s. All other TCP goes through the
+            // SOCKS5 PAC proxy before reaching TUN.
             self.drainTunPackets()
         }
     }
@@ -163,11 +146,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         appendLog("STOP: \(stopReasonDescription(reason))")
         livenessTimer?.cancel(); livenessTimer = nil
         pathMonitor?.cancel();   pathMonitor   = nil
-        LibXrayStopXray()
         if let shared = UserDefaults(suiteName: kAppGroup) {
             flushLog(to: shared)
         }
+        // Call completionHandler immediately so iOS tears down the tunnel at once.
+        // LibXrayStopXray() is synchronous and can block for several seconds;
+        // delaying completionHandler causes the UI to hang on "Disconnecting…"
+        // and forces the user to use the kill switch.
         completionHandler()
+        DispatchQueue.global(qos: .utility).async { LibXrayStopXray() }
     }
 
     // MARK: - Network settings
@@ -214,22 +201,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         dns.matchDomains = [""]
         s.dnsSettings = dns
 
-        // HTTP CONNECT proxy → xray HTTP inbound on :10809.
-        // matchDomains=[""] activates the proxy for all hostnames (empty string is a
-        // suffix of every hostname). Without this, iOS ignores the proxy entirely.
-        let httpProx = NEProxyServer(address: "127.0.0.1", port: 10809)
+        // PAC-based SOCKS5 → xray SOCKS5 inbound on :10808 (udp:true in xray config).
+        // SOCKS5 covers ALL TCP (HTTP, HTTPS, raw MTProto) unlike HTTP CONNECT which
+        // only intercepts URLSession-based HTTPS. PAC returns DIRECT for loopback.
         let proxy = NEProxySettings()
-        proxy.httpEnabled            = true
-        proxy.httpServer             = httpProx
-        proxy.httpsEnabled           = true
-        proxy.httpsServer            = httpProx
-        proxy.excludeSimpleHostnames = true
-        proxy.exceptionList          = ["localhost", "127.0.0.1", "::1"]
-        proxy.matchDomains           = [""]
+        proxy.autoProxyConfigurationEnabled    = true
+        proxy.proxyAutoConfigurationJavaScript =
+            "function FindProxyForURL(url,host){" +
+            "if(host==='localhost'||host==='127.0.0.1'||host==='::1')return 'DIRECT';" +
+            "return 'SOCKS 127.0.0.1:\(kSocksPort)';" +
+            "}"
+        proxy.matchDomains = [""]
         s.proxySettings = proxy
 
-        let mdLog = proxy.matchDomains.map { "\($0)" } ?? "nil"
-        appendLog("SETTINGS: server=\(serverAddr ?? "?") proxy=HTTP:10809 matchDomains=\(mdLog) routes=default+serverExcluded ipv6=claim+drop")
+        appendLog("SETTINGS: server=\(serverAddr ?? "?") proxy=SOCKS5:\(kSocksPort) PAC matchDomains=[\"\"] routes=default+serverExcluded ipv6=claim+drop")
         return s
     }
 
@@ -299,14 +284,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let url = URL(string: "https://cp.cloudflare.com/") else { return }
 
             let cfg = URLSessionConfiguration.ephemeral
-            // kCFNetworkProxies* constants are unavailable on iOS — use the raw string keys.
+            // kCFNetworkProxies* constants are unavailable on iOS — use raw string keys.
+            // Use SOCKS5 to match the system proxy (PAC→SOCKS5); probe validates
+            // xray SOCKS5 inbound reachability, not the old HTTP inbound.
             cfg.connectionProxyDictionary = [
-                "HTTPSEnable": 1,
-                "HTTPSProxy":  "127.0.0.1",
-                "HTTPSPort":   kHttpPort,
-                "HTTPEnable":  1,
-                "HTTPProxy":   "127.0.0.1",
-                "HTTPPort":    kHttpPort,
+                "SOCKSEnable": 1,
+                "SOCKSProxy":  "127.0.0.1",
+                "SOCKSPort":   kSocksPort,
             ]
             cfg.timeoutIntervalForRequest = 10.0
             let session = URLSession(configuration: cfg)

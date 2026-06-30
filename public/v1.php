@@ -141,7 +141,27 @@ function v1_primary_node(PDO $pdo): array {
 // Helsinki secondary TEST node. Public key / shortId are non-secret; the test
 // UUID is a dedicated test credential (not a real user). Private keys live only
 // on the Helsinki box. Mirrors the prod inbound structure (Reality + edge).
-function v1_helsinki_node(): array {
+// Per-device UUID overrides for diagnostic isolation (keyed by device ID fragment).
+// These map to dedicated VLESS users on fi-hel port 8443 so individual device
+// traffic is identifiable in the access log without sharing the shared fi-tester slot.
+const V1_FI_HEL_DEVICE_UUIDS = [
+    'sl-ec58c486' => '06f75644-a38a-4591-a063-294673bbbcb4',   // SL-227-6888F163
+    'sl-6341972a' => '2bae0b05-ca90-4abe-89ce-21bcdc9c64c2',   // SL-227-FEF6C131
+    'sl-a7bf102e' => '61cbd9b6-e617-4ae5-9d31-17d6a9f8c56b',   // SL-227-2DA1D1C0
+];
+
+function v1_helsinki_node(?string $deviceId = null): array {
+    // Per-device credential isolation: if this device has a dedicated UUID on fi-hel,
+    // use it so we can distinguish their traffic in xray access.log.
+    $uuid = '92a861cd-6029-4882-9de5-35d9291e0828';
+    if ($deviceId !== null) {
+        foreach (V1_FI_HEL_DEVICE_UUIDS as $fragment => $devUuid) {
+            if (str_contains($deviceId, $fragment)) {
+                $uuid = $devUuid;
+                break;
+            }
+        }
+    }
     return [
         'id'   => 'fi-hel',
         'test' => false,   // promoted to public routing (v0.9.35) — visible & connectable to all
@@ -158,7 +178,7 @@ function v1_helsinki_node(): array {
             'premium'  => false,
         ],
         'creds' => [
-            'uuid'        => '92a861cd-6029-4882-9de5-35d9291e0828',
+            'uuid'        => $uuid,
             'address'     => '65.109.183.7',
             'port'        => 443,
             'publicKey'   => 'eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU',
@@ -201,9 +221,9 @@ function v1_helsinki_node(): array {
     ];
 }
 
-function v1_nodes(PDO $pdo): array {
+function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
-    $h = v1_helsinki_node();
+    $h = v1_helsinki_node($deviceId);
     return [$p['id'] => $p, $h['id'] => $h];
 }
 
@@ -363,7 +383,7 @@ if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
     v1_send(['message' => 'method not allowed'], 405);
 }
 
-$nodes = v1_nodes($pdo);
+$nodes = v1_nodes($pdo, $deviceId);
 
 // ── Connect telemetry ─────────────────────────────────────────────────────────
 // POST /v1/telemetry/connect — anonymous connect outcome upload.
