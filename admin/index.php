@@ -570,6 +570,17 @@ function icon(string $name): string {
         <span style="font-size:.72rem;color:var(--muted)" id="intelNote">Anonymous telemetry from app connects</span>
       </div>
 
+      <!-- Agent Insights -->
+      <div class="panel" style="margin-bottom:1rem" id="intelInsightsPanel">
+        <div class="panel-header">
+          <span class="panel-title">🤖 Intelligence Agent</span>
+          <span class="panel-sub">pattern-based suggestions from telemetry</span>
+        </div>
+        <div id="intelInsights" style="padding:.75rem 1rem">
+          <div class="spinner"></div>
+        </div>
+      </div>
+
       <!-- Node health scores from telemetry -->
       <div class="panel" style="margin-bottom:1rem">
         <div class="panel-header">
@@ -638,6 +649,28 @@ function icon(string $name): string {
           <table>
             <thead><tr><th>Node</th><th>Profile</th><th>Total</th><th>OK</th><th>Rate</th><th>Avg Latency</th></tr></thead>
             <tbody id="intelProfileTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Build breakdown -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">Success by Build Number</span><span class="panel-sub">per build × platform</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Build</th><th>Platform</th><th>Total</th><th>OK</th><th>Rate</th><th>Avg Latency</th></tr></thead>
+            <tbody id="intelBuildTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Probe breakdown -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">App Probe Results</span><span class="panel-sub">% of sessions where each app reached successfully</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>App / Target</th><th>Sessions Tested</th><th>Reached</th><th>Success Rate</th></tr></thead>
+            <tbody id="intelProbeTbl"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -2366,11 +2399,14 @@ views.intel = {
     $('intelNote').textContent = 'Loading…';
     try {
       const d = await api.get('node-intel', {days});
+      this.renderInsights(d.agent_insights || []);
       this.renderNodes(d.node_scores || {});
       this.renderPlatform(d.platform_breakdown || []);
       this.renderNetwork(d.network_breakdown || []);
       this.renderIsp(d.isp_breakdown || []);
       this.renderProfiles(d.node_profile_scores || []);
+      this.renderBuild(d.build_breakdown || []);
+      this.renderProbes(d.probe_breakdown || []);
       this.renderCountry(d.country_breakdown || []);
       this.renderFailures(d.recent_failures || []);
       this.renderTimeline(d.timeline || []);
@@ -2470,6 +2506,43 @@ views.intel = {
       <td>${esc(r.country||'?')}</td>
       <td style="font-size:.68rem;color:var(--warn)">${esc(r.failure_stage||'—')}</td>
       <td>${r.latency_ms !== null && r.latency_ms !== undefined ? r.latency_ms+' ms' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderInsights(rows) {
+    if (!rows.length) {
+      $('intelInsights').innerHTML = '<span style="color:var(--muted);font-size:.85rem">No insights yet.</span>';
+      return;
+    }
+    const icon  = l => l==='warn'?'⚠️':l==='ok'?'✅':'ℹ️';
+    const color = l => l==='warn'?'var(--warn)':l==='ok'?'var(--ok)':'var(--muted)';
+    $('intelInsights').innerHTML = `<div style="display:flex;flex-direction:column;gap:.5rem">`
+      + rows.map(r => `<div style="display:flex;align-items:flex-start;gap:.5rem;padding:.5rem .75rem;border-radius:6px;background:rgba(255,255,255,.04);border-left:3px solid ${color(r.level)}">
+          <span style="flex-shrink:0">${icon(r.level)}</span>
+          <span style="font-size:.85rem;color:var(--text)">${esc(r.message)}</span>
+        </div>`).join('')
+      + '</div>';
+  },
+  renderBuild(rows) {
+    if (!rows.length) { $('intelBuildTbl').innerHTML = '<tr><td colspan="6" class="tbl-empty">No build data yet</td></tr>'; return; }
+    const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
+    $('intelBuildTbl').innerHTML = rows.map(r => `<tr>
+      <td><strong>#${r.build_number}</strong></td>
+      <td>${r.platform==='ios'?'🍎':r.platform==='android'?'🤖':'?'} ${esc(r.platform||'?')}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
+      <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+      <td>${r.avg_latency_ms !== null ? r.avg_latency_ms+' ms' : '—'}</td>
+    </tr>`).join('');
+  },
+  renderProbes(rows) {
+    if (!rows.length) { $('intelProbeTbl').innerHTML = '<tr><td colspan="4" class="tbl-empty">No probe data yet — requires updated app build</td></tr>'; return; }
+    const icons = {google:'🌐',apple:'🍎',telegram:'✈️',cloudflare:'☁️',instagram:'📸'};
+    const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
+    $('intelProbeTbl').innerHTML = rows.map(r => `<tr>
+      <td><strong>${icons[r.probe]||'🔵'} ${esc(r.probe)}</strong></td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
+      <td style="${rateColor(r.success_rate)};font-weight:700">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
     </tr>`).join('');
   },
   renderTimeline(rows) {

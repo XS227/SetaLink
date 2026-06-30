@@ -431,6 +431,19 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'latency_ms'    => v1_body('latency_ms') !== '' ? v1_body('latency_ms') : null,
             'internet_ok'   => v1_body('internet_ok') !== '' ? v1_body('internet_ok') : null,
             'exit_ip_ok'    => v1_body('exit_ip_ok')  !== '' ? v1_body('exit_ip_ok')  : null,
+            'probe_google'         => v1_body('probe_google')         !== '' ? v1_body('probe_google')         : null,
+            'probe_apple'          => v1_body('probe_apple')          !== '' ? v1_body('probe_apple')          : null,
+            'probe_telegram'       => v1_body('probe_telegram')       !== '' ? v1_body('probe_telegram')       : null,
+            'probe_cloudflare'     => v1_body('probe_cloudflare')     !== '' ? v1_body('probe_cloudflare')     : null,
+            'probe_instagram'      => v1_body('probe_instagram')      !== '' ? v1_body('probe_instagram')      : null,
+            'disconnect_reason'    => v1_body('disconnect_reason'),
+            'session_duration_secs'=> v1_body('session_duration_secs') !== '' ? (int)v1_body('session_duration_secs') : null,
+            'bytes_sent'           => v1_body('bytes_sent')           !== '' ? (int)v1_body('bytes_sent')           : null,
+            'bytes_recv'           => v1_body('bytes_recv')           !== '' ? (int)v1_body('bytes_recv')           : null,
+            'dns_ok'               => v1_body('dns_ok')               !== '' ? v1_body('dns_ok')               : null,
+            'time_to_connect_ms'   => v1_body('time_to_connect_ms')   !== '' ? (int)v1_body('time_to_connect_ms')   : null,
+            'error_category'       => v1_body('error_category'),
+            'carrier_name'         => v1_body('carrier_name'),
         ]);
     } catch (\Throwable $_) { /* swallow — telemetry must never break the user flow */ }
     v1_send(['ok' => true]);

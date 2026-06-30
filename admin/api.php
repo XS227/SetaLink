@@ -1360,6 +1360,9 @@ switch ($action) {
             'country_breakdown'   => ni_country_breakdown($db, $days),
             'recent_failures'     => ni_recent_failures($db, 100),
             'timeline'            => ni_timeline($db, min(30, $days)),
+            'agent_insights'      => ni_agent_insights($db, $days),
+            'build_breakdown'     => ni_build_breakdown($db, $days),
+            'probe_breakdown'     => ni_probe_breakdown($db, $days),
         ]);
         break;
     }

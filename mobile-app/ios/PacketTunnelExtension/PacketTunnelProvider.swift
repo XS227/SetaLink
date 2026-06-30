@@ -28,15 +28,28 @@ private enum TunnelState: String {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
 
-    private var log:           [String]             = []
-    private var livenessTimer: DispatchSourceTimer?
-    private var pathMonitor:   NWPathMonitor?
+    private var log:            [String]             = []
+    private var livenessTimer:  DispatchSourceTimer?
+    private var pathMonitor:    NWPathMonitor?
+    private var connectStartTime: Date?
+    private var serverAddr:     String?
+
+    /// URLSession that bypasses the VPN proxy — used for telemetry POSTs so
+    /// the tunnel extension can reach the server even before the proxy is up.
+    private lazy var telemetrySession: URLSession = {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.connectionProxyDictionary = [:]   // no proxy — direct connection
+        cfg.timeoutIntervalForRequest  = 10
+        return URLSession(configuration: cfg)
+    }()
 
     // MARK: - startTunnel
 
     override func startTunnel(options: [String: NSObject]?,
                               completionHandler: @escaping (Error?) -> Void) {
+        connectStartTime = Date()
         guard let shared = UserDefaults(suiteName: kAppGroup) else {
+            submitTelemetry(event: "connect_fail", errorCategory: "config_error")
             return completionHandler(NSError(domain: "no.setalink.tunnel", code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "App Group unavailable"]))
         }
@@ -45,6 +58,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // 1. Read config written by XrayModule.swift
         guard let configJSON = shared.string(forKey: kConfigKey), !configJSON.isEmpty else {
+            submitTelemetry(event: "connect_fail", errorCategory: "config_error")
             return fail("No xray config in App Group", shared: shared, completionHandler)
         }
 
@@ -74,11 +88,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
               let respData = Data(base64Encoded: xrayResponse),
               let respJSON = try? JSONSerialization.jsonObject(with: respData) as? [String: Any]
         else {
+            submitTelemetry(event: "connect_fail", errorCategory: "xray_failed")
             return fail("Xray: undecodable response from libxray", shared: shared, completionHandler)
         }
         let xrayOk  = respJSON["success"] as? Bool   ?? false
         let xrayErr = respJSON["error"]   as? String ?? ""
         guard xrayOk else {
+            submitTelemetry(event: "connect_fail", errorCategory: "xray_failed")
             return fail("Xray: \(xrayErr.isEmpty ? "unknown error" : xrayErr)", shared: shared, completionHandler)
         }
         appendLog("XRAY: started")
@@ -96,15 +112,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             Thread.sleep(forTimeInterval: 0.2)
         }
         guard portReady else {
+            submitTelemetry(event: "connect_fail", errorCategory: "proxy_not_ready")
             return fail("SOCKS5 port \(kSocksPort) not ready after 5 s", shared: shared, completionHandler)
         }
         appendLog("XRAY: SOCKS5 :\(kSocksPort) ready")
 
         // 6. Apply network settings (proxy → xray)
-        let serverAddr = parseServerAddress(from: configJSON)
-        setTunnelNetworkSettings(buildNetworkSettings(serverAddr: serverAddr)) { [weak self] error in
+        let parsedAddr = parseServerAddress(from: configJSON)
+        self.serverAddr = parsedAddr
+        setTunnelNetworkSettings(buildNetworkSettings(serverAddr: parsedAddr)) { [weak self] error in
             guard let self = self else { return }
             if let e = error {
+                self.submitTelemetry(event: "connect_fail", errorCategory: "routing_failed")
                 return self.fail("Network settings: \(e.localizedDescription)",
                                  shared: shared, completionHandler)
             }
@@ -116,6 +135,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.flushLog(to: shared)
             shared.synchronize()
             self.appendLog("CONNECTED: SOCKS5 127.0.0.1:\(kSocksPort)")
+            // Report successful connect with time-to-connect
+            let latencyMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
+            self.submitTelemetry(event: "connect_ok", latencyMs: latencyMs)
             completionHandler(nil)
 
             // Background probe: verify xray SOCKS5 actually forwards traffic.
@@ -143,7 +165,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func stopTunnel(with reason: NEProviderStopReason,
                              completionHandler: @escaping () -> Void) {
-        appendLog("STOP: \(stopReasonDescription(reason))")
+        let reasonStr = stopReasonDescription(reason)
+        appendLog("STOP: \(reasonStr)")
+        submitTelemetry(event: "disconnect", disconnectReason: reasonStr)
         livenessTimer?.cancel(); livenessTimer = nil
         pathMonitor?.cancel();   pathMonitor   = nil
         if let shared = UserDefaults(suiteName: kAppGroup) {
@@ -392,6 +416,48 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         case .idleTimeout:                return "idleTimeout"
         default:                          return "other(\(r.rawValue))"
         }
+    }
+
+    // MARK: - Telemetry
+
+    /// Fire-and-forget anonymous telemetry POST to /v1/telemetry/connect.
+    /// Uses a direct (no-proxy) URLSession so it works before and after tunnel teardown.
+    private func submitTelemetry(
+        event:            String,
+        latencyMs:        Int?    = nil,
+        disconnectReason: String? = nil,
+        errorCategory:    String? = nil
+    ) {
+        guard let url = URL(string: "https://setalink.no/v1/telemetry/connect") else { return }
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: "event",        value: event),
+            URLQueryItem(name: "node_id",      value: serverAddr ?? "primary"),
+            URLQueryItem(name: "platform",     value: "ios"),
+            URLQueryItem(name: "app_version",  value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""),
+            URLQueryItem(name: "build_number", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"),
+            URLQueryItem(name: "protocol",     value: "VLESS + Reality"),
+        ]
+        if let ms = latencyMs {
+            items.append(URLQueryItem(name: "time_to_connect_ms", value: String(ms)))
+        }
+        if let reason = disconnectReason {
+            items.append(URLQueryItem(name: "disconnect_reason", value: reason))
+        }
+        if let cat = errorCategory {
+            items.append(URLQueryItem(name: "error_category", value: cat))
+        }
+        if let start = connectStartTime, event != "connect_ok" {
+            let dur = Int(Date().timeIntervalSince(start))
+            items.append(URLQueryItem(name: "session_duration_secs", value: String(dur)))
+        }
+        var comps        = URLComponents()
+        comps.queryItems = items
+        guard let body = comps.query?.data(using: .utf8) else { return }
+        var req = URLRequest(url: url, timeoutInterval: 10)
+        req.httpMethod  = "POST"
+        req.httpBody    = body
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        telemetrySession.dataTask(with: req) { _, _, _ in }.resume()
     }
 
 }

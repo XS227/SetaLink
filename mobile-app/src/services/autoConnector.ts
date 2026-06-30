@@ -25,8 +25,8 @@ import { getLastConnectProbeOk, getLastConnectFailureCategory } from './vpnBridg
 import { recordSuccess, recordFailure, sortByHistory, getTopProfiles } from './successHistory';
 import { getRemoteConfig, isKillSwitched, invalidateRemoteConfig } from './remoteConfigService';
 import { getSpoofSnisSync, prefetchBundle } from './profileBundleService';
-import { uploadConnectTelemetry } from './api/telemetry.api';
-import type { TelemetryEvent }    from './api/telemetry.api';
+import { uploadConnectTelemetry }              from './api/telemetry.api';
+import type { TelemetryEvent, ConnectTelemetryPayload } from './api/telemetry.api';
 import { APP_VERSION, APP_BUILD_CODE } from '../utils/version';
 
 // Kick off bundle prefetch at import time (non-blocking)
@@ -653,18 +653,27 @@ function _reportTelemetry(
       : undefined;
   } catch {}
 
+  // Map failureCategory to a structured error_category enum value
+  const errorCat: ConnectTelemetryPayload['error_category'] =
+    p.failureCategory?.includes('dns')     ? 'dns_failed'        :
+    p.failureCategory?.includes('timeout') ? 'server_unreachable':
+    p.failureCategory?.includes('proxy')   ? 'proxy_not_ready'   :
+    p.failureCategory                      ? 'routing_failed'    : undefined;
+
   uploadConnectTelemetry({
-    event:         profileTelemetryEvent(p),
-    node_id:       nodeId,
-    profile_id:    p.id,
-    sni:           p.sni,
-    protocol:      p.protocol,
-    platform:      Platform.OS as 'android' | 'ios',
-    app_version:   APP_VERSION,
-    build_number:  APP_BUILD_CODE,
-    failure_stage: p.failureCategory ?? undefined,
-    latency_ms:    p.latencyMs,
-    internet_ok:   p.probeOk ?? false,
+    event:             profileTelemetryEvent(p),
+    node_id:           nodeId,
+    profile_id:        p.id,
+    sni:               p.sni,
+    protocol:          p.protocol,
+    platform:          Platform.OS as 'android' | 'ios',
+    app_version:       APP_VERSION,
+    build_number:      APP_BUILD_CODE,
+    failure_stage:     p.failureCategory ?? undefined,
+    latency_ms:        p.latencyMs,
+    internet_ok:       p.probeOk ?? false,
+    time_to_connect_ms: p.latencyMs,
+    error_category:    errorCat,
   }, token);
 }
 
