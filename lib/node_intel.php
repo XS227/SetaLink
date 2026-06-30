@@ -61,6 +61,10 @@ function ni_init_tables(PDO $pdo): void
         "time_to_connect_ms    INTEGER DEFAULT NULL",
         "error_category        TEXT    DEFAULT NULL",
         "carrier_name          TEXT    DEFAULT NULL",
+        "nat_type              TEXT    DEFAULT NULL",
+        "ip_version            TEXT    DEFAULT NULL",
+        "rtt_ms                INTEGER DEFAULT NULL",
+        "network_switched      INTEGER DEFAULT NULL",
     ];
     foreach ($newCols as $colDef) {
         try {
@@ -118,6 +122,13 @@ function ni_record(PDO $pdo, array $d): void
         $errCat = 'unknown';
     }
 
+    // Validate new enum fields
+    $natType = (string)($d['nat_type'] ?? '');
+    $natType = in_array($natType, ['full_cone', 'symmetric', 'port_restricted', 'unknown'], true) ? $natType : null;
+
+    $ipVersion = (string)($d['ip_version'] ?? '');
+    $ipVersion = in_array($ipVersion, ['ipv4', 'ipv6', 'dual', 'unknown'], true) ? $ipVersion : null;
+
     $pdo->prepare(
         "INSERT INTO connect_telemetry
             (event,node_id,profile_id,sni,protocol,platform,app_version,build_number,
@@ -125,8 +136,9 @@ function ni_record(PDO $pdo, array $d): void
              internet_ok,exit_ip_ok,
              probe_google,probe_apple,probe_telegram,probe_cloudflare,probe_instagram,
              disconnect_reason,session_duration_secs,bytes_sent,bytes_recv,
-             dns_ok,time_to_connect_ms,error_category,carrier_name)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             dns_ok,time_to_connect_ms,error_category,carrier_name,
+             nat_type,ip_version,rtt_ms,network_switched)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )->execute([
         ni_valid_event((string)($d['event']        ?? 'connect_fail')),
         substr((string)($d['node_id']    ?? 'primary'),  0, 40),
@@ -158,6 +170,11 @@ function ni_record(PDO $pdo, array $d): void
         ($d['time_to_connect_ms'] ?? null) !== null && $d['time_to_connect_ms'] !== '' ? max(0, (int)$d['time_to_connect_ms']) : null,
         $errCat ?: null,
         substr((string)($d['carrier_name'] ?? ''), 0, 30) ?: null,
+        // New diagnostic fields
+        $natType,
+        $ipVersion,
+        ($d['rtt_ms'] ?? null) !== null && $d['rtt_ms'] !== '' ? max(0, (int)$d['rtt_ms']) : null,
+        ($d['network_switched'] ?? null) !== null && $d['network_switched'] !== '' ? (int)(bool)$d['network_switched'] : null,
     ]);
 }
 
@@ -702,4 +719,312 @@ function ni_agent_insights(PDO $pdo, int $days = 7): array
     }
 
     return $insights;
+}
+
+/**
+ * AI Recommendations engine — generates actionable, prioritised recommendations
+ * from 8 telemetry pattern detectors.
+ *
+ * Each recommendation:
+ *   type     => 'route|infra|protocol|security|platform'
+ *   severity => 'critical|warn|info'
+ *   title    => short headline
+ *   body     => supporting evidence
+ *   action   => concrete next step
+ *
+ * Returns array sorted critical → warn → info. Empty if insufficient data.
+ */
+function ni_recommendations(PDO $pdo, int $days = 7): array
+{
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+
+    // Require at least 5 events to generate any recommendation
+    $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM connect_telemetry WHERE created_at >= ?");
+    $cntStmt->execute([$since]);
+    if ((int)$cntStmt->fetchColumn() < 5) return [];
+
+    $recs = [];
+
+    // ── Pattern 1: Carrier routing mismatch (ROUTE, warn) ────────────────────
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT carrier_name, carrier_hash, node_id,
+                    COUNT(*) AS total, SUM(event='connect_ok') AS ok
+               FROM connect_telemetry
+              WHERE created_at >= :since AND carrier_name IS NOT NULL AND carrier_name != ''
+              GROUP BY carrier_hash, node_id
+             HAVING total >= 5"
+        );
+        $stmt->execute([':since' => $since]);
+        $byCarrier = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $r['rate'] = (int)$r['total'] > 0 ? (int)$r['ok'] / (int)$r['total'] * 100 : 0;
+            $byCarrier[$r['carrier_hash']][] = $r;
+        }
+        foreach ($byCarrier as $nodes) {
+            if (count($nodes) < 2) continue;
+            $best = $worst = null;
+            foreach ($nodes as $n) {
+                if ($best  === null || $n['rate'] > $best['rate'])  $best  = $n;
+                if ($worst === null || $n['rate'] < $worst['rate']) $worst = $n;
+            }
+            if ($best['node_id'] === $worst['node_id']) continue;
+            $diff = $best['rate'] - $worst['rate'];
+            if ($diff >= 20 && (int)$best['total'] >= 5 && (int)$worst['total'] >= 5) {
+                $badRate  = round($worst['rate'], 1);
+                $goodRate = round($best['rate'], 1);
+                $recs[] = [
+                    'type'     => 'route',
+                    'severity' => 'warn',
+                    'title'    => "Route {$worst['carrier_name']} to {$best['node_id']}",
+                    'body'     => "{$worst['carrier_name']}: {$badRate}% success on {$worst['node_id']}, {$goodRate}% on {$best['node_id']} ({$worst['total']} sessions)",
+                    'action'   => "Add carrier-based routing rule in server config or recommend users switch to {$best['node_id']}",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // ── Pattern 2: Infrastructure RTT spike (INFRA, critical/warn) ───────────
+    try {
+        $recentStmt = $pdo->prepare(
+            "SELECT node_id, AVG(rtt_ms) AS avg_rtt, COUNT(*) AS cnt
+               FROM connect_telemetry
+              WHERE created_at >= datetime('now','-6 hours') AND rtt_ms IS NOT NULL AND rtt_ms > 0
+              GROUP BY node_id HAVING cnt >= 5"
+        );
+        $recentStmt->execute();
+        $recent = [];
+        foreach ($recentStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $recent[$r['node_id']] = $r;
+        }
+        $histStmt = $pdo->prepare(
+            "SELECT node_id, AVG(rtt_ms) AS avg_rtt_hist, COUNT(*) AS cnt
+               FROM connect_telemetry
+              WHERE created_at >= :since AND created_at < datetime('now','-6 hours')
+                AND rtt_ms IS NOT NULL AND rtt_ms > 0
+              GROUP BY node_id HAVING cnt >= 10"
+        );
+        $histStmt->execute([':since' => $since]);
+        foreach ($histStmt->fetchAll(PDO::FETCH_ASSOC) as $h) {
+            $nodeId = $h['node_id'];
+            if (!isset($recent[$nodeId])) continue;
+            $current = (float)$recent[$nodeId]['avg_rtt'];
+            $hist    = (float)$h['avg_rtt_hist'];
+            if ($hist <= 0) continue;
+            $ratio = $current / $hist;
+            $sev = $ratio >= 2.0 ? 'critical' : ($ratio >= 1.5 ? 'warn' : null);
+            if ($sev === null) continue;
+            $recs[] = [
+                'type'     => 'infra',
+                'severity' => $sev,
+                'title'    => "{$nodeId} latency spike — " . (int)round($current) . "ms vs " . (int)round($hist) . "ms 7-day avg",
+                'body'     => "RTT " . ($ratio >= 2.0 ? 'jumped' : 'elevated') . " to " . (int)round($current) . "ms (was " . (int)round($hist) . "ms historical avg)",
+                'action'   => "Check server load, connectivity, or add backup node",
+            ];
+        }
+    } catch (\Throwable $_) {}
+
+    // ── Pattern 3: Telegram blocked on cellular (PROTOCOL, warn) ─────────────
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT
+               SUM(CASE WHEN network_type='mobile' AND probe_telegram=0 THEN 1 ELSE 0 END) AS tg_fail_mobile,
+               SUM(CASE WHEN network_type='mobile' AND probe_telegram IS NOT NULL THEN 1 ELSE 0 END) AS tg_tested_mobile
+             FROM connect_telemetry WHERE created_at >= :since"
+        );
+        $stmt->execute([':since' => $since]);
+        $r = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($r) {
+            $tested = (int)$r['tg_tested_mobile'];
+            $fail   = (int)$r['tg_fail_mobile'];
+            if ($tested >= 5 && $fail / $tested > 0.60) {
+                $pct = round($fail / $tested * 100, 1);
+                $recs[] = [
+                    'type'     => 'protocol',
+                    'severity' => 'warn',
+                    'title'    => "Telegram blocked on cellular ({$pct}% fail rate)",
+                    'body'     => "{$pct}% of Telegram sessions fail on mobile networks ({$fail}/{$tested} sessions)",
+                    'action'   => "UDP relay or SOCKS5 proxy for MTProto traffic may be needed",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // ── Pattern 4: IP reputation — probe failure by node (SECURITY, warn) ────
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT node_id,
+               SUM(CASE WHEN probe_instagram=0 THEN 1 ELSE 0 END) AS ig_fail,
+               SUM(CASE WHEN probe_instagram IS NOT NULL THEN 1 ELSE 0 END) AS ig_total,
+               SUM(CASE WHEN probe_telegram=0 THEN 1 ELSE 0 END) AS tg_fail,
+               SUM(CASE WHEN probe_telegram IS NOT NULL THEN 1 ELSE 0 END) AS tg_total
+             FROM connect_telemetry WHERE created_at >= :since
+             GROUP BY node_id"
+        );
+        $stmt->execute([':since' => $since]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $igTotal = (int)$r['ig_total'];
+            $tgTotal = (int)$r['tg_total'];
+            $igFail  = (int)$r['ig_fail'];
+            $tgFail  = (int)$r['tg_fail'];
+            $igRate  = $igTotal >= 5 ? round($igFail / $igTotal * 100, 1) : null;
+            $tgRate  = $tgTotal >= 5 ? round($tgFail / $tgTotal * 100, 1) : null;
+            if (($igRate !== null && $igRate > 65) || ($tgRate !== null && $tgRate > 65)) {
+                $igDisplay = $igRate !== null ? "{$igRate}%" : "n/a";
+                $tgDisplay = $tgRate !== null ? "{$tgRate}%" : "n/a";
+                $recs[] = [
+                    'type'     => 'security',
+                    'severity' => 'warn',
+                    'title'    => "{$r['node_id']} exit IP has reputation issues",
+                    'body'     => "Instagram: {$igDisplay} fail, Telegram: {$tgDisplay} fail. Hetzner IPs can be flagged by Meta/Telegram.",
+                    'action'   => "Request new IP from provider or add IP rotation for {$r['node_id']}",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // ── Pattern 5: Build regression (PLATFORM, critical/info) ────────────────
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT build_number, COUNT(*) AS total, SUM(event='connect_ok') AS ok
+               FROM connect_telemetry WHERE created_at >= :since AND build_number > 0
+              GROUP BY build_number HAVING total >= 5
+              ORDER BY build_number DESC LIMIT 3"
+        );
+        $stmt->execute([':since' => $since]);
+        $builds = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (count($builds) >= 2) {
+            $latest     = $builds[0];
+            $prev       = $builds[1];
+            $latestRate = (int)$latest['total'] > 0 ? round((int)$latest['ok'] / (int)$latest['total'] * 100, 1) : 0;
+            $prevRate   = (int)$prev['total']   > 0 ? round((int)$prev['ok']   / (int)$prev['total']   * 100, 1) : 0;
+            $drop = round($prevRate - $latestRate, 1);
+            $gain = round($latestRate - $prevRate, 1);
+            if ($drop >= 15) {
+                $recs[] = [
+                    'type'     => 'platform',
+                    'severity' => 'critical',
+                    'title'    => "Build #{$latest['build_number']} regression — success rate dropped {$drop}%",
+                    'body'     => "Build #{$latest['build_number']}: {$latestRate}% vs Build #{$prev['build_number']}: {$prevRate}% success rate",
+                    'action'   => "Investigate and hotfix or revert build #{$latest['build_number']}",
+                ];
+            } elseif ($gain >= 10) {
+                $recs[] = [
+                    'type'     => 'platform',
+                    'severity' => 'info',
+                    'title'    => "Build #{$latest['build_number']} improved success rate by {$gain}%",
+                    'body'     => "Build #{$latest['build_number']}: {$latestRate}% vs Build #{$prev['build_number']}: {$prevRate}% success rate",
+                    'action'   => "Push update notification to users still on build #{$prev['build_number']}",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // ── Pattern 6: Network switch failures (PROTOCOL, warn) ──────────────────
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT
+               SUM(CASE WHEN network_switched=1 AND event!='connect_ok' THEN 1 ELSE 0 END) AS switch_fail,
+               SUM(network_switched=1) AS switch_total,
+               SUM(CASE WHEN network_switched=0 AND event!='connect_ok' THEN 1 ELSE 0 END) AS noswitch_fail,
+               SUM(network_switched=0) AS noswitch_total
+             FROM connect_telemetry WHERE created_at >= :since"
+        );
+        $stmt->execute([':since' => $since]);
+        $r = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($r) {
+            $switchTotal   = (int)$r['switch_total'];
+            $switchFail    = (int)$r['switch_fail'];
+            $noswitchTotal = (int)$r['noswitch_total'];
+            $noswitchFail  = (int)$r['noswitch_fail'];
+            if ($switchTotal >= 5) {
+                $switchRate   = $switchFail / $switchTotal;
+                $noswitchRate = $noswitchTotal > 0 ? $noswitchFail / $noswitchTotal : 0;
+                if ($switchRate > 0.50 && ($noswitchRate < 0.001 || $switchRate >= $noswitchRate * 2)) {
+                    $pct = round($switchRate * 100, 1);
+                    $recs[] = [
+                        'type'     => 'protocol',
+                        'severity' => 'warn',
+                        'title'    => "WiFi→Mobile switches cause {$pct}% session failures",
+                        'body'     => "Sessions where network changed during connect: {$switchFail}/{$switchTotal} failed",
+                        'action'   => "Implement reconnect-on-network-change or always-on VPN mode",
+                    ];
+                }
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // ── Pattern 7: NAT type issues (PROTOCOL, warn/info) ─────────────────────
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT nat_type, COUNT(*) AS total, SUM(event='connect_ok') AS ok
+               FROM connect_telemetry WHERE created_at >= :since AND nat_type IS NOT NULL
+              GROUP BY nat_type HAVING total >= 5"
+        );
+        $stmt->execute([':since' => $since]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            if ($r['nat_type'] !== 'symmetric') continue;
+            $natTotal    = (int)$r['total'];
+            $natOk       = (int)$r['ok'];
+            $natFail     = $natTotal - $natOk;
+            $successRate = $natTotal > 0 ? round($natOk / $natTotal * 100, 1) : 0;
+            if ($successRate < 70) {
+                $pct = round($natFail / $natTotal * 100, 1);
+                $recs[] = [
+                    'type'     => 'protocol',
+                    'severity' => $successRate < 50 ? 'warn' : 'info',
+                    'title'    => "Symmetric NAT detected in {$pct}% of failures",
+                    'body'     => "Symmetric NAT restricts UDP. {$natTotal} sessions with symmetric NAT, {$natFail} failed.",
+                    'action'   => "Reality/VLESS over TCP is already configured — ensure UDP fallback is disabled",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // ── Pattern 8: IPv6 performance (INFRA, info/warn) ───────────────────────
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT ip_version, COUNT(*) AS total, SUM(event='connect_ok') AS ok
+               FROM connect_telemetry WHERE created_at >= :since AND ip_version IS NOT NULL
+              GROUP BY ip_version HAVING total >= 5"
+        );
+        $stmt->execute([':since' => $since]);
+        $ipVersions = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $total = (int)$r['total'];
+            $ok    = (int)$r['ok'];
+            $ipVersions[$r['ip_version']] = [
+                'rate' => $total > 0 ? round($ok / $total * 100, 1) : 0,
+            ];
+        }
+        if (isset($ipVersions['ipv4'], $ipVersions['ipv6'])) {
+            $ipv4Rate = $ipVersions['ipv4']['rate'];
+            $ipv6Rate = $ipVersions['ipv6']['rate'];
+            $diff = round(abs($ipv6Rate - $ipv4Rate), 1);
+            if ($ipv6Rate > $ipv4Rate + 10) {
+                $recs[] = [
+                    'type'     => 'infra',
+                    'severity' => 'info',
+                    'title'    => "IPv6 users connect {$diff}% more reliably than IPv4",
+                    'body'     => "IPv6 success rate: {$ipv6Rate}% vs IPv4: {$ipv4Rate}%",
+                    'action'   => "Prioritise IPv6 addressing on server for better performance",
+                ];
+            } elseif ($ipv4Rate > $ipv6Rate + 10) {
+                $recs[] = [
+                    'type'     => 'infra',
+                    'severity' => 'warn',
+                    'title'    => "IPv6 users have {$diff}% lower success rate — check IPv6 connectivity on server",
+                    'body'     => "IPv6 success rate: {$ipv6Rate}% vs IPv4: {$ipv4Rate}%",
+                    'action'   => "Check IPv6 connectivity on server or disable dual-stack for this node",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // Sort: critical → warn → info
+    $order = ['critical' => 0, 'warn' => 1, 'info' => 2];
+    usort($recs, fn($a, $b) => ($order[$a['severity']] ?? 3) <=> ($order[$b['severity']] ?? 3));
+
+    return $recs;
 }

@@ -674,6 +674,11 @@ function _reportTelemetry(
     internet_ok:       p.probeOk ?? false,
     time_to_connect_ms: p.latencyMs,
     error_category:    errorCat,
+    // Extended diagnostics (Phase 7)
+    ip_version:        'ipv4' as const, // Our servers are IPv4; Android native layer may override via getStats()
+    rtt_ms:            p.latencyMs ? Math.round(p.latencyMs * 0.3) : undefined,
+    // 30% of total connect latency approximates server RTT (rest is TLS + xray setup)
+    // network_switched: set by Android native layer via XrayVpnService broadcast
   }, token);
 }
 
