@@ -47,8 +47,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             return fail("No xray config in App Group", shared: shared, completionHandler)
         }
 
-        // 2. Start xray core
-        let b64 = Data(configJSON.utf8).base64EncodedString()
+        // 2. Instrument config handoff
+        appendLog("CONFIG: \(configJSON.count) bytes")
+        let preview = String(configJSON.prefix(200))
+            .replacingOccurrences(of: "\"id\":\"[^\"]+\"",        with: "\"id\":\"[REDACTED]\"",        options: .regularExpression)
+            .replacingOccurrences(of: "\"publicKey\":\"[^\"]+\"", with: "\"publicKey\":\"[REDACTED]\"", options: .regularExpression)
+            .replacingOccurrences(of: "\"shortId\":\"[^\"]+\"",   with: "\"shortId\":\"[REDACTED]\"",   options: .regularExpression)
+        appendLog("CONFIG_PREVIEW: \(preview)")
+
+        // LibXrayRunXrayFromJSON expects base64({"datDir":"","configJSON":"<raw-xray-config>"})
+        // NOT base64(<raw-xray-config>) — build 56 passed raw JSON, causing xray to hit EOF.
+        guard let wrapperData = try? JSONSerialization.data(
+            withJSONObject: ["datDir": "", "configJSON": configJSON]
+        ) else {
+            return fail("Config wrapper serialization failed", shared: shared, completionHandler)
+        }
+        let b64 = wrapperData.base64EncodedString()
+        appendLog("CONFIG_B64: \(b64.count) chars")
+
         let xrayErr = LibXrayRunXrayFromJSON(b64)
         if !xrayErr.isEmpty {
             return fail("Xray: \(xrayErr)", shared: shared, completionHandler)
