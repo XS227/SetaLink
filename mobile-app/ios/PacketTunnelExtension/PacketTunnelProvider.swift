@@ -65,9 +65,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let b64 = wrapperData.base64EncodedString()
         appendLog("CONFIG_B64: \(b64.count) chars")
 
-        let xrayErr = LibXrayRunXrayFromJSON(b64)
-        if !xrayErr.isEmpty {
-            return fail("Xray: \(xrayErr)", shared: shared, completionHandler)
+        // LibXrayRunXrayFromJSON always returns base64({"success":bool,"error":"..."}).
+        // Checking !isEmpty is wrong — the response is never empty. Must decode and check success.
+        let xrayResponse = LibXrayRunXrayFromJSON(b64)
+        appendLog("XRAY_RESP: \(String(xrayResponse.prefix(120)))")
+        guard !xrayResponse.isEmpty,
+              let respData = Data(base64Encoded: xrayResponse),
+              let respJSON = try? JSONSerialization.jsonObject(with: respData) as? [String: Any]
+        else {
+            return fail("Xray: undecodable response from libxray", shared: shared, completionHandler)
+        }
+        let xrayOk  = respJSON["success"] as? Bool   ?? false
+        let xrayErr = respJSON["error"]   as? String ?? ""
+        guard xrayOk else {
+            return fail("Xray: \(xrayErr.isEmpty ? "unknown error" : xrayErr)", shared: shared, completionHandler)
         }
         appendLog("XRAY: started")
 
