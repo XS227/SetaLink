@@ -2854,20 +2854,29 @@ window.devDetail = async function(did) {
       kv('Real IP', esc(dev.last_ip) || '<span style="color:var(--muted-2)">unknown — all requests came via VPN tunnel</span>'),
       kv('Status', dev.is_online ? '<span style="color:var(--ok)">● online</span>' : '○ offline'),
       kv('Protocol / SNI', `${esc(dev.active_protocol||'')} ${esc(dev.active_sni||'')}`),
-      kv('Quota', `${dev.quota_bytes_used>0?gb(dev.quota_bytes_used):'0 B'} / ${gb(dev.quota_bytes_total)} (${esc(dev.plan)})`),
+      kv('Quota', isIos
+        ? `${gb(dev.quota_bytes_total)} (${esc(dev.plan)}) <span style="color:var(--muted-2);font-size:.7rem">· traffic not tracked on iOS proxy</span>`
+        : `${dev.quota_bytes_used>0?gb(dev.quota_bytes_used):'0 B'} / ${gb(dev.quota_bytes_total)} (${esc(dev.plan)})`),
       kv('Referral code', esc(dev.referral_code)),
       kv('First seen', esc(dev.created_at)),
       kv('Last seen', `${esc(dev.last_seen)} (${fmtRelative(dev.last_seen)})`),
     ].join('');
-    const sess = (d.sessions||[]).slice(0,10).map(s=>`<tr>
+    const sess = (d.sessions||[]).slice(0,10).map(s=>{
+      const hasBytes = (s.bytes_recv||0)+(s.bytes_sent||0) > 0;
+      const trafficCell = hasBytes
+        ? `<span style="font-family:var(--mono)">↓${fmtBytes(s.bytes_recv)} ↑${fmtBytes(s.bytes_sent)}</span>`
+        : (isIos ? `<span style="color:var(--muted-2)" title="iOS proxy — byte counting not available">—</span>`
+                 : `<span style="color:var(--muted-2)">—</span>`);
+      return `<tr>
         <td style="font-size:.68rem">${fmtRelative(s.ended_at)}</td>
         <td style="font-size:.68rem">${protoBadge(s.protocol)}</td>
-        <td style="font-size:.68rem;font-family:var(--mono)">↓${fmtBytes(s.bytes_recv)} ↑${fmtBytes(s.bytes_sent)}</td>
+        <td style="font-size:.68rem">${trafficCell}</td>
         <td style="font-size:.68rem">${Math.round((s.duration_secs||0)/60)}m</td>
         <td style="font-size:.68rem">${probeBadge(s.probe_result)}</td>
         <td style="font-size:.65rem;color:var(--muted-2)">${esc(s.error_reason||'')}</td>
         <td style="font-size:.68rem">${s.via_vpn?'<span title="report sent through the tunnel">via VPN</span>':esc(s.client_ip||'—')}</td>
-      </tr>`).join('') || '<tr><td colspan="7" class="tbl-empty">No sessions reported</td></tr>';
+      </tr>`;
+    }).join('') || '<tr><td colspan="7" class="tbl-empty">No sessions reported</td></tr>';
     $('devDetailBody').innerHTML = `
       ${devRows}
       <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">RECENT SESSIONS <span style="font-weight:400;color:var(--muted-2)">— this device only</span></div>
