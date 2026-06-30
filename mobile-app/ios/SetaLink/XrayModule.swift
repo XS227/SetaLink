@@ -424,6 +424,12 @@ class XrayModule: NSObject {
             completion(false, "invalid URL")
             return
         }
+        // The configured VPN server address — used to verify the exit IP is actually
+        // the VPN node, not the device's own public IP (which would mean the proxy
+        // is NOT routing traffic and the self-test is a false positive).
+        let serverAddr = shared.flatMap { $0.string(forKey: "xray_config_json") }
+            .flatMap { Self.parseServerAddr(from: $0) }
+
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest  = timeout
         cfg.timeoutIntervalForResource = timeout
@@ -438,13 +444,38 @@ class XrayModule: NSObject {
                 completion(false, "no response body (\(elapsed))")
                 return
             }
-            if let ipLine = body.split(separator: "\n").first(where: { $0.hasPrefix("ip=") }) {
-                let ip = String(ipLine.dropFirst(3))
-                completion(true, "exit IP: \(ip) (\(elapsed))")
-            } else {
+            guard let ipLine = body.split(separator: "\n").first(where: { $0.hasPrefix("ip=") }) else {
                 completion(false, "ip= not found in trace response (\(elapsed))")
+                return
+            }
+            let ip = String(ipLine.dropFirst(3))
+            if let server = serverAddr {
+                if ip == server {
+                    completion(true,  "exit IP: \(ip) = VPN node ✓ (\(elapsed))")
+                } else {
+                    // Traffic went direct — proxy is NOT routing this URLSession.
+                    completion(false, "exit IP: \(ip) ≠ VPN node \(server) — traffic NOT through proxy (\(elapsed))")
+                }
+            } else {
+                // No server address in config — can't verify, report what we got.
+                completion(true, "exit IP: \(ip) (server addr unknown) (\(elapsed))")
             }
         }.resume()
+    }
+
+    // Parse the first vnext address from the xray config JSON (same field PacketTunnelProvider
+    // uses for the server exclusion route). Returns nil if the config is absent or malformed.
+    private static func parseServerAddr(from json: String) -> String? {
+        guard let data  = json.data(using: .utf8),
+              let root  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let outs  = root["outbounds"] as? [[String: Any]],
+              let first = outs.first,
+              let sett  = first["settings"] as? [String: Any],
+              let vnext = sett["vnext"]     as? [[String: Any]],
+              let srv   = vnext.first,
+              let addr  = srv["address"]    as? String
+        else { return nil }
+        return addr
     }
 
     // MARK: - setDiagnosticContext
