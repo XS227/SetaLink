@@ -559,7 +559,7 @@ function icon(string $name): string {
     <!-- ============================================================ -->
     <div data-view="intel" hidden>
       <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
-        <span style="font-size:1.1rem;font-weight:700">Iran Network Intelligence</span>
+        <span style="font-size:1.1rem;font-weight:700">Realink Network Intelligence</span>
         <select class="select btn-sm" id="intelDays" style="width:110px">
           <option value="1">Last 24h</option>
           <option value="7" selected>Last 7 days</option>
@@ -570,10 +570,22 @@ function icon(string $name): string {
         <span style="font-size:.72rem;color:var(--muted)" id="intelNote">Anonymous telemetry from app connects</span>
       </div>
 
-      <!-- Agent Insights -->
+      <!-- AI Recommendations -->
+      <div class="panel" style="margin-bottom:1rem" id="intelRecsPanel">
+        <div class="panel-header" style="display:flex;align-items:center;gap:.75rem">
+          <span class="panel-title">⚡ Network Engineer Recommendations</span>
+          <span class="panel-sub">auto-detected action items</span>
+          <span id="intelRecsCount" style="margin-left:auto;font-size:.72rem;color:var(--muted)"></span>
+        </div>
+        <div id="intelRecs" style="padding:.75rem 1rem">
+          <div class="spinner"></div>
+        </div>
+      </div>
+
+      <!-- Intelligence Insights -->
       <div class="panel" style="margin-bottom:1rem" id="intelInsightsPanel">
         <div class="panel-header">
-          <span class="panel-title">🤖 Intelligence Agent</span>
+          <span class="panel-title">🤖 Intelligence Insights</span>
           <span class="panel-sub">pattern-based suggestions from telemetry</span>
         </div>
         <div id="intelInsights" style="padding:.75rem 1rem">
@@ -2399,6 +2411,7 @@ views.intel = {
     $('intelNote').textContent = 'Loading…';
     try {
       const d = await api.get('node-intel', {days});
+      this.renderRecs(d.recommendations || []);
       this.renderInsights(d.agent_insights || []);
       this.renderNodes(d.node_scores || {});
       this.renderPlatform(d.platform_breakdown || []);
@@ -2519,6 +2532,38 @@ views.intel = {
       + rows.map(r => `<div style="display:flex;align-items:flex-start;gap:.5rem;padding:.5rem .75rem;border-radius:6px;background:rgba(255,255,255,.04);border-left:3px solid ${color(r.level)}">
           <span style="flex-shrink:0">${icon(r.level)}</span>
           <span style="font-size:.85rem;color:var(--text)">${esc(r.message)}</span>
+        </div>`).join('')
+      + '</div>';
+  },
+  renderRecs(rows) {
+    const el  = $('intelRecs');
+    const cnt = $('intelRecsCount');
+    if (!rows.length) {
+      el.innerHTML = '<span style="color:var(--muted);font-size:.85rem">No recommendations — all patterns within normal range.</span>';
+      cnt.textContent = '';
+      return;
+    }
+    const critCount = rows.filter(r=>r.severity==='critical').length;
+    const warnCount = rows.filter(r=>r.severity==='warn').length;
+    cnt.textContent = [
+      critCount ? `${critCount} critical` : '',
+      warnCount ? `${warnCount} warning`  : '',
+    ].filter(Boolean).join(' · ');
+
+    const sev      = s => s==='critical'?'#f87171':s==='warn'?'#fbbf24':'#60a5fa';
+    const sevLabel = s => s==='critical'?'CRITICAL':s==='warn'?'WARN':'INFO';
+    const typeIcon = t => ({route:'🔀',infra:'🖥',protocol:'📡',security:'🔒',platform:'📱'})[t]||'•';
+
+    el.innerHTML = `<div style="display:flex;flex-direction:column;gap:.6rem">`
+      + rows.map(r => `
+        <div style="border-left:3px solid ${sev(r.severity)};background:rgba(255,255,255,.03);border-radius:0 6px 6px 0;padding:.65rem .85rem">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+            <span style="font-size:.68rem;font-weight:700;color:${sev(r.severity)};letter-spacing:.04em">${sevLabel(r.severity)}</span>
+            <span style="font-size:.7rem;color:var(--muted-2);background:rgba(255,255,255,.06);padding:1px 6px;border-radius:3px">${typeIcon(r.type)} ${esc((r.type||'').toUpperCase())}</span>
+            <span style="font-size:.85rem;font-weight:700;color:var(--text)">${esc(r.title)}</span>
+          </div>
+          <div style="font-size:.8rem;color:var(--muted);margin-bottom:.3rem">${esc(r.body)}</div>
+          <div style="font-size:.75rem;color:var(--accent)">→ ${esc(r.action)}</div>
         </div>`).join('')
       + '</div>';
   },

@@ -444,6 +444,10 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'time_to_connect_ms'   => v1_body('time_to_connect_ms')   !== '' ? (int)v1_body('time_to_connect_ms')   : null,
             'error_category'       => v1_body('error_category'),
             'carrier_name'         => v1_body('carrier_name'),
+            'nat_type'             => v1_body('nat_type'),
+            'ip_version'           => v1_body('ip_version'),
+            'rtt_ms'               => v1_body('rtt_ms') !== '' ? (int)v1_body('rtt_ms') : null,
+            'network_switched'     => v1_body('network_switched') !== '' ? v1_body('network_switched') : null,
         ]);
     } catch (\Throwable $_) { /* swallow — telemetry must never break the user flow */ }
     v1_send(['ok' => true]);

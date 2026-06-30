@@ -1363,6 +1363,7 @@ switch ($action) {
             'agent_insights'      => ni_agent_insights($db, $days),
             'build_breakdown'     => ni_build_breakdown($db, $days),
             'probe_breakdown'     => ni_probe_breakdown($db, $days),
+            'recommendations'     => ni_recommendations($db, $days),
         ]);
         break;
     }

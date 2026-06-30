@@ -72,6 +72,12 @@ class XrayVpnService : VpnService() {
         // backgrounded; a direct method call cannot be deferred or dropped.
         @Volatile private var activeInstance: XrayVpnService? = null
 
+        // Last measured diagnostics — exposed here so XrayModule can read them
+        // in a future iteration to pass to the JS layer via getStats().
+        @Volatile var lastRttMs:           Long    = -1L
+        @Volatile var lastIpVersion:       String  = "unknown"
+        @Volatile var lastNetworkSwitched: Boolean = false
+
         /** Stops the tunnel via the live service instance. Returns false when
          *  no instance exists (caller should fall back to the stop intent). */
         fun requestStop(): Boolean {
@@ -102,6 +108,13 @@ class XrayVpnService : VpnService() {
     // Set while tearDownTunnel runs — makes it idempotent and lets the
     // metrics/watchdog loops bail out instead of re-triggering teardown.
     private val tearingDown = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    // Network type recorded at connect start — used to detect WiFi↔Mobile switches.
+    private var connectNetworkType: String  = "unknown"
+    private var networkSwitched:    Boolean = false
+    // Server diagnostics measured during connection setup.
+    private var serverRttMs:     Long?   = null
+    private var serverIpVersion: String  = "unknown"
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -163,6 +176,13 @@ class XrayVpnService : VpnService() {
         appendLog("[DIAG] filesDir=${filesDir.absolutePath}")
         appendLog("[DIAG] emergencyMode=$emergencyMode")
 
+        // Snapshot network type at connect start for switch detection at teardown.
+        connectNetworkType = detectNetworkType()
+        networkSwitched    = false
+        serverRttMs        = null
+        serverIpVersion    = "unknown"
+        appendLog("[DIAG] connectNetworkType=$connectNetworkType")
+
         try {
             // 1. Resolve binaries
             broadcastStep("binaries", true, "Resolving binaries")
@@ -204,6 +224,41 @@ class XrayVpnService : VpnService() {
                 appendLog("[CONFIG-PARAMS] server=$addr:$port flow=$flow fp=$fp sni=$sni pbk=$pbk sid=$sid")
                 broadcastStep("config_params", true, "server=$addr:$port flow=$flow fp=$fp sni=$sni sid=$sid")
             }.onFailure { e -> appendLog("[CONFIG-PARAMS] parse failed: ${e.message}") }
+
+            // 2b. Measure TCP RTT to server and detect IP version
+            try {
+                val cfg      = JSONObject(configJson)
+                val outbounds = cfg.getJSONArray("outbounds")
+                for (i in 0 until outbounds.length()) {
+                    val ob       = outbounds.getJSONObject(i)
+                    val settings = ob.optJSONObject("settings") ?: continue
+                    val vnext    = settings.optJSONArray("vnext") ?: continue
+                    if (vnext.length() > 0) {
+                        val server = vnext.getJSONObject(0)
+                        val host   = server.optString("address", "")
+                        val port   = server.optInt("port", 443)
+                        if (host.isNotEmpty()) {
+                            serverIpVersion = when {
+                                host.contains(':')                              -> "ipv6"
+                                host.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+")) -> "ipv4"
+                                else                                            -> "unknown"
+                            }
+                            val t0 = System.currentTimeMillis()
+                            runCatching {
+                                Socket().use { s ->
+                                    s.soTimeout = 5_000
+                                    s.connect(InetSocketAddress(host, port), 5_000)
+                                }
+                            }
+                            serverRttMs = System.currentTimeMillis() - t0
+                            appendLog("[RTT] TCP to $host:$port = ${serverRttMs}ms ipVersion=$serverIpVersion")
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                appendLog("[RTT] Could not measure: ${e.message}")
+            }
 
             // 3. Config test
             broadcastStep("config_test", true, "Running xray -test...")
@@ -365,8 +420,13 @@ class XrayVpnService : VpnService() {
             Log.i(TAG, "VPN tunnel active — TUN routing verified")
             sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
                 setPackage(packageName)
-                putExtra("probe_ok", true)
+                putExtra("probe_ok",    true)
+                putExtra("rtt_ms",      serverRttMs ?: -1L)
+                putExtra("ip_version",  serverIpVersion)
             })
+            // Store in companion for future XrayModule access
+            lastRttMs     = serverRttMs ?: -1L
+            lastIpVersion = serverIpVersion
 
             // 10. Start continuous metrics loop + process watchdog
             startMetricsLoop(tunInterface)
@@ -1181,7 +1241,17 @@ class XrayVpnService : VpnService() {
         clearPidFile()
 
         // 5. Tell the app, drop foreground, stop.
-        sendBroadcast(Intent(BROADCAST_DISCONNECTED).setPackage(packageName))
+        // Detect if network type changed during the session.
+        val currentNetwork = detectNetworkType()
+        if (currentNetwork != connectNetworkType && connectNetworkType != "unknown" && currentNetwork != "unknown") {
+            networkSwitched = true
+            appendLog("[DISCONNECT] network changed: $connectNetworkType → $currentNetwork")
+        }
+        lastNetworkSwitched = networkSwitched
+        sendBroadcast(Intent(BROADCAST_DISCONNECTED).apply {
+            setPackage(packageName)
+            putExtra("network_switched", networkSwitched)
+        })
         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
         Log.i(TAG, "SETALINK_VPN_SERVICE_STOPPED")
         appendLog("[VPN_SERVICE_STOPPED]")
@@ -1221,6 +1291,18 @@ class XrayVpnService : VpnService() {
             putExtra(EXTRA_ERROR, msg)
             putExtra("failure_category", failureCategory)
         })
+    }
+
+    /** Detect the active network transport: "wifi", "mobile", or "unknown". */
+    private fun detectNetworkType(): String {
+        val cm   = getSystemService(CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return "unknown"
+        val net  = cm.activeNetwork ?: return "unknown"
+        val caps = cm.getNetworkCapabilities(net) ?: return "unknown"
+        return when {
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)     -> "wifi"
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile"
+            else -> "unknown"
+        }
     }
 
     private fun broadcastStep(step: String, ok: Boolean, msg: String) {

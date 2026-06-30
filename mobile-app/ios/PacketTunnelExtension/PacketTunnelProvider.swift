@@ -34,6 +34,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var connectStartTime: Date?
     private var serverAddr:     String?
 
+    // Extended diagnostics (Phase 7)
+    private var initialPathInterfaceType: NWInterface.InterfaceType? = nil
+    private var networkSwitchedDuringSession = false
+    private var xrayReadyTime: Date? = nil
+
+    /// IP version derived from the server address stored in serverAddr.
+    private var ipVersion: String {
+        guard let addr = serverAddr else { return "unknown" }
+        if addr.contains(":") { return "ipv6" }
+        let parts = addr.split(separator: ".").map { String($0) }
+        if parts.count == 4 && parts.allSatisfy({ Int($0) != nil }) { return "ipv4" }
+        return "unknown"
+    }
+
     /// URLSession that bypasses the VPN proxy — used for telemetry POSTs so
     /// the tunnel extension can reach the server even before the proxy is up.
     private lazy var telemetrySession: URLSession = {
@@ -48,6 +62,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     override func startTunnel(options: [String: NSObject]?,
                               completionHandler: @escaping (Error?) -> Void) {
         connectStartTime = Date()
+        networkSwitchedDuringSession = false
+        initialPathInterfaceType     = nil
+        xrayReadyTime                = nil
         guard let shared = UserDefaults(suiteName: kAppGroup) else {
             submitTelemetry(event: "connect_fail", errorCategory: "config_error")
             return completionHandler(NSError(domain: "no.setalink.tunnel", code: -1,
@@ -115,6 +132,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             submitTelemetry(event: "connect_fail", errorCategory: "proxy_not_ready")
             return fail("SOCKS5 port \(kSocksPort) not ready after 5 s", shared: shared, completionHandler)
         }
+        xrayReadyTime = Date()
         appendLog("XRAY: SOCKS5 :\(kSocksPort) ready")
 
         // 6. Apply network settings (proxy → xray)
@@ -375,7 +393,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private func startNetworkMonitor() {
         let m = NWPathMonitor()
         m.pathUpdateHandler = { [weak self] path in
-            self?.appendLog("NET: \(path.status == .satisfied ? "up" : "down")")
+            guard let self = self else { return }
+            let current = path.availableInterfaces.first?.type
+            if self.initialPathInterfaceType == nil {
+                self.initialPathInterfaceType = current
+            } else if current != self.initialPathInterfaceType {
+                self.networkSwitchedDuringSession = true
+                self.appendLog("PATH: network type changed — switched=true")
+            }
+            self.appendLog("NET: \(path.status == .satisfied ? "up" : "down")")
         }
         m.start(queue: DispatchQueue(label: "no.setalink.pathmon", qos: .background))
         pathMonitor = m
@@ -445,6 +471,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         if let cat = errorCategory {
             items.append(URLQueryItem(name: "error_category", value: cat))
+        }
+        // Extended diagnostics
+        items.append(URLQueryItem(name: "ip_version", value: ipVersion))
+        if networkSwitchedDuringSession {
+            items.append(URLQueryItem(name: "network_switched", value: "1"))
+        }
+        if let ready = xrayReadyTime, let start = connectStartTime {
+            let rttMs = Int(ready.timeIntervalSince(start) * 1000)
+            items.append(URLQueryItem(name: "rtt_ms", value: String(rttMs)))
         }
         if let start = connectStartTime, event != "connect_ok" {
             let dur = Int(Date().timeIntervalSince(start))

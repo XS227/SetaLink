@@ -71,6 +71,14 @@ export interface ConnectTelemetryPayload {
   error_category?:        'config_error' | 'xray_failed' | 'proxy_not_ready' | 'routing_failed' | 'server_unreachable' | 'dns_failed' | 'captive_portal' | 'app_blocked' | 'unknown';
   /** Carrier/operator name (truncated to 30 chars server-side). */
   carrier_name?:          string;
+  /** NAT type detected: 'full_cone', 'symmetric', 'port_restricted', 'unknown' */
+  nat_type?:         'full_cone' | 'symmetric' | 'port_restricted' | 'unknown';
+  /** IP version used to reach the server: 'ipv4', 'ipv6', 'dual', 'unknown' */
+  ip_version?:       'ipv4' | 'ipv6' | 'dual' | 'unknown';
+  /** Round-trip time to the VPN server in ms (TCP connect time to server host:port). */
+  rtt_ms?:           number;
+  /** Whether the user's network type changed during the session (WiFi<->mobile). */
+  network_switched?: boolean;
 }
 
 /**
