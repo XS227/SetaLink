@@ -299,13 +299,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let url = URL(string: "https://cp.cloudflare.com/") else { return }
 
             let cfg = URLSessionConfiguration.ephemeral
+            // kCFNetworkProxies* constants are unavailable on iOS — use the raw string keys.
             cfg.connectionProxyDictionary = [
-                kCFNetworkProxiesHTTPSEnable as String: 1,
-                kCFNetworkProxiesHTTPSProxy  as String: "127.0.0.1",
-                kCFNetworkProxiesHTTPSPort   as String: kHttpPort,
-                kCFNetworkProxiesHTTPEnable  as String: 1,
-                kCFNetworkProxiesHTTPProxy   as String: "127.0.0.1",
-                kCFNetworkProxiesHTTPPort    as String: kHttpPort,
+                "HTTPSEnable": 1,
+                "HTTPSProxy":  "127.0.0.1",
+                "HTTPSPort":   kHttpPort,
+                "HTTPEnable":  1,
+                "HTTPProxy":   "127.0.0.1",
+                "HTTPPort":    kHttpPort,
             ]
             cfg.timeoutIntervalForRequest = 10.0
             let session = URLSession(configuration: cfg)
