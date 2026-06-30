@@ -288,10 +288,48 @@ class XrayModule: NSObject {
 
     // MARK: - runTraceTest
 
+    // Fetches cloudflare.com/cdn-cgi/trace through the active NEProxySettings
+    // (HTTP CONNECT on :10809 → xray → VLESS). Parses the ip= field and returns
+    // routedIp so the UI can show the VPN exit IP and confirm traffic is tunnelled.
     @objc func runTraceTest(_ resolve: @escaping RCTPromiseResolveBlock,
                             rejecter reject: @escaping RCTPromiseRejectBlock) {
-        resolve(["ok": false,
-                 "error": "runTraceTest requires libXray embedded in PacketTunnelExtension"])
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let url = URL(string: "https://cloudflare.com/cdn-cgi/trace") else {
+                resolve(["ok": false, "error": "invalid URL"])
+                return
+            }
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.timeoutIntervalForRequest  = 10
+            cfg.timeoutIntervalForResource = 10
+            let t0 = Date()
+            URLSession(configuration: cfg).dataTask(with: URLRequest(url: url)) { data, resp, err in
+                let elapsed = String(format: "%.2fs", -t0.timeIntervalSinceNow)
+                if let err = err {
+                    resolve(["ok": false, "error": "\(err.localizedDescription) (\(elapsed))"])
+                    return
+                }
+                let code  = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                let bytes = data?.count ?? 0
+                let body  = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                let ip    = body.components(separatedBy: "\n")
+                               .first(where: { $0.hasPrefix("ip=") })
+                               .map { String($0.dropFirst(3)) }
+                let ok = code == 200 && ip != nil
+                var result: [String: Any] = [
+                    "ok":         ok,
+                    "statusCode": code,
+                    "bytesIn":    bytes,
+                    "body":       String(body.prefix(512)),
+                ]
+                if let ip = ip { result["routedIp"] = ip }
+                if !ok {
+                    result["error"] = ip == nil
+                        ? "no ip= field in response (HTTP \(code), \(elapsed))"
+                        : "HTTP \(code) (\(elapsed))"
+                }
+                resolve(result)
+            }.resume()
+        }
     }
 
     // MARK: - getTunnelState
