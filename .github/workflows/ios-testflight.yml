@@ -302,13 +302,10 @@ jobs:
           cp -R "$XCFW" "$GITHUB_WORKSPACE/mobile-app/ios/LibXray.xcframework"
           echo "LibXray.xcframework copied to ios/"
 
-      # ── hev-socks5-tunnel (tun2socks) — pinned tag ───────────────────────────
-      # Full-TUN packet forwarder: reads the utun fd and forwards ALL TCP+UDP to
-      # xray's local SOCKS inbound (127.0.0.1:10808). Required because NEProxySettings
-      # only carries HTTP/HTTPS — Telegram (raw TCP) and Instagram (QUIC/UDP) need a
-      # real tun2socks. Same architecture as Streisand / FoXray / V2Box.
-      # build-apple.sh produces a library-style HevSocks5Tunnel.xcframework
-      # (module HevSocks5Tunnel, header hev-main.h, ios device + simulator).
+      # ── hev-socks5-tunnel — pinned tag ────────────────────────────────────────
+      # Still built and linked so the HEV stub build phase compiles cleanly.
+      # PacketTunnelProvider no longer calls any HEV functions (proxy-only arch),
+      # but the xcframework must be present for the Xcode project to link.
       - name: Set hev-socks5-tunnel tag
         run: |
           HEV_TAG="2.15.0"
@@ -367,8 +364,8 @@ jobs:
       # SOCK_SEQPACKET: triggers errno=43 (EPROTOTYPE) in the iOS NE sandbox — all
       #   app traffic silently drops while iOS reports "Connected". Root cause of the
       #   build 38 no-internet bug. Fixed in build 40 (SOCK_DGRAM). Never reintroduce.
-      # fake-connected guard: completionHandler(nil) must only appear once, after all
-      #   probes pass (including SOCKS5 relay). grep count enforces the one-call rule.
+      # fake-connected guard: completionHandler(nil) must appear once, after all
+      #   probes pass. grep count enforces the one-call rule.
       - name: Guard tunnel extension source
         run: |
           set -e
@@ -402,21 +399,30 @@ jobs:
           fi
           echo "✓ STATE: connected_verified present"
 
-          # 4. NEProxySettings() constructor must only appear inside the #else block (proxy mode)
-          # HEV_AVAILABLE mode must NOT set a system HTTP proxy — it silently masks
-          # full-tunnel failures because extension URLSession bypasses the TUN (#19)
-          # We check the constructor call specifically to avoid false positives from
-          # comments and log strings that mention the class name.
-          PROXY_IN_ELSE=$(awk '/^        #else/{in_else=1} /^        #endif/{in_else=0} /NEProxySettings\(\)/ && in_else{c++} END{print c+0}' "$EXT")
-          PROXY_TOTAL=$(grep -n "NEProxySettings()" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//" | wc -l | tr -d ' ')
-          if [ "$PROXY_TOTAL" -ne "$PROXY_IN_ELSE" ]; then
-            echo "❌ NEProxySettings() constructor appears $PROXY_TOTAL times in non-comment code but only $PROXY_IN_ELSE are inside #else"
-            echo "   NEProxySettings must ONLY be instantiated in the #else (proxy-mode) block."
-            echo "   In HEV_AVAILABLE mode the proxy setting silently masks full-tunnel failures."
-            grep -n "NEProxySettings()" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//"
-            exit 1
+          # 4. NEProxySettings placement check.
+          # Two valid architectures:
+          #   a) Pure proxy-only: no #if HEV_AVAILABLE blocks in the file — NEProxySettings
+          #      may appear anywhere (the whole file IS the proxy implementation).
+          #   b) Dual-mode (HEV_AVAILABLE + else): NEProxySettings must be in the #else block
+          #      so it only activates when HEV is not compiled in. This prevents silently
+          #      masking full-tunnel failures by routing via HTTP proxy instead of TUN.
+          HEV_BLOCK_COUNT=$(grep -c "HEV_AVAILABLE" "$EXT" || true)
+          PROXY_TOTAL=$(grep -c "NEProxySettings()" "$EXT" || true)
+          if [ "$HEV_BLOCK_COUNT" -eq 0 ]; then
+            # Pure proxy-only architecture — no restriction on NEProxySettings placement
+            echo "✓ NEProxySettings: pure proxy-only file (no HEV_AVAILABLE blocks) — placement unrestricted"
+          else
+            # Dual-mode: NEProxySettings must only be inside #else
+            PROXY_IN_ELSE=$(awk '/^        #else/{in_else=1} /^        #endif/{in_else=0} /NEProxySettings\(\)/ && in_else{c++} END{print c+0}' "$EXT")
+            if [ "$PROXY_TOTAL" -ne "$PROXY_IN_ELSE" ]; then
+              echo "❌ NEProxySettings() appears $PROXY_TOTAL times but only $PROXY_IN_ELSE are inside #else"
+              echo "   In dual-mode code, NEProxySettings must ONLY be instantiated in the #else block."
+              echo "   In HEV_AVAILABLE mode the proxy setting silently masks full-tunnel failures."
+              grep -n "NEProxySettings()" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//"
+              exit 1
+            fi
+            echo "✓ NEProxySettings(): all $PROXY_TOTAL instantiations are inside #else (proxy mode only)"
           fi
-          echo "✓ NEProxySettings(): all $PROXY_TOTAL instantiations are inside #else (proxy mode only)"
 
           # 5. Both entitlements files must declare the same App Group (#15 #16)
           MAIN_ENT="mobile-app/ios/SetaLink/Realink.entitlements"
