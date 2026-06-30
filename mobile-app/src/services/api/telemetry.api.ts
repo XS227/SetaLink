@@ -49,6 +49,28 @@ export interface ConnectTelemetryPayload {
   internet_ok?: boolean;
   /** Whether exit-IP check confirmed the VPN IP as the exit. */
   exit_ip_ok?: boolean;
+  /** Probe results: did the app reach this service through the tunnel? */
+  probe_google?:          boolean;
+  probe_apple?:           boolean;
+  probe_telegram?:        boolean;
+  probe_cloudflare?:      boolean;
+  probe_instagram?:       boolean;
+  /** Why the session ended: 'user_stop', 'watchdog_died', 'no_internet', 'kill_switch', etc. */
+  disconnect_reason?:     string;
+  /** Total session duration in seconds. */
+  session_duration_secs?: number;
+  /** Bytes sent through tunnel (0 for iOS proxy architecture). */
+  bytes_sent?:            number;
+  /** Bytes received through tunnel (0 for iOS proxy architecture). */
+  bytes_recv?:            number;
+  /** Whether DNS resolution worked through tunnel. */
+  dns_ok?:                boolean;
+  /** Time from connect start to first successful tunnel byte (ms). */
+  time_to_connect_ms?:    number;
+  /** Error category for failures. */
+  error_category?:        'config_error' | 'xray_failed' | 'proxy_not_ready' | 'routing_failed' | 'server_unreachable' | 'dns_failed' | 'captive_portal' | 'app_blocked' | 'unknown';
+  /** Carrier/operator name (truncated to 30 chars server-side). */
+  carrier_name?:          string;
 }
 
 /**
