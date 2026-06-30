@@ -49,8 +49,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // 2. Start xray core
         let b64 = Data(configJSON.utf8).base64EncodedString()
-        if let err = LibXrayRunXrayFromJSON(b64), !err.isEmpty {
-            return fail("Xray: \(err)", shared: shared, completionHandler)
+        let xrayErr = LibXrayRunXrayFromJSON(b64)
+        if !xrayErr.isEmpty {
+            return fail("Xray: \(xrayErr)", shared: shared, completionHandler)
         }
         appendLog("XRAY: started")
 
@@ -75,7 +76,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
             self.startLivenessTimer(shared: shared)
             self.startNetworkMonitor()
-            shared.set(TunnelState.connectedVerified.rawValue, forKey: self.kTunnelStateKey)
+            shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
             shared.set(true,  forKey: self.kProbeOkKey)
             shared.set("",    forKey: self.kErrorKey)
             self.flushLog(to: shared)
@@ -114,25 +115,22 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // DNS through tunnel (prevents DNS leaks)
         s.dnsSettings = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
 
-        // HTTP + SOCKS5 proxy → xray inbounds.
-        // xray exposes two inbounds: HTTP/HTTPS CONNECT on :10809 and SOCKS5 on :10808.
-        // Both are set so iOS prefers HTTP CONNECT (the standard for app traffic)
-        // while SOCKS5 covers any app that explicitly requests it.
-        // Connections TO 127.0.0.1 are in the exception list to prevent proxy loops.
+        // HTTP CONNECT proxy → xray HTTP inbound on :10809.
+        // iOS 26 SDK removed socksEnabled/socksServer from NEProxySettings; HTTP CONNECT
+        // handles all standard app traffic. xray's SOCKS5 inbound on :10808 is still
+        // started (isSocksPortOpen() probes it) but is not advertised via NEProxySettings.
         let httpProx = NEProxyServer(address: "127.0.0.1", port: 10809)
         let proxy = NEProxySettings()
         proxy.httpEnabled            = true
         proxy.httpServer             = httpProx
         proxy.httpsEnabled           = true
         proxy.httpsServer            = httpProx
-        proxy.socksEnabled           = true
-        proxy.socksServer            = NEProxyServer(address: "127.0.0.1", port: kSocksPort)
         proxy.excludeSimpleHostnames = true
         proxy.exceptionList          = ["localhost", "127.0.0.1", "::1"]
         s.proxySettings = proxy
 
         if let addr = serverAddr {
-            appendLog("SETTINGS: server=\(addr) proxy=HTTP:10809+SOCKS5:10808")
+            appendLog("SETTINGS: server=\(addr) proxy=HTTP:10809")
         }
         return s
     }
@@ -223,7 +221,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         case .authenticationCanceled:     return "authenticationCanceled"
         case .configurationFailed:        return "configurationFailed"
         case .idleTimeout:                return "idleTimeout"
-        @unknown default:                 return "other(\(r.rawValue))"
+        default:                          return "other(\(r.rawValue))"
         }
     }
 
