@@ -1,195 +1,533 @@
-name: iOS TestFlight
+name: iOS — TestFlight
+
+# Secrets required (Settings → Secrets → Actions):
+#   ASC_KEY_ID                  App Store Connect API Key ID
+#   ASC_ISSUER_ID               App Store Connect Issuer ID
+#   ASC_PRIVATE_KEY             Full contents of AuthKey_XXXX.p8 (multiline)
+#   APPLE_TEAM_ID               10-character Apple Team ID
+#
+# Optional (set after first bootstrap run to avoid recreating the cert each time):
+#   DISTRIBUTION_CERT_P12_BASE64   base64 of the exported Distribution cert P12
+#   DISTRIBUTION_CERT_PASSWORD     password used when exporting the P12
+#
+# Bootstrap flow (first run, or when P12 secrets are not set):
+#   fastlane cert --force creates a fresh cert+key, then the workflow uploads
+#   a "cert-bootstrap" artifact containing the base64 P12. Download it, then
+#   add DISTRIBUTION_CERT_P12_BASE64 + DISTRIBUTION_CERT_PASSWORD as secrets.
+#   Subsequent runs skip fastlane cert entirely and import the stored P12.
 
 on:
   push:
-    branches: [main]
-    paths:
-      - 'mobile-app/ios/**'
-      - 'mobile-app/src/**'
-      - 'mobile-app/package*.json'
+    tags:
+      - 'v*-ios'
   workflow_dispatch:
     inputs:
-      marketing_version:
-        description: 'Marketing version (e.g. 0.9.50)'
+      build_number:
+        description: 'CFBundleVersion override (leave blank to use run number)'
         required: false
-        default: '0.9.50'
+        default: ''
+      force_bootstrap:
+        description: 'Force bootstrap: regenerate Distribution cert + P12 (use when cert revoked)'
+        required: false
+        default: 'false'
 
 concurrency:
-  group: ios-testflight
+  group: ios-testflight-${{ github.ref }}
   cancel-in-progress: true
-
-# Required GitHub secrets:
-#   APPLE_TEAM_ID                     — 10-char Apple Team ID
-#   APPLE_DISTRIBUTION_CERTIFICATE    — base64-encoded .p12 file
-#   APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD — .p12 password
-#   PROVISIONING_PROFILE              — base64-encoded main app .mobileprovision
-#   PROVISIONING_PROFILE_NAME         — exact name, e.g. "Realink AppStore"
-#   PROVISIONING_PROFILE_TUNNEL       — base64-encoded tunnel extension .mobileprovision
-#   PROVISIONING_PROFILE_TUNNEL_NAME  — exact name, e.g. "Realink Tunnel AppStore"
-#   ASC_API_KEY_ID                    — App Store Connect API Key ID
-#   ASC_ISSUER_ID                     — App Store Connect Issuer ID
-#   ASC_PRIVATE_KEY                   — base64-encoded AuthKey_XXXXX.p8
 
 jobs:
   build-and-upload:
-    name: Archive → TestFlight
+    name: Build & Upload to TestFlight
     runs-on: macos-15
-    defaults:
-      run:
-        working-directory: mobile-app
+    timeout-minutes: 60
 
     env:
-      MARKETING_VERSION: ${{ inputs.marketing_version || '0.9.50' }}
-      KEYCHAIN_NAME: build.keychain
-      KEYCHAIN_PASS: ci-keychain-${{ github.run_id }}
+      BUNDLE_ID:        no.setalink.realink
+      TUNNEL_BUNDLE_ID: no.setalink.realink.tunnel
 
     steps:
-      - uses: actions/checkout@v4
+      # ── Select Xcode ─────────────────────────────────────────────────────────
+      # Apple requires iOS 26 SDK for App Store uploads; pick the highest
+      # Xcode available (prefers 26.x on macos-15, falls back to 16.x).
+      - name: Select latest Xcode
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$XCODE" ]; then
+            echo "No versioned Xcode found, using default"; xcodebuild -version
+          else
+            echo "Using $XCODE"
+            sudo xcode-select -s "$XCODE/Contents/Developer"
+            xcodebuild -version
+          fi
 
-      - uses: actions/setup-node@v4
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Node ─────────────────────────────────────────────────────────────────
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: npm
+          node-version: '20'
+          cache: 'npm'
           cache-dependency-path: mobile-app/package-lock.json
 
-      - name: Select Xcode 16
-        run: sudo xcode-select -s /Applications/Xcode_16.3.app/Contents/Developer
-
       - name: Install JS dependencies
-        run: npm ci
+        working-directory: mobile-app
+        run: npm ci --prefer-offline
 
-      - name: Cache CocoaPods
+      # ── Ruby + fastlane ──────────────────────────────────────────────────────
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: false
+
+      - name: Install fastlane + CocoaPods
+        run: gem install fastlane cocoapods --no-document
+
+      # ── CocoaPods ────────────────────────────────────────────────────────────
+      - name: pod install
+        working-directory: mobile-app
+        run: pod install --project-directory=ios --repo-update
+
+      # ── App Store Connect API key file ────────────────────────────────────────
+      # Written to a temp file; never printed, never committed.
+      - name: Write ASC API key
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          # Write the .p8 key file (fastlane reads it from here)
+          printf '%s' "$ASC_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          chmod 600 "$RUNNER_TEMP/asc/AuthKey.p8"
+          # Write the JSON key descriptor that fastlane cert/sigh accept
+          cat > "$RUNNER_TEMP/asc/api_key.json" <<JSON
+          {
+            "key_id":    "$ASC_KEY_ID",
+            "issuer_id": "$ASC_ISSUER_ID",
+            "key":       "$(cat $RUNNER_TEMP/asc/AuthKey.p8 | awk '{printf "%s\\n", $0}')",
+            "duration":  1200,
+            "in_house":  false
+          }
+          JSON
+          chmod 600 "$RUNNER_TEMP/asc/api_key.json"
+          echo "ASC_API_KEY_PATH=$RUNNER_TEMP/asc/api_key.json" >> "$GITHUB_ENV"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8"        >> "$GITHUB_ENV"
+
+      # ── Create temporary signing keychain ────────────────────────────────────
+      - name: Create signing keychain
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASS="$(openssl rand -hex 16)"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"   >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASS=$KEYCHAIN_PASS"   >> "$GITHUB_ENV"
+
+      # ── Distribution Certificate ─────────────────────────────────────────────
+      # Normal mode: import stored P12 from secrets (no new cert created).
+      # Bootstrap mode: fastlane cert --force (needs one free cert slot in Apple).
+      - name: Import Distribution Certificate
+        env:
+          APPLE_TEAM_ID:                ${{ secrets.APPLE_TEAM_ID }}
+          DISTRIBUTION_CERT_P12_BASE64: ${{ secrets.DISTRIBUTION_CERT_P12_BASE64 }}
+          DISTRIBUTION_CERT_PASSWORD:   ${{ secrets.DISTRIBUTION_CERT_PASSWORD }}
+        run: |
+          FORCE_BOOTSTRAP="${{ github.event.inputs.force_bootstrap }}"
+          if [ -n "$DISTRIBUTION_CERT_P12_BASE64" ] && [ "$FORCE_BOOTSTRAP" != "true" ]; then
+            echo "Using stored P12 from secret."
+            echo "$DISTRIBUTION_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/asc/dist.p12"
+            security import "$RUNNER_TEMP/asc/dist.p12" \
+              -k "$KEYCHAIN_PATH" -P "$DISTRIBUTION_CERT_PASSWORD" \
+              -T /usr/bin/codesign -T /usr/bin/security
+            security set-key-partition-list -S apple-tool:,apple: \
+              -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_PATH"
+            echo "BOOTSTRAPPED=false" >> "$GITHUB_ENV"
+          else
+            echo "No stored P12 found — running fastlane cert (bootstrap mode)."
+            fastlane cert \
+              --api_key_path      "$ASC_API_KEY_PATH" \
+              --team_id           "$APPLE_TEAM_ID" \
+              --output_path       "$RUNNER_TEMP/asc" \
+              --keychain_path     "$KEYCHAIN_PATH" \
+              --keychain_password "$KEYCHAIN_PASS" \
+              --platform          "ios" \
+              --force
+            # Export cert+key as P12 for future runs
+            P12_PASS="$(openssl rand -hex 16)"
+            CERT_FILE=$(ls "$RUNNER_TEMP/asc/"*.cer 2>/dev/null | head -1)
+            security export \
+              -k "$KEYCHAIN_PATH" -t identities \
+              -f pkcs12 -P "$P12_PASS" \
+              -o "$RUNNER_TEMP/asc/dist.p12"
+            echo "BOOTSTRAP_P12_B64=$(base64 -i "$RUNNER_TEMP/asc/dist.p12")" >> "$GITHUB_ENV"
+            echo "BOOTSTRAP_P12_PASS=$P12_PASS"                                >> "$GITHUB_ENV"
+            echo "BOOTSTRAPPED=true"                                            >> "$GITHUB_ENV"
+          fi
+          CERT_NAME=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep -o '"Apple Distribution[^"]*"' | head -1 | tr -d '"')
+          echo "CERT_NAME=${CERT_NAME:-Apple Distribution}" >> "$GITHUB_ENV"
+
+      # ── Save bootstrap P12 as artifact (only on first/bootstrap run) ──────────
+      - name: Save cert bootstrap artifact
+        if: env.BOOTSTRAPPED == 'true'
+        run: |
+          mkdir -p "$RUNNER_TEMP/bootstrap"
+          echo "$BOOTSTRAP_P12_B64"  > "$RUNNER_TEMP/bootstrap/DISTRIBUTION_CERT_P12_BASE64.txt"
+          echo "$BOOTSTRAP_P12_PASS" > "$RUNNER_TEMP/bootstrap/DISTRIBUTION_CERT_PASSWORD.txt"
+          echo "Bootstrap artifact created."
+          echo "After this run: download the 'cert-bootstrap' artifact, then add"
+          echo "DISTRIBUTION_CERT_P12_BASE64 and DISTRIBUTION_CERT_PASSWORD as GitHub Secrets."
+        working-directory: mobile-app
+
+      - name: Upload cert bootstrap artifact
+        if: env.BOOTSTRAPPED == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cert-bootstrap
+          path: ${{ runner.temp }}/bootstrap/
+          retention-days: 1
+
+      # ── Generate App Store Provisioning Profile ──────────────────────────────
+      # fastlane sigh creates or renews the profile, downloads it, and installs it.
+      - name: Generate / fetch Provisioning Profile (fastlane sigh)
+        working-directory: mobile-app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          fastlane sigh \
+            --api_key_path      "$ASC_API_KEY_PATH" \
+            --app_identifier    "$BUNDLE_ID" \
+            --team_id           "$APPLE_TEAM_ID" \
+            --provisioning_name "Realink AppStore" \
+            --output_path       "$RUNNER_TEMP/asc" \
+            --filename          "Realink_AppStore.mobileprovision" \
+            --platform          "ios" \
+            --force
+          PROFILE_PATH="$RUNNER_TEMP/asc/Realink_AppStore.mobileprovision"
+          # Install into the standard location xcodebuild expects
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PROFILE_UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+
+      # ── Tunnel Extension Provisioning Profile ────────────────────────────────
+      # The tunnel extension has its own bundle ID and needs a separate profile.
+      # Requires App ID 'no.setalink.realink.tunnel' to exist in App Store Connect
+      # with the 'Network Extensions' and 'App Groups' capabilities enabled.
+      - name: Generate / fetch Tunnel Extension Provisioning Profile
+        working-directory: mobile-app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          fastlane sigh \
+            --api_key_path      "$ASC_API_KEY_PATH" \
+            --app_identifier    "$TUNNEL_BUNDLE_ID" \
+            --team_id           "$APPLE_TEAM_ID" \
+            --provisioning_name "Realink Tunnel AppStore" \
+            --output_path       "$RUNNER_TEMP/asc" \
+            --filename          "Realink_Tunnel_AppStore.mobileprovision" \
+            --platform          "ios" \
+            --force
+          TUNNEL_PROFILE_PATH="$RUNNER_TEMP/asc/Realink_Tunnel_AppStore.mobileprovision"
+          TUNNEL_PROFILE_UUID=$(security cms -D -i "$TUNNEL_PROFILE_PATH" \
+            | plutil -extract UUID raw -)
+          cp "$TUNNEL_PROFILE_PATH" \
+            ~/Library/MobileDevice/Provisioning\ Profiles/"$TUNNEL_PROFILE_UUID".mobileprovision
+          echo "TUNNEL_PROFILE_UUID=$TUNNEL_PROFILE_UUID" >> "$GITHUB_ENV"
+
+      # ── libXray — pinned tag ─────────────────────────────────────────────────
+      # PINNED to v26.6.1 — do NOT change to 'latest'.
+      #
+      # Why pinned: libxray changed its gomobile API from raw-JSON input to
+      # base64-encoded CallRequest/CallResponse in v25.x+. Silently upgrading
+      # to a future version that changes the API again would break the iOS VPN
+      # tunnel with no compile-time warning (the function signature stays the
+      # same; only the expected encoding changes).
+      #
+      # To upgrade: read the new xray_wrapper.go, verify RunXrayFromJSON still
+      # accepts base64({datDir, configJSON}), update PacketTunnelProvider.swift
+      # if needed, then bump this pin.
+      - name: Set libXray tag
+        run: |
+          LIBXRAY_TAG="v26.6.1"
+          echo "Using pinned libXray tag: $LIBXRAY_TAG"
+          echo "LIBXRAY_TAG=$LIBXRAY_TAG" >> "$GITHUB_ENV"
+
+      # ── libXray — restore cached xcframework ─────────────────────────────────
+      - name: Cache LibXray.xcframework
+        id: cache-libxray
         uses: actions/cache@v4
         with:
-          path: mobile-app/ios/Pods
-          key: ${{ runner.os }}-pods-${{ hashFiles('mobile-app/ios/Podfile.lock') }}
-          restore-keys: ${{ runner.os }}-pods-
+          path: mobile-app/ios/LibXray.xcframework
+          key: libxray-xcframework-${{ env.LIBXRAY_TAG }}-macos15
 
-      - name: Pod install
-        run: pod install
-        working-directory: mobile-app/ios
+      # ── libXray — build from source (cache miss only) ────────────────────────
+      # gomobile bind produces LibXray.xcframework for arm64 iOS device + simulator.
+      # The build takes ~10 min on a fresh runner; subsequent runs hit the cache.
+      - name: Setup Go (for libXray build)
+        if: steps.cache-libxray.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+          cache: false
 
-      # ── Code signing ──────────────────────────────────────────────────────────
-
-      - name: Create keychain
+      - name: Build LibXray.xcframework
+        if: steps.cache-libxray.outputs.cache-hit != 'true'
         run: |
-          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_NAME"
-          security default-keychain -s "$KEYCHAIN_NAME"
-          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN_NAME"
-          security set-keychain-settings -t 3600 -u "$KEYCHAIN_NAME"
+          set -e
+          WORK_DIR="$RUNNER_TEMP/libxray-src"
+          git clone --depth=1 --branch "$LIBXRAY_TAG" \
+            https://github.com/xtls/libxray.git "$WORK_DIR"
+          cd "$WORK_DIR"
+          # Install gomobile toolchain
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          gomobile init
+          # Build for iOS (device + simulator, both arm64)
+          python3 build/main.py apple gomobile
+          # Locate the produced xcframework (output dir varies by libXray version)
+          XCFW=$(find . -name "LibXray.xcframework" -maxdepth 6 -type d 2>/dev/null | head -1)
+          if [ -z "$XCFW" ]; then
+            echo "ERROR: LibXray.xcframework not found after build. Directory listing:"
+            find . -maxdepth 4 -type d | head -40
+            exit 1
+          fi
+          echo "Found: $XCFW"
+          cp -R "$XCFW" "$GITHUB_WORKSPACE/mobile-app/ios/LibXray.xcframework"
+          echo "LibXray.xcframework copied to ios/"
 
-      - name: Import distribution certificate
-        env:
-          P12: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE }}
-          P12_PASS: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      # ── hev-socks5-tunnel — pinned tag ────────────────────────────────────────
+      # Still built and linked so the HEV stub build phase compiles cleanly.
+      # PacketTunnelProvider no longer calls any HEV functions (proxy-only arch),
+      # but the xcframework must be present for the Xcode project to link.
+      - name: Set hev-socks5-tunnel tag
         run: |
-          echo "$P12" | base64 --decode > /tmp/dist.p12
-          security import /tmp/dist.p12 \
-            -k "$KEYCHAIN_NAME" -P "$P12_PASS" \
-            -T /usr/bin/codesign -T /usr/bin/xcodebuild
-          security set-key-partition-list \
-            -S apple-tool:,apple: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN_NAME"
-          rm /tmp/dist.p12
+          HEV_TAG="2.15.0"
+          echo "Using pinned hev-socks5-tunnel tag: $HEV_TAG"
+          echo "HEV_TAG=$HEV_TAG" >> "$GITHUB_ENV"
 
-      - name: Install provisioning profiles
-        env:
-          PROFILE_MAIN: ${{ secrets.PROVISIONING_PROFILE }}
-          PROFILE_TUNNEL: ${{ secrets.PROVISIONING_PROFILE_TUNNEL }}
+      - name: Cache HevSocks5Tunnel.xcframework
+        id: cache-hev
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/ios/HevSocks5Tunnel.xcframework
+          key: hev-xcframework-${{ env.HEV_TAG }}-macos15
+
+      - name: Build HevSocks5Tunnel.xcframework
+        if: steps.cache-hev.outputs.cache-hit != 'true'
         run: |
-          PP_DIR=~/Library/MobileDevice/Provisioning\ Profiles
-          mkdir -p "$PP_DIR"
-          for B64 in "$PROFILE_MAIN" "$PROFILE_TUNNEL"; do
-            echo "$B64" | base64 --decode > /tmp/pp.mobileprovision
-            UUID=$(security cms -D -i /tmp/pp.mobileprovision | \
-                   plutil -extract UUID raw -)
-            cp /tmp/pp.mobileprovision "$PP_DIR/$UUID.mobileprovision"
-          done
-          rm -f /tmp/pp.mobileprovision
+          set -e
+          WORK_DIR="$RUNNER_TEMP/hev-src"
+          git clone --recursive --depth=1 --branch "$HEV_TAG" \
+            https://github.com/heiher/hev-socks5-tunnel.git "$WORK_DIR"
+          cd "$WORK_DIR"
+          ./build-apple.sh
+          XCFW=$(find . -name "HevSocks5Tunnel.xcframework" -maxdepth 4 -type d 2>/dev/null | head -1)
+          if [ -z "$XCFW" ]; then
+            echo "ERROR: HevSocks5Tunnel.xcframework not found after build. Listing:"
+            find . -maxdepth 3 \( -name "*.xcframework" -o -name "*.a" \) 2>/dev/null | head -40
+            exit 1
+          fi
+          echo "Found: $XCFW"
+          cp -R "$XCFW" "$GITHUB_WORKSPACE/mobile-app/ios/HevSocks5Tunnel.xcframework"
+          echo "HevSocks5Tunnel.xcframework copied to ios/"
 
-      - name: Install ASC API key
-        env:
-          KEY: ${{ secrets.ASC_PRIVATE_KEY }}
-          KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-        run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$KEY" | base64 --decode \
-            > ~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
-
-      # ── Build ─────────────────────────────────────────────────────────────────
-
+      # ── Build number ─────────────────────────────────────────────────────────
       - name: Set build number
-        id: build
-        run: echo "number=$(date +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
-
-      - name: Archive
-        env:
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
-          TUNNEL_PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_TUNNEL_NAME }}
         run: |
-          set -o pipefail
-          xcodebuild archive \
-            -workspace ios/Realink.xcworkspace \
-            -scheme Realink \
-            -configuration Release \
-            -archivePath /tmp/Realink.xcarchive \
-            CURRENT_PROJECT_VERSION="${{ steps.build.outputs.number }}" \
-            MARKETING_VERSION="$MARKETING_VERSION" \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-            CODE_SIGN_STYLE=Manual \
-            2>&1 | tee /tmp/xcodebuild-archive.log | \
-            grep -E "(error:|warning:|Archive Succeeded|Build Succeeded|FAILED)" || true
+          INPUT="${{ github.event.inputs.build_number }}"
+          echo "BUILD_NUMBER=${INPUT:-${{ github.run_number }}}" >> "$GITHUB_ENV"
 
+      # ── Sync version.ts ──────────────────────────────────────────────────────
+      # release.sh only updates version.ts for Android APK builds (it reads from
+      # build.gradle). The iOS CI must regenerate this file itself so the JS bundle
+      # reports the correct app version and build number instead of a stale value.
+      - name: Sync version.ts to iOS build
+        working-directory: mobile-app
+        run: |
+          {
+            echo "// AUTO-GENERATED by ios-testflight.yml — do not edit by hand."
+            echo "export const APP_VERSION    = '0.9.50';"
+            echo "export const APP_BUILD      = '${BUILD_NUMBER}';"
+            echo "export const APP_BUILD_CODE = ${BUILD_NUMBER};"
+          } > src/utils/version.ts
+          echo "version.ts → 0.9.50 / build ${BUILD_NUMBER}"
+
+      # ── Tunnel extension safety guards ──────────────────────────────────────
+      # These checks fail the build when known-bad patterns re-appear in the source.
+      # SOCK_SEQPACKET: triggers errno=43 (EPROTOTYPE) in the iOS NE sandbox — all
+      #   app traffic silently drops while iOS reports "Connected". Root cause of the
+      #   build 38 no-internet bug. Fixed in build 40 (SOCK_DGRAM). Never reintroduce.
+      # fake-connected guard: completionHandler(nil) must appear once, after all
+      #   probes pass. grep count enforces the one-call rule.
+      - name: Guard tunnel extension source
+        run: |
+          set -e
+          EXT="mobile-app/ios/PacketTunnelExtension/PacketTunnelProvider.swift"
+
+          # 1. SOCK_SEQPACKET is permanently banned in the NE sandbox (comments are OK)
+          if grep -n "SOCK_SEQPACKET" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//" ; then
+            echo "❌ SOCK_SEQPACKET found in non-comment code in $EXT"
+            echo "   This type triggers errno=43 (EPROTOTYPE) in the iOS NE sandbox."
+            echo "   Use SOCK_DGRAM — it has identical message boundaries and sandbox-allowed."
+            exit 1
+          fi
+          echo "✓ SOCK_SEQPACKET: not found in non-comment code"
+
+          # 2. completionHandler(nil) must appear exactly once in non-comment code
+          COUNT=$(grep -n "completionHandler(nil)" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//" | wc -l | tr -d ' ')
+          if [ "$COUNT" -ne 1 ]; then
+            echo "❌ completionHandler(nil) appears $COUNT times in non-comment code in $EXT (expected exactly 1)"
+            echo "   Every call to completionHandler(nil) reports 'Connected' to iOS."
+            echo "   Only one path is allowed: after connected_verified (all probes passed)."
+            grep -n "completionHandler(nil)" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//"
+            exit 1
+          fi
+          echo "✓ completionHandler(nil): appears exactly 1 time in non-comment code"
+
+          # 3. connected_verified must be logged before the single completionHandler call
+          if ! grep -q "connected_verified" "$EXT"; then
+            echo "❌ STATE: connected_verified not found in $EXT"
+            echo "   The state must be written to UserDefaults before completionHandler(nil)."
+            exit 1
+          fi
+          echo "✓ STATE: connected_verified present"
+
+          # 4. NEProxySettings placement check.
+          # Two valid architectures:
+          #   a) Pure proxy-only: no #if HEV_AVAILABLE blocks in the file — NEProxySettings
+          #      may appear anywhere (the whole file IS the proxy implementation).
+          #   b) Dual-mode (HEV_AVAILABLE + else): NEProxySettings must be in the #else block
+          #      so it only activates when HEV is not compiled in. This prevents silently
+          #      masking full-tunnel failures by routing via HTTP proxy instead of TUN.
+          HEV_BLOCK_COUNT=$(grep -c "HEV_AVAILABLE" "$EXT" || true)
+          PROXY_TOTAL=$(grep -c "NEProxySettings()" "$EXT" || true)
+          if [ "$HEV_BLOCK_COUNT" -eq 0 ]; then
+            # Pure proxy-only architecture — no restriction on NEProxySettings placement
+            echo "✓ NEProxySettings: pure proxy-only file (no HEV_AVAILABLE blocks) — placement unrestricted"
+          else
+            # Dual-mode: NEProxySettings must only be inside #else
+            PROXY_IN_ELSE=$(awk '/^        #else/{in_else=1} /^        #endif/{in_else=0} /NEProxySettings\(\)/ && in_else{c++} END{print c+0}' "$EXT")
+            if [ "$PROXY_TOTAL" -ne "$PROXY_IN_ELSE" ]; then
+              echo "❌ NEProxySettings() appears $PROXY_TOTAL times but only $PROXY_IN_ELSE are inside #else"
+              echo "   In dual-mode code, NEProxySettings must ONLY be instantiated in the #else block."
+              echo "   In HEV_AVAILABLE mode the proxy setting silently masks full-tunnel failures."
+              grep -n "NEProxySettings()" "$EXT" | grep -v "^[0-9]*:[[:space:]]*//"
+              exit 1
+            fi
+            echo "✓ NEProxySettings(): all $PROXY_TOTAL instantiations are inside #else (proxy mode only)"
+          fi
+
+          # 5. Both entitlements files must declare the same App Group (#15 #16)
+          MAIN_ENT="mobile-app/ios/SetaLink/Realink.entitlements"
+          EXT_ENT="mobile-app/ios/PacketTunnelExtension/PacketTunnelExtension.entitlements"
+          APP_GROUP="group.no.setalink.realink"
+          for f in "$MAIN_ENT" "$EXT_ENT"; do
+            if ! grep -q "$APP_GROUP" "$f"; then
+              echo "❌ App Group '$APP_GROUP' missing from $f"
+              echo "   Both the main app and the tunnel extension must share the same App Group."
+              echo "   Without it the extension cannot read xray_config_json written by the main app."
+              exit 1
+            fi
+            echo "✓ App Group in $f"
+          done
+
+          echo "✓ All tunnel extension guards passed"
+
+      # ── Archive ──────────────────────────────────────────────────────────────
+      # Uses an xcconfig to set per-target provisioning profiles (Realink vs
+      # RealinkTunnel have different bundle IDs and therefore different profiles).
+      # The $(TARGET_NAME:identifier) macro expands to the target name per build,
+      # so each target picks up its own PROVISIONING_PROFILE_SPECIFIER value.
+      - name: Archive (Release)
+        working-directory: mobile-app
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          # Generate per-target signing xcconfig
+          cat > "$RUNNER_TEMP/ci_signing.xcconfig" <<XCCONFIG
+          CODE_SIGN_STYLE = Manual
+          CODE_SIGN_IDENTITY = Apple Distribution
+          DEVELOPMENT_TEAM = $APPLE_TEAM_ID
+          PROVISIONING_PROFILE_SPECIFIER = \$(PROVISIONING_PROFILE_SPECIFIER_\$(TARGET_NAME:identifier))
+          PROVISIONING_PROFILE_SPECIFIER_Realink = $PROFILE_UUID
+          PROVISIONING_PROFILE_SPECIFIER_RealinkTunnel = $TUNNEL_PROFILE_UUID
+          XCCONFIG
+
+          xcodebuild archive \
+            -workspace               ios/Realink.xcworkspace \
+            -scheme                  Realink \
+            -configuration           Release \
+            -archivePath             "$RUNNER_TEMP/Realink.xcarchive" \
+            -xcconfig                "$RUNNER_TEMP/ci_signing.xcconfig" \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+            MARKETING_VERSION=0.9.50 \
+            SWIFT_ACTIVE_COMPILATION_CONDITIONS="LIBXRAY_AVAILABLE HEV_AVAILABLE" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $KEYCHAIN_PATH"
+
+      # ── Export IPA ───────────────────────────────────────────────────────────
       - name: Export IPA
         env:
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_NAME }}
-          TUNNEL_PROFILE_NAME: ${{ secrets.PROVISIONING_PROFILE_TUNNEL_NAME }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          cat > /tmp/ExportOptions.plist << PLIST
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
           <dict>
-            <key>method</key><string>app-store</string>
-            <key>teamID</key><string>${TEAM_ID}</string>
-            <key>uploadBitcode</key><false/>
-            <key>uploadSymbols</key><true/>
-            <key>signingStyle</key><string>manual</string>
+            <key>method</key>             <string>app-store-connect</string>
+            <key>teamID</key>             <string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key>       <string>manual</string>
+            <key>uploadBitcode</key>      <false/>
+            <key>uploadSymbols</key>      <true/>
             <key>provisioningProfiles</key>
             <dict>
-              <key>no.setalink.realink</key><string>${PROFILE_NAME}</string>
-              <key>no.setalink.realink.tunnel</key><string>${TUNNEL_PROFILE_NAME}</string>
+              <key>$BUNDLE_ID</key>
+              <string>$PROFILE_UUID</string>
+              <key>$TUNNEL_BUNDLE_ID</key>
+              <string>$TUNNEL_PROFILE_UUID</string>
             </dict>
           </dict>
           </plist>
           PLIST
-          xcodebuild -exportArchive \
-            -archivePath /tmp/Realink.xcarchive \
-            -exportPath /tmp/Realink-ipa \
-            -exportOptionsPlist /tmp/ExportOptions.plist \
-            2>&1 | tail -30
 
+          xcodebuild -exportArchive \
+            -archivePath        "$RUNNER_TEMP/Realink.xcarchive" \
+            -exportPath         "$RUNNER_TEMP/ipa" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+      # ── Upload to TestFlight ─────────────────────────────────────────────────
       - name: Upload to TestFlight
         env:
-          KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-          ISSUER: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_ID:    ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          cp "$ASC_KEY_PATH" ~/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8
           xcrun altool --upload-app \
-            --type ios \
-            --file /tmp/Realink-ipa/Realink.ipa \
-            --apiKey "$KEY_ID" \
-            --apiIssuer "$ISSUER"
-          echo "Uploaded build ${{ steps.build.outputs.number }} v$MARKETING_VERSION"
+            --type      ios \
+            --file      "$RUNNER_TEMP/ipa/Realink.ipa" \
+            --apiKey    "$ASC_KEY_ID" \
+            --apiIssuer "$ASC_ISSUER_ID"
 
-      - name: Upload build log on failure
-        if: failure()
+      # ── Keep IPA as artifact ─────────────────────────────────────────────────
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
-        with:
-          name: xcodebuild-log
-          path: /tmp/xcodebuild-archive.log
-
-      - name: Clean keychain
         if: always()
-        run: security delete-keychain "$KEYCHAIN_NAME" || true
+        with:
+          name: Realink-${{ env.BUILD_NUMBER }}.ipa
+          path: ${{ runner.temp }}/ipa/Realink.ipa
+          retention-days: 14
+
+      # ── Cleanup — wipe all credential material from the runner ───────────────
+      - name: Wipe credentials
+        if: always()
+        run: |
+          security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
+          rm -rf "$RUNNER_TEMP/asc"
