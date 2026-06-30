@@ -154,10 +154,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         proxy.httpsServer            = httpProx
         proxy.excludeSimpleHostnames = true
         proxy.exceptionList          = ["localhost", "127.0.0.1", "::1"]
+        // matchDomains=[""] means empty string is a suffix of every hostname → all connections
+        // use this proxy. Without this line the proxy settings are ignored by iOS (nil = inactive).
+        proxy.matchDomains           = [""]
         s.proxySettings = proxy
 
+        let mdLog = proxy.matchDomains.map { $0.isEmpty ? "[\"\"]" : "\($0)" } ?? "nil"
         if let addr = serverAddr {
-            appendLog("SETTINGS: server=\(addr) proxy=HTTP:10809")
+            appendLog("SETTINGS: server=\(addr) proxy=HTTP:10809 matchDomains=\(mdLog)")
+        } else {
+            appendLog("SETTINGS: proxy=HTTP:10809 matchDomains=\(mdLog)")
         }
         return s
     }
