@@ -132,20 +132,42 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private func buildNetworkSettings(serverAddr: String?) -> NEPacketTunnelNetworkSettings {
         let s = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
 
-        // Minimal IPv4 — no default route through TUN.
-        // All traffic is handled by proxy settings below; the TUN interface is
-        // a placeholder so the system considers the VPN "up".
+        // IPv4: claim the default route so iOS actually applies NEProxySettings to all
+        // app traffic. With includedRoutes=[] iOS installs the proxy config object but
+        // does NOT apply it to system apps (Safari, etc.) — traffic goes direct.
+        // Build 51 documented this: "connect probe passed only because it set the proxy
+        // explicitly, while real browsing went direct and stalled."
         let ipv4 = NEIPv4Settings(addresses: ["10.255.0.2"], subnetMasks: ["255.255.255.0"])
-        ipv4.includedRoutes = []
+        ipv4.includedRoutes = [NEIPv4Route.default()]
+        // Exclude the VLESS server so xray's own outbound doesn't loop back into the TUN.
+        // iOS has no Android-style socket protect(), so without this exclusion xray's
+        // TCP connection to the server is captured by the default route and deadlocks.
+        var excluded4: [NEIPv4Route] = []
+        if let addr = serverAddr, isIPv4(addr) {
+            let r = NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255")
+            excluded4.append(r)
+            appendLog("SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
+        }
+        ipv4.excludedRoutes = excluded4
         s.ipv4Settings = ipv4
 
-        // DNS through tunnel (prevents DNS leaks)
-        s.dnsSettings = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
+        // IPv6: claim default + drop. If IPv6 is not claimed, Safari (Happy Eyeballs)
+        // uses IPv6 directly, bypassing the IPv4 proxy entirely and hitting ISP blocks.
+        // Claiming ::/0 with no IPv6 packet handler causes immediate IPv6 failure so
+        // the OS falls back to IPv4 where the proxy is active.
+        let ipv6 = NEIPv6Settings(addresses: ["fd00::2"], networkPrefixLengths: [64])
+        ipv6.includedRoutes = [NEIPv6Route.default()]
+        ipv6.excludedRoutes = []
+        s.ipv6Settings = ipv6
+
+        // DNS
+        let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
+        dns.matchDomains = [""]
+        s.dnsSettings = dns
 
         // HTTP CONNECT proxy → xray HTTP inbound on :10809.
-        // iOS 26 SDK removed socksEnabled/socksServer from NEProxySettings; HTTP CONNECT
-        // handles all standard app traffic. xray's SOCKS5 inbound on :10808 is still
-        // started (isSocksPortOpen() probes it) but is not advertised via NEProxySettings.
+        // matchDomains=[""] activates the proxy for all hostnames (empty string is a
+        // suffix of every hostname). Without this, iOS ignores the proxy entirely.
         let httpProx = NEProxyServer(address: "127.0.0.1", port: 10809)
         let proxy = NEProxySettings()
         proxy.httpEnabled            = true
@@ -154,18 +176,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         proxy.httpsServer            = httpProx
         proxy.excludeSimpleHostnames = true
         proxy.exceptionList          = ["localhost", "127.0.0.1", "::1"]
-        // matchDomains=[""] means empty string is a suffix of every hostname → all connections
-        // use this proxy. Without this line the proxy settings are ignored by iOS (nil = inactive).
         proxy.matchDomains           = [""]
         s.proxySettings = proxy
 
-        let mdLog = proxy.matchDomains.map { $0.isEmpty ? "[\"\"]" : "\($0)" } ?? "nil"
-        if let addr = serverAddr {
-            appendLog("SETTINGS: server=\(addr) proxy=HTTP:10809 matchDomains=\(mdLog)")
-        } else {
-            appendLog("SETTINGS: proxy=HTTP:10809 matchDomains=\(mdLog)")
-        }
+        let mdLog = proxy.matchDomains.map { "\($0)" } ?? "nil"
+        appendLog("SETTINGS: server=\(serverAddr ?? "?") proxy=HTTP:10809 matchDomains=\(mdLog) routes=default+serverExcluded ipv6=claim+drop")
         return s
+    }
+
+    private func isIPv4(_ s: String) -> Bool {
+        var sin = sockaddr_in()
+        return s.withCString { inet_pton(AF_INET, $0, &sin.sin_addr) == 1 }
     }
 
     // MARK: - Helpers
