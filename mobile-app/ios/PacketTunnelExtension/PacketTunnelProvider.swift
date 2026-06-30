@@ -110,6 +110,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             shared.synchronize()
             self.appendLog("CONNECTED: HTTP 127.0.0.1:10809 / SOCKS5 127.0.0.1:\(kSocksPort)")
             completionHandler(nil)
+
+            // Drain the TUN queue so iOS does not kill the extension for an
+            // unresponsive tunnel, and so QUIC/UDP packets are fast-rejected
+            // (Safari falls back from QUIC to TCP/HTTPS in ~1 s instead of
+            // waiting 30 s for the OS socket timeout).
+            //
+            // We discard all packets — the proxy handles HTTP/HTTPS at the
+            // URL loading layer before they reach the TUN. Everything else
+            // (QUIC/UDP, MTProto) is intentionally blocked: xray's routing
+            // rules blackhole udp/443 and IPv6 anyway.
+            self.drainTunPackets()
+        }
+    }
+
+    private func drainTunPackets() {
+        packetFlow.readPackets { [weak self] _, _ in
+            // Discard: all real traffic goes through the proxy (:10809).
+            // Calling readPackets again keeps the loop alive.
+            self?.drainTunPackets()
         }
     }
 
@@ -130,7 +149,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // MARK: - Network settings
 
     private func buildNetworkSettings(serverAddr: String?) -> NEPacketTunnelNetworkSettings {
-        let s = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
+        // tunnelRemoteAddress must be a non-loopback virtual address.
+        // "127.0.0.1" causes iOS to add a host route for loopback via the physical
+        // interface — a nonsensical instruction that produces undefined TUN behaviour.
+        // Build 51 used "10.255.0.1" (same /24 as the TUN address), which gives iOS
+        // a clean virtual endpoint with no ambiguity, and is the documented pattern
+        // for proxy-only PacketTunnelProviders that do not have a real remote server.
+        let s = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.255.0.1")
 
         // IPv4: claim the default route so iOS actually applies NEProxySettings to all
         // app traffic. With includedRoutes=[] iOS installs the proxy config object but
