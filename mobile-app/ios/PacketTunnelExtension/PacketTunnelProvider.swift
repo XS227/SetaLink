@@ -1,9 +1,14 @@
-// PacketTunnelProvider.swift — Realink tunnel (proxy architecture)
+// PacketTunnelProvider.swift — Realink tunnel (build 65 dual-mode)
 //
-// xray exposes HTTP CONNECT (:10809) and SOCKS5 (:10808) inbounds locally.
-// NEProxySettings routes all app traffic through those proxies.
-// No TUN-level packet relay, no HEV bridge, no socketpair.
-// Same model as Shadowrocket/Quantumult X.
+// #if HEV_AVAILABLE  → hev-socks5-tunnel full-device TUN engine (TCP all apps)
+//                      CI sets SWIFT_ACTIVE_COMPILATION_CONDITIONS="LIBXRAY_AVAILABLE HEV_AVAILABLE"
+// #else              → proxy-only / NEProxySettings (build 64 fallback, proxy mode only)
+//
+// CI guard rules enforced in ios-testflight.yml:
+//   • completionHandler(nil) — exactly 1 occurrence in non-comment code
+//   • connected_verified     — must be present before completionHandler
+//   • NEProxySettings         — only inside the #else block (8-space indent)
+//   • SOCK_SEQPACKET         — banned (use SOCK_DGRAM; SEQPACKET → errno 43 in NE sandbox)
 
 import NetworkExtension
 import Network
@@ -34,10 +39,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var connectStartTime: Date?
     private var serverAddr:     String?
 
-    // Extended diagnostics (Phase 7)
+    // Extended diagnostics
     private var initialPathInterfaceType: NWInterface.InterfaceType? = nil
     private var networkSwitchedDuringSession = false
     private var xrayReadyTime: Date? = nil
+
+    // MARK: - HEV engine (TUN mode only)
+    #if HEV_AVAILABLE
+    private var hevEngineThread: Thread?
+    #endif
 
     /// IP version derived from the server address stored in serverAddr.
     private var ipVersion: String {
@@ -88,7 +98,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         appendLog("CONFIG_PREVIEW: \(preview)")
 
         // LibXrayRunXrayFromJSON expects base64({"datDir":"","configJSON":"<raw-xray-config>"})
-        // NOT base64(<raw-xray-config>) — build 56 passed raw JSON, causing xray to hit EOF.
         guard let wrapperData = try? JSONSerialization.data(
             withJSONObject: ["datDir": "", "configJSON": configJSON]
         ) else {
@@ -98,7 +107,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         appendLog("CONFIG_B64: \(b64.count) chars")
 
         // LibXrayRunXrayFromJSON always returns base64({"success":bool,"error":"..."}).
-        // Checking !isEmpty is wrong — the response is never empty. Must decode and check success.
         let xrayResponse = LibXrayRunXrayFromJSON(b64)
         appendLog("XRAY_RESP: \(String(xrayResponse.prefix(120)))")
         guard !xrayResponse.isEmpty,
@@ -135,44 +143,105 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         xrayReadyTime = Date()
         appendLog("XRAY: SOCKS5 :\(kSocksPort) ready")
 
-        // 6. Apply network settings (proxy → xray)
         let parsedAddr = parseServerAddress(from: configJSON)
         self.serverAddr = parsedAddr
-        setTunnelNetworkSettings(buildNetworkSettings(serverAddr: parsedAddr)) { [weak self] error in
+
+        #if HEV_AVAILABLE
+        // ── Build 65: full-device TUN via hev-socks5-tunnel ──────────────────
+        // All TCP (Telegram, WhatsApp, Instagram, Safari) routes through the TUN
+        // interface → HEV engine → Xray SOCKS5 :10808 → VPS → internet.
+        // NEProxySettings not used; native socket apps are captured at layer 3.
+        setTunnelNetworkSettings(buildHevNetworkSettings(serverAddr: parsedAddr)) { [weak self] error in
             guard let self = self else { return }
             if let e = error {
                 self.submitTelemetry(event: "connect_fail", errorCategory: "routing_failed")
-                return self.fail("Network settings: \(e.localizedDescription)",
-                                 shared: shared, completionHandler)
+                return self.fail("HEV TUN settings: \(e.localizedDescription)", shared: shared, completionHandler)
+            }
+            let tunFd = self.findUtunFd()
+            guard tunFd >= 0 else {
+                self.submitTelemetry(event: "connect_fail", errorCategory: "tun_fd_unavailable")
+                return self.fail("HEV: TUN fd unavailable after settings applied", shared: shared, completionHandler)
+            }
+            guard let cfgPath = self.writeHevConfig(tunFd: tunFd) else {
+                return self.fail("HEV: config write failed", shared: shared, completionHandler)
+            }
+            self.startHevEngine(cfgPath: cfgPath)
+            self.startLivenessTimer(shared: shared)
+            self.startNetworkMonitor()
+            let latencyMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
+            self.submitTelemetry(event: "connect_ok", latencyMs: latencyMs)
+            self.finishConnected(shared: shared, completionHandler)
+        }
+
+        #else
+        // ── Build 64 fallback: proxy-only (NEProxySettings / PAC SOCKS5) ─────
+        // Routes URLSession-based apps through Xray SOCKS5 :10808 via PAC.
+        // Native socket apps (Telegram, WhatsApp, Instagram) bypass this proxy.
+        let proxyNetSettings: NEPacketTunnelNetworkSettings = {
+            let s = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.255.0.1")
+            let ipv4 = NEIPv4Settings(addresses: ["10.255.0.2"], subnetMasks: ["255.255.255.0"])
+            ipv4.includedRoutes = [NEIPv4Route.default()]
+            var excluded4: [NEIPv4Route] = []
+            if let addr = parsedAddr, self.isIPv4(addr) {
+                let r = NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255")
+                excluded4.append(r)
+                self.appendLog("SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
+            }
+            let dnsExclusions = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]
+            for ip in dnsExclusions {
+                excluded4.append(NEIPv4Route(destinationAddress: ip, subnetMask: "255.255.255.255"))
+            }
+            self.appendLog("SETTINGS: dnsExcluded=\(dnsExclusions.joined(separator: ",")) (prevent UDP/53 drain)")
+            ipv4.excludedRoutes = excluded4
+            s.ipv4Settings = ipv4
+            let ipv6 = NEIPv6Settings(addresses: ["fd00::2"], networkPrefixLengths: [64])
+            ipv6.includedRoutes = [NEIPv6Route.default()]
+            ipv6.excludedRoutes = []
+            s.ipv6Settings = ipv6
+            let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
+            dns.matchDomains = [""]
+            s.dnsSettings = dns
+            let proxy = NEProxySettings()
+            proxy.autoProxyConfigurationEnabled    = true
+            proxy.proxyAutoConfigurationJavaScript =
+                "function FindProxyForURL(url,host){" +
+                "if(host==='localhost'||host==='127.0.0.1'||host==='::1')return 'DIRECT';" +
+                "return 'SOCKS 127.0.0.1:\(kSocksPort)';" +
+                "}"
+            proxy.matchDomains = [""]
+            s.proxySettings = proxy
+            self.appendLog("SETTINGS: server=\(parsedAddr ?? "?") proxy=SOCKS5:\(kSocksPort) PAC matchDomains=[\"\"] routes=default+serverExcluded+dnsExcluded ipv6=claim+drop")
+            return s
+        }()
+        setTunnelNetworkSettings(proxyNetSettings) { [weak self] error in
+            guard let self = self else { return }
+            if let e = error {
+                self.submitTelemetry(event: "connect_fail", errorCategory: "routing_failed")
+                return self.fail("Network settings: \(e.localizedDescription)", shared: shared, completionHandler)
             }
             self.startLivenessTimer(shared: shared)
             self.startNetworkMonitor()
-            shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
-            shared.set(true,  forKey: kProbeOkKey)
-            shared.set("",    forKey: kErrorKey)
-            self.flushLog(to: shared)
-            shared.synchronize()
-            self.appendLog("CONNECTED: SOCKS5 127.0.0.1:\(kSocksPort)")
-            // Report successful connect with time-to-connect
             let latencyMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
             self.submitTelemetry(event: "connect_ok", latencyMs: latencyMs)
-            completionHandler(nil)
-
-            // Background probe: verify xray SOCKS5 actually forwards traffic.
-            // Extension traffic bypasses the system VPN, so we configure URLSession
-            // explicitly with SOCKS5 proxy dictionary. Updates kProbeOkKey.
+            self.finishConnected(shared: shared, completionHandler)
             self.performConnectivityProbe(shared: shared)
-            // DNS check: verify system DNS resolver can reach 1.1.1.1 directly
-            // (the excluded route keeps it off the TUN drain). Logs DNS: resolution OK
-            // or DNS: FAILED — used by DiagnosticsScreen iOS Tunnel Layer display.
             self.performDNSCheck(shared: shared)
-
-            // Drain the TUN queue so iOS does not kill the extension for an
-            // unresponsive tunnel. QUIC/UDP-443 hits TUN and is dropped here —
-            // Safari falls back to TCP in ~1 s. All other TCP goes through the
-            // SOCKS5 PAC proxy before reaching TUN.
             self.drainTunPackets()
         }
+        #endif
+    }
+
+    /// Mark the tunnel as fully connected. Exactly one call per tunnel lifetime —
+    /// this is the only location where completionHandler(nil) is invoked (CI guard).
+    private func finishConnected(shared: UserDefaults,
+                                 _ completionHandler: @escaping (Error?) -> Void) {
+        shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
+        shared.set(true, forKey: kProbeOkKey)
+        shared.set("",   forKey: kErrorKey)
+        flushLog(to: shared)
+        shared.synchronize()
+        appendLog("CONNECTED: tunnel active")
+        completionHandler(nil)
     }
 
     private func drainTunPackets() {
@@ -192,93 +261,121 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         submitTelemetry(event: "disconnect", disconnectReason: reasonStr)
         livenessTimer?.cancel(); livenessTimer = nil
         pathMonitor?.cancel();   pathMonitor   = nil
+        #if HEV_AVAILABLE
+        hev_socks5_tunnel_quit()
+        hevEngineThread = nil
+        #endif
         if let shared = UserDefaults(suiteName: kAppGroup) {
             flushLog(to: shared)
         }
-        // Call completionHandler immediately so iOS tears down the tunnel at once.
-        // LibXrayStopXray() is synchronous and can block for several seconds;
-        // delaying completionHandler causes the UI to hang on "Disconnecting…"
-        // and forces the user to use the kill switch.
         completionHandler()
         DispatchQueue.global(qos: .utility).async { LibXrayStopXray() }
     }
 
-    // MARK: - Network settings
+    // MARK: - HEV network settings (TUN mode, no proxy)
 
-    private func buildNetworkSettings(serverAddr: String?) -> NEPacketTunnelNetworkSettings {
-        // tunnelRemoteAddress must be a non-loopback virtual address.
-        // "127.0.0.1" causes iOS to add a host route for loopback via the physical
-        // interface — a nonsensical instruction that produces undefined TUN behaviour.
-        // Build 51 used "10.255.0.1" (same /24 as the TUN address), which gives iOS
-        // a clean virtual endpoint with no ambiguity, and is the documented pattern
-        // for proxy-only PacketTunnelProviders that do not have a real remote server.
+    private func buildHevNetworkSettings(serverAddr: String?) -> NEPacketTunnelNetworkSettings {
         let s = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.255.0.1")
-
-        // IPv4: claim the default route so iOS actually applies NEProxySettings to all
-        // app traffic. With includedRoutes=[] iOS installs the proxy config object but
-        // does NOT apply it to system apps (Safari, etc.) — traffic goes direct.
-        // Build 51 documented this: "connect probe passed only because it set the proxy
-        // explicitly, while real browsing went direct and stalled."
         let ipv4 = NEIPv4Settings(addresses: ["10.255.0.2"], subnetMasks: ["255.255.255.0"])
         ipv4.includedRoutes = [NEIPv4Route.default()]
-        // Exclude the VLESS server so xray's own outbound doesn't loop back into the TUN.
-        // iOS has no Android-style socket protect(), so without this exclusion xray's
-        // TCP connection to the server is captured by the default route and deadlocks.
         var excluded4: [NEIPv4Route] = []
+        // Exclude the VPS so Xray's outbound TCP to the server doesn't loop into the TUN.
         if let addr = serverAddr, isIPv4(addr) {
-            let r = NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255")
-            excluded4.append(r)
-            appendLog("SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
+            excluded4.append(NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255"))
+            appendLog("HEV_SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
         }
-        // DNS server IPs must bypass the TUN drain. NEDNSSettings sends all DNS
-        // queries (UDP/53) to these addresses; with the default route in the TUN,
-        // those UDP packets enter drainTunPackets() and are silently discarded —
-        // apps get no DNS responses and show "no internet" even though SOCKS5 works.
-        let dnsExclusions = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]
-        for ip in dnsExclusions {
+        // Keep DNS resolvers direct; HEV forwards TCP but DNS exclusion keeps UDP/53 stable.
+        for ip in ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"] {
             excluded4.append(NEIPv4Route(destinationAddress: ip, subnetMask: "255.255.255.255"))
         }
-        appendLog("SETTINGS: dnsExcluded=\(dnsExclusions.joined(separator: ",")) (prevent UDP/53 drain)")
         ipv4.excludedRoutes = excluded4
         s.ipv4Settings = ipv4
-
-        // IPv6: claim default + drop. If IPv6 is not claimed, Safari (Happy Eyeballs)
-        // uses IPv6 directly, bypassing the IPv4 proxy entirely and hitting ISP blocks.
-        // Claiming ::/0 with no IPv6 packet handler causes immediate IPv6 failure so
-        // the OS falls back to IPv4 where the proxy is active.
         let ipv6 = NEIPv6Settings(addresses: ["fd00::2"], networkPrefixLengths: [64])
         ipv6.includedRoutes = [NEIPv6Route.default()]
         ipv6.excludedRoutes = []
         s.ipv6Settings = ipv6
-
-        // DNS
         let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
         dns.matchDomains = [""]
         s.dnsSettings = dns
-
-        // PAC-based SOCKS5 → xray SOCKS5 inbound on :10808 (udp:true in xray config).
-        // SOCKS5 covers ALL TCP (HTTP, HTTPS, raw MTProto) unlike HTTP CONNECT which
-        // only intercepts URLSession-based HTTPS. PAC returns DIRECT for loopback.
-        let proxy = NEProxySettings()
-        proxy.autoProxyConfigurationEnabled    = true
-        proxy.proxyAutoConfigurationJavaScript =
-            "function FindProxyForURL(url,host){" +
-            "if(host==='localhost'||host==='127.0.0.1'||host==='::1')return 'DIRECT';" +
-            "return 'SOCKS 127.0.0.1:\(kSocksPort)';" +
-            "}"
-        proxy.matchDomains = [""]
-        s.proxySettings = proxy
-
-        appendLog("SETTINGS: server=\(serverAddr ?? "?") proxy=SOCKS5:\(kSocksPort) PAC matchDomains=[\"\"] routes=default+serverExcluded+dnsExcluded ipv6=claim+drop")
+        // No NEProxySettings — HEV captures all TCP at TUN level and forwards via SOCKS5.
+        appendLog("HEV_SETTINGS: TUN-only, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 direct")
         return s
     }
+
+    // MARK: - HEV TUN engine helpers
+
+    #if HEV_AVAILABLE
+
+    /// Scan open file descriptors for the utun control socket created by
+    /// setTunnelNetworkSettings. Returns the fd on success, -1 on failure.
+    ///
+    /// Technique: getsockopt(fd, SYSPROTO_CONTROL=2, UTUN_OPT_IFNAME=2) succeeds
+    /// only on the utun socket — same approach used by WireGuard-iOS.
+    private func findUtunFd() -> Int32 {
+        var buf = [UInt8](repeating: 0, count: 64)
+        var len = socklen_t(buf.count)
+        for fd: Int32 in 0 ..< 256 {
+            if getsockopt(fd, 2 /* SYSPROTO_CONTROL */, 2 /* UTUN_OPT_IFNAME */, &buf, &len) == 0 {
+                return fd
+            }
+        }
+        return -1
+    }
+
+    /// Write a hev-socks5-tunnel YAML config to the temp directory and return
+    /// the file path, or nil if the write fails.
+    private func writeHevConfig(tunFd: Int32) -> String? {
+        let yaml = """
+tunnel:
+  fd: \(tunFd)
+  mtu: 1500
+
+socks5:
+  port: \(kSocksPort)
+  address: '127.0.0.1'
+
+misc:
+  task-stack-size: 81920
+  connect-timeout: 5000
+  read-write-timeout: 60000
+  log-level: warn
+"""
+        let path = NSTemporaryDirectory() + "hev-socks5.yml"
+        do {
+            try yaml.write(toFile: path, atomically: true, encoding: .utf8)
+            appendLog("HEV: config written to \(path) fd=\(tunFd)")
+            return path
+        } catch {
+            appendLog("HEV: config write error: \(error)")
+            return nil
+        }
+    }
+
+    /// Start hev_socks5_tunnel_main in a dedicated background thread.
+    /// The call is blocking and runs until hev_socks5_tunnel_quit() is called.
+    private func startHevEngine(cfgPath: String) {
+        let thr = Thread {
+            let arg0 = strdup("hev-socks5-tunnel")!
+            let arg1 = strdup(cfgPath)!
+            var argv: [UnsafeMutablePointer<CChar>?] = [arg0, arg1, nil]
+            _ = hev_socks5_tunnel_main(2, &argv)
+            free(arg0); free(arg1)
+        }
+        thr.name = "HevSocks5TunnelThread"
+        thr.qualityOfService = .userInitiated
+        thr.start()
+        hevEngineThread = thr
+        appendLog("HEV: engine thread started")
+    }
+
+    #endif // HEV_AVAILABLE
+
+    // MARK: - Helpers
 
     private func isIPv4(_ s: String) -> Bool {
         var sin = sockaddr_in()
         return s.withCString { inet_pton(AF_INET, $0, &sin.sin_addr) == 1 }
     }
-
-    // MARK: - Helpers
 
     private func isPortOpen(_ port: Int) -> Bool {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
@@ -339,9 +436,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let url = URL(string: "https://cp.cloudflare.com/") else { return }
 
             let cfg = URLSessionConfiguration.ephemeral
-            // kCFNetworkProxies* constants are unavailable on iOS — use raw string keys.
-            // Use SOCKS5 to match the system proxy (PAC→SOCKS5); probe validates
-            // xray SOCKS5 inbound reachability, not the old HTTP inbound.
             cfg.connectionProxyDictionary = [
                 "SOCKSEnable": 1,
                 "SOCKSProxy":  "127.0.0.1",
@@ -380,9 +474,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private func performDNSCheck(shared: UserDefaults) {
         DispatchQueue.global(qos: .background).async { [weak self] in
             guard let self = self else { return }
-            // Resolve a real hostname via the system DNS resolver (no proxy).
-            // Uses the direct URLSession — extension traffic already bypasses the VPN,
-            // so this confirms that the DNS exclusion routes let UDP/53 through to 1.1.1.1.
             guard let url = URL(string: "https://one.one.one.one/") else { return }
             let cfg = URLSessionConfiguration.ephemeral
             cfg.connectionProxyDictionary = [:]
@@ -405,7 +496,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
-    // Parse outbound server address from xray JSON (VLESS vnext format)
     private func parseServerAddress(from json: String) -> String? {
         guard let data  = json.data(using: .utf8),
               let root  = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -487,8 +577,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // MARK: - Telemetry
 
-    /// Fire-and-forget anonymous telemetry POST to /v1/telemetry/connect.
-    /// Uses a direct (no-proxy) URLSession so it works before and after tunnel teardown.
     private func submitTelemetry(
         event:            String,
         latencyMs:        Int?    = nil,
@@ -517,7 +605,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         if let cat = errorCategory {
             items.append(URLQueryItem(name: "error_category", value: cat))
         }
-        // Extended diagnostics
         items.append(URLQueryItem(name: "ip_version", value: ipVersion))
         if networkSwitchedDuringSession {
             items.append(URLQueryItem(name: "network_switched", value: "1"))
