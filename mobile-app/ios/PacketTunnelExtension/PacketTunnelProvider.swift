@@ -369,6 +369,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// CP1=ERR      → wrong fd or permission denied → HEV may have wrong fd.
     private func startCP1Monitor(tunFd: Int32, shared: UserDefaults) {
         var poll = 0
+        let srv  = serverLabel()
         let t = DispatchSource.makeTimerSource(queue: .global(qos: .background))
         t.schedule(deadline: .now() + 3, repeating: 5)
         t.setEventHandler { [weak self] in
@@ -385,9 +386,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 let e = errno
                 result = (e == EAGAIN || e == EWOULDBLOCK) ? "EMPTY" : "ERR(errno=\(e))"
             }
-            // Log every poll for first 12 (60s), then only changes
+            // Log every poll for first 12 (60s), then only when data seen
             if poll <= 12 || n > 0 {
-                self.appendLog("CP1 poll#\(poll): tunFd=\(tunFd) \(result)")
+                self.appendLog("CP1[\(srv)] poll#\(poll): tunFd=\(tunFd) \(result)")
                 self.flushLog(to: shared)
                 shared.synchronize()
             }
@@ -407,6 +408,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             return
         }
         let path    = xrayLogPath
+        let srv     = serverLabel()
         var offset: UInt64 = 0
         var polls   = 0
         let t = DispatchSource.makeTimerSource(queue: .global(qos: .background))
@@ -416,7 +418,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             polls += 1
             guard let fh = FileHandle(forReadingAtPath: path) else {
                 if polls <= 3 {
-                    self.appendLog("CP4 poll#\(polls): access.log not found — Xray not writing?")
+                    self.appendLog("CP4[\(srv)] poll#\(polls): access.log not found — Xray not writing?")
                     self.flushLog(to: shared); shared.synchronize()
                 }
                 return
@@ -428,20 +430,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
             let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
             self.cp4TotalConns += lines.count
-            // Extract first destination for quick diagnosis
             for line in lines where self.cp4FirstDest.isEmpty {
-                // "accepted tcp:HOST:PORT" or "accepted udp:..."
                 if let r = line.range(of: "accepted tcp:") ?? line.range(of: "accepted udp:") {
                     let after = line[r.upperBound...]
                     self.cp4FirstDest = String(after.components(separatedBy: " ").first ?? "?")
                 }
             }
-            self.appendLog("CP4 poll#\(polls): +\(lines.count) xray entries total=\(self.cp4TotalConns) firstDest=\(self.cp4FirstDest.isEmpty ? "none" : self.cp4FirstDest)")
+            self.appendLog("CP4[\(srv)] poll#\(polls): +\(lines.count) entries total=\(self.cp4TotalConns) firstDest=\(self.cp4FirstDest.isEmpty ? "none" : self.cp4FirstDest)")
             self.flushLog(to: shared)
             shared.synchronize()
         }
         t.resume()
         xrayLogTimer = t
+    }
+
+    /// Human-readable label for the current server — used in CP log lines.
+    private func serverLabel() -> String {
+        guard let addr = serverAddr else { return "?" }
+        if addr.hasPrefix("65.109.183") { return "Finland/\(addr)" }
+        if addr.hasPrefix("178.104.77") { return "Germany/\(addr)" }
+        return addr
     }
 
     /// Scan open file descriptors for the utun control socket created by

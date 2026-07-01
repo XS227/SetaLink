@@ -698,6 +698,54 @@ function icon(string $name): string {
         </div>
       </div>
 
+      <!-- Diagnostic Sessions -->
+      <div class="panel" style="margin-bottom:1rem" id="diagSessionsPanel">
+        <div class="panel-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <span class="panel-title">Diagnostic Sessions (CP1–CP4)</span>
+          <span class="panel-sub">auto-saved on every disconnect from build 68+</span>
+          <span style="margin-left:auto;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
+            <select class="select btn-sm" id="diagServer" style="width:110px">
+              <option value="">All Servers</option>
+              <option value="Finland">Finland</option>
+              <option value="Germany">Germany</option>
+            </select>
+            <select class="select btn-sm" id="diagCp1" style="width:95px">
+              <option value="">CP1 any</option>
+              <option value="PASS">CP1 PASS</option>
+              <option value="FAIL">CP1 FAIL</option>
+            </select>
+            <select class="select btn-sm" id="diagCp4" style="width:95px">
+              <option value="">CP4 any</option>
+              <option value="PASS">CP4 PASS</option>
+              <option value="FAIL">CP4 FAIL</option>
+            </select>
+            <select class="select btn-sm" id="diagCode" style="width:130px">
+              <option value="">Any conclusion</option>
+              <option value="tunnel_ok">tunnel_ok</option>
+              <option value="cp1_fail">cp1_fail</option>
+              <option value="cp4_fail">cp4_fail</option>
+              <option value="proxy_mode">proxy_mode</option>
+              <option value="no_data">no_data</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" id="diagRefreshBtn">Search</button>
+          </span>
+        </div>
+        <div id="diagSideBySide" style="display:none;padding:.75rem 1rem .25rem">
+          <!-- Side-by-side server comparison injected by JS -->
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Time</th><th>Server</th><th>Mode</th>
+              <th>CP1</th><th>CP2</th><th>CP3</th><th>CP4</th>
+              <th>CP4 Conns</th><th>First Dest</th>
+              <th>VPS</th><th>Conclusion</th><th>Duration</th><th>Disconnect</th>
+            </tr></thead>
+            <tbody id="diagSessionTbl"><tr><td colspan="13" class="tbl-empty">Select filters and click Search</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Recent failures -->
       <div class="panel">
         <div class="panel-header"><span class="panel-title">Recent Failures</span><span class="panel-sub">last 100 non-OK events</span></div>
@@ -2404,6 +2452,7 @@ views.intel = {
   init() {
     $('intelRefreshBtn').addEventListener('click', ()=>this.load());
     $('intelDays').addEventListener('change', ()=>this.load());
+    $('diagRefreshBtn').addEventListener('click', ()=>this.loadDiagSessions());
     this.load();
   },
   async load() {
@@ -2566,6 +2615,89 @@ views.intel = {
           <div style="font-size:.75rem;color:var(--accent)">→ ${esc(r.action)}</div>
         </div>`).join('')
       + '</div>';
+  },
+  async loadDiagSessions() {
+    const btn = $('diagRefreshBtn');
+    btn.textContent = 'Loading…';
+    btn.disabled = true;
+    try {
+      const params = {};
+      const srv = $('diagServer').value; if (srv) params.server = srv;
+      const cp1 = $('diagCp1').value;   if (cp1) params.cp1    = cp1;
+      const cp4 = $('diagCp4').value;   if (cp4) params.cp4    = cp4;
+      const code= $('diagCode').value;   if (code) params.conclusion_code = code;
+      params.limit = 100;
+      const d = await api.get('diag-sessions', params);
+      this.renderDiagSessions(d.sessions || [], d.by_server || {});
+    } catch(e) {
+      $('diagSessionTbl').innerHTML = `<tr><td colspan="13" class="tbl-empty">${esc(e.message)}</td></tr>`;
+    } finally {
+      btn.textContent = 'Search';
+      btn.disabled = false;
+    }
+  },
+  renderDiagSessions(rows, byServer) {
+    const cpBadge = v => {
+      if (v === 'PASS')    return `<span style="color:var(--ok);font-weight:700">PASS</span>`;
+      if (v === 'FAIL')    return `<span style="color:var(--danger);font-weight:700">FAIL</span>`;
+      return `<span style="color:var(--muted-2);font-size:.72rem">—</span>`;
+    };
+    const codeBadge = c => {
+      const map = {tunnel_ok:'ok',cp1_fail:'danger',cp4_fail:'danger',proxy_mode:'',no_data:''};
+      const cls = map[c]?`color:var(--${map[c]})`:' color:var(--muted)';
+      return `<span style="${cls};font-size:.72rem;font-weight:600">${esc(c||'—')}</span>`;
+    };
+    const srvBadge = (s) => {
+      if ((s||'').includes('Finland')) return `<span style="font-size:.8rem">🇫🇮 ${esc(s)}</span>`;
+      if ((s||'').includes('Germany') || (s||'').includes('Primary')) return `<span style="font-size:.8rem">🇩🇪 ${esc(s)}</span>`;
+      return `<span style="font-size:.78rem">${esc(s||'?')}</span>`;
+    };
+    // Side-by-side server summary
+    const servers = Object.keys(byServer);
+    const sbDiv = $('diagSideBySide');
+    if (servers.length >= 2) {
+      sbDiv.style.display = '';
+      sbDiv.innerHTML = `<div style="display:grid;grid-template-columns:repeat(${servers.length},1fr);gap:1rem;margin-bottom:.75rem">`
+        + servers.map(srv => {
+          const sRows = byServer[srv] || [];
+          const total = sRows.length;
+          const cp1p  = sRows.filter(r=>r.cp1_result==='PASS').length;
+          const cp4p  = sRows.filter(r=>r.cp4_result==='PASS').length;
+          const ok    = sRows.filter(r=>r.conclusion_code==='tunnel_ok').length;
+          const flag  = srv.includes('Finland')?'🇫🇮':srv.includes('Germany')||srv.includes('Primary')?'🇩🇪':'🌐';
+          return `<div style="background:rgba(255,255,255,.04);border-radius:8px;padding:.75rem 1rem">
+            <div style="font-weight:700;font-size:.9rem;margin-bottom:.5rem">${flag} ${esc(srv)}</div>
+            <div style="font-size:.78rem;line-height:1.8">
+              Sessions: <strong>${total}</strong><br>
+              CP1 PASS: <strong style="color:var(--ok)">${cp1p}</strong> / ${total}<br>
+              CP4 PASS: <strong style="color:var(--ok)">${cp4p}</strong> / ${total}<br>
+              Tunnel OK: <strong style="color:var(--ok)">${ok}</strong> / ${total}
+            </div>
+          </div>`;
+        }).join('')
+        + '</div>';
+    } else {
+      sbDiv.style.display = 'none';
+    }
+    if (!rows.length) {
+      $('diagSessionTbl').innerHTML = '<tr><td colspan="13" class="tbl-empty">No sessions found — run a test then disconnect to generate one</td></tr>';
+      return;
+    }
+    $('diagSessionTbl').innerHTML = rows.map(r => `<tr>
+      <td style="font-size:.66rem;color:var(--muted);white-space:nowrap">${esc((r.created_at||'').slice(0,16).replace('T',' '))}</td>
+      <td>${srvBadge(r.server_label)}</td>
+      <td style="font-size:.72rem">${esc(r.tunnel_mode||'—')}</td>
+      <td>${cpBadge(r.cp1_result)}</td>
+      <td>${cpBadge(r.cp2_result)}</td>
+      <td>${cpBadge(r.cp3_result)}</td>
+      <td>${cpBadge(r.cp4_result)}</td>
+      <td style="font-size:.78rem;font-weight:700">${r.cp4_connections > 0 ? r.cp4_connections : '0'}</td>
+      <td class="mono" style="font-size:.65rem;color:var(--muted-2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.cp4_first_dest||'')}">${esc(r.cp4_first_dest||'—')}</td>
+      <td style="font-size:.72rem">${r.vps_connections !== null ? r.vps_connections : '<span style="color:var(--muted-2)">n/a</span>'}</td>
+      <td style="max-width:220px">${codeBadge(r.conclusion_code)}</td>
+      <td style="font-size:.72rem;color:var(--muted)">${r.session_duration_secs !== null ? r.session_duration_secs+'s' : '—'}</td>
+      <td style="font-size:.66rem;color:var(--muted-2);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.disconnect_reason||'')}">${esc(r.disconnect_reason||'—')}</td>
+    </tr>`).join('');
   },
   renderBuild(rows) {
     if (!rows.length) { $('intelBuildTbl').innerHTML = '<tr><td colspan="6" class="tbl-empty">No build data yet</td></tr>'; return; }

@@ -1368,6 +1368,36 @@ switch ($action) {
         break;
     }
 
+    // Diagnostic sessions — structured CP1-CP4 evidence per disconnect event.
+    // Filters: server, cp1, cp4, conclusion_code, platform, since, limit
+    // Examples:
+    //   ?action=diag-sessions&server=Finland
+    //   ?action=diag-sessions&cp1=PASS&cp4=FAIL
+    //   ?action=diag-sessions&conclusion_code=tunnel_ok&limit=20
+    case 'diag-sessions': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        $filters = [];
+        foreach (['server', 'cp1', 'cp4', 'conclusion_code', 'platform', 'since'] as $k) {
+            $v = trim((string)($_GET[$k] ?? ''));
+            if ($v !== '') $filters[$k] = $v;
+        }
+        $filters['limit'] = min(200, max(1, (int)($_GET['limit'] ?? 50)));
+        $sessions = ni_query_diag_sessions($db, $filters);
+        // Group by server so caller can build a side-by-side view
+        $byServer = [];
+        foreach ($sessions as $s) {
+            $byServer[$s['server_label'] ?? 'unknown'][] = $s;
+        }
+        api_ok([
+            'filters'   => $filters,
+            'total'     => count($sessions),
+            'sessions'  => $sessions,
+            'by_server' => $byServer,
+        ]);
+        break;
+    }
+
     case 'test-results':
         $db = open_analytics_db();
         $limit = min(500, max(10, (int)($_GET['limit'] ?? 100)));
@@ -1613,112 +1643,105 @@ switch ($action) {
         break;
 
     case 'iran-debug':
-        // Aggregated Iran-specific diagnostics from telemetry data.
+        // Aggregated Iran-specific diagnostics from connect_telemetry.
         $db = open_analytics_db();
+        $ir_where = "country='IR' OR carrier_name LIKE '%Irancell%' OR carrier_name LIKE '%MCI%'
+                     OR carrier_name LIKE '%Hamrah%' OR carrier_name LIKE '%Rightel%'
+                     OR carrier_name LIKE '%Shatel%' OR carrier_name LIKE '%TCI%'";
 
-        // SNI + protocol analysis for iranian traffic
+        // SNI + protocol analysis
         $sni_rows = $db->query(
             "SELECT protocol, sni,
                     COUNT(*) as total,
-                    SUM(CASE WHEN result='success' THEN 1 ELSE 0 END) as success,
-                    SUM(CASE WHEN result='fail' THEN 1 ELSE 0 END) as fail,
-                    SUM(CASE WHEN tcp_ok=1 AND http_ok=0 THEN 1 ELSE 0 END) as tcp_only,
-                    SUM(no_internet) as no_internet,
-                    SUM(CASE WHEN ipv6_enabled=1 THEN 1 ELSE 0 END) as ipv6_attempts,
-                    SUM(emergency) as emergency_used,
-                    AVG(CASE WHEN latency_ms>0 THEN latency_ms ELSE NULL END) as avg_latency,
+                    SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
+                    SUM(CASE WHEN event!='connect_ok' THEN 1 ELSE 0 END) as fail,
+                    AVG(CASE WHEN time_to_connect_ms>0 THEN time_to_connect_ms ELSE NULL END) as avg_latency,
+                    AVG(CASE WHEN rtt_ms>0 THEN rtt_ms ELSE NULL END) as avg_rtt,
                     MAX(recorded_at) as last_seen
-             FROM test_results
-             WHERE country LIKE '%Iran%' OR country='IR'
-                OR network LIKE '%Hamrah%' OR network LIKE '%Irancell%'
-                OR network LIKE '%MCI%' OR network LIKE '%Mobin%'
-                OR network LIKE '%Shatel%' OR network LIKE '%Rightel%'
-                OR network LIKE '%TCI%'
+             FROM connect_telemetry
+             WHERE $ir_where
              GROUP BY protocol, sni
              ORDER BY total DESC
              LIMIT 100"
         )->fetchAll(PDO::FETCH_ASSOC);
 
-        // Last N errors with Iran context
+        // Last N failures with Iran context
         $error_rows = $db->query(
-            "SELECT protocol, sni, error_msg, tcp_ok, http_ok, ipv6_enabled, no_internet,
-                    country, network, device_model, recorded_at
-             FROM test_results
-             WHERE error_msg != ''
-               AND (country LIKE '%Iran%' OR country='IR'
-                    OR network LIKE '%Hamrah%' OR network LIKE '%Irancell%'
-                    OR network LIKE '%MCI%' OR network LIKE '%Mobin%'
-                    OR network LIKE '%Shatel%' OR network LIKE '%Rightel%')
+            "SELECT protocol, sni, error_category, failure_stage,
+                    carrier_name, network_type, ip_version, nat_type,
+                    platform, build_number, recorded_at
+             FROM connect_telemetry
+             WHERE event!='connect_ok' AND ($ir_where)
              ORDER BY recorded_at DESC
              LIMIT 50"
         )->fetchAll(PDO::FETCH_ASSOC);
 
-        // ISP breakdown from session data
+        // Carrier/ISP breakdown
         $isp_rows = $db->query(
-            "SELECT network as isp,
+            "SELECT carrier_name as isp,
                     COUNT(*) as total,
-                    SUM(CASE WHEN result='success' THEN 1 ELSE 0 END) as success,
-                    SUM(no_internet) as no_internet,
-                    AVG(CASE WHEN latency_ms>0 THEN latency_ms ELSE NULL END) as avg_latency,
+                    SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
+                    AVG(CASE WHEN time_to_connect_ms>0 THEN time_to_connect_ms ELSE NULL END) as avg_latency,
                     MAX(recorded_at) as last_seen
-             FROM test_results
-             WHERE network != ''
-               AND (country LIKE '%Iran%' OR country='IR'
-                    OR network LIKE '%Hamrah%' OR network LIKE '%Irancell%'
-                    OR network LIKE '%MCI%' OR network LIKE '%Mobin%'
-                    OR network LIKE '%Shatel%' OR network LIKE '%Rightel%')
-             GROUP BY network
+             FROM connect_telemetry
+             WHERE carrier_name != '' AND ($ir_where)
+             GROUP BY carrier_name
              ORDER BY total DESC
              LIMIT 20"
         )->fetchAll(PDO::FETCH_ASSOC);
 
-        // Error pattern summary: classify errors by pattern
+        // Error category breakdown
         $error_patterns = $db->query(
-            "SELECT error_msg, COUNT(*) as cnt,
-                    MAX(recorded_at) as last_seen,
-                    protocol, sni
-             FROM test_results
-             WHERE error_msg != '' AND result='fail'
-               AND (country LIKE '%Iran%' OR country='IR'
-                    OR network LIKE '%Hamrah%' OR network LIKE '%Irancell%'
-                    OR network LIKE '%MCI%')
-             GROUP BY error_msg
+            "SELECT error_category, failure_stage, COUNT(*) as cnt,
+                    MAX(recorded_at) as last_seen
+             FROM connect_telemetry
+             WHERE event!='connect_ok' AND error_category!='' AND ($ir_where)
+             GROUP BY error_category, failure_stage
              ORDER BY cnt DESC
              LIMIT 30"
+        )->fetchAll(PDO::FETCH_ASSOC);
+
+        // Network type breakdown (WiFi vs mobile)
+        $network_rows = $db->query(
+            "SELECT network_type,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
+                    AVG(CASE WHEN rtt_ms>0 THEN rtt_ms ELSE NULL END) as avg_rtt
+             FROM connect_telemetry
+             WHERE ($ir_where)
+             GROUP BY network_type
+             ORDER BY total DESC"
         )->fetchAll(PDO::FETCH_ASSOC);
 
         // Overall Iran stats
         $stats = $db->query(
             "SELECT COUNT(*) as total,
-                    SUM(CASE WHEN result='success' THEN 1 ELSE 0 END) as success,
-                    SUM(CASE WHEN tcp_ok=1 AND http_ok=0 THEN 1 ELSE 0 END) as tcp_only,
-                    SUM(no_internet) as no_internet,
-                    SUM(emergency) as emergency_used,
+                    SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
                     COUNT(DISTINCT sni) as sni_count,
-                    COUNT(DISTINCT device_model) as device_count,
+                    COUNT(DISTINCT device_id) as device_count,
+                    AVG(CASE WHEN rtt_ms>0 THEN rtt_ms ELSE NULL END) as avg_rtt,
                     MAX(recorded_at) as last_seen
-             FROM test_results
-             WHERE country LIKE '%Iran%' OR country='IR'
-                OR network LIKE '%Hamrah%' OR network LIKE '%Irancell%'
-                OR network LIKE '%MCI%' OR network LIKE '%Mobin%'
-                OR network LIKE '%Shatel%' OR network LIKE '%Rightel%'"
+             FROM connect_telemetry
+             WHERE $ir_where"
         )->fetch(PDO::FETCH_ASSOC);
 
-        // Annotate sni_rows with success_rate
         $sni_rows = array_map(function($r) {
             $t = (int)$r['total'];
             $r['success_rate'] = $t > 0 ? round((int)$r['success'] / $t * 100) : null;
             $r['avg_latency']  = $r['avg_latency'] ? (int)round((float)$r['avg_latency']) : null;
+            $r['avg_rtt']      = $r['avg_rtt']     ? (int)round((float)$r['avg_rtt'])     : null;
             return $r;
         }, $sni_rows);
 
         api_ok([
-            'stats'         => $stats,
-            'sni_analysis'  => $sni_rows,
-            'errors'        => $error_rows,
-            'error_patterns'=> $error_patterns,
-            'isp_breakdown' => $isp_rows,
-            'checked_at'    => date('Y-m-d H:i:s'),
+            'stats'          => $stats,
+            'sni_analysis'   => $sni_rows,
+            'errors'         => $error_rows,
+            'error_patterns' => $error_patterns,
+            'isp_breakdown'  => $isp_rows,
+            'network_breakdown' => $network_rows,
+            'checked_at'     => date('Y-m-d H:i:s'),
+            'data_source'    => 'connect_telemetry',
         ]);
         break;
 

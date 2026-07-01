@@ -65,6 +65,11 @@ function ni_init_tables(PDO $pdo): void
         "ip_version            TEXT    DEFAULT NULL",
         "rtt_ms                INTEGER DEFAULT NULL",
         "network_switched      INTEGER DEFAULT NULL",
+        // Diagnostic checkpoints (build 68+)
+        "tunnel_mode           TEXT    DEFAULT NULL",   // HEV | proxy
+        "cp1_readable          TEXT    DEFAULT NULL",   // YES | NO
+        "cp4_connections       INTEGER DEFAULT NULL",   // total xray SOCKS5 entries
+        "cp4_first_dest        TEXT    DEFAULT NULL",   // first destination seen
     ];
     foreach ($newCols as $colDef) {
         try {
@@ -137,8 +142,9 @@ function ni_record(PDO $pdo, array $d): void
              probe_google,probe_apple,probe_telegram,probe_cloudflare,probe_instagram,
              disconnect_reason,session_duration_secs,bytes_sent,bytes_recv,
              dns_ok,time_to_connect_ms,error_category,carrier_name,
-             nat_type,ip_version,rtt_ms,network_switched)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             nat_type,ip_version,rtt_ms,network_switched,
+             tunnel_mode,cp1_readable,cp4_connections,cp4_first_dest)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )->execute([
         ni_valid_event((string)($d['event']        ?? 'connect_fail')),
         substr((string)($d['node_id']    ?? 'primary'),  0, 40),
@@ -170,11 +176,16 @@ function ni_record(PDO $pdo, array $d): void
         ($d['time_to_connect_ms'] ?? null) !== null && $d['time_to_connect_ms'] !== '' ? max(0, (int)$d['time_to_connect_ms']) : null,
         $errCat ?: null,
         substr((string)($d['carrier_name'] ?? ''), 0, 30) ?: null,
-        // New diagnostic fields
+        // Diagnostic fields
         $natType,
         $ipVersion,
         ($d['rtt_ms'] ?? null) !== null && $d['rtt_ms'] !== '' ? max(0, (int)$d['rtt_ms']) : null,
         ($d['network_switched'] ?? null) !== null && $d['network_switched'] !== '' ? (int)(bool)$d['network_switched'] : null,
+        // Build 68 checkpoint fields
+        substr((string)($d['tunnel_mode']    ?? ''), 0, 20) ?: null,
+        substr((string)($d['cp1_readable']   ?? ''), 0, 10) ?: null,
+        ($d['cp4_connections'] ?? null) !== null && $d['cp4_connections'] !== '' ? max(0, (int)$d['cp4_connections']) : null,
+        substr((string)($d['cp4_first_dest'] ?? ''), 0, 120) ?: null,
     ]);
 }
 
@@ -1027,4 +1038,249 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
     usort($recs, fn($a, $b) => ($order[$a['severity']] ?? 3) <=> ($order[$b['severity']] ?? 3));
 
     return $recs;
+}
+
+// ── Diagnostic Sessions (Intelligence Agent) ──────────────────────────────────
+
+/**
+ * Create the diagnostic_sessions table if it does not exist.
+ */
+function ni_init_diag_sessions(PDO $pdo): void
+{
+    $pdo->exec("CREATE TABLE IF NOT EXISTS diagnostic_sessions (
+        id               INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id       TEXT    UNIQUE,
+        created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+
+        server_ip        TEXT    DEFAULT NULL,
+        server_label     TEXT    DEFAULT NULL,
+        tunnel_mode      TEXT    DEFAULT NULL,
+        platform         TEXT    DEFAULT NULL,
+        app_version      TEXT    DEFAULT NULL,
+        build_number     INTEGER DEFAULT NULL,
+        country          TEXT    DEFAULT NULL,
+
+        cp1_result       TEXT    DEFAULT 'UNKNOWN',
+        cp1_detail       TEXT    DEFAULT NULL,
+        cp2_result       TEXT    DEFAULT 'UNKNOWN',
+        cp3_result       TEXT    DEFAULT 'UNKNOWN',
+        cp4_result       TEXT    DEFAULT 'UNKNOWN',
+        cp4_connections  INTEGER DEFAULT 0,
+        cp4_first_dest   TEXT    DEFAULT NULL,
+
+        vps_connections  INTEGER DEFAULT NULL,
+        vps_sample       TEXT    DEFAULT NULL,
+
+        conclusion       TEXT    DEFAULT NULL,
+        conclusion_code  TEXT    DEFAULT NULL,
+
+        session_duration_secs INTEGER DEFAULT NULL,
+        disconnect_reason     TEXT    DEFAULT NULL,
+        telemetry_row_id      INTEGER DEFAULT NULL
+    )");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_created ON diagnostic_sessions(created_at)");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_server  ON diagnostic_sessions(server_ip, created_at)");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_code    ON diagnostic_sessions(conclusion_code, created_at)");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_cp1     ON diagnostic_sessions(cp1_result, created_at)");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_cp4     ON diagnostic_sessions(cp4_result, created_at)");
+}
+
+/** Human-readable label for a server IP or node_id. */
+function ni_server_label(string $nodeId): string
+{
+    return match (true) {
+        str_starts_with($nodeId, '65.109.183') => 'Finland',
+        str_starts_with($nodeId, '178.104.77') => 'Germany',
+        $nodeId === 'fi-hel'                   => 'Finland',
+        $nodeId === 'primary'                  => 'Primary',
+        default                                => $nodeId,
+    };
+}
+
+/**
+ * Generate a conclusion from CP1/CP4 evidence.
+ * Returns ['conclusion' => '...', 'conclusion_code' => '...']
+ */
+function ni_generate_conclusion(string $tunnelMode, string $cp1Readable, int $cp4Conns): array
+{
+    if ($tunnelMode !== 'HEV' && $tunnelMode !== '') {
+        return [
+            'conclusion'      => "Proxy mode ({$tunnelMode}) — TUN diagnostics not applicable",
+            'conclusion_code' => 'proxy_mode',
+        ];
+    }
+    if ($cp1Readable === '') {
+        return [
+            'conclusion'      => 'No CP data — client predates build-68 instrumentation',
+            'conclusion_code' => 'no_data',
+        ];
+    }
+    if ($cp1Readable !== 'YES') {
+        return [
+            'conclusion'      => "CP1 FAIL (cp1_readable={$cp1Readable}) — iOS not delivering packets to TUN; likely wrong utun fd or routes not applied",
+            'conclusion_code' => 'cp1_fail',
+        ];
+    }
+    if ($cp4Conns === 0) {
+        return [
+            'conclusion'      => 'CP1 PASS · CP4 FAIL — iOS sent packets to TUN but HEV never connected to Xray SOCKS5',
+            'conclusion_code' => 'cp4_fail',
+        ];
+    }
+    return [
+        'conclusion'      => "CP1 PASS · CP4 PASS — {$cp4Conns} Xray SOCKS5 connection(s); tunnel healthy",
+        'conclusion_code' => 'tunnel_ok',
+    ];
+}
+
+/**
+ * Create one diagnostic_sessions row from a disconnect telemetry event.
+ *
+ * @param array $d            Raw POST data (same fields as ni_record).
+ * @param int   $telemetryId  Row ID returned by lastInsertId() after ni_record.
+ */
+function ni_create_diag_session(PDO $pdo, array $d, int $telemetryId): void
+{
+    ni_init_diag_sessions($pdo);
+
+    $nodeId      = (string)($d['node_id']      ?? 'unknown');
+    $serverLabel = ni_server_label($nodeId);
+    $tunnelMode  = (string)($d['tunnel_mode']  ?? '');
+    $cp1         = (string)($d['cp1_readable'] ?? '');
+    $cp4Conns    = max(0, (int)($d['cp4_connections'] ?? 0));
+
+    $cp1Result = match ($cp1) {
+        'YES'   => 'PASS',
+        'NO'    => 'FAIL',
+        ''      => 'UNKNOWN',
+        default => str_starts_with($cp1, 'ERR') ? 'FAIL' : 'UNKNOWN',
+    };
+    // CP4 is UNKNOWN when we have no CP1 data at all (pre-build-68 clients)
+    $cp4Result = $cp1 !== '' ? ($cp4Conns > 0 ? 'PASS' : 'FAIL') : 'UNKNOWN';
+    // CP2 (HEV→SOCKS5 connect) and CP3 (SOCKS5 handshake) are inferred from CP4:
+    // if Xray logged an accepted connection, both intermediate steps passed.
+    $cp2Result = $cp4Result;
+    $cp3Result = $cp4Result;
+
+    $cp1Detail = match ($cp1) {
+        'YES'   => 'tunFd readable — iOS delivering packets to TUN',
+        'NO'    => 'tunFd never readable — iOS not routing to TUN',
+        ''      => 'Not measured (pre-build-68)',
+        default => $cp1,
+    };
+
+    // VPS check: Finland's xray log is local to this server
+    $vpsConnections = null;
+    $vpsSample      = null;
+    if ($nodeId === '65.109.183.7' || $nodeId === 'fi-hel') {
+        $logPath = '/var/log/xray/access.log';
+        if (is_readable($logPath)) {
+            $lines   = file($logPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+            $recent  = array_filter(
+                array_slice($lines, -200),
+                fn($l) => !(str_contains($l, '127.0.0.1:') && str_contains($l, 'api'))
+            );
+            $vpsConnections = count($recent);
+            $vpsSample      = implode("\n", array_slice(array_values($recent), -3)) ?: null;
+        }
+    }
+
+    $conc      = ni_generate_conclusion($tunnelMode, $cp1, $cp4Conns);
+    $sessionId = 'ds-' . substr(hash('sha256', (string)$telemetryId . $nodeId), 0, 12);
+
+    $pdo->prepare(
+        "INSERT OR IGNORE INTO diagnostic_sessions
+            (session_id, created_at,
+             server_ip, server_label, tunnel_mode, platform, app_version, build_number, country,
+             cp1_result, cp1_detail, cp2_result, cp3_result,
+             cp4_result, cp4_connections, cp4_first_dest,
+             vps_connections, vps_sample,
+             conclusion, conclusion_code,
+             session_duration_secs, disconnect_reason, telemetry_row_id)
+         VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+    )->execute([
+        $sessionId,
+        $nodeId,
+        $serverLabel,
+        $tunnelMode ?: null,
+        (string)($d['platform']    ?? '') ?: null,
+        (string)($d['app_version'] ?? '') ?: null,
+        isset($d['build_number']) && $d['build_number'] !== '' ? (int)$d['build_number'] : null,
+        (string)($d['country']     ?? '') ?: null,
+        $cp1Result,
+        $cp1Detail,
+        $cp2Result,
+        $cp3Result,
+        $cp4Result,
+        $cp4Conns,
+        (string)($d['cp4_first_dest'] ?? '') ?: null,
+        $vpsConnections,
+        $vpsSample,
+        $conc['conclusion'],
+        $conc['conclusion_code'],
+        isset($d['session_duration_secs']) && $d['session_duration_secs'] !== '' ? max(0, (int)$d['session_duration_secs']) : null,
+        (string)($d['disconnect_reason'] ?? '') ?: null,
+        $telemetryId,
+    ]);
+}
+
+/**
+ * Query diagnostic sessions with optional filters.
+ *
+ * Supported filters:
+ *   server         => 'Finland' | 'Germany' | IP string
+ *   cp1            => 'PASS' | 'FAIL' | 'UNKNOWN'
+ *   cp4            => 'PASS' | 'FAIL' | 'UNKNOWN'
+ *   conclusion_code => 'tunnel_ok' | 'cp1_fail' | 'cp4_fail' | 'proxy_mode' | 'no_data'
+ *   platform       => 'ios' | 'android'
+ *   since          => 'YYYY-MM-DD'
+ *   limit          => int (default 50, max 200)
+ */
+function ni_query_diag_sessions(PDO $pdo, array $filters = []): array
+{
+    ni_init_diag_sessions($pdo);
+
+    $where  = ['1=1'];
+    $params = [];
+
+    if (!empty($filters['server'])) {
+        $srv = $filters['server'];
+        if (strtolower($srv) === 'finland') {
+            $where[] = "(server_label='Finland' OR server_ip='65.109.183.7')";
+        } elseif (strtolower($srv) === 'germany') {
+            $where[] = "(server_label LIKE 'Germany%' OR server_label='Primary' OR server_ip='178.104.77.231')";
+        } else {
+            $where[]  = "(server_ip=? OR server_label=?)";
+            $params[] = $srv;
+            $params[] = $srv;
+        }
+    }
+    if (!empty($filters['cp1'])) {
+        $where[]  = "cp1_result = ?";
+        $params[] = strtoupper($filters['cp1']);
+    }
+    if (!empty($filters['cp4'])) {
+        $where[]  = "cp4_result = ?";
+        $params[] = strtoupper($filters['cp4']);
+    }
+    if (!empty($filters['conclusion_code'])) {
+        $where[]  = "conclusion_code = ?";
+        $params[] = $filters['conclusion_code'];
+    }
+    if (!empty($filters['platform'])) {
+        $where[]  = "platform = ?";
+        $params[] = $filters['platform'];
+    }
+    if (!empty($filters['since'])) {
+        $where[]  = "created_at >= ?";
+        $params[] = $filters['since'];
+    }
+
+    $limit = min(200, max(1, (int)($filters['limit'] ?? 50)));
+    $sql   = "SELECT * FROM diagnostic_sessions WHERE " . implode(' AND ', $where)
+           . " ORDER BY created_at DESC LIMIT {$limit}";
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
