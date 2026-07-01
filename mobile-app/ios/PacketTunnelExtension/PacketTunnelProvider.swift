@@ -489,6 +489,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // dns-upstream intentionally absent:
         //   1.1.1.1/8.8.8.8 are excluded from TUN routes so DNS never enters HEV.
         //   Adding dns-upstream to misc caused HEV v2.15.0 to abort silently (build 66 regression).
+        //
+        // udp: 'udp'  (build 72 fix):
+        //   Without it HEV forwarded ONLY TCP and silently DROPPED every UDP packet.
+        //   Browsers/YouTube/Instagram open QUIC (HTTP/3, UDP:443) first; those packets
+        //   died in HEV, the apps never got a rejection, and they stalled — so only
+        //   TCP-only apps (Telegram) worked. Forwarding UDP to the SOCKS5 inbound lets
+        //   Xray's routing act on it: UDP/53 → dns-out, UDP/443 → blackhole (instant
+        //   reject → the app falls back to TCP/TLS immediately), other UDP → freedom.
+        //   The Xray socks-in already has "udp": true, so this needs no server change.
         let yaml = """
 tunnel:
   fd: \(tunFd)
@@ -497,6 +506,7 @@ tunnel:
 socks5:
   port: \(kSocksPort)
   address: '127.0.0.1'
+  udp: 'udp'
 
 misc:
   task-stack-size: 81920
