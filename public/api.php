@@ -294,6 +294,17 @@ function hardcoded_bootstrap(): array {
         'xhttpPath'   => '/xhttp/',
         'httpupPath'  => '/httpup',
         'altProfiles' => [
+            // fi-hel first: reachable from Iran, where the Hetzner DE IP is blocked.
+            [
+                'uuid'        => '92a861cd-6029-4882-9de5-35d9291e0828',
+                'publicKey'   => 'eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU',
+                'shortId'     => 'b3a824bd',
+                'sni'         => 'www.cloudflare.com',
+                'port'        => 443,
+                'address'     => '65.109.183.7',
+                'flow'        => 'xtls-rprx-vision',
+                'fingerprint' => 'chrome',
+            ],
             [
                 'uuid'        => '9280e04d-ffdb-45b4-9558-66b9d6f89b49',
                 'publicKey'   => 'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',

@@ -124,7 +124,7 @@ function icon(string $name): string {
       <?= icon('settings') ?> Config
     </div>
   </nav>
-  <div class="sidebar-footer">Realink v0.9.12 &middot; <?= h($auth_user) ?></div>
+  <div class="sidebar-footer">Realink v0.9.50 &middot; <?= h($auth_user) ?></div>
 </aside>
 
 <!-- ── Main ─────────────────────────────────────────────────────────── -->
@@ -1314,6 +1314,11 @@ function icon(string $name): string {
             <div class="form-group"><label>Edge Port</label><input class="input" id="bsEdgePort" type="number"></div>
             <div class="form-group"><label>/ws path</label><input class="input" id="bsWsPath" value="/ws"></div>
             <div class="form-group"><label>/xhttp path</label><input class="input" id="bsXhttpPath" value="/xhttp"></div>
+          </div>
+          <div class="form-group" style="margin-top:.5rem">
+            <label>Alt profiles (failover) — JSON array</label>
+            <textarea class="input" id="bsAltProfiles" rows="8" spellcheck="false" style="font-family:monospace;font-size:.72rem" placeholder='[{"uuid":"…","address":"…","port":443,"publicKey":"…","shortId":"…","sni":"www.cloudflare.com","flow":"","fingerprint":"chrome"}]'></textarea>
+            <div style="font-size:.7rem;color:var(--muted);margin-top:.25rem">Tried in order by the app when the primary bootstrap node is unreachable (e.g. IP-blocked in Iran). Each entry needs its own uuid/publicKey/shortId/address; flow must match that node's inbound.</div>
           </div>
           <div style="display:flex;gap:.5rem;margin-top:.25rem">
             <button class="btn btn-primary" id="cfgSaveBootstrap"><?= icon('save') ?> Save Bootstrap</button>
@@ -4004,6 +4009,7 @@ views.config = {
       $('bsEdgePort').value  = bs.edgePort||443;
       $('bsWsPath').value    = bs.wsPath||'/ws';
       $('bsXhttpPath').value = bs.xhttpPath||'/xhttp';
+      $('bsAltProfiles').value = JSON.stringify(bs.altProfiles||[], null, 2);
       // Adaptive flags
       $('rcFailoverMax').value       = rc.failover_max_nodes ?? 2;
       $('rcTelemetryEnabled').checked = rc.telemetry_enabled !== false;
@@ -4109,8 +4115,17 @@ $('cfgSaveAdaptive').onclick = async()=>{
   } catch(e) { toast(e.message,'error'); }
 };
 $('cfgSaveBootstrap').onclick = async()=>{
+  let altProfiles;
+  try {
+    altProfiles = JSON.parse($('bsAltProfiles').value || '[]');
+    if (!Array.isArray(altProfiles)) throw new Error('not an array');
+    for (const p of altProfiles) {
+      if (!p.uuid || !p.publicKey || !p.address) throw new Error('each profile needs uuid, publicKey and address');
+    }
+  } catch(e) { toast('Alt profiles JSON is invalid: '+e.message,'error'); return; }
   try {
     await api.post({action:'save-remote-config',
+      bootstrap_alt_profiles: altProfiles,
       bootstrap_uuid:         $('bsUuid').value,
       bootstrap_address:      $('bsAddress').value,
       bootstrap_port:         parseInt($('bsPort').value)||443,
