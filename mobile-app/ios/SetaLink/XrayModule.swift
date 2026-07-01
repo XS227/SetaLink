@@ -113,6 +113,7 @@ class XrayModule: NSObject {
         manager.protocolConfiguration = proto
         manager.localizedDescription  = "Realink VPN"
         manager.isEnabled             = true
+        manager.isOnDemandEnabled     = false   // prevent auto-reconnect on stop
 
         manager.saveToPreferences { saveError in
             if let err = saveError {
@@ -152,14 +153,25 @@ class XrayModule: NSObject {
     @objc func stop(_ resolve: @escaping RCTPromiseResolveBlock,
                     rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.main.async { [weak self] in
-            if let m = Self.cachedManager {
-                m.connection.stopVPNTunnel()
-                resolve(nil)
-            } else {
-                self?.resolveManager(create: false) { manager, _ in
-                    manager?.connection.stopVPNTunnel()
+            let doStop: (NETunnelProviderManager?) -> Void = { manager in
+                guard let m = manager else { resolve(nil); return }
+                // Disable on-demand BEFORE stopping — if it stays true iOS re-launches
+                // the tunnel immediately after stopVPNTunnel() returns.
+                if m.isOnDemandEnabled {
+                    m.isOnDemandEnabled = false
+                    m.saveToPreferences { _ in
+                        m.connection.stopVPNTunnel()
+                        resolve(nil)
+                    }
+                } else {
+                    m.connection.stopVPNTunnel()
                     resolve(nil)
                 }
+            }
+            if let m = Self.cachedManager {
+                doStop(m)
+            } else {
+                self?.resolveManager(create: false) { manager, _ in doStop(manager) }
             }
         }
     }
