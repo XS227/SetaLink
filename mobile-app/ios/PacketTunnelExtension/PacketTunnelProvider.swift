@@ -165,7 +165,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             guard let cfgPath = self.writeHevConfig(tunFd: tunFd) else {
                 return self.fail("HEV: config write failed", shared: shared, completionHandler)
             }
-            self.startHevEngine(cfgPath: cfgPath)
+            self.startHevEngine(cfgPath: cfgPath, tunFd: tunFd)
             self.startLivenessTimer(shared: shared)
             self.startNetworkMonitor()
             let latencyMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
@@ -352,20 +352,21 @@ misc:
     }
 
     /// Start hev_socks5_tunnel_main in a dedicated background thread.
+    /// iOS xcframework signature: (configPath: UnsafePointer<CChar>, tunFd: Int32)
     /// The call is blocking and runs until hev_socks5_tunnel_quit() is called.
-    private func startHevEngine(cfgPath: String) {
+    private func startHevEngine(cfgPath: String, tunFd: Int32) {
+        let fd = tunFd
+        let path = cfgPath
         let thr = Thread {
-            let arg0 = strdup("hev-socks5-tunnel")!
-            let arg1 = strdup(cfgPath)!
-            var argv: [UnsafeMutablePointer<CChar>?] = [arg0, arg1, nil]
-            _ = hev_socks5_tunnel_main(2, &argv)
-            free(arg0); free(arg1)
+            path.withCString { cPath in
+                _ = hev_socks5_tunnel_main(cPath, fd)
+            }
         }
         thr.name = "HevSocks5TunnelThread"
-        thr.qualityOfService = .userInitiated
+        thr.qualityOfService = QualityOfService.userInitiated
         thr.start()
         hevEngineThread = thr
-        appendLog("HEV: engine thread started")
+        appendLog("HEV: engine thread started fd=\(tunFd)")
     }
 
     #endif // HEV_AVAILABLE
