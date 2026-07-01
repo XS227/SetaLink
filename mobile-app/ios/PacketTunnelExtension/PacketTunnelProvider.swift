@@ -324,6 +324,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// Write a hev-socks5-tunnel YAML config to the temp directory and return
     /// the file path, or nil if the write fails.
     private func writeHevConfig(tunFd: Int32) -> String? {
+        // dns-upstream intentionally absent:
+        //   1.1.1.1/8.8.8.8 are excluded from TUN routes so DNS never enters HEV.
+        //   Adding dns-upstream to misc caused HEV v2.15.0 to abort silently (build 66 regression).
         let yaml = """
 tunnel:
   fd: \(tunFd)
@@ -337,7 +340,6 @@ misc:
   task-stack-size: 81920
   connect-timeout: 5000
   read-write-timeout: 60000
-  dns-upstream: 'udp://1.1.1.1:53'
   log-level: warn
 """
         let path = NSTemporaryDirectory() + "hev-socks5.yml"
@@ -359,7 +361,14 @@ misc:
         let path = cfgPath
         let thr = Thread {
             path.withCString { cPath in
-                _ = hev_socks5_tunnel_main(cPath, fd)
+                let rc = hev_socks5_tunnel_main(cPath, fd)
+                // rc != 0 means HEV exited early (bad config, fd error, etc.)
+                if rc != 0 {
+                    if let shared = UserDefaults(suiteName: kAppGroup) {
+                        shared.set("HEV engine exited early rc=\(rc) — check YAML config", forKey: kErrorKey)
+                        shared.synchronize()
+                    }
+                }
             }
         }
         thr.name = "HevSocks5TunnelThread"
