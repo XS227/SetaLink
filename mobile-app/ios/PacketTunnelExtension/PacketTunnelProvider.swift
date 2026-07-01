@@ -290,15 +290,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         ipv4.excludedRoutes = excluded4
         s.ipv4Settings = ipv4
-        let ipv6 = NEIPv6Settings(addresses: ["fd00::2"], networkPrefixLengths: [64])
-        ipv6.includedRoutes = [NEIPv6Route.default()]
-        ipv6.excludedRoutes = []
-        s.ipv6Settings = ipv6
+        // IPv6 intentionally omitted — HEV is IPv4/TCP only. Including IPv6 default
+        // route causes browsers to attempt IPv6 connections that HEV can't forward,
+        // blocking Happy Eyeballs and making all browser traffic fail. IPv6 goes direct.
         let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
         dns.matchDomains = [""]
         s.dnsSettings = dns
         // No NEProxySettings — HEV captures all TCP at TUN level and forwards via SOCKS5.
-        appendLog("HEV_SETTINGS: TUN-only, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 direct")
+        appendLog("HEV_SETTINGS: TUN-only no-ipv6, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 direct")
         return s
     }
 
@@ -338,6 +337,7 @@ misc:
   task-stack-size: 81920
   connect-timeout: 5000
   read-write-timeout: 60000
+  dns-upstream: 'udp://1.1.1.1:53'
   log-level: warn
 """
         let path = NSTemporaryDirectory() + "hev-socks5.yml"
