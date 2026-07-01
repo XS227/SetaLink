@@ -16,6 +16,9 @@ All notable changes to SetaLink are documented here.
 ## [Unreleased]
 
 ### Fixed
+- **iOS DNS broken — no internet despite VLESS tunnel connected** (build 64) — `NEDNSSettings` routes all DNS queries (UDP/53) to `1.1.1.1`/`8.8.8.8`; with the TUN default route claimed, those UDP packets entered `drainTunPackets()` and were silently discarded. Apps couldn't resolve hostnames → showed "no internet" even though the SOCKS5 proxy was working fine (confirmed by exit IP probe succeeding). Fix: added `/32` exclusion routes for `1.1.1.1`, `1.0.0.1`, `8.8.8.8`, `8.8.4.4` so DNS traffic bypasses the TUN drain and reaches Cloudflare directly. Also added a post-connect `performDNSCheck()` probe that logs `DNS: resolution OK` / `DNS: FAILED` — wires up the previously-dead DNS row in the iOS Tunnel Layer diagnostics view.
+
+### Fixed
 - **Real Android VPN tunnel** — `@ReactMethod` annotations added to all XrayModule bridge methods; without these, Old Architecture (newArchEnabled=false) never exported methods to JS, causing the app to silently fall back to MockAdapter and show fake "CONNECTED" state with no real VPN tunnel
 - **VPN icon now appears in status bar** — `startForeground()` now passes `FOREGROUND_SERVICE_TYPE_SPECIAL_USE` on API 34 (Android 14); omitting the type caused `MissingForegroundServiceTypeException` which crashed the service before `establish()` could run
 - **Routing loop eliminated** — replaced CIDR split-routing with `addDisallowedApplication(packageName)`: the app's entire UID (including Xray and tun2socks subprocesses) now bypasses the TUN at the kernel level, so Xray can reach the VPN server without looping through the tunnel it's filling
