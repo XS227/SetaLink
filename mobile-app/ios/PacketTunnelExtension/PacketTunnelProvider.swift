@@ -321,20 +321,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             excluded4.append(NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255"))
             appendLog("HEV_SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
         }
-        // Keep DNS resolvers direct; HEV forwards TCP but DNS exclusion keeps UDP/53 stable.
-        for ip in ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"] {
-            excluded4.append(NEIPv4Route(destinationAddress: ip, subnetMask: "255.255.255.255"))
-        }
+        // Build 73 fix (Iran): DO NOT exclude 1.1.1.1/8.8.8.8 from the TUN.
+        //   Pre-72 HEV dropped all UDP, so DNS was kept direct to avoid dead UDP/53.
+        //   That leaked DNS outside the tunnel: in Iran 1.1.1.1/8.8.8.8 are blocked
+        //   and poisoned, so every hostname lookup failed → tunnel connected but no
+        //   internet (Norway worked because direct DNS to those resolvers is fine).
+        //   Build 72 added `udp: 'udp'` to HEV, so UDP/53 now forwards through to
+        //   Xray, whose routing sends port 53 → dns-out (resolved at the exit node).
+        //   Routing DNS through the tunnel matches Android (addRoute 0.0.0.0/0, DNS
+        //   via tun2socks → Xray) which connects fine from Iran on the same nodes.
         ipv4.excludedRoutes = excluded4
         s.ipv4Settings = ipv4
         // IPv6 intentionally omitted — HEV is IPv4/TCP only. Including IPv6 default
         // route causes browsers to attempt IPv6 connections that HEV can't forward,
         // blocking Happy Eyeballs and making all browser traffic fail. IPv6 goes direct.
+        // DNS queries to these resolvers now route INTO the TUN (not excluded above)
+        // → HEV → SOCKS5 → Xray dns-out, so resolution happens at the exit node and
+        // survives Iran's block/poisoning of public resolvers.
         let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
         dns.matchDomains = [""]
         s.dnsSettings = dns
         // No NEProxySettings — HEV captures all TCP at TUN level and forwards via SOCKS5.
-        appendLog("HEV_SETTINGS: TUN-only no-ipv6, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 direct")
+        appendLog("HEV_SETTINGS: TUN-only no-ipv6, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 through-tunnel")
         return s
     }
 
