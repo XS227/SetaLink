@@ -48,6 +48,8 @@ function ni_init_tables(PDO $pdo): void
     // Each ALTER TABLE is wrapped in its own try/catch so "duplicate column" errors
     // (SQLite code 1, message contains "duplicate column name") are silently ignored.
     $newCols = [
+        "ios_version           TEXT    DEFAULT NULL",   // e.g. "17.5.1"
+        "device_model          TEXT    DEFAULT NULL",   // e.g. "iPhone15,3"
         "probe_google          INTEGER DEFAULT NULL",
         "probe_apple           INTEGER DEFAULT NULL",
         "probe_telegram        INTEGER DEFAULT NULL",
@@ -143,8 +145,9 @@ function ni_record(PDO $pdo, array $d): void
              disconnect_reason,session_duration_secs,bytes_sent,bytes_recv,
              dns_ok,time_to_connect_ms,error_category,carrier_name,
              nat_type,ip_version,rtt_ms,network_switched,
-             tunnel_mode,cp1_readable,cp4_connections,cp4_first_dest)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             tunnel_mode,cp1_readable,cp4_connections,cp4_first_dest,
+             ios_version,device_model)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )->execute([
         ni_valid_event((string)($d['event']        ?? 'connect_fail')),
         substr((string)($d['node_id']    ?? 'primary'),  0, 40),
@@ -186,6 +189,9 @@ function ni_record(PDO $pdo, array $d): void
         substr((string)($d['cp1_readable']   ?? ''), 0, 10) ?: null,
         ($d['cp4_connections'] ?? null) !== null && $d['cp4_connections'] !== '' ? max(0, (int)$d['cp4_connections']) : null,
         substr((string)($d['cp4_first_dest'] ?? ''), 0, 120) ?: null,
+        // Build 69 device context fields
+        substr((string)($d['ios_version']    ?? ''), 0, 20)  ?: null,
+        substr((string)($d['device_model']   ?? ''), 0, 30)  ?: null,
     ]);
 }
 
@@ -1059,6 +1065,10 @@ function ni_init_diag_sessions(PDO $pdo): void
         app_version      TEXT    DEFAULT NULL,
         build_number     INTEGER DEFAULT NULL,
         country          TEXT    DEFAULT NULL,
+        ios_version      TEXT    DEFAULT NULL,
+        device_model     TEXT    DEFAULT NULL,
+        network_type     TEXT    DEFAULT NULL,
+        carrier          TEXT    DEFAULT NULL,
 
         cp1_result       TEXT    DEFAULT 'UNKNOWN',
         cp1_detail       TEXT    DEFAULT NULL,
@@ -1083,6 +1093,17 @@ function ni_init_diag_sessions(PDO $pdo): void
     @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_code    ON diagnostic_sessions(conclusion_code, created_at)");
     @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_cp1     ON diagnostic_sessions(cp1_result, created_at)");
     @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_cp4     ON diagnostic_sessions(cp4_result, created_at)");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_device  ON diagnostic_sessions(device_model, ios_version)");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS ds_carrier ON diagnostic_sessions(carrier, server_label)");
+    // Migrations for existing tables (ALTER TABLE is silently ignored on duplicate columns)
+    foreach ([
+        "ios_version  TEXT DEFAULT NULL",
+        "device_model TEXT DEFAULT NULL",
+        "network_type TEXT DEFAULT NULL",
+        "carrier      TEXT DEFAULT NULL",
+    ] as $col) {
+        try { $pdo->exec("ALTER TABLE diagnostic_sessions ADD COLUMN {$col}"); } catch (\Throwable $e) {}
+    }
 }
 
 /** Human-readable label for a server IP or node_id. */
@@ -1192,12 +1213,13 @@ function ni_create_diag_session(PDO $pdo, array $d, int $telemetryId): void
         "INSERT OR IGNORE INTO diagnostic_sessions
             (session_id, created_at,
              server_ip, server_label, tunnel_mode, platform, app_version, build_number, country,
+             ios_version, device_model, network_type, carrier,
              cp1_result, cp1_detail, cp2_result, cp3_result,
              cp4_result, cp4_connections, cp4_first_dest,
              vps_connections, vps_sample,
              conclusion, conclusion_code,
              session_duration_secs, disconnect_reason, telemetry_row_id)
-         VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         VALUES (?, datetime('now'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     )->execute([
         $sessionId,
         $nodeId,
@@ -1207,6 +1229,11 @@ function ni_create_diag_session(PDO $pdo, array $d, int $telemetryId): void
         (string)($d['app_version'] ?? '') ?: null,
         isset($d['build_number']) && $d['build_number'] !== '' ? (int)$d['build_number'] : null,
         (string)($d['country']     ?? '') ?: null,
+        // Build 69: device context
+        (string)($d['ios_version']   ?? '') ?: null,
+        (string)($d['device_model']  ?? '') ?: null,
+        (string)($d['network_type']  ?? '') ?: null,
+        (string)($d['carrier_name']  ?? '') ?: null,
         $cp1Result,
         $cp1Detail,
         $cp2Result,
@@ -1283,4 +1310,222 @@ function ni_query_diag_sessions(PDO $pdo, array $filters = []): array
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ── AI Diagnosis Engine ───────────────────────────────────────────────────────
+
+/**
+ * Human-readable cause sentence for a diagnostic session.
+ */
+function ni_diag_cause(string $conclusionCode, string $cp1Readable, int $cp4Conns): string
+{
+    return match ($conclusionCode) {
+        'tunnel_ok'  => "Tunnel healthy — traffic confirmed iOS → TUN → SOCKS5 → Xray ({$cp4Conns} connections)",
+        'cp4_fail'   => "HEV started and received packets from iOS (CP1 PASS), but never established a SOCKS5 connection to Xray on port 10808",
+        'cp1_fail'   => str_starts_with($cp1Readable, 'ERR')
+            ? "Wrong utun fd (recv returned {$cp1Readable}) — HEV is listening on the incorrect file descriptor; iOS packets never arrived at the TUN"
+            : "iOS is not routing packets to the TUN — NEPacketTunnelNetworkSettings routes may not have been applied, or completionHandler was called too early",
+        'proxy_mode' => "Proxy mode active — HEV TUN engine is not used, CP diagnostics not applicable",
+        'no_data'    => "No CP data — client predates build-68 instrumentation; upgrade to build 68+ to enable diagnostics",
+        default      => "Inconclusive — insufficient data to determine cause",
+    };
+}
+
+/**
+ * Confidence percentage (0–100) for a conclusion code.
+ * Based on how unambiguous the available CP evidence is.
+ */
+function ni_diag_confidence(string $conclusionCode, string $cp1Readable): int
+{
+    return match ($conclusionCode) {
+        'tunnel_ok'  => 95,
+        'cp4_fail'   => 88,
+        'cp1_fail'   => str_starts_with($cp1Readable, 'ERR') ? 92 : 83,
+        'proxy_mode' => 99,
+        'no_data'    => 0,
+        default      => 40,
+    };
+}
+
+/**
+ * Actionable bullet-point suggestions for a given conclusion.
+ * Returns string[], each suitable for display as a bullet point.
+ */
+function ni_diag_suggestions(string $conclusionCode, string $cp1Readable): array
+{
+    return match ($conclusionCode) {
+        'tunnel_ok'  => [
+            "Tunnel confirmed healthy — if specific apps fail, investigate at DNS/application layer",
+            "Check if the app uses certificate pinning or SNI that bypasses the VPN",
+            "Verify exit IP with runTraceTest() to confirm all traffic routes through VPS",
+        ],
+        'cp4_fail'   => [
+            "Verify Xray is listening on 127.0.0.1:10808 BEFORE HEV starts (check XRAY_RESP log line)",
+            "Inspect HEV YAML: socks5.port must be 10808, socks5.address must be 127.0.0.1",
+            "Check App Group container is writable from the NE sandbox (HEV config temp file)",
+            "Look for 'HEV engine exited early rc=' in the tunnel log — non-zero rc = config error",
+            "Check VPS /var/log/xray/access.log for any client connections during the test window",
+        ],
+        'cp1_fail'   => str_starts_with($cp1Readable, 'ERR') ? [
+            "utun fd scan returned an error — check fd scan range 0..9 in discoverUtunFd()",
+            "Verify the extension has not been sandbox-restricted from reading fd 5",
+            "Try logging all open file descriptors at the start of startTunnel to find the utun fd",
+        ] : [
+            "Verify NEIPv4Settings includes the 0.0.0.0/0 default route in includedRoutes",
+            "Ensure setTunnelNetworkSettings completionHandler is only called once with nil error",
+            "Confirm excludedRoutes list does not accidentally swallow all traffic",
+            "Add a log immediately after completionHandler(nil) to confirm the sequence",
+        ],
+        'proxy_mode' => [
+            "Proxy mode is expected for older devices or the non-HEV code path",
+            "To test HEV, ensure the build flag HEV_AVAILABLE is set and xcframework is linked",
+        ],
+        'no_data'    => [
+            "Install build 68+ to activate CP1/CP4 diagnostic instrumentation",
+            "Verify telemetry POST reaches https://setalink.no/v1/telemetry/connect after disconnect",
+        ],
+        default      => ["Insufficient data — run a full disconnect cycle on build 68+ to generate CP evidence"],
+    };
+}
+
+/**
+ * Enrich a diagnostic_sessions row with cause, confidence, and suggestions.
+ */
+function ni_enrich_session(array $row): array
+{
+    $code    = (string)($row['conclusion_code'] ?? '');
+    $cp1     = (string)($row['cp1_readable']    ?? '');
+    $cp4     = (int)($row['cp4_connections']    ?? 0);
+    $row['cause']       = ni_diag_cause($code, $cp1, $cp4);
+    $row['confidence']  = ni_diag_confidence($code, $cp1);
+    $row['suggestions'] = ni_diag_suggestions($code, $cp1);
+    return $row;
+}
+
+/**
+ * Detect cross-session failure patterns.
+ * Returns array of pattern alerts: ['type', 'severity', 'message', 'detail']
+ */
+function ni_diag_patterns(PDO $pdo, int $days = 14): array
+{
+    ni_init_diag_sessions($pdo);
+    $since    = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $patterns = [];
+
+    // Pattern 1: specific device model + iOS version failing on a server
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT device_model, ios_version, server_label,
+                    COUNT(*) AS total,
+                    SUM(conclusion_code != 'tunnel_ok' AND conclusion_code IS NOT NULL) AS failures,
+                    MAX(created_at) AS last_seen
+               FROM diagnostic_sessions
+              WHERE device_model IS NOT NULL AND ios_version IS NOT NULL
+                AND created_at >= ?
+              GROUP BY device_model, ios_version, server_label
+             HAVING total >= 2 AND failures >= 2
+              ORDER BY failures DESC LIMIT 10"
+        );
+        $stmt->execute([$since]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $total    = (int)$r['total'];
+            $failures = (int)$r['failures'];
+            $rate     = $total > 0 ? (int)round($failures / $total * 100) : 0;
+            if ($rate >= 60) {
+                $patterns[] = [
+                    'type'    => 'device_ios_server',
+                    'severity'=> $rate >= 90 ? 'critical' : 'warn',
+                    'message' => "{$r['device_model']} on iOS {$r['ios_version']} fails {$rate}% on {$r['server_label']} ({$failures}/{$total} sessions)",
+                    'detail'  => "Last seen: {$r['last_seen']}",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // Pattern 2: build + network type correlation
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT build_number, network_type, server_label,
+                    COUNT(*) AS total,
+                    SUM(conclusion_code != 'tunnel_ok' AND conclusion_code IS NOT NULL) AS failures
+               FROM diagnostic_sessions
+              WHERE build_number IS NOT NULL AND network_type IS NOT NULL
+                AND created_at >= ?
+              GROUP BY build_number, network_type, server_label
+             HAVING total >= 2 AND failures >= 2
+              ORDER BY failures DESC LIMIT 10"
+        );
+        $stmt->execute([$since]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $total    = (int)$r['total'];
+            $failures = (int)$r['failures'];
+            $rate     = $total > 0 ? (int)round($failures / $total * 100) : 0;
+            if ($rate >= 70) {
+                $net = $r['network_type'] === 'wifi' ? 'WiFi' : 'Cellular';
+                $patterns[] = [
+                    'type'    => 'build_network',
+                    'severity'=> 'warn',
+                    'message' => "Build #{$r['build_number']} fails {$rate}% on {$net} → {$r['server_label']} ({$failures}/{$total} sessions)",
+                    'detail'  => "Possible carrier or network-path–specific blocking",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    // Pattern 3: carrier-specific failures
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT carrier, server_label,
+                    COUNT(*) AS total,
+                    SUM(conclusion_code != 'tunnel_ok' AND conclusion_code IS NOT NULL) AS failures
+               FROM diagnostic_sessions
+              WHERE carrier IS NOT NULL AND carrier != ''
+                AND created_at >= ?
+              GROUP BY carrier, server_label
+             HAVING total >= 2 AND failures >= 2
+              ORDER BY failures DESC LIMIT 10"
+        );
+        $stmt->execute([$since]);
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $total    = (int)$r['total'];
+            $failures = (int)$r['failures'];
+            $rate     = $total > 0 ? (int)round($failures / $total * 100) : 0;
+            if ($rate >= 70) {
+                $patterns[] = [
+                    'type'    => 'carrier_block',
+                    'severity'=> 'critical',
+                    'message' => "{$r['carrier']} fails {$rate}% on {$r['server_label']} ({$failures}/{$total} sessions) — possible carrier-level block",
+                    'detail'  => "Check if {$r['server_label']} VPS is reachable from {$r['carrier']} network",
+                ];
+            }
+        }
+    } catch (\Throwable $_) {}
+
+    return $patterns;
+}
+
+/**
+ * Full AI diagnosis dataset: recent enriched sessions + pattern alerts.
+ */
+function ni_ai_diagnosis(PDO $pdo, int $limit = 20, int $days = 14): array
+{
+    ni_init_diag_sessions($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+
+    $stmt = $pdo->prepare(
+        "SELECT * FROM diagnostic_sessions WHERE created_at >= ? ORDER BY created_at DESC LIMIT ?"
+    );
+    $stmt->execute([$since, min(100, max(1, $limit))]);
+    $sessions = array_map('ni_enrich_session', $stmt->fetchAll(PDO::FETCH_ASSOC));
+
+    return [
+        'sessions' => $sessions,
+        'patterns' => ni_diag_patterns($pdo, $days),
+        'summary'  => [
+            'total'      => count($sessions),
+            'tunnel_ok'  => count(array_filter($sessions, fn($s) => $s['conclusion_code'] === 'tunnel_ok')),
+            'cp1_fail'   => count(array_filter($sessions, fn($s) => $s['conclusion_code'] === 'cp1_fail')),
+            'cp4_fail'   => count(array_filter($sessions, fn($s) => $s['conclusion_code'] === 'cp4_fail')),
+        ],
+    ];
 }

@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -96,6 +96,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
       <?= icon('chart') ?> Network Intel
+    </div>
+    <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
+      <?= icon('chart') ?> AI Diagnosis
     </div>
     <div class="nav-item<?= $page==='installs'?' active':'' ?>" data-page="installs">
       <?= icon('devices') ?> Install Diag
@@ -754,6 +757,51 @@ function icon(string $name): string {
             <thead><tr><th>Time</th><th>Event</th><th>Node</th><th>Profile</th><th>SNI</th><th>Platform</th><th>Network</th><th>Country</th><th>Stage</th><th>Latency</th></tr></thead>
             <tbody id="intelFailTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: AI DIAGNOSIS                                           -->
+    <!-- ============================================================ -->
+    <div data-view="aidiag" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+        <span style="font-size:1.1rem;font-weight:700">AI Diagnosis</span>
+        <span class="panel-sub">automatic per-session root cause analysis + cross-session pattern detection</span>
+        <select class="select btn-sm" id="aidiagDays" style="width:110px">
+          <option value="3">Last 3 days</option>
+          <option value="7">Last 7 days</option>
+          <option value="14" selected>Last 14 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="aidiagRefreshBtn">Refresh</button>
+        <span id="aidiagNote" style="font-size:.72rem;color:var(--muted)"></span>
+      </div>
+
+      <!-- Summary badges -->
+      <div class="dev-stat-grid" id="aidiagStats" style="margin-bottom:1rem">
+        <div class="stat-card"><div class="stat-label">Sessions</div><div class="stat-value" id="aidTotal">—</div></div>
+        <div class="stat-card stat-ok"><div class="stat-label">Tunnel OK</div><div class="stat-value" id="aidOk">—</div></div>
+        <div class="stat-card stat-warn"><div class="stat-label">CP1 Fail</div><div class="stat-value" id="aidCp1">—</div></div>
+        <div class="stat-card" style="border-left:3px solid var(--danger)"><div class="stat-label">CP4 Fail</div><div class="stat-value" id="aidCp4">—</div></div>
+      </div>
+
+      <!-- Pattern alerts -->
+      <div class="panel" style="margin-bottom:1rem" id="aidiagPatternsPanel">
+        <div class="panel-header">
+          <span class="panel-title">Pattern Alerts</span>
+          <span class="panel-sub">cross-session failure patterns auto-detected from device, iOS version, carrier, build</span>
+        </div>
+        <div id="aidiagPatterns" style="padding:.75rem 1rem">
+          <div class="spinner"></div>
+        </div>
+      </div>
+
+      <!-- Session cards -->
+      <div id="aidiagCards" style="display:flex;flex-direction:column;gap:1rem">
+        <div class="panel" style="padding:1.5rem;text-align:center;color:var(--muted)">
+          <div class="spinner" style="margin:0 auto 1rem"></div>
+          Loading sessions…
         </div>
       </div>
     </div>
@@ -2757,6 +2805,128 @@ views.intel = {
         },
       });
     } catch(e) { /* Chart.js not yet loaded / canvas issue */ }
+  },
+};
+
+// ── VIEW: AI DIAGNOSIS ───────────────────────────────────────────────
+views.aidiag = {
+  init() {
+    $('aidiagRefreshBtn').addEventListener('click', ()=>this.load());
+    $('aidiagDays').addEventListener('change', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    const days = $('aidiagDays').value;
+    $('aidiagNote').textContent = 'Loading…';
+    $('aidiagCards').innerHTML = '<div class="panel" style="padding:1.5rem;text-align:center;color:var(--muted)"><div class="spinner" style="margin:0 auto 1rem"></div>Loading sessions…</div>';
+    $('aidiagPatterns').innerHTML = '<div class="spinner"></div>';
+    try {
+      const d = await api.get('ai-diagnosis', {days, limit: 30});
+      // Summary badges
+      const s = d.summary || {};
+      $('aidTotal').textContent = s.total ?? '—';
+      $('aidOk').textContent    = s.tunnel_ok ?? '—';
+      $('aidCp1').textContent   = s.cp1_fail  ?? '—';
+      $('aidCp4').textContent   = s.cp4_fail  ?? '—';
+      this.renderPatterns(d.patterns || []);
+      this.renderCards(d.sessions || []);
+      $('aidiagNote').textContent = `${(d.sessions||[]).length} sessions · ${days}-day window`;
+    } catch(e) {
+      $('aidiagNote').textContent = 'Error: ' + esc(e.message);
+      $('aidiagCards').innerHTML = `<div class="panel" style="padding:1rem;color:var(--danger)">${esc(e.message)}</div>`;
+      $('aidiagPatterns').innerHTML = '';
+    }
+  },
+  renderPatterns(patterns) {
+    if (!patterns.length) {
+      $('aidiagPatterns').innerHTML = '<span style="color:var(--muted);font-size:.85rem">No cross-session patterns detected yet — need ≥2 sessions with matching device/carrier/build to trigger.</span>';
+      return;
+    }
+    const sev = s => s==='critical'?'#f87171':s==='warn'?'#fbbf24':'#60a5fa';
+    const icon = s => s==='critical'?'🚨':s==='warn'?'⚠️':'ℹ️';
+    $('aidiagPatterns').innerHTML = `<div style="display:flex;flex-direction:column;gap:.5rem">`
+      + patterns.map(p => `<div style="border-left:3px solid ${sev(p.severity)};background:rgba(255,255,255,.04);border-radius:0 6px 6px 0;padding:.6rem .85rem">
+          <div style="display:flex;align-items:baseline;gap:.5rem">
+            <span>${icon(p.severity)}</span>
+            <span style="font-size:.85rem;font-weight:600;color:var(--text)">${esc(p.message)}</span>
+          </div>
+          ${p.detail ? `<div style="font-size:.72rem;color:var(--muted-2);margin-top:.2rem">${esc(p.detail)}</div>` : ''}
+        </div>`).join('')
+      + '</div>';
+  },
+  renderCards(sessions) {
+    if (!sessions.length) {
+      $('aidiagCards').innerHTML = '<div class="panel" style="padding:1.25rem;color:var(--muted);text-align:center">No sessions found in this time window. Connect and disconnect with build 69+ to generate diagnostic records.</div>';
+      return;
+    }
+    const cpBadge = v => {
+      if (v === 'PASS')    return `<span style="background:#166534;color:#4ade80;font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:4px">PASS</span>`;
+      if (v === 'FAIL')    return `<span style="background:#7f1d1d;color:#f87171;font-size:.72rem;font-weight:700;padding:2px 7px;border-radius:4px">FAIL</span>`;
+      return `<span style="background:rgba(255,255,255,.07);color:var(--muted);font-size:.72rem;padding:2px 7px;border-radius:4px">?</span>`;
+    };
+    const confColor = c => c>=90?'#4ade80':c>=70?'#fbbf24':'#f87171';
+    const confBar   = c => `<div style="display:inline-block;width:${c}px;height:6px;background:${confColor(c)};border-radius:3px;vertical-align:middle;max-width:100px"></div>`;
+    const netIcon   = n => n==='wifi'?'📶':n==='mobile'?'📱':'🌐';
+    const srvFlag   = s => (s||'').includes('Finland')?'🇫🇮':(s||'').includes('Germany')||(s||'').includes('Primary')?'🇩🇪':'🌐';
+    const codeStyle = c => ({tunnel_ok:'color:#4ade80',cp1_fail:'color:#f87171',cp4_fail:'color:#f87171',proxy_mode:'color:var(--muted)',no_data:'color:var(--muted)'})[c]||'';
+
+    $('aidiagCards').innerHTML = sessions.map((s, idx) => {
+      const date = (s.created_at||'').slice(0,16).replace('T',' ');
+      const conf = s.confidence ?? 0;
+      const sugg = (s.suggestions||[]);
+      const conc = s.conclusion_code || 'unknown';
+      return `<div class="panel" style="border-left:3px solid ${confColor(conf)};overflow:hidden">
+        <!-- Header row -->
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:.85rem 1rem .5rem;gap:.5rem;flex-wrap:wrap">
+          <div>
+            <span style="font-size:.7rem;color:var(--muted-2);font-family:var(--mono)">#${esc(s.session_id||'?')}</span>
+            <span style="font-size:.7rem;color:var(--muted);margin-left:.6rem">${esc(date)}</span>
+          </div>
+          <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+            <span style="font-size:.78rem;font-weight:600">${srvFlag(s.server_label)} ${esc(s.server_label||'?')}</span>
+            ${s.build_number ? `<span style="background:rgba(255,255,255,.07);color:var(--text);font-size:.7rem;padding:2px 6px;border-radius:4px">Build #${s.build_number}</span>` : ''}
+            ${s.tunnel_mode ? `<span style="background:rgba(96,165,250,.15);color:#60a5fa;font-size:.7rem;padding:2px 6px;border-radius:4px">${esc(s.tunnel_mode)}</span>` : ''}
+            ${s.ios_version  ? `<span style="font-size:.7rem;color:var(--muted)">iOS ${esc(s.ios_version)}</span>` : ''}
+            ${s.device_model ? `<span style="font-size:.7rem;color:var(--muted-2);font-family:var(--mono)">${esc(s.device_model)}</span>` : ''}
+          </div>
+        </div>
+
+        <!-- Context row -->
+        <div style="padding:0 1rem .65rem;display:flex;gap:.75rem;flex-wrap:wrap;font-size:.75rem;color:var(--muted)">
+          ${s.network_type ? `${netIcon(s.network_type)} <span>${s.network_type==='wifi'?'WiFi':'Cellular'}</span>` : ''}
+          ${s.carrier      ? `<span>📡 ${esc(s.carrier)}</span>` : ''}
+          ${s.country      ? `<span>🌍 ${esc(s.country)}</span>` : ''}
+          ${s.session_duration_secs ? `<span>⏱ ${s.session_duration_secs}s</span>` : ''}
+        </div>
+
+        <!-- CP badge row -->
+        <div style="padding:.5rem 1rem .65rem;display:flex;gap:.5rem;align-items:center">
+          <span style="font-size:.72rem;color:var(--muted-2);width:32px">CP1</span>${cpBadge(s.cp1_result)}
+          <span style="font-size:.72rem;color:var(--muted-2);margin-left:.35rem;width:32px">CP2</span>${cpBadge(s.cp2_result)}
+          <span style="font-size:.72rem;color:var(--muted-2);margin-left:.35rem;width:32px">CP3</span>${cpBadge(s.cp3_result)}
+          <span style="font-size:.72rem;color:var(--muted-2);margin-left:.35rem;width:32px">CP4</span>${cpBadge(s.cp4_result)}
+          ${s.cp4_connections > 0 ? `<span style="font-size:.7rem;color:var(--muted);margin-left:.5rem">${s.cp4_connections} Xray conn${s.cp4_connections!==1?'s':''}</span>` : ''}
+          ${s.cp4_first_dest ? `<span style="font-size:.68rem;color:var(--muted-2);font-family:var(--mono);margin-left:.3rem">→ ${esc(s.cp4_first_dest)}</span>` : ''}
+        </div>
+
+        <!-- Diagnosis -->
+        <div style="background:rgba(0,0,0,.18);border-top:1px solid rgba(255,255,255,.05);padding:.75rem 1rem">
+          <div style="font-size:.72rem;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.35rem">Most likely cause</div>
+          <div style="font-size:.85rem;color:var(--text);margin-bottom:.6rem">${esc(s.cause||'—')}</div>
+          <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.65rem">
+            <span style="font-size:.72rem;color:var(--muted-2)">Confidence</span>
+            ${confBar(conf)}
+            <span style="font-size:.8rem;font-weight:700;color:${confColor(conf)}">${conf > 0 ? conf+'%' : 'N/A'}</span>
+            <span style="margin-left:auto;font-size:.7rem;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,.06);${codeStyle(conc)}">${esc(conc)}</span>
+          </div>
+          ${sugg.length ? `<div style="font-size:.72rem;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem">Suggestions</div>
+          <ul style="margin:0;padding-left:1.2rem;display:flex;flex-direction:column;gap:.25rem">
+            ${sugg.map(s=>`<li style="font-size:.8rem;color:var(--muted)">${esc(s)}</li>`).join('')}
+          </ul>` : ''}
+          ${s.vps_connections !== null ? `<div style="margin-top:.5rem;font-size:.72rem;color:var(--muted-2)">VPS connections (last ~200 log lines): <strong>${s.vps_connections}</strong>${s.vps_sample ? ` — <span style="font-family:var(--mono);font-size:.65rem">${esc(s.vps_sample.split('\n')[0]||'')}</span>` : ''}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
   },
 };
 

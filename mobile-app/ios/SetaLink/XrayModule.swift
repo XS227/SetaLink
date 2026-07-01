@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import NetworkExtension
 import Security
+import CoreTelephony
 
 typealias RCTPromiseResolveBlock = (Any?) -> Void
 typealias RCTPromiseRejectBlock  = (String?, String?, Error?) -> Void
@@ -89,6 +90,16 @@ class XrayModule: NSObject {
 
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            // Write session context so PacketTunnelProvider can include it in diagnostics.
+            let carrier = CTTelephonyNetworkInfo().serviceSubscriberCellularProviders?.values.first?.carrierName ?? ""
+            self.shared?.set(carrier, forKey: "session_carrier")
+            var sysInfo = utsname(); uname(&sysInfo)
+            let model = withUnsafeBytes(of: &sysInfo.machine) { ptr in
+                ptr.bindMemory(to: CChar.self).baseAddress.map { String(cString: $0) } ?? "unknown"
+            }
+            self.shared?.set(model, forKey: "session_device_model")
+            self.shared?.synchronize()
+
             self.resolveManager(create: true) { manager, loadError in
                 if let err = loadError {
                     reject("LOAD_PREFS_FAILED", err.localizedDescription, err)
