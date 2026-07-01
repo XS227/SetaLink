@@ -44,9 +44,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var networkSwitchedDuringSession = false
     private var xrayReadyTime: Date? = nil
 
+    // Xray file log path (set by injectXrayFileLog; read by xrayLogTimer)
+    private var xrayLogPath: String = ""
+
     // MARK: - HEV engine (TUN mode only)
     #if HEV_AVAILABLE
-    private var hevEngineThread: Thread?
+    private var hevEngineThread:   Thread?
+    private var cp1Timer:          DispatchSourceTimer?   // CP1: tunFd readable?
+    private var xrayLogTimer:      DispatchSourceTimer?   // CP4: Xray receiving connections?
+    private var cp4TotalConns:     Int    = 0
+    private var cp4FirstDest:      String = ""
+    private var cp1PeekEverSaw:    Bool   = false
     #endif
 
     /// IP version derived from the server address stored in serverAddr.
@@ -97,9 +105,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             .replacingOccurrences(of: "\"shortId\":\"[^\"]+\"",   with: "\"shortId\":\"[REDACTED]\"",   options: .regularExpression)
         appendLog("CONFIG_PREVIEW: \(preview)")
 
+        // Inject file logging into Xray config so CP3/CP4 can be verified from the log.
+        let xrayConfigForLaunch = injectXrayFileLog(into: configJSON)
+
         // LibXrayRunXrayFromJSON expects base64({"datDir":"","configJSON":"<raw-xray-config>"})
         guard let wrapperData = try? JSONSerialization.data(
-            withJSONObject: ["datDir": "", "configJSON": configJSON]
+            withJSONObject: ["datDir": "", "configJSON": xrayConfigForLaunch]
         ) else {
             return fail("Config wrapper serialization failed", shared: shared, completionHandler)
         }
@@ -166,10 +177,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 return self.fail("HEV: config write failed", shared: shared, completionHandler)
             }
             self.startHevEngine(cfgPath: cfgPath, tunFd: tunFd)
+            self.startCP1Monitor(tunFd: tunFd, shared: shared)
+            self.startXrayLogMonitor(shared: shared)
             self.startLivenessTimer(shared: shared)
             self.startNetworkMonitor()
             let latencyMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
-            self.submitTelemetry(event: "connect_ok", latencyMs: latencyMs)
+            self.submitTelemetry(event: "connect_ok", latencyMs: latencyMs, tunnelMode: "HEV")
             self.finishConnected(shared: shared, completionHandler)
         }
 
@@ -258,13 +271,22 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                              completionHandler: @escaping () -> Void) {
         let reasonStr = stopReasonDescription(reason)
         appendLog("STOP: \(reasonStr)")
-        submitTelemetry(event: "disconnect", disconnectReason: reasonStr)
-        livenessTimer?.cancel(); livenessTimer = nil
-        pathMonitor?.cancel();   pathMonitor   = nil
         #if HEV_AVAILABLE
+        appendLog("DIAG_SUMMARY: CP1_ever_saw_packets=\(cp1PeekEverSaw) CP4_total_conns=\(cp4TotalConns) CP4_first_dest=\(cp4FirstDest.isEmpty ? "none" : cp4FirstDest)")
+        submitTelemetry(event: "disconnect", disconnectReason: reasonStr,
+                        tunnelMode: "HEV",
+                        cp1Readable: cp1PeekEverSaw ? "YES" : "NO",
+                        cp4Connections: cp4TotalConns,
+                        cp4FirstDest: cp4FirstDest.isEmpty ? nil : cp4FirstDest)
+        cp1Timer?.cancel();     cp1Timer     = nil
+        xrayLogTimer?.cancel(); xrayLogTimer = nil
         hev_socks5_tunnel_quit()
         hevEngineThread = nil
+        #else
+        submitTelemetry(event: "disconnect", disconnectReason: reasonStr, tunnelMode: "proxy")
         #endif
+        livenessTimer?.cancel(); livenessTimer = nil
+        pathMonitor?.cancel();   pathMonitor   = nil
         if let shared = UserDefaults(suiteName: kAppGroup) {
             flushLog(to: shared)
         }
@@ -303,7 +325,124 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // MARK: - HEV TUN engine helpers
 
+    // MARK: - Xray file log injection (both modes)
+
+    /// Rewrites the Xray config to add file-based access + error logging under
+    /// the App Group container so CP3/CP4 evidence survives the session.
+    /// Falls back to original JSON on any parse failure.
+    private func injectXrayFileLog(into json: String) -> String {
+        guard var config = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any],
+              let agURL  = FileManager.default.containerURL(
+                  forSecurityApplicationGroupIdentifier: kAppGroup)
+        else {
+            appendLog("DIAG: xray file log inject failed (no app group or parse error)")
+            return json
+        }
+        let logDir  = agURL.appendingPathComponent("Library/Caches/xray-diag", isDirectory: true)
+        try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
+        let accURL  = logDir.appendingPathComponent("access.log")
+        let errURL  = logDir.appendingPathComponent("error.log")
+        // Truncate so the log reader only sees entries from this session.
+        try? "".write(to: accURL, atomically: true, encoding: .utf8)
+        xrayLogPath = accURL.path
+        config["log"] = [
+            "loglevel": "info",
+            "access":   accURL.path,
+            "error":    errURL.path,
+        ]
+        guard let data   = try? JSONSerialization.data(withJSONObject: config),
+              let result = String(data: data, encoding: .utf8) else {
+            appendLog("DIAG: xray file log inject failed (re-encode error)")
+            return json
+        }
+        appendLog("DIAG: xray logs → \(accURL.path)")
+        return result
+    }
+
     #if HEV_AVAILABLE
+
+    // MARK: - CP1: tunFd readability monitor
+
+    /// Polls the utun fd with MSG_PEEK every 5 s (non-destructive).
+    /// CP1=readable → iOS IS delivering packets to the TUN.
+    /// CP1=EMPTY    → no packets yet (could be normal; wait for app to send traffic).
+    /// CP1=ERR      → wrong fd or permission denied → HEV may have wrong fd.
+    private func startCP1Monitor(tunFd: Int32, shared: UserDefaults) {
+        var poll = 0
+        let t = DispatchSource.makeTimerSource(queue: .global(qos: .background))
+        t.schedule(deadline: .now() + 3, repeating: 5)
+        t.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            poll += 1
+            var buf = [UInt8](repeating: 0, count: 4)
+            // MSG_PEEK=0x2 | MSG_DONTWAIT=0x80 — check without consuming
+            let n = recv(tunFd, &buf, 4, Int32(0x02 | 0x80))
+            let result: String
+            if n > 0 {
+                result = "readable (\(n)B peeked)"
+                self.cp1PeekEverSaw = true
+            } else {
+                let e = errno
+                result = (e == EAGAIN || e == EWOULDBLOCK) ? "EMPTY" : "ERR(errno=\(e))"
+            }
+            // Log every poll for first 12 (60s), then only changes
+            if poll <= 12 || n > 0 {
+                self.appendLog("CP1 poll#\(poll): tunFd=\(tunFd) \(result)")
+                self.flushLog(to: shared)
+                shared.synchronize()
+            }
+        }
+        t.resume()
+        cp1Timer = t
+    }
+
+    // MARK: - CP4: Xray access-log monitor
+
+    /// Reads new lines from Xray's access.log every 10 s.
+    /// Each line = one SOCKS5 connection HEV made → confirms CP2, CP3, CP4.
+    /// Xray format: "<date> from 127.0.0.1:PORT accepted tcp:HOST:PORT [tag -> outbound]"
+    private func startXrayLogMonitor(shared: UserDefaults) {
+        guard !xrayLogPath.isEmpty else {
+            appendLog("CP4: no xray log path — injectXrayFileLog may have failed")
+            return
+        }
+        let path    = xrayLogPath
+        var offset: UInt64 = 0
+        var polls   = 0
+        let t = DispatchSource.makeTimerSource(queue: .global(qos: .background))
+        t.schedule(deadline: .now() + 8, repeating: 10)
+        t.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            polls += 1
+            guard let fh = FileHandle(forReadingAtPath: path) else {
+                if polls <= 3 {
+                    self.appendLog("CP4 poll#\(polls): access.log not found — Xray not writing?")
+                    self.flushLog(to: shared); shared.synchronize()
+                }
+                return
+            }
+            fh.seek(toFileOffset: offset)
+            let data = fh.readDataToEndOfFile()
+            offset   = fh.offsetInFile
+            fh.closeFile()
+            guard let text = String(data: data, encoding: .utf8), !text.isEmpty else { return }
+            let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+            self.cp4TotalConns += lines.count
+            // Extract first destination for quick diagnosis
+            for line in lines where self.cp4FirstDest.isEmpty {
+                // "accepted tcp:HOST:PORT" or "accepted udp:..."
+                if let r = line.range(of: "accepted tcp:") ?? line.range(of: "accepted udp:") {
+                    let after = line[r.upperBound...]
+                    self.cp4FirstDest = String(after.components(separatedBy: " ").first ?? "?")
+                }
+            }
+            self.appendLog("CP4 poll#\(polls): +\(lines.count) xray entries total=\(self.cp4TotalConns) firstDest=\(self.cp4FirstDest.isEmpty ? "none" : self.cp4FirstDest)")
+            self.flushLog(to: shared)
+            shared.synchronize()
+        }
+        t.resume()
+        xrayLogTimer = t
+    }
 
     /// Scan open file descriptors for the utun control socket created by
     /// setTunnelNetworkSettings. Returns the fd on success, -1 on failure.
@@ -591,7 +730,11 @@ misc:
         event:            String,
         latencyMs:        Int?    = nil,
         disconnectReason: String? = nil,
-        errorCategory:    String? = nil
+        errorCategory:    String? = nil,
+        tunnelMode:       String? = nil,
+        cp1Readable:      String? = nil,
+        cp4Connections:   Int?    = nil,
+        cp4FirstDest:     String? = nil
     ) {
         guard let url = URL(string: "https://setalink.no/v1/telemetry/connect") else { return }
         let diagDeviceId = UserDefaults(suiteName: kAppGroup)?.string(forKey: "diag_device_id") ?? ""
@@ -615,6 +758,10 @@ misc:
         if let cat = errorCategory {
             items.append(URLQueryItem(name: "error_category", value: cat))
         }
+        if let mode = tunnelMode     { items.append(URLQueryItem(name: "tunnel_mode",    value: mode)) }
+        if let cp1  = cp1Readable    { items.append(URLQueryItem(name: "cp1_readable",   value: cp1))  }
+        if let cp4c = cp4Connections { items.append(URLQueryItem(name: "cp4_connections",value: String(cp4c))) }
+        if let cp4d = cp4FirstDest   { items.append(URLQueryItem(name: "cp4_first_dest", value: cp4d)) }
         items.append(URLQueryItem(name: "ip_version", value: ipVersion))
         if networkSwitchedDuringSession {
             items.append(URLQueryItem(name: "network_switched", value: "1"))
