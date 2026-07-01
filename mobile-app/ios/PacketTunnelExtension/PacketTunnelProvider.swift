@@ -162,6 +162,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             // Extension traffic bypasses the system VPN, so we configure URLSession
             // explicitly with SOCKS5 proxy dictionary. Updates kProbeOkKey.
             self.performConnectivityProbe(shared: shared)
+            // DNS check: verify system DNS resolver can reach 1.1.1.1 directly
+            // (the excluded route keeps it off the TUN drain). Logs DNS: resolution OK
+            // or DNS: FAILED — used by DiagnosticsScreen iOS Tunnel Layer display.
+            self.performDNSCheck(shared: shared)
 
             // Drain the TUN queue so iOS does not kill the extension for an
             // unresponsive tunnel. QUIC/UDP-443 hits TUN and is dropped here —
@@ -226,6 +230,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             excluded4.append(r)
             appendLog("SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
         }
+        // DNS server IPs must bypass the TUN drain. NEDNSSettings sends all DNS
+        // queries (UDP/53) to these addresses; with the default route in the TUN,
+        // those UDP packets enter drainTunPackets() and are silently discarded —
+        // apps get no DNS responses and show "no internet" even though SOCKS5 works.
+        let dnsExclusions = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]
+        for ip in dnsExclusions {
+            excluded4.append(NEIPv4Route(destinationAddress: ip, subnetMask: "255.255.255.255"))
+        }
+        appendLog("SETTINGS: dnsExcluded=\(dnsExclusions.joined(separator: ",")) (prevent UDP/53 drain)")
         ipv4.excludedRoutes = excluded4
         s.ipv4Settings = ipv4
 
@@ -256,7 +269,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         proxy.matchDomains = [""]
         s.proxySettings = proxy
 
-        appendLog("SETTINGS: server=\(serverAddr ?? "?") proxy=SOCKS5:\(kSocksPort) PAC matchDomains=[\"\"] routes=default+serverExcluded ipv6=claim+drop")
+        appendLog("SETTINGS: server=\(serverAddr ?? "?") proxy=SOCKS5:\(kSocksPort) PAC matchDomains=[\"\"] routes=default+serverExcluded+dnsExcluded ipv6=claim+drop")
         return s
     }
 
@@ -364,6 +377,34 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
     }
 
+    private func performDNSCheck(shared: UserDefaults) {
+        DispatchQueue.global(qos: .background).async { [weak self] in
+            guard let self = self else { return }
+            // Resolve a real hostname via the system DNS resolver (no proxy).
+            // Uses the direct URLSession — extension traffic already bypasses the VPN,
+            // so this confirms that the DNS exclusion routes let UDP/53 through to 1.1.1.1.
+            guard let url = URL(string: "https://one.one.one.one/") else { return }
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.connectionProxyDictionary = [:]
+            cfg.timeoutIntervalForRequest = 6.0
+            let session = URLSession(configuration: cfg)
+            let sem = DispatchSemaphore(value: 0)
+            var resolved = false
+            session.dataTask(with: URLRequest(url: url)) { _, resp, _ in
+                resolved = (resp as? HTTPURLResponse) != nil
+                sem.signal()
+            }.resume()
+            _ = sem.wait(timeout: .now() + 6)
+            if resolved {
+                self.appendLog("DNS: resolution OK — one.one.one.one reachable via system DNS")
+            } else {
+                self.appendLog("DNS: FAILED — check that 1.1.1.1/8.8.8.8 exclusion routes are applied")
+            }
+            self.flushLog(to: shared)
+            shared.synchronize()
+        }
+    }
+
     // Parse outbound server address from xray JSON (VLESS vnext format)
     private func parseServerAddress(from json: String) -> String? {
         guard let data  = json.data(using: .utf8),
@@ -455,6 +496,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         errorCategory:    String? = nil
     ) {
         guard let url = URL(string: "https://setalink.no/v1/telemetry/connect") else { return }
+        let diagDeviceId = UserDefaults(suiteName: kAppGroup)?.string(forKey: "diag_device_id") ?? ""
+        let diagCountry  = UserDefaults(suiteName: kAppGroup)?.string(forKey: "diag_country")    ?? ""
         var items: [URLQueryItem] = [
             URLQueryItem(name: "event",        value: event),
             URLQueryItem(name: "node_id",      value: serverAddr ?? "primary"),
@@ -463,6 +506,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             URLQueryItem(name: "build_number", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"),
             URLQueryItem(name: "protocol",     value: "VLESS + Reality"),
         ]
+        if !diagDeviceId.isEmpty { items.append(URLQueryItem(name: "device_id", value: diagDeviceId)) }
+        if !diagCountry.isEmpty  { items.append(URLQueryItem(name: "country",   value: diagCountry))  }
         if let ms = latencyMs {
             items.append(URLQueryItem(name: "time_to_connect_ms", value: String(ms)))
         }
