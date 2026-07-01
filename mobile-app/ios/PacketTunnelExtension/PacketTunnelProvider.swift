@@ -57,6 +57,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var cp1PeekEverSaw:    Bool   = false
     #endif
 
+    /// Network type derived from the first path interface captured by NWPathMonitor.
+    private var networkTypeString: String {
+        switch initialPathInterfaceType {
+        case .some(.wifi):     return "wifi"
+        case .some(.cellular): return "mobile"
+        default:               return "unknown"
+        }
+    }
+
+    /// iOS version string, e.g. "17.5.1".
+    private var iosVersion: String {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+    }
+
     /// IP version derived from the server address stored in serverAddr.
     private var ipVersion: String {
         guard let addr = serverAddr else { return "unknown" }
@@ -770,7 +785,12 @@ misc:
         if let cp1  = cp1Readable    { items.append(URLQueryItem(name: "cp1_readable",   value: cp1))  }
         if let cp4c = cp4Connections { items.append(URLQueryItem(name: "cp4_connections",value: String(cp4c))) }
         if let cp4d = cp4FirstDest   { items.append(URLQueryItem(name: "cp4_first_dest", value: cp4d)) }
-        items.append(URLQueryItem(name: "ip_version", value: ipVersion))
+        items.append(URLQueryItem(name: "ip_version",    value: ipVersion))
+        items.append(URLQueryItem(name: "network_type",  value: networkTypeString))
+        items.append(URLQueryItem(name: "ios_version",   value: iosVersion))
+        let ag = UserDefaults(suiteName: kAppGroup)
+        if let model   = ag?.string(forKey: "session_device_model"), !model.isEmpty   { items.append(URLQueryItem(name: "device_model", value: model)) }
+        if let carrier = ag?.string(forKey: "session_carrier"),      !carrier.isEmpty { items.append(URLQueryItem(name: "carrier_name", value: carrier)) }
         if networkSwitchedDuringSession {
             items.append(URLQueryItem(name: "network_switched", value: "1"))
         }

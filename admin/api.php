@@ -1368,6 +1368,17 @@ switch ($action) {
         break;
     }
 
+    // AI Diagnosis — enriched sessions with cause/confidence/suggestions + pattern alerts.
+    // ?action=ai-diagnosis&limit=20&days=14
+    case 'ai-diagnosis': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db    = open_analytics_db();
+        $limit = min(100, max(1, (int)($_GET['limit'] ?? 20)));
+        $days  = min(90,  max(1, (int)($_GET['days']  ?? 14)));
+        api_ok(ni_ai_diagnosis($db, $limit, $days));
+        break;
+    }
+
     // Diagnostic sessions — structured CP1-CP4 evidence per disconnect event.
     // Filters: server, cp1, cp4, conclusion_code, platform, since, limit
     // Examples:

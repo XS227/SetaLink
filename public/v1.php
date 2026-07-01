@@ -455,6 +455,9 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'cp1_readable'         => v1_body('cp1_readable'),
             'cp4_connections'      => v1_body('cp4_connections') !== '' ? (int)v1_body('cp4_connections') : null,
             'cp4_first_dest'       => v1_body('cp4_first_dest'),
+            // Build 69 device context fields
+            'ios_version'          => v1_body('ios_version'),
+            'device_model'         => v1_body('device_model'),
         ]);
         // Auto-create structured diagnostic session for every disconnect event (build 68+).
         // Disconnect events carry CP1/CP4 summary data accumulated during the session.
@@ -472,6 +475,10 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
                         'app_version'         => v1_body('app_version'),
                         'build_number'        => v1_body('build_number'),
                         'country'             => $country,
+                        'ios_version'         => v1_body('ios_version'),
+                        'device_model'        => v1_body('device_model'),
+                        'network_type'        => v1_body('network_type'),
+                        'carrier_name'        => v1_body('carrier_name'),
                         'disconnect_reason'   => v1_body('disconnect_reason'),
                         'session_duration_secs' => v1_body('session_duration_secs'),
                     ], $telemetryRowId);
