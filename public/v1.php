@@ -393,6 +393,8 @@ $nodes = v1_nodes($pdo, $deviceId);
 if ($rel === '/telemetry/connect' && $method === 'POST') {
     try {
         ni_init_tables($pdo);
+        // Capture raw event before ni_valid_event normalises it (needed to detect 'disconnect')
+        $rawTelemetryEvent = v1_body('event');
         // Derive country from the client IP (best-effort, may be empty).
         $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
         if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
@@ -415,7 +417,7 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             }
         }
         ni_record($pdo, [
-            'event'         => v1_body('event'),
+            'event'         => $rawTelemetryEvent,
             'node_id'       => v1_body('node_id') ?: 'primary',
             'profile_id'    => v1_body('profile_id') ?: null,
             'sni'           => v1_body('sni'),
@@ -448,7 +450,34 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'ip_version'           => v1_body('ip_version'),
             'rtt_ms'               => v1_body('rtt_ms') !== '' ? (int)v1_body('rtt_ms') : null,
             'network_switched'     => v1_body('network_switched') !== '' ? v1_body('network_switched') : null,
+            // Build 68 checkpoint fields
+            'tunnel_mode'          => v1_body('tunnel_mode'),
+            'cp1_readable'         => v1_body('cp1_readable'),
+            'cp4_connections'      => v1_body('cp4_connections') !== '' ? (int)v1_body('cp4_connections') : null,
+            'cp4_first_dest'       => v1_body('cp4_first_dest'),
         ]);
+        // Auto-create structured diagnostic session for every disconnect event (build 68+).
+        // Disconnect events carry CP1/CP4 summary data accumulated during the session.
+        if ($rawTelemetryEvent === 'disconnect') {
+            try {
+                $telemetryRowId = (int)$pdo->lastInsertId();
+                if ($telemetryRowId > 0) {
+                    ni_create_diag_session($pdo, [
+                        'node_id'             => v1_body('node_id') ?: 'primary',
+                        'tunnel_mode'         => v1_body('tunnel_mode'),
+                        'cp1_readable'        => v1_body('cp1_readable'),
+                        'cp4_connections'     => v1_body('cp4_connections') !== '' ? (int)v1_body('cp4_connections') : 0,
+                        'cp4_first_dest'      => v1_body('cp4_first_dest'),
+                        'platform'            => v1_body('platform'),
+                        'app_version'         => v1_body('app_version'),
+                        'build_number'        => v1_body('build_number'),
+                        'country'             => $country,
+                        'disconnect_reason'   => v1_body('disconnect_reason'),
+                        'session_duration_secs' => v1_body('session_duration_secs'),
+                    ], $telemetryRowId);
+                }
+            } catch (\Throwable $_) {}
+        }
     } catch (\Throwable $_) { /* swallow — telemetry must never break the user flow */ }
     v1_send(['ok' => true]);
 }
