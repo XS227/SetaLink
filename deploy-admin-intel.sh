@@ -72,7 +72,8 @@ done
 
 # ── 4) Verifiser live-endepunktet ────────────────────────────────────────────
 say "Verifiserer bootstrap …"
-RESP=$(curl -fsk --max-time 10 "http://127.0.0.1/api.php?mobile=1&action=bootstrap&_token=setalink-mobile-diag-v1&debug_country=IR" || true)
+# NB: må gå mot HTTPS-domenet — ren http://127.0.0.1 får bare 301-redirect
+RESP=$(curl -fskL --max-time 10 "https://setalink.no/api.php?mobile=1&action=bootstrap&_token=setalink-mobile-diag-v1&debug_country=IR" || true)
 echo "$RESP" | head -c 400; echo
 echo "$RESP" | grep -q '"ok":true' || die "bootstrap svarer ikke ok:true — rull tilbake med: cp $BK/* (se stier over)"
 say "FERDIG. Rollback ved behov: kopier filene fra $BK tilbake."
