@@ -3317,7 +3317,8 @@ switch ($action) {
         break;
 
     case 'test-bootstrap':
-        $tb_raw = trim((string)@shell_exec('curl -sk --max-time 6 "http://127.0.0.1/api.php?mobile=1&action=bootstrap&_token=' . MOBILE_REPORT_TOKEN . '" 2>/dev/null'));
+        // NB: må følge redirect til HTTPS-domenet — ren http://127.0.0.1 får kun 301 uten JSON
+        $tb_raw = trim((string)@shell_exec('curl -skL --max-time 6 "https://setalink.no/api.php?mobile=1&action=bootstrap&_token=' . MOBILE_REPORT_TOKEN . '" 2>/dev/null'));
         if (!$tb_raw) api_err('Bootstrap endpoint did not respond', 503);
         $tb_j = json_decode($tb_raw, true);
         if (!is_array($tb_j)) api_err('Bootstrap endpoint returned invalid JSON');
