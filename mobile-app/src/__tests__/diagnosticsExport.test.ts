@@ -1,18 +1,16 @@
 import { buildDiagnosticsReport } from '../services/diagnosticsExport';
 
 // BUG-3, Issue 2: the Export Diagnostic Report button must produce a report.
+// 2026-07-02: illustrative health checks + fake route trace removed from the
+// report — only live Self Test results are included now.
 describe('buildDiagnosticsReport', () => {
   const base = {
     appVersion: '0.9.34', appBuild: '51', deviceId: 'dev-abc',
     platform: 'android', osVersion: 34, tunnelStatus: 'connected',
     exitIp: '203.0.113.7', dnsStatus: 'Healthy',
-    healthChecks: [
-      { label: 'DNS Resolution', status: 'ok' as const,   detail: 'DNS OK' },
-      { label: 'TLS Certificate', status: 'warn' as const, detail: 'expiring soon' },
-    ],
-    routeHops: [
-      { hop: 1, ip: '10.0.0.1', rtt: '1ms', label: 'Local Gateway' },
-      { hop: 2, ip: '104.26.12.55', rtt: '14ms', label: 'CDN Edge' },
+    selfTest: [
+      { test: 'dns',       label: 'DNS through tunnel', ok: true,  detail: 'resolved i.instagram.com' },
+      { test: 'instagram', label: 'Instagram reach',    ok: false, detail: 'timeout after 8s' },
     ],
     connection: {
       protocol: 'VLESS + Reality', transport: 'TCP', serverSni: 'www.cloudflare.com',
@@ -34,22 +32,34 @@ describe('buildDiagnosticsReport', () => {
     expect(out).toContain('2026-06-15T10:00:00');
   });
 
-  it('renders health checks with mapped status labels', () => {
+  it('renders live self test results with PASS/FAIL labels', () => {
     const out = buildDiagnosticsReport(base);
-    expect(out).toContain('[HEALTHY] DNS Resolution');
-    expect(out).toContain('[DEGRADED] TLS Certificate');
+    expect(out).toContain('[PASS] DNS through tunnel — resolved i.instagram.com');
+    expect(out).toContain('[FAIL] Instagram reach — timeout after 8s');
   });
 
-  it('lists every route hop', () => {
+  it('contains no illustrative/simulated sections', () => {
     const out = buildDiagnosticsReport(base);
-    expect(out).toContain('Local Gateway');
-    expect(out).toContain('CDN Edge');
+    expect(out).not.toContain('illustrative');
+    expect(out).not.toContain('Route Trace');
+    expect(out).not.toContain('Simulated');
+  });
+
+  it('prompts the user to run the self test when results are missing', () => {
+    const out = buildDiagnosticsReport({ ...base, selfTest: null });
+    expect(out).toContain('not run — open the Self Test tab');
   });
 
   it('tolerates missing exit IP and connection', () => {
     const out = buildDiagnosticsReport({ ...base, exitIp: null, connection: null });
-    expect(out).toContain('Exit IP:       —');
+    expect(out).toContain('(run internet test to detect)');
     expect(out).not.toContain('Server SNI');
+  });
+
+  it('marks DNS unknown when the tunnel is down', () => {
+    const out = buildDiagnosticsReport({ ...base, tunnelStatus: 'disconnected' });
+    expect(out).toContain('DNS status:    Unknown (tunnel not connected)');
+    expect(out).toContain('N/A — tunnel not connected');
   });
 });
 
