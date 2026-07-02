@@ -219,9 +219,34 @@ function client_ip(): string {
 // reflects the user's LATEST location (not the first-seen one). When the public
 // IP changes we re-geo and overwrite country/country_name; first_country keeps
 // the original. Devices also heal as soon as the app talks to us with the VPN off.
+// IPs that belong to our own infrastructure. Requests arriving from these are
+// tunneled (or server-to-server) — geo-locating them would tag every connected
+// user as Finland/Germany and break the country flags in admin.
+function is_vpn_exit_ip(string $ip): bool {
+    static $known = ['65.109.183.7', '178.104.77.231', '5.249.252.221'];
+    if (in_array($ip, $known, true)) return true;
+    try {
+        $pdo = db();
+        $st  = $pdo->query("SELECT value FROM settings WHERE key IN ('bootstrap_address','bootstrap_alt_profiles')");
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $v) {
+            if ($v === $ip) return true;
+            $arr = json_decode((string)$v, true);
+            if (is_array($arr)) {
+                foreach ($arr as $p) {
+                    if (($p['address'] ?? '') === $ip) return true;
+                }
+            }
+        }
+    } catch (\Throwable $e) {}
+    return false;
+}
+
 function touch_ip_geo(PDO $pdo, string $deviceId, array $dev = []): void {
     $ip = client_ip();
     if (!$ip) return;
+    // Tunneled request: the IP is our own exit node, not the user's location.
+    // Touch nothing — keep the last real IP/country.
+    if (is_vpn_exit_ip($ip)) return;
     if (!array_key_exists('country', $dev)) {
         $st = $pdo->prepare("SELECT last_ip, country, first_country FROM devices WHERE device_id=?");
         $st->execute([$deviceId]);
@@ -440,6 +465,79 @@ if ($method === 'GET') {
     if ($action === 'bootstrap') {
         $pdo = db();
         $srv = fetch_bootstrap_server($pdo);
+
+        // ── Self-learned routing ──────────────────────────────────────────
+        // Rank [primary + altProfiles] by learned per-country connect success
+        // (lib/node_intel.php, fed by connect_telemetry). The node that works
+        // for the caller's country is served as primary; the rest stay as
+        // failover altProfiles. Static order is kept when we know nothing.
+        $routingSource = 'static';
+        try {
+            require_once __DIR__ . '/../lib/node_intel.php';
+            $callerIp = client_ip();
+            $cc = '';
+            if ($callerIp && !is_vpn_exit_ip($callerIp)) {
+                $cc = strtoupper(detect_country_from_ip($callerIp)['code'] ?? '');
+            }
+            // Verification hook (same _token gate as the endpoint itself):
+            // lets admin preview routing for any country without spoofing IPs.
+            if (!empty($_GET['debug_country'])) {
+                $cc = strtoupper(substr((string)$_GET['debug_country'], 0, 4));
+            }
+            $alt = $srv['altProfiles'] ?? [];
+            if ($cc !== '' && $alt) {
+                $learned = ni_get_learned_routing($pdo);
+                $ranked  = $learned['countries'][$cc] ?? [];
+                if ($ranked) {
+                    $profiles = array_merge([[
+                        'uuid'        => $srv['uuid']        ?? '',
+                        'address'     => $srv['address']     ?? '',
+                        'port'        => (int)($srv['port']  ?? 443),
+                        'publicKey'   => $srv['publicKey']   ?? '',
+                        'shortId'     => $srv['shortId']     ?? '',
+                        'sni'         => $srv['sni']         ?? 'www.cloudflare.com',
+                        'flow'        => $srv['flow']        ?? '',
+                        'fingerprint' => $srv['fingerprint'] ?? 'chrome',
+                    ]], $alt);
+                    // Score each profile by its address's rank for this country
+                    $rankOf = function (array $p) use ($ranked): int {
+                        foreach ($ranked as $i => $r) {
+                            $node = (string)$r['node'];
+                            $addr = (string)($p['address'] ?? '');
+                            if ($addr !== '' && ($node === $addr
+                                || str_starts_with($node, $addr)
+                                || str_starts_with($addr, $node)
+                                || ni_server_label($node) === ni_server_label($addr))) {
+                                return $i;
+                            }
+                        }
+                        return PHP_INT_MAX; // unknown nodes keep original order
+                    };
+                    $idx = array_keys($profiles);
+                    usort($idx, fn($a, $b) =>
+                        ($rankOf($profiles[$a]) <=> $rankOf($profiles[$b])) ?: ($a <=> $b));
+                    $sorted = array_map(fn($i) => $profiles[$i], $idx);
+                    if ($sorted[0] !== $profiles[0]) {
+                        $best = array_shift($sorted);
+                        foreach (['uuid','address','port','publicKey','shortId',
+                                  'sni','flow','fingerprint'] as $k) {
+                            $srv[$k] = $best[$k] ?? ($srv[$k] ?? '');
+                        }
+                        $srv['altProfiles'] = $sorted;
+                        $lbl = ni_server_label((string)$best['address']);
+                        $srv['country'] = $lbl === 'Finland' ? 'Finland'
+                                        : ($lbl === 'Germany' ? 'Germany' : ($srv['country'] ?? ''));
+                        $srv['flag']    = $lbl === 'Finland' ? '🇫🇮'
+                                        : ($lbl === 'Germany' ? '🇩🇪' : ($srv['flag'] ?? '🌐'));
+                        $srv['city']    = $lbl !== '' ? ($lbl . ' · learned routing') : ($srv['city'] ?? '');
+                        $routingSource  = "learned:{$cc}";
+                    } else {
+                        $routingSource = "learned-confirmed:{$cc}";
+                    }
+                }
+            }
+        } catch (\Throwable $e) { /* never let routing break bootstrap */ }
+
         ok([
             'id'          => 'server-emergency',
             'label'       => 'SetaLink Cloudflare',
@@ -460,6 +558,7 @@ if ($method === 'GET') {
             'xhttpPath'   => $srv['xhttpPath']   ?? '/xhttp',
             'httpupPath'  => $srv['httpupPath']  ?? '/httpup',
             'altProfiles' => $srv['altProfiles'] ?? [],
+            'routing'     => $routingSource,
         ]);
     }
 

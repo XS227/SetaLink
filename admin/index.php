@@ -701,6 +701,28 @@ function icon(string $name): string {
         </div>
       </div>
 
+      <!-- Country x Node success matrix -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">Country × Node Matrix</span><span class="panel-sub">connect success per country per node</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead id="intelMatrixHead"><tr><th>Country</th></tr></thead>
+            <tbody id="intelMatrixTbl"><tr><td class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Self-learned routing -->
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">🧠 Learned Routing</span><span class="panel-sub" id="learnedRoutingSub">what the agent has taught itself — served live by bootstrap</span></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Country</th><th>Best node</th><th>Success</th><th>Evidence</th><th>Runner-up</th></tr></thead>
+            <tbody id="intelLearnedTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Diagnostic Sessions -->
       <div class="panel" style="margin-bottom:1rem" id="diagSessionsPanel">
         <div class="panel-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
@@ -2523,6 +2545,8 @@ views.intel = {
       this.renderBuild(d.build_breakdown || []);
       this.renderProbes(d.probe_breakdown || []);
       this.renderCountry(d.country_breakdown || []);
+      this.renderMatrix(d.country_node_matrix || {});
+      this.renderLearned(d.learned_routing || {});
       this.renderFailures(d.recent_failures || []);
       this.renderTimeline(d.timeline || []);
       $('intelNote').textContent = `Anonymous telemetry · ${days}-day window`;
@@ -2562,6 +2586,43 @@ views.intel = {
       <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
     </tr>`).join('');
   },
+  renderMatrix(matrix) {
+    const countries = Object.keys(matrix);
+    if (!countries.length) {
+      $('intelMatrixHead').innerHTML = '<tr><th>Country</th></tr>';
+      $('intelMatrixTbl').innerHTML = '<tr><td class="tbl-empty">No data yet</td></tr>';
+      return;
+    }
+    const nodes = [...new Set(countries.flatMap(c => Object.keys(matrix[c])))].sort();
+    $('intelMatrixHead').innerHTML = '<tr><th>Country</th>' + nodes.map(n => `<th>${esc(n)}</th>`).join('') + '</tr>';
+    const cellStyle = r => r===null||r===undefined?'':r>=80?'color:var(--ok);font-weight:600':r>=50?'color:var(--warn);font-weight:600':'color:var(--danger);font-weight:600';
+    $('intelMatrixTbl').innerHTML = countries
+      .sort((a,b)=>Object.values(matrix[b]).reduce((s,c)=>s+c.total,0)-Object.values(matrix[a]).reduce((s,c)=>s+c.total,0))
+      .map(cc => '<tr><td><strong>' + countryFlag(cc) + ' ' + esc(cc) + '</strong></td>' + nodes.map(n => {
+        const cell = matrix[cc][n];
+        if (!cell) return '<td style="color:var(--muted-2)">—</td>';
+        return `<td style="${cellStyle(cell.success_rate)}" title="${cell.ok}/${cell.total} ok">${cell.success_rate}% <span style="color:var(--muted-2);font-weight:400">(${cell.total})</span></td>`;
+      }).join('') + '</tr>').join('');
+  },
+  renderLearned(lr) {
+    const countries = lr.countries || {};
+    const ccs = Object.keys(countries);
+    if (lr.computed_at) $('learnedRoutingSub').textContent =
+      `what the agent has taught itself — served live by bootstrap · ${lr.days||14}d window · updated ${new Date(lr.computed_at).toLocaleTimeString()}`;
+    if (!ccs.length) { $('intelLearnedTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">Not enough telemetry yet (min ' + (lr.min_attempts||5) + ' attempts per node per country)</td></tr>'; return; }
+    $('intelLearnedTbl').innerHTML = ccs
+      .sort((a,b)=>(countries[b][0]?.total||0)-(countries[a][0]?.total||0))
+      .map(cc => {
+        const best = countries[cc][0], second = countries[cc][1];
+        return `<tr>
+          <td><strong>${countryFlag(cc)} ${esc(cc)}</strong></td>
+          <td style="font-weight:600">${esc(best.label)}</td>
+          <td style="color:${best.success_rate>=80?'var(--ok)':best.success_rate>=50?'var(--warn)':'var(--danger)'};font-weight:600">${best.success_rate}%</td>
+          <td style="color:var(--muted-2)">${best.ok}/${best.total} ok · wilson ${best.score}</td>
+          <td>${second ? esc(second.label)+' ('+second.success_rate+'%)' : '<span style=\'color:var(--muted-2)\'>—</span>'}</td>
+        </tr>`;
+      }).join('');
+  },
   renderNetwork(rows) {
     if (!rows.length) { $('intelNetworkTbl').innerHTML = '<tr><td colspan="4" class="tbl-empty">No data</td></tr>'; return; }
     const rateColor = r => r===null?'':r>=80?'color:var(--ok)':r>=50?'color:var(--warn)':'color:var(--danger)';
@@ -2571,6 +2632,43 @@ views.intel = {
       <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
       <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
     </tr>`).join('');
+  },
+  renderMatrix(matrix) {
+    const countries = Object.keys(matrix);
+    if (!countries.length) {
+      $('intelMatrixHead').innerHTML = '<tr><th>Country</th></tr>';
+      $('intelMatrixTbl').innerHTML = '<tr><td class="tbl-empty">No data yet</td></tr>';
+      return;
+    }
+    const nodes = [...new Set(countries.flatMap(c => Object.keys(matrix[c])))].sort();
+    $('intelMatrixHead').innerHTML = '<tr><th>Country</th>' + nodes.map(n => `<th>${esc(n)}</th>`).join('') + '</tr>';
+    const cellStyle = r => r===null||r===undefined?'':r>=80?'color:var(--ok);font-weight:600':r>=50?'color:var(--warn);font-weight:600':'color:var(--danger);font-weight:600';
+    $('intelMatrixTbl').innerHTML = countries
+      .sort((a,b)=>Object.values(matrix[b]).reduce((s,c)=>s+c.total,0)-Object.values(matrix[a]).reduce((s,c)=>s+c.total,0))
+      .map(cc => '<tr><td><strong>' + countryFlag(cc) + ' ' + esc(cc) + '</strong></td>' + nodes.map(n => {
+        const cell = matrix[cc][n];
+        if (!cell) return '<td style="color:var(--muted-2)">—</td>';
+        return `<td style="${cellStyle(cell.success_rate)}" title="${cell.ok}/${cell.total} ok">${cell.success_rate}% <span style="color:var(--muted-2);font-weight:400">(${cell.total})</span></td>`;
+      }).join('') + '</tr>').join('');
+  },
+  renderLearned(lr) {
+    const countries = lr.countries || {};
+    const ccs = Object.keys(countries);
+    if (lr.computed_at) $('learnedRoutingSub').textContent =
+      `what the agent has taught itself — served live by bootstrap · ${lr.days||14}d window · updated ${new Date(lr.computed_at).toLocaleTimeString()}`;
+    if (!ccs.length) { $('intelLearnedTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">Not enough telemetry yet (min ' + (lr.min_attempts||5) + ' attempts per node per country)</td></tr>'; return; }
+    $('intelLearnedTbl').innerHTML = ccs
+      .sort((a,b)=>(countries[b][0]?.total||0)-(countries[a][0]?.total||0))
+      .map(cc => {
+        const best = countries[cc][0], second = countries[cc][1];
+        return `<tr>
+          <td><strong>${countryFlag(cc)} ${esc(cc)}</strong></td>
+          <td style="font-weight:600">${esc(best.label)}</td>
+          <td style="color:${best.success_rate>=80?'var(--ok)':best.success_rate>=50?'var(--warn)':'var(--danger)'};font-weight:600">${best.success_rate}%</td>
+          <td style="color:var(--muted-2)">${best.ok}/${best.total} ok · wilson ${best.score}</td>
+          <td>${second ? esc(second.label)+' ('+second.success_rate+'%)' : '<span style=\'color:var(--muted-2)\'>—</span>'}</td>
+        </tr>`;
+      }).join('');
   },
   renderIsp(rows) {
     if (!rows.length) { $('intelIspTbl').innerHTML = '<tr><td colspan="7" class="tbl-empty">No ISP data yet (requires isp field in telemetry payload)</td></tr>'; return; }
@@ -2606,6 +2704,43 @@ views.intel = {
       <td style="color:var(--ok)">${fmtNum(r.ok)}</td>
       <td style="${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
     </tr>`).join('');
+  },
+  renderMatrix(matrix) {
+    const countries = Object.keys(matrix);
+    if (!countries.length) {
+      $('intelMatrixHead').innerHTML = '<tr><th>Country</th></tr>';
+      $('intelMatrixTbl').innerHTML = '<tr><td class="tbl-empty">No data yet</td></tr>';
+      return;
+    }
+    const nodes = [...new Set(countries.flatMap(c => Object.keys(matrix[c])))].sort();
+    $('intelMatrixHead').innerHTML = '<tr><th>Country</th>' + nodes.map(n => `<th>${esc(n)}</th>`).join('') + '</tr>';
+    const cellStyle = r => r===null||r===undefined?'':r>=80?'color:var(--ok);font-weight:600':r>=50?'color:var(--warn);font-weight:600':'color:var(--danger);font-weight:600';
+    $('intelMatrixTbl').innerHTML = countries
+      .sort((a,b)=>Object.values(matrix[b]).reduce((s,c)=>s+c.total,0)-Object.values(matrix[a]).reduce((s,c)=>s+c.total,0))
+      .map(cc => '<tr><td><strong>' + countryFlag(cc) + ' ' + esc(cc) + '</strong></td>' + nodes.map(n => {
+        const cell = matrix[cc][n];
+        if (!cell) return '<td style="color:var(--muted-2)">—</td>';
+        return `<td style="${cellStyle(cell.success_rate)}" title="${cell.ok}/${cell.total} ok">${cell.success_rate}% <span style="color:var(--muted-2);font-weight:400">(${cell.total})</span></td>`;
+      }).join('') + '</tr>').join('');
+  },
+  renderLearned(lr) {
+    const countries = lr.countries || {};
+    const ccs = Object.keys(countries);
+    if (lr.computed_at) $('learnedRoutingSub').textContent =
+      `what the agent has taught itself — served live by bootstrap · ${lr.days||14}d window · updated ${new Date(lr.computed_at).toLocaleTimeString()}`;
+    if (!ccs.length) { $('intelLearnedTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">Not enough telemetry yet (min ' + (lr.min_attempts||5) + ' attempts per node per country)</td></tr>'; return; }
+    $('intelLearnedTbl').innerHTML = ccs
+      .sort((a,b)=>(countries[b][0]?.total||0)-(countries[a][0]?.total||0))
+      .map(cc => {
+        const best = countries[cc][0], second = countries[cc][1];
+        return `<tr>
+          <td><strong>${countryFlag(cc)} ${esc(cc)}</strong></td>
+          <td style="font-weight:600">${esc(best.label)}</td>
+          <td style="color:${best.success_rate>=80?'var(--ok)':best.success_rate>=50?'var(--warn)':'var(--danger)'};font-weight:600">${best.success_rate}%</td>
+          <td style="color:var(--muted-2)">${best.ok}/${best.total} ok · wilson ${best.score}</td>
+          <td>${second ? esc(second.label)+' ('+second.success_rate+'%)' : '<span style=\'color:var(--muted-2)\'>—</span>'}</td>
+        </tr>`;
+      }).join('');
   },
   renderFailures(rows) {
     if (!rows.length) { $('intelFailTbl').innerHTML = '<tr><td colspan="10" class="tbl-empty">No recent failures</td></tr>'; return; }

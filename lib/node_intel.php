@@ -1529,3 +1529,143 @@ function ni_ai_diagnosis(PDO $pdo, int $limit = 20, int $days = 14): array
         ],
     ];
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Intelligence v2 — country × node matrix + self-learned routing (2026-07-02)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Country × node connect-success matrix for the admin analytics view.
+ * Returns [country => [node_label => ['total','ok','success_rate']]].
+ */
+function ni_country_node_matrix(PDO $pdo, int $days = 14): array
+{
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $st = $pdo->prepare(
+        "SELECT COALESCE(NULLIF(country,''),'??') AS country, node_id,
+                COUNT(*) AS total, SUM(event='connect_ok') AS ok
+           FROM connect_telemetry
+          WHERE created_at >= ?
+          GROUP BY country, node_id
+          ORDER BY total DESC"
+    );
+    $st->execute([$since]);
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $label = ni_server_label((string)$r['node_id']);
+        $total = (int)$r['total']; $ok = (int)$r['ok'];
+        $cell  = &$out[$r['country']][$label];
+        // Same label can aggregate several node_ids (e.g. IP + 'fi-hel')
+        $cell['total'] = ($cell['total'] ?? 0) + $total;
+        $cell['ok']    = ($cell['ok'] ?? 0) + $ok;
+        $cell['success_rate'] = $cell['total'] > 0
+            ? round($cell['ok'] / $cell['total'] * 100, 1) : null;
+        unset($cell);
+    }
+    return $out;
+}
+
+/**
+ * Wilson score lower bound (95%) — pessimistic success estimate so a node
+ * with 3/3 never outranks one with 90/100.
+ */
+function ni_wilson(int $ok, int $total): float
+{
+    if ($total === 0) return 0.0;
+    $z = 1.96; $p = $ok / $total;
+    $den = 1 + $z * $z / $total;
+    $centre = $p + $z * $z / (2 * $total);
+    $margin = $z * sqrt(($p * (1 - $p) + $z * $z / (4 * $total)) / $total);
+    return max(0.0, ($centre - $margin) / $den);
+}
+
+/**
+ * SELF-LEARNED ROUTING: rank nodes per country by Wilson-scored connect
+ * success. The bootstrap endpoint consults this to serve each country the
+ * node that actually works there — the agent learns from every attempt.
+ * Returns ['countries' => [CC => [ ['node','label','ok','total','score'], … ]],
+ *          'global' => [...same...], 'computed_at' => iso, 'days' => N].
+ */
+function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): array
+{
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $st = $pdo->prepare(
+        "SELECT COALESCE(NULLIF(country,''),'??') AS country, node_id,
+                COUNT(*) AS total, SUM(event='connect_ok') AS ok
+           FROM connect_telemetry
+          WHERE created_at >= ?
+          GROUP BY country, node_id"
+    );
+    $st->execute([$since]);
+
+    $per = []; $glob = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $node = (string)$r['node_id'];
+        $cc   = strtoupper((string)$r['country']);
+        $t    = (int)$r['total']; $ok = (int)$r['ok'];
+        $per[$cc][$node]['total'] = ($per[$cc][$node]['total'] ?? 0) + $t;
+        $per[$cc][$node]['ok']    = ($per[$cc][$node]['ok'] ?? 0) + $ok;
+        $glob[$node]['total']     = ($glob[$node]['total'] ?? 0) + $t;
+        $glob[$node]['ok']        = ($glob[$node]['ok'] ?? 0) + $ok;
+    }
+
+    $rank = function (array $nodes) use ($minAttempts): array {
+        $rows = [];
+        foreach ($nodes as $node => $c) {
+            if ($c['total'] < $minAttempts) continue;
+            $rows[] = [
+                'node'  => $node,
+                'label' => ni_server_label($node),
+                'ok'    => $c['ok'],
+                'total' => $c['total'],
+                'success_rate' => round($c['ok'] / $c['total'] * 100, 1),
+                'score' => round(ni_wilson($c['ok'], $c['total']), 4),
+            ];
+        }
+        usort($rows, fn($a, $b) => $b['score'] <=> $a['score']);
+        return $rows;
+    };
+
+    $countries = [];
+    foreach ($per as $cc => $nodes) {
+        $ranked = $rank($nodes);
+        if ($ranked) $countries[$cc] = $ranked;
+    }
+    return [
+        'countries'   => $countries,
+        'global'      => $rank($glob),
+        'computed_at' => gmdate('c'),
+        'days'        => $days,
+        'min_attempts'=> $minAttempts,
+    ];
+}
+
+/**
+ * Cached wrapper — recomputes at most every $maxAgeSec (default 10 min) and
+ * persists the result in settings('ni_learned_routing') so bootstrap reads
+ * are cheap.
+ */
+function ni_get_learned_routing(PDO $pdo, int $maxAgeSec = 600): array
+{
+    try {
+        $st = $pdo->prepare("SELECT value FROM settings WHERE key='ni_learned_routing'");
+        $st->execute();
+        if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
+            $cached = json_decode((string)$row['value'], true);
+            if (is_array($cached) && isset($cached['computed_at'])
+                && (time() - strtotime($cached['computed_at'])) < $maxAgeSec) {
+                return $cached;
+            }
+        }
+    } catch (\Throwable $e) { /* settings table may not exist yet */ }
+
+    $fresh = ni_learned_routing($pdo);
+    try {
+        $pdo->prepare("INSERT INTO settings(key,value) VALUES('ni_learned_routing',?)
+                       ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+            ->execute([json_encode($fresh)]);
+    } catch (\Throwable $e) { /* read-only DB etc. — serve fresh anyway */ }
+    return $fresh;
+}

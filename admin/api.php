@@ -1364,6 +1364,8 @@ switch ($action) {
             'build_breakdown'     => ni_build_breakdown($db, $days),
             'probe_breakdown'     => ni_probe_breakdown($db, $days),
             'recommendations'     => ni_recommendations($db, $days),
+            'country_node_matrix' => ni_country_node_matrix($db, $days),
+            'learned_routing'     => ni_get_learned_routing($db),
         ]);
         break;
     }
