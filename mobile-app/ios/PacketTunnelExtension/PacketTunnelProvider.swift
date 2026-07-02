@@ -313,6 +313,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private func buildHevNetworkSettings(serverAddr: String?) -> NEPacketTunnelNetworkSettings {
         let s = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.255.0.1")
+        // Build 74 fix (Iran "only Telegram opens"): clamp the TUN MTU to 1400.
+        //   iOS derives each connection's TCP MSS from this MTU. At the default 1500
+        //   apps send ~1460-byte segments; after Reality+VLESS+TLS encapsulation the
+        //   outer packets exceed the real path MTU (worse on Iranian mobile), are
+        //   dropped with no PMTUD, and large TLS flows stall — only Telegram's small
+        //   packets get through. 1400 leaves headroom for the tunnel overhead and
+        //   matches the Android client (VpnService.setMtu(1400)), which browses fine
+        //   from Iran on the SAME nodes. Kept in sync with the HEV YAML mtu below.
+        s.mtu = NSNumber(value: 1400)
         let ipv4 = NEIPv4Settings(addresses: ["10.255.0.2"], subnetMasks: ["255.255.255.0"])
         ipv4.includedRoutes = [NEIPv4Route.default()]
         var excluded4: [NEIPv4Route] = []
@@ -342,7 +351,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         dns.matchDomains = [""]
         s.dnsSettings = dns
         // No NEProxySettings — HEV captures all TCP at TUN level and forwards via SOCKS5.
-        appendLog("HEV_SETTINGS: TUN-only no-ipv6, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 through-tunnel")
+        appendLog("HEV_SETTINGS: TUN-only no-ipv6 mtu=1400, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 through-tunnel")
         return s
     }
 
@@ -511,7 +520,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let yaml = """
 tunnel:
   fd: \(tunFd)
-  mtu: 1500
+  mtu: 1400
 
 socks5:
   port: \(kSocksPort)
