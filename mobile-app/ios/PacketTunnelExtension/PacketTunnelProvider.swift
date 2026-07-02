@@ -495,7 +495,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// the file path, or nil if the write fails.
     private func writeHevConfig(tunFd: Int32) -> String? {
         // dns-upstream intentionally absent:
-        //   1.1.1.1/8.8.8.8 are excluded from TUN routes so DNS never enters HEV.
+        //   Build 73 routes DNS INTO HEV (resolver IPs no longer excluded from the TUN);
+        //   HEV forwards UDP/53 to the SOCKS5 inbound and Xray's routing (port 53 → dns-out)
+        //   resolves it at the exit node, so HEV needs no dns-upstream of its own.
         //   Adding dns-upstream to misc caused HEV v2.15.0 to abort silently (build 66 regression).
         //
         // udp: 'udp'  (build 72 fix):
