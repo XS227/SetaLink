@@ -290,6 +290,21 @@ class XrayModule: NSObject {
 
     // MARK: - getDeviceInfo
 
+    // Smart Mode per-app bypass is ANDROID-ONLY. iOS consumer VPNs cannot do
+    // app-level split tunneling (NEPacketTunnelProvider has no per-app scoping
+    // outside MDM). These stubs keep bridge parity and answer honestly so the
+    // JS layer can feature-detect: empty app list, accepted-but-ignored save.
+    @objc func getInstalledApps(_ resolve: @escaping RCTPromiseResolveBlock,
+                                rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve("[]")
+    }
+
+    @objc func setBypassApps(_ packagesJson: String,
+                             resolver resolve: @escaping RCTPromiseResolveBlock,
+                             rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(nil)
+    }
+
     @objc func getDeviceInfo(_ resolve: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
         resolve([

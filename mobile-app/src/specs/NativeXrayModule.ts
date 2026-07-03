@@ -38,6 +38,19 @@ export interface Spec extends TurboModule {
   /** Returns live traffic stats from the running tunnel. */
   getStats(): Promise<XrayStats>;
 
+  /**
+   * Android only: JSON array of launchable apps
+   * '[{"packageName":"com.x","appName":"X"}]'. Resolves '[]' on iOS.
+   */
+  getInstalledApps(): Promise<string>;
+
+  /**
+   * Android only: persist packages to exclude from the VPN
+   * (VpnService.addDisallowedApplication on next connect).
+   * Accepts a JSON string array. No-op on iOS.
+   */
+  setBypassApps(packagesJson: string): Promise<void>;
+
   /** Validate a config string without starting the tunnel. */
   validateConfig(config: string): Promise<boolean>;
 
