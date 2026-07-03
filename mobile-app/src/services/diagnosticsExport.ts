@@ -18,6 +18,13 @@ export interface DiagnosticsReportInput {
   routeHops:    RouteHop[];
   connection?:  ConnectionInfo | null;
   timestamp?:   number;        // defaults to now
+  /** Smart Mode / Iran Bypass: 'smart' (Iranian destinations bypass the
+   *  tunnel) or 'full' (everything through the VPN). */
+  routingMode?:     'smart' | 'full';
+  /** Active domain bypass rules when routingMode is 'smart'. */
+  bypassRuleCount?: number;
+  /** Android only: apps excluded from the VPN entirely. */
+  bypassAppCount?:  number;
 }
 
 const STATUS_LABEL: Record<string, string> = { ok: 'Healthy', warn: 'Degraded', fail: 'Failed' };
@@ -39,6 +46,13 @@ export function buildDiagnosticsReport(i: DiagnosticsReportInput): string {
   // DNS status comes from the in-app diagnostic engine; when disconnected it is
   // unknown because no real DNS verification is performed.
   L.push(`DNS status:    ${i.tunnelStatus === 'connected' ? i.dnsStatus : 'Unknown (tunnel not connected)'}`);
+  if (i.routingMode) {
+    const smart = i.routingMode === 'smart';
+    const apps  = i.bypassAppCount ? `, ${i.bypassAppCount} bypassed app(s)` : '';
+    L.push(`Routing mode:  ${smart
+      ? `Smart (Iran bypass) — ${i.bypassRuleCount ?? 0} domain rule(s)${apps}`
+      : 'Full tunnel — all traffic through VPN'}`);
+  }
 
   if (i.connection) {
     L.push('');

@@ -8,6 +8,8 @@ import { GlassCard } from '../components/GlassCard';
 import { useDiagnosticsStore } from '../stores/diagnosticsStore';
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAIStore }          from '../stores/aiStore';
+import { useSettingsStore } from '../stores/settingsStore';
+import { getActiveBypassRuleCount } from '../services/iranBypassRules';
 import { useAuthStore }        from '../stores/authStore';
 import { formatElapsed } from '../hooks/useSessionTimer';
 import { getNetworkInfo } from '../services/networkInfoService';
@@ -156,6 +158,10 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
       healthChecks: snapshot?.healthChecks ?? [],
       routeHops:    snapshot?.routeHops ?? [],
       connection:   snapshot?.connection ?? null,
+      routingMode:     useSettingsStore.getState().smartMode ? 'smart' : 'full',
+      bypassRuleCount: getActiveBypassRuleCount(Platform.OS === 'ios' ? 'ios' : 'android'),
+      bypassAppCount:  Platform.OS === 'android'
+        ? useSettingsStore.getState().bypassApps.length : 0,
     });
   };
 
