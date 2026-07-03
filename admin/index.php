@@ -120,6 +120,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='release'?' active':'' ?>" data-page="release">
       <?= icon('package') ?> Release
     </div>
+    <a class="nav-item" href="builds.php" style="text-decoration:none">
+      <?= icon('download') ?> Test Builds
+    </a>
     <div class="nav-item<?= $page==='config'?' active':'' ?>" data-page="config">
       <?= icon('settings') ?> Config
     </div>
