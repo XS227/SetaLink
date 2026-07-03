@@ -19,6 +19,15 @@
     <!-- In-app APK self-update (DownloadManager + package installer prompt) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Package visibility (Android 11+): needed so the Smart Mode
+         "Bypass selected apps" screen can list launchable apps. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MainApplication"
         android:label="@string/app_name"

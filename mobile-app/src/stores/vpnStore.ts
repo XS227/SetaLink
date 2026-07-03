@@ -436,8 +436,9 @@ export const useVpnStore = create<VpnState>((set, get) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useSettingsStore } = require('./settingsStore') as typeof import('./settingsStore');
-        const dnsMode = useSettingsStore.getState().dnsMode;
-        return buildXrayConfigJson(selectedServer, protocol, dnsMode, creds);
+        const { dnsMode, smartMode } = useSettingsStore.getState();
+        return buildXrayConfigJson(selectedServer, protocol, dnsMode, creds,
+          { smartBypass: smartMode });
       } catch {
         return buildXrayConfigJson(selectedServer, protocol, 'Cloudflare (DoH)', creds);
       }

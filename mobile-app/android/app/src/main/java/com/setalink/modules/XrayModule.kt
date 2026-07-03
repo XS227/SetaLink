@@ -265,6 +265,48 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     fun getLastFailureCategory(promise: Promise) = promise.resolve(lastFailureCategory)
 
     @ReactMethod
+    // ── Smart Mode: per-app VPN bypass (split tunneling) ─────────────────────
+
+    /** Launchable apps as a JSON array — powers the "Bypass selected apps"
+     *  screen. Requires the <queries> launcher-intent element in the manifest
+     *  for package visibility on Android 11+. */
+    override fun getInstalledApps(promise: Promise) {
+        try {
+            val pm = reactContext.packageManager
+            val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+            val seen = HashSet<String>()
+            val arr = org.json.JSONArray()
+            for (ri in pm.queryIntentActivities(launcher, 0)) {
+                val pkg = ri.activityInfo?.packageName ?: continue
+                if (pkg == reactContext.packageName) continue // we are always excluded anyway
+                if (!seen.add(pkg)) continue
+                val obj = org.json.JSONObject()
+                obj.put("packageName", pkg)
+                obj.put("appName", ri.loadLabel(pm)?.toString() ?: pkg)
+                arr.put(obj)
+            }
+            promise.resolve(arr.toString())
+        } catch (e: Exception) {
+            Log.w(TAG, "getInstalledApps failed: ${e.message}")
+            promise.resolve("[]") // never break the screen — empty list is safe
+        }
+    }
+
+    /** Persist the bypass package list; XrayVpnService reads it when it
+     *  builds the TUN, so changes apply on the NEXT connect. */
+    override fun setBypassApps(packagesJson: String, promise: Promise) {
+        try {
+            org.json.JSONArray(packagesJson) // validate — malformed JSON never reaches the service
+            reactContext.getSharedPreferences(XrayVpnService.PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(XrayVpnService.PREF_BYPASS_APPS, packagesJson)
+                .apply()
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("BYPASS_APPS_ERROR", e.message ?: "invalid package list", e)
+        }
+    }
+
     override fun getStats(promise: Promise) {
         synchronized(statsLock) {
             // Primary: TUN-based accumulated bytes from BROADCAST_METRICS.

@@ -10,6 +10,14 @@ interface SettingsState {
   killSwitch:           boolean;
   stealthMode:          boolean;
   splitTunnel:          boolean;
+  /** Smart Mode / Iran Bypass: VPN stays connected, Iranian destinations
+   *  (.ir + known services) bypass the tunnel. Default ON — for users in
+   *  Iran this is the whole point; for everyone else the rules are inert
+   *  unless they visit Iranian sites, where direct works equally well. */
+  smartMode:            boolean;
+  /** Android only: package names excluded from the VPN entirely
+   *  (VpnService.addDisallowedApplication). Applied on next connect. */
+  bypassApps:           string[];
   ipv6:                 boolean;
   pushNotifications:    boolean;
   biometricLock:        boolean;
@@ -26,6 +34,8 @@ interface SettingsState {
   toggleKillSwitch:         () => void;
   toggleStealthMode:        () => void;
   toggleSplitTunnel:        () => void;
+  toggleSmartMode:          () => void;
+  setBypassApps:            (pkgs: string[]) => void;
   toggleIpv6:               () => void;
   togglePushNotifications:  () => void;
   toggleBiometricLock:      () => void;
@@ -47,6 +57,8 @@ export const useSettingsStore = create<SettingsState>()(
       killSwitch:          false,
       stealthMode:         false,
       splitTunnel:         false,
+      smartMode:           true,
+      bypassApps:          [],
       ipv6:                false,
       pushNotifications:   true,
       biometricLock:       false,
@@ -64,6 +76,8 @@ export const useSettingsStore = create<SettingsState>()(
       toggleKillSwitch:          () => set((s) => ({ killSwitch:        !s.killSwitch })),
       toggleStealthMode:         () => set((s) => ({ stealthMode:       !s.stealthMode })),
       toggleSplitTunnel:         () => set((s) => ({ splitTunnel:       !s.splitTunnel })),
+      toggleSmartMode:           () => set((s) => ({ smartMode:         !s.smartMode })),
+      setBypassApps:             (pkgs) => set({ bypassApps: Array.isArray(pkgs) ? pkgs : [] }),
       toggleIpv6:                () => set((s) => ({ ipv6:              !s.ipv6 })),
       togglePushNotifications:   () => set((s) => ({ pushNotifications: !s.pushNotifications })),
       toggleBiometricLock:       () => set((s) => ({ biometricLock:     !s.biometricLock })),

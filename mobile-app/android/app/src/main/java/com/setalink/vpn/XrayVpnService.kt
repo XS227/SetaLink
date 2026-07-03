@@ -32,6 +32,10 @@ class XrayVpnService : VpnService() {
         const val ACTION_START = "com.setalink.vpn.START"
         const val ACTION_STOP  = "com.setalink.vpn.STOP"
         const val EXTRA_CONFIG         = "config_json"
+        // Smart Mode per-app bypass: written by XrayModule.setBypassApps,
+        // read here when the TUN is built (changes apply on next connect).
+        const val PREFS_NAME       = "realink_vpn_prefs"
+        const val PREF_BYPASS_APPS = "bypass_apps_json"
         const val EXTRA_EMERGENCY_MODE = "emergency_mode"
 
         const val BROADCAST_CONNECTED     = "com.setalink.vpn.CONNECTED"
@@ -325,6 +329,25 @@ class XrayVpnService : VpnService() {
             // without looping back through TUN → tun2socks → Xray → TUN.
             runCatching { vpnBuilder.addDisallowedApplication(packageName) }
                 .onFailure { e -> appendLog("[TUN] addDisallowedApplication failed: ${e.message}") }
+
+            // Smart Mode: user-selected apps bypass the VPN entirely. Each
+            // package is added individually so one uninstalled app never
+            // aborts the tunnel; count is logged for diagnostics.
+            var bypassed = 0
+            runCatching {
+                val raw = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+                    .getString(PREF_BYPASS_APPS, null)
+                if (!raw.isNullOrBlank()) {
+                    val arr = org.json.JSONArray(raw)
+                    for (i in 0 until arr.length()) {
+                        val pkg = arr.optString(i) ?: continue
+                        if (pkg.isBlank() || pkg == packageName) continue
+                        runCatching { vpnBuilder.addDisallowedApplication(pkg); bypassed++ }
+                            .onFailure { e -> appendLog("[TUN] bypass app $pkg skipped: ${e.message}") }
+                    }
+                }
+            }.onFailure { e -> appendLog("[TUN] bypass app list unreadable: ${e.message}") }
+            if (bypassed > 0) appendLog("[TUN] Smart Mode: $bypassed app(s) excluded from VPN")
 
             appendLog("[TUN] IPv4+IPv6 routed through TUN — Xray blackhole handles unsupported IPv6")
 

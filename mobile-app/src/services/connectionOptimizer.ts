@@ -202,7 +202,14 @@ function buildProfileConfig(
     profile.protocol.includes('WebSocket')   ? 'WebSocket'  :
     profile.protocol.includes('HTTPUpgrade') ? 'HTTPUpgrade': 'Reality';
 
-  return buildXrayConfigJson(server, protocol, 'Cloudflare (DoH)', patchedCreds);
+  let smart = false;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useSettingsStore } = require('../stores/settingsStore') as typeof import('../stores/settingsStore');
+    smart = useSettingsStore.getState().smartMode === true;
+  } catch { /* store unavailable — build without bypass */ }
+  return buildXrayConfigJson(server, protocol, 'Cloudflare (DoH)', patchedCreds,
+    { smartBypass: smart });
 }
 
 // Run the optimizer. Tests profiles sequentially, calls onUpdate after each one.
