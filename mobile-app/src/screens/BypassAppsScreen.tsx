@@ -87,6 +87,11 @@ export function BypassAppsScreen({ onBack }: { onBack?: () => void }) {
       </View>
 
       <Text style={styles.note}>{t('st.bypassAppsD')}</Text>
+      {/* SSH / developer apps are user-selected only — never auto-classified as
+          Iranian. Their target server may be Iranian OR foreign. */}
+      <View style={styles.sshInfo}>
+        <Text style={styles.sshInfoText}>{t('st.bypassSshInfo')}</Text>
+      </View>
       {bypassApps.length > 0 && (
         <Text style={styles.count}>{bypassApps.length} selected</Text>
       )}
@@ -134,6 +139,8 @@ const styles = StyleSheet.create({
   title:       { fontSize: Typography.size['2xl'], fontFamily: Typography.family.display, color: Colors.text.primary },
   note:        { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginBottom: Spacing[3] },
   count:       { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], marginBottom: Spacing[2] },
+  sshInfo:     { borderWidth: 1, borderColor: '#c9a84c55', backgroundColor: '#c9a84c14', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[3] },
+  sshInfoText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: '#e3c877', lineHeight: 16 },
   search:      { backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, color: Colors.text.primary, paddingHorizontal: Spacing[4], paddingVertical: Spacing[3], marginBottom: Spacing[3], fontSize: Typography.size.sm },
   row:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[3], borderBottomWidth: 1, borderBottomColor: Colors.border.subtle },
   rowLeft:     { flex: 1, gap: 2 },
