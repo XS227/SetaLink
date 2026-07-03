@@ -129,3 +129,25 @@ describe('Rule list safety — case 9', () => {
     expect(getActiveBypassRuleCount('ios')).toBeGreaterThanOrEqual(16);
   });
 });
+
+// Regression (build 76 investigation): Termius / SSH / dev apps and Meta must
+// NEVER be auto-classified into the Iran bypass domain list.
+describe('bypass list never auto-classifies non-Iranian / dev / Meta', () => {
+  const domains = getBypassDomains('android');
+  const joined = domains.join(' ');
+  test('no Meta/Instagram/facebook/fbcdn domains', () => {
+    for (const d of ['instagram', 'facebook', 'fbcdn', 'cdninstagram', 'meta']) {
+      expect(joined).not.toContain(d);
+    }
+  });
+  test('no SSH/dev/Termius/git/npm domains', () => {
+    for (const d of ['termius', 'server.auditor', 'github', 'npmjs', 'ssh']) {
+      expect(joined).not.toContain(d);
+    }
+  });
+  test('no Google-services domains (must not leak unrelated app traffic)', () => {
+    for (const d of ['googleapis', 'gstatic', 'play.google', 'gvt1', 'gvt2']) {
+      expect(joined).not.toContain(d);
+    }
+  });
+});

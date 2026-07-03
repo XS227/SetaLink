@@ -36,6 +36,7 @@ class XrayVpnService : VpnService() {
         // read here when the TUN is built (changes apply on next connect).
         const val PREFS_NAME       = "realink_vpn_prefs"
         const val PREF_BYPASS_APPS = "bypass_apps_json"
+        const val PREF_BYPASS_RESULT = "bypass_apply_result_json"  // per-package OK/FAIL summary
         const val EXTRA_EMERGENCY_MODE = "emergency_mode"
 
         const val BROADCAST_CONNECTED     = "com.setalink.vpn.CONNECTED"
@@ -331,9 +332,13 @@ class XrayVpnService : VpnService() {
                 .onFailure { e -> appendLog("[TUN] addDisallowedApplication failed: ${e.message}") }
 
             // Smart Mode: user-selected apps bypass the VPN entirely. Each
-            // package is added individually so one uninstalled app never
-            // aborts the tunnel; count is logged for diagnostics.
-            var bypassed = 0
+            // package is added individually so one uninstalled app never aborts
+            // the tunnel. EXPLICIT per-package OK/FAIL logging + a stored summary
+            // (never silently swallow NameNotFoundException) so tester reports can
+            // confirm exactly which packages were excluded from VpnService.
+            val bpSelected = ArrayList<String>()
+            val bpApplied = ArrayList<String>()
+            val bpFailed = ArrayList<String>()
             runCatching {
                 val raw = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
                     .getString(PREF_BYPASS_APPS, null)
@@ -342,12 +347,32 @@ class XrayVpnService : VpnService() {
                     for (i in 0 until arr.length()) {
                         val pkg = arr.optString(i) ?: continue
                         if (pkg.isBlank() || pkg == packageName) continue
-                        runCatching { vpnBuilder.addDisallowedApplication(pkg); bypassed++ }
-                            .onFailure { e -> appendLog("[TUN] bypass app $pkg skipped: ${e.message}") }
+                        bpSelected.add(pkg)
+                        try {
+                            vpnBuilder.addDisallowedApplication(pkg)   // throws if not installed
+                            bpApplied.add(pkg)
+                            appendLog("[BYPASS] $pkg — OK")
+                        } catch (e: android.content.pm.PackageManager.NameNotFoundException) {
+                            bpFailed.add("$pkg (not installed)")
+                            appendLog("[BYPASS] $pkg — FAIL (not installed)")
+                        } catch (e: Exception) {
+                            bpFailed.add("$pkg (${e.message})")
+                            appendLog("[BYPASS] $pkg — FAIL (${e.message})")
+                        }
                     }
                 }
-            }.onFailure { e -> appendLog("[TUN] bypass app list unreadable: ${e.message}") }
-            if (bypassed > 0) appendLog("[TUN] Smart Mode: $bypassed app(s) excluded from VPN")
+            }.onFailure { e -> appendLog("[BYPASS] app list unreadable: ${e.message}") }
+            appendLog("[BYPASS] Selected: ${bpSelected.size}  Applied: ${bpApplied.size}  Failed: ${bpFailed.size}")
+            runCatching {
+                val summary = org.json.JSONObject()
+                    .put("selected", org.json.JSONArray(bpSelected))
+                    .put("applied", org.json.JSONArray(bpApplied))
+                    .put("failed", org.json.JSONArray(bpFailed))
+                    .put("applied_count", bpApplied.size)
+                    .put("updated_at", System.currentTimeMillis())
+                getSharedPreferences(PREFS_NAME, MODE_PRIVATE).edit()
+                    .putString(PREF_BYPASS_RESULT, summary.toString()).apply()
+            }
 
             appendLog("[TUN] IPv4+IPv6 routed through TUN — Xray blackhole handles unsupported IPv6")
 
