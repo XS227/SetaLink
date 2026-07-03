@@ -375,7 +375,20 @@ function buildConfig(def: ProfileDef, server: VpnServer, creds: ServerCredential
 
   return def.emergency
     ? buildEmergencyXrayConfigJson(server, protoKey, patched)
-    : buildXrayConfigJson(server, protoKey, 'Cloudflare (DoH)', patched);
+    : buildXrayConfigJson(server, protoKey, 'Cloudflare (DoH)', patched,
+        { smartBypass: _smartModeOn() });
+}
+
+// Smart Mode / Iran Bypass state — read defensively so a store hiccup can
+// never break the auto-connect path (mirrors the vpnStore dnsMode pattern).
+function _smartModeOn(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useSettingsStore } = require('../stores/settingsStore') as typeof import('../stores/settingsStore');
+    return useSettingsStore.getState().smartMode === true;
+  } catch {
+    return false;
+  }
 }
 
 function winningInbound(protocol: string): string {

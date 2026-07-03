@@ -130,6 +130,7 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
   const {
     protocol, dnsMode, language,
     autoConnect, biometricLock,
+    smartMode, toggleSmartMode,
     updateChannel, setUpdateChannel,
     setProtocol, setDnsMode, setLanguage,
     toggleAutoConnect, toggleBiometricLock, setBiometricLock,
@@ -251,6 +252,13 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
             value={dnsMode}
             options={['Cloudflare (DoH)', 'Google (DoH)', 'AdGuard (DoH)', 'Custom']}
             onChange={setDnsMode}
+          />
+          <Divider />
+          <ToggleRow
+            label={t('st.smartMode')}
+            description={t('st.smartModeD')}
+            value={smartMode}
+            onChange={toggleSmartMode}
           />
           <Divider />
           <ToggleRow
