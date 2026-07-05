@@ -32,6 +32,7 @@ import { ActivityScreen }    from '../screens/ActivityScreen';
 import { ProfileScreen }     from '../screens/ProfileScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
 import { BypassAppsScreen }  from '../screens/BypassAppsScreen';
+import { VpsHelperScreen }   from '../screens/VpsHelperScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
 import { BottomNav, NavTab }        from '../components/BottomNav';
 import { Toast }                    from '../components/Toast';
@@ -590,6 +591,7 @@ export function AppNavigator() {
               onActivity={() => navigation.navigate('Main', { screen: 'Activity' })}
               onDiagnostics={() => navigation.navigate('Diagnostics')}
               onBypassApps={() => navigation.navigate('BypassApps')}
+              onVpsHelper={() => navigation.navigate('VpsHelper')}
             />
           )}
         </Stack.Screen>
@@ -599,6 +601,14 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <BypassAppsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="VpsHelper"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <VpsHelperScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen

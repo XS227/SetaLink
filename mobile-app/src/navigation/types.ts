@@ -12,6 +12,7 @@ export type RootStackParamList = {
   Settings:      undefined;
   Diagnostics:   undefined;
   BypassApps:    undefined;
+  VpsHelper:     undefined;
   Upgrade:       undefined;
   ProfileImport: undefined;
   Inbox:         undefined;

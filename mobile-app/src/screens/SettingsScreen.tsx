@@ -124,9 +124,10 @@ interface SettingsProps {
   onSmartConnect?: () => void;   // relocated AI / smart-connection controls
   onDiagnostics?: () => void;    // connection tests & server config
   onActivity?: () => void;       // activity & usage
+  onVpsHelper?: () => void;      // advanced: server-side exit for VPS/SSH users
 }
 
-export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiagnostics, onActivity, onBypassApps }: SettingsProps) {
+export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiagnostics, onActivity, onBypassApps, onVpsHelper }: SettingsProps) {
   const { t } = useT();
   const {
     protocol, dnsMode, language,
@@ -268,6 +269,18 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
                 <View>
                   <Text style={selStyles.label}>{t('st.bypassApps')}</Text>
                   <Text style={rowStyles.desc}>{t('st.bypassAppsD')}</Text>
+                </View>
+                <Text style={selStyles.chevron}>›</Text>
+              </TouchableOpacity>
+            </>
+          )}
+          {onVpsHelper && (
+            <>
+              <Divider />
+              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onVpsHelper}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
+                  <Text style={selStyles.label}>{t('st.vpsHelper')}</Text>
+                  <Text style={rowStyles.desc}>{t('st.vpsHelperD')}</Text>
                 </View>
                 <Text style={selStyles.chevron}>›</Text>
               </TouchableOpacity>
