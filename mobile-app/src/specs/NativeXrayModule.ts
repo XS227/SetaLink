@@ -111,6 +111,21 @@ export interface Spec extends TurboModule {
   getTunnelState(): Promise<string>;
 
   /**
+   * Build 77 — real internet-probe + QUIC/UDP evidence (no simulated values).
+   * tunnelState: connecting|connected_probing|connected_verified|degraded|failed.
+   * quicEvidence: "TCP=… QUIC=… ⇒ VERDICT" from the dual-transport diagnostic.
+   * iOS-only; Android returns zeros/empty.
+   */
+  getProbeDiagnostics(): Promise<{
+    tunnelState:  string;
+    probeOk:      boolean;
+    probeMs:      number;
+    probeAt:      number;
+    probeDetail:  string;
+    quicEvidence: string;
+  }>;
+
+  /**
    * 4-test in-app self-test suite. Runs while tunnel is active — URLSession traffic
    * is automatically routed through the TUN on iOS, exercising the real HEV path.
    *   dns      — hostname resolves via tunnel DNS

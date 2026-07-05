@@ -281,7 +281,12 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // Public, no-bearer routes: the Premium catalog must render prices before a user
 // has any identity. A 401 here makes the app log out (and blanks the Profile tab),
 // so these are exempt from the bearer guard.
-$publicRoutes = ($rel === '/payments/packages' && $method === 'GET');
+$publicRoutes = ($rel === '/payments/packages' && $method === 'GET')
+    // Connect telemetry is anonymous BY DESIGN (no PII, fire-and-forget, the
+    // handler itself never errors to the client). The iOS tunnel extension has
+    // no device bearer, so gating this route silently killed all telemetry
+    // (root-caused 2026-07-05: 401 + wrong-vhost fallthrough to the landing page).
+    || ($rel === '/telemetry/connect' && $method === 'POST');
 
 $tok = v1_bearer();
 if ($tok === '' && !$publicRoutes) {

@@ -34,6 +34,15 @@ export interface SelfTestResult {
   detail: string;
 }
 
+export interface ProbeDiagnostics {
+  tunnelState:  string;
+  probeOk:      boolean;
+  probeMs:      number;
+  probeAt:      number;
+  probeDetail:  string;
+  quicEvidence: string;
+}
+
 export interface VpnAdapter {
   connect(configJson: string): Promise<void>;
   connectEmergency(configJson: string): Promise<void>;
@@ -45,6 +54,7 @@ export interface VpnAdapter {
   runTraceTest?(): Promise<TraceTestResult>;
   runSelfTest?(): Promise<SelfTestResult[]>;
   getTunnelState?(): Promise<string>;
+  getProbeDiagnostics?(): Promise<ProbeDiagnostics>;
 }
 
 // ── Mock adapter (used when native module is unavailable) ─────────────────────
@@ -100,6 +110,10 @@ class MockAdapter implements VpnAdapter {
     ];
   }
   async getTunnelState(): Promise<string> { return 'connected_verified'; }
+  async getProbeDiagnostics(): Promise<ProbeDiagnostics> {
+    return { tunnelState: 'connected_verified', probeOk: true, probeMs: 120,
+             probeAt: Math.floor(Date.now() / 1000), probeDetail: 'mock', quicEvidence: '(mock)' };
+  }
 }
 
 // ── Native adapter (wraps XrayModule TurboModule) ────────────────────────────
@@ -251,6 +265,18 @@ class NativeAdapter implements VpnAdapter {
       return (await this.module.getTunnelState?.()) ?? 'unknown';
     } catch {
       return 'unknown';
+    }
+  }
+
+  async getProbeDiagnostics(): Promise<ProbeDiagnostics> {
+    const empty: ProbeDiagnostics = {
+      tunnelState: 'unknown', probeOk: false, probeMs: 0,
+      probeAt: 0, probeDetail: '', quicEvidence: '',
+    };
+    try {
+      return (await this.module.getProbeDiagnostics?.()) ?? empty;
+    } catch {
+      return empty;
     }
   }
 }
