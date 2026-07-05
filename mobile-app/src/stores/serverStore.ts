@@ -25,6 +25,31 @@ export interface ServerRecord {
 // real, connectable nodes. Keep the export (empty) so the screen's filter no-ops.
 export const COMING_SOON_SERVERS: ServerRecord[] = [];
 
+// ── Authoritative node identity (2026-07-05) ────────────────────────────────
+// The server label MUST come from the actual assigned node, never a hardcoded
+// UI assumption. After the bootstrap flipped Finland to primary, the old
+// hardcoded "Germany · Hetzner" labels lied about where the user connected.
+// This maps the runtime Reality address (from bootstrap creds) to its real
+// identity; unknown addresses fall back to any country/city carried by the
+// profile, then to a neutral label — never to a guessed country.
+interface NodeIdentity { country: string; city: string; flag: string }
+const NODE_IDENTITY: Record<string, NodeIdentity> = {
+  '65.109.183.7':   { country: 'Finland', city: 'Hetzner · Helsinki', flag: '🇫🇮' },
+  '178.104.77.231': { country: 'Germany', city: 'Hetzner · Nürnberg', flag: '🇩🇪' },
+};
+export function resolveNodeIdentity(
+  address?: string,
+  fallback?: Partial<NodeIdentity>,
+): NodeIdentity {
+  const known = address ? NODE_IDENTITY[address] : undefined;
+  if (known) return known;
+  return {
+    country: fallback?.country || 'Realink Node',
+    city:    fallback?.city    || (address ? `Reality · ${address}` : 'Reality'),
+    flag:    fallback?.flag    || '🌐',
+  };
+}
+
 export type FilterTab = 'All' | 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming';
 export const FILTER_TABS: FilterTab[] = ['All', 'Recommended', 'Fastest', 'Stealth', 'Streaming'];
 
@@ -346,12 +371,17 @@ export const useServerStore = create<ServerState>()(
         altProfiles: profile.altProfiles ?? [],
       };
 
+      // Label the primary from the ACTUAL connected node, not a hardcoded guess.
+      const primaryId = resolveNodeIdentity(profile.address, {
+        country: (profile as { country?: string }).country,
+        city:    (profile as { city?: string }).city,
+      });
       const newServers: ServerRecord[] = [
         {
           id:        'server-reality-cf',
-          country:   'Germany',
-          city:      'Hetzner · Cloudflare :443',
-          flag:      '🇩🇪',
+          country:   primaryId.country,
+          city:      `${primaryId.city} :${profile.port || 443}`,
+          flag:      primaryId.flag,
           ping:      40,
           load:      20,
           protocol:  'Reality',
@@ -382,34 +412,23 @@ export const useServerStore = create<ServerState>()(
         },
       ];
 
-      // Add Oracle and Amazon as separate selectable servers if altProfiles are present
+      // Alt Reality inbounds → separate selectable servers, each labelled from
+      // its OWN address (falls back to the primary address the alt inherits).
       const altProfiles = profile.altProfiles ?? [];
-      if (altProfiles[0]) {
-        newServers.splice(1, 0, {
-          id:        'server-reality-oracle',
-          country:   'Germany',
-          city:      'Hetzner · Oracle :8443',
-          flag:      '🇩🇪',
-          ping:      45,
-          load:      22,
+      altProfiles.slice(0, 2).forEach((alt, i) => {
+        const id = resolveNodeIdentity(alt.address || profile.address);
+        newServers.splice(1 + i, 0, {
+          id:        i === 0 ? 'server-reality-oracle' : 'server-reality-amazon',
+          country:   id.country,
+          city:      `${id.city} :${alt.port || (i === 0 ? 8443 : 2052)}`,
+          flag:      id.flag,
+          ping:      45 + i * 3,
+          load:      22 + i,
           protocol:  'Reality',
           transport: 'TCP',
           tags:      ['Stealth'],
         });
-      }
-      if (altProfiles[1]) {
-        newServers.splice(2, 0, {
-          id:        'server-reality-amazon',
-          country:   'Germany',
-          city:      'Hetzner · Amazon :2052',
-          flag:      '🇩🇪',
-          ping:      48,
-          load:      23,
-          protocol:  'Reality',
-          transport: 'TCP',
-          tags:      ['Stealth'],
-        });
-      }
+      });
 
       const newCreds: Record<string, ServerCredentials> = {
         'server-reality-cf': cfCreds,
