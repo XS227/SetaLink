@@ -2610,7 +2610,17 @@ views.intel = {
   renderLearned(lr) {
     const countries = lr.countries || {};
     const ccs = Object.keys(countries);
-    if (lr.computed_at) $('learnedRoutingSub').textContent =
+    // Telemetry freshness badge (2026-07-05): make stale data impossible to miss.
+    const sub = $('learnedRoutingSub');
+    if (lr.stale) {
+      sub.innerHTML = '<span style="color:#f87171;font-weight:700">⚠ TELEMETRY STALE — latest row: '
+        + esc(lr.telemetry_latest || 'none') + ' (' + (lr.telemetry_rows ?? 0)
+        + ' rows total). Learned routing is DISABLED; bootstrap serves static order.</span>';
+    } else if (lr.telemetry_latest) {
+      sub.textContent = 'telemetry fresh (latest ' + lr.telemetry_latest + ', '
+        + (lr.telemetry_rows ?? '?') + ' rows) — served live by bootstrap';
+    }
+    if (lr.computed_at && !lr.stale) $('learnedRoutingSub').textContent =
       `what the agent has taught itself — served live by bootstrap · ${lr.days||14}d window · updated ${new Date(lr.computed_at).toLocaleTimeString()}`;
     if (!ccs.length) { $('intelLearnedTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">Not enough telemetry yet (min ' + (lr.min_attempts||5) + ' attempts per node per country)</td></tr>'; return; }
     $('intelLearnedTbl').innerHTML = ccs

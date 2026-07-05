@@ -1590,6 +1590,14 @@ function ni_wilson(int $ok, int $total): float
 function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): array
 {
     ni_init_tables($pdo);
+    // Freshness first: if the newest telemetry row is older than 7 days (or the
+    // table is empty), the rankings below are historical fiction — mark stale.
+    $latest = null; $rowsTotal = 0;
+    try {
+        $latest    = $pdo->query("SELECT MAX(created_at) FROM connect_telemetry")->fetchColumn() ?: null;
+        $rowsTotal = (int)$pdo->query("SELECT COUNT(*) FROM connect_telemetry")->fetchColumn();
+    } catch (\Throwable $_) {}
+    $stale = ($latest === null) || ((time() - (strtotime($latest . ' UTC') ?: 0)) > 7 * 86400);
     $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
     $st = $pdo->prepare(
         "SELECT COALESCE(NULLIF(country,''),'??') AS country, node_id,
@@ -1639,6 +1647,11 @@ function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): arr
         'computed_at' => gmdate('c'),
         'days'        => $days,
         'min_attempts'=> $minAttempts,
+        // Telemetry freshness (2026-07-05): learned routing must never pretend
+        // to have fresh data. Consumers MUST check 'stale' before reordering.
+        'telemetry_latest' => $latest,
+        'telemetry_rows'   => $rowsTotal,
+        'stale'            => $stale,
     ];
 }
 

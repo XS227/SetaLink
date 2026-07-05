@@ -487,7 +487,10 @@ if ($method === 'GET') {
             $alt = $srv['altProfiles'] ?? [];
             if ($cc !== '' && $alt) {
                 $learned = ni_get_learned_routing($pdo);
-                $ranked  = $learned['countries'][$cc] ?? [];
+                // Stale telemetry => static routing (never rank on dead data).
+                $ranked  = empty($learned['stale'])
+                    ? ($learned['countries'][$cc] ?? [])
+                    : [];
                 if ($ranked) {
                     $profiles = array_merge([[
                         'uuid'        => $srv['uuid']        ?? '',
