@@ -22,6 +22,7 @@ NODES=(
   "primary|65.109.183.7|443|edge.setalink.no"
   "de-nbg|91.107.158.53|443|edge.setalink.no"
   "fi-hel|65.109.183.7|443|fi.setalink.no"
+  "dk-cph|5.249.255.116|443|edge.setalink.no"
 )
 
 now() { date -u '+%Y-%m-%dT%H:%M:%SZ'; }

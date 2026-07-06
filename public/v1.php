@@ -267,6 +267,47 @@ function v1_germany_node(): array {
     ];
 }
 
+// Node 3 — ProISP/One.com box (Copenhagen, AS51468), SAME network as the control
+// plane (5.249.252.221), so likely reachable from Iran (unlike Hetzner). Repaired
+// 2026-07-06: dest→cloudflare (microsoft broke Reality), and xray now accepts the
+// nginx PROXY-protocol header (sockopt.acceptProxyProtocol). Verified externally
+// via :443 (google 200, exit 5.249.255.116). NOT geo-hidden — we WANT Iran to try
+// it (that's the whole point). flow = vision (like Finland).
+function v1_proisp_node(): array {
+    return [
+        'id'   => 'dk-cph',
+        'test' => false,
+        'meta' => [
+            'id'       => 'dk-cph',
+            'country'  => 'Denmark',
+            'city'     => 'Copenhagen',
+            'flag'     => '🇩🇰',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'Reality',
+            'transport'=> 'reality',
+            'tags'     => ['New'],
+            'premium'  => false,
+        ],
+        'creds' => [
+            'uuid'        => '98d9b96f-a441-4462-a01d-267f31dae833',
+            'address'     => '5.249.255.116',
+            'port'        => 443,
+            'publicKey'   => 'O3k2RgLQ29tEo8OSXzB3edIF_tom_9nu0PutucwMojk',
+            'shortId'     => '0a1cba3f93dc95e9',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => 'xtls-rprx-vision',
+            'fingerprint' => 'chrome',
+            'edgeAddress' => 'edge.setalink.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/ws',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            'altProfiles' => [],
+        ],
+    ];
+}
+
 // Country code (ISO-2) for the calling IP: geo_cache first, then a 1s ip-api
 // lookup cached back into geo_cache. Fails open to '' (nodes stay visible) so
 // a geo outage can never empty the server list.
@@ -310,7 +351,8 @@ function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
     $h = v1_helsinki_node($deviceId);
     $g = v1_germany_node();
-    return [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g];
+    $d = v1_proisp_node();
+    return [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d];
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
