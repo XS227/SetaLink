@@ -6,8 +6,10 @@
  * replace with real values fetched from the Realink API.
  */
 
+import { Platform } from 'react-native';
 import type { VpnServer }        from '../stores/vpnStore';
 import type { ServerCredentials } from './serverConfigService';
+import { getBypassDomains } from './iranBypassRules';
 
 export interface XrayConfig {
   log:       XrayLog;
@@ -293,12 +295,37 @@ function buildProxyOutbound(server: VpnServer, protocol: string, creds?: ServerC
   return buildVlessRealityOutbound(server, creds);
 }
 
+export interface BuildOptions {
+  /** Smart Mode / Iran Bypass: route Iranian destinations direct (outside the
+   *  tunnel) while everything else keeps going through the VPN. */
+  smartBypass?: boolean;
+}
+
+/**
+ * Smart Mode routing rule: Iranian destinations → 'direct' outbound.
+ * Placed AFTER the port-53/dns-out rule (DNS interception must win) and
+ * BEFORE the UDP/443 blackhole (so QUIC to bypassed sites goes direct
+ * instead of being fast-rejected). Domain matching uses the sniffed
+ * SNI/Host (sniffing is enabled on both inbounds), so it works for both
+ * browser and app traffic. On both platforms the 'direct' freedom outbound
+ * egresses via the physical interface, not back into the TUN: Android
+ * excludes our own UID from the VPN (addDisallowedApplication) and iOS
+ * exempts the packet-tunnel provider's own sockets from its tunnel routes —
+ * the same mechanism the existing dns-out path already relies on.
+ */
+function buildSmartBypassRules(): XrayRouting['rules'] {
+  const domains = getBypassDomains(Platform.OS === 'ios' ? 'ios' : 'android');
+  if (domains.length === 0) return []; // empty/malformed list → no rule, no crash
+  return [{ type: 'field', domain: domains, outboundTag: 'direct' }];
+}
+
 export function buildXrayConfig(
   server:    VpnServer,
   protocol:  string,
   dnsMode:   string = 'Cloudflare (DoH)',
   debugMode: boolean = true,
   creds?:    ServerCredentials,
+  opts?:     BuildOptions,
 ): XrayConfig {
   const dns = DNS_PROFILES[dnsMode] ?? DNS_PROFILES['Cloudflare (DoH)']!;
 
@@ -358,6 +385,11 @@ export function buildXrayConfig(
           port: '53',
           outboundTag: 'dns-out',
         },
+        // Smart Mode / Iran Bypass: Iranian destinations go direct so banks,
+        // Snapp, Digikala, .ir sites etc. work while the VPN stays connected.
+        // Everything that does not match continues to the rules below and,
+        // when nothing matches, to the default 'proxy' outbound — unchanged.
+        ...(opts?.smartBypass ? buildSmartBypassRules() : []),
         // UDP/443 → blackhole. Chrome HTTP/3 uses QUIC (UDP port 443). Our VLESS/Reality
         // outbound is TCP-only and cannot proxy UDP payloads. Without this rule, QUIC
         // packets reach Xray via SOCKS5 ASSOCIATE but are silently dropped — Chrome never
@@ -388,8 +420,9 @@ export function buildXrayConfigJson(
   protocol: string,
   dnsMode:  string,
   creds?:   ServerCredentials,
+  opts?:    BuildOptions,
 ): string {
-  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, false, creds));
+  return JSON.stringify(buildXrayConfig(server, protocol, dnsMode, false, creds, opts));
 }
 
 /**

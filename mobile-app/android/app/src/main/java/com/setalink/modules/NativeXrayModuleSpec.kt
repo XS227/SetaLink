@@ -12,6 +12,8 @@ abstract class NativeXrayModuleSpec(context: ReactApplicationContext) :
     abstract fun stop(promise: Promise)
     abstract fun isRunning(promise: Promise)
     abstract fun getStats(promise: Promise)
+    abstract fun getInstalledApps(promise: Promise)
+    abstract fun setBypassApps(packagesJson: String, promise: Promise)
     abstract fun validateConfig(config: String, promise: Promise)
     abstract fun getLastError(promise: Promise)
     abstract fun getLastProbeResult(promise: Promise)

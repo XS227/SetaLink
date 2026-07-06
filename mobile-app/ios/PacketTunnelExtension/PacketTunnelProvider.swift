@@ -21,15 +21,33 @@ private let kProbeOkKey     = "last_probe_ok"
 private let kLogKey         = "connection_log"
 private let kTunnelStateKey = "tunnel_state"
 private let kHeartbeatKey   = "tunnel_heartbeat"
+// Real internet-probe diagnostics (build 77) — read by the app + diag export.
+private let kProbeLatencyKey = "last_probe_latency_ms"
+private let kProbeAtKey      = "last_probe_at"
+private let kProbeDetailKey  = "last_probe_detail"
 
 private let kSocksPort: Int  = 10808
 private let kHttpPort:  Int  = 10809
 
+// Build 77: the tunnel is NOT "connected" until a real internet probe passes.
+//   connecting        — establishing tunnel / xray / TUN
+//   connectedProbing  — tunnel established, verifying real external reachability
+//   connectedVerified — probe passed: genuinely online through the tunnel
+//   degraded          — tunnel up but probe failed/timed out (was silently shown
+//                       as "connected" before → the connected-state lie)
+//   failed            — setup failed before the tunnel came up
 private enum TunnelState: String {
     case connecting         = "connecting"
+    case connectedProbing   = "connected_probing"
     case connectedVerified  = "connected_verified"
+    case degraded           = "degraded"
     case failed             = "failed"
 }
+
+// Probe tuning: one attempt + one retry, each bounded, so a dead tunnel resolves
+// to `degraded` within ~PROBE_TIMEOUT*2 instead of showing a false "connected".
+private let kProbeTimeout:  TimeInterval = 8.0
+private let kProbeRetries:  Int          = 1
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
 
@@ -196,9 +214,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             self.startXrayLogMonitor(shared: shared)
             self.startLivenessTimer(shared: shared)
             self.startNetworkMonitor()
-            let latencyMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
-            self.submitTelemetry(event: "connect_ok", latencyMs: latencyMs, tunnelMode: "HEV")
-            self.finishConnected(shared: shared, completionHandler)
+            // Build 77: satisfy NetworkExtension (the OS needs completionHandler(nil)
+            // so it doesn't kill the extension) but DO NOT claim "connected" yet —
+            // the app-visible state stays `connectedProbing` until a real internet
+            // probe passes. Fixes the connected-state lie on a dead Germany tunnel.
+            self.finishTunnelEstablished(shared: shared, completionHandler)
+            self.runInternetProbe(shared: shared, viaProxy: false, tunnelMode: "HEV")
+            self.collectQuicEvidence(shared: shared)
         }
 
         #else
@@ -249,27 +271,85 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
             self.startLivenessTimer(shared: shared)
             self.startNetworkMonitor()
-            let latencyMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
-            self.submitTelemetry(event: "connect_ok", latencyMs: latencyMs)
-            self.finishConnected(shared: shared, completionHandler)
-            self.performConnectivityProbe(shared: shared)
+            self.finishTunnelEstablished(shared: shared, completionHandler)
+            self.runInternetProbe(shared: shared, viaProxy: true, tunnelMode: "proxy")
             self.performDNSCheck(shared: shared)
             self.drainTunPackets()
         }
         #endif
     }
 
-    /// Mark the tunnel as fully connected. Exactly one call per tunnel lifetime —
-    /// this is the only location where completionHandler(nil) is invoked (CI guard).
-    private func finishConnected(shared: UserDefaults,
-                                 _ completionHandler: @escaping (Error?) -> Void) {
-        shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
-        shared.set(true, forKey: kProbeOkKey)
-        shared.set("",   forKey: kErrorKey)
+    /// Build 77: tunnel plumbing is up — tell the OS (completionHandler(nil), the
+    /// single CI-guarded call site) but mark the app-visible state as PROBING, not
+    /// verified. `runInternetProbe` promotes it to verified or demotes to degraded.
+    private func finishTunnelEstablished(shared: UserDefaults,
+                                         _ completionHandler: @escaping (Error?) -> Void) {
+        shared.set(TunnelState.connectedProbing.rawValue, forKey: kTunnelStateKey)
+        shared.set("", forKey: kErrorKey)
         flushLog(to: shared)
         shared.synchronize()
-        appendLog("CONNECTED: tunnel active")
+        appendLog("ESTABLISHED: tunnel up — verifying real internet reachability…")
         completionHandler(nil)
+    }
+
+    /// Build 77 — real external reachability check. Fetches a tiny known endpoint
+    /// (Cloudflare captive-portal 204) through the tunnel: HEV routes system-wide
+    /// so no proxy dict; the proxy fallback uses the SOCKS dict. One attempt plus
+    /// `kProbeRetries`, each bounded by `kProbeTimeout`. On success → verified +
+    /// records latency; on failure → DEGRADED (never "connected"). Never simulated.
+    private func runInternetProbe(shared: UserDefaults, viaProxy: Bool, tunnelMode: String) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let cfg = URLSessionConfiguration.ephemeral
+            cfg.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            cfg.timeoutIntervalForRequest = kProbeTimeout
+            if viaProxy {
+                cfg.connectionProxyDictionary = [
+                    "SOCKSEnable": 1, "SOCKSProxy": "127.0.0.1", "SOCKSPort": kSocksPort,
+                ]
+            }
+            let session = URLSession(configuration: cfg)
+            let target  = URL(string: "https://cp.cloudflare.com/")!   // 204, tiny, ubiquitous
+
+            var ok = false; var status = 0; var latencyMs = 0; var lastErr = ""
+            for attempt in 0 ... kProbeRetries {
+                let start = Date()
+                let sem = DispatchSemaphore(value: 0)
+                let task = session.dataTask(with: URLRequest(url: target)) { _, resp, err in
+                    if let h = resp as? HTTPURLResponse { ok = true; status = h.statusCode }
+                    else if let e = err { lastErr = e.localizedDescription }
+                    sem.signal()
+                }
+                task.resume()
+                if sem.wait(timeout: .now() + kProbeTimeout) == .timedOut {
+                    task.cancel(); lastErr = "timeout"
+                }
+                latencyMs = Int(Date().timeIntervalSince(start) * 1000)
+                if ok { break }
+                if attempt < kProbeRetries { self.appendLog("PROBE: retry \(attempt + 1) after \(lastErr)") }
+            }
+
+            let now = Int(Date().timeIntervalSince1970)
+            shared.set(ok, forKey: kProbeOkKey)
+            shared.set(latencyMs, forKey: kProbeLatencyKey)
+            shared.set(now, forKey: kProbeAtKey)
+            if ok {
+                shared.set(TunnelState.connectedVerified.rawValue, forKey: kTunnelStateKey)
+                shared.set("cp.cloudflare.com \(status) in \(latencyMs)ms", forKey: kProbeDetailKey)
+                self.appendLog("PROBE: internet reachable → HTTP \(status) in \(latencyMs)ms ✓ — CONNECTED")
+                let connectMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
+                self.submitTelemetry(event: "connect_ok", latencyMs: connectMs,
+                                     tunnelMode: tunnelMode, internetOk: true, probeMs: latencyMs)
+            } else {
+                shared.set(TunnelState.degraded.rawValue, forKey: kTunnelStateKey)
+                shared.set("no internet: \(lastErr) after \(latencyMs)ms", forKey: kProbeDetailKey)
+                self.appendLog("PROBE: internet UNREACHABLE (\(lastErr)) after \(latencyMs)ms — DEGRADED (tunnel up, no traffic)")
+                self.submitTelemetry(event: "internet_fail", errorCategory: "server_unreachable",
+                                     tunnelMode: tunnelMode, internetOk: false, probeMs: latencyMs)
+            }
+            self.flushLog(to: shared)
+            shared.synchronize()
+        }
     }
 
     private func drainTunPackets() {
@@ -313,6 +393,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     private func buildHevNetworkSettings(serverAddr: String?) -> NEPacketTunnelNetworkSettings {
         let s = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "10.255.0.1")
+        // Build 74 fix (Iran "only Telegram opens"): clamp the TUN MTU to 1400.
+        //   iOS derives each connection's TCP MSS from this MTU. At the default 1500
+        //   apps send ~1460-byte segments; after Reality+VLESS+TLS encapsulation the
+        //   outer packets exceed the real path MTU (worse on Iranian mobile), are
+        //   dropped with no PMTUD, and large TLS flows stall — only Telegram's small
+        //   packets get through. 1400 leaves headroom for the tunnel overhead and
+        //   matches the Android client (VpnService.setMtu(1400)), which browses fine
+        //   from Iran on the SAME nodes. Kept in sync with the HEV YAML mtu below.
+        s.mtu = NSNumber(value: 1400)
         let ipv4 = NEIPv4Settings(addresses: ["10.255.0.2"], subnetMasks: ["255.255.255.0"])
         ipv4.includedRoutes = [NEIPv4Route.default()]
         var excluded4: [NEIPv4Route] = []
@@ -321,20 +410,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             excluded4.append(NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255"))
             appendLog("HEV_SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
         }
-        // Keep DNS resolvers direct; HEV forwards TCP but DNS exclusion keeps UDP/53 stable.
-        for ip in ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"] {
-            excluded4.append(NEIPv4Route(destinationAddress: ip, subnetMask: "255.255.255.255"))
-        }
+        // Build 73 fix (Iran): DO NOT exclude 1.1.1.1/8.8.8.8 from the TUN.
+        //   Pre-72 HEV dropped all UDP, so DNS was kept direct to avoid dead UDP/53.
+        //   That leaked DNS outside the tunnel: in Iran 1.1.1.1/8.8.8.8 are blocked
+        //   and poisoned, so every hostname lookup failed → tunnel connected but no
+        //   internet (Norway worked because direct DNS to those resolvers is fine).
+        //   Build 72 added `udp: 'udp'` to HEV, so UDP/53 now forwards through to
+        //   Xray, whose routing sends port 53 → dns-out (resolved at the exit node).
+        //   Routing DNS through the tunnel matches Android (addRoute 0.0.0.0/0, DNS
+        //   via tun2socks → Xray) which connects fine from Iran on the same nodes.
         ipv4.excludedRoutes = excluded4
         s.ipv4Settings = ipv4
         // IPv6 intentionally omitted — HEV is IPv4/TCP only. Including IPv6 default
         // route causes browsers to attempt IPv6 connections that HEV can't forward,
         // blocking Happy Eyeballs and making all browser traffic fail. IPv6 goes direct.
+        // DNS queries to these resolvers now route INTO the TUN (not excluded above)
+        // → HEV → SOCKS5 → Xray dns-out, so resolution happens at the exit node and
+        // survives Iran's block/poisoning of public resolvers.
         let dns = NEDNSSettings(servers: ["1.1.1.1", "8.8.8.8"])
         dns.matchDomains = [""]
         s.dnsSettings = dns
         // No NEProxySettings — HEV captures all TCP at TUN level and forwards via SOCKS5.
-        appendLog("HEV_SETTINGS: TUN-only no-ipv6, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 direct")
+        appendLog("HEV_SETTINGS: TUN-only no-ipv6 mtu=1400, server=\(serverAddr ?? "?") dns=1.1.1.1/8.8.8.8 through-tunnel")
         return s
     }
 
@@ -487,16 +584,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// the file path, or nil if the write fails.
     private func writeHevConfig(tunFd: Int32) -> String? {
         // dns-upstream intentionally absent:
-        //   1.1.1.1/8.8.8.8 are excluded from TUN routes so DNS never enters HEV.
+        //   Build 73 routes DNS INTO HEV (resolver IPs no longer excluded from the TUN);
+        //   HEV forwards UDP/53 to the SOCKS5 inbound and Xray's routing (port 53 → dns-out)
+        //   resolves it at the exit node, so HEV needs no dns-upstream of its own.
         //   Adding dns-upstream to misc caused HEV v2.15.0 to abort silently (build 66 regression).
+        //
+        // udp: 'udp'  (build 72 fix):
+        //   Without it HEV forwarded ONLY TCP and silently DROPPED every UDP packet.
+        //   Browsers/YouTube/Instagram open QUIC (HTTP/3, UDP:443) first; those packets
+        //   died in HEV, the apps never got a rejection, and they stalled — so only
+        //   TCP-only apps (Telegram) worked. Forwarding UDP to the SOCKS5 inbound lets
+        //   Xray's routing act on it: UDP/53 → dns-out, UDP/443 → blackhole (instant
+        //   reject → the app falls back to TCP/TLS immediately), other UDP → freedom.
+        //   The Xray socks-in already has "udp": true, so this needs no server change.
         let yaml = """
 tunnel:
   fd: \(tunFd)
-  mtu: 1500
+  mtu: 1400
 
 socks5:
   port: \(kSocksPort)
   address: '127.0.0.1'
+  udp: 'udp'
 
 misc:
   task-stack-size: 81920
@@ -602,42 +711,50 @@ misc:
                           address: addr, port: port, sni: sni, flow: flow)
     }
 
-    private func performConnectivityProbe(shared: UserDefaults) {
+    /// Build 77 — QUIC/UDP evidence collector (diagnostics ONLY, no routing change).
+    /// Hypothesis: Instagram failures correlate with UDP/443 (QUIC) being
+    /// black-holed while TCP works. We test the SAME host over BOTH transports and
+    /// record the pair, so we can PROVE or DISPROVE the correlation from real
+    /// devices before touching production routing:
+    ///   • TCP/443 reachability to an IG-adjacent host (should succeed today)
+    ///   • QUIC/H3 handshake to the same host (expected to hang/fail if blackholed)
+    /// Uses URLSession H3 (`assumesHTTP3Capable`) purely as a measurement; results
+    /// go to the App Group + telemetry. Nothing is blocked or rerouted here.
+    private func collectQuicEvidence(shared: UserDefaults) {
         DispatchQueue.global(qos: .background).async { [weak self] in
             guard let self = self else { return }
-            guard let url = URL(string: "https://cp.cloudflare.com/") else { return }
-
-            let cfg = URLSessionConfiguration.ephemeral
-            cfg.connectionProxyDictionary = [
-                "SOCKSEnable": 1,
-                "SOCKSProxy":  "127.0.0.1",
-                "SOCKSPort":   kSocksPort,
-            ]
-            cfg.timeoutIntervalForRequest = 10.0
-            let session = URLSession(configuration: cfg)
-
-            let sem   = DispatchSemaphore(value: 0)
-            let start = Date()
-            var probeOk     = false
-            var probeStatus = 0
-
-            let task = session.dataTask(with: URLRequest(url: url)) { _, resp, _ in
-                if let h = resp as? HTTPURLResponse {
-                    probeOk     = true
-                    probeStatus = h.statusCode
+            let host = "https://www.instagram.com/favicon.ico"
+            func probe(http3: Bool) -> (ok: Bool, ms: Int, detail: String) {
+                let cfg = URLSessionConfiguration.ephemeral
+                cfg.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                cfg.timeoutIntervalForRequest = 6.0
+                let session = URLSession(configuration: cfg)
+                var req = URLRequest(url: URL(string: host)!)
+                if http3, #available(iOS 15.0, *) { req.assumesHTTP3Capable = true }
+                let start = Date(); let sem = DispatchSemaphore(value: 0)
+                var ok = false; var detail = ""
+                let task = session.dataTask(with: req) { _, resp, err in
+                    if let h = resp as? HTTPURLResponse { ok = true; detail = "HTTP \(h.statusCode)" }
+                    else if let e = err { detail = e.localizedDescription }
+                    sem.signal()
                 }
-                sem.signal()
+                task.resume()
+                if sem.wait(timeout: .now() + 6.5) == .timedOut { task.cancel(); detail = "timeout" }
+                return (ok, Int(Date().timeIntervalSince(start) * 1000), detail)
             }
-            task.resume()
-            _ = sem.wait(timeout: .now() + 10)
-
-            let ms = Int(Date().timeIntervalSince(start) * 1000)
-            if probeOk {
-                self.appendLog("PROBE: cp.cloudflare.com → HTTP \(probeStatus) in \(ms)ms ✓")
-            } else {
-                self.appendLog("PROBE: cp.cloudflare.com → FAIL in \(ms)ms — xray not forwarding traffic")
-                shared.set(false, forKey: kProbeOkKey)
-            }
+            let tcp  = probe(http3: false)
+            let quic = probe(http3: true)
+            // The tell: TCP ok + QUIC fail/timeout ⇒ UDP/443 blackhole is the culprit.
+            let verdict = (tcp.ok && !quic.ok) ? "QUIC_BLACKHOLE_LIKELY"
+                        : (tcp.ok && quic.ok) ? "QUIC_OK"
+                        : (!tcp.ok && !quic.ok) ? "BOTH_FAIL"
+                        : "TCP_FAIL_QUIC_OK"
+            let line = "TCP=\(tcp.ok ? "ok" : "fail")(\(tcp.ms)ms,\(tcp.detail)) " +
+                       "QUIC=\(quic.ok ? "ok" : "fail")(\(quic.ms)ms,\(quic.detail)) ⇒ \(verdict)"
+            shared.set(line, forKey: "last_quic_evidence")
+            self.appendLog("QUIC_EVIDENCE: \(line)")
+            self.submitTelemetry(event: "quic_probe", tunnelMode: verdict,
+                                 internetOk: tcp.ok, probeMs: quic.ms)
             self.flushLog(to: shared)
             shared.synchronize()
         }
@@ -757,7 +874,9 @@ misc:
         tunnelMode:       String? = nil,
         cp1Readable:      String? = nil,
         cp4Connections:   Int?    = nil,
-        cp4FirstDest:     String? = nil
+        cp4FirstDest:     String? = nil,
+        internetOk:       Bool?   = nil,
+        probeMs:          Int?    = nil
     ) {
         guard let url = URL(string: "https://setalink.no/v1/telemetry/connect") else { return }
         let diagDeviceId = UserDefaults(suiteName: kAppGroup)?.string(forKey: "diag_device_id") ?? ""
@@ -785,6 +904,8 @@ misc:
         if let cp1  = cp1Readable    { items.append(URLQueryItem(name: "cp1_readable",   value: cp1))  }
         if let cp4c = cp4Connections { items.append(URLQueryItem(name: "cp4_connections",value: String(cp4c))) }
         if let cp4d = cp4FirstDest   { items.append(URLQueryItem(name: "cp4_first_dest", value: cp4d)) }
+        if let io   = internetOk     { items.append(URLQueryItem(name: "internet_ok",   value: io ? "1" : "0")) }
+        if let pm   = probeMs        { items.append(URLQueryItem(name: "probe_ms",       value: String(pm))) }
         items.append(URLQueryItem(name: "ip_version",    value: ipVersion))
         items.append(URLQueryItem(name: "network_type",  value: networkTypeString))
         items.append(URLQueryItem(name: "ios_version",   value: iosVersion))
