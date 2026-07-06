@@ -119,6 +119,52 @@ const NI_ERROR_CATEGORIES = [
     'server_unreachable', 'dns_failed', 'captive_portal', 'app_blocked', 'unknown',
 ];
 
+// ── Abuse guard for the anonymous telemetry endpoint (2026-07-05) ────────────
+// /telemetry/connect is public (the iOS extension has no bearer). Without a
+// bound, anyone could POST unbounded rows. These two guards keep it safe:
+//   ni_telemetry_gate  — per-IP-hash rate limit (no PII: only sha256(ip|salt)
+//                        + minute bucket + count, auto-pruned). Fail-OPEN on
+//                        any error so telemetry never breaks the user flow.
+//   ni_telemetry_rotate — hard row cap with newest-N retention.
+const NI_TELEMETRY_MAX_PER_MIN = 40;     // per source IP
+const NI_TELEMETRY_MAX_ROWS    = 200000; // global retention cap
+
+function ni_telemetry_gate(PDO $pdo, string $clientIp): bool
+{
+    if ($clientIp === '') return true;
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS telemetry_ratelimit (
+            ip_hash TEXT NOT NULL, minute INTEGER NOT NULL, n INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (ip_hash, minute))");
+        $minute = (int)floor(time() / 60);
+        // prune buckets older than 5 minutes (cheap, bounded)
+        $pdo->prepare("DELETE FROM telemetry_ratelimit WHERE minute < ?")->execute([$minute - 5]);
+        $iph = substr(hash('sha256', $clientIp . '|realink-telemetry'), 0, 32);
+        $pdo->prepare("INSERT INTO telemetry_ratelimit (ip_hash, minute, n) VALUES (?,?,1)
+                       ON CONFLICT(ip_hash, minute) DO UPDATE SET n = n + 1")
+            ->execute([$iph, $minute]);
+        $st = $pdo->prepare("SELECT n FROM telemetry_ratelimit WHERE ip_hash=? AND minute=?");
+        $st->execute([$iph, $minute]);
+        return (int)$st->fetchColumn() <= NI_TELEMETRY_MAX_PER_MIN;
+    } catch (\Throwable $_) {
+        return true; // fail-open: never let the guard itself break telemetry
+    }
+}
+
+function ni_telemetry_rotate(PDO $pdo): void
+{
+    try {
+        // only trim occasionally to avoid a COUNT on every write
+        if (random_int(1, 50) !== 1) return;
+        $n = (int)$pdo->query("SELECT COUNT(*) FROM connect_telemetry")->fetchColumn();
+        if ($n <= NI_TELEMETRY_MAX_ROWS) return;
+        $cut = $n - NI_TELEMETRY_MAX_ROWS;
+        $pdo->prepare("DELETE FROM connect_telemetry WHERE id IN
+                       (SELECT id FROM connect_telemetry ORDER BY id ASC LIMIT ?)")
+            ->execute([$cut]);
+    } catch (\Throwable $_) {}
+}
+
 function ni_record(PDO $pdo, array $d): void
 {
     ni_init_tables($pdo);
