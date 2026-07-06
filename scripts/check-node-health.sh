@@ -19,7 +19,8 @@ TMP="$(mktemp)"
 # Nodes to probe:  id | reality_address | reality_port | edge_host
 # Keep in sync with public/v1.php (primary = live prod target, fi-hel = Helsinki).
 NODES=(
-  "primary|178.104.77.231|443|edge.setalink.no"
+  "primary|65.109.183.7|443|edge.setalink.no"
+  "de-nbg|91.107.158.53|443|edge.setalink.no"
   "fi-hel|65.109.183.7|443|fi.setalink.no"
 )
 

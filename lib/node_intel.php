@@ -1321,7 +1321,7 @@ function ni_query_diag_sessions(PDO $pdo, array $filters = []): array
         if (strtolower($srv) === 'finland') {
             $where[] = "(server_label='Finland' OR server_ip='65.109.183.7')";
         } elseif (strtolower($srv) === 'germany') {
-            $where[] = "(server_label LIKE 'Germany%' OR server_label='Primary' OR server_ip='178.104.77.231')";
+            $where[] = "(server_label LIKE 'Germany%' OR server_label='Primary' OR server_ip='91.107.158.53')";
         } else {
             $where[]  = "(server_ip=? OR server_label=?)";
             $params[] = $srv;
@@ -1636,8 +1636,7 @@ function ni_wilson(int $ok, int $total): float
 function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): array
 {
     ni_init_tables($pdo);
-    // Freshness first: if the newest telemetry row is older than 7 days (or the
-    // table is empty), the rankings below are historical fiction — mark stale.
+    // Freshness first (2026-07-05): stale telemetry must disable ranking.
     $latest = null; $rowsTotal = 0;
     try {
         $latest    = $pdo->query("SELECT MAX(created_at) FROM connect_telemetry")->fetchColumn() ?: null;
@@ -1693,8 +1692,6 @@ function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): arr
         'computed_at' => gmdate('c'),
         'days'        => $days,
         'min_attempts'=> $minAttempts,
-        // Telemetry freshness (2026-07-05): learned routing must never pretend
-        // to have fresh data. Consumers MUST check 'stale' before reordering.
         'telemetry_latest' => $latest,
         'telemetry_rows'   => $rowsTotal,
         'stale'            => $stale,

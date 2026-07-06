@@ -255,7 +255,7 @@ function fetch_bootstrap_server(PDO $db): array {
     if (empty($r['bootstrap_uuid']) || empty($r['bootstrap_pubkey'])) {
         return [
             'uuid'        => 'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
-            'address'     => '178.104.77.231',
+            'address'     => '91.107.158.53',
             'port'        => 443,
             'publicKey'   => 'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
             'shortId'     => '7f81892e',
@@ -1466,7 +1466,7 @@ switch ($action) {
         // Local xray has no SOCKS inbound; 10808 is the CLIENT-side port in the app.
         $ph_db = open_analytics_db();
         $ph_bs = $ph_db->query("SELECT key,value FROM settings WHERE key IN ('bootstrap_address','bootstrap_port')")->fetchAll(PDO::FETCH_KEY_PAIR);
-        $ph_raddr = (string)($ph_bs['bootstrap_address'] ?? '178.104.77.231');
+        $ph_raddr = (string)($ph_bs['bootstrap_address'] ?? '91.107.158.53');
         $ph_rport = (int)($ph_bs['bootstrap_port'] ?? 443);
         $reality_open = tcp_open($ph_raddr, $ph_rport, 4);
         $ph_deadline = microtime(true) + 5.0;
@@ -1542,7 +1542,7 @@ switch ($action) {
         // 4. Production Reality server (separate box clients connect to directly)
         $sh_db = open_analytics_db();
         $sh_bs = $sh_db->query("SELECT key,value FROM settings WHERE key IN ('bootstrap_address','bootstrap_port')")->fetchAll(PDO::FETCH_KEY_PAIR);
-        $sh_raddr = (string)($sh_bs['bootstrap_address'] ?? '178.104.77.231');
+        $sh_raddr = (string)($sh_bs['bootstrap_address'] ?? '91.107.158.53');
         $sh_rport = (int)($sh_bs['bootstrap_port'] ?? 443);
         $sh_rs = @fsockopen($sh_raddr, $sh_rport, $sh_e2, $sh_err2, 4);
         $sh_rok = ($sh_rs !== false);
@@ -1645,7 +1645,7 @@ switch ($action) {
         $score += $fp_ok ? 15 : 0;
         $checks[] = ['label'=>'Fingerprint set','ok'=>$fp_ok,'detail'=>$fp ?: '—'];
         // Production Reality server reachable (the box clients connect to)
-        $is_addr = (string)($is_bs['bootstrap_address'] ?? '178.104.77.231');
+        $is_addr = (string)($is_bs['bootstrap_address'] ?? '91.107.158.53');
         $is_sock = @fsockopen($is_addr, $port ?: 443, $e, $err, 4);
         $is_up   = $is_sock !== false;
         if ($is_up) fclose($is_sock);

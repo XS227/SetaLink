@@ -248,7 +248,7 @@ function v1_germany_node(): array {
             // x-ui inbound on :443 (SNI cloudflare) — flow is EMPTY on this node,
             // unlike Finland (vision). Sending vision here breaks the handshake.
             'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
-            'address'     => '178.104.77.231',
+            'address'     => '91.107.158.53',
             'port'        => 443,
             'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
             'shortId'     => 'd93af82f2ecb7f6a',

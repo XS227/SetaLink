@@ -195,9 +195,9 @@ function fmt_gb(int $bytes): string {
 
 // Egress IPs of our own infrastructure — a request arriving from one of
 // these travelled through the tunnel (or is a local test), so it does not
-// identify the client. 178.104.77.231 = live Reality box, 5.249.252.221 =
+// identify the client. 91.107.158.53 = live Reality box, 5.249.252.221 =
 // this panel/edge box itself.
-const VPN_EGRESS_IPS = ['178.104.77.231', '5.249.252.221'];
+const VPN_EGRESS_IPS = ['91.107.158.53', '5.249.252.221'];
 
 function client_ip(): string {
     foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $h) {
@@ -223,7 +223,7 @@ function client_ip(): string {
 // tunneled (or server-to-server) — geo-locating them would tag every connected
 // user as Finland/Germany and break the country flags in admin.
 function is_vpn_exit_ip(string $ip): bool {
-    static $known = ['65.109.183.7', '178.104.77.231', '5.249.252.221'];
+    static $known = ['65.109.183.7', '91.107.158.53', '5.249.252.221'];
     if (in_array($ip, $known, true)) return true;
     try {
         $pdo = db();
@@ -303,7 +303,7 @@ function hardcoded_bootstrap(): array {
     // Ground truth from /etc/setalink/setalink.env — used only if DB settings are missing.
     return [
         'uuid'        => 'b5243b1c-af7a-40f0-ad31-97fc6f9ba3e3',
-        'address'     => '178.104.77.231',
+        'address'     => '91.107.158.53',
         'port'        => 443,
         'publicKey'   => 'Lt23oNYSse3ElAqCEWqTcFYCplvuLWsjsI7ZH7E_rGU',
         'shortId'     => '7f81892e',
@@ -336,7 +336,7 @@ function hardcoded_bootstrap(): array {
                 'shortId'     => '82ab1a310f0aeb06',
                 'sni'         => 'www.microsoft.com',
                 'port'        => 443,
-                'address'     => '178.104.77.231',
+                'address'     => '91.107.158.53',
                 'flow'        => 'xtls-rprx-vision',
                 'fingerprint' => 'chrome',
             ],
@@ -346,7 +346,7 @@ function hardcoded_bootstrap(): array {
                 'shortId'     => '7f81892e',
                 'sni'         => 'www.bing.com',
                 'port'        => 443,
-                'address'     => '178.104.77.231',
+                'address'     => '91.107.158.53',
                 'flow'        => 'xtls-rprx-vision',
                 'fingerprint' => 'chrome',
             ],
@@ -449,7 +449,7 @@ if ($method === 'GET') {
         try { $rows = $pdo->query("SELECT key, value FROM settings WHERE key LIKE 'bundle_%'")->fetchAll(PDO::FETCH_KEY_PAIR); } catch (\Exception $e) {}
         $sni_candidates = json_decode($rows['bundle_sni_candidates'] ?? '[]', true) ?: ['www.microsoft.com','www.bing.com','www.apple.com','www.samsung.com','www.speedtest.net'];
         $spoof_snis     = json_decode($rows['bundle_spoof_snis'] ?? '[]', true) ?: ['auth.vercel.com','cdn.jsdelivr.net','hcaptcha.com','assets.vercel.com','images.unsplash.com','cloudflare.com'];
-        $backup_ips     = json_decode($rows['bundle_backup_ips'] ?? '[]', true) ?: ['178.104.77.231'];
+        $backup_ips     = json_decode($rows['bundle_backup_ips'] ?? '[]', true) ?: ['91.107.158.53'];
         $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['vpn.setalink.no'];
         ok([
             'version'        => (int)($rows['bundle_version'] ?? 1),
@@ -1061,7 +1061,7 @@ if ($method === 'POST') {
         $spoof_snis = json_decode($rows['bundle_spoof_snis'] ?? '[]', true) ?: [
             'auth.vercel.com','cdn.jsdelivr.net','hcaptcha.com','assets.vercel.com','images.unsplash.com','cloudflare.com',
         ];
-        $backup_ips     = json_decode($rows['bundle_backup_ips']     ?? '[]', true) ?: ['178.104.77.231'];
+        $backup_ips     = json_decode($rows['bundle_backup_ips']     ?? '[]', true) ?: ['91.107.158.53'];
         $backup_domains = json_decode($rows['bundle_backup_domains'] ?? '[]', true) ?: ['vpn.setalink.no'];
 
         ok([
