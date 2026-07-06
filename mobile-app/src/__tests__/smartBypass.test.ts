@@ -7,7 +7,7 @@
  *   4. telegram.org is NOT bypassed → still through VPN.
  *   6. Smart Mode OFF → config is byte-identical to the pre-feature config.
  *   7. Rule ordering: dns-out wins before bypass; bypass wins before the
- *      UDP/443 blackhole; default proxy fallback untouched.
+ *      UDP/443 tunnelled (QUIC via proxy); default proxy fallback untouched.
  *   9. Malformed/empty rule list → no crash, no rule emitted.
  */
 
@@ -69,7 +69,7 @@ describe('Smart Mode ON — bypass rules', () => {
     expect(joined).not.toMatch(/youtube/);
   });
 
-  test('case 7: rule order — dns-out before bypass, bypass before udp443 blackhole', () => {
+  test('case 7: rule order — dns-out before bypass, bypass before udp443 (QUIC) rule', () => {
     const rules = cfg.routing.rules;
     const dnsIdx    = rules.findIndex((r) => r.outboundTag === 'dns-out');
     const bypassIdx = rules.findIndex((r) => r.outboundTag === 'direct' && Array.isArray(r.domain));
