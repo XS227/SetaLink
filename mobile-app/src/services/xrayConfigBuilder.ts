@@ -390,16 +390,20 @@ export function buildXrayConfig(
         // Everything that does not match continues to the rules below and,
         // when nothing matches, to the default 'proxy' outbound — unchanged.
         ...(opts?.smartBypass ? buildSmartBypassRules() : []),
-        // UDP/443 → blackhole. Chrome HTTP/3 uses QUIC (UDP port 443). Our VLESS/Reality
-        // outbound is TCP-only and cannot proxy UDP payloads. Without this rule, QUIC
-        // packets reach Xray via SOCKS5 ASSOCIATE but are silently dropped — Chrome never
-        // gets a rejection and shows ERR_QUIC_PROTOCOL_ERROR. Fast-rejecting UDP/443 makes
-        // Chrome immediately retry via TCP/TLS (HTTP/2 or HTTP/1.1), restoring browsing.
+        // UDP/443 (QUIC / HTTP-3) → proxy, so it tunnels through VLESS like every
+        // other flow. Build 72 gave the tunnel real UDP support (HEV udp:'udp' +
+        // socks-in udp:true) and the node's Xray forwards UDP over VLESS, so QUIC
+        // now works end-to-end — this is exactly how Android runs, where Instagram
+        // and WhatsApp work. The old rule blackholed UDP/443 to force a TCP
+        // fallback, but iOS Meta apps (mvfst QUIC) do NOT fall back cleanly: they
+        // keep retrying the dropped QUIC and hang, which is why Instagram/WhatsApp
+        // never loaded on iOS. Tunnelling QUIC fixes them. (Bypassed Smart-Mode
+        // domains already went direct above, so their QUIC is unaffected.)
         {
           type:        'field',
           network:     'udp',
           port:        '443',
-          outboundTag: 'blackhole',
+          outboundTag: 'proxy',
         },
         // All IPv6 → blackhole. Gives apps an immediate connection-refused so
         // Happy Eyeballs retries on IPv4 without waiting for a timeout.
@@ -473,8 +477,10 @@ export function buildEmergencyXrayConfigJson(
       domainStrategy: 'IPIfNonMatch',
       rules: [
         { type: 'field', port: '53', outboundTag: 'dns-out' },
-        // UDP/443 → blackhole: fast-reject QUIC so Chrome falls back to TCP HTTPS.
-        { type: 'field', network: 'udp', port: '443', outboundTag: 'blackhole' },
+        // UDP/443 (QUIC) → proxy: tunnel it (build 72+ UDP path). Fixes iOS
+        // Instagram/WhatsApp, which hang on a blackholed QUIC instead of
+        // falling back to TCP the way browsers do.
+        { type: 'field', network: 'udp', port: '443', outboundTag: 'proxy' },
         // Fast-fail all IPv6 so Happy Eyeballs immediately retries on IPv4.
         { type: 'field', ip: ['::/0'], outboundTag: 'blackhole' },
       ],
