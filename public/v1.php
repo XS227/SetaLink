@@ -148,6 +148,7 @@ const V1_FI_HEL_DEVICE_UUIDS = [
     'sl-ec58c486' => '06f75644-a38a-4591-a063-294673bbbcb4',   // SL-227-6888F163
     'sl-6341972a' => '2bae0b05-ca90-4abe-89ce-21bcdc9c64c2',   // SL-227-FEF6C131
     'sl-a7bf102e' => '61cbd9b6-e617-4ae5-9d31-17d6a9f8c56b',   // SL-227-2DA1D1C0
+    'sl-f877790f' => '157b463d-b67c-4148-885b-2d7f2255a972',   // Android Termius-tester (diag isolation 2026-07-03)
 ];
 
 function v1_helsinki_node(?string $deviceId = null): array {
@@ -221,10 +222,95 @@ function v1_helsinki_node(?string $deviceId = null): array {
     ];
 }
 
+// Germany (Nürnberg) node — the original primary before the 2026-07-03 Finland
+// flip. The box itself is fully healthy (Reality handshake + browsing verified
+// from outside 2026-07-06); it is only unreachable FROM IRAN (SYNs arrive, the
+// return path is dropped by Iranian filtering of the Hetzner IP). It therefore
+// re-enters the catalog as a selectable node, but is geo-hidden for IR callers
+// so Iranian users are never offered a node that is dead for them.
+function v1_germany_node(): array {
+    return [
+        'id'   => 'de-nbg',
+        'test' => false,
+        'meta' => [
+            'id'       => 'de-nbg',
+            'country'  => 'Germany',
+            'city'     => 'Nürnberg',
+            'flag'     => '🇩🇪',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'Reality',
+            'transport'=> 'reality',
+            'tags'     => [],
+            'premium'  => false,
+        ],
+        'creds' => [
+            // x-ui inbound on :443 (SNI cloudflare) — flow is EMPTY on this node,
+            // unlike Finland (vision). Sending vision here breaks the handshake.
+            'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
+            'address'     => '178.104.77.231',
+            'port'        => 443,
+            'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+            'shortId'     => 'd93af82f2ecb7f6a',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => '',
+            'fingerprint' => 'chrome',
+            'edgeAddress' => 'edge.setalink.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/ws',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            // :8443 (oracle) / :2052 (amazon) inbounds exist on the box but use
+            // separate keypairs not registered here — left out until verified.
+            'altProfiles' => [],
+        ],
+    ];
+}
+
+// Country code (ISO-2) for the calling IP: geo_cache first, then a 1s ip-api
+// lookup cached back into geo_cache. Fails open to '' (nodes stay visible) so
+// a geo outage can never empty the server list.
+function v1_client_country(PDO $pdo): string {
+    static $cc;
+    if ($cc !== null) return $cc;
+    $cc = '';
+    $ip = v1_client_ip();
+    if ($ip === '' || $ip === '127.0.0.1' || $ip === '::1'
+        || str_starts_with($ip, '10.') || str_starts_with($ip, '192.168.')) return $cc;
+    try {
+        $st = $pdo->prepare("SELECT country FROM geo_cache WHERE ip = ? LIMIT 1");
+        $st->execute([$ip]);
+        $cached = (string)($st->fetchColumn() ?: '');
+        if ($cached !== '') return $cc = strtoupper($cached);
+        $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+        $raw = @file_get_contents("http://ip-api.com/json/{$ip}?fields=countryCode", false, $ctx);
+        if ($raw) {
+            $j = json_decode($raw, true);
+            $cc = strtoupper(substr((string)($j['countryCode'] ?? ''), 0, 4));
+            if ($cc !== '') {
+                $pdo->prepare("INSERT OR REPLACE INTO geo_cache (ip, country) VALUES (?, ?)")
+                    ->execute([$ip, $cc]);
+            }
+        }
+    } catch (\Throwable $_) { /* fail open */ }
+    return $cc;
+}
+
+// Node IDs hidden for specific caller countries (reachability, not policy):
+// Germany's Hetzner IP is blackholed from inside Iran.
+const V1_GEO_HIDDEN_NODES = ['de-nbg' => ['IR']];
+
+function v1_node_geo_hidden(PDO $pdo, string $nodeId): bool {
+    $hide = V1_GEO_HIDDEN_NODES[$nodeId] ?? null;
+    if ($hide === null) return false;
+    return in_array(v1_client_country($pdo), $hide, true);
+}
+
 function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
     $h = v1_helsinki_node($deviceId);
-    return [$p['id'] => $p, $h['id'] => $h];
+    $g = v1_germany_node();
+    return [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g];
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
@@ -281,7 +367,12 @@ $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 // Public, no-bearer routes: the Premium catalog must render prices before a user
 // has any identity. A 401 here makes the app log out (and blanks the Profile tab),
 // so these are exempt from the bearer guard.
-$publicRoutes = ($rel === '/payments/packages' && $method === 'GET');
+$publicRoutes = ($rel === '/payments/packages' && $method === 'GET')
+    // Connect telemetry is anonymous BY DESIGN (no PII, fire-and-forget, the
+    // handler itself never errors to the client). The iOS tunnel extension has
+    // no device bearer, so gating this route silently killed all telemetry
+    // (root-caused 2026-07-05: 401 + wrong-vhost fallthrough to the landing page).
+    || ($rel === '/telemetry/connect' && $method === 'POST');
 
 $tok = v1_bearer();
 if ($tok === '' && !$publicRoutes) {
@@ -502,6 +593,8 @@ if ($rel === '/servers') {
         // Auto-hide a non-primary node that is freshly DOWN, so users aren't
         // routed to a dead box. Primary is never hidden (last-resort default).
         if ($id !== 'primary' && v1_node_down($id)) continue;
+        // Geo-hide nodes that are unreachable from the caller's country.
+        if (v1_node_geo_hidden($pdo, $id)) continue;
         $meta = $n['meta'];
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
@@ -521,6 +614,11 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     $n = $nodes[$id];
     if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) {
         v1_send(['message' => 'device not authorized for this node'], 403);
+    }
+    // Defense in depth: never hand out creds for a node geo-hidden from this
+    // caller (it is unreachable from their country anyway).
+    if (v1_node_geo_hidden($pdo, $id)) {
+        v1_send(['message' => 'node not available in your region'], 403);
     }
     // Refuse to hand out creds for a node that is freshly down (clients fall back
     // to primary / saved bootstrap). Primary is exempt — it's the last resort.
