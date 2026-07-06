@@ -398,6 +398,7 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         // Derive country from the client IP (best-effort, may be empty).
         $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
         if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
+        if (!ni_telemetry_gate($pdo, $clientIp)) { v1_send(['ok' => true, 'throttled' => true]); }
         $country = '';
         if ($clientIp && $clientIp !== '127.0.0.1' && $clientIp !== '::1'
             && !str_starts_with($clientIp, '10.') && !str_starts_with($clientIp, '192.168.')) {
@@ -459,6 +460,7 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'ios_version'          => v1_body('ios_version'),
             'device_model'         => v1_body('device_model'),
         ]);
+        ni_telemetry_rotate($pdo);
         // Auto-create structured diagnostic session for every disconnect event (build 68+).
         // Disconnect events carry CP1/CP4 summary data accumulated during the session.
         if ($rawTelemetryEvent === 'disconnect') {
