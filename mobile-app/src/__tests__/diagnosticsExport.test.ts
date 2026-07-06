@@ -52,3 +52,34 @@ describe('buildDiagnosticsReport', () => {
     expect(out).not.toContain('Server SNI');
   });
 });
+
+// Build 77 — observability section must distinguish the four facts clearly.
+import { buildDiagnosticsReport as buildReport77 } from '../services/diagnosticsExport';
+describe('diagnostics observability section (build 77)', () => {
+  const base77 = {
+    appVersion: '0.9.50', appBuild: '77', deviceId: 'sl-test', platform: 'ios',
+    osVersion: '18.5', tunnelStatus: 'connected', exitIp: null, dnsStatus: 'Unknown',
+    healthChecks: [], routeHops: [],
+  };
+  it('shows degraded when tunnel up but internet probe failed', () => {
+    const out = buildReport77({ ...base77, observability: {
+      osTunnelEstablished: true, internetProbePassed: false, probeLatencyMs: 8000,
+      probeDetail: 'no internet: timeout', nodeIdentity: 'Finland · Helsinki (65.109.183.7)',
+      quicVerdict: 'QUIC_BLACKHOLE_LIKELY',
+    }});
+    expect(out).toContain('OS tunnel established:  YES');
+    expect(out).toContain('Internet probe passed:  NO');
+    expect(out).toContain('Finland · Helsinki');
+    expect(out).toContain('QUIC_BLACKHOLE_LIKELY');
+    expect(out).toContain('DEGRADED (tunnel up, no internet)');
+  });
+  it('shows verified-connected when both facts are true', () => {
+    const out = buildReport77({ ...base77, observability: {
+      osTunnelEstablished: true, internetProbePassed: true, probeLatencyMs: 120,
+      nodeIdentity: 'Finland · Helsinki (65.109.183.7)', quicVerdict: 'QUIC_OK',
+    }});
+    expect(out).toContain('CONNECTED (internet verified)');
+    // Node identity is a fact, never a hardcoded Germany guess.
+    expect(out).not.toContain('Germany');
+  });
+});

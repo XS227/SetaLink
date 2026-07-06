@@ -142,7 +142,10 @@ const EN = {
   // Connection status
   'cs.idle':            'Not connected',
   'cs.connecting':      'Connecting…',
+  'cs.probing':         'Verifying connection…',
   'cs.connected':       'Connected',
+  'cs.degraded':        'Connected — no internet',
+  'cs.degradedHint':    'The tunnel is up but no internet traffic is getting through. Try another server or reconnect.',
   'cs.disconnecting':   'Disconnecting…',
   'cs.error':           'Connection failed',
   'cs.reconnecting':    'Reconnecting…',
@@ -643,7 +646,10 @@ const FA: typeof EN = {
   // Connection status
   'cs.idle':            'متصل نیست',
   'cs.connecting':      'در حال اتصال...',
+  'cs.probing':         'در حال بررسی اتصال...',
   'cs.connected':       'متصل',
+  'cs.degraded':        'متصل — بدون اینترنت',
+  'cs.degradedHint':    'تونل برقرار است اما ترافیک اینترنت عبور نمی‌کند. سرور دیگری را امتحان کنید یا دوباره وصل شوید.',
   'cs.disconnecting':   'قطع اتصال...',
   'cs.error':           'اتصال ناموفق',
   'cs.reconnecting':    'اتصال مجدد...',
