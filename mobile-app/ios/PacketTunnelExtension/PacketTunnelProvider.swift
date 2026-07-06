@@ -344,8 +344,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 shared.set(TunnelState.degraded.rawValue, forKey: kTunnelStateKey)
                 shared.set("no internet: \(lastErr) after \(latencyMs)ms", forKey: kProbeDetailKey)
                 self.appendLog("PROBE: internet UNREACHABLE (\(lastErr)) after \(latencyMs)ms — DEGRADED (tunnel up, no traffic)")
-                self.submitTelemetry(event: "internet_fail", tunnelMode: tunnelMode,
-                                     internetOk: false, probeMs: latencyMs, errorCategory: "server_unreachable")
+                self.submitTelemetry(event: "internet_fail", errorCategory: "server_unreachable",
+                                     tunnelMode: tunnelMode, internetOk: false, probeMs: latencyMs)
             }
             self.flushLog(to: shared)
             shared.synchronize()
