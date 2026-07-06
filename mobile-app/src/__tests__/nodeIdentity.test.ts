@@ -11,7 +11,7 @@ describe('resolveNodeIdentity — authoritative node labelling', () => {
   });
 
   it('labels the Germany node from its real address', () => {
-    const id = resolveNodeIdentity('178.104.77.231');
+    const id = resolveNodeIdentity('91.107.158.53');
     expect(id.country).toBe('Germany');
     expect(id.flag).toBe('🇩🇪');
   });

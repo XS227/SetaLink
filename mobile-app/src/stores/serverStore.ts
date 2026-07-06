@@ -35,7 +35,7 @@ export const COMING_SOON_SERVERS: ServerRecord[] = [];
 interface NodeIdentity { country: string; city: string; flag: string }
 const NODE_IDENTITY: Record<string, NodeIdentity> = {
   '65.109.183.7':   { country: 'Finland', city: 'Hetzner · Helsinki', flag: '🇫🇮' },
-  '178.104.77.231': { country: 'Germany', city: 'Hetzner · Nürnberg', flag: '🇩🇪' },
+  '91.107.158.53': { country: 'Germany', city: 'Hetzner · Nürnberg', flag: '🇩🇪' },
 };
 export function resolveNodeIdentity(
   address?: string,
