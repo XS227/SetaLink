@@ -290,6 +290,21 @@ class XrayModule: NSObject {
 
     // MARK: - getDeviceInfo
 
+    // Smart Mode per-app bypass is ANDROID-ONLY. iOS consumer VPNs cannot do
+    // app-level split tunneling (NEPacketTunnelProvider has no per-app scoping
+    // outside MDM). These stubs keep bridge parity and answer honestly so the
+    // JS layer can feature-detect: empty app list, accepted-but-ignored save.
+    @objc func getInstalledApps(_ resolve: @escaping RCTPromiseResolveBlock,
+                                rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve("[]")
+    }
+
+    @objc func setBypassApps(_ packagesJson: String,
+                             resolver resolve: @escaping RCTPromiseResolveBlock,
+                             rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve(nil)
+    }
+
     @objc func getDeviceInfo(_ resolve: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
         resolve([
@@ -358,11 +373,26 @@ class XrayModule: NSObject {
     // MARK: - getTunnelState
 
     // Returns the last tunnel_state written by PacketTunnelProvider to the App Group.
-    // "connected_verified" means all probes (including SOCKS5) passed before iOS
-    // was told the tunnel is connected.
+    // Build 77 states: connecting → connected_probing → connected_verified, or
+    // degraded (tunnel up, real internet probe failed) / failed. Only
+    // "connected_verified" means genuinely online — the app must not show a green
+    // "connected" for "connected_probing" or "degraded".
     @objc func getTunnelState(_ resolve: @escaping RCTPromiseResolveBlock,
                                rejecter reject: @escaping RCTPromiseRejectBlock) {
         resolve(shared?.string(forKey: "tunnel_state") ?? "unknown")
+    }
+
+    // Build 77 — real probe + QUIC evidence for the diagnostics export (no mocks).
+    @objc func getProbeDiagnostics(_ resolve: @escaping RCTPromiseResolveBlock,
+                                    rejecter reject: @escaping RCTPromiseRejectBlock) {
+        resolve([
+            "tunnelState":  shared?.string(forKey: "tunnel_state") ?? "unknown",
+            "probeOk":      shared?.bool(forKey: Self.probeKey) ?? false,
+            "probeMs":      shared?.integer(forKey: "last_probe_latency_ms") ?? 0,
+            "probeAt":      shared?.integer(forKey: "last_probe_at") ?? 0,
+            "probeDetail":  shared?.string(forKey: "last_probe_detail") ?? "",
+            "quicEvidence": shared?.string(forKey: "last_quic_evidence") ?? "",
+        ])
     }
 
     // MARK: - runSelfTest

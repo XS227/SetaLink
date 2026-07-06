@@ -120,16 +120,18 @@ const selStyles = StyleSheet.create({
 interface SettingsProps {
   onBack?: () => void;
   onProfileImport?: () => void;
+  onBypassApps?: () => void;    // Android only: Smart Mode per-app bypass
   onSmartConnect?: () => void;   // relocated AI / smart-connection controls
   onDiagnostics?: () => void;    // connection tests & server config
   onActivity?: () => void;       // activity & usage
 }
 
-export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiagnostics, onActivity }: SettingsProps) {
+export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiagnostics, onActivity, onBypassApps }: SettingsProps) {
   const { t } = useT();
   const {
     protocol, dnsMode, language,
     autoConnect, biometricLock,
+    smartMode, toggleSmartMode,
     updateChannel, setUpdateChannel,
     setProtocol, setDnsMode, setLanguage,
     toggleAutoConnect, toggleBiometricLock, setBiometricLock,
@@ -252,6 +254,25 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
             options={['Cloudflare (DoH)', 'Google (DoH)', 'AdGuard (DoH)', 'Custom']}
             onChange={setDnsMode}
           />
+          <Divider />
+          <ToggleRow
+            label={t('st.smartMode')}
+            description={t('st.smartModeD')}
+            value={smartMode}
+            onChange={toggleSmartMode}
+          />
+          {Platform.OS === 'android' && onBypassApps && (
+            <>
+              <Divider />
+              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onBypassApps}>
+                <View>
+                  <Text style={selStyles.label}>{t('st.bypassApps')}</Text>
+                  <Text style={rowStyles.desc}>{t('st.bypassAppsD')}</Text>
+                </View>
+                <Text style={selStyles.chevron}>›</Text>
+              </TouchableOpacity>
+            </>
+          )}
           <Divider />
           <ToggleRow
             label={t('st.autoConnect')}

@@ -18,6 +18,24 @@ export interface DiagnosticsReportInput {
   routeHops:    RouteHop[];
   connection?:  ConnectionInfo | null;
   timestamp?:   number;        // defaults to now
+  /** Smart Mode / Iran Bypass: 'smart' (Iranian destinations bypass the
+   *  tunnel) or 'full' (everything through the VPN). */
+  routingMode?:     'smart' | 'full';
+  /** Active domain bypass rules when routingMode is 'smart'. */
+  bypassRuleCount?: number;
+  /** Android only: apps excluded from the VPN entirely. */
+  bypassAppCount?:  number;
+  /** Build 77 — authoritative observability facts, kept separate from the
+   *  illustrative health-check section so a reader can trust them. */
+  observability?: {
+    osTunnelEstablished: boolean;         // OS accepted the tunnel (completionHandler)
+    internetProbePassed: boolean | null;  // real external fetch result (null = pending)
+    probeLatencyMs?:     number;
+    probeDetail?:        string;          // e.g. 'cp.cloudflare.com 204 in 120ms'
+    nodeIdentity?:       string;          // actual connected node, e.g. 'Finland · Helsinki (65.109.183.7)'
+    quicVerdict?:        string;          // 'QUIC_BLACKHOLE_LIKELY' | 'QUIC_OK' | …
+    quicEvidence?:       string;          // raw 'TCP=… QUIC=… ⇒ VERDICT'
+  };
 }
 
 const STATUS_LABEL: Record<string, string> = { ok: 'Healthy', warn: 'Degraded', fail: 'Failed' };
@@ -39,6 +57,38 @@ export function buildDiagnosticsReport(i: DiagnosticsReportInput): string {
   // DNS status comes from the in-app diagnostic engine; when disconnected it is
   // unknown because no real DNS verification is performed.
   L.push(`DNS status:    ${i.tunnelStatus === 'connected' ? i.dnsStatus : 'Unknown (tunnel not connected)'}`);
+  if (i.routingMode) {
+    const smart = i.routingMode === 'smart';
+    const apps  = i.bypassAppCount ? `, ${i.bypassAppCount} bypassed app(s)` : '';
+    L.push(`Routing mode:  ${smart
+      ? `Smart (Iran bypass) — ${i.bypassRuleCount ?? 0} domain rule(s)${apps}`
+      : 'Full tunnel — all traffic through VPN'}`);
+  }
+
+  // Build 77 — authoritative, measured facts. Unlike the illustrative section
+  // below, every line here is a real observation, clearly separated so testers
+  // and support can trust it at a glance.
+  if (i.observability) {
+    const o = i.observability;
+    const yn = (b: boolean | null | undefined) =>
+      b === true ? 'YES' : b === false ? 'NO' : 'PENDING';
+    L.push('');
+    L.push('Observability (measured — not simulated)');
+    L.push('----------------------------------------');
+    L.push(`  OS tunnel established:  ${yn(o.osTunnelEstablished)}`);
+    L.push(`  Internet probe passed:  ${yn(o.internetProbePassed)}`
+      + (o.probeLatencyMs != null ? ` (${o.probeLatencyMs}ms)` : '')
+      + (o.probeDetail ? ` — ${o.probeDetail}` : ''));
+    L.push(`  Actual node identity:   ${o.nodeIdentity || 'unknown'}`);
+    L.push(`  QUIC evidence verdict:  ${o.quicVerdict || 'not collected'}`);
+    if (o.quicEvidence) L.push(`    ${o.quicEvidence}`);
+    // Plain-language state derived from the two facts above.
+    const state = !o.osTunnelEstablished ? 'NOT CONNECTED'
+      : o.internetProbePassed === true  ? 'CONNECTED (internet verified)'
+      : o.internetProbePassed === false ? 'DEGRADED (tunnel up, no internet)'
+      : 'VERIFYING…';
+    L.push(`  → Effective state:      ${state}`);
+  }
 
   if (i.connection) {
     L.push('');

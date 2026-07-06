@@ -38,6 +38,19 @@ export interface Spec extends TurboModule {
   /** Returns live traffic stats from the running tunnel. */
   getStats(): Promise<XrayStats>;
 
+  /**
+   * Android only: JSON array of launchable apps
+   * '[{"packageName":"com.x","appName":"X"}]'. Resolves '[]' on iOS.
+   */
+  getInstalledApps(): Promise<string>;
+
+  /**
+   * Android only: persist packages to exclude from the VPN
+   * (VpnService.addDisallowedApplication on next connect).
+   * Accepts a JSON string array. No-op on iOS.
+   */
+  setBypassApps(packagesJson: string): Promise<void>;
+
   /** Validate a config string without starting the tunnel. */
   validateConfig(config: string): Promise<boolean>;
 
@@ -96,6 +109,21 @@ export interface Spec extends TurboModule {
    * reported the tunnel as connected. iOS-only; Android returns "n/a".
    */
   getTunnelState(): Promise<string>;
+
+  /**
+   * Build 77 — real internet-probe + QUIC/UDP evidence (no simulated values).
+   * tunnelState: connecting|connected_probing|connected_verified|degraded|failed.
+   * quicEvidence: "TCP=… QUIC=… ⇒ VERDICT" from the dual-transport diagnostic.
+   * iOS-only; Android returns zeros/empty.
+   */
+  getProbeDiagnostics(): Promise<{
+    tunnelState:  string;
+    probeOk:      boolean;
+    probeMs:      number;
+    probeAt:      number;
+    probeDetail:  string;
+    quicEvidence: string;
+  }>;
 
   /**
    * 4-test in-app self-test suite. Runs while tunnel is active — URLSession traffic

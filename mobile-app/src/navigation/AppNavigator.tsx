@@ -31,6 +31,7 @@ import { SmartAIScreen }     from '../screens/SmartAIScreen';
 import { ActivityScreen }    from '../screens/ActivityScreen';
 import { ProfileScreen }     from '../screens/ProfileScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
+import { BypassAppsScreen }  from '../screens/BypassAppsScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
 import { BottomNav, NavTab }        from '../components/BottomNav';
 import { Toast }                    from '../components/Toast';
@@ -588,7 +589,16 @@ export function AppNavigator() {
               onSmartConnect={() => navigation.navigate('Main', { screen: 'AI' })}
               onActivity={() => navigation.navigate('Main', { screen: 'Activity' })}
               onDiagnostics={() => navigation.navigate('Diagnostics')}
+              onBypassApps={() => navigation.navigate('BypassApps')}
             />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="BypassApps"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <BypassAppsScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen
