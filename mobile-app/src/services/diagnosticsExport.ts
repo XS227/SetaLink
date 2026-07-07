@@ -55,8 +55,9 @@ export function buildDiagnosticsReport(i: DiagnosticsReportInput): string {
   L.push(`Platform:      ${i.platform} ${i.osVersion}`);
   L.push(`Tunnel status: ${i.tunnelStatus}`);
   // Exit IP is only valid when the tunnel is connected and a trace test confirmed
-  // the route. Never filled from a direct-network IP fetch.
-  L.push(`Exit IP:       ${i.exitIp || (i.tunnelStatus === 'connected' ? '(run internet test to detect)' : 'N/A — tunnel not connected')}`);
+  // the route. Never filled from a direct-network IP fetch, and never shown at all
+  // when the tunnel is down — a stale value would be misleading.
+  L.push(`Exit IP:       ${i.tunnelStatus !== 'connected' ? 'N/A — tunnel not connected' : (i.exitIp || '(run internet test to detect)')}`);
   L.push(`DNS status:    ${i.tunnelStatus === 'connected' ? i.dnsStatus : 'Unknown (tunnel not connected)'}`);
   if (i.routingMode) {
     const smart = i.routingMode === 'smart';
