@@ -17,6 +17,7 @@ import type { VpnAdapter }        from './vpnBridge';
 import type { VpnServer }         from '../stores/vpnStore';
 import type { ServerCredentials } from './serverConfigService';
 import { buildXrayConfigJson }    from './xrayConfigBuilder';
+import { getSelectedAppBypassDomains } from './iranBypassRules';
 
 export interface OptimizerProfile {
   id:             string;
@@ -209,7 +210,7 @@ function buildProfileConfig(
     smart = useSettingsStore.getState().smartMode === true;
   } catch { /* store unavailable — build without bypass */ }
   return buildXrayConfigJson(server, protocol, 'Cloudflare (DoH)', patchedCreds,
-    { smartBypass: smart });
+    { smartBypass: smart, extraBypassDomains: getSelectedAppBypassDomains() });
 }
 
 // Run the optimizer. Tests profiles sequentially, calls onUpdate after each one.

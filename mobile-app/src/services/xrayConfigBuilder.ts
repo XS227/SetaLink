@@ -326,6 +326,11 @@ export interface BuildOptions {
   /** Smart Mode / Iran Bypass: route Iranian destinations direct (outside the
    *  tunnel) while everything else keeps going through the VPN. */
   smartBypass?: boolean;
+  /** iOS per-app bypass: extra 'domain:…'/'full:…' entries (from the curated
+   *  app catalog) routed direct. Applied even when Smart Mode is OFF —
+   *  mirrors Android, where VpnService excludes the selected apps from the
+   *  TUN regardless of the Smart Mode toggle. */
+  extraBypassDomains?: string[];
 }
 
 /**
@@ -340,8 +345,13 @@ export interface BuildOptions {
  * exempts the packet-tunnel provider's own sockets from its tunnel routes —
  * the same mechanism the existing dns-out path already relies on.
  */
-function buildSmartBypassRules(): XrayRouting['rules'] {
-  const domains = getBypassDomains(Platform.OS === 'ios' ? 'ios' : 'android');
+function buildSmartBypassRules(smartOn: boolean, extraDomains: string[] = []): XrayRouting['rules'] {
+  const domains = [
+    ...(smartOn ? getBypassDomains(Platform.OS === 'ios' ? 'ios' : 'android') : []),
+    // iOS per-app bypass entries — already validated by getAppBypassDomains,
+    // and applied regardless of the Smart Mode toggle (Android parity).
+    ...(Array.isArray(extraDomains) ? extraDomains : []),
+  ];
   if (domains.length === 0) return []; // empty/malformed list → no rule, no crash
   return [{ type: 'field', domain: domains, outboundTag: 'direct' }];
 }
@@ -422,7 +432,7 @@ export function buildXrayConfig(
         // Snapp, Digikala, .ir sites etc. work while the VPN stays connected.
         // Everything that does not match continues to the rules below and,
         // when nothing matches, to the default 'proxy' outbound — unchanged.
-        ...(opts?.smartBypass ? buildSmartBypassRules() : []),
+        ...buildSmartBypassRules(opts?.smartBypass === true, opts?.extraBypassDomains),
         // UDP/443 (QUIC / HTTP-3) → proxy, so it tunnels through VLESS like every
         // other flow. Build 72 gave the tunnel real UDP support (HEV udp:'udp' +
         // socks-in udp:true) and the node's Xray forwards UDP over VLESS, so QUIC

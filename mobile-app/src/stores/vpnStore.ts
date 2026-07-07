@@ -447,8 +447,10 @@ export const useVpnStore = create<VpnState>((set, get) => {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useSettingsStore } = require('./settingsStore') as typeof import('./settingsStore');
         const { dnsMode, smartMode } = useSettingsStore.getState();
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getSelectedAppBypassDomains } = require('../services/iranBypassRules') as typeof import('../services/iranBypassRules');
         return buildXrayConfigJson(selectedServer, protocol, dnsMode, creds,
-          { smartBypass: smartMode });
+          { smartBypass: smartMode, extraBypassDomains: getSelectedAppBypassDomains() });
       } catch {
         return buildXrayConfigJson(selectedServer, protocol, 'Cloudflare (DoH)', creds);
       }

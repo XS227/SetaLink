@@ -119,7 +119,7 @@ const selStyles = StyleSheet.create({
 
 interface SettingsProps {
   onBack?: () => void;
-  onBypassApps?: () => void;    // Android only: Smart Mode per-app bypass
+  onBypassApps?: () => void;    // per-app bypass: Android = installed apps, iOS = curated domain catalog
   onSmartConnect?: () => void;   // relocated AI / smart-connection controls
   onDiagnostics?: () => void;    // connection tests & server config
   onActivity?: () => void;       // activity & usage
@@ -260,13 +260,15 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
             value={smartMode}
             onChange={toggleSmartMode}
           />
-          {Platform.OS === 'android' && onBypassApps && (
+          {onBypassApps && (
             <>
               <Divider />
               <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onBypassApps}>
                 <View>
                   <Text style={selStyles.label}>{t('st.bypassApps')}</Text>
-                  <Text style={rowStyles.desc}>{t('st.bypassAppsD')}</Text>
+                  <Text style={rowStyles.desc}>
+                    {t(Platform.OS === 'ios' ? 'st.bypassAppsDIos' : 'st.bypassAppsD')}
+                  </Text>
                 </View>
                 <Text style={selStyles.chevron}>›</Text>
               </TouchableOpacity>
