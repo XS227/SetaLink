@@ -123,6 +123,25 @@ export interface Spec extends TurboModule {
     probeAt:      number;
     probeDetail:  string;
     quicEvidence: string;
+    /** Build 80 — the extension's direct-path control measurement. */
+    quicEvidenceDirect: string;
+  }>;
+
+  /**
+   * Build 80 — QUIC/UDP evidence measured from the APP process (traverses the
+   * TUN, unlike the extension's direct-path probe). TCP vs forced-H3 to the
+   * same host; verdict: QUIC_OK | QUIC_BLACKHOLE_LIKELY | BOTH_FAIL |
+   * TCP_FAIL_QUIC_OK. iOS-only; absent on Android.
+   */
+  runQuicProbe(): Promise<{
+    verdict:    string;
+    line:       string;
+    tcpOk:      boolean;
+    tcpMs:      number;
+    tcpDetail:  string;
+    quicOk:     boolean;
+    quicMs:     number;
+    quicDetail: string;
   }>;
 
   /**

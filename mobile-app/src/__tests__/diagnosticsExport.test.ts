@@ -93,3 +93,37 @@ describe('diagnostics observability section (build 77)', () => {
     expect(out).not.toContain('Germany');
   });
 });
+
+// Build 80 — app-path vs direct-path QUIC evidence must be distinguishable in
+// the export, so a BOTH_FAIL direct-path control (expected from Iran) can never
+// be misread as a broken tunnel.
+describe('diagnostics observability (build 80: app-path + direct-path control)', () => {
+  const base80 = {
+    appVersion: '0.9.53', appBuild: '80', deviceId: 'sl-test', platform: 'ios',
+    osVersion: '18.5', tunnelStatus: 'connected', exitIp: null, dnsStatus: 'Unknown',
+    healthChecks: [], routeHops: [],
+  };
+  it('renders both evidence lines with their path labels', () => {
+    const out = buildReport77({ ...base80, observability: {
+      osTunnelEstablished: true, internetProbePassed: true, probeLatencyMs: 130,
+      nodeIdentity: 'Finland · Helsinki (65.109.183.7)',
+      quicVerdict: 'QUIC_OK',
+      quicEvidence: 'TCP=ok(200ms,HTTP 200) QUIC=ok(220ms,HTTP 200) ⇒ QUIC_OK [app-path]',
+      quicEvidenceDirect: 'TCP=fail(6500ms,timeout) QUIC=fail(6500ms,timeout) ⇒ BOTH_FAIL [direct-path]',
+    }});
+    expect(out).toContain('QUIC evidence verdict:  QUIC_OK');
+    expect(out).toContain('[app-path]');
+    expect(out).toContain('Direct-path control:');
+    expect(out).toContain('[direct-path]');
+    // The direct-path BOTH_FAIL must not override the app-path verdict line.
+    expect(out).toContain('⇒ QUIC_OK');
+  });
+  it('omits the direct-path line when the control was never collected', () => {
+    const out = buildReport77({ ...base80, observability: {
+      osTunnelEstablished: true, internetProbePassed: true,
+      quicVerdict: 'QUIC_OK',
+      quicEvidence: 'TCP=ok QUIC=ok ⇒ QUIC_OK [app-path]',
+    }});
+    expect(out).not.toContain('Direct-path control:');
+  });
+});
