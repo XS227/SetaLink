@@ -189,3 +189,59 @@ describe('Auto-select fastest server', () => {
     expect(useServerStore.getState().selectedId).toBe('fi-hel');
   });
 });
+
+// ── 7. QUIC (UDP/443) must not ride a Vision outbound ───────────────────────
+// xray-core rejects UDP/443 on VLESS outbounds with flow=xtls-rprx-vision
+// ("XTLS rejected UDP/443 traffic"), so Vision servers need a flow-less
+// 'proxy-quic' twin and the UDP/443 rule must target it.
+
+describe('QUIC outbound: Vision servers get a flow-less proxy-quic twin', () => {
+  const udp443Rule = (cfg: any) =>
+    cfg.routing.rules.find((r: any) => r.network === 'udp' && r.port === '443');
+
+  test('Vision creds → proxy-quic outbound exists, flow-less, same creds', () => {
+    const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, MOCK_CREDS);
+    const quic = cfg.outbounds.find((o: any) => o.tag === 'proxy-quic');
+    expect(quic).toBeDefined();
+    const quicUser = quic.settings.vnext[0].users[0];
+    expect(quicUser.flow).toBeUndefined();
+    expect(quicUser.id).toBe(MOCK_CREDS.uuid);
+    expect(quic.settings.vnext[0].address).toBe(MOCK_CREDS.address);
+    expect(quic.streamSettings.security).toBe('reality');
+    // main proxy outbound keeps its Vision flow untouched
+    const proxy = cfg.outbounds.find((o: any) => o.tag === 'proxy');
+    expect(proxy.settings.vnext[0].users[0].flow).toBe('xtls-rprx-vision');
+  });
+
+  test('Vision creds → UDP/443 rule targets proxy-quic', () => {
+    const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, MOCK_CREDS);
+    expect(udp443Rule(cfg).outboundTag).toBe('proxy-quic');
+  });
+
+  test('flow-less creds (Germany) → no proxy-quic, UDP/443 stays on proxy', () => {
+    const creds = { ...MOCK_CREDS, flow: '' };
+    const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, creds);
+    expect(cfg.outbounds.find((o: any) => o.tag === 'proxy-quic')).toBeUndefined();
+    expect(udp443Rule(cfg).outboundTag).toBe('proxy');
+  });
+
+  test('WebSocket protocol (never has flow) → no proxy-quic', () => {
+    const cfg: any = buildXrayConfig(
+      { ...MOCK_SERVER, protocol: 'WebSocket' }, 'WebSocket', 'Cloudflare (DoH)', false, MOCK_CREDS,
+    );
+    expect(cfg.outbounds.find((o: any) => o.tag === 'proxy-quic')).toBeUndefined();
+    expect(udp443Rule(cfg).outboundTag).toBe('proxy');
+  });
+
+  test('emergency config mirrors the same behavior', () => {
+    const vision: any = JSON.parse(buildEmergencyXrayConfigJson(MOCK_SERVER, 'Reality', MOCK_CREDS));
+    expect(vision.outbounds.find((o: any) => o.tag === 'proxy-quic')).toBeDefined();
+    expect(udp443Rule(vision).outboundTag).toBe('proxy-quic');
+
+    const noflow: any = JSON.parse(
+      buildEmergencyXrayConfigJson(MOCK_SERVER, 'Reality', { ...MOCK_CREDS, flow: '' }),
+    );
+    expect(noflow.outbounds.find((o: any) => o.tag === 'proxy-quic')).toBeUndefined();
+    expect(udp443Rule(noflow).outboundTag).toBe('proxy');
+  });
+});
