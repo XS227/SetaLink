@@ -92,7 +92,9 @@ function ni_anon(string $raw): string
 /** Validate an event value — unknown values become 'connect_fail'. */
 function ni_valid_event(string $e): string
 {
-    return in_array($e, ['connect_ok', 'connect_fail', 'internet_fail', 'probe_fail', 'quic_probe'], true) ? $e : 'connect_fail';
+    // quic_probe        — app-process (tunnel-path) QUIC evidence, build 80+
+    // quic_probe_direct — extension (direct-path) control measurement, build 80+
+    return in_array($e, ['connect_ok', 'connect_fail', 'internet_fail', 'probe_fail', 'quic_probe', 'quic_probe_direct'], true) ? $e : 'connect_fail';
 }
 
 /** Validate platform. */
@@ -258,7 +260,7 @@ function ni_node_scores(PDO $pdo, int $days = 7): array
                 AVG(CASE WHEN latency_ms IS NOT NULL THEN latency_ms END) AS avg_latency,
                 MAX(created_at)                                 AS last_at
            FROM connect_telemetry
-          WHERE created_at >= ? AND event != 'quic_probe'
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
           GROUP BY node_id
           ORDER BY total DESC"
     );
@@ -1648,7 +1650,7 @@ function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): arr
         "SELECT COALESCE(NULLIF(country,''),'??') AS country, node_id,
                 COUNT(*) AS total, SUM(event='connect_ok') AS ok
            FROM connect_telemetry
-          WHERE created_at >= ? AND event != 'quic_probe'
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
           GROUP BY country, node_id"
     );
     $st->execute([$since]);
