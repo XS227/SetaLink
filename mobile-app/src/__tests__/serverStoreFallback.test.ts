@@ -12,6 +12,7 @@ import {
   BUNDLED_CF_EDGE,
   BUNDLED_CF_EDGE_CREDS,
   CF_EDGE_ID,
+  compareForAutoSelect,
   useServerStore,
 } from '../stores/serverStore';
 
@@ -70,6 +71,26 @@ describe('bundled cf-edge fallback', () => {
     expect(st.servers.some((s) => s.id === 'fi-hel')).toBe(true);
     expect(st.servers.some((s) => s.id === CF_EDGE_ID)).toBe(true); // merged back
     expect(st.importedCreds[CF_EDGE_ID]).toBeDefined();
+  });
+
+  it('auto-select prefers real success rate, then stealth, over raw ping', () => {
+    const r = (o: any) => ({ country: '', city: '', flag: '', load: 0, protocol: 'Reality', ...o });
+    // 1. successScore wins even when a rival has much lower ping.
+    expect([
+      r({ id: 'fast-blocked', ping: 10, successScore: 40 }),
+      r({ id: 'reliable',     ping: 90, successScore: 95 }),
+    ].sort(compareForAutoSelect)[0].id).toBe('reliable');
+    // 2. No telemetry (fresh install): the Stealth/Recommended cf-edge beats a
+    //    lower-ping direct node — a censored user lands on a node that works.
+    expect([
+      r({ id: 'fi',  ping: 20 }),
+      r({ id: CF_EDGE_ID, ping: 60, tags: ['Recommended', 'Stealth'] }),
+    ].sort(compareForAutoSelect)[0].id).toBe(CF_EDGE_ID);
+    // 3. All else equal, lowest ping is the final tiebreak.
+    expect([
+      r({ id: 'slow', ping: 80 }),
+      r({ id: 'quick', ping: 15 }),
+    ].sort(compareForAutoSelect)[0].id).toBe('quick');
   });
 
   it('does not clobber fresher cf-edge creds returned by the catalog', async () => {

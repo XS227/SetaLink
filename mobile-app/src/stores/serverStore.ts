@@ -92,6 +92,31 @@ export const BUNDLED_CF_EDGE_CREDS: ServerCredentials = {
   wsPath:      '/cfws',
 };
 
+/** Ranking for the DEFAULT auto-selection (only used when the user has not
+ *  chosen a node). Raw server-side ping is a poor proxy for a censored user:
+ *  a low-ping direct node can be DPI-blocked/throttled from their network,
+ *  while the Cloudflare-fronted stealth node (higher nominal ping) actually
+ *  works. So we rank by, in order:
+ *    1. successScore — real per-node success rate from telemetry (backend).
+ *    2. a Recommended/Stealth tag — the reliable cf-edge, preferred when we
+ *       have no telemetry yet (fresh install) so censored users land on a
+ *       node that works instead of a fast-but-blocked one.
+ *    3. lowest health-check ping — final tiebreak.
+ *  The connect optimizer still validates real internet and fails over, so this
+ *  only changes which node the user STARTS on. */
+function isPreferredNode(s: ServerRecord): boolean {
+  return (s.tags ?? []).some((t) => t === 'Recommended' || t === 'Stealth');
+}
+export function compareForAutoSelect(a: ServerRecord, b: ServerRecord): number {
+  const sa = typeof a.successScore === 'number' ? a.successScore : -1;
+  const sb = typeof b.successScore === 'number' ? b.successScore : -1;
+  if (sb !== sa) return sb - sa;                       // higher success first
+  const ra = isPreferredNode(a) ? 1 : 0;
+  const rb = isPreferredNode(b) ? 1 : 0;
+  if (rb !== ra) return rb - ra;                       // stealth/recommended first
+  return a.ping - b.ping;                              // then lowest ping
+}
+
 /** Merge the bundled cf-edge node + creds into a servers list / creds map when
  *  missing. Never overwrites fresher catalog creds — additive only. */
 function ensureBundledFallback(
@@ -245,14 +270,14 @@ export const useServerStore = create<ServerState>()(
           isLoading:     false,
         });
 
-        // Auto-select the fastest connectable server when the user has no valid
+        // Auto-select the best connectable server when the user has no valid
         // selection (new install, or previously selected node was removed).
         // Respects an existing manual choice — never overrides it.
         const newIds = new Set(merged.servers.map((s) => s.id));
         if (!prevSelectedId || !newIds.has(prevSelectedId)) {
           const best = merged.servers
             .filter((s) => merged.creds[s.id])
-            .sort((a, b) => a.ping - b.ping)[0];
+            .sort(compareForAutoSelect)[0];
           if (best) {
             set({ selectedId: best.id });
             syncToVpnStore(best);
