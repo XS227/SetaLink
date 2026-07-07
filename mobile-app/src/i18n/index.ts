@@ -13,6 +13,14 @@ export const SUPPORTED_LANGUAGES: Array<{ code: Lang; nativeLabel: string; label
   { code: 'ru', nativeLabel: 'Русский', label: 'Russian' },
 ];
 
+// Maps a server tag / filter value ('Recommended', 'All', …) to its i18n key.
+// Returns '' for unknown values so callers can fall back to the raw string.
+const TAG_KEY: Record<string, string> = {
+  All: 'flt.all', Recommended: 'tag.recommended', Fastest: 'tag.fastest',
+  Stealth: 'tag.stealth', Streaming: 'tag.streaming',
+};
+export function tagLabelKey(tag: string): string { return TAG_KEY[tag] ?? ''; }
+
 // Reverse-lookup a stored language value (nativeLabel, English label, or code)
 // to its Lang code. Falls back to English so an unknown value never crashes.
 export function codeForLabel(value: string | undefined): Lang {
@@ -524,6 +532,21 @@ const EN = {
   'tr.receivedFrom':      'Received from {id}',
   'tr.statusReversed':    'Reversed',
   'tr.statusFlagged':     'Under review',
+
+  // Greetings, server tags/filters, section labels (build 79 localization sweep)
+  'greet.morning':   'Good morning',
+  'greet.afternoon': 'Good afternoon',
+  'greet.evening':   'Good evening',
+  'tag.recommended': 'Recommended',
+  'tag.fastest':     'Fastest',
+  'tag.stealth':     'Stealth',
+  'tag.streaming':   'Streaming',
+  'flt.all':         'All',
+  'sv.comingSoon':   'Coming soon',
+  'sv.soon':         'Soon',
+  'st.about':        'About',
+  'st.updates':      'Updates',
+  'st.updateChannel':'Update channel',
 };
 
 const FA: typeof EN = {
@@ -1028,6 +1051,20 @@ const FA: typeof EN = {
   'tr.receivedFrom':      'دریافت از {id}',
   'tr.statusReversed':    'بازگردانده شد',
   'tr.statusFlagged':     'در حال بررسی',
+
+  'greet.morning':   'صبح بخیر',
+  'greet.afternoon': 'ظهر بخیر',
+  'greet.evening':   'عصر بخیر',
+  'tag.recommended': 'پیشنهادی',
+  'tag.fastest':     'سریع‌ترین',
+  'tag.stealth':     'مخفی',
+  'tag.streaming':   'استریم',
+  'flt.all':         'همه',
+  'sv.comingSoon':   'به‌زودی',
+  'sv.soon':         'به‌زودی',
+  'st.about':        'درباره',
+  'st.updates':      'به‌روزرسانی‌ها',
+  'st.updateChannel':'کانال به‌روزرسانی',
 };
 
 export type TKey = keyof typeof EN;
@@ -1505,6 +1542,20 @@ const ZH: typeof EN = {
   'tr.receivedFrom': '已从 {id} 收到',
   'tr.statusReversed': '已撤销',
   'tr.statusFlagged': '审核中',
+
+  'greet.morning':   '早上好',
+  'greet.afternoon': '下午好',
+  'greet.evening':   '晚上好',
+  'tag.recommended': '推荐',
+  'tag.fastest':     '最快',
+  'tag.stealth':     '隐身',
+  'tag.streaming':   '流媒体',
+  'flt.all':         '全部',
+  'sv.comingSoon':   '即将推出',
+  'sv.soon':         '即将',
+  'st.about':        '关于',
+  'st.updates':      '更新',
+  'st.updateChannel':'更新渠道',
 };
 
 const RU: typeof EN = {
@@ -1980,6 +2031,20 @@ const RU: typeof EN = {
   'tr.receivedFrom': 'Получено от {id}',
   'tr.statusReversed': 'Отменено',
   'tr.statusFlagged': 'На проверке',
+
+  'greet.morning':   'Доброе утро',
+  'greet.afternoon': 'Добрый день',
+  'greet.evening':   'Добрый вечер',
+  'tag.recommended': 'Рекомендуемый',
+  'tag.fastest':     'Быстрейший',
+  'tag.stealth':     'Скрытный',
+  'tag.streaming':   'Стриминг',
+  'flt.all':         'Все',
+  'sv.comingSoon':   'Скоро',
+  'sv.soon':         'Скоро',
+  'st.about':        'О приложении',
+  'st.updates':      'Обновления',
+  'st.updateChannel':'Канал обновлений',
 };
 
 const STRINGS: Record<Lang, typeof EN> = { en: EN, fa: FA, zh: ZH, ru: RU };
@@ -1994,7 +2059,9 @@ export function useT() {
   const isRTL = lang === 'fa';
   const dict  = STRINGS[lang];
 
-  function t(key: TKey): string {
+  // Accepts known keys (with autocomplete) plus dynamic keys built at runtime
+  // (e.g. tagLabelKey/greeting). Unknown keys fall back to the key string.
+  function t(key: TKey | (string & {})): string {
     return (dict as any)[key] ?? (EN as any)[key] ?? key;
   }
 
