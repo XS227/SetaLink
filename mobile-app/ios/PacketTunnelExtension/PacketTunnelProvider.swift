@@ -723,14 +723,13 @@ misc:
     }
 
     /// Build 77 — QUIC/UDP evidence collector (diagnostics ONLY, no routing change).
-    /// Hypothesis: Instagram failures correlate with UDP/443 (QUIC) being
-    /// black-holed while TCP works. We test the SAME host over BOTH transports and
-    /// record the pair, so we can PROVE or DISPROVE the correlation from real
-    /// devices before touching production routing:
-    ///   • TCP/443 reachability to an IG-adjacent host (should succeed today)
-    ///   • QUIC/H3 handshake to the same host (expected to hang/fail if blackholed)
-    /// Uses URLSession H3 (`assumesHTTP3Capable`) purely as a measurement; results
-    /// go to the App Group + telemetry. Nothing is blocked or rerouted here.
+    /// Build 80 relabel: this runs in the EXTENSION process, whose own sockets are
+    /// exempt from the tunnel routes — so it measures the DIRECT path, not the
+    /// tunnel. From Iran instagram.com is blocked directly, which is why every
+    /// build 77-79 verdict was BOTH_FAIL regardless of tunnel health (proven by
+    /// tester telemetry vs node tcpdump). It is kept as a direct-path CONTROL
+    /// (e.g. proves domestic blocking) under its own key/event; the authoritative
+    /// tunnel-path measurement is XrayModule.runQuicProbe in the APP process.
     private func collectQuicEvidence(shared: UserDefaults, attempt: Int = 0) {
         DispatchQueue.global(qos: .background).async { [weak self] in
             guard let self = self else { return }
@@ -763,17 +762,17 @@ misc:
             // BOTH_FAIL is inconclusive (usually a not-yet-settled tunnel, not a
             // QUIC problem) — retry once before recording anything.
             if verdict == "BOTH_FAIL" && attempt == 0 {
-                self.appendLog("QUIC_EVIDENCE: BOTH_FAIL on first attempt — retrying in 8s")
+                self.appendLog("QUIC_EVIDENCE_DIRECT: BOTH_FAIL on first attempt — retrying in 8s")
                 DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 8) {
                     self.collectQuicEvidence(shared: shared, attempt: 1)
                 }
                 return
             }
             let line = "TCP=\(tcp.ok ? "ok" : "fail")(\(tcp.ms)ms,\(tcp.detail)) " +
-                       "QUIC=\(quic.ok ? "ok" : "fail")(\(quic.ms)ms,\(quic.detail)) ⇒ \(verdict)"
-            shared.set(line, forKey: "last_quic_evidence")
-            self.appendLog("QUIC_EVIDENCE: \(line)")
-            self.submitTelemetry(event: "quic_probe", tunnelMode: verdict,
+                       "QUIC=\(quic.ok ? "ok" : "fail")(\(quic.ms)ms,\(quic.detail)) ⇒ \(verdict) [direct-path]"
+            shared.set(line, forKey: "last_quic_evidence_direct")
+            self.appendLog("QUIC_EVIDENCE_DIRECT: \(line)")
+            self.submitTelemetry(event: "quic_probe_direct", tunnelMode: verdict,
                                  internetOk: tcp.ok, probeMs: quic.ms)
             self.flushLog(to: shared)
             shared.synchronize()
