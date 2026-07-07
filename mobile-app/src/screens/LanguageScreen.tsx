@@ -4,15 +4,19 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { useSettingsStore } from '../stores/settingsStore';
-import { SUPPORTED_LANGUAGES, type Lang } from '../i18n';
+import { SUPPORTED_LANGUAGES, codeForLabel, useT, type Lang } from '../i18n';
 
 interface Props {
   onSelect: () => void;
 }
 
+// Flag per language code (independent of native label).
+const LANG_FLAG: Record<Lang, string> = { en: '🇬🇧', fa: '🇮🇷', zh: '🇨🇳', ru: '🇷🇺' };
+
 export function LanguageScreen({ onSelect }: Props) {
   const { language, setLanguage, completeLanguageSelection } = useSettingsStore();
-  const currentLang: Lang = language === 'فارسی' ? 'fa' : 'en';
+  const { t } = useT();
+  const currentLang: Lang = codeForLabel(language);
 
   const fadeAnim  = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -36,9 +40,9 @@ export function LanguageScreen({ onSelect }: Props) {
     onSelect();
   };
 
-  const label = currentLang === 'fa'
-    ? { title: 'زبان خود را انتخاب کنید', subtitle: 'می‌توانید این را بعداً در تنظیمات تغییر دهید', continue: 'ادامه' }
-    : { title: 'Choose your language',    subtitle: 'You can change this later in Settings',         continue: 'Continue' };
+  // Localised via i18n so the screen updates into whatever language the user
+  // taps (works for every supported language, not just en/fa).
+  const label = { title: t('lang.title'), subtitle: t('lang.subtitle'), continue: t('lang.continue') };
 
   return (
     <View style={styles.screen}>
@@ -64,7 +68,7 @@ export function LanguageScreen({ onSelect }: Props) {
             >
               <View style={styles.optionLeft}>
                 <Text style={styles.optionFlag}>
-                  {lang.code === 'en' ? '🇬🇧' : '🇮🇷'}
+                  {LANG_FLAG[lang.code]}
                 </Text>
                 <View>
                   <Text style={[styles.optionNative, isSelected && styles.optionActiveText]}>

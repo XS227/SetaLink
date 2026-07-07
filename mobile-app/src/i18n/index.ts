@@ -15,7 +15,7 @@ export const SUPPORTED_LANGUAGES: Array<{ code: Lang; nativeLabel: string; label
 
 // Reverse-lookup a stored language value (nativeLabel, English label, or code)
 // to its Lang code. Falls back to English so an unknown value never crashes.
-function codeForLabel(value: string | undefined): Lang {
+export function codeForLabel(value: string | undefined): Lang {
   const hit = SUPPORTED_LANGUAGES.find(
     (l) => l.nativeLabel === value || l.label === value || l.code === value,
   );
