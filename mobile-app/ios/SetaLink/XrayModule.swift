@@ -383,19 +383,30 @@ class XrayModule: NSObject {
     }
 
     // Build 77 — real probe + QUIC evidence for the diagnostics export (no mocks).
+    // Typed locals, not one big literal: a 7-entry heterogeneous dictionary of
+    // `?? `-defaulted expressions makes the Swift type-checker give up
+    // ("unable to type-check this expression in reasonable time", build 80 CI).
     @objc func getProbeDiagnostics(_ resolve: @escaping RCTPromiseResolveBlock,
                                     rejecter reject: @escaping RCTPromiseRejectBlock) {
-        resolve([
-            "tunnelState":  shared?.string(forKey: "tunnel_state") ?? "unknown",
-            "probeOk":      shared?.bool(forKey: Self.probeKey) ?? false,
-            "probeMs":      shared?.integer(forKey: "last_probe_latency_ms") ?? 0,
-            "probeAt":      shared?.integer(forKey: "last_probe_at") ?? 0,
-            "probeDetail":  shared?.string(forKey: "last_probe_detail") ?? "",
-            "quicEvidence": shared?.string(forKey: "last_quic_evidence") ?? "",
-            // Build 80 — the extension's own (direct-path) measurement, kept as
-            // a control alongside the app-path evidence above.
-            "quicEvidenceDirect": shared?.string(forKey: "last_quic_evidence_direct") ?? "",
-        ])
+        let tunnelState: String = shared?.string(forKey: "tunnel_state") ?? "unknown"
+        let probeOk:     Bool   = shared?.bool(forKey: Self.probeKey) ?? false
+        let probeMs:     Int    = shared?.integer(forKey: "last_probe_latency_ms") ?? 0
+        let probeAt:     Int    = shared?.integer(forKey: "last_probe_at") ?? 0
+        let probeDetail: String = shared?.string(forKey: "last_probe_detail") ?? ""
+        let quicEvidence: String = shared?.string(forKey: "last_quic_evidence") ?? ""
+        // Build 80 — the extension's own (direct-path) measurement, kept as a
+        // control alongside the app-path evidence above.
+        let quicEvidenceDirect: String = shared?.string(forKey: "last_quic_evidence_direct") ?? ""
+        let out: [String: Any] = [
+            "tunnelState":        tunnelState,
+            "probeOk":            probeOk,
+            "probeMs":            probeMs,
+            "probeAt":            probeAt,
+            "probeDetail":        probeDetail,
+            "quicEvidence":       quicEvidence,
+            "quicEvidenceDirect": quicEvidenceDirect,
+        ]
+        resolve(out)
     }
 
     // MARK: - runQuicProbe (build 80)
@@ -443,11 +454,17 @@ class XrayModule: NSObject {
             self?.shared?.set(line, forKey: "last_quic_evidence")
             self?.shared?.set(Int(Date().timeIntervalSince1970), forKey: "last_quic_evidence_at")
             self?.shared?.synchronize()
-            resolve([
-                "verdict": verdict, "line": line,
-                "tcpOk": tcp.ok,  "tcpMs": tcp.ms,  "tcpDetail": tcp.detail,
-                "quicOk": quic.ok, "quicMs": quic.ms, "quicDetail": quic.detail,
-            ])
+            let out: [String: Any] = [
+                "verdict":    verdict,
+                "line":       line,
+                "tcpOk":      tcp.ok,
+                "tcpMs":      tcp.ms,
+                "tcpDetail":  tcp.detail,
+                "quicOk":     quic.ok,
+                "quicMs":     quic.ms,
+                "quicDetail": quic.detail,
+            ]
+            resolve(out)
         }
     }
 
