@@ -1,6 +1,25 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
+import { useT, tagLabelKey } from '../i18n';
+
+const REALINK_LOGO = require('../assets/logo_mark.png');
+
+// Brand nodes render the Realink logo mark instead of a flag emoji. Keyed off
+// the node id (Cloudflare-fronted stealth nodes are 'cf-*') so it works no
+// matter what the catalog puts in the flag field — older app builds that lack
+// this component simply show the catalog's fallback emoji.
+export function isBrandNode(id: string | undefined): boolean {
+  return !!id && id.startsWith('cf-');
+}
+
+/** Renders the Realink logo for brand nodes, otherwise the flag emoji. */
+export function FlagGlyph({ flag, brand, size = 28 }: { flag: string; brand?: boolean; size?: number }) {
+  if (brand) {
+    return <Image source={REALINK_LOGO} style={{ width: size, height: size, resizeMode: 'contain' }} />;
+  }
+  return <Text style={{ fontSize: size }}>{flag}</Text>;
+}
 
 export interface Server {
   id: string;
@@ -44,6 +63,7 @@ function LoadBar({ load }: { load: number }) {
 }
 
 function ServerRowComponent({ server, onSelect, onDelete }: Props) {
+  const { t } = useT();
   const pingLabel = server.ping === 0 ? '—' : `${server.ping}ms`;
 
   return (
@@ -54,7 +74,7 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
     >
       {/* Flag + Country */}
       <View style={styles.left}>
-        <Text style={styles.flag}>{server.flag}</Text>
+        <View style={styles.flagBox}><FlagGlyph flag={server.flag} brand={isBrandNode(server.id)} size={28} /></View>
         <View style={styles.nameBlock}>
           <View style={styles.nameRow}>
             <Text style={[styles.country, server.selected && styles.selectedText]} numberOfLines={1}>
@@ -85,7 +105,7 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
         <View style={styles.tags}>
           {server.tags.map(tag => (
             <View key={tag} style={[styles.tag, TAG_STYLES[tag] || styles.tagDefault]}>
-              <Text style={[styles.tagText, TAG_TEXT[tag] || {}]}>{tag}</Text>
+              <Text style={[styles.tagText, TAG_TEXT[tag] || {}]}>{t(tagLabelKey(tag)) || tag}</Text>
             </View>
           ))}
         </View>
@@ -157,6 +177,7 @@ const styles = StyleSheet.create({
   nameBlock: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], flexWrap: 'nowrap' },
   flag: { fontSize: 28 },
+  flagBox: { width: 30, alignItems: 'center', justifyContent: 'center' },
   country: {
     fontSize: Typography.size.base,
     fontFamily: Typography.family.heading,

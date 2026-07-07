@@ -13,7 +13,6 @@ export type RootStackParamList = {
   Diagnostics:   undefined;
   BypassApps:    undefined;
   Upgrade:       undefined;
-  ProfileImport: undefined;
   Inbox:         undefined;
   Transfer:      undefined;
 };

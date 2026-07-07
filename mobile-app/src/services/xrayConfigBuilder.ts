@@ -295,10 +295,42 @@ function buildProxyOutbound(server: VpnServer, protocol: string, creds?: ServerC
   return buildVlessRealityOutbound(server, creds);
 }
 
+/**
+ * QUIC needs a flow-less copy of the proxy outbound.
+ *
+ * xray-core hard-rejects UDP/443 on any VLESS outbound whose user has
+ * flow=xtls-rprx-vision ("XTLS rejected UDP/443 traffic") — a built-in
+ * anti-QUIC rule from the days when QUIC had to be forced onto TCP. So on
+ * Vision servers (Finland) the build-78 "UDP/443 → proxy" rule still drops
+ * every QUIC datagram inside the client, and Meta's mvfst apps (Instagram,
+ * WhatsApp) hang exactly as they did under the old blackhole rule.
+ *
+ * Vision only applies to raw TCP; UDP rides XUDP, and the server accepts
+ * XUDP from a flow-less connection of the same user (verified end-to-end
+ * against the Finland node 2026-07-07: udp:443 traversed and egressed).
+ * Returns null when the proxy outbound has no flow — the UDP/443 rule can
+ * keep pointing at 'proxy' (Germany flow="", WS/XHTTP/VMess have no flow).
+ */
+function buildQuicProxyOutbound(proxy: XrayOutbound): XrayOutbound | null {
+  const vnext = proxy.settings['vnext'] as Array<{ users?: Array<{ flow?: string }> }> | undefined;
+  const user  = vnext?.[0]?.users?.[0];
+  if (!user?.flow) return null;
+  const clone = JSON.parse(JSON.stringify(proxy)) as XrayOutbound;
+  const clonedUser = (clone.settings['vnext'] as Array<{ users: Array<{ flow?: string }> }>)[0]!.users[0]!;
+  delete clonedUser.flow;
+  clone.tag = 'proxy-quic';
+  return clone;
+}
+
 export interface BuildOptions {
   /** Smart Mode / Iran Bypass: route Iranian destinations direct (outside the
    *  tunnel) while everything else keeps going through the VPN. */
   smartBypass?: boolean;
+  /** iOS per-app bypass: extra 'domain:…'/'full:…' entries (from the curated
+   *  app catalog) routed direct. Applied even when Smart Mode is OFF —
+   *  mirrors Android, where VpnService excludes the selected apps from the
+   *  TUN regardless of the Smart Mode toggle. */
+  extraBypassDomains?: string[];
 }
 
 /**
@@ -313,8 +345,13 @@ export interface BuildOptions {
  * exempts the packet-tunnel provider's own sockets from its tunnel routes —
  * the same mechanism the existing dns-out path already relies on.
  */
-function buildSmartBypassRules(): XrayRouting['rules'] {
-  const domains = getBypassDomains(Platform.OS === 'ios' ? 'ios' : 'android');
+function buildSmartBypassRules(smartOn: boolean, extraDomains: string[] = []): XrayRouting['rules'] {
+  const domains = [
+    ...(smartOn ? getBypassDomains(Platform.OS === 'ios' ? 'ios' : 'android') : []),
+    // iOS per-app bypass entries — already validated by getAppBypassDomains,
+    // and applied regardless of the Smart Mode toggle (Android parity).
+    ...(Array.isArray(extraDomains) ? extraDomains : []),
+  ];
   if (domains.length === 0) return []; // empty/malformed list → no rule, no crash
   return [{ type: 'field', domain: domains, outboundTag: 'direct' }];
 }
@@ -328,6 +365,9 @@ export function buildXrayConfig(
   opts?:     BuildOptions,
 ): XrayConfig {
   const dns = DNS_PROFILES[dnsMode] ?? DNS_PROFILES['Cloudflare (DoH)']!;
+
+  const proxy     = buildProxyOutbound(server, protocol, creds);
+  const quicProxy = buildQuicProxyOutbound(proxy);
 
   return {
     log: { loglevel: debugMode ? 'debug' : 'warning' },
@@ -356,7 +396,10 @@ export function buildXrayConfig(
     ],
 
     outbounds: [
-      buildProxyOutbound(server, protocol, creds),
+      proxy,
+      // proxy-quic (only on Vision servers): flow-less twin of 'proxy' that
+      // carries UDP/443 — Vision outbounds reject QUIC (see buildQuicProxyOutbound).
+      ...(quicProxy ? [quicProxy] : []),
       { tag: 'direct', protocol: 'freedom', settings: {} },
       // dns-out: Xray's internal DNS resolver handles port-53 traffic directly,
       // avoiding the UDP ASSOCIATE path in SOCKS5 which is fragile on some devices.
@@ -389,17 +432,23 @@ export function buildXrayConfig(
         // Snapp, Digikala, .ir sites etc. work while the VPN stays connected.
         // Everything that does not match continues to the rules below and,
         // when nothing matches, to the default 'proxy' outbound — unchanged.
-        ...(opts?.smartBypass ? buildSmartBypassRules() : []),
-        // UDP/443 → blackhole. Chrome HTTP/3 uses QUIC (UDP port 443). Our VLESS/Reality
-        // outbound is TCP-only and cannot proxy UDP payloads. Without this rule, QUIC
-        // packets reach Xray via SOCKS5 ASSOCIATE but are silently dropped — Chrome never
-        // gets a rejection and shows ERR_QUIC_PROTOCOL_ERROR. Fast-rejecting UDP/443 makes
-        // Chrome immediately retry via TCP/TLS (HTTP/2 or HTTP/1.1), restoring browsing.
+        ...buildSmartBypassRules(opts?.smartBypass === true, opts?.extraBypassDomains),
+        // UDP/443 (QUIC / HTTP-3) → proxy, so it tunnels through VLESS like every
+        // other flow. Build 72 gave the tunnel real UDP support (HEV udp:'udp' +
+        // socks-in udp:true) and the node's Xray forwards UDP over VLESS, so QUIC
+        // now works end-to-end — this is exactly how Android runs, where Instagram
+        // and WhatsApp work. The old rule blackholed UDP/443 to force a TCP
+        // fallback, but iOS Meta apps (mvfst QUIC) do NOT fall back cleanly: they
+        // keep retrying the dropped QUIC and hang, which is why Instagram/WhatsApp
+        // never loaded on iOS. Tunnelling QUIC fixes them. (Bypassed Smart-Mode
+        // domains already went direct above, so their QUIC is unaffected.)
+        // On Vision servers this must target 'proxy-quic' — the Vision outbound
+        // itself rejects UDP/443 (see buildQuicProxyOutbound).
         {
           type:        'field',
           network:     'udp',
           port:        '443',
-          outboundTag: 'blackhole',
+          outboundTag: quicProxy ? 'proxy-quic' : 'proxy',
         },
         // All IPv6 → blackhole. Gives apps an immediate connection-refused so
         // Happy Eyeballs retries on IPv4 without waiting for a timeout.
@@ -435,6 +484,9 @@ export function buildEmergencyXrayConfigJson(
   protocol: string,
   creds?:  ServerCredentials,
 ): string {
+  const proxy     = buildProxyOutbound(server, protocol, creds);
+  const quicProxy = buildQuicProxyOutbound(proxy);
+
   const cfg: XrayConfig = {
     log: { loglevel: 'debug' },
 
@@ -463,7 +515,8 @@ export function buildEmergencyXrayConfigJson(
     ],
 
     outbounds: [
-      buildProxyOutbound(server, protocol, creds),
+      proxy,
+      ...(quicProxy ? [quicProxy] : []),
       { tag: 'direct', protocol: 'freedom', settings: {} },
       { tag: 'dns-out', protocol: 'dns', settings: {} },
       { tag: 'blackhole', protocol: 'blackhole', settings: {} },
@@ -473,8 +526,11 @@ export function buildEmergencyXrayConfigJson(
       domainStrategy: 'IPIfNonMatch',
       rules: [
         { type: 'field', port: '53', outboundTag: 'dns-out' },
-        // UDP/443 → blackhole: fast-reject QUIC so Chrome falls back to TCP HTTPS.
-        { type: 'field', network: 'udp', port: '443', outboundTag: 'blackhole' },
+        // UDP/443 (QUIC) → tunnel it (build 72+ UDP path). Fixes iOS
+        // Instagram/WhatsApp, which hang on a blackholed QUIC instead of
+        // falling back to TCP the way browsers do. Vision outbounds reject
+        // UDP/443, so those need the flow-less 'proxy-quic' twin.
+        { type: 'field', network: 'udp', port: '443', outboundTag: quicProxy ? 'proxy-quic' : 'proxy' },
         // Fast-fail all IPv6 so Happy Eyeballs immediately retries on IPv4.
         { type: 'field', ip: ['::/0'], outboundTag: 'blackhole' },
       ],

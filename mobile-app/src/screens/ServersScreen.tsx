@@ -14,7 +14,7 @@ import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../
 import { useVpnStore }  from '../stores/vpnStore';
 import { useAIStore }   from '../stores/aiStore';
 import { useAuthStore } from '../stores/authStore';
-import { useT }         from '../i18n';
+import { useT, tagLabelKey } from '../i18n';
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
@@ -25,7 +25,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const { t } = useT();
   const {
     selectedId, filter, query, selectServer, setFilter,
-    filteredServers, aiPicks, servers, isLoading, loadError,
+    filteredServers, servers, isLoading, loadError,
     importedCreds,
   } = useServerStore();
   const { connectionState, connect, switchServer } = useVpnStore();
@@ -69,7 +69,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   );
   const comingSoon = COMING_SOON_SERVERS.filter((s) => !liveCountries.has(s.country.toLowerCase()));
 
-  const picks   = aiPicks(activeMode);
   const filtered = filteredServers(activeMode)
     .filter((s) => !s.comingSoon)
     .map((s) => ({
@@ -78,7 +77,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       imported: !!importedCreds[s.id],
     }));
   const selected    = servers.find((s) => s.id === selectedId);
-  const showAIPicks = filter === 'All' && query === '';
 
   const ctaLabel = isTransitioning
     ? t('sv.switching')
@@ -120,9 +118,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           </View>
         )}
 
-        <EcosystemBanner seed={1} style={styles.ecoBanner} />
-        <WatchAdCard style={styles.ecoBanner} />
-
         {/* Filter tabs */}
         <ScrollView
           horizontal
@@ -137,57 +132,19 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
               onPress={() => setFilter(tab as FilterTab)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.filterLabel, filter === tab && styles.filterLabelActive]}>{tab}</Text>
+              <Text style={[styles.filterLabel, filter === tab && styles.filterLabelActive]}>{t(tagLabelKey(tab)) || tab}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* AI picks carousel */}
-        {showAIPicks && picks.filter(s => !s.comingSoon).length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.aiDot} />
-              <Text style={styles.sectionTitle}>{t('sv.aiPicks')}</Text>
-              <Text style={styles.sectionSub}>{t('sv.optimizedFor')} {activeMode} {t('sv.mode')}</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.smartRow}
-            >
-              {picks.filter(s => !s.comingSoon).map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[styles.smartCard, s.id === selectedId && styles.smartCardActive]}
-                  onPress={() => handleSelectServer(s.id)}
-                  activeOpacity={0.75}
-                >
-                  <Text style={styles.smartFlag}>{s.flag}</Text>
-                  <Text style={styles.smartCountry}>{s.country}</Text>
-                  <Text style={styles.smartCity}>{s.city}</Text>
-                  <View style={styles.smartMeta}>
-                    <View style={[
-                      styles.smartPingDot,
-                      { backgroundColor: s.ping < 60 ? Colors.emerald[400] : '#FFB800' },
-                    ]} />
-                    <Text style={styles.smartPing}>{s.ping > 0 ? `${s.ping}ms` : '—'}</Text>
-                  </View>
-                  {(s.tags ?? []).slice(0, 1).map((tag) => (
-                    <View key={tag} style={styles.smartTag}>
-                      <Text style={styles.smartTagText}>{tag}</Text>
-                    </View>
-                  ))}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {/* AI Picks carousel removed — the list below is the single source of
+            truth; users just scroll to pick an available server. */}
 
         {/* Active servers */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              {filter === 'All' ? t('sv.allServers') : filter}
+              {filter === 'All' ? t('sv.allServers') : (t(tagLabelKey(filter)) || filter)}
             </Text>
           </View>
 
@@ -196,13 +153,20 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.emptyText}>{t('sv.noResults')}</Text>
             </GlassCard>
           ) : (
-            filtered.map((s) => (
-              <ServerRow
-                key={s.id}
-                server={s}
-                onSelect={(sv) => handleSelectServer(sv.id)}
-                onDelete={undefined}
-              />
+            filtered.map((s, i) => (
+              <React.Fragment key={s.id}>
+                <ServerRow
+                  server={s}
+                  onSelect={(sv) => handleSelectServer(sv.id)}
+                  onDelete={undefined}
+                />
+                {/* Banners interleaved at fixed positions:
+                    after server 1 → watch-ad (free quota),
+                    after server 3 → Shahnameh, after server 4 → 3real. */}
+                {i === 0 && <WatchAdCard style={styles.ecoBanner} />}
+                {i === 2 && <EcosystemBanner pin="shahnameh" style={styles.ecoBanner} />}
+                {i === 3 && <EcosystemBanner pin="threereal" style={styles.ecoBanner} />}
+              </React.Fragment>
             ))
           )}
         </View>
@@ -211,7 +175,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         {comingSoon.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Coming soon</Text>
+              <Text style={styles.sectionTitle}>{t('sv.comingSoon')}</Text>
             </View>
             {comingSoon.map((s) => (
               <View key={s.id} style={styles.comingSoonRow}>
@@ -221,7 +185,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   <Text style={styles.comingSoonCity}>{s.city}</Text>
                 </View>
                 <View style={styles.comingSoonBadge}>
-                  <Text style={styles.comingSoonBadgeText}>Soon</Text>
+                  <Text style={styles.comingSoonBadgeText}>{t('sv.soon')}</Text>
                 </View>
               </View>
             ))}
@@ -285,7 +249,7 @@ const styles = StyleSheet.create({
   smartRow:      { gap: Spacing[3], paddingBottom: 4 },
   smartCard:     { width: 130, backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[1] },
   smartCardActive: { borderColor: Colors.border.active, backgroundColor: 'rgba(0,232,122,0.05)' },
-  smartFlag:     { fontSize: 28, marginBottom: 4 },
+  smartFlag:     { marginBottom: 4, alignItems: 'center' },
   smartCountry:  { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
   smartCity:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
   smartMeta:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },

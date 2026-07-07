@@ -426,19 +426,31 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const credCheck = validateCreds(creds);
       if (!credCheck.valid) throw new Error(credCheck.error!);
 
+      // A node's own transport must win over the global selectedProtocol
+      // default ('VLESS+Reality'): buildProxyOutbound checks the protocol
+      // string FIRST, so a WebSocket node (cf-edge) selected while the global
+      // default is Reality got a Reality config with an empty publicKey and
+      // could never connect. Reality nodes keep the old behavior.
+      const serverProtocol = selectedServer.protocol ?? '';
+      const baseProtocol = serverProtocol && !serverProtocol.includes('Reality')
+        ? serverProtocol
+        : selectedProtocol;
+
       // When auto-fallback is active, use the current fallback protocol instead of
       // the per-server default. This lets Reality → XHTTP → WebSocket progression
       // happen transparently without changing the selected server.
       const protocol = _fallbackActive
-        ? (FALLBACK_PROTOCOLS[_fallbackIdx] ?? selectedProtocol)
-        : selectedProtocol;
+        ? (FALLBACK_PROTOCOLS[_fallbackIdx] ?? baseProtocol)
+        : baseProtocol;
 
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useSettingsStore } = require('./settingsStore') as typeof import('./settingsStore');
         const { dnsMode, smartMode } = useSettingsStore.getState();
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { getSelectedAppBypassDomains } = require('../services/iranBypassRules') as typeof import('../services/iranBypassRules');
         return buildXrayConfigJson(selectedServer, protocol, dnsMode, creds,
-          { smartBypass: smartMode });
+          { smartBypass: smartMode, extraBypassDomains: getSelectedAppBypassDomains() });
       } catch {
         return buildXrayConfigJson(selectedServer, protocol, 'Cloudflare (DoH)', creds);
       }

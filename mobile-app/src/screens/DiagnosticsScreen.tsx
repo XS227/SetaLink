@@ -139,10 +139,16 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
   // Build a diagnostic report from current state, then let the user share or copy
   // it (BUG-3, Issue 2: the button previously had no handler).
   const buildReport = () => {
-    const dns = (snapshot?.healthChecks ?? []).find(h => h.label === 'DNS Resolution');
-    const dnsStatus = dns
-      ? (dns.status === 'ok' ? 'Healthy' : dns.status === 'warn' ? 'Degraded' : 'Failed')
-      : 'Unknown';
+    // Real DNS verdict only: a dns-labelled self test wins; otherwise a completed
+    // trace test proves hostnames resolved through the tunnel. (The old lookup
+    // matched a 'DNS Resolution' label the mock list never contained, so every
+    // exported report said "Unknown".)
+    const dnsTest = (selfTestResults ?? []).find(r => r.test.toLowerCase().includes('dns'));
+    const dnsStatus = dnsTest
+      ? (dnsTest.ok ? 'Healthy' : 'Failed')
+      : (traceTestResult?.routedIp
+          ? 'Healthy (hostnames resolved during internet test)'
+          : 'Unknown (run Self Test)');
     return buildDiagnosticsReport({
       appVersion:   APP_VERSION,
       appBuild:     APP_BUILD,
@@ -155,8 +161,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
       // not through the VPN, so it would show the device's real IP when disconnected.
       exitIp:       connectionState === 'connected' ? (traceTestResult?.routedIp ?? null) : null,
       dnsStatus,
-      healthChecks: snapshot?.healthChecks ?? [],
-      routeHops:    snapshot?.routeHops ?? [],
+      selfTest:     selfTestResults,
       connection:   snapshot?.connection ?? null,
       routingMode:     useSettingsStore.getState().smartMode ? 'smart' : 'full',
       bypassRuleCount: getActiveBypassRuleCount(Platform.OS === 'ios' ? 'ios' : 'android'),
