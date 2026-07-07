@@ -65,6 +65,10 @@ function db(): PDO {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
     $pdo->exec("PRAGMA journal_mode=WAL");
+    // Wait for concurrent writers instead of throwing 'database is locked'
+    // (admin/api.php already does this; the mobile endpoints crashed with an
+    // uncaught PDOException → HTTP 500 whenever a write raced the admin panel).
+    $pdo->exec("PRAGMA busy_timeout=5000");
     init_device_tables($pdo);
     qe_init_tables($pdo);
     dm_init_tables($pdo);
@@ -195,9 +199,10 @@ function fmt_gb(int $bytes): string {
 
 // Egress IPs of our own infrastructure — a request arriving from one of
 // these travelled through the tunnel (or is a local test), so it does not
-// identify the client. 91.107.158.53 = live Reality box, 5.249.252.221 =
-// this panel/edge box itself.
-const VPN_EGRESS_IPS = ['91.107.158.53', '5.249.252.221'];
+// identify the client. 65.109.183.7 = Finland, 91.107.158.53 = Germany,
+// 5.249.255.116 = dk-cph AND the cf-edge origin (both exit there),
+// 5.249.252.221 = this panel/edge box itself.
+const VPN_EGRESS_IPS = ['65.109.183.7', '91.107.158.53', '5.249.255.116', '5.249.252.221'];
 
 function client_ip(): string {
     foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $h) {
@@ -223,7 +228,10 @@ function client_ip(): string {
 // tunneled (or server-to-server) — geo-locating them would tag every connected
 // user as Finland/Germany and break the country flags in admin.
 function is_vpn_exit_ip(string $ip): bool {
-    static $known = ['65.109.183.7', '91.107.158.53', '5.249.252.221'];
+    // Keep in sync with VPN_EGRESS_IPS. The dynamic lookup below only covers
+    // bootstrap profiles (Finland/Germany) — v1-catalog-only nodes (dk-cph,
+    // cf-edge) must be listed here or their users get geo-tagged as Denmark.
+    static $known = ['65.109.183.7', '91.107.158.53', '5.249.255.116', '5.249.252.221'];
     if (in_array($ip, $known, true)) return true;
     try {
         $pdo = db();

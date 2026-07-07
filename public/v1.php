@@ -67,6 +67,8 @@ function v1_db(): PDO {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
     $pdo->exec("PRAGMA journal_mode=WAL");
+    // Wait for concurrent writers instead of throwing 'database is locked'.
+    $pdo->exec("PRAGMA busy_timeout=5000");
     $pdo->exec("CREATE TABLE IF NOT EXISTS node_allowlist (
         device_id TEXT NOT NULL, node_id TEXT NOT NULL, added_at TEXT,
         PRIMARY KEY (device_id, node_id))");
@@ -579,7 +581,14 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
         if (!ni_telemetry_gate($pdo, $clientIp)) { v1_send(['ok' => true, 'throttled' => true]); }
         $country = '';
+        // Posts sent while the tunnel is up arrive from our own exit node, so
+        // geo-locating that IP would label the row with the NODE's country
+        // (Finland/Denmark), poisoning learned routing. Leave country empty —
+        // untunneled posts (connect_fail fires before the tunnel is up) carry
+        // the user's real IP and provide the per-country signal.
+        $ownExitIps = ['65.109.183.7', '91.107.158.53', '5.249.255.116', '5.249.252.221'];
         if ($clientIp && $clientIp !== '127.0.0.1' && $clientIp !== '::1'
+            && !in_array($clientIp, $ownExitIps, true)
             && !str_starts_with($clientIp, '10.') && !str_starts_with($clientIp, '192.168.')) {
             // Use cached geo lookup if available in the analytics DB
             try {
