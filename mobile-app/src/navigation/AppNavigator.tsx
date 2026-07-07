@@ -37,7 +37,6 @@ import { BottomNav, NavTab }        from '../components/BottomNav';
 import { Toast }                    from '../components/Toast';
 import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { PremiumScreen }            from '../screens/PremiumScreen';
-import { ProfileImportScreen }     from '../screens/ProfileImportScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
 import { TransferScreen }          from '../screens/TransferScreen';
 
@@ -88,7 +87,6 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'settings')       { navigation.navigate('Settings');       return; }
     if ((tab as string) === 'diagnostics')    { navigation.navigate('Diagnostics');    return; }
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
-    if ((tab as string) === 'profileImport')  { navigation.navigate('ProfileImport'); return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
@@ -585,7 +583,6 @@ export function AppNavigator() {
           {({ navigation }) => (
             <SettingsScreen
               onBack={() => navigation.goBack()}
-              onProfileImport={() => navigation.navigate('ProfileImport')}
               onSmartConnect={() => navigation.navigate('Main', { screen: 'AI' })}
               onActivity={() => navigation.navigate('Main', { screen: 'Activity' })}
               onDiagnostics={() => navigation.navigate('Diagnostics')}
@@ -617,14 +614,8 @@ export function AppNavigator() {
             <PremiumScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
-        <Stack.Screen
-          name="ProfileImport"
-          options={{ animation: 'slide_from_right' }}
-        >
-          {({ navigation }) => (
-            <ProfileImportScreen onBack={() => navigation.goBack()} />
-          )}
-        </Stack.Screen>
+        {/* ProfileImport route removed (build 78): config import/export disabled
+            so credentials can't be exported to other clients. */}
         <Stack.Screen
           name="Inbox"
           options={{ animation: 'slide_from_right' }}
