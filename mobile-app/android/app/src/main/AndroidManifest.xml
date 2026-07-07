@@ -16,6 +16,11 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Biometric app-lock (BiometricPrompt). Also merged from androidx.biometric,
+         declared explicitly so the fingerprint/face prompt can never be missing. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+
     <!-- In-app APK self-update (DownloadManager + package installer prompt) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
