@@ -347,12 +347,58 @@ function v1_node_geo_hidden(PDO $pdo, string $nodeId): bool {
     return in_array(v1_client_country($pdo), $hide, true);
 }
 
+// CDN edge node — VLESS-over-WebSocket fronted by Cloudflare (cf.setalink.no,
+// orange-cloud → ProISP origin 5.249.255.116). The client connects to
+// Cloudflare's anycast IPs over normal HTTPS, so Iran sees only Cloudflare
+// traffic (unblockable) and the return path comes from Cloudflare, not the
+// filtered ProISP→Iran route that broke direct Reality. Verified end-to-end
+// 2026-07-07 (google 200, exit 5.249.255.116). Uses the app's WebSocket
+// builder: edgeAddress/wsPath/uuid + built-in TLS fragmentation for DPI.
+function v1_cfedge_node(): array {
+    return [
+        'id'   => 'cf-edge',
+        'test' => false,
+        'meta' => [
+            'id'       => 'cf-edge',
+            'country'  => 'Cloudflare',
+            'city'     => 'CDN Edge · Stealth',
+            'flag'     => '☁️',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'WebSocket',
+            'transport'=> 'ws',
+            'tags'     => ['Recommended', 'Stealth'],
+            'premium'  => false,
+        ],
+        'creds' => [
+            'uuid'        => '69205cf6-23a7-4e64-a1a2-865fd49471fe',
+            'address'     => 'cf.setalink.no',
+            'port'        => 443,
+            // WS builder reads edgeAddress (host + SNI + Host header), edgePort,
+            // wsPath. Cloudflare presents a valid cert for cf.setalink.no, so
+            // allowInsecure stays false.
+            'edgeAddress' => 'cf.setalink.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/cfws',
+            'sni'         => 'cf.setalink.no',
+            'publicKey'   => '',
+            'shortId'     => '',
+            'flow'        => '',
+            'fingerprint' => 'chrome',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            'altProfiles' => [],
+        ],
+    ];
+}
+
 function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
     $h = v1_helsinki_node($deviceId);
     $g = v1_germany_node();
     $d = v1_proisp_node();
-    return [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d];
+    $c = v1_cfedge_node();
+    return [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d, $c['id'] => $c];
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
