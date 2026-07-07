@@ -139,14 +139,28 @@ jest.mock('../services/api/servers.api', () => ({
     list: jest.fn().mockResolvedValue([
       { id: 'primary', country: 'Germany', city: 'Hetzner', flag: '🇩🇪', ping: 37, load: 20, protocol: 'Reality' },
       { id: 'fi-hel',  country: 'Finland', city: 'Helsinki', flag: '🇫🇮', ping: 21, load: 10, protocol: 'Reality' },
+      // CDN-fronted WebSocket node — served with publicKey:'' (no Reality key)
+      { id: 'cf-edge', country: 'Cloudflare', city: 'CDN Edge', flag: '☁️', ping: 99, load: 5, protocol: 'WebSocket' },
+      // Reality node with a broken (empty-key) config — must still be rejected
+      { id: 'broken-reality', country: 'Nowhere', city: 'X', flag: '❓', ping: 88, load: 5, protocol: 'Reality' },
     ]),
-    getConfig: jest.fn().mockImplementation((id: string) =>
-      Promise.resolve({
+    getConfig: jest.fn().mockImplementation((id: string) => {
+      if (id === 'cf-edge') {
+        return Promise.resolve({
+          uuid: 'uuid-cf-edge', publicKey: '', shortId: '',
+          address: 'cf.setalink.no', edgeAddress: 'cf.setalink.no', wsPath: '/cfws',
+          port: 443, sni: 'cf.setalink.no', flow: '', fingerprint: 'chrome',
+        });
+      }
+      if (id === 'broken-reality') {
+        return Promise.resolve({ uuid: 'uuid-broken', publicKey: '', address: '1.2.3.4', port: 443 });
+      }
+      return Promise.resolve({
         uuid: `uuid-${id}`, publicKey: `pk-${id}`, shortId: 'aa',
         address: id === 'fi-hel' ? '65.109.183.7' : '178.104.77.231',
         port: 443, sni: 'www.cloudflare.com', flow: 'xtls-rprx-vision', fingerprint: 'chrome',
-      })
-    ),
+      });
+    }),
   },
 }));
 
@@ -243,5 +257,29 @@ describe('QUIC outbound: Vision servers get a flow-less proxy-quic twin', () => 
     );
     expect(noflow.outbounds.find((o: any) => o.tag === 'proxy-quic')).toBeUndefined();
     expect(udp443Rule(noflow).outboundTag).toBe('proxy');
+  });
+});
+
+// ── 8. Catalog creds: WS/CDN nodes have no Reality publicKey ─────────────────
+// cf-edge is served with publicKey:"" — the old filter required a truthy key
+// for every node, so its creds were discarded, selecting it could never
+// connect, and the failover bounced the user back to the primary node.
+
+describe('fetchServers keeps creds for non-Reality nodes without publicKey', () => {
+  test('cf-edge (WebSocket, empty publicKey) creds are kept', async () => {
+    useServerStore.setState({ servers: [], selectedId: 'primary', importedCreds: {} } as any);
+    await useServerStore.getState().fetchServers('device-test-token');
+    const creds = useServerStore.getState().importedCreds['cf-edge'];
+    expect(creds).toBeDefined();
+    expect(creds.uuid).toBe('uuid-cf-edge');
+    expect(creds.wsPath).toBe('/cfws');
+  });
+
+  test('Reality node with empty publicKey is still rejected', async () => {
+    useServerStore.setState({ servers: [], selectedId: 'primary', importedCreds: {} } as any);
+    await useServerStore.getState().fetchServers('device-test-token');
+    expect(useServerStore.getState().importedCreds['broken-reality']).toBeUndefined();
+    // sanity: Reality nodes with real keys still work
+    expect(useServerStore.getState().importedCreds['fi-hel']).toBeDefined();
   });
 });
