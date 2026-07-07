@@ -1,4 +1,4 @@
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules } from 'react-native';
 
 const { BiometricModule } = NativeModules;
 
@@ -24,7 +24,7 @@ export interface BiometricService {
 
 export const BiometricService: BiometricService = {
   async isAvailable(): Promise<boolean> {
-    if (Platform.OS !== 'android' || !BiometricModule) return false;
+    if (!BiometricModule) return false;
     try {
       return await BiometricModule.isAvailable();
     } catch {
@@ -33,7 +33,7 @@ export const BiometricService: BiometricService = {
   },
 
   async getStatus(): Promise<BiometricStatus> {
-    if (Platform.OS !== 'android' || !BiometricModule?.getStatus) return 'unknown';
+    if (!BiometricModule?.getStatus) return 'unknown';
     try {
       return (await BiometricModule.getStatus()) as BiometricStatus;
     } catch {
@@ -42,7 +42,7 @@ export const BiometricService: BiometricService = {
   },
 
   async getStatusDetail(): Promise<BiometricStatusDetail> {
-    if (Platform.OS !== 'android' || !BiometricModule?.getStatusDetail) return { error: 'module_unavailable' };
+    if (!BiometricModule?.getStatusDetail) return { error: 'module_unavailable' };
     try {
       return (await BiometricModule.getStatusDetail()) as BiometricStatusDetail;
     } catch (e: any) {
@@ -54,7 +54,7 @@ export const BiometricService: BiometricService = {
     title = 'Realink',
     subtitle = 'Verify your identity to unlock',
   ): Promise<boolean> {
-    if (Platform.OS !== 'android' || !BiometricModule) return false;
+    if (!BiometricModule) return false;
     try {
       return await BiometricModule.authenticate(title, subtitle);
     } catch {
