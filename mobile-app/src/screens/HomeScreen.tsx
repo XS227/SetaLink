@@ -163,7 +163,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Image source={isConnected ? LOGO_CONNECTED : LOGO_DISCONNECTED} style={styles.brandLogoSmall} resizeMode="contain" />
               <Text style={styles.brandName}>Realink</Text>
             </View>
-            <Text style={styles.greeting}>{greeting}</Text>
+            <Text style={styles.greeting}>{t(greeting)}</Text>
             {user && (user.userId || user.deviceId) && (
               <Text style={styles.userId} numberOfLines={1}>
                 {user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`}

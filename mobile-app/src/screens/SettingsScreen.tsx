@@ -370,7 +370,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
           </TouchableOpacity>
         </Section>
 
-        <Section label="About">
+        <Section label={t('st.about')}>
           <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(GITHUB_URL)} activeOpacity={0.7}>
             <Text style={selStyles.label}>GitHub</Text>
             <Text style={selStyles.value}>github.com/XS227/SetaLink</Text>
@@ -382,7 +382,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
           </TouchableOpacity>
         </Section>
 
-        <Section label="Updates">
+        <Section label={t('st.updates')}>
           <View style={selStyles.row}>
             <View>
               <Text style={selStyles.label}>App version</Text>
@@ -417,7 +417,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
             <>
               <Divider />
               <SelectRow
-                label="Update channel"
+                label={t('st.updateChannel')}
                 value={updateChannel}
                 options={['stable', 'beta', 'experimental']}
                 onChange={(v: string) => setUpdateChannel(v as 'stable' | 'beta' | 'experimental')}

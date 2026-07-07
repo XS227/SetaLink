@@ -14,7 +14,7 @@ import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../
 import { useVpnStore }  from '../stores/vpnStore';
 import { useAIStore }   from '../stores/aiStore';
 import { useAuthStore } from '../stores/authStore';
-import { useT }         from '../i18n';
+import { useT, tagLabelKey } from '../i18n';
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
@@ -132,7 +132,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
               onPress={() => setFilter(tab as FilterTab)}
               activeOpacity={0.7}
             >
-              <Text style={[styles.filterLabel, filter === tab && styles.filterLabelActive]}>{tab}</Text>
+              <Text style={[styles.filterLabel, filter === tab && styles.filterLabelActive]}>{t(tagLabelKey(tab)) || tab}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -144,7 +144,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              {filter === 'All' ? t('sv.allServers') : filter}
+              {filter === 'All' ? t('sv.allServers') : (t(tagLabelKey(filter)) || filter)}
             </Text>
           </View>
 
@@ -175,7 +175,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         {comingSoon.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Coming soon</Text>
+              <Text style={styles.sectionTitle}>{t('sv.comingSoon')}</Text>
             </View>
             {comingSoon.map((s) => (
               <View key={s.id} style={styles.comingSoonRow}>
@@ -185,7 +185,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   <Text style={styles.comingSoonCity}>{s.city}</Text>
                 </View>
                 <View style={styles.comingSoonBadge}>
-                  <Text style={styles.comingSoonBadgeText}>Soon</Text>
+                  <Text style={styles.comingSoonBadgeText}>{t('sv.soon')}</Text>
                 </View>
               </View>
             ))}

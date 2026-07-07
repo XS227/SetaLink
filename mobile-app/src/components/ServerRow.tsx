@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
+import { useT, tagLabelKey } from '../i18n';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
@@ -62,6 +63,7 @@ function LoadBar({ load }: { load: number }) {
 }
 
 function ServerRowComponent({ server, onSelect, onDelete }: Props) {
+  const { t } = useT();
   const pingLabel = server.ping === 0 ? '—' : `${server.ping}ms`;
 
   return (
@@ -103,7 +105,7 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
         <View style={styles.tags}>
           {server.tags.map(tag => (
             <View key={tag} style={[styles.tag, TAG_STYLES[tag] || styles.tagDefault]}>
-              <Text style={[styles.tagText, TAG_TEXT[tag] || {}]}>{tag}</Text>
+              <Text style={[styles.tagText, TAG_TEXT[tag] || {}]}>{t(tagLabelKey(tag)) || tag}</Text>
             </View>
           ))}
         </View>
