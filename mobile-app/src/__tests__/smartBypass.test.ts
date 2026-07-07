@@ -16,6 +16,9 @@ import {
   DEFAULT_BYPASS_RULES,
   getBypassDomains,
   getActiveBypassRuleCount,
+  getAppBypassDomains,
+  getSelectedAppBypassDomains,
+  IOS_APP_BYPASS_CATALOG,
 } from '../services/iranBypassRules';
 
 const MOCK_SERVER: any = {
@@ -149,5 +152,67 @@ describe('bypass list never auto-classifies non-Iranian / dev / Meta', () => {
     for (const d of ['googleapis', 'gstatic', 'play.google', 'gvt1', 'gvt2']) {
       expect(joined).not.toContain(d);
     }
+  });
+});
+
+// ── iOS per-app bypass (curated domain catalog) ──────────────────────────────
+describe('iOS app-bypass catalog → domains', () => {
+  test('catalog integrity: unique ids, every domain valid and emitted', () => {
+    const ids = IOS_APP_BYPASS_CATALOG.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const all = getAppBypassDomains(ids);
+    const expected = IOS_APP_BYPASS_CATALOG.reduce((n, a) => n + a.domains.length, 0);
+    expect(all.length).toBe(expected); // a dropped domain = typo in the catalog
+    for (const d of all) expect(d).toMatch(/^domain:[a-z0-9.-]+$/);
+  });
+
+  test('selection maps to that app’s domains only', () => {
+    const out = getAppBypassDomains(['snapp']);
+    expect(out).toContain('domain:snapp.ir');
+    expect(out).toContain('domain:snapp.taxi');
+    expect(out.join(' ')).not.toContain('digikala');
+  });
+
+  test('unknown ids and bad input are safe', () => {
+    expect(getAppBypassDomains(['nope', 'also-nope'])).toEqual([]);
+    expect(getAppBypassDomains([])).toEqual([]);
+    expect(getAppBypassDomains('garbage' as any)).toEqual([]);
+    expect(getAppBypassDomains(null as any)).toEqual([]);
+  });
+
+  test('getSelectedAppBypassDomains never throws and returns an array', () => {
+    expect(() => getSelectedAppBypassDomains()).not.toThrow();
+    expect(Array.isArray(getSelectedAppBypassDomains())).toBe(true);
+  });
+});
+
+describe('builder: extraBypassDomains (iOS per-app bypass)', () => {
+  const extras = getAppBypassDomains(['snapp', 'banking']);
+
+  test('applied WITHOUT Smart Mode — Android parity (per-app bypass is independent of the toggle)', () => {
+    const cfg = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false,
+      MOCK_CREDS, { smartBypass: false, extraBypassDomains: extras });
+    const rule = bypassRule(cfg);
+    expect(rule).toBeDefined();
+    expect(rule!.domain).toContain('domain:snapp.ir');
+    expect(rule!.domain).toContain('domain:shaparak.ir');
+    // Smart Mode is OFF: the general .ir suffix rule must NOT ride along.
+    expect(rule!.domain).not.toContain('domain:ir');
+  });
+
+  test('merged with the Smart Mode list when the toggle is ON', () => {
+    const cfg = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false,
+      MOCK_CREDS, { smartBypass: true, extraBypassDomains: extras });
+    const rule = bypassRule(cfg);
+    expect(rule!.domain).toContain('domain:ir');        // Smart Mode list
+    expect(rule!.domain).toContain('domain:snapp.taxi'); // per-app extras
+  });
+
+  test('empty / malformed extras change nothing', () => {
+    const off = buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', MOCK_CREDS);
+    expect(buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', MOCK_CREDS,
+      { smartBypass: false, extraBypassDomains: [] })).toBe(off);
+    expect(buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', MOCK_CREDS,
+      { smartBypass: false, extraBypassDomains: 'garbage' as any })).toBe(off);
   });
 });

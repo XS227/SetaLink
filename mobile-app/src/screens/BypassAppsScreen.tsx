@@ -1,24 +1,32 @@
 /**
- * Smart Mode — "Bypass selected apps" (ANDROID ONLY).
+ * Smart Mode — "Bypass selected apps".
  *
- * Lists launchable apps; checked apps are excluded from the VPN entirely via
- * VpnService.addDisallowedApplication. Selection is persisted both in the
- * settings store (JS source of truth) and in native SharedPreferences (read
- * by XrayVpnService when it builds the TUN), so it survives even if JS is
- * not running when the service starts. Changes apply on the NEXT connect.
+ * ANDROID: lists launchable apps; checked apps are excluded from the VPN
+ * entirely via VpnService.addDisallowedApplication. Selection is persisted
+ * both in the settings store (JS source of truth) and in native
+ * SharedPreferences (read by XrayVpnService when it builds the TUN), so it
+ * survives even if JS is not running when the service starts.
  *
- * iOS never navigates here: consumer VPNs on iOS cannot do app-level split
- * tunneling, and we do not fake it — Smart Mode on iOS is domain-based only.
+ * iOS: consumer VPNs cannot do app-level split tunneling (no NetworkExtension
+ * equivalent of addDisallowedApplication), so the picker shows the curated
+ * IOS_APP_BYPASS_CATALOG instead — selecting an app routes its DOMAINS direct
+ * via Xray routing (getSelectedAppBypassDomains → extraBypassDomains). Same
+ * store field (bypassApps), but it holds catalog ids, not package names.
+ *
+ * Both platforms: changes apply on the NEXT connect.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
+  View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, Platform,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useSettingsStore } from '../stores/settingsStore';
+import { IOS_APP_BYPASS_CATALOG } from '../services/iranBypassRules';
 import { useT } from '../i18n';
 
 interface InstalledApp { packageName: string; appName: string; }
+
+const IS_IOS = Platform.OS === 'ios';
 
 function getNativeModule(): any {
   // Same two-step resolution vpnBridge uses: TurboModule first, then old-arch.
@@ -44,6 +52,16 @@ export function BypassAppsScreen({ onBack }: { onBack?: () => void }) {
   const [filter, setFilter]   = useState('');
 
   useEffect(() => {
+    if (IS_IOS) {
+      // Curated catalog — no installed-app listing exists on iOS. packageName
+      // carries the catalog id; the row subtitle shows the bypassed domains.
+      setApps(IOS_APP_BYPASS_CATALOG.map((a) => ({
+        packageName: a.id,
+        appName:     `${a.icon} ${a.name}`,
+      })));
+      setLoading(false);
+      return;
+    }
     (async () => {
       try {
         const raw = await getNativeModule()?.getInstalledApps?.();
@@ -63,9 +81,16 @@ export function BypassAppsScreen({ onBack }: { onBack?: () => void }) {
       ? bypassApps.filter((p) => p !== pkg)
       : [...bypassApps, pkg];
     setBypassApps(next);
-    // Mirror to native SharedPreferences — the VPN service reads it at TUN build.
-    getNativeModule()?.setBypassApps?.(JSON.stringify(next))?.catch?.(() => {});
+    // Android: mirror to native SharedPreferences — the VPN service reads it at
+    // TUN build. iOS reads the store at config build; nothing native to mirror.
+    if (!IS_IOS) {
+      getNativeModule()?.setBypassApps?.(JSON.stringify(next))?.catch?.(() => {});
+    }
   };
+
+  // iOS row subtitle: the domains that go direct for this catalog entry.
+  const iosDomains = (id: string): string =>
+    IOS_APP_BYPASS_CATALOG.find((a) => a.id === id)?.domains.join(' · ') ?? '';
 
   const shown = useMemo(
     () => apps.filter((a) =>
@@ -86,12 +111,15 @@ export function BypassAppsScreen({ onBack }: { onBack?: () => void }) {
         <Text style={styles.title}>{t('st.bypassApps')}</Text>
       </View>
 
-      <Text style={styles.note}>{t('st.bypassAppsD')}</Text>
+      <Text style={styles.note}>{t(IS_IOS ? 'st.bypassAppsDIos' : 'st.bypassAppsD')}</Text>
       {/* SSH / developer apps are user-selected only — never auto-classified as
-          Iranian. Their target server may be Iranian OR foreign. */}
-      <View style={styles.sshInfo}>
-        <Text style={styles.sshInfoText}>{t('st.bypassSshInfo')}</Text>
-      </View>
+          Iranian. Their target server may be Iranian OR foreign. Android-only:
+          the iOS catalog has no SSH/developer entries. */}
+      {!IS_IOS && (
+        <View style={styles.sshInfo}>
+          <Text style={styles.sshInfoText}>{t('st.bypassSshInfo')}</Text>
+        </View>
+      )}
       {bypassApps.length > 0 && (
         <Text style={styles.count}>{bypassApps.length} selected</Text>
       )}
@@ -117,7 +145,7 @@ export function BypassAppsScreen({ onBack }: { onBack?: () => void }) {
               <TouchableOpacity style={styles.row} onPress={() => toggle(item.packageName)} activeOpacity={0.75}>
                 <View style={styles.rowLeft}>
                   <Text style={styles.appName}>{item.appName}</Text>
-                  <Text style={styles.pkg}>{item.packageName}</Text>
+                  <Text style={styles.pkg}>{IS_IOS ? iosDomains(item.packageName) : item.packageName}</Text>
                 </View>
                 <View style={[styles.check, on && styles.checkOn]}>
                   {on && <Text style={styles.checkMark}>✓</Text>}
