@@ -113,3 +113,80 @@ export function getBypassDomains(
 export function getActiveBypassRuleCount(platform: 'android' | 'ios'): number {
   return getBypassDomains(platform).length;
 }
+
+// ── iOS per-app bypass (domain-based) ────────────────────────────────────────
+// iOS cannot exclude apps from a consumer VPN (no VpnService.
+// addDisallowedApplication equivalent in NetworkExtension), so the Android
+// per-app picker is approximated with a curated app → domains catalog: the
+// selected apps' domains are routed direct, exactly like Smart Mode rules.
+// Covers the real use case (Iranian apps that block foreign VPN exits) without
+// pretending to do true app-level split tunneling.
+
+export interface BypassCatalogApp {
+  id:      string;   // stable id persisted in settingsStore.bypassApps on iOS
+  name:    string;   // display name (brand names, not localized)
+  icon:    string;   // emoji glyph for the list row
+  domains: string[]; // domain_suffix values routed direct when selected
+}
+
+export const IOS_APP_BYPASS_CATALOG: BypassCatalogApp[] = [
+  { id: 'snapp',      name: 'Snapp',       icon: '🚕', domains: ['snapp.ir', 'snapp.taxi', 'snapp.site'] },
+  { id: 'tapsi',      name: 'Tapsi',       icon: '🚖', domains: ['tapsi.cab', 'tapsi.ir'] },
+  { id: 'digikala',   name: 'Digikala',    icon: '🛒', domains: ['digikala.com', 'digikala.ir', 'dkstatics.com'] },
+  { id: 'divar',      name: 'Divar',       icon: '📦', domains: ['divar.ir'] },
+  { id: 'sheypoor',   name: 'Sheypoor',    icon: '🏷️', domains: ['sheypoor.com'] },
+  { id: 'rubika',     name: 'Rubika',      icon: '💬', domains: ['rubika.ir'] },
+  { id: 'bale',       name: 'Bale',        icon: '💬', domains: ['bale.ai', 'balep.ir'] },
+  { id: 'eitaa',      name: 'Eitaa',       icon: '💬', domains: ['eitaa.com', 'eitaa.ir'] },
+  { id: 'aparat',     name: 'Aparat',      icon: '🎬', domains: ['aparat.com', 'aparat.ir'] },
+  { id: 'filimo',     name: 'Filimo',      icon: '🎬', domains: ['filimo.com', 'filimo.ir'] },
+  { id: 'cafebazaar', name: 'Cafe Bazaar', icon: '🏪', domains: ['cafebazaar.ir'] },
+  { id: 'myket',      name: 'Myket',       icon: '🏪', domains: ['myket.ir'] },
+  { id: 'banking',    name: 'Banking & payments', icon: '🏦',
+    domains: ['shaparak.ir', 'bmi.ir', 'bankmelli.ir', 'mellatbank.ir', 'banksepah.ir',
+              'bsi.ir', 'enbank.ir', 'samanbank.ir', 'sb24.ir', 'sep.ir', 'zarinpal.com'] },
+  { id: 'gov',        name: 'Government (my.gov.ir)', icon: '🏛️', domains: ['gov.ir', 'sana.ir'] },
+];
+
+/**
+ * Xray domain entries for the catalog apps the user selected on iOS.
+ * Unknown ids and malformed domains are skipped — same safety contract as
+ * getBypassDomains: bad input must never prevent the tunnel from starting.
+ */
+export function getAppBypassDomains(selectedIds: string[]): string[] {
+  try {
+    const out: string[] = [];
+    for (const app of IOS_APP_BYPASS_CATALOG) {
+      if (!Array.isArray(selectedIds) || !selectedIds.includes(app.id)) continue;
+      for (const d of app.domains) {
+        if (typeof d === 'string' && d.length > 0 && d.length < 254 && DOMAIN_RE.test(d)) {
+          out.push(`domain:${d}`);
+        }
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Domains for the app-bypass selection currently persisted in the settings
+ * store — the value config-build call sites pass as extraBypassDomains.
+ * Android returns []: there bypassApps holds package names that VpnService
+ * excludes natively at TUN build, independent of any Xray routing. Reads
+ * lazily and defensively (same pattern the call sites use for smartMode) so
+ * a store hiccup can never prevent the tunnel from starting.
+ */
+export function getSelectedAppBypassDomains(): string[] {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Platform } = require('react-native');
+    if (Platform.OS !== 'ios') return [];
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useSettingsStore } = require('../stores/settingsStore') as typeof import('../stores/settingsStore');
+    return getAppBypassDomains(useSettingsStore.getState().bypassApps);
+  } catch {
+    return [];
+  }
+}

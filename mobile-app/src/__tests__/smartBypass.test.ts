@@ -7,7 +7,7 @@
  *   4. telegram.org is NOT bypassed → still through VPN.
  *   6. Smart Mode OFF → config is byte-identical to the pre-feature config.
  *   7. Rule ordering: dns-out wins before bypass; bypass wins before the
- *      UDP/443 blackhole; default proxy fallback untouched.
+ *      UDP/443 tunnelled (QUIC via proxy); default proxy fallback untouched.
  *   9. Malformed/empty rule list → no crash, no rule emitted.
  */
 
@@ -16,6 +16,9 @@ import {
   DEFAULT_BYPASS_RULES,
   getBypassDomains,
   getActiveBypassRuleCount,
+  getAppBypassDomains,
+  getSelectedAppBypassDomains,
+  IOS_APP_BYPASS_CATALOG,
 } from '../services/iranBypassRules';
 
 const MOCK_SERVER: any = {
@@ -69,7 +72,7 @@ describe('Smart Mode ON — bypass rules', () => {
     expect(joined).not.toMatch(/youtube/);
   });
 
-  test('case 7: rule order — dns-out before bypass, bypass before udp443 blackhole', () => {
+  test('case 7: rule order — dns-out before bypass, bypass before udp443 (QUIC) rule', () => {
     const rules = cfg.routing.rules;
     const dnsIdx    = rules.findIndex((r) => r.outboundTag === 'dns-out');
     const bypassIdx = rules.findIndex((r) => r.outboundTag === 'direct' && Array.isArray(r.domain));
@@ -149,5 +152,120 @@ describe('bypass list never auto-classifies non-Iranian / dev / Meta', () => {
     for (const d of ['googleapis', 'gstatic', 'play.google', 'gvt1', 'gvt2']) {
       expect(joined).not.toContain(d);
     }
+  });
+});
+
+// ── iOS per-app bypass (curated domain catalog) ──────────────────────────────
+describe('iOS app-bypass catalog → domains', () => {
+  test('catalog integrity: unique ids, every domain valid and emitted', () => {
+    const ids = IOS_APP_BYPASS_CATALOG.map((a) => a.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const all = getAppBypassDomains(ids);
+    const expected = IOS_APP_BYPASS_CATALOG.reduce((n, a) => n + a.domains.length, 0);
+    expect(all.length).toBe(expected); // a dropped domain = typo in the catalog
+    for (const d of all) expect(d).toMatch(/^domain:[a-z0-9.-]+$/);
+  });
+
+  test('selection maps to that app’s domains only', () => {
+    const out = getAppBypassDomains(['snapp']);
+    expect(out).toContain('domain:snapp.ir');
+    expect(out).toContain('domain:snapp.taxi');
+    expect(out.join(' ')).not.toContain('digikala');
+  });
+
+  test('unknown ids and bad input are safe', () => {
+    expect(getAppBypassDomains(['nope', 'also-nope'])).toEqual([]);
+    expect(getAppBypassDomains([])).toEqual([]);
+    expect(getAppBypassDomains('garbage' as any)).toEqual([]);
+    expect(getAppBypassDomains(null as any)).toEqual([]);
+  });
+
+  test('getSelectedAppBypassDomains never throws and returns an array', () => {
+    expect(() => getSelectedAppBypassDomains()).not.toThrow();
+    expect(Array.isArray(getSelectedAppBypassDomains())).toBe(true);
+  });
+});
+
+describe('builder: extraBypassDomains (iOS per-app bypass)', () => {
+  const extras = getAppBypassDomains(['snapp', 'banking']);
+
+  test('applied WITHOUT Smart Mode — Android parity (per-app bypass is independent of the toggle)', () => {
+    const cfg = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false,
+      MOCK_CREDS, { smartBypass: false, extraBypassDomains: extras });
+    const rule = bypassRule(cfg);
+    expect(rule).toBeDefined();
+    expect(rule!.domain).toContain('domain:snapp.ir');
+    expect(rule!.domain).toContain('domain:shaparak.ir');
+    // Smart Mode is OFF: the general .ir suffix rule must NOT ride along.
+    expect(rule!.domain).not.toContain('domain:ir');
+  });
+
+  test('merged with the Smart Mode list when the toggle is ON', () => {
+    const cfg = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false,
+      MOCK_CREDS, { smartBypass: true, extraBypassDomains: extras });
+    const rule = bypassRule(cfg);
+    expect(rule!.domain).toContain('domain:ir');        // Smart Mode list
+    expect(rule!.domain).toContain('domain:snapp.taxi'); // per-app extras
+  });
+
+  test('empty / malformed extras change nothing', () => {
+    const off = buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', MOCK_CREDS);
+    expect(buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', MOCK_CREDS,
+      { smartBypass: false, extraBypassDomains: [] })).toBe(off);
+    expect(buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', MOCK_CREDS,
+      { smartBypass: false, extraBypassDomains: 'garbage' as any })).toBe(off);
+  });
+});
+
+// ── Platform parity ──────────────────────────────────────────────────────────
+// The Xray config is built by SHARED code: routing (proxy-quic/Vision, DNS-out,
+// UDP/443 → tunnel, IPv6 blackhole) must be byte-identical on both platforms.
+// The ONLY intended platform differences are (a) getBypassDomains' platform
+// filter on the rule list and (b) per-app bypass mechanics: Android excludes
+// packages natively in VpnService, iOS routes catalog domains via
+// getSelectedAppBypassDomains. If this test fails, a platform fork crept into
+// the builder — that must be a conscious decision, not an accident.
+describe('platform parity — shared config builder', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Platform } = require('react-native');
+
+  const onPlatform = <T,>(os: 'ios' | 'android', fn: () => T): T => {
+    const restore = jest.replaceProperty(Platform, 'OS', os);
+    try { return fn(); } finally { restore.restore(); }
+  };
+
+  const VISION_CREDS: any = { ...MOCK_CREDS, flow: 'xtls-rprx-vision' };
+
+  test('Android and iOS build identical configs (smart off, smart on, vision)', () => {
+    const cases: Array<[any, any]> = [
+      [MOCK_CREDS, undefined],
+      [MOCK_CREDS, { smartBypass: true }],
+      [VISION_CREDS, { smartBypass: true }],
+    ];
+    for (const [creds, opts] of cases) {
+      const ios     = onPlatform('ios',     () => buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', creds, opts));
+      const android = onPlatform('android', () => buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', creds, opts));
+      expect(android).toBe(ios);
+    }
+  });
+
+  test('Vision QUIC fix on BOTH platforms: proxy-quic twin exists and carries UDP/443', () => {
+    for (const os of ['ios', 'android'] as const) {
+      const cfg = onPlatform(os, () =>
+        buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, VISION_CREDS));
+      const quicOut = cfg.outbounds.find((o) => o.tag === 'proxy-quic');
+      expect(quicOut).toBeDefined();
+      const udp443 = cfg.routing.rules.find((r) => r.network === 'udp' && r.port === '443');
+      expect(udp443!.outboundTag).toBe('proxy-quic');
+    }
+  });
+
+  test('per-app bypass platform semantics: domains on iOS, [] on Android', () => {
+    expect(onPlatform('android', () => getSelectedAppBypassDomains())).toEqual([]);
+    // iOS reads the settings store; result depends on stored selection but the
+    // call must be safe and produce only validated 'domain:' entries.
+    const ios = onPlatform('ios', () => getSelectedAppBypassDomains());
+    expect(Array.isArray(ios)).toBe(true);
+    for (const d of ios) expect(d).toMatch(/^domain:/);
   });
 });

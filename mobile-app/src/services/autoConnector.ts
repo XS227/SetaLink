@@ -25,6 +25,7 @@ import { getLastConnectProbeOk, getLastConnectFailureCategory } from './vpnBridg
 import { recordSuccess, recordFailure, sortByHistory, getTopProfiles } from './successHistory';
 import { getRemoteConfig, isKillSwitched, invalidateRemoteConfig } from './remoteConfigService';
 import { getSpoofSnisSync, prefetchBundle } from './profileBundleService';
+import { getSelectedAppBypassDomains } from './iranBypassRules';
 import { uploadConnectTelemetry }              from './api/telemetry.api';
 import type { TelemetryEvent, ConnectTelemetryPayload } from './api/telemetry.api';
 import { APP_VERSION, APP_BUILD_CODE } from '../utils/version';
@@ -376,7 +377,7 @@ function buildConfig(def: ProfileDef, server: VpnServer, creds: ServerCredential
   return def.emergency
     ? buildEmergencyXrayConfigJson(server, protoKey, patched)
     : buildXrayConfigJson(server, protoKey, 'Cloudflare (DoH)', patched,
-        { smartBypass: _smartModeOn() });
+        { smartBypass: _smartModeOn(), extraBypassDomains: getSelectedAppBypassDomains() });
 }
 
 // Smart Mode / Iran Bypass state — read defensively so a store hiccup can

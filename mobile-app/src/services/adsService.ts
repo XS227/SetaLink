@@ -10,14 +10,21 @@
  * AdMob generates the transaction_id.
  */
 
+import { Platform } from 'react-native';
 import mobileAds, {
   RewardedAd, RewardedAdEventType, AdEventType, TestIds, MaxAdContentRating,
 } from 'react-native-google-mobile-ads';
 
 // Real ids (must match backend admob_app_id / admob_rewarded_unit_id). Test ad unit
 // in dev so we never serve live ads against test traffic.
-export const ADMOB_APP_ID  = 'ca-app-pub-5788265416382988~2740153482';
-const REWARDED_UNIT_PROD   = 'ca-app-pub-5788265416382988/5769978218';
+// AdMob ad units belong to ONE app each — the Android unit never fills on iOS,
+// which is why rewarded ads were dead there until the iOS unit existed.
+export const ADMOB_APP_ID  = Platform.OS === 'ios'
+  ? 'ca-app-pub-5788265416382988~9590370979'
+  : 'ca-app-pub-5788265416382988~2740153482';
+const REWARDED_UNIT_PROD   = Platform.OS === 'ios'
+  ? 'ca-app-pub-5788265416382988/2879120797'
+  : 'ca-app-pub-5788265416382988/5769978218';
 
 // Diagnostics escape hatch: force Google's always-fill TEST rewarded unit even in
 // release. Confirmed the SDK/integration once (v0.9.45) — keep OFF for production;

@@ -7,7 +7,7 @@ import { GlassCard } from '../components/GlassCard';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useServerStore }   from '../stores/serverStore';
 import { BiometricService } from '../services/biometricService';
-import { useT } from '../i18n';
+import { useT, SUPPORTED_LANGUAGES } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { checkForUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
@@ -119,14 +119,13 @@ const selStyles = StyleSheet.create({
 
 interface SettingsProps {
   onBack?: () => void;
-  onProfileImport?: () => void;
-  onBypassApps?: () => void;    // Android only: Smart Mode per-app bypass
+  onBypassApps?: () => void;    // per-app bypass: Android = installed apps, iOS = curated domain catalog
   onSmartConnect?: () => void;   // relocated AI / smart-connection controls
   onDiagnostics?: () => void;    // connection tests & server config
   onActivity?: () => void;       // activity & usage
 }
 
-export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiagnostics, onActivity, onBypassApps }: SettingsProps) {
+export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivity, onBypassApps }: SettingsProps) {
   const { t } = useT();
   const {
     protocol, dnsMode, language,
@@ -261,13 +260,15 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
             value={smartMode}
             onChange={toggleSmartMode}
           />
-          {Platform.OS === 'android' && onBypassApps && (
+          {onBypassApps && (
             <>
               <Divider />
               <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onBypassApps}>
                 <View>
                   <Text style={selStyles.label}>{t('st.bypassApps')}</Text>
-                  <Text style={rowStyles.desc}>{t('st.bypassAppsD')}</Text>
+                  <Text style={rowStyles.desc}>
+                    {t(Platform.OS === 'ios' ? 'st.bypassAppsDIos' : 'st.bypassAppsD')}
+                  </Text>
                 </View>
                 <Text style={selStyles.chevron}>›</Text>
               </TouchableOpacity>
@@ -286,7 +287,7 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
           <SelectRow
             label={t('st.language')}
             value={language}
-            options={['English', 'فارسی']}
+            options={SUPPORTED_LANGUAGES.map((l) => l.nativeLabel)}
             onChange={setLanguage}
           />
         </Section>
@@ -336,18 +337,9 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
               <Divider />
             </>
           )}
-          {onProfileImport && (
-            <>
-              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onProfileImport}>
-                <View>
-                  <Text style={selStyles.label}>Import / Export Profiles</Text>
-                  <Text style={rowStyles.desc}>Paste vless:// links or share your config</Text>
-                </View>
-                <Text style={selStyles.chevron}>›</Text>
-              </TouchableOpacity>
-              <Divider />
-            </>
-          )}
+          {/* Profile import/export removed: users must not be able to copy the
+              config out to other clients (v2ray etc.) or side-load foreign
+              profiles. Server selection comes only from the bootstrap catalog. */}
           <TouchableOpacity
             style={selStyles.row}
             activeOpacity={0.7}
@@ -380,7 +372,7 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
           </TouchableOpacity>
         </Section>
 
-        <Section label="About">
+        <Section label={t('st.about')}>
           <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(GITHUB_URL)} activeOpacity={0.7}>
             <Text style={selStyles.label}>GitHub</Text>
             <Text style={selStyles.value}>github.com/XS227/SetaLink</Text>
@@ -392,7 +384,7 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
           </TouchableOpacity>
         </Section>
 
-        <Section label="Updates">
+        <Section label={t('st.updates')}>
           <View style={selStyles.row}>
             <View>
               <Text style={selStyles.label}>App version</Text>
@@ -427,7 +419,7 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
             <>
               <Divider />
               <SelectRow
-                label="Update channel"
+                label={t('st.updateChannel')}
                 value={updateChannel}
                 options={['stable', 'beta', 'experimental']}
                 onChange={(v: string) => setUpdateChannel(v as 'stable' | 'beta' | 'experimental')}

@@ -219,8 +219,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             // the app-visible state stays `connectedProbing` until a real internet
             // probe passes. Fixes the connected-state lie on a dead Germany tunnel.
             self.finishTunnelEstablished(shared: shared, completionHandler)
+            // Build 79: collectQuicEvidence no longer fires here — racing tunnel
+            // startup made every verdict BOTH_FAIL (inconclusive). It now runs
+            // from runInternetProbe's success path, after connected_verified.
             self.runInternetProbe(shared: shared, viaProxy: false, tunnelMode: "HEV")
-            self.collectQuicEvidence(shared: shared)
         }
 
         #else
@@ -340,6 +342,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 let connectMs = self.connectStartTime.map { Int(Date().timeIntervalSince($0) * 1000) }
                 self.submitTelemetry(event: "connect_ok", latencyMs: connectMs,
                                      tunnelMode: tunnelMode, internetOk: true, probeMs: latencyMs)
+                if !viaProxy {
+                    // Build 79: QUIC evidence only AFTER the tunnel is verified —
+                    // firing at startup raced route setup, so every build 77/78
+                    // verdict was BOTH_FAIL. 3 s of settle time, HEV mode only
+                    // (the probe's URLSession relies on system-wide TUN routing).
+                    DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 3) {
+                        self.collectQuicEvidence(shared: shared)
+                    }
+                }
             } else {
                 shared.set(TunnelState.degraded.rawValue, forKey: kTunnelStateKey)
                 shared.set("no internet: \(lastErr) after \(latencyMs)ms", forKey: kProbeDetailKey)
@@ -720,7 +731,7 @@ misc:
     ///   • QUIC/H3 handshake to the same host (expected to hang/fail if blackholed)
     /// Uses URLSession H3 (`assumesHTTP3Capable`) purely as a measurement; results
     /// go to the App Group + telemetry. Nothing is blocked or rerouted here.
-    private func collectQuicEvidence(shared: UserDefaults) {
+    private func collectQuicEvidence(shared: UserDefaults, attempt: Int = 0) {
         DispatchQueue.global(qos: .background).async { [weak self] in
             guard let self = self else { return }
             let host = "https://www.instagram.com/favicon.ico"
@@ -749,6 +760,15 @@ misc:
                         : (tcp.ok && quic.ok) ? "QUIC_OK"
                         : (!tcp.ok && !quic.ok) ? "BOTH_FAIL"
                         : "TCP_FAIL_QUIC_OK"
+            // BOTH_FAIL is inconclusive (usually a not-yet-settled tunnel, not a
+            // QUIC problem) — retry once before recording anything.
+            if verdict == "BOTH_FAIL" && attempt == 0 {
+                self.appendLog("QUIC_EVIDENCE: BOTH_FAIL on first attempt — retrying in 8s")
+                DispatchQueue.global(qos: .background).asyncAfter(deadline: .now() + 8) {
+                    self.collectQuicEvidence(shared: shared, attempt: 1)
+                }
+                return
+            }
             let line = "TCP=\(tcp.ok ? "ok" : "fail")(\(tcp.ms)ms,\(tcp.detail)) " +
                        "QUIC=\(quic.ok ? "ok" : "fail")(\(quic.ms)ms,\(quic.detail)) ⇒ \(verdict)"
             shared.set(line, forKey: "last_quic_evidence")
