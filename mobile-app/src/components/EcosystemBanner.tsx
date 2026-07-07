@@ -24,10 +24,13 @@ const ROTATE_MS = 7000;
 type Props = {
   /** Offset so different screens start on different promos. */
   seed?: number;
+  /** Pin to a single promo (no rotation). Used when banners are placed at
+   *  fixed positions in a list. */
+  pin?: 'shahnameh' | 'threereal';
   style?: object;
 };
 
-export function EcosystemBanner({ seed = 0, style }: Props) {
+export function EcosystemBanner({ seed = 0, pin, style }: Props) {
   const { t } = useT();
 
   const promos = [
@@ -49,16 +52,20 @@ export function EcosystemBanner({ seed = 0, style }: Props) {
     },
   ];
 
-  const [idx, setIdx] = useState(((seed % promos.length) + promos.length) % promos.length);
+  const pinnedIdx = pin ? promos.findIndex((p) => p.id === pin) : -1;
+  const [idx, setIdx] = useState(
+    pinnedIdx >= 0 ? pinnedIdx : ((seed % promos.length) + promos.length) % promos.length,
+  );
   const idxRef = useRef(idx);
   idxRef.current = idx;
 
   useEffect(() => {
+    if (pinnedIdx >= 0) return; // pinned banners never rotate
     const id = setInterval(() => {
       setIdx((idxRef.current + 1) % promos.length);
     }, ROTATE_MS);
     return () => clearInterval(id);
-  }, [promos.length]);
+  }, [promos.length, pinnedIdx]);
 
   const promo = promos[idx] ?? promos[0]!;
 

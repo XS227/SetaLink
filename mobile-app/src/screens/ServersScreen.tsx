@@ -4,7 +4,7 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
-import { ServerRow, FlagGlyph, isBrandNode } from '../components/ServerRow';
+import { ServerRow } from '../components/ServerRow';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { EcosystemBanner } from '../components/EcosystemBanner';
@@ -25,7 +25,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const { t } = useT();
   const {
     selectedId, filter, query, selectServer, setFilter,
-    filteredServers, aiPicks, servers, isLoading, loadError,
+    filteredServers, servers, isLoading, loadError,
     importedCreds,
   } = useServerStore();
   const { connectionState, connect, switchServer } = useVpnStore();
@@ -69,7 +69,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   );
   const comingSoon = COMING_SOON_SERVERS.filter((s) => !liveCountries.has(s.country.toLowerCase()));
 
-  const picks   = aiPicks(activeMode);
   const filtered = filteredServers(activeMode)
     .filter((s) => !s.comingSoon)
     .map((s) => ({
@@ -78,7 +77,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
       imported: !!importedCreds[s.id],
     }));
   const selected    = servers.find((s) => s.id === selectedId);
-  const showAIPicks = filter === 'All' && query === '';
 
   const ctaLabel = isTransitioning
     ? t('sv.switching')
@@ -139,46 +137,8 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           ))}
         </ScrollView>
 
-        {/* AI picks carousel */}
-        {showAIPicks && picks.filter(s => !s.comingSoon).length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.aiDot} />
-              <Text style={styles.sectionTitle}>{t('sv.aiPicks')}</Text>
-              <Text style={styles.sectionSub}>{t('sv.optimizedFor')} {activeMode} {t('sv.mode')}</Text>
-            </View>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.smartRow}
-            >
-              {picks.filter(s => !s.comingSoon).map((s) => (
-                <TouchableOpacity
-                  key={s.id}
-                  style={[styles.smartCard, s.id === selectedId && styles.smartCardActive]}
-                  onPress={() => handleSelectServer(s.id)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.smartFlag}><FlagGlyph flag={s.flag} brand={isBrandNode(s.id)} size={26} /></View>
-                  <Text style={styles.smartCountry}>{s.country}</Text>
-                  <Text style={styles.smartCity}>{s.city}</Text>
-                  <View style={styles.smartMeta}>
-                    <View style={[
-                      styles.smartPingDot,
-                      { backgroundColor: s.ping < 60 ? Colors.emerald[400] : '#FFB800' },
-                    ]} />
-                    <Text style={styles.smartPing}>{s.ping > 0 ? `${s.ping}ms` : '—'}</Text>
-                  </View>
-                  {(s.tags ?? []).slice(0, 1).map((tag) => (
-                    <View key={tag} style={styles.smartTag}>
-                      <Text style={styles.smartTagText}>{tag}</Text>
-                    </View>
-                  ))}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {/* AI Picks carousel removed — the list below is the single source of
+            truth; users just scroll to pick an available server. */}
 
         {/* Active servers */}
         <View style={styles.section}>
@@ -200,13 +160,12 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   onSelect={(sv) => handleSelectServer(sv.id)}
                   onDelete={undefined}
                 />
-                {/* Promo banners sit between the server rows, not above the list. */}
-                {i === 1 && (
-                  <>
-                    <EcosystemBanner seed={1} style={styles.ecoBanner} />
-                    <WatchAdCard style={styles.ecoBanner} />
-                  </>
-                )}
+                {/* Banners interleaved at fixed positions:
+                    after server 1 → watch-ad (free quota),
+                    after server 3 → Shahnameh, after server 4 → 3real. */}
+                {i === 0 && <WatchAdCard style={styles.ecoBanner} />}
+                {i === 2 && <EcosystemBanner pin="shahnameh" style={styles.ecoBanner} />}
+                {i === 3 && <EcosystemBanner pin="threereal" style={styles.ecoBanner} />}
               </React.Fragment>
             ))
           )}
