@@ -25,7 +25,10 @@ export function LanguageScreen({ onSelect }: Props) {
   }, []);
 
   const handleSelect = (code: Lang) => {
-    setLanguage(code === 'fa' ? 'فارسی' : 'English');
+    // Store the language's native label (what settingsStore persists); the i18n
+    // layer maps it back to a Lang code. Works for every supported language.
+    const native = SUPPORTED_LANGUAGES.find((l) => l.code === code)?.nativeLabel ?? 'English';
+    setLanguage(native);
   };
 
   const handleContinue = () => {

@@ -7,7 +7,7 @@ import { GlassCard } from '../components/GlassCard';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useServerStore }   from '../stores/serverStore';
 import { BiometricService } from '../services/biometricService';
-import { useT } from '../i18n';
+import { useT, SUPPORTED_LANGUAGES } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { checkForUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
@@ -285,7 +285,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
           <SelectRow
             label={t('st.language')}
             value={language}
-            options={['English', 'فارسی']}
+            options={SUPPORTED_LANGUAGES.map((l) => l.nativeLabel)}
             onChange={setLanguage}
           />
         </Section>
