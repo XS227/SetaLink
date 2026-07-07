@@ -362,7 +362,7 @@ function v1_cfedge_node(): array {
             'id'       => 'cf-edge',
             'country'  => 'Cloudflare',
             'city'     => 'CDN Edge · Stealth',
-            'flag'     => '☁️',
+            'flag'     => '@realink',
             'ping'     => 0,
             'load'     => 0,
             'protocol' => 'WebSocket',
