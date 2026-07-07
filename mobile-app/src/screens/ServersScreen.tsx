@@ -120,9 +120,6 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           </View>
         )}
 
-        <EcosystemBanner seed={1} style={styles.ecoBanner} />
-        <WatchAdCard style={styles.ecoBanner} />
-
         {/* Filter tabs */}
         <ScrollView
           horizontal
@@ -196,13 +193,21 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.emptyText}>{t('sv.noResults')}</Text>
             </GlassCard>
           ) : (
-            filtered.map((s) => (
-              <ServerRow
-                key={s.id}
-                server={s}
-                onSelect={(sv) => handleSelectServer(sv.id)}
-                onDelete={undefined}
-              />
+            filtered.map((s, i) => (
+              <React.Fragment key={s.id}>
+                <ServerRow
+                  server={s}
+                  onSelect={(sv) => handleSelectServer(sv.id)}
+                  onDelete={undefined}
+                />
+                {/* Promo banners sit between the server rows, not above the list. */}
+                {i === 1 && (
+                  <>
+                    <EcosystemBanner seed={1} style={styles.ecoBanner} />
+                    <WatchAdCard style={styles.ecoBanner} />
+                  </>
+                )}
+              </React.Fragment>
             ))
           )}
         </View>

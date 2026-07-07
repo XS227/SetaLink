@@ -119,14 +119,13 @@ const selStyles = StyleSheet.create({
 
 interface SettingsProps {
   onBack?: () => void;
-  onProfileImport?: () => void;
   onBypassApps?: () => void;    // Android only: Smart Mode per-app bypass
   onSmartConnect?: () => void;   // relocated AI / smart-connection controls
   onDiagnostics?: () => void;    // connection tests & server config
   onActivity?: () => void;       // activity & usage
 }
 
-export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiagnostics, onActivity, onBypassApps }: SettingsProps) {
+export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivity, onBypassApps }: SettingsProps) {
   const { t } = useT();
   const {
     protocol, dnsMode, language,
@@ -336,18 +335,9 @@ export function SettingsScreen({ onBack, onProfileImport, onSmartConnect, onDiag
               <Divider />
             </>
           )}
-          {onProfileImport && (
-            <>
-              <TouchableOpacity style={selStyles.row} activeOpacity={0.7} onPress={onProfileImport}>
-                <View>
-                  <Text style={selStyles.label}>Import / Export Profiles</Text>
-                  <Text style={rowStyles.desc}>Paste vless:// links or share your config</Text>
-                </View>
-                <Text style={selStyles.chevron}>›</Text>
-              </TouchableOpacity>
-              <Divider />
-            </>
-          )}
+          {/* Profile import/export removed: users must not be able to copy the
+              config out to other clients (v2ray etc.) or side-load foreign
+              profiles. Server selection comes only from the bootstrap catalog. */}
           <TouchableOpacity
             style={selStyles.row}
             activeOpacity={0.7}
