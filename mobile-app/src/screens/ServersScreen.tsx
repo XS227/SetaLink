@@ -4,7 +4,7 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
-import { ServerRow, FlagGlyph } from '../components/ServerRow';
+import { ServerRow, FlagGlyph, isBrandNode } from '../components/ServerRow';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { EcosystemBanner } from '../components/EcosystemBanner';
@@ -159,7 +159,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   onPress={() => handleSelectServer(s.id)}
                   activeOpacity={0.75}
                 >
-                  <View style={styles.smartFlag}><FlagGlyph flag={s.flag} size={26} /></View>
+                  <View style={styles.smartFlag}><FlagGlyph flag={s.flag} brand={isBrandNode(s.id)} size={26} /></View>
                   <Text style={styles.smartCountry}>{s.country}</Text>
                   <Text style={styles.smartCity}>{s.city}</Text>
                   <View style={styles.smartMeta}>
