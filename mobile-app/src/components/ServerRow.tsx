@@ -1,6 +1,19 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
+
+// Nodes whose flag is this sentinel render the Realink logo instead of an emoji
+// (used for the Cloudflare-fronted stealth node — branded, not a cloud icon).
+export const REALINK_FLAG = '@realink';
+const REALINK_LOGO = require('../assets/logo_mark.png');
+
+/** Renders the Realink logo for the sentinel flag, otherwise the emoji text. */
+export function FlagGlyph({ flag, size = 28 }: { flag: string; size?: number }) {
+  if (flag === REALINK_FLAG) {
+    return <Image source={REALINK_LOGO} style={{ width: size, height: size, resizeMode: 'contain' }} />;
+  }
+  return <Text style={{ fontSize: size }}>{flag}</Text>;
+}
 
 export interface Server {
   id: string;
@@ -54,7 +67,7 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
     >
       {/* Flag + Country */}
       <View style={styles.left}>
-        <Text style={styles.flag}>{server.flag}</Text>
+        <View style={styles.flagBox}><FlagGlyph flag={server.flag} size={28} /></View>
         <View style={styles.nameBlock}>
           <View style={styles.nameRow}>
             <Text style={[styles.country, server.selected && styles.selectedText]} numberOfLines={1}>
@@ -157,6 +170,7 @@ const styles = StyleSheet.create({
   nameBlock: { flex: 1, minWidth: 0 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], flexWrap: 'nowrap' },
   flag: { fontSize: 28 },
+  flagBox: { width: 30, alignItems: 'center', justifyContent: 'center' },
   country: {
     fontSize: Typography.size.base,
     fontFamily: Typography.family.heading,

@@ -4,7 +4,7 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
-import { ServerRow } from '../components/ServerRow';
+import { ServerRow, FlagGlyph } from '../components/ServerRow';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { EcosystemBanner } from '../components/EcosystemBanner';
@@ -159,7 +159,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   onPress={() => handleSelectServer(s.id)}
                   activeOpacity={0.75}
                 >
-                  <Text style={styles.smartFlag}>{s.flag}</Text>
+                  <View style={styles.smartFlag}><FlagGlyph flag={s.flag} size={26} /></View>
                   <Text style={styles.smartCountry}>{s.country}</Text>
                   <Text style={styles.smartCity}>{s.city}</Text>
                   <View style={styles.smartMeta}>
@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
   smartRow:      { gap: Spacing[3], paddingBottom: 4 },
   smartCard:     { width: 130, backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[1] },
   smartCardActive: { borderColor: Colors.border.active, backgroundColor: 'rgba(0,232,122,0.05)' },
-  smartFlag:     { fontSize: 28, marginBottom: 4 },
+  smartFlag:     { marginBottom: 4, alignItems: 'center' },
   smartCountry:  { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
   smartCity:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
   smartMeta:     { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
