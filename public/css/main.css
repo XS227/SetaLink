@@ -112,9 +112,34 @@ body::after {
   display:flex; align-items:center; gap:8px;
   color:var(--text-2); transition:var(--t);
 }
+.btn-lang { cursor:pointer; }
 .btn-lang svg { border-radius:3px; flex-shrink:0; }
 .btn-lang-text { font-size:.78rem; font-weight:600; letter-spacing:.04em; }
 .btn-lang:hover { border-color:var(--gold); color:var(--gold); box-shadow:0 0 12px var(--gold-dim); }
+
+/* ── Language dropdown (4 locales: EN / FA / ZH / RU) ─────────────────── */
+.lang-picker { position:relative; }
+.lang-menu {
+  position:absolute; top:calc(100% + 8px); inset-inline-end:0;
+  min-width:150px; background:#0d0d18;
+  border:1px solid var(--border-hi); border-radius:12px;
+  padding:6px; display:none; flex-direction:column; gap:2px;
+  box-shadow:0 12px 34px rgba(0,0,0,.55); z-index:60;
+}
+.lang-picker.open .lang-menu { display:flex; }
+.lang-opt {
+  display:flex; align-items:center; gap:8px;
+  width:100%; text-align:start; cursor:pointer;
+  background:transparent; border:0; border-radius:8px;
+  padding:9px 12px; color:var(--text); font-size:.9rem; font-weight:600;
+  transition:var(--t);
+}
+.lang-opt:hover { background:var(--surface-hi); color:var(--gold); }
+.lang-opt[aria-current="true"] { color:var(--gold); background:var(--gold-dim); }
+
+/* Live hero counter — the pulsing dot marks it as a real-time value. */
+.hero-stat-live { display:inline-flex; align-items:center; justify-content:center; }
+.hero-stat-num[data-count] { font-variant-numeric:tabular-nums; }
 
 .btn-nav-dl {
   display:inline-flex; align-items:center; gap:7px;

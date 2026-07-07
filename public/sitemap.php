@@ -15,13 +15,22 @@ $urls = [
   ['loc' => '/privacy-vpn/', 'priority' => '0.7', 'changefreq' => 'monthly'],
 ];
 
+// hreflang alternates for the homepage — the 4 UI locales served by ?lang=.
+// Declared here (and in the page <head>) so Google clusters them as locale
+// variants of one page rather than duplicates.
+$home_alts = [
+  'en'        => $base . '/',
+  'fa'        => $base . '/?lang=fa',
+  'zh'        => $base . '/?lang=zh',
+  'ru'        => $base . '/?lang=ru',
+  'x-default' => $base . '/',
+];
+
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
-echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"' .
+     ' xmlns:xhtml="http://www.w3.org/1999/xhtml">' . "\n";
 foreach ($urls as $u) {
     // Only include pages that actually exist
-    $path = __DIR__ . rtrim($u['loc'], '/');
-    $path_idx = $path . '/index.php';
-    $path_php  = rtrim(__DIR__ . $u['loc'], '/');
     $exists = ($u['loc'] === '/')
         || file_exists(__DIR__ . $u['loc'])                             // direct file e.g. /faq.php
         || file_exists(rtrim(__DIR__ . $u['loc'], '/') . '/index.php') // directory/index.php
@@ -29,6 +38,12 @@ foreach ($urls as $u) {
     if (!$exists) continue;
     echo "  <url>\n";
     echo "    <loc>" . htmlspecialchars($base . $u['loc']) . "</loc>\n";
+    if ($u['loc'] === '/') {
+        foreach ($home_alts as $hl => $href) {
+            echo "    <xhtml:link rel=\"alternate\" hreflang=\"" . $hl .
+                 "\" href=\"" . htmlspecialchars($href) . "\"/>\n";
+        }
+    }
     echo "    <lastmod>{$today}</lastmod>\n";
     echo "    <changefreq>{$u['changefreq']}</changefreq>\n";
     echo "    <priority>{$u['priority']}</priority>\n";

@@ -12,34 +12,85 @@ $dl_link  = $ref_code ? '/download/setalink-latest.apk?ref=' . urlencode($ref_co
 $dl_ref       = $ref_code ? '?ref=' . urlencode($ref_code) : '';
 $dl_arm32     = '/download/setalink-latest-arm32.apk' . $dl_ref;
 $dl_universal = '/download/setalink-latest-universal.apk' . $dl_ref;
-$canonical = 'https://setalink.no/';
 $logo      = '/assets/logo/setalink-mark-256.png';   // current brand mark (2026)
 $og_img    = 'https://setalink.no' . $logo;
+
+// Four supported UI languages — the same set the app ships (EN, Farsi, Chinese,
+// Russian). Farsi/Chinese/Russian map to the censored regions we target:
+// Iran, China, Russia. ?lang= sets the initial server-rendered language so
+// crawlers index each locale; the JS switcher then persists the user's choice.
+$SUPPORTED_LANGS = ['en', 'fa', 'zh', 'ru'];
+$og_locale_map   = ['en' => 'en_US', 'fa' => 'fa_IR', 'zh' => 'zh_CN', 'ru' => 'ru_RU'];
+$lang = strtolower((string)($_GET['lang'] ?? 'en'));
+if (!in_array($lang, $SUPPORTED_LANGS, true)) { $lang = 'en'; }
+$dir  = ($lang === 'fa') ? 'rtl' : 'ltr';
+// Each locale self-canonicalizes so the hreflang cluster is consistent —
+// pointing every variant's canonical at the bare root would tell Google the
+// localized URLs are duplicates and break locale targeting.
+$canonical = ($lang === 'en' && !isset($_GET['lang']))
+  ? 'https://setalink.no/'
+  : 'https://setalink.no/?lang=' . $lang;
+$telegram = 'https://t.me/SetaLink3';
+$ios_cta  = $telegram; // iOS is TestFlight beta — request access via Telegram
+
+// Localized <title> + meta description per language. The body copy is swapped
+// client-side by main.js, but these two tags are the strongest SEO signals, so
+// they are rendered server-side in the requested language for crawlers.
+$meta = [
+  'en' => [
+    'title' => 'Realink — Free VPN for Iran, China & Russia | Anti-Censorship VPN (Android & iOS)',
+    'desc'  => 'Realink: AI-powered VLESS+Reality VPN for Iran, China, Russia and other censored regions. 1 GB free on install. No account. Beats DPI with DNS-over-HTTPS. Android APK + iOS TestFlight. In English, فارسی, 中文 and Русский.',
+  ],
+  'fa' => [
+    'title' => 'ری‌لینک — فیلترشکن رایگان برای ایران، چین و روسیه | ضدسانسور (اندروید و iOS)',
+    'desc'  => 'ری‌لینک: فیلترشکن هوشمند مبتنی بر VLESS+Reality برای ایران، چین، روسیه و مناطق سانسورشده. ۱ گیگابایت رایگان پس از نصب. بدون حساب. عبور از DPI با DNS-over-HTTPS. نسخه اندروید و iOS TestFlight.',
+  ],
+  'zh' => [
+    'title' => 'Realink — 面向伊朗、中国、俄罗斯的免费翻墙 VPN | 抗审查（安卓和 iOS）',
+    'desc'  => 'Realink：基于 VLESS+Reality 的 AI 智能翻墙 VPN，面向伊朗、中国、俄罗斯等审查地区。安装即送 1 GB，无需账号。以 DNS-over-HTTPS 突破 DPI 深度包检测。提供安卓 APK 与 iOS TestFlight。',
+  ],
+  'ru' => [
+    'title' => 'Realink — бесплатный VPN для Ирана, Китая и России | Обход блокировок (Android и iOS)',
+    'desc'  => 'Realink: VPN на базе ИИ с VLESS+Reality для Ирана, Китая, России и других стран с цензурой. 1 ГБ бесплатно при установке. Без аккаунта. Обходит DPI через DNS-over-HTTPS. Android APK и iOS TestFlight.',
+  ],
+];
+$m_title = $meta[$lang]['title'];
+$m_desc  = $meta[$lang]['desc'];
 ?><!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="<?= $lang ?>" dir="<?= $dir ?>">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Realink — Free VPN for Iran | Anti-Censorship Android VPN</title>
-  <meta name="description" content="Realink: AI-powered VLESS+Reality VPN for Iran and censored regions. 1 GB free on install. No account. Bypasses DPI with DNS-over-HTTPS. Android APK.">
-  <meta name="keywords" content="VPN Iran, free VPN Iran, anti-censorship VPN, V2Ray Iran, Reality protocol, VLESS VPN, bypass DPI, Android VPN, فیلترشکن رایگان">
-  <meta name="robots" content="index,follow">
+  <title><?= htmlspecialchars($m_title, ENT_QUOTES) ?></title>
+  <meta name="description" content="<?= htmlspecialchars($m_desc, ENT_QUOTES) ?>">
+  <meta name="keywords" content="VPN Iran, free VPN Iran, VPN China, VPN Russia, anti-censorship VPN, V2Ray, Reality protocol, VLESS VPN, bypass DPI, GFW bypass, Android VPN, iOS VPN, فیلترشکن رایگان, فیلترشکن ایران, 翻墙, 科学上网, VPN обход блокировок, VPN для России">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <meta name="author" content="SetAI">
   <link rel="canonical" href="<?= $canonical ?>">
+  <!-- hreflang: one URL per UI language + x-default. The page renders the
+       requested ?lang= server-side so each locale is independently indexable. -->
+  <link rel="alternate" hreflang="en" href="https://setalink.no/">
+  <link rel="alternate" hreflang="fa" href="https://setalink.no/?lang=fa">
+  <link rel="alternate" hreflang="zh" href="https://setalink.no/?lang=zh">
+  <link rel="alternate" hreflang="ru" href="https://setalink.no/?lang=ru">
+  <link rel="alternate" hreflang="x-default" href="https://setalink.no/">
   <!-- Google verification -->
   <meta name="google-site-verification" content="7LR7rEIJvSWpajIB1Ei5wGNNBlx2chBCNnsRKuQgLG4">
   <!-- Open Graph -->
   <meta property="og:type"        content="website">
   <meta property="og:url"         content="<?= $canonical ?>">
-  <meta property="og:title"       content="Realink — Free VPN for Iran">
-  <meta property="og:description" content="AI-powered anti-censorship VPN. VLESS+Reality protocol. 1 GB free. No account. Android only.">
+  <meta property="og:title"       content="<?= htmlspecialchars($m_title, ENT_QUOTES) ?>">
+  <meta property="og:description" content="<?= htmlspecialchars($m_desc, ENT_QUOTES) ?>">
   <meta property="og:image"       content="<?= $og_img ?>">
-  <meta property="og:locale"      content="en_US">
-  <meta property="og:locale:alternate" content="fa_IR">
+  <meta property="og:locale"      content="<?= $og_locale_map[$lang] ?>">
+  <?php foreach ($og_locale_map as $lc => $ogl): if ($lc === $lang) continue; ?>
+  <meta property="og:locale:alternate" content="<?= $ogl ?>">
+  <?php endforeach; ?>
   <meta property="og:site_name"   content="Realink VPN">
   <!-- Twitter / X -->
   <meta name="twitter:card"        content="summary_large_image">
-  <meta name="twitter:title"       content="Realink — Free VPN for Iran">
-  <meta name="twitter:description" content="AI-powered anti-censorship VPN. VLESS+Reality. 1 GB free. Android only.">
+  <meta name="twitter:title"       content="Realink — Free Anti-Censorship VPN (Android &amp; iOS)">
+  <meta name="twitter:description" content="AI-powered VPN that defeats DPI. VLESS+Reality. 1 GB free, no account. Iran · China · Russia.">
   <meta name="twitter:image"       content="<?= $og_img ?>">
   <!-- Fonts + styles -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -61,18 +112,22 @@ $og_img    = 'https://setalink.no' . $logo;
         "name": "Realink VPN",
         "url": "https://setalink.no",
         "logo": "<?= $og_img ?>",
-        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink"]
+        "parentOrganization": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"},
+        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink","https://setai.no"]
       },
       {
         "@type": "SoftwareApplication",
         "name": "Realink VPN",
-        "operatingSystem": "Android",
-        "applicationCategory": "NetworkingApplication",
-        "description": "AI-powered VPN for censored regions. VLESS+Reality, DoH, XHTTP fallback. 1 GB free on install.",
+        "operatingSystem": "Android, iOS",
+        "applicationCategory": "SecurityApplication",
+        "applicationSubCategory": "VPN",
+        "description": "AI-powered anti-censorship VPN for Iran, China, Russia and other censored regions. VLESS+Reality, DoH, XHTTP/WebSocket fallback, QUIC through the tunnel. 1 GB free on install, no account.",
         "url": "https://setalink.no",
         "downloadUrl": "https://setalink.no/download/setalink-latest.apk",
+        "inLanguage": ["en","fa","zh","ru"],
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
-        "author": {"@type": "Organization", "name": "Realink VPN"}
+        "author": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"},
+        "publisher": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"}
       }
     ]
   }
@@ -88,26 +143,19 @@ $og_img    = 'https://setalink.no' . $logo;
     <span class="brand-seta">Rea</span><span class="brand-link">link</span>
   </a>
   <div class="nav-actions">
-    <button class="btn-lang" id="btn-lang" aria-label="Toggle language">
-      <!-- Pre-1979 Iranian flag: Lion and Sun (Shir-o-Khorshid) -->
-      <svg viewBox="0 0 30 20" width="30" height="20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect width="30" height="6.67" fill="#239F23"/>
-        <rect y="6.67" width="30" height="6.67" fill="#F5F0E8"/>
-        <rect y="13.33" width="30" height="6.67" fill="#C8102E"/>
-        <line x1="15" y1="5.0" x2="15" y2="3.0"  stroke="#C9A42A" stroke-width=".8" stroke-linecap="round"/>
-        <line x1="15" y1="15.0" x2="15" y2="17.0" stroke="#C9A42A" stroke-width=".8" stroke-linecap="round"/>
-        <line x1="9.0" y1="10" x2="7.0"  y2="10"  stroke="#C9A42A" stroke-width=".8" stroke-linecap="round"/>
-        <line x1="21.0" y1="10" x2="23.0" y2="10" stroke="#C9A42A" stroke-width=".8" stroke-linecap="round"/>
-        <line x1="11.0" y1="6.6"  x2="9.5"  y2="5.1"  stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
-        <line x1="19.0" y1="6.6"  x2="20.5" y2="5.1"  stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
-        <line x1="11.0" y1="13.4" x2="9.5"  y2="14.9" stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
-        <line x1="19.0" y1="13.4" x2="20.5" y2="14.9" stroke="#C9A42A" stroke-width=".7" stroke-linecap="round"/>
-        <ellipse cx="15" cy="10.5" rx="3.0" ry="2.1" fill="#C9A42A" opacity=".9"/>
-        <circle cx="17.2" cy="8.8" r="1.8" fill="#C9A42A" opacity=".9"/>
-        <circle cx="15" cy="10" r="1.1" fill="none" stroke="#06060c" stroke-width=".7" opacity=".5"/>
-      </svg>
-      <span class="btn-lang-text" data-t="nav.lang">فارسی</span>
-    </button>
+    <div class="lang-picker" id="lang-picker">
+      <button class="btn-lang" id="btn-lang" aria-label="Change language" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <span class="btn-lang-text" id="btn-lang-text">English</span>
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="lang-menu" id="lang-menu" role="menu">
+        <button class="lang-opt" data-lang="en" role="menuitem"><span>English</span></button>
+        <button class="lang-opt" data-lang="fa" role="menuitem" dir="rtl"><span>فارسی</span></button>
+        <button class="lang-opt" data-lang="zh" role="menuitem"><span>中文</span></button>
+        <button class="lang-opt" data-lang="ru" role="menuitem"><span>Русский</span></button>
+      </div>
+    </div>
     <a href="<?= htmlspecialchars($dl_link) ?>" class="btn-nav-dl">
       <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12z"/><rect x="2" y="13" width="12" height="1.5" rx=".75"/></svg>
       <span data-t="nav.dl">Download APK</span>
@@ -147,17 +195,17 @@ $og_img    = 'https://setalink.no' . $logo;
   </h1>
 
   <p class="hero-sub" data-t="hero.sub">
-    AI-powered VPN built for real censorship. Android-only. 1 GB free on install. No account. No server setup.
+    AI-powered VPN built for real censorship. Now on Android &amp; iOS. 1 GB free on install. No account. No server setup.
   </p>
 
   <div class="hero-btns">
     <a href="<?= htmlspecialchars($dl_link) ?>" class="btn btn-primary">
-      <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12z"/><rect x="2" y="13" width="12" height="1.5" rx=".75"/></svg>
-      <span data-t="hero.cta1">Download APK</span>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M17.6 9.48l1.84-3.18c.16-.29.06-.65-.23-.81-.29-.16-.65-.06-.81.23l-1.86 3.23a11.4 11.4 0 0 0-8.9 0L5.77 5.72a.6.6 0 0 0-.81-.23c-.29.16-.39.52-.23.81L6.57 9.48A10.8 10.8 0 0 0 1 18h22a10.8 10.8 0 0 0-5.4-8.52zM7 15.25a1 1 0 1 1 0-2 1 1 0 0 1 0 2zm10 0a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/></svg>
+      <span data-t="hero.cta1">Download for Android</span>
     </a>
-    <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" class="btn btn-secondary">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 0C5.372 0 0 5.373 0 12s5.372 12 12 12 12-5.373 12-12S18.628 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12l-6.871 4.326-2.962-.924c-.643-.204-.657-.643.136-.953l11.57-4.461c.537-.194 1.006.131.833.941z"/></svg>
-      <span data-t="hero.cta2">Join Telegram</span>
+    <a href="<?= htmlspecialchars($ios_cta) ?>" target="_blank" rel="noopener" class="btn btn-secondary">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M17.6 12.9c0-2.2 1.8-3.2 1.9-3.3-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8-.7 0-1.7-.8-2.8-.8-1.4 0-2.7.8-3.5 2.1-1.5 2.6-.4 6.4 1.1 8.5.7 1 1.5 2.2 2.6 2.1 1-.04 1.4-.7 2.7-.7 1.2 0 1.6.7 2.7.6 1.1-.02 1.8-1 2.5-2 .8-1.2 1.1-2.3 1.1-2.4-.02-.01-2.1-.8-2.1-3.2zM15.4 5.8c.6-.7 1-1.7.9-2.7-.9.03-1.9.6-2.5 1.3-.5.6-1 1.6-.9 2.6 1 .07 1.9-.5 2.5-1.2z"/></svg>
+      <span data-t="hero.cta_ios">iOS — TestFlight Beta</span>
     </a>
   </div>
 
@@ -186,20 +234,22 @@ $og_img    = 'https://setalink.no' . $logo;
 
   <div class="hero-stats">
     <div class="hero-stat">
+      <div class="hero-stat-num hero-stat-live" id="stat-members" data-count="0">
+        <span class="dot-live" style="width:8px;height:8px;margin-inline-end:6px"></span>—
+      </div>
+      <div class="hero-stat-label" data-t="stat.members">Members &amp; growing</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-num" id="stat-countries" data-count="0">—</div>
+      <div class="hero-stat-label" data-t="stat.countries">Countries reached</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-stat-num">iOS + Android</div>
+      <div class="hero-stat-label" data-t="stat.platforms">Both platforms</div>
+    </div>
+    <div class="hero-stat">
       <div class="hero-stat-num">1 GB</div>
-      <div class="hero-stat-label" data-t="stat.1">Free on install</div>
-    </div>
-    <div class="hero-stat">
-      <div class="hero-stat-num">3</div>
-      <div class="hero-stat-label" data-t="stat.2">Protocols tested</div>
-    </div>
-    <div class="hero-stat">
-      <div class="hero-stat-num">0</div>
-      <div class="hero-stat-label" data-t="stat.3">Accounts needed</div>
-    </div>
-    <div class="hero-stat">
-      <div class="hero-stat-num">+1 GB</div>
-      <div class="hero-stat-label" data-t="stat.4">Per referral</div>
+      <div class="hero-stat-label" data-t="stat.free">Free on install</div>
     </div>
   </div>
 </section>
@@ -464,8 +514,8 @@ $og_img    = 'https://setalink.no' . $logo;
        'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins. Fake "connected" states are impossible.'],
       ['Does Realink keep logs?',
        'No user activity logs. The xray core logs connection events internally for diagnostic purposes but no user-identifiable content is stored. Device IDs are anonymous hashes. The admin can see aggregate connection statistics but not who connected to what.'],
-      ['Why Android only? What about iPhone?',
-       'Android allows full TUN-based VPN without App Store restrictions. iOS requires App Store distribution, a developer account, and Apple policy compliance — none of which are compatible with operating a censorship-circumvention tool openly. Android is the priority market for Iran and Turkey.'],
+      ['Is Realink on iPhone / iOS?',
+       'Yes. Realink is now on both Android and iOS. Android installs directly from the APK on this page (no Play Store needed). iOS is in TestFlight beta — join our Telegram to get a beta invite. Both builds share the same AI routing engine, VLESS+Reality core, and QUIC-through-tunnel fix.'],
       ['What happens when Iran blocks a new SNI?',
        'The Remote Config system allows the server to push updated SNI priority lists to all apps without requiring an update. The AI optimizer also learns from real connection data — if a previously working SNI stops working, it drops in priority automatically.'],
       ['How is traffic different from normal HTTPS?',
@@ -475,7 +525,7 @@ $og_img    = 'https://setalink.no' . $logo;
       ['Can I use it on multiple devices?',
        'Yes. Each install generates a separate device ID and receives its own 1 GB starter quota. Referral codes are tied to your device ID and transfer the bonus data to that device.'],
       ['What is the roadmap?',
-       'Near-term: iOS test flight, more server nodes in the Middle East, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
+       'Shipped: iOS TestFlight beta, per-app split tunneling, QUIC through the tunnel, and a Cloudflare stealth edge node. Near-term: more server nodes across the Middle East and Asia, App Store release, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
     ];
     foreach ($faqs as $i => [$q, $a]): ?>
     <div class="faq-item" id="faq<?= $i ?>">
@@ -502,14 +552,20 @@ $og_img    = 'https://setalink.no' . $logo;
       <a href="/faq.php" data-t="footer.faq">Full FAQ</a>
       <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" data-t="footer.tg">Telegram</a>
       <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener" data-t="footer.gh">GitHub</a>
-      <a href="<?= htmlspecialchars($dl_link) ?>" data-t="footer.dl">Download APK</a>
+      <a href="<?= htmlspecialchars($dl_link) ?>" data-t="footer.dl">Download</a>
+      <a href="https://setai.no" target="_blank" rel="external" data-t="footer.setai">SetAI</a>
     </nav>
-    <p class="footer-copy">&copy; <?= date('Y') ?> Realink VPN · Android only</p>
+    <p class="footer-copy">
+      &copy; <?= date('Y') ?> Realink VPN · <span data-t="footer.platforms">Android &amp; iOS</span> ·
+      <span data-t="footer.by">a project by</span>
+      <a href="https://setai.no" target="_blank" rel="external" style="color:var(--gold);font-weight:600">SetAI</a>
+    </p>
   </div>
 </footer>
 
 </div><!-- .page-wrap -->
 
+<script>window.__SL_LANG__ = <?= json_encode($lang) ?>; window.__SL_LANG_LOCKED__ = <?= json_encode(isset($_GET['lang'])) ?>;</script>
 <script src="/js/main.js" defer></script>
 <?php
 // FAQ schema — mirrors the FAQ items rendered in HTML above
@@ -518,7 +574,7 @@ $faq_schema_items = [
   ['What is the 1 GB emergency package?', 'Every new device that installs Realink automatically receives 1 GB of free data — no account, no login, no credit card. Anyone who suddenly loses internet access can get back online immediately.'],
   ['How does the AI protocol optimizer work?', 'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins.'],
   ['Does Realink keep logs?', 'No user activity logs are kept. Device IDs are anonymous hashes. Aggregate statistics are stored but cannot be traced to individual users.'],
-  ['Why Android only?', 'Android allows full TUN-based VPN without App Store restrictions. iOS requires App Store distribution incompatible with an anti-censorship tool. Android is the priority market for Iran and Turkey.'],
+  ['Is Realink on iPhone / iOS?', 'Yes. Realink runs on both Android and iOS. Android installs directly from the APK on this page. iOS is in TestFlight beta — join the Telegram channel to request an invite. Both share the same AI routing engine and VLESS+Reality core.'],
   ['What happens when Iran blocks a new SNI?', 'The Remote Config system allows pushing updated SNI priority lists to all apps without requiring an update. The AI optimizer also drops blocked SNIs in priority automatically.'],
   ['How is traffic different from normal HTTPS?', 'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain like www.microsoft.com. Deep Packet Inspection cannot tell it apart.'],
 ];
