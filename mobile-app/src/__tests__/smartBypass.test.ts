@@ -216,3 +216,56 @@ describe('builder: extraBypassDomains (iOS per-app bypass)', () => {
       { smartBypass: false, extraBypassDomains: 'garbage' as any })).toBe(off);
   });
 });
+
+// ── Platform parity ──────────────────────────────────────────────────────────
+// The Xray config is built by SHARED code: routing (proxy-quic/Vision, DNS-out,
+// UDP/443 → tunnel, IPv6 blackhole) must be byte-identical on both platforms.
+// The ONLY intended platform differences are (a) getBypassDomains' platform
+// filter on the rule list and (b) per-app bypass mechanics: Android excludes
+// packages natively in VpnService, iOS routes catalog domains via
+// getSelectedAppBypassDomains. If this test fails, a platform fork crept into
+// the builder — that must be a conscious decision, not an accident.
+describe('platform parity — shared config builder', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { Platform } = require('react-native');
+
+  const onPlatform = <T,>(os: 'ios' | 'android', fn: () => T): T => {
+    const restore = jest.replaceProperty(Platform, 'OS', os);
+    try { return fn(); } finally { restore.restore(); }
+  };
+
+  const VISION_CREDS: any = { ...MOCK_CREDS, flow: 'xtls-rprx-vision' };
+
+  test('Android and iOS build identical configs (smart off, smart on, vision)', () => {
+    const cases: Array<[any, any]> = [
+      [MOCK_CREDS, undefined],
+      [MOCK_CREDS, { smartBypass: true }],
+      [VISION_CREDS, { smartBypass: true }],
+    ];
+    for (const [creds, opts] of cases) {
+      const ios     = onPlatform('ios',     () => buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', creds, opts));
+      const android = onPlatform('android', () => buildXrayConfigJson(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', creds, opts));
+      expect(android).toBe(ios);
+    }
+  });
+
+  test('Vision QUIC fix on BOTH platforms: proxy-quic twin exists and carries UDP/443', () => {
+    for (const os of ['ios', 'android'] as const) {
+      const cfg = onPlatform(os, () =>
+        buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, VISION_CREDS));
+      const quicOut = cfg.outbounds.find((o) => o.tag === 'proxy-quic');
+      expect(quicOut).toBeDefined();
+      const udp443 = cfg.routing.rules.find((r) => r.network === 'udp' && r.port === '443');
+      expect(udp443!.outboundTag).toBe('proxy-quic');
+    }
+  });
+
+  test('per-app bypass platform semantics: domains on iOS, [] on Android', () => {
+    expect(onPlatform('android', () => getSelectedAppBypassDomains())).toEqual([]);
+    // iOS reads the settings store; result depends on stored selection but the
+    // call must be safe and produce only validated 'domain:' entries.
+    const ios = onPlatform('ios', () => getSelectedAppBypassDomains());
+    expect(Array.isArray(ios)).toBe(true);
+    for (const d of ios) expect(d).toMatch(/^domain:/);
+  });
+});
