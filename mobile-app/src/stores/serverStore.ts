@@ -80,14 +80,19 @@ export const BUNDLED_CF_EDGE: ServerRecord = {
 
 export const BUNDLED_CF_EDGE_CREDS: ServerCredentials = {
   uuid:        '69205cf6-23a7-4e64-a1a2-865fd49471fe',
-  address:     'cf.setalink.no',
+  // Hostname rotated cf.setalink.no → real.setalink.no on 2026-07-07 after Iran
+  // began SNI-blocking cf.setalink.no (~22:44 UTC). Same Cloudflare origin
+  // (5.249.255.116), same uuid/wsPath; origin serves both names (wildcard vhost).
+  // A live catalog fetch overrides this, but the bundled default must also point
+  // at the un-blocked name so fresh installs / offline fallback reach the origin.
+  address:     'real.setalink.no',
   port:        443,
   publicKey:   '',            // WebSocket node — no Reality key
   shortId:     '',
-  sni:         'cf.setalink.no',
+  sni:         'real.setalink.no',
   flow:        '',
   fingerprint: 'chrome',
-  edgeAddress: 'cf.setalink.no',
+  edgeAddress: 'real.setalink.no',
   edgePort:    443,
   wsPath:      '/cfws',
 };
