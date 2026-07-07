@@ -160,12 +160,17 @@ export const useServerStore = create<ServerState>()(
       if (Array.isArray(data) && data.length > 0) {
         // Fetch each /v1 node's credentials so backend-provided nodes (e.g.
         // Finland) are actually connectable — the connect builder reads from
-        // importedCreds (v0.9.35 #4). Only real creds (uuid+publicKey) are kept.
+        // importedCreds (v0.9.35 #4).
         const fetchedCreds: Record<string, ServerCredentials> = {};
         await Promise.all(data.map(async (s) => {
           try {
             const c: Partial<ServerCredentials> = await ServersAPI.getConfig(s.id, token);
-            if (c?.uuid && c?.publicKey) fetchedCreds[s.id] = c as ServerCredentials;
+            // Reality nodes need a publicKey; CDN/WS/XHTTP nodes have none
+            // (cf-edge serves publicKey:""). Requiring it unconditionally threw
+            // their creds away, so selecting them could never connect and the
+            // failover silently bounced the user back to the primary node.
+            const needsKey = (s.protocol ?? 'Reality').includes('Reality');
+            if (c?.uuid && (!needsKey || c.publicKey)) fetchedCreds[s.id] = c as ServerCredentials;
           } catch { /* node has no public config — skip */ }
         }));
 
