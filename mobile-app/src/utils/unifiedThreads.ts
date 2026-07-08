@@ -7,21 +7,28 @@ import { groupDmsByPeer } from './dmThreads';
  * style. Collapses the two former tabs (user-to-user DMs + admin announcements)
  * into a single conversation list:
  *
- *   • one Conversation per DM peer (via groupDmsByPeer), and
- *   • ONE pinned "official" Conversation carrying every admin announcement, so
- *     the messages we send a user read as a single chat thread with the REAL
- *     account instead of a separate, split-off list.
+ *   • a pinned two-way "Support" thread wired to the ReaLink support account
+ *     (SUPPORT_USER_ID). It carries every admin announcement AND any direct
+ *     support DMs, so everything from us — and the user's replies to us — lives
+ *     in one chat. Always present so a user can reach support with one tap.
+ *   • one Conversation per other DM peer (via groupDmsByPeer).
  *
- * The official conversation is pinned to the top; DM threads follow, newest
- * first. Tapping any conversation opens the same chat-bubble view.
+ * Support is pinned to the top; DM threads follow, newest first. Tapping any row
+ * opens the same chat-bubble view.
  */
 
-// Stable key for the official/announcements conversation.
-export const OFFICIAL_KEY = '__official__';
+// The ReaLink support account. Messages the user sends the Support thread are
+// addressed here; incoming DMs from this id (and all admin announcements) render
+// in the Support thread.
+export const SUPPORT_USER_ID = 'SL-227-62DAC5F0';
+
+// Stable conversation key for the pinned Support thread.
+export const SUPPORT_KEY = '__support__';
 
 export interface ChatMessage {
   key:       string;          // unified stable key: 'dm-<id>' | 'ann-<id>'
   id:        number;          // original numeric id (per kind)
+  kind:      'dm' | 'ann';    // which store/ack path this message belongs to
   direction: 'in' | 'out';
   title?:    string;          // announcements carry a title line
   body:      string;
@@ -30,90 +37,100 @@ export interface ChatMessage {
 }
 
 export interface Conversation {
-  key:        string;            // OFFICIAL_KEY | DM peerKey
-  kind:       'official' | 'dm';
+  key:        string;            // SUPPORT_KEY | DM peerKey
+  kind:       'support' | 'dm';
   title:      string;            // display name
-  official:   boolean;           // drives verified badge + REAL logo avatar
+  support:    boolean;           // drives verified badge, logo avatar, intro note
   peerDevice?: string;           // DM only
-  peerUserId?: string;           // DM only
-  latest:     ChatMessage;
+  peerUserId?: string;           // support = SUPPORT_USER_ID; DM = peer id
+  latest:     ChatMessage | null; // null when Support is still empty
   unread:     number;
-  messages:   ChatMessage[];     // ascending by natural order (oldest → newest)
+  messages:   ChatMessage[];     // ascending (oldest → newest)
 }
 
 function dmToChat(m: DirectMessage): ChatMessage {
   return {
-    key:       `dm-${m.id}`,
-    id:        m.id,
-    direction: m.direction,
-    body:      m.body,
-    createdAt: m.createdAt,
-    read:      m.read,
+    key: `dm-${m.id}`, id: m.id, kind: 'dm', direction: m.direction,
+    body: m.body, createdAt: m.createdAt, read: m.read,
   };
 }
 
 function announcementToChat(m: InboxMessage): ChatMessage {
   return {
-    key:       `ann-${m.id}`,
-    id:        m.id,
-    direction: 'in',            // announcements always come from us → incoming
-    title:     m.title,
-    body:      m.body,
-    createdAt: m.createdAt,
-    read:      m.read,
+    key: `ann-${m.id}`, id: m.id, kind: 'ann', direction: 'in',
+    title: m.title, body: m.body, createdAt: m.createdAt, read: m.read,
   };
 }
 
+// Chronological order for a mixed DM + announcement stream. Falls back to a
+// (kind, id) tiebreak when timestamps collide or are missing.
+function byTime(a: ChatMessage, b: ChatMessage): number {
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+  if (a.kind !== b.kind) return a.kind === 'ann' ? -1 : 1;
+  return a.id - b.id;
+}
+
 /**
- * Build the pinned official conversation from admin announcements, or null when
- * there are none (so an empty official thread never clutters the list).
+ * Build the pinned Support conversation: every admin announcement + every DM to
+ * or from the support account, merged chronologically. Always returned (even
+ * empty) so the user can always start a support chat.
  */
-export function buildOfficialConversation(
+export function buildSupportConversation(
+  supportDms: DirectMessage[],
   announcements: InboxMessage[],
-  officialName: string,
-): Conversation | null {
-  if (!announcements.length) return null;
-  // Oldest → newest so the chat reads top-to-bottom like any messenger.
-  const asc = [...announcements].sort((a, b) => a.id - b.id).map(announcementToChat);
-  const latest = asc[asc.length - 1]!;
-  const unread = asc.filter(m => !m.read).length;
+  supportName: string,
+): Conversation {
+  const messages = [
+    ...supportDms.map(dmToChat),
+    ...announcements.map(announcementToChat),
+  ].sort(byTime);
+  const latest = messages.length ? messages[messages.length - 1]! : null;
+  const unread = messages.filter(m => m.direction === 'in' && !m.read).length;
   return {
-    key:      OFFICIAL_KEY,
-    kind:     'official',
-    title:    officialName,
-    official: true,
+    key:        SUPPORT_KEY,
+    kind:       'support',
+    title:      supportName,
+    support:    true,
+    peerUserId: SUPPORT_USER_ID,
     latest,
     unread,
-    messages: asc,
+    messages,
   };
 }
 
 /**
- * Merge DM threads + the official announcements thread into one ordered list.
- * Official is always first (pinned); DM threads follow, most-recent first.
+ * Merge the pinned Support thread + other DM threads into one ordered list.
+ * `myUserId` guards the support account's own app: when the current user IS
+ * support, no self-thread is injected (they just see incoming user DMs).
  */
 export function buildConversations(
   dms: DirectMessage[],
   announcements: InboxMessage[],
-  officialName: string,
+  supportName: string,
+  myUserId?: string,
 ): Conversation[] {
-  const dmThreads: Conversation[] = groupDmsByPeer(dms).map(th => ({
+  const isSupportAccount = !!myUserId && myUserId === SUPPORT_USER_ID;
+
+  const supportDms = isSupportAccount ? [] : dms.filter(m => m.peerUserId === SUPPORT_USER_ID);
+  const otherDms   = isSupportAccount ? dms : dms.filter(m => m.peerUserId !== SUPPORT_USER_ID);
+
+  const dmThreads: Conversation[] = groupDmsByPeer(otherDms).map(th => ({
     key:        th.peerKey,
     kind:       'dm' as const,
     title:      th.peerUserId || th.peerDevice,
-    official:   false,
+    support:    false,
     peerDevice: th.peerDevice,
     peerUserId: th.peerUserId,
     latest:     dmToChat(th.latest),
     unread:     th.unread,
     messages:   th.messages.map(dmToChat),
   }));
+  dmThreads.sort((a, b) => (b.latest?.id ?? 0) - (a.latest?.id ?? 0));
 
-  // DM threads newest-first (groupDmsByPeer already sorts, but be explicit).
-  dmThreads.sort((a, b) => b.latest.id - a.latest.id);
+  if (isSupportAccount) return dmThreads;
 
-  const official = buildOfficialConversation(announcements, officialName);
-  return official ? [official, ...dmThreads] : dmThreads;
+  const support = buildSupportConversation(supportDms, announcements, supportName);
+  return [support, ...dmThreads];
 }
 
 /** Total unread across every conversation (drives the inbox badge). */

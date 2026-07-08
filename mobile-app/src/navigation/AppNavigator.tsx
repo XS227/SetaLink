@@ -88,6 +88,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'diagnostics')    { navigation.navigate('Diagnostics');    return; }
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
+    if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };

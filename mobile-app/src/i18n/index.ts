@@ -429,9 +429,9 @@ const EN = {
   'dm.deleteMessage':       'Delete message',
   'dm.deleteChatConfirm':   'Delete this conversation? It is removed from your inbox only.',
   'dm.deleteMsgConfirm':    'Delete this message from your inbox?',
-  'dm.official':            'ReaLink',
-  'dm.officialTag':         'Official',
-  'dm.officialReadonly':    'Official announcements from the ReaLink team.',
+  'dm.support':             'Support',
+  'dm.supportTag':          'ReaLink Support',
+  'dm.supportIntro':        'Use this chat to contact ReaLink support — ask us anything. We reply as soon as we can.',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -952,9 +952,9 @@ const FA: typeof EN = {
   'dm.deleteMessage':       'حذف پیام',
   'dm.deleteChatConfirm':   'این گفتگو حذف شود؟ فقط از صندوق شما حذف می‌شود.',
   'dm.deleteMsgConfirm':    'این پیام از صندوق شما حذف شود؟',
-  'dm.official':            'ریلینک',
-  'dm.officialTag':         'رسمی',
-  'dm.officialReadonly':    'اعلان‌های رسمی از تیم ریلینک.',
+  'dm.support':             'پشتیبانی',
+  'dm.supportTag':          'پشتیبانی ریلینک',
+  'dm.supportIntro':        'از این گفتگو برای تماس با پشتیبانی ریلینک استفاده کنید — هر سؤالی دارید بپرسید. در اسرع وقت پاسخ می‌دهیم.',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
@@ -1452,9 +1452,9 @@ const ZH: typeof EN = {
   'dm.deleteMessage': '删除消息',
   'dm.deleteChatConfirm': '删除此对话？仅从您的收件箱中移除。',
   'dm.deleteMsgConfirm': '从您的收件箱中删除此消息？',
-  'dm.official':         'ReaLink',
-  'dm.officialTag':      '官方',
-  'dm.officialReadonly': '来自 ReaLink 团队的官方公告。',
+  'dm.support':          '客服支持',
+  'dm.supportTag':       'ReaLink 客服',
+  'dm.supportIntro':     '使用此聊天联系 ReaLink 客服 — 有任何问题都可以问我们。我们会尽快回复。',
 
   'pr.inviteRewards': '邀请奖励',
   'pr.activeInvites': '个有效邀请',
@@ -1945,9 +1945,9 @@ const RU: typeof EN = {
   'dm.deleteMessage': 'Удалить сообщение',
   'dm.deleteChatConfirm': 'Удалить этот разговор? Он удаляется только из ваших входящих.',
   'dm.deleteMsgConfirm': 'Удалить это сообщение из ваших входящих?',
-  'dm.official':         'ReaLink',
-  'dm.officialTag':      'Официальный',
-  'dm.officialReadonly': 'Официальные объявления от команды ReaLink.',
+  'dm.support':          'Поддержка',
+  'dm.supportTag':       'Поддержка ReaLink',
+  'dm.supportIntro':     'Используйте этот чат, чтобы связаться с поддержкой ReaLink — задавайте любые вопросы. Мы ответим как можно скорее.',
 
   'pr.inviteRewards': 'Награды за приглашения',
   'pr.activeInvites': 'активных приглашений',

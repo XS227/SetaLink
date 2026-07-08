@@ -27,7 +27,7 @@ jest.mock('../stores/inboxStore', () => ({
 jest.mock('../stores/dmStore', () => ({
   useDMStore: (sel: any) => sel({
     messages: [{
-      id: 1, direction: 'in', peerUserId: 'SL-227-62DAC5F0', peerDevice: 'dev-x',
+      id: 1, direction: 'in', peerUserId: 'SL-227-AAAAAAAA', peerDevice: 'dev-x',
       body: 'hello there', read: false, createdAt: '2026-06-15T12:00:00',
     }],
     refresh: () => Promise.resolve(0),
@@ -77,20 +77,27 @@ describe('InboxScreen — unified messenger', () => {
     expect(root.findByProps({ testID: 'convo-input' })).toBeTruthy();
   });
 
-  it('folds admin announcements into a pinned official thread (no separate tab)', () => {
+  it('always pins a Support thread and folds announcements into it (two-way)', () => {
     mockAnnouncements = [{ id: 9, title: 'Welcome', body: 'thanks for joining', createdAt: '2026-06-16T09:00:00', read: false }];
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<InboxScreen onBack={() => {}} />); });
     const root = tree.root;
-    // Pinned official conversation row exists alongside the DM row.
-    const official = root.findByProps({ testID: 'convo-__official__' });
-    expect(official).toBeTruthy();
+    // Pinned Support conversation row exists alongside the DM row.
+    const support = root.findByProps({ testID: 'convo-__support__' });
+    expect(support).toBeTruthy();
 
-    act(() => { official.props.onPress(); });
-    // Official thread shows the announcement + is read-only (no reply input).
+    act(() => { support.props.onPress(); });
+    // Support thread shows the folded announcement + IS two-way (reply input present).
     expect(textValues(root)).toContain('thanks for joining');
-    expect(root.findAllByProps({ testID: 'convo-input' })).toHaveLength(0);
+    expect(root.findByProps({ testID: 'convo-input' })).toBeTruthy();
     expect(mockAnnMarkRead).toHaveBeenCalledWith('dev-me', 9);
+  });
+
+  it('shows the Support thread even with no messages', () => {
+    let tree!: renderer.ReactTestRenderer;
+    act(() => { tree = renderer.create(<InboxScreen onBack={() => {}} />); });
+    const root = tree.root;
+    expect(root.findByProps({ testID: 'convo-__support__' })).toBeTruthy();
   });
 
   it('deep-links straight into a thread via initialThreadKey (push tap)', () => {
