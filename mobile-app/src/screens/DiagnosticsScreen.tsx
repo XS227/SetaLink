@@ -7,6 +7,7 @@ import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useDiagnosticsStore } from '../stores/diagnosticsStore';
 import { useVpnStore }         from '../stores/vpnStore';
+import { resolveNodeIdentity } from '../stores/serverStore';
 import { useAIStore }          from '../stores/aiStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { getActiveBypassRuleCount } from '../services/iranBypassRules';
@@ -138,7 +139,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
   // Build a diagnostic report from current state, then let the user share or copy
   // it (BUG-3, Issue 2: the button previously had no handler).
-  const buildReport = () => {
+  const buildReport = async () => {
     // Real DNS verdict only: a dns-labelled self test wins; otherwise a completed
     // trace test proves hostnames resolved through the tunnel. (The old lookup
     // matched a 'DNS Resolution' label the mock list never contained, so every
@@ -149,7 +150,40 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
       : (traceTestResult?.routedIp
           ? 'Healthy (hostnames resolved during internet test)'
           : 'Unknown (run Self Test)');
+
+    // Build 80: the observability section existed since build 77 (renderer,
+    // bridge, App Group keys) but was never wired in — tester exports lacked
+    // the QUIC verdict. Populate it from the real probe facts; everything is
+    // best-effort so a bridge hiccup can never block the export.
+    let observability: Parameters<typeof buildDiagnosticsReport>[0]['observability'];
+    try {
+      const adapter = getAdapter();
+      const pd = await adapter.getProbeDiagnostics?.();
+      if (pd && (pd.tunnelState !== 'unknown' || pd.probeAt > 0)) {
+        // The address actually used, from the generated config — never the
+        // catalog label (build 77 lesson: labels lied about the node).
+        let address: string | undefined;
+        try {
+          const cfg = JSON.parse((await adapter.getGeneratedConfig?.()) || 'null');
+          address = cfg?.outbounds?.[0]?.settings?.vnext?.[0]?.address;
+        } catch { /* config unavailable — identity stays unknown */ }
+        const ident = address
+          ? resolveNodeIdentity(address, selectedServer ?? undefined) : null;
+        observability = {
+          osTunnelEstablished: ['connected_probing', 'connected_verified', 'degraded'].includes(pd.tunnelState),
+          internetProbePassed: pd.probeAt > 0 ? pd.probeOk : null,
+          probeLatencyMs:      pd.probeMs || undefined,
+          probeDetail:         pd.probeDetail || undefined,
+          nodeIdentity:        ident ? `${ident.country} · ${ident.city} (${address})` : undefined,
+          quicVerdict:         /⇒\s*(\S+)/.exec(pd.quicEvidence || '')?.[1],
+          quicEvidence:        pd.quicEvidence || undefined,
+          quicEvidenceDirect:  pd.quicEvidenceDirect || undefined,
+        };
+      }
+    } catch { /* observability stays undefined — report renders without it */ }
+
     return buildDiagnosticsReport({
+      observability,
       appVersion:   APP_VERSION,
       appBuild:     APP_BUILD,
       deviceId:     useAuthStore.getState().user?.deviceId ?? '',
@@ -170,8 +204,8 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
     });
   };
 
-  const handleExport = () => {
-    const report = buildReport();
+  const handleExport = async () => {
+    const report = await buildReport();
     Alert.alert('Export Diagnostic Report', 'Share the report or copy it to the clipboard.', [
       { text: 'Copy', onPress: () => { Clipboard.setString(report); Alert.alert('Copied', 'Diagnostic report copied to clipboard.'); } },
       { text: 'Share', onPress: () => { Share.share({ message: report, title: 'Realink Diagnostic Report' }).catch(() => {}); } },

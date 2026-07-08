@@ -147,6 +147,14 @@ export const useVpnStore = create<VpnState>((set, get) => {
         HapticService.connect();
       } catch {}
 
+      // Build 80: app-process QUIC evidence (measures the TUNNEL path — the
+      // extension's own probe only sees the direct path). Fire-and-forget.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { scheduleQuicEvidenceProbe } = require('../services/quicEvidenceService') as typeof import('../services/quicEvidenceService');
+        scheduleQuicEvidenceProbe(server?.id, () => get().connectionState === 'connected');
+      } catch {}
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { reportVpnStatus } = require('../services/entitlementService');
@@ -184,6 +192,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
     onDisconnected: () => {
       stopStatusHeartbeat();
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { cancelQuicEvidenceProbe } = require('../services/quicEvidenceService') as typeof import('../services/quicEvidenceService');
+        cancelQuicEvidenceProbe();
+      } catch {}
       const state = get();
 
       // Always record the completed session, even during server switches

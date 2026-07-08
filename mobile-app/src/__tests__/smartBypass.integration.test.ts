@@ -133,9 +133,13 @@ describe('Smart Mode ON — selective bypass, no leak', () => {
     const ipRule     = directRules.find((r) => r.ip);
     const domainRule = directRules.find((r) => r.domain);
     expect(ipRule!.ip!.every((c) => /^(127|10|172|192|::1|fc00|fe80)/.test(c))).toBe(true);
-    // every bypass domain is an Iranian target — none is a global service
+    // every bypass domain is an Iranian target — none is a global service.
+    // Includes the non-.ir domains Iranian apps actually use (harvested from live
+    // node traffic 2026-07-07): blu/bank/payment .com, Bale .sh, Divar/Digistyle
+    // /yektanet .com, Vandar .io. See iranBypassRules.ts.
+    const iranianTargets = /(:ir$|\.ir$|:ir\b|snapp\.taxi$|snapp\.site$|tapsi\.cab$|(digikala|sheypoor|dkstatics|aparat|filimo|eitaa|blubank|bankpasargad|behpardakht|digistyle|yektanet|divarcdn|zarinpal|okala|torob|basalam)\.com$|bale\.(ai|sh)$|balep\.ir$|divar\.cloud$|vandar\.io$|neshan\.org$)/;
     for (const d of domainRule!.domain!) {
-      expect(d).toMatch(/(:ir$|\.ir$|digikala\.com$|snapp\.taxi$|sheypoor\.com$|tapsi\.cab$|:ir\b)/);
+      expect(d).toMatch(iranianTargets);
     }
   });
 

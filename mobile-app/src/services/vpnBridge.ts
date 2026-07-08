@@ -41,6 +41,20 @@ export interface ProbeDiagnostics {
   probeAt:      number;
   probeDetail:  string;
   quicEvidence: string;
+  /** Build 80 — the extension's direct-path control measurement. */
+  quicEvidenceDirect?: string;
+}
+
+/** Build 80 — app-process QUIC probe result (traverses the TUN on iOS). */
+export interface QuicProbeResult {
+  verdict:    string; // QUIC_OK | QUIC_BLACKHOLE_LIKELY | BOTH_FAIL | TCP_FAIL_QUIC_OK
+  line:       string; // human-readable 'TCP=… QUIC=… ⇒ VERDICT [app-path]'
+  tcpOk:      boolean;
+  tcpMs:      number;
+  tcpDetail:  string;
+  quicOk:     boolean;
+  quicMs:     number;
+  quicDetail: string;
 }
 
 export interface VpnAdapter {
@@ -55,6 +69,7 @@ export interface VpnAdapter {
   runSelfTest?(): Promise<SelfTestResult[]>;
   getTunnelState?(): Promise<string>;
   getProbeDiagnostics?(): Promise<ProbeDiagnostics>;
+  runQuicProbe?(): Promise<QuicProbeResult | null>;
 }
 
 // ── Mock adapter (used when native module is unavailable) ─────────────────────
@@ -112,7 +127,13 @@ class MockAdapter implements VpnAdapter {
   async getTunnelState(): Promise<string> { return 'connected_verified'; }
   async getProbeDiagnostics(): Promise<ProbeDiagnostics> {
     return { tunnelState: 'connected_verified', probeOk: true, probeMs: 120,
-             probeAt: Math.floor(Date.now() / 1000), probeDetail: 'mock', quicEvidence: '(mock)' };
+             probeAt: Math.floor(Date.now() / 1000), probeDetail: 'mock',
+             quicEvidence: '(mock)', quicEvidenceDirect: '(mock)' };
+  }
+  async runQuicProbe(): Promise<QuicProbeResult> {
+    return { verdict: 'QUIC_OK', line: 'TCP=ok(50ms,HTTP 200) QUIC=ok(60ms,HTTP 200) ⇒ QUIC_OK [app-path] (mock)',
+             tcpOk: true, tcpMs: 50, tcpDetail: 'HTTP 200 (mock)',
+             quicOk: true, quicMs: 60, quicDetail: 'HTTP 200 (mock)' };
   }
 }
 
@@ -277,6 +298,16 @@ class NativeAdapter implements VpnAdapter {
       return (await this.module.getProbeDiagnostics?.()) ?? empty;
     } catch {
       return empty;
+    }
+  }
+
+  // Build 80 — app-process QUIC probe. Returns null where the native method is
+  // unavailable (Android: per-app UDP evidence is not implemented natively).
+  async runQuicProbe(): Promise<QuicProbeResult | null> {
+    try {
+      return (await this.module.runQuicProbe?.()) ?? null;
+    } catch {
+      return null;
     }
   }
 }

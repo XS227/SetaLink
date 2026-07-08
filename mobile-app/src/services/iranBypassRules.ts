@@ -70,6 +70,32 @@ export const DEFAULT_BYPASS_RULES: BypassRule[] = [
   { id: 'sb24',       type: 'domain_suffix', value: 'sb24.ir',       platform: 'all', enabled: true, note: 'Saman internet bank' },
   { id: 'shaparak',   type: 'domain_suffix', value: 'shaparak.ir',   platform: 'all', enabled: true, note: 'national payment gateway — card payments break without this' },
   { id: 'mygov',      type: 'domain_suffix', value: 'my.gov.ir',     platform: 'all', enabled: true, note: 'government services portal' },
+
+  // ── non-.ir domains that Iranian apps actually use (harvested from live
+  //    node traffic 2026-07-07 — the ir-tld rule MISSES these, so the apps get
+  //    tunneled → foreign exit IP → geo-blocked). This is why blu/آپ failed. ──
+  { id: 'blu',        type: 'domain_suffix', value: 'blubank.com',    platform: 'all', enabled: true, note: 'blu digital bank — real API is app.blubank.com (.com, NOT .ir)' },
+  { id: 'blu-ir',     type: 'domain_suffix', value: 'blubank.ir',     platform: 'all', enabled: true, note: 'blu (.ir marketing/aux)' },
+  { id: 'asanpardakht',type:'domain_suffix', value: 'asanpardakht.ir',platform: 'all', enabled: true, note: 'آپ / AsanPardakht — verify real API host on device (may use IP-literal)' },
+  { id: 'ap-ir',      type: 'domain_suffix', value: 'ap.ir',          platform: 'all', enabled: true, note: 'آپ / AsanPardakht short domain' },
+  { id: 'bale-sh',    type: 'domain_suffix', value: 'bale.sh',        platform: 'all', enabled: true, note: 'Bale messenger infra/sentry (.sh — complements bale.ai)' },
+  { id: 'divarcdn',   type: 'domain_suffix', value: 'divarcdn.com',   platform: 'all', enabled: true, note: 'Divar CDN (.com)' },
+  { id: 'divar-cloud',type: 'domain_suffix', value: 'divar.cloud',    platform: 'all', enabled: true, note: 'Divar infra (.cloud)' },
+  { id: 'digistyle',  type: 'domain_suffix', value: 'digistyle.com',  platform: 'all', enabled: true, note: 'Digistyle (Digikala fashion)' },
+  { id: 'yektanet',   type: 'domain_suffix', value: 'yektanet.com',   platform: 'all', enabled: true, note: 'yektanet ad network embedded in many Iranian apps' },
+
+  // ── other digital banks / payment (defensive; most .ir are already covered by ir-tld) ──
+  { id: 'pasargad',   type: 'domain_suffix', value: 'bpi.ir',          platform: 'all', enabled: true, note: 'Bank Pasargad' },
+  { id: 'pasargad-com',type:'domain_suffix', value: 'bankpasargad.com',platform: 'all', enabled: true, note: 'Bank Pasargad (.com)' },
+  { id: 'ayandeh',    type: 'domain_suffix', value: 'bankayandeh.ir',  platform: 'all', enabled: true, note: 'Bank Ayandeh' },
+  { id: 'tejarat',    type: 'domain_suffix', value: 'tejaratbank.ir',  platform: 'all', enabled: true, note: 'Bank Tejarat' },
+  { id: 'parsian',    type: 'domain_suffix', value: 'parsian-bank.ir', platform: 'all', enabled: true, note: 'Bank Parsian' },
+  { id: 'refah',      type: 'domain_suffix', value: 'refah-bank.ir',   platform: 'all', enabled: true, note: 'Bank Refah' },
+  { id: 'digipay',    type: 'domain_suffix', value: 'digipay.ir',      platform: 'all', enabled: true, note: 'DigiPay wallet' },
+  { id: 'behpardakht',type: 'domain_suffix', value: 'behpardakht.com', platform: 'all', enabled: true, note: 'Behpardakht Mellat' },
+  { id: 'sadad',      type: 'domain_suffix', value: 'sadadpsp.ir',     platform: 'all', enabled: true, note: 'Sadad PSP (Melli)' },
+  { id: 'vandar',     type: 'domain_suffix', value: 'vandar.io',       platform: 'all', enabled: true, note: 'Vandar payments' },
+  { id: 'snappfood',  type: 'domain_suffix', value: 'snappfood.ir',    platform: 'all', enabled: true, note: 'food delivery' },
 ];
 
 // Very defensive validation: a malformed rule (bad type in a future remote
@@ -133,18 +159,22 @@ export const IOS_APP_BYPASS_CATALOG: BypassCatalogApp[] = [
   { id: 'snapp',      name: 'Snapp',       icon: '🚕', domains: ['snapp.ir', 'snapp.taxi', 'snapp.site'] },
   { id: 'tapsi',      name: 'Tapsi',       icon: '🚖', domains: ['tapsi.cab', 'tapsi.ir'] },
   { id: 'digikala',   name: 'Digikala',    icon: '🛒', domains: ['digikala.com', 'digikala.ir', 'dkstatics.com'] },
-  { id: 'divar',      name: 'Divar',       icon: '📦', domains: ['divar.ir'] },
+  { id: 'divar',      name: 'Divar',       icon: '📦', domains: ['divar.ir', 'divarcdn.com', 'divar.cloud'] },
   { id: 'sheypoor',   name: 'Sheypoor',    icon: '🏷️', domains: ['sheypoor.com'] },
   { id: 'rubika',     name: 'Rubika',      icon: '💬', domains: ['rubika.ir'] },
-  { id: 'bale',       name: 'Bale',        icon: '💬', domains: ['bale.ai', 'balep.ir'] },
+  { id: 'bale',       name: 'Bale',        icon: '💬', domains: ['bale.ai', 'balep.ir', 'bale.sh'] },
   { id: 'eitaa',      name: 'Eitaa',       icon: '💬', domains: ['eitaa.com', 'eitaa.ir'] },
   { id: 'aparat',     name: 'Aparat',      icon: '🎬', domains: ['aparat.com', 'aparat.ir'] },
   { id: 'filimo',     name: 'Filimo',      icon: '🎬', domains: ['filimo.com', 'filimo.ir'] },
   { id: 'cafebazaar', name: 'Cafe Bazaar', icon: '🏪', domains: ['cafebazaar.ir'] },
   { id: 'myket',      name: 'Myket',       icon: '🏪', domains: ['myket.ir'] },
+  { id: 'blu',        name: 'blu bank',    icon: '🏦', domains: ['blubank.com', 'blubank.ir'] },
+  { id: 'ap',         name: 'آپ / AsanPardakht', icon: '💳', domains: ['asanpardakht.ir', 'ap.ir'] },
   { id: 'banking',    name: 'Banking & payments', icon: '🏦',
     domains: ['shaparak.ir', 'bmi.ir', 'bankmelli.ir', 'mellatbank.ir', 'banksepah.ir',
-              'bsi.ir', 'enbank.ir', 'samanbank.ir', 'sb24.ir', 'sep.ir', 'zarinpal.com'] },
+              'bsi.ir', 'enbank.ir', 'samanbank.ir', 'sb24.ir', 'sep.ir', 'zarinpal.com',
+              'blubank.com', 'bpi.ir', 'bankpasargad.com', 'bankayandeh.ir', 'tejaratbank.ir',
+              'parsian-bank.ir', 'refah-bank.ir', 'digipay.ir', 'behpardakht.com', 'sadadpsp.ir', 'vandar.io'] },
   { id: 'gov',        name: 'Government (my.gov.ir)', icon: '🏛️', domains: ['gov.ir', 'sana.ir'] },
 ];
 

@@ -56,7 +56,7 @@ import { useVpnStore }           from '../stores/vpnStore';
 import { useServerStore }        from '../stores/serverStore';
 import { useAppBoot }            from '../hooks/useAppBoot';
 import { useDeepLinks }          from '../hooks/useDeepLinks';
-import { ensureNotificationPermission, consumeInitialRoute } from '../services/dmNotifications';
+import { ensureNotificationPermission, consumeInitialRoute, parseInboxRoute } from '../services/dmNotifications';
 import { useT }                   from '../i18n';
 
 import type { RootStackParamList, MainTabParamList } from './types';
@@ -88,6 +88,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'diagnostics')    { navigation.navigate('Diagnostics');    return; }
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
+    if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };
@@ -550,9 +551,9 @@ function NotificationRouteHandler() {
     let mounted = true;
     ensureNotificationPermission().catch(() => {});
     const route = async () => {
-      const r = await consumeInitialRoute();
-      if (mounted && r === 'inbox') {
-        try { navigation.navigate('Inbox'); } catch {}
+      const parsed = parseInboxRoute(await consumeInitialRoute());
+      if (mounted && parsed.open) {
+        try { navigation.navigate('Inbox', { threadKey: parsed.threadKey }); } catch {}
       }
     };
     route();
@@ -620,8 +621,11 @@ export function AppNavigator() {
           name="Inbox"
           options={{ animation: 'slide_from_right' }}
         >
-          {({ navigation }) => (
-            <InboxScreen onBack={() => navigation.goBack()} />
+          {({ navigation, route }) => (
+            <InboxScreen
+              onBack={() => navigation.goBack()}
+              initialThreadKey={(route.params as any)?.threadKey ?? null}
+            />
           )}
         </Stack.Screen>
         <Stack.Screen

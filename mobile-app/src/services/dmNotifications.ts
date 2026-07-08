@@ -26,15 +26,21 @@ export interface NotifiableMessage {
   peerDevice: string;
 }
 
-/** Pure: pick received, unread messages we haven't notified about yet. */
+/** Pure: pick received, unread messages we haven't notified about yet. Each
+ *  carries the deep-link route into its DM thread ('inbox:<peerDevice>') so a
+ *  notification tap opens straight into that conversation. */
 export function newIncomingToNotify(
   messages: NotifiableMessage[],
   alreadyNotified: number[],
-): Array<{ id: number; sender: string }> {
+): Array<{ id: number; sender: string; route: string }> {
   const seen = new Set(alreadyNotified);
   return messages
     .filter(m => m.direction === 'in' && !m.read && !seen.has(m.id))
-    .map(m => ({ id: m.id, sender: m.peerUserId || m.peerDevice || 'Realink' }));
+    .map(m => ({
+      id:     m.id,
+      sender: m.peerUserId || m.peerDevice || 'Realink',
+      route:  m.peerDevice ? `inbox:${m.peerDevice}` : 'inbox',
+    }));
 }
 
 function loadNotified(): number[] {
@@ -84,7 +90,9 @@ export async function notifyNewIncoming(
   for (const m of toNotify) {
     try {
       // Title only — never leak the message body into the notification (privacy).
-      await mod.notifyMessage(`New message from ${m.sender}`, null, m.id);
+      // `route` deep-links the tap into this DM thread; older native builds that
+      // ignore the extra arg simply fall back to the inbox list.
+      await mod.notifyMessage(`New message from ${m.sender}`, null, m.id, m.route);
       posted++;
     } catch { /* best-effort */ }
   }
@@ -92,9 +100,25 @@ export async function notifyNewIncoming(
   return posted;
 }
 
-/** Route the app was opened into via a notification tap ('inbox'), else null. */
+/** Route the app was opened into via a notification tap, else null. Forms:
+ *    'inbox'                 → open the inbox list
+ *    'inbox:<threadKey>'     → deep-link straight into that conversation
+ *  where <threadKey> is a DM peer key or the official key ('__official__'). */
 export async function consumeInitialRoute(): Promise<string | null> {
   const mod = nativeModule();
   if (!mod?.consumeInitialRoute) return null;
   try { return (await mod.consumeInitialRoute()) ?? null; } catch { return null; }
+}
+
+export interface InboxRoute { open: boolean; threadKey: string | null; }
+
+/** Pure: parse a native route string into an inbox navigation intent. */
+export function parseInboxRoute(route: string | null | undefined): InboxRoute {
+  if (!route) return { open: false, threadKey: null };
+  if (route === 'inbox') return { open: true, threadKey: null };
+  if (route.startsWith('inbox:')) {
+    const key = route.slice('inbox:'.length).trim();
+    return { open: true, threadKey: key.length ? key : null };
+  }
+  return { open: false, threadKey: null };
 }
