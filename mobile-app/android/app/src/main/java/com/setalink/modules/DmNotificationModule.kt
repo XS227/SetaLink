@@ -20,9 +20,9 @@ class DmNotificationModule(private val context: ReactApplicationContext) :
     override fun getName(): String = "DmNotification"
 
     @ReactMethod
-    fun notifyMessage(title: String, body: String?, id: Double, promise: Promise) {
+    fun notifyMessage(title: String, body: String?, id: Double, route: String?, promise: Promise) {
         try {
-            NotificationHelper.showMessage(context, title, body, id.toInt())
+            NotificationHelper.showMessage(context, title, body, id.toInt(), route ?: "inbox")
             promise.resolve(true)
         } catch (e: Exception) {
             promise.resolve(false)
