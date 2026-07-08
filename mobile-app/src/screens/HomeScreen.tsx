@@ -10,7 +10,7 @@ import { MetricPill }    from '../components/MetricPill';
 import { NetworkQualityBar } from '../components/NetworkQualityBar';
 import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
-import { EcosystemBanner } from '../components/EcosystemBanner';
+import { HomeBanner } from '../components/HomeBanner';
 import { WatchAdCard } from '../components/WatchAdCard';
 
 import { useVpnStore }         from '../stores/vpnStore';
@@ -341,9 +341,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Ecosystem promo (Shahnameh + 3real, rotating) */}
+        {/* Front-page banner — rotates AdMob banner ⇄ ecosystem promo (free users) */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <EcosystemBanner seed={0} />
+          <HomeBanner seed={0} showAds={!user || user.plan === 'free'} />
         </Animated.View>
 
         {/* Watch ad → earn data */}

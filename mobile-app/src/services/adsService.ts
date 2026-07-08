@@ -97,16 +97,21 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
 // connection has a chance to earn ad revenue. It is STRICTLY best-effort: if no
 // ad is loaded it never blocks or delays connecting (see showInterstitialOnConnect).
 //
-// TODO(Khabat): create a dedicated Interstitial ad unit in AdMob for BOTH apps
-// (iOS ~9590370979 and Android ~2740153482) and paste the unit ids below. Until
-// then the placeholder simply fails to fill in release (safe — connect proceeds)
-// and dev uses Google's always-fill test unit.
+// Dedicated Interstitial ad units (one per app; shown on Connect).
 const INTERSTITIAL_UNIT_PROD = Platform.OS === 'ios'
-  ? 'ca-app-pub-5788265416382988/0000000000'   // TODO: real iOS interstitial unit
-  : 'ca-app-pub-5788265416382988/0000000000';  // TODO: real Android interstitial unit
+  ? 'ca-app-pub-5788265416382988/1585189182'
+  : 'ca-app-pub-5788265416382988/2914618117';
 
 export const INTERSTITIAL_UNIT_ID =
   (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.INTERSTITIAL : INTERSTITIAL_UNIT_PROD;
+
+// Banner ad units (one per app; rotated with the ecosystem banner on Home).
+const BANNER_UNIT_PROD = Platform.OS === 'ios'
+  ? 'ca-app-pub-5788265416382988/9407874272'
+  : 'ca-app-pub-5788265416382988/7975373101';
+
+export const BANNER_UNIT_ID =
+  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.BANNER : BANNER_UNIT_PROD;
 
 let _interstitial: InterstitialAd | null = null;
 let _interReady   = false;
