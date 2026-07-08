@@ -26,6 +26,7 @@ import { computeHealthScore, dnsOkFromConnectionLog } from '../utils/healthScore
 import { getLastConnectProbeOk } from '../services/vpnBridge';
 import { useT, trPhrase }     from '../i18n';
 import { connectingPhaseLabel } from '../services/failureClassifier';
+import { initAds, preloadInterstitial, showInterstitialOnConnect } from '../services/adsService';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_CONNECTED    = require('../assets/logo_connected.png') as number;
@@ -131,6 +132,13 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     ]).start();
   }, []);
 
+  // Warm up an interstitial so it's ready by the first Connect tap (free users
+  // only — premium is ad-free). Best-effort; failures are silent.
+  useEffect(() => {
+    if (user && user.plan !== 'free') return;
+    initAds().then(preloadInterstitial).catch(() => {});
+  }, [user?.plan]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleConnect = () => {
     if (connectionState === 'connected') { disconnect(); return; }
     if (connectionState === 'idle' || connectionState === 'failed') {
@@ -139,7 +147,13 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         (onNavigate as (tab: string) => void)('upgrade');
         return;
       }
+      // Start connecting first so the ad can never delay or block the tunnel.
       connect();
+      // Best-effort ad revenue on each new connection — free users only, and
+      // only if an interstitial is already loaded (never blocks connect).
+      if (!user || user.plan === 'free') {
+        showInterstitialOnConnect();
+      }
     }
   };
 
