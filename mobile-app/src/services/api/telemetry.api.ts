@@ -16,7 +16,10 @@ export type TelemetryEvent =
   | 'connect_ok'
   | 'connect_fail'
   | 'internet_fail'
-  | 'probe_fail';
+  | 'probe_fail'
+  /** Build 80 — app-process QUIC evidence (verdict carried in tunnel_mode,
+   *  matching the build 77-79 extension rows so admin queries stay uniform). */
+  | 'quic_probe';
 
 export interface ConnectTelemetryPayload {
   /** Outcome of the connect attempt. */
@@ -79,6 +82,11 @@ export interface ConnectTelemetryPayload {
   rtt_ms?:           number;
   /** Whether the user's network type changed during the session (WiFi<->mobile). */
   network_switched?: boolean;
+  /** quic_probe rows: the verdict (QUIC_OK | QUIC_BLACKHOLE_LIKELY | …) — same
+   *  column the packet-tunnel extension used, so old and new rows line up. */
+  tunnel_mode?: string;
+  /** Probe latency in ms (quic_probe: the QUIC leg). */
+  probe_ms?: number;
 }
 
 /**

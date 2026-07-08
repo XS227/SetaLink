@@ -53,8 +53,93 @@ export function resolveNodeIdentity(
 export type FilterTab = 'All' | 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming';
 export const FILTER_TABS: FilterTab[] = ['All', 'Recommended', 'Fastest', 'Stealth', 'Streaming'];
 
-// No hardcoded demo servers — only real imported or backend-provided nodes appear here.
-export const SERVER_CATALOG: ServerRecord[] = [];
+// ── Bundled cf-edge fallback (2026-07-07) ───────────────────────────────────
+// cf-edge is the Cloudflare-fronted WebSocket stealth node — the hardest node
+// to block, because its traffic is indistinguishable from normal Cloudflare
+// HTTPS. It normally arrives via the /v1/servers catalog, but that fetch itself
+// can be blocked/throttled from a censored network — exactly when the user most
+// needs the CDN-fronted node. When the catalog fetch fails the app used to fall
+// back to a Reality-only emergency profile (Finland + Germany direct IPs), so a
+// tester on a hostile network was stranded on the slow direct node with cf-edge
+// nowhere in the list. Bundling the node + its (non-secret, WS — no Reality key)
+// credentials guarantees the stealth path is always selectable, offline of the
+// API. Its real creds are refreshed by fetchServers whenever the catalog loads.
+export const CF_EDGE_ID = 'cf-edge';
+
+export const BUNDLED_CF_EDGE: ServerRecord = {
+  id:        CF_EDGE_ID,
+  country:   'Cloudflare',
+  city:      'CDN Edge · Stealth',
+  flag:      '☁️',
+  ping:      60,
+  load:      20,
+  protocol:  'WebSocket',
+  transport: 'WS',
+  tags:      ['Recommended', 'Stealth'],
+};
+
+export const BUNDLED_CF_EDGE_CREDS: ServerCredentials = {
+  uuid:        '69205cf6-23a7-4e64-a1a2-865fd49471fe',
+  // Hostname rotated cf.setalink.no → real.setalink.no on 2026-07-07 after Iran
+  // began SNI-blocking cf.setalink.no (~22:44 UTC). Same Cloudflare origin
+  // (5.249.255.116), same uuid/wsPath; origin serves both names (wildcard vhost).
+  // A live catalog fetch overrides this, but the bundled default must also point
+  // at the un-blocked name so fresh installs / offline fallback reach the origin.
+  address:     'real.setalink.no',
+  port:        443,
+  publicKey:   '',            // WebSocket node — no Reality key
+  shortId:     '',
+  sni:         'real.setalink.no',
+  flow:        '',
+  fingerprint: 'chrome',
+  edgeAddress: 'real.setalink.no',
+  edgePort:    443,
+  wsPath:      '/cfws',
+};
+
+/** Ranking for the DEFAULT auto-selection (only used when the user has not
+ *  chosen a node). Raw server-side ping is a poor proxy for a censored user:
+ *  a low-ping direct node can be DPI-blocked/throttled from their network,
+ *  while the Cloudflare-fronted stealth node (higher nominal ping) actually
+ *  works. So we rank by, in order:
+ *    1. successScore — real per-node success rate from telemetry (backend).
+ *    2. a Recommended/Stealth tag — the reliable cf-edge, preferred when we
+ *       have no telemetry yet (fresh install) so censored users land on a
+ *       node that works instead of a fast-but-blocked one.
+ *    3. lowest health-check ping — final tiebreak.
+ *  The connect optimizer still validates real internet and fails over, so this
+ *  only changes which node the user STARTS on. */
+function isPreferredNode(s: ServerRecord): boolean {
+  return (s.tags ?? []).some((t) => t === 'Recommended' || t === 'Stealth');
+}
+export function compareForAutoSelect(a: ServerRecord, b: ServerRecord): number {
+  const sa = typeof a.successScore === 'number' ? a.successScore : -1;
+  const sb = typeof b.successScore === 'number' ? b.successScore : -1;
+  if (sb !== sa) return sb - sa;                       // higher success first
+  const ra = isPreferredNode(a) ? 1 : 0;
+  const rb = isPreferredNode(b) ? 1 : 0;
+  if (rb !== ra) return rb - ra;                       // stealth/recommended first
+  return a.ping - b.ping;                              // then lowest ping
+}
+
+/** Merge the bundled cf-edge node + creds into a servers list / creds map when
+ *  missing. Never overwrites fresher catalog creds — additive only. */
+function ensureBundledFallback(
+  servers: ServerRecord[],
+  creds:   Record<string, ServerCredentials>,
+): { servers: ServerRecord[]; creds: Record<string, ServerCredentials> } {
+  const hasNode  = servers.some((s) => s.id === CF_EDGE_ID);
+  const nextSrv  = hasNode ? servers : [...servers, BUNDLED_CF_EDGE];
+  const nextCred = creds[CF_EDGE_ID]
+    ? creds
+    : { ...creds, [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS };
+  return { servers: nextSrv, creds: nextCred };
+}
+
+// No hardcoded demo servers — only real imported or backend-provided nodes.
+// cf-edge is the one bundled exception: the CDN-fronted node must survive a
+// blocked catalog fetch (see ensureBundledFallback).
+export const SERVER_CATALOG: ServerRecord[] = [BUNDLED_CF_EDGE];
 
 // Composite server score for AI-driven ranking
 export function scoreServer(s: ServerRecord, mode: AIModeKey): number {
@@ -136,7 +221,9 @@ export const useServerStore = create<ServerState>()(
   query:         '',
   isLoading:     false,
   loadError:     null,
-  importedCreds: {},
+  // Seed the bundled cf-edge creds so the stealth node is connectable even
+  // before (or without) a successful catalog fetch.
+  importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS },
 
   selectServer: (id) => {
     set({ selectedId: id });
@@ -175,20 +262,27 @@ export const useServerStore = create<ServerState>()(
         }));
 
         const prevSelectedId = get().selectedId;
-        set((state) => ({
-          servers:       data,
-          importedCreds: { ...state.importedCreds, ...fetchedCreds },
+        // Always keep the bundled cf-edge node + creds present, even if the
+        // catalog omitted it (or its per-node config fetch failed above), so the
+        // stealth path never silently disappears from the list.
+        const merged = ensureBundledFallback(
+          data,
+          { ...get().importedCreds, ...fetchedCreds },
+        );
+        set({
+          servers:       merged.servers,
+          importedCreds: merged.creds,
           isLoading:     false,
-        }));
+        });
 
-        // Auto-select the fastest connectable server when the user has no valid
+        // Auto-select the best connectable server when the user has no valid
         // selection (new install, or previously selected node was removed).
         // Respects an existing manual choice — never overrides it.
-        const newIds = new Set(data.map((s) => s.id));
+        const newIds = new Set(merged.servers.map((s) => s.id));
         if (!prevSelectedId || !newIds.has(prevSelectedId)) {
-          const best = data
-            .filter((s) => fetchedCreds[s.id])
-            .sort((a, b) => a.ping - b.ping)[0];
+          const best = merged.servers
+            .filter((s) => merged.creds[s.id])
+            .sort(compareForAutoSelect)[0];
           if (best) {
             set({ selectedId: best.id });
             syncToVpnStore(best);
@@ -198,8 +292,16 @@ export const useServerStore = create<ServerState>()(
         set({ isLoading: false });
       }
     } catch {
-      // Keep SERVER_CATALOG fallback on any network/API error
-      set({ isLoading: false, loadError: 'Using saved server list' });
+      // Network/API error (e.g. the catalog itself is blocked from a censored
+      // network) — keep the saved list but guarantee the CDN-fronted cf-edge is
+      // in it, since that is the node most likely to still reach the user here.
+      const merged = ensureBundledFallback(get().servers, get().importedCreds);
+      set({
+        servers:       merged.servers,
+        importedCreds: merged.creds,
+        isLoading:     false,
+        loadError:     'Using saved server list',
+      });
     }
   },
 

@@ -54,11 +54,12 @@ object NotificationHelper {
      * Inbox (via the "setalink_route" extra). `body` is intentionally optional and
      * omitted by callers for privacy — only the sender label is shown.
      */
-    fun showMessage(context: Context, title: String, body: String?, notifyId: Int) {
+    fun showMessage(context: Context, title: String, body: String?, notifyId: Int, route: String = "inbox") {
         createMessagesChannel(context)
 
         val openIntent = Intent(context, MainActivity::class.java).apply {
-            putExtra("setalink_route", "inbox")
+            // Deep-link target: "inbox" (list) or "inbox:<threadKey>" (one thread).
+            putExtra("setalink_route", route)
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK
         }
         val pending = PendingIntent.getActivity(

@@ -39,7 +39,11 @@ export interface DiagnosticsReportInput {
     probeDetail?:        string;          // e.g. 'cp.cloudflare.com 204 in 120ms'
     nodeIdentity?:       string;          // actual connected node, e.g. 'Finland · Helsinki (65.109.183.7)'
     quicVerdict?:        string;          // 'QUIC_BLACKHOLE_LIKELY' | 'QUIC_OK' | …
-    quicEvidence?:       string;          // raw 'TCP=… QUIC=… ⇒ VERDICT'
+    quicEvidence?:       string;          // raw 'TCP=… QUIC=… ⇒ VERDICT [app-path]'
+    /** Build 80 — the extension's direct-path control measurement. From Iran
+     *  this legitimately reads BOTH_FAIL (domestic blocking) while the
+     *  app-path evidence above shows the tunnel verdict users experience. */
+    quicEvidenceDirect?: string;
   };
 }
 
@@ -84,6 +88,10 @@ export function buildDiagnosticsReport(i: DiagnosticsReportInput): string {
     L.push(`  Actual node identity:   ${o.nodeIdentity || 'unknown'}`);
     L.push(`  QUIC evidence verdict:  ${o.quicVerdict || 'not collected'}`);
     if (o.quicEvidence) L.push(`    ${o.quicEvidence}`);
+    // Direct-path control: measured OUTSIDE the tunnel by the extension. From
+    // Iran BOTH_FAIL here is expected (domestic blocking) and proves the
+    // app-path line above really measured the tunnel.
+    if (o.quicEvidenceDirect) L.push(`  Direct-path control:    ${o.quicEvidenceDirect}`);
     // Plain-language state derived from the two facts above.
     const state = !o.osTunnelEstablished ? 'NOT CONNECTED'
       : o.internetProbePassed === true  ? 'CONNECTED (internet verified)'

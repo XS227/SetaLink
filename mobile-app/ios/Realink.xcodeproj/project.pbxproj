@@ -13,6 +13,8 @@
 		00E356F41AD99517003FC87E /* XrayModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F11AD99517003FC87E /* XrayModule.m */; };
 		B105E7A21AD99517003FC002 /* BiometricModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = B105E7A11AD99517003FC001 /* BiometricModule.swift */; };
 		B105E7A41AD99517003FC004 /* BiometricModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B105E7A31AD99517003FC003 /* BiometricModule.m */; };
+		DE100001A0B1C2D300000002 /* DmNotificationModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE100001A0B1C2D300000001 /* DmNotificationModule.swift */; };
+		DE100001A0B1C2D300000004 /* DmNotificationModule.m in Sources */ = {isa = PBXBuildFile; fileRef = DE100001A0B1C2D300000003 /* DmNotificationModule.m */; };
 		CE000001CE000001CE000001 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE000004CE000004CE000004 /* PacketTunnelProvider.swift */; };
 		CE000002CE000002CE000002 /* RealinkTunnel.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = CE000003CE000003CE000003 /* RealinkTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; };
@@ -30,6 +32,8 @@
 		00E356F11AD99517003FC87E /* XrayModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = XrayModule.m; path = SetaLink/XrayModule.m; sourceTree = "<group>"; };
 		B105E7A11AD99517003FC001 /* BiometricModule.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = BiometricModule.swift; path = SetaLink/BiometricModule.swift; sourceTree = "<group>"; };
 		B105E7A31AD99517003FC003 /* BiometricModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = BiometricModule.m; path = SetaLink/BiometricModule.m; sourceTree = "<group>"; };
+		DE100001A0B1C2D300000001 /* DmNotificationModule.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = DmNotificationModule.swift; path = SetaLink/DmNotificationModule.swift; sourceTree = "<group>"; };
+		DE100001A0B1C2D300000003 /* DmNotificationModule.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = DmNotificationModule.m; path = SetaLink/DmNotificationModule.m; sourceTree = "<group>"; };
 		CE000003CE000003CE000003 /* RealinkTunnel.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = RealinkTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		CE000004CE000004CE000004 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = PacketTunnelProvider.swift; path = PacketTunnelExtension/PacketTunnelProvider.swift; sourceTree = "<group>"; };
 		CE000005CE000005CE000005 /* PacketTunnelExtension-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "PacketTunnelExtension-Info.plist"; path = "PacketTunnelExtension/PacketTunnelExtension-Info.plist"; sourceTree = "<group>"; };
@@ -112,6 +116,8 @@
 				00E356F11AD99517003FC87E /* XrayModule.m */,
 				B105E7A11AD99517003FC001 /* BiometricModule.swift */,
 				B105E7A31AD99517003FC003 /* BiometricModule.m */,
+				DE100001A0B1C2D300000001 /* DmNotificationModule.swift */,
+				DE100001A0B1C2D300000003 /* DmNotificationModule.m */,
 				13B07FB31A68108700A75B9A /* Images.xcassets */,
 				13B07FB21A68108700A75B9A /* Info.plist */,
 				A1B2C3D4E5F600001A2B3C4D /* Realink.entitlements */,
@@ -342,6 +348,8 @@
 				00E356F41AD99517003FC87E /* XrayModule.m in Sources */,
 				B105E7A21AD99517003FC002 /* BiometricModule.swift in Sources */,
 				B105E7A41AD99517003FC004 /* BiometricModule.m in Sources */,
+				DE100001A0B1C2D300000002 /* DmNotificationModule.swift in Sources */,
+				DE100001A0B1C2D300000004 /* DmNotificationModule.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

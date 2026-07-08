@@ -12,7 +12,6 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
-import { getRemoteConfig } from '../services/remoteConfigService';
 import { formatBytes } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
@@ -173,7 +172,6 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const showToast = useToastStore((s) => s.show);
   const { connectionState, sessionBytes } = useVpnStore();
 
-  const [supportUrl, setSupportUrl] = useState('https://t.me/SetaLink3');
   const [showQr, setShowQr] = useState(false);
   const [applyingPending, setApplyingPending] = useState(false);
   const inboxMessages = useInboxStore((s) => s.messages);
@@ -182,7 +180,6 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const navTo = onNavigate as (tab: string) => void;
 
   useEffect(() => {
-    getRemoteConfig().then(cfg => { if (cfg.support_url) setSupportUrl(cfg.support_url); }).catch(() => {});
     if (user?.deviceId) {
       refreshInbox(user.deviceId).catch(() => {});
       // Pull the server-side quota ledger (breakdown + milestones + packages)
@@ -280,12 +277,10 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
     }
   };
 
-  const handleOpenSupport = async () => {
-    try {
-      await Linking.openURL(supportUrl);
-    } catch {
-      showToast(t('pr.supportUnavailable'), 'error', 2500);
-    }
+  // Contact support now opens the in-app Support thread (deep-links straight to
+  // it) instead of an external Telegram link.
+  const handleOpenSupport = () => {
+    navTo('support');
   };
 
   const handleOpenWebsite = async () => {

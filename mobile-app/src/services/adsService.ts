@@ -13,6 +13,7 @@
 import { Platform } from 'react-native';
 import mobileAds, {
   RewardedAd, RewardedAdEventType, AdEventType, TestIds, MaxAdContentRating,
+  InterstitialAd,
 } from 'react-native-google-mobile-ads';
 
 // Real ids (must match backend admob_app_id / admob_rewarded_unit_id). Test ad unit
@@ -89,4 +90,73 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
 
     ad.load();
   });
+}
+
+// ── Interstitial ads shown on Connect (revenue per connection) ────────────────
+// A full-screen interstitial is shown when the user taps Connect, so every new
+// connection has a chance to earn ad revenue. It is STRICTLY best-effort: if no
+// ad is loaded it never blocks or delays connecting (see showInterstitialOnConnect).
+//
+// Dedicated Interstitial ad units (one per app; shown on Connect).
+const INTERSTITIAL_UNIT_PROD = Platform.OS === 'ios'
+  ? 'ca-app-pub-5788265416382988/1585189182'
+  : 'ca-app-pub-5788265416382988/2914618117';
+
+export const INTERSTITIAL_UNIT_ID =
+  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.INTERSTITIAL : INTERSTITIAL_UNIT_PROD;
+
+// Banner ad units (one per app; rotated with the ecosystem banner on Home).
+const BANNER_UNIT_PROD = Platform.OS === 'ios'
+  ? 'ca-app-pub-5788265416382988/9407874272'
+  : 'ca-app-pub-5788265416382988/7975373101';
+
+export const BANNER_UNIT_ID =
+  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.BANNER : BANNER_UNIT_PROD;
+
+let _interstitial: InterstitialAd | null = null;
+let _interReady   = false;
+let _interLoading = false;
+
+/** Preload one interstitial so it is ready by the next Connect tap. Idempotent;
+ *  self-reloads after each show/error. Never throws. */
+export function preloadInterstitial(): void {
+  if (_interReady || _interLoading) return;
+  try {
+    _interLoading = true;
+    const ad = InterstitialAd.createForAdRequest(INTERSTITIAL_UNIT_ID, {
+      requestNonPersonalizedAdsOnly: true,
+    });
+    ad.addAdEventListener(AdEventType.LOADED, () => { _interReady = true; _interLoading = false; });
+    ad.addAdEventListener(AdEventType.CLOSED, () => {
+      _interstitial = null; _interReady = false; _interLoading = false;
+      preloadInterstitial();   // get the next one ready
+    });
+    ad.addAdEventListener(AdEventType.ERROR, () => {
+      _interstitial = null; _interReady = false; _interLoading = false;
+    });
+    _interstitial = ad;
+    ad.load();
+  } catch {
+    _interLoading = false;
+  }
+}
+
+/**
+ * Show a preloaded interstitial if — and only if — one is ready RIGHT NOW.
+ * NON-BLOCKING by contract: returns immediately, never awaits an ad load, so it
+ * can never stand between the user and connecting. When nothing is ready it just
+ * kicks off a preload for the next Connect. Returns true if an ad was shown.
+ */
+export function showInterstitialOnConnect(): boolean {
+  if (_interReady && _interstitial) {
+    try {
+      _interstitial.show();
+      _interReady = false;   // one-shot; CLOSED handler preloads the next
+      return true;
+    } catch {
+      _interstitial = null; _interReady = false;
+    }
+  }
+  preloadInterstitial();     // not ready → prepare for next time, don't block
+  return false;
 }

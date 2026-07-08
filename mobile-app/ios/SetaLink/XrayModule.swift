@@ -383,16 +383,89 @@ class XrayModule: NSObject {
     }
 
     // Build 77 — real probe + QUIC evidence for the diagnostics export (no mocks).
+    // Typed locals, not one big literal: a 7-entry heterogeneous dictionary of
+    // `?? `-defaulted expressions makes the Swift type-checker give up
+    // ("unable to type-check this expression in reasonable time", build 80 CI).
     @objc func getProbeDiagnostics(_ resolve: @escaping RCTPromiseResolveBlock,
                                     rejecter reject: @escaping RCTPromiseRejectBlock) {
-        resolve([
-            "tunnelState":  shared?.string(forKey: "tunnel_state") ?? "unknown",
-            "probeOk":      shared?.bool(forKey: Self.probeKey) ?? false,
-            "probeMs":      shared?.integer(forKey: "last_probe_latency_ms") ?? 0,
-            "probeAt":      shared?.integer(forKey: "last_probe_at") ?? 0,
-            "probeDetail":  shared?.string(forKey: "last_probe_detail") ?? "",
-            "quicEvidence": shared?.string(forKey: "last_quic_evidence") ?? "",
-        ])
+        let tunnelState: String = shared?.string(forKey: "tunnel_state") ?? "unknown"
+        let probeOk:     Bool   = shared?.bool(forKey: Self.probeKey) ?? false
+        let probeMs:     Int    = shared?.integer(forKey: "last_probe_latency_ms") ?? 0
+        let probeAt:     Int    = shared?.integer(forKey: "last_probe_at") ?? 0
+        let probeDetail: String = shared?.string(forKey: "last_probe_detail") ?? ""
+        let quicEvidence: String = shared?.string(forKey: "last_quic_evidence") ?? ""
+        // Build 80 — the extension's own (direct-path) measurement, kept as a
+        // control alongside the app-path evidence above.
+        let quicEvidenceDirect: String = shared?.string(forKey: "last_quic_evidence_direct") ?? ""
+        let out: [String: Any] = [
+            "tunnelState":        tunnelState,
+            "probeOk":            probeOk,
+            "probeMs":            probeMs,
+            "probeAt":            probeAt,
+            "probeDetail":        probeDetail,
+            "quicEvidence":       quicEvidence,
+            "quicEvidenceDirect": quicEvidenceDirect,
+        ]
+        resolve(out)
+    }
+
+    // MARK: - runQuicProbe (build 80)
+
+    // QUIC/UDP evidence measured from the APP process. The packet-tunnel
+    // extension's own sockets are exempt from the tunnel routes, so a probe
+    // there measures the DIRECT path — from Iran, instagram.com is blocked
+    // directly and the verdict is always BOTH_FAIL (a false negative; proven
+    // by build 77-79 telemetry). The app's sockets ARE captured by the TUN
+    // (HEV, layer 3), so this probe exercises the exact path Instagram uses:
+    // app QUIC → TUN → HEV UDP → Xray socks → udp/443 rule → proxy(-quic).
+    // TCP vs forced-H3 to the same host; the pair proves/disproves a QUIC
+    // blackhole on the TUNNEL path. Result goes to the App Group (same key
+    // the diagnostics export reads) and back to JS, which owns telemetry.
+    @objc func runQuicProbe(_ resolve: @escaping RCTPromiseResolveBlock,
+                             rejecter reject: @escaping RCTPromiseRejectBlock) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let host = "https://www.instagram.com/favicon.ico"
+            func probe(http3: Bool) -> (ok: Bool, ms: Int, detail: String) {
+                let cfg = URLSessionConfiguration.ephemeral
+                cfg.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                cfg.timeoutIntervalForRequest = 6.0
+                let session = URLSession(configuration: cfg)
+                var req = URLRequest(url: URL(string: host)!)
+                if http3, #available(iOS 15.0, *) { req.assumesHTTP3Capable = true }
+                let start = Date(); let sem = DispatchSemaphore(value: 0)
+                var ok = false; var detail = ""
+                let task = session.dataTask(with: req) { _, resp, err in
+                    if let h = resp as? HTTPURLResponse { ok = true; detail = "HTTP \(h.statusCode)" }
+                    else if let e = err { detail = e.localizedDescription }
+                    sem.signal()
+                }
+                task.resume()
+                if sem.wait(timeout: .now() + 6.5) == .timedOut { task.cancel(); detail = "timeout" }
+                return (ok, Int(Date().timeIntervalSince(start) * 1000), detail)
+            }
+            let tcp  = probe(http3: false)
+            let quic = probe(http3: true)
+            let verdict = (tcp.ok && !quic.ok) ? "QUIC_BLACKHOLE_LIKELY"
+                        : (tcp.ok && quic.ok) ? "QUIC_OK"
+                        : (!tcp.ok && !quic.ok) ? "BOTH_FAIL"
+                        : "TCP_FAIL_QUIC_OK"
+            let line = "TCP=\(tcp.ok ? "ok" : "fail")(\(tcp.ms)ms,\(tcp.detail)) " +
+                       "QUIC=\(quic.ok ? "ok" : "fail")(\(quic.ms)ms,\(quic.detail)) ⇒ \(verdict) [app-path]"
+            self?.shared?.set(line, forKey: "last_quic_evidence")
+            self?.shared?.set(Int(Date().timeIntervalSince1970), forKey: "last_quic_evidence_at")
+            self?.shared?.synchronize()
+            let out: [String: Any] = [
+                "verdict":    verdict,
+                "line":       line,
+                "tcpOk":      tcp.ok,
+                "tcpMs":      tcp.ms,
+                "tcpDetail":  tcp.detail,
+                "quicOk":     quic.ok,
+                "quicMs":     quic.ms,
+                "quicDetail": quic.detail,
+            ]
+            resolve(out)
+        }
     }
 
     // MARK: - runSelfTest
