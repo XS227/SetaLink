@@ -10,7 +10,7 @@ import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
 import { useToastStore } from '../stores/toastStore';
 import { DM_MAX_LEN } from '../services/entitlementService';
-import { buildConversations, OFFICIAL_KEY, type Conversation, type ChatMessage } from '../utils/unifiedThreads';
+import { buildConversations, type Conversation, type ChatMessage } from '../utils/unifiedThreads';
 import { useT } from '../i18n';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
@@ -54,20 +54,20 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [openKey, setOpenKey]     = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
 
-  const officialName = t('dm.official');
+  const supportName = t('dm.support');
   const conversations = useMemo(
-    () => buildConversations(dms, announcements, officialName),
-    [dms, announcements, officialName],
+    () => buildConversations(dms, announcements, supportName, myId),
+    [dms, announcements, supportName, myId],
   );
   const openConvo = openKey ? conversations.find(c => c.key === openKey) ?? null : null;
 
-  // Mark a conversation's unread incoming messages read (DMs ack per-id on the
-  // backend; announcements ack via the inbox store).
+  // Mark a conversation's unread incoming messages read. The Support thread
+  // mixes DM + announcement messages, so ack each via its own store path.
   const markConvoRead = (c: Conversation) => {
     c.messages.forEach(m => {
       if (m.direction === 'in' && !m.read) {
-        if (c.official) annMarkRead(deviceId, m.id);
-        else            dmMarkRead(deviceId, m.id);
+        if (m.kind === 'ann') annMarkRead(deviceId, m.id);
+        else                  dmMarkRead(deviceId, m.id);
       }
     });
   };
@@ -80,8 +80,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
 
   const sendInThread = async () => {
     const body = threadDraft.trim();
-    if (!body || !openConvo || openConvo.official) return;
+    if (!body || !openConvo) return;
+    // Support replies address the support account; DM replies address the peer.
     const peer = openConvo.peerUserId || openConvo.peerDevice || '';
+    if (!peer) return;
     try {
       await dmSend(deviceId, peer, body);
       setThreadDraft('');
@@ -91,7 +93,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   };
 
   const confirmDeleteThread = (c: Conversation) => {
-    if (c.official) return;   // official thread is not deletable
+    if (c.support) return;    // the Support thread is not deletable
     Alert.alert(t('dm.deleteThread'), t('dm.deleteChatConfirm'), [
       { text: t('dm.cancel'), style: 'cancel' },
       { text: t('dm.deleteThread'), style: 'destructive', onPress: () => {
@@ -102,7 +104,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   };
 
   const confirmDeleteMessage = (c: Conversation, m: ChatMessage) => {
-    if (c.official) return;   // can't delete individual announcements
+    if (c.support || m.kind === 'ann') return;   // support / announcements aren't deletable
     Alert.alert(t('dm.deleteMessage'), t('dm.deleteMsgConfirm'), [
       { text: t('dm.cancel'), style: 'cancel' },
       { text: t('dm.deleteMessage'), style: 'destructive', onPress: () => dmDeleteMsg(deviceId, m.id) },
@@ -139,8 +141,8 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     }
   };
 
-  const Avatar = ({ official, label, size = 44 }: { official: boolean; label: string; size?: number }) => (
-    official ? (
+  const Avatar = ({ support, label, size = 44 }: { support: boolean; label: string; size?: number }) => (
+    support ? (
       <View style={[styles.avatar, styles.avatarOfficial, { width: size, height: size, borderRadius: size / 2 }]}>
         <Image source={REALINK_LOGO} style={{ width: size * 0.6, height: size * 0.6, resizeMode: 'contain' }} />
       </View>
@@ -173,9 +175,13 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
           </GlassCard>
         ) : (
           conversations.map((c) => {
-            const preview = c.latest.direction === 'out'
-              ? `${t('dm.you')}: ${c.latest.body}`
-              : c.latest.body;
+            const preview = !c.latest
+              ? t('dm.supportIntro')
+              : c.latest.direction === 'out'
+                ? `${t('dm.you')}: ${c.latest.body}`
+                : c.latest.title
+                  ? `${c.latest.title} — ${c.latest.body}`
+                  : c.latest.body;
             return (
               <TouchableOpacity
                 key={c.key}
@@ -185,21 +191,19 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 onPress={() => openConvoView(c)}
                 onLongPress={() => confirmDeleteThread(c)}
               >
-                <Avatar official={c.official} label={c.title} />
+                <Avatar support={c.support} label={c.title} />
                 <View style={styles.itemMain}>
                   <View style={styles.itemHeader}>
                     <Text style={[styles.itemTitle, c.unread > 0 && styles.itemTitleUnread]} numberOfLines={1}>
                       {c.title}
                     </Text>
-                    {c.official && (
+                    {c.support && (
                       <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
                     )}
-                    <Text style={styles.itemDate}>{c.latest.createdAt.slice(5, 16)}</Text>
+                    {!!c.latest && <Text style={styles.itemDate}>{c.latest.createdAt.slice(5, 16)}</Text>}
                   </View>
                   <View style={styles.threadPreviewRow}>
-                    <Text style={styles.itemBody} numberOfLines={1}>
-                      {c.official && c.latest.title ? `${c.latest.title} — ${preview}` : preview}
-                    </Text>
+                    <Text style={styles.itemBody} numberOfLines={1}>{preview}</Text>
                     {c.unread > 0 && (
                       <View style={styles.unreadBadge}><Text style={styles.unreadBadgeText}>{c.unread}</Text></View>
                     )}
@@ -226,17 +230,17 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
                   <Text style={styles.backIcon}>‹</Text>
                 </TouchableOpacity>
-                <Avatar official={openConvo.official} label={openConvo.title} size={34} />
+                <Avatar support={openConvo.support} label={openConvo.title} size={34} />
                 <View style={styles.threadPeerWrap}>
                   <View style={styles.threadPeerRow}>
                     <Text style={styles.threadPeer} numberOfLines={1}>{openConvo.title}</Text>
-                    {openConvo.official && (
+                    {openConvo.support && (
                       <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
                     )}
                   </View>
-                  {openConvo.official && <Text style={styles.threadSubtitle}>{t('dm.officialTag')}</Text>}
+                  {openConvo.support && <Text style={styles.threadSubtitle}>{t('dm.supportTag')}</Text>}
                 </View>
-                {!openConvo.official && (
+                {!openConvo.support && (
                   <TouchableOpacity testID="convo-delete" style={styles.threadDeleteBtn} activeOpacity={0.7} onPress={() => confirmDeleteThread(openConvo)}>
                     <Text style={styles.threadDeleteIcon}>🗑</Text>
                   </TouchableOpacity>
@@ -245,6 +249,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
 
               {/* Conversation */}
               <ScrollView style={styles.threadScroll} contentContainerStyle={styles.threadScrollContent}>
+                {/* Support thread opens with a pinned intro note (localized). */}
+                {openConvo.support && (
+                  <View style={styles.introNote}>
+                    <Text style={styles.introText}>{t('dm.supportIntro')}</Text>
+                  </View>
+                )}
                 {openConvo.messages.map((m) => {
                   const out = m.direction === 'out';
                   return (
@@ -264,34 +274,28 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 })}
               </ScrollView>
 
-              {/* Reply input (DM only — official thread is read-only) */}
-              {openConvo.official ? (
-                <View style={styles.readonlyNote}>
-                  <Text style={styles.readonlyText}>{t('dm.officialReadonly')}</Text>
-                </View>
-              ) : (
-                <View style={styles.threadInputRow}>
-                  <TextInput
-                    testID="convo-input"
-                    style={styles.threadInput}
-                    value={threadDraft}
-                    onChangeText={(v) => setThreadDraft(v.slice(0, DM_MAX_LEN))}
-                    placeholder={t('dm.messagePlaceholder')}
-                    placeholderTextColor={Colors.text.muted}
-                    multiline
-                    maxLength={DM_MAX_LEN}
-                  />
-                  <TouchableOpacity
-                    testID="convo-send"
-                    style={[styles.threadSendBtn, (sending || !threadDraft.trim()) && styles.sendBtnDisabled]}
-                    activeOpacity={0.85}
-                    disabled={sending || !threadDraft.trim()}
-                    onPress={sendInThread}
-                  >
-                    {sending ? <ActivityIndicator color="#021b10" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
-                  </TouchableOpacity>
-                </View>
-              )}
+              {/* Reply input — two-way for both Support and DM threads */}
+              <View style={styles.threadInputRow}>
+                <TextInput
+                  testID="convo-input"
+                  style={styles.threadInput}
+                  value={threadDraft}
+                  onChangeText={(v) => setThreadDraft(v.slice(0, DM_MAX_LEN))}
+                  placeholder={t('dm.messagePlaceholder')}
+                  placeholderTextColor={Colors.text.muted}
+                  multiline
+                  maxLength={DM_MAX_LEN}
+                />
+                <TouchableOpacity
+                  testID="convo-send"
+                  style={[styles.threadSendBtn, (sending || !threadDraft.trim()) && styles.sendBtnDisabled]}
+                  activeOpacity={0.85}
+                  disabled={sending || !threadDraft.trim()}
+                  onPress={sendInThread}
+                >
+                  {sending ? <ActivityIndicator color="#021b10" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </KeyboardAvoidingView>
@@ -414,8 +418,8 @@ const styles = StyleSheet.create({
   threadInput:   { flex: 1, maxHeight: 110, borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
   threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
   threadSendText:{ fontSize: 20, color: '#021b10', fontWeight: '700' },
-  readonlyNote:  { paddingHorizontal: Layout.screenPadding, paddingVertical: Spacing[4], paddingBottom: Spacing[6], borderTopWidth: 1, borderTopColor: Colors.border.subtle, alignItems: 'center' },
-  readonlyText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textAlign: 'center' },
+  introNote:     { backgroundColor: 'rgba(0,232,122,0.06)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
+  introText:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary, textAlign: 'center', lineHeight: 18 },
 
   modalRoot:     { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
   modalCard:     { backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Layout.screenPadding, paddingBottom: Spacing[8], gap: Spacing[2] },
