@@ -184,10 +184,13 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
       // Without this, Xray may negotiate h2, causing nginx to reject the
       // Connection: Upgrade header with 400 Bad Request (forbidden in HTTP/2).
       tlsSettings: { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
-      // Fragment TLS ClientHello into 100-200 byte chunks at 10-20 ms intervals.
-      // Iranian DPI inspects the full ClientHello to identify the SNI and protocol;
-      // fragmentation forces reassembly before analysis, bypassing shallow inspection.
-      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
+      // NO TLS fragmentation on CDN-fronted nodes. Cloudflare must read a clean
+      // ClientHello SNI (edgeHost) to route to our origin; a fragmented ClientHello
+      // breaks that routing — the handshake never reaches origin (0 /cfws upgrades
+      // observed from Iran 2026-07-09, while plain Safari HTTPS to the same domain
+      // reached origin fine). CDN fronting already hides us in legitimate Cloudflare
+      // traffic on a benign domain, so DPI-evasion fragmentation is both unnecessary
+      // and harmful here. (Direct Reality nodes above intentionally carry no fragment.)
     },
   };
 }
@@ -244,7 +247,8 @@ function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): 
       // Force HTTP/1.1 ALPN — XHTTP requires HTTP/1.1 chunked transfer.
       // Without this Xray may negotiate h2, causing nginx to reject the connection.
       tlsSettings:   { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
-      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
+      // No TLS fragmentation on CDN-fronted nodes — Cloudflare needs a clean
+      // ClientHello SNI to route to origin (see buildVlessWsOutbound note).
     },
   };
 }
@@ -270,7 +274,8 @@ function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredenti
       httpupgradeSettings: { path: httpupPath, host: edgeHost },
       // Force HTTP/1.1 ALPN — HTTPUpgrade requires HTTP/1.1 upgrade handshake.
       tlsSettings:         { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
-      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
+      // No TLS fragmentation on CDN-fronted nodes — Cloudflare needs a clean
+      // ClientHello SNI to route to origin (see buildVlessWsOutbound note).
     },
   };
 }
