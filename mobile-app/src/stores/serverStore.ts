@@ -97,6 +97,12 @@ export const BUNDLED_CF_EDGE_CREDS: ServerCredentials = {
   flow:        '',
   fingerprint: 'chrome',
   edgeAddress: 'alanya-turist.no',
+  // Dial Cloudflare by literal anycast IP, not the hostname: on iOS the tunnel
+  // resolves DNS through itself, so a hostname edge address deadlocks the WS
+  // handshake (0 /cfws reached origin on b84/b85). Cloudflare routes by SNI
+  // (edgeAddress), so any published edge IP works. See xrayConfigBuilder
+  // edgeConnectAddress(). Backend catalog can override via creds.edgeIp.
+  edgeIp:      '104.21.61.220',
   edgePort:    443,
   wsPath:      '/cfws',
 };
