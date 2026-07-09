@@ -41,7 +41,7 @@ describe('bundled cf-edge fallback', () => {
     expect(BUNDLED_CF_EDGE.protocol).toBe('WebSocket');
     expect(BUNDLED_CF_EDGE_CREDS.publicKey).toBe('');       // WS — no Reality key
     expect(BUNDLED_CF_EDGE_CREDS.wsPath).toBe('/cfws');
-    expect(BUNDLED_CF_EDGE_CREDS.edgeAddress).toBe('real.setalink.no');
+    expect(BUNDLED_CF_EDGE_CREDS.edgeAddress).toBe('alanya-turist.no');
   });
 
   it('default store state ships cf-edge creds (connectable before any fetch)', () => {
