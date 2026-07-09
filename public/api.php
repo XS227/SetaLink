@@ -116,6 +116,9 @@ function init_device_tables(PDO $pdo): void {
         // preserves the first-seen one; country_updated_at = when it last changed.
         "ALTER TABLE devices ADD COLUMN first_country TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN country_updated_at TEXT DEFAULT ''",
+        // Aggregate mobile operator (e.g. "Irancell", "MCI (Hamrah-e Avval)"),
+        // derived from the connection IP's ASN. Never stores the raw IP.
+        "ALTER TABLE devices ADD COLUMN carrier TEXT DEFAULT ''",
     ];
     foreach ($migrations as $sql) {
         try { $pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
@@ -149,16 +152,49 @@ function init_device_tables(PDO $pdo): void {
 // Returns ['code' => 'NO', 'name' => 'Norway'] or empty strings on failure.
 function detect_country_from_ip(string $ip): array {
     if (!$ip || $ip === '127.0.0.1' || $ip === '::1' || str_starts_with($ip, '10.') || str_starts_with($ip, '192.168.')) {
-        return ['code' => '', 'name' => ''];
+        return ['code' => '', 'name' => '', 'carrier' => ''];
     }
     $ctx = stream_context_create(['http' => ['timeout' => 2, 'ignore_errors' => true]]);
-    $raw = @file_get_contents("http://ip-api.com/json/$ip?fields=countryCode,country", false, $ctx);
-    if (!$raw) return ['code' => '', 'name' => ''];
+    // Fetch ISP/AS in the SAME lookup (no extra request) so we can derive the
+    // mobile carrier (aggregate only — we store the carrier name, never the raw IP).
+    $raw = @file_get_contents("http://ip-api.com/json/$ip?fields=countryCode,country,isp,as,asname", false, $ctx);
+    if (!$raw) return ['code' => '', 'name' => '', 'carrier' => ''];
     $data = json_decode($raw, true);
     return [
-        'code' => substr((string)($data['countryCode'] ?? ''), 0, 4),
-        'name' => substr((string)($data['country']     ?? ''), 0, 80),
+        'code'    => substr((string)($data['countryCode'] ?? ''), 0, 4),
+        'name'    => substr((string)($data['country']     ?? ''), 0, 80),
+        'carrier' => normalize_carrier((string)($data['isp'] ?? ''), (string)($data['asname'] ?? ''), (string)($data['as'] ?? '')),
     ];
+}
+
+// Map a raw ISP/ASN string to a friendly operator name, focused on the networks
+// our users are actually on (Iran + neighbours). Falls back to the raw ISP so
+// unmapped operators still show up in the breakdown.
+function normalize_carrier(string $isp, string $asname, string $as): string {
+    $h = strtolower($isp . ' ' . $asname . ' ' . $as);
+    $map = [
+        'irancell'                              => 'Irancell',
+        'mobile communication company of iran'  => 'MCI (Hamrah-e Avval)',
+        'hamrah'                                => 'MCI (Hamrah-e Avval)',
+        'rightel'                               => 'RighTel',
+        'iran telecommunication'                => 'TCI (Iran Telecom)',
+        'telecommunication company of iran'     => 'TCI (Iran Telecom)',
+        'datak'                                 => 'Datak',
+        'shatel'                                => 'Shatel',
+        'asiatech'                              => 'AsiaTech',
+        'pars online'                           => 'Pars Online',
+        'mobinnet'                              => 'MobinNet',
+        'respina'                               => 'Respina',
+        'pishgaman'                             => 'Pishgaman',
+        'turkcell'                              => 'Turkcell',
+        'turk telekom'                          => 'Türk Telekom',
+        'vodafone'                              => 'Vodafone',
+    ];
+    foreach ($map as $needle => $friendly) {
+        if (str_contains($h, $needle)) return $friendly;
+    }
+    $fallback = trim($isp) !== '' ? $isp : $asname;
+    return substr($fallback, 0, 60);
 }
 
 // Admin → user in-app messages (same tables as admin/api.php).
@@ -635,26 +671,34 @@ if ($method === 'POST') {
         $stmt->execute([$deviceId]);
         $dev  = $stmt->fetch();
 
-        // Auto-detect country from request IP if not provided by client
+        // Auto-detect country + carrier from request IP if not provided by client.
+        // We store only the aggregate carrier NAME (e.g. "Irancell"), never the raw IP.
+        $carrier = '';
         if (!$country && $clientIp) {
             $geo     = detect_country_from_ip($clientIp);
             $country = $geo['code'];
             $countryName = $geo['name'];
+            $carrier = $geo['carrier'] ?? '';
         } else {
             $countryName = '';
         }
 
         if (!$dev) {
+            // New device: resolve carrier once even if the client already sent a
+            // country (so the operator breakdown is populated from signup).
+            if ($carrier === '' && $clientIp) {
+                $carrier = detect_country_from_ip($clientIp)['carrier'] ?? '';
+            }
             $code = generate_referral_code($pdo);
             $uid  = generate_user_id($pdo);
             $pdo->prepare(
                 "INSERT INTO devices
                     (device_id, user_id, referral_code, platform, app_version, language, country, country_name,
-                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')"
+                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status, quota_bytes_total, carrier)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', 5368709120, ?)"
             )->execute([$deviceId, $uid, $code, $platform, $appVersion, $language,
                         $country, $countryName, $manufacturer, $model, $sdkVersion,
-                        $androidVer, $abi, $androidIdHash, $clientIp]);
+                        $androidVer, $abi, $androidIdHash, $clientIp, $carrier]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
         } else {
@@ -694,6 +738,14 @@ if ($method === 'POST') {
             ]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
+        }
+
+        // Backfill carrier for existing devices that don't have one yet, without
+        // an extra IP lookup on every re-register (only when this request already
+        // resolved a carrier because the client sent no country).
+        if ($carrier !== '') {
+            $pdo->prepare("UPDATE devices SET carrier=? WHERE device_id=? AND (carrier IS NULL OR carrier='')")
+                ->execute([$carrier, $deviceId]);
         }
 
         $srv = fetch_bootstrap_server($pdo);
@@ -975,6 +1027,12 @@ if ($method === 'POST') {
         $validPkgs = ['7days','30days','unlimited','10GB','20GB','30GB'];
         if (!$deviceId) err('missing device_id');
         if (!in_array($pkg, $validPkgs, true)) err('invalid package');
+        // Only queue a payment that carries on-chain proof: a transaction hash.
+        // Without this an "I paid" tap created a pending row even when nothing
+        // was paid, cluttering the review queue with non-payments. Real USDT/REAL
+        // submissions always include the tx hash; amount may be 0 for REAL-token
+        // payments, so gate on the hash, not the amount.
+        if ($tx === '') err('payment proof required - submit the transaction hash after paying');
         // Derive user_id from memo when the client only sent it as the memo.
         if (!$uid && preg_match('/^SL-\d+-[A-Z0-9]+$/i', $memo)) $uid = $memo;
 

@@ -23,7 +23,7 @@
  */
 
 const QE_GB              = 1073741824;            // 1 GiB
-const QE_STARTER_BYTES   = 1073741824;            // starter grant size (non-transferable)
+const QE_STARTER_BYTES   = 5368709120;            // starter grant size (non-transferable) — 5 GB launch signup bonus
 const QE_MIN_TRANSFER    = 104857600;             // 100 MiB minimum transfer
 const QE_DAILY_MAX_BYTES = 53687091200;           // 50 GiB/day sent per device (anti-fraud)
 const QE_DAILY_MAX_COUNT = 10;                    // 10 transfers/day per device (anti-fraud)
