@@ -682,6 +682,15 @@ if ($method === 'POST') {
         } else {
             $countryName = '';
         }
+        // Language fallback: Iranian users who register/talk to us ONLY while
+        // connected have no usable client IP (client_ip() rejects the tunnel exit
+        // IP / 127.0.0.1 by design), so IP geo yields nothing and they never show
+        // under Iran. Persian locale is a reliable IR signal for this Iran-first
+        // product, so fall back to it when IP detection produced no country.
+        if (!$country && $language === 'فارسی') {
+            $country     = 'IR';
+            $countryName = 'Iran';
+        }
 
         if (!$dev) {
             // New device: resolve carrier once even if the client already sent a
@@ -746,6 +755,13 @@ if ($method === 'POST') {
         if ($carrier !== '') {
             $pdo->prepare("UPDATE devices SET carrier=? WHERE device_id=? AND (carrier IS NULL OR carrier='')")
                 ->execute([$carrier, $deviceId]);
+        }
+        // Heal existing Persian-locale devices that never got a country (only ever
+        // talked to us through the tunnel → no usable IP). Mirrors the language
+        // fallback above so they finally show under Iran.
+        if ($country === 'IR' && $language === 'فارسی') {
+            $pdo->prepare("UPDATE devices SET country='IR', country_name='Iran' WHERE device_id=? AND (country IS NULL OR country='')")
+                ->execute([$deviceId]);
         }
 
         $srv = fetch_bootstrap_server($pdo);
