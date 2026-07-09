@@ -2016,9 +2016,23 @@ switch ($action) {
     case 'iran-debug':
         // Aggregated Iran-specific diagnostics from connect_telemetry.
         $db = open_analytics_db();
-        $ir_where = "country='IR' OR carrier_name LIKE '%Irancell%' OR carrier_name LIKE '%MCI%'
+        // Tunneled telemetry POSTs lose their real country (the geo lookup sees the
+        // VPN exit IP, so country is blanked by design) — and this is an Iran-first
+        // product, so untagged rows are overwhelmingly Iranian testers. Treat
+        // empty-country rows as Iran alongside the geo/carrier-confirmed ones, but
+        // exclude synthetic rows (the ratelimit-test node). Parenthesised so the
+        // AND binds after the OR group when this clause is embedded in other WHEREs.
+        $ir_where = "(country='IR' OR country IS NULL OR country=''
+                     OR carrier_name LIKE '%Irancell%' OR carrier_name LIKE '%MCI%'
                      OR carrier_name LIKE '%Hamrah%' OR carrier_name LIKE '%Rightel%'
-                     OR carrier_name LIKE '%Shatel%' OR carrier_name LIKE '%TCI%'";
+                     OR carrier_name LIKE '%Shatel%' OR carrier_name LIKE '%TCI%')
+                     AND node_id != 'ratelimit-test'";
+
+        // NOTE: connect_telemetry's timestamp column is created_at (NOT
+        // recorded_at, which belongs to test_results), and the table has no
+        // device_id column — telemetry is anonymous by design. Earlier this
+        // block referenced both, so every query threw and the whole Iran Debug
+        // page failed to load. Fixed to created_at + a real internet_ok metric.
 
         // SNI + protocol analysis
         $sni_rows = $db->query(
@@ -2028,7 +2042,7 @@ switch ($action) {
                     SUM(CASE WHEN event!='connect_ok' THEN 1 ELSE 0 END) as fail,
                     AVG(CASE WHEN time_to_connect_ms>0 THEN time_to_connect_ms ELSE NULL END) as avg_latency,
                     AVG(CASE WHEN rtt_ms>0 THEN rtt_ms ELSE NULL END) as avg_rtt,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE $ir_where
              GROUP BY protocol, sni
@@ -2040,10 +2054,10 @@ switch ($action) {
         $error_rows = $db->query(
             "SELECT protocol, sni, error_category, failure_stage,
                     carrier_name, network_type, ip_version, nat_type,
-                    platform, build_number, recorded_at
+                    platform, build_number, created_at as recorded_at
              FROM connect_telemetry
              WHERE event!='connect_ok' AND ($ir_where)
-             ORDER BY recorded_at DESC
+             ORDER BY created_at DESC
              LIMIT 50"
         )->fetchAll(PDO::FETCH_ASSOC);
 
@@ -2053,7 +2067,7 @@ switch ($action) {
                     COUNT(*) as total,
                     SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
                     AVG(CASE WHEN time_to_connect_ms>0 THEN time_to_connect_ms ELSE NULL END) as avg_latency,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE carrier_name != '' AND ($ir_where)
              GROUP BY carrier_name
@@ -2064,7 +2078,7 @@ switch ($action) {
         // Error category breakdown
         $error_patterns = $db->query(
             "SELECT error_category, failure_stage, COUNT(*) as cnt,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE event!='connect_ok' AND error_category!='' AND ($ir_where)
              GROUP BY error_category, failure_stage
@@ -2084,14 +2098,16 @@ switch ($action) {
              ORDER BY total DESC"
         )->fetchAll(PDO::FETCH_ASSOC);
 
-        // Overall Iran stats
+        // Overall Iran stats. No device_id in this table → count distinct SNIs
+        // and report internet-failure volume instead of a (nonexistent) device
+        // count, so the summary reflects real telemetry columns.
         $stats = $db->query(
             "SELECT COUNT(*) as total,
                     SUM(CASE WHEN event='connect_ok' THEN 1 ELSE 0 END) as success,
+                    SUM(CASE WHEN internet_ok=0 THEN 1 ELSE 0 END) as no_internet,
                     COUNT(DISTINCT sni) as sni_count,
-                    COUNT(DISTINCT device_id) as device_count,
                     AVG(CASE WHEN rtt_ms>0 THEN rtt_ms ELSE NULL END) as avg_rtt,
-                    MAX(recorded_at) as last_seen
+                    MAX(created_at) as last_seen
              FROM connect_telemetry
              WHERE $ir_where"
         )->fetch(PDO::FETCH_ASSOC);

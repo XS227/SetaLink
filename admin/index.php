@@ -2507,9 +2507,8 @@ views.iran = {
         <div class="stat-card ${rate>=60?'stat-ok':rate>=30?'stat-warn':'stat-danger'}">
           <div class="stat-label">Success Rate</div><div class="stat-value">${rate}%</div></div>
         <div class="stat-card"><div class="stat-label">No Internet</div><div class="stat-value">${fmtNum(s.no_internet)}</div></div>
-        <div class="stat-card"><div class="stat-label">TCP Only</div><div class="stat-value">${fmtNum(s.tcp_only)}</div></div>
-        <div class="stat-card"><div class="stat-label">Emergency Used</div><div class="stat-value">${fmtNum(s.emergency_used)}</div></div>
-        <div class="stat-card"><div class="stat-label">Devices</div><div class="stat-value">${fmtNum(s.device_count)}</div></div>
+        <div class="stat-card"><div class="stat-label">Distinct SNIs</div><div class="stat-value">${fmtNum(s.sni_count)}</div></div>
+        <div class="stat-card"><div class="stat-label">Avg RTT</div><div class="stat-value">${s.avg_rtt!=null?Math.round(s.avg_rtt)+' ms':'—'}</div></div>
       </div>
       <div style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem">Last report: ${esc(s.last_seen||'—')}</div>`;
   },
