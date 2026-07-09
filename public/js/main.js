@@ -12,10 +12,10 @@
     en: {
       'nav.dl':   'Download',
 
-      'hero.badge': 'Servers online &mdash; secure global nodes',
-      'hero.h1a':   'Free Internet',
-      'hero.h1b':   'for Everyone',
-      'hero.sub':   'AI-powered VPN built for real censorship. Now on Android &amp; iOS. 1 GB free on install. No account. No server setup.',
+      'hero.badge': 'Servers online — secure global nodes',
+      'hero.h1a':   'Free Anti-Censorship VPN',
+      'hero.h1b':   'Internet Freedom for Everyone',
+      'hero.sub':   'AI-powered VPN that beats DPI and censorship. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 1 GB free on install. No account, no server setup.',
       'hero.cta1':  'Download for Android',
       'hero.cta_ios': 'iOS — TestFlight Beta',
 
@@ -140,10 +140,10 @@
     fa: {
       'nav.dl':   'دانلود',
 
-      'hero.badge': 'سرورها فعال &mdash; گره‌های امن جهانی',
-      'hero.h1a':   'اینترنت آزاد',
-      'hero.h1b':   'برای همه',
-      'hero.sub':   'VPN مبتنی بر هوش مصنوعی، ساخته‌شده برای سانسور واقعی. اکنون روی اندروید و iOS. ۱ گیگابایت رایگان پس از نصب. بدون حساب. بدون تنظیمات.',
+      'hero.badge': 'سرورها فعال — گره‌های امن جهانی',
+      'hero.h1a':   'فیلترشکن رایگان و پرسرعت',
+      'hero.h1b':   'اینترنت آزاد برای همه',
+      'hero.sub':   'فیلترشکن هوشمند مبتنی بر هوش مصنوعی برای عبور از فیلترینگ و سانسور. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۱ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون قطعی.',
       'hero.cta1':  'دانلود برای اندروید',
       'hero.cta_ios': 'iOS — نسخه بتای TestFlight',
 
@@ -168,7 +168,7 @@
       'stat.free':      'رایگان پس از نصب',
 
       'how.label': 'چطور کار می‌کند',
-      'how.title': 'سه گام به اینترنت آزاد',
+      'how.title': 'سه گام تا فیلترشکن رایگان',
       'how.sub':   'بدون حساب، بدون کارت اعتباری، بدون تنظیمات. نصب کن و وصل شو.',
       'how.s1.h':  'دسترسی اضطراری',
       'how.s1.p':  'برنامه را نصب کن و فوری ۱ گیگابایت بگیر — بدون لاگین، بدون حساب. Connect را بزن و هوش مصنوعی سریع‌ترین پروتکل را انتخاب می‌کند.',
@@ -190,7 +190,7 @@
       'ai.f4.p':  'بدون نیاز به به‌روزرسانی برنامه، می‌توان اولویت پروتکل‌ها را تغییر داد. وقتی الگوهای سانسور تغییر می‌کنند، قوانین مسیریابی برای همه کاربران به‌طور خودکار به‌روز می‌شوند.',
 
       'why.label':      'چرا ری‌لینک',
-      'why.title':      'ساخته‌شده برای سانسور واقعی',
+      'why.title':      'ساخته‌شده برای سانسور واقعی ایران',
       'why.sub':        'یک پوشش VPN عمومی نیست. از صفر برای واقعیت سانسور اینترنت در ایران، چین و روسیه ساخته شده.',
       'why.tech.label': 'برتری فنی',
       'why.tech.1':     'VLESS + Reality — ترافیکی که از HTTPS استاندارد قابل تشخیص نیست، مقاوم‌ترین پروتکل موجود',
@@ -207,7 +207,7 @@
       'banner.s': 'با رشد شبکه، هزینه زیرساخت به ازای هر کاربر کاهش می‌یابد. با دوستانتان به اشتراک بگذارید.',
 
       'pricing.label': 'سطوح دسترسی',
-      'pricing.title': 'رایگان شروع کن. با هم رشد کن.',
+      'pricing.title': 'رایگان شروع کن، با هم رشد کنیم',
       'pricing.sub':   '۱ گیگابایت پس از نصب، بیشتر از طریق دعوت، سطح داده نامحدود به زودی.',
 
       'plan.free.eyebrow': 'اضطراری رایگان',
@@ -253,7 +253,7 @@
       'comm.gh.p': 'توسعه را دنبال کنید، کد مشارکت کنید یا باگ گزارش دهید. بدون ادعای امنیتی جعبه‌سیاه.',
 
       'faq.label': 'سوالات متداول',
-      'faq.title': 'سوالات رایج',
+      'faq.title': 'سؤالات پرتکرار',
       'faq.sub':   'سوالات واقعی درباره نحوه عملکرد ری‌لینک.',
 
       'footer.faq':       'سوالات کامل',
@@ -268,10 +268,10 @@
     zh: {
       'nav.dl':   '下载',
 
-      'hero.badge': '服务器在线 &mdash; 安全的全球节点',
-      'hero.h1a':   '自由的互联网',
-      'hero.h1b':   '属于每个人',
-      'hero.sub':   '专为真实审查环境打造的 AI 智能 VPN。现已支持安卓和 iOS。安装即送 1 GB 流量。无需账号，无需配置。',
+      'hero.badge': '服务器在线 — 安全的全球节点',
+      'hero.h1a':   '免费翻墙 VPN',
+      'hero.h1b':   '人人享有自由互联网',
+      'hero.sub':   '基于 AI 的智能翻墙 VPN，突破 DPI 与审查。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 1 GB，无需账号，无需配置。',
       'hero.cta1':  '下载安卓版',
       'hero.cta_ios': 'iOS — TestFlight 测试版',
 
@@ -318,7 +318,7 @@
       'ai.f4.p':  '无需更新应用即可推送协议优先级更新。当审查模式变化时，路由规则会自动为所有用户更新。',
 
       'why.label':      '为何选择 REALINK',
-      'why.title':      '为真实审查而生',
+      'why.title':      '专为真实审查打造',
       'why.sub':        '不是通用 VPN 的套壳。为伊朗、中国和俄罗斯的真实网络审查从零打造。',
       'why.tech.label': '技术优势',
       'why.tech.1':     'VLESS + Reality — 流量与标准 HTTPS 无法区分，是目前最抗审查的协议',
@@ -335,7 +335,7 @@
       'banner.s': '随着网络增长，人均基础设施成本下降。分享给朋友吧。',
 
       'pricing.label': '接入等级',
-      'pricing.title': '免费开始，一起成长。',
+      'pricing.title': '免费开始，一起成长',
       'pricing.sub':   '安装送 1 GB，邀请得更多，无限流量套餐即将推出。',
 
       'plan.free.eyebrow': '免费紧急版',
@@ -381,7 +381,7 @@
       'comm.gh.p': '关注开发、贡献代码或反馈缺陷。开放社区审查 — 没有黑箱式的安全承诺。',
 
       'faq.label': '常见问题',
-      'faq.title': '常见问题解答',
+      'faq.title': '常见问题',
       'faq.sub':   '关于 Realink 实际如何工作的真实问题。',
 
       'footer.faq':       '完整常见问题',
@@ -396,10 +396,10 @@
     ru: {
       'nav.dl':   'Скачать',
 
-      'hero.badge': 'Серверы онлайн &mdash; защищённые узлы по всему миру',
-      'hero.h1a':   'Свободный интернет',
-      'hero.h1b':   'для каждого',
-      'hero.sub':   'VPN на базе ИИ, созданный для реальной цензуры. Теперь на Android и iOS. 1 ГБ бесплатно при установке. Без аккаунта. Без настройки.',
+      'hero.badge': 'Серверы онлайн — защищённые узлы',
+      'hero.h1a':   'Бесплатный VPN',
+      'hero.h1b':   'Свободный интернет для всех',
+      'hero.sub':   'VPN на базе ИИ для обхода блокировок и DPI. VLESS+Reality и V2Ray. Теперь на Android и iOS. 1 ГБ бесплатно при установке. Без аккаунта и настройки.',
       'hero.cta1':  'Скачать для Android',
       'hero.cta_ios': 'iOS — бета в TestFlight',
 

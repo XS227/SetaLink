@@ -42,8 +42,8 @@ $meta = [
     'desc'  => 'Realink: AI-powered VLESS+Reality VPN for Iran, China, Russia and other censored regions. 1 GB free on install. No account. Beats DPI with DNS-over-HTTPS. Android APK + iOS TestFlight. In English, فارسی, 中文 and Русский.',
   ],
   'fa' => [
-    'title' => 'ری‌لینک — فیلترشکن رایگان برای ایران، چین و روسیه | ضدسانسور (اندروید و iOS)',
-    'desc'  => 'ری‌لینک: فیلترشکن هوشمند مبتنی بر VLESS+Reality برای ایران، چین، روسیه و مناطق سانسورشده. ۱ گیگابایت رایگان پس از نصب. بدون حساب. عبور از DPI با DNS-over-HTTPS. نسخه اندروید و iOS TestFlight.',
+    'title' => 'فیلترشکن رایگان و پرسرعت ری‌لینک | وی‌پی‌ان ضدسانسور ایران (اندروید و iOS)',
+    'desc'  => 'دانلود فیلترشکن رایگان ری‌لینک: فیلترشکن قوی و پرسرعت مبتنی بر VLESS+Reality و V2Ray برای ایران، بدون قطعی. ۱ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون حساب. عبور از فیلترینگ و DPI. نسخه اندروید و آیفون (iOS).',
   ],
   'zh' => [
     'title' => 'Realink — 面向伊朗、中国、俄罗斯的免费翻墙 VPN | 抗审查（安卓和 iOS）',
@@ -56,6 +56,69 @@ $meta = [
 ];
 $m_title = $meta[$lang]['title'];
 $m_desc  = $meta[$lang]['desc'];
+
+// SEO-critical on-page copy, rendered SERVER-SIDE in the requested language.
+// The H1 and section headings are Google's strongest on-page ranking signals,
+// so they must contain the target keyword in the crawled HTML — not only appear
+// after JS swaps them. For Farsi that keyword is «فیلترشکن» (filtershekan), the
+// term Iranians actually search (far more than "VPN"). js/main.js STRINGS carry
+// the SAME text for the client-side language switcher — keep the two in sync.
+$seo = [
+  'en' => [
+    'badge' => 'Servers online — secure global nodes',
+    'h1a' => 'Free Anti-Censorship VPN', 'h1b' => 'Internet Freedom for Everyone',
+    'sub' => 'AI-powered VPN that beats DPI and censorship. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 1 GB free on install. No account, no server setup.',
+    'how' => 'Three Steps to Free Internet', 'ai' => 'Not Just a Tunnel',
+    'why' => 'Built for Real Censorship', 'pricing' => 'Start Free. Grow Together.', 'faq' => 'Common Questions',
+  ],
+  'fa' => [
+    'badge' => 'سرورها فعال — گره‌های امن جهانی',
+    'h1a' => 'فیلترشکن رایگان و پرسرعت', 'h1b' => 'اینترنت آزاد برای همه',
+    'sub' => 'فیلترشکن هوشمند مبتنی بر هوش مصنوعی برای عبور از فیلترینگ و سانسور. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۱ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون قطعی.',
+    'how' => 'سه گام تا فیلترشکن رایگان', 'ai' => 'فقط یک تونل نیست',
+    'why' => 'ساخته‌شده برای سانسور واقعی ایران', 'pricing' => 'رایگان شروع کن، با هم رشد کنیم', 'faq' => 'سؤالات پرتکرار',
+  ],
+  'zh' => [
+    'badge' => '服务器在线 — 安全的全球节点',
+    'h1a' => '免费翻墙 VPN', 'h1b' => '人人享有自由互联网',
+    'sub' => '基于 AI 的智能翻墙 VPN，突破 DPI 与审查。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 1 GB，无需账号，无需配置。',
+    'how' => '三步通往自由互联网', 'ai' => '不只是一条隧道',
+    'why' => '专为真实审查打造', 'pricing' => '免费开始，一起成长', 'faq' => '常见问题',
+  ],
+  'ru' => [
+    'badge' => 'Серверы онлайн — защищённые узлы',
+    'h1a' => 'Бесплатный VPN', 'h1b' => 'Свободный интернет для всех',
+    'sub' => 'VPN на базе ИИ для обхода блокировок и DPI. VLESS+Reality и V2Ray. Теперь на Android и iOS. 1 ГБ бесплатно при установке. Без аккаунта и настройки.',
+    'how' => 'Три шага к свободному интернету', 'ai' => 'Не просто туннель',
+    'why' => 'Создан для реальной цензуры', 'pricing' => 'Начните бесплатно. Растите вместе.', 'faq' => 'Частые вопросы',
+  ],
+];
+$S = $seo[$lang];
+
+// FAQ content (defined here so the same source feeds both the visible list and
+// the FAQPage structured data below — Google shows FAQ rich results in the SERP).
+$faqs = [
+  ['How does the invite system work?',
+   'When you install Realink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. Invite 3 active friends to unlock stealth servers. There is no limit on how many people you can invite.'],
+  ['What is the 1 GB emergency package?',
+   'Every new device that installs Realink automatically receives 1 GB of free data — no account, no login, no credit card. This is designed so that anyone who suddenly loses internet access can get back online immediately.'],
+  ['How does the AI protocol optimizer work?',
+   'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins. Fake "connected" states are impossible.'],
+  ['Does Realink keep logs?',
+   'No user activity logs. The xray core logs connection events internally for diagnostic purposes but no user-identifiable content is stored. Device IDs are anonymous hashes. The admin can see aggregate connection statistics but not who connected to what.'],
+  ['Is Realink on iPhone / iOS?',
+   'Yes. Realink is now on both Android and iOS. Android installs directly from the APK on this page (no Play Store needed). iOS is in TestFlight beta — join our Telegram to get a beta invite. Both builds share the same AI routing engine, VLESS+Reality core, and QUIC-through-tunnel fix.'],
+  ['What happens when Iran blocks a new SNI?',
+   'The Remote Config system allows the server to push updated SNI priority lists to all apps without requiring an update. The AI optimizer also learns from real connection data — if a previously working SNI stops working, it drops in priority automatically.'],
+  ['How is traffic different from normal HTTPS?',
+   'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain (like www.microsoft.com). Deep Packet Inspection cannot tell it apart from normal HTTPS traffic to that domain.'],
+  ['What is the difference between Turkey and Iran routing?',
+   'Turkey uses looser censorship with most SNIs working. Iran has stricter DPI and many SNIs are blocked. The AI optimizer knows which regions have stricter filtering and tests more aggressively, prioritizing SNIs confirmed to work from Iranian networks.'],
+  ['Can I use it on multiple devices?',
+   'Yes. Each install generates a separate device ID and receives its own 1 GB starter quota. Referral codes are tied to your device ID and transfer the bonus data to that device.'],
+  ['What is the roadmap?',
+   'Shipped: iOS TestFlight beta, per-app split tunneling, QUIC through the tunnel, and a Cloudflare stealth edge node. Near-term: more server nodes across the Middle East and Asia, App Store release, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
+];
 ?><!DOCTYPE html>
 <html lang="<?= $lang ?>" dir="<?= $dir ?>">
 <head>
@@ -63,7 +126,7 @@ $m_desc  = $meta[$lang]['desc'];
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= htmlspecialchars($m_title, ENT_QUOTES) ?></title>
   <meta name="description" content="<?= htmlspecialchars($m_desc, ENT_QUOTES) ?>">
-  <meta name="keywords" content="VPN Iran, free VPN Iran, VPN China, VPN Russia, anti-censorship VPN, V2Ray, Reality protocol, VLESS VPN, bypass DPI, GFW bypass, Android VPN, iOS VPN, فیلترشکن رایگان, فیلترشکن ایران, 翻墙, 科学上网, VPN обход блокировок, VPN для России">
+  <meta name="keywords" content="فیلترشکن, فیلترشکن رایگان, فیلترشکن قوی, فیلترشکن پرسرعت, بهترین فیلترشکن, دانلود فیلترشکن, فیلترشکن اندروید, فیلترشکن آیفون, فیلترشکن جدید, فیلترشکن بدون قطعی, فیلتر شکن, وی پی ان, وی‌پی‌ان رایگان, V2Ray ایران, VLESS Reality, عبور از فیلترینگ, ضد فیلتر, VPN Iran, free VPN Iran, anti-censorship VPN, bypass DPI, 翻墙, 科学上网, VPN обход блокировок">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <meta name="author" content="SetAI">
   <link rel="canonical" href="<?= $canonical ?>">
@@ -128,6 +191,30 @@ $m_desc  = $meta[$lang]['desc'];
         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
         "author": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"},
         "publisher": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"}
+      },
+      {
+        "@type": "WebSite",
+        "name": "Realink VPN",
+        "url": "https://setalink.no",
+        "inLanguage": ["en","fa","zh","ru"],
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://setalink.no/?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+<?php foreach ($faqs as $fi => [$fq, $fa]): ?>
+          {
+            "@type": "Question",
+            "name": <?= json_encode($fq, JSON_UNESCAPED_UNICODE) ?>,
+            "acceptedAnswer": {"@type": "Answer", "text": <?= json_encode($fa, JSON_UNESCAPED_UNICODE) ?>}
+          }<?= $fi < count($faqs) - 1 ? ',' : '' ?>
+
+<?php endforeach; ?>
+        ]
       }
     ]
   }
@@ -186,16 +273,16 @@ $m_desc  = $meta[$lang]['desc'];
 
   <div class="hero-badge">
     <span class="dot-live"></span>
-    <span data-t="hero.badge">Server Online &mdash; secure global nodes</span>
+    <span data-t="hero.badge"><?= $S['badge'] ?></span>
   </div>
 
   <h1>
-    <span data-t="hero.h1a">Free Internet</span><br>
-    <span class="text-gradient" data-t="hero.h1b">for Everyone</span>
+    <span data-t="hero.h1a"><?= $S['h1a'] ?></span><br>
+    <span class="text-gradient" data-t="hero.h1b"><?= $S['h1b'] ?></span>
   </h1>
 
   <p class="hero-sub" data-t="hero.sub">
-    AI-powered VPN built for real censorship. Now on Android &amp; iOS. 1 GB free on install. No account. No server setup.
+    <?= $S['sub'] ?>
   </p>
 
   <div class="hero-btns">
@@ -259,7 +346,7 @@ $m_desc  = $meta[$lang]['desc'];
 <!-- ══ HOW IT WORKS ════════════════════════════════════════════ -->
 <section class="section" id="how">
   <div class="section-label" data-t="how.label">HOW IT WORKS</div>
-  <h2 class="section-title" data-t="how.title">Three Steps to Free Internet</h2>
+  <h2 class="section-title" data-t="how.title"><?= $S['how'] ?></h2>
   <p class="section-sub" data-t="how.sub">No account, no credit card, no configuration. Install and connect.</p>
 
   <div class="steps-bento">
@@ -287,7 +374,7 @@ $m_desc  = $meta[$lang]['desc'];
 <section class="section" id="ai">
   <div class="ai-section">
     <div class="section-label" data-t="ai.label">INTELLIGENT ROUTING</div>
-    <h2 class="section-title" data-t="ai.title">Not Just a Tunnel</h2>
+    <h2 class="section-title" data-t="ai.title"><?= $S['ai'] ?></h2>
     <p class="section-sub" data-t="ai.sub">Realink actively validates every connection and picks the best path — every single time.</p>
   </div>
 
@@ -331,7 +418,7 @@ $m_desc  = $meta[$lang]['desc'];
 <!-- ══ WHY REALINK ════════════════════════════════════════════ -->
 <section class="section" id="why">
   <div class="section-label" data-t="why.label">WHY REALINK</div>
-  <h2 class="section-title" data-t="why.title">Built for Real Censorship</h2>
+  <h2 class="section-title" data-t="why.title"><?= $S['why'] ?></h2>
   <p class="section-sub" data-t="why.sub">Not a generic VPN wrapper. Built from scratch for the realities of internet censorship in Iran.</p>
 
   <div class="why-grid">
@@ -365,7 +452,7 @@ $m_desc  = $meta[$lang]['desc'];
 <!-- ══ PRICING ════════════════════════════════════════════════ -->
 <section class="section" id="pricing">
   <div class="section-label" data-t="pricing.label">ACCESS TIERS</div>
-  <h2 class="section-title" data-t="pricing.title">Start Free. Grow Together.</h2>
+  <h2 class="section-title" data-t="pricing.title"><?= $S['pricing'] ?></h2>
   <p class="section-sub" data-t="pricing.sub">1 GB on install, more via referrals, unlimited data tier coming soon.</p>
 
   <div class="pricing-grid">
@@ -499,34 +586,12 @@ $m_desc  = $meta[$lang]['desc'];
 <section class="section" id="faq">
   <div class="faq-section">
     <div class="section-label" data-t="faq.label">FAQ</div>
-    <h2 class="section-title" data-t="faq.title">Common Questions</h2>
+    <h2 class="section-title" data-t="faq.title"><?= $S['faq'] ?></h2>
     <p class="section-sub" style="margin:0 auto" data-t="faq.sub">Real questions about how Realink actually works.</p>
   </div>
 
   <div class="faq-list">
     <?php
-    $faqs = [
-      ['How does the invite system work?',
-       'When you install Realink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. Invite 3 active friends to unlock stealth servers. There is no limit on how many people you can invite.'],
-      ['What is the 1 GB emergency package?',
-       'Every new device that installs Realink automatically receives 1 GB of free data — no account, no login, no credit card. This is designed so that anyone who suddenly loses internet access can get back online immediately.'],
-      ['How does the AI protocol optimizer work?',
-       'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins. Fake "connected" states are impossible.'],
-      ['Does Realink keep logs?',
-       'No user activity logs. The xray core logs connection events internally for diagnostic purposes but no user-identifiable content is stored. Device IDs are anonymous hashes. The admin can see aggregate connection statistics but not who connected to what.'],
-      ['Is Realink on iPhone / iOS?',
-       'Yes. Realink is now on both Android and iOS. Android installs directly from the APK on this page (no Play Store needed). iOS is in TestFlight beta — join our Telegram to get a beta invite. Both builds share the same AI routing engine, VLESS+Reality core, and QUIC-through-tunnel fix.'],
-      ['What happens when Iran blocks a new SNI?',
-       'The Remote Config system allows the server to push updated SNI priority lists to all apps without requiring an update. The AI optimizer also learns from real connection data — if a previously working SNI stops working, it drops in priority automatically.'],
-      ['How is traffic different from normal HTTPS?',
-       'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain (like www.microsoft.com). Deep Packet Inspection cannot tell it apart from normal HTTPS traffic to that domain.'],
-      ['What is the difference between Turkey and Iran routing?',
-       'Turkey uses looser censorship with most SNIs working. Iran has stricter DPI and many SNIs are blocked. The AI optimizer knows which regions have stricter filtering and tests more aggressively, prioritizing SNIs confirmed to work from Iranian networks.'],
-      ['Can I use it on multiple devices?',
-       'Yes. Each install generates a separate device ID and receives its own 1 GB starter quota. Referral codes are tied to your device ID and transfer the bonus data to that device.'],
-      ['What is the roadmap?',
-       'Shipped: iOS TestFlight beta, per-app split tunneling, QUIC through the tunnel, and a Cloudflare stealth edge node. Near-term: more server nodes across the Middle East and Asia, App Store release, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
-    ];
     foreach ($faqs as $i => [$q, $a]): ?>
     <div class="faq-item" id="faq<?= $i ?>">
       <button class="faq-q" aria-expanded="false">
@@ -554,6 +619,15 @@ $m_desc  = $meta[$lang]['desc'];
       <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener" data-t="footer.gh">GitHub</a>
       <a href="<?= htmlspecialchars($dl_link) ?>" data-t="footer.dl">Download</a>
       <a href="https://setai.no" target="_blank" rel="external" data-t="footer.setai">SetAI</a>
+    </nav>
+    <!-- Keyword-targeted landing pages — descriptive anchor text passes topical
+         relevance/link equity so each guide can rank for its own search intent. -->
+    <nav class="footer-links footer-guides" aria-label="Guides">
+      <a href="/fa/" hreflang="fa" dir="rtl" lang="fa">فیلترشکن رایگان</a>
+      <a href="/iran-vpn/">VPN for Iran</a>
+      <a href="/v2ray-iran/">V2Ray Iran</a>
+      <a href="/privacy-vpn/">Privacy VPN</a>
+      <a href="/tr/" hreflang="tr" lang="tr">VPN Türkiye</a>
     </nav>
     <p class="footer-copy">
       &copy; <?= date('Y') ?> Realink VPN · <span data-t="footer.platforms">Android &amp; iOS</span> ·

@@ -11,9 +11,9 @@ $dl_link   = '/download/setalink-latest.apk' . ($ref_code ? '?ref=' . urlencode(
 $dl_ref       = $ref_code ? '?ref=' . urlencode($ref_code) : '';
 $dl_arm32     = '/download/setalink-latest-arm32.apk' . $dl_ref;
 $dl_universal = '/download/setalink-latest-universal.apk' . $dl_ref;
-$title     = 'ستالینک — فیلترشکن رایگان برای ایران | VPN اندروید';
-$desc      = 'ستالینک: فیلترشکن هوشمند مبتنی بر هوش مصنوعی با پروتکل VLESS+Reality. ۱ گیگابایت رایگان بدون ثبت‌نام. بایپس DPI. اندروید.';
-$keywords  = 'فیلترشکن رایگان, VPN ایران, فیلتر شکن اندروید, ستالینک, v2ray ایران, VLESS Reality, وی‌پی‌ان رایگان, دانلود فیلترشکن';
+$title     = 'فیلترشکن رایگان و پرسرعت ری‌لینک برای ایران | دانلود وی‌پی‌ان اندروید و آیفون';
+$desc      = 'ری‌لینک: فیلترشکن هوشمند مبتنی بر هوش مصنوعی با پروتکل VLESS+Reality. ۱ گیگابایت رایگان بدون ثبت‌نام. بایپس DPI. اندروید.';
+$keywords  = 'فیلترشکن رایگان, VPN ایران, فیلتر شکن اندروید, ری‌لینک, v2ray ایران, VLESS Reality, وی‌پی‌ان رایگان, دانلود فیلترشکن';
 $canonical = 'https://setalink.no/fa/';
 ?>
 <!DOCTYPE html>
@@ -24,7 +24,7 @@ $canonical = 'https://setalink.no/fa/';
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "ستالینک VPN",
+  "name": "ری‌لینک VPN",
   "operatingSystem": "Android",
   "applicationCategory": "NetworkingApplication",
   "description": "فیلترشکن هوشمند با پروتکل VLESS+Reality برای ایران. ۱ گیگابایت رایگان بدون ثبت‌نام.",
@@ -40,7 +40,7 @@ $canonical = 'https://setalink.no/fa/';
 
 <nav class="nav">
   <a href="/fa/" class="nav-logo">
-    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="32" height="32" alt="ستالینک">
+    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="32" height="32" alt="ری‌لینک">
     <span class="brand-seta">Seta</span><span class="brand-link">Link</span>
   </a>
   <div class="nav-actions" style="flex-direction:row-reverse">
@@ -65,7 +65,7 @@ $canonical = 'https://setalink.no/fa/';
 <section class="hero">
   <div class="hero-glow"></div>
   <div class="hero-ring">
-    <img src="/assets/logo/shirokhorshid/logo-mark-connected-128.png" class="hero-logo" width="112" height="112" alt="ستالینک">
+    <img src="/assets/logo/shirokhorshid/logo-mark-connected-128.png" class="hero-logo" width="112" height="112" alt="ری‌لینک">
   </div>
   <div class="hero-badge">
     <span class="dot-live"></span>
@@ -76,7 +76,7 @@ $canonical = 'https://setalink.no/fa/';
     <span class="text-gradient">برای همه</span>
   </h1>
   <p class="hero-sub">
-    فیلترشکن مبتنی بر هوش مصنوعی، ساخته‌شده برای سانسور واقعی. فقط اندروید. ۱ گیگابایت رایگان پس از نصب. بدون حساب. بدون تنظیمات.
+    فیلترشکن مبتنی بر هوش مصنوعی، ساخته‌شده برای سانسور واقعی. اندروید و آیفون (iOS). ۱ گیگابایت رایگان پس از نصب. بدون حساب. بدون تنظیمات.
   </p>
   <div class="hero-btns" style="direction:rtl">
     <a href="<?= htmlspecialchars($dl_link) ?>" class="btn btn-primary" id="apk-dl-btn">
@@ -135,7 +135,7 @@ $canonical = 'https://setalink.no/fa/';
 <div class="divider"></div>
 
 <section class="section" id="why">
-  <div class="section-label">چرا ستالینک</div>
+  <div class="section-label">چرا ری‌لینک</div>
   <h2 class="section-title">ساخته‌شده برای سانسور واقعی</h2>
   <p class="section-sub">یک پوشش VPN عمومی نیست. از صفر برای واقعیت‌های ایران ساخته شده.</p>
   <div class="why-grid">
@@ -167,20 +167,20 @@ $canonical = 'https://setalink.no/fa/';
   <div class="faq-section">
     <div class="section-label">سوالات متداول</div>
     <h2 class="section-title">سوالات رایج</h2>
-    <p class="section-sub" style="margin:0 auto">سوالات واقعی درباره نحوه عملکرد ستالینک.</p>
+    <p class="section-sub" style="margin:0 auto">سوالات واقعی درباره نحوه عملکرد ری‌لینک.</p>
   </div>
   <div class="faq-list" style="text-align:right">
     <?php
     $faqs_fa = [
       ['سیستم دعوت چطور کار می‌کند؟',
-       'وقتی ستالینک را نصب می‌کنی، یک کد دعوت منحصربه‌فرد دریافت می‌کنی. با دوستانت به اشتراک بگذار. وقتی دوستی اپ را نصب کند و کد تو را وارد کند، هر دوی شما +۱ گیگابایت اضافی دریافت می‌کنید. محدودیتی در تعداد دعوت‌ها وجود ندارد.'],
+       'وقتی ری‌لینک را نصب می‌کنی، یک کد دعوت منحصربه‌فرد دریافت می‌کنی. با دوستانت به اشتراک بگذار. وقتی دوستی اپ را نصب کند و کد تو را وارد کند، هر دوی شما +۱ گیگابایت اضافی دریافت می‌کنید. محدودیتی در تعداد دعوت‌ها وجود ندارد.'],
       ['بسته ۱ گیگابایت اضطراری چیست؟',
-       'هر دستگاه جدیدی که ستالینک را نصب کند، به طور خودکار ۱ گیگابایت داده رایگان دریافت می‌کند — بدون حساب، بدون لاگین، بدون کارت اعتباری. طراحی شده برای اینکه هر کسی که ناگهان به اینترنت دسترسی ندارد، بتواند فوری به اینترنت آزاد برگردد.'],
+       'هر دستگاه جدیدی که ری‌لینک را نصب کند، به طور خودکار ۱ گیگابایت داده رایگان دریافت می‌کند — بدون حساب، بدون لاگین، بدون کارت اعتباری. طراحی شده برای اینکه هر کسی که ناگهان به اینترنت دسترسی ندارد، بتواند فوری به اینترنت آزاد برگردد.'],
       ['بهینه‌ساز پروتکل با هوش مصنوعی چطور کار می‌کند؟',
        'در هر تلاش اتصال، اپ سه پروتکل را به صورت موازی آزمایش می‌کند: VLESS+Reality، XHTTP و WebSocket. برای هر پروتکل، یک پروب HTTP واقعی انجام می‌دهد — نه فقط دست دادن TCP. اولین پروتکلی که داده HTTP واقعی برگرداند، برنده می‌شود. وضعیت متصل جعلی غیرممکن است.'],
-      ['آیا ستالینک لاگ نگه می‌دارد؟',
+      ['آیا ری‌لینک لاگ نگه می‌دارد؟',
        'هیچ لاگ فعالیت کاربری وجود ندارد. شناسه‌های دستگاه هش‌های ناشناس هستند. آمار مجموع ذخیره می‌شود اما قابل ردیابی به کاربران فردی نیست.'],
-      ['چرا فقط اندروید؟',
+      ['چرا اندروید و آیفون (iOS)؟',
        'اندروید VPN مبتنی بر TUN را بدون محدودیت App Store امکان‌پذیر می‌کند. iOS نیاز به توزیع App Store و انطباق با سیاست‌های Apple دارد — ناسازگار با اجرای یک ابزار دور زدن سانسور به صورت آزاد. بازار هدف اصلی (ایران) سهم بالای اندروید دارد.'],
       ['وقتی ایران یک SNI جدید را بلاک می‌کند چه اتفاقی می‌افتد؟',
        'سیستم Remote Config به ادمین اجازه می‌دهد لیست‌های اولویت SNI به‌روزشده را بدون نیاز به به‌روزرسانی اپ به همه بفرستد. بهینه‌ساز هوش مصنوعی هم SNIهای بلاک‌شده را به طور خودکار در اولویت کاهش می‌دهد.'],
@@ -202,7 +202,7 @@ $canonical = 'https://setalink.no/fa/';
 <footer class="footer">
   <div class="footer-inner" style="flex-direction:row-reverse">
     <div class="footer-brand">
-      <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="28" height="28" alt="ستالینک" style="border-radius:7px">
+      <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" width="28" height="28" alt="ری‌لینک" style="border-radius:7px">
       <span class="brand-seta">Seta</span><span class="brand-link">Link</span>
     </div>
     <nav class="footer-links" style="flex-direction:row-reverse">
@@ -212,7 +212,7 @@ $canonical = 'https://setalink.no/fa/';
       <a href="<?= htmlspecialchars($dl_link) ?>">دانلود APK</a>
       <a href="/">English</a>
     </nav>
-    <p class="footer-copy">&copy; <?= date('Y') ?> SetaLink VPN · فقط اندروید</p>
+    <p class="footer-copy">&copy; <?= date('Y') ?> SetaLink VPN · اندروید و آیفون (iOS)</p>
   </div>
 </footer>
 
