@@ -649,6 +649,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
     <!-- Keyword-targeted landing pages — descriptive anchor text passes topical
          relevance/link equity so each guide can rank for its own search intent. -->
     <nav class="footer-links footer-guides" aria-label="Guides">
+      <a href="/blog/">Blog</a>
       <a href="/fa/" hreflang="fa" dir="rtl" lang="fa">فیلترشکن رایگان</a>
       <a href="/iran-vpn/">VPN for Iran</a>
       <a href="/v2ray-iran/">V2Ray Iran</a>
