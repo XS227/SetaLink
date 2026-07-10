@@ -1131,13 +1131,16 @@ if ($method === 'POST') {
         // User-to-user direct message (v0.9.33). Recipient addressed by
         // SetaLink ID (device_id | user_id | referral_code). Rate-limited,
         // body encrypted at rest. No phone/email/IP is touched.
-        $deviceId  = trim($_POST['device_id'] ?? '');
-        $recipient = trim($_POST['recipient'] ?? '');
-        $body      = (string)($_POST['body'] ?? '');
+        // expire_secs (optional, v0.9.58): disappearing-message timer — the row
+        // is hard-deleted expire_secs after the recipient READS it (0 = never).
+        $deviceId   = trim($_POST['device_id'] ?? '');
+        $recipient  = trim($_POST['recipient'] ?? '');
+        $body       = (string)($_POST['body'] ?? '');
+        $expireSecs = (int)($_POST['expire_secs'] ?? 0);
         if (!$deviceId || $recipient === '') err('missing params');
         $pdo = db();
         try {
-            $result = dm_send($pdo, $deviceId, $recipient, $body);
+            $result = dm_send($pdo, $deviceId, $recipient, $body, $expireSecs);
         } catch (\RuntimeException $e) {
             err($e->getMessage());
         }
