@@ -457,8 +457,29 @@ function icon(string $name): string {
       <div class="panel" style="margin-bottom:1rem">
         <div class="panel-body" style="font-size:.82rem;color:var(--muted)">
           Track where target search terms rank on Google over time. Lower position = better (1 = top).
-          Log a snapshot below (e.g. from an incognito search on the Iran-facing keyword) to build the trend.
+          Real positions come from Google Search Console; you can also log a manual snapshot below.
           <span style="color:var(--muted-2)">Δ vs previous: green = moved up.</span>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">🔎 Google Search Console <span class="panel-sub" id="gscStatus">checking…</span></span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <label style="font-size:.8rem;color:var(--muted)">Property
+              <input type="text" id="gscSite" class="input" style="width:230px" placeholder="https://setalink.no/">
+            </label>
+            <button class="btn btn-ghost" id="gscSaveBtn" type="button">Save</button>
+            <button class="btn btn-primary" id="gscSyncBtn" type="button">Sync from Search Console</button>
+            <span id="gscMsg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+          </div>
+          <div id="gscSetup" style="display:none;margin-top:.7rem;font-size:.78rem;color:var(--muted-2);line-height:1.7">
+            <strong>Not connected yet.</strong> One-time setup: 1) Google Cloud → enable “Search Console API”, create a
+            <em>Service Account</em> → JSON key. 2) In Search Console → Settings → Users → add the service-account e-mail
+            (…@….iam.gserviceaccount.com) with read access. 3) Upload the JSON to
+            <code>/var/www/setalink/data/gsc-service-account.json</code> (chmod 600). Then click Sync.
+          </div>
+          <div id="gscUntracked" style="margin-top:.7rem"></div>
         </div>
       </div>
 
@@ -1833,6 +1854,8 @@ $('dmRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadMessaging(f
 $('nodesRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadNodes());
 $('seoSaveBtn')?.addEventListener('click', ()=>views.seoranks.save());
 $('seoAddKwBtn')?.addEventListener('click', ()=>views.seoranks.addKeyword());
+$('gscSyncBtn')?.addEventListener('click', ()=>views.seoranks.syncGsc());
+$('gscSaveBtn')?.addEventListener('click', ()=>views.seoranks.saveGscConfig());
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -3459,8 +3482,37 @@ views.seoranks = {
       this.renderTable();
       this.renderChart();
       this.renderInputs();
+      this.renderGsc(d.gsc || {});
       $('seoKwCount').textContent = this.data.length + ' tracked · Iran intent';
     } catch(e) { toast('SEO ranks: '+e.message,'error'); }
+  },
+  renderGsc(g) {
+    const st = $('gscStatus'), site = $('gscSite');
+    if (site && !site.value) site.value = g.site_url || 'https://setalink.no/';
+    $('gscSetup').style.display = g.key_present ? 'none' : 'block';
+    if (!g.key_present) { st.textContent = 'not connected'; st.style.color='#f59e0b'; }
+    else { st.textContent = 'connected' + (g.last_sync ? ' · last sync '+g.last_sync : ' · never synced'); st.style.color='var(--muted)'; }
+  },
+  async saveGscConfig() {
+    const u = ($('gscSite').value||'').trim(); if(!u) return;
+    try { await api.post({action:'seo-rank-gsc-config', site_url:u}); $('gscMsg').textContent='Property saved.'; }
+    catch(e){ toast('Save failed: '+e.message,'error'); }
+  },
+  async syncGsc() {
+    $('gscMsg').textContent = 'Syncing…';
+    try {
+      const r = await api.post({action:'seo-rank-gsc-sync'});
+      $('gscMsg').textContent = `Synced ${r.snapshots} snapshots for ${r.keywords_hit} keyword(s) · ${r.window}`;
+      toast('Search Console synced','success');
+      // Suggest high-impression queries we don't track yet.
+      const u = r.top_untracked||[];
+      $('gscUntracked').innerHTML = u.length
+        ? '<div style="font-size:.78rem;color:var(--muted)">Top queries you rank for but don\'t track yet (impressions) — click to add:</div>'
+          + u.map(x=>`<button type="button" class="btn btn-ghost gsc-add" data-q="${esc(x.query)}" style="margin:.25rem .3rem 0 0;font-size:.75rem" dir="auto">${esc(x.query)} <span style="color:var(--muted-2)">${x.impressions}</span></button>`).join('')
+        : '';
+      document.querySelectorAll('.gsc-add').forEach(b=>b.addEventListener('click',()=>{ $('seoNewKw').value=b.dataset.q; this.addKeyword(); }));
+      this.load();
+    } catch(e){ $('gscMsg').textContent=''; toast('Sync failed: '+e.message,'error'); }
   },
   renderTable() {
     const fmtPos = p => p==null ? '<span style="color:var(--muted-2)">—</span>' : '#'+ (Number.isInteger(p)?p:p.toFixed(1));
