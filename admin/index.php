@@ -139,6 +139,10 @@ function icon(string $name): string {
     <button class="menu-toggle btn btn-icon btn-ghost" id="menuToggle"><?= icon('menu') ?></button>
     <span class="topbar-title" id="pageTitle">Dashboard</span>
     <span class="topbar-sub" id="pageSub"></span>
+    <div class="gsearch" id="gSearchWrap">
+      <input class="input gsearch-input" id="gSearch" type="search" placeholder="Find user… (part of an ID works)" autocomplete="off" spellcheck="false">
+      <div class="gsearch-drop" id="gSearchDrop" hidden></div>
+    </div>
     <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
       <span class="refresh-ts" id="globalTs"></span>
       <button class="btn btn-ghost btn-sm" id="refreshBtn" title="Refresh"><?= icon('refresh') ?> Refresh</button>
@@ -4628,6 +4632,56 @@ views.referrals = {
 function debounce(fn, ms) {
   let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); };
 }
+
+// ── Global user search (topbar) — live results on partial IDs ───────
+(() => {
+  const inp = $('gSearch'), drop = $('gSearchDrop'), wrap = $('gSearchWrap');
+  if (!inp) return;
+  let items = [], sel = -1, seq = 0;
+  const close = () => { drop.hidden = true; drop.innerHTML = ''; sel = -1; items = []; };
+  const pick = i => {
+    const r = items[i];
+    if (!r) return;
+    close(); inp.blur();
+    devDetail(r.device_id);
+  };
+  const render = () => {
+    drop.innerHTML = items.length
+      ? items.map((r, i) => {
+          const uid = r.user_id || r.device_id.substring(0, 16);
+          return `<div class="gsearch-item${i === sel ? ' sel' : ''}" data-i="${i}">
+            <span class="dot ${r.is_online ? 'dot-ok' : 'dot-unk'}"></span>
+            <span class="gsearch-uid">${esc(uid)}</span>
+            <span class="gsearch-meta">${countryFlag(r.country || '')} ${esc(r.platform || '?')} · ${esc(r.plan || '')} · ${fmtRelative(r.last_seen)}</span>
+          </div>`;
+        }).join('')
+      : '<div class="gsearch-empty">No users match</div>';
+    drop.hidden = false;
+    drop.querySelectorAll('.gsearch-item').forEach(el => {
+      // mousedown (not click) so the input's blur can't race the selection
+      el.onmousedown = e => { e.preventDefault(); pick(+el.dataset.i); };
+    });
+  };
+  const run = debounce(async () => {
+    const q = inp.value.trim();
+    if (q.length < 2) { close(); return; }
+    const mySeq = ++seq;
+    try {
+      const d = await api.get('user-search', {q});
+      if (mySeq !== seq) return; // a newer keystroke's response wins
+      items = d.results || []; sel = items.length ? 0 : -1; render();
+    } catch (_) { /* keep quiet while typing */ }
+  }, 150);
+  inp.oninput = run;
+  inp.onfocus = () => { if (inp.value.trim().length >= 2) run(); };
+  inp.onkeydown = e => {
+    if (e.key === 'ArrowDown')    { sel = Math.min(sel + 1, items.length - 1); render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === 'Enter')   { if (sel >= 0) pick(sel); }
+    else if (e.key === 'Escape')  { close(); inp.blur(); }
+  };
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+})();
 
 // ── Boot ─────────────────────────────────────────────────────────────
 navigate(INIT_PAGE);
