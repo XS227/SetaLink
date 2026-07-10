@@ -86,6 +86,8 @@ function seo_ranks_seed(PDO $db): int {
     return $added;
 }
 
+require_once __DIR__ . '/gsc_sync.php';  // Google Search Console → keyword_ranks
+
 function open_analytics_db(): PDO {
     $db = new PDO('sqlite:' . realpath(__DIR__ . '/../data') . '/analytics.db', null, null,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -1343,6 +1345,24 @@ if ($method === 'POST') {
         seo_ranks_init($db);
         api_ok(['added' => seo_ranks_seed($db)]);
     }
+    // Pull real positions from Google Search Console into keyword_ranks.
+    if ($action === 'seo-rank-gsc-sync') {
+        $db = open_analytics_db();
+        if (!gsc_key_present()) {
+            api_err('Search Console key not installed yet. Upload the service-account JSON to '
+                  . GSC_KEY_PATH . ' and add its e-mail as a user in Search Console.');
+        }
+        try { api_ok(gsc_sync($db)); }
+        catch (\Throwable $e) { api_err('GSC sync failed: ' . $e->getMessage()); }
+    }
+    // Set the Search Console property URL (https://setalink.no/ or sc-domain:setalink.no).
+    if ($action === 'seo-rank-gsc-config') {
+        $db = open_analytics_db();
+        $u = trim((string)($parsed['site_url'] ?? ''));
+        if ($u === '') api_err('site_url required');
+        gsc_setting($db, 'gsc_site_url', $u);
+        api_ok(['site_url' => $u]);
+    }
 
     $allowed = ['add','remove','disable','enable','reset-traffic','change-package','regen-link'];
     if (!in_array($action, $allowed, true)) api_err('unknown action');
@@ -1480,7 +1500,15 @@ switch ($action) {
                 'history'    => $h,
             ];
         }
-        api_ok(['keywords' => $out, 'checked_at' => date('Y-m-d H:i:s')]);
+        api_ok([
+            'keywords'   => $out,
+            'checked_at' => date('Y-m-d H:i:s'),
+            'gsc'        => [
+                'key_present' => gsc_key_present(),
+                'site_url'    => gsc_setting($db, 'gsc_site_url', null, 'https://setalink.no/'),
+                'last_sync'   => gsc_setting($db, 'gsc_last_sync', null, ''),
+            ],
+        ]);
         break;
     }
 
