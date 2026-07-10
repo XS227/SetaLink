@@ -8,7 +8,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Linking, StyleSheet, Animated } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
 
@@ -69,12 +69,31 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
 
   const promo = promos[idx] ?? promos[0]!;
 
+  // Calm breathing glow — a gold tint layer slowly fading in and out behind
+  // the content. Quiet by design: it should register at the edge of the eye,
+  // never compete with the server rows around it.
+  const glow = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const breathe = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 2600, useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 2600, useNativeDriver: true }),
+      ]),
+    );
+    breathe.start();
+    return () => breathe.stop();
+  }, []);
+
   return (
     <TouchableOpacity
       style={[styles.card, style]}
       onPress={() => Linking.openURL(promo.url).catch(() => {})}
       activeOpacity={0.85}
     >
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.glowLayer, { opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.03, 0.1] }) }]}
+      />
       {promo.image ? (
         <Image source={{ uri: promo.image }} style={styles.tokenImg} resizeMode="cover" />
       ) : (
@@ -95,21 +114,29 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
 
 const GOLD = '#C9A42A';
 
+// Same card geometry as ServerRow (the server-list rows), so promo/ad slots sit
+// in the list as quiet equals rather than shouting banners.
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing[3],
-    backgroundColor: 'rgba(201,164,42,0.07)',
-    borderRadius: Radius.xl,
+    backgroundColor: Colors.bg.surface,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(201,164,42,0.3)',
-    padding: Spacing[4],
+    borderColor: 'rgba(201,164,42,0.28)',
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[3],
+    overflow: 'hidden',
   },
-  emoji:    { fontSize: 26 },
-  tokenImg: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(201,164,42,0.15)' },
+  glowLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: GOLD,
+  },
+  emoji:    { fontSize: 24 },
+  tokenImg: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,164,42,0.15)' },
   body:     { flex: 1 },
-  title:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: GOLD },
+  title:    { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: GOLD },
   sub:      { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   dots:     { flexDirection: 'row', gap: 4 },
   dot:      { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(201,164,42,0.25)' },

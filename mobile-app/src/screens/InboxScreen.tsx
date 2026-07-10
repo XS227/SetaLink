@@ -15,6 +15,29 @@ import { useT } from '../i18n';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
+// Disappearing-message timer steps the composer chip cycles through (seconds
+// after the recipient reads; 0 = permanent). Wickr-style, kept playful.
+const BURN_STEPS = [0, 30, 60, 300, 3600, 86400] as const;
+
+/** Compact human label for a burn duration: 30s · 1m · 5m · 1h · 24h. */
+export function burnLabel(secs: number): string {
+  if (secs < 60)    return `${secs}s`;
+  if (secs < 3600)  return `${Math.round(secs / 60)}m`;
+  return `${Math.round(secs / 3600)}h`;
+}
+
+/** Epoch ms for a server 'YYYY-MM-DD HH:MM:SS' UTC timestamp. */
+export function burnDeadlineMs(expiresAt: string): number {
+  return Date.parse(expiresAt.replace(' ', 'T') + 'Z');
+}
+
+/** Remaining-time label for a burning message ('4:59', '1h 12m'). */
+export function burnRemaining(expiresAt: string, nowMs: number): string {
+  const left = Math.max(0, Math.floor((burnDeadlineMs(expiresAt) - nowMs) / 1000));
+  if (left >= 3600) return `${Math.floor(left / 3600)}h ${Math.floor((left % 3600) / 60)}m`;
+  return `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+}
+
 interface Props {
   onBack: () => void;
   /** Deep-link: open straight into this conversation (push-notification tap). */
@@ -53,6 +76,33 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [draft, setDraft]         = useState('');
   const [openKey, setOpenKey]     = useState<string | null>(null);
   const [threadDraft, setThreadDraft] = useState('');
+  const [burnSecs, setBurnSecs]   = useState(0);   // composer disappearing-timer
+  const [nowMs, setNowMs]         = useState(Date.now());
+
+  // Tick once a second while the open thread contains disappearing messages,
+  // so burn countdowns run and expired bubbles vanish without waiting for the
+  // next server poll. No burning messages -> no timer at all.
+  const hasBurning = !!openKey && dms.some(m => (m.expireSecs ?? 0) > 0);
+  useEffect(() => {
+    if (!hasBurning) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [hasBurning]);
+
+  const cycleBurn = () => {
+    const i = BURN_STEPS.indexOf(burnSecs as (typeof BURN_STEPS)[number]);
+    const next = BURN_STEPS[(i + 1) % BURN_STEPS.length] ?? 0;
+    setBurnSecs(next);
+    useToastStore.getState().show(
+      next === 0 ? `⏱ ${t('dm.burnOff')}` : `🔥 ${t('dm.burnSet').replace('{t}', burnLabel(next))}`,
+      'info', 1800,
+    );
+  };
+
+  /** True once a burning message's post-read timer has run out (hide locally —
+   *  the server hard-deletes it on its side). */
+  const isBurned = (m: ChatMessage) =>
+    !!m.expiresAt && burnDeadlineMs(m.expiresAt) <= nowMs;
 
   const supportName = t('dm.support');
   const conversations = useMemo(
@@ -85,7 +135,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     const peer = openConvo.peerUserId || openConvo.peerDevice || '';
     if (!peer) return;
     try {
-      await dmSend(deviceId, peer, body);
+      await dmSend(deviceId, peer, body, burnSecs);
       setThreadDraft('');
     } catch (e: any) {
       Alert.alert('', String(e?.message ?? 'Error'));
@@ -255,8 +305,9 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     <Text style={styles.introText}>{t('dm.supportIntro')}</Text>
                   </View>
                 )}
-                {openConvo.messages.map((m) => {
+                {openConvo.messages.filter(m => !isBurned(m)).map((m) => {
                   const out = m.direction === 'out';
+                  const burning = (m.expireSecs ?? 0) > 0;
                   return (
                     <TouchableOpacity
                       key={m.key}
@@ -264,9 +315,16 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                       onLongPress={() => confirmDeleteMessage(openConvo, m)}
                       style={[styles.bubbleRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}
                     >
-                      <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn]}>
+                      <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, burning && styles.bubbleBurn]}>
                         {!!m.title && <Text style={styles.bubbleTitle}>{m.title}</Text>}
                         <Text style={[styles.bubbleText, out && styles.bubbleTextOut]}>{m.body}</Text>
+                        {burning && (
+                          <Text style={styles.burnNote}>
+                            🔥 {m.expiresAt
+                              ? t('dm.burnLeft').replace('{t}', burnRemaining(m.expiresAt, nowMs))
+                              : t('dm.burnPending').replace('{t}', burnLabel(m.expireSecs ?? 0))}
+                          </Text>
+                        )}
                         <Text style={[styles.bubbleTime, out && styles.bubbleTimeOut]}>{m.createdAt.slice(11, 16)}</Text>
                       </View>
                     </TouchableOpacity>
@@ -276,6 +334,16 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
 
               {/* Reply input — two-way for both Support and DM threads */}
               <View style={styles.threadInputRow}>
+                <TouchableOpacity
+                  testID="convo-burn"
+                  style={[styles.burnChip, burnSecs > 0 && styles.burnChipOn]}
+                  activeOpacity={0.7}
+                  onPress={cycleBurn}
+                >
+                  <Text style={styles.burnChipText}>
+                    {burnSecs > 0 ? `🔥${burnLabel(burnSecs)}` : '⏱'}
+                  </Text>
+                </TouchableOpacity>
                 <TextInput
                   testID="convo-input"
                   style={styles.threadInput}
@@ -414,6 +482,11 @@ const styles = StyleSheet.create({
   bubbleTextOut: { color: '#021b10' },
   bubbleTime:    { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end', marginTop: 2 },
   bubbleTimeOut: { color: 'rgba(2,27,16,0.6)' },
+  bubbleBurn:    { borderWidth: 1, borderColor: 'rgba(255,140,60,0.5)' },
+  burnNote:      { fontSize: 10, fontFamily: Typography.family.mono, color: '#FF8C3C', marginTop: 3 },
+  burnChip:      { height: 46, minWidth: 46, paddingHorizontal: 6, borderRadius: 23, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center', justifyContent: 'center' },
+  burnChipOn:    { borderColor: '#FF8C3C', backgroundColor: 'rgba(255,140,60,0.12)' },
+  burnChipText:  { fontSize: 13, color: '#FF8C3C', fontFamily: Typography.family.mono },
   threadInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing[2], paddingHorizontal: Layout.screenPadding, paddingVertical: Spacing[3], paddingBottom: Spacing[6], borderTopWidth: 1, borderTopColor: Colors.border.subtle },
   threadInput:   { flex: 1, maxHeight: 110, borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
   threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },

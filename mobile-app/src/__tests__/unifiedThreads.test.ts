@@ -4,7 +4,7 @@ import type { InboxMessage } from '../stores/inboxStore';
 
 const dm = (o: Partial<DirectMessage>): DirectMessage => ({
   id: 1, direction: 'in', peerUserId: 'SL-A', peerDevice: 'dev-a', body: 'hi', read: false,
-  createdAt: '2026-06-15T10:00:00', ...o,
+  createdAt: '2026-06-15T10:00:00', expireSecs: 0, expiresAt: null, ...o,
 });
 const ann = (o: Partial<InboxMessage>): InboxMessage => ({
   id: 1, title: 'Title', body: 'body', createdAt: '2026-06-15T10:00:00', read: false, ...o,
