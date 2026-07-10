@@ -43,6 +43,50 @@ function cli_json(string $action, array $args = [], int $timeout = 0): array {
     $j = json_decode($r['output'], true);
     return is_array($j) ? $j : ['_error' => 'unparseable cli output'];
 }
+// SEO keyword rank tracking: one row per keyword per measurement date. Lower
+// position = better; NULL = not measured / outside top 100.
+function seo_ranks_init(PDO $db): void {
+    $db->exec('CREATE TABLE IF NOT EXISTS keyword_ranks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        keyword TEXT NOT NULL,
+        lang TEXT DEFAULT "fa",
+        position REAL,
+        impressions INTEGER DEFAULT 0,
+        clicks INTEGER DEFAULT 0,
+        source TEXT DEFAULT "manual",
+        captured_at TEXT NOT NULL DEFAULT (datetime("now"))
+    )');
+    $db->exec('CREATE INDEX IF NOT EXISTS kr_kw ON keyword_ranks(keyword, captured_at)');
+    // Seed the default target list the first time so the page is never empty.
+    $has = (int)$db->query('SELECT COUNT(*) FROM keyword_ranks')->fetchColumn();
+    if ($has === 0) seo_ranks_seed($db);
+}
+// The 10 target search terms (Persian filtershekan intent = Iran's real queries).
+// Seeds a marker row (position NULL) per keyword so it shows as tracked before
+// any measurement exists. Idempotent — only inserts keywords not already present.
+function seo_ranks_seed(PDO $db): int {
+    $targets = [
+        ['فیلترشکن', 'fa'],
+        ['فیلترشکن رایگان', 'fa'],
+        ['دانلود فیلترشکن', 'fa'],
+        ['فیلترشکن قوی', 'fa'],
+        ['فیلترشکن پرسرعت', 'fa'],
+        ['بهترین فیلترشکن', 'fa'],
+        ['فیلترشکن بدون قطعی', 'fa'],
+        ['فیلترشکن اندروید', 'fa'],
+        ['فیلترشکن آیفون', 'fa'],
+        ['V2Ray ایران', 'fa'],
+    ];
+    $exists = $db->prepare('SELECT 1 FROM keyword_ranks WHERE keyword=? LIMIT 1');
+    $ins = $db->prepare('INSERT INTO keyword_ranks (keyword,lang,position,source) VALUES (?,?,NULL,"seed")');
+    $added = 0;
+    foreach ($targets as [$kw, $lg]) {
+        $exists->execute([$kw]);
+        if (!$exists->fetchColumn()) { $ins->execute([$kw, $lg]); $added++; }
+    }
+    return $added;
+}
+
 function open_analytics_db(): PDO {
     $db = new PDO('sqlite:' . realpath(__DIR__ . '/../data') . '/analytics.db', null, null,
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
@@ -1487,6 +1531,35 @@ if ($method === 'POST') {
         file_put_contents($vj_path, json_encode($current, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         api_ok(['saved' => true, 'version' => $current['version'] ?? '?']);
     }
+    // SEO rank tracker — record a snapshot of keyword positions (manual entry
+    // or a future GSC feed). { entries:[{keyword,position,lang?,impressions?,clicks?}], source?, captured_at? }
+    if ($action === 'seo-rank-record') {
+        $db = open_analytics_db();
+        seo_ranks_init($db);
+        $entries = $parsed['entries'] ?? [];
+        if (!is_array($entries) || !$entries) api_err('no entries');
+        $src = substr((string)($parsed['source'] ?? 'manual'), 0, 30);
+        $cap = (string)($parsed['captured_at'] ?? date('Y-m-d H:i:s'));
+        $ins = $db->prepare("INSERT INTO keyword_ranks (keyword,lang,position,impressions,clicks,source,captured_at)
+                             VALUES (?,?,?,?,?,?,?)");
+        $n = 0;
+        foreach ($entries as $e) {
+            $kw = trim((string)($e['keyword'] ?? ''));
+            if ($kw === '') continue;
+            $pos = (isset($e['position']) && $e['position'] !== '' && $e['position'] !== null) ? (float)$e['position'] : null;
+            $ins->execute([$kw, substr((string)($e['lang'] ?? 'fa'),0,5), $pos,
+                           (int)($e['impressions'] ?? 0), (int)($e['clicks'] ?? 0), $src, $cap]);
+            $n++;
+        }
+        api_ok(['recorded' => $n, 'captured_at' => $cap]);
+    }
+    // (Re)seed the tracked keyword list (idempotent).
+    if ($action === 'seo-rank-seed') {
+        $db = open_analytics_db();
+        seo_ranks_init($db);
+        api_ok(['added' => seo_ranks_seed($db)]);
+    }
+
     $allowed = ['add','remove','disable','enable','reset-traffic','change-package','regen-link'];
     if (!in_array($action, $allowed, true)) api_err('unknown action');
     if (!preg_match(USERNAME_RE, $name))    api_err('invalid username');
@@ -1580,6 +1653,50 @@ switch ($action) {
             'nodes'        => $nodes,
             'reachability' => $reach[0] ?? new \stdClass(),
         ]);
+        break;
+    }
+
+    // ── SEO keyword rank tracker ────────────────────────────────────────────
+    // Track where target search terms rank over time so the owner can compare
+    // positions across dates. Positions are recorded as snapshots (manual entry
+    // now; can be fed from the Google Search Console API later). Lower = better;
+    // position 0/NULL means "not measured / not in top 100".
+    case 'seo-ranks': {
+        $db = open_analytics_db();
+        seo_ranks_init($db);
+        // History per keyword + latest/previous/best for the summary table.
+        $rows = $db->query(
+            "SELECT keyword, lang, position, impressions, clicks, source, captured_at
+             FROM keyword_ranks WHERE position IS NOT NULL
+             ORDER BY keyword, captured_at"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $targets = $db->query("SELECT DISTINCT keyword, lang FROM keyword_ranks ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
+        $hist = [];
+        foreach ($rows as $r) {
+            $hist[$r['keyword']][] = ['captured_at' => $r['captured_at'], 'position' => (float)$r['position']];
+        }
+        $out = [];
+        foreach ($targets as $t) {
+            $k = $t['keyword'];
+            $h = $hist[$k] ?? [];
+            $n = count($h);
+            $latest = $n ? $h[$n-1]['position'] : null;
+            $prev   = $n > 1 ? $h[$n-2]['position'] : null;
+            $best   = null;
+            foreach ($h as $p) { if ($best === null || $p['position'] < $best) $best = $p['position']; }
+            $out[] = [
+                'keyword'    => $k,
+                'lang'       => $t['lang'],
+                'latest'     => $latest,
+                'previous'   => $prev,
+                'delta'      => ($latest !== null && $prev !== null) ? round($prev - $latest, 1) : null, // +ve = improved (moved up)
+                'best'       => $best,
+                'last_at'    => $n ? $h[$n-1]['captured_at'] : null,
+                'points'     => $n,
+                'history'    => $h,
+            ];
+        }
+        api_ok(['keywords' => $out, 'checked_at' => date('Y-m-d H:i:s')]);
         break;
     }
 

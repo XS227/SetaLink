@@ -103,6 +103,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='insights'?' active':'' ?>" data-page="insights">
       <?= icon('globe') ?> User Insights
     </div>
+    <div class="nav-item<?= $page==='seoranks'?' active':'' ?>" data-page="seoranks">
+      <?= icon('chart') ?> SEO Ranks
+    </div>
     <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
       <?= icon('chart') ?> AI Diagnosis
     </div>
@@ -439,6 +442,53 @@ function icon(string $name): string {
             <table class="tbl"><thead><tr><th>Device</th><th>Protocol</th><th>Duration</th><th>MB</th><th>Day</th></tr></thead>
               <tbody id="insLongestTbl"><tr><td colspan="5" class="tbl-empty">—</td></tr></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: SEO RANKS                                              -->
+    <!-- Target keyword positions over time. Source: admin/api.php?    -->
+    <!-- action=seo-ranks. Positions are recorded snapshots (manual    -->
+    <!-- entry now; can be fed from the Google Search Console API).    -->
+    <!-- ============================================================ -->
+    <div data-view="seoranks" hidden>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted)">
+          Track where target search terms rank on Google over time. Lower position = better (1 = top).
+          Log a snapshot below (e.g. from an incognito search on the Iran-facing keyword) to build the trend.
+          <span style="color:var(--muted-2)">Δ vs previous: green = moved up.</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Position Over Time <span class="panel-sub">lower is better</span></span></div>
+        <div class="panel-body"><div style="position:relative;height:320px"><canvas id="seoChart"></canvas></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Tracked Keywords <span class="panel-sub" id="seoKwCount">top 10 · Iran intent</span></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Keyword</th><th>Current</th><th>Δ</th><th>Best</th><th>Points</th><th>Last measured</th></tr></thead>
+            <tbody id="seoRankTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Log a Snapshot <span class="panel-sub">enter today's positions · blank = skip</span></span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.8rem;flex-wrap:wrap">
+            <label style="font-size:.8rem;color:var(--muted)">Date <input type="date" id="seoDate" class="input" style="width:auto"></label>
+            <input type="text" id="seoNewKw" class="input" placeholder="+ add a new keyword to track" style="flex:1;min-width:180px">
+            <button class="btn btn-ghost" id="seoAddKwBtn" type="button">Add keyword</button>
+          </div>
+          <div id="seoInputGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.5rem"></div>
+          <div style="margin-top:.9rem;display:flex;gap:.6rem">
+            <button class="btn btn-primary" id="seoSaveBtn" type="button">Save snapshot</button>
+            <span id="seoSaveMsg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
           </div>
         </div>
       </div>
@@ -1750,6 +1800,7 @@ const pageTitles = {
   intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
   starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
   insights:  ['User Insights', 'aggregate carriers · geo · devices · reachability · no per-user tracking'],
+  seoranks:  ['SEO Ranks', 'target keyword positions over time · Iran filtershekan intent'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
@@ -1780,6 +1831,8 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.addEventListene
 $('refreshBtn').addEventListener('click', ()=>views[activeView]?.init?.());
 $('dmRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadMessaging(false));
 $('nodesRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadNodes());
+$('seoSaveBtn')?.addEventListener('click', ()=>views.seoranks.save());
+$('seoAddKwBtn')?.addEventListener('click', ()=>views.seoranks.addKeyword());
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -3387,6 +3440,93 @@ views.insights = {
         + `<td>${esc(x.protocol)}</td><td>${this.fmtDur(x.duration_secs)}</td>`
         + `<td>${x.mb ?? 0}</td><td class="mobile-hide">${esc(x.day||'')}</td></tr>`);
     } catch(e) { toast('User insights: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: SEO RANKS ──────────────────────────────────────────────────
+// Keyword position tracker. Reads admin/api.php?action=seo-ranks, renders a
+// position-over-time chart (Y inverted — 1 at top), a summary table, and a
+// form to log a snapshot (POST seo-rank-record). Manual entry now; a Google
+// Search Console feed can populate the same table later.
+views.seoranks = {
+  chart: null,
+  data: [],
+  init() { this.load(); const d=$('seoDate'); if(d&&!d.value) d.value=new Date().toISOString().slice(0,10); },
+  async load() {
+    try {
+      const d = await api.get('seo-ranks');
+      this.data = d.keywords || [];
+      this.renderTable();
+      this.renderChart();
+      this.renderInputs();
+      $('seoKwCount').textContent = this.data.length + ' tracked · Iran intent';
+    } catch(e) { toast('SEO ranks: '+e.message,'error'); }
+  },
+  renderTable() {
+    const fmtPos = p => p==null ? '<span style="color:var(--muted-2)">—</span>' : '#'+ (Number.isInteger(p)?p:p.toFixed(1));
+    $('seoRankTbl').innerHTML = this.data.length ? this.data.map(k=>{
+      let dcell = '<span style="color:var(--muted-2)">—</span>';
+      if (k.delta!=null && k.delta!==0) {
+        const up = k.delta>0;
+        dcell = `<span class="badge ${up?'badge-ok':'badge-danger'}">${up?'▲':'▼'} ${Math.abs(k.delta)}</span>`;
+      } else if (k.delta===0) dcell = '<span class="badge badge-info">0</span>';
+      return `<tr>
+        <td dir="auto" style="font-weight:600">${esc(k.keyword)}</td>
+        <td>${fmtPos(k.latest)}</td><td>${dcell}</td>
+        <td>${fmtPos(k.best)}</td><td>${k.points||0}</td>
+        <td class="mobile-hide" style="font-size:.75rem;color:var(--muted)">${esc(k.last_at||'never')}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="6" class="tbl-empty">No keywords tracked</td></tr>';
+  },
+  renderChart() {
+    if (typeof Chart==='undefined') return;
+    if (this.chart) { try{this.chart.destroy();}catch(e){} this.chart=null; }
+    // Union of all measurement dates → shared X axis.
+    const dates = [...new Set(this.data.flatMap(k=>(k.history||[]).map(h=>h.captured_at.slice(0,10))))].sort();
+    if (!dates.length) { return; }
+    const palette = ['#00e87a','#3399ff','#f59e0b','#e0559e','#8b5cf6','#22d3ee','#ef4444','#a3e635','#fb923c','#e879f9'];
+    const measured = this.data.filter(k=>(k.history||[]).length);
+    const sets = measured.map((k,i)=>{
+      const byDay = {}; (k.history||[]).forEach(h=>{ byDay[h.captured_at.slice(0,10)]=h.position; });
+      return { label:k.keyword, data:dates.map(d=>byDay[d] ?? null), spanGaps:true,
+               borderColor:palette[i%palette.length], backgroundColor:palette[i%palette.length],
+               tension:.25, borderWidth:2, pointRadius:3 };
+    });
+    this.chart = new Chart($('seoChart'), {
+      type:'line',
+      data:{ labels:dates, datasets:sets },
+      options:{ responsive:true, maintainAspectRatio:false,
+        scales:{ y:{ reverse:true, title:{display:true,text:'Google position (1 = top)'},
+                     ticks:{precision:0}, suggestedMin:1 } },
+        plugins:{ legend:{ labels:{ boxWidth:12, font:{size:10} } } } }
+    });
+  },
+  renderInputs() {
+    $('seoInputGrid').innerHTML = this.data.map(k=>`
+      <label style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;background:var(--panel-2,rgba(255,255,255,.03));padding:.4rem .6rem;border-radius:6px">
+        <span dir="auto" style="font-size:.8rem">${esc(k.keyword)}</span>
+        <input type="number" min="1" max="100" step="1" class="input seo-pos" data-kw="${esc(k.keyword)}" data-lang="${esc(k.lang||'fa')}" placeholder="${k.latest??'#'}" style="width:70px">
+      </label>`).join('');
+  },
+  addKeyword() {
+    const v = ($('seoNewKw').value||'').trim();
+    if (!v) return;
+    if (!this.data.some(k=>k.keyword===v)) this.data.push({keyword:v, lang:'fa', latest:null, history:[]});
+    $('seoNewKw').value='';
+    this.renderInputs();
+  },
+  async save() {
+    const entries = [...document.querySelectorAll('.seo-pos')].map(el=>({
+      keyword: el.dataset.kw, lang: el.dataset.lang, position: el.value.trim()
+    })).filter(e=>e.position!=='');
+    if (!entries.length) { $('seoSaveMsg').textContent='Enter at least one position.'; return; }
+    const captured_at = ($('seoDate').value||'') + ' 12:00:00';
+    try {
+      const r = await api.post({action:'seo-rank-record', entries, captured_at, source:'manual'});
+      $('seoSaveMsg').textContent = `Saved ${r.recorded} position(s).`;
+      toast('Snapshot saved','success');
+      this.load();
+    } catch(e){ toast('Save failed: '+e.message,'error'); }
   },
 };
 
