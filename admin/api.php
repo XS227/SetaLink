@@ -3165,6 +3165,35 @@ switch ($action) {
         break;
     }
 
+    case 'user-search': {
+        // Global topbar live-search: partial User ID / device ID / referral
+        // code. Dash-, space- and case-insensitive so "22762dac" finds
+        // SL-227-62DAC5F0 and "ec58" finds sl-ec58c486-….
+        $db = open_analytics_db();
+        init_device_tables($db);
+        $q = strtolower(str_replace([' ', '-'], '', trim((string)($_GET['q'] ?? ''))));
+        if (strlen($q) < 2) api_ok(['results' => []]);
+        $like = '%' . $q . '%';
+        $st = $db->prepare(
+            "SELECT device_id, user_id, referral_code, country, country_name,
+                    platform, plan, status, last_seen, app_version
+             FROM devices
+             WHERE REPLACE(LOWER(COALESCE(user_id,'')), '-', '') LIKE ?
+                OR REPLACE(LOWER(device_id), '-', '') LIKE ?
+                OR REPLACE(LOWER(COALESCE(referral_code,'')), '-', '') LIKE ?
+             ORDER BY last_seen DESC LIMIT 12");
+        $st->execute([$like, $like, $like]);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) {
+            $ls = $r['last_seen'] ?? null;
+            $r['is_online'] = (($r['status'] ?? '') === 'online'
+                               && $ls && (time()-(int)strtotime((string)$ls.' UTC')) < 10800);
+        }
+        unset($r);
+        api_ok(['results' => $rows]);
+        break;
+    }
+
     case 'device-detail': {
         $db = open_analytics_db();
         init_device_tables($db);
