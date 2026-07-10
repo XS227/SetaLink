@@ -340,8 +340,11 @@ function v1_client_country(PDO $pdo): string {
 }
 
 // Node IDs hidden for specific caller countries (reachability, not policy):
-// Germany's Hetzner IP is blackholed from inside Iran.
-const V1_GEO_HIDDEN_NODES = ['de-nbg' => ['IR']];
+// 2026-07-09: Germany geo-hiding for IR REMOVED. Germany reachable from Iran
+// on MCI/Hamrah-e Avval (verified 2026-07-09, tester on 86.55.155.206); the
+// Hetzner blackhole is carrier-specific (Irancell/TCI), so let Iranian callers
+// try de-nbg. Re-add 'de-nbg' => ['IR'] here to hide it again if needed.
+const V1_GEO_HIDDEN_NODES = [];
 
 function v1_node_geo_hidden(PDO $pdo, string $nodeId): bool {
     $hide = V1_GEO_HIDDEN_NODES[$nodeId] ?? null;
@@ -362,27 +365,27 @@ function v1_cfedge_node(): array {
         'test' => false,
         'meta' => [
             'id'       => 'cf-edge',
-            'country'  => 'Cloudflare',
-            'city'     => 'CDN Edge · Stealth',
+            'country'  => 'Realink',
+            'city'     => 'Secure Edge · Stealth',
             'flag'     => '🛡️',
             'ping'     => 0,
             'load'     => 0,
             'protocol' => 'WebSocket',
             'transport'=> 'ws',
-            'tags'     => ['Recommended', 'Stealth'],
+            'tags'     => ['Stealth'],
             'premium'  => false,
         ],
         'creds' => [
             'uuid'        => '69205cf6-23a7-4e64-a1a2-865fd49471fe',
-            'address'     => 'cf.setalink.no',
+            'address'     => 'alanya-turist.no',
             'port'        => 443,
             // WS builder reads edgeAddress (host + SNI + Host header), edgePort,
             // wsPath. Cloudflare presents a valid cert for cf.setalink.no, so
             // allowInsecure stays false.
-            'edgeAddress' => 'cf.setalink.no',
+            'edgeAddress' => 'alanya-turist.no',
             'edgePort'    => 443,
             'wsPath'      => '/cfws',
-            'sni'         => 'cf.setalink.no',
+            'sni'         => 'alanya-turist.no',
             'publicKey'   => '',
             'shortId'     => '',
             'flow'        => '',
