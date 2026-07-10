@@ -57,6 +57,9 @@ interface AuthState {
 }
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
+// Every new account starts with 5 GB (matches the backend signup grant) —
+// shown immediately so the welcome gift never flashes a stale "1 GB".
+const STARTER_QUOTA_BYTES = 5 * ONE_GB_BYTES;
 
 function randomId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
@@ -88,7 +91,7 @@ export const useAuthStore = create<AuthState>()(
             inviteCodeUsed: inviteCode.toUpperCase(),
             referralParent,
             referralCode: '',
-            quotaBytesTotal: ONE_GB_BYTES,
+            quotaBytesTotal: STARTER_QUOTA_BYTES,
             quotaBytesUsed: 0,
             createdAt: now,
             lastSeen: now,

@@ -432,6 +432,10 @@ const EN = {
   'dm.support':             'Support',
   'dm.supportTag':          'ReaLink Support',
   'dm.supportIntro':        'Use this chat to contact ReaLink support — ask us anything. We reply as soon as we can.',
+  'dm.burnOff':             'Timer off',
+  'dm.burnSet':             'Disappears {t} after reading',
+  'dm.burnPending':         'disappears {t} after reading',
+  'dm.burnLeft':            'disappears in {t}',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -955,6 +959,10 @@ const FA: typeof EN = {
   'dm.support':             'پشتیبانی',
   'dm.supportTag':          'پشتیبانی ریلینک',
   'dm.supportIntro':        'از این گفتگو برای تماس با پشتیبانی ریلینک استفاده کنید — هر سؤالی دارید بپرسید. در اسرع وقت پاسخ می‌دهیم.',
+  'dm.burnOff':             'تایمر خاموش',
+  'dm.burnSet':             '{t} پس از خواندن ناپدید می‌شود',
+  'dm.burnPending':         '{t} پس از خواندن ناپدید می‌شود',
+  'dm.burnLeft':            'ناپدید شدن تا {t}',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
@@ -1455,6 +1463,10 @@ const ZH: typeof EN = {
   'dm.support':          '客服支持',
   'dm.supportTag':       'ReaLink 客服',
   'dm.supportIntro':     '使用此聊天联系 ReaLink 客服 — 有任何问题都可以问我们。我们会尽快回复。',
+  'dm.burnOff':          '定时器关闭',
+  'dm.burnSet':          '阅读后 {t} 消失',
+  'dm.burnPending':      '阅读后 {t} 消失',
+  'dm.burnLeft':         '{t} 后消失',
 
   'pr.inviteRewards': '邀请奖励',
   'pr.activeInvites': '个有效邀请',
@@ -1948,6 +1960,10 @@ const RU: typeof EN = {
   'dm.support':          'Поддержка',
   'dm.supportTag':       'Поддержка ReaLink',
   'dm.supportIntro':     'Используйте этот чат, чтобы связаться с поддержкой ReaLink — задавайте любые вопросы. Мы ответим как можно скорее.',
+  'dm.burnOff':          'Таймер выключен',
+  'dm.burnSet':          'Исчезнет через {t} после прочтения',
+  'dm.burnPending':      'исчезнет через {t} после прочтения',
+  'dm.burnLeft':         'исчезнет через {t}',
 
   'pr.inviteRewards': 'Награды за приглашения',
   'pr.activeInvites': 'активных приглашений',

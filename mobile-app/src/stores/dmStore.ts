@@ -20,7 +20,7 @@ interface DMState {
 
   unreadCount: () => number;
   refresh:     (deviceId: string) => Promise<number>;            // returns # unread
-  send:        (deviceId: string, recipient: string, body: string) => Promise<void>;
+  send:        (deviceId: string, recipient: string, body: string, expireSecs?: number) => Promise<void>;
   markRead:    (deviceId: string, messageId: number) => void;
   deleteMessage: (deviceId: string, messageId: number) => void;
   deleteThread:  (deviceId: string, peer: string) => void;
@@ -70,12 +70,12 @@ export const useDMStore = create<DMState>()(
         }
       },
 
-      send: async (deviceId, recipient, body) => {
+      send: async (deviceId, recipient, body, expireSecs = 0) => {
         set({ sending: true });
         try {
           // eslint-disable-next-line @typescript-eslint/no-var-requires
           const { sendMessage } = require('../services/entitlementService');
-          await sendMessage(deviceId, recipient.trim(), body.trim());
+          await sendMessage(deviceId, recipient.trim(), body.trim(), expireSecs);
           await get().refresh(deviceId);
         } finally {
           set({ sending: false });

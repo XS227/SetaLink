@@ -34,6 +34,10 @@ export interface ChatMessage {
   body:      string;
   createdAt: string;
   read:      boolean;
+  /** Disappearing-message timer (secs after read); 0/undefined = permanent. */
+  expireSecs?: number;
+  /** UTC 'YYYY-MM-DD HH:MM:SS' burn moment, set once the recipient reads it. */
+  expiresAt?: string | null;
 }
 
 export interface Conversation {
@@ -52,6 +56,7 @@ function dmToChat(m: DirectMessage): ChatMessage {
   return {
     key: `dm-${m.id}`, id: m.id, kind: 'dm', direction: m.direction,
     body: m.body, createdAt: m.createdAt, read: m.read,
+    expireSecs: m.expireSecs, expiresAt: m.expiresAt,
   };
 }
 
