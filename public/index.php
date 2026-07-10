@@ -39,19 +39,19 @@ $ios_cta  = $telegram; // iOS is TestFlight beta — request access via Telegram
 $meta = [
   'en' => [
     'title' => 'Realink — Free VPN for Iran, China & Russia | Anti-Censorship VPN (Android & iOS)',
-    'desc'  => 'Realink: AI-powered VLESS+Reality VPN for Iran, China, Russia and other censored regions. 1 GB free on install. No account. Beats DPI with DNS-over-HTTPS. Android APK + iOS TestFlight. In English, فارسی, 中文 and Русский.',
+    'desc'  => 'Realink: AI-powered VLESS+Reality VPN for Iran, China, Russia and other censored regions. 5 GB free on install. No account. Beats DPI with DNS-over-HTTPS. Android APK + iOS TestFlight. In English, فارسی, 中文 and Русский.',
   ],
   'fa' => [
     'title' => 'فیلترشکن رایگان و پرسرعت ری‌لینک | وی‌پی‌ان ضدسانسور ایران (اندروید و iOS)',
-    'desc'  => 'دانلود فیلترشکن رایگان ری‌لینک: فیلترشکن قوی و پرسرعت مبتنی بر VLESS+Reality و V2Ray برای ایران، بدون قطعی. ۱ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون حساب. عبور از فیلترینگ و DPI. نسخه اندروید و آیفون (iOS).',
+    'desc'  => 'دانلود فیلترشکن رایگان ری‌لینک: فیلترشکن قوی و پرسرعت مبتنی بر VLESS+Reality و V2Ray برای ایران، بدون قطعی. ۵ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون حساب. عبور از فیلترینگ و DPI. نسخه اندروید و آیفون (iOS).',
   ],
   'zh' => [
     'title' => 'Realink — 面向伊朗、中国、俄罗斯的免费翻墙 VPN | 抗审查（安卓和 iOS）',
-    'desc'  => 'Realink：基于 VLESS+Reality 的 AI 智能翻墙 VPN，面向伊朗、中国、俄罗斯等审查地区。安装即送 1 GB，无需账号。以 DNS-over-HTTPS 突破 DPI 深度包检测。提供安卓 APK 与 iOS TestFlight。',
+    'desc'  => 'Realink：基于 VLESS+Reality 的 AI 智能翻墙 VPN，面向伊朗、中国、俄罗斯等审查地区。安装即送 5 GB，无需账号。以 DNS-over-HTTPS 突破 DPI 深度包检测。提供安卓 APK 与 iOS TestFlight。',
   ],
   'ru' => [
     'title' => 'Realink — бесплатный VPN для Ирана, Китая и России | Обход блокировок (Android и iOS)',
-    'desc'  => 'Realink: VPN на базе ИИ с VLESS+Reality для Ирана, Китая, России и других стран с цензурой. 1 ГБ бесплатно при установке. Без аккаунта. Обходит DPI через DNS-over-HTTPS. Android APK и iOS TestFlight.',
+    'desc'  => 'Realink: VPN на базе ИИ с VLESS+Reality для Ирана, Китая, России и других стран с цензурой. 5 ГБ бесплатно при установке. Без аккаунта. Обходит DPI через DNS-over-HTTPS. Android APK и iOS TestFlight.',
   ],
 ];
 $m_title = $meta[$lang]['title'];
@@ -67,58 +67,84 @@ $seo = [
   'en' => [
     'badge' => 'Servers online — secure global nodes',
     'h1a' => 'Free Anti-Censorship VPN', 'h1b' => 'Internet Freedom for Everyone',
-    'sub' => 'AI-powered VPN that beats DPI and censorship. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 1 GB free on install. No account, no server setup.',
+    'sub' => 'AI-powered VPN that beats DPI and censorship. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 5 GB free on install. No account, no server setup.',
     'how' => 'Three Steps to Free Internet', 'ai' => 'Not Just a Tunnel',
-    'why' => 'Built for Real Censorship', 'pricing' => 'Start Free. Grow Together.', 'faq' => 'Common Questions',
+    'why' => 'Built for Real Censorship', 'pricing' => 'Start Free. Grow Together.', 'faq' => 'Common Questions', 'faqsub' => 'Real questions about how Realink actually works.',
   ],
   'fa' => [
     'badge' => 'سرورها فعال — گره‌های امن جهانی',
     'h1a' => 'فیلترشکن رایگان و پرسرعت', 'h1b' => 'اینترنت آزاد برای همه',
-    'sub' => 'فیلترشکن هوشمند مبتنی بر هوش مصنوعی برای عبور از فیلترینگ و سانسور. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۱ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون قطعی.',
+    'sub' => 'فیلترشکن هوشمند مبتنی بر هوش مصنوعی برای عبور از فیلترینگ و سانسور. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۵ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون قطعی.',
     'how' => 'سه گام تا فیلترشکن رایگان', 'ai' => 'فقط یک تونل نیست',
-    'why' => 'ساخته‌شده برای سانسور واقعی ایران', 'pricing' => 'رایگان شروع کن، با هم رشد کنیم', 'faq' => 'سؤالات پرتکرار',
+    'why' => 'ساخته‌شده برای سانسور واقعی ایران', 'pricing' => 'رایگان شروع کن، با هم رشد کنیم', 'faq' => 'سؤالات پرتکرار', 'faqsub' => 'سؤال‌های واقعی درباره نحوه عملکرد ری‌لینک.',
   ],
   'zh' => [
     'badge' => '服务器在线 — 安全的全球节点',
     'h1a' => '免费翻墙 VPN', 'h1b' => '人人享有自由互联网',
-    'sub' => '基于 AI 的智能翻墙 VPN，突破 DPI 与审查。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 1 GB，无需账号，无需配置。',
+    'sub' => '基于 AI 的智能翻墙 VPN，突破 DPI 与审查。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 5 GB，无需账号，无需配置。',
     'how' => '三步通往自由互联网', 'ai' => '不只是一条隧道',
-    'why' => '专为真实审查打造', 'pricing' => '免费开始，一起成长', 'faq' => '常见问题',
+    'why' => '专为真实审查打造', 'pricing' => '免费开始，一起成长', 'faq' => '常见问题', 'faqsub' => '关于 Realink 实际工作方式的真实问题。',
   ],
   'ru' => [
     'badge' => 'Серверы онлайн — защищённые узлы',
     'h1a' => 'Бесплатный VPN', 'h1b' => 'Свободный интернет для всех',
-    'sub' => 'VPN на базе ИИ для обхода блокировок и DPI. VLESS+Reality и V2Ray. Теперь на Android и iOS. 1 ГБ бесплатно при установке. Без аккаунта и настройки.',
+    'sub' => 'VPN на базе ИИ для обхода блокировок и DPI. VLESS+Reality и V2Ray. Теперь на Android и iOS. 5 ГБ бесплатно при установке. Без аккаунта и настройки.',
     'how' => 'Три шага к свободному интернету', 'ai' => 'Не просто туннель',
-    'why' => 'Создан для реальной цензуры', 'pricing' => 'Начните бесплатно. Растите вместе.', 'faq' => 'Частые вопросы',
+    'why' => 'Создан для реальной цензуры', 'pricing' => 'Начните бесплатно. Растите вместе.', 'faq' => 'Частые вопросы', 'faqsub' => 'Реальные вопросы о том, как на самом деле работает Realink.',
   ],
 ];
 $S = $seo[$lang];
 
-// FAQ content (defined here so the same source feeds both the visible list and
-// the FAQPage structured data below — Google shows FAQ rich results in the SERP).
-$faqs = [
-  ['How does the invite system work?',
-   'When you install Realink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. Invite 3 active friends to unlock stealth servers. There is no limit on how many people you can invite.'],
-  ['What is the 1 GB emergency package?',
-   'Every new device that installs Realink automatically receives 1 GB of free data — no account, no login, no credit card. This is designed so that anyone who suddenly loses internet access can get back online immediately.'],
-  ['How does the AI protocol optimizer work?',
-   'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins. Fake "connected" states are impossible.'],
-  ['Does Realink keep logs?',
-   'No user activity logs. The xray core logs connection events internally for diagnostic purposes but no user-identifiable content is stored. Device IDs are anonymous hashes. The admin can see aggregate connection statistics but not who connected to what.'],
-  ['Is Realink on iPhone / iOS?',
-   'Yes. Realink is now on both Android and iOS. Android installs directly from the APK on this page (no Play Store needed). iOS is in TestFlight beta — join our Telegram to get a beta invite. Both builds share the same AI routing engine, VLESS+Reality core, and QUIC-through-tunnel fix.'],
-  ['What happens when Iran blocks a new SNI?',
-   'The Remote Config system allows the server to push updated SNI priority lists to all apps without requiring an update. The AI optimizer also learns from real connection data — if a previously working SNI stops working, it drops in priority automatically.'],
-  ['How is traffic different from normal HTTPS?',
-   'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain (like www.microsoft.com). Deep Packet Inspection cannot tell it apart from normal HTTPS traffic to that domain.'],
-  ['What is the difference between Turkey and Iran routing?',
-   'Turkey uses looser censorship with most SNIs working. Iran has stricter DPI and many SNIs are blocked. The AI optimizer knows which regions have stricter filtering and tests more aggressively, prioritizing SNIs confirmed to work from Iranian networks.'],
-  ['Can I use it on multiple devices?',
-   'Yes. Each install generates a separate device ID and receives its own 1 GB starter quota. Referral codes are tied to your device ID and transfer the bonus data to that device.'],
-  ['What is the roadmap?',
-   'Shipped: iOS TestFlight beta, per-app split tunneling, QUIC through the tunnel, and a Cloudflare stealth edge node. Near-term: more server nodes across the Middle East and Asia, App Store release, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
+// FAQ content per language (feeds BOTH the visible list and the FAQPage JSON-LD,
+// so Google shows localized FAQ rich results). Farsi is fully translated because
+// Iranian users are the primary audience; zh/ru fall back to English for now.
+$faqs_i18n = [
+  'en' => [
+    ['How does the invite system work?',
+     'When you install Realink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. Invite 3 active friends to unlock stealth servers. There is no limit on how many people you can invite.'],
+    ['What is the 5 GB emergency package?',
+     'Every new device that installs Realink automatically receives 5 GB of free data — no account, no login, no credit card. This is designed so that anyone who suddenly loses internet access can get back online immediately.'],
+    ['How does the AI protocol optimizer work?',
+     'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins. Fake "connected" states are impossible.'],
+    ['Does Realink keep logs?',
+     'No user activity logs. The xray core logs connection events internally for diagnostic purposes but no user-identifiable content is stored. Device IDs are anonymous hashes. The admin can see aggregate connection statistics but not who connected to what.'],
+    ['Is Realink on iPhone / iOS?',
+     'Yes. Realink is now on both Android and iOS. Android installs directly from the APK on this page (no Play Store needed). iOS is in TestFlight beta — join our Telegram to get a beta invite. Both builds share the same AI routing engine, VLESS+Reality core, and QUIC-through-tunnel fix.'],
+    ['What happens when Iran blocks a new SNI?',
+     'The Remote Config system allows the server to push updated SNI priority lists to all apps without requiring an update. The AI optimizer also learns from real connection data — if a previously working SNI stops working, it drops in priority automatically.'],
+    ['How is traffic different from normal HTTPS?',
+     'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain (like www.microsoft.com). Deep Packet Inspection cannot tell it apart from normal HTTPS traffic to that domain.'],
+    ['What is the difference between Turkey and Iran routing?',
+     'Turkey uses looser censorship with most SNIs working. Iran has stricter DPI and many SNIs are blocked. The AI optimizer knows which regions have stricter filtering and tests more aggressively, prioritizing SNIs confirmed to work from Iranian networks.'],
+    ['Can I use it on multiple devices?',
+     'Yes. Each install generates a separate device ID and receives its own 5 GB starter quota. Referral codes are tied to your device ID and transfer the bonus data to that device.'],
+    ['What is the roadmap?',
+     'Shipped: iOS TestFlight beta, per-app split tunneling, QUIC through the tunnel, and a Cloudflare stealth edge node. Near-term: more server nodes across the Middle East and Asia, App Store release, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
+  ],
+  'fa' => [
+    ['سیستم دعوت چگونه کار می‌کند؟',
+     'وقتی ری‌لینک را نصب می‌کنی، یک کد دعوت اختصاصی دریافت می‌کنی. آن را با دوستانت به اشتراک بگذار. وقتی دوستی برنامه را نصب کند و کد تو را وارد کند، هر دوی شما ۱ گیگابایت داده اضافی می‌گیرید. با دعوت ۳ دوست فعال، سرورهای مخفی (استلث) باز می‌شوند. محدودیتی در تعداد افرادی که می‌توانی دعوت کنی وجود ندارد.'],
+    ['بسته اضطراری ۵ گیگابایتی چیست؟',
+     'هر دستگاه جدیدی که ری‌لینک را نصب کند، به‌طور خودکار ۵ گیگابایت داده رایگان دریافت می‌کند — بدون حساب، بدون ورود و بدون کارت بانکی. این برای زمانی طراحی شده که ناگهان دسترسی به اینترنت را از دست می‌دهی تا فوراً دوباره آنلاین شوی.'],
+    ['بهینه‌ساز هوشمند پروتکل چگونه کار می‌کند؟',
+     'در هر تلاش برای اتصال، برنامه به‌صورت هم‌زمان VLESS+Reality، XHTTP و WebSocket را آزمایش می‌کند. برای هر پروتکل یک پروب واقعی HTTP انجام می‌شود — نه فقط دست‌دادن TCP. اولین پروتکلی که داده واقعی HTTP برگرداند برنده می‌شود. وضعیت «متصل» جعلی ممکن نیست.'],
+    ['آیا ری‌لینک لاگ نگه می‌دارد؟',
+     'هیچ لاگی از فعالیت کاربر ثبت نمی‌شود. هسته xray رویدادهای اتصال را برای اهداف تشخیصی به‌صورت داخلی ثبت می‌کند اما هیچ محتوای قابل شناسایی کاربر ذخیره نمی‌شود. شناسه دستگاه‌ها هش ناشناس است. مدیر فقط آمار کلی اتصال را می‌بیند، نه اینکه چه کسی به چه چیزی وصل شده است.'],
+    ['آیا ری‌لینک روی آیفون (iOS) هست؟',
+     'بله. ری‌لینک اکنون هم روی اندروید و هم iOS در دسترس است. نسخه اندروید مستقیماً از فایل APK همین صفحه نصب می‌شود (بدون نیاز به گوگل‌پلی). نسخه iOS در بتای TestFlight است — به تلگرام ما بپیوند تا دعوت‌نامه بتا بگیری. هر دو نسخه از همان موتور مسیریابی هوشمند، هسته VLESS+Reality و اصلاح QUIC از داخل تونل استفاده می‌کنند.'],
+    ['وقتی ایران یک SNI جدید را مسدود می‌کند چه می‌شود؟',
+     'سیستم Remote Config به سرور اجازه می‌دهد فهرست اولویت SNI به‌روزشده را بدون نیاز به آپدیت برنامه به همه دستگاه‌ها ارسال کند. بهینه‌ساز هوشمند هم از داده‌های واقعی اتصال یاد می‌گیرد — اگر SNI‌ای که قبلاً کار می‌کرد از کار بیفتد، اولویتش به‌طور خودکار کاهش می‌یابد.'],
+    ['ترافیک چه تفاوتی با HTTPS معمولی دارد؟',
+     'پروتکل VLESS+Reality ترافیک VPN را از نظر رمزنگاری از یک دست‌دادن TLS به یک دامنه معتبر (مانند www.microsoft.com) غیرقابل‌تشخیص می‌کند. بازرسی عمیق بسته (DPI) نمی‌تواند آن را از ترافیک عادی HTTPS به آن دامنه تشخیص دهد.'],
+    ['تفاوت مسیریابی ترکیه و ایران چیست؟',
+     'ترکیه سانسور ملایم‌تری دارد و بیشتر SNI‌ها کار می‌کنند. ایران DPI سخت‌گیرانه‌تری دارد و بسیاری از SNI‌ها مسدودند. بهینه‌ساز هوشمند می‌داند کدام مناطق فیلترینگ شدیدتری دارند، تهاجمی‌تر آزمایش می‌کند و SNI‌هایی را که کارکردشان از شبکه‌های ایران تأیید شده در اولویت می‌گذارد.'],
+    ['آیا می‌توانم روی چند دستگاه استفاده کنم؟',
+     'بله. هر نصب یک شناسه دستگاه جداگانه می‌سازد و سهمیه اولیه ۵ گیگابایتی مخصوص خودش را دریافت می‌کند. کدهای دعوت به شناسه دستگاه تو گره خورده‌اند و داده جایزه را به همان دستگاه منتقل می‌کنند.'],
+    ['نقشه راه چیست؟',
+     'منتشرشده: بتای iOS TestFlight، تونل جداگانه برای هر برنامه، QUIC از داخل تونل و گره استلث Cloudflare. کوتاه‌مدت: سرورهای بیشتر در خاورمیانه و آسیا، انتشار در App Store و اشتراک نامحدود ویژه. بلندمدت: گسترش سرور با رأی کاربران، مدل تأمین مالی جامعه و انتشار متن‌باز موتور انتخاب پروتکل.'],
+  ],
 ];
+$faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
 ?><!DOCTYPE html>
 <html lang="<?= $lang ?>" dir="<?= $dir ?>">
 <head>
@@ -153,7 +179,7 @@ $faqs = [
   <!-- Twitter / X -->
   <meta name="twitter:card"        content="summary_large_image">
   <meta name="twitter:title"       content="Realink — Free Anti-Censorship VPN (Android &amp; iOS)">
-  <meta name="twitter:description" content="AI-powered VPN that defeats DPI. VLESS+Reality. 1 GB free, no account. Iran · China · Russia.">
+  <meta name="twitter:description" content="AI-powered VPN that defeats DPI. VLESS+Reality. 5 GB free, no account. Iran · China · Russia.">
   <meta name="twitter:image"       content="<?= $og_img ?>">
   <!-- Fonts + styles -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -184,7 +210,7 @@ $faqs = [
         "operatingSystem": "Android, iOS",
         "applicationCategory": "SecurityApplication",
         "applicationSubCategory": "VPN",
-        "description": "AI-powered anti-censorship VPN for Iran, China, Russia and other censored regions. VLESS+Reality, DoH, XHTTP/WebSocket fallback, QUIC through the tunnel. 1 GB free on install, no account.",
+        "description": "AI-powered anti-censorship VPN for Iran, China, Russia and other censored regions. VLESS+Reality, DoH, XHTTP/WebSocket fallback, QUIC through the tunnel. 5 GB free on install, no account.",
         "url": "https://setalink.no",
         "downloadUrl": "https://setalink.no/download/setalink-latest.apk",
         "inLanguage": ["en","fa","zh","ru"],
@@ -335,7 +361,7 @@ $faqs = [
       <div class="hero-stat-label" data-t="stat.platforms">Both platforms</div>
     </div>
     <div class="hero-stat">
-      <div class="hero-stat-num">1 GB</div>
+      <div class="hero-stat-num">5 GB</div>
       <div class="hero-stat-label" data-t="stat.free">Free on install</div>
     </div>
   </div>
@@ -353,7 +379,7 @@ $faqs = [
     <div class="step-card">
       <div class="step-num">1</div>
       <h3 data-t="how.s1.h">Emergency Access</h3>
-      <p data-t="how.s1.p">Install the APK and get 1 GB instantly — no login, no account. Tap Connect and the AI selects the fastest working protocol for your network.</p>
+      <p data-t="how.s1.p">Install the APK and get 5 GB instantly — no login, no account. Tap Connect and the AI selects the fastest working protocol for your network.</p>
     </div>
     <div class="step-card">
       <div class="step-num">2</div>
@@ -453,16 +479,16 @@ $faqs = [
 <section class="section" id="pricing">
   <div class="section-label" data-t="pricing.label">ACCESS TIERS</div>
   <h2 class="section-title" data-t="pricing.title"><?= $S['pricing'] ?></h2>
-  <p class="section-sub" data-t="pricing.sub">1 GB on install, more via referrals, unlimited data tier coming soon.</p>
+  <p class="section-sub" data-t="pricing.sub">5 GB on install, more via referrals, unlimited data tier coming soon.</p>
 
   <div class="pricing-grid">
     <div class="price-card">
       <div class="price-eyebrow" data-t="plan.free.eyebrow">FREE EMERGENCY</div>
       <div class="price-title"   data-t="plan.free.title">Starter Pack</div>
-      <div class="price-value">1 GB <span class="price-suffix">on install</span></div>
+      <div class="price-value">5 GB <span class="price-suffix">on install</span></div>
       <div class="price-desc"    data-t="plan.free.desc">Auto-activated when you install the APK. No account, no login, no credit card.</div>
       <ul class="price-features">
-        <li data-t="plan.free.f1">1 GB starter quota</li>
+        <li data-t="plan.free.f1">5 GB starter quota</li>
         <li data-t="plan.free.f2">Auto-activated on install</li>
         <li data-t="plan.free.f3">AI protocol selection</li>
         <li data-t="plan.free.f4">No account needed</li>
@@ -587,7 +613,7 @@ $faqs = [
   <div class="faq-section">
     <div class="section-label" data-t="faq.label">FAQ</div>
     <h2 class="section-title" data-t="faq.title"><?= $S['faq'] ?></h2>
-    <p class="section-sub" style="margin:0 auto" data-t="faq.sub">Real questions about how Realink actually works.</p>
+    <p class="section-sub" style="margin:0 auto" data-t="faq.sub"><?= $S['faqsub'] ?></p>
   </div>
 
   <div class="faq-list">
@@ -645,7 +671,7 @@ $faqs = [
 // FAQ schema — mirrors the FAQ items rendered in HTML above
 $faq_schema_items = [
   ['How does the invite system work?', 'When you install Realink, you receive a unique referral code. Share it with friends. When a friend installs the app and enters your code, both of you receive +1 GB of additional data. There is no limit on how many people you can invite.'],
-  ['What is the 1 GB emergency package?', 'Every new device that installs Realink automatically receives 1 GB of free data — no account, no login, no credit card. Anyone who suddenly loses internet access can get back online immediately.'],
+  ['What is the 5 GB emergency package?', 'Every new device that installs Realink automatically receives 5 GB of free data — no account, no login, no credit card. Anyone who suddenly loses internet access can get back online immediately.'],
   ['How does the AI protocol optimizer work?', 'On every connection attempt, the app tests VLESS+Reality, XHTTP, and WebSocket in parallel. For each protocol, it performs a real HTTP probe — not just a TCP handshake. The first protocol to return actual HTTP data wins.'],
   ['Does Realink keep logs?', 'No user activity logs are kept. Device IDs are anonymous hashes. Aggregate statistics are stored but cannot be traced to individual users.'],
   ['Is Realink on iPhone / iOS?', 'Yes. Realink runs on both Android and iOS. Android installs directly from the APK on this page. iOS is in TestFlight beta — join the Telegram channel to request an invite. Both share the same AI routing engine and VLESS+Reality core.'],
