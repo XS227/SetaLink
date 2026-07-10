@@ -42,3 +42,8 @@ mobile-app/*.jsbundle
 mobile-app/.env
 mobile-app/.env.*
 public/releases/**/*.apk
+
+# Google service-account keys — never commit
+real-499116-*.json
+gsc-service-account.json
+*.iam.gserviceaccount.json
