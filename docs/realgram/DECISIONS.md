@@ -101,3 +101,18 @@ unverifiable spends fail closed to `pending` + manual admin review.
 **Why it matters:** RealGram Path A (Phase 3) is no longer blocked on
 building Phases 1–2 — only on deploying them. Effort planning should not
 double-count this work.
+
+### 2026-07-11 — Build authorized; work split across two agents
+
+**Decided by:** Khabat ("ok dere kan begynne å bygge. del taskene i 2 …
+så jobber dere med samme git repo").
+**What:** implementation is now authorized. Work is split per
+`TASK_SPLIT.md`: Agent A (dev box) takes VPN panel + mobile app (deploy of
+the ecosystem backend, wallet proxy, A3 wallet UI, C3, then the TDLib
+spike); Agent B (web/Shahnameh box) takes the Shahnameh-side ecosystem API
+(verify-spend/balance/spend), link-proof minting, the Path A Mini App
+skeleton, and the AdsGram confirmation. API contracts between the two are
+frozen in `TASK_SPLIT.md` §Contracts.
+**Supersedes:** the 2026-07-10 "full implementation not authorized yet"
+entry, within the scope listed in `TASK_SPLIT.md`. Phase 4 (full Path B
+client) remains gated on the spike report per `IMPLEMENTATION_PLAN.md`.
