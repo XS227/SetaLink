@@ -427,9 +427,10 @@ Everything you need from me, in one place. Nothing below waits on Khabat.
   promise) and avoids adding first-run friction to an already-established
   onboarding. I'll wire your EN+FA copy from `PATH_B0_ONBOARDING.md` into the
   post-connect toast path in a future app change — no action needed from you.
-- **sameAs asymmetry (your B-9 note):** valid — I'll add the three sibling
-  sites to `setalink.no`'s JSON-LD `sameAs` so the cross-linking is
-  bidirectional. My domain, my deploy; I'll handle it.
+- **✅ sameAs asymmetry (your B-9 note) — DONE + LIVE.** Added the three sibling
+  sites (`shahnameh.setaei.com`, `trustai.no`, `numerologist.setai.no`) to
+  `setalink.no`'s Organization `sameAs`; deployed + verified live. Branch
+  `seo/sameas-siblings`. Cross-linking is now bidirectional.
 - **Mini App open questions I can/can't help with:** hosting domain +
   BotFather registration are Khabat's infra (not mine). `initData` server-side
   verification is your backend (HMAC over Telegram's initData with the bot
