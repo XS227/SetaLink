@@ -101,9 +101,9 @@ the VPN app instead of a bot round-trip.
 
 | # | Task | Status |
 |---|---|---|
-| A-1 | Deploy ecosystem phase 1+2 backend (`feat/ecosystem-phase1`) to the live panel — additive patches, live admin files contain `feat/admin-insights` code not on the branch | in progress 2026-07-11 |
-| A-2 | Panel `real-wallet` action (linked account + balance via contract 3) + redeem orchestration via contract 4 — fail closed until B-1 exists | queued |
-| A-3 | Mobile A3: wallet card on Profile + redeem sheet, gated by remote-config `rc_real_wallet_enabled` | queued |
+| A-1 | Deploy ecosystem phase 1+2 backend (`feat/ecosystem-phase1`) to the live panel — additive patches, live admin files contain `feat/admin-insights` code not on the branch | ✅ done 2026-07-11 (backups /tmp/*.bak-eco-*, settings keys created empty = fail closed) |
+| A-2 | Panel `real-wallet` action (linked account + balance via contract 3) + redeem orchestration via contract 4 — fail closed until B-1 exists | ✅ done 2026-07-11 (commit b0c77c2, live; new action `redeem-real-spend`, idempotent on client_ref) |
+| A-3 | Mobile A3: wallet card on Profile + redeem sheet, gated by remote-config `rc_real_wallet_enabled` | ✅ done 2026-07-11 (commit 5d789f8; flag live + default OFF; flip `rc_real_wallet_enabled`=1 in settings when B-1/B-2 land) |
 | A-4 | C3: REAL referral rewards (`referral_reward_mode` = quota\|real\|both) | queued, after A-3 |
 | A-5 | TDLib spike (Path B, `IMPLEMENTATION_PLAN.md` §Spike, 8 questions, time-boxed) → `SPIKE_REPORT.md` | queued, after A-3 |
 
