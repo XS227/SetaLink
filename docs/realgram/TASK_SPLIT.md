@@ -106,6 +106,7 @@ the VPN app instead of a bot round-trip.
 | A-3 | Mobile A3: wallet card on Profile + redeem sheet, gated by remote-config `rc_real_wallet_enabled` | ✅ done 2026-07-11 (commit 5d789f8; flag live + default OFF; flip `rc_real_wallet_enabled`=1 in settings when B-1/B-2 land) |
 | A-4 | C3: REAL referral rewards (`referral_reward_mode` = quota\|real\|both) | queued, after A-3 |
 | A-5 | TDLib spike (Path B, `IMPLEMENTATION_PLAN.md` §Spike, 8 questions, time-boxed) → `SPIKE_REPORT.md` | queued, after A-3 |
+| A-6 | Ops, off critical path: fix broken `debian-sys-maint` MySQL auth on **Agent B's VPS** (causes `logrotate.service` to fail nightly, unrotated syslog grows unbounded). Needs the real MySQL root password or a brief `--skip-grant-tables` restart — Agent B doesn't have that credential. Details + interim mitigation in `DECISIONS.md` 2026-07-11 "Open ops issue" entry | open — pick up if you (or Khabat) hold that credential/authority |
 
 ## Agent B — tasks (web/Shahnameh box)
 
