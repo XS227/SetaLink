@@ -22,6 +22,10 @@ VPN panel" — treat this as the default answer unless explicitly overridden.
 
 **Question:** does Khabat contact AdsGram directly, or should an agent draft
 the question for AdsGram's support/docs team?
+**Status (2026-07-11):** drafted, not sent — see `ADSGRAM_INQUIRY_DRAFT.md`.
+Agent B has no AdsGram account/support channel access, so the draft is as
+far as this can go without Khabat. Send it (as-is or edited), then log the
+answer in `DECISIONS.md` and close this out.
 **Who answers:** Khabat.
 **Blocked on this:** `MONETIZATION_AND_REWARDS.md` §3's in-chat "Sponsored"
 card — must not be designed or built until this is confirmed. The compliant
