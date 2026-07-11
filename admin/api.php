@@ -13,6 +13,7 @@ require_once __DIR__ . '/../lib/quota_economy.php';
 require_once __DIR__ . '/../lib/ads_recovery.php';
 require_once __DIR__ . '/../lib/payments.php';
 require_once __DIR__ . '/../lib/messaging.php';
+require_once __DIR__ . '/../lib/real_economy.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -2093,6 +2094,37 @@ switch ($action) {
             'profile_bundle_version' => (int)($rows['rc_profile_bundle_version'] ?? 1),
             'bootstrap'              => fetch_bootstrap_server($db),
         ]);
+        break;
+
+    case 'real-redemptions':
+        // REAL token economy phase 1 — read-only ledger + rates. No mutation
+        // action exists yet by design (ECOSYSTEM_INTEGRATION_PLAN.md A1).
+        $db = open_analytics_db();
+        re_ensure_schema($db);
+        api_ok([
+            'settings'    => re_settings($db),
+            'redemptions' => re_list($db, (int)($_GET['limit'] ?? 100)),
+        ]);
+        break;
+
+    case 'ecosystem-analytics':
+        // Adoption metrics for the ecosystem banner (plan item B4): clicks per
+        // promo, so campaigns pushed via rc_ecosystem_promos are measurable.
+        $db = open_analytics_db();
+        $clicks = [];
+        try {
+            $clicks = $db->query("
+                SELECT COALESCE(json_extract(props,'\$.promo'),'') AS promo,
+                       COUNT(*) AS clicks,
+                       COUNT(DISTINCT device_id) AS devices,
+                       MAX(created_at) AS last_click
+                FROM app_events
+                WHERE event='ecosystem_banner_click'
+                  AND created_at >= datetime('now','-30 days')
+                GROUP BY promo ORDER BY clicks DESC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Exception $e) { /* app_events may not exist yet */ }
+        api_ok(['clicks_30d' => $clicks]);
         break;
 
     case 'app-analytics':

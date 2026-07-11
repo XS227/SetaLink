@@ -27,6 +27,8 @@ require_once __DIR__ . '/../lib/quota_economy.php';
 require_once __DIR__ . '/../lib/ads_recovery.php';
 // User-to-user messaging (v0.9.33).
 require_once __DIR__ . '/../lib/messaging.php';
+// TrustAI referral trust scoring (optional service, local heuristic fallback).
+require_once __DIR__ . '/../lib/trustai.php';
 
 header('Content-Type: application/json');
 // CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
@@ -390,6 +392,13 @@ if ($method === 'GET') {
             'rollout'                => json_decode((string)($rcRows['rc_rollout'] ?? '{}'), true) ?: (object)[],
             'extra_logging_platform' => ($rcRows['rc_extra_logging_platform'] ?? '') ?: null,
             'extra_logging_node'     => ($rcRows['rc_extra_logging_node'] ?? '') ?: null,
+            // Ecosystem promotion (REAL / Shahnameh / TrustAI) — campaign copy,
+            // targets and visibility pushed without an app release. Promos are
+            // objects: {id, url, emoji?, image?, title_en, title_fa, sub_en, ...}.
+            'ecosystem'              => [
+                'banner_enabled' => (bool)(int)($rcRows['rc_ecosystem_banner_enabled'] ?? 1),
+                'promos'         => $decodeArr('rc_ecosystem_promos', []),
+            ],
         ];
         // If there's a legacy composite blob, merge it but let per-key values win
         try {
@@ -808,6 +817,29 @@ if ($method === 'POST') {
             $riskScore += 80;
             $riskFlags[] = 'same_device';
         }
+        // TrustAI enrichment: when the service is configured it replaces the
+        // local heuristic score, but can never LOWER a score the local rules
+        // already flagged (a broken/poisoned TrustAI must not unlock fraud).
+        // Local flags are kept alongside for audit. Unconfigured/unreachable
+        // TrustAI leaves the local score untouched.
+        try {
+            $tai = trustai_score_referral($pdo, [
+                'event'              => 'referral_use',
+                'referrer_device_id' => $ownerRow['device_id'],
+                'new_device_id'      => $deviceId,
+                'referral_code'      => $refCode,
+                'referrer_ip'        => $referrerIp,
+                'new_user_ip'        => $newUserIp,
+                'referrer_fp'        => (string)($referrerDev['android_id_hash'] ?? ''),
+                'new_device_fp'      => (string)($newDev['android_id_hash'] ?? ''),
+                'local_risk_score'   => $riskScore,
+                'local_risk_flags'   => $riskFlags,
+            ]);
+            if ($tai !== null) {
+                $riskScore = max($riskScore, $tai['score']);
+                $riskFlags = array_merge($riskFlags, $tai['flags'], ['trustai_scored']);
+            }
+        } catch (\Exception $e) { /* local heuristic remains authoritative */ }
         // Risk gate: at or above the threshold the reward is HELD, not granted.
         // 'pending' rows carry the intended bonus in bonus_bytes but credit
         // nothing until an admin approves (admin/api.php referral-approve).

@@ -1,7 +1,25 @@
 # SetaLink Ecosystem Integration Plan
 
-Status: **planning only — no code yet** · Date: 2026-06-10
+Status: **first slice implemented 2026-07-11** (branch `feat/ecosystem-phase1`) · Plan date: 2026-06-10
 Scope: REAL token rewards, Shahnameh promotion, TrustAI referrals.
+
+Implemented so far (per the recommended B + C2 → A ordering):
+- **B3+B4** — EcosystemBanner is remote-config driven (`ecosystem.banner_enabled`,
+  `ecosystem.promos` from `rc_ecosystem_banner_enabled` / `rc_ecosystem_promos`
+  settings keys); taps emit `ecosystem_banner_click` telemetry; admin
+  `ecosystem-analytics` action reports clicks per promo (30d).
+- **A1** — `lib/real_economy.php`: `real_redemptions` ledger (tx_ref idempotency),
+  settings `real_per_gb` / `redeem_min_real` / `redeem_daily_cap_bytes`, read-only
+  admin panel on the Payments view (`real-redemptions` action). No quota mutation
+  from REAL exists yet by design.
+- **C2** — `lib/trustai.php`: optional TrustAI scoring in `use-referral`
+  (settings `trustai_api_url` / `trustai_api_key`; unconfigured = local heuristic).
+  Deviation from the plan text: TrustAI can only *raise* the local risk score,
+  never lower it — a broken/poisoned TrustAI must not unlock fraud.
+
+Still open: A2 (account linking + server-verified redeem endpoint), A3 (mobile
+wallet UI), C3 (REAL referral rewards), B1/B2 partially (banner exists and is
+placed, but the Profile ecosystem section is a single rotating card, not three).
 
 ## Context
 
