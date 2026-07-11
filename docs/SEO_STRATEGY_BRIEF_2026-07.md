@@ -154,6 +154,26 @@ inter-link, each targeting one long-tail cluster above:
 Cross-link every article to the others and to the download CTA. Internal
 linking is half of how a new domain builds authority.
 
+### Tracked keyword set — already seeded (2026-07-11)
+
+The full §2 long-tail set is **already inserted into `keyword_ranks`
+(source `seed`)** — 34 tracked keywords total (10 aspirational head terms +
+6 carrier + 18 long-tail). You don't need to seed anything; the daily GSC
+sync is already matching all of them. Your job is the **content** that makes
+them start earning impressions. The 18 long-tail added today:
+
+- App: `فیلترشکن اینستاگرام`, `فیلترشکن واتساپ`, `فیلترشکن تلگرام`,
+  `فیلترشکن یوتیوب`, `باز کردن اینستاگرام`
+- Problem: `چرا فیلترشکن قطع میشه`, `فیلترشکنی که قطع نمیشه`,
+  `فیلترشکن که کار کنه`, `بهترین فیلترشکن برای اینستاگرام`
+- Technical: `کانفیگ vless`, `کانفیگ ریالیتی`, `آموزش v2ray`,
+  `تفاوت vless و vmess`, `فیلترشکن vless`
+- Device: `فیلترشکن آیفون بدون اپل ایدی`, `نصب فیلترشکن روی آیفون`
+- Timely: `وضعیت اینترنت ایران امروز`, `فیلترشکن برای قطعی اینترنت`
+
+As real impressions appear, promote the GSC sync's `top_untracked`
+suggestions into this set too (they're the queries users *actually* type).
+
 ## 4. Markets — Iran only for now (locked with Khabat 2026-07-11)
 
 The site targets Iran/China/Russia, but the **Google-SEO effort should only go
