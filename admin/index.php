@@ -901,8 +901,8 @@ function icon(string $name): string {
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>ID</th><th>Device</th><th>REAL Account</th><th>REAL</th><th>Quota</th><th>Tx Ref</th><th>Status</th><th>When</th><th>Actions</th></tr></thead>
-            <tbody id="realTbl"><tr><td colspan="9" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>ID</th><th>Device</th><th>REAL Account</th><th>REAL</th><th>Quota</th><th>Kind</th><th>Tx Ref</th><th>Status</th><th>When</th><th>Actions</th></tr></thead>
+            <tbody id="realTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -3247,13 +3247,14 @@ views.devices = {
         `${s.real_per_gb} REAL/GB · min ${s.redeem_min_real} REAL · cap ${fmtBytes(s.redeem_daily_cap_bytes||0)}/day`;
       const rows = d.redemptions || [];
       $('realTbl').innerHTML = !rows.length
-        ? '<tr><td colspan="9" class="tbl-empty">No redemptions yet</td></tr>'
+        ? '<tr><td colspan="10" class="tbl-empty">No redemptions yet</td></tr>'
         : rows.map(r=>`<tr>
             <td>${r.id}</td>
             <td class="mono mobile-hide" style="font-size:.65rem;color:var(--muted-2)">${esc((r.device_id||'').substring(0,14)+'…')}</td>
             <td class="mono" style="font-size:.7rem">${esc(r.real_account||'—')}</td>
             <td>${r.real_amount}</td>
             <td>${fmtBytes(r.quota_bytes||0)}</td>
+            <td style="font-size:.7rem">${r.kind==='referral_grant'?'🎁 grant':'redeem'}</td>
             <td class="mono mobile-hide" style="font-size:.68rem">${esc((r.tx_ref||'—').substring(0,14)+'…')}</td>
             <td><span class="badge ${r.status==='credited'?'badge-ok':r.status==='rejected'?'badge-danger':'badge-warn'}">${esc(r.status)}</span></td>
             <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.created_at)}</td>
