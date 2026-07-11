@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RealGram</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+<script src="https://unpkg.com/@tonconnect/ui@2/dist/tonconnect-ui.min.js"></script>
+<link rel="stylesheet" href="style.css?v=1">
+</head>
+<body>
+  <main id="app">
+    <header class="topbar">
+      <h1>RealGram</h1>
+      <div id="ton-connect"></div>
+    </header>
+
+    <section class="card" id="balance-card">
+      <div class="label">REAL balance</div>
+      <div class="balance" id="balance-value">—</div>
+    </section>
+
+    <section class="card" id="earn-card">
+      <div class="label">Earn REAL</div>
+      <p class="hint">Watch a short ad. Server-verified, same reward engine as Shahnameh.</p>
+      <button id="watch-btn" disabled>Watch &amp; earn</button>
+      <p class="status" id="watch-status"></p>
+    </section>
+
+    <section class="card" id="link-card">
+      <div class="label">Link your SetaLink VPN app</div>
+      <p class="hint">
+        Paste the device ID shown in the SetaLink app, or open this page from
+        a SetaLink deep link so it's filled in automatically.
+      </p>
+      <input id="device-id-input" type="text" placeholder="Device ID from SetaLink app" autocomplete="off">
+      <button id="link-btn">Get link proof</button>
+      <div class="proof-box" id="proof-box" hidden>
+        <p class="hint">Open this in the SetaLink app to finish linking:</p>
+        <a id="proof-deeplink" class="deeplink" href="#"></a>
+        <button id="proof-copy">Copy link</button>
+      </div>
+      <p class="status" id="link-status"></p>
+    </section>
+  </main>
+  <script src="main.js?v=1"></script>
+</body>
+</html>
