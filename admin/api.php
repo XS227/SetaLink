@@ -2130,8 +2130,11 @@ switch ($action) {
         $db = open_analytics_db();
         re_ensure_schema($db);
         api_ok([
-            'settings'    => re_settings($db),
-            'redemptions' => re_list($db, (int)($_GET['limit'] ?? 100)),
+            'settings'         => re_settings($db),
+            'redemptions'      => re_list($db, (int)($_GET['limit'] ?? 100)),
+            // B-2 (docs/realgram/TASK_SPLIT.md, SetaLink repo) — configured
+            // status only, never the secret values. See re_ecosystem_status().
+            'ecosystem_status' => re_ecosystem_status($db),
         ]);
         break;
 

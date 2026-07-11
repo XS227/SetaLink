@@ -899,6 +899,9 @@ function icon(string $name): string {
         <div class="panel-header">
           <span class="panel-title">REAL Redemptions <span class="panel-sub" id="realRates">Shahnameh REAL → quota</span></span>
         </div>
+        <div class="panel-body" style="padding-top:0">
+          <div id="realEcoStatus" style="font-size:.78rem;margin:.2rem 0 .8rem;opacity:.85"></div>
+        </div>
         <div class="tbl-wrap">
           <table>
             <thead><tr><th>ID</th><th>Device</th><th>REAL Account</th><th>REAL</th><th>Quota</th><th>Kind</th><th>Tx Ref</th><th>Status</th><th>When</th><th>Actions</th></tr></thead>
@@ -3245,6 +3248,17 @@ views.devices = {
       const s = d.settings || {};
       $('realRates').textContent =
         `${s.real_per_gb} REAL/GB · min ${s.redeem_min_real} REAL · cap ${fmtBytes(s.redeem_daily_cap_bytes||0)}/day`;
+      // B-2 (docs/realgram/TASK_SPLIT.md, SetaLink repo) — configured status
+      // only, never the secret values (see re_ecosystem_status() in
+      // lib/real_economy.php for why: these are Bearer/HMAC secrets, not
+      // safe to render into a plaintext admin form field).
+      const es = d.ecosystem_status || {};
+      const okBadge  = (ok) => `<span style="color:${ok?'#22c55e':'#f59e0b'}">${ok?'✓':'✗'}</span>`;
+      $('realEcoStatus').innerHTML =
+        `Shahnameh ecosystem link (B-2): ` +
+        `${okBadge(!!es.link_secret_configured)} real_link_secret &nbsp; ` +
+        `${okBadge(!!es.api_key_configured)} real_api_key &nbsp; ` +
+        `real_api_url: <span class="mono" style="font-size:.75rem">${esc(es.api_url || '(not set)')}</span>`;
       const rows = d.redemptions || [];
       $('realTbl').innerHTML = !rows.length
         ? '<tr><td colspan="10" class="tbl-empty">No redemptions yet</td></tr>'
