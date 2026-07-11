@@ -370,7 +370,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
               smartStatus: `${nextServer.flag} Trying ${nextServer.city}…`,
               error: null,
             });
-            sst.selectServer(nextServer.id);
+            sst.selectServer(nextServer.id, false);  // active-only; keep user's preference
             machine.send('DISCONNECT');
             nodeFailoverAttempted = true;
           }
@@ -501,6 +501,15 @@ export const useVpnStore = create<VpnState>((set, get) => {
       // Start auto-fallback only on a fresh connect (not during a fallback retry).
       if (!get()._fallbackActive) {
         set({ _fallbackActive: true, _fallbackIdx: 0, error: null, smartStatus: 'Establishing secure tunnel…' });
+        // Fresh user-initiated connect: go back to the user's manually chosen
+        // node. A prior failover may have left the active node elsewhere (e.g.
+        // the stealth node), but the user's preference (e.g. Finland) wins on
+        // every new connect — failover only overrides for the current attempt.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useServerStore } = require('./serverStore') as typeof import('./serverStore');
+          useServerStore.getState().restoreUserSelection();
+        } catch {}
       }
       // Write device_id + country to App Group before the extension starts.
       // PacketTunnelProvider reads these to include in the diagnostic upload.
