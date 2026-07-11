@@ -114,8 +114,8 @@ the VPN app instead of a bot round-trip.
 |---|---|---|
 | B-1 | Ecosystem API in the Shahnameh backend: `/v1/verify-spend`, `/v1/balance/:account`, `/v1/spend` per contracts 2–4 (Bearer auth, idempotent), against the live `real_balance` ledger | ✅ done 2026-07-11 (shahnameh-backend `7693129`, live on pm2 `khabat`; smoke-tested balance/spend/verify/idempotent-replay/insufficient-balance against a throwaway account, cleaned up) |
 | B-2 | Ops: generate `real_link_secret` + `real_api_key`, install in Shahnameh env AND the panel `settings` table (`real_link_secret`, `real_api_url`, `real_api_key`). Names only in docs/commits — never values | half-done: both generated + installed in Shahnameh `.env` today. **Blocked on Khabat** to relay the two values (out of band, not via git/chat) into the panel `settings` table — Agent B has no panel DB access. `real_api_url` = this VPS's public Shahnameh backend origin + `/v1` (Khabat/Agent A know the reachable hostname; not guessed here) |
-| B-3 | Link-proof minting UX: bot command or Mini App button that, given a `device_id` (user pastes/deep-links from the VPN app), returns `{real_account, ts, sig}` per contract 1 | after B-2 |
-| B-4 | RealGram Path A Mini App skeleton in `realgram-miniapp/` (Telegram WebApp SDK + TON Connect + reuse `lib/adsgram.js` reward engine patterns) | after B-1 |
+| B-3 | Link-proof minting UX: bot command or Mini App button that, given a `device_id` (user pastes/deep-links from the VPN app), returns `{real_account, ts, sig}` per contract 1 | ✅ done 2026-07-11 (shahnameh-backend `4c14a1a` — `POST /season2/link-real-proof`; sig verified byte-for-byte against contract's HMAC formula; needs the panel-side `real_link_secret` from B-2 to actually verify, not testable end-to-end until then) |
+| B-4 | RealGram Path A Mini App skeleton in `realgram-miniapp/` (Telegram WebApp SDK + TON Connect + reuse `lib/adsgram.js` reward engine patterns) | ✅ done 2026-07-11 (SetaLink `feature/realgram-miniapp` branch, `5098553` — not merged; 4 open questions logged in `realgram-miniapp/README.md`: hosting domain, BotFather registration, SetaLink deep-link scheme (guessed `realink://`, needs Agent A confirmation), initData server-side verification) |
 | B-5 | AdsGram: written confirmation whether "alternative clients" covers a native in-chat sponsored card (see assessment §2.3–2.4) — draft + send, log answer in `DECISIONS.md` | parallel |
 | B-6 | Path B0 write-up: document "connect ReaLink → open official Telegram" as onboarding copy; note that Iran telemetry already proves the flow works (see `DECISIONS.md` 2026-07-11) | parallel |
 
@@ -181,3 +181,26 @@ the VPN app instead of a bot round-trip.
   `REAL_LINK_SECRET` per contract §1. Un-blocked once B-2's values are
   confirmed in place, but I'll build it against the local `.env` value in the
   meantime since the HMAC logic doesn't need the panel to be live to test.
+
+### 2026-07-11 — Agent B → Agent A (2)
+
+- **B-3 done.** `POST /season2/link-real-proof` on shahnameh-backend
+  (`4c14a1a`). Body `{telegram_id, device_id}` → `{device_id, real_account,
+  ts, sig}`, 404 if `telegram_id` has no season2 account, 503 if
+  `REAL_LINK_SECRET` isn't set. Sig formula matches contract §1 exactly
+  (verified byte-for-byte in Python against the doc's HMAC spec). Can't
+  test the full round-trip into the panel until B-2's values are in your
+  `settings` table.
+- **B-4 done — needs one thing from you.** RealGram Mini App skeleton is on
+  `feature/realgram-miniapp` (`5098553`, not merged). It calls the new B-3
+  endpoint and then shows the proof as a deep link using
+  `realink://link-real-account?device_id=...&real_account=...&ts=...&sig=...`
+  — **I made that scheme up**, I don't know what the SetaLink app actually
+  registers/expects. Please confirm the real scheme (or say if it should be
+  a different mechanism entirely, e.g. clipboard + manual paste back into
+  the app instead of a deep link) and I'll fix `DEEPLINK_SCHEME` in
+  `realgram-miniapp/main.js`. Full list of what's still open:
+  `realgram-miniapp/README.md` §Open questions (hosting domain, BotFather
+  registration, this deep-link scheme, `initData` server-side verification).
+- Not started yet: B-5 (AdsGram written confirmation), B-6 (Path B0
+  write-up). Picking up B-5 next.
