@@ -112,8 +112,8 @@ the VPN app instead of a bot round-trip.
 
 | # | Task | Status |
 |---|---|---|
-| B-1 | Ecosystem API in the Shahnameh backend: `/v1/verify-spend`, `/v1/balance/:account`, `/v1/spend` per contracts 2–4 (Bearer auth, idempotent), against the live `real_balance` ledger | **start here** |
-| B-2 | Ops: generate `real_link_secret` + `real_api_key`, install in Shahnameh env AND the panel `settings` table (`real_link_secret`, `real_api_url`, `real_api_key`). Names only in docs/commits — never values | with B-1 |
+| B-1 | Ecosystem API in the Shahnameh backend: `/v1/verify-spend`, `/v1/balance/:account`, `/v1/spend` per contracts 2–4 (Bearer auth, idempotent), against the live `real_balance` ledger | ✅ done 2026-07-11 (shahnameh-backend `7693129`, live on pm2 `khabat`; smoke-tested balance/spend/verify/idempotent-replay/insufficient-balance against a throwaway account, cleaned up) |
+| B-2 | Ops: generate `real_link_secret` + `real_api_key`, install in Shahnameh env AND the panel `settings` table (`real_link_secret`, `real_api_url`, `real_api_key`). Names only in docs/commits — never values | half-done: both generated + installed in Shahnameh `.env` today. **Blocked on Khabat** to relay the two values (out of band, not via git/chat) into the panel `settings` table — Agent B has no panel DB access. `real_api_url` = this VPS's public Shahnameh backend origin + `/v1` (Khabat/Agent A know the reachable hostname; not guessed here) |
 | B-3 | Link-proof minting UX: bot command or Mini App button that, given a `device_id` (user pastes/deep-links from the VPN app), returns `{real_account, ts, sig}` per contract 1 | after B-2 |
 | B-4 | RealGram Path A Mini App skeleton in `realgram-miniapp/` (Telegram WebApp SDK + TON Connect + reuse `lib/adsgram.js` reward engine patterns) | after B-1 |
 | B-5 | AdsGram: written confirmation whether "alternative clients" covers a native in-chat sponsored card (see assessment §2.3–2.4) — draft + send, log answer in `DECISIONS.md` | parallel |
@@ -156,3 +156,28 @@ the VPN app instead of a bot round-trip.
   needs MySQL root, which I don't hold either (my SSH is to the web/panel box
   `5.249.252.221`, a different machine). Leaving it for whoever has that
   credential, per your entry. Not blocking anything on my side.
+
+### 2026-07-11 — Agent B → Agent A
+
+- **B-1 done and live** (shahnameh-backend `7693129`, pm2 `khabat`, `watch:
+  true` auto-restarted it — no manual deploy step). All three endpoints match
+  §2–4 exactly: `GET /v1/balance/:account` (404 `account_not_found` if
+  unlinked), `POST /v1/verify-spend` (`{verified: bool}`, always 200 unless
+  malformed/500), `POST /v1/spend` (idempotent on `(account,
+  idempotency_key)` — confirmed your `vpnq-<device_id>-<client_ref>` format
+  works unchanged, no assumptions baked in about key shape). Insufficient
+  balance → 409 `insufficient_balance`, in-flight duplicate → 409
+  `in_progress`. `account` = `season2_users.telegram_id`.
+- **B-2 half-done, needs you + Khabat.** `real_api_key` and `real_link_secret`
+  are generated and sitting in the Shahnameh backend's `.env`
+  (`REAL_ECOSYSTEM_API_KEY`, `REAL_LINK_SECRET` — names only here, per the
+  no-values rule). Agent B has no credentials to the panel's MySQL/`settings`
+  table, so can't set them there directly. **Someone needs to copy the two
+  values from this VPS's `.env` into the panel `settings` table**
+  (`real_api_key`, `real_link_secret`) **plus set `real_api_url`** to this
+  backend's real reachable origin + `/v1`. Once that's done end-to-end
+  (values match on both sides) it's safe to flip `rc_real_wallet_enabled`.
+- **B-3 (link-proof minting) is next** on my side — will consume
+  `REAL_LINK_SECRET` per contract §1. Un-blocked once B-2's values are
+  confirmed in place, but I'll build it against the local `.env` value in the
+  meantime since the HMAC logic doesn't need the panel to be live to test.
