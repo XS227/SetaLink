@@ -29,6 +29,8 @@ require_once __DIR__ . '/../lib/ads_recovery.php';
 require_once __DIR__ . '/../lib/messaging.php';
 // TrustAI referral trust scoring (optional service, local heuristic fallback).
 require_once __DIR__ . '/../lib/trustai.php';
+// REAL token economy — account linking + server-verified redemption (A2).
+require_once __DIR__ . '/../lib/real_economy.php';
 
 header('Content-Type: application/json');
 // CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
@@ -1203,6 +1205,63 @@ if ($method === 'POST') {
         if (!$deviceId || $peer === '') err('missing params');
         $pdo = db();
         ok(['deleted' => dm_delete_thread($pdo, $deviceId, $peer)]);
+    }
+
+    if ($action === 'link-real-account') {
+        // A2: bind this device to a REAL/Shahnameh account. The proof is minted
+        // by the ecosystem backend during the wallet deep-link flow and verified
+        // against the shared real_link_secret — the client can't fabricate it.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $account  = trim($_POST['real_account'] ?? '');
+        $ts       = (int)($_POST['ts'] ?? 0);
+        $sig      = trim($_POST['sig'] ?? '');
+        if (!$deviceId || $account === '' || !$ts || $sig === '') err('missing params');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!re_verify_link_proof($pdo, $deviceId, $account, $ts, $sig)) err('invalid link proof');
+        if (!re_link_account($pdo, $deviceId, $account)) err('unknown device');
+        ok(['linked_real_account' => $account]);
+    }
+
+    if ($action === 'redeem-real') {
+        // A2: spend REAL for VPN quota. The spend is verified server-to-server
+        // against the ecosystem backend, never on client claims; when that
+        // service is unconfigured/unreachable the redemption stays 'pending'
+        // for admin review. tx_ref is the idempotency key — a retried request
+        // returns the recorded outcome instead of crediting twice.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $amount   = (float)($_POST['real_amount'] ?? 0);
+        $txRef    = trim($_POST['tx_ref'] ?? '');
+        if (!$deviceId || $txRef === '') err('missing params');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        $account = re_linked_account($pdo, $deviceId);
+        if ($account === '') err('no linked REAL account');
+        $rates = re_settings($pdo);
+        if ($rates['real_per_gb'] <= 0) err('redemption disabled');
+        if ($amount < $rates['redeem_min_real']) err('minimum spend is ' . $rates['redeem_min_real'] . ' REAL');
+        $quotaBytes = (int)floor($amount / $rates['real_per_gb'] * RE_GB);
+        if ($quotaBytes <= 0) err('amount too small');
+        if (re_redeemed_today($pdo, $deviceId) + $quotaBytes > $rates['redeem_daily_cap_bytes']) {
+            err('daily redemption cap reached');
+        }
+        $id = re_record($pdo, $deviceId, $account, $amount, $quotaBytes, $txRef);
+        if ($id === null) {
+            $prev = re_get_by_tx($pdo, $txRef);
+            ok(['status'      => $prev['status'] ?? 'pending',
+                'quota_bytes' => (int)($prev['quota_bytes'] ?? 0),
+                'duplicate'   => true]);
+        }
+        $verdict = re_verify_spend($pdo, $account, $amount, $txRef);
+        if ($verdict === false) {
+            re_reject($pdo, $id);
+            err('REAL spend could not be verified');
+        }
+        if ($verdict === true) {
+            $total = re_credit($pdo, $id);
+            ok(['status' => 'credited', 'quota_bytes' => $quotaBytes, 'new_total' => $total]);
+        }
+        ok(['status' => 'pending', 'quota_bytes' => $quotaBytes]);
     }
 
     if ($action === 'submit-tunnel-log') {

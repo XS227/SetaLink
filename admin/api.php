@@ -934,6 +934,23 @@ if ($method === 'POST') {
         }
         api_ok(['status' => $new_status, 'payment_id' => $pid]);
     }
+    if ($action === 'real-redemption-approve' || $action === 'real-redemption-reject') {
+        // A2 manual-review path: redemptions the ecosystem backend couldn't
+        // verify automatically stay 'pending' until reviewed here. Approve
+        // credits quota through re_credit (ledger row + guarded pending→credited
+        // transition), so a double click / concurrent review can't credit twice.
+        $rid = (int)($parsed['redemption_id'] ?? 0);
+        if (!$rid) api_err('redemption_id required');
+        $db = open_analytics_db();
+        re_ensure_schema($db);
+        if ($action === 'real-redemption-approve') {
+            $total = re_credit($db, $rid);
+            if ($total === null) api_err('redemption not found or already reviewed');
+            api_ok(['status' => 'credited', 'redemption_id' => $rid, 'new_total' => $total]);
+        }
+        if (!re_reject($db, $rid)) api_err('redemption not found or already reviewed');
+        api_ok(['status' => 'rejected', 'redemption_id' => $rid]);
+    }
     if ($action === 'payment-submit') {
         $did  = trim((string)($parsed['device_id'] ?? ''));
         $uid  = substr(trim((string)($parsed['user_id'] ?? '')), 0, 64);
@@ -2097,8 +2114,8 @@ switch ($action) {
         break;
 
     case 'real-redemptions':
-        // REAL token economy phase 1 — read-only ledger + rates. No mutation
-        // action exists yet by design (ECOSYSTEM_INTEGRATION_PLAN.md A1).
+        // REAL token economy — ledger + rates. Pending rows are reviewed via
+        // real-redemption-approve/-reject (ECOSYSTEM_INTEGRATION_PLAN.md A2).
         $db = open_analytics_db();
         re_ensure_schema($db);
         api_ok([

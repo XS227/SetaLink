@@ -16,9 +16,19 @@
  *   credited   REAL spend verified server-to-server, quota granted via
  *              qe_ledger_add (type 'promotion' until a dedicated type ships)
  *   rejected   verification failed or admin denied
+ *
+ * Phase 2 (A2): account linking + the server-verified redeem endpoint.
+ * Both external trust anchors are settings-driven and FAIL CLOSED:
+ *   real_link_secret  HMAC key shared with the ecosystem backend; empty =
+ *                     linking disabled (a proof we can't verify links nothing).
+ *   real_api_url/key  spend-verification service; unconfigured or unreachable
+ *                     leaves the redemption 'pending' for admin review — the
+ *                     app is never credited on client claims alone.
  */
 
 const RE_GB = 1073741824;
+const RE_VERIFY_TIMEOUT_SECS = 5;
+const RE_LINK_PROOF_MAX_AGE_SECS = 600;
 
 // Admin-editable rate settings (settings table), created with these defaults.
 const RE_SETTING_DEFAULTS = [
@@ -27,7 +37,20 @@ const RE_SETTING_DEFAULTS = [
     'redeem_daily_cap_bytes' => '10737418240',  // 10 GB per device per day
 ];
 
+// Service settings (never returned to the admin UI alongside the rates).
+const RE_SERVICE_SETTING_DEFAULTS = [
+    'real_link_secret' => '',  // HMAC-SHA256 key for account-link proofs
+    'real_api_url'     => '',  // ecosystem backend base URL, empty = manual review
+    'real_api_key'     => '',
+];
+
 function re_ensure_schema(PDO $pdo): void {
+    // Same schema as admin/api.php — the public API path may hit a fresh DB
+    // before the admin panel ever ran.
+    $pdo->exec('CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT "",
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )');
     $pdo->exec("CREATE TABLE IF NOT EXISTS real_redemptions (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         device_id    TEXT NOT NULL,
@@ -42,6 +65,9 @@ function re_ensure_schema(PDO $pdo): void {
                 ON real_redemptions(device_id, created_at)");
     $ins = $pdo->prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
     foreach (RE_SETTING_DEFAULTS as $k => $v) $ins->execute([$k, $v]);
+    foreach (RE_SERVICE_SETTING_DEFAULTS as $k => $v) $ins->execute([$k, $v]);
+    try { $pdo->exec("ALTER TABLE devices ADD COLUMN linked_real_account TEXT DEFAULT ''"); }
+    catch (\Exception $e) { /* column exists */ }
 }
 
 /** Current redemption rates; missing keys fall back to the defaults above. */
@@ -94,4 +120,125 @@ function re_list(PDO $pdo, int $limit = 100): array {
                 tx_ref, status, created_at
          FROM real_redemptions ORDER BY id DESC LIMIT $limit"
     )->fetchAll(PDO::FETCH_ASSOC) ?: [];
+}
+
+// ── Phase 2 (A2): account linking ────────────────────────────────────────────
+
+function re_service_config(PDO $pdo): array {
+    $keys = array_keys(RE_SERVICE_SETTING_DEFAULTS);
+    $in   = implode(',', array_fill(0, count($keys), '?'));
+    $st   = $pdo->prepare("SELECT key, value FROM settings WHERE key IN ($in)");
+    $st->execute($keys);
+    $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
+    return [
+        'link_secret' => trim((string)($rows['real_link_secret'] ?? '')),
+        'api_url'     => trim((string)($rows['real_api_url'] ?? '')),
+        'api_key'     => trim((string)($rows['real_api_key'] ?? '')),
+    ];
+}
+
+/**
+ * Verify a signed account-link proof issued by the ecosystem backend.
+ * sig = HMAC-SHA256_hex(device_id . '|' . real_account . '|' . ts, real_link_secret)
+ * ts is a unix timestamp; proofs older than RE_LINK_PROOF_MAX_AGE_SECS (or from
+ * the future) are replays. Empty secret = linking disabled, nothing verifies.
+ */
+function re_verify_link_proof(PDO $pdo, string $deviceId, string $realAccount,
+                              int $ts, string $sig): bool {
+    $cfg = re_service_config($pdo);
+    if ($cfg['link_secret'] === '' || $sig === '') return false;
+    if (abs(time() - $ts) > RE_LINK_PROOF_MAX_AGE_SECS) return false;
+    $expected = hash_hmac('sha256', $deviceId . '|' . $realAccount . '|' . $ts, $cfg['link_secret']);
+    return hash_equals($expected, strtolower($sig));
+}
+
+/** Store the verified link. Returns false when the device doesn't exist. */
+function re_link_account(PDO $pdo, string $deviceId, string $realAccount): bool {
+    $st = $pdo->prepare("UPDATE devices SET linked_real_account=? WHERE device_id=?");
+    $st->execute([$realAccount, $deviceId]);
+    return $st->rowCount() > 0;
+}
+
+function re_linked_account(PDO $pdo, string $deviceId): string {
+    $st = $pdo->prepare("SELECT linked_real_account FROM devices WHERE device_id=?");
+    $st->execute([$deviceId]);
+    return (string)($st->fetchColumn() ?: '');
+}
+
+// ── Phase 2 (A2): server-verified redemption ─────────────────────────────────
+
+/**
+ * Verify a REAL spend against the ecosystem backend (server-to-server).
+ * Returns true (spend confirmed), false (backend explicitly denies — reject),
+ * or null (unconfigured/unreachable/malformed — keep the redemption pending).
+ */
+function re_verify_spend(PDO $pdo, string $realAccount, float $realAmount, string $txRef): ?bool {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) return null;
+
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/verify-spend');
+    $headers = ['Content-Type: application/json'];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode([
+            'account' => $realAccount, 'amount' => $realAmount, 'tx_ref' => $txRef,
+        ]),
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false || $http !== 200) return null;
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json) || !array_key_exists('verified', $json)) return null;
+    return (bool)$json['verified'];
+}
+
+function re_get(PDO $pdo, int $id): ?array {
+    $st = $pdo->prepare("SELECT * FROM real_redemptions WHERE id=?");
+    $st->execute([$id]);
+    return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+function re_get_by_tx(PDO $pdo, string $txRef): ?array {
+    $st = $pdo->prepare("SELECT * FROM real_redemptions WHERE tx_ref=?");
+    $st->execute([$txRef]);
+    return $st->fetch(PDO::FETCH_ASSOC) ?: null;
+}
+
+/**
+ * Credit a pending redemption: status → credited + quota granted through the
+ * ledger, atomically. Only pending rows transition (the WHERE guard makes a
+ * concurrent double-credit a no-op). Returns the new quota_bytes_total, or
+ * null when the row wasn't pending.
+ */
+function re_credit(PDO $pdo, int $id): ?int {
+    $row = re_get($pdo, $id);
+    if (!$row) return null;
+    $ownTxn = !$pdo->inTransaction();
+    if ($ownTxn) $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare("UPDATE real_redemptions SET status='credited' WHERE id=? AND status='pending'");
+        $st->execute([$id]);
+        if ($st->rowCount() === 0) { if ($ownTxn) $pdo->rollBack(); return null; }
+        $total = qe_ledger_add($pdo, $row['device_id'], 'promotion', (int)$row['quota_bytes'],
+                               'REAL redeem tx ' . $row['tx_ref']);
+        if ($ownTxn) $pdo->commit();
+        return $total;
+    } catch (\Exception $e) {
+        if ($ownTxn && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/** Reject a pending redemption. Returns true when a row transitioned. */
+function re_reject(PDO $pdo, int $id): bool {
+    $st = $pdo->prepare("UPDATE real_redemptions SET status='rejected' WHERE id=? AND status='pending'");
+    $st->execute([$id]);
+    return $st->rowCount() > 0;
 }
