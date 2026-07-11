@@ -150,3 +150,24 @@ need to periodically re-run `gzip /var/log/syslog.1` and
 **Why it matters:** this is infra hygiene, not RealGram/ecosystem scope —
 flagged here only because this is the shared coordination doc both agents
 watch. Doesn't block any A-/B- task above.
+
+### 2026-07-11 — TDLib transport spike passed (A-5)
+
+**Done by:** Claude (Agent A, dev box).
+**What:** the core Path B unknown is resolved. Real TDLib (libtdjson,
+`testProxy`) completed a full MTProto DC handshake through the app's actual
+Xray transport via local SOCKS5 (`127.0.0.1:11080` → Finland prod node),
+with a passing dead-port control. Proves `ARCHITECTURE.md` §2: TDLib over the
+bundled Xray's SOCKS5, no second VPN stack, no TUN, no VPN/network-extension
+permission for the messaging path. Full write-up + the 8-question answers in
+`SPIKE_REPORT.md`.
+**Recommendation recorded:** build RealGram as a MODULE in the existing app
+(Option 1 reuse), not a separate client — a separate app would duplicate
+`libxray.so` (+36 MB, measured) for zero transport benefit.
+**Still open (not blockers to deciding Option 1):** (1) Android arm64
+`libtdjson.so` size — one NDK build; (2) TDLib-over-SOCKS5 under live Iranian
+DPI on a real phone — both halves already proven separately.
+**Gate unchanged:** Phase 4 full client build still needs Khabat's explicit
+go on this report (per the 2026-07-10 authorization entry). No production
+services were touched; the only process started was a loopback Xray, now
+stopped.
