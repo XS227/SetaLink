@@ -17,9 +17,15 @@ Implemented so far (per the recommended B + C2 → A ordering):
   Deviation from the plan text: TrustAI can only *raise* the local risk score,
   never lower it — a broken/poisoned TrustAI must not unlock fraud.
 
-Still open: A2 (account linking + server-verified redeem endpoint), A3 (mobile
-wallet UI), C3 (REAL referral rewards), B1/B2 partially (banner exists and is
-placed, but the Profile ecosystem section is a single rotating card, not three).
+- **A2** — account linking + server-verified redeem endpoint (2026-07-11):
+  `link-real-account` (HMAC proof against `real_link_secret`, fail closed) +
+  `redeem-real` (min/daily-cap checks, `tx_ref` idempotent; spend verified
+  server-to-server via `real_api_url`/`real_api_key`; unverifiable spends stay
+  `pending` for the admin Payments view, which gained Approve/Reject).
+
+Still open: A3 (mobile wallet UI), C3 (REAL referral rewards), B1/B2 partially
+(banner exists and is placed, but the Profile ecosystem section is a single
+rotating card, not three).
 
 ## Context
 

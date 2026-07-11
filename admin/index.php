@@ -897,12 +897,12 @@ function icon(string $name): string {
 
       <div class="panel">
         <div class="panel-header">
-          <span class="panel-title">REAL Redemptions <span class="panel-sub" id="realRates">Shahnameh REAL → quota · read-only (phase 1)</span></span>
+          <span class="panel-title">REAL Redemptions <span class="panel-sub" id="realRates">Shahnameh REAL → quota</span></span>
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>ID</th><th>Device</th><th>REAL Account</th><th>REAL</th><th>Quota</th><th>Tx Ref</th><th>Status</th><th>When</th></tr></thead>
-            <tbody id="realTbl"><tr><td colspan="8" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>ID</th><th>Device</th><th>REAL Account</th><th>REAL</th><th>Quota</th><th>Tx Ref</th><th>Status</th><th>When</th><th>Actions</th></tr></thead>
+            <tbody id="realTbl"><tr><td colspan="9" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -3247,7 +3247,7 @@ views.devices = {
         `${s.real_per_gb} REAL/GB · min ${s.redeem_min_real} REAL · cap ${fmtBytes(s.redeem_daily_cap_bytes||0)}/day`;
       const rows = d.redemptions || [];
       $('realTbl').innerHTML = !rows.length
-        ? '<tr><td colspan="8" class="tbl-empty">No redemptions yet — redeem endpoint ships in phase 2</td></tr>'
+        ? '<tr><td colspan="9" class="tbl-empty">No redemptions yet</td></tr>'
         : rows.map(r=>`<tr>
             <td>${r.id}</td>
             <td class="mono mobile-hide" style="font-size:.65rem;color:var(--muted-2)">${esc((r.device_id||'').substring(0,14)+'…')}</td>
@@ -3257,6 +3257,12 @@ views.devices = {
             <td class="mono mobile-hide" style="font-size:.68rem">${esc((r.tx_ref||'—').substring(0,14)+'…')}</td>
             <td><span class="badge ${r.status==='credited'?'badge-ok':r.status==='rejected'?'badge-danger':'badge-warn'}">${esc(r.status)}</span></td>
             <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.created_at)}</td>
+            <td>
+              ${r.status==='pending'?`
+                <button class="btn btn-sm btn-primary" onclick="realReview(${r.id},'approve')">Approve</button>
+                <button class="btn btn-sm btn-danger"  onclick="realReview(${r.id},'reject')">Reject</button>`
+              : '—'}
+            </td>
           </tr>`).join('');
     } catch(e) { /* panel is informational — never block the payments view */ }
   }
@@ -3384,6 +3390,13 @@ window.payReview = async function(pid, action) {
     await api.post({action:'payment-'+action, payment_id:pid});
     toast(`Payment ${action}d`,'ok');
     views.devices.loadPayments();
+  } catch(e) { toast(e.message,'error'); }
+};
+window.realReview = async function(rid, action) {
+  try {
+    await api.post({action:'real-redemption-'+action, redemption_id:rid});
+    toast(`Redemption ${action}d`,'ok');
+    views.devices.loadRealRedemptions();
   } catch(e) { toast(e.message,'error'); }
 };
 
