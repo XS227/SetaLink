@@ -11,6 +11,49 @@ Google Search Console data below, not assumptions.
 
 ---
 
+## 🎯 PRIORITY 1 — DO FIRST: the carrier angle (already seeded, act now)
+
+**Khabat's direction 2026-07-11: get the carrier angle live first.** These six
+carrier-specific keywords are **already inserted into `keyword_ranks`
+(source `seed`)** as of 2026-07-11, so the daily GSC sync is already tracking
+them — you don't need to seed them, just build the content:
+
+- `فیلترشکن همراه اول` (MCI / Hamrah-e Avval)
+- `فیلترشکن ایرانسل` (Irancell)
+- `فیلترشکن رایتل` (Rightel)
+- `فیلترشکن مخابرات` (TCI)
+- `بهترین فیلترشکن برای ایرانسل`
+- `فیلترشکن ایرانسل که قطع نمیشه`
+
+**Why this is ReaLink's single best SEO opening — and it's TRUE, from the
+app's own telemetry, not marketing:** node reachability from Iran is
+**carrier-dependent**. Real tester data (see the build backlog) shows the
+Hetzner-hosted nodes are **blackholed on Irancell and TCI** but **reachable on
+MCI/Hamrah-e Avval** — and the Cloudflare-fronted "Stealth" node is what gets
+Irancell/TCI users through. Almost nobody in this market writes honestly about
+"which filtershekan actually works on your specific carrier," yet it's the
+first thing a frustrated Irancell user wants to know. That makes it:
+
+- **Low competition** (uncontested long-tail — head-term sites ignore it).
+- **High intent** (a user searching `فیلترشکن ایرانسل که کار کنه` is ready to
+  install something that works on their SIM *today*).
+- **Genuinely differentiated + honest** (ReaLink can back the claim with how
+  its Stealth/CDN routing sidesteps the carrier-specific blackhole — no
+  fabrication needed).
+
+**First content to write (pillar + supporting):**
+1. Pillar: "کدام فیلترشکن روی اپراتور شما کار می‌کند؟ (همراه اول، ایرانسل،
+   رایتل)" — a straight, useful guide to carrier-dependent reachability and
+   what to do on each (e.g. the Stealth node for Irancell/TCI), linking to the
+   download CTA.
+2. "چرا فیلترشکن روی ایرانسل قطع می‌شود و راه‌حل آن" — the disconnect problem
+   scoped to Irancell, tying into cluster §2b below.
+3. Cross-link both into the §2 clusters and the download CTA.
+
+Everything below is the fuller strategy; this section is what to ship first.
+
+---
+
 ## 1. The data reality (why the current strategy needs to change)
 
 GSC has been syncing into `keyword_ranks` (source `gsc`) since 2026-07-10.
