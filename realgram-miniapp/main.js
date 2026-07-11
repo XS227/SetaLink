@@ -120,10 +120,14 @@
   }
 
   /* ── Link VPN device (task B-3) ───────────────────────────────────────
-     TODO (open question for Agent A): confirm the SetaLink app's actual
-     deep-link scheme/host for consuming a minted proof. `realink://` below
-     is a placeholder guess, not a confirmed contract. */
-  const DEEPLINK_SCHEME = 'realink://link-real-account';
+     Scheme confirmed by Agent A 2026-07-11 (docs/realgram/TASK_SPLIT.md):
+     the Android manifest registers setalink:// and deepLinkService.ts only
+     understands that scheme — the earlier realink:// guess would have
+     no-op'd. Implemented app-side (parse + linkRealAccount, rejects a
+     proof whose device_id isn't this device) on feat/ecosystem-phase1
+     (f124fad). Param is `account`, not `real_account` — matches the app
+     parser exactly, not this file's own API response field name. */
+  const DEEPLINK_SCHEME = 'setalink://link-real-account';
 
   async function requestLinkProof() {
     const status = $('link-status');
@@ -150,7 +154,7 @@
 
       const params = new URLSearchParams({
         device_id: d.device_id,
-        real_account: d.real_account,
+        account: d.real_account,
         ts: String(d.ts),
         sig: d.sig,
       });
