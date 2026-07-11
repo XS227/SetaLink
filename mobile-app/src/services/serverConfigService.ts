@@ -38,7 +38,12 @@ export interface ServerCredentials {
   flow:        string;   // e.g. 'xtls-rprx-vision' or '' for none
   fingerprint: string;   // TLS fingerprint: chrome | firefox | safari | …
   // Edge transport (WebSocket / XHTTP / HTTPUpgrade via nginx)
-  edgeAddress?: string;  // nginx proxy host (e.g. edge.setalink.no)
+  edgeAddress?: string;  // nginx proxy host / TLS SNI (e.g. alanya-turist.no)
+  edgeIp?:      string;  // literal Cloudflare anycast IP to DIAL for the edge.
+                         // On iOS the tunnel resolves DNS through itself, so a
+                         // hostname edge address deadlocks — see xrayConfigBuilder
+                         // edgeConnectAddress(). Cloudflare routes by SNI, so any
+                         // published edge IP works; backend-rotatable, no app build.
   edgePort?:    number;  // nginx port (443)
   wsPath?:      string;  // WebSocket path (e.g. /ws)
   xhttpPath?:   string;  // XHTTP path (e.g. /xhttp/)
