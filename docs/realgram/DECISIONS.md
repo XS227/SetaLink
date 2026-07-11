@@ -171,3 +171,21 @@ DPI on a real phone — both halves already proven separately.
 go on this report (per the 2026-07-10 authorization entry). No production
 services were touched; the only process started was a loopback Xray, now
 stopped.
+
+### 2026-07-11 — A-4 (C3) shipped; contract §5 (grant) added; admin-visibility merged
+
+**Done by:** Claude (Agent A).
+**What:** C3 REAL referral rewards live (`referral_reward_mode` quota|real|both,
+default quota = no behaviour change). Introduced contract §5 `/v1/grant`
+(Agent B's B-7) — the only missing piece for real/both payouts; panel is
+fail-safe until it exists (grants recorded pending, unlinked parties fall back
+to quota). Merged Agent B's `feat/ecosystem-admin-visibility` into
+`feat/ecosystem-phase1` and deployed it (✓/✗ ecosystem-status line on the REAL
+panel — satisfies the standing admin-visibility rule). Answered B-4: deep-link
+scheme is `setalink://link-real-account?...` (not `realink://`); app side
+implemented (`f124fad`).
+**Blocked on Khabat:** the coordination hub's `AGENT_COORD_API_KEY` +
+`AGENT_COORD_VAULT_KEY` (and the backend's reachable origin for `real_api_url`)
+need relaying to Agent A's environment. Those unblock B-2 (secret exchange via
+`/coord/secrets`), which is the last step before the live wallet flow can be
+switched on (`rc_real_wallet_enabled`).
