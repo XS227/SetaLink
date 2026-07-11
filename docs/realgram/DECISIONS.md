@@ -75,3 +75,29 @@ pushed to GitHub yet** — see `AGENT_HANDOFF.md` §"Push blocker" for current
 status and what's needed to resolve it.
 **Why it matters:** a fresh agent must not assume this branch exists on
 GitHub just because this documentation references it.
+
+### 2026-07-11 — Push access resolved; branch is on GitHub (supersedes 2026-07-10 push-access entry)
+
+**Decided/done by:** Khabat (deploy key) + Claude (verification, dev-box
+session).
+**What:** the repo owner set up a write-scoped deploy key
+(`vps-setalink-realgram`) for `XS227/SetaLink` on the VPS that authored this
+handoff, and `feature/realgram-foundation` (tip `009ed7f`) is confirmed
+present on `origin` from a second machine. The 2026-07-10 "no push access"
+finding is superseded.
+**Why it matters:** multi-agent collaboration on this branch is now possible;
+`AGENT_HANDOFF.md` §"Push blocker" is resolved and kept as history.
+
+### 2026-07-11 — Roadmap Phases 1–2 already implemented on `feat/ecosystem-phase1`
+
+**Found by:** Claude (dev-box session), while syncing this handoff.
+**What:** `IMPLEMENTATION_PLAN.md`'s Phase 1 (Ecosystem Plan §B + §C2) and
+Phase 2 (§A ledger + A2 account linking + server-verified `redeem-real`)
+exist as tested code on branch `feat/ecosystem-phase1` (commits `eceab4b`,
+`ac5cea5`, 2026-07-11) — implemented in parallel, before this handoff was
+read. Not deployed, not merged to main. Custody follows the plan's own
+recommendation: internal settlement, no on-chain ops in the VPN panel;
+unverifiable spends fail closed to `pending` + manual admin review.
+**Why it matters:** RealGram Path A (Phase 3) is no longer blocked on
+building Phases 1–2 — only on deploying them. Effort planning should not
+double-count this work.

@@ -5,8 +5,9 @@
 > `docs/realgram/IMPLEMENTATION_PLAN.md`. Everything you need is in the repo —
 > you should not need any conversation history to continue.
 
-Last updated: **2026-07-10**, by Claude (assessment/handoff session, no prior
-context beyond this repo and its own docs).
+Last updated: **2026-07-11**, by Claude (dev-box session: confirmed push
+resolution, recorded parallel ecosystem implementation; original handoff
+2026-07-10 by the assessment session).
 
 ---
 
@@ -33,10 +34,15 @@ Read `README.md` (root) for the CLI/admin product and `mobile-app/README.md` +
   branched from `origin/main` at the commit above, in an **isolated git
   worktree** (`git worktree add`) — the live checkout at
   `/var/www/setalink` on the production VPS was never modified.
-- **⚠ Push status: see `docs/realgram/AGENT_HANDOFF.md` §"Push blocker" —
-  this branch may exist only locally until a maintainer with GitHub write
-  access to `XS227/SetaLink` pushes it.** Check that file before assuming
-  the branch is on GitHub.
+- **Push status: RESOLVED 2026-07-11** — the branch is on GitHub (deploy key
+  `vps-setalink-realgram` added by the repo owner; verified from a second
+  machine). History in `docs/realgram/AGENT_HANDOFF.md` §"Push blocker".
+- **Parallel work to know about:** the ecosystem reward loop this plan's
+  Phases 1–2 describe is already implemented (not deployed) on branch
+  `feat/ecosystem-phase1` — see `docs/realgram/DECISIONS.md` 2026-07-11
+  entries and `docs/realgram/AGENT_HANDOFF.md` §"Roadmap overlap". A
+  b84–86-merged owner test build (87/0.9.60) of that line exists at
+  `download/build87/` (no OTA).
 
 ## 3. What's live vs. designed vs. new — one-line map
 

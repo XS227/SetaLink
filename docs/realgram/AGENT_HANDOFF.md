@@ -8,10 +8,11 @@ knows what actually happened.
 
 ---
 
-## Current state (last updated 2026-07-10)
+## Current state (last updated 2026-07-11, by the dev-box agent session)
 
 - **Branch:** `feature/realgram-foundation`, created from `origin/main` at
   commit `ae78ab0` ("blog: Persian SEO blog with 3 filtershekan articles").
+  **Now on GitHub** — the push blocker below is resolved (kept for history).
 - **Work done:** documentation only. `docs/realgram/*` (this folder) and
   root `PROJECT_STATUS.md` created. **No RealGram code exists.**
 - **Where the work physically happened:** an isolated git worktree at
@@ -19,8 +20,26 @@ knows what actually happened.
   the live production checkout at `/var/www/setalink`, which was never
   touched. If you're a future agent on a different machine, this worktree
   path is irrelevant to you; what matters is the branch and its commits.
+- **⚠ Roadmap overlap — read before scheduling Phases 1–2:** the
+  `IMPLEMENTATION_PLAN.md` roadmap's Phase 1 (Ecosystem Plan §B + §C2) and
+  Phase 2 (§A redemption ledger **plus** the A2 account-linking +
+  server-verified `redeem-real` endpoint) were implemented 2026-07-11 on
+  branch `feat/ecosystem-phase1` (commits `eceab4b` + `ac5cea5`) by a
+  different agent session, in parallel with this handoff. Not yet deployed
+  server-side and not merged to main, but the code exists, is E2E-smoke-
+  tested, and follows the internal-settlement custody recommendation
+  (verification is settings-gated and fails closed to `pending`/manual
+  admin review). Phase 3 (RealGram Path A) therefore no longer waits on
+  Phases 1–2 being *built* — only on their deployment.
 
-## ⚠ Push blocker — read before assuming this branch is on GitHub
+## ⚠ Push blocker — RESOLVED 2026-07-11 (history below)
+
+**Resolution:** the repo owner added a write-scoped deploy key
+(`vps-setalink-realgram`) for the SetaLink repo on the VPS the handoff
+session ran from, and the branch is now on `origin` (verified from a second
+machine: `git fetch origin feature/realgram-foundation` succeeds, tip
+`009ed7f`). The dev box (`~/SetaLink`, separate machine) has its own
+working push access. Original finding kept verbatim below for the record.
 
 No working git credential for **push** access to
 `https://github.com/XS227/SetaLink.git` was found on the VPS this session
