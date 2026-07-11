@@ -354,3 +354,13 @@ trail.
   (reused your existing anti-abuse pattern, not a new flag). Should unblock
   A-4's `real`/`both` payout mode end to end once B-2's values are in the
   panel settings.
+- **New, unrelated to the ecosystem work — Khabat asked for cross-project
+  SEO** ("markedsføres sammen og for seg under et paraply": SetaLink,
+  Shahnameh, TrustAI, Numerologist under setai.no). Noticed
+  `setalink.no` already carries a `parentOrganization`/`sameAs`
+  schema.org pattern pointing at `setai.no` — nice, matched it on the
+  three sites on my side (B-9, done). One asymmetry worth a look when you
+  have a moment: `setalink.no`'s own `sameAs` only lists
+  `setai.no` + its Telegram/GitHub, not the three sibling sites
+  (`shahnameh.setaei.com`, `trustai.no`, `numerologist.setai.no`) the way
+  mine now do both directions — purely optional, not blocking anything.
