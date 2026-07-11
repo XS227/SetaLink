@@ -894,6 +894,18 @@ function icon(string $name): string {
           </table>
         </div>
       </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">REAL Redemptions <span class="panel-sub" id="realRates">Shahnameh REAL → quota · read-only (phase 1)</span></span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Device</th><th>REAL Account</th><th>REAL</th><th>Quota</th><th>Tx Ref</th><th>Status</th><th>When</th></tr></thead>
+            <tbody id="realTbl"><tr><td colspan="8" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->
@@ -3225,6 +3237,28 @@ views.devices = {
             </td>
           </tr>`).join('');
     } catch(e) { toast('Payments: '+e.message,'error'); }
+    this.loadRealRedemptions();
+  },
+  async loadRealRedemptions() {
+    try {
+      const d = await api.get('real-redemptions');
+      const s = d.settings || {};
+      $('realRates').textContent =
+        `${s.real_per_gb} REAL/GB · min ${s.redeem_min_real} REAL · cap ${fmtBytes(s.redeem_daily_cap_bytes||0)}/day`;
+      const rows = d.redemptions || [];
+      $('realTbl').innerHTML = !rows.length
+        ? '<tr><td colspan="8" class="tbl-empty">No redemptions yet — redeem endpoint ships in phase 2</td></tr>'
+        : rows.map(r=>`<tr>
+            <td>${r.id}</td>
+            <td class="mono mobile-hide" style="font-size:.65rem;color:var(--muted-2)">${esc((r.device_id||'').substring(0,14)+'…')}</td>
+            <td class="mono" style="font-size:.7rem">${esc(r.real_account||'—')}</td>
+            <td>${r.real_amount}</td>
+            <td>${fmtBytes(r.quota_bytes||0)}</td>
+            <td class="mono mobile-hide" style="font-size:.68rem">${esc((r.tx_ref||'—').substring(0,14)+'…')}</td>
+            <td><span class="badge ${r.status==='credited'?'badge-ok':r.status==='rejected'?'badge-danger':'badge-warn'}">${esc(r.status)}</span></td>
+            <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.created_at)}</td>
+          </tr>`).join('');
+    } catch(e) { /* panel is informational — never block the payments view */ }
   }
 };
 // Expose device actions globally

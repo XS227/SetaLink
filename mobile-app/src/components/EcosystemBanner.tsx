@@ -5,12 +5,19 @@
  * both carrying the REAL token mark. Different screens pass a `seed` so they start on
  * different promos (spreads the placements), and each banner also auto-rotates so a
  * single screen still surfaces both over time. Tapping opens the promo's link.
+ *
+ * Campaigns are remote-config driven (`ecosystem.promos` / `ecosystem.banner_enabled`)
+ * so copy, targets, and visibility change without an app release; the embedded promos
+ * below are the offline fallback. Taps emit `ecosystem_banner_click` telemetry.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, StyleSheet, Animated } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
+import { getCachedConfig, EcosystemPromo } from '../services/remoteConfigService';
+import { trackEvent, Events } from '../services/analytics';
+import { useAuthStore } from '../stores/authStore';
 
 // Official REAL (RealShahnameh) token image — same mark used on TON explorers.
 export const REAL_TOKEN_IMAGE =
@@ -30,10 +37,28 @@ type Props = {
   style?: object;
 };
 
-export function EcosystemBanner({ seed = 0, pin, style }: Props) {
-  const { t } = useT();
+type DisplayPromo = {
+  id: string;
+  emoji: string | undefined;
+  image: string | undefined;
+  title: string;
+  sub: string;
+  url: string;
+};
 
-  const promos = [
+/** Localize a remote promo; promos without a URL or any title are dropped. */
+function fromRemote(p: EcosystemPromo, lang: string): DisplayPromo | null {
+  const pick = (prefix: 'title' | 'sub'): string =>
+    (p as any)[`${prefix}_${lang}`] ?? p[`${prefix}_en`] ?? '';
+  const title = pick('title');
+  if (!p.id || !p.url || !title) return null;
+  return { id: p.id, emoji: p.emoji, image: p.image, title, sub: pick('sub'), url: p.url };
+}
+
+export function EcosystemBanner({ seed = 0, pin, style }: Props) {
+  const { t, lang } = useT();
+
+  const embedded: DisplayPromo[] = [
     {
       id: 'shahnameh',
       emoji: '⚔️',
@@ -51,6 +76,12 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
       url:   THREEREAL_URL,
     },
   ];
+
+  const eco = getCachedConfig().ecosystem;
+  const remote = (eco?.promos ?? [])
+    .map((p) => fromRemote(p, lang))
+    .filter((p): p is DisplayPromo => p !== null);
+  const promos = remote.length > 0 ? remote : embedded;
 
   const pinnedIdx = pin ? promos.findIndex((p) => p.id === pin) : -1;
   const [idx, setIdx] = useState(
@@ -84,10 +115,21 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
     return () => breathe.stop();
   }, []);
 
+  // Kill switch — after hooks so the hook order stays stable across renders.
+  if (eco?.banner_enabled === false) return null;
+
+  const onPress = () => {
+    trackEvent(Events.ECOSYSTEM_BANNER_CLICK, useAuthStore.getState().user?.deviceId, {
+      promo: promo.id,
+      url: promo.url,
+    });
+    Linking.openURL(promo.url).catch(() => {});
+  };
+
   return (
     <TouchableOpacity
       style={[styles.card, style]}
-      onPress={() => Linking.openURL(promo.url).catch(() => {})}
+      onPress={onPress}
       activeOpacity={0.85}
     >
       <Animated.View
