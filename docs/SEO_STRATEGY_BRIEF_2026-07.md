@@ -41,6 +41,21 @@ first thing a frustrated Irancell user wants to know. That makes it:
   its Stealth/CDN routing sidesteps the carrier-specific blackhole — no
   fabrication needed).
 
+**"Carriers" = the Iranian mobile operators:** همراه اول (MCI / Hamrah-e
+Avval), ایرانسل (Irancell), رایتل (Rightel), and مخابرات (TCI, fixed-line).
+The insight is that node reachability differs by which operator's network the
+user is on.
+
+**Where to publish (confirmed by Khabat 2026-07-11): the existing blog on
+`setalink.no`.** `/blog/` is live (Persian-first, RTL) with 3 articles under
+`public/blog/<slug>/`, shared chrome in `public/blog/inc.php`, listing in
+`public/blog/index.php`. Add each carrier article as a new
+`public/blog/<slug>/` folder (e.g. `filtershekan-carrier-guide/`) following the
+existing pattern — keyword-rich H1/H2, BlogPosting + BreadcrumbList JSON-LD,
+canonical, hreflang(fa), OG, download CTA — then add it to `sitemap.php` + the
+blog index/footer. Deploy is manual scp to
+`ubuntu@5.249.252.221:/var/www/setalink/public/blog/` (no web CI).
+
 **First content to write (pillar + supporting):**
 1. Pillar: "کدام فیلترشکن روی اپراتور شما کار می‌کند؟ (همراه اول، ایرانسل،
    رایتل)" — a straight, useful guide to carrier-dependent reachability and
