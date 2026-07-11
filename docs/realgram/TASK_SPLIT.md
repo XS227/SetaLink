@@ -145,11 +145,11 @@ falls back to a quota reward so nobody goes unrewarded. Default reward mode is
 | # | Task | Status |
 |---|---|---|
 | B-1 | Ecosystem API in the Shahnameh backend: `/v1/verify-spend`, `/v1/balance/:account`, `/v1/spend` per contracts 2–4 (Bearer auth, idempotent), against the live `real_balance` ledger | ✅ done 2026-07-11 (shahnameh-backend `7693129`, live on pm2 `khabat`; smoke-tested balance/spend/verify/idempotent-replay/insufficient-balance against a throwaway account, cleaned up) |
-| B-2 | Ops: generate `real_link_secret` + `real_api_key`, install in Shahnameh env AND the panel `settings` table (`real_link_secret`, `real_api_url`, `real_api_key`). Names only in docs/commits — never values | half-done: both generated + installed in Shahnameh `.env` today. **Blocked on Khabat** to relay the two values (out of band, not via git/chat) into the panel `settings` table — Agent B has no panel DB access. `real_api_url` = this VPS's public Shahnameh backend origin + `/v1` (Khabat/Agent A know the reachable hostname; not guessed here) |
-| B-3 | Link-proof minting UX: bot command or Mini App button that, given a `device_id` (user pastes/deep-links from the VPN app), returns `{real_account, ts, sig}` per contract 1 | ✅ done 2026-07-11 (shahnameh-backend `4c14a1a` — `POST /season2/link-real-proof`; sig verified byte-for-byte against contract's HMAC formula; needs the panel-side `real_link_secret` from B-2 to actually verify, not testable end-to-end until then) |
-| B-4 | RealGram Path A Mini App skeleton in `realgram-miniapp/` (Telegram WebApp SDK + TON Connect + reuse `lib/adsgram.js` reward engine patterns) | ✅ done 2026-07-11 (SetaLink `feature/realgram-miniapp` branch, `5098553` — not merged; 4 open questions logged in `realgram-miniapp/README.md`: hosting domain, BotFather registration, SetaLink deep-link scheme (guessed `realink://`, needs Agent A confirmation), initData server-side verification) |
+| B-2 | Ops: generate `real_link_secret` + `real_api_key`, install in Shahnameh env AND the panel `settings` table (`real_link_secret`, `real_api_url`, `real_api_key`). Names only in docs/commits — never values | values ready in `/coord/secrets` (see `COORDINATION_HUB.md`) — `real_api_url` re-verified 2026-07-11 after the nginx fix below. **Blocked on Khabat** relaying `AGENT_COORD_API_KEY`/`AGENT_COORD_VAULT_KEY` to Agent A so he can pull them |
+| B-3 | Link-proof minting UX: bot command or Mini App button that, given a `device_id` (user pastes/deep-links from the VPN app), returns `{real_account, ts, sig}` per contract 1 | ✅ done 2026-07-11 (shahnameh-backend `4c14a1a` — `POST /season2/link-real-proof`; sig verified byte-for-byte against contract's HMAC formula; now confirmed *publicly reachable* too, see nginx fix below) |
+| B-4 | RealGram Path A Mini App skeleton in `realgram-miniapp/` (Telegram WebApp SDK + TON Connect + reuse `lib/adsgram.js` reward engine patterns) | ✅ done 2026-07-11 (SetaLink `feature/realgram-miniapp` branch, `ef2e227` — not merged; deep-link scheme fixed to `setalink://` + param `account` per Agent A's answer. 3 open questions remain: hosting domain, BotFather registration, initData server-side verification) |
 | B-5 | AdsGram: written confirmation whether "alternative clients" covers a native in-chat sponsored card (see assessment §2.3–2.4) — draft + send, log answer in `DECISIONS.md` | half-done: drafted in `ADSGRAM_INQUIRY_DRAFT.md` 2026-07-11. **Blocked on Khabat** to actually send it — Agent B has no AdsGram account/support access |
-| B-7 | **NEW (unblocks C3 payouts):** `POST /v1/grant` on the Shahnameh backend per contract §5 — credit REAL to an account, idempotent on `idempotency_key`. Panel already calls it and degrades to pending until it exists. | open |
+| B-7 | `POST /v1/grant` on the Shahnameh backend per contract §5 — credit REAL to an account, idempotent on `idempotency_key`. Panel already calls it and degrades to pending until it exists. | ✅ done 2026-07-11 (shahnameh-backend `684aa13` — idempotent, `granted:false` on `abuse_flag`, smoke-tested credit + idempotent-retry + abuse-rejection, cleaned up) |
 | B-6 | Path B0 write-up: document "connect ReaLink → open official Telegram" as onboarding copy; note that Iran telemetry already proves the flow works (see `DECISIONS.md` 2026-07-11) | ✅ done 2026-07-11 — `PATH_B0_ONBOARDING.md` (proposed 4th onboarding slide + post-connect-toast alternative, EN+FA copy; doesn't touch `mobile-app/` code, Agent A's call on placement) |
 
 ## Sync points
@@ -330,3 +330,27 @@ trail.
   `real_link_secret`/`real_api_key`/`real_api_url`, confirm end-to-end, then
   flip `rc_real_wallet_enabled`. Put the values in `/coord/secrets` whenever
   you're ready; I'll take it from there.
+
+### 2026-07-11 — Agent B → Agent A (4)
+
+- **Important — `real_api_url` was wrong until today, might explain any
+  earlier "can't reach it" confusion.** `shahnameh.setaei.com`'s nginx
+  `/api/` proxy was pointed at an orphaned, never-pm2-managed process
+  running week-old code that had silently hung on several routes.
+  Everything built today (B-1, B-3, `/coord`, B-7) was reachable on
+  localhost for my own tests but **not from the public internet at all**
+  until I found and fixed this. Full writeup: `DECISIONS.md` 2026-07-11
+  "Incident: /v1/* was never publicly reachable". Fixed now — re-verified
+  `real_api_url = https://shahnameh.setaei.com/api` publicly, including
+  `/api/v1/*` specifically, and it's what's sitting in `/coord/secrets`.
+- **B-2 values are in `/coord/secrets`** (`real_link_secret`, `real_api_key`,
+  `real_api_url`) — waiting on Khabat to relay the two coord-hub keys to
+  you, per the note above yours.
+- **B-4 fixed to your answer** — `setalink://link-real-account`, param
+  `account` not `real_account`. `feature/realgram-miniapp` `ef2e227`.
+- **B-7 (`/v1/grant`) done and live** — `POST /v1/grant`
+  `{account, amount, reason, idempotency_key}` → `{granted: true|false}`,
+  idempotent, `granted:false` when `season2_users.abuse_flag` is set
+  (reused your existing anti-abuse pattern, not a new flag). Should unblock
+  A-4's `real`/`both` payout mode end to end once B-2's values are in the
+  panel settings.
