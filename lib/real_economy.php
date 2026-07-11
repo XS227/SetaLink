@@ -138,6 +138,24 @@ function re_service_config(PDO $pdo): array {
 }
 
 /**
+ * Admin-UI-safe view of re_service_config(): configured/not-configured
+ * booleans for the two secrets (never the secret values themselves — same
+ * masking convention as ton_indexer_configured elsewhere in this file), plus
+ * the URL as-is since a base URL isn't sensitive. Lets Khabat confirm in
+ * _setalink-admin that B-2 (docs/realgram/TASK_SPLIT.md, SetaLink repo) has
+ * actually landed, without exposing real_link_secret/real_api_key in a
+ * plaintext admin form field.
+ */
+function re_ecosystem_status(PDO $pdo): array {
+    $cfg = re_service_config($pdo);
+    return [
+        'link_secret_configured' => $cfg['link_secret'] !== '',
+        'api_url'                => $cfg['api_url'],
+        'api_key_configured'     => $cfg['api_key'] !== '',
+    ];
+}
+
+/**
  * Verify a signed account-link proof issued by the ecosystem backend.
  * sig = HMAC-SHA256_hex(device_id . '|' . real_account . '|' . ts, real_link_secret)
  * ts is a unix timestamp; proofs older than RE_LINK_PROOF_MAX_AGE_SECS (or from
