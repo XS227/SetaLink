@@ -13,6 +13,11 @@ Google Search Console data below, not assumptions.
 
 ## 🎯 PRIORITY 1 — DO FIRST: the carrier angle (already seeded, act now)
 
+> **SEO agent — explicit task from Khabat 2026-07-11: write the CARRIER
+> PILLAR first, before any other article.** That's article #1 below
+> (`کدام فیلترشکن روی اپراتور شما کار می‌کند؟`), published to
+> `setalink.no/blog/`. Ship it before the other clusters in §3.
+
 **Khabat's direction 2026-07-11: get the carrier angle live first.** These six
 carrier-specific keywords are **already inserted into `keyword_ranks`
 (source `seed`)** as of 2026-07-11, so the daily GSC sync is already tracking
