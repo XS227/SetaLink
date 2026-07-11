@@ -571,6 +571,25 @@ if ($method === 'GET') {
         ok(['packages' => qe_packages($pdo, $deviceId)]);
     }
 
+    if ($action === 'real-wallet') {
+        // A3: everything the wallet card needs in one call. balance is null
+        // when the ecosystem backend can't answer (unconfigured/unreachable) —
+        // the app shows the link state and rates regardless. The app never
+        // holds real_api_key; the panel proxies (TASK_SPLIT.md contract 3).
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $account = re_linked_account($pdo, $deviceId);
+        ok([
+            'linked_account'       => $account,
+            'balance'              => $account !== '' ? re_fetch_balance($pdo, $account) : null,
+            'rates'                => re_settings($pdo),
+            'redeemed_today_bytes' => re_redeemed_today($pdo, $deviceId),
+        ]);
+    }
+
     if ($action === 'get-transfers') {
         $deviceId = trim($_GET['device_id'] ?? '');
         if (!$deviceId) err('missing device_id');
@@ -1235,24 +1254,17 @@ if ($method === 'POST') {
         if (!$deviceId || $txRef === '') err('missing params');
         $pdo = db();
         re_ensure_schema($pdo);
-        $account = re_linked_account($pdo, $deviceId);
-        if ($account === '') err('no linked REAL account');
-        $rates = re_settings($pdo);
-        if ($rates['real_per_gb'] <= 0) err('redemption disabled');
-        if ($amount < $rates['redeem_min_real']) err('minimum spend is ' . $rates['redeem_min_real'] . ' REAL');
-        $quotaBytes = (int)floor($amount / $rates['real_per_gb'] * RE_GB);
-        if ($quotaBytes <= 0) err('amount too small');
-        if (re_redeemed_today($pdo, $deviceId) + $quotaBytes > $rates['redeem_daily_cap_bytes']) {
-            err('daily redemption cap reached');
-        }
-        $id = re_record($pdo, $deviceId, $account, $amount, $quotaBytes, $txRef);
+        $q = re_quote($pdo, $deviceId, $amount);
+        if (isset($q['error'])) err($q['error']);
+        $quotaBytes = $q['quota_bytes'];
+        $id = re_record($pdo, $deviceId, $q['account'], $amount, $quotaBytes, $txRef);
         if ($id === null) {
             $prev = re_get_by_tx($pdo, $txRef);
             ok(['status'      => $prev['status'] ?? 'pending',
                 'quota_bytes' => (int)($prev['quota_bytes'] ?? 0),
                 'duplicate'   => true]);
         }
-        $verdict = re_verify_spend($pdo, $account, $amount, $txRef);
+        $verdict = re_verify_spend($pdo, $q['account'], $amount, $txRef);
         if ($verdict === false) {
             re_reject($pdo, $id);
             err('REAL spend could not be verified');
@@ -1262,6 +1274,45 @@ if ($method === 'POST') {
             ok(['status' => 'credited', 'quota_bytes' => $quotaBytes, 'new_total' => $total]);
         }
         ok(['status' => 'pending', 'quota_bytes' => $quotaBytes]);
+    }
+
+    if ($action === 'redeem-real-spend') {
+        // A3: one-tap redeem from the app. The panel orchestrates the debit
+        // (contract 4, docs/realgram/TASK_SPLIT.md) instead of requiring a
+        // pre-executed spend: quote → server-to-server /v1/spend (idempotent
+        // on the client_ref the app generated) → record under the returned
+        // tx_ref → credit. The spend response IS the verification, so a
+        // successful debit credits immediately; a crashed/retried request
+        // reuses the same client_ref and can't debit or credit twice.
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $amount    = (float)($_POST['real_amount'] ?? 0);
+        $clientRef = trim($_POST['client_ref'] ?? '');
+        if (!$deviceId || $clientRef === '' || strlen($clientRef) > 64) err('missing params');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        $q = re_quote($pdo, $deviceId, $amount);
+        if (isset($q['error'])) err($q['error']);
+        $quotaBytes = $q['quota_bytes'];
+
+        $spend = re_spend($pdo, $q['account'], $amount, 'vpnq-' . $deviceId . '-' . $clientRef);
+        if (!$spend['ok']) {
+            err($spend['error'] === 'unavailable' ? 'wallet service unavailable' : $spend['error']);
+        }
+        $id = re_record($pdo, $deviceId, $q['account'], $amount, $quotaBytes, $spend['tx_ref']);
+        if ($id === null) {
+            // Retry after a crash between spend and credit: the idempotent
+            // spend returned the tx_ref we already recorded. Report its state.
+            $prev = re_get_by_tx($pdo, $spend['tx_ref']);
+            ok(['status'      => $prev['status'] ?? 'pending',
+                'quota_bytes' => (int)($prev['quota_bytes'] ?? 0),
+                'balance'     => $spend['balance_after'],
+                'duplicate'   => true]);
+        }
+        $total = re_credit($pdo, $id);
+        ok(['status'      => 'credited',
+            'quota_bytes' => $quotaBytes,
+            'new_total'   => $total,
+            'balance'     => $spend['balance_after']]);
     }
 
     if ($action === 'submit-tunnel-log') {

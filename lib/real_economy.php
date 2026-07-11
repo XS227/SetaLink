@@ -242,3 +242,103 @@ function re_reject(PDO $pdo, int $id): bool {
     $st->execute([$id]);
     return $st->rowCount() > 0;
 }
+
+// ── Phase 2 (A2/A3): wallet proxy against the ecosystem backend ──────────────
+// Contracts 3–4 in docs/realgram/TASK_SPLIT.md. The app never talks to the
+// Shahnameh backend or holds real_api_key — the panel proxies, and every
+// function here degrades to null/unavailable when the service is missing.
+
+/** REAL balance for an account, or null when the service can't answer. */
+function re_fetch_balance(PDO $pdo, string $realAccount): ?float {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) return null;
+
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/balance/' . rawurlencode($realAccount));
+    $headers = [];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false || $http !== 200) return null;
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json) || !isset($json['balance']) || !is_numeric($json['balance'])) return null;
+    return (float)$json['balance'];
+}
+
+/**
+ * Debit REAL from an account (contract 4). Idempotent on $idempotencyKey —
+ * the Shahnameh side must return the same tx_ref for a retried key.
+ * Returns:
+ *   ['ok'=>true,  'tx_ref'=>string, 'balance_after'=>?float]
+ *   ['ok'=>false, 'error'=>string]          structured denial (e.g. insufficient_balance)
+ *   ['ok'=>false, 'error'=>'unavailable']   service missing/unreachable/malformed
+ */
+function re_spend(PDO $pdo, string $realAccount, float $realAmount, string $idempotencyKey): array {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
+        return ['ok' => false, 'error' => 'unavailable'];
+    }
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/spend');
+    $headers = ['Content-Type: application/json'];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode([
+            'account'         => $realAccount,
+            'amount'          => $realAmount,
+            'purpose'         => 'vpn_quota',
+            'idempotency_key' => $idempotencyKey,
+        ]),
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false) return ['ok' => false, 'error' => 'unavailable'];
+
+    $json = json_decode((string)$body, true);
+    if ($http === 200 && is_array($json) && !empty($json['tx_ref']) && is_string($json['tx_ref'])) {
+        return [
+            'ok'            => true,
+            'tx_ref'        => $json['tx_ref'],
+            'balance_after' => isset($json['balance_after']) && is_numeric($json['balance_after'])
+                               ? (float)$json['balance_after'] : null,
+        ];
+    }
+    // Structured denial (4xx with an error field) is a real answer, not an outage.
+    if ($http >= 400 && $http < 500 && is_array($json) && !empty($json['error']) && is_string($json['error'])) {
+        return ['ok' => false, 'error' => substr($json['error'], 0, 64)];
+    }
+    return ['ok' => false, 'error' => 'unavailable'];
+}
+
+/**
+ * Validate a redeem request and price it. Shared by redeem-real (pre-executed
+ * spend) and redeem-real-spend (panel-orchestrated spend). Returns
+ * ['error'=>string] or ['account'=>, 'quota_bytes'=>, 'rates'=>].
+ */
+function re_quote(PDO $pdo, string $deviceId, float $realAmount): array {
+    $account = re_linked_account($pdo, $deviceId);
+    if ($account === '') return ['error' => 'no linked REAL account'];
+    $rates = re_settings($pdo);
+    if ($rates['real_per_gb'] <= 0) return ['error' => 'redemption disabled'];
+    if ($realAmount < $rates['redeem_min_real']) {
+        return ['error' => 'minimum spend is ' . $rates['redeem_min_real'] . ' REAL'];
+    }
+    $quotaBytes = (int)floor($realAmount / $rates['real_per_gb'] * RE_GB);
+    if ($quotaBytes <= 0) return ['error' => 'amount too small'];
+    if (re_redeemed_today($pdo, $deviceId) + $quotaBytes > $rates['redeem_daily_cap_bytes']) {
+        return ['error' => 'daily redemption cap reached'];
+    }
+    return ['account' => $account, 'quota_bytes' => $quotaBytes, 'rates' => $rates];
+}
