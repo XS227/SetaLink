@@ -37,6 +37,17 @@ const RE_SETTING_DEFAULTS = [
     'redeem_daily_cap_bytes' => '10737418240',  // 10 GB per device per day
 ];
 
+// Referral reward mode (plan item C3). Default 'quota' = the current +1 GB
+// behaviour, unchanged, so flipping this on is a deliberate admin action.
+//   quota  grant VPN quota only (today's behaviour)
+//   real   grant REAL to the party's linked account instead; NO linked
+//          account ⇒ fall back to quota so nobody goes unrewarded
+//   both   grant quota AND REAL
+const RE_REFERRAL_SETTING_DEFAULTS = [
+    'referral_reward_mode' => 'quota',
+    'referral_real_reward' => '100',  // REAL granted per referral (real/both)
+];
+
 // Service settings (never returned to the admin UI alongside the rates).
 const RE_SERVICE_SETTING_DEFAULTS = [
     'real_link_secret' => '',  // HMAC-SHA256 key for account-link proofs
@@ -63,11 +74,32 @@ function re_ensure_schema(PDO $pdo): void {
     )");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_real_redemptions_device
                 ON real_redemptions(device_id, created_at)");
+    // kind distinguishes a user-initiated redeem (REAL → quota, default) from a
+    // referral grant (system → REAL payout). Both share this ledger so the
+    // admin view and audit trail stay single-source.
+    try { $pdo->exec("ALTER TABLE real_redemptions ADD COLUMN kind TEXT NOT NULL DEFAULT 'redeem'"); }
+    catch (\Exception $e) { /* column exists */ }
     $ins = $pdo->prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
     foreach (RE_SETTING_DEFAULTS as $k => $v) $ins->execute([$k, $v]);
     foreach (RE_SERVICE_SETTING_DEFAULTS as $k => $v) $ins->execute([$k, $v]);
+    foreach (RE_REFERRAL_SETTING_DEFAULTS as $k => $v) $ins->execute([$k, $v]);
     try { $pdo->exec("ALTER TABLE devices ADD COLUMN linked_real_account TEXT DEFAULT ''"); }
     catch (\Exception $e) { /* column exists */ }
+}
+
+/** Referral reward config (plan C3). */
+function re_referral_settings(PDO $pdo): array {
+    $keys = array_keys(RE_REFERRAL_SETTING_DEFAULTS);
+    $in   = implode(',', array_fill(0, count($keys), '?'));
+    $st   = $pdo->prepare("SELECT key, value FROM settings WHERE key IN ($in)");
+    $st->execute($keys);
+    $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
+    $mode = (string)($rows['referral_reward_mode'] ?? RE_REFERRAL_SETTING_DEFAULTS['referral_reward_mode']);
+    if (!in_array($mode, ['quota', 'real', 'both'], true)) $mode = 'quota';
+    return [
+        'mode'        => $mode,
+        'real_reward' => (float)($rows['referral_real_reward'] ?? RE_REFERRAL_SETTING_DEFAULTS['referral_real_reward']),
+    ];
 }
 
 /** Current redemption rates; missing keys fall back to the defaults above. */
@@ -117,7 +149,7 @@ function re_list(PDO $pdo, int $limit = 100): array {
     $limit = max(1, min(500, $limit));
     return $pdo->query(
         "SELECT id, device_id, real_account, real_amount, quota_bytes,
-                tx_ref, status, created_at
+                tx_ref, status, kind, created_at
          FROM real_redemptions ORDER BY id DESC LIMIT $limit"
     )->fetchAll(PDO::FETCH_ASSOC) ?: [];
 }
@@ -220,6 +252,9 @@ function re_get_by_tx(PDO $pdo, string $txRef): ?array {
 function re_credit(PDO $pdo, int $id): ?int {
     $row = re_get($pdo, $id);
     if (!$row) return null;
+    // Referral grants pay REAL, not quota — they must go through the grant
+    // approval path, never this quota-crediting one.
+    if (($row['kind'] ?? 'redeem') === 'referral_grant') return null;
     $ownTxn = !$pdo->inTransaction();
     if ($ownTxn) $pdo->beginTransaction();
     try {
@@ -341,4 +376,107 @@ function re_quote(PDO $pdo, string $deviceId, float $realAmount): array {
         return ['error' => 'daily redemption cap reached'];
     }
     return ['account' => $account, 'quota_bytes' => $quotaBytes, 'rates' => $rates];
+}
+
+// ── Phase 2 (C3): REAL referral grants (payout, not spend) ───────────────────
+// A grant is the inverse of a spend: the ecosystem credits REAL to a linked
+// account. Contract 5 in docs/realgram/TASK_SPLIT.md. Recorded in the shared
+// real_redemptions ledger with kind='referral_grant' so grants and redeems
+// stay in one auditable place; quota_bytes stays 0 (a pure REAL payout, no
+// VPN quota moves — so it never counts against the redeem daily cap either).
+
+/**
+ * Credit REAL to an account via the ecosystem backend (contract 5).
+ * Idempotent on $txRef. Returns true (granted), false (backend denied), or
+ * null (unconfigured/unreachable/malformed — grant stays pending).
+ */
+function re_grant_real(PDO $pdo, string $realAccount, float $realAmount, string $txRef): ?bool {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) return null;
+
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/grant');
+    $headers = ['Content-Type: application/json'];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode([
+            'account'         => $realAccount,
+            'amount'          => $realAmount,
+            'reason'          => 'referral_reward',
+            'idempotency_key' => $txRef,
+        ]),
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false || $http !== 200) return null;
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json) || !array_key_exists('granted', $json)) return null;
+    return (bool)$json['granted'];
+}
+
+/**
+ * Record + attempt a REAL referral grant for one party. tx_ref is deterministic
+ * (referral code + recipient) so a re-run of use-referral can't double-grant.
+ * Returns the final status ('credited' | 'pending' | 'rejected' | 'skipped').
+ * 'skipped' means the party had no linked REAL account — the caller should
+ * fall back to a quota grant so nobody goes unrewarded.
+ */
+function re_referral_grant(PDO $pdo, string $deviceId, float $realAmount, string $txRef): string {
+    $account = re_linked_account($pdo, $deviceId);
+    if ($account === '') return 'skipped';
+
+    // Insert the grant row (kind=referral_grant, quota_bytes=0). OR IGNORE on
+    // the unique tx_ref makes a retry a no-op.
+    $st = $pdo->prepare(
+        "INSERT OR IGNORE INTO real_redemptions
+         (device_id, real_account, real_amount, quota_bytes, tx_ref, status, kind)
+         VALUES (?,?,?,0,?,'pending','referral_grant')"
+    );
+    $st->execute([$deviceId, $account, $realAmount, $txRef]);
+    if ($st->rowCount() === 0) {
+        // Already recorded on a prior run — return its current status.
+        $prev = re_get_by_tx($pdo, $txRef);
+        return $prev['status'] ?? 'pending';
+    }
+    $id = (int)$pdo->lastInsertId();
+
+    $verdict = re_grant_real($pdo, $account, $realAmount, $txRef);
+    if ($verdict === true) {
+        $pdo->prepare("UPDATE real_redemptions SET status='credited' WHERE id=? AND status='pending'")
+            ->execute([$id]);
+        return 'credited';
+    }
+    if ($verdict === false) {
+        $pdo->prepare("UPDATE real_redemptions SET status='rejected' WHERE id=? AND status='pending'")
+            ->execute([$id]);
+        return 'rejected';
+    }
+    return 'pending';  // backend unavailable — admin can approve later
+}
+
+/**
+ * Admin approval of a pending referral grant: retry the REAL grant against the
+ * ecosystem backend and credit on success. Returns 'credited', 'pending'
+ * (backend still unreachable), 'rejected', or null (row isn't a pending grant).
+ * This is the recovery path for grants recorded while the backend was down.
+ */
+function re_approve_grant(PDO $pdo, int $id): ?string {
+    $row = re_get($pdo, $id);
+    if (!$row || ($row['kind'] ?? '') !== 'referral_grant' || $row['status'] !== 'pending') return null;
+    $verdict = re_grant_real($pdo, $row['real_account'], (float)$row['real_amount'], $row['tx_ref']);
+    if ($verdict === true) {
+        $pdo->prepare("UPDATE real_redemptions SET status='credited' WHERE id=? AND status='pending'")->execute([$id]);
+        return 'credited';
+    }
+    if ($verdict === false) {
+        $pdo->prepare("UPDATE real_redemptions SET status='rejected' WHERE id=? AND status='pending'")->execute([$id]);
+        return 'rejected';
+    }
+    return 'pending';
 }

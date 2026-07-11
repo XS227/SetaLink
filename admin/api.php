@@ -943,7 +943,18 @@ if ($method === 'POST') {
         if (!$rid) api_err('redemption_id required');
         $db = open_analytics_db();
         re_ensure_schema($db);
+        $row = re_get($db, $rid);
+        if (!$row) api_err('redemption not found');
+        $isGrant = ($row['kind'] ?? 'redeem') === 'referral_grant';
         if ($action === 'real-redemption-approve') {
+            if ($isGrant) {
+                // Referral grant (C3) pays REAL — retry the ecosystem grant,
+                // never credit VPN quota. Stays pending if the backend is down.
+                $st = re_approve_grant($db, $rid);
+                if ($st === null)       api_err('grant not found or already reviewed');
+                if ($st === 'rejected') api_err('ecosystem backend rejected the grant');
+                api_ok(['status' => $st, 'redemption_id' => $rid, 'kind' => 'referral_grant']);
+            }
             $total = re_credit($db, $rid);
             if ($total === null) api_err('redemption not found or already reviewed');
             api_ok(['status' => 'credited', 'redemption_id' => $rid, 'new_total' => $total]);

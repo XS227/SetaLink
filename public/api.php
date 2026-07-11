@@ -878,10 +878,28 @@ if ($method === 'POST') {
         )->execute([$refCode, $deviceId, $ownerRow['device_id'], $deviceId, $bonus,
                     $referrerIp, $newUserIp, $riskScore, $riskFlagsJson, $riskStatus]);
 
+        $rewardReal   = [];  // party => grant status, for the response (C3)
         if ($riskStatus === 'credited') {
-            // Credit both parties through the ledger (keeps the breakdown invariant).
-            qe_ledger_add($pdo, $deviceId,            'referral_reward', $bonus, 'referral ' . $refCode);
-            qe_ledger_add($pdo, $ownerRow['device_id'], 'referral_reward', $bonus, 'referrer of ' . $deviceId);
+            // Reward mode (plan C3): 'quota' (default) grants VPN quota as
+            // before; 'real' grants REAL to a linked account instead (falling
+            // back to quota when unlinked so nobody goes unrewarded); 'both'
+            // grants quota AND REAL. Default is 'quota' → behaviour unchanged.
+            re_ensure_schema($pdo);  // referral grants share the real_redemptions ledger
+            $rw = re_referral_settings($pdo);
+            $grantParty = function (string $dev, string $txRef, string $meta) use ($pdo, $rw, $bonus) {
+                $status = 'quota';
+                if ($rw['mode'] !== 'quota') {
+                    $status = re_referral_grant($pdo, $dev, $rw['real_reward'], $txRef);
+                }
+                // Grant quota unless this was a REAL-only grant that succeeded/pending.
+                $realHandled = in_array($status, ['credited', 'pending'], true);
+                if ($rw['mode'] === 'quota' || $rw['mode'] === 'both' || !$realHandled) {
+                    qe_ledger_add($pdo, $dev, 'referral_reward', $bonus, $meta);
+                }
+                return $status;
+            };
+            $rewardReal['invitee']  = $grantParty($deviceId, 'refgrant-' . $refCode . '-' . $deviceId, 'referral ' . $refCode);
+            $rewardReal['referrer'] = $grantParty($ownerRow['device_id'], 'refgrant-' . $refCode . '-' . $ownerRow['device_id'], 'referrer of ' . $deviceId);
 
             // ── Viral loop: ≥3 active GRANTED referrals unlock stealth ─────
             $activeRefs = $pdo->prepare("
@@ -916,6 +934,9 @@ if ($method === 'POST') {
             'new_total_bytes' => (int)$row['quota_bytes_total'],
             'risk_score'      => $riskScore,
             'risk_flags'      => $riskFlags,
+            // C3: per-party REAL grant outcome ('quota'|'credited'|'pending'|
+            // 'rejected'|'skipped'). Absent/all-'quota' = classic quota reward.
+            'real_reward'     => $rewardReal,
         ]);
     }
 
