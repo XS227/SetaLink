@@ -154,9 +154,32 @@ function buildVlessRealityOutbound(server: VpnServer, creds?: ServerCredentials)
   };
 }
 
+// Cloudflare anycast edge IP used to DIAL a CDN-fronted (Stealth) node.
+//
+// Why dial an IP and not the hostname: on iOS the packet tunnel resolves DNS
+// *through* the tunnel it is still trying to build. A direct Reality node has a
+// literal IP address, so it needs no DNS to connect; a CDN node's address is a
+// hostname (alanya-turist.no), so xray must resolve it first — but that lookup
+// is trapped inside the not-yet-established tunnel → deadlock, the WS handshake
+// never leaves the device, 0 /cfws reach origin. (Android never hits this: xray
+// runs as an app-UID excluded from the VPN and resolves directly.) Dialling a
+// literal Cloudflare IP removes the DNS dependency entirely; Cloudflare routes to
+// our origin by the TLS SNI (still the real domain), not by which anycast IP was
+// dialled, so any published edge IP works — and it is immune to Iran poisoning
+// the domain's DNS. The literal IP also gets excluded from the TUN as a precise
+// /32 (existing isIPv4 path), so there is no routing loop either.
+const CLOUDFLARE_EDGE_IP = '104.21.61.220';
+
+// Literal address to dial for a CDN edge: catalog/bundled edgeIp when supplied
+// (backend can rotate without an app build), else the stable anycast fallback.
+function edgeConnectAddress(creds?: ServerCredentials): string {
+  return creds?.edgeIp ?? CLOUDFLARE_EDGE_IP;
+}
+
 function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   // WebSocket goes through the nginx edge proxy, not directly to the Reality port.
   const edgeHost = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.no`;
+  const edgeAddr = edgeConnectAddress(creds);   // literal Cloudflare IP — see note above
   const edgePort = creds?.edgePort ?? 443;
   const wsPath   = creds?.wsPath   ?? '/ws';
   return {
@@ -164,7 +187,7 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: edgeHost,
+        address: edgeAddr,
         port:    edgePort,
         users: [{
           id:         creds?.uuid ?? PLACEHOLDER_UUID,
@@ -184,10 +207,13 @@ function buildVlessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
       // Without this, Xray may negotiate h2, causing nginx to reject the
       // Connection: Upgrade header with 400 Bad Request (forbidden in HTTP/2).
       tlsSettings: { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
-      // Fragment TLS ClientHello into 100-200 byte chunks at 10-20 ms intervals.
-      // Iranian DPI inspects the full ClientHello to identify the SNI and protocol;
-      // fragmentation forces reassembly before analysis, bypassing shallow inspection.
-      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
+      // NO TLS fragmentation on CDN-fronted nodes. Cloudflare must read a clean
+      // ClientHello SNI (edgeHost) to route to our origin; a fragmented ClientHello
+      // breaks that routing — the handshake never reaches origin (0 /cfws upgrades
+      // observed from Iran 2026-07-09, while plain Safari HTTPS to the same domain
+      // reached origin fine). CDN fronting already hides us in legitimate Cloudflare
+      // traffic on a benign domain, so DPI-evasion fragmentation is both unnecessary
+      // and harmful here. (Direct Reality nodes above intentionally carry no fragment.)
     },
   };
 }
@@ -219,6 +245,7 @@ function buildVmessWsOutbound(server: VpnServer, creds?: ServerCredentials): Xra
 
 function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   const edgeHost  = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.no`;
+  const edgeAddr  = edgeConnectAddress(creds);   // literal Cloudflare IP — see buildVlessWsOutbound note
   const edgePort  = creds?.edgePort  ?? 443;
   // Ensure trailing slash — Xray server config uses /xhttp/ (with slash).
   // Without it Xray rejects with "failed to validate path, request:/xhttp, config:/xhttp/".
@@ -229,7 +256,7 @@ function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): 
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: edgeHost,
+        address: edgeAddr,
         port:    edgePort,
         users:   [{ id: creds?.uuid ?? PLACEHOLDER_UUID, encryption: 'none' }],
       }],
@@ -240,17 +267,22 @@ function buildVlessXhttpOutbound(server: VpnServer, creds?: ServerCredentials): 
       // mode: 'stream-one' — one HTTP/1.1 request per XHTTP session, most
       // compatible with nginx reverse proxies and Iranian DPI — avoids the
       // multiplexed chunked-transfer pattern that can be fingerprinted.
-      xhttpSettings: { path: xhttpPath, mode: 'stream-one' },
+      // host: edgeHost — we now dial a literal Cloudflare IP (edgeAddr), so the
+      // real domain must travel in the HTTP Host header for nginx vhost routing;
+      // without it xray would send the IP as Host and origin would 404.
+      xhttpSettings: { path: xhttpPath, mode: 'stream-one', host: edgeHost },
       // Force HTTP/1.1 ALPN — XHTTP requires HTTP/1.1 chunked transfer.
       // Without this Xray may negotiate h2, causing nginx to reject the connection.
       tlsSettings:   { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
-      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
+      // No TLS fragmentation on CDN-fronted nodes — Cloudflare needs a clean
+      // ClientHello SNI to route to origin (see buildVlessWsOutbound note).
     },
   };
 }
 
 function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredentials): XrayOutbound {
   const edgeHost   = creds?.edgeAddress ?? creds?.address ?? `${server.id}.setalink.no`;
+  const edgeAddr   = edgeConnectAddress(creds);   // literal Cloudflare IP — see buildVlessWsOutbound note
   const edgePort   = creds?.edgePort   ?? 443;
   const httpupPath = creds?.httpupPath ?? '/httpup';
   return {
@@ -258,7 +290,7 @@ function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredenti
     protocol: 'vless',
     settings: {
       vnext: [{
-        address: edgeHost,
+        address: edgeAddr,
         port:    edgePort,
         users:   [{ id: creds?.uuid ?? PLACEHOLDER_UUID, encryption: 'none' }],
       }],
@@ -270,7 +302,8 @@ function buildVlessHttpUpgradeOutbound(server: VpnServer, creds?: ServerCredenti
       httpupgradeSettings: { path: httpupPath, host: edgeHost },
       // Force HTTP/1.1 ALPN — HTTPUpgrade requires HTTP/1.1 upgrade handshake.
       tlsSettings:         { serverName: edgeHost, allowInsecure: false, alpn: ['http/1.1'] },
-      sockopt: { fragment: { packets: 'tlshandshake', length: '100-200', interval: '10-20' } },
+      // No TLS fragmentation on CDN-fronted nodes — Cloudflare needs a clean
+      // ClientHello SNI to route to origin (see buildVlessWsOutbound note).
     },
   };
 }
