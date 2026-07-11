@@ -17,6 +17,7 @@ import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { RealWalletCard } from '../components/RealWalletCard';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore } from '../stores/dmStore';
 
@@ -452,6 +453,13 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             </TouchableOpacity>
           )}
         </GlassCard>
+
+        {/* REAL wallet — remote-config gated (ecosystem.wallet_enabled), so it
+            stays hidden until the Shahnameh-side backend is live (plan A3). */}
+        <RealWalletCard
+          deviceId={user.deviceId}
+          onRedeemed={() => syncEntitlement(user.deviceId).then(updateFromEntitlement).catch(() => {})}
+        />
 
         {/* Package / quota overview */}
         <GlassCard style={styles.packagesCard}>

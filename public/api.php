@@ -400,6 +400,9 @@ if ($method === 'GET') {
             'ecosystem'              => [
                 'banner_enabled' => (bool)(int)($rcRows['rc_ecosystem_banner_enabled'] ?? 1),
                 'promos'         => $decodeArr('rc_ecosystem_promos', []),
+                // Default OFF: the wallet card only makes sense once the
+                // Shahnameh-side wallet API is live (TASK_SPLIT.md B-1/B-2).
+                'wallet_enabled' => (bool)(int)($rcRows['rc_real_wallet_enabled'] ?? 0),
             ],
         ];
         // If there's a legacy composite blob, merge it but let per-key values win

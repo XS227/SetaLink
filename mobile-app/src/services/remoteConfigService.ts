@@ -76,6 +76,8 @@ export interface RemoteConfig {
     banner_enabled?: boolean;
     /** Replaces the embedded promo list when non-empty. */
     promos?: EcosystemPromo[];
+    /** true shows the REAL wallet card on Profile (plan A3). Default off. */
+    wallet_enabled?: boolean;
   };
 }
 
