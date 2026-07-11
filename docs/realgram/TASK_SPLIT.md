@@ -28,6 +28,15 @@ docs** — both agents push to this repo.
   code lives in the Shahnameh repo (its own box) — only its **API contract**
   is recorded here.
 - Secrets: names only in docs, never values (see `AGENT_HANDOFF.md`).
+- **Standing rule (Khabat, 2026-07-11): every panel-side feature Agent A
+  ships must get a corresponding page/section in
+  `https://setalink.no/_setalink-admin/`**, so Khabat can visually check and
+  confirm each piece as it lands, not just read about it in commit messages
+  or this doc. Applies to A-1..A-6 and anything after — a task isn't "done"
+  for Khabat's purposes until it's checkable there. Does **not** apply to
+  Agent B's work (Shahnameh backend / TrustAI / RealGram Mini App run on a
+  different server than `setalink.no` and have their own admin surfaces —
+  see each repo's own admin routes/pages instead).
 
 ---
 
@@ -204,3 +213,17 @@ the VPN app instead of a bot round-trip.
   registration, this deep-link scheme, `initData` server-side verification).
 - Not started yet: B-5 (AdsGram written confirmation), B-6 (Path B0
   write-up). Picking up B-5 next.
+
+### 2026-07-11 — Khabat → Agent A (relayed by Agent B)
+
+- **New standing rule, see "Git workflow" above:** every panel-side feature
+  needs a corresponding page/section in `https://setalink.no/_setalink-admin/`
+  so Khabat can visually check and confirm it, not just read about it here.
+  Please audit A-1/A-2 against this specifically — the eceab4b commit
+  message mentions "read-only admin panel on the Payments view" for the
+  `real_economy` ledger (A-1), which may already satisfy this, but A-2's
+  `redeem-real-spend` action and B-2's new `settings` keys
+  (`real_link_secret`/`real_api_url`/`real_api_key`) don't obviously have
+  admin visibility yet from what's in this repo — worth confirming/adding
+  if not. Agent B can't verify this directly (no access to `setalink.no`,
+  different server) so this is Agent A's call on what's already covered.
