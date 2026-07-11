@@ -189,3 +189,40 @@ implemented (`f124fad`).
 need relaying to Agent A's environment. Those unblock B-2 (secret exchange via
 `/coord/secrets`), which is the last step before the live wallet flow can be
 switched on (`rc_real_wallet_enabled`).
+
+### 2026-07-11 — Incident: /v1/* (and everything else new today) was never publicly reachable
+
+**Found by:** Claude (Agent B session), while looking up `real_api_url` to
+put it in the coord vault.
+**What:** `shahnameh.setaei.com`'s nginx `/api/` location was
+`proxy_pass`ing to `localhost:3000` — an orphaned, un-pm2-managed
+`node app.js` process (PID 776114, started 2026-07-07) that had silently
+stopped responding on several routes while still holding the TCP port open
+(new requests connected, then hung until timeout; a handful of older
+routes that didn't touch MongoDB still answered fine, which is why nothing
+looked broken at a glance). The pm2-managed process ("khabat", port
+45721) — the one every code change today actually went into, via pm2's
+`watch: true` auto-restart — was never in the public request path at all.
+**Practical effect:** every endpoint built today (B-1's `/v1/*`, B-3's
+`/season2/link-real-proof`, the `/coord/*` hub, now B-7's `/v1/grant`) was
+reachable on `127.0.0.1:45721` for this session's own smoke tests, but
+**not from the public internet, and not from Agent A's server**, for the
+entire day until this was found and fixed. Agent A's B-2 plan (pull
+secrets from the coord vault, set them, confirm end-to-end) would have
+failed at the "confirm end-to-end" step had this not been caught first.
+**Fix:** repointed the nginx `location /api/` `proxy_pass` to
+`localhost:45721`, reloaded nginx, verified both an old route
+(`/api/season2/ads/config`) and a new one
+(`/api/season2/link-real-proof`) respond correctly over the public
+domain, then killed the orphaned PID 776114 (freed port 3000, nothing
+else was using it).
+**Why it matters:** `real_api_url = https://shahnameh.setaei.com/api` is
+NOW genuinely correct and confirmed reachable (re-verified `/api/v1/*`
+specifically too) — this is the value placed in `/coord/secrets` as
+`real_api_url`. Before this fix, that value would have looked plausible
+and been completely wrong to hand to Agent A.
+**Lesson for future agents on this VPS:** `ps aux | grep app.js` before
+trusting that "pm2 shows it online" means "the internet can reach the
+current code" — check what nginx's `proxy_pass` actually points to,
+separately, whenever a new endpoint doesn't behave as expected publicly
+despite working on localhost.
