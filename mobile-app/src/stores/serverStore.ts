@@ -174,14 +174,20 @@ export function scoreServer(s: ServerRecord, mode: AIModeKey): number {
 
 interface ServerState {
   servers:       ServerRecord[];
-  selectedId:    string;
+  selectedId:    string;      // ACTIVE node — failover may switch this transiently
+  userSelectedId: string;     // the user's sticky manual preference (only they set it)
   filter:        FilterTab;
   query:         string;
   isLoading:     boolean;
   loadError:     string | null;
   importedCreds: Record<string, ServerCredentials>;  // serverId → creds
 
-  selectServer:  (id: string) => void;
+  // isUser=true (default) records a sticky user preference; failover passes
+  // false so it can switch the active node without hijacking that preference.
+  selectServer:  (id: string, isUser?: boolean) => void;
+  // Reset the active node back to the user's manual preference (called on a
+  // fresh user-initiated connect so failover never permanently reassigns it).
+  restoreUserSelection: () => void;
   setFilter:     (f: FilterTab) => void;
   setQuery:      (q: string) => void;
   fetchServers:  (token: string) => Promise<void>;
@@ -227,6 +233,7 @@ export const useServerStore = create<ServerState>()(
     (set, get) => ({
   servers:       SERVER_CATALOG,
   selectedId:    '',
+  userSelectedId: '',
   filter:        'All',
   query:         '',
   isLoading:     false,
@@ -235,13 +242,29 @@ export const useServerStore = create<ServerState>()(
   // before (or without) a successful catalog fetch.
   importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS },
 
-  selectServer: (id) => {
-    set({ selectedId: id });
+  selectServer: (id, isUser = true) => {
+    // A manual tap sets the sticky preference; failover (isUser=false) only
+    // moves the ACTIVE node so it can't permanently overwrite the user's choice.
+    set(isUser ? { selectedId: id, userSelectedId: id } : { selectedId: id });
 
     const record = get().servers.find((s) => s.id === id);
     if (!record) return;
 
     // Sync selected server into vpnStore — one-way dependency, no cycle
+    syncToVpnStore(record);
+  },
+
+  restoreUserSelection: () => {
+    // On a fresh user-initiated connect, start from the user's manual choice
+    // again — so a prior failover to another node doesn't stick forever. No-op
+    // when the user never picked a node, or it's already active, or it's gone.
+    const { userSelectedId, selectedId, servers, importedCreds } = get();
+    if (!userSelectedId || userSelectedId === selectedId) return;
+    const record = servers.find((s) => s.id === userSelectedId);
+    // Only restore to a node that still exists and is connectable — otherwise
+    // leave the current (failover) node so we don't bounce onto a dead choice.
+    if (!record || !importedCreds[userSelectedId]) return;
+    set({ selectedId: userSelectedId });
     syncToVpnStore(record);
   },
 
@@ -646,6 +669,7 @@ export const useServerStore = create<ServerState>()(
         servers:       state.servers,
         importedCreds: state.importedCreds,
         selectedId:    state.selectedId,
+        userSelectedId: state.userSelectedId,
       }),
       // On app start, sync the persisted selected server into vpnStore
       onRehydrateStorage: () => (state) => {
