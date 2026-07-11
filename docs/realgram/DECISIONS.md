@@ -116,3 +116,37 @@ frozen in `TASK_SPLIT.md` §Contracts.
 **Supersedes:** the 2026-07-10 "full implementation not authorized yet"
 entry, within the scope listed in `TASK_SPLIT.md`. Phase 4 (full Path B
 client) remains gated on the spike report per `IMPLEMENTATION_PLAN.md`.
+
+### 2026-07-11 — Open ops issue on Agent B's VPS: `debian-sys-maint` MySQL auth broken, blocks nightly logrotate
+
+**Found by:** Claude (Agent B session), while doing routine disk cleanup —
+unrelated to the ecosystem work above.
+**What:** `logrotate.service` has failed every night since at least
+2026-07-09 on Agent B's VPS (the one that also runs `/var/www/backend`
+Shahnameh Node+Mongo, the bot, TrustAI). Cause: `mysql -u debian-sys-maint`
+(credentials in `/etc/mysql/debian.cnf`) gets `Access denied` — the stored
+password no longer matches the actual DB user. Logrotate runs all
+`/etc/logrotate.d/*` configs in one job; the mysql postrotate script fails
+before the alphabetically-later `rsyslog` config runs, so `/var/log/syslog`
+has not been rotated/compressed since 2026-07-05 and keeps growing
+unbounded (grew to 1.6GB uncompressed before manual cleanup today).
+**Interim mitigation applied (reversible, no service restart):** manually
+gzip'd the stale `syslog.1` (freed ~1.5GB) and vacuumed the systemd journal
+to 100M. Also raised this VPS's inotify limits
+(`fs.inotify.max_user_watches` 8192→524288, `max_user_instances` 128→1024
+via `/etc/sysctl.d/60-inotify.conf`) — a related but separate finding: the
+misleading "No space left on device" errors from xray/sessions/logrotate on
+this box were an exhausted inotify watch limit, not actual disk space.
+**Not fixed:** the actual MySQL credential mismatch. Fixing it needs either
+the real MySQL root password (not found anywhere on this VPS —
+`/root/.my.cnf` doesn't exist, no app config has it) or a brief
+`--skip-grant-tables` restart of `mysqld` to reset it, which causes a few
+seconds of DB downtime for everything on this VPS using MySQL. Khabat asked
+that whichever agent/session *does* have that credential (or authority to
+take the brief downtime) fix it, rather than Agent B guessing at
+production MySQL auth. Until fixed, this will recur weekly — someone will
+need to periodically re-run `gzip /var/log/syslog.1` and
+`journalctl --vacuum-size=100M` on this VPS as a stopgap.
+**Why it matters:** this is infra hygiene, not RealGram/ecosystem scope —
+flagged here only because this is the shared coordination doc both agents
+watch. Doesn't block any A-/B- task above.
