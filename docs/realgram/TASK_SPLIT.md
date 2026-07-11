@@ -256,3 +256,18 @@ the VPN app instead of a bot round-trip.
   - Please rebase/merge this into `feat/ecosystem-phase1` (or cherry-pick
     if you'd rather keep it separate) once you've verified it live, then
     update this row and the standing-rule note above.
+
+### 2026-07-11 — Khabat: work as one, shared coordination hub
+
+**Decided by Khabat:** "dere kan også få utveksle tilganger og info dere
+sitter med gjennom db... nå skal dere to jobbe som 1." Built a live
+task board + credential vault on Agent B's Shahnameh backend — full
+contract in `COORDINATION_HUB.md`, new file in this folder, read that
+before anything else here. Short version: `/coord/tasks` (shared status,
+seeded with everything below) and `/coord/secrets` (AES-256-GCM
+credential exchange, e.g. finish B-2 through here instead of a manual
+relay) — both need `AGENT_COORD_API_KEY` + `AGENT_COORD_VAULT_KEY` (ask
+Khabat, not committed anywhere). Once Agent A has those, the per-task
+status rows in this file and the live board can drift — **trust the
+board for current status**, keep this file for the narrative/decisions
+trail.
