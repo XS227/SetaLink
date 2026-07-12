@@ -27,7 +27,7 @@ import { computeHealthScore, dnsOkFromConnectionLog } from '../utils/healthScore
 import { getLastConnectProbeOk } from '../services/vpnBridge';
 import { useT, trPhrase }     from '../i18n';
 import { connectingPhaseLabel } from '../services/failureClassifier';
-import { initAds, preloadInterstitial, showInterstitialOnConnect } from '../services/adsService';
+import { initAds, preloadInterstitial, showInterstitialOnConnect, showInterstitialAfterConnect } from '../services/adsService';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_CONNECTED    = require('../assets/logo_connected.png') as number;
@@ -159,6 +159,21 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     initAds().then(preloadInterstitial).catch(() => {});
   }, [user?.plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Where Google is unreachable outside the tunnel (Iran), the tap-time ad is
+  // never ready — show it once the tunnel is up instead, so the ad streams
+  // through the tunnel instead of flashing blank.
+  const adShownAtTapRef = useRef(false);
+  const wasConnectedForAdsRef = useRef(false);
+  useEffect(() => {
+    if (isConnected && !wasConnectedForAdsRef.current) {
+      if ((!user || user.plan === 'free') && !adShownAtTapRef.current) {
+        showInterstitialAfterConnect();
+      }
+      adShownAtTapRef.current = false;
+    }
+    wasConnectedForAdsRef.current = isConnected;
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleConnect = () => {
     if (connectionState === 'connected') { disconnect(); return; }
     if (connectionState === 'idle' || connectionState === 'failed') {
@@ -171,9 +186,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       connect();
       // Best-effort ad revenue on each new connection — free users only, and
       // only if an interstitial is already loaded (never blocks connect).
-      if (!user || user.plan === 'free') {
-        showInterstitialOnConnect();
-      }
+      adShownAtTapRef.current = (!user || user.plan === 'free')
+        ? showInterstitialOnConnect()
+        : false;
     }
   };
 

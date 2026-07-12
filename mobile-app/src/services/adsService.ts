@@ -116,6 +116,39 @@ export const BANNER_UNIT_ID =
 let _interstitial: InterstitialAd | null = null;
 let _interReady   = false;
 let _interLoading = false;
+let _interLoadedAt     = 0;     // when the current preload finished
+let _interLoadedViaVpn = false; // creative was fetched while the tunnel was up
+
+// AdMob interstitials go stale (roughly an hour); a stale show renders blank.
+const INTERSTITIAL_MAX_AGE_MS = 55 * 60_000;
+
+// Post-connect show window: when the Connect tap had no ad ready (typical where
+// Google is unreachable outside the tunnel), show the ad as soon as a preload
+// lands through the freshly-up tunnel — but only within this window, so an ad
+// never pops long after the user moved on.
+let _pendingShowUntil = 0;
+let _pendingRetries   = 0;
+
+function vpnConnectedNow(): boolean {
+  try {
+    // Lazy require: avoids a static import cycle (screens → adsService → stores)
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useVpnStore } = require('../stores/vpnStore');
+    return useVpnStore.getState().connectionState === 'connected';
+  } catch { return false; }
+}
+
+/** An ad loaded through the tunnel cannot stream its creative once the tunnel is
+ *  down (Google is blocked on the direct network in our main markets) — showing
+ *  it then renders a blank flash. Expired ads do the same. */
+function interstitialIsStale(): boolean {
+  if (Date.now() - _interLoadedAt > INTERSTITIAL_MAX_AGE_MS) return true;
+  return _interLoadedViaVpn && !vpnConnectedNow();
+}
+
+function dropInterstitial(): void {
+  _interstitial = null; _interReady = false; _interLoading = false;
+}
 
 /** Preload one interstitial so it is ready by the next Connect tap. Idempotent;
  *  self-reloads after each show/error. Never throws. */
@@ -126,13 +159,29 @@ export function preloadInterstitial(): void {
     const ad = InterstitialAd.createForAdRequest(INTERSTITIAL_UNIT_ID, {
       requestNonPersonalizedAdsOnly: true,
     });
-    ad.addAdEventListener(AdEventType.LOADED, () => { _interReady = true; _interLoading = false; });
+    ad.addAdEventListener(AdEventType.LOADED, () => {
+      _interReady = true; _interLoading = false;
+      _interLoadedAt = Date.now();
+      _interLoadedViaVpn = vpnConnectedNow();
+      // A post-connect show was requested and the window is still open → show
+      // now, while the tunnel that fetched the creative is still up.
+      if (_pendingShowUntil && Date.now() <= _pendingShowUntil && vpnConnectedNow()) {
+        _pendingShowUntil = 0;
+        try { ad.show(); _interReady = false; } catch { dropInterstitial(); }
+      }
+    });
     ad.addAdEventListener(AdEventType.CLOSED, () => {
-      _interstitial = null; _interReady = false; _interLoading = false;
+      dropInterstitial();
       preloadInterstitial();   // get the next one ready
     });
     ad.addAdEventListener(AdEventType.ERROR, () => {
-      _interstitial = null; _interReady = false; _interLoading = false;
+      dropInterstitial();
+      // Loads started just before the tunnel came up often die in the network
+      // switch — retry (bounded) while a post-connect window is open.
+      if (_pendingShowUntil && Date.now() <= _pendingShowUntil && _pendingRetries < 2) {
+        _pendingRetries += 1;
+        preloadInterstitial();
+      }
     });
     _interstitial = ad;
     ad.load();
@@ -149,14 +198,44 @@ export function preloadInterstitial(): void {
  */
 export function showInterstitialOnConnect(): boolean {
   if (_interReady && _interstitial) {
+    if (interstitialIsStale()) {
+      // Tunnel-loaded or expired ad would flash blank — drop it and reload.
+      dropInterstitial();
+      preloadInterstitial();
+      return false;
+    }
     try {
       _interstitial.show();
       _interReady = false;   // one-shot; CLOSED handler preloads the next
       return true;
     } catch {
-      _interstitial = null; _interReady = false;
+      dropInterstitial();
     }
   }
   preloadInterstitial();     // not ready → prepare for next time, don't block
+  return false;
+}
+
+/**
+ * Fallback for markets where the ad can only load THROUGH the tunnel (e.g. Iran,
+ * where Google is unreachable on the direct network): call on the transition to
+ * connected when the Connect tap showed nothing. Shows a ready ad immediately,
+ * otherwise preloads via the tunnel and shows on arrival — but only within
+ * `windowMs`, so nothing pops up long after connecting. Never throws.
+ */
+export function showInterstitialAfterConnect(windowMs = 12_000): boolean {
+  if (_interReady && _interstitial && !interstitialIsStale()) {
+    try {
+      _interstitial.show();
+      _interReady = false;
+      return true;
+    } catch {
+      dropInterstitial();
+    }
+  }
+  _pendingShowUntil = Date.now() + windowMs;
+  _pendingRetries   = 0;
+  if (_interReady) dropInterstitial();   // stale leftover → replace via tunnel
+  preloadInterstitial();
   return false;
 }
