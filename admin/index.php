@@ -3336,12 +3336,23 @@ window.devDetail = async function(did) {
       kv('First seen', esc(dev.created_at)),
       kv('Last seen', `${esc(dev.last_seen)} (${fmtRelative(dev.last_seen)})`),
     ].join('');
-    const sess = (d.sessions||[]).slice(0,10).map(s=>{
+    // Traffic summary across the reported sessions — so the total is visible
+    // even when individual sessions lack byte data (iOS, or short/idle Android).
+    const allSess = d.sessions || [];
+    const sumRecv = allSess.reduce((a,s)=>a+(s.bytes_recv||0),0);
+    const sumSent = allSess.reduce((a,s)=>a+(s.bytes_sent||0),0);
+    const sessTraffic = (sumRecv+sumSent) > 0
+      ? `<span style="font-family:var(--mono);color:var(--ok)">↓${fmtBytes(sumRecv)} ↑${fmtBytes(sumSent)}</span> across ${allSess.length} session(s)`
+      : (isIos ? `<span style="color:var(--muted-2)">per-session bytes aren't tracked on iOS — see the Quota row above for total plan usage</span>`
+               : `<span style="color:var(--muted-2)">no per-session traffic reported yet</span>`);
+    const sess = allSess.slice(0,10).map(s=>{
       const hasBytes = (s.bytes_recv||0)+(s.bytes_sent||0) > 0;
+      const idle = !hasBytes && (s.duration_secs||0) > 0;
       const trafficCell = hasBytes
         ? `<span style="font-family:var(--mono)">↓${fmtBytes(s.bytes_recv)} ↑${fmtBytes(s.bytes_sent)}</span>`
-        : (isIos ? `<span style="color:var(--muted-2)" title="iOS proxy — byte counting not available">—</span>`
-                 : `<span style="color:var(--muted-2)">—</span>`);
+        : (isIos ? `<span style="color:var(--muted-2)" title="iOS proxy — byte counting not available">not tracked (iOS)</span>`
+                 : (idle ? `<span style="color:var(--muted-2)" title="connected but no measured traffic">idle</span>`
+                         : `<span style="color:var(--muted-2)">—</span>`));
       return `<tr>
         <td style="font-size:.68rem">${fmtRelative(s.ended_at)}</td>
         <td style="font-size:.68rem">${protoBadge(s.protocol)}</td>
@@ -3355,6 +3366,7 @@ window.devDetail = async function(did) {
     $('devDetailBody').innerHTML = `
       ${devRows}
       <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">RECENT SESSIONS <span style="font-weight:400;color:var(--muted-2)">— this device only</span></div>
+      <div style="font-size:.7rem;margin:.25rem 0 .1rem">Session traffic: ${sessTraffic}</div>
       <table class="tbl" style="margin-top:.3rem"><thead><tr>
         <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Probe</th><th>Error</th><th>Reported from</th>
       </tr></thead><tbody>${sess}</tbody></table>
