@@ -255,7 +255,8 @@ describe('platform parity — shared config builder', () => {
         buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, VISION_CREDS));
       const quicOut = cfg.outbounds.find((o) => o.tag === 'proxy-quic');
       expect(quicOut).toBeDefined();
-      const udp443 = cfg.routing.rules.find((r) => r.network === 'udp' && r.port === '443');
+      // The catch-all QUIC rule has no domain (the AI-provider QUIC rule does).
+      const udp443 = cfg.routing.rules.find((r) => r.network === 'udp' && r.port === '443' && !r.domain);
       expect(udp443!.outboundTag).toBe('proxy-quic');
     }
   });

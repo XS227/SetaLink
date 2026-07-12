@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 import type { VpnServer }        from '../stores/vpnStore';
 import type { ServerCredentials } from './serverConfigService';
 import { getBypassDomains } from './iranBypassRules';
+import { getAiRoutingDomains } from './aiRoutingRules';
 
 export interface XrayConfig {
   log:       XrayLog;
@@ -331,6 +332,38 @@ export interface BuildOptions {
    *  mirrors Android, where VpnService excludes the selected apps from the
    *  TUN regardless of the Smart Mode toggle. */
   extraBypassDomains?: string[];
+  /** AI clean-exit scaffold: an optional secondary node that AI-provider
+   *  traffic (Claude / Gemini / OpenAI — see aiRoutingRules.ts) should egress
+   *  through, because those providers block our Hetzner/VPN exit IPs. When
+   *  absent, AI traffic uses the default proxy exactly as before (no change). */
+  aiExit?: { server: VpnServer; protocol: string; creds?: ServerCredentials };
+}
+
+/**
+ * AI-provider routing rules (Claude / Gemini / OpenAI — see aiRoutingRules.ts).
+ * Domain-matched via sniffed SNI/Host, so they work for browser and app traffic
+ * alike. Emits up to two rules, and MUST sit before the generic UDP/443 rule:
+ *
+ *  1. QUIC → blackhole (ALWAYS ON). Forces AI-provider HTTP/3 (UDP/443) to fail
+ *     fast so the client retries over HTTP/2 on TCP — the exact path Claude
+ *     already succeeds on. This is the fix for Gemini hanging forever on
+ *     "loading": Google's Cronet stack cleanly falls back from a fast-rejected
+ *     QUIC to TCP, unlike Meta's mvfst (which is why blackholing UDP/443 broke
+ *     Instagram/WhatsApp but is safe here — it only touches AI hostnames).
+ *  2. TCP → 'ai-out' (only when a clean exit is configured). Pins AI traffic to
+ *     a non-datacenter node the providers accept. Absent → AI TCP falls through
+ *     to the default 'proxy', unchanged.
+ */
+function buildAiRoutingRules(hasAiExit: boolean): XrayRouting['rules'] {
+  const domains = getAiRoutingDomains();
+  if (domains.length === 0) return [];
+  const rules: XrayRouting['rules'] = [
+    { type: 'field', domain: domains, network: 'udp', port: '443', outboundTag: 'blackhole' },
+  ];
+  if (hasAiExit) {
+    rules.push({ type: 'field', domain: domains, outboundTag: 'ai-out' });
+  }
+  return rules;
 }
 
 /**
@@ -369,6 +402,17 @@ export function buildXrayConfig(
   const proxy     = buildProxyOutbound(server, protocol, creds);
   const quicProxy = buildQuicProxyOutbound(proxy);
 
+  // AI clean-exit outbound — built only when infra supplies a clean node.
+  // Without it, aiOut is null → no 'ai-out' outbound and no AI routing rule,
+  // so the config is byte-for-byte what it is today.
+  const aiOut = opts?.aiExit
+    ? (() => {
+        const o = buildProxyOutbound(opts.aiExit!.server, opts.aiExit!.protocol, opts.aiExit!.creds);
+        o.tag = 'ai-out';
+        return o;
+      })()
+    : null;
+
   return {
     log: { loglevel: debugMode ? 'debug' : 'warning' },
 
@@ -400,6 +444,9 @@ export function buildXrayConfig(
       // proxy-quic (only on Vision servers): flow-less twin of 'proxy' that
       // carries UDP/443 — Vision outbounds reject QUIC (see buildQuicProxyOutbound).
       ...(quicProxy ? [quicProxy] : []),
+      // ai-out (only when a clean exit is configured): dedicated egress for
+      // Claude/Gemini/OpenAI, which block our default Hetzner exit IP.
+      ...(aiOut ? [aiOut] : []),
       { tag: 'direct', protocol: 'freedom', settings: {} },
       // dns-out: Xray's internal DNS resolver handles port-53 traffic directly,
       // avoiding the UDP ASSOCIATE path in SOCKS5 which is fragile on some devices.
@@ -433,6 +480,12 @@ export function buildXrayConfig(
         // Everything that does not match continues to the rules below and,
         // when nothing matches, to the default 'proxy' outbound — unchanged.
         ...buildSmartBypassRules(opts?.smartBypass === true, opts?.extraBypassDomains),
+        // AI-provider rules (Claude/Gemini/OpenAI): force their QUIC to fall
+        // back to TCP (fixes Gemini's endless "loading"), and — when a clean
+        // exit is configured — pin their TCP to it (datacenter-IP block fix).
+        // Must precede the generic UDP/443 rule below. Iranian-bypass rules
+        // above still win first.
+        ...buildAiRoutingRules(!!aiOut),
         // UDP/443 (QUIC / HTTP-3) → proxy, so it tunnels through VLESS like every
         // other flow. Build 72 gave the tunnel real UDP support (HEV udp:'udp' +
         // socks-in udp:true) and the node's Xray forwards UDP over VLESS, so QUIC
