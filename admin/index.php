@@ -894,6 +894,21 @@ function icon(string $name): string {
           </table>
         </div>
       </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">REAL Redemptions <span class="panel-sub" id="realRates">Shahnameh REAL → quota</span></span>
+        </div>
+        <div class="panel-body" style="padding-top:0">
+          <div id="realEcoStatus" style="font-size:.78rem;margin:.2rem 0 .8rem;opacity:.85"></div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>Device</th><th>REAL Account</th><th>REAL</th><th>Quota</th><th>Kind</th><th>Tx Ref</th><th>Status</th><th>When</th><th>Actions</th></tr></thead>
+            <tbody id="realTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->
@@ -3225,6 +3240,46 @@ views.devices = {
             </td>
           </tr>`).join('');
     } catch(e) { toast('Payments: '+e.message,'error'); }
+    this.loadRealRedemptions();
+  },
+  async loadRealRedemptions() {
+    try {
+      const d = await api.get('real-redemptions');
+      const s = d.settings || {};
+      $('realRates').textContent =
+        `${s.real_per_gb} REAL/GB · min ${s.redeem_min_real} REAL · cap ${fmtBytes(s.redeem_daily_cap_bytes||0)}/day`;
+      // B-2 (docs/realgram/TASK_SPLIT.md, SetaLink repo) — configured status
+      // only, never the secret values (see re_ecosystem_status() in
+      // lib/real_economy.php for why: these are Bearer/HMAC secrets, not
+      // safe to render into a plaintext admin form field).
+      const es = d.ecosystem_status || {};
+      const okBadge  = (ok) => `<span style="color:${ok?'#22c55e':'#f59e0b'}">${ok?'✓':'✗'}</span>`;
+      $('realEcoStatus').innerHTML =
+        `Shahnameh ecosystem link (B-2): ` +
+        `${okBadge(!!es.link_secret_configured)} real_link_secret &nbsp; ` +
+        `${okBadge(!!es.api_key_configured)} real_api_key &nbsp; ` +
+        `real_api_url: <span class="mono" style="font-size:.75rem">${esc(es.api_url || '(not set)')}</span>`;
+      const rows = d.redemptions || [];
+      $('realTbl').innerHTML = !rows.length
+        ? '<tr><td colspan="10" class="tbl-empty">No redemptions yet</td></tr>'
+        : rows.map(r=>`<tr>
+            <td>${r.id}</td>
+            <td class="mono mobile-hide" style="font-size:.65rem;color:var(--muted-2)">${esc((r.device_id||'').substring(0,14)+'…')}</td>
+            <td class="mono" style="font-size:.7rem">${esc(r.real_account||'—')}</td>
+            <td>${r.real_amount}</td>
+            <td>${fmtBytes(r.quota_bytes||0)}</td>
+            <td style="font-size:.7rem">${r.kind==='referral_grant'?'🎁 grant':'redeem'}</td>
+            <td class="mono mobile-hide" style="font-size:.68rem">${esc((r.tx_ref||'—').substring(0,14)+'…')}</td>
+            <td><span class="badge ${r.status==='credited'?'badge-ok':r.status==='rejected'?'badge-danger':'badge-warn'}">${esc(r.status)}</span></td>
+            <td class="mobile-hide" style="font-size:.72rem;color:var(--muted-2)">${fmtRelative(r.created_at)}</td>
+            <td>
+              ${r.status==='pending'?`
+                <button class="btn btn-sm btn-primary" onclick="realReview(${r.id},'approve')">Approve</button>
+                <button class="btn btn-sm btn-danger"  onclick="realReview(${r.id},'reject')">Reject</button>`
+              : '—'}
+            </td>
+          </tr>`).join('');
+    } catch(e) { /* panel is informational — never block the payments view */ }
   }
 };
 // Expose device actions globally
@@ -3350,6 +3405,13 @@ window.payReview = async function(pid, action) {
     await api.post({action:'payment-'+action, payment_id:pid});
     toast(`Payment ${action}d`,'ok');
     views.devices.loadPayments();
+  } catch(e) { toast(e.message,'error'); }
+};
+window.realReview = async function(rid, action) {
+  try {
+    await api.post({action:'real-redemption-'+action, redemption_id:rid});
+    toast(`Redemption ${action}d`,'ok');
+    views.devices.loadRealRedemptions();
   } catch(e) { toast(e.message,'error'); }
 };
 

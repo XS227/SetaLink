@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
 import { useInboxStore } from '../stores/inboxStore';
+import { useDMStore } from '../stores/dmStore';
 
 export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile';
 
@@ -23,8 +24,26 @@ interface Props {
 
 export function BottomNav({ active, onPress }: Props) {
   const { t } = useT();
-  // Unread admin messages → badge on the Profile tab (inbox lives there)
-  const unread = useInboxStore((s) => s.messages.filter(m => !m.read).length);
+  // Unread = admin broadcasts (inboxStore) + direct messages (dmStore) — the
+  // badge must light up for BOTH, DMs were invisible here before.
+  const unreadOfficial = useInboxStore((s) => s.messages.filter(m => !m.read).length);
+  const unreadDm       = useDMStore((s) => s.messages.filter(m => m.direction === 'in' && !m.read).length);
+  const unread         = unreadOfficial + unreadDm;
+
+  // Heartbeat pulse on the badge while something is unread — quiet but alive.
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (unread <= 0) { pulse.setValue(1); return; }
+    const beat = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1.25, duration: 380, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1,    duration: 380, useNativeDriver: true }),
+        Animated.delay(900),
+      ]),
+    );
+    beat.start();
+    return () => beat.stop();
+  }, [unread > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const LABEL_KEYS: Record<NavTab, Parameters<typeof t>[0]> = {
     home:     'nav.home',
@@ -67,9 +86,9 @@ export function BottomNav({ active, onPress }: Props) {
                   {tab.icon}
                 </Text>
                 {tab.key === 'profile' && unread > 0 && (
-                  <View style={styles.badge}>
+                  <Animated.View style={[styles.badge, { transform: [{ scale: pulse }] }]}>
                     <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
-                  </View>
+                  </Animated.View>
                 )}
               </View>
               <Text style={[styles.label, isActive && styles.activeLabel]}>

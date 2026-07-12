@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
-import { Spacing } from '../design/tokens';
+import { Colors, Radius, Spacing } from '../design/tokens';
 import { BANNER_UNIT_ID } from '../services/adsService';
 import { EcosystemBanner } from './EcosystemBanner';
 
@@ -61,6 +61,16 @@ export function HomeBanner({ seed = 0, showAds }: Props) {
 }
 
 const styles = StyleSheet.create({
-  adWrap: { alignItems: 'center', paddingVertical: Spacing[2] },
+  // Paid ads render inside the same card frame as the server rows / promo card,
+  // so the slot keeps one calm, consistent shape whichever content is showing.
+  adWrap: {
+    alignItems: 'center',
+    paddingVertical: Spacing[2],
+    backgroundColor: Colors.bg.surface,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border.subtle,
+    overflow: 'hidden',
+  },
   hidden: { height: 0, overflow: 'hidden', opacity: 0 },
 });

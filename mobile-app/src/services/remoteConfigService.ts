@@ -19,6 +19,26 @@ const REMOTE_CONFIG_URL =
 const CACHE_KEY     = 'remote_config_v2';
 const CACHE_TTL_KEY = 'remote_config_ttl_v2';
 
+/**
+ * Server-pushed ecosystem promo (Shahnameh game, 3real exchange, TrustAI, …).
+ * Flat per-language fields so the admin Config page can edit them as plain
+ * strings. Unknown languages fall back to English.
+ */
+export interface EcosystemPromo {
+  id: string;
+  url: string;
+  emoji?: string;
+  image?: string;             // image URL wins over emoji when both are set
+  title_en?: string;
+  title_fa?: string;
+  title_zh?: string;
+  title_ru?: string;
+  sub_en?: string;
+  sub_fa?: string;
+  sub_zh?: string;
+  sub_ru?: string;
+}
+
 export interface RemoteConfig {
   version:          number;
   sni_priorities:   string[];         // ordered by effectiveness
@@ -48,6 +68,17 @@ export interface RemoteConfig {
   extra_logging_platform?: string | null;
   /** Enable verbose logging for this specific node ID (null = all nodes). */
   extra_logging_node?: string | null;
+
+  // ── Ecosystem promotion (REAL / Shahnameh / TrustAI) ──────────────────
+  /** Campaign control for the EcosystemBanner. Absent = embedded defaults. */
+  ecosystem?: {
+    /** false hides every ecosystem banner without an app release. */
+    banner_enabled?: boolean;
+    /** Replaces the embedded promo list when non-empty. */
+    promos?: EcosystemPromo[];
+    /** true shows the REAL wallet card on Profile (plan A3). Default off. */
+    wallet_enabled?: boolean;
+  };
 }
 
 const DEFAULT_CONFIG: RemoteConfig = {
