@@ -1,4 +1,4 @@
-# AdsGram inquiry — FINALIZED, ready to send (2026-07-12)
+# AdsGram inquiry — ✅ SENT 2026-07-12 (Khabat, via AdsGram Telegram)
 
 Task B-5 / `OPEN_QUESTIONS.md` Q2. **FINALIZED 2026-07-12** — sender filled,
 ready to send verbatim. Neither agent has an AdsGram account/support channel,
