@@ -145,7 +145,7 @@ falls back to a quota reward so nobody goes unrewarded. Default reward mode is
 | # | Task | Status |
 |---|---|---|
 | B-1 | Ecosystem API in the Shahnameh backend: `/v1/verify-spend`, `/v1/balance/:account`, `/v1/spend` per contracts 2–4 (Bearer auth, idempotent), against the live `real_balance` ledger | ✅ done 2026-07-11 (shahnameh-backend `7693129`, live on pm2 `khabat`; smoke-tested balance/spend/verify/idempotent-replay/insufficient-balance against a throwaway account, cleaned up) |
-| B-2 | Ops: generate `real_link_secret` + `real_api_key`, install in Shahnameh env AND the panel `settings` table (`real_link_secret`, `real_api_url`, `real_api_key`). Names only in docs/commits — never values | values ready in `/coord/secrets` (see `COORDINATION_HUB.md`) — `real_api_url` re-verified 2026-07-11 after the nginx fix below. **Blocked on Khabat** relaying `AGENT_COORD_API_KEY`/`AGENT_COORD_VAULT_KEY` to Agent A so he can pull them |
+| B-2 | Ops: generate `real_link_secret` + `real_api_key`, install in Shahnameh env AND the panel `settings` table (`real_link_secret`, `real_api_url`, `real_api_key`). Names only in docs/commits — never values | ✅ **DONE 2026-07-12.** Khabat relayed the vault keys; Agent A pulled all 3 values from `/coord/secrets`, set them in the panel SQLite settings, E2E-verified (server-to-server auth = 404 w/ key vs 401 without; link-proof HMAC accepted a minted proof = secrets match), and flipped `rc_real_wallet_enabled`=1. **The full wallet loop is LIVE for build-88 devices.** |
 | B-3 | Link-proof minting UX: bot command or Mini App button that, given a `device_id` (user pastes/deep-links from the VPN app), returns `{real_account, ts, sig}` per contract 1 | ✅ done 2026-07-11 (shahnameh-backend `4c14a1a` — `POST /season2/link-real-proof`; sig verified byte-for-byte against contract's HMAC formula; now confirmed *publicly reachable* too, see nginx fix below) |
 | B-4 | RealGram Path A Mini App skeleton in `realgram-miniapp/` (Telegram WebApp SDK + TON Connect + reuse `lib/adsgram.js` reward engine patterns) | ✅ done 2026-07-11 (SetaLink `feature/realgram-miniapp` branch, `ef2e227` — not merged; deep-link scheme fixed to `setalink://` + param `account` per Agent A's answer. 3 open questions remain: hosting domain, BotFather registration, initData server-side verification) |
 | B-5 | AdsGram: written confirmation whether "alternative clients" covers a native in-chat sponsored card (see assessment §2.3–2.4) — draft + send, log answer in `DECISIONS.md` | half-done: drafted in `ADSGRAM_INQUIRY_DRAFT.md` 2026-07-11. **Blocked on Khabat** to actually send it — Agent B has no AdsGram account/support access |
@@ -436,3 +436,43 @@ Everything you need from me, in one place. Nothing below waits on Khabat.
   verification is your backend (HMAC over Telegram's initData with the bot
   token) — not a panel concern. If you want the panel to *also* validate
   something from the Mini App, tell me the contract and I'll build it.
+
+---
+
+## 2026-07-12 — Day 3 plan (set up with Khabat)
+
+**🎉 Milestone reached: the ecosystem wallet loop is LIVE.** B-2 done today —
+secrets set + verified + flag flipped. On a build-88 device, link→balance→
+redeem now works end to end. Everything from A-1..A-4 + B-1..B-7 is now
+connected in production (behind the flag, on the shipped build).
+
+### Agent A (dev box) — today
+- **A-7 (do first):** wire Path B0 onboarding — the post-connect tip using
+  Agent B's EN+FA copy from `PATH_B0_ONBOARDING.md` (placement decided:
+  post-connect toast, not a 4th slide). App change, next build.
+- **A-8:** merge the shipped work to `main` when Khabat gives go —
+  `feat/ecosystem-phase1` (b88: node-fix + wallet + C3 + inbox/UX),
+  `seo/sameas-siblings`. Nothing's on main yet from this fortnight's work.
+- **A-9 (with build 88 test feedback):** if the owner confirms the node-fix
+  holds (stays on Finland) + the wallet card renders correctly, decide OTA
+  rollout of b88 (testers/all).
+- Standing: watch for the SEO agent's carrier pillar; promote GSC
+  `top_untracked` into the tracked set as impressions appear.
+
+### Agent B (web/Shahnameh box) — today
+- **B-2 is DONE — nothing more needed from you there.** The panel has your
+  secrets and the loop is live; you can watch `/v1/*` traffic land for real.
+- **B-5:** the AdsGram inquiry is drafted (`ADSGRAM_INQUIRY_DRAFT.md`) —
+  blocked on Khabat to actually send it (he's online today; good moment).
+- **B-4 Mini App:** the 3 open questions (hosting domain, BotFather
+  registration, initData verification) — hosting + BotFather are Khabat's
+  infra call; initData is your backend. Good day to close them with him here.
+- Numerologist push is unblocked (Agent A added your deploy key) — push your
+  4 stuck commits whenever.
+
+### Blocked on Khabat (he's online — good moment)
+- Send the AdsGram inquiry (B-5).
+- Mini App hosting domain + BotFather registration (B-4).
+- Go/no-go on: b88 OTA rollout, merge-to-main, and the RealGram Path B full
+  client build (spike passed — `SPIKE_REPORT.md` — needs explicit sign-off +
+  one Android build for the TDLib size number).
