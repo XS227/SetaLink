@@ -460,11 +460,22 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             // SIM/network country is the only geo signal that survives the
             // tunnel: requests through the VPN exit in Germany, but the SIM
             // still says IR/TR. Used for the admin country analytics + flags.
-            val simCountry = runCatching {
-                val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE)
+            val tm = runCatching {
+                reactContext.getSystemService(Context.TELEPHONY_SERVICE)
                     as android.telephony.TelephonyManager
-                (tm.simCountryIso.takeIf { it.isNotBlank() } ?: tm.networkCountryIso ?: "")
+            }.getOrNull()
+            val simCountry = runCatching {
+                (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso ?: "")
                     .uppercase()
+            }.getOrDefault("")
+            // Carrier/operator NAME — the signal that lets the panel do
+            // per-operator learned routing (Hetzner is blackholed on Irancell/TCI
+            // but works on MCI; the Stealth node saves Irancell/TCI). No runtime
+            // permission is required for the operator name. Prefer the SIM
+            // operator (the real carrier) over the (roaming) network operator.
+            val carrierName = runCatching {
+                (tm?.simOperatorName?.takeIf { it.isNotBlank() }
+                    ?: tm?.networkOperatorName ?: "").trim()
             }.getOrDefault("")
             promise.resolve(WritableNativeMap().apply {
                 putString("android_id_hash",  androidIdHash)
@@ -474,6 +485,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                 putString("android_version",  android.os.Build.VERSION.RELEASE)
                 putString("abi",              android.os.Build.SUPPORTED_ABIS.joinToString(","))
                 putString("sim_country",      simCountry)
+                putString("carrier_name",     carrierName)
             })
         } catch (e: Exception) {
             promise.resolve(WritableNativeMap())

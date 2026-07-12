@@ -674,12 +674,20 @@ function _reportTelemetry(
     p.failureCategory?.includes('proxy')   ? 'proxy_not_ready'   :
     p.failureCategory                      ? 'routing_failed'    : undefined;
 
+  let carrier: string | undefined;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getCachedCarrier } = require('./deviceIdentityService');
+    carrier = getCachedCarrier() || undefined;
+  } catch {}
+
   uploadConnectTelemetry({
     event:             profileTelemetryEvent(p),
     node_id:           nodeId,
     profile_id:        p.id,
     sni:               p.sni,
     protocol:          p.protocol,
+    carrier_name:      carrier,
     platform:          Platform.OS as 'android' | 'ios',
     app_version:       APP_VERSION,
     build_number:      APP_BUILD_CODE,
