@@ -9,6 +9,7 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { EcosystemBanner } from '../components/EcosystemBanner';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { TopBar } from '../components/TopBar';
 
 import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
@@ -109,6 +110,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
             <View style={styles.countBadge}>
               <Text style={styles.countText}>{servers.length} {t('sv.locations')}</Text>
             </View>
+            <TopBar onNavigate={onNavigate as (tab: string) => void} />
           </View>
         </View>
 

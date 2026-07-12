@@ -5,6 +5,7 @@ import {
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
+import { TopBar } from '../components/TopBar';
 import { useSessionStore } from '../stores/sessionStore';
 import { useVpnStore }     from '../stores/vpnStore';
 import { formatBytes, formatDuration } from '../utils/formatters';
@@ -157,7 +158,10 @@ export function ActivityScreen({ onNavigate, activeTab }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>{t('ac.title')}</Text>
-          <Text style={styles.date}>{dateHeader}</Text>
+          <View style={styles.headerRight}>
+            <Text style={styles.date}>{dateHeader}</Text>
+            <TopBar onNavigate={onNavigate as (tab: string) => void} />
+          </View>
         </View>
 
         {/* Summary cards */}
@@ -310,9 +314,10 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection:  'row',
-    alignItems:     'baseline',
+    alignItems:     'center',
     justifyContent: 'space-between',
   },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: {
     fontSize:      Typography.size['2xl'],
     fontFamily:    Typography.family.heading,
