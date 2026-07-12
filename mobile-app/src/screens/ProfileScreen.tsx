@@ -18,6 +18,7 @@ import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
 import { WatchAdCard } from '../components/WatchAdCard';
 import { RealWalletCard } from '../components/RealWalletCard';
+import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore } from '../stores/dmStore';
 
@@ -548,6 +549,9 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             </View>
           </GlassCard>
         </TouchableOpacity>
+
+        {/* Ambassador earnings — % of every invitee's usage, visualized. */}
+        <ReferralEarningsDonut deviceId={user.deviceId} onInvite={handleShareReferral} />
 
         {/* Referral */}
         <GlassCard style={styles.referralCard} glowColor={Colors.blue[400]}>

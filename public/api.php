@@ -600,6 +600,48 @@ if ($method === 'GET') {
         ok(['transfers' => qe_transfer_history($pdo, $deviceId, 50)]);
     }
 
+    if ($action === 'referral-earnings') {
+        // Ambassador model: the referrer earns a fixed % of each active
+        // invitee's usage, ongoing ("forever"). Powers the profile donut chart
+        // that shows how much comes in from each person they invited. This is a
+        // read-only computation (display) — the % is admin-tunable via the
+        // referral_earn_pct setting (default 10). Only credited/approved
+        // referrals count (TrustAI/risk-gated at referral time), so fraud
+        // doesn't inflate earnings.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        $pct = 10.0;
+        try {
+            $v = $pdo->query("SELECT value FROM settings WHERE key='referral_earn_pct'")->fetchColumn();
+            if (is_numeric($v) && (float)$v > 0) $pct = (float)$v;
+        } catch (\Exception $e) {}
+        $st = $pdo->prepare(
+            "SELECT r.new_device_id AS did, COALESCE(d.user_id,'') AS uid,
+                    COALESCE(d.quota_bytes_used,0) AS used
+             FROM referral_uses r JOIN devices d ON d.device_id = r.new_device_id
+             WHERE r.referrer_device_id = ? AND r.status IN ('credited','approved')
+             ORDER BY used DESC"
+        );
+        $st->execute([$deviceId]);
+        $invitees = []; $total = 0;
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $earned = (int)floor((int)$row['used'] * $pct / 100);
+            $total += $earned;
+            $invitees[] = [
+                'label'        => $row['uid'] !== '' ? $row['uid'] : ('SL-…' . substr((string)$row['did'], -6)),
+                'used_bytes'   => (int)$row['used'],
+                'earned_bytes' => $earned,
+            ];
+        }
+        ok([
+            'pct'                => $pct,
+            'count'              => count($invitees),
+            'total_earned_bytes' => $total,
+            'invitees'           => $invitees,
+        ]);
+    }
+
     if ($action === 'resolve-recipient') {
         // Look up a transfer recipient by device_id / user_id / referral_code so
         // the Send-GB confirmation screen can show who will receive the quota.

@@ -8,6 +8,7 @@ import { ConnectButton } from '../components/ConnectButton';
 import { GoldBeatBurst } from '../components/GoldBeatBurst';
 import { StatusBadge }   from '../components/StatusBadge';
 import { NetworkQualityDots } from '../components/NetworkQualityDots';
+import { TopBar }             from '../components/TopBar';
 import { MetricPill }    from '../components/MetricPill';
 import { NetworkQualityBar } from '../components/NetworkQualityBar';
 import { GlassCard }     from '../components/GlassCard';
@@ -195,13 +196,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               </Text>
             )}
           </View>
-          <TouchableOpacity
-            style={styles.settingsBtn}
-            onPress={() => onNavigate('settings' as NavTab)}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.settingsIcon}>⚙</Text>
-          </TouchableOpacity>
+          <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </Animated.View>
 
         {/* Status row */}

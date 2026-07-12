@@ -448,6 +448,11 @@ const EN = {
   'nq.ok':              'Good',
   'nq.weak':            'Weak',
   'nq.off':             'Not connected',
+  'earn.title':         'Ambassador earnings',
+  'earn.sub':           'You earn {pct}% of the data everyone you invite uses — forever.',
+  'earn.gbEarned':      'GB earned',
+  'earn.empty':         'Invite friends and watch your earnings grow as they use ReaLink.',
+  'earn.invite':        'Invite friends',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -987,6 +992,11 @@ const FA: typeof EN = {
   'nq.ok':              'خوب',
   'nq.weak':            'ضعیف',
   'nq.off':             'متصل نیست',
+  'earn.title':         'درآمد سفیر',
+  'earn.sub':           'شما {pct}٪ از حجمی که هر کسی دعوت کنید مصرف می‌کند را دریافت می‌کنید — برای همیشه.',
+  'earn.gbEarned':      'گیگ کسب‌شده',
+  'earn.empty':         'دوستانتان را دعوت کنید و ببینید درآمدتان با استفاده آن‌ها از ری‌لینک رشد می‌کند.',
+  'earn.invite':        'دعوت از دوستان',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
@@ -1503,6 +1513,11 @@ const ZH: typeof EN = {
   'nq.ok':           '良好',
   'nq.weak':         '弱',
   'nq.off':          '未连接',
+  'earn.title':      '大使收益',
+  'earn.sub':        '您邀请的每个人所用流量的 {pct}%，永久归您。',
+  'earn.gbEarned':   '已赚 GB',
+  'earn.empty':      '邀请朋友，随着他们使用 ReaLink，您的收益会不断增长。',
+  'earn.invite':     '邀请朋友',
 
   'pr.inviteRewards': '邀请奖励',
   'pr.activeInvites': '个有效邀请',
@@ -2012,6 +2027,11 @@ const RU: typeof EN = {
   'nq.ok':           'Хороший',
   'nq.weak':         'Слабый',
   'nq.off':          'Не подключено',
+  'earn.title':      'Доход амбассадора',
+  'earn.sub':        'Вы получаете {pct}% от трафика каждого приглашённого — навсегда.',
+  'earn.gbEarned':   'ГБ заработано',
+  'earn.empty':      'Приглашайте друзей и следите, как растёт доход по мере их использования ReaLink.',
+  'earn.invite':     'Пригласить друзей',
 
   'pr.inviteRewards': 'Награды за приглашения',
   'pr.activeInvites': 'активных приглашений',
