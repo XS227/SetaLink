@@ -263,3 +263,22 @@ an account you don't own) before the Mini App is deployed anywhere real —
 zero migration cost, since nothing in production depended on the old
 request shape yet.
 **Commits:** shahnameh-backend `fdd7c19`, SetaLink `aa9fc98`.
+
+### 2026-07-12 — AdsGram answered B-5: "We only operate on Telegram" → RealGram Path B uses AdMob
+
+**Answer received by:** Khabat, via AdsGram's Telegram support.
+**What AdsGram said:** *"Hello! We only operate on Telegram."* — i.e. AdsGram
+does NOT serve a standalone/alternative client. Their "alternative clients"
+marketing category does not extend to a native TDLib app's in-chat surface;
+they operate only inside Telegram (Mini Apps, bots, channels).
+**Decision (Khabat):** the RealGram **independent client (Path B) uses AdMob**
+for its in-app ads, not AdsGram. This is exactly the compliant fallback the
+assessment already specified (§2.4: if AdsGram doesn't cover the native
+in-chat card, don't force it). AdMob is already integrated in the ReaLink app,
+so the pattern + compliance rules (no geo-spoofing, rewarded/best-effort) carry
+over directly.
+**Unchanged:** AdsGram stays the ad engine for anything that runs INSIDE
+Telegram — Shahnameh and the RealGram **Path A Mini App** (B-4). So the
+ecosystem keeps AdsGram where it works (Telegram) and AdMob where it must
+(the native app). No in-chat sponsored-card design is needed — that idea is
+closed by this answer.
