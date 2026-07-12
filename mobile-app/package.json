@@ -1,6 +1,6 @@
 {
   "name": "setalink",
-  "version": "0.9.50",
+  "version": "0.9.63",
   "private": true,
   "scripts": {
     "android": "react-native run-android",
