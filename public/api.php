@@ -646,6 +646,8 @@ if ($method === 'POST') {
         $sdkVersion    = (int)($_POST['sdk_version'] ?? 0);
         $androidVer    = substr(trim($_POST['android_version'] ?? ''), 0, 20);
         $abi           = substr(trim($_POST['abi']             ?? ''), 0, 80);
+        // Carrier/operator name → feeds per-operator learned routing.
+        $carrier       = substr(trim($_POST['carrier']         ?? ''), 0, 80);
         if (!$deviceId) err('missing device_id');
 
         $clientIp = client_ip();
@@ -727,6 +729,14 @@ if ($method === 'POST') {
             ]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
+        }
+
+        // Store the carrier separately (kept out of the big INSERT/UPDATE above
+        // to avoid touching their column lists). Only when the client sent one —
+        // never blank an existing value. Drives per-operator learned routing.
+        if ($carrier !== '') {
+            try { $pdo->prepare("UPDATE devices SET carrier=? WHERE device_id=?")->execute([$carrier, $deviceId]); }
+            catch (\Exception $e) { /* carrier column absent on very old schemas */ }
         }
 
         $srv = fetch_bootstrap_server($pdo);

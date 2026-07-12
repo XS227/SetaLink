@@ -506,6 +506,17 @@ if ($rel === '/servers') {
     // Load telemetry-derived success scores (last 7 days) for ranking.
     $scores = [];
     try { ni_init_tables($pdo); $scores = ni_node_scores($pdo, 7); } catch (\Throwable $_) {}
+    // Per-operator learned routing: rank nodes by how well they work for THIS
+    // caller's carrier (Hetzner is blackholed on Irancell/TCI but works on MCI;
+    // the Stealth node saves Irancell/TCI). Falls back to the global score when
+    // the carrier is unknown or the per-carrier sample for a node is thin.
+    $carrierScores = [];
+    try {
+        $cst = $pdo->prepare("SELECT carrier FROM devices WHERE device_id=?");
+        $cst->execute([$deviceId]);
+        $fam = ni_carrier_family((string)($cst->fetchColumn() ?: ''));
+        if ($fam !== '') $carrierScores = ni_node_scores_by_carrier($pdo, $fam, 21);
+    } catch (\Throwable $_) {}
     $out = [];
     foreach ($nodes as $id => $n) {
         if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) continue; // hide test nodes
@@ -516,8 +527,13 @@ if ($rel === '/servers') {
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
         if (is_int($rtt)) $meta['ping'] = $rtt;
-        // Annotate telemetry-based success score (0-100) when data exists.
-        if (isset($scores[$id]['success_rate'])) {
+        // Success score (0-100): prefer the per-carrier rate when we have a real
+        // sample for this node (>= 4 attempts), else the global rate.
+        $cs = $carrierScores[$id] ?? null;
+        if ($cs !== null && (int)$cs['total'] >= 4 && $cs['success_rate'] !== null) {
+            $meta['successScore'] = (float)$cs['success_rate'];
+            $meta['scoreBasis']   = 'carrier';
+        } elseif (isset($scores[$id]['success_rate'])) {
             $meta['successScore'] = (float)$scores[$id]['success_rate'];
         }
         $out[] = $meta;

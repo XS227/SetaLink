@@ -280,6 +280,66 @@ function ni_node_scores(PDO $pdo, int $days = 7): array
 }
 
 /**
+ * Classify a free-text carrier/operator name into a family key. Node
+ * reachability from Iran is carrier-dependent (Hetzner is blackholed on
+ * Irancell/TCI but works on MCI; the Stealth/CDN node saves Irancell/TCI), so
+ * grouping by operator is what makes per-operator routing possible.
+ */
+function ni_carrier_families(): array {
+    return [
+        'irancell' => ['Irancell', 'MTN', 'ایرانسل'],
+        'mci'      => ['MCI', 'Hamrah', 'همراه'],
+        'tci'      => ['TCI', 'Telecommunication Company of Iran', 'مخابرات'],
+        'rightel'  => ['Rightel', 'رایتل'],
+        'shatel'   => ['Shatel', 'شاتل'],
+    ];
+}
+
+function ni_carrier_family(string $name): string {
+    $n = trim($name);
+    if ($n === '' || $n === '--') return '';
+    $nl = strtolower($n);
+    foreach (ni_carrier_families() as $fam => $toks) {
+        foreach ($toks as $t) {
+            if (strpos($nl, strtolower($t)) !== false || strpos($n, $t) !== false) return $fam;
+        }
+    }
+    return '';
+}
+
+/**
+ * Per-node success rate for a single carrier family, from connect_telemetry's
+ * carrier_name. Thinner data than the global scores, so callers should require
+ * a minimum sample before trusting it and fall back to global (see v1.php).
+ */
+function ni_node_scores_by_carrier(PDO $pdo, string $family, int $days = 21): array {
+    $fams = ni_carrier_families();
+    if (!isset($fams[$family])) return [];
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $likes = []; $args = [$since];
+    foreach ($fams[$family] as $t) { $likes[] = 'carrier_name LIKE ?'; $args[] = '%' . $t . '%'; }
+    $where = implode(' OR ', $likes);
+    $rows = $pdo->prepare(
+        "SELECT node_id, COUNT(*) AS total, SUM(event='connect_ok') AS ok
+           FROM connect_telemetry
+          WHERE created_at >= ? AND carrier_name IS NOT NULL AND carrier_name <> '' AND ($where)
+          GROUP BY node_id"
+    );
+    $rows->execute($args);
+    $out = [];
+    foreach ($rows->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $total = (int)$r['total'];
+        $out[$r['node_id']] = [
+            'total'        => $total,
+            'ok'           => (int)$r['ok'],
+            'success_rate' => $total > 0 ? round((int)$r['ok'] / $total * 100, 1) : null,
+        ];
+    }
+    return $out;
+}
+
+/**
  * Success rate per node+profile pair.
  */
 function ni_node_profile_scores(PDO $pdo, int $days = 7): array
