@@ -12,7 +12,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, prettyPackageName } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
@@ -488,7 +488,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <View style={styles.pkgList}>
               {purchasedPackages.map((p) => (
                 <View key={p.id} style={styles.pkgListRow}>
-                  <Text style={styles.pkgListName} numberOfLines={1}>{p.package_name}</Text>
+                  <Text style={styles.pkgListName} numberOfLines={1}>{prettyPackageName(p.package_name)}</Text>
                   <Text style={styles.pkgListBytes}>{gb(p.bytes)}</Text>
                 </View>
               ))}
