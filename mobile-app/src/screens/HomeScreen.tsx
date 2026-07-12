@@ -7,13 +7,11 @@ import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/t
 import { ConnectButton } from '../components/ConnectButton';
 import { GoldBeatBurst } from '../components/GoldBeatBurst';
 import { StatusBadge }   from '../components/StatusBadge';
-import { NetworkQualityDots } from '../components/NetworkQualityDots';
 import { TopBar }             from '../components/TopBar';
 import { MetricPill }    from '../components/MetricPill';
-import { NetworkQualityBar } from '../components/NetworkQualityBar';
+import { CoverageIcon }  from '../components/CoverageIcon';
 import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
-import { HomeBanner } from '../components/HomeBanner';
 import { WatchAdCard } from '../components/WatchAdCard';
 
 import { useVpnStore }         from '../stores/vpnStore';
@@ -113,6 +111,16 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
 
+  // Composite coverage score (route + DNS + ping + traffic). Formerly rendered
+  // as a full-width card in the body; now surfaced as the top-bar coverage icon.
+  const healthScore = computeHealthScore({
+    connected:    isConnected,
+    probeOk:      isConnected && (traceTestResult?.ok ?? getLastConnectProbeOk()),
+    dnsOk:        dnsOkFromConnectionLog(connectionLog),
+    pingMs:       pingMs || selectedServer?.ping || 0,
+    downloadMbps, uploadMbps,
+  });
+
   // Friendly status message shown below connect button while connecting
   const connectingLabel = (() => {
     if (connectionState !== 'connecting') return null;
@@ -196,7 +204,14 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               </Text>
             )}
           </View>
-          <TopBar onNavigate={onNavigate as (tab: string) => void} />
+          <View style={styles.headerActions}>
+            <CoverageIcon
+              quality={healthScore}
+              connected={isConnected}
+              onPress={() => onNavigate('ai')}
+            />
+            <TopBar onNavigate={onNavigate as (tab: string) => void} />
+          </View>
         </Animated.View>
 
         {/* Status row */}
@@ -205,7 +220,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           { opacity: headerOpacity, transform: [{ translateY: contentTranslate }] },
         ]}>
           <StatusBadge status={STATUS_MAP[connectionState]} />
-          {isConnected && <NetworkQualityDots />}
           {isConnected && (
             <View style={styles.protocolBadge}>
               <Text style={styles.protocolText}>{protocol}</Text>
@@ -306,20 +320,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           />
         </Animated.View>
 
-        {/* Network quality — composite score (route + DNS + ping + traffic) */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <GlassCard glowColor={isConnected ? Colors.emerald[400] : undefined}>
-            <NetworkQualityBar quality={computeHealthScore({
-              connected:    isConnected,
-              probeOk:      isConnected && (traceTestResult?.ok ?? getLastConnectProbeOk()),
-              dnsOk:        dnsOkFromConnectionLog(connectionLog),
-              pingMs:       pingMs || selectedServer?.ping || 0,
-              downloadMbps, uploadMbps,
-            })}
-            />
-          </GlassCard>
-        </Animated.View>
-
         {/* Smart Connect Engine status */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
           <TouchableOpacity
@@ -348,11 +348,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.aiArrowText}>›</Text>
             </View>
           </TouchableOpacity>
-        </Animated.View>
-
-        {/* Front-page banner — rotates AdMob banner ⇄ ecosystem promo (free users) */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <HomeBanner seed={0} showAds={!user || user.plan === 'free'} />
         </Animated.View>
 
         {/* Watch ad → earn data */}
@@ -465,6 +460,7 @@ const styles = StyleSheet.create({
   scroll:       { flex: 1 },
   content:      { paddingTop: Layout.statusBarHeight, paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
   header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
+  headerActions:{ flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   brandBlock:   { flex: 1, gap: 2 },
   brandRow:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandLogoSmall: { width: 22, height: 22 },
