@@ -238,3 +238,28 @@ volume questions.
 (assessment §2.4): if yes → build the local card; if no/unclear → fall back
 to a dedicated "RealGram Connectivity" Mini App/panel surface. Log their
 answer here when it lands.
+
+### 2026-07-12 — initData verification closed for link-real-proof (README open question #4)
+
+**Decided/done by:** Claude (Agent B session), "start på initData-
+verifiseringen nå, ikke vent på meg" (Khabat, while B-5 was in flight with
+Agent A).
+**What:** `/season2/link-real-proof` (shahnameh-backend) now requires and
+cryptographically verifies `Telegram.WebApp.initData` (Telegram's official
+HMAC-SHA-256 algorithm) instead of trusting a client-supplied
+`telegram_id`. New `lib/telegramAuth.js`, 7 isolated test cases + a live
+end-to-end pass. `realgram-miniapp/main.js`'s `requestLinkProof()` updated
+to send `tg.initData` (raw signed string) instead of the id.
+**Deliberately scoped, not a blanket fix:** only this one endpoint changed.
+It's the one that mints a proof capable of claiming a REAL wallet — an
+unverified `telegram_id` there would let anyone mint a valid proof for
+someone else's account. Balance lookup and the AdsGram reward call in the
+same Mini App file still send a plain `telegram_id`, matching the rest of
+season2's existing API — an accepted, pre-existing gap for the low-stakes
+game currencies, not retrofitted here (that's a separate, much larger
+change to season2 auth broadly, per the original open-question note).
+**Why it matters:** closes the actual exploit path (mint a link proof for
+an account you don't own) before the Mini App is deployed anywhere real —
+zero migration cost, since nothing in production depended on the old
+request shape yet.
+**Commits:** shahnameh-backend `fdd7c19`, SetaLink `aa9fc98`.
