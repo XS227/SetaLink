@@ -15,7 +15,7 @@
       'hero.badge': 'Servers online — secure global nodes',
       'hero.h1a':   'Free Anti-Censorship VPN',
       'hero.h1b':   'Internet Freedom for Everyone',
-      'hero.sub':   'AI-powered VPN that beats DPI and censorship. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 5 GB free on install. No account, no server setup.',
+      'hero.sub':   'AI-powered private network that keeps your games, apps and community online on slow, throttled or restricted connections. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 5 GB free on install. No account, no server setup.',
       'hero.cta1':  'Download for Android',
       'hero.cta_ios': 'iOS — TestFlight Beta',
 
@@ -30,8 +30,8 @@
       'dl.card3.p':   'Works on every Android device. Larger file — pick this when in doubt.',
 
       'shah.label':   'COMMUNITY GAME',
-      'shah.title':   'Play Shahnameh — earn REAL',
-      'shah.sub':     'Battle as a Persian warrior in the Shahnameh Telegram game and earn REAL rewards.',
+      'shah.title':   'Play Shahnameh — connect &amp; earn REAL',
+      'shah.sub':     'Realink keeps the Shahnameh game and REAL community reachable. Connect, battle as a warrior, and earn REAL rewards — even when the game runs slow or won\'t load.',
       'shah.cta':     'Play on Telegram',
 
       'stat.members':   'Members &amp; growing',
@@ -40,7 +40,7 @@
       'stat.free':      'Free on install',
 
       'how.label': 'HOW IT WORKS',
-      'how.title': 'Three Steps to Free Internet',
+      'how.title': 'Three Steps to Get Online',
       'how.sub':   'No account, no credit card, no configuration. Install and connect.',
       'how.s1.h':  'Emergency Access',
       'how.s1.p':  'Install the app and get 5 GB instantly — no login, no account. Tap Connect and the AI selects the fastest working protocol for your network.',
@@ -59,11 +59,11 @@
       'ai.f3.h':  'Adaptive Routing',
       'ai.f3.p':  'The network learns which SNIs work from your region. Different networks have different blocking patterns — the app adapts and remembers what works where, improving over time.',
       'ai.f4.h':  'Remote Config Push',
-      'ai.f4.p':  'Admin can push protocol priority updates without requiring an app update. When censorship patterns change, routing rules are updated automatically for all users.',
+      'ai.f4.p':  'Admin can push protocol priority updates without requiring an app update. When network blocking patterns change, routing rules are updated automatically for all users.',
 
       'why.label':      'WHY REALINK',
-      'why.title':      'Built for Real Censorship',
-      'why.sub':        'Not a generic VPN wrapper. Built from scratch for the realities of internet censorship in Iran, China and Russia.',
+      'why.title':      'Built for Real-World Networks',
+      'why.sub':        'Not a generic VPN wrapper. Engineered from scratch to keep your games, apps and community online on slow, throttled or restricted networks.',
       'why.tech.label': 'TECHNICAL EXCELLENCE',
       'why.tech.1':     'VLESS + Reality — traffic indistinguishable from standard HTTPS, the most censorship-resistant protocol available',
       'why.tech.2':     'XHTTP and WebSocket fallback transports via nginx edge proxy, plus a Cloudflare stealth edge, tested continuously',
@@ -143,7 +143,7 @@
       'hero.badge': 'سرورها فعال — گره‌های امن جهانی',
       'hero.h1a':   'فیلترشکن رایگان و پرسرعت',
       'hero.h1b':   'اینترنت آزاد برای همه',
-      'hero.sub':   'فیلترشکن هوشمند مبتنی بر هوش مصنوعی برای عبور از فیلترینگ و سانسور. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۵ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون قطعی.',
+      'hero.sub':   'شبکه خصوصی هوشمند مبتنی بر هوش مصنوعی که بازی‌ها، اپ‌ها و جامعه‌ات را روی اتصال‌های کند، محدود یا مسدود آنلاین نگه می‌دارد. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۵ گیگابایت رایگان پس از نصب، بدون ثبت‌نام.',
       'hero.cta1':  'دانلود برای اندروید',
       'hero.cta_ios': 'iOS — نسخه بتای TestFlight',
 
@@ -158,8 +158,8 @@
       'dl.card3.p':   'روی همه دستگاه‌های اندروید کار می‌کند. حجم بیشتر — در صورت شک این را انتخاب کنید.',
 
       'shah.label':   'بازی جامعه',
-      'shah.title':   'شاهنامه بازی کن — REAL بگیر',
-      'shah.sub':     'در بازی تلگرامی شاهنامه به عنوان یک پهلوان ایرانی مبارزه کن و جایزه REAL بگیر.',
+      'shah.title':   'شاهنامه بازی کن — وصل شو و REAL بگیر',
+      'shah.sub':     'ری‌لینک بازی شاهنامه و جامعه REAL را در دسترس نگه می‌دارد. وصل شو، به‌عنوان پهلوان مبارزه کن و جایزه REAL بگیر — حتی وقتی بازی کند است یا باز نمی‌شود.',
       'shah.cta':     'بازی در تلگرام',
 
       'stat.members':   'کاربر و در حال رشد',
@@ -168,7 +168,7 @@
       'stat.free':      'رایگان پس از نصب',
 
       'how.label': 'چطور کار می‌کند',
-      'how.title': 'سه گام تا فیلترشکن رایگان',
+      'how.title': 'سه گام تا آنلاین شدن',
       'how.sub':   'بدون حساب، بدون کارت اعتباری، بدون تنظیمات. نصب کن و وصل شو.',
       'how.s1.h':  'دسترسی اضطراری',
       'how.s1.p':  'برنامه را نصب کن و فوری ۵ گیگابایت بگیر — بدون لاگین، بدون حساب. Connect را بزن و هوش مصنوعی سریع‌ترین پروتکل را انتخاب می‌کند.',
@@ -187,11 +187,11 @@
       'ai.f3.h':  'مسیریابی تطبیقی',
       'ai.f3.p':  'شبکه یاد می‌گیرد کدام SNIها از منطقه شما کار می‌کنند. شبکه‌های مختلف الگوهای سانسور متفاوتی دارند — برنامه تطبیق پیدا می‌کند و بهتر می‌شود.',
       'ai.f4.h':  'ارسال تنظیمات از راه دور',
-      'ai.f4.p':  'بدون نیاز به به‌روزرسانی برنامه، می‌توان اولویت پروتکل‌ها را تغییر داد. وقتی الگوهای سانسور تغییر می‌کنند، قوانین مسیریابی برای همه کاربران به‌طور خودکار به‌روز می‌شوند.',
+      'ai.f4.p':  'بدون نیاز به به‌روزرسانی برنامه، می‌توان اولویت پروتکل‌ها را تغییر داد. وقتی الگوهای مسدودسازی شبکه تغییر می‌کنند، قوانین مسیریابی برای همه کاربران به‌طور خودکار به‌روز می‌شوند.',
 
       'why.label':      'چرا ری‌لینک',
-      'why.title':      'ساخته‌شده برای سانسور واقعی ایران',
-      'why.sub':        'یک پوشش VPN عمومی نیست. از صفر برای واقعیت سانسور اینترنت در ایران، چین و روسیه ساخته شده.',
+      'why.title':      'ساخته‌شده برای شبکه‌های واقعی',
+      'why.sub':        'یک پوشش VPN عمومی نیست. از پایه ساخته شده تا بازی‌ها، اپ‌ها و جامعه‌ات را روی شبکه‌های کند، محدود یا مسدود آنلاین نگه دارد.',
       'why.tech.label': 'برتری فنی',
       'why.tech.1':     'VLESS + Reality — ترافیکی که از HTTPS استاندارد قابل تشخیص نیست، مقاوم‌ترین پروتکل موجود',
       'why.tech.2':     'پروتکل‌های پشتیبان XHTTP و WebSocket از طریق پروکسی edge nginx و یک گره مخفی Cloudflare، مداوماً آزمایش می‌شوند',
@@ -271,7 +271,7 @@
       'hero.badge': '服务器在线 — 安全的全球节点',
       'hero.h1a':   '免费翻墙 VPN',
       'hero.h1b':   '人人享有自由互联网',
-      'hero.sub':   '基于 AI 的智能翻墙 VPN，突破 DPI 与审查。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 5 GB，无需账号，无需配置。',
+      'hero.sub':   '基于 AI 的智能私有网络，让你的游戏、应用和社区在缓慢、受限或被封锁的连接上保持在线。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 5 GB，无需账号，无需配置。',
       'hero.cta1':  '下载安卓版',
       'hero.cta_ios': 'iOS — TestFlight 测试版',
 
@@ -286,8 +286,8 @@
       'dl.card3.p':   '适用于所有安卓设备。文件较大 — 拿不准时选它。',
 
       'shah.label':   '社区游戏',
-      'shah.title':   '玩《列王纪》— 赚取 REAL',
-      'shah.sub':     '在 Telegram 游戏《列王纪》中化身波斯勇士战斗，赢取 REAL 奖励。',
+      'shah.title':   '玩《列王纪》— 连接并赚取 REAL',
+      'shah.sub':     'Realink 让《列王纪》游戏和 REAL 社区始终可达。连接后化身勇士战斗，赢取 REAL 奖励 — 即使游戏缓慢或打不开。',
       'shah.cta':     '在 Telegram 上玩',
 
       'stat.members':   '用户并持续增长',
@@ -296,7 +296,7 @@
       'stat.free':      '安装即免费',
 
       'how.label': '工作原理',
-      'how.title': '三步通往自由互联网',
+      'how.title': '三步即可上线',
       'how.sub':   '无需账号、无需信用卡、无需配置。安装即连。',
       'how.s1.h':  '紧急接入',
       'how.s1.p':  '安装应用立即获得 5 GB — 无需登录，无需账号。点击连接，AI 会为你的网络选出最快可用的协议。',
@@ -315,11 +315,11 @@
       'ai.f3.h':  '自适应路由',
       'ai.f3.p':  '网络会学习哪些 SNI 在你所在地区可用。不同网络封锁模式不同 — 应用会自适应并记住各地可用方案，越用越好。',
       'ai.f4.h':  '远程配置推送',
-      'ai.f4.p':  '无需更新应用即可推送协议优先级更新。当审查模式变化时，路由规则会自动为所有用户更新。',
+      'ai.f4.p':  '无需更新应用即可推送协议优先级更新。当网络封锁模式变化时，路由规则会自动为所有用户更新。',
 
       'why.label':      '为何选择 REALINK',
-      'why.title':      '专为真实审查打造',
-      'why.sub':        '不是通用 VPN 的套壳。为伊朗、中国和俄罗斯的真实网络审查从零打造。',
+      'why.title':      '为真实网络而打造',
+      'why.sub':        '不是通用 VPN 的套壳。从零打造，让你的游戏、应用和社区在缓慢、受限或被封锁的网络上保持在线。',
       'why.tech.label': '技术优势',
       'why.tech.1':     'VLESS + Reality — 流量与标准 HTTPS 无法区分，是目前最抗审查的协议',
       'why.tech.2':     '通过 nginx 边缘代理的 XHTTP 与 WebSocket 备用传输，外加 Cloudflare 隐身节点，持续测试',
@@ -399,7 +399,7 @@
       'hero.badge': 'Серверы онлайн — защищённые узлы',
       'hero.h1a':   'Бесплатный VPN',
       'hero.h1b':   'Свободный интернет для всех',
-      'hero.sub':   'VPN на базе ИИ для обхода блокировок и DPI. VLESS+Reality и V2Ray. Теперь на Android и iOS. 5 ГБ бесплатно при установке. Без аккаунта и настройки.',
+      'hero.sub':   'Приватная сеть на базе ИИ, которая держит ваши игры, приложения и сообщество онлайн на медленных, ограниченных или заблокированных соединениях. VLESS+Reality и V2Ray. Теперь на Android и iOS. 5 ГБ бесплатно при установке. Без аккаунта.',
       'hero.cta1':  'Скачать для Android',
       'hero.cta_ios': 'iOS — бета в TestFlight',
 
@@ -414,8 +414,8 @@
       'dl.card3.p':   'Работает на любом Android-устройстве. Файл больше — берите его при сомнениях.',
 
       'shah.label':   'ИГРА СООБЩЕСТВА',
-      'shah.title':   'Играй в «Шахнаме» — зарабатывай REAL',
-      'shah.sub':     'Сражайся как персидский воин в Telegram-игре «Шахнаме» и получай награды REAL.',
+      'shah.title':   'Играй в «Шахнаме» — подключись и зарабатывай REAL',
+      'shah.sub':     'Realink держит игру «Шахнаме» и сообщество REAL доступными. Подключись, сражайся как воин и получай награды REAL — даже когда игра тормозит или не открывается.',
       'shah.cta':     'Играть в Telegram',
 
       'stat.members':   'участников и растёт',
@@ -424,7 +424,7 @@
       'stat.free':      'Бесплатно при установке',
 
       'how.label': 'КАК ЭТО РАБОТАЕТ',
-      'how.title': 'Три шага к свободному интернету',
+      'how.title': 'Три шага, чтобы выйти в сеть',
       'how.sub':   'Без аккаунта, без карты, без настройки. Установите и подключитесь.',
       'how.s1.h':  'Экстренный доступ',
       'how.s1.p':  'Установите приложение и сразу получите 5 ГБ — без входа и аккаунта. Нажмите «Подключить», и ИИ выберет самый быстрый рабочий протокол для вашей сети.',
@@ -443,11 +443,11 @@
       'ai.f3.h':  'Адаптивная маршрутизация',
       'ai.f3.p':  'Сеть узнаёт, какие SNI работают в вашем регионе. У разных сетей разные схемы блокировок — приложение адаптируется и запоминает, что где работает, улучшаясь со временем.',
       'ai.f4.h':  'Удалённое обновление конфигурации',
-      'ai.f4.p':  'Администратор может обновлять приоритет протоколов без обновления приложения. Когда меняются схемы цензуры, правила маршрутизации автоматически обновляются для всех.',
+      'ai.f4.p':  'Администратор может обновлять приоритет протоколов без обновления приложения. Когда меняются схемы сетевых блокировок, правила маршрутизации автоматически обновляются для всех.',
 
       'why.label':      'ПОЧЕМУ REALINK',
-      'why.title':      'Создан для реальной цензуры',
-      'why.sub':        'Не обёртка над обычным VPN. Создан с нуля под реалии интернет-цензуры в Иране, Китае и России.',
+      'why.title':      'Создан для реальных сетей',
+      'why.sub':        'Не обёртка над обычным VPN. Создан с нуля, чтобы держать ваши игры, приложения и сообщество онлайн на медленных, ограниченных или заблокированных сетях.',
       'why.tech.label': 'ТЕХНИЧЕСКОЕ ПРЕВОСХОДСТВО',
       'why.tech.1':     'VLESS + Reality — трафик неотличим от обычного HTTPS, самый устойчивый к цензуре протокол',
       'why.tech.2':     'Резервные транспорты XHTTP и WebSocket через пограничный прокси nginx плюс скрытый узел Cloudflare, постоянно тестируются',
