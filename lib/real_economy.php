@@ -375,6 +375,61 @@ function re_spend(PDO $pdo, string $realAccount, float $realAmount, string $idem
     return ['ok' => false, 'error' => 'unavailable'];
 }
 
+// ── Ecosystem SSO (contract 6) ───────────────────────────────────────────────
+// Shared single-sign-on for ALL REAL apps (Shahnameh, 3real, TrustAI, …), not
+// just the embedded game. The ecosystem backend is the identity provider: it
+// owns the accounts and holds an RS256 keypair; it mints a short-lived JWT for
+// a linked account, and every ecosystem app verifies it with the published
+// public key (JWKS) — no app but the issuer ever holds the signing key. The
+// panel is a client: it authenticates the device (via the existing account
+// link) and proxies the mint request, so the app never holds real_api_key and
+// the whole thing fails safe (no token → the app loads the game as a guest /
+// prompts to link) until the issuer (Agent B, task B-8) exists.
+
+/**
+ * Mint an SSO token for a device's linked REAL account (contract 6).
+ * Returns:
+ *   ['status'=>'ok', 'token'=>string, 'expires_in'=>int, 'account'=>string]
+ *   ['status'=>'unlinked']                 device has no linked REAL account
+ *   ['status'=>'unavailable']              issuer not configured/reachable yet
+ */
+function re_sso_token(PDO $pdo, string $deviceId): array {
+    $account = re_linked_account($pdo, $deviceId);
+    if ($account === '') return ['status' => 'unlinked'];
+
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
+        return ['status' => 'unavailable'];
+    }
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/sso-token');
+    $headers = ['Content-Type: application/json'];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode(['account' => $account, 'device_id' => $deviceId]),
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false || $http !== 200) return ['status' => 'unavailable'];
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json) || empty($json['token']) || !is_string($json['token'])) {
+        return ['status' => 'unavailable'];
+    }
+    return [
+        'status'     => 'ok',
+        'token'      => $json['token'],
+        'expires_in' => isset($json['expires_in']) && is_numeric($json['expires_in'])
+                        ? (int)$json['expires_in'] : 900,
+        'account'    => $account,
+    ];
+}
+
 /**
  * Validate a redeem request and price it. Shared by redeem-real (pre-executed
  * spend) and redeem-real-spend (panel-orchestrated spend). Returns
