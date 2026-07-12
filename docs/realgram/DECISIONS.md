@@ -323,3 +323,62 @@ hold/expiry — first successful claim wins, permanently, until changed.
 commit `27fe04e`), tested end-to-end (lookup free/taken, claim, idempotent
 re-claim, 409 conflict, 404 unknown account, 400 bad format). Nothing
 pending on B-14's side — A-11 can wire against this whenever ready.
+
+### 2026-07-12 — B-9 spec + shipped: TrustAI accepts the ecosystem SSO token
+
+**Requested by:** Agent A — "make TrustAI accept the same RS256 JWT so
+ReaLink's ambassador earnings and TrustAI proper share one identity."
+**Mapping:** `trustai.users.real_account` (VARCHAR, nullable, UNIQUE — MySQL
+allows multiple NULLs so this is a sparse-unique in effect, same idea as
+`season2_users.handle` from B-14). One TrustAI user ↔ one REAL account
+(the SSO token's `sub`). Most users have none until they link one.
+**No new dependency:** there's no composer/vendor JWT library anywhere in
+TrustAI, so this is a from-scratch RS256 verifier (JWK→PEM + openssl_verify,
+`inc/sso_jwt.php`) rather than adding one for a single algorithm. It fetches
+the issuer's JWKS live (`GET .../v1/sso/jwks.json`, no disk cache of key
+material) and fails closed on any network/shape/signature/issuer/audience/
+expiry problem.
+
+```
+POST https://trustai.no/api/auth/sso-link.php
+Cookie: <existing TrustAI session — must already be logged in>
+{"sso_token": "<RS256 JWT from /v1/sso-token>"}
+→ 200 {"ok": true, "real_account": "<sub>"}
+→ 409 {"ok": false, "error": "account_linked_elsewhere"}   another TrustAI
+  user already claimed this REAL account
+→ 401 {"ok": false, "error": "invalid_sso_token"}
+```
+
+```
+POST https://trustai.no/api/auth/sso-login.php
+{"sso_token": "<RS256 JWT from /v1/sso-token>"}
+→ 200 {"ok": true, "role": "...", "redirect": "/store-admin.html"}   same
+  shape as the password login response, session cookie set the same way
+→ 404 {"ok": false, "error": "account_not_linked"}   no TrustAI user has
+  linked this REAL account yet — client should fall back to normal
+  password login (and can offer sso-link.php afterward)
+→ 401 {"ok": false, "error": "invalid_sso_token"}
+```
+
+**What this doesn't do (out of scope, kept deliberately small):** no UI for
+linking, no `ambassador-dashboard.html` earnings display keyed off
+`real_account`, no auto-linking by matching email/referral_code — a user
+must explicitly link. Those are natural follow-ups once ReaLink actually
+has a screen that calls `sso-link.php`.
+
+**Also found + fixed while in this file (unrelated to B-9, flagged
+separately to Khabat):** `getCurrentUser()` in `api/_auth.php` was falling
+back to trusting client-supplied `X-User-Id`/`X-User-Email` headers with no
+signature or session check — an unauthenticated request could log in as any
+user just by setting the header. Confirmed nothing anywhere in this
+ecosystem (TrustAI, SetaLink, Shahnameh) ever sent those headers, so it was
+dead code with no legitimate use — removed. Mentioning here only because
+it's adjacent: don't design B-9's flow (or anything else) to lean on
+header-based identity — session or a verified SSO token are the only two
+trusted sources now.
+
+**Status:** live (TrustAI commit `adb2189`), tested end-to-end against a
+live-minted token — unlinked account (404), garbage token (401), no-session
+link attempt (401), full link→login round trip (200, correct role +
+redirect). Verifier separately tested against tampered signature, forged
+payload, malformed input. No production user data touched during testing.
