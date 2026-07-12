@@ -1,10 +1,11 @@
-# AdsGram inquiry — draft, not sent
+# AdsGram inquiry — FINALIZED, ready to send (2026-07-12)
 
-Task B-5 / `OPEN_QUESTIONS.md` Q2. This is a **draft only** — sending it
-needs an AdsGram account/support channel and a decision on who signs it as
-the sender, neither of which this session has. Ready to paste into
-AdsGram's support chat, a support ticket, or an email once Khabat (or
-whoever holds the AdsGram dashboard login) is ready to send it.
+Task B-5 / `OPEN_QUESTIONS.md` Q2. **FINALIZED 2026-07-12** — sender filled,
+ready to send verbatim. Neither agent has an AdsGram account/support channel,
+so KHABAT sends this via AdsGram's own channel (their support Telegram, the
+dashboard support/ticket, or partners email — same login used for the
+Shahnameh rewarded-video integration). Log AdsGram's answer back in
+`DECISIONS.md` when it arrives.
 
 ---
 
@@ -47,7 +48,7 @@ transport, Iran-market anti-censorship focus) if useful context for your
 answer.
 
 Thanks,
-[Khabat / SetaLink — sender to confirm before sending]
+Khabat — SetaLink / Shahnameh (existing AdsGram publisher)
 
 ---
 
