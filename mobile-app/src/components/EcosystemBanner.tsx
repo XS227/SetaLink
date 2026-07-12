@@ -5,12 +5,19 @@
  * both carrying the REAL token mark. Different screens pass a `seed` so they start on
  * different promos (spreads the placements), and each banner also auto-rotates so a
  * single screen still surfaces both over time. Tapping opens the promo's link.
+ *
+ * Campaigns are remote-config driven (`ecosystem.promos` / `ecosystem.banner_enabled`)
+ * so copy, targets, and visibility change without an app release; the embedded promos
+ * below are the offline fallback. Taps emit `ecosystem_banner_click` telemetry.
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, Linking, StyleSheet, Animated } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
+import { getCachedConfig, EcosystemPromo } from '../services/remoteConfigService';
+import { trackEvent, Events } from '../services/analytics';
+import { useAuthStore } from '../stores/authStore';
 
 // Official REAL (RealShahnameh) token image — same mark used on TON explorers.
 export const REAL_TOKEN_IMAGE =
@@ -30,10 +37,28 @@ type Props = {
   style?: object;
 };
 
-export function EcosystemBanner({ seed = 0, pin, style }: Props) {
-  const { t } = useT();
+type DisplayPromo = {
+  id: string;
+  emoji: string | undefined;
+  image: string | undefined;
+  title: string;
+  sub: string;
+  url: string;
+};
 
-  const promos = [
+/** Localize a remote promo; promos without a URL or any title are dropped. */
+function fromRemote(p: EcosystemPromo, lang: string): DisplayPromo | null {
+  const pick = (prefix: 'title' | 'sub'): string =>
+    (p as any)[`${prefix}_${lang}`] ?? p[`${prefix}_en`] ?? '';
+  const title = pick('title');
+  if (!p.id || !p.url || !title) return null;
+  return { id: p.id, emoji: p.emoji, image: p.image, title, sub: pick('sub'), url: p.url };
+}
+
+export function EcosystemBanner({ seed = 0, pin, style }: Props) {
+  const { t, lang } = useT();
+
+  const embedded: DisplayPromo[] = [
     {
       id: 'shahnameh',
       emoji: '⚔️',
@@ -52,6 +77,12 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
     },
   ];
 
+  const eco = getCachedConfig().ecosystem;
+  const remote = (eco?.promos ?? [])
+    .map((p) => fromRemote(p, lang))
+    .filter((p): p is DisplayPromo => p !== null);
+  const promos = remote.length > 0 ? remote : embedded;
+
   const pinnedIdx = pin ? promos.findIndex((p) => p.id === pin) : -1;
   const [idx, setIdx] = useState(
     pinnedIdx >= 0 ? pinnedIdx : ((seed % promos.length) + promos.length) % promos.length,
@@ -69,12 +100,42 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
 
   const promo = promos[idx] ?? promos[0]!;
 
+  // Calm breathing glow — a gold tint layer slowly fading in and out behind
+  // the content. Quiet by design: it should register at the edge of the eye,
+  // never compete with the server rows around it.
+  const glow = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const breathe = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 2600, useNativeDriver: true }),
+        Animated.timing(glow, { toValue: 0, duration: 2600, useNativeDriver: true }),
+      ]),
+    );
+    breathe.start();
+    return () => breathe.stop();
+  }, []);
+
+  // Kill switch — after hooks so the hook order stays stable across renders.
+  if (eco?.banner_enabled === false) return null;
+
+  const onPress = () => {
+    trackEvent(Events.ECOSYSTEM_BANNER_CLICK, useAuthStore.getState().user?.deviceId, {
+      promo: promo.id,
+      url: promo.url,
+    });
+    Linking.openURL(promo.url).catch(() => {});
+  };
+
   return (
     <TouchableOpacity
       style={[styles.card, style]}
-      onPress={() => Linking.openURL(promo.url).catch(() => {})}
+      onPress={onPress}
       activeOpacity={0.85}
     >
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.glowLayer, { opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.03, 0.1] }) }]}
+      />
       {promo.image ? (
         <Image source={{ uri: promo.image }} style={styles.tokenImg} resizeMode="cover" />
       ) : (
@@ -95,21 +156,29 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
 
 const GOLD = '#C9A42A';
 
+// Same card geometry as ServerRow (the server-list rows), so promo/ad slots sit
+// in the list as quiet equals rather than shouting banners.
 const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing[3],
-    backgroundColor: 'rgba(201,164,42,0.07)',
-    borderRadius: Radius.xl,
+    backgroundColor: Colors.bg.surface,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: 'rgba(201,164,42,0.3)',
-    padding: Spacing[4],
+    borderColor: 'rgba(201,164,42,0.28)',
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[3],
+    overflow: 'hidden',
   },
-  emoji:    { fontSize: 26 },
-  tokenImg: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(201,164,42,0.15)' },
+  glowLayer: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: GOLD,
+  },
+  emoji:    { fontSize: 24 },
+  tokenImg: { width: 28, height: 28, borderRadius: 14, backgroundColor: 'rgba(201,164,42,0.15)' },
   body:     { flex: 1 },
-  title:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: GOLD },
+  title:    { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: GOLD },
   sub:      { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   dots:     { flexDirection: 'row', gap: 4 },
   dot:      { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(201,164,42,0.25)' },

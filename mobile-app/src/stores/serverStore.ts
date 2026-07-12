@@ -36,6 +36,9 @@ interface NodeIdentity { country: string; city: string; flag: string }
 const NODE_IDENTITY: Record<string, NodeIdentity> = {
   '65.109.183.7':   { country: 'Finland', city: 'Hetzner · Helsinki', flag: '🇫🇮' },
   '91.107.158.53': { country: 'Germany', city: 'Hetzner · Nürnberg', flag: '🇩🇪' },
+  // CDN-fronted stealth node — branded as Realink (never surface the CDN vendor
+  // name in the UI). Address is the current Cloudflare-fronted apex.
+  'alanya-turist.no': { country: 'Realink', city: 'Secure Edge · Stealth', flag: '☁️' },
 };
 export function resolveNodeIdentity(
   address?: string,
@@ -68,8 +71,8 @@ export const CF_EDGE_ID = 'cf-edge';
 
 export const BUNDLED_CF_EDGE: ServerRecord = {
   id:        CF_EDGE_ID,
-  country:   'Cloudflare',
-  city:      'CDN Edge · Stealth',
+  country:   'Realink',
+  city:      'Secure Edge · Stealth',
   flag:      '☁️',
   ping:      60,
   load:      20,
@@ -80,19 +83,26 @@ export const BUNDLED_CF_EDGE: ServerRecord = {
 
 export const BUNDLED_CF_EDGE_CREDS: ServerCredentials = {
   uuid:        '69205cf6-23a7-4e64-a1a2-865fd49471fe',
-  // Hostname rotated cf.setalink.no → real.setalink.no on 2026-07-07 after Iran
-  // began SNI-blocking cf.setalink.no (~22:44 UTC). Same Cloudflare origin
-  // (5.249.255.116), same uuid/wsPath; origin serves both names (wildcard vhost).
-  // A live catalog fetch overrides this, but the bundled default must also point
-  // at the un-blocked name so fresh installs / offline fallback reach the origin.
-  address:     'real.setalink.no',
+  // Hostname rotated cf.setalink.no → real.setalink.no (2026-07-07) → alanya-turist.no
+  // (2026-07-08) as Iran progressively SNI-blocked the *.setalink.no names on
+  // Cloudflare. Same Cloudflare origin (5.249.255.116), same uuid/wsPath; origin
+  // serves all names (wildcard vhost). A live catalog fetch overrides this, but the
+  // bundled default must also point at the un-blocked apex so fresh installs /
+  // offline fallback reach the origin from a hostile network.
+  address:     'alanya-turist.no',
   port:        443,
   publicKey:   '',            // WebSocket node — no Reality key
   shortId:     '',
-  sni:         'real.setalink.no',
+  sni:         'alanya-turist.no',
   flow:        '',
   fingerprint: 'chrome',
-  edgeAddress: 'real.setalink.no',
+  edgeAddress: 'alanya-turist.no',
+  // Dial Cloudflare by literal anycast IP, not the hostname: on iOS the tunnel
+  // resolves DNS through itself, so a hostname edge address deadlocks the WS
+  // handshake (0 /cfws reached origin on b84/b85). Cloudflare routes by SNI
+  // (edgeAddress), so any published edge IP works. See xrayConfigBuilder
+  // edgeConnectAddress(). Backend catalog can override via creds.edgeIp.
+  edgeIp:      '104.21.61.220',
   edgePort:    443,
   wsPath:      '/cfws',
 };
@@ -164,14 +174,20 @@ export function scoreServer(s: ServerRecord, mode: AIModeKey): number {
 
 interface ServerState {
   servers:       ServerRecord[];
-  selectedId:    string;
+  selectedId:    string;      // ACTIVE node — failover may switch this transiently
+  userSelectedId: string;     // the user's sticky manual preference (only they set it)
   filter:        FilterTab;
   query:         string;
   isLoading:     boolean;
   loadError:     string | null;
   importedCreds: Record<string, ServerCredentials>;  // serverId → creds
 
-  selectServer:  (id: string) => void;
+  // isUser=true (default) records a sticky user preference; failover passes
+  // false so it can switch the active node without hijacking that preference.
+  selectServer:  (id: string, isUser?: boolean) => void;
+  // Reset the active node back to the user's manual preference (called on a
+  // fresh user-initiated connect so failover never permanently reassigns it).
+  restoreUserSelection: () => void;
   setFilter:     (f: FilterTab) => void;
   setQuery:      (q: string) => void;
   fetchServers:  (token: string) => Promise<void>;
@@ -217,6 +233,7 @@ export const useServerStore = create<ServerState>()(
     (set, get) => ({
   servers:       SERVER_CATALOG,
   selectedId:    '',
+  userSelectedId: '',
   filter:        'All',
   query:         '',
   isLoading:     false,
@@ -225,13 +242,29 @@ export const useServerStore = create<ServerState>()(
   // before (or without) a successful catalog fetch.
   importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS },
 
-  selectServer: (id) => {
-    set({ selectedId: id });
+  selectServer: (id, isUser = true) => {
+    // A manual tap sets the sticky preference; failover (isUser=false) only
+    // moves the ACTIVE node so it can't permanently overwrite the user's choice.
+    set(isUser ? { selectedId: id, userSelectedId: id } : { selectedId: id });
 
     const record = get().servers.find((s) => s.id === id);
     if (!record) return;
 
     // Sync selected server into vpnStore — one-way dependency, no cycle
+    syncToVpnStore(record);
+  },
+
+  restoreUserSelection: () => {
+    // On a fresh user-initiated connect, start from the user's manual choice
+    // again — so a prior failover to another node doesn't stick forever. No-op
+    // when the user never picked a node, or it's already active, or it's gone.
+    const { userSelectedId, selectedId, servers, importedCreds } = get();
+    if (!userSelectedId || userSelectedId === selectedId) return;
+    const record = servers.find((s) => s.id === userSelectedId);
+    // Only restore to a node that still exists and is connectable — otherwise
+    // leave the current (failover) node so we don't bounce onto a dead choice.
+    if (!record || !importedCreds[userSelectedId]) return;
+    set({ selectedId: userSelectedId });
     syncToVpnStore(record);
   },
 
@@ -636,6 +669,7 @@ export const useServerStore = create<ServerState>()(
         servers:       state.servers,
         importedCreds: state.importedCreds,
         selectedId:    state.selectedId,
+        userSelectedId: state.userSelectedId,
       }),
       // On app start, sync the persisted selected server into vpnStore
       onRehydrateStorage: () => (state) => {

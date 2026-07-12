@@ -281,16 +281,25 @@ export interface DirectMessage {
   body:        string;
   read:        boolean;
   createdAt:   string;
+  /** Disappearing-message timer (seconds after read); 0 = never. */
+  expireSecs:  number;
+  /** UTC 'YYYY-MM-DD HH:MM:SS' when the message burns — set once it is read. */
+  expiresAt:   string | null;
 }
 
 /** Max characters per direct message — mirrors MSG_MAX_LEN server-side. */
 export const DM_MAX_LEN = 2000;
 
-/** Send a direct message addressed by Realink ID (user_id / device_id / referral code). */
+/** Send a direct message addressed by Realink ID (user_id / device_id / referral code).
+ *  `expireSecs` > 0 makes it a disappearing message: the server hard-deletes it
+ *  that many seconds after the recipient reads it (Wickr-style). */
 export async function sendMessage(
-  deviceId: string, recipient: string, body: string,
+  deviceId: string, recipient: string, body: string, expireSecs = 0,
 ): Promise<{ message_id: number; recipient_user_id: string; created_at: string }> {
-  const data = await mobilePost('send-message', { device_id: deviceId, recipient, body });
+  const data = await mobilePost('send-message', {
+    device_id: deviceId, recipient, body,
+    ...(expireSecs > 0 ? { expire_secs: String(expireSecs) } : {}),
+  });
   return data as { message_id: number; recipient_user_id: string; created_at: string };
 }
 
@@ -300,6 +309,7 @@ export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
     messages?: Array<{
       id: number; direction: 'in' | 'out'; peer_user_id: string;
       peer_device: string; body: string; read: boolean; created_at: string;
+      expire_secs?: number; expires_at?: string | null;
     }>;
   };
   return (data.messages ?? []).map(m => ({
@@ -310,6 +320,8 @@ export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
     body:       m.body,
     read:       m.read,
     createdAt:  m.created_at,
+    expireSecs: m.expire_secs ?? 0,
+    expiresAt:  m.expires_at ?? null,
   }));
 }
 

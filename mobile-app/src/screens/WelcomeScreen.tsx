@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  Animated, ScrollView, Clipboard, Share, TextInput,
+  Animated, ScrollView, Clipboard, Share, TextInput, Dimensions, Easing,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -9,10 +9,12 @@ import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { useReferral } from '../services/entitlementService';
 
-const ONE_GB = 1024 * 1024 * 1024;
+const ONE_GB  = 1024 * 1024 * 1024;
+const FIVE_GB = 5 * ONE_GB; // signup gift — every new account starts with 5 GB
 
 function formatGb(bytes: number): string {
-  return (bytes / ONE_GB).toFixed(1);
+  const gb = bytes / ONE_GB;
+  return Number.isInteger(gb) ? String(gb) : gb.toFixed(1);
 }
 
 interface Props {
@@ -39,7 +41,29 @@ export function WelcomeScreen({ onStart }: Props) {
   }, []);
 
   const referralCode = user?.referralCode ?? '—';
-  const quotaGb      = formatGb(user?.quotaBytesTotal ?? ONE_GB);
+  const quotaGb      = formatGb(user?.quotaBytesTotal ?? FIVE_GB);
+
+  // Calm shimmer sweeping across the gift card in a slow loop — enough to
+  // draw the eye without shouting. Native driver, transform-only.
+  const shimmerX = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const w = Dimensions.get('window').width;
+    const sweep = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shimmerX, {
+          toValue: 1, duration: 1800, easing: Easing.inOut(Easing.quad), useNativeDriver: true,
+        }),
+        Animated.delay(2200),
+        Animated.timing(shimmerX, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]),
+    );
+    sweep.start();
+    return () => sweep.stop();
+  }, []);
+  const shimmerTranslate = shimmerX.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-90, Dimensions.get('window').width],
+  });
 
   const applyReferral = async () => {
     const code = redeemCode.trim().toUpperCase();
@@ -95,12 +119,19 @@ export function WelcomeScreen({ onStart }: Props) {
           </Text>
         </View>
 
-        {/* Starter package */}
-        <GlassCard glowColor={Colors.emerald[400]} style={styles.packageCard}>
+        {/* Starter gift — 5 GB for every new account */}
+        <GlassCard glowColor={Colors.gold[400]} style={styles.packageCard}>
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.shimmer, { transform: [{ translateX: shimmerTranslate }, { rotate: '18deg' }] }]}
+          />
+          <View style={styles.giftChip}>
+            <Text style={styles.giftChipText}>🎁 WELCOME GIFT</Text>
+          </View>
           <Text style={styles.packageLabel}>STARTER PACKAGE</Text>
           <View style={styles.packageRow}>
             <View style={styles.packageItem}>
-              <Text style={styles.packageValue}>{quotaGb} GB</Text>
+              <Text style={[styles.packageValue, styles.packageValueGold]}>{quotaGb} GB</Text>
               <Text style={styles.packageMeta}>Free traffic</Text>
             </View>
             <View style={styles.packageDivider} />
@@ -210,11 +241,23 @@ const styles = StyleSheet.create({
   appName:       { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 3, textTransform: 'uppercase' },
   heroTitle:     { fontSize: 32, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5, textAlign: 'center' },
   heroSub:       { fontSize: Typography.size.base, fontFamily: Typography.family.body, color: Colors.text.secondary, textAlign: 'center', lineHeight: 24 },
-  packageCard:   { gap: Spacing[4] },
+  packageCard:   { gap: Spacing[4], overflow: 'hidden' },
+  shimmer:       {
+    position: 'absolute', top: -30, bottom: -30, width: 70,
+    backgroundColor: 'rgba(240,208,96,0.09)',
+  },
+  giftChip:      {
+    position: 'absolute', top: 10, right: 10,
+    backgroundColor: 'rgba(212,175,55,0.16)',
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.45)',
+    borderRadius: Radius.md, paddingHorizontal: Spacing[2], paddingVertical: 3,
+  },
+  giftChipText:  { fontSize: 10, fontFamily: Typography.family.label, color: Colors.gold[300], letterSpacing: 0.8 },
   packageLabel:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 1.5 },
   packageRow:    { flexDirection: 'row', alignItems: 'center' },
   packageItem:   { flex: 1, alignItems: 'center', gap: 4 },
   packageValue:  { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary },
+  packageValueGold: { color: Colors.gold[300], textShadowColor: 'rgba(212,175,55,0.55)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 12 },
   packageMeta:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
   packageDivider:{ width: 1, height: 40, backgroundColor: Colors.border.subtle },
   freeNote:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
