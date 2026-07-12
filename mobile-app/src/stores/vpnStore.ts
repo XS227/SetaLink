@@ -139,6 +139,24 @@ export const useVpnStore = create<VpnState>((set, get) => {
           `Connected to ${server?.city ?? 'server'}`,
           'success'
         );
+
+        // Path B0 tip (A-7): the first time a user ever connects, remind them
+        // their normal apps (Telegram/Instagram/…) now work — the full-device
+        // tunnel already covers them, but users don't discover that on their
+        // own. Shown ONCE, a beat after the connected toast so they don't
+        // collide. Localized (fa is the priority market).
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useSettingsStore } = require('./settingsStore');
+        if (!useSettingsStore.getState().hasSeenTelegramTip) {
+          useSettingsStore.getState().markTelegramTipSeen();
+          setTimeout(() => {
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { tr } = require('../i18n');
+              useToastStore.getState().show(tr('tip.appsWork'), 'info', 7000);
+            } catch {}
+          }, 3200);
+        }
       } catch {}
 
       try {

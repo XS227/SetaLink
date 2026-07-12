@@ -443,6 +443,7 @@ const EN = {
   'wallet.redeem':      'Redeem for data',
   'wallet.success':     'Data added to your quota!',
   'wallet.unavailable': 'Wallet service is unavailable — try again later.',
+  'tip.appsWork':       'Telegram, Instagram & your other apps now work normally — just open them.',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -977,6 +978,7 @@ const FA: typeof EN = {
   'wallet.redeem':      'تبدیل به حجم',
   'wallet.success':     'حجم به سهمیه شما اضافه شد!',
   'wallet.unavailable': 'سرویس کیف پول در دسترس نیست — بعداً دوباره امتحان کنید.',
+  'tip.appsWork':       'حالا تلگرام، اینستاگرام و بقیه برنامه‌ها به‌طور معمولی کار می‌کنند — کافی است بازشان کنید.',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
@@ -1488,6 +1490,7 @@ const ZH: typeof EN = {
   'wallet.redeem':      '兑换流量',
   'wallet.success':     '流量已添加到您的配额！',
   'wallet.unavailable': '钱包服务暂不可用，请稍后再试。',
+  'tip.appsWork':    '现在 Telegram、Instagram 和其他应用都能正常使用了 — 直接打开即可。',
 
   'pr.inviteRewards': '邀请奖励',
   'pr.activeInvites': '个有效邀请',
@@ -1992,6 +1995,7 @@ const RU: typeof EN = {
   'wallet.redeem':      'Обменять на трафик',
   'wallet.success':     'Трафик добавлен к вашей квоте!',
   'wallet.unavailable': 'Сервис кошелька недоступен — попробуйте позже.',
+  'tip.appsWork':    'Telegram, Instagram и другие приложения теперь работают как обычно — просто откройте их.',
 
   'pr.inviteRewards': 'Награды за приглашения',
   'pr.activeInvites': 'активных приглашений',
@@ -2111,6 +2115,13 @@ const STRINGS: Record<Lang, typeof EN> = { en: EN, fa: FA, zh: ZH, ru: RU };
 
 export function getCurrentLang(): Lang {
   return codeForLabel(useSettingsStore.getState().language);
+}
+
+/** Non-hook translator for use outside React (services/stores, e.g. vpnStore
+ *  toasts). Resolves against the current language, falls back to EN then key. */
+export function tr(key: TKey | (string & {})): string {
+  const lang = getCurrentLang();
+  return (STRINGS[lang] as any)[key] ?? (EN as any)[key] ?? key;
 }
 
 export function useT() {
