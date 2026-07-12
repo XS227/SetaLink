@@ -210,8 +210,9 @@ describe('Auto-select fastest server', () => {
 // 'proxy-quic' twin and the UDP/443 rule must target it.
 
 describe('QUIC outbound: Vision servers get a flow-less proxy-quic twin', () => {
+  // The catch-all QUIC rule carries no domain; the AI-provider QUIC rule does.
   const udp443Rule = (cfg: any) =>
-    cfg.routing.rules.find((r: any) => r.network === 'udp' && r.port === '443');
+    cfg.routing.rules.find((r: any) => r.network === 'udp' && r.port === '443' && !r.domain);
 
   test('Vision creds → proxy-quic outbound exists, flow-less, same creds', () => {
     const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, MOCK_CREDS);
@@ -281,5 +282,43 @@ describe('fetchServers keeps creds for non-Reality nodes without publicKey', () 
     expect(useServerStore.getState().importedCreds['broken-reality']).toBeUndefined();
     // sanity: Reality nodes with real keys still work
     expect(useServerStore.getState().importedCreds['fi-hel']).toBeDefined();
+  });
+});
+
+// ── AI-provider routing: Gemini QUIC fix + clean-exit scaffold ────────────────
+
+describe('AI routing rules (Claude/Gemini/OpenAI)', () => {
+  const aiRule = (cfg: any, tag: string) =>
+    cfg.routing.rules.find((r: any) => r.outboundTag === tag && Array.isArray(r.domain) &&
+      r.domain.some((d: string) => d.includes('gemini') || d.includes('anthropic')));
+
+  test('AI-provider QUIC (UDP/443) is blackholed so it falls back to TCP — always on', () => {
+    const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, MOCK_CREDS);
+    const rule = cfg.routing.rules.find((r: any) =>
+      r.network === 'udp' && r.port === '443' && Array.isArray(r.domain));
+    expect(rule).toBeDefined();
+    expect(rule.outboundTag).toBe('blackhole');
+    expect(rule.domain).toEqual(expect.arrayContaining(['domain:gemini.google.com', 'domain:anthropic.com']));
+  });
+
+  test('AI QUIC blackhole rule precedes the catch-all UDP/443 rule', () => {
+    const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, MOCK_CREDS);
+    const aiQuic  = cfg.routing.rules.findIndex((r: any) => r.network === 'udp' && r.port === '443' && r.domain);
+    const generic = cfg.routing.rules.findIndex((r: any) => r.network === 'udp' && r.port === '443' && !r.domain);
+    expect(aiQuic).toBeGreaterThanOrEqual(0);
+    expect(generic).toBeGreaterThan(aiQuic);
+  });
+
+  test('no clean exit configured → no ai-out outbound and no TCP pin (unchanged proxy path)', () => {
+    const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, MOCK_CREDS);
+    expect(cfg.outbounds.find((o: any) => o.tag === 'ai-out')).toBeUndefined();
+    expect(aiRule(cfg, 'ai-out')).toBeUndefined();
+  });
+
+  test('clean exit configured → ai-out outbound + AI TCP pinned to it', () => {
+    const cfg: any = buildXrayConfig(MOCK_SERVER, 'Reality', 'Cloudflare (DoH)', false, MOCK_CREDS,
+      { aiExit: { server: MOCK_SERVER, protocol: 'Reality', creds: MOCK_CREDS } });
+    expect(cfg.outbounds.find((o: any) => o.tag === 'ai-out')).toBeDefined();
+    expect(aiRule(cfg, 'ai-out')).toBeDefined();
   });
 });
