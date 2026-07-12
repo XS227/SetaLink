@@ -1,12 +1,34 @@
 # RealGram — Monetization & Rewards
 
+> ## ✅ RESOLVED 2026-07-12 — ad network split by surface (read this first)
+>
+> AdsGram answered B-5: **"We only operate on Telegram."** They do NOT serve a
+> standalone/alternative client, so the "alternative clients" marketing category
+> does **not** extend to a native TDLib app. **Decision (Khabat):**
+> - **RealGram Path B (the independent native client): use AdMob** for in-app
+>   ads. AdMob is already integrated in the ReaLink app; its compliance rules
+>   (no geo-spoofing of ad signals, rewarded/best-effort, never blocking
+>   connectivity) carry straight over. Path B does **not** use AdsGram.
+> - **AdsGram stays for everything that runs INSIDE Telegram** — Shahnameh and
+>   the RealGram **Path A Mini App** (B-4). That's where it works and already
+>   pays out.
+> - **The native in-chat sponsored-card idea is closed** — AdsGram won't serve
+>   it and there's no need to invent one. Rewarded ads in the native app are
+>   AdMob rewarded video on a dedicated screen, not a card woven into the chat.
+>
+> Where this doc below says "AdsGram" in a **Path B / native-client** context,
+> read **AdMob**. The AdsGram content is retained as the design for the
+> **Telegram (Mini App) surfaces**, which is still accurate.
+
 ## Principle: reuse, don't rebuild
 
-RealGram does not build its own advertising network or sales portal. It
-reuses **AdsGram**, which is already integrated and already paying out in
-Shahnameh (`INTEGRATION_MAP.md` §1). Every reward flow below is a new
-*client entry point* into the existing `creditAdReward()` pattern
-(`lib/adsgram.js` in the Shahnameh backend), not a new reward engine.
+RealGram does not build its own advertising network or sales portal. **Inside
+Telegram** (Shahnameh, the Path A Mini App) it reuses **AdsGram**, already
+integrated and paying out in Shahnameh (`INTEGRATION_MAP.md` §1) — every reward
+flow there is a new *client entry point* into the existing `creditAdReward()`
+pattern (`lib/adsgram.js`), not a new engine. **In the native Path B client**
+it reuses **AdMob**, already integrated in the ReaLink app — same principle,
+different network, because AdsGram is Telegram-only (see the banner above).
 
 ## 1. AdsGram — verified facts (as of this assessment, sourced)
 
@@ -22,12 +44,11 @@ Shahnameh (`INTEGRATION_MAP.md` §1). Every reward flow below is a new
   native ads, TMA banner ads, task ads, bot broadcast ads, and 24-hour
   channel post ads.
 
-**Action required before designing the in-chat placement:** contact AdsGram
-directly (or read their full integration docs, not marketing pages) and get
-explicit confirmation that "alternative clients" covers a native,
-non-Mini-App chat UI with locally-rendered sponsored cards. This is tracked
-as an open item — see `OPEN_QUESTIONS.md`. **Do not build the in-chat
-placement before this is confirmed.**
+**~~Action required before designing the in-chat placement~~ — CLOSED
+2026-07-12:** AdsGram confirmed they only operate on Telegram, so "alternative
+clients" does NOT cover a native TDLib client. The in-chat sponsored card is
+**dropped**; the native Path B app uses **AdMob rewarded video** on a dedicated
+screen instead. See the RESOLVED banner at the top + `DECISIONS.md`.
 
 ## 2. Rewarded connectivity — flow
 
