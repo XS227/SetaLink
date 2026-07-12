@@ -13,6 +13,60 @@ round trip is worth, and for actual credential exchange (which never
 belonged in git anyway, per this repo's existing "names only, never values"
 rule).
 
+## 2026-07-12 — Role split + next jobs (from Khabat)
+
+Khabat set the go-forward division of labour so we stop stepping on each
+other and each own a coherent surface:
+
+> "du jibber hovedsaklig med realink→realgram også konverteringen layer by
+> layer.. og han [Agent B] kan hjelpe å koble til shahnameh, trustai osv."
+
+- **Agent A (ReaLink app owner):** drives the **ReaLink → RealGram
+  conversion, layer by layer** — everything inside `mobile-app/`. This is
+  the social/messenger transformation of the VPN app: identity layer
+  (custom @handle + avatar), the messaging/inbox UI redesign (Gen-Z, not a
+  Telegram/Insta/WhatsApp clone), network-quality surface, contact import,
+  and the on-app presentation of ecosystem features (game, wallet, earnings).
+  A consumes B's server contracts; A does not build server-side identity/SSO.
+- **Agent B (ecosystem backend + Shahnameh owner):** builds the **connective
+  tissue** — SSO issuer (B-8), signing the Shahnameh web game in from
+  ReaLink, and wiring **TrustAI** + other 3real properties into the same
+  identity/reward rails. B owns `/v1/*` ecosystem endpoints, the coord hub,
+  and the Shahnameh backend. B exposes contracts; A calls them.
+
+**Handshake rule:** any new cross-boundary contract (endpoint shape, JWT
+claims, deep-link params) is written in `DECISIONS.md`/§contract first, then
+implemented — same as SSO §6 and `link-real-proof` already were.
+
+### Next jobs — agreed queue
+
+Agent A (this repo, `mobile-app/`), conversion layers in order:
+- **A-11 Identity layer** — custom `@handle`/nickname + changeable avatar
+  (emoji-avatar first, no photo-upload backend needed yet). Foundation for
+  "add friend by handle" and for addressing messages. *A owns app; needs a
+  tiny B contract: handle uniqueness/lookup endpoint — spec in DECISIONS
+  before build.* → **starting now.**
+- **A-12 Messaging/Inbox UI redesign** — the Gen-Z messenger surface on top
+  of the existing DM/inbox stores + TopBar. Depends on A-11 for identity.
+- **A-13 Telegram contact import** — later phase (needs TDLib from A-5 spike
+  + one Android build); parked until A-11/A-12 land.
+
+Agent B (ecosystem/Shahnameh):
+- **B-8 SSO issuer** (open) — RS256 `POST /v1/sso-token` + JWKS, and make the
+  Shahnameh game verify `?sso=<jwt>` and sign in. Unblocks fully-authed
+  in-app game. **This is B's top priority — A-10 is live and fail-safe
+  waiting on it.**
+- **B-9 (new) TrustAI hookup** — once SSO issues tokens, wire TrustAI to
+  accept the same JWT so ReaLink's ambassador/earnings ("TrustAI %") and
+  TrustAI proper share one identity. Spec the token→TrustAI-account mapping
+  in DECISIONS first.
+- **B-14 (new, supports A-11)** — handle registry: uniqueness reservation +
+  `GET /v1/handle-lookup?handle=` returning device/user for friend-add.
+  Small, but it's the one server dependency A-11 has. Contract first.
+
+I'll seed A-11/A-13, B-9, B-14 on the live task board too. B: shout via the
+board or a commit here if the split or the queue order doesn't work for you.
+
 ## Where it lives
 
 Hosted on Agent B's Shahnameh backend (`shahnameh-backend` repo, `170ba7a`),
