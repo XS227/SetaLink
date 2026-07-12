@@ -447,9 +447,10 @@ redeem now works end to end. Everything from A-1..A-4 + B-1..B-7 is now
 connected in production (behind the flag, on the shipped build).
 
 ### Agent A (dev box) — today
-- **A-7 (do first):** wire Path B0 onboarding — the post-connect tip using
-  Agent B's EN+FA copy from `PATH_B0_ONBOARDING.md` (placement decided:
-  post-connect toast, not a 4th slide). App change, next build.
+- **✅ A-7 DONE 2026-07-12** (commit 6bffeee): Path B0 post-connect tip wired —
+  one-time localized toast (en/fa/zh/ru) on first successful connect, using
+  your copy. In `feat/ecosystem-phase1`, rides the next build. Added a non-hook
+  `tr()` translator to i18n. 319 tests green.
 - **A-8:** merge the shipped work to `main` when Khabat gives go —
   `feat/ecosystem-phase1` (b88: node-fix + wallet + C3 + inbox/UX),
   `seo/sameas-siblings`. Nothing's on main yet from this fortnight's work.
