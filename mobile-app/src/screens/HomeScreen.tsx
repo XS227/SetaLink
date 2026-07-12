@@ -152,10 +152,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     ]).start();
   }, []);
 
-  // Warm up an interstitial so it's ready by the first Connect tap (free users
-  // only — premium is ad-free). Best-effort; failures are silent.
+  // Warm up an interstitial so it's ready by the first Connect tap. Ad gates are
+  // FAIL-CLOSED: ads only when the plan is known to be 'free' — an unloaded or
+  // stale-synced user must never show a premium account an ad. Best-effort.
   useEffect(() => {
-    if (user && user.plan !== 'free') return;
+    if (user?.plan !== 'free') return;
     initAds().then(preloadInterstitial).catch(() => {});
   }, [user?.plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -166,7 +167,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const wasConnectedForAdsRef = useRef(false);
   useEffect(() => {
     if (isConnected && !wasConnectedForAdsRef.current) {
-      if ((!user || user.plan === 'free') && !adShownAtTapRef.current) {
+      if (user?.plan === 'free' && !adShownAtTapRef.current) {
         showInterstitialAfterConnect();
       }
       adShownAtTapRef.current = false;
@@ -184,9 +185,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       }
       // Start connecting first so the ad can never delay or block the tunnel.
       connect();
-      // Best-effort ad revenue on each new connection — free users only, and
-      // only if an interstitial is already loaded (never blocks connect).
-      adShownAtTapRef.current = (!user || user.plan === 'free')
+      // Best-effort ad revenue on each new connection — only for users KNOWN to
+      // be on the free plan, and only if an interstitial is already loaded.
+      adShownAtTapRef.current = user?.plan === 'free'
         ? showInterstitialOnConnect()
         : false;
     }
