@@ -18,7 +18,7 @@ export interface AuthUser {
   lastSeen: string;
   securedWithBiometric: boolean;
   status: 'active' | 'expired' | 'blocked';
-  plan: 'free';
+  plan: 'free' | 'premium';
   planExpiry: string | null;
   inviteCount: number;
   activeInviteCount: number;
@@ -128,7 +128,8 @@ export const useAuthStore = create<AuthState>()(
             lastSeen:             now,
             securedWithBiometric: false,
             status:               e.blocked ? 'blocked' : 'active',
-            plan:                 'free',
+            // The backend owns the plan; 'premium' hides every ad surface.
+            plan:                 e.plan === 'premium' ? 'premium' : 'free',
             planExpiry:           e.valid_until ?? null,
             inviteCount:          (e as any).invite_count ?? 0,
             activeInviteCount:    (e as any).active_invite_count ?? 0,
@@ -154,7 +155,7 @@ export const useAuthStore = create<AuthState>()(
             quotaBytesTotal:   e.quota_bytes_total,
             quotaBytesUsed:    Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
             status:            e.blocked ? 'blocked' : 'active',
-            plan:              'free',
+            plan:              e.plan === 'premium' ? 'premium' : 'free',
             planExpiry:        e.valid_until ?? null,
             inviteCount:       (e as any).invite_count ?? prev.user.inviteCount,
             activeInviteCount: (e as any).active_invite_count ?? prev.user.activeInviteCount,
