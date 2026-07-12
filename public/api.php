@@ -80,7 +80,7 @@ function init_device_tables(PDO $pdo): void {
         device_id          TEXT PRIMARY KEY,
         referral_code      TEXT UNIQUE,
         plan               TEXT    DEFAULT 'free',
-        quota_bytes_total  INTEGER DEFAULT 1073741824,
+        quota_bytes_total  INTEGER DEFAULT 5368709120,
         quota_bytes_used   INTEGER DEFAULT 0,
         valid_until        TEXT    DEFAULT NULL,
         blocked            INTEGER DEFAULT 0,
@@ -818,8 +818,9 @@ if ($method === 'POST') {
             $pdo->prepare(
                 "INSERT INTO devices
                     (device_id, user_id, referral_code, platform, app_version, language, country, country_name,
-                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')"
+                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status,
+                     quota_bytes_total)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', 5368709120)"
             )->execute([$deviceId, $uid, $code, $platform, $appVersion, $language,
                         $country, $countryName, $manufacturer, $model, $sdkVersion,
                         $androidVer, $abi, $androidIdHash, $clientIp]);
