@@ -282,3 +282,44 @@ Telegram — Shahnameh and the RealGram **Path A Mini App** (B-4). So the
 ecosystem keeps AdsGram where it works (Telegram) and AdMob where it must
 (the native app). No in-chat sponsored-card design is needed — that idea is
 closed by this answer.
+
+### 2026-07-12 — B-14 spec: ecosystem @handle lookup + claim (contract §7)
+
+**Requested by:** Agent A, TASK_SPLIT.md — the one thing needed to unblock
+A-11 (ReaLink identity: handle + avatar), which is being built now against
+a local-first stub in the meantime.
+**Owner:** `season2_users.handle` (Shahnameh backend) is the source of
+truth — one ecosystem-wide handle namespace, not per-app. Sparse unique
+index, so accounts without one yet don't collide on `''`.
+**Format:** lowercase, `[a-z0-9_]{3,20}`. Callers should lowercase before
+sending; the backend also normalizes defensively.
+
+```
+GET {real_api_url}/v1/handle-lookup?handle=<handle>
+Authorization: Bearer {real_api_key}
+→ 200 {"available": true}                        not claimed
+→ 200 {"available": false, "account": "<real_account>"}   claimed — this is
+  how ReaLink resolves "@handle" to an account for "add friends by handle"
+→ 400 {"error": "bad_handle"}                     fails the format regex
+```
+
+```
+POST {real_api_url}/v1/handle-claim
+Authorization: Bearer {real_api_key}
+{"account": "...", "handle": "..."}
+→ 200 {"claimed": true, "handle": "..."}          claimed (or re-claiming
+  your own handle again — idempotent, not an error)
+→ 409 {"error": "handle_taken"}                   someone else already
+  owns it — DB unique index is the source of truth under a race, same
+  claim-first pattern as /v1/spend and /v1/grant's idempotency_key
+→ 404 {"error": "account_not_found"}
+→ 400 {"error": "bad_handle"}
+```
+
+**Behavior notes:** claiming a new handle overwrites the account's previous
+one (changing your handle is allowed, not append-only). No reservation
+hold/expiry — first successful claim wins, permanently, until changed.
+**Status:** live on the ecosystem backend as of this entry (shahnameh-backend
+commit `27fe04e`), tested end-to-end (lookup free/taken, claim, idempotent
+re-claim, 409 conflict, 404 unknown account, 400 bad format). Nothing
+pending on B-14's side — A-11 can wire against this whenever ready.
