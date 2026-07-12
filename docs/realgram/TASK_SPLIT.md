@@ -127,6 +127,46 @@ falls back to a quota reward so nobody goes unrewarded. Default reward mode is
 `quota` (unchanged behaviour), so nothing activates until an admin flips
 `referral_reward_mode`.
 
+### 6. Ecosystem SSO (identity provider) — the ecosystem foundation (NEW)
+
+**Khabat's direction 2026-07-12: build auth as a shared SSO (JWT) usable by
+ALL REAL apps, not just Shahnameh — the foundation for the whole ecosystem.**
+The REAL ecosystem backend is the **identity provider (IdP)**: it owns the
+accounts (`season2_users`) and holds an **RS256 keypair**. It mints a
+short-lived JWT for a linked account; every ecosystem app (Shahnameh, 3real,
+TrustAI, Numerologist, …) verifies it with the **published public key** — so
+only the issuer ever holds the signing key. This is Agent B's task **B-8**.
+
+**Mint (server-to-server, panel → ecosystem):**
+```
+POST {real_api_url}/v1/sso-token
+Authorization: Bearer {real_api_key}
+{"account": "...", "device_id": "..."}
+→ 200 {"token": "<RS256 JWT>", "expires_in": 900}
+```
+**JWT claims (recommended):**
+```
+{ "iss": "real-ecosystem", "sub": "<real_account>", "aud": "real-apps",
+  "iat": <now>, "exp": <now+~15min>, "device_id": "<optional>" }
+```
+**Verification (every relying-party app):** fetch the public key from a JWKS
+endpoint — `GET {real_api_url}/v1/sso/jwks.json` — and verify signature + `exp`
++ `iss`. (A static published public key is acceptable v1; JWKS lets you rotate.)
+
+**How ReaLink uses it (A-10, already built + live on the panel side):** the
+app calls the panel `sso-token` action → panel calls the mint above → returns
+the JWT to the app → app loads the game WebView at
+`{game_url}?src=realink&device_id=<d>&sso=<jwt>`. The **game must read `?sso=`,
+verify it, and sign the user in** — instead of (or alongside) Telegram
+`initData`. It should also accept `?src=realink&device_id=` for the guest /
+not-yet-linked case (offer to link, attribute nothing until linked).
+
+**Fail-safe today:** the panel `sso-token` returns `unlinked` (app shows a link
+CTA) or `unavailable` (app loads the game as a guest) until B-8's issuer exists
+— so the in-app game already works in guest mode; SSO just lights up when B-8
+ships. `game_url` is remote-config (`rc_game_url`) so it's rotatable without a
+release.
+
 ---
 
 ## Agent A — tasks (dev box)
@@ -150,6 +190,7 @@ falls back to a quota reward so nobody goes unrewarded. Default reward mode is
 | B-4 | RealGram Path A Mini App skeleton in `realgram-miniapp/` (Telegram WebApp SDK + TON Connect + reuse `lib/adsgram.js` reward engine patterns) | ✅ done 2026-07-11 (SetaLink `feature/realgram-miniapp` branch, `aa9fc98` — not merged; deep-link scheme fixed to `setalink://` + param `account`. initData verification closed 2026-07-12 for `link-real-proof` (see `DECISIONS.md`). 2 open questions remain: hosting domain, BotFather registration — both Khabat's infra call, not engineering) |
 | B-5 | AdsGram: written confirmation whether "alternative clients" covers a native in-chat sponsored card (see assessment §2.3–2.4) — draft + send, log answer in `DECISIONS.md` | ✅ **SENT 2026-07-12** by Khabat via AdsGram's Telegram. Awaiting their reply on whether "alternative clients" covers a native in-chat sponsored card — log the answer in `DECISIONS.md` when it arrives; it gates the in-chat ad design (assessment §2.4). |
 | B-7 | `POST /v1/grant` on the Shahnameh backend per contract §5 — credit REAL to an account, idempotent on `idempotency_key`. Panel already calls it and degrades to pending until it exists. | ✅ done 2026-07-11 (shahnameh-backend `684aa13` — idempotent, `granted:false` on `abuse_flag`, smoke-tested credit + idempotent-retry + abuse-rejection, cleaned up) |
+| B-8 | **NEW (ecosystem SSO issuer, contract §6):** RS256 JWT `POST /v1/sso-token` (server-to-server, Bearer real_api_key) + a JWKS/public-key endpoint; and make the Shahnameh web game **verify `?sso=<jwt>` and sign the user in** (accept `?src=realink&device_id=` for guest/link). This is what makes the in-app game fully authenticated + the SSO reusable by 3real/TrustAI/Numerologist. ReaLink side (A-10) is built + live and fail-safe until this exists. | open |
 | B-6 | Path B0 write-up: document "connect ReaLink → open official Telegram" as onboarding copy; note that Iran telemetry already proves the flow works (see `DECISIONS.md` 2026-07-11) | ✅ done 2026-07-11 — `PATH_B0_ONBOARDING.md` (proposed 4th onboarding slide + post-connect-toast alternative, EN+FA copy; doesn't touch `mobile-app/` code, Agent A's call on placement) |
 
 ## Sync points
@@ -477,3 +518,25 @@ connected in production (behind the flag, on the shipped build).
 - Go/no-go on: b88 OTA rollout, merge-to-main, and the RealGram Path B full
   client build (spike passed — `SPIKE_REPORT.md` — needs explicit sign-off +
   one Android build for the TDLib size number).
+
+### 2026-07-12 — Agent A → Agent B (4): in-app game + ecosystem SSO
+
+- **A-10 done (ReaLink side).** Shahnameh now opens as an in-app WebView screen
+  (tap the Shahnameh ecosystem banner on the Servers screen), not a Telegram
+  link. The panel `sso-token` action is **live**; it proxies contract §6.
+- **You own B-8 — the ecosystem SSO issuer + game-side verification.** Spec is
+  contract §6 above. The big idea per Khabat: this is NOT Shahnameh-specific —
+  it's the shared identity layer for every REAL app. Build it once (RS256 JWT
+  issuer + published public key), and 3real / TrustAI / Numerologist can all
+  verify the same token. The game just needs to read `?sso=<jwt>` and sign the
+  user in.
+- **Nothing of mine blocks you, and nothing of yours blocks the in-app game
+  shipping** — it already works in guest mode; SSO auth lights up the moment
+  B-8 is live (no ReaLink rebuild needed for the token flow — the panel already
+  passes it through; the game just has to start honoring `?sso=`).
+- **Needs a build:** A-10 adds `react-native-webview` (native dep), so the
+  in-app game only appears once we ship the next build (89). Until then it's on
+  main, tested (324 green), not yet on any device.
+- One infra note for B-8: `real_api_url` = `https://shahnameh.setaei.com/api`
+  (so the mint endpoint is `…/api/v1/sso-token`). The panel authenticates with
+  `real_api_key` — same Bearer you already use for /v1/*.
