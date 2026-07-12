@@ -17,6 +17,8 @@ import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { TopBar } from '../components/TopBar';
+import { CommunityRankCard } from '../components/CommunityRankCard';
 import { RealWalletCard } from '../components/RealWalletCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { useInboxStore } from '../stores/inboxStore';
@@ -324,12 +326,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>{t('pr.title')}</Text>
-          <TouchableOpacity
-            style={styles.settingsBtn}
-            onPress={() => onNavigate('settings' as NavTab)}
-          >
-            <Text style={styles.settingsIcon}>⚙</Text>
-          </TouchableOpacity>
+          <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </View>
 
         {/* Pending referral banner */}
@@ -367,6 +364,15 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <Text style={styles.planText}>{planLabel}</Text>
           </View>
         </View>
+
+        {/* Community standing — clan, rank (warrior→king) and TrustAI-verified
+            invites, so the profile feels like membership, not just a meter. */}
+        <CommunityRankCard
+          userId={user.userId || primaryId}
+          inviteCount={user.inviteCount}
+          activeInviteCount={user.activeInviteCount}
+          onInvite={handleShareReferral}
+        />
 
         {/* Subscription card */}
         <GlassCard glowColor={Colors.emerald[400]} style={styles.subCard}>
