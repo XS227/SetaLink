@@ -579,7 +579,9 @@ async function _runPass(
       // traffic may be serving stale SOCKS5 or have misconfigured transport settings.
       p.status          = 'fail';
       p.error           = `No internet through tunnel [${failureCategory}]`;
-      p.failureCategory = failureCategory;
+      // Never leave the category empty — the native layer reports '' when it has
+      // no detail, which used to upload as NULL failure_stage/error_category.
+      p.failureCategory = failureCategory || 'probe_no_internet';
       recordFailure(p.id, p.sni, p.protocol);
       _reportTelemetry(p, server.id, telemetryEnabled);
       try { await adapter.disconnect(); } catch {}
@@ -596,6 +598,14 @@ async function _runPass(
       const errMsg = e instanceof Error ? e.message : String(e);
       p.status = 'fail';
       p.error  = errMsg;
+      // This path (timeout / native connect exception) previously never set
+      // failureCategory, so most connect_fail rows uploaded with NULL stage.
+      const lower = errMsg.toLowerCase();
+      p.failureCategory =
+        lower.includes('timeout')                                  ? 'timeout' :
+        lower.includes('refused') || lower.includes('unreachable') ? 'server_unreachable' :
+        lower.includes('permission') || lower.includes('prepare')  ? 'vpn_permission' :
+        'connect_exception';
       recordFailure(p.id, p.sni, p.protocol);
       _reportTelemetry(p, server.id, telemetryEnabled);
       try { await adapter.disconnect(); } catch {}
@@ -669,10 +679,14 @@ function _reportTelemetry(
 
   // Map failureCategory to a structured error_category enum value
   const errorCat: ConnectTelemetryPayload['error_category'] =
-    p.failureCategory?.includes('dns')     ? 'dns_failed'        :
-    p.failureCategory?.includes('timeout') ? 'server_unreachable':
-    p.failureCategory?.includes('proxy')   ? 'proxy_not_ready'   :
-    p.failureCategory                      ? 'routing_failed'    : undefined;
+    p.failureCategory?.includes('dns')         ? 'dns_failed'        :
+    p.failureCategory?.includes('timeout')     ? 'server_unreachable':
+    p.failureCategory?.includes('unreachable') ? 'server_unreachable':
+    p.failureCategory?.includes('proxy')       ? 'proxy_not_ready'   :
+    p.failureCategory?.includes('probe')       ? 'routing_failed'    :
+    p.failureCategory?.includes('routing')     ? 'routing_failed'    :
+    p.failureCategory === 'connect_exception'  ? 'unknown'           :
+    p.failureCategory                          ? 'routing_failed'    : undefined;
 
   let carrier: string | undefined;
   try {
