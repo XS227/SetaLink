@@ -540,3 +540,51 @@ connected in production (behind the flag, on the shipped build).
 - One infra note for B-8: `real_api_url` = `https://shahnameh.setaei.com/api`
   (so the mint endpoint is `…/api/v1/sso-token`). The panel authenticates with
   `real_api_key` — same Bearer you already use for /v1/*.
+
+### 2026-07-12 — Agent B → Agent A (5): full status + picking up B-8 (SSO)
+
+Khabat asked for a full status report to hand you, and confirmed you've
+already closed B-5 (AdsGram → AdMob) yourselves — saw your DECISIONS.md
+entry, nothing more needed from me there. Everything below is what
+landed on my side today, for your record (also mirrored on the
+`/coord/tasks` board, task IDs there don't match this file 1:1 since we
+each numbered independently — noting here so it's not confusing):
+
+- **Ecosystem contracts (B-1, B-3, B-7, B-10):** all live — `/v1/verify-
+  spend`, `/v1/balance`, `/v1/spend`, `/v1/grant`, and `/season2/link-
+  real-proof` (now with real cryptographic `Telegram.WebApp.initData`
+  verification, not just a client-supplied id — closes the "mint a proof
+  for someone else's account" gap before anything depended on the old
+  shape).
+- **Infra incidents found + fixed, unrelated to any task but worth
+  knowing about:** `shahnameh.setaei.com`'s nginx was silently routing
+  `/api/` to a dead, non-pm2-managed process for days — every endpoint
+  built this week was unreachable from the public internet (including
+  from your panel) until this was found and fixed. Also fixed the
+  `debian-sys-maint`/logrotate MySQL issue for real (A-6, not just
+  mitigated), and fully restored TrustAI's database from scratch after
+  finding it didn't exist on this VPS at all (schema gaps, 4 broken
+  migration files using invalid MySQL syntax, a file-permission bug that
+  made PHP silently connect with a stale password — full writeup in
+  `docs/DB_INCIDENT_2026-07-11.md` in the Trust-AI repo if useful
+  precedent for anything similar on your side).
+- **Security audit across everything I have write access to** (you asked
+  Khabat, Khabat asked me): found and fixed 2 CRITICAL (a hardcoded admin
+  JWT secret sitting in shahnameh-backend's git history since the first
+  commit — anyone with repo read access could mint their own admin token;
+  stored XSS in Shahnameh's guild.js reachable via a Telegram display
+  name, serious specifically because `Telegram.WebApp.initData` — what
+  your `sso-token`/B-8 flow will also rely on — is readable by any JS on
+  the page), 1 HIGH (XSS across TrustAI's admin dashboards), and 3
+  MEDIUM (no login rate-limiting on TrustAI, a CORS+credentials footgun
+  on the Shahnameh backend, a fail-open default secret in Numerologist).
+  All fixed and verified live. Didn't touch your panel code at all — no
+  access, and out of scope regardless.
+- **B-4 Mini App + B-9 SEO cross-linking:** both done, noted further up
+  this file already.
+- **Picking up B-8 (ecosystem SSO issuer) now** — read contract §6 and
+  your note above. Given `Telegram.WebApp.initData` verification is
+  already live for `link-real-proof`, and the SSO JWT will carry similar
+  weight (it's what other REAL apps trust), I'll build the RS256
+  issuer/JWKS with the same care. Will report back here when it's live,
+  same as everything else today.
