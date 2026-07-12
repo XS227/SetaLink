@@ -444,6 +444,11 @@ const EN = {
   'wallet.success':     'Data added to your quota!',
   'wallet.unavailable': 'Wallet service is unavailable — try again later.',
   'tip.appsWork':       'Telegram, Instagram & your other apps now work normally — just open them.',
+  'game.title':         'Shahnameh',
+  'game.linkTitle':     'Link your REAL account',
+  'game.linkBody':      'Connect your Shahnameh account to earn REAL as you play and redeem it for free data.',
+  'game.linkBtn':       'Link account',
+  'game.playGuest':     'Play as guest',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -979,6 +984,11 @@ const FA: typeof EN = {
   'wallet.success':     'حجم به سهمیه شما اضافه شد!',
   'wallet.unavailable': 'سرویس کیف پول در دسترس نیست — بعداً دوباره امتحان کنید.',
   'tip.appsWork':       'حالا تلگرام، اینستاگرام و بقیه برنامه‌ها به‌طور معمولی کار می‌کنند — کافی است بازشان کنید.',
+  'game.title':         'شاهنامه',
+  'game.linkTitle':     'حساب REAL خود را متصل کنید',
+  'game.linkBody':      'حساب شاهنامه‌تان را متصل کنید تا با بازی REAL کسب کنید و آن را به حجم رایگان تبدیل کنید.',
+  'game.linkBtn':       'اتصال حساب',
+  'game.playGuest':     'به‌عنوان مهمان بازی کن',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
@@ -1491,6 +1501,11 @@ const ZH: typeof EN = {
   'wallet.success':     '流量已添加到您的配额！',
   'wallet.unavailable': '钱包服务暂不可用，请稍后再试。',
   'tip.appsWork':    '现在 Telegram、Instagram 和其他应用都能正常使用了 — 直接打开即可。',
+  'game.title':      '沙纳玛',
+  'game.linkTitle':  '关联您的 REAL 账户',
+  'game.linkBody':   '关联您的 Shahnameh 账户，边玩边赚 REAL，并兑换为免费流量。',
+  'game.linkBtn':    '关联账户',
+  'game.playGuest':  '以访客身份游玩',
 
   'pr.inviteRewards': '邀请奖励',
   'pr.activeInvites': '个有效邀请',
@@ -1996,6 +2011,11 @@ const RU: typeof EN = {
   'wallet.success':     'Трафик добавлен к вашей квоте!',
   'wallet.unavailable': 'Сервис кошелька недоступен — попробуйте позже.',
   'tip.appsWork':    'Telegram, Instagram и другие приложения теперь работают как обычно — просто откройте их.',
+  'game.title':      'Шахнаме',
+  'game.linkTitle':  'Привяжите аккаунт REAL',
+  'game.linkBody':   'Привяжите аккаунт Shahnameh, чтобы зарабатывать REAL в игре и обменивать его на бесплатный трафик.',
+  'game.linkBtn':    'Привязать аккаунт',
+  'game.playGuest':  'Играть как гость',
 
   'pr.inviteRewards': 'Награды за приглашения',
   'pr.activeInvites': 'активных приглашений',
