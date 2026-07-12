@@ -7,6 +7,7 @@ import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/t
 import { ConnectButton } from '../components/ConnectButton';
 import { GoldBeatBurst } from '../components/GoldBeatBurst';
 import { StatusBadge }   from '../components/StatusBadge';
+import { NetworkQualityDots } from '../components/NetworkQualityDots';
 import { MetricPill }    from '../components/MetricPill';
 import { NetworkQualityBar } from '../components/NetworkQualityBar';
 import { GlassCard }     from '../components/GlassCard';
@@ -209,6 +210,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           { opacity: headerOpacity, transform: [{ translateY: contentTranslate }] },
         ]}>
           <StatusBadge status={STATUS_MAP[connectionState]} />
+          {isConnected && <NetworkQualityDots />}
           {isConnected && (
             <View style={styles.protocolBadge}>
               <Text style={styles.protocolText}>{protocol}</Text>
