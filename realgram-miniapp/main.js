@@ -136,18 +136,30 @@
 
     if (!uid) { status.textContent = 'Open this from Telegram to link.'; return; }
     if (!deviceId) { status.textContent = 'Enter the device ID from the SetaLink app.'; return; }
+    // link-real-proof mints a proof that can claim a REAL wallet, so the
+    // backend verifies the caller's identity itself (Telegram initData
+    // HMAC, see lib/telegramAuth.js on the backend) instead of trusting a
+    // client-supplied id — unlike balance/ads-reward above, which still
+    // send telegram_id directly (accepted gap for those, see
+    // README.md "Open questions" #4). tg.initData is the raw signed
+    // string; initDataUnsafe (used elsewhere in this file) is parsed but
+    // NOT verified, so it's the wrong one to send here.
+    const rawInitData = tg && tg.initData;
+    if (!rawInitData) { status.textContent = 'Open this from Telegram to link.'; return; }
 
     status.textContent = 'Requesting proof…';
     try {
       const r = await fetch(`${API_BASE}/season2/link-real-proof`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram_id: uid, device_id: deviceId }),
+        body: JSON.stringify({ init_data: rawInitData, device_id: deviceId }),
       });
       const d = await r.json();
       if (r.status !== 200) {
         status.textContent = d.error === 'account_not_found'
           ? 'Play a bit of Shahnameh first, then try again.'
+          : d.error === 'unauthorized'
+          ? 'Could not verify your Telegram session — reopen this page.'
           : 'Could not get a link proof right now.';
         return;
       }
