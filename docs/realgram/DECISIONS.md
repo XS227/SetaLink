@@ -226,3 +226,15 @@ trusting that "pm2 shows it online" means "the internet can reach the
 current code" — check what nginx's `proxy_pass` actually points to,
 separately, whenever a new endpoint doesn't behave as expected publicly
 despite working on localhost.
+
+### 2026-07-12 — AdsGram inquiry sent (B-5)
+
+**Done by:** Khabat, via AdsGram's Telegram support channel.
+**What:** the finalized B-5 inquiry (`ADSGRAM_INQUIRY_DRAFT.md`) was sent —
+asking whether "alternative clients" covers a native, locally-rendered
+in-chat sponsored card for a TDLib client, plus integration path / policy /
+volume questions.
+**Awaiting:** AdsGram's reply. It gates the in-chat ad-surface design
+(assessment §2.4): if yes → build the local card; if no/unclear → fall back
+to a dedicated "RealGram Connectivity" Mini App/panel surface. Log their
+answer here when it lands.
