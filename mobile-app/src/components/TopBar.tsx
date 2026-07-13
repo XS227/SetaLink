@@ -13,6 +13,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { Colors, Typography } from '../design/tokens';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore } from '../stores/dmStore';
@@ -62,13 +63,19 @@ function PowerBtn({ onNavigate }: { onNavigate: (tab: string) => void }) {
   };
 
   return (
-    <IconBtn
-      glyph="⏻"
-      label={isConnected ? 'Turn VPN off' : 'Turn VPN on'}
-      onPress={onPress}
-      color={color}
-      ring={color + '66'}
-    />
+    <TouchableOpacity
+      style={[styles.btn, { borderWidth: 1, borderColor: color + '66' },
+              isConnected && { backgroundColor: POWER_ON + '14' }]}
+      onPress={onPress} activeOpacity={0.7} hitSlop={8}
+      accessibilityLabel={isConnected ? 'Turn VPN off' : 'Turn VPN on'}
+    >
+      {/* Drawn power symbol — the ⏻ text glyph is missing/ugly in many
+          Android system fonts, so we render it as vectors instead. */}
+      <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
+        <Path d="M12 2v10" stroke={color} strokeWidth={2.4} strokeLinecap="round" />
+        <Path d="M18.4 6.6a9 9 0 1 1-12.77.04" stroke={color} strokeWidth={2.4} strokeLinecap="round" />
+      </Svg>
+    </TouchableOpacity>
   );
 }
 
