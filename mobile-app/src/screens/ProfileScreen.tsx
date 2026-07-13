@@ -19,6 +19,7 @@ import { useReferral, syncEntitlement } from '../services/entitlementService';
 import { WatchAdCard } from '../components/WatchAdCard';
 import { TopBar } from '../components/TopBar';
 import { CommunityRankCard } from '../components/CommunityRankCard';
+import { EcosystemFooter } from '../components/EcosystemFooter';
 import { RealWalletCard } from '../components/RealWalletCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { IdentityHeader } from '../components/IdentityHeader';
@@ -656,6 +657,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <Text style={styles.footerLink}>https://setalink.no</Text>
           </TouchableOpacity>
           <Text style={styles.footerCopy}>© 2026 Realink. {t('st.allRights')}</Text>
+          <EcosystemFooter />
         </GlassCard>
 
         {/* Sign out */}
