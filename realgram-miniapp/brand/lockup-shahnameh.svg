@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 148 28" width="148" height="28" role="img" aria-label="Shahnameh">
+  <circle cx="14" cy="14" r="13" fill="#D4AF37"/>
+  <text x="14" y="14" text-anchor="middle" dominant-baseline="central"
+        font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-weight="700" font-size="10" letter-spacing="-0.3" fill="#0C1116">SH</text>
+  <text x="34" y="19" font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-weight="600" font-size="16" letter-spacing="-0.3" fill="#D4AF37">Shahnameh</text>
+</svg>
