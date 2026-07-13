@@ -16,6 +16,7 @@ import { WatchAdCard } from '../components/WatchAdCard';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
+import { useZarStore }         from '../stores/zarStore';
 import { useAIStore }          from '../stores/aiStore';
 import { useServerStore }      from '../stores/serverStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
@@ -175,8 +176,18 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     wasConnectedForAdsRef.current = isConnected;
   }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tap-to-earn: while connected the coin mints ZAR (Shahnameh currency,
+  // REAL conversion comes later). Disconnect lives on the TopBar power icon
+  // and as hold-to-disconnect on the coin itself.
+  const zarBalance = useZarStore((s) => s.balance);
+  const [zarCapped, setZarCapped] = useState(false);
   const handleConnect = () => {
-    if (connectionState === 'connected') { disconnect(); return; }
+    if (connectionState === 'connected') {
+      const res = useZarStore.getState().tap();
+      setZarCapped(res.capped);
+      if (res.earned > 0) setGoldBurst(k => k + 1);
+      return;
+    }
     if (connectionState === 'idle' || connectionState === 'failed') {
       // Block connect when free quota is exhausted
       if (user && user.plan === 'free' && user.quotaBytesUsed >= user.quotaBytesTotal) {
@@ -256,9 +267,18 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           <ConnectButton
             state={BUTTON_STATE_MAP[connectionState]}
             onPress={handleConnect}
+            onLongPress={isConnected ? disconnect : undefined}
             disabled={isTransitioning}
           />
           {isConnected && <Text style={styles.timer}>{timer}</Text>}
+          {isConnected && (
+            <View style={styles.zarPill}>
+              <Text style={styles.zarText}>⚡ {zarBalance} ZAR</Text>
+              <Text style={styles.zarHint}>
+                {zarCapped ? t('home.zarCapReached') : t('home.zarHint')}
+              </Text>
+            </View>
+          )}
           {/* Heartbeat of the network — gold REAL coins pulse out on connect */}
           <GoldBeatBurst burstKey={goldBurst} />
         </Animated.View>
@@ -502,6 +522,9 @@ const styles = StyleSheet.create({
   errorCardHint:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
   connectArea:  { alignItems: 'center', paddingVertical: Spacing[4], gap: Spacing[3] },
   timer:        { fontSize: Typography.size.md, fontFamily: Typography.family.mono, color: Colors.text.secondary, letterSpacing: 2 },
+  zarPill:      { alignItems: 'center', gap: 2, marginTop: Spacing[1] },
+  zarText:      { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.gold[400], letterSpacing: 1 },
+  zarHint:      { fontSize: Typography.size.xs, color: Colors.text.muted },
   serverPill:   { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[3] },
   serverPillActive: { borderColor: Colors.border.glow, backgroundColor: 'rgba(0,232,122,0.04)' },
   serverFlag:   { fontSize: 28 },

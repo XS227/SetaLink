@@ -17,12 +17,14 @@ export type ConnectionState = 'idle' | 'connecting' | 'connected' | 'disconnecti
 interface Props {
   state:    ConnectionState;
   onPress:  () => void;
+  /** Hold-to-disconnect escape hatch while taps are earning ZAR. */
+  onLongPress?: () => void;
   disabled?: boolean;
 }
 
 const SIZE = 188;
 
-export function ConnectButton({ state, onPress, disabled = false }: Props) {
+export function ConnectButton({ state, onPress, onLongPress, disabled = false }: Props) {
   const scale       = useSharedValue(1);
   const glowOpacity = useSharedValue(0);
 
@@ -72,6 +74,8 @@ export function ConnectButton({ state, onPress, disabled = false }: Props) {
 
       <Pressable
         onPress={disabled ? undefined : onPress}
+        onLongPress={disabled ? undefined : onLongPress}
+        delayLongPress={600}
         onPressIn={disabled ? undefined : handlePressIn}
         onPressOut={disabled ? undefined : handlePressOut}
         hitSlop={8}
