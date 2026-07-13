@@ -80,7 +80,7 @@ function init_device_tables(PDO $pdo): void {
         device_id          TEXT PRIMARY KEY,
         referral_code      TEXT UNIQUE,
         plan               TEXT    DEFAULT 'free',
-        quota_bytes_total  INTEGER DEFAULT 1073741824,
+        quota_bytes_total  INTEGER DEFAULT 5368709120,
         quota_bytes_used   INTEGER DEFAULT 0,
         valid_until        TEXT    DEFAULT NULL,
         blocked            INTEGER DEFAULT 0,
@@ -642,6 +642,97 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'handle-lookup' || $action === 'handle-reserve' || $action === 'handle-resolve') {
+        // Identity layer (A-11): unique, addressable @handles for ReaLink users.
+        // The registry lives on the panel because the panel owns the devices
+        // table (natural uniqueness authority). The app is local-first and only
+        // gates on this when reachable, so it degrades cleanly.
+        //   handle-lookup   -> availability (read-only)
+        //   handle-reserve  -> claim it for a device (+ optional profile)
+        //   handle-resolve  -> friend-add: handle -> public mini-profile
+        $pdo = db();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS device_handles (
+            handle       TEXT PRIMARY KEY,
+            device_id    TEXT NOT NULL UNIQUE,
+            display_name TEXT DEFAULT '',
+            avatar_emoji TEXT DEFAULT '',
+            avatar_color TEXT DEFAULT '',
+            created_at   TEXT DEFAULT (datetime('now')),
+            updated_at   TEXT DEFAULT (datetime('now'))
+        )");
+
+        // Server-side normalize + validate (mirrors utils/handle.ts).
+        $handle = strtolower(trim($_GET['handle'] ?? ''));
+        $handle = ltrim($handle, '@');
+        $handle = preg_replace('/\s+/', '', $handle);
+        $validHandle = (strlen($handle) >= 3 && strlen($handle) <= 20
+                        && preg_match('/^[a-z][a-z0-9_]*$/', $handle) === 1);
+
+        if ($action === 'handle-resolve') {
+            if (!$validHandle) err('invalid handle');
+            $st = $pdo->prepare(
+                "SELECT h.handle, h.device_id, COALESCE(d.user_id,'') AS user_id,
+                        h.display_name, h.avatar_emoji, h.avatar_color
+                 FROM device_handles h LEFT JOIN devices d ON d.device_id = h.device_id
+                 WHERE h.handle = ?");
+            $st->execute([$handle]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$row) ok(['found' => false]);
+            ok([
+                'found'        => true,
+                'handle'       => $row['handle'],
+                'device_id'    => $row['device_id'],
+                'user_id'      => $row['user_id'],
+                'display_name' => $row['display_name'],
+                'avatar_emoji' => $row['avatar_emoji'],
+                'avatar_color' => $row['avatar_color'],
+            ]);
+        }
+
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$validHandle) ok(['available' => false, 'reason' => 'invalid']);
+
+        // Who (if anyone) currently owns this handle?
+        $st = $pdo->prepare("SELECT device_id FROM device_handles WHERE handle = ?");
+        $st->execute([$handle]);
+        $owner = $st->fetchColumn();
+        $ownedByMe = ($owner !== false && $deviceId !== '' && $owner === $deviceId);
+        $available = ($owner === false || $ownedByMe);
+
+        if ($action === 'handle-lookup') {
+            ok(['available' => $available, 'reason' => $available ? '' : 'taken']);
+        }
+
+        // handle-reserve — claim it.
+        if ($deviceId === '') err('missing device_id');
+        if (!$available) ok(['available' => false, 'reason' => 'taken']);
+        // UTF-8-safe truncation without mbstring (not installed on this host).
+        $cut = function (string $s, int $n): string {
+            $chars = preg_split('//u', $s, -1, PREG_SPLIT_NO_EMPTY);
+            return $chars === false ? substr($s, 0, $n) : implode('', array_slice($chars, 0, $n));
+        };
+        $displayName = $cut(trim($_GET['display_name'] ?? ''), 40);
+        $emoji       = $cut(trim($_GET['avatar_emoji'] ?? ''), 4);
+        $color       = $cut(trim($_GET['avatar_color'] ?? ''), 9);
+        $pdo->beginTransaction();
+        try {
+            // A device holds at most one handle — release the old one first.
+            $del = $pdo->prepare("DELETE FROM device_handles WHERE device_id = ?");
+            $del->execute([$deviceId]);
+            $ins = $pdo->prepare(
+                "INSERT INTO device_handles
+                    (handle, device_id, display_name, avatar_emoji, avatar_color, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))");
+            $ins->execute([$handle, $deviceId, $displayName, $emoji, $color]);
+            $pdo->commit();
+        } catch (\Exception $e) {
+            $pdo->rollBack();
+            // Lost a race for the same handle (UNIQUE) — report as taken.
+            ok(['available' => false, 'reason' => 'taken']);
+        }
+        ok(['available' => true, 'reason' => '', 'reserved' => true]);
+    }
+
     if ($action === 'resolve-recipient') {
         // Look up a transfer recipient by device_id / user_id / referral_code so
         // the Send-GB confirmation screen can show who will receive the quota.
@@ -727,8 +818,9 @@ if ($method === 'POST') {
             $pdo->prepare(
                 "INSERT INTO devices
                     (device_id, user_id, referral_code, platform, app_version, language, country, country_name,
-                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')"
+                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status,
+                     quota_bytes_total)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', 5368709120)"
             )->execute([$deviceId, $uid, $code, $platform, $appVersion, $language,
                         $country, $countryName, $manufacturer, $model, $sdkVersion,
                         $androidVer, $abi, $androidIdHash, $clientIp]);

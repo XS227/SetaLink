@@ -6,6 +6,19 @@ export function formatBytes(bytes: number, decimals = 1): string {
   return `${(bytes / Math.pow(k, i)).toFixed(decimals)} ${sizes[i]}`;
 }
 
+// Turns raw server package names ("prem_10gb", "10GB", "starter_bonus") into a
+// clean human label for the profile package list.
+export function prettyPackageName(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  const premium = /^prem[_-]/i.test(s);
+  const gb = s.match(/(\d+(?:\.\d+)?)\s*gb/i);
+  if (gb) return `${gb[1]} GB${premium ? ' · Premium' : ''}`;
+  // Fallback: snake_case → Title Case.
+  const words = s.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return words.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function formatBitrate(bitsPerSecond: number): string {
   if (bitsPerSecond === 0) return '0 bps';
   const k = 1000;
