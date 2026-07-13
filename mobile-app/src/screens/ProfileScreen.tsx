@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Linking,
-  Modal, ActivityIndicator, Image,
+  Modal, ActivityIndicator,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
@@ -12,7 +12,7 @@ import { useSettingsStore } from '../stores/settingsStore';
 import { useSessionStore } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
-import { formatBytes } from '../utils/formatters';
+import { formatBytes, prettyPackageName } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
@@ -21,11 +21,9 @@ import { TopBar } from '../components/TopBar';
 import { CommunityRankCard } from '../components/CommunityRankCard';
 import { RealWalletCard } from '../components/RealWalletCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
+import { IdentityHeader } from '../components/IdentityHeader';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore } from '../stores/dmStore';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_MARK = require('../assets/logo_mark.png') as number;
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
@@ -354,16 +352,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </GlassCard>
         )}
 
-        {/* Brand header — logo replaces the old SL initials circle */}
-        <View style={styles.brandHeader}>
-          <View style={styles.brandLogoRing}>
-            <Image source={LOGO_MARK} style={styles.brandLogo} resizeMode="contain" />
-          </View>
-          <Text style={styles.brandId} numberOfLines={1}>{primaryId}</Text>
-          <View style={styles.planBadge}>
-            <Text style={styles.planText}>{planLabel}</Text>
-          </View>
-        </View>
+        {/* Identity header (A-11) — avatar + @handle + nickname, tap to edit */}
+        <IdentityHeader seedId={user.deviceId} fallbackId={primaryId} planLabel={planLabel} />
 
         {/* Community standing — clan, rank (warrior→king) and TrustAI-verified
             invites, so the profile feels like membership, not just a meter. */}
@@ -504,7 +494,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             <View style={styles.pkgList}>
               {purchasedPackages.map((p) => (
                 <View key={p.id} style={styles.pkgListRow}>
-                  <Text style={styles.pkgListName} numberOfLines={1}>{p.package_name}</Text>
+                  <Text style={styles.pkgListName} numberOfLines={1}>{prettyPackageName(p.package_name)}</Text>
                   <Text style={styles.pkgListBytes}>{gb(p.bytes)}</Text>
                 </View>
               ))}
