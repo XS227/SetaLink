@@ -132,6 +132,19 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
       appendMetric({ type: 'connect_success', at: Date.now(), country: server?.country, transport: server?.transport, protocol: server?.protocol });
 
+      // Session-level telemetry: manual connects never reported before this,
+      // so learned routing only saw smart-connect probes (deduped inside).
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reportSessionOutcome } = require('../services/sessionTelemetry') as typeof import('../services/sessionTelemetry');
+        reportSessionOutcome({
+          ok:        true,
+          nodeId:    server?.id ?? 'primary',
+          protocol:  server ? `${server.protocol}+${server.transport}` : undefined,
+          latencyMs: get().lastPingMs ?? undefined,
+        });
+      } catch {}
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useToastStore } = require('./toastStore');
@@ -400,6 +413,17 @@ export const useVpnStore = create<VpnState>((set, get) => {
       // All nodes and protocols exhausted — surface the final error.
       set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], error: analysis.userMessage, smartStatus: null });
       appendMetric({ type: message.toLowerCase().includes('routing') ? 'routing_failed' : 'connect_failed', at: Date.now(), reason: message, country: get().selectedServer?.country });
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reportSessionOutcome } = require('../services/sessionTelemetry') as typeof import('../services/sessionTelemetry');
+        const srv = get().selectedServer;
+        reportSessionOutcome({
+          ok:            false,
+          nodeId:        srv?.id ?? 'primary',
+          protocol:      srv ? `${srv.protocol}+${srv.transport}` : undefined,
+          errorCategory: analysis.category,
+        });
+      } catch {}
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');

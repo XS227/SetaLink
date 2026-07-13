@@ -695,6 +695,11 @@ function _reportTelemetry(
     carrier = getCachedCarrier() || undefined;
   } catch {}
 
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { noteAutoConnectorReport } = require('./sessionTelemetry');
+    noteAutoConnectorReport();
+  } catch {}
   uploadConnectTelemetry({
     event:             profileTelemetryEvent(p),
     node_id:           nodeId,
