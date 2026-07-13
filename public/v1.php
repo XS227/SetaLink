@@ -67,6 +67,8 @@ function v1_db(): PDO {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
     $pdo->exec("PRAGMA journal_mode=WAL");
+    // Wait for concurrent writers instead of throwing 'database is locked'.
+    $pdo->exec("PRAGMA busy_timeout=5000");
     $pdo->exec("CREATE TABLE IF NOT EXISTS node_allowlist (
         device_id TEXT NOT NULL, node_id TEXT NOT NULL, added_at TEXT,
         PRIMARY KEY (device_id, node_id))");
@@ -148,6 +150,7 @@ const V1_FI_HEL_DEVICE_UUIDS = [
     'sl-ec58c486' => '06f75644-a38a-4591-a063-294673bbbcb4',   // SL-227-6888F163
     'sl-6341972a' => '2bae0b05-ca90-4abe-89ce-21bcdc9c64c2',   // SL-227-FEF6C131
     'sl-a7bf102e' => '61cbd9b6-e617-4ae5-9d31-17d6a9f8c56b',   // SL-227-2DA1D1C0
+    'sl-f877790f' => '157b463d-b67c-4148-885b-2d7f2255a972',   // Android Termius-tester (diag isolation 2026-07-03)
 ];
 
 function v1_helsinki_node(?string $deviceId = null): array {
@@ -221,10 +224,186 @@ function v1_helsinki_node(?string $deviceId = null): array {
     ];
 }
 
+// Germany (Nürnberg) node — the original primary before the 2026-07-03 Finland
+// flip. The box itself is fully healthy (Reality handshake + browsing verified
+// from outside 2026-07-06); it is only unreachable FROM IRAN (SYNs arrive, the
+// return path is dropped by Iranian filtering of the Hetzner IP). It therefore
+// re-enters the catalog as a selectable node, but is geo-hidden for IR callers
+// so Iranian users are never offered a node that is dead for them.
+function v1_germany_node(): array {
+    return [
+        'id'   => 'de-nbg',
+        'test' => false,
+        'meta' => [
+            'id'       => 'de-nbg',
+            'country'  => 'Germany',
+            'city'     => 'Nürnberg',
+            'flag'     => '🇩🇪',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'Reality',
+            'transport'=> 'reality',
+            'tags'     => [],
+            'premium'  => false,
+        ],
+        'creds' => [
+            // x-ui inbound on :443 (SNI cloudflare) — flow is EMPTY on this node,
+            // unlike Finland (vision). Sending vision here breaks the handshake.
+            'uuid'        => 'fd709d48-a983-484a-99e3-afc97e2c3692',
+            'address'     => '91.107.158.53',
+            'port'        => 443,
+            'publicKey'   => 'IJXsDOA55gNiMZprjOdfaS6pN9ifm4MSqlsiZDGzki8',
+            'shortId'     => 'd93af82f2ecb7f6a',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => '',
+            'fingerprint' => 'chrome',
+            'edgeAddress' => 'edge.setalink.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/ws',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            // :8443 (oracle) / :2052 (amazon) inbounds exist on the box but use
+            // separate keypairs not registered here — left out until verified.
+            'altProfiles' => [],
+        ],
+    ];
+}
+
+// Node 3 — ProISP/One.com box (Copenhagen, AS51468), SAME network as the control
+// plane (5.249.252.221), so likely reachable from Iran (unlike Hetzner). Repaired
+// 2026-07-06: dest→cloudflare (microsoft broke Reality), and xray now accepts the
+// nginx PROXY-protocol header (sockopt.acceptProxyProtocol). Verified externally
+// via :443 (google 200, exit 5.249.255.116). NOT geo-hidden — we WANT Iran to try
+// it (that's the whole point). flow = vision (like Finland).
+function v1_proisp_node(): array {
+    return [
+        'id'   => 'dk-cph',
+        'test' => false,
+        'meta' => [
+            'id'       => 'dk-cph',
+            'country'  => 'Denmark',
+            'city'     => 'Copenhagen',
+            'flag'     => '🇩🇰',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'Reality',
+            'transport'=> 'reality',
+            'tags'     => ['New'],
+            'premium'  => false,
+        ],
+        'creds' => [
+            'uuid'        => '98d9b96f-a441-4462-a01d-267f31dae833',
+            'address'     => '5.249.255.116',
+            'port'        => 443,
+            'publicKey'   => 'O3k2RgLQ29tEo8OSXzB3edIF_tom_9nu0PutucwMojk',
+            'shortId'     => '0a1cba3f93dc95e9',
+            'sni'         => 'www.cloudflare.com',
+            'flow'        => 'xtls-rprx-vision',
+            'fingerprint' => 'chrome',
+            'edgeAddress' => 'edge.setalink.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/ws',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            'altProfiles' => [],
+        ],
+    ];
+}
+
+// Country code (ISO-2) for the calling IP: geo_cache first, then a 1s ip-api
+// lookup cached back into geo_cache. Fails open to '' (nodes stay visible) so
+// a geo outage can never empty the server list.
+function v1_client_country(PDO $pdo): string {
+    static $cc;
+    if ($cc !== null) return $cc;
+    $cc = '';
+    $ip = v1_client_ip();
+    if ($ip === '' || $ip === '127.0.0.1' || $ip === '::1'
+        || str_starts_with($ip, '10.') || str_starts_with($ip, '192.168.')) return $cc;
+    try {
+        $st = $pdo->prepare("SELECT country FROM geo_cache WHERE ip = ? LIMIT 1");
+        $st->execute([$ip]);
+        $cached = (string)($st->fetchColumn() ?: '');
+        if ($cached !== '') return $cc = strtoupper($cached);
+        $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+        $raw = @file_get_contents("http://ip-api.com/json/{$ip}?fields=countryCode", false, $ctx);
+        if ($raw) {
+            $j = json_decode($raw, true);
+            $cc = strtoupper(substr((string)($j['countryCode'] ?? ''), 0, 4));
+            if ($cc !== '') {
+                $pdo->prepare("INSERT OR REPLACE INTO geo_cache (ip, country) VALUES (?, ?)")
+                    ->execute([$ip, $cc]);
+            }
+        }
+    } catch (\Throwable $_) { /* fail open */ }
+    return $cc;
+}
+
+// Node IDs hidden for specific caller countries (reachability, not policy):
+// 2026-07-09: Germany geo-hiding for IR REMOVED. Germany reachable from Iran
+// on MCI/Hamrah-e Avval (verified 2026-07-09, tester on 86.55.155.206); the
+// Hetzner blackhole is carrier-specific (Irancell/TCI), so let Iranian callers
+// try de-nbg. Re-add 'de-nbg' => ['IR'] here to hide it again if needed.
+const V1_GEO_HIDDEN_NODES = [];
+
+function v1_node_geo_hidden(PDO $pdo, string $nodeId): bool {
+    $hide = V1_GEO_HIDDEN_NODES[$nodeId] ?? null;
+    if ($hide === null) return false;
+    return in_array(v1_client_country($pdo), $hide, true);
+}
+
+// CDN edge node — VLESS-over-WebSocket fronted by Cloudflare (cf.setalink.no,
+// orange-cloud → ProISP origin 5.249.255.116). The client connects to
+// Cloudflare's anycast IPs over normal HTTPS, so Iran sees only Cloudflare
+// traffic (unblockable) and the return path comes from Cloudflare, not the
+// filtered ProISP→Iran route that broke direct Reality. Verified end-to-end
+// 2026-07-07 (google 200, exit 5.249.255.116). Uses the app's WebSocket
+// builder: edgeAddress/wsPath/uuid + built-in TLS fragmentation for DPI.
+function v1_cfedge_node(): array {
+    return [
+        'id'   => 'cf-edge',
+        'test' => false,
+        'meta' => [
+            'id'       => 'cf-edge',
+            'country'  => 'Realink',
+            'city'     => 'Secure Edge · Stealth',
+            'flag'     => '🛡️',
+            'ping'     => 0,
+            'load'     => 0,
+            'protocol' => 'WebSocket',
+            'transport'=> 'ws',
+            'tags'     => ['Stealth'],
+            'premium'  => false,
+        ],
+        'creds' => [
+            'uuid'        => '69205cf6-23a7-4e64-a1a2-865fd49471fe',
+            'address'     => 'alanya-turist.no',
+            'port'        => 443,
+            // WS builder reads edgeAddress (host + SNI + Host header), edgePort,
+            // wsPath. Cloudflare presents a valid cert for cf.setalink.no, so
+            // allowInsecure stays false.
+            'edgeAddress' => 'alanya-turist.no',
+            'edgePort'    => 443,
+            'wsPath'      => '/cfws',
+            'sni'         => 'alanya-turist.no',
+            'publicKey'   => '',
+            'shortId'     => '',
+            'flow'        => '',
+            'fingerprint' => 'chrome',
+            'xhttpPath'   => '/xhttp/',
+            'httpupPath'  => '/httpup',
+            'altProfiles' => [],
+        ],
+    ];
+}
+
 function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
     $h = v1_helsinki_node($deviceId);
-    return [$p['id'] => $p, $h['id'] => $h];
+    $g = v1_germany_node();
+    $d = v1_proisp_node();
+    $c = v1_cfedge_node();
+    return [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d, $c['id'] => $c];
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
@@ -403,14 +582,16 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         // Derive country from the client IP (best-effort, may be empty).
         $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
         if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
-        // Abuse guard (2026-07-05): this route is public, so bound anonymous
-        // writes. Over the per-IP/minute limit → accept the request (200, so the
-        // client never errors) but skip the insert. Row cap rotates below.
-        if (!ni_telemetry_gate($pdo, $clientIp)) {
-            v1_send(['ok' => true, 'throttled' => true]);
-        }
+        if (!ni_telemetry_gate($pdo, $clientIp)) { v1_send(['ok' => true, 'throttled' => true]); }
         $country = '';
+        // Posts sent while the tunnel is up arrive from our own exit node, so
+        // geo-locating that IP would label the row with the NODE's country
+        // (Finland/Denmark), poisoning learned routing. Leave country empty —
+        // untunneled posts (connect_fail fires before the tunnel is up) carry
+        // the user's real IP and provide the per-country signal.
+        $ownExitIps = ['65.109.183.7', '91.107.158.53', '5.249.255.116', '5.249.252.221'];
         if ($clientIp && $clientIp !== '127.0.0.1' && $clientIp !== '::1'
+            && !in_array($clientIp, $ownExitIps, true)
             && !str_starts_with($clientIp, '10.') && !str_starts_with($clientIp, '192.168.')) {
             // Use cached geo lookup if available in the analytics DB
             try {
@@ -426,6 +607,16 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
                     $country = substr((string)($j['countryCode'] ?? ''), 0, 4);
                 }
             }
+        }
+        // Backfill operator from the device record when the app didn't send
+        // one — per-carrier routing needs every row it can get.
+        $carrierName = v1_body('carrier_name');
+        if ($carrierName === '' || $carrierName === '--') {
+            try {
+                $cq = $pdo->prepare("SELECT carrier FROM devices WHERE device_id=?");
+                $cq->execute([$deviceId]);
+                $carrierName = (string)($cq->fetchColumn() ?: '');
+            } catch (\Throwable $_) {}
         }
         ni_record($pdo, [
             'event'         => $rawTelemetryEvent,
@@ -456,7 +647,7 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'dns_ok'               => v1_body('dns_ok')               !== '' ? v1_body('dns_ok')               : null,
             'time_to_connect_ms'   => v1_body('time_to_connect_ms')   !== '' ? (int)v1_body('time_to_connect_ms')   : null,
             'error_category'       => v1_body('error_category'),
-            'carrier_name'         => v1_body('carrier_name'),
+            'carrier_name'         => $carrierName,
             'nat_type'             => v1_body('nat_type'),
             'ip_version'           => v1_body('ip_version'),
             'rtt_ms'               => v1_body('rtt_ms') !== '' ? (int)v1_body('rtt_ms') : null,
@@ -470,7 +661,7 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'ios_version'          => v1_body('ios_version'),
             'device_model'         => v1_body('device_model'),
         ]);
-        ni_telemetry_rotate($pdo); // enforce the retention cap (occasional trim)
+        ni_telemetry_rotate($pdo);
         // Auto-create structured diagnostic session for every disconnect event (build 68+).
         // Disconnect events carry CP1/CP4 summary data accumulated during the session.
         if ($rawTelemetryEvent === 'disconnect') {
@@ -506,15 +697,14 @@ if ($rel === '/servers') {
     // Load telemetry-derived success scores (last 7 days) for ranking.
     $scores = [];
     try { ni_init_tables($pdo); $scores = ni_node_scores($pdo, 7); } catch (\Throwable $_) {}
-    // Per-operator learned routing: rank nodes by how well they work for THIS
-    // caller's carrier (Hetzner is blackholed on Irancell/TCI but works on MCI;
-    // the Stealth node saves Irancell/TCI). Falls back to the global score when
-    // the carrier is unknown or the per-carrier sample for a node is thin.
     $carrierScores = [];
     try {
         $cst = $pdo->prepare("SELECT carrier FROM devices WHERE device_id=?");
         $cst->execute([$deviceId]);
         $fam = ni_carrier_family((string)($cst->fetchColumn() ?: ''));
+        // Fallback: carrier sent on the request itself — device registration
+        // may predate carrier capture (pre-b89 installs).
+        if ($fam === '') $fam = ni_carrier_family((string)($_GET['carrier'] ?? ''));
         if ($fam !== '') $carrierScores = ni_node_scores_by_carrier($pdo, $fam, 21);
     } catch (\Throwable $_) {}
     $out = [];
@@ -523,12 +713,13 @@ if ($rel === '/servers') {
         // Auto-hide a non-primary node that is freshly DOWN, so users aren't
         // routed to a dead box. Primary is never hidden (last-resort default).
         if ($id !== 'primary' && v1_node_down($id)) continue;
+        // Geo-hide nodes that are unreachable from the caller's country.
+        if (v1_node_geo_hidden($pdo, $id)) continue;
         $meta = $n['meta'];
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
         if (is_int($rtt)) $meta['ping'] = $rtt;
-        // Success score (0-100): prefer the per-carrier rate when we have a real
-        // sample for this node (>= 4 attempts), else the global rate.
+        // Annotate telemetry-based success score (0-100) when data exists.
         $cs = $carrierScores[$id] ?? null;
         if ($cs !== null && (int)$cs['total'] >= 4 && $cs['success_rate'] !== null) {
             $meta['successScore'] = (float)$cs['success_rate'];
@@ -547,6 +738,11 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     $n = $nodes[$id];
     if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) {
         v1_send(['message' => 'device not authorized for this node'], 403);
+    }
+    // Defense in depth: never hand out creds for a node geo-hidden from this
+    // caller (it is unreachable from their country anyway).
+    if (v1_node_geo_hidden($pdo, $id)) {
+        v1_send(['message' => 'node not available in your region'], 403);
     }
     // Refuse to hand out creds for a node that is freshly down (clients fall back
     // to primary / saved bootstrap). Primary is exempt — it's the last resort.
