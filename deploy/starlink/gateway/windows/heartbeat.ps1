@@ -6,14 +6,14 @@
 
 .DESCRIPTION
     Sends the SAME JSON schema deploy/starlink/gateway/heartbeat.sh (the
-    Linux gateway) already sends — no backend change needed for a Windows
+    Linux gateway) already sends -- no backend change needed for a Windows
     gateway, per docs/STARLINK_WINDOWS_GATEWAY.md section 2.
 
-    Config is read from gateway.env (NOT committed — see config.template.env
+    Config is read from gateway.env (NOT committed -- see config.template.env
     for the format). Never hardcode the heartbeat token in this script.
 
     Backs off safely: if there is no internet at all, this exits quietly
-    instead of erroring or crash-looping — matching the Linux gateway's
+    instead of erroring or crash-looping -- matching the Linux gateway's
     `|| true` on its curl call.
 #>
 
@@ -29,7 +29,7 @@ $logFile = Join-Path $LogDir 'heartbeat.log'
 function Log($msg) { Add-Content -Path $logFile -Value "$((Get-Date).ToUniversalTime().ToString('o')) $msg" }
 
 if (-not (Test-Path $ConfigPath)) {
-    Log "Config not found at $ConfigPath — copy config.template.env there and fill it in. Exiting."
+    Log "Config not found at $ConfigPath -- copy config.template.env there and fill it in. Exiting."
     exit 1
 }
 
@@ -46,9 +46,9 @@ foreach ($required in @('VPS_API_URL', 'NODE_ID', 'HEARTBEAT_TOKEN')) {
     }
 }
 
-# --- Quick internet check first — back off quietly if none, per brief requirement. ---
+# --- Quick internet check first -- back off quietly if none, per brief requirement. ---
 if (-not (Test-Connection -ComputerName '1.1.1.1' -Count 1 -Quiet -ErrorAction SilentlyContinue)) {
-    Log "No internet reachable at all — backing off, not sending heartbeat this cycle."
+    Log "No internet reachable at all -- backing off, not sending heartbeat this cycle."
     exit 0
 }
 
@@ -65,7 +65,7 @@ $latencyMs = if ($received.Count -gt 0) {
 } else { $null }
 $tunnelStatus = if ($received.Count -ge 3) { 'up' } else { 'down' }
 
-# --- Public exit IP (must reflect the Starlink-side egress, not the tunnel —
+# --- Public exit IP (must reflect the Starlink-side egress, not the tunnel --
 #     run these direct, not through the tunnel adapter). ---
 $exitIpv4 = $null
 $exitIpv6 = $null
@@ -86,7 +86,7 @@ if (Test-Path $disconnectsLog) {
     }).Count
 }
 
-# --- Local Wi-Fi state (informational — not a backend column today, sent as
+# --- Local Wi-Fi state (informational -- not a backend column today, sent as
 #     an extra field for future use; unknown fields are safely ignored by
 #     st_apply_heartbeat's whitelist, see lib/starlink.php). ---
 $wifiState = try { (netsh wlan show interfaces) -join ' | ' } catch { 'unavailable' }

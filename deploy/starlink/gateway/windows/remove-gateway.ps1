@@ -20,7 +20,7 @@ function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "    OK: $msg" -ForegroundColor Green }
 
 if (-not (Test-Path $StateFile)) {
-    throw "State file not found at $StateFile — nothing recorded to undo. If you provisioned manually or the file was deleted, undo each step from docs/STARLINK_WINDOWS_GATEWAY.md section 9 by hand."
+    throw "State file not found at $StateFile -- nothing recorded to undo. If you provisioned manually or the file was deleted, undo each step from docs/STARLINK_WINDOWS_GATEWAY.md section 9 by hand."
 }
 $state = Get-Content $StateFile -Raw | ConvertFrom-Json
 
@@ -30,7 +30,7 @@ foreach ($task in @('ReaLink-Starlink-Heartbeat', 'ReaLink-Starlink-Watchdog')) 
         Unregister-ScheduledTask -TaskName $task -Confirm:$false
         Write-Ok "Removed task '$task'."
     } else {
-        Write-Ok "Task '$task' not present — nothing to do."
+        Write-Ok "Task '$task' not present -- nothing to do."
     }
 }
 
@@ -42,12 +42,18 @@ if ($state.WireGuardServiceName) {
         $fallback = "$env:ProgramFiles\WireGuard\wireguard.exe"
         if (Test-Path $fallback) { $wgExe = $fallback }
     }
-    if ($wgExe -and $state.TunnelConfigPath) {
-        $tunnelName = [System.IO.Path]::GetFileNameWithoutExtension($state.TunnelConfigPath)
+    # Use the tunnel name 1-provision-gateway.ps1 actually discovered and
+    # recorded (state.TunnelName) - do NOT re-derive it from the .conf
+    # filename, that assumption is exactly what broke provisioning when
+    # WireGuard assigned a different name than the file (e.g. "Starlink"
+    # instead of "wg-starlink0"). Fall back to the filename only for state
+    # files written before this fix existed.
+    $tunnelName = if ($state.TunnelName) { $state.TunnelName } else { [System.IO.Path]::GetFileNameWithoutExtension($state.TunnelConfigPath) }
+    if ($wgExe -and $tunnelName) {
         & $wgExe /uninstalltunnelservice $tunnelName
         Write-Ok "Uninstalled tunnel service for '$tunnelName'."
     } else {
-        Write-Host "    Could not locate wireguard.exe or tunnel name — remove the service manually: Services.msc -> $($state.WireGuardServiceName)" -ForegroundColor Yellow
+        Write-Host "    Could not locate wireguard.exe or tunnel name -- remove the service manually: Services.msc -> $($state.WireGuardServiceName)" -ForegroundColor Yellow
     }
 }
 
@@ -87,4 +93,4 @@ Write-Ok "IPEnableRouter restored to $($state.PriorIPEnableRouter) (was 1 during
 
 Write-Step "Done"
 Write-Host "Recommend a reboot to fully clear IP forwarding and any lingering adapter state." -ForegroundColor Cyan
-Write-Host "State file kept at $StateFile for reference — delete manually once you've confirmed the rollback." -ForegroundColor Cyan
+Write-Host "State file kept at $StateFile for reference -- delete manually once you've confirmed the rollback." -ForegroundColor Cyan
