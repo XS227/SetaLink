@@ -39,6 +39,8 @@ require_once __DIR__ . '/../lib/ads_recovery.php';
 require_once __DIR__ . '/../lib/payments.php';
 // Node intelligence — connect telemetry.
 require_once __DIR__ . '/../lib/node_intel.php';
+// Starlink exit-node registry + health policy (test-gated, disabled by default).
+require_once __DIR__ . '/../lib/starlink.php';
 
 /** Read a POST field from form-encoded body or a JSON body. */
 function v1_body(string $key, string $default = ''): string {
@@ -221,10 +223,39 @@ function v1_helsinki_node(?string $deviceId = null): array {
     ];
 }
 
+// Starlink exit node(s): never a direct Reality endpoint. The client dials the
+// SAME address/port/Reality key as the primary node — only the VLESS uuid
+// differs, so the VPS's Xray routing rule (matched on that uuid) can send this
+// session's egress over the WireGuard tunnel to the Starlink gateway instead
+// of the normal direct outbound. See docs/STARLINK_NODE_ARCHITECTURE.md §4.
+// Always test-gated (never publicly routed) and hidden entirely unless an
+// admin has both enabled it AND configured its dedicated uuid.
+function v1_starlink_nodes(PDO $pdo): array {
+    st_init_tables($pdo);
+    $out = [];
+    foreach (st_all($pdo) as $n) {
+        if ((int)$n['enabled'] !== 1 || $n['vless_uuid'] === '') continue;
+        $primary = v1_primary_node($pdo);
+        $creds = $primary['creds'];
+        $creds['uuid'] = $n['vless_uuid'];
+        $creds['altProfiles'] = [];
+        $out[$n['node_id']] = [
+            'id'    => $n['node_id'],
+            'test'  => true,   // Starlink is ALWAYS allowlist-gated in Phase 1 — never public.
+            'meta'  => st_meta($n),
+            'creds' => $creds,
+            '_row'  => $n,
+        ];
+    }
+    return $out;
+}
+
 function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
     $h = v1_helsinki_node($deviceId);
-    return [$p['id'] => $p, $h['id'] => $h];
+    $nodes = [$p['id'] => $p, $h['id'] => $h];
+    foreach (v1_starlink_nodes($pdo) as $id => $n) { $nodes[$id] = $n; }
+    return $nodes;
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
@@ -248,6 +279,17 @@ function v1_node_down(string $id): bool {
     if (!$n || ($n['status'] ?? '') !== 'down') return false;
     $age = time() - strtotime((string)($n['checked_at'] ?? '1970-01-01'));
     return $age >= 0 && $age <= 900;
+}
+
+// Starlink nodes use a PUSH heartbeat model (no cron probe reaches them behind
+// CGNAT) — health is read straight from starlink_nodes, fails CLOSED (unlike
+// v1_node_down's fail-open default) because a silent/dead Starlink node must
+// never keep receiving new sessions. New sessions only route to ONLINE nodes
+// that aren't already at their session cap.
+function v1_starlink_down(array $starlinkNode): bool {
+    $row = $starlinkNode['_row'] ?? null;
+    if (!$row) return true;
+    return !st_routable($row);
 }
 
 function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId): bool {
@@ -511,7 +553,8 @@ if ($rel === '/servers') {
         if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) continue; // hide test nodes
         // Auto-hide a non-primary node that is freshly DOWN, so users aren't
         // routed to a dead box. Primary is never hidden (last-resort default).
-        if ($id !== 'primary' && v1_node_down($id)) continue;
+        if (isset($n['_row']) && v1_starlink_down($n)) continue;      // Starlink: push-heartbeat health
+        elseif ($id !== 'primary' && v1_node_down($id)) continue;      // other nodes: cron-probe health
         $meta = $n['meta'];
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
@@ -534,7 +577,9 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     }
     // Refuse to hand out creds for a node that is freshly down (clients fall back
     // to primary / saved bootstrap). Primary is exempt — it's the last resort.
-    if ($id !== 'primary' && v1_node_down($id)) {
+    if (isset($n['_row']) && v1_starlink_down($n)) {
+        v1_send(['message' => 'node temporarily unavailable'], 503);
+    } elseif ($id !== 'primary' && v1_node_down($id)) {
         v1_send(['message' => 'node temporarily unavailable'], 503);
     }
     v1_record_usage($pdo, $deviceId, $id);

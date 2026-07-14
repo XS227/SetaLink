@@ -230,6 +230,15 @@ tr:hover td { background: var(--panel-2); }
 .badge-purple { background: rgba(188,140,255,.13); color: var(--purple); }
 .badge-cyan   { background: rgba(57,197,207,.12);  color: var(--cyan); }
 
+/* Starlink allowlist chips */
+.chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .15rem .5rem; border-radius: 99px; margin: 0 .25rem .25rem 0;
+  background: var(--bg-2); border: 1px solid var(--border);
+  font-size: .7rem; color: var(--text);
+}
+.chip a { color: var(--danger); text-decoration: none; font-weight: 700; }
+
 /* Protocol badges */
 .proto-reality     { background: rgba(0,232,122,.1);   color: #00e87a; }
 .proto-ws          { background: rgba(88,166,255,.12); color: #58a6ff; }

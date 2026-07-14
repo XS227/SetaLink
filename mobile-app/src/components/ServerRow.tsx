@@ -29,10 +29,18 @@ export interface Server {
   ping: number;
   load: number;          // 0–100
   protocol: string;
-  tags?: string[];       // 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming'
+  tags?: string[];       // 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming' | 'Starlink' | 'Beta'
   premium?: boolean;
   selected?: boolean;
   imported?: boolean;    // true for user-imported servers (shows delete action)
+  /** Node type from the backend catalog (e.g. 'STARLINK'). Absent for the
+   *  normal direct-egress nodes — purely a display hint, never affects how
+   *  the client connects (it always dials the same address/creds either way). */
+  nodeType?: string;
+  /** Backend-flagged as a beta/testing node — never shown to non-allowlisted
+   *  devices in the first place (the catalog simply omits it for them), this
+   *  only controls the "Beta" badge + copy for the devices that DO see it. */
+  beta?: boolean;
 }
 
 interface Props {
@@ -141,6 +149,8 @@ const TAG_STYLES: Record<string, object> = {
   Fastest:     { backgroundColor: 'rgba(51,153,255,0.12)', borderColor: 'rgba(51,153,255,0.3)' },
   Stealth:     { backgroundColor: 'rgba(120,80,255,0.12)', borderColor: 'rgba(120,80,255,0.3)' },
   Streaming:   { backgroundColor: 'rgba(255,184,0,0.12)', borderColor: 'rgba(255,184,0,0.3)' },
+  Starlink:    { backgroundColor: 'rgba(120,180,255,0.12)', borderColor: 'rgba(120,180,255,0.3)' },
+  Beta:        { backgroundColor: 'rgba(255,140,60,0.12)', borderColor: 'rgba(255,140,60,0.3)' },
 };
 
 const TAG_TEXT: Record<string, object> = {
@@ -148,6 +158,8 @@ const TAG_TEXT: Record<string, object> = {
   Fastest:     { color: Colors.blue[400] },
   Stealth:     { color: '#9B77FF' },
   Streaming:   { color: '#FFB800' },
+  Starlink:    { color: '#78B4FF' },
+  Beta:        { color: '#FF8C3C' },
 };
 
 const styles = StyleSheet.create({

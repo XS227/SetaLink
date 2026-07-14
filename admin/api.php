@@ -785,6 +785,63 @@ if ($method === 'POST') {
             api_ok(['allowed' => false, 'device_id' => $did, 'node_id' => $nid]);
         }
     }
+    // Starlink exit-node admin controls (Phase 1 — single test node, disabled
+    // by default). Every mutation is logged to starlink_admin_log for audit
+    // (docs/CLAUDE_REALINK_RULES.md Rule 3: admin visibility for new network
+    // features). Device allowlisting reuses node-allowlist-add/remove above —
+    // a Starlink node is just another node_id there.
+    if (in_array($action, [
+        'starlink-toggle-enabled', 'starlink-set-maintenance', 'starlink-force-fallback',
+        'starlink-generate-token', 'starlink-update-node',
+    ], true)) {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db  = open_analytics_db();
+        st_init_tables($db);
+        $nid = trim((string)($parsed['node_id'] ?? 'starlink-no-01'));
+        $node = st_get($db, $nid);
+        if (!$node) api_err('unknown starlink node', 404);
+
+        if ($action === 'starlink-toggle-enabled') {
+            $enabled = !empty($parsed['enabled']) ? 1 : 0;
+            $db->prepare("UPDATE starlink_nodes SET enabled=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$enabled, $nid]);
+            st_log($db, $nid, $auth_user, $enabled ? 'enable' : 'disable');
+            api_ok(['node_id' => $nid, 'enabled' => (bool)$enabled]);
+        }
+        if ($action === 'starlink-set-maintenance') {
+            $maint = !empty($parsed['maintenance']) ? 1 : 0;
+            $db->prepare("UPDATE starlink_nodes SET maintenance_mode=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$maint, $nid]);
+            st_log($db, $nid, $auth_user, $maint ? 'maintenance-on' : 'maintenance-off');
+            api_ok(['node_id' => $nid, 'maintenance_mode' => (bool)$maint]);
+        }
+        if ($action === 'starlink-force-fallback') {
+            // Stop routing new sessions here immediately without removing the
+            // node from the catalog — marks the tunnel down so health policy
+            // (st_health_state) reports OFFLINE until the next real heartbeat.
+            $db->prepare("UPDATE starlink_nodes SET tunnel_status='down', last_error=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute(['forced fallback by admin', $nid]);
+            st_log($db, $nid, $auth_user, 'force-fallback');
+            api_ok(['node_id' => $nid, 'forced' => true]);
+        }
+        if ($action === 'starlink-generate-token') {
+            // Returned ONCE in plaintext — only the hash is persisted. The
+            // admin must copy it into the gateway's heartbeat script now.
+            $secret = st_generate_heartbeat_token($db, $nid);
+            st_log($db, $nid, $auth_user, 'rotate-heartbeat-token');
+            api_ok(['node_id' => $nid, 'heartbeat_token' => "starlink-node-{$nid}:{$secret}"]);
+        }
+        if ($action === 'starlink-update-node') {
+            $displayName = trim((string)($parsed['display_name']  ?? $node['display_name']));
+            $uuid        = trim((string)($parsed['vless_uuid']    ?? $node['vless_uuid']));
+            $maxSessions = max(0, (int)($parsed['max_sessions']   ?? $node['max_sessions']));
+            $allocKbps   = max(0, (int)($parsed['allocated_kbps'] ?? $node['allocated_kbps']));
+            $db->prepare("UPDATE starlink_nodes SET display_name=?, vless_uuid=?, max_sessions=?, allocated_kbps=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$displayName, $uuid, $maxSessions, $allocKbps, $nid]);
+            st_log($db, $nid, $auth_user, 'update-config');
+            api_ok(['node_id' => $nid]);
+        }
+    }
     if ($action === 'send-message') {
         // In-app message to one device ('' target = broadcast to all).
         // No real push transport exists (no FCM): clients poll get-messages
@@ -1355,6 +1412,26 @@ switch ($action) {
             )->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {}
         api_ok(['usage' => $usage, 'allowlist' => $allow]);
+        break;
+    }
+
+    case 'starlink-list': {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        $nodes = st_all($db);
+        // Attach live health_state + allowlisted device count (reuses the
+        // existing generic node_allowlist table — see node-allowlist-add above).
+        foreach ($nodes as &$n) {
+            $n['health_state'] = st_health_state($n);
+            unset($n['heartbeat_token_hash']); // never expose, even hashed
+            $st = $db->prepare("SELECT device_id, added_at FROM node_allowlist WHERE node_id = ? ORDER BY added_at DESC");
+            $st->execute([$n['node_id']]);
+            $n['allowlist'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        }
+        unset($n);
+        $log = $db->query("SELECT * FROM starlink_admin_log ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
+        api_ok(['nodes' => $nodes, 'log' => $log]);
         break;
     }
 

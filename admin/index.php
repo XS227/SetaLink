@@ -97,6 +97,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
       <?= icon('chart') ?> Network Intel
     </div>
+    <div class="nav-item<?= $page==='starlink'?' active':'' ?>" data-page="starlink">
+      <?= icon('globe') ?> Starlink
+    </div>
     <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
       <?= icon('chart') ?> AI Diagnosis
     </div>
@@ -756,6 +759,32 @@ function icon(string $name): string {
           <table>
             <thead><tr><th>Time</th><th>Event</th><th>Node</th><th>Profile</th><th>SNI</th><th>Platform</th><th>Network</th><th>Country</th><th>Stage</th><th>Latency</th></tr></thead>
             <tbody id="intelFailTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: STARLINK (exit node, beta/testing — Phase 1)           -->
+    <!-- ============================================================ -->
+    <div data-view="starlink" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:1.1rem;font-weight:700">Starlink exit nodes</span>
+        <button class="btn btn-secondary btn-sm" id="stRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <span style="font-size:.72rem;color:var(--muted)">Never visible to normal users until enabled + allowlisted</span>
+      </div>
+
+      <div id="stNodesWrap"><div class="spinner"></div></div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header">
+          <span class="panel-title">Admin activity log</span>
+          <span class="panel-sub">enable/disable · maintenance · fallback · token rotation</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Node</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead>
+            <tbody id="stLogTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1608,6 +1637,7 @@ const pageTitles = {
   payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
+  starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
@@ -2820,6 +2850,122 @@ views.intel = {
         },
       });
     } catch(e) { /* Chart.js not yet loaded / canvas issue */ }
+  },
+};
+
+// ── VIEW: STARLINK ───────────────────────────────────────────────────
+views.starlink = {
+  init() {
+    $('stRefreshBtn').addEventListener('click', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    try {
+      const d = await api.get('starlink-list');
+      this.renderNodes(d.nodes || []);
+      this.renderLog(d.log || []);
+    } catch(e) {
+      $('stNodesWrap').innerHTML = `<div class="panel-empty">Error: ${esc(e.message)}</div>`;
+    }
+  },
+  healthColor(h) {
+    return h==='ONLINE' ? 'var(--ok)' : h==='DEGRADED' ? 'var(--warn)' : h==='MAINTENANCE' ? 'var(--muted)' : 'var(--danger)';
+  },
+  renderNodes(nodes) {
+    if (!nodes.length) { $('stNodesWrap').innerHTML = '<div class="panel-empty">No Starlink nodes registered yet.</div>'; return; }
+    $('stNodesWrap').innerHTML = nodes.map(n => {
+      const allow = (n.allowlist||[]).map(a=>`<span class="chip">${esc(a.device_id)} <a href="#" data-remove-device="${esc(a.device_id)}" data-node="${esc(n.node_id)}" title="Revoke">×</a></span>`).join(' ') || '<span style="color:var(--muted)">none</span>';
+      return `<div class="panel" style="margin-bottom:1rem" data-node-panel="${esc(n.node_id)}">
+        <div class="panel-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <span class="panel-title">${esc(n.display_name)} <span style="font-weight:400;color:var(--muted)">(${esc(n.node_id)})</span></span>
+          <span class="badge" style="background:${this.healthColor(n.health_state)}20;color:${this.healthColor(n.health_state)};border:1px solid ${this.healthColor(n.health_state)}">${esc(n.health_state)}</span>
+          <span class="badge" style="margin-left:auto">${n.enabled ? 'Enabled' : 'Disabled'} · ${esc(n.testing_state)}</span>
+        </div>
+        <div class="panel-body" style="padding:.75rem 1rem;font-size:.8rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.5rem">
+          <div><b>Country</b><br>${esc(n.country)}</div>
+          <div><b>Tunnel</b><br>${esc(n.tunnel_status)}</div>
+          <div><b>Last heartbeat</b><br>${esc((n.last_heartbeat_at||'never').replace('T',' '))}</div>
+          <div><b>Public IPv4</b><br>${esc(n.public_ipv4||'—')}</div>
+          <div><b>Public IPv6</b><br>${esc(n.public_ipv6||'—')}</div>
+          <div><b>Exit IP</b><br>${esc(n.exit_ip||'—')}</div>
+          <div><b>Latency</b><br>${n.latency_ms!=null?n.latency_ms+' ms':'—'}</div>
+          <div><b>Packet loss</b><br>${n.packet_loss_pct!=null?n.packet_loss_pct+'%':'—'}</div>
+          <div><b>Recent disconnects</b><br>${fmtNum(n.recent_disconnects||0)}</div>
+          <div><b>Down / Up</b><br>${n.measured_download_kbps!=null?(n.measured_download_kbps/1000).toFixed(1)+' Mbps':'—'} / ${n.measured_upload_kbps!=null?(n.measured_upload_kbps/1000).toFixed(1)+' Mbps':'—'}</div>
+          <div><b>Sessions</b><br>${n.current_sessions}/${n.max_sessions}</div>
+          <div><b>Allocated</b><br>${(n.allocated_kbps/1000).toFixed(0)} Mbps of ${(n.nominal_capacity_kbps/1000).toFixed(0)} Mbps nominal</div>
+          <div><b>Version</b><br>${esc(n.software_version||'—')}</div>
+          <div><b>Last error</b><br><span style="color:var(--danger)">${esc(n.last_error||'—')}</span></div>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-sm ${n.enabled?'btn-secondary':'btn-primary'}" data-act="toggle" data-node="${esc(n.node_id)}" data-val="${n.enabled?0:1}">${n.enabled?'Disable':'Enable'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="maint" data-node="${esc(n.node_id)}" data-val="${n.maintenance_mode?0:1}">${n.maintenance_mode?'Exit maintenance':'Enter maintenance'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="fallback" data-node="${esc(n.node_id)}">Force fallback</button>
+          <button class="btn btn-sm btn-secondary" data-act="token" data-node="${esc(n.node_id)}">Generate heartbeat token</button>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem">
+          <b style="font-size:.8rem">Allowlisted test devices</b><br>
+          <div style="margin:.4rem 0">${allow}</div>
+          <form data-allow-form="${esc(n.node_id)}" style="display:flex;gap:.4rem">
+            <input class="input btn-sm" name="device_id" placeholder="device_id" style="flex:1">
+            <button class="btn btn-sm btn-primary" type="submit">Allow</button>
+          </form>
+        </div>
+      </div>`;
+    }).join('');
+
+    $('stNodesWrap').querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => this.act(btn)));
+    $('stNodesWrap').querySelectorAll('[data-remove-device]').forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      this.allowlistRemove(a.dataset.node, a.dataset.removeDevice);
+    }));
+    $('stNodesWrap').querySelectorAll('[data-allow-form]').forEach(f => f.addEventListener('submit', e => {
+      e.preventDefault();
+      const did = f.device_id.value.trim();
+      if (did) this.allowlistAdd(f.dataset.allowForm, did);
+    }));
+  },
+  async act(btn) {
+    const node = btn.dataset.node, act = btn.dataset.act;
+    try {
+      if (act === 'toggle') {
+        await api.post({action:'starlink-toggle-enabled', node_id:node, enabled: btn.dataset.val === '1'});
+      } else if (act === 'maint') {
+        await api.post({action:'starlink-set-maintenance', node_id:node, maintenance: btn.dataset.val === '1'});
+      } else if (act === 'fallback') {
+        if (!confirm('Force this node into fallback (stop routing new sessions) now?')) return;
+        await api.post({action:'starlink-force-fallback', node_id:node});
+      } else if (act === 'token') {
+        const d = await api.post({action:'starlink-generate-token', node_id:node});
+        prompt('Heartbeat token (shown once — copy into the gateway config now):', d.heartbeat_token);
+      }
+      toast('Updated', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistAdd(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-add', node_id: node, device_id: deviceId});
+      toast('Device allowlisted', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistRemove(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-remove', node_id: node, device_id: deviceId});
+      toast('Device revoked', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  renderLog(rows) {
+    if (!rows.length) { $('stLogTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">No admin activity yet</td></tr>'; return; }
+    $('stLogTbl').innerHTML = rows.map(r => `<tr>
+      <td style="font-size:.7rem;color:var(--muted)">${esc((r.created_at||'').replace('T',' '))}</td>
+      <td>${esc(r.node_id)}</td>
+      <td>${esc(r.actor)}</td>
+      <td>${esc(r.action)}</td>
+      <td style="font-size:.75rem;color:var(--muted)">${esc(r.detail||'')}</td>
+    </tr>`).join('');
   },
 };
 

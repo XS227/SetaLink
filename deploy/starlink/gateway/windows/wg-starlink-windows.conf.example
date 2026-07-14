@@ -1,0 +1,38 @@
+# Copy this file to wg-starlink0.conf (same folder) and fill in PrivateKey.
+# Matches the addressing scheme deploy/starlink/vps/setup-starlink-wg.sh
+# already generates on the VPS side (10.90.0.1 = VPS, 10.90.0.2 = gateway) —
+# do not change these addresses independently on one side only.
+#
+# Unlike the Linux gateway's wg-starlink0.conf (deploy/starlink/gateway/
+# setup-raspberrypi.sh), there is NO PostUp/PostDown here: WireGuard for
+# Windows' tunnel-service model does not run wg-quick-style shell hooks.
+# NAT/forwarding is configured separately by 1-provision-gateway.ps1 —
+# leave this file to pure WireGuard config only.
+#
+# NEVER commit this file once PrivateKey is filled in. Generate the keypair
+# with: wireguard.exe (GUI: "Add Tunnel" -> "Generate keypair" shows both
+# keys), or via `wg genkey | tee wg-starlink0.key | wg pubkey` if you have
+# wireguard-tools available in WSL/another box purely to generate the pair —
+# the resulting private key still only ever gets pasted in here, on this
+# machine, never committed, never sent anywhere but this file.
+
+[Interface]
+Address = 10.90.0.2/32
+PrivateKey = <PASTE_THIS_MACHINE_GENERATED_PRIVATE_KEY_HERE>
+# No ListenPort — this side dials out, matches "Surface must initiate the
+# tunnel outbound to the VPS" and "expose no service directly to the public
+# internet". Starlink's CGNAT is fine because of PersistentKeepalive below.
+
+[Peer]
+# The VPS's wg-starlink0 public key, printed by setup-starlink-wg.sh.
+PublicKey = <PASTE_VPS_PUBLIC_KEY_HERE>
+Endpoint = <VPS_PUBLIC_IP>:51900
+# Restrictive on purpose: ONLY the VPS's tunnel-internal address goes through
+# this interface. This is what satisfies "avoid routing the Surface's own
+# management traffic through the tunnel" — do NOT change this to 0.0.0.0/0,
+# that would hijack the Surface's own default route through the VPS instead
+# of the other way around, breaking ordinary Surface internet use.
+AllowedIPs = 10.90.0.1/32
+# Required behind CGNAT — keeps the NAT mapping alive so the VPS can still
+# reach this machine between real traffic bursts.
+PersistentKeepalive = 25
