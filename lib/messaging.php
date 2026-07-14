@@ -20,6 +20,7 @@ const MSG_MAX_LEN        = 2000;   // max characters per message body
 const MSG_MAX_PER_MIN    = 10;     // per sender device, rolling 60s
 const MSG_MAX_PER_DAY    = 300;    // per sender device, rolling 24h
 const MSG_LIST_LIMIT     = 200;    // max messages returned by list
+const MSG_MAX_EXPIRE_SECS = 7 * 86400; // cap for disappearing-message timers (7d)
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,14 @@ function dm_init_tables(PDO $pdo): void {
     )");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_um_recipient ON user_messages(recipient_device, id)");
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_um_sender    ON user_messages(sender_device, id)");
+
+    // Disappearing messages (Wickr-style): expire_secs is the sender-chosen
+    // timer (0 = never). When the RECIPIENT reads the message, expires_at is
+    // stamped read_at + expire_secs; dm_purge_expired() then hard-deletes the
+    // row (encrypted body included) once that moment passes.
+    dm_ensure_column($pdo, 'expire_secs', "INTEGER NOT NULL DEFAULT 0");
+    dm_ensure_column($pdo, 'expires_at',  "TEXT DEFAULT NULL");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_um_expires ON user_messages(expires_at)");
 
     // Per-user soft-delete (v0.9.35): a row hides one message from ONE device's
     // inbox only. The message and the other party's copy are untouched (no global
@@ -63,6 +72,15 @@ function dm_init_tables(PDO $pdo): void {
         reason          TEXT NOT NULL DEFAULT '',
         created_at      TEXT NOT NULL DEFAULT (datetime('now'))
     )");
+}
+
+/** Add a column to user_messages if this DB predates it (SQLite has no
+ *  ADD COLUMN IF NOT EXISTS). */
+function dm_ensure_column(PDO $pdo, string $col, string $ddl): void {
+    foreach ($pdo->query("PRAGMA table_info(user_messages)") as $r) {
+        if (($r['name'] ?? '') === $col) return;
+    }
+    $pdo->exec("ALTER TABLE user_messages ADD COLUMN $col $ddl");
 }
 
 /** UTF-8 codepoint count, mbstring-independent (the host PHP lacks mbstring).
@@ -159,8 +177,10 @@ function dm_is_blocked(PDO $pdo, string $a, string $b): bool {
  * self/blocked, rate-limits, encrypts, stores.
  * Throws \RuntimeException with a client-safe message on any rejection.
  */
-function dm_send(PDO $pdo, string $senderDevice, string $recipientParam, string $body): array {
+function dm_send(PDO $pdo, string $senderDevice, string $recipientParam, string $body,
+                 int $expireSecs = 0): array {
     dm_init_tables($pdo);
+    $expireSecs = max(0, min(MSG_MAX_EXPIRE_SECS, $expireSecs));
 
     $sender = qe_fetch_device($pdo, $senderDevice);
     if (!$sender)                        throw new \RuntimeException('sender not found');
@@ -190,14 +210,15 @@ function dm_send(PDO $pdo, string $senderDevice, string $recipientParam, string 
 
     $pdo->prepare(
         "INSERT INTO user_messages
-            (sender_device, sender_user_id, recipient_device, recipient_user_id, body_enc, status)
-         VALUES (?,?,?,?,?, 'sent')"
+            (sender_device, sender_user_id, recipient_device, recipient_user_id, body_enc, status, expire_secs)
+         VALUES (?,?,?,?,?, 'sent', ?)"
     )->execute([
         $senderDevice,
         (string)($sender['user_id'] ?? ''),
         $receiver['device_id'],
         (string)($receiver['user_id'] ?? ''),
         dm_encrypt($body),
+        $expireSecs,
     ]);
     $id = (int)$pdo->lastInsertId();
 
@@ -207,6 +228,7 @@ function dm_send(PDO $pdo, string $senderDevice, string $recipientParam, string 
         'recipient_user_id' => (string)($receiver['user_id'] ?? ''),
         'created_at'        => date('Y-m-d H:i:s'),
         'status'            => 'sent',
+        'expire_secs'       => $expireSecs,
     ];
 }
 
@@ -217,10 +239,11 @@ function dm_send(PDO $pdo, string $senderDevice, string $recipientParam, string 
  */
 function dm_list(PDO $pdo, string $deviceId, int $limit = MSG_LIST_LIMIT): array {
     dm_init_tables($pdo);
+    dm_purge_expired($pdo);
     $limit = max(1, min(MSG_LIST_LIMIT, $limit));
     $st = $pdo->prepare(
         "SELECT id, sender_device, sender_user_id, recipient_device, recipient_user_id,
-                body_enc, status, created_at, read_at
+                body_enc, status, created_at, read_at, expire_secs, expires_at
          FROM user_messages
          WHERE (sender_device=? OR recipient_device=?)
            AND id NOT IN (SELECT message_id FROM user_message_deletes WHERE device_id=?)
@@ -241,16 +264,39 @@ function dm_list(PDO $pdo, string $deviceId, int $limit = MSG_LIST_LIMIT): array
             'body'         => dm_decrypt((string)$r['body_enc']),
             'read'         => $r['status'] === 'read' || !$incoming,
             'created_at'   => $r['created_at'],
+            'expire_secs'  => (int)($r['expire_secs'] ?? 0),
+            'expires_at'   => $r['expires_at'] ?? null,
         ];
     }
     return $out;
 }
 
-/** Mark one received message read. Only the recipient can mark their own. */
+/** Hard-delete disappearing messages whose post-read timer has run out. This
+ *  is the ONLY hard-delete path: body_enc is destroyed for both parties, and
+ *  the per-user soft-delete markers for those rows are cleaned with them. */
+function dm_purge_expired(PDO $pdo): void {
+    $ids = $pdo->query(
+        "SELECT id FROM user_messages
+         WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')")
+        ->fetchAll(PDO::FETCH_COLUMN);
+    if (!$ids) return;
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    $pdo->prepare("DELETE FROM user_messages WHERE id IN ($ph)")->execute($ids);
+    $pdo->prepare("DELETE FROM user_message_deletes WHERE message_id IN ($ph)")->execute($ids);
+}
+
+/** Mark one received message read. Only the recipient can mark their own.
+ *  Reading a disappearing message starts its burn timer: expires_at is stamped
+ *  read_at + expire_secs and dm_purge_expired() removes it once due. */
 function dm_mark_read(PDO $pdo, string $deviceId, int $messageId): bool {
     dm_init_tables($pdo);
     $st = $pdo->prepare(
-        "UPDATE user_messages SET status='read', read_at=datetime('now')
+        "UPDATE user_messages SET
+            status='read',
+            read_at=datetime('now'),
+            expires_at = CASE WHEN expire_secs > 0
+                              THEN datetime('now', '+' || expire_secs || ' seconds')
+                              ELSE expires_at END
          WHERE id=? AND recipient_device=? AND status<>'read'");
     $st->execute([$messageId, $deviceId]);
     return $st->rowCount() > 0;
@@ -292,6 +338,7 @@ function dm_delete_thread(PDO $pdo, string $deviceId, string $peer): int {
 /** Count unread (incoming, status='sent') messages for a device. */
 function dm_unread_count(PDO $pdo, string $deviceId): int {
     dm_init_tables($pdo);
+    dm_purge_expired($pdo);
     $st = $pdo->prepare(
         "SELECT COUNT(*) FROM user_messages WHERE recipient_device=? AND status='sent'
            AND id NOT IN (SELECT message_id FROM user_message_deletes WHERE device_id=?)");

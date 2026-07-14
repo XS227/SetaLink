@@ -248,6 +248,36 @@ describe('QUIC outbound: Vision servers get a flow-less proxy-quic twin', () => 
     expect(udp443Rule(cfg).outboundTag).toBe('proxy');
   });
 
+  // build 86 (Iran Stealth): CDN-fronted outbounds must DIAL a literal Cloudflare
+  // IP, not the hostname. On iOS the tunnel resolves DNS through itself, so a
+  // hostname edge address deadlocks the handshake (0 /cfws reached origin on
+  // b84/b85). The domain must survive only in the TLS SNI + Host header so
+  // Cloudflare still routes to origin by SNI.
+  test('WebSocket/CDN dials literal edge IP; domain stays in SNI + Host', () => {
+    const wsCreds = { ...MOCK_CREDS, edgeAddress: 'alanya-turist.no', edgeIp: '104.21.61.220', flow: '' };
+    const cfg: any = buildXrayConfig(
+      { ...MOCK_SERVER, protocol: 'WebSocket' }, 'WebSocket', 'Cloudflare (DoH)', false, wsCreds,
+    );
+    const proxy = cfg.outbounds.find((o: any) => o.tag === 'proxy');
+    // Dial the IP — no DNS needed, so no resolve-through-tunnel deadlock.
+    expect(proxy.settings.vnext[0].address).toBe('104.21.61.220');
+    // SNI + Host carry the real domain so Cloudflare routes to origin.
+    expect(proxy.streamSettings.tlsSettings.serverName).toBe('alanya-turist.no');
+    expect(proxy.streamSettings.wsSettings.headers.Host).toBe('alanya-turist.no');
+  });
+
+  test('CDN edge IP falls back to a Cloudflare anycast IP when creds omit edgeIp', () => {
+    const wsCreds = { ...MOCK_CREDS, edgeAddress: 'alanya-turist.no', flow: '' };
+    delete (wsCreds as any).edgeIp;
+    const cfg: any = buildXrayConfig(
+      { ...MOCK_SERVER, protocol: 'WebSocket' }, 'WebSocket', 'Cloudflare (DoH)', false, wsCreds,
+    );
+    const proxy = cfg.outbounds.find((o: any) => o.tag === 'proxy');
+    // A literal IPv4, never the hostname (that would re-introduce the deadlock).
+    expect(proxy.settings.vnext[0].address).toMatch(/^\d+\.\d+\.\d+\.\d+$/);
+    expect(proxy.streamSettings.tlsSettings.serverName).toBe('alanya-turist.no');
+  });
+
   test('emergency config mirrors the same behavior', () => {
     const vision: any = JSON.parse(buildEmergencyXrayConfigJson(MOCK_SERVER, 'Reality', MOCK_CREDS));
     expect(vision.outbounds.find((o: any) => o.tag === 'proxy-quic')).toBeDefined();

@@ -1,10 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, Dimensions, Animated, Image, Linking,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { ConnectButton } from '../components/ConnectButton';
+import { GoldBeatBurst } from '../components/GoldBeatBurst';
 import { StatusBadge }   from '../components/StatusBadge';
 import { MetricPill }    from '../components/MetricPill';
 import { CoverageIcon }  from '../components/CoverageIcon';
@@ -109,6 +110,15 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     pingMs:       pingMs || selectedServer?.ping || 0,
     downloadMbps, uploadMbps,
   });
+
+  // Gold heartbeat celebration: fire one coin burst on each transition INTO
+  // connected (never on re-render while already connected).
+  const [goldBurst, setGoldBurst] = useState(0);
+  const wasConnectedRef = useRef(false);
+  useEffect(() => {
+    if (isConnected && !wasConnectedRef.current) setGoldBurst(k => k + 1);
+    wasConnectedRef.current = isConnected;
+  }, [isConnected]);
 
   // Friendly status message shown below connect button while connecting
   const connectingLabel = (() => {
@@ -238,6 +248,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             disabled={isTransitioning}
           />
           {isConnected && <Text style={styles.timer}>{timer}</Text>}
+          {/* Heartbeat of the network — gold REAL coins pulse out on connect */}
+          <GoldBeatBurst burstKey={goldBurst} />
         </Animated.View>
 
         {/* Smart status — friendly message while connecting */}

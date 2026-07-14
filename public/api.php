@@ -27,6 +27,10 @@ require_once __DIR__ . '/../lib/quota_economy.php';
 require_once __DIR__ . '/../lib/ads_recovery.php';
 // User-to-user messaging (v0.9.33).
 require_once __DIR__ . '/../lib/messaging.php';
+// TrustAI referral trust scoring (optional service, local heuristic fallback).
+require_once __DIR__ . '/../lib/trustai.php';
+// REAL token economy — account linking + server-verified redemption (A2).
+require_once __DIR__ . '/../lib/real_economy.php';
 
 header('Content-Type: application/json');
 // CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
@@ -390,6 +394,16 @@ if ($method === 'GET') {
             'rollout'                => json_decode((string)($rcRows['rc_rollout'] ?? '{}'), true) ?: (object)[],
             'extra_logging_platform' => ($rcRows['rc_extra_logging_platform'] ?? '') ?: null,
             'extra_logging_node'     => ($rcRows['rc_extra_logging_node'] ?? '') ?: null,
+            // Ecosystem promotion (REAL / Shahnameh / TrustAI) — campaign copy,
+            // targets and visibility pushed without an app release. Promos are
+            // objects: {id, url, emoji?, image?, title_en, title_fa, sub_en, ...}.
+            'ecosystem'              => [
+                'banner_enabled' => (bool)(int)($rcRows['rc_ecosystem_banner_enabled'] ?? 1),
+                'promos'         => $decodeArr('rc_ecosystem_promos', []),
+                // Default OFF: the wallet card only makes sense once the
+                // Shahnameh-side wallet API is live (TASK_SPLIT.md B-1/B-2).
+                'wallet_enabled' => (bool)(int)($rcRows['rc_real_wallet_enabled'] ?? 0),
+            ],
         ];
         // If there's a legacy composite blob, merge it but let per-key values win
         try {
@@ -560,11 +574,58 @@ if ($method === 'GET') {
         ok(['packages' => qe_packages($pdo, $deviceId)]);
     }
 
+    if ($action === 'real-wallet') {
+        // A3: everything the wallet card needs in one call. balance is null
+        // when the ecosystem backend can't answer (unconfigured/unreachable) —
+        // the app shows the link state and rates regardless. The app never
+        // holds real_api_key; the panel proxies (TASK_SPLIT.md contract 3).
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $account = re_linked_account($pdo, $deviceId);
+        ok([
+            'linked_account'       => $account,
+            'balance'              => $account !== '' ? re_fetch_balance($pdo, $account) : null,
+            'rates'                => re_settings($pdo),
+            'redeemed_today_bytes' => re_redeemed_today($pdo, $deviceId),
+        ]);
+    }
+
     if ($action === 'get-transfers') {
         $deviceId = trim($_GET['device_id'] ?? '');
         if (!$deviceId) err('missing device_id');
         $pdo = db();
         ok(['transfers' => qe_transfer_history($pdo, $deviceId, 50)]);
+    }
+
+    if ($action === 'sso-token') {
+        // Ecosystem SSO (contract 6): mint a short-lived JWT for the device's
+        // linked REAL account so the in-app game (and any ecosystem WebView)
+        // authenticates without a separate login. Fails safe: 'unlinked' → app
+        // prompts to link; 'unavailable' → app loads the game as a guest. The
+        // game_url / issuer come from remote-config so they rotate without a
+        // release. The app never holds real_api_key — the panel proxies.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $rc = [];
+        try {
+            $rc = $pdo->query("SELECT key, value FROM settings WHERE key IN ('rc_game_url','rc_ecosystem_sso_enabled')")
+                      ->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
+        } catch (\Exception $e) {}
+        $result = re_sso_token($pdo, $deviceId);
+        ok([
+            'status'      => $result['status'],                     // ok | unlinked | unavailable
+            'token'       => $result['token']      ?? '',
+            'expires_in'  => $result['expires_in'] ?? 0,
+            'account'     => $result['account']    ?? '',
+            'game_url'    => (string)($rc['rc_game_url'] ?? 'https://shahnameh.setaei.com'),
+            'sso_enabled' => (bool)(int)($rc['rc_ecosystem_sso_enabled'] ?? 1),
+        ]);
     }
 
     if ($action === 'resolve-recipient') {
@@ -808,6 +869,29 @@ if ($method === 'POST') {
             $riskScore += 80;
             $riskFlags[] = 'same_device';
         }
+        // TrustAI enrichment: when the service is configured it replaces the
+        // local heuristic score, but can never LOWER a score the local rules
+        // already flagged (a broken/poisoned TrustAI must not unlock fraud).
+        // Local flags are kept alongside for audit. Unconfigured/unreachable
+        // TrustAI leaves the local score untouched.
+        try {
+            $tai = trustai_score_referral($pdo, [
+                'event'              => 'referral_use',
+                'referrer_device_id' => $ownerRow['device_id'],
+                'new_device_id'      => $deviceId,
+                'referral_code'      => $refCode,
+                'referrer_ip'        => $referrerIp,
+                'new_user_ip'        => $newUserIp,
+                'referrer_fp'        => (string)($referrerDev['android_id_hash'] ?? ''),
+                'new_device_fp'      => (string)($newDev['android_id_hash'] ?? ''),
+                'local_risk_score'   => $riskScore,
+                'local_risk_flags'   => $riskFlags,
+            ]);
+            if ($tai !== null) {
+                $riskScore = max($riskScore, $tai['score']);
+                $riskFlags = array_merge($riskFlags, $tai['flags'], ['trustai_scored']);
+            }
+        } catch (\Exception $e) { /* local heuristic remains authoritative */ }
         // Risk gate: at or above the threshold the reward is HELD, not granted.
         // 'pending' rows carry the intended bonus in bonus_bytes but credit
         // nothing until an admin approves (admin/api.php referral-approve).
@@ -822,10 +906,28 @@ if ($method === 'POST') {
         )->execute([$refCode, $deviceId, $ownerRow['device_id'], $deviceId, $bonus,
                     $referrerIp, $newUserIp, $riskScore, $riskFlagsJson, $riskStatus]);
 
+        $rewardReal   = [];  // party => grant status, for the response (C3)
         if ($riskStatus === 'credited') {
-            // Credit both parties through the ledger (keeps the breakdown invariant).
-            qe_ledger_add($pdo, $deviceId,            'referral_reward', $bonus, 'referral ' . $refCode);
-            qe_ledger_add($pdo, $ownerRow['device_id'], 'referral_reward', $bonus, 'referrer of ' . $deviceId);
+            // Reward mode (plan C3): 'quota' (default) grants VPN quota as
+            // before; 'real' grants REAL to a linked account instead (falling
+            // back to quota when unlinked so nobody goes unrewarded); 'both'
+            // grants quota AND REAL. Default is 'quota' → behaviour unchanged.
+            re_ensure_schema($pdo);  // referral grants share the real_redemptions ledger
+            $rw = re_referral_settings($pdo);
+            $grantParty = function (string $dev, string $txRef, string $meta) use ($pdo, $rw, $bonus) {
+                $status = 'quota';
+                if ($rw['mode'] !== 'quota') {
+                    $status = re_referral_grant($pdo, $dev, $rw['real_reward'], $txRef);
+                }
+                // Grant quota unless this was a REAL-only grant that succeeded/pending.
+                $realHandled = in_array($status, ['credited', 'pending'], true);
+                if ($rw['mode'] === 'quota' || $rw['mode'] === 'both' || !$realHandled) {
+                    qe_ledger_add($pdo, $dev, 'referral_reward', $bonus, $meta);
+                }
+                return $status;
+            };
+            $rewardReal['invitee']  = $grantParty($deviceId, 'refgrant-' . $refCode . '-' . $deviceId, 'referral ' . $refCode);
+            $rewardReal['referrer'] = $grantParty($ownerRow['device_id'], 'refgrant-' . $refCode . '-' . $ownerRow['device_id'], 'referrer of ' . $deviceId);
 
             // ── Viral loop: ≥3 active GRANTED referrals unlock stealth ─────
             $activeRefs = $pdo->prepare("
@@ -860,6 +962,9 @@ if ($method === 'POST') {
             'new_total_bytes' => (int)$row['quota_bytes_total'],
             'risk_score'      => $riskScore,
             'risk_flags'      => $riskFlags,
+            // C3: per-party REAL grant outcome ('quota'|'credited'|'pending'|
+            // 'rejected'|'skipped'). Absent/all-'quota' = classic quota reward.
+            'real_reward'     => $rewardReal,
         ]);
     }
 
@@ -1131,13 +1236,16 @@ if ($method === 'POST') {
         // User-to-user direct message (v0.9.33). Recipient addressed by
         // SetaLink ID (device_id | user_id | referral_code). Rate-limited,
         // body encrypted at rest. No phone/email/IP is touched.
-        $deviceId  = trim($_POST['device_id'] ?? '');
-        $recipient = trim($_POST['recipient'] ?? '');
-        $body      = (string)($_POST['body'] ?? '');
+        // expire_secs (optional, v0.9.58): disappearing-message timer — the row
+        // is hard-deleted expire_secs after the recipient READS it (0 = never).
+        $deviceId   = trim($_POST['device_id'] ?? '');
+        $recipient  = trim($_POST['recipient'] ?? '');
+        $body       = (string)($_POST['body'] ?? '');
+        $expireSecs = (int)($_POST['expire_secs'] ?? 0);
         if (!$deviceId || $recipient === '') err('missing params');
         $pdo = db();
         try {
-            $result = dm_send($pdo, $deviceId, $recipient, $body);
+            $result = dm_send($pdo, $deviceId, $recipient, $body, $expireSecs);
         } catch (\RuntimeException $e) {
             err($e->getMessage());
         }
@@ -1168,6 +1276,95 @@ if ($method === 'POST') {
         if (!$deviceId || $peer === '') err('missing params');
         $pdo = db();
         ok(['deleted' => dm_delete_thread($pdo, $deviceId, $peer)]);
+    }
+
+    if ($action === 'link-real-account') {
+        // A2: bind this device to a REAL/Shahnameh account. The proof is minted
+        // by the ecosystem backend during the wallet deep-link flow and verified
+        // against the shared real_link_secret — the client can't fabricate it.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $account  = trim($_POST['real_account'] ?? '');
+        $ts       = (int)($_POST['ts'] ?? 0);
+        $sig      = trim($_POST['sig'] ?? '');
+        if (!$deviceId || $account === '' || !$ts || $sig === '') err('missing params');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!re_verify_link_proof($pdo, $deviceId, $account, $ts, $sig)) err('invalid link proof');
+        if (!re_link_account($pdo, $deviceId, $account)) err('unknown device');
+        ok(['linked_real_account' => $account]);
+    }
+
+    if ($action === 'redeem-real') {
+        // A2: spend REAL for VPN quota. The spend is verified server-to-server
+        // against the ecosystem backend, never on client claims; when that
+        // service is unconfigured/unreachable the redemption stays 'pending'
+        // for admin review. tx_ref is the idempotency key — a retried request
+        // returns the recorded outcome instead of crediting twice.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $amount   = (float)($_POST['real_amount'] ?? 0);
+        $txRef    = trim($_POST['tx_ref'] ?? '');
+        if (!$deviceId || $txRef === '') err('missing params');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        $q = re_quote($pdo, $deviceId, $amount);
+        if (isset($q['error'])) err($q['error']);
+        $quotaBytes = $q['quota_bytes'];
+        $id = re_record($pdo, $deviceId, $q['account'], $amount, $quotaBytes, $txRef);
+        if ($id === null) {
+            $prev = re_get_by_tx($pdo, $txRef);
+            ok(['status'      => $prev['status'] ?? 'pending',
+                'quota_bytes' => (int)($prev['quota_bytes'] ?? 0),
+                'duplicate'   => true]);
+        }
+        $verdict = re_verify_spend($pdo, $q['account'], $amount, $txRef);
+        if ($verdict === false) {
+            re_reject($pdo, $id);
+            err('REAL spend could not be verified');
+        }
+        if ($verdict === true) {
+            $total = re_credit($pdo, $id);
+            ok(['status' => 'credited', 'quota_bytes' => $quotaBytes, 'new_total' => $total]);
+        }
+        ok(['status' => 'pending', 'quota_bytes' => $quotaBytes]);
+    }
+
+    if ($action === 'redeem-real-spend') {
+        // A3: one-tap redeem from the app. The panel orchestrates the debit
+        // (contract 4, docs/realgram/TASK_SPLIT.md) instead of requiring a
+        // pre-executed spend: quote → server-to-server /v1/spend (idempotent
+        // on the client_ref the app generated) → record under the returned
+        // tx_ref → credit. The spend response IS the verification, so a
+        // successful debit credits immediately; a crashed/retried request
+        // reuses the same client_ref and can't debit or credit twice.
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $amount    = (float)($_POST['real_amount'] ?? 0);
+        $clientRef = trim($_POST['client_ref'] ?? '');
+        if (!$deviceId || $clientRef === '' || strlen($clientRef) > 64) err('missing params');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        $q = re_quote($pdo, $deviceId, $amount);
+        if (isset($q['error'])) err($q['error']);
+        $quotaBytes = $q['quota_bytes'];
+
+        $spend = re_spend($pdo, $q['account'], $amount, 'vpnq-' . $deviceId . '-' . $clientRef);
+        if (!$spend['ok']) {
+            err($spend['error'] === 'unavailable' ? 'wallet service unavailable' : $spend['error']);
+        }
+        $id = re_record($pdo, $deviceId, $q['account'], $amount, $quotaBytes, $spend['tx_ref']);
+        if ($id === null) {
+            // Retry after a crash between spend and credit: the idempotent
+            // spend returned the tx_ref we already recorded. Report its state.
+            $prev = re_get_by_tx($pdo, $spend['tx_ref']);
+            ok(['status'      => $prev['status'] ?? 'pending',
+                'quota_bytes' => (int)($prev['quota_bytes'] ?? 0),
+                'balance'     => $spend['balance_after'],
+                'duplicate'   => true]);
+        }
+        $total = re_credit($pdo, $id);
+        ok(['status'      => 'credited',
+            'quota_bytes' => $quotaBytes,
+            'new_total'   => $total,
+            'balance'     => $spend['balance_after']]);
     }
 
     if ($action === 'submit-tunnel-log') {

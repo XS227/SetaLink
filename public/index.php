@@ -202,7 +202,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
         "url": "https://setalink.no",
         "logo": "<?= $og_img ?>",
         "parentOrganization": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"},
-        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink","https://setai.no"]
+        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink","https://setai.no","https://shahnameh.setaei.com","https://trustai.no","https://numerologist.setai.no"]
       },
       {
         "@type": "SoftwareApplication",

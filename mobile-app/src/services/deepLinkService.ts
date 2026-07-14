@@ -6,6 +6,8 @@
 //   setalink://tab/<home|servers|ai|activity|profile>
 //   setalink://settings
 //   setalink://referral?code=<referralCode>
+//   setalink://link-real-account?device_id=<d>&account=<a>&ts=<t>&sig=<s>
+//     (REAL wallet link proof minted by the Shahnameh Mini App — A3/C3)
 //   https://setalink.no/?ref=<code>          (website / Telegram invite links)
 //   https://setalink.no/?start=<code>        (Telegram bot start param)
 //   https://setalink.no/invite/<code>
@@ -15,7 +17,8 @@ export type DeepLinkAction =
   | { type: 'DISCONNECT'                  }
   | { type: 'NAVIGATE';  tab: string      }
   | { type: 'SETTINGS'                    }
-  | { type: 'REFERRAL';  code: string     };
+  | { type: 'REFERRAL';  code: string     }
+  | { type: 'LINK_REAL'; deviceId: string; account: string; ts: number; sig: string };
 
 const REF_CODE_RE = /^[A-Z0-9]{4,20}$/i;
 
@@ -59,6 +62,21 @@ export function parseDeepLink(url: string): DeepLinkAction | null {
       return params.has('code')
         ? { type: 'REFERRAL', code: params.get('code')! }
         : null;
+
+    case 'link-real-account': {
+      const account = params.get('account') ?? '';
+      const ts      = parseInt(params.get('ts') ?? '', 10);
+      const sig     = params.get('sig') ?? '';
+      // device_id is carried so the app can confirm the proof was minted for
+      // THIS device (defence against a proof minted for someone else); the
+      // app posts its own deviceId regardless. All fields required.
+      if (!account || !sig || !Number.isFinite(ts)) return null;
+      return {
+        type: 'LINK_REAL',
+        deviceId: params.get('device_id') ?? '',
+        account, ts, sig,
+      };
+    }
 
     default:
       if (path?.startsWith('tab/')) {
@@ -107,6 +125,33 @@ export function executeDeepLink(action: DeepLinkAction, navigation: any): void {
       // pending code stays stored as a fallback for pre-registration links
       // (claimed by claimPendingReferral() right after auto-register).
       claimPendingReferral().catch(() => {});
+      navigation?.navigate?.('Main');
+      setTimeout(() => navigation?.navigate?.('Main', { screen: 'Profile' }), 300);
+      break;
+    }
+
+    case 'LINK_REAL': {
+      // Bind the device to a REAL account using the proof the Shahnameh Mini
+      // App minted (A3/C3). We post OUR own deviceId — the proof's device_id
+      // must match it, or the panel rejects the (device_id|account|ts) HMAC.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useAuthStore } = require('../stores/authStore');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { linkRealAccount } = require('./realWalletService');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useToastStore } = require('../stores/toastStore');
+      const deviceId = useAuthStore.getState().user?.deviceId;
+      if (deviceId) {
+        // If the proof names a device, it must be this one.
+        if (action.deviceId && action.deviceId !== deviceId) {
+          useToastStore.getState().show('This link was issued for a different device', 'error');
+        } else {
+          linkRealAccount(deviceId, action.account, action.ts, action.sig)
+            .then(() => useToastStore.getState().show('REAL account linked 🎉', 'success'))
+            .catch((e: unknown) =>
+              useToastStore.getState().show(e instanceof Error ? e.message : 'Link failed', 'error'));
+        }
+      }
       navigation?.navigate?.('Main');
       setTimeout(() => navigation?.navigate?.('Main', { screen: 'Profile' }), 300);
       break;

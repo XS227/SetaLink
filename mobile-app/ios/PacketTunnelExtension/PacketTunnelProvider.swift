@@ -238,6 +238,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 let r = NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255")
                 excluded4.append(r)
                 self.appendLog("SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
+            } else if parsedAddr != nil {
+                // CDN-fronted node (hostname → Cloudflare anycast): exclude
+                // Cloudflare's ranges so the edge connection doesn't loop.
+                let cf = self.cloudflareExcludedRoutes()
+                excluded4.append(contentsOf: cf)
+                self.appendLog("SETTINGS: excluded \(cf.count) Cloudflare ranges (CDN node \(parsedAddr ?? "?") — prevent xray→edge loop)")
             }
             let dnsExclusions = ["1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4"]
             for ip in dnsExclusions {
@@ -420,6 +426,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         if let addr = serverAddr, isIPv4(addr) {
             excluded4.append(NEIPv4Route(destinationAddress: addr, subnetMask: "255.255.255.255"))
             appendLog("HEV_SETTINGS: excludedRoute=\(addr)/32 (prevent xray→server loop)")
+        } else if serverAddr != nil {
+            // CDN-fronted node: address is a hostname resolving to Cloudflare
+            // anycast. Exclude Cloudflare's ranges so the outer edge connection
+            // routes directly out instead of looping back into the TUN.
+            let cf = cloudflareExcludedRoutes()
+            excluded4.append(contentsOf: cf)
+            appendLog("HEV_SETTINGS: excluded \(cf.count) Cloudflare ranges (CDN node \(serverAddr ?? "?") — prevent xray→edge loop)")
         }
         // Build 73 fix (Iran): DO NOT exclude 1.1.1.1/8.8.8.8 from the TUN.
         //   Pre-72 HEV dropped all UDP, so DNS was kept direct to avoid dead UDP/53.
@@ -667,6 +680,33 @@ misc:
     private func isIPv4(_ s: String) -> Bool {
         var sin = sockaddr_in()
         return s.withCString { inet_pton(AF_INET, $0, &sin.sin_addr) == 1 }
+    }
+
+    // Cloudflare's published IPv4 ranges (cloudflare.com/ips-v4). A CDN-fronted
+    // node (WebSocket/XHTTP over Cloudflare) has a HOSTNAME address (e.g.
+    // alanya-turist.no) that resolves to Cloudflare anycast IPs, not a single
+    // literal IP we can exclude by /32. If we don't exclude these ranges, Xray's
+    // outer TLS connection to the edge is itself captured by the default TUN route
+    // and loops back into the tunnel → the WebSocket handshake never leaves the
+    // device → the tunnel never establishes. This is why the CDN/Stealth node
+    // never connected on iOS (0 /cfws reached origin) while direct-IP Reality nodes
+    // did: their literal IPv4 address IS excluded below. Excluding Cloudflare's
+    // ranges routes the edge connection straight out, breaking the loop.
+    private static let cloudflareV4CIDRs: [(String, String)] = [
+        ("173.245.48.0",  "255.255.240.0"), ("103.21.244.0",  "255.255.252.0"),
+        ("103.22.200.0",  "255.255.252.0"), ("103.31.4.0",    "255.255.252.0"),
+        ("141.101.64.0",  "255.255.192.0"), ("108.162.192.0", "255.255.192.0"),
+        ("190.93.240.0",  "255.255.240.0"), ("188.114.96.0",  "255.255.240.0"),
+        ("197.234.240.0", "255.255.252.0"), ("198.41.128.0",  "255.255.128.0"),
+        ("162.158.0.0",   "255.254.0.0"),   ("104.16.0.0",    "255.248.0.0"),
+        ("104.24.0.0",    "255.252.0.0"),   ("172.64.0.0",    "255.248.0.0"),
+        ("131.0.72.0",    "255.255.252.0"),
+    ]
+
+    private func cloudflareExcludedRoutes() -> [NEIPv4Route] {
+        return Self.cloudflareV4CIDRs.map {
+            NEIPv4Route(destinationAddress: $0.0, subnetMask: $0.1)
+        }
     }
 
     private func isPortOpen(_ port: Int) -> Bool {

@@ -41,7 +41,7 @@ describe('bundled cf-edge fallback', () => {
     expect(BUNDLED_CF_EDGE.protocol).toBe('WebSocket');
     expect(BUNDLED_CF_EDGE_CREDS.publicKey).toBe('');       // WS — no Reality key
     expect(BUNDLED_CF_EDGE_CREDS.wsPath).toBe('/cfws');
-    expect(BUNDLED_CF_EDGE_CREDS.edgeAddress).toBe('real.setalink.no');
+    expect(BUNDLED_CF_EDGE_CREDS.edgeAddress).toBe('alanya-turist.no');
   });
 
   it('default store state ships cf-edge creds (connectable before any fetch)', () => {
@@ -104,5 +104,51 @@ describe('bundled cf-edge fallback', () => {
     });
     await useServerStore.getState().fetchServers('anon-token-3');
     expect(useServerStore.getState().importedCreds[CF_EDGE_ID]?.uuid).toBe('fresh-uuid');
+  });
+});
+
+describe('user node preference vs failover (2026-07-11)', () => {
+  const twoNodes = () => useServerStore.setState({
+    servers: [
+      { id: 'finland', country: 'Finland', city: 'Helsinki', flag: '🇫🇮', ping: 40, load: 5, protocol: 'Reality' } as any,
+      { id: CF_EDGE_ID, country: 'Cloudflare', city: 'Edge', flag: '☁️', ping: 60, load: 5, protocol: 'WebSocket', tags: ['Stealth'] } as any,
+    ],
+    importedCreds: {
+      finland:      { uuid: 'fi', address: '1.2.3.4', port: 443, publicKey: 'k', shortId: 's', sni: 'x', flow: 'xtls-rprx-vision', fingerprint: 'chrome' } as any,
+      [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS,
+    },
+    selectedId: '', userSelectedId: '',
+  });
+
+  it('a manual selection sets the sticky user preference', () => {
+    twoNodes();
+    useServerStore.getState().selectServer('finland');
+    expect(useServerStore.getState().selectedId).toBe('finland');
+    expect(useServerStore.getState().userSelectedId).toBe('finland');
+  });
+
+  it('failover (isUser=false) moves the active node but keeps the preference', () => {
+    twoNodes();
+    useServerStore.getState().selectServer('finland');           // user picks Finland
+    useServerStore.getState().selectServer(CF_EDGE_ID, false);   // failover to stealth
+    expect(useServerStore.getState().selectedId).toBe(CF_EDGE_ID);   // active moved
+    expect(useServerStore.getState().userSelectedId).toBe('finland'); // preference intact
+  });
+
+  it('restoreUserSelection brings the active node back to the user preference', () => {
+    twoNodes();
+    useServerStore.getState().selectServer('finland');
+    useServerStore.getState().selectServer(CF_EDGE_ID, false);   // failover
+    useServerStore.getState().restoreUserSelection();            // fresh connect
+    expect(useServerStore.getState().selectedId).toBe('finland');
+  });
+
+  it('restoreUserSelection is a no-op when the preference node lost its creds', () => {
+    twoNodes();
+    useServerStore.getState().selectServer('finland');
+    useServerStore.getState().selectServer(CF_EDGE_ID, false);
+    useServerStore.setState({ importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS } }); // finland creds gone
+    useServerStore.getState().restoreUserSelection();
+    expect(useServerStore.getState().selectedId).toBe(CF_EDGE_ID); // stays on failover node
   });
 });
