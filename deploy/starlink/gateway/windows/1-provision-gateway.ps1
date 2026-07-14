@@ -222,11 +222,11 @@ if (-not (Get-NetFirewallRule -DisplayName $blockRuleName -ErrorAction SilentlyC
 Write-Ok "No inbound rule added for the tunnel itself — by design, the Surface only dials out."
 
 # ---------------------------------------------------------------------------
-Write-Step "Registering heartbeat.ps1 as a Scheduled Task (every 30s, runs at startup)"
+Write-Step "Registering heartbeat.ps1 as a Scheduled Task (every 33s, runs at startup)"
 $heartbeatScript = Join-Path $PSScriptRoot 'heartbeat.ps1'
 $hbTaskName = 'ReaLink-Starlink-Heartbeat'
 $hbAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$heartbeatScript`""
-$hbTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 30) -RepetitionDuration ([TimeSpan]::MaxValue)
+$hbTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 33) -RepetitionDuration ([TimeSpan]::MaxValue)
 $hbBootTrigger = New-ScheduledTaskTrigger -AtStartup
 $hbSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 $hbPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest

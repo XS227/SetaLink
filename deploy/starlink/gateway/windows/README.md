@@ -72,7 +72,7 @@ intentionally a portable proof-of-concept, not a redesign around Windows.
 Two Scheduled Tasks, both registered by step 5, both starting automatically
 at boot:
 
-- **`ReaLink-Starlink-Heartbeat`** (`heartbeat.ps1`, every ~30s) — posts
+- **`ReaLink-Starlink-Heartbeat`** (`heartbeat.ps1`, every ~33s) — posts
   status to `public/starlink-heartbeat.php`. Logs to `logs/heartbeat.log`.
 - **`ReaLink-Starlink-Watchdog`** (`watchdog.ps1`, every ~60s) — restarts
   the WireGuard service if the tunnel stops actually passing traffic (pings

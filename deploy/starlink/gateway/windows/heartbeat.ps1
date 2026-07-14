@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Posts gateway health telemetry to public/starlink-heartbeat.php. Run
-    every ~30s via the Scheduled Task registered by 1-provision-gateway.ps1.
+    every ~33s via the Scheduled Task registered by 1-provision-gateway.ps1.
 
 .DESCRIPTION
     Sends the SAME JSON schema deploy/starlink/gateway/heartbeat.sh (the
