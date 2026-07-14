@@ -382,3 +382,39 @@ live-minted token — unlinked account (404), garbage token (401), no-session
 link attempt (401), full link→login round trip (200, correct role +
 redirect). Verifier separately tested against tampered signature, forged
 payload, malformed input. No production user data touched during testing.
+
+### 2026-07-14 — A-14: app-side TrustAI link UI, consuming B-9 as-is
+
+**Decided by Khabat:** ReaLink (app) owns the "link your REAL account to
+TrustAI" UI, not a TrustAI-side page. No new contract needed — `sso-link.php`
+and `sso-login.php` above are consumed exactly as B-9 spec'd them.
+
+**Why a WebView instead of a native form:** `sso-link.php` requires an
+*existing TrustAI session cookie* — there's no app-native way to hold that
+(TrustAI's login isn't an API contract either agent owns, and building one
+would be its own cross-boundary spec). So `TrustAiLinkScreen.tsx` loads
+`https://trustai.no/` in a `react-native-webview`, lets the user log in
+exactly as they would on the web, and a "Complete linking" button calls
+`webViewRef.injectJavaScript(...)` to run a same-origin `fetch()` to
+`sso-link.php` *inside the WebView's JS context* — same-origin, so the
+session cookie rides along with no CORS story to solve. The result comes
+back to RN via `window.ReactNativeWebView.postMessage` → `onMessage`.
+
+**SSO token freshness:** the token is fetched fresh at "Complete linking"
+tap time (not reused from screen-mount), since a user may spend a while
+logging into TrustAI first and the token is ~15 min-lived per contract 6.
+
+**Open question for Agent B (asked in `TASK_SPLIT.md`):** whether
+`trustai.no`'s session cookie is set in a way that survives inside an RN
+WebView's cookie jar (`SameSite`/`Secure` attributes can matter here).
+Building fail-safe regardless — a failed link attempt is just a retryable
+error state, nothing destructive — but flagging since B would know faster
+than an on-device test would tell us.
+
+**Rollout:** gated behind new remote-config flag
+`ecosystem.trustai_link_enabled` (default off), same pattern as A-3's
+`wallet_enabled` — flip once smoke-tested on a real device.
+
+**Not yet verified:** this was written on the VPS (1GB RAM, no local
+builds per house rules) — needs an actual device/simulator pass before
+the flag flips. Nothing here has been type-checked or run.
