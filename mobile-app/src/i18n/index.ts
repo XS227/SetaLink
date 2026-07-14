@@ -432,6 +432,23 @@ const EN = {
   'dm.support':             'Support',
   'dm.supportTag':          'ReaLink Support',
   'dm.supportIntro':        'Use this chat to contact ReaLink support — ask us anything. We reply as soon as we can.',
+  'dm.burnOff':             'Timer off',
+  'dm.burnSet':             'Disappears {t} after reading',
+  'dm.burnPending':         'disappears {t} after reading',
+  'dm.burnLeft':            'disappears in {t}',
+  'wallet.title':       'REAL Wallet',
+  'wallet.notLinked':   'Link your Shahnameh account to spend REAL on free data.',
+  'wallet.linkBtn':     'Link account',
+  'wallet.cost':        '{r} REAL',
+  'wallet.redeem':      'Redeem for data',
+  'wallet.success':     'Data added to your quota!',
+  'wallet.unavailable': 'Wallet service is unavailable — try again later.',
+  'tip.appsWork':       'Telegram, Instagram & your other apps now work normally — just open them.',
+  'game.title':         'Shahnameh',
+  'game.linkTitle':     'Link your REAL account',
+  'game.linkBody':      'Connect your Shahnameh account to earn REAL as you play and redeem it for free data.',
+  'game.linkBtn':       'Link account',
+  'game.playGuest':     'Play as guest',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'Invite Rewards',
@@ -955,6 +972,23 @@ const FA: typeof EN = {
   'dm.support':             'پشتیبانی',
   'dm.supportTag':          'پشتیبانی ریلینک',
   'dm.supportIntro':        'از این گفتگو برای تماس با پشتیبانی ریلینک استفاده کنید — هر سؤالی دارید بپرسید. در اسرع وقت پاسخ می‌دهیم.',
+  'dm.burnOff':             'تایمر خاموش',
+  'dm.burnSet':             '{t} پس از خواندن ناپدید می‌شود',
+  'dm.burnPending':         '{t} پس از خواندن ناپدید می‌شود',
+  'dm.burnLeft':            'ناپدید شدن تا {t}',
+  'wallet.title':       'کیف پول REAL',
+  'wallet.notLinked':   'حساب شاهنامه خود را متصل کنید تا REAL را به حجم رایگان تبدیل کنید.',
+  'wallet.linkBtn':     'اتصال حساب',
+  'wallet.cost':        '{r} REAL',
+  'wallet.redeem':      'تبدیل به حجم',
+  'wallet.success':     'حجم به سهمیه شما اضافه شد!',
+  'wallet.unavailable': 'سرویس کیف پول در دسترس نیست — بعداً دوباره امتحان کنید.',
+  'tip.appsWork':       'حالا تلگرام، اینستاگرام و بقیه برنامه‌ها به‌طور معمولی کار می‌کنند — کافی است بازشان کنید.',
+  'game.title':         'شاهنامه',
+  'game.linkTitle':     'حساب REAL خود را متصل کنید',
+  'game.linkBody':      'حساب شاهنامه‌تان را متصل کنید تا با بازی REAL کسب کنید و آن را به حجم رایگان تبدیل کنید.',
+  'game.linkBtn':       'اتصال حساب',
+  'game.playGuest':     'به‌عنوان مهمان بازی کن',
 
   // Profile — invite milestones
   'pr.inviteRewards':     'پاداش دعوت دوستان',
@@ -1455,6 +1489,23 @@ const ZH: typeof EN = {
   'dm.support':          '客服支持',
   'dm.supportTag':       'ReaLink 客服',
   'dm.supportIntro':     '使用此聊天联系 ReaLink 客服 — 有任何问题都可以问我们。我们会尽快回复。',
+  'dm.burnOff':          '定时器关闭',
+  'dm.burnSet':          '阅读后 {t} 消失',
+  'dm.burnPending':      '阅读后 {t} 消失',
+  'dm.burnLeft':         '{t} 后消失',
+  'wallet.title':       'REAL 钱包',
+  'wallet.notLinked':   '关联您的 Shahnameh 账户，用 REAL 兑换免费流量。',
+  'wallet.linkBtn':     '关联账户',
+  'wallet.cost':        '{r} REAL',
+  'wallet.redeem':      '兑换流量',
+  'wallet.success':     '流量已添加到您的配额！',
+  'wallet.unavailable': '钱包服务暂不可用，请稍后再试。',
+  'tip.appsWork':    '现在 Telegram、Instagram 和其他应用都能正常使用了 — 直接打开即可。',
+  'game.title':      '沙纳玛',
+  'game.linkTitle':  '关联您的 REAL 账户',
+  'game.linkBody':   '关联您的 Shahnameh 账户，边玩边赚 REAL，并兑换为免费流量。',
+  'game.linkBtn':    '关联账户',
+  'game.playGuest':  '以访客身份游玩',
 
   'pr.inviteRewards': '邀请奖励',
   'pr.activeInvites': '个有效邀请',
@@ -1948,6 +1999,23 @@ const RU: typeof EN = {
   'dm.support':          'Поддержка',
   'dm.supportTag':       'Поддержка ReaLink',
   'dm.supportIntro':     'Используйте этот чат, чтобы связаться с поддержкой ReaLink — задавайте любые вопросы. Мы ответим как можно скорее.',
+  'dm.burnOff':          'Таймер выключен',
+  'dm.burnSet':          'Исчезнет через {t} после прочтения',
+  'dm.burnPending':      'исчезнет через {t} после прочтения',
+  'dm.burnLeft':         'исчезнет через {t}',
+  'wallet.title':       'Кошелёк REAL',
+  'wallet.notLinked':   'Привяжите аккаунт Shahnameh, чтобы обменивать REAL на бесплатный трафик.',
+  'wallet.linkBtn':     'Привязать аккаунт',
+  'wallet.cost':        '{r} REAL',
+  'wallet.redeem':      'Обменять на трафик',
+  'wallet.success':     'Трафик добавлен к вашей квоте!',
+  'wallet.unavailable': 'Сервис кошелька недоступен — попробуйте позже.',
+  'tip.appsWork':    'Telegram, Instagram и другие приложения теперь работают как обычно — просто откройте их.',
+  'game.title':      'Шахнаме',
+  'game.linkTitle':  'Привяжите аккаунт REAL',
+  'game.linkBody':   'Привяжите аккаунт Shahnameh, чтобы зарабатывать REAL в игре и обменивать его на бесплатный трафик.',
+  'game.linkBtn':    'Привязать аккаунт',
+  'game.playGuest':  'Играть как гость',
 
   'pr.inviteRewards': 'Награды за приглашения',
   'pr.activeInvites': 'активных приглашений',
@@ -2067,6 +2135,13 @@ const STRINGS: Record<Lang, typeof EN> = { en: EN, fa: FA, zh: ZH, ru: RU };
 
 export function getCurrentLang(): Lang {
   return codeForLabel(useSettingsStore.getState().language);
+}
+
+/** Non-hook translator for use outside React (services/stores, e.g. vpnStore
+ *  toasts). Resolves against the current language, falls back to EN then key. */
+export function tr(key: TKey | (string & {})): string {
+  const lang = getCurrentLang();
+  return (STRINGS[lang] as any)[key] ?? (EN as any)[key] ?? key;
 }
 
 export function useT() {

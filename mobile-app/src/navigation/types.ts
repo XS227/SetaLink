@@ -12,6 +12,7 @@ export type RootStackParamList = {
   Settings:      undefined;
   Diagnostics:   undefined;
   BypassApps:    undefined;
+  Game:          undefined;
   Upgrade:       undefined;
   Inbox:         undefined;
   Transfer:      undefined;

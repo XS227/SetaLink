@@ -13,6 +13,7 @@ require_once __DIR__ . '/../lib/quota_economy.php';
 require_once __DIR__ . '/../lib/ads_recovery.php';
 require_once __DIR__ . '/../lib/payments.php';
 require_once __DIR__ . '/../lib/messaging.php';
+require_once __DIR__ . '/../lib/real_economy.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -932,6 +933,34 @@ if ($method === 'POST') {
             }
         }
         api_ok(['status' => $new_status, 'payment_id' => $pid]);
+    }
+    if ($action === 'real-redemption-approve' || $action === 'real-redemption-reject') {
+        // A2 manual-review path: redemptions the ecosystem backend couldn't
+        // verify automatically stay 'pending' until reviewed here. Approve
+        // credits quota through re_credit (ledger row + guarded pending→credited
+        // transition), so a double click / concurrent review can't credit twice.
+        $rid = (int)($parsed['redemption_id'] ?? 0);
+        if (!$rid) api_err('redemption_id required');
+        $db = open_analytics_db();
+        re_ensure_schema($db);
+        $row = re_get($db, $rid);
+        if (!$row) api_err('redemption not found');
+        $isGrant = ($row['kind'] ?? 'redeem') === 'referral_grant';
+        if ($action === 'real-redemption-approve') {
+            if ($isGrant) {
+                // Referral grant (C3) pays REAL — retry the ecosystem grant,
+                // never credit VPN quota. Stays pending if the backend is down.
+                $st = re_approve_grant($db, $rid);
+                if ($st === null)       api_err('grant not found or already reviewed');
+                if ($st === 'rejected') api_err('ecosystem backend rejected the grant');
+                api_ok(['status' => $st, 'redemption_id' => $rid, 'kind' => 'referral_grant']);
+            }
+            $total = re_credit($db, $rid);
+            if ($total === null) api_err('redemption not found or already reviewed');
+            api_ok(['status' => 'credited', 'redemption_id' => $rid, 'new_total' => $total]);
+        }
+        if (!re_reject($db, $rid)) api_err('redemption not found or already reviewed');
+        api_ok(['status' => 'rejected', 'redemption_id' => $rid]);
     }
     if ($action === 'payment-submit') {
         $did  = trim((string)($parsed['device_id'] ?? ''));
@@ -2093,6 +2122,40 @@ switch ($action) {
             'profile_bundle_version' => (int)($rows['rc_profile_bundle_version'] ?? 1),
             'bootstrap'              => fetch_bootstrap_server($db),
         ]);
+        break;
+
+    case 'real-redemptions':
+        // REAL token economy — ledger + rates. Pending rows are reviewed via
+        // real-redemption-approve/-reject (ECOSYSTEM_INTEGRATION_PLAN.md A2).
+        $db = open_analytics_db();
+        re_ensure_schema($db);
+        api_ok([
+            'settings'         => re_settings($db),
+            'redemptions'      => re_list($db, (int)($_GET['limit'] ?? 100)),
+            // B-2 (docs/realgram/TASK_SPLIT.md, SetaLink repo) — configured
+            // status only, never the secret values. See re_ecosystem_status().
+            'ecosystem_status' => re_ecosystem_status($db),
+        ]);
+        break;
+
+    case 'ecosystem-analytics':
+        // Adoption metrics for the ecosystem banner (plan item B4): clicks per
+        // promo, so campaigns pushed via rc_ecosystem_promos are measurable.
+        $db = open_analytics_db();
+        $clicks = [];
+        try {
+            $clicks = $db->query("
+                SELECT COALESCE(json_extract(props,'\$.promo'),'') AS promo,
+                       COUNT(*) AS clicks,
+                       COUNT(DISTINCT device_id) AS devices,
+                       MAX(created_at) AS last_click
+                FROM app_events
+                WHERE event='ecosystem_banner_click'
+                  AND created_at >= datetime('now','-30 days')
+                GROUP BY promo ORDER BY clicks DESC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Exception $e) { /* app_events may not exist yet */ }
+        api_ok(['clicks_30d' => $clicks]);
         break;
 
     case 'app-analytics':

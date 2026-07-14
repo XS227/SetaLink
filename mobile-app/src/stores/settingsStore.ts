@@ -24,6 +24,7 @@ interface SettingsState {
   hasOnboarded:         boolean;
   hasSelectedLanguage:  boolean;
   hasSeenWelcome:       boolean;
+  hasSeenTelegramTip:   boolean;   // Path B0 post-connect tip — shown once
   pendingReferralCode:  string | null;
   updateChannel:        'stable' | 'beta' | 'experimental';
 
@@ -43,6 +44,7 @@ interface SettingsState {
   completeOnboarding:       () => void;
   completeLanguageSelection: () => void;
   markWelcomeSeen:           () => void;
+  markTelegramTipSeen:       () => void;
   setPendingReferralCode:    (code: string | null) => void;
   setUpdateChannel:          (c: 'stable' | 'beta' | 'experimental') => void;
 }
@@ -65,6 +67,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasOnboarded:         false,
       hasSelectedLanguage:  false,
       hasSeenWelcome:       false,
+      hasSeenTelegramTip:   false,
       pendingReferralCode:  null,
       updateChannel:        'stable',
 
@@ -85,6 +88,7 @@ export const useSettingsStore = create<SettingsState>()(
       completeOnboarding:        () => set({ hasOnboarded: true }),
       completeLanguageSelection: () => set({ hasSelectedLanguage: true }),
       markWelcomeSeen:           () => set({ hasSeenWelcome: true }),
+      markTelegramTipSeen:       () => set({ hasSeenTelegramTip: true }),
       setPendingReferralCode:    (code) => set({ pendingReferralCode: code }),
       setUpdateChannel:          (c) => set({ updateChannel: c }),
     }),

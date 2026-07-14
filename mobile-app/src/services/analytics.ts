@@ -20,6 +20,7 @@ export const Events = {
   PAYMENT_CONFIRMED_USDT:   'PAYMENT_CONFIRMED_USDT',
   PAYMENT_FAILED:           'PAYMENT_FAILED',
   TONKEEPER_OPENED:         'TONKEEPER_OPENED',
+  ECOSYSTEM_BANNER_CLICK:   'ecosystem_banner_click',
 } as const;
 
 export type EventName = typeof Events[keyof typeof Events] | string;

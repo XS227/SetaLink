@@ -17,7 +17,9 @@ import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { RealWalletCard } from '../components/RealWalletCard';
 import { useInboxStore } from '../stores/inboxStore';
+import { useDMStore } from '../stores/dmStore';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_MARK = require('../assets/logo_mark.png') as number;
@@ -127,11 +129,21 @@ const bwStyles = StyleSheet.create({
 
 // ── Package card ────────────────────────────────────────────────────────────--
 
-function PackageCard({ title, desc, bytes, accent, tag, dimmed }: {
+function PackageCard({ title, desc, bytes, accent, tag, dimmed, gift }: {
   title: string; desc: string; bytes: number; accent: string; tag?: string; dimmed?: boolean;
+  /** Wrap the card as a present: ribbon bands in the accent colour + this bow
+   *  emoji in the corner. Used for granted packs (welcome gift, invite reward). */
+  gift?: string;
 }) {
   return (
     <View style={[pkgStyles.card, { borderColor: accent + '40' }, dimmed && pkgStyles.cardDimmed]}>
+      {gift && (
+        <>
+          <View pointerEvents="none" style={[pkgStyles.ribbonV, { backgroundColor: accent + '1F' }]} />
+          <View pointerEvents="none" style={[pkgStyles.ribbonH, { backgroundColor: accent + '1F' }]} />
+          <Text style={pkgStyles.bow}>{gift}</Text>
+        </>
+      )}
       <View style={[pkgStyles.accentDot, { backgroundColor: accent }]} />
       <Text style={pkgStyles.cardTitle} numberOfLines={1}>{title}</Text>
       <Text style={[pkgStyles.cardValue, { color: accent }]}>{gb(bytes)}</Text>
@@ -146,7 +158,11 @@ function PackageCard({ title, desc, bytes, accent, tag, dimmed }: {
 }
 
 const pkgStyles = StyleSheet.create({
-  card:        { width: 150, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, borderWidth: 1, padding: Spacing[3], gap: 4 },
+  card:        { width: 150, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, borderWidth: 1, padding: Spacing[3], gap: 4, overflow: 'hidden' },
+  // Gift wrapping: two translucent ribbon bands crossing the card + a bow.
+  ribbonV:     { position: 'absolute', top: 0, bottom: 0, left: '50%', width: 14, marginLeft: -7 },
+  ribbonH:     { position: 'absolute', left: 0, right: 0, top: '50%', height: 14, marginTop: -7 },
+  bow:         { position: 'absolute', top: 4, right: 6, fontSize: 15 },
   cardDimmed:  { opacity: 0.55 },
   accentDot:   { width: 8, height: 8, borderRadius: 4, marginBottom: 2 },
   cardTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
@@ -176,6 +192,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const [applyingPending, setApplyingPending] = useState(false);
   const inboxMessages = useInboxStore((s) => s.messages);
   const refreshInbox  = useInboxStore((s) => s.refresh);
+  const unreadDm      = useDMStore((s) => s.messages.filter(m => m.direction === 'in' && !m.read).length);
 
   const navTo = onNavigate as (tab: string) => void;
 
@@ -222,7 +239,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const monthSessions = sessionsThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);
 
-  const unreadCount = inboxMessages.filter(m => !m.read).length;
+  const unreadCount = inboxMessages.filter(m => !m.read).length + unreadDm;
 
   // Milestone progression — server-driven (only approved referrals count).
   const msData  = user.milestones;
@@ -437,6 +454,13 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           )}
         </GlassCard>
 
+        {/* REAL wallet — remote-config gated (ecosystem.wallet_enabled), so it
+            stays hidden until the Shahnameh-side backend is live (plan A3). */}
+        <RealWalletCard
+          deviceId={user.deviceId}
+          onRedeemed={() => syncEntitlement(user.deviceId).then(updateFromEntitlement).catch(() => {})}
+        />
+
         {/* Package / quota overview */}
         <GlassCard style={styles.packagesCard}>
           <Text style={styles.cardLabel}>{t('pr.packages')}</Text>
@@ -451,12 +475,14 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
               bytes={starterBytes}
               accent={Colors.emerald[400]}
               tag={t('pr.notTransferable')}
+              gift="🎁"
             />
             <PackageCard
               title={t('pr.referralPack')}
               desc={t('pr.referralPackDesc')}
               bytes={referralBytes}
               accent={Colors.blue[400]}
+              gift="🎀"
             />
             <PackageCard
               title={t('pr.purchasedPack')}
