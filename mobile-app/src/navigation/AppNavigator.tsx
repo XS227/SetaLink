@@ -31,6 +31,7 @@ import { SmartAIScreen }     from '../screens/SmartAIScreen';
 import { ActivityScreen }    from '../screens/ActivityScreen';
 import { ProfileScreen }     from '../screens/ProfileScreen';
 import { GameScreen }        from '../screens/GameScreen';
+import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
 import { BypassAppsScreen }  from '../screens/BypassAppsScreen';
 import { DiagnosticsScreen } from '../screens/DiagnosticsScreen';
@@ -92,6 +93,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     if ((tab as string) === 'game')            { navigation.navigate('Game');           return; }
+    if ((tab as string) === 'trustai-link')    { navigation.navigate('TrustAiLink');    return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };
 }
@@ -607,6 +609,14 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <GameScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="TrustAiLink"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <TrustAiLinkScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen
