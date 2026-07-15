@@ -5,9 +5,20 @@
 > `docs/realgram/IMPLEMENTATION_PLAN.md`. Everything you need is in the repo —
 > you should not need any conversation history to continue.
 
-Last updated: **2026-07-11**, by Claude (dev-box session: confirmed push
-resolution, recorded parallel ecosystem implementation; original handoff
-2026-07-10 by the assessment session).
+## ⚠️ If you are picking up the Starlink Windows-gateway work, stop and read this first
+
+**`docs/STARLINK_WINDOWS_HANDOFF.md`** (2026-07-15) — a WireGuard handshake
+debugging session left an **incomplete safety-relevant audit on the
+production server** (`5.249.252.221`) that must be finished before any other
+Starlink work continues. That document's §0 is the single most important
+thing in this repo right now if you're touching anything Starlink-related.
+This is unrelated to the RealGram work below — different subsystem,
+different branch state, read it independently.
+
+Last updated: **2026-07-11** (RealGram section below), by Claude (dev-box
+session: confirmed push resolution, recorded parallel ecosystem
+implementation; original handoff 2026-07-10 by the assessment session).
+Starlink section above updated separately, 2026-07-15.
 
 ---
 
