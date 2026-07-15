@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 132 28" width="132" height="28" role="img" aria-label="Realink" color="#00E87A">
+  <g transform="translate(2,2)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" transform="scale(0.92)"/>
+    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" transform="scale(0.92)"/>
+  </g>
+  <text x="34" y="20" font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-weight="600" font-size="17" letter-spacing="0.5" fill="currentColor">Realink</text>
+</svg>

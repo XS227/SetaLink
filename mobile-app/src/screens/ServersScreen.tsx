@@ -166,7 +166,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                     after server 1 → watch-ad (free quota),
                     after server 3 → Shahnameh, after server 4 → 3real. */}
                 {i === 0 && <WatchAdCard style={styles.ecoBanner} />}
-                {i === 2 && <EcosystemBanner pin="shahnameh" style={styles.ecoBanner} />}
+                {i === 2 && <EcosystemBanner pin="shahnameh" onOpenGame={() => (onNavigate as (tab: string) => void)('game')} style={styles.ecoBanner} />}
                 {i === 3 && <EcosystemBanner pin="threereal" style={styles.ecoBanner} />}
               </React.Fragment>
             ))

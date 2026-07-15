@@ -733,6 +733,34 @@ if ($method === 'GET') {
         ok(['available' => true, 'reason' => '', 'reserved' => true]);
     }
 
+    if ($action === 'sso-token') {
+        // Ecosystem SSO (contract 6): mint a short-lived JWT for the device's
+        // linked REAL account so the in-app game (and any ecosystem WebView)
+        // authenticates without a separate login. Fails safe: 'unlinked' → app
+        // prompts to link; 'unavailable' → app loads the game as a guest. The
+        // game_url / issuer come from remote-config so they rotate without a
+        // release. The app never holds real_api_key — the panel proxies.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $rc = [];
+        try {
+            $rc = $pdo->query("SELECT key, value FROM settings WHERE key IN ('rc_game_url','rc_ecosystem_sso_enabled')")
+                      ->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
+        } catch (\Exception $e) {}
+        $result = re_sso_token($pdo, $deviceId);
+        ok([
+            'status'      => $result['status'],                     // ok | unlinked | unavailable
+            'token'       => $result['token']      ?? '',
+            'expires_in'  => $result['expires_in'] ?? 0,
+            'account'     => $result['account']    ?? '',
+            'game_url'    => (string)($rc['rc_game_url'] ?? 'https://shahnameh.setaei.com'),
+            'sso_enabled' => (bool)(int)($rc['rc_ecosystem_sso_enabled'] ?? 1),
+        ]);
+    }
+
     if ($action === 'resolve-recipient') {
         // Look up a transfer recipient by device_id / user_id / referral_code so
         // the Send-GB confirmation screen can show who will receive the quota.

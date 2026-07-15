@@ -34,6 +34,9 @@ type Props = {
   /** Pin to a single promo (no rotation). Used when banners are placed at
    *  fixed positions in a list. */
   pin?: 'shahnameh' | 'threereal';
+  /** When set, tapping the Shahnameh promo opens the game in-app instead of
+   *  the Telegram link (host screen passes navigation → Game screen). */
+  onOpenGame?: () => void;
   style?: object;
 };
 
@@ -55,7 +58,7 @@ function fromRemote(p: EcosystemPromo, lang: string): DisplayPromo | null {
   return { id: p.id, emoji: p.emoji, image: p.image, title, sub: pick('sub'), url: p.url };
 }
 
-export function EcosystemBanner({ seed = 0, pin, style }: Props) {
+export function EcosystemBanner({ seed = 0, pin, onOpenGame, style }: Props) {
   const { t, lang } = useT();
 
   const embedded: DisplayPromo[] = [
@@ -123,6 +126,10 @@ export function EcosystemBanner({ seed = 0, pin, style }: Props) {
       promo: promo.id,
       url: promo.url,
     });
+    // The Shahnameh promo opens the game IN-APP (WebView + ecosystem SSO) when
+    // the host screen wired onOpenGame; falls back to the Telegram link
+    // otherwise (older screens, or the 3real promo which has no in-app surface).
+    if (promo.id === 'shahnameh' && onOpenGame) { onOpenGame(); return; }
     Linking.openURL(promo.url).catch(() => {});
   };
 
