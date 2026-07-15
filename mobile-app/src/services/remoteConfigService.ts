@@ -78,6 +78,10 @@ export interface RemoteConfig {
     promos?: EcosystemPromo[];
     /** true shows the REAL wallet card on Profile (plan A3). Default off. */
     wallet_enabled?: boolean;
+    /** true shows the "Link TrustAI account" entry on Profile (B-9 hookup).
+     *  Default off — flip once B-9's sso-link.php/sso-login.php are verified
+     *  reachable, same rollout pattern as wallet_enabled. */
+    trustai_link_enabled?: boolean;
   };
 }
 

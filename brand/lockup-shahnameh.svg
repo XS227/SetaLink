@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 28" width="168" height="28" role="img" aria-label="Shahnameh" color="#D4AF37">
+  <g transform="translate(2,2)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 17 L5.5 8.5 L9.5 12 L12 6 L14.5 12 L18.5 8.5 L20 17 Z" transform="scale(0.92)"/>
+    <path d="M5.5 20.5h13" transform="scale(0.92)"/>
+  </g>
+  <text x="34" y="20" font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-weight="600" font-size="17" letter-spacing="0.5" fill="currentColor">Shahnameh</text>
+</svg>

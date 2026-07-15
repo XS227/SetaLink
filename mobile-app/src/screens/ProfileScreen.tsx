@@ -23,6 +23,7 @@ import { EcosystemFooter } from '../components/EcosystemFooter';
 import { RealWalletCard } from '../components/RealWalletCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { IdentityHeader } from '../components/IdentityHeader';
+import { getCachedConfig } from '../services/remoteConfigService';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore } from '../stores/dmStore';
 
@@ -459,6 +460,23 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           onRedeemed={() => syncEntitlement(user.deviceId).then(updateFromEntitlement).catch(() => {})}
         />
 
+        {/* TrustAI account link — remote-config gated (ecosystem.trustai_link_enabled),
+            same rollout pattern as the wallet card (plan B-9). */}
+        {getCachedConfig()?.ecosystem?.trustai_link_enabled === true && (
+          <GlassCard style={styles.trustaiCard}>
+            <View style={styles.trustaiRow}>
+              <Text style={styles.cardLabel}>{t('trustai.profileTitle')}</Text>
+              <TouchableOpacity
+                style={styles.trustaiBtn}
+                onPress={() => (onNavigate as (tab: string) => void)('trustai-link')}
+                accessibilityLabel={t('trustai.profileBtn')}
+              >
+                <Text style={styles.trustaiBtnText}>{t('trustai.profileBtn')}</Text>
+              </TouchableOpacity>
+            </View>
+          </GlassCard>
+        )}
+
         {/* Package / quota overview */}
         <GlassCard style={styles.packagesCard}>
           <Text style={styles.cardLabel}>{t('pr.packages')}</Text>
@@ -723,6 +741,12 @@ const styles = StyleSheet.create({
   quotaExhaustedPillText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FFB800', letterSpacing: 0.3 },
   cardLabel:        { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[3] },
   deviceOs:         { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+
+  // TrustAI link
+  trustaiCard:      { marginBottom: Spacing[4] },
+  trustaiRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  trustaiBtn:       { paddingHorizontal: Spacing[4], paddingVertical: 8, borderRadius: Radius.md, backgroundColor: Colors.gold[400] },
+  trustaiBtnText:   { color: '#1A1405', fontSize: 13, fontFamily: Typography.family.heading },
 
   // Packages
   packagesCard:     { gap: Spacing[3] },

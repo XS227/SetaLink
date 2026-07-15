@@ -67,30 +67,30 @@ $seo = [
   'en' => [
     'badge' => 'Servers online — secure global nodes',
     'h1a' => 'Free Anti-Censorship VPN', 'h1b' => 'Internet Freedom for Everyone',
-    'sub' => 'AI-powered VPN that beats DPI and censorship. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 5 GB free on install. No account, no server setup.',
-    'how' => 'Three Steps to Free Internet', 'ai' => 'Not Just a Tunnel',
-    'why' => 'Built for Real Censorship', 'pricing' => 'Start Free. Grow Together.', 'faq' => 'Common Questions', 'faqsub' => 'Real questions about how Realink actually works.',
+    'sub' => 'AI-powered private network that keeps your games, apps and community online on slow, throttled or restricted connections. VLESS+Reality &amp; V2Ray. Now on Android &amp; iOS. 5 GB free on install. No account, no server setup.',
+    'how' => 'Three Steps to Get Online', 'ai' => 'Not Just a Tunnel',
+    'why' => 'Built for Real-World Networks', 'pricing' => 'Start Free. Grow Together.', 'faq' => 'Common Questions', 'faqsub' => 'Real questions about how Realink actually works.',
   ],
   'fa' => [
     'badge' => 'سرورها فعال — گره‌های امن جهانی',
     'h1a' => 'فیلترشکن رایگان و پرسرعت', 'h1b' => 'اینترنت آزاد برای همه',
-    'sub' => 'فیلترشکن هوشمند مبتنی بر هوش مصنوعی برای عبور از فیلترینگ و سانسور. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۵ گیگابایت رایگان پس از نصب، بدون ثبت‌نام و بدون قطعی.',
-    'how' => 'سه گام تا فیلترشکن رایگان', 'ai' => 'فقط یک تونل نیست',
-    'why' => 'ساخته‌شده برای سانسور واقعی ایران', 'pricing' => 'رایگان شروع کن، با هم رشد کنیم', 'faq' => 'سؤالات پرتکرار', 'faqsub' => 'سؤال‌های واقعی درباره نحوه عملکرد ری‌لینک.',
+    'sub' => 'شبکه خصوصی هوشمند مبتنی بر هوش مصنوعی که بازی‌ها، اپ‌ها و جامعه‌ات را روی اتصال‌های کند، محدود یا مسدود آنلاین نگه می‌دارد. VLESS+Reality و V2Ray. اکنون روی اندروید و آیفون (iOS). ۵ گیگابایت رایگان پس از نصب، بدون ثبت‌نام.',
+    'how' => 'سه گام تا آنلاین شدن', 'ai' => 'فقط یک تونل نیست',
+    'why' => 'ساخته‌شده برای شبکه‌های واقعی', 'pricing' => 'رایگان شروع کن، با هم رشد کنیم', 'faq' => 'سؤالات پرتکرار', 'faqsub' => 'سؤال‌های واقعی درباره نحوه عملکرد ری‌لینک.',
   ],
   'zh' => [
     'badge' => '服务器在线 — 安全的全球节点',
     'h1a' => '免费翻墙 VPN', 'h1b' => '人人享有自由互联网',
-    'sub' => '基于 AI 的智能翻墙 VPN，突破 DPI 与审查。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 5 GB，无需账号，无需配置。',
-    'how' => '三步通往自由互联网', 'ai' => '不只是一条隧道',
-    'why' => '专为真实审查打造', 'pricing' => '免费开始，一起成长', 'faq' => '常见问题', 'faqsub' => '关于 Realink 实际工作方式的真实问题。',
+    'sub' => '基于 AI 的智能私有网络，让你的游戏、应用和社区在缓慢、受限或被封锁的连接上保持在线。VLESS+Reality 与 V2Ray。现已支持安卓和 iOS。安装即送 5 GB，无需账号，无需配置。',
+    'how' => '三步即可上线', 'ai' => '不只是一条隧道',
+    'why' => '为真实网络而打造', 'pricing' => '免费开始，一起成长', 'faq' => '常见问题', 'faqsub' => '关于 Realink 实际工作方式的真实问题。',
   ],
   'ru' => [
     'badge' => 'Серверы онлайн — защищённые узлы',
     'h1a' => 'Бесплатный VPN', 'h1b' => 'Свободный интернет для всех',
-    'sub' => 'VPN на базе ИИ для обхода блокировок и DPI. VLESS+Reality и V2Ray. Теперь на Android и iOS. 5 ГБ бесплатно при установке. Без аккаунта и настройки.',
-    'how' => 'Три шага к свободному интернету', 'ai' => 'Не просто туннель',
-    'why' => 'Создан для реальной цензуры', 'pricing' => 'Начните бесплатно. Растите вместе.', 'faq' => 'Частые вопросы', 'faqsub' => 'Реальные вопросы о том, как на самом деле работает Realink.',
+    'sub' => 'Приватная сеть на базе ИИ, которая держит ваши игры, приложения и сообщество онлайн на медленных, ограниченных или заблокированных соединениях. VLESS+Reality и V2Ray. Теперь на Android и iOS. 5 ГБ бесплатно при установке. Без аккаунта.',
+    'how' => 'Три шага, чтобы выйти в сеть', 'ai' => 'Не просто туннель',
+    'why' => 'Создан для реальных сетей', 'pricing' => 'Начните бесплатно. Растите вместе.', 'faq' => 'Частые вопросы', 'faqsub' => 'Реальные вопросы о том, как на самом деле работает Realink.',
   ],
 ];
 $S = $seo[$lang];
@@ -110,16 +110,16 @@ $faqs_i18n = [
      'No user activity logs. The xray core logs connection events internally for diagnostic purposes but no user-identifiable content is stored. Device IDs are anonymous hashes. The admin can see aggregate connection statistics but not who connected to what.'],
     ['Is Realink on iPhone / iOS?',
      'Yes. Realink is now on both Android and iOS. Android installs directly from the APK on this page (no Play Store needed). iOS is in TestFlight beta — join our Telegram to get a beta invite. Both builds share the same AI routing engine, VLESS+Reality core, and QUIC-through-tunnel fix.'],
-    ['What happens when Iran blocks a new SNI?',
+    ['What happens when a network blocks a new SNI?',
      'The Remote Config system allows the server to push updated SNI priority lists to all apps without requiring an update. The AI optimizer also learns from real connection data — if a previously working SNI stops working, it drops in priority automatically.'],
     ['How is traffic different from normal HTTPS?',
      'VLESS+Reality makes VPN traffic cryptographically indistinguishable from a TLS handshake to a legitimate domain (like www.microsoft.com). Deep Packet Inspection cannot tell it apart from normal HTTPS traffic to that domain.'],
-    ['What is the difference between Turkey and Iran routing?',
-     'Turkey uses looser censorship with most SNIs working. Iran has stricter DPI and many SNIs are blocked. The AI optimizer knows which regions have stricter filtering and tests more aggressively, prioritizing SNIs confirmed to work from Iranian networks.'],
+    ['How does routing adapt to stricter networks?',
+     'Some networks use loose filtering where most SNIs work; others apply strict DPI where many SNIs are blocked. The AI optimizer detects how aggressive the local network is and tests more thoroughly on stricter connections, prioritizing SNIs confirmed to work from your own region.'],
     ['Can I use it on multiple devices?',
      'Yes. Each install generates a separate device ID and receives its own 5 GB starter quota. Referral codes are tied to your device ID and transfer the bonus data to that device.'],
     ['What is the roadmap?',
-     'Shipped: iOS TestFlight beta, per-app split tunneling, QUIC through the tunnel, and a Cloudflare stealth edge node. Near-term: more server nodes across the Middle East and Asia, App Store release, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
+     'Shipped: iOS TestFlight beta, per-app split tunneling, QUIC through the tunnel, and a Cloudflare stealth edge node. Near-term: more server nodes across additional regions worldwide, App Store release, premium unlimited tier. Long-term: user-voted server expansion, community funding model, and open-source release of the core protocol selection engine.'],
   ],
   'fa' => [
     ['سیستم دعوت چگونه کار می‌کند؟',
@@ -132,16 +132,16 @@ $faqs_i18n = [
      'هیچ لاگی از فعالیت کاربر ثبت نمی‌شود. هسته xray رویدادهای اتصال را برای اهداف تشخیصی به‌صورت داخلی ثبت می‌کند اما هیچ محتوای قابل شناسایی کاربر ذخیره نمی‌شود. شناسه دستگاه‌ها هش ناشناس است. مدیر فقط آمار کلی اتصال را می‌بیند، نه اینکه چه کسی به چه چیزی وصل شده است.'],
     ['آیا ری‌لینک روی آیفون (iOS) هست؟',
      'بله. ری‌لینک اکنون هم روی اندروید و هم iOS در دسترس است. نسخه اندروید مستقیماً از فایل APK همین صفحه نصب می‌شود (بدون نیاز به گوگل‌پلی). نسخه iOS در بتای TestFlight است — به تلگرام ما بپیوند تا دعوت‌نامه بتا بگیری. هر دو نسخه از همان موتور مسیریابی هوشمند، هسته VLESS+Reality و اصلاح QUIC از داخل تونل استفاده می‌کنند.'],
-    ['وقتی ایران یک SNI جدید را مسدود می‌کند چه می‌شود؟',
+    ['وقتی یک شبکه یک SNI جدید را مسدود می‌کند چه می‌شود؟',
      'سیستم Remote Config به سرور اجازه می‌دهد فهرست اولویت SNI به‌روزشده را بدون نیاز به آپدیت برنامه به همه دستگاه‌ها ارسال کند. بهینه‌ساز هوشمند هم از داده‌های واقعی اتصال یاد می‌گیرد — اگر SNI‌ای که قبلاً کار می‌کرد از کار بیفتد، اولویتش به‌طور خودکار کاهش می‌یابد.'],
     ['ترافیک چه تفاوتی با HTTPS معمولی دارد؟',
      'پروتکل VLESS+Reality ترافیک VPN را از نظر رمزنگاری از یک دست‌دادن TLS به یک دامنه معتبر (مانند www.microsoft.com) غیرقابل‌تشخیص می‌کند. بازرسی عمیق بسته (DPI) نمی‌تواند آن را از ترافیک عادی HTTPS به آن دامنه تشخیص دهد.'],
-    ['تفاوت مسیریابی ترکیه و ایران چیست؟',
-     'ترکیه سانسور ملایم‌تری دارد و بیشتر SNI‌ها کار می‌کنند. ایران DPI سخت‌گیرانه‌تری دارد و بسیاری از SNI‌ها مسدودند. بهینه‌ساز هوشمند می‌داند کدام مناطق فیلترینگ شدیدتری دارند، تهاجمی‌تر آزمایش می‌کند و SNI‌هایی را که کارکردشان از شبکه‌های ایران تأیید شده در اولویت می‌گذارد.'],
+    ['مسیریابی چگونه با شبکه‌های سخت‌گیرتر تطبیق می‌یابد؟',
+     'برخی شبکه‌ها فیلترینگ ملایمی دارند و بیشتر SNI‌ها کار می‌کنند؛ برخی دیگر DPI سخت‌گیرانه دارند و بسیاری از SNI‌ها مسدودند. بهینه‌ساز هوشمند تشخیص می‌دهد شبکه محلی چقدر سخت‌گیر است، روی اتصال‌های سخت‌گیرتر دقیق‌تر آزمایش می‌کند و SNI‌هایی را که کارکردشان از منطقه خودت تأیید شده در اولویت می‌گذارد.'],
     ['آیا می‌توانم روی چند دستگاه استفاده کنم؟',
      'بله. هر نصب یک شناسه دستگاه جداگانه می‌سازد و سهمیه اولیه ۵ گیگابایتی مخصوص خودش را دریافت می‌کند. کدهای دعوت به شناسه دستگاه تو گره خورده‌اند و داده جایزه را به همان دستگاه منتقل می‌کنند.'],
     ['نقشه راه چیست؟',
-     'منتشرشده: بتای iOS TestFlight، تونل جداگانه برای هر برنامه، QUIC از داخل تونل و گره استلث Cloudflare. کوتاه‌مدت: سرورهای بیشتر در خاورمیانه و آسیا، انتشار در App Store و اشتراک نامحدود ویژه. بلندمدت: گسترش سرور با رأی کاربران، مدل تأمین مالی جامعه و انتشار متن‌باز موتور انتخاب پروتکل.'],
+     'منتشرشده: بتای iOS TestFlight، تونل جداگانه برای هر برنامه، QUIC از داخل تونل و گره استلث Cloudflare. کوتاه‌مدت: سرورهای بیشتر در مناطق بیشتری در سراسر جهان، انتشار در App Store و اشتراک نامحدود ویژه. بلندمدت: گسترش سرور با رأی کاربران، مدل تأمین مالی جامعه و انتشار متن‌باز موتور انتخاب پروتکل.'],
   ],
 ];
 $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
@@ -202,7 +202,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
         "url": "https://setalink.no",
         "logo": "<?= $og_img ?>",
         "parentOrganization": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"},
-        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink","https://setai.no"]
+        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink","https://setai.no","https://shahnameh.setaei.com","https://trustai.no","https://numerologist.setai.no"]
       },
       {
         "@type": "SoftwareApplication",
@@ -434,7 +434,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       </div>
       <h4 data-t="ai.f4.h">Remote Config Push</h4>
-      <p data-t="ai.f4.p">Admin can push protocol priority updates without requiring an app update. When censorship patterns change, routing rules are updated automatically for all users.</p>
+      <p data-t="ai.f4.p">Admin can push protocol priority updates without requiring an app update. When network blocking patterns change, routing rules are updated automatically for all users.</p>
     </div>
   </div>
 </section>
@@ -445,7 +445,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
 <section class="section" id="why">
   <div class="section-label" data-t="why.label">WHY REALINK</div>
   <h2 class="section-title" data-t="why.title"><?= $S['why'] ?></h2>
-  <p class="section-sub" data-t="why.sub">Not a generic VPN wrapper. Built from scratch for the realities of internet censorship in Iran.</p>
+  <p class="section-sub" data-t="why.sub">Not a generic VPN wrapper. Engineered from scratch to keep your games, apps and community online on slow, throttled or restricted networks.</p>
 
   <div class="why-grid">
     <div class="why-card">
@@ -532,8 +532,8 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
 <section class="section" id="shahnameh">
   <div style="max-width:720px;margin:0 auto;background:linear-gradient(135deg,rgba(201,164,42,.1),rgba(200,16,46,.06));border:1px solid rgba(201,164,42,.35);border-radius:18px;padding:2rem;text-align:center">
     <div class="section-label" style="color:#c9a42a" data-t="shah.label">COMMUNITY GAME</div>
-    <h2 class="section-title" style="margin:.4rem 0" data-t="shah.title">Play Shahnameh — earn REAL</h2>
-    <p class="section-sub" style="margin:0 auto 1.2rem" data-t="shah.sub">Battle as a Persian warrior in the Shahnameh Telegram game and earn REAL rewards.</p>
+    <h2 class="section-title" style="margin:.4rem 0" data-t="shah.title">Play Shahnameh — connect &amp; earn REAL</h2>
+    <p class="section-sub" style="margin:0 auto 1.2rem" data-t="shah.sub">Realink keeps the Shahnameh game and REAL community reachable. Connect, battle as a warrior, and earn REAL rewards — even when the game runs slow or won't load.</p>
     <a href="https://t.me/shahnameh_bot?start=warrior_5629291605" target="_blank" rel="noopener" class="btn btn-primary" style="background:#c9a42a;border-color:#c9a42a">
       ⚔️ <span data-t="shah.cta">Play on Telegram</span>
     </a>

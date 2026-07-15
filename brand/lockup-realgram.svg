@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 28" width="160" height="28" role="img" aria-label="RealGram" color="#C77DFF">
+  <g transform="translate(2,2)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2.5 21.5z" transform="scale(0.92)"/>
+    <path d="M12 8.5v6" transform="scale(0.92)"/>
+    <path d="M9 11.5h6" transform="scale(0.92)"/>
+  </g>
+  <text x="34" y="20" font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-weight="600" font-size="17" letter-spacing="0.5" fill="currentColor">Real<tspan font-weight="700">Gram</tspan></text>
+</svg>
