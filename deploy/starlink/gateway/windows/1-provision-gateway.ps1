@@ -224,8 +224,27 @@ if ($NatMethod -eq 'WinNAT') {
     if ($existingNat) {
         Write-Ok "NAT object '$natName' already exists (internal prefix $($existingNat.InternalIPInterfaceAddressPrefix))."
     } else {
-        New-NetNat -Name $natName -InternalIPInterfaceAddressPrefix $TunnelSubnet | Out-Null
-        Write-Ok "Created WinNAT object '$natName' translating $TunnelSubnet out through whichever interface holds the default route for it (the Starlink Wi-Fi adapter, since forwarding is scoped to that subnet only)."
+        # Client Windows (10/11, non-Server) only supports a SINGLE active
+        # WinNAT instance system-wide. Hyper-V's "Default Switch" (created
+        # automatically once Hyper-V, WSL2, or Docker Desktop is installed)
+        # silently owns that one slot on most dev/admin machines, and a
+        # second New-NetNat call then fails with the WinNAT driver reporting
+        # a generic "Invalid class" COM error rather than a clear conflict
+        # message. Check for ANY existing NAT (not just ours by name) first
+        # so the failure -- if it happens anyway -- comes with a real cause.
+        $anyExistingNat = @(Get-NetNat -ErrorAction SilentlyContinue)
+        if ($anyExistingNat.Count -gt 0) {
+            Write-Warn2 "Found $($anyExistingNat.Count) existing NAT object(s) on this system: $($anyExistingNat.Name -join ', '). Client Windows allows only one active WinNAT instance -- this is the most common cause of 'New-NetNat : Invalid class'. If one of these is Hyper-V's 'Default Switch' NAT (created by WSL2/Docker Desktop), either remove it (Remove-NetNat -Name '<name>', breaking WSL2/Docker networking until re-created) or use -NatMethod ICS instead."
+        }
+        try {
+            New-NetNat -Name $natName -InternalIPInterfaceAddressPrefix $TunnelSubnet -ErrorAction Stop | Out-Null
+            Write-Ok "Created WinNAT object '$natName' translating $TunnelSubnet out through whichever interface holds the default route for it (the Starlink Wi-Fi adapter, since forwarding is scoped to that subnet only)."
+        } catch {
+            Write-Warn2 "New-NetNat failed: $($_.Exception.Message)"
+            Write-Warn2 "Diagnostics -- Get-NetNat: $((Get-NetNat -ErrorAction SilentlyContinue | Format-Table -AutoSize | Out-String).Trim())"
+            Write-Warn2 "Diagnostics -- WinNat service: $((Get-Service WinNat -ErrorAction SilentlyContinue | Format-Table -AutoSize | Out-String).Trim())"
+            throw "New-NetNat could not create '$natName'. If no conflicting NAT was listed above, the WinNat driver's internal state is likely stale (common after sleep/resume or a previous incomplete Remove-NetNat) -- try 'Restart-Service WinNat -Force' (or a reboot) and re-run this script. If a conflicting NAT WAS listed above, resolve that first (see warning) or re-run with -NatMethod ICS."
+        }
     }
     Write-Warn2 "WinNAT NATs by internal subnet, not by explicit adapter binding. Verify with 'Get-NetRoute' that $TunnelSubnet's next hop / egress resolves to '$StarlinkAdapterName', not some other interface, before trusting step 8 of the test plan."
 }
@@ -277,7 +296,15 @@ Write-Step "Registering heartbeat.ps1 as a Scheduled Task (every 33s, runs at st
 $heartbeatScript = Join-Path $PSScriptRoot 'heartbeat.ps1'
 $hbTaskName = 'ReaLink-Starlink-Heartbeat'
 $hbAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$heartbeatScript`""
-$hbTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 33) -RepetitionDuration ([TimeSpan]::MaxValue)
+# -RepetitionDuration ([TimeSpan]::MaxValue) is a known Register-ScheduledTask
+# trap: New-ScheduledTaskTrigger serializes it to an ISO8601 duration that
+# exceeds what Task Scheduler's XML schema accepts, failing with "The task
+# XML contains a value which is incorrectly formatted or out of range."
+# Fix: build the trigger without -RepetitionDuration, then set the
+# underlying Repetition.Duration to '' -- that empty string is the actual
+# "repeat indefinitely" sentinel Task Scheduler's COM/CIM model expects.
+$hbTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 33)
+$hbTrigger.Repetition.Duration = ''
 $hbBootTrigger = New-ScheduledTaskTrigger -AtStartup
 $hbSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
 $hbPrincipal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
@@ -288,7 +315,8 @@ Write-Step "Registering watchdog.ps1 as a Scheduled Task (every 60s, runs at sta
 $watchdogScript = Join-Path $PSScriptRoot 'watchdog.ps1'
 $wdTaskName = 'ReaLink-Starlink-Watchdog'
 $wdAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$watchdogScript`" -ServiceName `"$serviceName`" -StarlinkAdapterName `"$StarlinkAdapterName`""
-$wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 60) -RepetitionDuration ([TimeSpan]::MaxValue)
+$wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 60)
+$wdTrigger.Repetition.Duration = ''
 $wdBootTrigger = New-ScheduledTaskTrigger -AtStartup
 Register-ScheduledTask -TaskName $wdTaskName -Action $wdAction -Trigger @($wdTrigger, $wdBootTrigger) -Settings $hbSettings -Principal $hbPrincipal -Force | Out-Null
 Write-Ok "Task '$wdTaskName' registered."
