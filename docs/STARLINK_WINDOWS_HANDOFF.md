@@ -74,6 +74,84 @@ tried" or "which server is which," the answer is in here.
 
 ---
 
+## 14. 2026-07-16, later — Windows gateway script fixes + ICS provisioning; open question re: §13.4
+
+Session picked up from a fresh chat compaction, working with the user
+directly against the actual Surface via relayed PowerShell output (no direct
+access to that machine). Scope was `deploy/starlink/gateway/windows/
+1-provision-gateway.ps1` and the live provisioning run, not the VPS side.
+
+1. **Two script bugs fixed and pushed** (commit `79a8094`, on top of the
+   five commits above): `Register-ScheduledTask` was failing with "The task
+   XML contains a value which is incorrectly formatted or out of range" —
+   caused by `-RepetitionDuration ([TimeSpan]::MaxValue)`, which
+   `New-ScheduledTaskTrigger` serializes to an out-of-range ISO8601
+   duration. Fixed by building the trigger without `-RepetitionDuration`
+   and setting `$trigger.Repetition.Duration = ''` directly (the real
+   "repeat indefinitely" sentinel). Second bug: `New-NetNat` failed with
+   "Invalid class" — added a pre-flight existing-NAT check plus
+   try/catch with `-ErrorAction Stop` and automatic `Get-NetNat`/
+   `Get-Service WinNat` diagnostics on failure (this class of cmdlet
+   doesn't reliably honor the script's `$ErrorActionPreference = 'Stop'`,
+   which is why the script previously completed and wrote
+   `gateway-state.json` despite both calls failing silently).
+
+2. **Root cause of the NetNat failure, confirmed by diagnostic, not
+   guessed:** `Get-CimClass -Namespace root\StandardCimv2 -ClassName
+   MSFT_NetNat` returns nothing on this Surface — the class plain doesn't
+   exist. Control test (`MSFT_NetAdapter`) works, `winmgmt
+   /verifyrepository` reports the WMI repository consistent, and `WinNat`
+   the *service* starts fine. So this isn't WMI corruption and isn't
+   fixable by restarting anything — the NetNat **management provider**
+   simply isn't registered on this install, consistent with both
+   `Hyper-V-All` and `VirtualMachinePlatform` being `Disabled` (the
+   pre-existing `0-probe-capabilities.ps1` comment already anticipated
+   exactly this). Enabling `VirtualMachinePlatform` would fix it but needs
+   a reboot and is exactly the kind of systemic change
+   `STARLINK_WINDOWS_GATEWAY.md` §3 says needs the user's explicit sign-off
+   first — not done. Went with the already-built ICS fallback instead:
+   `.\1-provision-gateway.ps1 -NatMethod ICS -AcknowledgeIcsIpConflictRisk`.
+
+3. **ICS is now active.** Verified the specific risk the script warns about
+   (ICS overwriting the tunnel adapter's IP with its own `192.168.137.1/24`
+   default) did NOT happen to the tunnel adapter's `10.90.0.2` address —
+   both coexist. Also separately confirmed, by reading the actual source
+   (not assumed): the `-TunnelInternalAddress`/`-TunnelSubnet` script
+   parameters never write to `wg-starlink0.conf` — they only feed the
+   WinNAT prefix and the ICS post-check comparison message. The tunnel's
+   real `[Interface] Address` comes solely from the `.conf` file, and
+   `10.90.0.2` there is correct — it matches `deploy/starlink/vps/
+   setup-starlink-wg.sh` (`WG_VPS_ADDR=10.90.0.1/30`,
+   `WG_PEER_ADDR=10.90.0.2/32`), which none of the five commits above
+   touched.
+
+4. **Current blocker:** `Test-Connection -ComputerName 10.90.0.1` returns
+   "Error due to lack of resources" (a send-side/no-route failure, not a
+   timeout or an ICMP-unreachable reply). Leading hypothesis: ICS's
+   reconfiguration of the tunnel adapter disrupted the route WireGuard
+   installs for `AllowedIPs = 10.90.0.1/32` when the tunnel service
+   started. Requested `Get-NetRoute -InterfaceAlias
+   $state.TunnelAdapterName` from the user to confirm — **not yet
+   returned when this note was written.** Whoever picks this up next:
+   check for that reply first before re-deriving the same diagnostic.
+
+5. **Open question that needs reconciling before either thread continues
+   blindly:** all of the above (§14.1–14.4) was debugged against
+   `wg-starlink0.conf` pointed at whatever `Endpoint`/`PublicKey` it
+   currently has — which was never re-confirmed against **§13.4 above**,
+   which already documents a different, proven-working destination:
+   `Endpoint = 65.109.183.7:51820` (fi-hel) with a **new** server key
+   `mpm3vXTI+B+pFp+es7GDICWI4eHNIlhQRqa4dcPTwBI=`. If the Surface's
+   `wg-starlink0.conf` still has the old `Endpoint`/`PublicKey`, the
+   `10.90.0.1` unreachability in §14.4 could be entirely explained by
+   *pointing at the wrong/dead server*, independent of ICS or routing —
+   in which case §13.4's change should be applied and verified **first**,
+   and the routing investigation revisited only if the handshake still
+   doesn't complete afterward. This was not resolved in this session —
+   flagging it rather than guessing which track is the real blocker.
+
+---
+
 ## 0. URGENT — do this first, before any other work
 
 During this investigation the user was working in a terminal they *believed*
