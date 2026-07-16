@@ -279,20 +279,29 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         {/* Connect button — B-17: ring shrunk (188 → 152, ConnectButton.tsx)
             and moved down in the scroll order (was right under the status
             row) so it sits lower on the initial viewport, closer to natural
-            thumb reach. Kept centered rather than right-biased: a wrong
-            horizontal offset actively hurts left-handed/two-handed users and
-            needs on-device thumb testing to get right, which isn't possible
-            from this VPS — flagged for Agent A in DECISIONS.md. */}
+            thumb reach. Right-biased (not centered): the button+burst cluster
+            aligns to the right edge of the content column, with enough
+            paddingRight (Spacing[10]=40, on top of the 20px screen padding)
+            to clear AnimatedRing's pulse overflow (scales to 1.6x = ~46px
+            beyond the button's edge) without clipping on narrow phones —
+            see DECISIONS.md for the exact clearance math. */}
         <Animated.View style={[
           styles.connectArea,
           { transform: [{ translateY: contentTranslate }] },
         ]}>
-          <ConnectButton
-            state={BUTTON_STATE_MAP[connectionState]}
-            onPress={handleConnect}
-            onLongPress={isConnected ? disconnect : undefined}
-            disabled={isTransitioning}
-          />
+          <View style={styles.connectButtonCluster}>
+            <ConnectButton
+              state={BUTTON_STATE_MAP[connectionState]}
+              onPress={handleConnect}
+              onLongPress={isConnected ? disconnect : undefined}
+              disabled={isTransitioning}
+            />
+            {/* Heartbeat of the network — gold REAL coins pulse out on connect.
+                Moved inside the same shrink-wrapped cluster as the button so
+                its absoluteFillObject layer centers on the button itself,
+                not the old full-width connectArea centre. */}
+            <GoldBeatBurst burstKey={goldBurst} />
+          </View>
           {isConnected && <Text style={styles.timer}>{timer}</Text>}
           {isConnected && (
             <View style={styles.zarPill}>
@@ -302,8 +311,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               </Text>
             </View>
           )}
-          {/* Heartbeat of the network — gold REAL coins pulse out on connect */}
-          <GoldBeatBurst burstKey={goldBurst} />
         </Animated.View>
 
         {/* Smart status — friendly message while connecting */}
@@ -521,7 +528,11 @@ const styles = StyleSheet.create({
   errorCard:      { backgroundColor: 'rgba(255,80,80,0.08)', borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(255,80,80,0.25)', padding: Spacing[4], alignItems: 'center', gap: Spacing[1] },
   errorCardText:  { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.status.disconnected, textAlign: 'center' },
   errorCardHint:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  connectArea:  { alignItems: 'center', paddingVertical: Spacing[4], gap: Spacing[3] },
+  // B-17: right-biased thumb zone. paddingRight clears AnimatedRing's max
+  // pulse overflow (~46px beyond the 152px button's edge at 1.6x scale) —
+  // see the header comment above where this is used for the full math.
+  connectArea:  { alignItems: 'flex-end', paddingVertical: Spacing[4], paddingRight: Spacing[10], gap: Spacing[3] },
+  connectButtonCluster: { alignItems: 'center', justifyContent: 'center' },
   timer:        { fontSize: Typography.size.md, fontFamily: Typography.family.mono, color: Colors.text.secondary, letterSpacing: 2 },
   zarPill:      { alignItems: 'center', gap: 2, marginTop: Spacing[1] },
   zarText:      { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.gold[400], letterSpacing: 1 },
