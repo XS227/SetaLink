@@ -13,6 +13,7 @@ import { CoverageIcon }  from '../components/CoverageIcon';
 import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { HomeBanner } from '../components/HomeBanner';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
@@ -30,10 +31,6 @@ import { useT, trPhrase }     from '../i18n';
 import { connectingPhaseLabel } from '../services/failureClassifier';
 import { initAds, preloadInterstitial, showInterstitialOnConnect, showInterstitialAfterConnect } from '../services/adsService';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_CONNECTED    = require('../assets/logo_connected.png') as number;
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_DISCONNECTED = require('../assets/logo_disconnected.png') as number;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_MARK         = require('../assets/logo_mark.png') as number;
 
@@ -217,20 +214,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+        {/* Header — B-16 declutter: dropped the in-app "Realink" logo+wordmark
+            row (purely decorative — the user already knows what app this is)
+            and the raw device/user-id line (still visible on Profile via
+            IdentityHeader). One text line + the action row, not four. */}
         <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
-          <View style={styles.brandBlock}>
-            <View style={styles.brandRow}>
-              <Image source={isConnected ? LOGO_CONNECTED : LOGO_DISCONNECTED} style={styles.brandLogoSmall} resizeMode="contain" />
-              <Text style={styles.brandName}>Realink</Text>
-            </View>
-            <Text style={styles.greeting}>{t(greeting)}</Text>
-            {user && (user.userId || user.deviceId) && (
-              <Text style={styles.userId} numberOfLines={1}>
-                {user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`}
-              </Text>
-            )}
-          </View>
+          <Text style={styles.greeting} numberOfLines={1}>{t(greeting)}</Text>
           <View style={styles.headerActions}>
             <CoverageIcon
               quality={healthScore}
@@ -259,7 +248,41 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           )}
         </Animated.View>
 
-        {/* Connect button */}
+        {/* Server pill — B-17: moved ahead of the connect button (glanceable
+            info first, primary action lower on the screen, closer to thumb
+            reach). */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+          <TouchableOpacity
+            style={[styles.serverPill, isConnected && styles.serverPillActive]}
+            onPress={() => onNavigate('servers')}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
+            <View style={styles.serverInfo}>
+              <Text style={styles.serverName}>
+                {selectedServer ? selectedServer.country : t('home.selectServer')}
+              </Text>
+              <Text style={styles.serverSub}>
+                {selectedServer
+                  ? `${selectedServer.city} · ${selectedServer.protocol}`
+                  : t('home.tapToChoose')}
+              </Text>
+            </View>
+            <View style={styles.serverMeta}>
+              <View style={[styles.pingDot, { backgroundColor: Colors.emerald[400] }]} />
+              <Text style={styles.serverPing}>{selectedServer?.ping ?? '—'}ms</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Connect button — B-17: ring shrunk (188 → 152, ConnectButton.tsx)
+            and moved down in the scroll order (was right under the status
+            row) so it sits lower on the initial viewport, closer to natural
+            thumb reach. Kept centered rather than right-biased: a wrong
+            horizontal offset actively hurts left-handed/two-handed users and
+            needs on-device thumb testing to get right, which isn't possible
+            from this VPS — flagged for Agent A in DECISIONS.md. */}
         <Animated.View style={[
           styles.connectArea,
           { transform: [{ translateY: contentTranslate }] },
@@ -306,32 +329,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             </TouchableOpacity>
           </Animated.View>
         )}
-
-        {/* Server pill */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <TouchableOpacity
-            style={[styles.serverPill, isConnected && styles.serverPillActive]}
-            onPress={() => onNavigate('servers')}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
-            <View style={styles.serverInfo}>
-              <Text style={styles.serverName}>
-                {selectedServer ? selectedServer.country : t('home.selectServer')}
-              </Text>
-              <Text style={styles.serverSub}>
-                {selectedServer
-                  ? `${selectedServer.city} · ${selectedServer.protocol}`
-                  : t('home.tapToChoose')}
-              </Text>
-            </View>
-            <View style={styles.serverMeta}>
-              <View style={[styles.pingDot, { backgroundColor: Colors.emerald[400] }]} />
-              <Text style={styles.serverPing}>{selectedServer?.ping ?? '—'}ms</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        </Animated.View>
 
         {/* Metric row */}
         <Animated.View style={[styles.metricRow, { transform: [{ translateY: contentTranslate }] }]}>
@@ -384,6 +381,13 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.aiArrowText}>›</Text>
             </View>
           </TouchableOpacity>
+        </Animated.View>
+
+        {/* B-19: Home's two ad surfaces — 1 AdMob banner (rotates with the
+            ecosystem promo, was built but never wired in) + 1 rewarded-video
+            invite card. Both already gate ad-free for premium internally. */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }], marginTop: Spacing[3] }}>
+          <HomeBanner showAds={user?.plan === 'free'} />
         </Animated.View>
 
         {/* Watch ad → earn data */}
@@ -497,12 +501,9 @@ const styles = StyleSheet.create({
   content:      { paddingTop: Layout.statusBarHeight, paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
   header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
   headerActions:{ flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  brandBlock:   { flex: 1, gap: 2 },
-  brandRow:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  brandLogoSmall: { width: 22, height: 22 },
-  brandName:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 0.5 },
-  greeting:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
-  userId:       { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5, marginTop: 1 },
+  // B-16: the sole header text line now (brand logo/wordmark + raw device-id
+  // line removed — decorative/redundant, see the header comment above).
+  greeting:     { flex: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight, marginRight: Spacing[3] },
   settingsBtn:  { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   settingsIcon: { fontSize: 18, color: Colors.text.secondary },
   statusRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flexWrap: 'wrap' },
