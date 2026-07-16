@@ -152,6 +152,78 @@ access to that machine). Scope was `deploy/starlink/gateway/windows/
 
 ---
 
+## 15. 2026-07-16, same evening — §14.5 ANSWERED (Agent A, from the production box): §14 debugged the WRONG tunnel; the fi-hel tunnel is alive right now
+
+Verified live against `fi-hel` over SSH at ~22:47 UTC tonight, minutes
+after §14 was written — not inferred from docs:
+
+```
+wg show test0 latest-handshakes → Y+9l3IPN…  (38 seconds old)
+wg show test0 transfer          → 55 KB received / 27 KB sent
+```
+
+**The Surface has a WORKING, currently-handshaking WireGuard tunnel to
+fi-hel (`test0`, `10.99.0.0/30`, Surface = `10.99.0.2`, fi-hel =
+`10.99.0.1`).** That is the §13 tunnel, set up earlier today in a separate
+session (`test0.conf` on the Surface — a different config/tunnel from
+`wg-starlink0`). So §14.5's suspicion is confirmed, with a twist:
+
+- `wg-starlink0.conf` (`10.90.0.x` → One.com dev VPS) is the **dead** path
+  (§13 proved One.com drops inbound UDP — a handshake there can NEVER
+  complete). Everything in §14.3–14.4 — the ICS binding, the `10.90.0.2`
+  address check, the `10.90.0.1` "lack of resources" unreachability — was
+  debugged against this dead tunnel. `10.90.0.1` will stay unreachable
+  forever; do not resume that route investigation.
+- The §13.4 fix was in practice applied as a NEW tunnel (`test0.conf`)
+  rather than an edit to `wg-starlink0.conf` — which is why §14's session,
+  looking only at `wg-starlink0`, never saw it.
+
+**What is still missing (verified failing tonight, from fi-hel):**
+
+```
+curl -4 --interface 10.99.0.1 https://ifconfig.me   → hangs / no reply
+```
+
+Traffic enters the tunnel (policy routing on fi-hel is correct: `from
+10.99.0.1 lookup starlink` → `default dev test0`) but nothing returns —
+the Surface is not yet forwarding/NAT-ing tunnel traffic out via Starlink.
+Exactly the §13 conclusion, unchanged: **the only remaining blocker is
+Windows-side NAT/forwarding, and it must be attached to the `test0`
+tunnel adapter (`10.99.0.2`), not `wg-starlink0`.**
+
+Concrete next steps on the Surface, in order:
+
+1. To avoid §14 happening again: stop/remove the `wg-starlink0` tunnel
+   service (dead path, pure confusion once ICS is also in play). Keep
+   `test0`.
+2. Re-run the (now-fixed, `79a8094`) provisioning against the RIGHT
+   subnet/adapter: `.\1-provision-gateway.ps1 -NatMethod ICS
+   -AcknowledgeIcsIpConflictRisk -TunnelSubnet 10.99.0.0/30` with ICS's
+   private side pointed at the `test0` adapter (the one holding
+   `10.99.0.2`), public side = the Starlink Wi-Fi adapter.
+3. Known ICS caveat if step 2 still doesn't pass traffic: ICS's NAT may
+   only translate its own `192.168.137.0/24` subnet, in which case the
+   clean fixes are (a) enable `VirtualMachinePlatform` (+ reboot) so the
+   NetNat provider exists and use `-NatMethod WinNAT` (needs Khabat's
+   explicit sign-off per §14.2 / GATEWAY.md §3), or (b) renumber the
+   tunnel to `192.168.137.0/24` on BOTH ends (Surface `test0.conf` +
+   fi-hel's `test0` + the xray `sendThrough` value) — option (a) is less
+   invasive to the already-proven tunnel.
+4. E2E pass criterion, run from fi-hel (or ask Agent A, who has SSH):
+   `curl -4 --interface 10.99.0.1 https://ifconfig.me` returns the
+   Starlink WAN IP. The moment that returns, the whole chain is proven
+   (xray integration on fi-hel is already deployed and `-test` clean per
+   §13) and the management plane (`lib/starlink.php` + heartbeat +
+   catalog + admin) can be deployed to production.
+
+Side note for the same next session: `starlink_wg_endpoint` /
+`starlink_wg_public_key` are now set in the production `settings` table
+(values verified against `wg show` on fi-hel tonight), so
+`starlink-enroll.php` responses will carry the peer info as soon as the
+backend deploys.
+
+---
+
 ## 0. URGENT — do this first, before any other work
 
 During this investigation the user was working in a terminal they *believed*
