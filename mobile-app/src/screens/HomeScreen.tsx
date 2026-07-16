@@ -122,16 +122,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
 
-  // Composite coverage score (route + DNS + ping + traffic). Formerly rendered
-  // as a full-width card in the body; now surfaced as the top-bar coverage icon.
-  const healthScore = computeHealthScore({
-    connected:    isConnected,
-    probeOk:      isConnected && (traceTestResult?.ok ?? getLastConnectProbeOk()),
-    dnsOk:        dnsOkFromConnectionLog(connectionLog),
-    pingMs:       pingMs || selectedServer?.ping || 0,
-    downloadMbps, uploadMbps,
-  });
-
   // Friendly status message shown below connect button while connecting
   const connectingLabel = (() => {
     if (connectionState !== 'connecting') return null;
