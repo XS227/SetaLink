@@ -1,11 +1,12 @@
 /**
  * CommunityRankCard — the member's standing in the Realink community.
  *
- * Rank climbs with TrustAI-verified invites (activeInviteCount): every member
- * starts as a Warrior, becomes a Pahlavan at 3 and King at 10 — Shahnameh
- * flavor to match the ecosystem. The clan is the middle segment of the user id
+ * Rank climbs with TrustAI-verified invites (activeInviteCount): Warrior →
+ * Pahlavan (3) → Champion (6) → King (10) — the same 3/6/10 tier ladder
+ * TrustAI uses for ambassador tiering (B-21: single source of truth, no
+ * app-invented thresholds). The clan is the middle segment of the user id
  * (SL-227-XXXXXXXX → clan 227), so clanmates share a visible identity with
- * zero backend. TrustAI's role is surfaced as verified-invite count.
+ * zero backend.
  */
 
 import React from 'react';
@@ -14,9 +15,9 @@ import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { GlassCard } from './GlassCard';
 import { useT } from '../i18n';
 
-export const RANK_THRESHOLDS = { hero: 3, king: 10 } as const;
+export const RANK_THRESHOLDS = { hero: 3, champion: 6, king: 10 } as const;
 
-export type RankKey = 'warrior' | 'hero' | 'king';
+export type RankKey = 'warrior' | 'hero' | 'champion' | 'king';
 
 export interface CommunityRank {
   key: RankKey;
@@ -32,11 +33,18 @@ export function getCommunityRank(verifiedInvites: number): CommunityRank {
   if (n >= RANK_THRESHOLDS.king) {
     return { key: 'king', icon: '👑', next: null, progress: 1 };
   }
+  if (n >= RANK_THRESHOLDS.champion) {
+    return {
+      key: 'champion', icon: '🏆',
+      next: { key: 'king', icon: '👑', needed: RANK_THRESHOLDS.king - n, at: RANK_THRESHOLDS.king },
+      progress: (n - RANK_THRESHOLDS.champion) / (RANK_THRESHOLDS.king - RANK_THRESHOLDS.champion),
+    };
+  }
   if (n >= RANK_THRESHOLDS.hero) {
     return {
       key: 'hero', icon: '🛡️',
-      next: { key: 'king', icon: '👑', needed: RANK_THRESHOLDS.king - n, at: RANK_THRESHOLDS.king },
-      progress: (n - RANK_THRESHOLDS.hero) / (RANK_THRESHOLDS.king - RANK_THRESHOLDS.hero),
+      next: { key: 'champion', icon: '🏆', needed: RANK_THRESHOLDS.champion - n, at: RANK_THRESHOLDS.champion },
+      progress: (n - RANK_THRESHOLDS.hero) / (RANK_THRESHOLDS.champion - RANK_THRESHOLDS.hero),
     };
   }
   return {
@@ -57,16 +65,24 @@ interface Props {
   inviteCount: number;
   activeInviteCount: number;
   onInvite: () => void;
+  /** B-21: render as a plain View instead of its own GlassCard, so it can sit
+   *  inside a shared "one referral section" wrapper without nested cards. */
+  bare?: boolean;
+  /** Hide the own "Invite friends" CTA — the wrapper renders one shared CTA. */
+  hideInviteBtn?: boolean;
 }
 
-export function CommunityRankCard({ userId, inviteCount, activeInviteCount, onInvite }: Props) {
+export function CommunityRankCard({ userId, inviteCount, activeInviteCount, onInvite, bare, hideInviteBtn }: Props) {
   const { t } = useT();
   const rank = getCommunityRank(activeInviteCount);
   const clan = getClanId(userId);
   const rankName = (k: RankKey) => t(`pr.rank_${k}`);
 
+  const Wrapper = bare ? View : GlassCard;
+  const wrapperProps = bare ? { style: styles.bareCard } : { style: styles.card, glowColor: Colors.gold[400] };
+
   return (
-    <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+    <Wrapper {...(wrapperProps as any)}>
       <View style={styles.headerRow}>
         <Text style={styles.cardLabel}>{t('pr.communityTitle')}</Text>
         {!!clan && (
@@ -105,15 +121,18 @@ export function CommunityRankCard({ userId, inviteCount, activeInviteCount, onIn
         </Text>
       </View>
 
-      <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.85} onPress={onInvite}>
-        <Text style={styles.inviteBtnText}>{t('pr.inviteFriends')}</Text>
-      </TouchableOpacity>
-    </GlassCard>
+      {!hideInviteBtn && (
+        <TouchableOpacity style={styles.inviteBtn} activeOpacity={0.85} onPress={onInvite}>
+          <Text style={styles.inviteBtnText}>{t('pr.inviteFriends')}</Text>
+        </TouchableOpacity>
+      )}
+    </Wrapper>
   );
 }
 
 const styles = StyleSheet.create({
   card:      { marginBottom: Spacing[4], padding: Spacing[4], gap: Spacing[3] },
+  bareCard:  { gap: Spacing[3] },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardLabel: { fontSize: Typography.size.xs, color: Colors.text.muted,
                fontFamily: Typography.family.label, textTransform: 'uppercase', letterSpacing: 1 },
