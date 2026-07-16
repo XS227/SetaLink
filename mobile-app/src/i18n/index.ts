@@ -36,16 +36,32 @@ const EN = {
   'lang.subtitle': 'You can change this later in Settings',
   'lang.continue': 'Continue',
 
-  // Onboarding
-  'ob.s1.title':      'Bypass any\nrestriction.',
-  'ob.s1.sub':        'Realink uses next-gen VLESS+Reality protocols that are\nindistinguishable from normal HTTPS traffic.',
-  'ob.s2.title':      'AI-powered\nrouting.',
-  'ob.s2.sub':        'Our Smart AI engine picks the fastest server and protocol\nautomatically — no configuration needed.',
-  'ob.s3.title':      'Zero logs,\never.',
-  'ob.s3.sub':        'We never store connection logs, IP addresses, or traffic data.\nYour privacy is the product.',
+  // Onboarding (B-20: 6-slide vision + King/Queen + nickname)
+  'ob.s1.title':      'Welcome to\nReaLink.',
+  'ob.s1.sub':        'Free internet for everyone — connect and browse without limits or borders.',
+  'ob.s2.title':      'Play, learn\nand earn REAL.',
+  'ob.s2.sub':        'Shahnameh lives inside ReaLink — play, learn Persian legend, and earn REAL as you go.',
+  'ob.s3.title':      'Watch ads,\nget more quota.',
+  'ob.s3.sub':        'A short ad now and then unlocks extra free data — your call, your quota.',
+  'ob.s4.title':      'Invite friends,\nearn a share forever.',
+  'ob.s4.sub':        'Every friend you invite earns you a share of their usage, ongoing — for as long as they connect.',
+  'ob.s5.title':      'Create your\nprofile.',
+  'ob.s5.sub':        'Stay in touch with your friends and family — one identity across the whole ReaLink ecosystem.',
+  'ob.s6.title':      'The more we are,\nthe stronger we are.',
+  'ob.s6.sub':        'The more people connect, the less everyone pays — and the better, more stable and safer the network gets for all of us.',
   'ob.next':          'Next',
   'ob.getStarted':    'Get Started',
   'ob.skip':          'Skip',
+
+  // Onboarding — persona pick ("King or Queen?")
+  'ob.persona.title': 'Are you a\nKing or a Queen?',
+  'ob.persona.sub':   'Pick how you\'re known across ReaLink — you can change this anytime from your profile.',
+  'ob.persona.king':  'King',
+  'ob.persona.queen': 'Queen',
+
+  // Onboarding — nickname / handle claim
+  'ob.nickname.title': 'Want a\nnickname?',
+  'ob.nickname.sub':   'So your friends can find you. Skippable — claim one later from your profile if you\'d rather not now.',
 
   // Bottom navigation
   'nav.home':     'Home',
@@ -53,6 +69,7 @@ const EN = {
   'nav.ai':       'AI',
   'nav.activity': 'Activity',
   'nav.profile':  'Profile',
+  'nav.game':     'Game',
 
   // Ecosystem banner (Shahnameh + 3real)
   'bn.shahTitle': 'Play Shahnameh — earn REAL',
@@ -629,16 +646,32 @@ const FA: typeof EN = {
   'lang.subtitle': 'می‌توانید این را بعداً در تنظیمات تغییر دهید',
   'lang.continue': 'ادامه',
 
-  // Onboarding
-  'ob.s1.title':   'دور زدن هر\nمحدودیتی.',
-  'ob.s1.sub':     'ستالینک از پروتکل‌های VLESS+Reality نسل جدید استفاده می‌کند\nکه از ترافیک HTTPS معمولی قابل تشخیص نیستند.',
-  'ob.s2.title':   'مسیریابی\nهوشمند.',
-  'ob.s2.sub':     'موتور AI ستالینک سریع‌ترین سرور و پروتکل را\nبه‌طور خودکار انتخاب می‌کند — بدون نیاز به تنظیمات.',
-  'ob.s3.title':   'بدون لاگ،\nهرگز.',
-  'ob.s3.sub':     'ما هرگز لاگ اتصال، آدرس IP یا داده‌های ترافیک ذخیره نمی‌کنیم.\nحریم خصوصی شما اولویت ماست.',
+  // Onboarding (B-20: 6 slide vision + King/Queen + nickname)
+  'ob.s1.title':   'به ری‌لینک\nخوش آمدید.',
+  'ob.s1.sub':     'اینترنت آزاد برای همه — بدون محدودیت و بدون مرز وصل شو و بگرد.',
+  'ob.s2.title':   'بازی کن، یاد بگیر\nو REAL کسب کن.',
+  'ob.s2.sub':     'شاهنامه داخل ری‌لینک زندگی می‌کند — بازی کن، افسانه‌های ایرانی یاد بگیر و همزمان REAL کسب کن.',
+  'ob.s3.title':   'تبلیغ ببین،\nسهمیه بیشتر بگیر.',
+  'ob.s3.sub':     'یک تبلیغ کوتاه، دیتای رایگان بیشتر — انتخاب با خودته، سهمیه هم مال خودته.',
+  'ob.s4.title':   'دوستانت را دعوت کن،\nسهم دائمی بگیر.',
+  'ob.s4.sub':     'هر دوستی که دعوت می‌کنی، سهمی از مصرف او را برایت می‌آورد — تا زمانی که وصل است.',
+  'ob.s5.title':   'پروفایلت را\nبساز.',
+  'ob.s5.sub':     'با دوستان و خانواده‌ات در ارتباط باش — یک هویت در کل اکوسیستم ری‌لینک.',
+  'ob.s6.title':   'هرچه بیشتر باشیم،\nقوی‌تریم.',
+  'ob.s6.sub':     'هرچه افراد بیشتری وصل شوند، هزینه هر نفر کمتر می‌شود — و شبکه برای همه بهتر، پایدارتر و امن‌تر می‌شود.',
   'ob.next':       'بعدی',
   'ob.getStarted': 'شروع کنید',
   'ob.skip':       'رد کردن',
+
+  // Onboarding — persona pick ("پادشاه یا ملکه؟")
+  'ob.persona.title': 'پادشاهی یا\nملکه؟',
+  'ob.persona.sub':   'انتخاب کن که در ری‌لینک چطور شناخته شوی — هر وقت خواستی از پروفایلت تغییرش بده.',
+  'ob.persona.king':  'پادشاه',
+  'ob.persona.queen': 'ملکه',
+
+  // Onboarding — nickname / handle claim
+  'ob.nickname.title': 'اسم مستعار\nمی‌خواهی؟',
+  'ob.nickname.sub':   'تا دوستانت پیدایت کنند. اختیاری — هر وقت خواستی از پروفایلت می‌توانی یکی بگیری.',
 
   // Bottom navigation
   'nav.home':     'خانه',
@@ -646,6 +679,7 @@ const FA: typeof EN = {
   'nav.ai':       'هوش مصنوعی',
   'nav.activity': 'فعالیت',
   'nav.profile':  'پروفایل',
+  'nav.game':     'بازی',
 
   // Ecosystem banner (Shahnameh + 3real)
   'bn.shahTitle': 'شاهنامه را بازی کن — REAL کسب کن',
@@ -1222,21 +1256,38 @@ const ZH: typeof EN = {
   'lang.subtitle': '您稍后可在设置中更改',
   'lang.continue': '继续',
 
-  'ob.s1.title': '突破任何\n限制。',
-  'ob.s1.sub': 'Realink 使用新一代 VLESS+Reality 协议，\n与普通 HTTPS 流量无法区分。',
-  'ob.s2.title': 'AI 智能\n路由。',
-  'ob.s2.sub': '我们的智能 AI 引擎自动选择最快的服务器和协议\n——无需任何配置。',
-  'ob.s3.title': '永不\n记录日志。',
-  'ob.s3.sub': '我们从不存储连接日志、IP 地址或流量数据。\n您的隐私就是我们的宗旨。',
+  'ob.s1.title': '欢迎使用\nReaLink。',
+  'ob.s1.sub': '人人可享的自由网络——无限制、无国界，随时连接畅游。',
+  'ob.s2.title': '游戏、学习，\n赚取 REAL。',
+  'ob.s2.sub': '《列王纪》就在 ReaLink 内——边玩边学波斯传奇，同时赚取 REAL。',
+  'ob.s3.title': '观看广告，\n获取更多流量。',
+  'ob.s3.sub': '看一段短广告，解锁更多免费流量——由你决定，流量归你。',
+  'ob.s4.title': '邀请好友，\n永久获得分成。',
+  'ob.s4.sub': '你邀请的每位好友都会为你带来其使用量的分成——只要他们在连接，分成就持续。',
+  'ob.s5.title': '创建你的\n个人资料。',
+  'ob.s5.sub': '与亲朋好友保持联系——整个 ReaLink 生态系统共享一个身份。',
+  'ob.s6.title': '我们越多，\n就越强大。',
+  'ob.s6.sub': '连接的人越多，每个人付出的就越少——网络对所有人也会变得更好、更稳定、更安全。',
   'ob.next': '下一步',
   'ob.getStarted': '开始使用',
   'ob.skip': '跳过',
+
+  // 引导流程 —— 身份选择（"国王还是女王？"）
+  'ob.persona.title': '你是\n国王还是女王？',
+  'ob.persona.sub':   '选择你在 ReaLink 中的身份——随时可以在个人资料中更改。',
+  'ob.persona.king':  '国王',
+  'ob.persona.queen': '女王',
+
+  // 引导流程 —— 昵称 / 用户名认领
+  'ob.nickname.title': '想要一个\n昵称吗？',
+  'ob.nickname.sub':   '方便好友找到你。可跳过——以后随时可在个人资料中认领。',
 
   'nav.home': '主页',
   'nav.servers': '服务器',
   'nav.ai': 'AI',
   'nav.activity': '活动',
   'nav.profile': '我的',
+  'nav.game': '游戏',
 
   'bn.shahTitle': '玩《列王纪》——赚取 REAL',
   'bn.shahSub': '在 Telegram 上扮演波斯勇士战斗',
@@ -1785,21 +1836,38 @@ const RU: typeof EN = {
   'lang.subtitle': 'Вы сможете изменить это позже в настройках',
   'lang.continue': 'Продолжить',
 
-  'ob.s1.title': 'Обходите любые\nограничения.',
-  'ob.s1.sub': 'Realink использует протоколы нового поколения VLESS+Reality,\nнеотличимые от обычного HTTPS-трафика.',
-  'ob.s2.title': 'Маршрутизация\nс помощью ИИ.',
-  'ob.s2.sub': 'Наш умный ИИ автоматически выбирает самый быстрый сервер\nи протокол — без какой-либо настройки.',
-  'ob.s3.title': 'Никаких логов,\nникогда.',
-  'ob.s3.sub': 'Мы никогда не храним логи подключений, IP-адреса или данные трафика.\nВаша приватность — вот наш продукт.',
+  'ob.s1.title': 'Добро пожаловать\nв ReaLink.',
+  'ob.s1.sub': 'Свободный интернет для всех — подключайтесь и путешествуйте по сети без границ и ограничений.',
+  'ob.s2.title': 'Играйте, изучайте\nи зарабатывайте REAL.',
+  'ob.s2.sub': 'Шахнаме живёт внутри ReaLink — играйте, изучайте персидские легенды и зарабатывайте REAL по пути.',
+  'ob.s3.title': 'Смотрите рекламу —\nполучайте больше трафика.',
+  'ob.s3.sub': 'Короткая реклама открывает дополнительный бесплатный трафик — решать вам, и трафик тоже ваш.',
+  'ob.s4.title': 'Приглашайте друзей —\nзарабатывайте долю навсегда.',
+  'ob.s4.sub': 'Каждый приглашённый друг приносит вам долю от его трафика — пока он подключён.',
+  'ob.s5.title': 'Создайте свой\nпрофиль.',
+  'ob.s5.sub': 'Оставайтесь на связи с друзьями и семьёй — единая личность во всей экосистеме ReaLink.',
+  'ob.s6.title': 'Чем нас больше,\nтем мы сильнее.',
+  'ob.s6.sub': 'Чем больше людей подключено, тем меньше платит каждый — и сеть становится лучше, стабильнее и безопаснее для всех.',
   'ob.next': 'Далее',
   'ob.getStarted': 'Начать',
   'ob.skip': 'Пропустить',
+
+  // Онбординг — выбор персоны ("Король или Королева?")
+  'ob.persona.title': 'Вы Король\nили Королева?',
+  'ob.persona.sub':   'Выберите, как вас будут видеть в ReaLink — это можно изменить в любой момент в профиле.',
+  'ob.persona.king':  'Король',
+  'ob.persona.queen': 'Королева',
+
+  // Онбординг — никнейм / хэндл
+  'ob.nickname.title': 'Хотите\nникнейм?',
+  'ob.nickname.sub':   'Чтобы друзья могли вас найти. Можно пропустить — получить его позже можно в профиле.',
 
   'nav.home': 'Главная',
   'nav.servers': 'Серверы',
   'nav.ai': 'ИИ',
   'nav.activity': 'Активность',
   'nav.profile': 'Профиль',
+  'nav.game': 'Игра',
 
   'bn.shahTitle': 'Играйте в Шахнаме — зарабатывайте REAL',
   'bn.shahSub': 'Сражайтесь как персидский воин в Telegram',

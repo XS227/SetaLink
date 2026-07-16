@@ -15,12 +15,18 @@ import { avatarForId, suggestHandle, normalizeHandle } from '../utils/handle';
 // 'taken'    — last reservation attempt found it already taken elsewhere
 export type HandleState = 'local' | 'reserved' | 'taken';
 
+// B-20: "Are you a King or a Queen?" — a light Shahnameh-flavored persona
+// pick, first asked in onboarding, editable later from the identity sheet.
+// null = never chosen (pre-B-20 installs, or explicitly skipped).
+export type Persona = 'king' | 'queen' | null;
+
 interface IdentityState {
   handle:       string | null;   // normalized, no leading '@'
   handleState:  HandleState;
   displayName:  string;          // freeform nickname (may be empty)
   avatarEmoji:  string;
   avatarColor:  string;
+  persona:      Persona;
   /** True once the user has explicitly set anything (vs. seeded defaults). */
   customized:   boolean;
 
@@ -30,6 +36,12 @@ interface IdentityState {
   setHandleState:  (state: HandleState) => void;
   setDisplayName:  (name: string) => void;
   setAvatar:       (emoji: string, color: string) => void;
+  /**
+   * Sets the King/Queen persona. Also defaults the avatar emoji to the
+   * matching crown glyph, but only when the user hasn't already customized
+   * their avatar — never clobbers an explicit avatar pick.
+   */
+  setPersona:      (persona: Persona) => void;
   reset:           () => void;
 }
 
@@ -41,6 +53,7 @@ export const useIdentityStore = create<IdentityState>()(
       displayName: '',
       avatarEmoji: '🦊',
       avatarColor: '#00E87A',
+      persona:     null,
       customized:  false,
 
       seedFromId: (id) => set((s) => {
@@ -67,9 +80,15 @@ export const useIdentityStore = create<IdentityState>()(
       setAvatar: (avatarEmoji, avatarColor) =>
         set(() => ({ avatarEmoji, avatarColor, customized: true })),
 
+      setPersona: (persona) => set((s) => {
+        if (s.customized) return { persona };
+        const emoji = persona === 'king' ? '👑' : persona === 'queen' ? '👸' : s.avatarEmoji;
+        return { persona, avatarEmoji: emoji };
+      }),
+
       reset: () => set(() => ({
         handle: null, handleState: 'local', displayName: '',
-        avatarEmoji: '🦊', avatarColor: '#00E87A', customized: false,
+        avatarEmoji: '🦊', avatarColor: '#00E87A', persona: null, customized: false,
       })),
     }),
     {
