@@ -72,7 +72,24 @@ function ni_init_tables(PDO $pdo): void
         "cp1_readable          TEXT    DEFAULT NULL",   // YES | NO
         "cp4_connections       INTEGER DEFAULT NULL",   // total xray SOCKS5 entries
         "cp4_first_dest        TEXT    DEFAULT NULL",   // first destination seen
+        // Tap-to-Learn Network Intelligence (2026-07-16) — every ZAR tap while
+        // connected can optionally contribute one MORE observation of the
+        // CURRENT session's live health, not just the connect/disconnect
+        // events already captured above. See ni_valid_trigger() / ni_record().
+        "trigger_type          TEXT    DEFAULT 'connect'", // connect | disconnect | tap
+        "jitter_ms             INTEGER DEFAULT NULL",
+        "reconnect_count       INTEGER DEFAULT NULL",
+        "throughput_kbps       INTEGER DEFAULT NULL",   // lightweight estimate, optional
+        "battery_level_pct     INTEGER DEFAULT NULL",   // mobile only
+        "asn_hash              TEXT    DEFAULT NULL",   // same ni_anon() hashing as isp_hash
     ];
+    // Deliberately NO device_id column here, ever — connect_telemetry stays
+    // fully anonymous per this file's existing privacy model (see file
+    // header). Reward bookkeeping for tap contributions (which necessarily
+    // DOES need to know who to credit) lives in its own separate table,
+    // tap_intel_contributions — see ni_award_tap_contribution(). The two
+    // never join on anything; an anonymous observation and "device X
+    // contributed at time T" are recorded independently.
     foreach ($newCols as $colDef) {
         try {
             $colName = preg_split('/\s+/', trim($colDef))[0];
@@ -81,6 +98,33 @@ function ni_init_tables(PDO $pdo): void
             // "duplicate column name" is expected on re-init — ignore it.
         }
     }
+
+    // Tap-to-Learn reward bookkeeping — separate from connect_telemetry on
+    // purpose (see the comment above). This table IS device-identified,
+    // necessarily, since it exists to answer "who do we credit and how much
+    // have they already gotten" — same identifiability as ad_reward_events
+    // (lib/ads_recovery.php) or referral grants, not a new privacy posture.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS tap_intel_contributions (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id      TEXT    NOT NULL,
+        rewarded_bytes INTEGER NOT NULL DEFAULT 0,
+        created_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+    )");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS tic_device_created ON tap_intel_contributions(device_id, created_at)");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_badges (
+        device_id  TEXT NOT NULL,
+        badge_key  TEXT NOT NULL,
+        earned_at  TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (device_id, badge_key)
+    )");
+}
+
+/** Validate a telemetry trigger — unknown values fall back to 'connect' so a
+ *  malformed/older client never silently mislabels a real connect event. */
+function ni_valid_trigger(string $t): string
+{
+    return in_array($t, ['connect', 'disconnect', 'tap'], true) ? $t : 'connect';
 }
 
 /** Anonymise ISP/carrier: first 10 chars of hex SHA-256. */
@@ -192,8 +236,9 @@ function ni_record(PDO $pdo, array $d): void
              dns_ok,time_to_connect_ms,error_category,carrier_name,
              nat_type,ip_version,rtt_ms,network_switched,
              tunnel_mode,cp1_readable,cp4_connections,cp4_first_dest,
-             ios_version,device_model)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             ios_version,device_model,
+             trigger_type,jitter_ms,reconnect_count,throughput_kbps,battery_level_pct,asn_hash)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )->execute([
         ni_valid_event((string)($d['event']        ?? 'connect_fail')),
         substr((string)($d['node_id']    ?? 'primary'),  0, 40),
@@ -238,7 +283,118 @@ function ni_record(PDO $pdo, array $d): void
         // Build 69 device context fields
         substr((string)($d['ios_version']    ?? ''), 0, 20)  ?: null,
         substr((string)($d['device_model']   ?? ''), 0, 30)  ?: null,
+        // Tap-to-Learn fields (2026-07-16)
+        ni_valid_trigger((string)($d['trigger'] ?? 'connect')),
+        ($d['jitter_ms']       ?? null) !== null && $d['jitter_ms']       !== '' ? max(0, (int)$d['jitter_ms'])       : null,
+        ($d['reconnect_count'] ?? null) !== null && $d['reconnect_count'] !== '' ? max(0, (int)$d['reconnect_count']) : null,
+        ($d['throughput_kbps'] ?? null) !== null && $d['throughput_kbps'] !== '' ? max(0, (int)$d['throughput_kbps']) : null,
+        ($d['battery_level']   ?? null) !== null && $d['battery_level']   !== '' ? max(0, min(100, (int)$d['battery_level'])) : null,
+        ni_anon((string)($d['asn'] ?? '')) ?: null,
     ]);
+}
+
+// ── Tap-to-Learn rewards ──────────────────────────────────────────────────
+//
+// Reuses the EXISTING quota-bonus ledger (qe_ledger_add(), same function ad
+// rewards/referrals/milestones already credit through — see
+// lib/ads_recovery.php, lib/quota_economy.php, public/api.php for the other
+// callers) rather than inventing a parallel currency. True ZAR/REAL crediting
+// for taps is explicitly NOT built here — ZAR is a client-local Shahnameh
+// concept with no existing remote-credit API from this side; that's a
+// follow-up needing Shahnameh-backend + mobile-app coordination, not
+// something to guess numbers for unprompted. Badges (device-identified,
+// necessarily) are separate from the anonymous connect_telemetry dataset —
+// see the schema comment in ni_init_tables().
+
+const NI_TAP_REWARD_COOLDOWN_SECS = 15 * 60; // one rewarded contribution per device per 15 min
+const NI_TAP_REWARD_DEFAULT_BYTES = 2 * 1024 * 1024; // 2 MB — modest, admin-tunable, see below
+
+/** Badge thresholds are a first pass, not a spec — Khabat/product can retune
+ *  via the `tap_intel_badge_*` settings keys without a code change once an
+ *  admin UI exists for it; for now these are the literal thresholds. */
+const NI_BADGE_THRESHOLDS = [
+    'network_explorer'      => 1,    // first-ever contribution
+    'ai_trainer'             => 25,   // sustained contributor
+    'research_contribution'  => 100,  // heavy contributor
+];
+
+/** How many rewarded contributions this device has made, all-time. */
+function ni_contribution_count(PDO $pdo, string $deviceId): int
+{
+    $st = $pdo->prepare("SELECT COUNT(*) FROM tap_intel_contributions WHERE device_id = ?");
+    $st->execute([$deviceId]);
+    return (int)$st->fetchColumn();
+}
+
+/** Award any badges this device has newly crossed the threshold for. Returns
+ *  the list of badge_keys awarded just now (empty if none — already-earned
+ *  badges are never re-awarded, PRIMARY KEY(device_id,badge_key) enforces
+ *  that even under a race). */
+function ni_check_badges(PDO $pdo, string $deviceId, int $totalContributions): array
+{
+    $newly = [];
+    foreach (NI_BADGE_THRESHOLDS as $badge => $threshold) {
+        if ($totalContributions < $threshold) continue;
+        try {
+            $pdo->prepare("INSERT INTO user_badges (device_id, badge_key) VALUES (?, ?)")
+                ->execute([$deviceId, $badge]);
+            $newly[] = $badge;
+        } catch (\Throwable $e) {
+            // Already has it (PK conflict) — not new, not an error.
+        }
+    }
+    return $newly;
+}
+
+/**
+ * Reward a device for one tap-triggered network-intelligence contribution.
+ * Rate-limited to one reward per NI_TAP_REWARD_COOLDOWN_SECS per device so
+ * rapid tapping can't farm quota — the ANONYMOUS observation itself
+ * (connect_telemetry, via ni_record with trigger='tap') is still recorded
+ * every time regardless of whether this reward path fires; only the reward
+ * is throttled, not the data collection.
+ *
+ * Requires explicit consent from the caller (the mobile client must only
+ * call this when the user has opted in — the backend can't independently
+ * verify user intent, only that the caller claims consent=true).
+ *
+ * Returns null if not consented or still in cooldown (no reward, no error —
+ * same "never interrupt the user" posture as ni_record's callers). Otherwise
+ * returns ['rewarded_bytes' => int, 'total_contributions' => int,
+ *          'new_badges' => string[]].
+ */
+function ni_award_tap_contribution(PDO $pdo, string $deviceId, bool $consent): ?array
+{
+    if (!$consent || $deviceId === '') return null;
+    ni_init_tables($pdo);
+
+    $st = $pdo->prepare("SELECT created_at FROM tap_intel_contributions WHERE device_id = ? ORDER BY created_at DESC LIMIT 1");
+    $st->execute([$deviceId]);
+    $lastAt = $st->fetchColumn();
+    if ($lastAt !== false && (time() - strtotime((string)$lastAt)) < NI_TAP_REWARD_COOLDOWN_SECS) {
+        return null; // still cooling down — no reward this tap, try again later
+    }
+
+    $rewardBytes = NI_TAP_REWARD_DEFAULT_BYTES;
+    try {
+        $v = $pdo->query("SELECT value FROM settings WHERE key='tap_intel_reward_bytes'")->fetchColumn();
+        if (is_numeric($v) && (int)$v > 0) $rewardBytes = (int)$v;
+    } catch (\Throwable $e) {}
+
+    require_once __DIR__ . '/quota_economy.php';
+    qe_ledger_add($pdo, $deviceId, 'tap_intel_reward', $rewardBytes, 'network intelligence contribution');
+
+    $pdo->prepare("INSERT INTO tap_intel_contributions (device_id, rewarded_bytes) VALUES (?, ?)")
+        ->execute([$deviceId, $rewardBytes]);
+
+    $total = ni_contribution_count($pdo, $deviceId);
+    $newBadges = ni_check_badges($pdo, $deviceId, $total);
+
+    return [
+        'rewarded_bytes'       => $rewardBytes,
+        'total_contributions'  => $total,
+        'new_badges'           => $newBadges,
+    ];
 }
 
 /**

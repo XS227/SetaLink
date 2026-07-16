@@ -32,7 +32,10 @@
  *   Body (JSON or form): wg_public_key (required), platform (optional:
  *     windows | macos | linux)
  *   → 200 {"ok": true, "node_id": "...", "heartbeat_token": "starlink-node-...:...",
- *          "vps_public_key": "...", "tunnel_endpoint": "..."}
+ *          "vps_wg_endpoint": "...", "vps_wg_public_key": "..."}
+ *     (the latter two come from the `settings` table — starlink_wg_endpoint /
+ *     starlink_wg_public_key, same key/value store as real_link_secret etc.
+ *     — null until an admin sets them)
  *     (heartbeat_token shown ONCE, same convention as the admin-panel
  *     generate-token action — the gateway must persist it locally)
  *   → 401 invalid/missing token, 410 expired or already used
@@ -107,16 +110,26 @@ if ($result === null) {
     en_send(['ok' => false, 'error' => 'invalid or already-used enrollment token'], 410);
 }
 
+// Same VPS-side WireGuard peer info an admin would otherwise relay by hand —
+// read from the settings table (same key/value store + INSERT OR REPLACE
+// convention as real_link_secret/real_api_key/real_api_url — see
+// admin/api.php), NOT an OS env var. This repo already has one config
+// mechanism; using getenv() here would've been a second one for no reason.
+// The rendezvous point has already moved once (docs/STARLINK_WINDOWS_HANDOFF.md
+// §13 — the dev VPS's provider silently dropped inbound UDP, fi-hel took
+// over) and will again if a node ever moves; a hardcoded value here would go
+// stale exactly the way that move already broke a hand-typed config.
+$vpsWgEndpoint = null;
+$vpsWgPublicKey = null;
+try {
+    $vpsWgEndpoint   = $pdo->query("SELECT value FROM settings WHERE key='starlink_wg_endpoint'")->fetchColumn() ?: null;
+    $vpsWgPublicKey  = $pdo->query("SELECT value FROM settings WHERE key='starlink_wg_public_key'")->fetchColumn() ?: null;
+} catch (\Throwable $e) {}
+
 en_send([
-    'ok'              => true,
-    'node_id'         => $result['node_id'],
-    'heartbeat_token' => $result['heartbeat_token'],
-    // Same VPS-side WireGuard peer info an admin would otherwise relay by
-    // hand — read from env, never hardcoded here. The rendezvous point has
-    // already moved once (docs/STARLINK_WINDOWS_HANDOFF.md §13 — the dev
-    // VPS's provider silently dropped inbound UDP, fi-hel took over) and
-    // will again if a node ever moves; a hardcoded value here would go
-    // stale exactly the way that move already broke a hand-typed config.
-    'vps_wg_endpoint'   => getenv('STARLINK_WG_ENDPOINT')   ?: null,
-    'vps_wg_public_key' => getenv('STARLINK_WG_PUBLIC_KEY') ?: null,
+    'ok'                => true,
+    'node_id'           => $result['node_id'],
+    'heartbeat_token'   => $result['heartbeat_token'],
+    'vps_wg_endpoint'   => $vpsWgEndpoint,
+    'vps_wg_public_key' => $vpsWgPublicKey,
 ]);

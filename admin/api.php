@@ -842,6 +842,23 @@ if ($method === 'POST') {
             api_ok(['node_id' => $nid]);
         }
     }
+    // The VPS-side WireGuard peer info handed back by starlink-enroll.php —
+    // same settings-table convention as real_link_secret/real_api_key
+    // (INSERT OR REPLACE), not a new config mechanism. Set this once the
+    // rendezvous point is stable; re-run it if the rendezvous ever moves
+    // again (it already has once — see docs/STARLINK_WINDOWS_HANDOFF.md §13).
+    if ($action === 'starlink-set-wg-peer') {
+        $db = open_analytics_db();
+        $endpoint  = trim((string)($parsed['wg_endpoint']    ?? ''));
+        $publicKey = trim((string)($parsed['wg_public_key']  ?? ''));
+        if ($endpoint === '' || $publicKey === '') api_err('wg_endpoint and wg_public_key both required', 400);
+        $st = $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))");
+        $st->execute(['starlink_wg_endpoint', $endpoint]);
+        $st->execute(['starlink_wg_public_key', $publicKey]);
+        require_once __DIR__ . '/../lib/starlink.php';
+        st_log($db, '(settings)', $auth_user, 'set-wg-peer', "endpoint={$endpoint}");
+        api_ok(['wg_endpoint' => $endpoint, 'wg_public_key' => $publicKey]);
+    }
     // Phase 2: self-registration. Separate from the block above because this
     // action runs BEFORE a node_id exists — it's what creates one. Manual
     // provisioning (the block above) still works unchanged; this is an

@@ -511,6 +511,13 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             // Build 69 device context fields
             'ios_version'          => v1_body('ios_version'),
             'device_model'         => v1_body('device_model'),
+            // Tap-to-Learn fields (2026-07-16) — see docs/realgram/DECISIONS.md
+            'trigger'              => v1_body('trigger'),
+            'jitter_ms'            => v1_body('jitter_ms')       !== '' ? (int)v1_body('jitter_ms')       : null,
+            'reconnect_count'      => v1_body('reconnect_count') !== '' ? (int)v1_body('reconnect_count') : null,
+            'throughput_kbps'      => v1_body('throughput_kbps') !== '' ? (int)v1_body('throughput_kbps') : null,
+            'battery_level'        => v1_body('battery_level')   !== '' ? (int)v1_body('battery_level')   : null,
+            'asn'                  => v1_body('asn'),
         ]);
         ni_telemetry_rotate($pdo); // enforce the retention cap (occasional trim)
         // Auto-create structured diagnostic session for every disconnect event (build 68+).
@@ -540,7 +547,22 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             } catch (\Throwable $_) {}
         }
     } catch (\Throwable $_) { /* swallow — telemetry must never break the user flow */ }
-    v1_send(['ok' => true]);
+
+    // Tap-to-Learn reward — only when the client explicitly marks this as a
+    // tap-triggered, consented contribution AND passes a device_id (needed
+    // to credit the quota ledger; the anonymous connect_telemetry row above
+    // never gets this device_id, see lib/node_intel.php's schema comment).
+    // Rate-limited server-side (ni_award_tap_contribution) regardless of how
+    // often the client calls this — safe to call on every tap.
+    $tapReward = null;
+    if ($rawTelemetryEvent === 'tap' && $deviceId) {
+        try {
+            require_once __DIR__ . '/../lib/quota_economy.php';
+            $consent = v1_body('consent') === '1' || v1_body('consent') === 'true';
+            $tapReward = ni_award_tap_contribution($pdo, $deviceId, $consent);
+        } catch (\Throwable $_) { /* reward is best-effort, never blocks the response */ }
+    }
+    v1_send($tapReward ? ['ok' => true, 'reward' => $tapReward] : ['ok' => true]);
 }
 
 if ($rel === '/servers') {
