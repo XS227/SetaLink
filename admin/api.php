@@ -917,6 +917,25 @@ if ($method === 'POST') {
         api_ok(['quota_bytes_total' => $quota]);
     }
 
+    if ($action === 'device-set-test-mode') {
+        // Marks a device as a TEST account, orthogonal to `plan` (Khabat,
+        // 2026-07-16): a premium tester keeps unlimited quota but test-gated
+        // functionality treats her like a tester — ads stay visible during a
+        // test period (client-side, once ad gating reads test_mode) and
+        // Starlink nodes auto-allow (v1_device_allowed()). Deliberately NOT a
+        // plan downgrade — that would also cost the device its quota.
+        $did  = trim((string)($parsed['device_id'] ?? ''));
+        $mode = (int)($parsed['test_mode'] ?? 0) === 1 ? 1 : 0;
+        if (!$did) api_err('device_id required');
+        $db = open_analytics_db();
+        init_device_tables($db);
+        try { $db->exec("ALTER TABLE devices ADD COLUMN test_mode INTEGER DEFAULT 0"); } catch (Exception $e) {}
+        $st = $db->prepare("UPDATE devices SET test_mode=? WHERE device_id=?");
+        $st->execute([$mode, $did]);
+        if ($st->rowCount() === 0) api_err('device not found', 404);
+        api_ok(['device_id' => $did, 'test_mode' => $mode === 1]);
+    }
+
     if ($action === 'credit-package') {
         // Manually credit a data package to a device (no payment gateway).
         // Additive — records purchased_packages + a 'purchase' ledger entry.

@@ -537,6 +537,9 @@ if ($method === 'GET') {
             'user_id'           => $dev['user_id']        ?? '',
             'referral_code'     => $dev['referral_code'],
             'plan'              => $dev['plan'],
+            // Test-account flag, orthogonal to plan — lets a premium tester
+            // keep quota while exercising free-tier-gated features (ads).
+            'test_mode'         => (int)($dev['test_mode'] ?? 0) === 1,
             'quota_bytes_total' => (int)$dev['quota_bytes_total'],
             'quota_bytes_used'  => (int)$dev['quota_bytes_used'],
             'valid_until'       => $dev['valid_until'],
@@ -763,6 +766,7 @@ if ($method === 'POST') {
             'user_id'             => $dev['user_id']        ?? '',
             'referral_code'       => $dev['referral_code'],
             'plan'                => $dev['plan'],
+            'test_mode'           => (int)($dev['test_mode'] ?? 0) === 1,
             'quota_bytes_total'   => (int)$dev['quota_bytes_total'],
             'quota_bytes_used'    => (int)$dev['quota_bytes_used'],
             'valid_until'         => $dev['valid_until'],

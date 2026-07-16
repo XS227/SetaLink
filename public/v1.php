@@ -292,11 +292,27 @@ function v1_starlink_down(array $starlinkNode): bool {
     return !st_routable($row);
 }
 
-function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId): bool {
+function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId, ?array $node = null): bool {
     if ($deviceId === null || $deviceId === '') return false;
     $st = $pdo->prepare("SELECT 1 FROM node_allowlist WHERE device_id = ? AND node_id = ?");
     $st->execute([$deviceId, $nodeId]);
-    return (bool)$st->fetchColumn();
+    if ($st->fetchColumn()) return true;
+    // Starlink access policy (Khabat, 2026-07-16): once a Starlink node is
+    // enabled, every premium or test-mode device gets access automatically —
+    // no hand-curated per-device allowlist. Scoped to Starlink nodes only
+    // (identified by their '_row'); every other test node stays strictly
+    // node_allowlist-gated as before.
+    if ($node !== null && isset($node['_row'])) {
+        try {
+            $q = $pdo->prepare("SELECT * FROM devices WHERE device_id = ?");
+            $q->execute([$deviceId]);
+            $dev = $q->fetch(PDO::FETCH_ASSOC);
+            if ($dev && ($dev['plan'] === 'premium' || (int)($dev['test_mode'] ?? 0) === 1)) {
+                return true;
+            }
+        } catch (\Throwable $e) {}
+    }
+    return false;
 }
 
 function v1_record_usage(PDO $pdo, ?string $deviceId, string $nodeId): void {
@@ -572,7 +588,7 @@ if ($rel === '/servers') {
     try { ni_init_tables($pdo); $scores = ni_node_scores($pdo, 7); } catch (\Throwable $_) {}
     $out = [];
     foreach ($nodes as $id => $n) {
-        if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) continue; // hide test nodes
+        if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) continue; // hide test nodes
         // Auto-hide a non-primary node that is freshly DOWN, so users aren't
         // routed to a dead box. Primary is never hidden (last-resort default).
         if (isset($n['_row']) && v1_starlink_down($n)) continue;      // Starlink: push-heartbeat health
@@ -594,7 +610,7 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     $id = $m[1];
     if (!isset($nodes[$id])) v1_send(['message' => 'unknown server'], 404);
     $n = $nodes[$id];
-    if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) {
+    if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) {
         v1_send(['message' => 'device not authorized for this node'], 403);
     }
     // Refuse to hand out creds for a node that is freshly down (clients fall back
