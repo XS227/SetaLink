@@ -403,6 +403,9 @@ if ($method === 'GET') {
                 // Default OFF: the wallet card only makes sense once the
                 // Shahnameh-side wallet API is live (TASK_SPLIT.md B-1/B-2).
                 'wallet_enabled' => (bool)(int)($rcRows['rc_real_wallet_enabled'] ?? 0),
+                // Default OFF: gates the "Link TrustAI account" card on Profile
+                // (A-14); flip rc_trustai_link_enabled once B-9 is verified.
+                'trustai_link_enabled' => (bool)(int)($rcRows['rc_trustai_link_enabled'] ?? 0),
             ],
         ];
         // If there's a legacy composite blob, merge it but let per-key values win
