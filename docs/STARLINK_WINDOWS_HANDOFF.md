@@ -1,8 +1,71 @@
 # Starlink Windows-gateway WireGuard handshake — agent handoff
 
-**Date:** 2026-07-15 · **Status:** Blocked on an unresolved network-path problem;
-production-server audit is INCOMPLETE and is the single most urgent item in
-this document. Read section 0 first, then act on it before anything else.
+**Date:** 2026-07-15 · **Status:** ~~Blocked on an unresolved network-path problem~~
+**RESOLVED 2026-07-16 — root cause proven, see §13.** The §0 production audit
+is complete and clean. The only remaining step needs the user at the Surface
+(§13.4).
+
+---
+
+## 13. 2026-07-16 — Investigation resolved (Agent A, from the production box)
+
+Everything below was verified by controlled experiment, not inference.
+
+1. **§0 production audit: DONE, clean.** On `5.249.252.221`: no
+   `vps@shahnameh` key in `/root/.ssh/authorized_keys`, no `LogLevel DEBUG3`
+   (only the stock commented line), no backup file. The `test0` interface DID
+   exist (active since 2026-07-14, never received a handshake, and its peer
+   key was a stale one — not the Surface's current `GLXuEbDh…`). Removed per
+   §9: service disabled, `/etc/wireguard/test0.*` deleted, iptables rule
+   removed, nothing persisted in `/etc/iptables/rules.v4|v6`, no listener
+   left on 51820. `wireguard-tools` package left installed (harmless).
+   Side-discovery: **Agent A's Claude Code environment runs ON this
+   production box** (`vps-5348441` = the panel/web box) — that's why the §2
+   terminal mix-up was so easy to make.
+
+2. **§2.1 SSH mystery to `fi-hel`: solved.** Nothing provider-side — the
+   `vps@shahnameh` key simply was never authorized there. Agent A's
+   `id_ed25519` (the established ReaLink-Hetzner-node key) IS authorized:
+   `root@65.109.183.7` works, hostname `ubuntu-4gb-hel1-4`, host key matches
+   the known-good `SHA256:WDm4ALsbx9MDONKy1PKIKSz8pG5XQdmFlkjm1XjnRIE`.
+   Note: fi-hel is a LIVE ReaLink xray node, not a disposable box — treat
+   accordingly.
+
+3. **Hypothesis #1 CONFIRMED — One.com drops external inbound UDP wholesale,
+   at the hypervisor layer, on BOTH One.com boxes.** Method: `tcpdump` on the
+   dev VPS (`5.249.255.116`) while sending UDP probes to 51820 AND an
+   arbitrary port (33533) from two independent sources (the production box =
+   One.com Copenhagen, and fi-hel = Hetzner Helsinki). **Zero packets
+   arrived from either source on either port.** Control: self-sent packets
+   (public IP + loopback) captured fine, so tcpdump/filter provably worked.
+   Repeated against the production box: same result (self-test captured,
+   external Hetzner probe never arrived). So: not Starlink, not Windows, not
+   keys, not port-specific — One.com filters inbound UDP before the NIC.
+   Hypotheses #2/#3 are dead as *causes* (though #2 remains formally untested
+   as a *second* problem until the Surface completes a handshake).
+
+4. **§12a executed on fi-hel — listener live and PROVEN reachable.**
+   `test0` on `65.109.183.7`: `10.99.0.1/30`, port `51820/udp` (ufw opened),
+   peer = the Surface's `GLXuEbDh…`. **Server public key is NEW:**
+   `mpm3vXTI+B+pFp+es7GDICWI4eHNIlhQRqa4dcPTwBI=` — §12a's "only the
+   Endpoint changes on the Surface" was wrong, since §12a generates a fresh
+   server keypair. Verified end-to-end with a throwaway second peer from the
+   production box: handshake completed in seconds, bytes both ways
+   (temporary peer removed afterwards; only the Surface peer remains).
+   Remaining user step, on the Surface's `wg-starlink0.conf`:
+   - `[Peer] Endpoint = 65.109.183.7:51820`
+   - `[Peer] PublicKey = mpm3vXTI+B+pFp+es7GDICWI4eHNIlhQRqa4dcPTwBI=`
+   - restart `WireGuardTunnel$wg-starlink0`, then check
+     `wg show test0` on fi-hel for the handshake (§7 bar). Note: ping over
+     the tunnel will NOT work (fi-hel ufw default-deny on INPUT) — handshake
+     + received-bytes is the success criterion, don't chase the ping.
+
+5. **Design consequence for Phase 1:** the dev VPS (One.com) cannot be the
+   WireGuard rendezvous — any Starlink gateway must terminate on a Hetzner
+   box (or another provider that passes inbound UDP), unless One.com support
+   opens the security group (§12.7 — user's call whether that conversation
+   is worth it; the Hetzner path already works). `STARLINK_NODE_ARCHITECTURE.md`
+   should be revisited with this constraint before any further build-out.
 
 **Read this whole document before touching anything.** It was written so a
 fresh agent can continue without asking the user to repeat any of the

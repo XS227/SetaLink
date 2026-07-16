@@ -7,18 +7,23 @@
 
 ## ⚠️ If you are picking up the Starlink Windows-gateway work, stop and read this first
 
-**`docs/STARLINK_WINDOWS_HANDOFF.md`** (2026-07-15) — a WireGuard handshake
-debugging session left an **incomplete safety-relevant audit on the
-production server** (`5.249.252.221`) that must be finished before any other
-Starlink work continues. That document's §0 is the single most important
-thing in this repo right now if you're touching anything Starlink-related.
-This is unrelated to the RealGram work below — different subsystem,
-different branch state, read it independently.
+**`docs/STARLINK_WINDOWS_HANDOFF.md`** — **RESOLVED 2026-07-16, see its §13.**
+The §0 production audit is complete and clean (`test0` removed from
+`5.249.252.221`), the fi-hel SSH mystery is solved (the debug key was simply
+never authorized there; Agent A's established node key works), and the root
+cause is proven by controlled experiment: **One.com drops external inbound
+UDP at the hypervisor layer, on both One.com boxes** — it was never
+Starlink/Windows/keys. A verified-reachable WireGuard listener now runs on
+fi-hel (`65.109.183.7:51820`); the one remaining step is user-at-the-Surface:
+update `Endpoint` AND `[Peer] PublicKey` (fresh server key, see §13.4) and
+restart the tunnel. Design consequence: the WG rendezvous must live on
+Hetzner, not One.com. This is unrelated to the RealGram work below —
+different subsystem, different branch state, read it independently.
 
 Last updated: **2026-07-11** (RealGram section below), by Claude (dev-box
 session: confirmed push resolution, recorded parallel ecosystem
 implementation; original handoff 2026-07-10 by the assessment session).
-Starlink section above updated separately, 2026-07-15.
+Starlink section above updated separately, 2026-07-16.
 
 ---
 
