@@ -130,7 +130,10 @@ function st_routable(array $node): bool {
     if (st_health_state($node) !== 'ONLINE') return false;
     $cur = (int)($node['current_sessions'] ?? 0);
     $max = (int)($node['max_sessions'] ?? 0);
-    return $max <= 0 || $cur < $max;
+    // max_sessions <= 0 means NO capacity (admin throttled to zero), not
+    // unlimited — `starlink-update-node` allows setting it to 0 explicitly
+    // (max(0, ...)), and the old `$max <= 0 || ...` read that as "no cap."
+    return $max > 0 && $cur < $max;
 }
 
 /** Generate a new heartbeat secret for a node. Returns the PLAINTEXT secret
