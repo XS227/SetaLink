@@ -188,6 +188,24 @@ function st_apply_heartbeat(PDO $pdo, string $nodeId, array $payload): void {
         ->execute($args);
 }
 
+/** The safe subset of a node's admin-controlled config, handed back to the
+ *  gateway on every heartbeat response so admin changes (enable/disable,
+ *  maintenance, session/bandwidth limits) propagate without a gateway
+ *  redeploy — closing the loop the push-heartbeat model would otherwise
+ *  leave one-directional. Never includes heartbeat_token_hash or anything
+ *  else secret. The VPS remains the actual enforcement point (st_routable()
+ *  gates new sessions server-side) — this is visibility/future-use for the
+ *  gateway, not a second place that decides routing. */
+function st_gateway_config(array $node): array {
+    return [
+        'enabled'          => (int)($node['enabled'] ?? 0) === 1,
+        'maintenance_mode' => (int)($node['maintenance_mode'] ?? 0) === 1,
+        'testing_state'    => (string)($node['testing_state'] ?? 'testing'),
+        'max_sessions'     => (int)($node['max_sessions'] ?? 0),
+        'allocated_kbps'   => (int)($node['allocated_kbps'] ?? 0),
+    ];
+}
+
 /** Build the client-facing ServerRecord meta (no secrets) for a Starlink node,
  *  or null if it shouldn't be shown to this device at all. */
 function st_meta(array $node): array {

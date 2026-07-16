@@ -63,8 +63,16 @@ payload="$(cat <<JSON
 JSON
 )"
 
-curl -fsS --max-time 6 \
+response="$(curl -fsS --max-time 6 \
   -X POST "$VPS_API_URL" \
   -H "Authorization: Bearer $HEARTBEAT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "$payload" >/dev/null 2>&1 || true   # never crash the cron job on a transient network blip
+  -d "$payload" 2>/dev/null || true)"   # never crash the cron job on a transient network blip
+
+# Persist the server's response (health_state + admin-controlled config —
+# enabled/maintenance_mode/max_sessions/allocated_kbps, see
+# lib/starlink.php:st_gateway_config()) so an admin change on the VPS is
+# visible on the gateway without a redeploy. No dependency on jq (not
+# guaranteed present on OpenWrt) — written as-is, whatever consumes it
+# parses the JSON itself.
+[[ -n "$response" ]] && echo "$response" > "${STARLINK_HB_STATE_FILE:-/tmp/starlink-node-config.json}" 2>/dev/null || true

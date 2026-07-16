@@ -112,6 +112,16 @@ try {
         -Headers @{ Authorization = "Bearer starlink-node-$($cfg['NODE_ID']):$($cfg['HEARTBEAT_TOKEN'])" } `
         -ContentType 'application/json' -Body $payload -TimeoutSec 6
     Log "Sent. Server reports health_state=$($resp.health_state)"
+
+    # Persist the admin-controlled config the server just returned
+    # (enabled/maintenance_mode/max_sessions/allocated_kbps — see
+    # lib/starlink.php:st_gateway_config()) so an admin change on the VPS is
+    # visible here without a redeploy. Same state-file convention as the
+    # Linux gateway's heartbeat.sh.
+    if ($resp.config) {
+        $configFile = Join-Path $LogDir 'node-config.json'
+        $resp.config | ConvertTo-Json -Compress | Set-Content -Path $configFile -ErrorAction SilentlyContinue
+    }
 } catch {
     Log "Failed to send heartbeat: $($_.Exception.Message)"
 }

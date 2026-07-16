@@ -79,4 +79,12 @@ if (!st_verify_heartbeat_token($node, $secret)) {
 st_apply_heartbeat($pdo, $nodeId, hb_body());
 
 $fresh = st_get($pdo, $nodeId);
-hb_send(['ok' => true, 'health_state' => st_health_state($fresh)]);
+// Config comes back on every heartbeat response — the gateway never needs a
+// separate poll/pull request or a redeploy to pick up an admin change
+// (enable/disable, maintenance, limits). See st_gateway_config() for exactly
+// what's included (never secrets).
+hb_send([
+    'ok'           => true,
+    'health_state' => st_health_state($fresh),
+    'config'       => st_gateway_config($fresh),
+]);
