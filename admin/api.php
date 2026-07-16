@@ -842,6 +842,25 @@ if ($method === 'POST') {
             api_ok(['node_id' => $nid]);
         }
     }
+    // Phase 2: self-registration. Separate from the block above because this
+    // action runs BEFORE a node_id exists — it's what creates one. Manual
+    // provisioning (the block above) still works unchanged; this is an
+    // additional path for a brand-new gateway device.
+    if ($action === 'starlink-create-enrollment-token') {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        $displayName = trim((string)($parsed['display_name'] ?? ''));
+        $country     = trim((string)($parsed['country'] ?? '')) ?: 'Norway';
+        // Shown ONCE in plaintext, same convention as starlink-generate-token
+        // above — only its SHA-256 is persisted (see st_create_enrollment_token()
+        // for why this is a fast hash, unlike the heartbeat token).
+        $token = st_create_enrollment_token($db, $auth_user, $displayName, $country);
+        api_ok([
+            'enrollment_token' => $token,
+            'expires_in'       => STARLINK_ENROLLMENT_TTL_SECS,
+        ]);
+    }
     if ($action === 'send-message') {
         // In-app message to one device ('' target = broadcast to all).
         // No real push transport exists (no FCM): clients poll get-messages
@@ -1431,7 +1450,10 @@ switch ($action) {
         }
         unset($n);
         $log = $db->query("SELECT * FROM starlink_admin_log ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
-        api_ok(['nodes' => $nodes, 'log' => $log]);
+        // Phase 2: pending self-enrollment tokens (never the raw token itself
+        // — that's a launch-time secret shown once by starlink-create-enrollment-token).
+        $pendingEnrollments = st_list_pending_enrollments($db);
+        api_ok(['nodes' => $nodes, 'log' => $log, 'pending_enrollments' => $pendingEnrollments]);
         break;
     }
 
