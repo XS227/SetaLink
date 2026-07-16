@@ -418,3 +418,67 @@ than an on-device test would tell us.
 **Not yet verified:** this was written on the VPS (1GB RAM, no local
 builds per house rules) — needs an actual device/simulator pass before
 the flag flips. Nothing here has been type-checked or run.
+
+### 2026-07-16 — B-22: Game moved into the footer tab bar; embedding study
+
+**Decided by Agent B:** keep the WebView embed A-10 already built
+(`GameScreen.tsx` + `ssoService.ts`), just rehome it from a Stack overlay
+into a `Tab.Screen` inside `MainTabs` (`AppNavigator.tsx`), so switching to
+the game feels like a normal tab instead of a "leaving the app" push
+transition. `types.ts`: `Game` moved from `RootStackParamList` to
+`MainTabParamList`. Footer (`BottomNav.tsx`): `TAB_KEYS` swaps `profile` →
+`game` (⚔); `Profile` stays registered as a `Tab.Screen` (still reachable —
+`TopBar` has its own profile icon on every screen), it's just off the
+visible footer now. Dropped the footer's unread-badge logic that lived on
+the old `profile` tab entry — `TopBar` already renders an independent inbox
+badge everywhere, so it was a duplicate, not a loss.
+
+**Embedding study — WebView vs. deeper embed, and why WebView wins here:**
+- **WebView (chosen, already built):** game stays a remote Next.js app, zero
+  APK size cost, ships/patches independently of app releases, no RN
+  reimplementation of Shahnameh's UI. Cost: one JS-bridge hop for anything
+  needing tighter native integration (haptics, push-token handoff, etc.) —
+  none of that is asked for in B-22, so the cost isn't paid today.
+- **Native re-embed (rejected):** would mean rebuilding Shahnameh's screens
+  in RN or shipping a second engine in-app — large scope, large APK/RAM
+  cost, and forks the game's UI from its own web release cadence. Nothing
+  in the B-16..B-25 spec asks for native-level integration (no haptics,
+  no shared navigation chrome), so there's no requirement this would
+  satisfy that WebView doesn't already.
+- **Micro-frontend / native module bridge (rejected):** more work than
+  either option for a win that only matters if the game needs to share
+  state with the VPN/identity stores in real time. It doesn't today —
+  `sso` JWT + `device_id` in the URL is the whole interface.
+- **Conclusion:** WebView, unchanged from A-10, is the right embed for what
+  B-22 actually asks (a footer tab, not deeper integration). Revisit only
+  if a future task needs bidirectional native↔game messaging.
+
+**Identity keys into the game — reviewed, no client change made:**
+B-22's spec mentions "two identity keys: Telegram id and ReaLink id."
+`buildGameUrl()` (`ssoService.ts`) currently passes `device_id` (the
+ReaLink/device identity) and, when linked, an `sso` JWT — no explicit
+`telegram_id` param. Traced where a Telegram identity would come from:
+`GameScreen.tsx`'s unlinked-state CTA already opens
+`https://t.me/shahnameh_bot?start=linkvpn_<deviceId>` — i.e. the
+Telegram↔ReaLink linkage is established server-side, inside the Shahnameh
+bot's `/start linkvpn_*` handler, which is Shahnameh backend code this repo
+doesn't own. So the "two keys" are already both present in the system —
+just not both in the URL: the game's own backend can already resolve
+`device_id` → linked Telegram account via that bot flow. Not adding a raw
+`telegram_id` client param since the app has no legitimate way to know a
+user's Telegram id in the first place (only the bot linking flow does).
+
+**Open question for Agent A / Shahnameh backend (posted to coord board):**
+confirm the game's WebView-side session lookup keys off `device_id` from
+the URL (not something else), so the `linkvpn_<deviceId>` bot handshake and
+`buildGameUrl`'s `device_id` param actually resolve to the same account. If
+they don't match today, that's the one gap left before this is fully wired.
+
+**Not yet verified:** same house-rules caveat as above — no `tsc`/Jest run
+on this VPS (1GB RAM, no local builds). Navigation restructuring reviewed
+by hand: `SCREEN_TO_TAB`/`TAB_TO_SCREEN` both extended for `Game`↔`game`,
+the dead `if (tab === 'game')` special-case in `makeOnNavigate` removed
+(now falls through to the generic `TAB_TO_SCREEN` lookup, which resolves
+correctly since `Game` is a sibling tab now), old `Stack.Screen name="Game"`
+removed. Needs an on-device pass to confirm the tab bar renders correctly
+and the WebView still loads/authenticates as before.

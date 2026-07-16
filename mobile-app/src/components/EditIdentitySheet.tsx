@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { useT } from '../i18n';
-import { useIdentityStore } from '../stores/identityStore';
+import { useIdentityStore, Persona } from '../stores/identityStore';
 import { useAuthStore } from '../stores/authStore';
 import {
   AVATAR_EMOJIS, AVATAR_COLORS, normalizeHandle, validateHandle,
@@ -26,14 +26,15 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
   const { t } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const {
-    handle, displayName, avatarEmoji, avatarColor,
-    setHandle, setDisplayName, setAvatar,
+    handle, displayName, avatarEmoji, avatarColor, persona,
+    setHandle, setDisplayName, setAvatar, setPersona,
   } = useIdentityStore();
 
-  const [emoji, setEmoji]   = useState(avatarEmoji);
-  const [color, setColor]   = useState(avatarColor);
-  const [name, setName]     = useState(displayName);
+  const [emoji, setEmoji]     = useState(avatarEmoji);
+  const [color, setColor]     = useState(avatarColor);
+  const [name, setName]       = useState(displayName);
   const [handleText, setHandleText] = useState(handle ?? '');
+  const [pickedPersona, setPickedPersona] = useState<Persona>(persona);
   const [avail, setAvail]   = useState<AvailState>('idle');
   const [saving, setSaving] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,6 +44,7 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
     if (visible) {
       setEmoji(avatarEmoji); setColor(avatarColor);
       setName(displayName); setHandleText(handle ?? ''); setAvail('idle');
+      setPickedPersona(persona);
     }
   }, [visible]);  // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -85,6 +87,7 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
     setSaving(true);
     setAvatar(emoji, color);
     setDisplayName(name);
+    if (pickedPersona !== persona) setPersona(pickedPersona);
     if (!unchanged && !errorKey) {
       const r = await reserveHandle(normalized, deviceId);
       setHandle(normalized, r.source === 'backend' && r.available ? 'reserved' : 'local');
@@ -138,6 +141,27 @@ export function EditIdentitySheet({ visible, onClose }: Props) {
                   activeOpacity={0.7}
                 />
               ))}
+            </View>
+
+            {/* Persona (B-20: King or Queen?) */}
+            <Text style={styles.section}>{t('ob.persona.title')}</Text>
+            <View style={styles.personaRow}>
+              <TouchableOpacity
+                style={[styles.personaBtn, pickedPersona === 'king' && styles.personaBtnActive]}
+                onPress={() => setPickedPersona('king')}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.personaEmoji}>👑</Text>
+                <Text style={styles.personaLabel}>{t('ob.persona.king')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.personaBtn, pickedPersona === 'queen' && styles.personaBtnActive]}
+                onPress={() => setPickedPersona('queen')}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.personaEmoji}>👸</Text>
+                <Text style={styles.personaLabel}>{t('ob.persona.queen')}</Text>
+              </TouchableOpacity>
             </View>
 
             {/* Handle */}
@@ -211,6 +235,12 @@ const styles = StyleSheet.create({
   colorRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing[2] },
   colorDot:     { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: 'transparent' },
   colorDotActive:{ borderColor: Colors.text.primary },
+
+  personaRow:   { flexDirection: 'row', gap: Spacing[3] },
+  personaBtn:   { flex: 1, alignItems: 'center', gap: 4, paddingVertical: Spacing[3], borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface },
+  personaBtnActive: { borderColor: Colors.gold[400], backgroundColor: Colors.gold[400] + '1A' },
+  personaEmoji: { fontSize: 28 },
+  personaLabel: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.secondary },
 
   handleField:  { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3] },
   at:           { fontSize: Typography.size.md, color: Colors.text.secondary },

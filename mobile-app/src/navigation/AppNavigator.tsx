@@ -3,7 +3,9 @@
  *
  * Stack:
  *   Splash → (boot sequence) → Auth | Main
- *   Main   → BottomTabs (Home | Servers | AI | Activity | Profile)
+ *   Main   → BottomTabs (Home | Servers | AI | Activity | Profile | Game)
+ *            Footer shows Home | Servers | AI | Game — Profile stays a tab
+ *            (reachable via TopBar) but isn't in the visible footer (B-22).
  *   Settings, Diagnostics → slide_from_right stack screens
  *
  * Boot sequence:
@@ -72,6 +74,7 @@ const SCREEN_TO_TAB: Record<string, NavTab> = {
   AI:       'ai',
   Activity: 'activity',
   Profile:  'profile',
+  Game:     'game',
 };
 
 const TAB_TO_SCREEN: Record<NavTab, keyof MainTabParamList> = {
@@ -80,6 +83,7 @@ const TAB_TO_SCREEN: Record<NavTab, keyof MainTabParamList> = {
   ai:       'AI',
   activity: 'Activity',
   profile:  'Profile',
+  game:     'Game',
 };
 
 type ScreenAdapterProps = { navigation: any; route: any };
@@ -92,7 +96,6 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
     if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
-    if ((tab as string) === 'game')            { navigation.navigate('Game');           return; }
     if ((tab as string) === 'trustai-link')    { navigation.navigate('TrustAiLink');    return; }
     navigation.navigate(TAB_TO_SCREEN[tab] ?? 'Home');
   };
@@ -254,6 +257,10 @@ function MainTabs() {
         <Tab.Screen name="AI"       component={AIAdapter} />
         <Tab.Screen name="Activity" component={ActivityAdapter} />
         <Tab.Screen name="Profile"  component={ProfileAdapter} />
+        {/* B-22: Game replaces Profile's slot in the visible footer (see
+            BottomNav.TAB_KEYS). Profile stays registered here so it's still
+            reachable via TopBar's profile icon, just no longer in the footer. */}
+        <Tab.Screen name="Game"     component={GameAdapter} />
       </Tab.Navigator>
 
       {/* Optional update banner — dismissible */}
@@ -359,6 +366,11 @@ function AIAdapter({ navigation, route }: ScreenAdapterProps) {
 
 function ActivityAdapter({ navigation, route }: ScreenAdapterProps) {
   return <ActivityScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'activity'} onNavigate={makeOnNavigate(navigation)} />;
+}
+
+function GameAdapter() {
+  // Tab screen now (B-22) — no back button, the footer is how you leave it.
+  return <GameScreen />;
 }
 
 function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
@@ -601,14 +613,6 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <BypassAppsScreen onBack={() => navigation.goBack()} />
-          )}
-        </Stack.Screen>
-        <Stack.Screen
-          name="Game"
-          options={{ animation: 'slide_from_right' }}
-        >
-          {({ navigation }) => (
-            <GameScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen
