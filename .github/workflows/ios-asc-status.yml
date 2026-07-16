@@ -1,0 +1,61 @@
+name: iOS — ASC build status
+
+# Read-only: asks App Store Connect whether an uploaded build has finished
+# Apple-side processing (PROCESSING → VALID) and is visible in TestFlight.
+# Reuses the same ASC_* secrets as ios-testflight.yml. Never builds anything.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'CFBundleVersion to check'
+        required: false
+        default: '94'
+
+jobs:
+  status:
+    name: Query build processing state
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Query App Store Connect
+        env:
+          ASC_KEY_ID:      ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID:   ${{ secrets.ASC_ISSUER_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          BUILD_NUMBER:    ${{ github.event.inputs.build_number }}
+          BUNDLE_ID:       no.setalink.realink
+        run: |
+          pip install --quiet pyjwt cryptography
+          python3 - <<'PY'
+          import json, os, time, urllib.request
+
+          import jwt
+
+          now = int(time.time())
+          token = jwt.encode(
+              {"iss": os.environ["ASC_ISSUER_ID"], "iat": now - 30,
+               "exp": now + 1200, "aud": "appstoreconnect-v1"},
+              os.environ["ASC_PRIVATE_KEY"], algorithm="ES256",
+              headers={"kid": os.environ["ASC_KEY_ID"]})
+
+          def get(url):
+              req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+              with urllib.request.urlopen(req) as r:
+                  return json.load(r)
+
+          apps = get("https://api.appstoreconnect.apple.com/v1/apps"
+                     f"?filter[bundleId]={os.environ['BUNDLE_ID']}")
+          app_id = apps["data"][0]["id"]
+
+          builds = get("https://api.appstoreconnect.apple.com/v1/builds"
+                       f"?filter[app]={app_id}&filter[version]={os.environ['BUILD_NUMBER']}"
+                       "&sort=-uploadedDate&limit=5"
+                       "&fields[builds]=version,processingState,uploadedDate,expired")
+          if not builds["data"]:
+              print(f"RESULT version={os.environ['BUILD_NUMBER']} processingState=NOT_FOUND")
+          for b in builds["data"]:
+              a = b["attributes"]
+              print(f"RESULT version={a['version']} processingState={a['processingState']}"
+                    f" uploadedDate={a['uploadedDate']} expired={a['expired']}")
+          PY
