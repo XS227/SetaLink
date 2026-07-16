@@ -1,5 +1,7 @@
-// Community rank progression: warrior → pahlavan (3 verified invites) → king (10).
-// Rank counts TrustAI-verified invites (activeInviteCount), not raw invites.
+// Community rank progression: warrior → pahlavan (3) → champion (6) → king (10)
+// — the 3/6/10 tier ladder TrustAI uses (B-21: single source of truth, no
+// app-invented thresholds). Rank counts TrustAI-verified invites
+// (activeInviteCount), not raw invites.
 
 import { getCommunityRank, getClanId, RANK_THRESHOLDS } from '../components/CommunityRankCard';
 
@@ -16,12 +18,20 @@ describe('getCommunityRank', () => {
     expect(getCommunityRank(RANK_THRESHOLDS.hero - 1).key).toBe('warrior');
     const r = getCommunityRank(RANK_THRESHOLDS.hero);
     expect(r.key).toBe('hero');
+    expect(r.next?.key).toBe('champion');
+    expect(r.next?.needed).toBe(RANK_THRESHOLDS.champion - RANK_THRESHOLDS.hero);
+  });
+
+  it('promotes to champion at the champion threshold', () => {
+    expect(getCommunityRank(RANK_THRESHOLDS.champion - 1).key).toBe('hero');
+    const r = getCommunityRank(RANK_THRESHOLDS.champion);
+    expect(r.key).toBe('champion');
     expect(r.next?.key).toBe('king');
-    expect(r.next?.needed).toBe(RANK_THRESHOLDS.king - RANK_THRESHOLDS.hero);
+    expect(r.next?.needed).toBe(RANK_THRESHOLDS.king - RANK_THRESHOLDS.champion);
   });
 
   it('crowns a king at the king threshold, with no further rank', () => {
-    expect(getCommunityRank(RANK_THRESHOLDS.king - 1).key).toBe('hero');
+    expect(getCommunityRank(RANK_THRESHOLDS.king - 1).key).toBe('champion');
     const r = getCommunityRank(RANK_THRESHOLDS.king);
     expect(r.key).toBe('king');
     expect(r.next).toBeNull();

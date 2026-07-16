@@ -26,7 +26,17 @@ const STROKE = 20;
 const R = (SIZE - STROKE) / 2;
 const C = 2 * Math.PI * R;
 
-export function ReferralEarningsDonut({ deviceId, onInvite }: { deviceId: string; onInvite?: () => void }) {
+interface Props {
+  deviceId: string;
+  onInvite?: () => void;
+  /** B-21: render as a plain View instead of its own GlassCard, so it can sit
+   *  inside a shared "one referral section" wrapper without nested cards. */
+  bare?: boolean;
+  /** Hide the own "Invite friends" CTA — the wrapper renders one shared CTA. */
+  hideInviteBtn?: boolean;
+}
+
+export function ReferralEarningsDonut({ deviceId, onInvite, bare, hideInviteBtn }: Props) {
   const { t } = useT();
   const [data, setData] = useState<ReferralEarnings | null>(null);
 
@@ -49,8 +59,11 @@ export function ReferralEarningsDonut({ deviceId, onInvite }: { deviceId: string
     return seg;
   });
 
+  const Wrapper = bare ? View : GlassCard;
+  const wrapperProps = bare ? { style: styles.bareCard } : { style: styles.card, glowColor: Colors.gold[400] };
+
   return (
-    <GlassCard glowColor={Colors.gold[400]} style={styles.card}>
+    <Wrapper {...(wrapperProps as any)}>
       <View style={styles.header}>
         <Text style={styles.title}>{t('earn.title')}</Text>
         <Text style={styles.pct}>{data.pct}%</Text>
@@ -94,15 +107,18 @@ export function ReferralEarningsDonut({ deviceId, onInvite }: { deviceId: string
         </View>
       </View>
 
-      <TouchableOpacity style={styles.inviteBtn} onPress={onInvite} accessibilityLabel={t('earn.invite')}>
-        <Text style={styles.inviteBtnText}>{t('earn.invite')}</Text>
-      </TouchableOpacity>
-    </GlassCard>
+      {!hideInviteBtn && (
+        <TouchableOpacity style={styles.inviteBtn} onPress={onInvite} accessibilityLabel={t('earn.invite')}>
+          <Text style={styles.inviteBtnText}>{t('earn.invite')}</Text>
+        </TouchableOpacity>
+      )}
+    </Wrapper>
   );
 }
 
 const styles = StyleSheet.create({
   card:       { padding: Spacing[4], marginBottom: Spacing[4] },
+  bareCard:   { gap: 0 },
   header:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title:      { color: Colors.text.primary, fontSize: 15, fontFamily: Typography.family.heading },
   pct:        { color: Colors.gold[400], fontSize: 18, fontFamily: Typography.family.heading },

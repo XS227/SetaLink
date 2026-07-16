@@ -19,6 +19,7 @@ import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore } from '../stores/dmStore';
 import { useVpnStore } from '../stores/vpnStore';
 import { useAuthStore } from '../stores/authStore';
+import { useIdentityStore } from '../stores/identityStore';
 
 function IconBtn({ glyph, onPress, badge, label, color, ring }: {
   glyph: string; onPress: () => void; badge?: number; label: string;
@@ -79,6 +80,24 @@ function PowerBtn({ onNavigate }: { onNavigate: (tab: string) => void }) {
   );
 }
 
+// B-21: the profile entry point now that the footer's Profile tab is gone
+// (B-22 replaced it with Game) — shows the user's own avatar emoji instead of
+// a generic glyph, so it reads as "you" and doubles as the primary way back
+// into the profile screen from everywhere.
+function AvatarChip({ onPress }: { onPress: () => void }) {
+  const avatarEmoji = useIdentityStore((s) => s.avatarEmoji);
+  const avatarColor = useIdentityStore((s) => s.avatarColor);
+
+  return (
+    <TouchableOpacity
+      style={[styles.avatarChip, { borderColor: avatarColor, backgroundColor: avatarColor + '22' }]}
+      onPress={onPress} activeOpacity={0.7} accessibilityLabel="Profile" hitSlop={8}
+    >
+      <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
+    </TouchableOpacity>
+  );
+}
+
 export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
   const unreadDm       = useDMStore((s) => s.messages.filter((m) => m.direction === 'in' && !m.read).length);
@@ -88,7 +107,7 @@ export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
     <View style={styles.bar}>
       <PowerBtn onNavigate={onNavigate} />
       <IconBtn glyph="✉" label="Inbox"    onPress={() => onNavigate('inbox')} badge={unread} />
-      <IconBtn glyph="◍" label="Profile"  onPress={() => onNavigate('profile')} />
+      <AvatarChip onPress={() => onNavigate('profile')} />
       <IconBtn glyph="⚙" label="Settings" onPress={() => onNavigate('settings')} />
     </View>
   );
@@ -101,4 +120,6 @@ const styles = StyleSheet.create({
   badge:{ position: 'absolute', top: 3, right: 3, minWidth: 15, height: 15, borderRadius: 8,
           backgroundColor: '#FF6B6B', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
   badgeText: { color: '#fff', fontSize: 9, fontFamily: Typography.family.heading },
+  avatarChip:  { width: 38, height: 38, borderRadius: 19, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  avatarEmoji: { fontSize: 17 },
 });

@@ -357,14 +357,49 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         {/* Identity header (A-11) — avatar + @handle + nickname, tap to edit */}
         <IdentityHeader seedId={user.deviceId} fallbackId={primaryId} planLabel={planLabel} />
 
-        {/* Community standing — clan, rank (warrior→king) and TrustAI-verified
-            invites, so the profile feels like membership, not just a meter. */}
-        <CommunityRankCard
-          userId={user.userId || primaryId}
-          inviteCount={user.inviteCount}
-          activeInviteCount={user.activeInviteCount}
-          onInvite={handleShareReferral}
-        />
+        {/* Referral & community — B-21 declutter: ONE section (code + invitees
+            + TrustAI %) instead of three cards scattered across the screen.
+            Rank tiers (3/6/10) are defined once in
+            CommunityRankCard.RANK_THRESHOLDS — TrustAI's own ambassador tier
+            ladder, not a separate app-invented one. */}
+        <GlassCard style={styles.referralHubCard} glowColor={Colors.gold[400]}>
+          <CommunityRankCard
+            userId={user.userId || primaryId}
+            inviteCount={user.inviteCount}
+            activeInviteCount={user.activeInviteCount}
+            onInvite={handleShareReferral}
+            bare
+            hideInviteBtn
+          />
+
+          <View style={styles.referralHubDivider} />
+
+          <ReferralEarningsDonut deviceId={user.deviceId} onInvite={handleShareReferral} bare hideInviteBtn />
+
+          <View style={styles.referralHubDivider} />
+
+          <View style={styles.referralHeader}>
+            <Text style={styles.cardLabel}>{t('pr.referralCode')}</Text>
+            <View style={styles.rewardBadge}>
+              <Text style={styles.rewardBadgeText}>{t('pr.free30days')}</Text>
+            </View>
+          </View>
+          <Text style={styles.referralDesc}>{t('pr.referDesc')}</Text>
+          <Text style={styles.deviceOs}>{referralLink}</Text>
+          <View style={styles.referralCode}>
+            <Text style={styles.referralCodeText}>{referralDisplayCode}</Text>
+            <TouchableOpacity style={styles.qrBtn} activeOpacity={0.75} onPress={() => setShowQr(true)}>
+              <Text style={styles.qrBtnText}>QR</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
+              <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8} onPress={handleShareReferral}>
+            <Text style={styles.shareBtnText}>{t('pr.shareLink')}</Text>
+          </TouchableOpacity>
+        </GlassCard>
 
         {/* Subscription card */}
         <GlassCard glowColor={Colors.emerald[400]} style={styles.subCard}>
@@ -565,33 +600,6 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </GlassCard>
         </TouchableOpacity>
 
-        {/* Ambassador earnings — % of every invitee's usage, visualized. */}
-        <ReferralEarningsDonut deviceId={user.deviceId} onInvite={handleShareReferral} />
-
-        {/* Referral */}
-        <GlassCard style={styles.referralCard} glowColor={Colors.blue[400]}>
-          <View style={styles.referralHeader}>
-            <Text style={styles.cardLabel}>{t('pr.referralCode')}</Text>
-            <View style={styles.rewardBadge}>
-              <Text style={styles.rewardBadgeText}>{t('pr.free30days')}</Text>
-            </View>
-          </View>
-          <Text style={styles.referralDesc}>{t('pr.referDesc')}</Text>
-          <Text style={styles.deviceOs}>{referralLink}</Text>
-          <View style={styles.referralCode}>
-            <Text style={styles.referralCodeText}>{referralDisplayCode}</Text>
-            <TouchableOpacity style={styles.qrBtn} activeOpacity={0.75} onPress={() => setShowQr(true)}>
-              <Text style={styles.qrBtnText}>QR</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.copyBtn} activeOpacity={0.75} onPress={handleCopyReferral}>
-              <Text style={styles.copyBtnText}>{t('pr.copy')}</Text>
-            </TouchableOpacity>
-          </View>
-          <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8} onPress={handleShareReferral}>
-            <Text style={styles.shareBtnText}>{t('pr.shareLink')}</Text>
-          </TouchableOpacity>
-        </GlassCard>
-
         {/* Invite reward milestones */}
         <GlassCard style={styles.msCard}>
           <View style={styles.referralHeader}>
@@ -775,7 +783,9 @@ const styles = StyleSheet.create({
   inboxBadge:       { backgroundColor: 'rgba(255,80,80,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.35)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
   inboxBadgeText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FF5050' },
 
-  referralCard:     { gap: Spacing[3] },
+  // B-21: one merged referral/community card (rank + earnings donut + code)
+  referralHubCard:    { gap: Spacing[3] },
+  referralHubDivider: { height: 1, backgroundColor: Colors.border.subtle },
   referralHeader:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   rewardBadge:      { backgroundColor: 'rgba(51,153,255,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(51,153,255,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
   rewardBadgeText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.blue[400] },
