@@ -174,7 +174,7 @@ public URL and verify the bytes, the same way a real device would.
   gh run list --repo XS227/SetaLink --workflow=ios-asc-status.yml --limit 1
   gh run view <run-id> --repo XS227/SetaLink --log | grep RESULT
   ```
-  **Pass:** `processingState=VALID`. **Fail:** `PROCESSING` means wait and re-check (can take Apple several minutes to tens of minutes); `INVALID`/`FAILED` means stop and investigate in App Store Connect directly before telling any tester.
+  **Pass:** `processingState=VALID`. **Fail:** `PROCESSING` means wait and re-check (can take Apple several minutes to tens of minutes); `INVALID`/`FAILED` means stop and investigate in App Store Connect directly before telling any tester. **`NOT_FOUND`** is a real, observed transient state (confirmed 2026-07-17 running this exact check right after a real upload finished) — Apple hasn't indexed the build into a queryable state yet, distinct from `PROCESSING` (indexed, still working). Wait ~1-2 minutes after the upload workflow completes before the first check, not immediately.
 
 - [ ] **7.3** Manual confirmation in App Store Connect (`appstoreconnect.apple.com` → your app → TestFlight tab): the build appears, is attached to the intended tester group, and at least one tester's device shows it as installable.
   **Pass:** visually confirmed. **Fail:** even if 7.1/7.2 passed, don't skip this — tester-group assignment is not visible from the API call above.
