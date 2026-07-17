@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals','insights','seoranks','starlink','tunnellogs'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -97,6 +97,14 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
       <?= icon('chart') ?> Network Intel
     </div>
+    <div class="nav-item<?= $page==='insights'?' active':'' ?>" data-page="insights">
+      <?= icon('globe') ?> User Insights
+    </div>
+    <div class="nav-item<?= $page==='seoranks'?' active':'' ?>" data-page="seoranks">
+      <?= icon('chart') ?> SEO Ranks
+    <div class="nav-item<?= $page==='starlink'?' active':'' ?>" data-page="starlink">
+      <?= icon('globe') ?> Starlink
+    </div>
     <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
       <?= icon('chart') ?> AI Diagnosis
     </div>
@@ -133,6 +141,10 @@ function icon(string $name): string {
     <button class="menu-toggle btn btn-icon btn-ghost" id="menuToggle"><?= icon('menu') ?></button>
     <span class="topbar-title" id="pageTitle">Dashboard</span>
     <span class="topbar-sub" id="pageSub"></span>
+    <div class="gsearch" id="gSearchWrap">
+      <input class="input gsearch-input" id="gSearch" type="search" placeholder="Find user… (part of an ID works)" autocomplete="off" spellcheck="false">
+      <div class="gsearch-drop" id="gSearchDrop" hidden></div>
+    </div>
     <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
       <span class="refresh-ts" id="globalTs"></span>
       <button class="btn btn-ghost btn-sm" id="refreshBtn" title="Refresh"><?= icon('refresh') ?> Refresh</button>
@@ -331,39 +343,276 @@ function icon(string $name): string {
     </div>
 
     <!-- ============================================================ -->
-    <!-- VIEW: ADS & REVENUE                                          -->
+    <!-- VIEW: USER INSIGHTS                                          -->
+    <!-- Aggregate, privacy-safe. Source: admin/api.php?action=user-  -->
+    <!-- insights. No per-user destination logging: carriers are      -->
+    <!-- ASN-derived operator names, reachability is the app's own    -->
+    <!-- connectivity probes. See public/api.php normalize_carrier(). -->
     <!-- ============================================================ -->
-    <div data-view="ads" hidden>
-      <div id="adsConfigBanner" class="panel" style="margin-bottom:1rem;display:none">
-        <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="adsConfigBannerText"></div>
+    <div data-view="insights" hidden>
+      <div class="stat-grid" id="insTotals">
+        <div class="stat-card"><div class="stat-label">Total Devices</div><div class="stat-value" id="insTotalDevices">—</div><div class="stat-sub">all registered</div></div>
+        <div class="stat-card"><div class="stat-label">Active 24h</div><div class="stat-value" id="insActive24">—</div><div class="stat-sub" id="insActive7">— in 7d</div></div>
+        <div class="stat-card"><div class="stat-label">Premium</div><div class="stat-value" id="insPremium">—</div><div class="stat-sub">paid / gifted</div></div>
+        <div class="stat-card"><div class="stat-label">Data Volume</div><div class="stat-value" id="insTotalGb">—</div><div class="stat-sub">GB, all sessions</div></div>
+        <div class="stat-card"><div class="stat-label">Longest Session</div><div class="stat-value" id="insLongest">—</div><div class="stat-sub">single connection</div></div>
       </div>
 
-      <div class="stat-grid">
-        <div class="stat-card"><div class="stat-label">Ads Watched (today)</div><div class="stat-value" id="adsToday">—</div><div class="stat-sub" id="adsWeek">— this week</div></div>
-        <div class="stat-card"><div class="stat-label">Est. Revenue (30d)</div><div class="stat-value" id="adsRev30">—</div><div class="stat-sub" id="adsRevAll">— all time</div></div>
-        <div class="stat-card"><div class="stat-label">GB Granted from Ads</div><div class="stat-value" id="adsGbGranted">—</div><div class="stat-sub">ledger credited</div></div>
-        <div class="stat-card"><div class="stat-label">Users Saved</div><div class="stat-value" id="adsSaved">—</div><div class="stat-sub">from zero-data deadlock</div></div>
+      <!-- Reachability: from the app's own connectivity probes (probe_* in -->
+      <!-- connect_telemetry), never per-user destination logs. -->
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Service Reachability <span class="panel-sub" id="insReachSub">from in-app connectivity probes · 30d</span></span></div>
+        <div class="panel-body">
+          <div class="stat-grid">
+            <div class="stat-card"><div class="stat-label">Instagram</div><div class="stat-value" id="insReachInstagram">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Telegram</div><div class="stat-value" id="insReachTelegram">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Google</div><div class="stat-value" id="insReachGoogle">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Cloudflare</div><div class="stat-value" id="insReachCloudflare">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Apple</div><div class="stat-value" id="insReachApple">—</div><div class="stat-sub">% probes OK</div></div>
+          </div>
+        </div>
       </div>
 
       <div class="two-col">
         <div class="panel">
-          <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Rewarded Ads <span class="panel-sub">per day, 30d</span></span></div>
-          <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chAds"></canvas></div></div>
+          <div class="panel-header"><span class="panel-title">📡 Mobile Carriers <span class="panel-sub">ASN-derived · never raw IP</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Carrier</th><th>Devices</th></tr></thead>
+              <tbody id="insCarrierTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
         </div>
         <div class="panel">
-          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Recovery Quota <span class="panel-sub">hidden-reserve usage</span></span></div>
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Geography <span class="panel-sub">by country</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Country</th><th>Devices</th></tr></thead>
+              <tbody id="insGeoTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Platforms</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Platform</th><th>Devices</th></tr></thead>
+              <tbody id="insPlatformTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Device Brands <span class="panel-sub">top 10</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Brand</th><th>Devices</th></tr></thead>
+              <tbody id="insBrandTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('package') ?> Plans</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Plan</th><th>Devices</th></tr></thead>
+              <tbody id="insPlanTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Protocols <span class="panel-sub">sessions · GB</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Protocol</th><th>Sessions</th><th>GB</th></tr></thead>
+              <tbody id="insProtocolTbl"><tr><td colspan="3" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">🛰️ Nodes <span class="panel-sub">connects · 30d</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Node</th><th>Connects</th></tr></thead>
+              <tbody id="insNodeTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Longest Sessions</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Device</th><th>Protocol</th><th>Duration</th><th>MB</th><th>Day</th></tr></thead>
+              <tbody id="insLongestTbl"><tr><td colspan="5" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: SEO RANKS                                              -->
+    <!-- Target keyword positions over time. Source: admin/api.php?    -->
+    <!-- action=seo-ranks. Positions are recorded snapshots (manual    -->
+    <!-- entry now; can be fed from the Google Search Console API).    -->
+    <!-- ============================================================ -->
+    <div data-view="seoranks" hidden>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted)">
+          Track where target search terms rank on Google over time. Lower position = better (1 = top).
+          Real positions come from Google Search Console; you can also log a manual snapshot below.
+          <span style="color:var(--muted-2)">Δ vs previous: green = moved up.</span>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header"><span class="panel-title">🔎 Google Search Console <span class="panel-sub" id="gscStatus">checking…</span></span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <label style="font-size:.8rem;color:var(--muted)">Property
+              <input type="text" id="gscSite" class="input" style="width:230px" placeholder="https://setalink.no/">
+            </label>
+            <button class="btn btn-ghost" id="gscSaveBtn" type="button">Save</button>
+            <button class="btn btn-primary" id="gscSyncBtn" type="button">Sync from Search Console</button>
+            <span id="gscMsg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+          </div>
+          <div id="gscSetup" style="display:none;margin-top:.7rem;font-size:.78rem;color:var(--muted-2);line-height:1.7">
+            <strong>Not connected yet.</strong> One-time setup: 1) Google Cloud → enable “Search Console API”, create a
+            <em>Service Account</em> → JSON key. 2) In Search Console → Settings → Users → add the service-account e-mail
+            (…@….iam.gserviceaccount.com) with read access. 3) Upload the JSON to
+            <code>/var/www/setalink/data/gsc-service-account.json</code> (chmod 600). Then click Sync.
+          </div>
+          <div id="gscUntracked" style="margin-top:.7rem"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Position Over Time <span class="panel-sub">lower is better</span></span></div>
+        <div class="panel-body"><div style="position:relative;height:320px"><canvas id="seoChart"></canvas></div></div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Tracked Keywords <span class="panel-sub" id="seoKwCount">top 10 · Iran intent</span></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="tbl">
+            <thead><tr><th>Keyword</th><th>Current</th><th>Δ</th><th>Best</th><th>Points</th><th>Last measured</th></tr></thead>
+            <tbody id="seoRankTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Log a Snapshot <span class="panel-sub">enter today's positions · blank = skip</span></span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:.6rem;align-items:center;margin-bottom:.8rem;flex-wrap:wrap">
+            <label style="font-size:.8rem;color:var(--muted)">Date <input type="date" id="seoDate" class="input" style="width:auto"></label>
+            <input type="text" id="seoNewKw" class="input" placeholder="+ add a new keyword to track" style="flex:1;min-width:180px">
+            <button class="btn btn-ghost" id="seoAddKwBtn" type="button">Add keyword</button>
+          </div>
+          <div id="seoInputGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.5rem"></div>
+          <div style="margin-top:.9rem;display:flex;gap:.6rem">
+            <button class="btn btn-primary" id="seoSaveBtn" type="button">Save snapshot</button>
+            <span id="seoSaveMsg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: ADS & REVENUE                                          -->
+    <!-- ============================================================ -->
+    <div data-view="ads" hidden>
+
+      <!-- ── NOC Alerts ────────────────────────────────────────────── -->
+      <div id="nocAlertBar" style="display:none;margin-bottom:.75rem"></div>
+
+      <!-- ── Filter bar ─────────────────────────────────────────────── -->
+      <div class="panel" style="padding:.45rem 1rem;margin-bottom:.9rem">
+        <div style="display:flex;gap:.35rem;align-items:center;flex-wrap:wrap">
+          <span style="font-size:.73rem;opacity:.5;white-space:nowrap">Periode:</span>
+          <button class="btn btn-ghost btn-sm noc-filter" data-days="1">I dag</button>
+          <button class="btn btn-ghost btn-sm noc-filter" data-days="7">7 d</button>
+          <button class="btn btn-ghost btn-sm noc-filter active" data-days="30">30 d</button>
+          <button class="btn btn-ghost btn-sm noc-filter" data-days="60">60 d</button>
+          <button class="btn btn-ghost btn-sm noc-filter" data-days="custom">Egendefinert</button>
+          <div id="nocCustomRange" style="display:none;gap:.3rem;align-items:center">
+            <input type="date" id="nocFrom" class="input" style="padding:.2rem .45rem;font-size:.78rem;height:auto">
+            <span style="opacity:.4">→</span>
+            <input type="date" id="nocTo"   class="input" style="padding:.2rem .45rem;font-size:.78rem;height:auto">
+            <button class="btn btn-sm" id="nocCustomApply">Bruk</button>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:.4rem;align-items:center">
+            <span style="font-size:.7rem;opacity:.4" id="nocTs"></span>
+            <button class="btn btn-ghost btn-sm" id="adsNocRefresh"><?= icon('refresh') ?> Refresh</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── KPI cards ──────────────────────────────────────────────── -->
+      <div id="nocKpiGrid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:.5rem;margin-bottom:.9rem">
+        <!-- filled by JS -->
+      </div>
+
+      <!-- ── Hakim AI recommendation ────────────────────────────────── -->
+      <div class="panel" id="nocHakimCard" style="margin-bottom:.9rem;border-left:3px solid #d4af37">
+        <div class="panel-header">
+          <span class="panel-title">🤖 Hakim <span class="panel-sub" id="nocHakimBadge"></span></span>
+          <span style="font-size:.72rem;opacity:.45">AI-anbefaling · kun faktiske data</span>
+        </div>
+        <div class="panel-body" id="nocHakimBody"><div class="loading"><div class="spinner"></div></div></div>
+      </div>
+
+      <!-- ── Charts (2-col, 4 rows) ─────────────────────────────────── -->
+      <div class="two-col" style="margin-bottom:.75rem">
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Daglig inntekt</span></div>
+          <div class="panel-body"><div style="position:relative;height:240px"><canvas id="chNocRev"></canvas></div></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Daglige rewarded views</span></div>
+          <div class="panel-body"><div style="position:relative;height:240px"><canvas id="chNocViews"></canvas></div></div></div>
+      </div>
+      <div class="two-col" style="margin-bottom:.75rem">
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> eCPM over tid</span></div>
+          <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocEcpm"></canvas></div></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Fill rate</span></div>
+          <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocFill"></canvas></div></div></div>
+      </div>
+      <div class="two-col" style="margin-bottom:.75rem">
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('person') ?> Revenue per bruker (ARPDAU)</span></div>
+          <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocArpdau"></canvas></div></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('download') ?> GB utdelt</span></div>
+          <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocGb"></canvas></div></div></div>
+      </div>
+      <div class="two-col" style="margin-bottom:.75rem">
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('gift') ?> Installasjoner fra Telegram → RealGram</span></div>
+          <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocConv"></canvas></div></div></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Kumulativ inntekt — AdMob vs AdsGram</span></div>
+          <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocCumul"></canvas></div></div></div>
+      </div>
+
+      <!-- ── Legacy recovery stats (kept) ──────────────────────────── -->
+      <div id="adsConfigBanner" class="panel" style="margin-bottom:.75rem;display:none">
+        <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="adsConfigBannerText"></div>
+      </div>
+      <div class="two-col" style="margin-bottom:.75rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Rewarded Ads (AdMob, 30d) <span class="panel-sub">recovery engine</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:240px"><canvas id="chAds"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Recovery Quota</span></div>
           <div class="panel-body">
             <div class="stat-grid" style="grid-template-columns:1fr 1fr">
-              <div class="stat-card"><div class="stat-label">Recovery GB Used</div><div class="stat-value" id="adsRecGb">—</div><div class="stat-sub">metered to reserve</div></div>
-              <div class="stat-card"><div class="stat-label">Revenue / GB</div><div class="stat-value" id="adsRevGb">—</div><div class="stat-sub">est., from ads</div></div>
-              <div class="stat-card"><div class="stat-label">Cost / GB</div><div class="stat-value" id="adsCostGb">—</div><div class="stat-sub">egress estimate</div></div>
-              <div class="stat-card"><div class="stat-label">Margin / GB</div><div class="stat-value" id="adsMarginGb">—</div><div class="stat-sub">revenue − cost</div></div>
+              <div class="stat-card"><div class="stat-label">Today (AdMob)</div><div class="stat-value" id="adsToday">—</div><div class="stat-sub" id="adsWeek">— this week</div></div>
+              <div class="stat-card"><div class="stat-label">Revenue 30d</div><div class="stat-value" id="adsRev30">—</div><div class="stat-sub" id="adsRevAll">— all time</div></div>
+              <div class="stat-card"><div class="stat-label">GB Granted</div><div class="stat-value" id="adsGbGranted">—</div><div class="stat-sub">ledger</div></div>
+              <div class="stat-card"><div class="stat-label">Users Saved</div><div class="stat-value" id="adsSaved">—</div><div class="stat-sub">zero-data</div></div>
+              <div class="stat-card"><div class="stat-label">Recovery GB</div><div class="stat-value" id="adsRecGb">—</div><div class="stat-sub">reserve used</div></div>
+              <div class="stat-card"><div class="stat-label">Margin / GB</div><div class="stat-value" id="adsMarginGb">—</div><div class="stat-sub" id="adsRevGb">—</div></div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="panel" style="margin-top:1rem">
+      <div class="panel" style="margin-top:.5rem">
         <div class="panel-header"><span class="panel-title"><?= icon('person') ?> Suspicious Reward Events <span class="panel-sub" id="adsReviewCount">review queue</span></span></div>
         <div class="panel-body">
           <table class="data-table" style="width:100%">
@@ -373,7 +622,7 @@ function icon(string $name): string {
         </div>
       </div>
 
-      <div class="panel" style="margin-top:1rem">
+      <div class="panel" style="margin-top:.75rem">
         <div class="panel-header"><span class="panel-title">Config <span class="panel-sub">remote-tunable · no APK update needed</span></span>
           <button class="btn btn-small" id="adsCfgSave" type="button">Save config</button></div>
         <div class="panel-body">
@@ -756,6 +1005,32 @@ function icon(string $name): string {
           <table>
             <thead><tr><th>Time</th><th>Event</th><th>Node</th><th>Profile</th><th>SNI</th><th>Platform</th><th>Network</th><th>Country</th><th>Stage</th><th>Latency</th></tr></thead>
             <tbody id="intelFailTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: STARLINK (exit node, beta/testing — Phase 1)           -->
+    <!-- ============================================================ -->
+    <div data-view="starlink" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:1.1rem;font-weight:700">Starlink exit nodes</span>
+        <button class="btn btn-secondary btn-sm" id="stRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <span style="font-size:.72rem;color:var(--muted)">Never visible to normal users until enabled + allowlisted</span>
+      </div>
+
+      <div id="stNodesWrap"><div class="spinner"></div></div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header">
+          <span class="panel-title">Admin activity log</span>
+          <span class="panel-sub">enable/disable · maintenance · fallback · token rotation</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Node</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead>
+            <tbody id="stLogTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1608,6 +1883,9 @@ const pageTitles = {
   payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
+  insights:  ['User Insights', 'aggregate carriers · geo · devices · reachability · no per-user tracking'],
+  seoranks:  ['SEO Ranks', 'target keyword positions over time · Iran filtershekan intent'],
+  starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
@@ -1638,6 +1916,10 @@ document.querySelectorAll('.nav-item[data-page]').forEach(el=>el.addEventListene
 $('refreshBtn').addEventListener('click', ()=>views[activeView]?.init?.());
 $('dmRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadMessaging(false));
 $('nodesRefreshBtn')?.addEventListener('click', ()=>views.dashboard.loadNodes());
+$('seoSaveBtn')?.addEventListener('click', ()=>views.seoranks.save());
+$('seoAddKwBtn')?.addEventListener('click', ()=>views.seoranks.addKeyword());
+$('gscSyncBtn')?.addEventListener('click', ()=>views.seoranks.syncGsc());
+$('gscSaveBtn')?.addEventListener('click', ()=>views.seoranks.saveGscConfig());
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -1833,15 +2115,47 @@ views.analytics = {
   },
 };
 
-// ── VIEW: ADS & REVENUE ──────────────────────────────────────────────
-// Rewarded-ads revenue + recovery-quota overview. Reuses the Chart.js infra.
+// ── VIEW: ADS NOC ────────────────────────────────────────────────────
+// Full Ads Performance NOC: KPI cards, Hakim AI, 8 charts, alerts.
+// Two parallel loads: legacy ads-metrics (recovery) + new ads-perf-comparison (NOC).
 views.ads = {
-  chart: null,
+  charts: {},
+  nocDays: 30, nocFrom: null, nocTo: null,
   init() {
+    // Config save
     const btn = $('adsCfgSave');
-    if (btn) btn.onclick = () => this.save();   // onclick = idempotent across re-inits
+    if (btn) btn.onclick = () => this.save();
+
+    // Filter buttons
+    document.querySelectorAll('.noc-filter').forEach(b => {
+      b.onclick = () => {
+        document.querySelectorAll('.noc-filter').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        const days = b.dataset.days;
+        const cr = $('nocCustomRange');
+        if (days === 'custom') {
+          if (cr) cr.style.display = 'flex';
+        } else {
+          if (cr) cr.style.display = 'none';
+          this.nocDays = parseInt(days, 10);
+          this.nocFrom = null; this.nocTo = null;
+          this.loadNoc();
+        }
+      };
+    });
+    const applyBtn = $('nocCustomApply');
+    if (applyBtn) applyBtn.onclick = () => {
+      const f = ($('nocFrom') || {}).value;
+      const t = ($('nocTo')   || {}).value;
+      if (f && t && f <= t) { this.nocFrom = f; this.nocTo = t; this.loadNoc(); }
+    };
+    const rfr = $('adsNocRefresh');
+    if (rfr) rfr.onclick = () => this.loadNoc();
+
     this.load();
+    this.loadNoc();
   },
+
   async save() {
     const body = { action: 'save-ads-config' };
     document.querySelectorAll('#adsConfigForm input[data-cfg]').forEach(i => { body[i.dataset.cfg] = i.value; });
@@ -1855,7 +2169,16 @@ views.ads = {
       if (msg) msg.textContent = '✗ ' + e.message;
     }
   },
-  fmtUsd(n) { return '$' + (Number(n) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); },
+
+  fmtUsd(n, digits = 2) {
+    if (n == null) return '—';
+    return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: Math.max(digits, 4) });
+  },
+  fmtPct(n) { return n == null ? '—' : (Number(n) * 100).toFixed(1) + '%'; },
+  fmtRoi(n) { return n == null ? '—' : Number(n).toFixed(2) + '×'; },
+  fmtSec(n) { return n == null ? '—' : Number(n).toFixed(1) + 's'; },
+
+  // ── Legacy recovery load (ads-metrics) ──────────────────────────────
   async load() {
     let d;
     try { d = await api.get('ads-metrics'); } catch (e) { return; }
@@ -1869,54 +2192,175 @@ views.ads = {
     set('adsSaved', d.users_saved ?? 0);
     set('adsRecGb', (d.recovery_gb_used ?? 0) + ' GB');
     set('adsRevGb', this.fmtUsd(d.revenue_per_gb));
-    set('adsCostGb', this.fmtUsd(d.cost_per_gb));
     set('adsMarginGb', this.fmtUsd((+d.revenue_per_gb || 0) - (+d.cost_per_gb || 0)));
-
-    // Config banner: warn if AdMob / recovery node not yet configured.
     const c = d.config || {}, warn = [];
-    if (!c.admob_configured)         warn.push('AdMob ad-unit not configured — rewards inert until set.');
-    if (!c.admob_ssv_enabled)        warn.push('AdMob SSV disabled — no trusted server-side verification yet.');
-    if (!c.recovery_node_configured) warn.push('Recovery exit node not configured — recovery/enter will refuse.');
+    if (!c.admob_configured)         warn.push('AdMob ad-unit not configured.');
+    if (!c.admob_ssv_enabled)        warn.push('AdMob SSV disabled.');
+    if (!c.recovery_node_configured) warn.push('Recovery exit node not configured.');
     const banner = $('adsConfigBanner');
-    if (banner) { banner.style.display = warn.length ? '' : 'none'; $('adsConfigBannerText').textContent = '⚠ ' + warn.join('  '); }
-
-    // Editable config form (remote-tunable settings).
-    const ed = d.editable || {};
-    const form = $('adsConfigForm');
+    if (banner) { banner.style.display = warn.length ? '' : 'none'; const bt = $('adsConfigBannerText'); if(bt) bt.textContent = '⚠ ' + warn.join('  '); }
+    const ed = d.editable || {}, form = $('adsConfigForm');
     if (form) {
       const secret = k => /uuid|pbk|sid|app_id|unit_id/.test(k);
       form.innerHTML = Object.keys(ed).sort().map(k => {
         const v = ed[k] ?? '';
-        return `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem">
-          <span style="opacity:.6;font-family:monospace">${k}</span>
-          <input data-cfg="${k}" type="${secret(k)?'text':(typeof v==='number'?'number':'text')}" value="${String(v).replace(/"/g,'&quot;')}" style="padding:.4rem;border-radius:6px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff">
-        </label>`;
+        return `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem"><span style="opacity:.6;font-family:monospace">${k}</span><input data-cfg="${k}" type="${secret(k)?'text':(typeof v==='number'?'number':'text')}" value="${String(v).replace(/"/g,'&quot;')}" style="padding:.4rem;border-radius:6px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff"></label>`;
       }).join('');
     }
-
-    // Review queue.
-    const rows = d.review || [];
-    const tb = $('adsReviewBody');
-    $('adsReviewCount').textContent = (d.review_count ?? 0) + ' under review';
-    if (tb) {
-      tb.innerHTML = rows.length
-        ? rows.map(r => `<tr><td>${(r.device_id||'').slice(0,16)}</td><td>${r.risk_score}</td><td>${r.risk_flags||'—'}</td><td>${r.source||'—'}</td><td>${r.created_at||''}</td></tr>`).join('')
-        : '<tr><td colspan="5" style="opacity:.6">No events under review.</td></tr>';
-    }
-
-    // Ads/day trend.
+    const rows = d.review || [], tb = $('adsReviewBody'); const rc = $('adsReviewCount'); if(rc) rc.textContent = (d.review_count ?? 0) + ' under review';
+    if (tb) tb.innerHTML = rows.length ? rows.map(r => `<tr><td>${(r.device_id||'').slice(0,16)}</td><td>${r.risk_score}</td><td>${r.risk_flags||'—'}</td><td>${r.source||'—'}</td><td>${r.created_at||''}</td></tr>`).join('') : '<tr><td colspan="5" style="opacity:.6">No events under review.</td></tr>';
     if (typeof Chart !== 'undefined') {
-      if (this.chart) { try { this.chart.destroy(); } catch (e) {} }
+      if (this.charts.legacy) { try { this.charts.legacy.destroy(); } catch(_){} }
       const labels = (d.days || []).map(x => (x || '').slice(5));
-      this.chart = new Chart($('chAds'), {
-        type: 'bar',
-        data: { labels, datasets: [{ label: 'Ads', data: d.ads_series || [], backgroundColor: '#22c55e', borderRadius: 3 }] },
-        options: { responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false } },
-          scales: { x: { grid: { color: 'rgba(138,155,191,.12)' }, ticks: { color: '#8a9bbf', maxRotation: 0, autoSkip: true, font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(138,155,191,.12)' }, ticks: { color: '#8a9bbf', font: { size: 10 } }, beginAtZero: true } } },
+      this.charts.legacy = new Chart($('chAds'), {
+        type: 'bar', data: { labels, datasets: [{ label: 'AdMob', data: d.ads_series || [], backgroundColor: '#22c55e', borderRadius: 3 }] },
+        options: { responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}},
+          scales:{ x:{grid:{color:'rgba(138,155,191,.12)'},ticks:{color:'#8a9bbf',maxRotation:0,autoSkip:true,font:{size:10}}},
+                   y:{grid:{color:'rgba(138,155,191,.12)'},ticks:{color:'#8a9bbf',font:{size:10}},beginAtZero:true} } },
       });
     }
+  },
+
+  // ── Full NOC load (ads-perf-comparison) ─────────────────────────────
+  async loadNoc() {
+    const params = this.nocFrom && this.nocTo
+      ? { from: this.nocFrom, to: this.nocTo }
+      : { days: this.nocDays };
+    const ts = $('nocTs'); if (ts) ts.textContent = 'Laster…';
+    let d;
+    try { d = await api.get('ads-perf-comparison', params); } catch (e) { return; }
+    if (ts) ts.textContent = d.checked_at || '';
+
+    this.renderAlerts(d.alerts || []);
+    this.renderKpis(d);
+    this.renderHakim(d.hakim || {});
+    this.renderCharts(d);
+  },
+
+  renderAlerts(alerts) {
+    const bar = $('nocAlertBar');
+    if (!bar) return;
+    if (!alerts.length) { bar.style.display = 'none'; bar.innerHTML = ''; return; }
+    const colors = { error: '#f87171', warn: '#f59e0b', info: '#60a5fa' };
+    bar.style.display = '';
+    bar.innerHTML = alerts.map(a => {
+      const c = colors[a.level] || '#8a9bbf';
+      return `<div style="padding:.4rem .75rem;border-left:3px solid ${c};background:${c}18;border-radius:4px;font-size:.8rem;margin-bottom:.35rem;color:${c}">
+        <strong>${a.platform}:</strong> ${a.msg}
+      </div>`;
+    }).join('');
+  },
+
+  renderKpis(d) {
+    const grid = $('nocKpiGrid');
+    if (!grid) return;
+    const am = d.admob || {}, ag = d.adsgram || {};
+    const amt = am.totals || {}, agt = ag.totals || {};
+    const am_t = am.today || {}, ag_t = ag.today || {};
+    const am_7 = am['7d'] || {},  ag_7 = ag['7d'] || {};
+    const cv = d.conversion || {};
+    const AG_COLOR = '#f59e0b', AM_COLOR = '#22c55e', MISS = '<span style="opacity:.4">—</span>';
+    const fU = (n, d=2) => n == null || n === 0 ? MISS : '$'+Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:Math.max(d,4)});
+    const fP = n => n == null ? MISS : (Number(n)*100).toFixed(1)+'%';
+    const fR = n => n == null || n === 0 ? MISS : Number(n).toFixed(2)+'×';
+    const fN = n => n == null ? MISS : Number(n).toLocaleString();
+    const fG = n => (!n || n===0) ? MISS : Number(n).toFixed(3)+' GB';
+
+    const kpis = [
+      { label: 'Revenue i dag',    am: fU(am_t.revenue_usd), ag: fU(ag_t.revenue_usd) },
+      { label: 'Revenue 7 dager',  am: fU(am_7.revenue_usd), ag: fU(ag_7.revenue_usd) },
+      { label: 'Revenue (vindu)',   am: fU(amt.revenue_usd),  ag: fU(agt.revenue_usd)  },
+      { label: 'eCPM',             am: fU(amt.ecpm_usd),     ag: fU(agt.ecpm_usd)     },
+      { label: 'ARPDAU',           am: fU(amt.revenue_per_user, 4), ag: fU(agt.revenue_per_user, 4) },
+      { label: 'Fill rate',        am: fP(amt.fill_rate),    ag: fP(agt.fill_rate)    },
+      { label: 'Rewarded views',   am: fN(amt.rewarded_views), ag: fN(agt.rewarded_views) },
+      { label: 'Konvertering →',   am: `${cv.linked_devices??0}/${cv.total_devices??0}`, ag: fP(cv.rate) },
+      { label: 'GB utdelt',        am: fG(amt.gb_granted),   ag: fG(agt.gb_granted)   },
+      { label: 'ROI',              am: fR(amt.roi),          ag: fR(agt.roi)           },
+    ];
+
+    grid.innerHTML = kpis.map(k => `
+      <div class="stat-card" style="padding:.6rem .75rem">
+        <div class="stat-label" style="margin-bottom:.3rem">${k.label}</div>
+        <div style="display:flex;gap:.5rem;align-items:flex-end">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:1rem;font-weight:700;color:${AM_COLOR};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.am}</div>
+            <div style="font-size:.65rem;opacity:.5;margin-top:.1rem">AdMob</div>
+          </div>
+          <div style="flex:1;min-width:0;border-left:1px solid #1e2d4d;padding-left:.5rem">
+            <div style="font-size:1rem;font-weight:700;color:${AG_COLOR};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.ag}</div>
+            <div style="font-size:.65rem;opacity:.5;margin-top:.1rem">AdsGram</div>
+          </div>
+        </div>
+      </div>`).join('');
+  },
+
+  renderHakim(h) {
+    const body = $('nocHakimBody'), badge = $('nocHakimBadge');
+    if (!body) return;
+    if (badge) {
+      const conf = { high: '● Høy sikkerhet', medium: '◐ Middels sikkerhet', low: '○ Lav sikkerhet', waiting: '' };
+      badge.textContent = conf[h.confidence] || '';
+    }
+    const recColors = { realink: '#22c55e', adsgram: '#f59e0b', both: '#60a5fa', waiting: '#8a9bbf' };
+    const c = recColors[h.recommendation] || '#8a9bbf';
+    const rationale = (h.rationale || []).map(r => `<li>${r}</li>`).join('');
+    const kpis = (h.kpis || []).map(k => `<div style="font-family:monospace;font-size:.75rem;background:#111827;padding:.2rem .5rem;border-radius:4px;margin:.15rem 0">${k}</div>`).join('');
+    body.innerHTML = `
+      <div style="display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap">
+        <div style="min-width:200px">
+          <div style="font-size:1.1rem;font-weight:700;color:${c};margin-bottom:.4rem">${h.label || '—'}</div>
+          ${h.action ? `<div style="font-size:.8rem;background:${c}18;border-radius:6px;padding:.4rem .6rem;color:${c};margin-bottom:.5rem">${h.action}</div>` : ''}
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:.78rem;font-weight:600;opacity:.6;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.04em">Begrunnelse</div>
+          <ul style="font-size:.82rem;margin:0;padding-left:1.1rem;line-height:1.7;opacity:.85">${rationale || '<li style="opacity:.5">Ingen data ennå.</li>'}</ul>
+          ${kpis ? `<div style="margin-top:.5rem">${kpis}</div>` : ''}
+        </div>
+      </div>`;
+  },
+
+  renderCharts(d) {
+    if (typeof Chart === 'undefined') return;
+    Object.values(this.charts).forEach(c => { try { if (c !== this.charts.legacy) c.destroy(); } catch(_){} });
+    // Keep legacy chart reference
+    const legacyChart = this.charts.legacy;
+    this.charts = { legacy: legacyChart };
+
+    const labels = (d.days || []).map(x => (x||'').slice(5));
+    const am = d.admob || {}, ag = d.adsgram || {}, cv = d.conversion || {};
+    const AM = '#22c55e', AG = '#f59e0b';
+    const opts = (extra = {}) => ({
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position:'top', labels:{ color:'#8a9bbf', boxWidth:10, font:{size:10} } } },
+      scales: {
+        x: { grid:{color:'rgba(138,155,191,.09)'}, ticks:{color:'#8a9bbf',maxRotation:0,autoSkip:true,font:{size:9}} },
+        y: { grid:{color:'rgba(138,155,191,.09)'}, ticks:{color:'#8a9bbf',font:{size:9}}, beginAtZero:true },
+        ...extra,
+      },
+    });
+    const line = (label, data, color, fill=false, tension=.35) => ({
+      label, data, borderColor:color, backgroundColor: fill ? color+'22':'transparent',
+      tension, fill, pointRadius:2, spanGaps:true,
+    });
+    const bar_ = (label, data, color) => ({ label, data, backgroundColor:color+'aa', borderRadius:3 });
+
+    const mk = (id, type, datasets, extraOpts={}) => {
+      const el = $(id); if (!el) return;
+      this.charts[id] = new Chart(el, { type, data:{ labels, datasets }, options:{ ...opts(extraOpts) } });
+    };
+
+    mk('chNocRev',    'bar',  [bar_('AdMob',   am.rev_series||[],AM),    bar_('AdsGram',  ag.rev_series||[],AG)]);
+    mk('chNocViews',  'bar',  [bar_('AdMob',   am.views_series||[],AM),  bar_('AdsGram',  ag.views_series||[],AG)]);
+    mk('chNocEcpm',   'line', [line('AdMob',   am.ecpm_series||[],AM,false), line('AdsGram',ag.ecpm_series||[],AG,false)]);
+    mk('chNocFill',   'line', [line('AdMob',   am.fill_series||[],AM,false), line('AdsGram',ag.fill_series||[],AG,false)]);
+    mk('chNocArpdau', 'line', [line('AdMob',   am.arpdau_series||[],AM,true), line('AdsGram',ag.arpdau_series||[],AG,true)]);
+    mk('chNocGb',     'bar',  [bar_('AdMob',   am.gb_series||[],AM),     bar_('AdsGram',  ag.gb_series||[],AG)]);
+    mk('chNocConv',   'bar',  [bar_('Nye koblinger', cv.daily_series||[], '#60a5fa')]);
+
+    // Cumulative revenue
+    const cumul = (arr) => { let s=0; return (arr||[]).map(v => (s += (v||0), Math.round(s*1000)/1000)); };
+    mk('chNocCumul', 'line', [line('AdMob kumulativ', cumul(am.rev_series),AM,true), line('AdsGram kumulativ',cumul(ag.rev_series),AG,true)]);
   },
 };
 
@@ -2365,9 +2809,8 @@ views.iran = {
         <div class="stat-card ${rate>=60?'stat-ok':rate>=30?'stat-warn':'stat-danger'}">
           <div class="stat-label">Success Rate</div><div class="stat-value">${rate}%</div></div>
         <div class="stat-card"><div class="stat-label">No Internet</div><div class="stat-value">${fmtNum(s.no_internet)}</div></div>
-        <div class="stat-card"><div class="stat-label">TCP Only</div><div class="stat-value">${fmtNum(s.tcp_only)}</div></div>
-        <div class="stat-card"><div class="stat-label">Emergency Used</div><div class="stat-value">${fmtNum(s.emergency_used)}</div></div>
-        <div class="stat-card"><div class="stat-label">Devices</div><div class="stat-value">${fmtNum(s.device_count)}</div></div>
+        <div class="stat-card"><div class="stat-label">Distinct SNIs</div><div class="stat-value">${fmtNum(s.sni_count)}</div></div>
+        <div class="stat-card"><div class="stat-label">Avg RTT</div><div class="stat-value">${s.avg_rtt!=null?Math.round(s.avg_rtt)+' ms':'—'}</div></div>
       </div>
       <div style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem">Last report: ${esc(s.last_seen||'—')}</div>`;
   },
@@ -2823,6 +3266,133 @@ views.intel = {
   },
 };
 
+// ── VIEW: STARLINK ───────────────────────────────────────────────────
+views.starlink = {
+  init() {
+    $('stRefreshBtn').addEventListener('click', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    try {
+      const d = await api.get('starlink-list');
+      this.renderNodes(d.nodes || []);
+      this.renderLog(d.log || []);
+    } catch(e) {
+      $('stNodesWrap').innerHTML = `<div class="panel-empty">Error: ${esc(e.message)}</div>`;
+    }
+  },
+  healthColor(h) {
+    return h==='ONLINE' ? 'var(--ok)' : h==='DEGRADED' ? 'var(--warn)' : h==='MAINTENANCE' ? 'var(--muted)' : 'var(--danger)';
+  },
+  renderNodes(nodes) {
+    if (!nodes.length) { $('stNodesWrap').innerHTML = '<div class="panel-empty">No Starlink nodes registered yet.</div>'; return; }
+    $('stNodesWrap').innerHTML = nodes.map(n => {
+      const allow = (n.allowlist||[]).map(a=>`<span class="chip">${esc(a.device_id)} <a href="#" data-remove-device="${esc(a.device_id)}" data-node="${esc(n.node_id)}" title="Revoke">×</a></span>`).join(' ') || '<span style="color:var(--muted)">none</span>';
+      return `<div class="panel" style="margin-bottom:1rem" data-node-panel="${esc(n.node_id)}">
+        <div class="panel-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <span class="panel-title">${esc(n.display_name)} <span style="font-weight:400;color:var(--muted)">(${esc(n.node_id)})</span></span>
+          <span class="badge" style="background:${this.healthColor(n.health_state)}20;color:${this.healthColor(n.health_state)};border:1px solid ${this.healthColor(n.health_state)}">${esc(n.health_state)}</span>
+          <span class="badge" style="margin-left:auto">${n.enabled ? 'Enabled' : 'Disabled'} · ${esc(n.testing_state)}</span>
+        </div>
+        <div class="panel-body" style="padding:.75rem 1rem;font-size:.8rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.5rem">
+          <div><b>Country</b><br>${esc(n.country)}</div>
+          <div><b>Tunnel</b><br>${esc(n.tunnel_status)}</div>
+          <div><b>Last heartbeat</b><br>${esc((n.last_heartbeat_at||'never').replace('T',' '))}</div>
+          <div><b>Public IPv4</b><br>${esc(n.public_ipv4||'—')}</div>
+          <div><b>Public IPv6</b><br>${esc(n.public_ipv6||'—')}</div>
+          <div><b>Exit IP</b><br>${esc(n.exit_ip||'—')}</div>
+          <div><b>Latency</b><br>${n.latency_ms!=null?n.latency_ms+' ms':'—'}</div>
+          <div><b>Packet loss</b><br>${n.packet_loss_pct!=null?n.packet_loss_pct+'%':'—'}</div>
+          <div><b>Recent disconnects</b><br>${fmtNum(n.recent_disconnects||0)}</div>
+          <div><b>Down / Up</b><br>${n.measured_download_kbps!=null?(n.measured_download_kbps/1000).toFixed(1)+' Mbps':'—'} / ${n.measured_upload_kbps!=null?(n.measured_upload_kbps/1000).toFixed(1)+' Mbps':'—'}</div>
+          <div><b>Sessions</b><br>${n.current_sessions}/${n.max_sessions}</div>
+          <div><b>Allocated</b><br>${(n.allocated_kbps/1000).toFixed(0)} Mbps of ${(n.nominal_capacity_kbps/1000).toFixed(0)} Mbps nominal</div>
+          <div><b>Version</b><br>${esc(n.software_version||'—')}</div>
+          <div><b>Last error</b><br><span style="color:var(--danger)">${esc(n.last_error||'—')}</span></div>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-sm ${n.enabled?'btn-secondary':'btn-primary'}" data-act="toggle" data-node="${esc(n.node_id)}" data-val="${n.enabled?0:1}">${n.enabled?'Disable':'Enable'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="maint" data-node="${esc(n.node_id)}" data-val="${n.maintenance_mode?0:1}">${n.maintenance_mode?'Exit maintenance':'Enter maintenance'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="fallback" data-node="${esc(n.node_id)}">Force fallback</button>
+          <button class="btn btn-sm btn-secondary" data-act="token" data-node="${esc(n.node_id)}">Generate heartbeat token</button>
+          <button class="btn btn-sm btn-secondary" data-act="winsetup" data-node="${esc(n.node_id)}" title="Generate new token + download self-installing PowerShell setup script for Windows gateway">⬇ Windows setup (.ps1)</button>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem">
+          <b style="font-size:.8rem">Allowlisted test devices</b><br>
+          <div style="margin:.4rem 0">${allow}</div>
+          <form data-allow-form="${esc(n.node_id)}" style="display:flex;gap:.4rem">
+            <input class="input btn-sm" name="device_id" placeholder="device_id" style="flex:1">
+            <button class="btn btn-sm btn-primary" type="submit">Allow</button>
+          </form>
+        </div>
+      </div>`;
+    }).join('');
+
+    $('stNodesWrap').querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => this.act(btn)));
+    $('stNodesWrap').querySelectorAll('[data-remove-device]').forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      this.allowlistRemove(a.dataset.node, a.dataset.removeDevice);
+    }));
+    $('stNodesWrap').querySelectorAll('[data-allow-form]').forEach(f => f.addEventListener('submit', e => {
+      e.preventDefault();
+      const did = f.device_id.value.trim();
+      if (did) this.allowlistAdd(f.dataset.allowForm, did);
+    }));
+  },
+  async act(btn) {
+    const node = btn.dataset.node, act = btn.dataset.act;
+    try {
+      if (act === 'toggle') {
+        await api.post({action:'starlink-toggle-enabled', node_id:node, enabled: btn.dataset.val === '1'});
+      } else if (act === 'maint') {
+        await api.post({action:'starlink-set-maintenance', node_id:node, maintenance: btn.dataset.val === '1'});
+      } else if (act === 'fallback') {
+        if (!confirm('Force this node into fallback (stop routing new sessions) now?')) return;
+        await api.post({action:'starlink-force-fallback', node_id:node});
+      } else if (act === 'token') {
+        const d = await api.post({action:'starlink-generate-token', node_id:node});
+        prompt('Heartbeat token (shown once — copy into the gateway config now):', d.heartbeat_token);
+      } else if (act === 'winsetup') {
+        if (!confirm('This will rotate the heartbeat token and generate a new Windows setup script. Continue?')) return;
+        const d = await api.post({action:'starlink-windows-installer', node_id:node});
+        const blob = new Blob([d.installer_ps1], {type:'text/plain'});
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = d.filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        toast('Setup script downloaded — run as Administrator on the Windows gateway', 'success');
+      }
+      toast('Updated', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistAdd(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-add', node_id: node, device_id: deviceId});
+      toast('Device allowlisted', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistRemove(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-remove', node_id: node, device_id: deviceId});
+      toast('Device revoked', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  renderLog(rows) {
+    if (!rows.length) { $('stLogTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">No admin activity yet</td></tr>'; return; }
+    $('stLogTbl').innerHTML = rows.map(r => `<tr>
+      <td style="font-size:.7rem;color:var(--muted)">${esc((r.created_at||'').replace('T',' '))}</td>
+      <td>${esc(r.node_id)}</td>
+      <td>${esc(r.actor)}</td>
+      <td>${esc(r.action)}</td>
+      <td style="font-size:.75rem;color:var(--muted)">${esc(r.detail||'')}</td>
+    </tr>`).join('');
+  },
+};
+
 // ── VIEW: AI DIAGNOSIS ───────────────────────────────────────────────
 views.aidiag = {
   init() {
@@ -3017,6 +3587,175 @@ views.installs = {
           }).join('')
         : '<tr><td colspan="7" class="tbl-empty">No install events reported yet</td></tr>';
     } catch(e) { toast('Install diagnostics: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: USER INSIGHTS ──────────────────────────────────────────────
+// Aggregate, privacy-safe breakdowns from admin/api.php?action=user-insights.
+// No per-user destination logging: carriers are ASN-derived operator names,
+// reachability comes from the app's own connectivity probes.
+views.insights = {
+  init() { this.load(); },
+  fmtDur(secs) {
+    secs = Number(secs) || 0;
+    if (secs < 60) return secs + 's';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+    return Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm';
+  },
+  pct(v) { return (v===null || v===undefined || isNaN(v)) ? '—' : Math.round(v) + '%'; },
+  rows(tbody, list, cols, cells) {
+    const el = $(tbody); if (!el) return;
+    el.innerHTML = (list && list.length)
+      ? list.map(cells).join('')
+      : `<tr><td colspan="${cols}" class="tbl-empty">No data</td></tr>`;
+  },
+  async load() {
+    try {
+      const d = await api.get('user-insights');
+      const t = d.totals || {}, r = d.reachability || {};
+
+      $('insTotalDevices').textContent = t.total_devices ?? '—';
+      $('insActive24').textContent     = t.active_24h ?? '—';
+      $('insActive7').textContent      = (t.active_7d ?? '—') + ' in 7d';
+      $('insPremium').textContent      = t.premium ?? '—';
+      $('insTotalGb').textContent      = (t.total_gb ?? 0) + ' GB';
+      $('insLongest').textContent      = this.fmtDur(t.longest_secs);
+
+      $('insReachInstagram').textContent  = this.pct(r.instagram);
+      $('insReachTelegram').textContent   = this.pct(r.telegram);
+      $('insReachGoogle').textContent     = this.pct(r.google);
+      $('insReachCloudflare').textContent = this.pct(r.cloudflare);
+      $('insReachApple').textContent      = this.pct(r.apple);
+      $('insReachSub').textContent = `from in-app connectivity probes · ${d.days ?? 30}d`;
+
+      this.rows('insCarrierTbl', d.carriers, 2, x=>`<tr><td>${esc(x.carrier)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insGeoTbl', d.geo, 2, x=>`<tr><td>${esc(x.country)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insPlatformTbl', d.platforms, 2, x=>`<tr><td>${esc(x.platform)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insBrandTbl', d.brands, 2, x=>`<tr><td>${esc(x.brand)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insPlanTbl', d.plans, 2, x=>`<tr><td>${esc(x.plan||'free')}</td><td>${x.devices}</td></tr>`);
+      this.rows('insProtocolTbl', d.protocols, 3, x=>`<tr><td>${esc(x.protocol)}</td><td>${x.sessions}</td><td>${x.gb ?? 0}</td></tr>`);
+      this.rows('insNodeTbl', d.nodes, 2, x=>`<tr><td>${esc(x.node_id)}</td><td>${x.connects}</td></tr>`);
+      this.rows('insLongestTbl', d.longest, 5, x=>`<tr>`
+        + `<td style="font-family:var(--mono);font-size:.72rem">${esc(x.device)}</td>`
+        + `<td>${esc(x.protocol)}</td><td>${this.fmtDur(x.duration_secs)}</td>`
+        + `<td>${x.mb ?? 0}</td><td class="mobile-hide">${esc(x.day||'')}</td></tr>`);
+    } catch(e) { toast('User insights: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: SEO RANKS ──────────────────────────────────────────────────
+// Keyword position tracker. Reads admin/api.php?action=seo-ranks, renders a
+// position-over-time chart (Y inverted — 1 at top), a summary table, and a
+// form to log a snapshot (POST seo-rank-record). Manual entry now; a Google
+// Search Console feed can populate the same table later.
+views.seoranks = {
+  chart: null,
+  data: [],
+  init() { this.load(); const d=$('seoDate'); if(d&&!d.value) d.value=new Date().toISOString().slice(0,10); },
+  async load() {
+    try {
+      const d = await api.get('seo-ranks');
+      this.data = d.keywords || [];
+      this.renderTable();
+      this.renderChart();
+      this.renderInputs();
+      this.renderGsc(d.gsc || {});
+      $('seoKwCount').textContent = this.data.length + ' tracked · Iran intent';
+    } catch(e) { toast('SEO ranks: '+e.message,'error'); }
+  },
+  renderGsc(g) {
+    const st = $('gscStatus'), site = $('gscSite');
+    if (site && !site.value) site.value = g.site_url || 'https://setalink.no/';
+    $('gscSetup').style.display = g.key_present ? 'none' : 'block';
+    if (!g.key_present) { st.textContent = 'not connected'; st.style.color='#f59e0b'; }
+    else { st.textContent = 'connected' + (g.last_sync ? ' · last sync '+g.last_sync : ' · never synced'); st.style.color='var(--muted)'; }
+  },
+  async saveGscConfig() {
+    const u = ($('gscSite').value||'').trim(); if(!u) return;
+    try { await api.post({action:'seo-rank-gsc-config', site_url:u}); $('gscMsg').textContent='Property saved.'; }
+    catch(e){ toast('Save failed: '+e.message,'error'); }
+  },
+  async syncGsc() {
+    $('gscMsg').textContent = 'Syncing…';
+    try {
+      const r = await api.post({action:'seo-rank-gsc-sync'});
+      $('gscMsg').textContent = `Synced ${r.snapshots} snapshots for ${r.keywords_hit} keyword(s) · ${r.window}`;
+      toast('Search Console synced','success');
+      // Suggest high-impression queries we don't track yet.
+      const u = r.top_untracked||[];
+      $('gscUntracked').innerHTML = u.length
+        ? '<div style="font-size:.78rem;color:var(--muted)">Top queries you rank for but don\'t track yet (impressions) — click to add:</div>'
+          + u.map(x=>`<button type="button" class="btn btn-ghost gsc-add" data-q="${esc(x.query)}" style="margin:.25rem .3rem 0 0;font-size:.75rem" dir="auto">${esc(x.query)} <span style="color:var(--muted-2)">${x.impressions}</span></button>`).join('')
+        : '';
+      document.querySelectorAll('.gsc-add').forEach(b=>b.addEventListener('click',()=>{ $('seoNewKw').value=b.dataset.q; this.addKeyword(); }));
+      this.load();
+    } catch(e){ $('gscMsg').textContent=''; toast('Sync failed: '+e.message,'error'); }
+  },
+  renderTable() {
+    const fmtPos = p => p==null ? '<span style="color:var(--muted-2)">—</span>' : '#'+ (Number.isInteger(p)?p:p.toFixed(1));
+    $('seoRankTbl').innerHTML = this.data.length ? this.data.map(k=>{
+      let dcell = '<span style="color:var(--muted-2)">—</span>';
+      if (k.delta!=null && k.delta!==0) {
+        const up = k.delta>0;
+        dcell = `<span class="badge ${up?'badge-ok':'badge-danger'}">${up?'▲':'▼'} ${Math.abs(k.delta)}</span>`;
+      } else if (k.delta===0) dcell = '<span class="badge badge-info">0</span>';
+      return `<tr>
+        <td dir="auto" style="font-weight:600">${esc(k.keyword)}</td>
+        <td>${fmtPos(k.latest)}</td><td>${dcell}</td>
+        <td>${fmtPos(k.best)}</td><td>${k.points||0}</td>
+        <td class="mobile-hide" style="font-size:.75rem;color:var(--muted)">${esc(k.last_at||'never')}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="6" class="tbl-empty">No keywords tracked</td></tr>';
+  },
+  renderChart() {
+    if (typeof Chart==='undefined') return;
+    if (this.chart) { try{this.chart.destroy();}catch(e){} this.chart=null; }
+    // Union of all measurement dates → shared X axis.
+    const dates = [...new Set(this.data.flatMap(k=>(k.history||[]).map(h=>h.captured_at.slice(0,10))))].sort();
+    if (!dates.length) { return; }
+    const palette = ['#00e87a','#3399ff','#f59e0b','#e0559e','#8b5cf6','#22d3ee','#ef4444','#a3e635','#fb923c','#e879f9'];
+    const measured = this.data.filter(k=>(k.history||[]).length);
+    const sets = measured.map((k,i)=>{
+      const byDay = {}; (k.history||[]).forEach(h=>{ byDay[h.captured_at.slice(0,10)]=h.position; });
+      return { label:k.keyword, data:dates.map(d=>byDay[d] ?? null), spanGaps:true,
+               borderColor:palette[i%palette.length], backgroundColor:palette[i%palette.length],
+               tension:.25, borderWidth:2, pointRadius:3 };
+    });
+    this.chart = new Chart($('seoChart'), {
+      type:'line',
+      data:{ labels:dates, datasets:sets },
+      options:{ responsive:true, maintainAspectRatio:false,
+        scales:{ y:{ reverse:true, title:{display:true,text:'Google position (1 = top)'},
+                     ticks:{precision:0}, suggestedMin:1 } },
+        plugins:{ legend:{ labels:{ boxWidth:12, font:{size:10} } } } }
+    });
+  },
+  renderInputs() {
+    $('seoInputGrid').innerHTML = this.data.map(k=>`
+      <label style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;background:var(--panel-2,rgba(255,255,255,.03));padding:.4rem .6rem;border-radius:6px">
+        <span dir="auto" style="font-size:.8rem">${esc(k.keyword)}</span>
+        <input type="number" min="1" max="100" step="1" class="input seo-pos" data-kw="${esc(k.keyword)}" data-lang="${esc(k.lang||'fa')}" placeholder="${k.latest??'#'}" style="width:70px">
+      </label>`).join('');
+  },
+  addKeyword() {
+    const v = ($('seoNewKw').value||'').trim();
+    if (!v) return;
+    if (!this.data.some(k=>k.keyword===v)) this.data.push({keyword:v, lang:'fa', latest:null, history:[]});
+    $('seoNewKw').value='';
+    this.renderInputs();
+  },
+  async save() {
+    const entries = [...document.querySelectorAll('.seo-pos')].map(el=>({
+      keyword: el.dataset.kw, lang: el.dataset.lang, position: el.value.trim()
+    })).filter(e=>e.position!=='');
+    if (!entries.length) { $('seoSaveMsg').textContent='Enter at least one position.'; return; }
+    const captured_at = ($('seoDate').value||'') + ' 12:00:00';
+    try {
+      const r = await api.post({action:'seo-rank-record', entries, captured_at, source:'manual'});
+      $('seoSaveMsg').textContent = `Saved ${r.recorded} position(s).`;
+      toast('Snapshot saved','success');
+      this.load();
+    } catch(e){ toast('Save failed: '+e.message,'error'); }
   },
 };
 
@@ -3248,10 +3987,6 @@ views.devices = {
       const s = d.settings || {};
       $('realRates').textContent =
         `${s.real_per_gb} REAL/GB · min ${s.redeem_min_real} REAL · cap ${fmtBytes(s.redeem_daily_cap_bytes||0)}/day`;
-      // B-2 (docs/realgram/TASK_SPLIT.md, SetaLink repo) — configured status
-      // only, never the secret values (see re_ecosystem_status() in
-      // lib/real_economy.php for why: these are Bearer/HMAC secrets, not
-      // safe to render into a plaintext admin form field).
       const es = d.ecosystem_status || {};
       const okBadge  = (ok) => `<span style="color:${ok?'#22c55e':'#f59e0b'}">${ok?'✓':'✗'}</span>`;
       $('realEcoStatus').innerHTML =
@@ -3336,8 +4071,6 @@ window.devDetail = async function(did) {
       kv('First seen', esc(dev.created_at)),
       kv('Last seen', `${esc(dev.last_seen)} (${fmtRelative(dev.last_seen)})`),
     ].join('');
-    // Traffic summary across the reported sessions — so the total is visible
-    // even when individual sessions lack byte data (iOS, or short/idle Android).
     const allSess = d.sessions || [];
     const sumRecv = allSess.reduce((a,s)=>a+(s.bytes_recv||0),0);
     const sumSent = allSess.reduce((a,s)=>a+(s.bytes_sent||0),0);
@@ -4346,6 +5079,56 @@ views.referrals = {
 function debounce(fn, ms) {
   let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms); };
 }
+
+// ── Global user search (topbar) — live results on partial IDs ───────
+(() => {
+  const inp = $('gSearch'), drop = $('gSearchDrop'), wrap = $('gSearchWrap');
+  if (!inp) return;
+  let items = [], sel = -1, seq = 0;
+  const close = () => { drop.hidden = true; drop.innerHTML = ''; sel = -1; items = []; };
+  const pick = i => {
+    const r = items[i];
+    if (!r) return;
+    close(); inp.blur();
+    devDetail(r.device_id);
+  };
+  const render = () => {
+    drop.innerHTML = items.length
+      ? items.map((r, i) => {
+          const uid = r.user_id || r.device_id.substring(0, 16);
+          return `<div class="gsearch-item${i === sel ? ' sel' : ''}" data-i="${i}">
+            <span class="dot ${r.is_online ? 'dot-ok' : 'dot-unk'}"></span>
+            <span class="gsearch-uid">${esc(uid)}</span>
+            <span class="gsearch-meta">${countryFlag(r.country || '')} ${esc(r.platform || '?')} · ${esc(r.plan || '')} · ${fmtRelative(r.last_seen)}</span>
+          </div>`;
+        }).join('')
+      : '<div class="gsearch-empty">No users match</div>';
+    drop.hidden = false;
+    drop.querySelectorAll('.gsearch-item').forEach(el => {
+      // mousedown (not click) so the input's blur can't race the selection
+      el.onmousedown = e => { e.preventDefault(); pick(+el.dataset.i); };
+    });
+  };
+  const run = debounce(async () => {
+    const q = inp.value.trim();
+    if (q.length < 2) { close(); return; }
+    const mySeq = ++seq;
+    try {
+      const d = await api.get('user-search', {q});
+      if (mySeq !== seq) return; // a newer keystroke's response wins
+      items = d.results || []; sel = items.length ? 0 : -1; render();
+    } catch (_) { /* keep quiet while typing */ }
+  }, 150);
+  inp.oninput = run;
+  inp.onfocus = () => { if (inp.value.trim().length >= 2) run(); };
+  inp.onkeydown = e => {
+    if (e.key === 'ArrowDown')    { sel = Math.min(sel + 1, items.length - 1); render(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { sel = Math.max(sel - 1, 0); render(); e.preventDefault(); }
+    else if (e.key === 'Enter')   { if (sel >= 0) pick(sel); }
+    else if (e.key === 'Escape')  { close(); inp.blur(); }
+  };
+  document.addEventListener('click', e => { if (!wrap.contains(e.target)) close(); });
+})();
 
 // ── Boot ─────────────────────────────────────────────────────────────
 navigate(INIT_PAGE);
