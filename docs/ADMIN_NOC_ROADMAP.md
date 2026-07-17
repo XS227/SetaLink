@@ -551,6 +551,24 @@ ikke verifisert, uansett hvor bra de to første ser ut.
 vedlagt skjermbilde-leveransen, så tonen kan vurderes mot tabellen over —
 ikke bare påstått fulgt.
 
+#### 8.1.1 Kontekstuell tone (samme karakter, ulik oppførsel per sone)
+
+Lagt til 2026-07-17. **Én Hakim, ikke fire assistenter** — grunntonen fra
+tabellen over (klok, rolig, mentor) holder seg konstant; det som endres
+per sone er register og lengde, ikke personlighet.
+
+| Sone | Register |
+|---|---|
+| VPN | Kort og teknisk |
+| Shahnameh | Litt mer historiefortellende, inspirert av eposet |
+| RealGram | Vennlig og sosial |
+| Admin/NOC | Ren, profesjonell, datadrevet |
+
+**Verifisering:** samme svar-eksempel-krav som § 8.1 over, men fordelt slik
+at minst ett eksempel fra hver sone er med — hvis alle eksemplene lyder
+identisk uansett sone, er dette punktet ikke bestått selv om § 8.1s
+grunntone stemmer.
+
 ### 8.2 I VPN
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
@@ -621,10 +639,41 @@ er tydelig hvilket som er hvilket.
 | Én kort melding/dag, matcher personlighetsspesifikasjonen i § 8.1 | Not started | — | — | — | — | — | § 8.1 |
 | Ekte Shahnameh-sitater brukt der det passer naturlig (ikke tvunget inn daglig) | Not started | — | — | — | — | — | krever en faktisk kilde-liste med sitater, ikke generert av Hakim selv (unngår at et "sitat" er oppdiktet — jf. § 8.0) |
 
+### 8.9 Hakim Advisor Mode
+
+To tydelige moduser — brukeren vet alltid hvilken av dem Hakim er i:
+
+| Modus | Oppførsel |
+|---|---|
+| **Assistant Mode** (standard) | Svarer på spørsmål, forklarer funksjoner, leser kun ekte data, følger § 8.0 rett frem |
+| **Advisor Mode** (brukeren aktiverer eksplisitt) | Analyserer brukerens situasjon og gir anbefalinger basert på ekte data — men strukturert i tre atskilte deler hver gang, aldri flytende sammen |
+
+**Advisor Mode-svar skal alltid ha tre atskilte deler:**
+1. **Observerte fakta** — 🟢, direkte lest data
+2. **Mulige alternativer** — hva situasjonen faktisk åpner for
+3. **Anbefalt handling** — 🔵, Hakims vurdering, begrunnet med *hvilke*
+   data den bygger på (ikke bare en konklusjon uten kilde)
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Modus-bryter (Assistant ⇄ Advisor), tydelig hvilken modus som er aktiv | Not started | — | — | — | — | — | § 8.0 |
+| "Du er 3 invitasjoner unna Starlink." | Not started | — | — | — | — | — | § 3 (Starlink-unlock), `referral_uses` |
+| "Finland-noden har vært mest stabil den siste uken." | Not started | — | — | — | — | — | § 3 (ekte node-telemetri over tid, ikke et øyeblikksbilde) |
+| "Clan-en din mangler én aktiv spiller for neste bonus." | Not started | — | — | — | — | — | § 6.5 (clan-data) |
+| "Du har nok ZAR til å konvertere til REAL." | Not started | — | — | — | — | — | § 2/§ 8.5 (ekte saldo, ekte kurs — ikke placeholder) |
+
+**Hard regel:** Advisor Mode skal **aldri** presentere spekulasjon som
+fakta — dette er § 8.0 anvendt strengt på en modus som per definisjon gir
+vurderinger, ikke bare observasjoner. Hvis "Mulige alternativer" eller
+"Anbefalt handling" ikke tydelig kan skilles fra "Observerte fakta" i et
+faktisk skjermbilde, er ikke denne seksjonen `Live`.
+
 **Seksjonens Done (§ 8 samlet):** hver deltabell `Live` med ekte
 data-koblinger (ingen fabrikkerte svar, jf. § 8.0), personlighetskravene i
 § 8.1 verifisert med eksempel-svar som dekker alle tre fargekategorier
-(§ 8.0), skjermbilder.
+(§ 8.0) **og** alle fire soner (§ 8.1.1), Advisor Mode verifisert med et
+skjermbilde der Observerte fakta / Mulige alternativer / Anbefalt handling
+er synlig atskilt (§ 8.9), skjermbilder.
 
 ---
 
