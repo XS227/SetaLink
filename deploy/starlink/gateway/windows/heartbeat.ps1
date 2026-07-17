@@ -20,7 +20,14 @@
 [CmdletBinding()]
 param(
     [string]$ConfigPath = (Join-Path $PSScriptRoot 'gateway.env'),
-    [string]$TunnelPeerAddress = '10.90.0.1',
+    # fi-hel's tunnel-internal address (test0, handoff section 17) -- the
+    # live config, NOT the original 10.90.x design.
+    [string]$TunnelPeerAddress = '192.168.137.2',
+    # WireGuard adapter alias. Empty = derived from the (single) installed
+    # WireGuardTunnel$<name> service, same naming rule watchdog.ps1 relies on.
+    [string]$TunnelAdapterName = '',
+    # Handshake older than this = tunnel considered dead (see watchdog.ps1).
+    [int]$HandshakeStaleSeconds = 180,
     [string]$LogDir = (Join-Path $PSScriptRoot 'logs')
 )
 
@@ -52,18 +59,60 @@ if (-not (Test-Connection -ComputerName '1.1.1.1' -Count 1 -Quiet -ErrorAction S
     exit 0
 }
 
-# --- Tunnel status + latency/loss: ping the VPS's tunnel-internal address,
-#     same rationale as watchdog.ps1 and the Linux gateway's own heartbeat.sh
-#     (measure the tunnel's own health, not the general internet). ---
+# --- Tunnel status: fi-hel's ufw drops ICMP over the tunnel BY DESIGN
+#     (default-deny, only 51820/udp open), so ping replies are the exception,
+#     not the rule -- a ping-based tunnel_status would permanently report
+#     'down' and the server would hold the node OFFLINE/unroutable forever
+#     (st_health_state in lib/starlink.php fails closed on tunnel_status).
+#     Same approach as watchdog.ps1: the pings STIMULATE a WireGuard
+#     handshake even when the inner ICMP is dropped, and liveness is judged
+#     by handshake age via wg.exe. If replies DO come back (e.g. the fi-hel
+#     firewall is opened later), they are used for real latency/loss. ---
+if (-not $TunnelAdapterName) {
+    $wgSvc = @(Get-Service -Name 'WireGuardTunnel$*' -ErrorAction SilentlyContinue)
+    if ($wgSvc.Count -gt 0) { $TunnelAdapterName = $wgSvc[0].Name -replace '^WireGuardTunnel\$', '' }
+}
+
+function Get-HandshakeAgeSeconds {
+    # Duplicated from watchdog.ps1 -- these scripts are deliberately
+    # standalone (each is fetched/run independently on the gateway).
+    $wgExe = Join-Path $env:ProgramFiles 'WireGuard\wg.exe'
+    if (-not $TunnelAdapterName -or -not (Test-Path $wgExe)) { return $null }
+    $out = & $wgExe show $TunnelAdapterName latest-handshakes 2>$null
+    if (-not $out) { return $null }
+    $epochs = @($out | ForEach-Object { ($_ -split '\s+')[-1] } |
+        Where-Object { $_ -match '^\d+$' } | ForEach-Object { [int64]$_ })
+    if ($epochs.Count -eq 0) { return $null }
+    $latest = ($epochs | Measure-Object -Maximum).Maximum
+    if ($latest -eq 0) { return [int64]::MaxValue }  # never handshaken
+    return [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $latest
+}
+
 $pingResults = 1..5 | ForEach-Object {
     Test-Connection -ComputerName $TunnelPeerAddress -Count 1 -ErrorAction SilentlyContinue
 }
 $received = @($pingResults | Where-Object { $_ })
-$lossPct = [math]::Round((5 - $received.Count) / 5 * 100, 1)
-$latencyMs = if ($received.Count -gt 0) {
-    [math]::Round(($received | Measure-Object -Property ResponseTime -Average).Average)
-} else { $null }
-$tunnelStatus = if ($received.Count -ge 3) { 'up' } else { 'down' }
+
+if ($received.Count -ge 3) {
+    # ICMP actually works -- use the real measurements.
+    $tunnelStatus = 'up'
+    $lossPct = [math]::Round((5 - $received.Count) / 5 * 100, 1)
+    $latencyMs = [math]::Round(($received | Measure-Object -Property ResponseTime -Average).Average)
+} else {
+    $hsAge = Get-HandshakeAgeSeconds
+    if ($null -ne $hsAge -and $hsAge -le $HandshakeStaleSeconds) {
+        # Tunnel is alive; ICMP is just filtered at the peer. Report no
+        # latency/loss rather than fake 100% loss -- null means "not
+        # measured" server-side (st_health_state treats null as 0).
+        $tunnelStatus = 'up'
+        $lossPct = $null
+        $latencyMs = $null
+    } else {
+        $tunnelStatus = 'down'
+        $lossPct = [math]::Round((5 - $received.Count) / 5 * 100, 1)
+        $latencyMs = $null
+    }
+}
 
 # --- Public exit IP (must reflect the Starlink-side egress, not the tunnel --
 #     run these direct, not through the tunnel adapter). ---
@@ -91,7 +140,7 @@ if (Test-Path $disconnectsLog) {
 #     st_apply_heartbeat's whitelist, see lib/starlink.php). ---
 $wifiState = try { (netsh wlan show interfaces) -join ' | ' } catch { 'unavailable' }
 
-$lastError = if ($tunnelStatus -eq 'down') { "tunnel unreachable at $TunnelPeerAddress ($($received.Count)/5 pings answered)" } else { '' }
+$lastError = if ($tunnelStatus -eq 'down') { "tunnel dead: no WireGuard handshake within ${HandshakeStaleSeconds}s and $($received.Count)/5 pings answered at $TunnelPeerAddress" } else { '' }
 
 $payload = [ordered]@{
     tunnel_status      = $tunnelStatus
@@ -114,7 +163,7 @@ try {
     Log "Sent. Server reports health_state=$($resp.health_state)"
 
     # Persist the admin-controlled config the server just returned
-    # (enabled/maintenance_mode/max_sessions/allocated_kbps — see
+    # (enabled/maintenance_mode/max_sessions/allocated_kbps -- see
     # lib/starlink.php:st_gateway_config()) so an admin change on the VPS is
     # visible here without a redeploy. Same state-file convention as the
     # Linux gateway's heartbeat.sh.

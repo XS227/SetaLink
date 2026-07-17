@@ -323,7 +323,17 @@ first real-device test can happen whenever a client with that UUID dials in.
 
 ---
 
-## 18. 2026-07-17 — watchdog.ps1 rewritten: toggle-amnesia self-heal + handshake-based liveness (Agent A)
+## 18. 2026-07-17 — watchdog.ps1 + heartbeat.ps1 rewritten: toggle-amnesia self-heal + handshake-based liveness (Agent A)
+
+**heartbeat.ps1 got the same liveness fix** (second commit): its ping-based
+`tunnel_status` would have permanently reported `down` (fi-hel filters tunnel
+ICMP), and `st_health_state()` fails closed on that — the node would sit
+OFFLINE/unroutable forever even with `enabled=1`, and loss would read 100%
+(≥ the 2% DEGRADED threshold) besides. Now: ≥3/5 ping replies = real
+latency/loss; otherwise handshake age ≤180s = `up` with latency/loss sent as
+null ("not measured" — the server stores NULL and treats it as healthy);
+stale = `down`. Peer default corrected to 192.168.137.2, adapter derived from
+the installed `WireGuardTunnel$*` service.
 
 Closes §17 root cause 5's TODO. Two changes, both live in
 `deploy/starlink/gateway/windows/watchdog.ps1` (ASCII-clean, parse-validated):
