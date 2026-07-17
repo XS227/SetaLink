@@ -367,6 +367,76 @@ re-registration needed.
 
 ---
 
+## 19. 2026-07-17 ~02:40 — Server-side verification after task re-registration: heartbeat GREEN, but the EXIT PATH IS DOWN after the reboot (Agent A)
+
+Context: the Surface user re-registered both Scheduled Tasks with a **1-minute**
+repetition interval — Task Scheduler rejected the original 33s as `PT33S`
+(its documented minimum is one minute; the 33s default was a bug on every
+Windows box, now fixed in `1-provision-gateway.ps1`). The Surface was
+rebooted ~01:41 UTC; tasks were started ~02:22 UTC.
+
+**Verification results, all from the server side:**
+
+1. **Heartbeat arriving: ✅** `POST /starlink-heartbeat.php` → 200 every ~60s
+   since 02:22:37 (nginx access.log + `starlink_nodes.last_heartbeat_at`).
+   Because of the new 60s cadence, `STARLINK_HEARTBEAT_FRESH_SECS` was raised
+   90 → **150** (repo + prod, backup `lib/starlink.php.bak-hbwindow-20260717`)
+   — at 90s a single late POST would have flapped the node OFFLINE/unroutable.
+2. **Node status: ✅** `st_health_state()` = ONLINE, `st_routable()` = YES
+   (evaluated live via the server's own code).
+3. **tunnel_status: ✅** DB says `up`; `wg show test0` on fi-hel shows a
+   handshake 6s old, endpoint `209.198.157.144:13221`.
+4. **Exit IP: ❌ THE ACTUAL EXIT IS DEAD.** The heartbeat reports exit_ip
+   `209.198.157.144` — still Starlink CGNAT (changed from `.28` at reboot,
+   normal), **but that value is measured from the Surface's own WAN curl, not
+   through the tunnel.** From fi-hel the real data path fails:
+   `curl --interface 192.168.137.2 https://ifconfig.me` → timeout (retested
+   3× over ~10 min), and `192.168.137.1` (the ICS gateway) answers nothing
+   (100% loss). fi-hel policy routing verified intact (ip rule → table
+   starlink → default dev test0; packets DO enter the tunnel — counters grow).
+   Surface→fi-hel direction works (heartbeat pings: ~54ms/0%). Diagnosis:
+   **§17's toggle-amnesia, triggered by the reboot** — ICS lost
+   192.168.137.1/forwarding, and the watchdog is NOT healing it despite ~40
+   one-minute cycles since boot. `recent_disconnects` = 0 in every heartbeat,
+   i.e. the watchdog has never logged a heal — strongest hypothesis: **the
+   Surface still runs the pre-§18 watchdog.ps1** (the §18 re-pull was never
+   done; the re-registered task points at the old file). Alternative: new
+   watchdog runs but `Rebind-Ics` fails — that would leave `ERROR:` lines in
+   `logs\watchdog.log` next to the script.
+5. **Reboot survival: ⏳ UNPROVEN.** The heartbeat gap 01:28→02:22 spans the
+   reboot, and beats only resumed when the tasks were manually started — so
+   this boot proves nothing. The provision script does register `-AtStartup`
+   triggers for both tasks; whether the manual re-registration kept them is
+   unknown from here.
+
+**Phase 1 is NOT re-confirmed complete** — the node currently advertises
+ONLINE+routable while the exit blackholes (the exact monitoring blind spot
+§18 warned about: handshake liveness stays green when NAT dies).
+
+**Surface steps, in order:**
+
+1. Re-pull BOTH gateway scripts from the branch (raw.githubusercontent,
+   `feat/starlink-node-phase1`, `deploy/starlink/gateway/windows/`) over the
+   installed copies — watchdog.ps1 (§18 rewrite) is the critical one.
+2. Run watchdog.ps1 once by hand in an admin PowerShell (same -ServiceName /
+   -StarlinkAdapterName arguments as the task) and read `logs\watchdog.log`:
+   expect `Toggle amnesia detected … re-binding ICS` then `HEALED`. If
+   `ERROR: EnableSharing failed` instead, fall back to the manual §17 fix
+   (Wi-Fi properties → Sharing → off → on, select the tunnel adapter) and
+   report the error text.
+3. Confirm both tasks kept a boot trigger:
+   `schtasks /query /tn ReaLink-Starlink-Watchdog /xml | findstr BootTrigger`
+   (same for `ReaLink-Starlink-Heartbeat`). If missing, re-run
+   `1-provision-gateway.ps1` (now registers 60s + AtStartup correctly).
+4. Say when done — the server side re-checks
+   `curl --interface 192.168.137.2 https://ifconfig.me` from fi-hel (must
+   return the Starlink IP). Only then reboot once more for check 5; after
+   the reboot the exit must come back **without any manual action**, healed
+   by the watchdog's boot trigger + 60s cycles (watch `disconnects.log`
+   gain exactly one entry for the post-boot ICS heal).
+
+---
+
 ## 0. URGENT — do this first, before any other work
 
 During this investigation the user was working in a terminal they *believed*

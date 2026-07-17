@@ -292,7 +292,7 @@ if (-not (Get-NetFirewallRule -DisplayName $blockRuleName -ErrorAction SilentlyC
 Write-Ok "No inbound rule added for the tunnel itself -- by design, the Surface only dials out."
 
 # ---------------------------------------------------------------------------
-Write-Step "Registering heartbeat.ps1 as a Scheduled Task (every 33s, runs at startup)"
+Write-Step "Registering heartbeat.ps1 as a Scheduled Task (every 60s, runs at startup)"
 $heartbeatScript = Join-Path $PSScriptRoot 'heartbeat.ps1'
 $hbTaskName = 'ReaLink-Starlink-Heartbeat'
 $hbAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$heartbeatScript`""
@@ -303,7 +303,11 @@ $hbAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProf
 # Fix: build the trigger without -RepetitionDuration, then set the
 # underlying Repetition.Duration to '' -- that empty string is the actual
 # "repeat indefinitely" sentinel Task Scheduler's COM/CIM model expects.
-$hbTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 33)
+# 60s, not less: Task Scheduler's minimum RepetitionInterval is one minute --
+# 33s serialized to PT33S and was rejected as out of range on the Surface
+# (2026-07-17). The server's OFFLINE window (STARLINK_HEARTBEAT_FRESH_SECS)
+# is sized to tolerate this cadence; change them together.
+$hbTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 60)
 $hbTrigger.Repetition.Duration = ''
 $hbBootTrigger = New-ScheduledTaskTrigger -AtStartup
 $hbSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)

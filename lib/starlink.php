@@ -17,7 +17,7 @@
 
 declare(strict_types=1);
 
-const STARLINK_HEARTBEAT_FRESH_SECS   = 90;    // no heartbeat within this window => OFFLINE
+const STARLINK_HEARTBEAT_FRESH_SECS   = 150;   // no heartbeat within this window => OFFLINE (gateway beats every 60s -- Task Scheduler minimum -- allow 2 beats + slack)
 const STARLINK_DEGRADED_LOSS_PCT      = 2.0;   // packet loss >= this => DEGRADED
 const STARLINK_DEGRADED_LATENCY_MS    = 250;   // latency >= this => DEGRADED
 const STARLINK_DEGRADED_DISCONNECTS   = 3;     // recent disconnects >= this => DEGRADED
