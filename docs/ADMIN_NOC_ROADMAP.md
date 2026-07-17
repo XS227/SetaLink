@@ -1231,23 +1231,38 @@ kommentar som sier den er ment for "admin live-log view". Khabats
 instruks: gi Hakim en egen, førsteklasses adminside — ikke en skjult
 tjeneste.
 
+**Bygget 2026-07-17/18** på `feat/admin-noc-consolidated` (commit
+`8ab2df5`) + instrumentering i `hakim-bot` selv (commits `054221d`,
+`5435222`, ikke deployet — restart av `hakim-bot.service` nødvendig).
+
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Bot-status (Online/Offline) | Not started | — | — | — | — | — | `systemctl status hakim-bot` finnes allerede som datakilde — les den, ikke gjett |
-| Hvilken modell brukes (OpenAI/Anthropic/fallback) | Not started | — | — | — | — | — | `bot.py`s `get_provider(primary_name)`/fallback-logikk finnes allerede — les faktisk brukt provider fra logg/kode, ikke anta |
-| Antall forespørsler | Not started | — | — | — | — | — | `hakim.db` `bot_messages` (direction='in') — ekte data finnes allerede |
-| Suksessrate | Not started | — | — | — | — | — | krever at feil/timeout faktisk logges strukturert — ikke bygget i dag, se feillogg-raden under |
-| Gjennomsnittlig svartid | Not started | — | — | — | — | — | krever tidsstempling av inn/ut per melding — `bot_messages.ts` finnes, men inn/ut-par må kobles |
-| Feillogg | Not started | — | — | — | — | — | `bot.py`s `error_handler()` logger til journald i dag (`journalctl -u hakim-bot`), ikke til en admin-lesbar tabell — ny strukturert feillogg trengs |
-| Kunnskapskilder | Not started | — | — | — | — | — | `knowledge_base.py` finnes — vis hva den faktisk inneholder, ikke en generisk beskrivelse |
-| Siste oppdatering | Not started | — | — | — | — | — | filsystem-tidsstempel eller egen versjonslogg, TBD |
-| Konfigurasjon av Advisor Mode | Not started | — | — | — | — | — | § 8.9 — denne siden blir kontrollpanelet for den bryteren |
-| Test-spørsmål mot Hakim (send et spørsmål, se ekte svar direkte i admin) | Not started | — | — | — | — | — | § 8.0 — testsvarene her teller som en del av Live-verifiseringen for hele § 8 |
+| Bot-status (Online/Offline) | **Testing** | `feat/admin-noc-consolidated` | `8ab2df5` | — | Ikke deployet | `systemctl is-active hakim-bot` bekreftet lesbar av `www-data` uten ny sudo-tilgang; `php -l` OK | venter på deploy |
+| Hvilken modell brukes (OpenAI/Anthropic/fallback) | **Testing** | `feat/admin-noc-consolidated` | `8ab2df5` | — | Ikke deployet | Leser `bot_config.ai_provider`/`openai_model`/`anthropic_model` direkte fra `hakim.db` | venter på deploy |
+| Antall forespørsler | **Testing** | `feat/admin-noc-consolidated` | `8ab2df5` | — | Ikke deployet | `COUNT(*) FROM bot_messages WHERE direction='in'` — bekreftet 30 rader i dag | venter på deploy |
+| Suksessrate | **Testing (kode), ingen data ennå** | `feat/admin-noc-consolidated` + `hakim-bot@054221d` | `8ab2df5` / `054221d` | — | Ingen av delene deployet | Ny `bot_requests`-tabell + instrumentering i `bot.py` skrevet og syntakssjekket — siden viser ærlig "No data yet" til `hakim-bot` er restartet, ikke et gjettet tall | venter på deploy + restart av `hakim-bot.service` |
+| Gjennomsnittlig svartid | **Testing (kode), ingen data ennå** | samme som over | samme | — | samme | `latency_ms` måles nå med `time.monotonic()` rundt provider-kallet i `bot.py` | samme |
+| Feillogg | **Testing (kode), ingen data ennå** | samme som over | samme | — | samme | `bot_requests.error`-feltet, lest og vist i admin — tomt til restart | samme |
+| Kunnskapskilder | **Testing** | `feat/admin-noc-consolidated` | `8ab2df5` | — | Ikke deployet | Leser faktisk `KNOWLEDGE_DIR`-mappen — bekreftet: 1 fil (`rikets-lover.md`), 1,2 KB | venter på deploy |
+| Siste oppdatering | **Testing** | `feat/admin-noc-consolidated` | `8ab2df5` | — | Ikke deployet | `MAX(updated_at) FROM bot_config` | venter på deploy |
+| Konfigurasjon av Advisor Mode | Not started (siden viser ærlig "ikke implementert ennå") | — | — | — | — | — | § 8.9 selv er ikke bygget klient-side ennå — ingen falsk bryter vist |
+| Test-spørsmål mot Hakim | **Testing** | `feat/admin-noc-consolidated` + `hakim-bot@5435222` | `8ab2df5` / `5435222` | — | Ingen av delene deployet | `admin_test_query.py` gjenbruker `bot.py`s eksakte provider/config/kunnskaps-kode — ekte API-kall, ekte kostnad per test, skriver ikke til `bot_messages`/`bot_users`/`bot_requests` (unngår å forurense ekte brukstall) | venter på deploy |
 
 **Hard regel:** denne siden skal lese `hakim-bot`s faktiske, kjørende
 tilstand (`hakim.db`, `systemctl status`, `journalctl`) — ikke en egen,
 parallell kopi av statusen som kan divergere fra virkeligheten. Samme
 prinsipp som § 8.0: ingen plausibel, oppdiktet "Online"-status.
+
+**🔒 Sikkerhetsfunn, ikke rettet (utenfor denne oppgavens omfang, men
+viktig):** `bot_config`-tabellen i `hakim.db` lagrer `openai_api_key`,
+`anthropic_api_key` og `telegram_token` i **klartekst**, lesbar av
+`www-data` (samme bruker som kjører SetaLink-adminet og trolig andre
+apper på boksen). `hakim-status`-spørringen velger eksplisitt kun
+`ai_provider`/`bot_active`/`openai_model`/`anthropic_model` — aldri disse
+kolonnene — men selve det at nøklene ligger slik er en reell
+hemmelighets-hygiene-svakhet. Ikke rettet av meg (krever trolig
+nøkkelrotasjon, en beslutning jeg ikke tar stille); flagget her og i
+sluttrapporten til Khabat.
 
 **Seksjonens Done (§ 8 samlet):** hver deltabell `Live` med ekte
 data-koblinger (ingen fabrikkerte svar, jf. § 8.0), personlighetskravene i
