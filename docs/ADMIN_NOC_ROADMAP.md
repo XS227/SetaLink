@@ -133,6 +133,55 @@ seksjonen kan bli `Live`):** ekte AdMob-konto med `admob_app_id` /
 **Seksjonens Done:** AdMob-konto `Live`, alle rader `Live` med 100% ekte
 tall (ingen placeholder-eCPM), skjermbilder.
 
+### 2.1 AdsGram (Shahnameh) — separat annonsesystem, **funnet reelt ødelagt** 2026-07-17
+
+**Dette er ikke samme system som tabellen over.** AdMob/rewarded-ads-recovery
+(over) er SetaLink/ReaLink sitt eget VPN-kvote-system. **AdsGram er
+Shahnameh sitt** (annet backend, `/var/www/backend/backend`), et helt
+separat TON-basert rewarded-ads-system som krediterer `real_balance`
+direkte. Khabats test 2026-07-17 (så en AdsGram-reklame via Shahnameh i
+Telegram, ingenting synlig i admin) ble undersøkt direkte i koden — to
+reelle, atskilte funn:
+
+**Funn 1 — ingen admin-visning finnes i det hele tatt, uansett om
+krediteringen virker.** `creditAdReward()` (`lib/adsgram.js`) skriver
+`$inc real_balance`/`gems` rett på brukerdokumentet — **det finnes ingen
+egen hendelseslogg/tabell** for individuelle annonsevisninger. Den eneste
+sporen er en rå tekstfil (`/var/www/shahnameh/season2/data/ad-callback.log`),
+ikke lest av noen admin-rute. "Ingen treff i admin" er derfor delvis
+forventet — funksjonen for å *vise* treff finnes ikke, uavhengig av om
+selve krediteringen fungerte.
+
+**Funn 2 — server-side postback-verifisering (AdsGram sin "Reward URL")
+har vært ødelagt i minst en måned.** Lest direkte fra
+`ad-callback.log`: **hver eneste linje tilbake til 2026-06-15, inkludert
+Khabats test i dag (2026-07-17T21:26:12Z), har tom `blockId`.**
+`handleCallback()` (`routes/adminApi/ads.js`) avviser da med
+`credited: false, reason: 'unknown_blockId'` — stille, ingen feilmelding
+synlig for brukeren, AdsGram får `200 OK` og prøver aldri igjen. I tillegg
+er `ADSGRAM_BLOCK_ID_BRONZE/SILVER/GOLD` tomme i `.env` (kun `WATCH` er
+satt) — selv med riktig blockId ville bronze/silver/gold-nivåene aldri
+matchet. **Sannsynlig rotårsak:** AdsGram-dashbordets "Reward URL"-mal
+mangler `blockId`-parameteren i URL-en som faktisk er konfigurert der.
+
+**Det finnes en fungerende sekundærvei** — klient-rapportert
+`POST /season2/ads/verify-reward` (`routes/api/season2.js`) tar `tier`
+direkte fra klienten og kaller `creditAdReward()` uten å være avhengig av
+blockId. Om frontend faktisk kaller denne etter AdsGram sitt `onReward`,
+krediteres balansen — men fortsatt uten noen admin-synlig hendelse (Funn 1
+gjelder uansett hvilken vei som brukes).
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Undersøke/rette AdsGram Reward URL-konfigurasjon (mangler `blockId`) | Not started | — | — | — | — | — | Khabats eget AdsGram-dashbord — jeg har ikke tilgang, kun funnet symptomet i loggen |
+| Sette `ADSGRAM_BLOCK_ID_BRONZE/SILVER/GOLD` i Shahnameh `.env` | Not started | — | — | — | — | — | krever de faktiske block-ID-ene fra AdsGram-dashbordet |
+| Egen hendelseslogg-tabell for AdsGram-visninger (ikke bare saldo-inkrement) | Not started | — | — | — | — | — | ny tabell, samme mønster som `ad_reward_events` i AdMob-systemet over |
+| Admin-side/visning for AdsGram-hendelser (Shahnameh-siden, ikke SetaLink-adminet) | Not started | — | — | — | — | — | avhenger av hendelseslogg-tabellen over |
+
+**Ingen kode er endret eller deployet av meg** — dette er kun undersøkt og
+dokumentert, ingen skriving til produksjons-Shahnameh-backenden. Si fra om
+du vil at jeg går videre med noe av dette.
+
 ---
 
 ## § 3 — Prioritet 3: Infrastruktur / Kapasitet
@@ -271,6 +320,9 @@ bunnen, ikke pusses på.
 | Profilfelter: display name, unikt @handle, avatar, Shahnameh-persona/helt, level/XP, clan, inviterte venner, online-status, språk, REAL/ZAR-balanse, tilgjengelig kvote | Not started | — | — | — | — | — | § 6.12 |
 | Skjul tekniske `SL-227-xxxx`-ID-er fra primær UI (kun synlig i profil/admin) | Not started | — | — | — | — | — | § 6.12 |
 | Valgfri Telegram-ID-kobling til profilen (ikke eneste identitet) | Not started | — | — | — | — | — | § 6.12, § 6.7 |
+| **REAL_ID som langsiktig kanonisk identitet** (Telegram = midlertidig primær, ikke permanent) — `realgram_profiles.id` formaliseres som REAL_ID | Not started | — | — | — | — | — | `REALGRAM_NATIVE_MESSAGING_DESIGN.md` § 2.1 — denne repoens del kan gjøres uavhengig |
+| Fremtidige identitetskoblinger: Apple, Google, telefonnummer, e-post, wallet-adresse — alle peker mot samme REAL_ID | Not started | — | — | — | — | — | `realgram_identity_links.system` utvides, ingen skjemaendring nødvendig |
+| **"Aldri mist wallet/Shahnameh-progresjon/REAL/ZAR/kvote/clan/venner/historikk selv om Telegram kobles fra"** | Not started | — | — | — | — | — | **Krever Shahnameh-side migrasjon** (season2_users.telegram_id er selve Mongo-nøkkelen i dag, ikke bare en fremmednøkkel) — Agent B/Shahnameh-backend-eier må avklare, ikke løsbart kun fra denne repoen |
 
 ### 6.2 RealGram hovedskjerm
 

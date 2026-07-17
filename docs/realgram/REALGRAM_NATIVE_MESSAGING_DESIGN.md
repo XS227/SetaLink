@@ -349,6 +349,54 @@ live `/v1/handle-lookup`/`/v1/handle-claim` contract, synced in
 concept left is `realgram_profiles` itself — the unifying row that didn't
 exist in any system before.
 
+### 2.1 REAL_ID — the long-term canonical identity (Khabat's principle, 2026-07-17)
+
+**Telegram-ID is a temporary primary identity, not the permanent one.**
+Long-term, every service should key off a single **REAL_ID**, with
+Telegram becoming *one identity link among several* — not special-cased.
+Future link types Khabat named: Apple, Google, phone number, e-mail,
+wallet address. All of them point at the same REAL_ID.
+
+**The good news: this repo's design already has the right shape for it.**
+`realgram_profiles.id` (§ 1.1) *is* REAL_ID in everything but name — a
+durable UUID that every identity link (`realgram_identity_links`, already
+provider-agnostic: `system` + `external_id`) points at. Formalizing this
+means:
+
+1. **Rename in spirit, not necessarily in code:** `realgram_profiles.id`
+   is documented from this point forward as *the* REAL_ID — the canonical
+   ecosystem identity, not a RealGram-internal implementation detail.
+2. **`realgram_identity_links.system` extends cleanly** to new providers
+   as they're added — `'apple' | 'google' | 'phone' | 'email' |
+   'wallet_address'` alongside today's `'device' | 'trustai' |
+   'telegram' | 'shahnameh'` — no schema change needed, the table was
+   already built provider-agnostic (§ 1.1's design reasoning already
+   anticipated re-linking, just not this specific list of providers).
+3. **What this repo (SetaLink) can promise vs. what it can't, honestly:**
+   this repo's own tables (`devices`, `quota_transactions`, the new
+   `realgram_*` tables) can be fully REAL_ID-anchored — that's within this
+   session's control. **Shahnameh's `season2_users` cannot** — its
+   `telegram_id` field is the actual Mongo document key today (§ 0), not
+   just a foreign key. Making Shahnameh REAL_ID-native (so a user keeps
+   Shahnameh progression after unlinking Telegram) is a **Shahnameh-side
+   migration Agent B/the Shahnameh backend owns**, not something this
+   repo's design can complete unilaterally. Flagging this honestly rather
+   than implying REAL_ID is "done" once this repo's side is — it isn't,
+   until Shahnameh's own primary key story changes too.
+4. **The never-lose guarantee** (wallet, Shahnameh progress, REAL, ZAR,
+   data quota, clan, friends, history — survives a Telegram unlink) is
+   therefore **not fully deliverable until step 3's Shahnameh-side
+   migration happens**. Today, unlinking Telegram from a profile would
+   orphan the `('shahnameh', telegram_id)` link (§ 2 step 5) with no
+   REAL_ID-keyed fallback on Shahnameh's side to fall back to — the
+   guarantee is a real target, not yet an achievable one end-to-end.
+
+**Sequencing:** REAL_ID formalization (points 1–2) can happen inside this
+repo's own § 6 Fase 1 work with no cross-team dependency. The full
+never-lose guarantee (points 3–4) is a separate, larger, cross-repo effort
+that needs its own scoping conversation with whoever owns the Shahnameh
+backend session — not silently assumed as part of § 6 Fase 1.
+
 ---
 
 ## 3. Migration plan
