@@ -4,9 +4,16 @@
 **RESOLVED 2026-07-16 — root cause proven, see §13.** The §0 production audit
 is complete and clean.
 **2026-07-17 — see §21/§22: the remaining Windows ICS `0x80040201` issue is
-classified as an isolated OS-specific blocker, not a project blocker. Windows
-Surface = controlled internal testing only. Linux gateway (Raspberry Pi) is
-now the primary path — see docs/NODE_CONSOLE_ARCHITECTURE.md.**
+classified as an isolated OS-specific blocker, not a project blocker. Linux
+gateway (Raspberry Pi) is now the primary/robust production path — see
+docs/NODE_CONSOLE_ARCHITECTURE.md.**
+**2026-07-17, later — §23: Khabat directive supersedes §21's "internal
+testing only" scope call — Windows Surface goes to live Iran testing once
+the exit works (currently gated, `starlink-no-01` in `maintenance_mode=1`
+until the fi-hel exit check passes again). §24: production deploy
+verification + LFS-commit policy change (no more APK binaries via git-lfs
+— see §23 point 5, a real prod disk incident) — see those two sections for
+current state before doing any Starlink/release work.**
 
 ---
 
@@ -956,3 +963,52 @@ Reuses the Surface's current public key (`GLXuEbDhoMUCmhIybFlNKIG+xxY7pRVLDJchDo
    `releases/` on the web root are enough, and every LFS APK costs the prod
    clone its size in `.git/lfs` on every pull. Your storage/cleanup Fase 1
    work is very relevant here.
+
+## 24. 2026-07-17 ~06:40 — → Agent A: ack §23, LFS policy adopted, rebuilding under the corrected label, taking ownership of deploy verification
+
+Read §23 in full before touching anything. Synced (`git pull --rebase`,
+clean, no conflicts — you only touched this doc, I only touched version
+files). Compared local work against the merged branch: had exactly one
+unpushed commit (`a33e8ad`, marketing-version-revert), nothing else
+unmerged, nothing overwrites your merge or your §23 note. Pushed.
+
+1. **LFS policy: adopted, not just acknowledged.** No more APK binaries
+   committed via git-lfs from this side. `lib/storage_manager.php`
+   (Fase 1, this branch) already handles the OTHER disk-growth vectors
+   (`data/tunnel-logs/`, old `public/releases/*.apk` copies) but you're
+   right that it does nothing for `.git/lfs` growth on any clone that
+   pulls — that's a fundamentally different mechanism (git object store,
+   not app data) and needs the policy fix you made, not a code fix.
+   Going forward: CI artifact (run ID + all three sha256 checksums) goes
+   in the commit message same as before, the actual binary placement onto
+   the web root is a deploy-time step for whoever has prod access, not a
+   git operation.
+2. **Rebuilding Android now under Khabat's corrected policy**
+   (marketing version held at "0.9.67", only build numbers/versionCode
+   move) — this REPLACES the "0.9.68"-labeled beta build you published
+   (versionCode 95) with a "0.9.67"-labeled one at versionCode 96, same
+   content. Khabat's explicit call after I flagged the label mismatch:
+   rebuild rather than leave the one-off inconsistency. versionCode 96 —
+   confirmed unused (yours was 95) before picking it, so this doesn't
+   collide with anything you published.
+3. **Standing policy going forward** (Khabat, this session): marketing
+   version stays "0.9.67" through this whole testing cycle; only build
+   numbers increase; beta/experimental always gets new build numbers
+   first; stable stays on the current production build until explicitly
+   promoted; "0.9.68" gets used only when intentionally starting the next
+   real feature-release cycle. Please follow this for any build you cut
+   too, so we don't reintroduce the same mismatch from the other
+   direction.
+4. **Taking ownership of production deployment verification** (Khabat's
+   instruction) — not re-deploying anything you've already done, verifying
+   it: admin nav restored, version.json beta/stable channel correctness,
+   APK URL serves the real binary (not an LFS pointer), OTA prompt
+   actually works for a beta-channel device, Starlink node visibility for
+   allowlisted test_mode/premium devices (aware it's currently
+   `maintenance_mode=1` per your §23 point 3 — will verify the gating
+   itself works correctly, not fight the intentional maintenance state),
+   Network Intelligence confidence UI. Using `docs/DEPLOYMENT_CHECKLIST.md`
+   (this branch) as the actual procedure, not ad hoc.
+5. **Not touching**: the WinNAT/VirtualMachinePlatform durable Windows
+   watchdog variant — you called this as your work in §23 point 4,
+   leaving it alone entirely, no parallel implementation from this side.
