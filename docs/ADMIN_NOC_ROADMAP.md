@@ -288,12 +288,22 @@ bunnen, ikke pusses på.
 
 ### 6.6 Sende datakvote ("Send data")
 
+**Korrigert 2026-07-17, se `REALGRAM_NATIVE_MESSAGING_DESIGN.md` § 0/§ 4:**
+backend-ledgeren finnes allerede og er live — `qe_transfer()`
+(`lib/quota_economy.php:370`), `POST action=transfer-quota`
+(`public/api.php:1207`), med egen mobilskjerm allerede skipet
+(`TransferScreen.tsx`). Atomisk, auditert, med anti-fraud-grenser allerede
+håndhevet (min 100 MiB, maks 50 GiB/dag, 10 overføringer/dag). Det som
+faktisk mangler er kun **chat-integrasjonen** (velge mottaker fra en
+samtale, systemmelding i tråden) og admin-historikkpanelet — ikke
+ledgeren selv.
+
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Flyt: velg mottaker → velg mengde → vis egen kvote → bekreft → sikker ledger-transaksjon → systemmelding i chat ("Du sendte 500 MB") → push + saldo-oppdatering hos mottaker | Not started | — | — | — | — | — | § 6.12, sikker backend-ledger (se krav) |
-| Atomisk transaksjon, ingen dobbeltbruk | Not started | — | — | — | — | — | — |
-| Rate limiting, min/maks | Not started | — | — | — | — | — | — |
-| Anti-fraud | Not started | — | — | — | — | — | — |
+| Backend-ledger (atomisk, anti-fraud, rate limiting, min/maks) | **Live** (allerede eksisterende, forut for dette roadmap-arbeidet) | main | — | — | — | `lib/quota_economy.php:370`, `public/api.php:1207` | ingen — gjenbruk, ikke bygg på nytt |
+| Chat-integrasjon: velg mottaker fra samtale, kall eksisterende `transfer-quota`, sett inn `messages`-rad (`kind='quota_transfer'`) | Not started | — | — | — | — | — | § 6.12 |
+| Systemmelding i chat ("Du sendte 500 MB") | Not started | — | — | — | — | — | § 6.12 |
+| Push + saldo-oppdatering hos mottaker | Not started | — | — | — | — | — | delvis live via `push_device_message`, må kobles til ny chat-visning |
 | Historikk i admin | Not started | — | — | — | — | — | knyttes til § 3 admin-arbeid |
 | Remote deaktiverings-bryter | Not started | — | — | — | — | — | — |
 | Tydelig skille kjøpt/opptjent/overførbar kvote (om nødvendig) | Not started | — | — | — | — | — | — |
@@ -378,10 +388,10 @@ Ikke bygg alt som én stor uverifisert leveranse. Hver fase følger § 0.1 og
 |---|---|---|---|
 | 1a | Denne seksjonen lagt inn i `ADMIN_NOC_ROADMAP.md` | Done (denne commiten) | — |
 | 1b | Krysshenvisning lagt inn i produkt-roadmapen (`docs/realgram/PRODUCT_VISION.md`) — **avdekket en uløst produktkonflikt i samme slag: `PRODUCT_VISION.md` beskriver RealGram som en TDLib-basert Telegram-klient som speiler brukerens ekte Telegram-chatter; § 6 her beskriver et eget RealGram-native meldingssystem der Telegram kun er en inngang. Ikke reconcilert — se varsel i `PRODUCT_VISION.md`.** | Done (denne commiten) | — (konflikt, ikke innhold, venter på Khabat) |
-| 2 | Foreslått datamodell vist | Not started | Nei |
-| 3 | Kartlegging av hvilke eksisterende user-ID-systemer som må slås sammen | Not started | Nei |
-| 4 | Migreringsplan (eksisterende VPN-/Shahnameh-brukere mister ikke konto eller saldo) | Not started | Nei |
-| 5 | Wireframes: Chats, Direct Message, Warrior Profile, Clan Chat | Not started | Nei |
+| 2 | Foreslått datamodell vist | Testing (skrevet, venter på gjennomgang) | Nei — se `REALGRAM_NATIVE_MESSAGING_DESIGN.md` § 1 |
+| 3 | Kartlegging av hvilke eksisterende user-ID-systemer som må slås sammen | Testing (skrevet, én åpen avklaring med Agent B/Shahnameh) | Nei — se samme dok § 2 |
+| 4 | Migreringsplan (eksisterende VPN-/Shahnameh-brukere mister ikke konto eller saldo) | Testing (skrevet, venter på gjennomgang) | Nei — se samme dok § 3 |
+| 5 | Wireframes: Chats, Direct Message, Warrior Profile, Clan Chat | Testing (tekst-wireframes skrevet + Artifact publisert) | Nei — se samme dok § 5 |
 | 6 | Godkjenning fra Khabat | Not started | Nei |
 
 **Fase 1-koding kan ikke starte før rad 2–6 over er `Done`/`Ja`.**

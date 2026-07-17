@@ -1,5 +1,15 @@
 # RealGram — Implementation Plan
 
+> **⚠️ 2026-07-17 — this plan's Path A/B staged roadmap and TDLib spike
+> below are OBSOLETE.** `PRODUCT_VISION.md` now defines Path B as native
+> RealGram messaging (Telegram = entry/identity only); old Path A (Mini
+> App) and old Path B (TDLib Telegram-mirror) are both rejected — see
+> `DECISIONS.md` 2026-07-17. The TDLib spike this file gates Phase 4 behind
+> no longer applies to anything. The live phased plan for the new direction
+> is `ADMIN_NOC_ROADMAP.md` § 6.11. This file is kept for historical
+> record of the rejected evaluation, not yet rewritten to match the new
+> direction — don't build against the table below.
+
 **Status: planning only. No implementation is authorized past the technical
 spike without explicit user sign-off on the spike's findings.** See
 `DECISIONS.md` for what has and hasn't been approved.

@@ -1,5 +1,12 @@
 # RealGram — documentation index
 
+> **⚠️ 2026-07-17 — read `PRODUCT_VISION.md` first, not this description.**
+> RealGram is **not** a Telegram-mirroring client. Official direction: a
+> native RealGram messaging system (own chats/DMs/clans), Telegram as an
+> entry point/identity provider only. See `DECISIONS.md` 2026-07-17 entry.
+> The line below is the 2026-07-10 framing, kept for history — do not act
+> on it.
+
 RealGram is a proposed independent Telegram-compatible client built on top of
 ReaLink's existing connectivity transport, Shahnameh's existing REAL reward
 economy, and TrustAI's existing referral pattern. This folder is the durable,
@@ -7,9 +14,11 @@ in-repo record of the assessment, decisions, and plan — written so a fresh
 agent (any Claude Code session, any account) can pick up the work from the
 repository alone, with no access to the conversation that produced it.
 
-**Status as of 2026-07-10: assessment and planning only. No RealGram code
-exists yet. Full implementation is explicitly not authorized — see
-`DECISIONS.md`.**
+**Status as of 2026-07-17: direction decided (native messaging, see
+`PRODUCT_VISION.md`), design-doc phase (data model / ID-merge / migration /
+wireframes). Implementation is gated on Khabat's sign-off of those
+deliverables — see `ADMIN_NOC_ROADMAP.md` § 6.12. No RealGram messaging
+code exists yet.**
 
 ## Read in this order
 

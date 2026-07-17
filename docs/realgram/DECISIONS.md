@@ -418,3 +418,50 @@ than an on-device test would tell us.
 **Not yet verified:** this was written on the VPS (1GB RAM, no local
 builds per house rules) — needs an actual device/simulator pass before
 the flag flips. Nothing here has been type-checked or run.
+
+### 2026-07-17 — RealGram direction: Path B redefined as native messaging; old Path A and old Path B (TDLib mirror) rejected
+
+**Decided by Khabat**, after reviewing `ADMIN_NOC_ROADMAP.md` § 6
+("REALGRAM COMMUNITY & MESSAGING"): RealGram's official direction is a
+**native RealGram messaging system** — its own chats, DMs, and clans, with
+Telegram as an entry point and identity provider only. This is now called
+"Path B" in `PRODUCT_VISION.md`, replacing that document's prior use of the
+name for a TDLib-based client mirroring a user's real Telegram account.
+
+**Rejected, explicitly, as of this entry:**
+- **Old Path A** (Telegram Mini App / bot inside official Telegram) —
+  cannot make Telegram reachable when Telegram itself is blocked, and
+  builds no independent RealGram identity or retention hook.
+- **Old Path B** (TDLib-based client showing the user's real, private
+  Telegram chats inside RealGram) — this is the direction `PRODUCT_VISION.md`
+  described until 2026-07-10/2026-07-16; explicitly rejected now. Reasoning
+  on record: "a worse Telegram forever" — no differentiation once Telegram
+  itself is reachable, ongoing TDLib maintenance burden, real app-store
+  distribution risk, and it never mirrors/stores private Telegram messages
+  under the new direction (hard rule, not just a policy preference).
+
+**Consequence for `IMPLEMENTATION_PLAN.md` and `SPIKE_REPORT.md`:** the
+TDLib technical spike this plan gated Path B behind is now moot — nothing
+in the redefined Path B depends on TDLib. Those two files still describe
+the old (rejected) Path B and have not yet been rewritten to match this
+decision; flagged, not yet done. `PATH_B0_ONBOARDING.md`'s "connect ReaLink,
+then open official Telegram" content is kept as historical context, no
+longer the active validation gate.
+
+**What happens next (Khabat's explicit sequencing, this same date):**
+1. Data model for the unified RealGram/VPN/Shahnameh/clan identity
+2. User-ID system merge plan (RealGram user ID, VPN ID, Shahnameh player
+   ID, referral/clan ID → one profile)
+3. Migration plan — existing VPN and Shahnameh users must not lose account
+   or balance
+4. Wireframes: Chats, Direct Message, Warrior Profile, Clan Chat
+5. Implementation (Phase 1, per `ADMIN_NOC_ROADMAP.md` § 6.11), gated on
+   Khabat's review of 1–4
+
+Deliverables 1–4 written up in
+`docs/realgram/REALGRAM_NATIVE_MESSAGING_DESIGN.md`, same date.
+
+**Not yet verified/done:** nothing has been implemented under this
+decision yet — this entry records the direction decision itself. The
+coding freeze in `ADMIN_NOC_ROADMAP.md` § 6 stays in effect until Khabat
+explicitly signs off on the design-doc deliverables above.
