@@ -472,25 +472,51 @@ function v1_starlink_down(array $starlinkNode): bool {
     return !st_routable($row);
 }
 
+// Starlink unlock policy (Khabat 2026-07-16, extended by the 2026-07-17
+// product correction): premium OR test_mode OR at least
+// V1_STARLINK_INVITES_REQUIRED verified ACTIVE invites unlock Starlink.
+// "Verified active invite" reuses api.php's bootstrap definition exactly
+// (granted referral + invitee device still alive) — one economy, one number.
+// Exposed raw via GET /starlink/unlock-status so the Home unlock card can
+// show real progress ("4 / 11 invited") instead of the feature being
+// invisible to locked users.
+define('V1_STARLINK_INVITES_REQUIRED', 11);
+function v1_starlink_unlock(PDO $pdo, ?string $deviceId): array {
+    $res = ['unlocked' => false, 'reason' => null,
+            'invitesVerified' => 0, 'invitesRequired' => V1_STARLINK_INVITES_REQUIRED];
+    if ($deviceId === null || $deviceId === '') return $res;
+    try {
+        $q = $pdo->prepare("SELECT plan, COALESCE(test_mode,0) AS test_mode FROM devices WHERE device_id = ?");
+        $q->execute([$deviceId]);
+        $dev = $q->fetch(PDO::FETCH_ASSOC);
+        $ic = $pdo->prepare(
+            "SELECT COUNT(*) FROM referral_uses ru
+             JOIN devices d ON d.device_id = ru.new_device_id
+             WHERE ru.referrer_device_id = ?
+               AND ru.status IN ('credited','approved')
+               AND (d.internet_ok = 1 OR d.last_seen >= datetime('now','-7 days'))");
+        $ic->execute([$deviceId]);
+        $res['invitesVerified'] = (int)$ic->fetchColumn();
+        if ($dev && $dev['plan'] === 'premium') {
+            $res['unlocked'] = true; $res['reason'] = 'premium';
+        } elseif ($dev && (int)$dev['test_mode'] === 1) {
+            $res['unlocked'] = true; $res['reason'] = 'test_mode';
+        } elseif ($res['invitesVerified'] >= V1_STARLINK_INVITES_REQUIRED) {
+            $res['unlocked'] = true; $res['reason'] = 'invites';
+        }
+    } catch (\Throwable $e) {}
+    return $res;
+}
+
 function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId, ?array $node = null): bool {
     if ($deviceId === null || $deviceId === '') return false;
     $st = $pdo->prepare("SELECT 1 FROM node_allowlist WHERE device_id = ? AND node_id = ?");
     $st->execute([$deviceId, $nodeId]);
     if ($st->fetchColumn()) return true;
-    // Starlink access policy (Khabat, 2026-07-16): once a Starlink node is
-    // enabled, every premium or test-mode device gets access automatically —
-    // no hand-curated per-device allowlist. Scoped to Starlink nodes only
-    // (identified by their '_row'); every other test node stays strictly
-    // node_allowlist-gated as before.
+    // Starlink nodes: policy gate above (premium/test_mode/invites). Every
+    // other test node stays strictly node_allowlist-gated as before.
     if ($node !== null && isset($node['_row'])) {
-        try {
-            $q = $pdo->prepare("SELECT * FROM devices WHERE device_id = ?");
-            $q->execute([$deviceId]);
-            $dev = $q->fetch(PDO::FETCH_ASSOC);
-            if ($dev && ($dev['plan'] === 'premium' || (int)($dev['test_mode'] ?? 0) === 1)) {
-                return true;
-            }
-        } catch (\Throwable $e) {}
+        if (v1_starlink_unlock($pdo, $deviceId)['unlocked']) return true;
     }
     return false;
 }
@@ -820,11 +846,28 @@ if ($rel === '/servers') {
         if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) continue; // hide test nodes
         // Auto-hide a non-primary node that is freshly DOWN, so users aren't
         // routed to a dead box. Primary is never hidden (last-resort default).
-        if (isset($n['_row']) && v1_starlink_down($n)) continue;      // Starlink: push-heartbeat health
-        elseif ($id !== 'primary' && v1_node_down($id)) continue;      // other nodes: cron-probe health
+        // Starlink (product correction 2026-07-17): an ELIGIBLE device must
+        // still SEE a down/maintenance Starlink node — greyed out with
+        // available:false, not erased. Nothing can connect to it anyway: the
+        // /servers/{id}/config route keeps refusing with 503 while it's down.
+        $starlinkUnavailable = false;
+        if (isset($n['_row'])) {
+            if (v1_starlink_down($n)) $starlinkUnavailable = true;
+        } elseif ($id !== 'primary' && v1_node_down($id)) continue;    // other nodes: cron-probe health
         // Geo-hide nodes that are unreachable from the caller's country.
         if (v1_node_geo_hidden($pdo, $id)) continue;
         $meta = $n['meta'];
+        if (isset($n['_row'])) {
+            $row = $n['_row'];
+            $meta['available']   = !$starlinkUnavailable;
+            $meta['status']      = $starlinkUnavailable
+                ? (((int)($row['maintenance_mode'] ?? 0) === 1) ? 'maintenance' : 'offline')
+                : 'online';
+            $meta['maxSessions'] = (int)($row['max_sessions'] ?? 0);
+            // Client copy hint: the node comes back by itself when its
+            // heartbeat turns healthy — the app should say so, not hide it.
+            if ($starlinkUnavailable) $meta['statusNote'] = 'auto_returns_when_healthy';
+        }
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
         if (is_int($rtt)) $meta['ping'] = $rtt;
@@ -837,7 +880,9 @@ if ($rel === '/servers') {
             $meta['successScore'] = (float)$scores[$id]['success_rate'];
         }
         $out[$id] = $meta;
-        $eligibleIds[] = $id;
+        // Unavailable Starlink nodes are listed for visibility but must not
+        // participate in adaptive-routing ranking (they can't take sessions).
+        if (!$starlinkUnavailable) $eligibleIds[] = $id;
     }
 
     // Adaptive Routing — RULE 7: OFF by default (docs/CLAUDE_REALINK_RULES.md).
@@ -860,6 +905,10 @@ if ($rel === '/servers') {
                 $meta['routingScore'] = $r['score'];
                 $meta['routingLevel'] = $r['context_level'];
                 $sorted[] = $meta;
+            }
+            // Unranked-but-listed nodes (unavailable Starlink) go last.
+            foreach ($out as $oid => $m) {
+                if (($m['available'] ?? true) === false) $sorted[] = $m;
             }
             v1_send(['servers' => $sorted, 'decisionId' => $decisionId]);
         }
@@ -892,6 +941,32 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     }
     v1_record_usage($pdo, $deviceId, $id);
     v1_send($n['creds']);
+}
+
+// Starlink unlock/progress for the Home card (product correction 2026-07-17):
+// the card must exist for EVERY user — unlocked users see node state, locked
+// users see invite progress toward V1_STARLINK_INVITES_REQUIRED. node=null
+// only when no Starlink node is enabled at all.
+if ($rel === '/starlink/unlock-status') {
+    $unlock = v1_starlink_unlock($pdo, $deviceId);
+    $nodeOut = null;
+    foreach ($nodes as $id => $n) {
+        if (!isset($n['_row'])) continue;
+        $row = $n['_row'];
+        $down = v1_starlink_down($n);
+        $nodeOut = [
+            'id'          => $id,
+            'available'   => !$down,
+            'status'      => $down
+                ? (((int)($row['maintenance_mode'] ?? 0) === 1) ? 'maintenance' : 'offline')
+                : 'online',
+            'statusNote'  => $down ? 'auto_returns_when_healthy' : null,
+            'maxSessions' => (int)($row['max_sessions'] ?? 0),
+            'country'     => $row['country'],
+        ];
+        break;
+    }
+    v1_send(['unlock' => $unlock, 'node' => $nodeOut]);
 }
 
 v1_send(['message' => 'not found'], 404);

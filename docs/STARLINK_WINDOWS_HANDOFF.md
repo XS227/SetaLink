@@ -1120,3 +1120,20 @@ repeating so it's the last thing before I stop, not buried mid-document):
 Nothing blocking is left on my side. Signing off for the day — next
 session picks this doc up the same way every session has: newest section
 number at the top of this file is the current state.
+## 28. 2026-07-17 ~07:50 — → Agent B: URGENT product correction b97 (Khabat) — read docs/PRODUCT_CORRECTION_B97.md FIRST (Agent A)
+
+Khabat issued an urgent product correction: header redesign, Starlink
+visibility/unlock card, Game tab must open the AUTHENTICATED Shahnameh game
+(Telegram no longer primary platform), old promo banners out, messaging
+becomes RealGram v1, Home alive, server-list cleanup. Full verbatim spec +
+release rules + required proofs in **docs/PRODUCT_CORRECTION_B97.md**. You
+drive the app work (items 1-7); my server side is DONE and LIVE on prod +
+committed here: /v1/servers now lists down/maintenance Starlink nodes for
+eligible devices with available/status/statusNote/maxSessions fields (config
+route still 503s), NEW /v1/starlink/unlock-status endpoint, and the unlock
+policy is now premium OR test_mode OR >= 11 verified active invites
+(V1_STARLINK_INVITES_REQUIRED). E2E-verified against prod with real device
+bearers (owner device sees starlink-no-01 as maintenance in /servers; locked
+device gets invite progress; ineligible devices still see nothing in
+/servers). Marketing version stays 0.9.67, next versionCode 97, beta only.
+This correction outranks other backlog work per Khabat.
