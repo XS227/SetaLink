@@ -124,7 +124,7 @@ faner, men to av dem har hver sin unike fane **ingen andre grener har**:
 | Network Intel | Ja, felles kjerne (+ Node Health på starlink-grenen) | Ja | Delvis — Node Health er cron-basert, ikke sanntid (§ 3) | Delvis | Ukjent | Nei (i kode) |
 | User Insights | **Kun på `feat/admin-insights`** | Kun der | Ikke verifisert innhold | Ukjent | **Nei, ikke merget noe sted** | Ja, i alle andre grener |
 | SEO | Delvis — kun enkel "SEO Ranks" (keyword-posisjoner) på `feat/admin-insights` | Kun der | Nei — full § 4 Command Center (GA4/GSC/AdMob/Google Ads-API) er 100 % "Not started" | Delvis | Nei | **Ja**, som samlet NOC-side |
-| Rankings | **Uklart hva som menes** — nærmest treff er "SEO Ranks" eller Referrals-fanens leaderboard-undertekst | — | — | — | — | Trenger presisering fra Khabat før jeg antar |
+| Rankings | **Presisert av Khabat 2026-07-17 — splittes i to sider, se § 1.2** | — | — | — | — | Ikke lenger uklart |
 | Starlink | **Kun på `feat/starlink-node-phase1`** | Kun der | Delvis (beta/testing-stadium) | Delvis | **Nei, ikke merget noe sted** | Ja, i alle andre grener |
 | Device Releases | Trolig dekket av "Release"-fanen (se under) | — | — | — | — | Ikke som egen fane — overlapp, ikke mangel |
 | APK Channels | Dekket av "Release"-fanen (undertekst nevner det eksplisitt) | Ja | Ikke verifisert innhold | Ukjent | Ukjent | Nei — samme fane |
@@ -138,7 +138,7 @@ faner, men to av dem har hver sin unike fane **ingen andre grener har**:
 | REAL Economy | Delvis dekket av "Payments" (REAL vs USDT, intents) | Delvis | — | — | — | **Ja**, som samlet økonomi-/treasury-oversikt (§ 9) |
 | Community | — | — | — | — | — | **Ja, mangler helt** — avhenger av § 6 (messaging/clan), "Not started" |
 | Hakim | — | — | — | — | — | **Ja, mangler helt som admin-fane** — MEN: `hakim-bot.service` kjører allerede i produksjon (siden 11. juli) med ekte data i `hakim.db` (`bot_messages`, `bot_users`), og koden har en kommentar som eksplisitt sier den er ment for "admin live-log view" — ingen web-UI leser den ennå |
-| Settings | Delvis dekket av "Config" (remote config · bootstrap server · settings) | Delvis | — | — | — | Trenger presisering: er dette ment å være bredere enn Config? |
+| Settings | **Presisert av Khabat 2026-07-17 — utvides til fullt kontrollsenter, se § 1.3** | Delvis (dagens Config-fane) | — | — | — | Ikke lenger uklart |
 
 **Store, tidligere udokumenterte funn fra dette inventaret:**
 1. **Dashboard-adminet har aldri eksistert på `main`** — hele
@@ -151,19 +151,53 @@ faner, men to av dem har hver sin unike fane **ingen andre grener har**:
    så "hvilken branch" er strengt tatt ikke et spørsmål med noe entydig
    svar der.
 
-### 1.1 Konsolideringsplan (forslag, ikke igangsatt)
+### 1.1 Konsolideringsplan — **branch opprettet og pushet, 2026-07-17**
+
+**Branch:** `feat/admin-noc-consolidated`, laget fra `feat/starlink-node-phase1`.
+**Ikke merget til main** (Khabats eksplisitte instruks). Pushet til origin.
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Velg konsolideringsgren (forslag: `feat/starlink-node-phase1` som base — flest faner + Node Console/Health — cherry-pick User Insights + SEO Ranks fra `feat/admin-insights` inn i den, fremfor å merge 500+ commits rått) | Not started | — | — | — | — | — | **Venter på Khabats bekreftelse — se chat** |
-| Ett felles designsystem (farger, typografi, spacing, kort/panel/tabell/graf/badge-komponenter) | Not started | — | — | — | — | — | venter på konsolideringsgren |
-| Modernisere/bygge hver fane (utvides til én rad per fane) | Not started | — | — | — | — | — | venter på konsolideringsgren |
-| Konsistent global navigasjon/sidebar på alle sider — ingen skjulte/tomme menyvalg | Not started | — | — | — | — | — | — |
+| Opprett konsolideringsgren fra `feat/starlink-node-phase1` | **Live** (som gren, ikke som deploy) | `feat/admin-noc-consolidated` | `f496120` (base) | — | Ikke deployet | `git log` viser grenen pushet | — |
+| Cherry-pick admin-relevante commits fra `feat/admin-insights` (User Insights, Iran Debug-fiks, SEO Ranks, GSC-integrasjon, .gitignore-vern, topbar-søk) | **Done** | `feat/admin-noc-consolidated` | `f62f17f`, `9efc655`, `14e67c2`, `289c0f2`, `a57e27c`, `cf4220a` | — | Ikke deployet | `php -l` kjørt på alle endrede filer — ingen syntaksfeil. Fullstendig fanevisning verifisert (17 faner) | — |
+| Ekskludert bevisst: 5GB-starter-bump, ASN-carrier-deteksjon, payment-gate-krav (bundlet i samme opprinnelige commit som User Insights, men hører ikke til "admin, dashboards, NOC") | Bevisst utelatt | — | — | — | — | Se commit `f62f17f`s melding for full begrunnelse — allerede live i prod uansett per den opprinnelige commit-meldingen | — |
+| **Reell bug funnet og fikset:** server-side side-whitelist (`admin/index.php` linje 25) manglet `starlink`, `insights`, `seoranks`, `tunnellogs` — disse fire sidene fantes og virket ved klikk i en åpen økt, men **spratt stille tilbake til Dashboard ved sideoppdatering/direktelenke** (styrer `INIT_PAGE` som klient-JS-routeren leser på førstelasting). Sannsynlig hovedårsak til "sider som virker tomme/mangler" | **Live** (i denne grenen) | `feat/admin-noc-consolidated` | `b0b3a44` | — | Ikke deployet | `php -l` OK, whitelist matcher nå alle 17 `data-page`-verdier i navigasjonen eksakt | — |
+| Ett felles designsystem (farger, typografi, spacing, kort/panel/tabell/graf/badge-komponenter) | Not started | — | — | — | — | — | — |
+| Modernisere/bygge de resterende sidene fra § 1.0-inventaret (Wallet, Users, REAL Economy, Community, Hakim, API Status, Health/Monitoring som egne sider, SEO/Community Rankings-splitten, utvidet Settings) | Not started | — | — | — | — | — | se § 1.2/§ 1.3/§ 8 for de nye, presiserte kravene |
+| Konsistent global navigasjon/sidebar på alle sider — ingen skjulte/tomme menyvalg | Delvis (whitelist-bugen over var akkurat dette) | `feat/admin-noc-consolidated` | `b0b3a44` | — | — | — | — |
 | Lesbart på NOC-storskjerm og laptop | Not started | — | — | — | — | — | — |
 | Erstatt "bare tabell"-visninger med graf+tabell der relevant | Not started | — | — | — | — | — | — |
 
-**Seksjonens Done:** hver fane fra inventaret er en egen `Status: Live`-rad
-med skjermbilde — ikke én samle-rad for hele adminet.
+### 1.2 Rankings — splittet i to sider (Khabat, 2026-07-17)
+
+Erstatter den tidligere uklare "Rankings"-raden. To separate sider, ikke én blandet.
+
+| Side | Innhold | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|---|
+| **SEO Rankings** | Google keywords, impressions, CTR, position, clicks | Delvis grunnlag finnes — "SEO Ranks" (`seoranks`-fanen, cherry-picket § 1.1) har keyword/posisjon/GSC-data allerede; utvider til full CTR/impressions/clicks-visning | `feat/admin-noc-consolidated` | `14e67c2`, `289c0f2` (grunnlag) | — | Ikke deployet | § 4 (SEO & Analytics Command Center) er samme datakilde — ikke bygg to separate GSC-integrasjoner |
+| **Community Rankings** | Shahnameh Heroes, Clans, REAL earners, Referrals, Starlink contributors | Not started | — | — | — | — | — | avhenger av § 6 (clan-data), § 9 (REAL-data), eksisterende `referral_uses`, Starlink-invitasjonslogikk fra § 3 |
+
+### 1.3 Settings — utvidet til fullt kontrollsenter (Khabat, 2026-07-17)
+
+Erstatter den tidligere uklare "Settings"-raden. Ikke bare Config — et
+samlet kontrollsenter med underseksjoner. Dagens `config`-fane
+(`remote config · bootstrap server · settings`) blir startpunktet, ikke
+hele svaret.
+
+| Underseksjon | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Remote Config | **Delvis live** — dagens `config`-fane | `feat/admin-noc-consolidated` | (arvet fra base) | — | Ikke deployet | — | — |
+| Feature Flags | Not started | — | — | — | — | — | trolig samme underliggende `settings`-tabell som Remote Config, egen visning |
+| Ads | Not started | — | — | — | — | — | § 2, § 2.1.2 — ads-relaterte innstillinger (eCPM, daily caps osv. finnes delvis i `REWARDED-ADS-RECOVERY.md` §8) |
+| Wallet | Not started | — | — | — | — | — | § 9 |
+| Hakim | Not started | — | — | — | — | — | se § 8.11 (ny) — konfig-delen av den nye Hakim Admin-siden |
+| Community | Not started | — | — | — | — | — | § 6 |
+| Security | Not started | — | — | — | — | — | — |
+| Languages | Not started | — | — | — | — | — | — |
+| Notifications | Not started | — | — | — | — | — | — |
+| Maintenance | Not started | — | — | — | — | — | — |
+| Releases | Not started | — | — | — | — | — | trolig samme underliggende data som "Release"-fanen (`release`), egen kontrollvisning |
+| Branding | Not started | — | — | — | — | — | `brand/BRAND.md` (RealGram-identitet) finnes allerede som kildemateriale, ikke bygget inn i admin |
 
 ---
 
@@ -893,12 +927,41 @@ vurderinger, ikke bare observasjoner. Hvis "Mulige alternativer" eller
 "Anbefalt handling" ikke tydelig kan skilles fra "Observerte fakta" i et
 faktisk skjermbilde, er ikke denne seksjonen `Live`.
 
+### 8.11 Hakim Admin — egen adminside (Khabat, 2026-07-17)
+
+**Bakgrunn:** `hakim-bot.service` kjører allerede i produksjon (funnet
+2026-07-17, se § 2.1.1s naboseksjon i chat-historikken — kjørt siden
+11. juli, ekte data i `hakim.db`: `bot_messages`, `bot_users`). I dag:
+**ingen admin-UI leser den**, til tross for at koden selv har en
+kommentar som sier den er ment for "admin live-log view". Khabats
+instruks: gi Hakim en egen, førsteklasses adminside — ikke en skjult
+tjeneste.
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Bot-status (Online/Offline) | Not started | — | — | — | — | — | `systemctl status hakim-bot` finnes allerede som datakilde — les den, ikke gjett |
+| Hvilken modell brukes (OpenAI/Anthropic/fallback) | Not started | — | — | — | — | — | `bot.py`s `get_provider(primary_name)`/fallback-logikk finnes allerede — les faktisk brukt provider fra logg/kode, ikke anta |
+| Antall forespørsler | Not started | — | — | — | — | — | `hakim.db` `bot_messages` (direction='in') — ekte data finnes allerede |
+| Suksessrate | Not started | — | — | — | — | — | krever at feil/timeout faktisk logges strukturert — ikke bygget i dag, se feillogg-raden under |
+| Gjennomsnittlig svartid | Not started | — | — | — | — | — | krever tidsstempling av inn/ut per melding — `bot_messages.ts` finnes, men inn/ut-par må kobles |
+| Feillogg | Not started | — | — | — | — | — | `bot.py`s `error_handler()` logger til journald i dag (`journalctl -u hakim-bot`), ikke til en admin-lesbar tabell — ny strukturert feillogg trengs |
+| Kunnskapskilder | Not started | — | — | — | — | — | `knowledge_base.py` finnes — vis hva den faktisk inneholder, ikke en generisk beskrivelse |
+| Siste oppdatering | Not started | — | — | — | — | — | filsystem-tidsstempel eller egen versjonslogg, TBD |
+| Konfigurasjon av Advisor Mode | Not started | — | — | — | — | — | § 8.9 — denne siden blir kontrollpanelet for den bryteren |
+| Test-spørsmål mot Hakim (send et spørsmål, se ekte svar direkte i admin) | Not started | — | — | — | — | — | § 8.0 — testsvarene her teller som en del av Live-verifiseringen for hele § 8 |
+
+**Hard regel:** denne siden skal lese `hakim-bot`s faktiske, kjørende
+tilstand (`hakim.db`, `systemctl status`, `journalctl`) — ikke en egen,
+parallell kopi av statusen som kan divergere fra virkeligheten. Samme
+prinsipp som § 8.0: ingen plausibel, oppdiktet "Online"-status.
+
 **Seksjonens Done (§ 8 samlet):** hver deltabell `Live` med ekte
 data-koblinger (ingen fabrikkerte svar, jf. § 8.0), personlighetskravene i
 § 8.1 verifisert med eksempel-svar som dekker alle tre fargekategorier
 (§ 8.0) **og** alle fire soner (§ 8.1.1), Advisor Mode verifisert med et
 skjermbilde der Observerte fakta / Mulige alternativer / Anbefalt handling
-er synlig atskilt (§ 8.9), skjermbilder.
+er synlig atskilt (§ 8.9), Hakim Admin-siden (§ 8.11) viser ekte
+bot-tilstand, skjermbilder.
 
 ---
 
