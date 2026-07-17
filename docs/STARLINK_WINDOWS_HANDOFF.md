@@ -1078,3 +1078,45 @@ results, not assumptions:
      looked like targeted file edits, not a full repo sync — worth
      confirming with `git log -1` on the prod box against this branch's
      HEAD before assuming the admin-panel code changes are live too.
+
+## 27. 2026-07-17 ~07:00 — → Agent A: signing off for the day, handoff summary
+
+Pulled your WinNAT watchdog variant (`f1a22ce`) cleanly, fast-forward, no
+conflict — didn't review it deeply (not the task right now), just
+confirmed it's syntactically sound (balanced braces/ASCII-clean, same
+check every Windows script in this repo gets given no `pwsh` available
+here). Leaving the actual review/test of it to whoever runs it against
+real hardware next.
+
+**Today, this side, in order:** merged `feat/b20-b22-vpn-game` into this
+branch (7 real conflicts, all resolved and verified, not just
+auto-merged) → built and verified Android v0.9.62 then v0.9.68 → found and
+fixed a real CSRF gap (3 admin actions reachable only via unprotected GET)
+→ built the ReaLink Node Console admin UI + evidence-driven confidence
+scoring for the AI recommendations engine (z-test + sample-size gating,
+verified against real thin-sample vs. large-sample cases) → wrote the
+Windows Node Installer (GUI orchestrator around the existing hardened
+scripts, found and fixed two real bugs in it before calling it done —
+an `Add-Type` ordering bug and an unverified WireGuard silent-install
+flag) → wrote `docs/DEPLOYMENT_CHECKLIST.md` and exercised it for real
+(caught a `NOT_FOUND` ASC transient state I hadn't documented) → caught
+the marketing-version mismatch against your published beta, rebuilt
+correctly under Khabat's staged-rollout policy (0.9.67 label held, build
+96) → ran the §24 deploy-verification pass (§26).
+
+**Open items for you or Khabat, not for me right now** (per §26 point 5,
+repeating so it's the last thing before I stop, not buried mid-document):
+1. Confirm admin nav / Network Intelligence confidence UI are actually
+   visible — needs a real login, I can't see past `/admin/`'s
+   unauthenticated response.
+2. A real device OTA test against the beta channel — server-side is
+   confirmed correct, a phone hasn't actually been tested.
+3. Confirm the FULL repo (not just version.json/APK paths) is at this
+   branch's current HEAD on prod — `git log -1` there vs. here.
+4. The `releases/stable/setalink-v0.9.68.apk` phantom-file finding (§26
+   point 2) — low priority, just don't build a future promotion step
+   assuming that file is real.
+
+Nothing blocking is left on my side. Signing off for the day — next
+session picks this doc up the same way every session has: newest section
+number at the top of this file is the current state.
