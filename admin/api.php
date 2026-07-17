@@ -859,6 +859,81 @@ if ($method === 'POST') {
         st_log($db, '(settings)', $auth_user, 'set-wg-peer', "endpoint={$endpoint}");
         api_ok(['wg_endpoint' => $endpoint, 'wg_public_key' => $publicKey]);
     }
+    // Adaptive Routing feature flag + policy bonuses, and Node Console
+    // command enqueue. These were originally (mis)placed in the GET-only
+    // switch further down in this file -- the switch at "── Admin GET ──"
+    // is ONLY reached via $_GET['action'] and is never hit by a POST
+    // request (every POST either matches an earlier `if ($action === ...)`
+    // block here, or hits the `$allowed` cli-action catch-all's
+    // api_err('unknown action') a few hundred lines down and exits first).
+    // A state-changing action living only in the GET switch is reachable
+    // solely via a plain, CSRF-unprotected GET request -- moved here so
+    // they get the same $csrf_token check as everything else in this
+    // block, and read from $parsed (the JSON body) instead of $_POST
+    // (which is never populated for a JSON request body).
+    //
+    // RULE 7 (docs/CLAUDE_REALINK_RULES.md): routing-toggle is the ONLY
+    // place that can turn Adaptive Routing on — nothing in
+    // lib/node_intel.php or public/v1.php ever flips this setting itself.
+    if ($action === 'routing-toggle') {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $enabled = ((string)($parsed['enabled'] ?? '0')) === '1' ? '1' : '0';
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('adaptive_routing_enabled',?,datetime('now'))")
+            ->execute([$enabled]);
+        api_ok(['adaptive_routing_enabled' => $enabled === '1']);
+    }
+    // Set (or clear, with bonus=0) a policy bonus for one node or a whole
+    // node_type class — see ni_policy_bonus(). {node_id or node_type, bonus}
+    if ($action === 'routing-set-bonus') {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $nodeId   = trim((string)($parsed['node_id']   ?? ''));
+        $nodeType = trim((string)($parsed['node_type'] ?? ''));
+        $bonus    = (float)($parsed['bonus'] ?? 0);
+        if ($nodeId === '' && $nodeType === '') api_err('node_id or node_type required', 400);
+        $key = $nodeId !== '' ? "node_policy_bonus_{$nodeId}" : "node_policy_bonus_type_{$nodeType}";
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))")
+            ->execute([$key, $bonus]);
+        api_ok(['key' => $key, 'bonus' => $bonus]);
+    }
+    // Node Console (Phase 1) — see docs/NODE_CONSOLE_ARCHITECTURE.md and
+    // lib/node_console.php. Trust boundary today is the same single-tier
+    // admin session ($auth_user) as every other action in this file —
+    // true Owner/Admin role separation is explicitly not built yet.
+    // {node_id, command_key, confirmed?, confirmed_twice?}
+    if ($action === 'node-command-enqueue') {
+        require_once __DIR__ . '/../lib/starlink.php';
+        require_once __DIR__ . '/../lib/node_console.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        nc_init_tables($db);
+        $nodeId     = trim((string)($parsed['node_id']     ?? ''));
+        $commandKey = trim((string)($parsed['command_key'] ?? ''));
+        $confirmed  = (string)($parsed['confirmed'] ?? '') === '1';
+        if ($nodeId === '' || $commandKey === '') api_err('node_id and command_key required', 400);
+
+        $node = st_get($db, $nodeId);
+        if (!$node) api_err('unknown node', 404);
+        $nodeType = strtolower((string)($node['node_type'] ?? 'starlink'));
+
+        $entry = NC_COMMAND_REGISTRY[$commandKey] ?? null;
+        if (!$entry) api_err('unknown command_key', 400);
+        if ($entry['confirm'] !== 'none' && !$confirmed) {
+            api_err('this command requires confirmation (confirmed=1)', 400);
+        }
+        // Phase 1 registry has no 'double'-confirm entries yet, but enforce
+        // the distinction now so adding one later doesn't need new plumbing.
+        if ($entry['confirm'] === 'double' && (string)($parsed['confirmed_twice'] ?? '') !== '1') {
+            api_err('this command requires double confirmation', 400);
+        }
+
+        $result = nc_enqueue_command($db, $nodeId, $nodeType, $commandKey, $auth_user);
+        if (!$result) api_err('command not available for this node type', 400);
+        api_ok($result);
+    }
     // Phase 2: self-registration. Separate from the block above because this
     // action runs BEFORE a node_id exists — it's what creates one. Manual
     // provisioning (the block above) still works unchanged; this is an
@@ -1561,36 +1636,36 @@ switch ($action) {
         break;
     }
 
-    // Explicit, single-purpose toggle for the Adaptive Routing feature flag.
-    // RULE 7 (docs/CLAUDE_REALINK_RULES.md): this is the ONLY place that can
-    // turn it on — nothing in lib/node_intel.php or public/v1.php ever
-    // flips this setting itself. POST ?action=routing-toggle&enabled=1|0
-    case 'routing-toggle': {
-        require_once __DIR__ . '/../lib/node_intel.php';
+    // routing-toggle, routing-set-bonus, node-command-enqueue: moved up to
+    // the CSRF-protected POST if-chain above (search "RULE 7" above) — this
+    // switch is GET-only in practice (see the comment at that new location
+    // for why leaving state-changing actions here was a real CSRF gap).
+
+    // GET ?action=node-command-queue&node_id=<id optional>&limit=50
+    case 'node-command-queue': {
+        require_once __DIR__ . '/../lib/node_console.php';
         $db = open_analytics_db();
-        ni_init_tables($db);
-        $enabled = ((string)($_POST['enabled'] ?? $_GET['enabled'] ?? '0')) === '1' ? '1' : '0';
-        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('adaptive_routing_enabled',?,datetime('now'))")
-            ->execute([$enabled]);
-        api_ok(['adaptive_routing_enabled' => $enabled === '1']);
+        nc_init_tables($db);
+        $nodeId = trim((string)($_GET['node_id'] ?? '')) ?: null;
+        $limit  = min(200, max(1, (int)($_GET['limit'] ?? 50)));
+        api_ok([
+            'registry' => NC_COMMAND_REGISTRY,
+            'commands' => nc_recent_commands($db, $nodeId, $limit),
+        ]);
         break;
     }
 
-    // Set (or clear, with bonus=0) a policy bonus for one node or a whole
-    // node_type class — see ni_policy_bonus(). POST ?action=routing-set-bonus
-    // &node_id=starlink-no-01&bonus=15  OR  &node_type=starlink&bonus=15
-    case 'routing-set-bonus': {
-        require_once __DIR__ . '/../lib/node_intel.php';
+    // GET ?action=node-command-events&node_id=<id optional>&limit=100
+    // The audit trail that also feeds the Network Genome / Telemetry Trust
+    // Engine (lib/node_intel.php's ni_rebuild_genome()) — includes watchdog
+    // self-heals (automatic=1), not just admin-clicked commands.
+    case 'node-command-events': {
+        require_once __DIR__ . '/../lib/node_console.php';
         $db = open_analytics_db();
-        ni_init_tables($db);
-        $nodeId   = trim((string)($_POST['node_id']   ?? $_GET['node_id']   ?? ''));
-        $nodeType = trim((string)($_POST['node_type'] ?? $_GET['node_type'] ?? ''));
-        $bonus    = (float)($_POST['bonus'] ?? $_GET['bonus'] ?? 0);
-        if ($nodeId === '' && $nodeType === '') api_err('node_id or node_type required', 400);
-        $key = $nodeId !== '' ? "node_policy_bonus_{$nodeId}" : "node_policy_bonus_type_{$nodeType}";
-        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))")
-            ->execute([$key, $bonus]);
-        api_ok(['key' => $key, 'bonus' => $bonus]);
+        nc_init_tables($db);
+        $nodeId = trim((string)($_GET['node_id'] ?? '')) ?: null;
+        $limit  = min(500, max(1, (int)($_GET['limit'] ?? 100)));
+        api_ok(nc_recent_events($db, $nodeId, $limit));
         break;
     }
 

@@ -28,6 +28,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
 }
 
 require_once __DIR__ . '/../lib/starlink.php';
+require_once __DIR__ . '/../lib/node_console.php';
 
 function hb_send(array $data, int $code = 200): never {
     http_response_code($code);
@@ -70,21 +71,29 @@ $secret = $m[2];
 
 $pdo = hb_db();
 st_init_tables($pdo);
+// Same generic 401 whether the node_id doesn't exist or the secret is wrong
+// -- a distinct 404 would let an unauthenticated caller enumerate valid
+// node_ids by probing this endpoint.
 $node = st_get($pdo, $nodeId);
-if (!$node) hb_send(['ok' => false, 'error' => 'unknown node'], 404);
-if (!st_verify_heartbeat_token($node, $secret)) {
+if (!$node || !st_verify_heartbeat_token($node, $secret)) {
     hb_send(['ok' => false, 'error' => 'invalid token'], 401);
 }
 
 st_apply_heartbeat($pdo, $nodeId, hb_body());
 
 $fresh = st_get($pdo, $nodeId);
+nc_expire_stale_commands($pdo);
 // Config comes back on every heartbeat response — the gateway never needs a
 // separate poll/pull request or a redeploy to pick up an admin change
 // (enable/disable, maintenance, limits). See st_gateway_config() for exactly
-// what's included (never secrets).
+// what's included (never secrets). 'commands' (Node Console, 2026-07-17)
+// rides the same channel -- see lib/node_console.php and
+// docs/NODE_CONSOLE_ARCHITECTURE.md. Each entry is a signed, short-lived
+// token the gateway must verify before running anything; never a raw shell
+// command.
 hb_send([
     'ok'           => true,
     'health_state' => st_health_state($fresh),
     'config'       => st_gateway_config($fresh),
+    'commands'     => nc_pending_commands_for_node($pdo, $nodeId),
 ]);

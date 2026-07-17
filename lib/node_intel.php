@@ -693,6 +693,29 @@ function ni_rebuild_genome(PDO $pdo, int $days = NI_GENOME_REBUILD_DAYS): void
         }
     }
 
+    // Node Console (2026-07-17): fold recent command/repair activity into
+    // the core.reliability stability score. A node that needs frequent
+    // automatic repair (watchdog self-heals) or has failed admin commands
+    // is operationally less stable even if its connect_telemetry success
+    // rate looks fine -- this is the "every executed command becomes part
+    // of the self-learning infrastructure" requirement. Read defensively:
+    // node_command_events may not exist yet on a fresh DB that's never
+    // initialized lib/node_console.php.
+    $repairPenalty = [];
+    try {
+        $cmdRows = $pdo->query(
+            "SELECT node_id, SUM(automatic) AS auto_repairs, SUM(1 - success) AS failures
+               FROM node_command_events
+              WHERE created_at >= datetime('now', '-{$days} days')
+              GROUP BY node_id"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($cmdRows as $r) {
+            // Bounded: at most -30, so command activity alone can never
+            // zero out an otherwise-healthy node's stability score.
+            $repairPenalty[$r['node_id']] = min(30.0, (float)$r['auto_repairs'] * 2.0 + (float)$r['failures'] * 3.0);
+        }
+    } catch (\Throwable $e) {}
+
     $now = gmdate('Y-m-d H:i:s');
     $up = $pdo->prepare(
         "INSERT INTO node_capability_profile
@@ -715,7 +738,14 @@ function ni_rebuild_genome(PDO $pdo, int $days = NI_GENOME_REBUILD_DAYS): void
                 $reconnRate  = round(($a['reconn_w'] / $a['w']) * 100, 1);
                 // Stability: success rate discounted by reconnect frequency —
                 // a node that "succeeds" but reconnects constantly isn't stable.
-                $stability = round(max(0, $successRate - $reconnRate * 0.5), 1);
+                $stability = max(0, $successRate - $reconnRate * 0.5);
+                // ...and by recent repair/command-failure activity, but only
+                // on the node-wide core.reliability cell -- a repair event
+                // isn't specific to one country/carrier/network segment.
+                if ($dim === 'core' && $seg === 'reliability' && isset($repairPenalty[$node])) {
+                    $stability -= $repairPenalty[$node];
+                }
+                $stability = round(max(0, $stability), 1);
                 $up->execute([$node, $dim, $seg, $a['n'], round($a['w'], 2),
                     $successRate, $avgLatency, $avgJitter, $reconnRate, $stability, $now]);
             }
@@ -831,7 +861,18 @@ function ni_routing_weights(PDO $pdo): array
         foreach (NI_ROUTING_DEFAULT_WEIGHTS as $dim => $w) $ins->execute([$dim, $w]);
         return NI_ROUTING_DEFAULT_WEIGHTS;
     }
-    return array_map('floatval', $rows);
+    $weights = array_map('floatval', $rows);
+    // Defensive: if a dimension were ever added to NI_ROUTING_DEFAULT_WEIGHTS
+    // after routing_weights was already seeded on a running install, a
+    // missing key here would silently zero that dimension out of every
+    // score in ni_rank_nodes() instead of using a sane default. Backfill
+    // any gap from the defaults (persisted so it only happens once).
+    $missing = array_diff_key(NI_ROUTING_DEFAULT_WEIGHTS, $weights);
+    if ($missing) {
+        $ins = $pdo->prepare("INSERT OR IGNORE INTO routing_weights (dimension, weight) VALUES (?, ?)");
+        foreach ($missing as $dim => $w) { $ins->execute([$dim, $w]); $weights[$dim] = $w; }
+    }
+    return $weights;
 }
 
 /** Look up a node's Genome dimension/segment score with hierarchical
@@ -885,6 +926,11 @@ function ni_rank_nodes(PDO $pdo, array $candidateIds, array $context): array
         if ($chosen === null && $core !== null && $core['trust_weighted_n'] >= NI_MIN_SEGMENT_SAMPLES) {
             $chosen = $core; $level = 'core';
         }
+        // Cold start (no genome cell matched at all): treat as an empty
+        // array rather than null so every $chosen['x'] ?? default access
+        // below is a clean miss instead of a "trying to access array
+        // offset on value of type null" warning.
+        $chosen = $chosen ?? [];
 
         $successRate = $chosen['success_rate']  ?? ($globalScores[$nodeId]['success_rate']  ?? 50.0);
         $avgLatency  = $chosen['avg_latency_ms'] ?? ($globalScores[$nodeId]['avg_latency_ms'] ?? 200.0);

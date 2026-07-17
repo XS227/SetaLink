@@ -2911,6 +2911,19 @@ views.starlink = {
             <button class="btn btn-sm btn-primary" type="submit">Allow</button>
           </form>
         </div>
+        <div class="panel-body" style="padding:0 1rem 1rem;border-top:1px solid var(--border)">
+          <b style="font-size:.8rem">Node Console</b>
+          <span style="color:var(--muted);font-size:.75rem"> — runs on this node's next heartbeat (≤30s), never instantly; results land in the history below.</span>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0">
+            <button class="btn btn-sm btn-secondary" data-cmd="wg_status" data-node="${esc(n.node_id)}">WireGuard status</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="network_status" data-node="${esc(n.node_id)}">Network status</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="last_100_logs" data-node="${esc(n.node_id)}">Last 100 logs</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="refresh_telemetry" data-node="${esc(n.node_id)}">Refresh telemetry</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="restart_wireguard" data-node="${esc(n.node_id)}" data-confirm="1">Restart WireGuard</button>
+            <button class="btn btn-sm btn-secondary" data-history="${esc(n.node_id)}">Show history</button>
+          </div>
+          <div data-history-wrap="${esc(n.node_id)}" style="display:none;font-size:.75rem;font-family:monospace;white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--bg-alt);padding:.5rem;border-radius:4px"></div>
+        </div>
       </div>`;
     }).join('');
 
@@ -2924,6 +2937,31 @@ views.starlink = {
       const did = f.device_id.value.trim();
       if (did) this.allowlistAdd(f.dataset.allowForm, did);
     }));
+    $('stNodesWrap').querySelectorAll('[data-cmd]').forEach(btn => btn.addEventListener('click', () => this.sendCommand(btn)));
+    $('stNodesWrap').querySelectorAll('[data-history]').forEach(btn => btn.addEventListener('click', () => this.toggleHistory(btn)));
+  },
+  async sendCommand(btn) {
+    const node = btn.dataset.node, cmd = btn.dataset.cmd;
+    if (btn.dataset.confirm && !confirm(`Queue "${cmd}" on ${node}? Runs on its next heartbeat.`)) return;
+    try {
+      await api.post({action:'node-command-enqueue', node_id:node, command_key:cmd, confirmed: btn.dataset.confirm ? '1' : '0'});
+      toast('Command queued — check history in ~30s', 'success');
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async toggleHistory(btn) {
+    const node = btn.dataset.history;
+    const wrap = document.querySelector(`[data-history-wrap="${node}"]`);
+    if (wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    wrap.textContent = 'Loading…';
+    try {
+      const rows = await api.get('node-command-events', {node_id: node, limit: 30}) || [];
+      wrap.textContent = rows.length ? rows.map(r =>
+        `${r.created_at}  ${r.automatic ? '[self-heal]' : '[admin]'}  ${r.command_key}  ${r.success ? 'OK' : 'FAILED'}` +
+        (r.duration_ms != null ? `  ${r.duration_ms}ms` : '') +
+        (r.recovery_action ? `  (${r.recovery_action})` : '')
+      ).join('\n') : '(no command/self-heal events recorded yet)';
+    } catch(e) { wrap.textContent = 'Error: ' + e.message; }
   },
   async act(btn) {
     const node = btn.dataset.node, act = btn.dataset.act;
