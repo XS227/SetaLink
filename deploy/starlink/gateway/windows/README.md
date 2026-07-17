@@ -34,7 +34,24 @@ intentionally a portable proof-of-concept, not a redesign around Windows.
   `docs/STARLINK_WINDOWS_GATEWAY.md` section 3. Nothing in this folder
   enables a Windows feature automatically.
 
-## Order of operations
+## One-click setup (recommended for new node operators)
+
+**`installer/ReaLink-Node-Setup.exe`** wraps steps 1-7 below into a single
+GUI: silent WireGuard install, enrollment, provisioning, and an automatic
+connectivity check, with a live checklist. It calls the exact same scripts
+listed below as child processes -- it does not reimplement their logic, so
+everything documented in this README (NAT method tradeoffs, the ICS
+caveat, etc.) still applies. See `installer/README.md` for what it does
+step by step, its one honest limitation (the still-open Windows ICS bug,
+`docs/STARLINK_WINDOWS_HANDOFF.md` section 21), and how to actually build
+the `.exe` (not done in this repo -- no Windows/NSIS available where this
+was written; a complete, ready-to-run build recipe is provided instead).
+
+Read `docs/STARLINK_WINDOWS_GATEWAY.md` first either way -- the installer
+automates the manual steps below, it doesn't remove the need to understand
+what it's doing to your PC's networking.
+
+## Order of operations (manual path -- what the installer above automates)
 
 1. Install WireGuard for Windows from <https://www.wireguard.com/install/>
    if not already present.
