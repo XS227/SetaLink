@@ -1,496 +1,303 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Dimensions, Animated, Image, Linking,
+  Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
-import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
-import { ConnectButton } from '../components/ConnectButton';
-import { GoldBeatBurst } from '../components/GoldBeatBurst';
-import { StatusBadge }   from '../components/StatusBadge';
-import { TopBar }             from '../components/TopBar';
-import { MetricPill }    from '../components/MetricPill';
-import { CoverageIcon }  from '../components/CoverageIcon';
-import { GlassCard }     from '../components/GlassCard';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Colors, Radius, Spacing, Typography } from '../design/tokens';
+import { GoldBeatBurst }   from '../components/GoldBeatBurst';
 import { BottomNav, NavTab } from '../components/BottomNav';
-import { WatchAdCard } from '../components/WatchAdCard';
-import { HomeBanner } from '../components/HomeBanner';
+import { REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
-import { useZarStore }         from '../stores/zarStore';
-import { useAIStore }          from '../stores/aiStore';
 import { useServerStore }      from '../stores/serverStore';
+import { useIdentityStore }    from '../stores/identityStore';
+import { useDMStore }          from '../stores/dmStore';
+import { useInboxStore }       from '../stores/inboxStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
-import { formatBytes }         from '../utils/formatters';
-import { computeHealthScore, dnsOkFromConnectionLog } from '../utils/healthScore';
-import { getLastConnectProbeOk } from '../services/vpnBridge';
-import { useT, trPhrase }     from '../i18n';
-import { connectingPhaseLabel } from '../services/failureClassifier';
+import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, showInterstitialOnConnect, showInterstitialAfterConnect } from '../services/adsService';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_MARK         = require('../assets/logo_mark.png') as number;
+import Svg, { Path } from 'react-native-svg';
 
-const { width } = Dimensions.get('window');
-
-// StatusBadge status mapping
-const STATUS_MAP = {
-  idle:          'idle',
-  connecting:    'connecting',
-  connected:     'connected',
-  disconnecting: 'connecting',
-  failed:        'disconnected',
-} as const;
-
-// ConnectButton accepts only 4 states — map our 6 machine states down
-const BUTTON_STATE_MAP: Record<string, 'idle' | 'connecting' | 'connected' | 'disconnecting'> = {
-  idle:          'idle',
-  connecting:    'connecting',
-  connected:     'connected',
-  disconnecting: 'disconnecting',
-  failed:        'idle',
-};
+const STARLINK_INVITE_TARGET = 11;
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
   activeTab:  NavTab;
 }
 
-function parseRemoteFromConfig(configJson: string): { address: string; port: number } | null {
-  try {
-    const cfg = JSON.parse(configJson) as { outbounds?: Array<{ settings?: { vnext?: Array<{ address?: string; port?: number }> } }> };
-    const vnext = cfg.outbounds?.[0]?.settings?.vnext?.[0];
-    if (vnext?.address) return { address: vnext.address, port: vnext.port ?? 443 };
-  } catch {}
-  return null;
+function PowerIcon({ color }: { color: string }) {
+  return (
+    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 2v10" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+      <Path d="M18.4 6.6a9 9 0 1 1-12.77.04" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+    </Svg>
+  );
 }
 
 export function HomeScreen({ onNavigate, activeTab }: Props) {
-  const { t, isRTL } = useT();
+  const { t } = useT();
+  const insets = useSafeAreaInsets();
+  const { greeting } = useGreeting();
+
   const {
-    connectionState,
-    selectedServer,
-    sessionStartedAt,
-    sessionBytes,
-    error,
-    smartStatus,
-    reconnectAttempts,
-    connectionLog,
-    traceTestResult,
-    traceTestRunning,
-    connect,
-    disconnect,
-    runTraceTest,
+    connectionState, selectedServer, sessionStartedAt,
+    connect, disconnect, error,
   } = useVpnStore();
 
-  const { greeting } = useGreeting();
-  const user = useAuthStore((s) => s.user);
-  const autoConnect = useAIStore((s) => s.autoConnect);
-  const getImportedCreds = useServerStore((s) => s.getImportedCreds);
-  const selectedId = useServerStore((s) => s.selectedId);
-  const timer = useSessionTimer(connectionState === 'connected', sessionStartedAt);
-  const { uploadMbps, downloadMbps, pingMs } = useVpnStats();
+  const user         = useAuthStore((s) => s.user);
+  const avatarEmoji  = useIdentityStore((s) => s.avatarEmoji);
+  const avatarColor  = useIdentityStore((s) => s.avatarColor);
+  const servers      = useServerStore((s) => s.servers);
+
+  const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
+  const unreadDm       = useDMStore((s) => s.messages.filter((m) => m.direction === 'in' && !m.read).length);
+  const unreadTotal    = unreadOfficial + unreadDm;
+
+  const isConnected     = connectionState === 'connected';
+  const isTransitioning = connectionState === 'connecting' || connectionState === 'disconnecting';
+  const isBusy          = isTransitioning;
+
+  const timer = useSessionTimer(isConnected, sessionStartedAt);
+  const { pingMs, downloadMbps } = useVpnStats();
 
   useSessionLifecycle();
 
-  const isConnected     = connectionState === 'connected';
-  const isTransitioning = connectionState === 'connecting'
-    || connectionState === 'disconnecting';
-
-  // Composite coverage score (route + DNS + ping + traffic). Formerly rendered
-  // as a full-width card in the body; now surfaced as the top-bar coverage icon.
-  const healthScore = computeHealthScore({
-    connected:    isConnected,
-    probeOk:      isConnected && (traceTestResult?.ok ?? getLastConnectProbeOk()),
-    dnsOk:        dnsOkFromConnectionLog(connectionLog),
-    pingMs:       pingMs || selectedServer?.ping || 0,
-    downloadMbps, uploadMbps,
-  });
-
-  // Gold heartbeat celebration: fire one coin burst on each transition INTO
-  // connected (never on re-render while already connected).
   const [goldBurst, setGoldBurst] = useState(0);
   const wasConnectedRef = useRef(false);
   useEffect(() => {
-    if (isConnected && !wasConnectedRef.current) setGoldBurst(k => k + 1);
+    if (isConnected && !wasConnectedRef.current) setGoldBurst((k) => k + 1);
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
 
-  // Friendly status message shown below connect button while connecting
-  const connectingLabel = (() => {
-    if (connectionState !== 'connecting') return null;
-    if (smartStatus) return smartStatus;
-    if (autoConnect.isRunning) {
-      return connectingPhaseLabel(
-        autoConnect.currentLabel,
-        autoConnect.phase,
-        autoConnect.result?.durationMs ? 1 : 0,
-        autoConnect.currentIndex,
-        autoConnect.profiles.length,
-      );
-    }
-    return 'Establishing secure tunnel…';
-  })();
-  const localizedConnectingLabel = connectingLabel ? trPhrase(connectingLabel) : null;
-
-  const headerOpacity    = useRef(new Animated.Value(0)).current;
-  const contentTranslate = useRef(new Animated.Value(20)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(headerOpacity, {
-        toValue: 1, duration: 500, useNativeDriver: true,
-      }),
-      Animated.spring(contentTranslate, {
-        toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
-
-  // Warm up an interstitial so it's ready by the first Connect tap. Ad gates are
-  // FAIL-CLOSED: ads only when the plan is known to be 'free' — an unloaded or
-  // stale-synced user must never show a premium account an ad. Best-effort.
+  // Ad preload
   useEffect(() => {
     if (user?.plan !== 'free') return;
     initAds().then(preloadInterstitial).catch(() => {});
-  }, [user?.plan]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.plan]);
 
-  // Where Google is unreachable outside the tunnel (Iran), the tap-time ad is
-  // never ready — show it once the tunnel is up instead, so the ad streams
-  // through the tunnel instead of flashing blank.
-  const adShownAtTapRef = useRef(false);
+  const adShownAtTapRef       = useRef(false);
   const wasConnectedForAdsRef = useRef(false);
   useEffect(() => {
     if (isConnected && !wasConnectedForAdsRef.current) {
-      if (user?.plan === 'free' && !adShownAtTapRef.current) {
-        showInterstitialAfterConnect();
-      }
+      if (user?.plan === 'free' && !adShownAtTapRef.current) showInterstitialAfterConnect();
       adShownAtTapRef.current = false;
     }
     wasConnectedForAdsRef.current = isConnected;
-  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isConnected]);
 
-  // Tap-to-earn: while connected the coin mints ZAR (Shahnameh currency,
-  // REAL conversion comes later). Disconnect lives on the TopBar power icon
-  // and as hold-to-disconnect on the coin itself.
-  const zarBalance = useZarStore((s) => s.balance);
-  const [zarCapped, setZarCapped] = useState(false);
-  const handleConnect = () => {
-    if (connectionState === 'connected') {
-      const res = useZarStore.getState().tap();
-      setZarCapped(res.capped);
-      if (res.earned > 0) setGoldBurst(k => k + 1);
+  const handlePower = useCallback(() => {
+    if (isBusy) return;
+    if (isConnected) { disconnect(); return; }
+    if (user && user.plan === 'free' && user.quotaBytesUsed >= user.quotaBytesTotal) {
+      (onNavigate as (t: string) => void)('upgrade');
       return;
     }
-    if (connectionState === 'idle' || connectionState === 'failed') {
-      // Block connect when free quota is exhausted
-      if (user && user.plan === 'free' && user.quotaBytesUsed >= user.quotaBytesTotal) {
-        (onNavigate as (tab: string) => void)('upgrade');
-        return;
-      }
-      // Start connecting first so the ad can never delay or block the tunnel.
-      connect();
-      // Best-effort ad revenue on each new connection — only for users KNOWN to
-      // be on the free plan, and only if an interstitial is already loaded.
-      adShownAtTapRef.current = user?.plan === 'free'
-        ? showInterstitialOnConnect()
-        : false;
-    }
-  };
+    connect();
+    adShownAtTapRef.current = user?.plan === 'free' ? showInterstitialOnConnect() : false;
+  }, [isBusy, isConnected, user, connect, disconnect, onNavigate]);
 
-  const protocol = selectedServer
-    ? `${selectedServer.protocol} · ${selectedServer.transport}`
-    : 'VLESS · Reality';
+  // Starlink referral progress
+  const inviteCount  = user?.inviteCount ?? 0;
+  const inviteLeft   = Math.max(0, STARLINK_INVITE_TARGET - inviteCount);
+  const invitePct    = Math.min(1, inviteCount / STARLINK_INVITE_TARGET);
+  const starlinkNode = servers.find((s) => s.nodeType === 'STARLINK');
+  const hasStarlink  = inviteCount >= STARLINK_INVITE_TARGET || !!starlinkNode;
+
+  // Active server info
+  const activeServer = selectedServer;
+  const isStarlinkActive = isConnected && activeServer?.nodeType === 'STARLINK';
+
+  // Power button color
+  const powerColor = isBusy
+    ? '#E8B84B'
+    : isConnected ? Colors.emerald[400] : '#FF6B6B';
+
+  const contentAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(contentAnim, { toValue: 1, duration: 380, useNativeDriver: true }).start();
+  }, []);
+  const fadeStyle = { opacity: contentAnim };
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { paddingTop: insets.top }]}>
       {isConnected && <View style={styles.ambientGlow} pointerEvents="none" />}
 
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: 80 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header — B-16 declutter: dropped the in-app "Realink" logo+wordmark
-            row (purely decorative — the user already knows what app this is)
-            and the raw device/user-id line (still visible on Profile via
-            IdentityHeader). One text line + the action row, not four. */}
-        <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
+        {/* ── Header ── */}
+        <Animated.View style={[styles.header, fadeStyle]}>
           <Text style={styles.greeting} numberOfLines={1}>{t(greeting)}</Text>
-          <View style={styles.headerActions}>
-            <CoverageIcon
-              quality={healthScore}
-              connected={isConnected}
-              onPress={() => onNavigate('ai')}
-            />
-            <TopBar onNavigate={onNavigate as (tab: string) => void} />
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.headerBtn}
+              onPress={() => onNavigate('inbox' as NavTab)}
+              hitSlop={10}
+            >
+              <Text style={styles.headerBtnIcon}>✉</Text>
+              {unreadTotal > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{unreadTotal > 9 ? '9+' : String(unreadTotal)}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.avatarChip, { borderColor: avatarColor, backgroundColor: avatarColor + '22' }]}
+              onPress={() => onNavigate('profile' as NavTab)}
+              hitSlop={10}
+            >
+              <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
+            </TouchableOpacity>
           </View>
         </Animated.View>
 
-        {/* Status row */}
-        <Animated.View style={[
-          styles.statusRow,
-          { opacity: headerOpacity, transform: [{ translateY: contentTranslate }] },
-        ]}>
-          <StatusBadge status={STATUS_MAP[connectionState]} />
-          {isConnected && (
-            <View style={styles.protocolBadge}>
-              <Text style={styles.protocolText}>{protocol}</Text>
+        {/* ── Starlink banner ── */}
+        <Animated.View style={fadeStyle}>
+          <TouchableOpacity
+            style={[styles.starlinkBanner, hasStarlink && styles.starlinkBannerActive]}
+            onPress={() => onNavigate('servers')}
+            activeOpacity={0.82}
+          >
+            <View style={styles.starlinkTop}>
+              <View>
+                <Text style={styles.starlinkLabel}>STARLINK</Text>
+                <Text style={styles.starlinkTitle}>{hasStarlink ? t('home.starlinkUnlocked') : t('home.starlinkAccess')}</Text>
+              </View>
+              <View style={styles.starlinkCounter}>
+                <Text style={styles.starlinkCountNum}>{inviteCount}</Text>
+                <Text style={styles.starlinkCountSep}>/</Text>
+                <Text style={styles.starlinkCountTarget}>{STARLINK_INVITE_TARGET}</Text>
+              </View>
             </View>
-          )}
-          {isConnected && autoConnect.winningConfig && (
-            <View style={styles.stealthBadge}>
-              <Text style={styles.stealthBadgeText}>{t('home.stealthActive')}</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { flex: invitePct }, hasStarlink && styles.progressFillDone]} />
+              <View style={{ flex: Math.max(0, 1 - invitePct) }} />
             </View>
-          )}
+            {!hasStarlink && (
+              <Text style={styles.starlinkHint}>
+                {t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
+              </Text>
+            )}
+          </TouchableOpacity>
         </Animated.View>
 
-        {/* Server pill — B-17: moved ahead of the connect button (glanceable
-            info first, primary action lower on the screen, closer to thumb
-            reach). */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+        {/* ── VPN status card ── */}
+        <Animated.View style={[styles.vpnCard, isConnected && styles.vpnCardActive, fadeStyle]}>
+          {/* Server row */}
           <TouchableOpacity
-            style={[styles.serverPill, isConnected && styles.serverPillActive]}
+            style={styles.serverRow}
             onPress={() => onNavigate('servers')}
             activeOpacity={0.75}
           >
-            <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
+            <Text style={styles.serverFlag}>{activeServer?.flag ?? '🌐'}</Text>
             <View style={styles.serverInfo}>
-              <Text style={styles.serverName}>
-                {selectedServer ? selectedServer.country : t('home.selectServer')}
+              <Text style={styles.serverName} numberOfLines={1}>
+                {activeServer ? activeServer.country : t('home.selectServer')}
               </Text>
-              <Text style={styles.serverSub}>
-                {selectedServer
-                  ? `${selectedServer.city} · ${selectedServer.protocol}`
+              <Text style={styles.serverCity} numberOfLines={1}>
+                {activeServer
+                  ? (isStarlinkActive ? '🛰 Starlink exit' : activeServer.city)
                   : t('home.tapToChoose')}
               </Text>
             </View>
-            <View style={styles.serverMeta}>
-              <View style={[styles.pingDot, { backgroundColor: Colors.emerald[400] }]} />
-              <Text style={styles.serverPing}>{selectedServer?.ping ?? '—'}ms</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* Connect button — B-17: ring shrunk (188 → 152, ConnectButton.tsx)
-            and moved down in the scroll order (was right under the status
-            row) so it sits lower on the initial viewport, closer to natural
-            thumb reach. Right-biased (not centered): the button+burst cluster
-            aligns to the right edge of the content column, with enough
-            paddingRight (Spacing[10]=40, on top of the 20px screen padding)
-            to clear AnimatedRing's pulse overflow (scales to 1.6x = ~46px
-            beyond the button's edge) without clipping on narrow phones —
-            see DECISIONS.md for the exact clearance math. */}
-        <Animated.View style={[
-          styles.connectArea,
-          { transform: [{ translateY: contentTranslate }] },
-        ]}>
-          <View style={styles.connectButtonCluster}>
-            <ConnectButton
-              state={BUTTON_STATE_MAP[connectionState]}
-              onPress={handleConnect}
-              onLongPress={isConnected ? disconnect : undefined}
-              disabled={isTransitioning}
-            />
-            {/* Heartbeat of the network — gold REAL coins pulse out on connect.
-                Moved inside the same shrink-wrapped cluster as the button so
-                its absoluteFillObject layer centers on the button itself,
-                not the old full-width connectArea centre. */}
-            <GoldBeatBurst burstKey={goldBurst} />
-          </View>
-          {isConnected && <Text style={styles.timer}>{timer}</Text>}
-          {isConnected && (
-            <View style={styles.zarPill}>
-              <Text style={styles.zarText}>⚡ {zarBalance} ZAR</Text>
-              <Text style={styles.zarHint}>
-                {zarCapped ? t('home.zarCapReached') : t('home.zarHint')}
-              </Text>
-            </View>
-          )}
-        </Animated.View>
-
-        {/* Smart status — friendly message while connecting */}
-        {connectionState === 'connecting' && localizedConnectingLabel && (
-          <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-            <View style={styles.smartStatusRow}>
-              <View style={styles.smartStatusDot} />
-              <Text style={styles.smartStatusText}>{localizedConnectingLabel}</Text>
-            </View>
-          </Animated.View>
-        )}
-
-        {/* Error message after all routes exhausted */}
-        {connectionState === 'failed' && error && (
-          <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-            <TouchableOpacity
-              style={styles.errorCard}
-              onPress={() => useVpnStore.getState().clearError()}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.errorCardText}>{trPhrase(error)}</Text>
-              <Text style={styles.errorCardHint}>{t('home.tapToRetry')}</Text>
-            </TouchableOpacity>
-          </Animated.View>
-        )}
-
-        {/* Metric row */}
-        <Animated.View style={[styles.metricRow, { transform: [{ translateY: contentTranslate }] }]}>
-          <MetricPill
-            label={t('home.ping')}
-            value={isConnected ? String(pingMs || selectedServer?.ping || '—') : (selectedServer ? String(selectedServer.ping) : '—')}
-            unit={selectedServer ? 'ms' : ''}
-            accent={isConnected}
-            style={{ flex: 1 }}
-          />
-          <MetricPill
-            label={t('home.upload')}
-            value={isConnected ? String(uploadMbps.toFixed(1)) : '—'}
-            unit={isConnected ? 'MB/s' : ''}
-            style={{ flex: 1 }}
-          />
-          <MetricPill
-            label={t('home.download')}
-            value={isConnected ? String(downloadMbps.toFixed(1)) : '—'}
-            unit={isConnected ? 'MB/s' : ''}
-            style={{ flex: 1 }}
-          />
-        </Animated.View>
-
-        {/* Smart Connect Engine status */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <TouchableOpacity
-            style={styles.aiBtn}
-            onPress={() => onNavigate('ai')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.aiBtnLeft}>
-              <View style={[styles.aiOrb, autoConnect.isRunning && { borderColor: '#FFB800', shadowColor: '#FFB800' }]}>
-                <Image source={LOGO_MARK} style={styles.aiOrbLogo} resizeMode="contain" />
-              </View>
-              <View>
-                <Text style={styles.aiBtnTitle}>
-                  {autoConnect.isRunning ? t('home.findingRoute') : isConnected ? t('home.optimalRoute') : t('home.autoRoute')}
-                </Text>
-                <Text style={styles.aiBtnSub}>
-                  {autoConnect.isRunning
-                    ? t('home.testingRoutes').replace('{n}', String(autoConnect.profiles.length))
-                    : isConnected && autoConnect.winningConfig
-                      ? t('home.connectedVia').replace('{label}', autoConnect.winningConfig.label)
-                      : t('home.tapAdvanced')}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.aiArrow}>
-              <Text style={styles.aiArrowText}>›</Text>
-            </View>
-          </TouchableOpacity>
-        </Animated.View>
-
-        {/* B-19: Home's two ad surfaces — 1 AdMob banner (rotates with the
-            ecosystem promo, was built but never wired in) + 1 rewarded-video
-            invite card. Both already gate ad-free for premium internally. */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }], marginTop: Spacing[3] }}>
-          <HomeBanner showAds={user?.plan === 'free'} />
-        </Animated.View>
-
-        {/* Watch ad → earn data */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }], marginTop: Spacing[3] }}>
-          <WatchAdCard />
-        </Animated.View>
-
-        {/* Traffic stats (connected only) */}
-        {isConnected && (
-          <GlassCard style={styles.trafficCard}>
-            <Text style={styles.cardLabel}>{t('home.sessionTraffic')}</Text>
-            <View style={styles.trafficRow}>
-              <View style={styles.trafficItem}>
-                <Text style={styles.trafficIcon}>↑</Text>
-                <Text style={styles.trafficValue}>{formatBytes(sessionBytes.sent)}</Text>
-                <Text style={styles.trafficSub}>{t('home.sent')}</Text>
-              </View>
-              <View style={styles.trafficDivider} />
-              <View style={styles.trafficItem}>
-                <Text style={[styles.trafficIcon, { color: Colors.blue[400] }]}>↓</Text>
-                <Text style={styles.trafficValue}>{formatBytes(sessionBytes.received)}</Text>
-                <Text style={styles.trafficSub}>{t('home.received')}</Text>
-              </View>
-              <View style={styles.trafficDivider} />
-              <View style={styles.trafficItem}>
-                <Text style={styles.trafficIcon}>⬡</Text>
-                <Text style={styles.trafficValue}>{selectedServer?.id?.toUpperCase() ?? '—'}</Text>
-                <Text style={styles.trafficSub}>{t('home.node')}</Text>
-              </View>
-            </View>
-
-            {/* Routing test */}
-            <TouchableOpacity
-              style={styles.traceBtn}
-              onPress={runTraceTest}
-              disabled={traceTestRunning}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.traceBtnText}>
-                {traceTestRunning ? t('home.testing') : t('home.testRouting')}
-              </Text>
-            </TouchableOpacity>
-
-            {traceTestResult && (
-              <View style={[styles.traceResult, traceTestResult.ok ? styles.traceResultOk : styles.traceResultFail]}>
-                {traceTestResult.ok ? (
-                  <>
-                    <Text style={styles.traceResultTitle}>{t('home.routingOk')}</Text>
-                    <Text style={styles.traceResultLine}>IP: {traceTestResult.routedIp}</Text>
-                    <Text style={styles.traceResultLine}>HTTP {traceTestResult.statusCode} · {traceTestResult.bytesIn} B</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.traceResultTitle}>{t('home.routingFailed')}</Text>
-                    <Text style={styles.traceResultLine}>
-                      {traceTestResult.error ?? `HTTP ${traceTestResult.statusCode}`}
-                    </Text>
-                    <Text style={styles.traceResultHint}>
-                      {t('home.routingFailedHint')}
-                    </Text>
-                  </>
-                )}
+            {activeServer && (
+              <View style={styles.pingBadge}>
+                <View style={[styles.pingDot, isConnected && styles.pingDotActive]} />
+                <Text style={styles.pingText}>{pingMs || activeServer.ping || '—'}ms</Text>
               </View>
             )}
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
 
-            {/* Connection debug panel */}
-            {(() => {
-              const winner = autoConnect.winningConfig;
-              const creds  = getImportedCreds(selectedId);
-              const remote = winner?.configJson ? parseRemoteFromConfig(winner.configJson) : null;
-              const addr   = remote?.address ?? creds?.address ?? '—';
-              const port   = remote?.port    ?? creds?.port    ?? 0;
-              const profileLabel = winner?.label ?? selectedServer?.protocol ?? '—';
-              const transport    = winner?.label?.includes('WebSocket')   ? 'WS'
-                                 : winner?.label?.includes('XHTTP')       ? 'XHTTP'
-                                 : winner?.label?.includes('HTTPUpgrade') ? 'HTTPUpgrade'
-                                 : 'Reality (TCP)';
-              return (
-                <View style={styles.debugPanel}>
-                  <Text style={styles.debugTitle}>CONNECTION DEBUG</Text>
-                  <View style={styles.debugRow}><Text style={styles.debugKey}>Profile</Text><Text style={styles.debugVal} numberOfLines={1}>{profileLabel}</Text></View>
-                  <View style={styles.debugRow}><Text style={styles.debugKey}>Transport</Text><Text style={styles.debugVal}>{transport}</Text></View>
-                  <View style={styles.debugRow}><Text style={styles.debugKey}>Remote</Text><Text style={styles.debugVal}>{addr}:{port}</Text></View>
-                  {traceTestResult?.routedIp && (
-                    <View style={styles.debugRow}><Text style={styles.debugKey}>Exit IP</Text><Text style={[styles.debugVal, traceTestResult.ok ? styles.debugValOk : styles.debugValErr]}>{traceTestResult.routedIp}</Text></View>
-                  )}
-                  {!traceTestResult && (
-                    <Text style={styles.debugHint}>Tap "Test routing" above to detect exit IP</Text>
-                  )}
-                </View>
-              );
-            })()}
-          </GlassCard>
-        )}
+          {/* Divider */}
+          <View style={styles.vpnDivider} />
 
-        <View style={{ height: Layout.bottomNavHeight + Spacing[4] }} />
+          {/* Connect row */}
+          <View style={styles.connectRow}>
+            <View style={styles.connectStatus}>
+              <View style={[styles.statusDot, { backgroundColor: powerColor }]} />
+              <Text style={styles.statusText}>
+                {isConnected
+                  ? (timer || t('home.connected'))
+                  : isBusy
+                    ? t('home.connecting')
+                    : t('home.disconnected')}
+              </Text>
+              {error && !isConnected && !isBusy && (
+                <Text style={styles.errorHint} numberOfLines={1}>{t('home.tapToRetry')}</Text>
+              )}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.powerBtn, { borderColor: powerColor + '66' },
+                      isConnected && { backgroundColor: powerColor + '18' }]}
+              onPress={handlePower}
+              disabled={isBusy}
+              activeOpacity={0.75}
+              accessibilityLabel={isConnected ? 'Disconnect VPN' : 'Connect VPN'}
+            >
+              <PowerIcon color={powerColor} />
+            </TouchableOpacity>
+          </View>
+
+          {/* GoldBeatBurst celebrates connect transition */}
+          <GoldBeatBurst burstKey={goldBurst} />
+        </Animated.View>
+
+        {/* ── Metrics row ── */}
+        <Animated.View style={[styles.metricsRow, fadeStyle]}>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricValue}>{isConnected ? (pingMs || activeServer?.ping || '—') : (activeServer?.ping ?? '—')}</Text>
+            <Text style={styles.metricUnit}>ms</Text>
+            <Text style={styles.metricLabel}>{t('home.ping')}</Text>
+          </View>
+          <View style={[styles.metricCard, styles.metricCardCenter]}>
+            <Text style={styles.metricValue}>{isConnected ? downloadMbps.toFixed(0) : '—'}</Text>
+            <Text style={styles.metricUnit}>Mbps</Text>
+            <Text style={styles.metricLabel}>{t('home.speed')}</Text>
+          </View>
+          <View style={styles.metricCard}>
+            <Text style={[styles.metricValue, isConnected && { color: Colors.emerald[400] }]}>
+              {isConnected ? '98' : '—'}
+            </Text>
+            <Text style={styles.metricUnit}>%</Text>
+            <Text style={styles.metricLabel}>{t('home.stability')}</Text>
+          </View>
+        </Animated.View>
+
+        {/* ── Shortcuts ── */}
+        <Animated.View style={[styles.shortcutsRow, fadeStyle]}>
+          <TouchableOpacity
+            style={styles.shortcutRewards}
+            onPress={() => onNavigate('game')}
+            activeOpacity={0.82}
+          >
+            <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.shortcutIcon} />
+            <View style={styles.shortcutText}>
+              <Text style={styles.shortcutTitle}>REAL</Text>
+              <Text style={styles.shortcutSub}>{t('home.rewards')}</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.shortcutRealgram}
+            onPress={() => onNavigate('game')}
+            activeOpacity={0.82}
+          >
+            <Text style={styles.shortcutRealgramIcon}>💬</Text>
+            <View style={styles.shortcutText}>
+              <Text style={[styles.shortcutTitle, { color: Colors.emerald[400] }]}>RealGram</Text>
+              <Text style={styles.shortcutSub}>{t('home.community')}</Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
       </ScrollView>
 
       <BottomNav active={activeTab} onPress={onNavigate} />
@@ -499,94 +306,100 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen:       { flex: 1, backgroundColor: Colors.bg.base },
-  ambientGlow:  {
-    position: 'absolute', width, height: width, borderRadius: width / 2,
-    backgroundColor: Colors.emerald[900], opacity: 0.12, top: -width * 0.3, left: 0,
+  screen:         { flex: 1, backgroundColor: Colors.bg.void },
+  ambientGlow:    {
+    position: 'absolute', top: 0, left: 0, right: 0, height: 300,
+    backgroundColor: Colors.emerald[900], opacity: 0.08,
   },
-  scroll:       { flex: 1 },
-  content:      { paddingTop: Layout.statusBarHeight, paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
-  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
-  headerActions:{ flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  // B-16: the sole header text line now (brand logo/wordmark + raw device-id
-  // line removed — decorative/redundant, see the header comment above).
-  greeting:     { flex: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight, marginRight: Spacing[3] },
-  settingsBtn:  { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
-  settingsIcon: { fontSize: 18, color: Colors.text.secondary },
-  statusRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flexWrap: 'wrap' },
-  protocolBadge:{ backgroundColor: 'rgba(0,232,122,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  protocolText: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5 },
-  errorBadge:     { backgroundColor: 'rgba(255,80,80,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.3)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  errorText:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.status.disconnected },
-  reconnectBadge: { backgroundColor: 'rgba(255,184,0,0.1)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,184,0,0.35)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  reconnectText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: '#FFB800', letterSpacing: 0.3 },
-  stealthBadge:   { backgroundColor: 'rgba(155,119,255,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(155,119,255,0.35)', paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  stealthBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#9B77FF', letterSpacing: 0.5 },
-  smartStatusRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], paddingVertical: Spacing[2], paddingHorizontal: Spacing[1] },
-  smartStatusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFB800' },
-  smartStatusText:{ fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, fontStyle: 'italic' },
-  errorCard:      { backgroundColor: 'rgba(255,80,80,0.08)', borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(255,80,80,0.25)', padding: Spacing[4], alignItems: 'center', gap: Spacing[1] },
-  errorCardText:  { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.status.disconnected, textAlign: 'center' },
-  errorCardHint:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  // B-17: right-biased thumb zone. paddingRight clears AnimatedRing's max
-  // pulse overflow (~46px beyond the 152px button's edge at 1.6x scale) —
-  // see the header comment above where this is used for the full math.
-  connectArea:  { alignItems: 'flex-end', paddingVertical: Spacing[4], paddingRight: Spacing[10], gap: Spacing[3] },
-  connectButtonCluster: { alignItems: 'center', justifyContent: 'center' },
-  timer:        { fontSize: Typography.size.md, fontFamily: Typography.family.mono, color: Colors.text.secondary, letterSpacing: 2 },
-  zarPill:      { alignItems: 'center', gap: 2, marginTop: Spacing[1] },
-  zarText:      { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.gold[400], letterSpacing: 1 },
-  zarHint:      { fontSize: Typography.size.xs, color: Colors.text.muted },
-  serverPill:   { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[3] },
-  serverPillActive: { borderColor: Colors.border.glow, backgroundColor: 'rgba(0,232,122,0.04)' },
-  serverFlag:   { fontSize: 28 },
-  serverInfo:   { flex: 1 },
-  serverName:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  serverSub:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  serverMeta:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  pingDot:      { width: 6, height: 6, borderRadius: 3 },
-  serverPing:   { fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.emerald[400] },
-  chevron:      { fontSize: 20, color: Colors.text.muted, marginLeft: -4 },
-  metricRow:    { flexDirection: 'row', gap: Spacing[3] },
-  aiBtn:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(0,232,122,0.15)', padding: Spacing[4], ...Shadow.card },
-  aiBtnLeft:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  aiOrb:        { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,232,122,0.12)', borderWidth: 1, borderColor: Colors.border.glow, shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 4, alignItems: 'center', justifyContent: 'center' },
-  aiOrbLogo:    { width: 26, height: 26, tintColor: Colors.emerald[400] },
-  aiBtnTitle:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  aiBtnSub:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  aiArrow:      { width: 28, height: 28, borderRadius: 14, backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
-  aiArrowText:  { fontSize: 18, color: Colors.emerald[400] },
-  shahnamehCard:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], backgroundColor: 'rgba(201,164,42,0.07)', borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(201,164,42,0.3)', padding: Spacing[4] },
-  shahnamehIcon:  { fontSize: 26 },
-  shahnamehTitle: { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: '#C9A42A' },
-  shahnamehSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  trafficCard:  { gap: Spacing[3] },
-  cardLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 },
-  trafficRow:   { flexDirection: 'row', alignItems: 'center' },
-  trafficItem:  { flex: 1, alignItems: 'center', gap: 4 },
-  trafficIcon:  { fontSize: Typography.size.xl, color: Colors.emerald[400], fontFamily: Typography.family.heading },
-  trafficValue: { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  trafficSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  trafficDivider:{ width: 1, height: 40, backgroundColor: Colors.border.subtle },
-  traceBtn:      { marginTop: Spacing[3], alignSelf: 'center', paddingHorizontal: Spacing[5], paddingVertical: Spacing[2], borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, backgroundColor: 'rgba(0,232,122,0.07)' },
-  traceBtnText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400], letterSpacing: 0.5 },
-  traceResult:   { marginTop: Spacing[3], borderRadius: Radius.lg, padding: Spacing[3], gap: 4 },
-  traceResultOk: { backgroundColor: 'rgba(0,232,122,0.08)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.25)' },
-  traceResultFail:{ backgroundColor: 'rgba(255,80,80,0.07)', borderWidth: 1, borderColor: 'rgba(255,80,80,0.25)' },
-  traceResultTitle:{ fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  traceResultLine: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
-  traceResultHint: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.status.disconnected, marginTop: 2 },
-  logPanel:      { gap: Spacing[1] },
-  logPanelTitle: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginBottom: Spacing[1] },
-  logEntry:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, lineHeight: 18 },
-  logEntryOk:    { color: Colors.emerald[400] },
-  logEntryError: { color: Colors.status.disconnected },
-  debugPanel:    { marginTop: Spacing[3], borderTopWidth: 1, borderTopColor: Colors.border.subtle, paddingTop: Spacing[3], gap: 6 },
-  debugTitle:    { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 2 },
-  debugRow:      { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing[2] },
-  debugKey:      { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, width: 72 },
-  debugVal:      { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary, flex: 1, textAlign: 'right' },
-  debugValOk:    { color: Colors.emerald[400] },
-  debugValErr:   { color: Colors.status.disconnected },
-  debugHint:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, fontStyle: 'italic', marginTop: 2 },
+  scroll:         { flex: 1 },
+  content:        { paddingHorizontal: Spacing[5], paddingTop: Spacing[3], gap: Spacing[4] },
+
+  // Header
+  header:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[2] },
+  greeting:       { flex: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.2 },
+  headerRight:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+  headerBtn:      { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  headerBtnIcon:  { fontSize: 17, color: Colors.text.secondary },
+  badge:          { position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, borderRadius: 7, backgroundColor: '#FF6B6B', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
+  badgeText:      { color: '#fff', fontSize: 8, fontFamily: Typography.family.heading },
+  avatarChip:     { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  avatarEmoji:    { fontSize: 16 },
+
+  // Starlink banner
+  starlinkBanner: {
+    backgroundColor: Colors.bg.surface,
+    borderRadius: Radius.xl,
+    padding: Spacing[4],
+    borderWidth: 1,
+    borderColor: 'rgba(212,140,20,0.25)',
+    gap: Spacing[2],
+    overflow: 'hidden',
+  },
+  starlinkBannerActive: { borderColor: 'rgba(212,140,20,0.6)' },
+  starlinkTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  starlinkLabel:  { fontSize: 10, fontFamily: Typography.family.heading, color: Colors.gold[600], letterSpacing: 2, textTransform: 'uppercase' },
+  starlinkTitle:  { fontSize: 17, fontFamily: Typography.family.heading, color: Colors.gold[300], marginTop: 2 },
+  starlinkCounter:{ flexDirection: 'row', alignItems: 'baseline', gap: 2 },
+  starlinkCountNum: { fontSize: 28, fontFamily: Typography.family.heading, color: Colors.gold[300] },
+  starlinkCountSep: { fontSize: 16, color: Colors.gold[600] },
+  starlinkCountTarget: { fontSize: 16, color: Colors.gold[600] },
+  progressTrack:  { height: 5, flexDirection: 'row', borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(212,140,20,0.12)' },
+  progressFill:   { backgroundColor: Colors.gold[500], borderRadius: 3 },
+  progressFillDone: { backgroundColor: Colors.emerald[400] },
+  starlinkHint:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
+
+  // VPN card
+  vpnCard: {
+    backgroundColor: Colors.bg.surface,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.border.default,
+    overflow: 'hidden',
+  },
+  vpnCardActive: { borderColor: Colors.border.glow },
+  serverRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], padding: Spacing[4] },
+  serverFlag:   { fontSize: 26 },
+  serverInfo:   { flex: 1, gap: 2 },
+  serverName:   { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  serverCity:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
+  pingBadge:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  pingDot:      { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.text.muted },
+  pingDotActive:{ backgroundColor: Colors.emerald[400] },
+  pingText:     { fontSize: 11, color: Colors.text.secondary, fontFamily: Typography.family.mono },
+  chevron:      { fontSize: 20, color: Colors.text.muted },
+  vpnDivider:   { height: 1, backgroundColor: Colors.border.subtle, marginHorizontal: Spacing[4] },
+  connectRow:   { flexDirection: 'row', alignItems: 'center', padding: Spacing[4], gap: Spacing[3] },
+  connectStatus:{ flex: 1, gap: 2 },
+  statusDot:    { width: 7, height: 7, borderRadius: 4, position: 'absolute', left: -14, top: 5 },
+  statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingLeft: 0 },
+  errorHint:    { fontSize: 11, color: '#FF6B6B', fontFamily: Typography.family.body },
+  powerBtn:     { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+
+  // Metrics
+  metricsRow:   { flexDirection: 'row', gap: Spacing[3] },
+  metricCard:   { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, padding: Spacing[3], alignItems: 'center', borderWidth: 1, borderColor: Colors.border.subtle, gap: 1 },
+  metricCardCenter: { borderColor: Colors.border.default },
+  metricValue:  { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
+  metricUnit:   { fontSize: 10, color: Colors.text.muted, fontFamily: Typography.family.mono, marginTop: -2 },
+  metricLabel:  { fontSize: 10, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 },
+
+  // Shortcuts
+  shortcutsRow: { flexDirection: 'row', gap: Spacing[3] },
+  shortcutRewards: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
+    backgroundColor: 'rgba(212,175,55,0.08)',
+    borderRadius: Radius.xl, padding: Spacing[4],
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.2)',
+  },
+  shortcutRealgram: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
+    backgroundColor: 'rgba(0,232,122,0.06)',
+    borderRadius: Radius.xl, padding: Spacing[4],
+    borderWidth: 1, borderColor: 'rgba(0,232,122,0.18)',
+  },
+  shortcutIcon:        { width: 36, height: 36, borderRadius: 18 },
+  shortcutRealgramIcon:{ fontSize: 28 },
+  shortcutText:        { flex: 1, gap: 1 },
+  shortcutTitle:       { fontSize: 13, fontFamily: Typography.family.heading, color: Colors.gold[300] },
+  shortcutSub:         { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
 });

@@ -147,7 +147,27 @@ export function executeDeepLink(action: DeepLinkAction, navigation: any): void {
           useToastStore.getState().show('This link was issued for a different device', 'error');
         } else {
           linkRealAccount(deviceId, action.account, action.ts, action.sig)
-            .then(() => useToastStore.getState().show('REAL account linked 🎉', 'success'))
+            .then(() => {
+              // Cache REAL-ID so GameScreen hub unlocks immediately.
+              useAuthStore.getState().setRealId(action.account);
+              useToastStore.getState().show('REAL account linked 🎉', 'success');
+              // Push current ReaLink identity to the shared ecosystem profile so
+              // Shahnameh/RealGram/TrustAI see the correct avatar and handle
+              // without asking the user again.
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { pushEcosystemProfile } = require('./ecosystemProfileService');
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { useIdentityStore } = require('../stores/identityStore');
+              const id = useIdentityStore.getState();
+              pushEcosystemProfile(
+                deviceId,
+                id.handle ?? '',
+                id.displayName,
+                id.avatarEmoji,
+                id.avatarColor,
+                id.persona ?? '',
+              );
+            })
             .catch((e: unknown) =>
               useToastStore.getState().show(e instanceof Error ? e.message : 'Link failed', 'error'));
         }

@@ -18,6 +18,18 @@ export interface ServerRecord {
   comingSoon?:  boolean;
   /** Telemetry-derived success rate (0–100) from the last 7 days. Backend-provided. */
   successScore?: number;
+  // Starlink hero meta (b97, server-provided on /v1/servers):
+  /** 'STARLINK' marks the satellite exit node — rendered as a hero row, never a plain server. */
+  nodeType?:   string;
+  /** Server-steered: render the distinct hero style. */
+  hero?:       boolean;
+  /** Server-steered badge labels (e.g. NEW/LIMITED) — changeable without an app rebuild. */
+  badges?:     string[];
+  /** false = visible but not connectable (maintenance/offline) — grey out, don't hide. */
+  available?:  boolean;
+  status?:     'online' | 'maintenance' | 'offline';
+  /** 'auto_returns_when_healthy' while unavailable. */
+  statusNote?: string;
 }
 
 // Coming-soon placeholder entries — shown greyed out, never selectable
