@@ -453,109 +453,169 @@ av alle SEO/Analytics-sider.
 
 ## § 5 — MOBILE APP VISUAL REDESIGN: Realink = RealGram (neste store mobile build)
 
-Lagt til 2026-07-17 på Khabats instruks. **Kodesperre, eksplisitt fra
+Lagt til 2026-07-17, **revidert samme dag** etter Khabats oppfølging
+("dette begynner å ligne retningen jeg ser for meg, men vi gjør noen
+viktige endringer før vi bygger videre"). **Kodesperre, eksplisitt fra
 Khabat:** dette er neste store mobile-redesign, **etter** § 1–§ 4
 (Admin/NOC) er ferdig og fungerer — ikke noe som startes nå. Dokumenteres
 her nettopp for å ikke miste spesifikasjonen mens admin-arbeidet pågår
 (§ 0.3-regelen).
 
-### 5.1 Brand — ett produkt, ikke en VPN-app
+> **Prosessregel, Khabats egne ord: "La oss bygge denne retningen steg for
+> steg, og vis alltid preview før du implementerer større endringer."**
+> Gjelder når § 5-arbeidet faktisk starter — ingen store visuelle endringer
+> uten en preview til Khabat først, ett steg om gangen, ikke alt på én gang.
+
+**Hva som faktisk endret seg i revisjonen** (så ingen bygger mot den gamle
+versjonen — begge stod i konflikt med hverandre, ikke bare en presisering):
+- **Bannerrekkefølgen er snudd** — se § 5.7, AdMob/AdsGram gikk fra plass 1
+  til plass 3.
+- **Starlink-teksten endret** fra "Secure • Stable • Satellite" til
+  "Secure / Stable / Private / Low latency" — se § 5.3.
+- **Connect-knappen har nå eksplisitte fargetilstander** (gull outline AV,
+  grønn PÅ, rød frakobler) — nytt, se § 5.5.1.
+- **Footeren er nå fullt spesifisert** (fire konkrete faner, ingen egen
+  VPN-knapp) — tidligere "ikke ferdig ennå", se § 5.8.
+- **Tap-to-Earn samler nå også routing/packet loss/server score**, ikke
+  bare latency/stabilitet — se § 5.5.
+- **Følelsen er kvantifisert**: 90 % premium / 10 % gaming — se § 5.9.
+
+### 5.1 Brand — REALINK = REALGRAM, ett produkt
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Realink og RealGram slås sammen til ett produkt — VPN er én funksjon blant flere | Not started | — | — | — | — | — | § 1–4 må være ferdig først |
+| Realink og RealGram slås sammen til ett produkt — VPN er én funksjon blant flere, ikke hele appens identitet | Not started | — | — | — | — | — | § 1–4 må være ferdig først |
 | Hele appen føles som en kommunikasjonsplattform med fri internettilgang, ikke en "VPN-app" | Not started | — | — | — | — | — | samme |
 
-### 5.2 Designspråk
+### 5.2 Designfilosofi og designspråk
 
-**Korrigert etter forrige mockup (for grønn):**
+**Ikke en "gaming app" — en premium Generation Z-app.** Referanser, direkte
+fra Khabat: Telegram, Revolut, Nothing, Apple, SpaceX. Mørk, ren, eksklusiv,
+minimal. **Ikke for mye neon.**
 
 | Element | Krav | Status |
 |---|---|---|
 | Primærfarge | Gold | Not started |
 | Bakgrunn | Mørk blå/svart | Not started |
-| Grønn | **Kun** når noe er aktivt/tilkoblet — ikke en generell akseftfarge | Not started |
-| Rød | Kun ved feil/frakobling | Not started |
-| Retning | Premium, Generation Z — Apple + Discord + Nothing Phone. Elegant, **ikke** gaming | Not started |
+| Grønn | **Kun** når noe er PÅ eller Connected — ikke en generell aksentfarge. Skal føles spesielt når det vises | Not started |
+| Rød | **Kun** når noe er AV eller feiler | Not started |
+| Retning | Premium Gen Z — Telegram/Revolut/Nothing/Apple/SpaceX. Elegant, **ikke** gaming | Not started |
 
 **Verifisering ved `Live`:** skjermbilde sammenlignet direkte mot forrige
-("for grønn") mockup, med en eksplisitt vurdering av om grønn faktisk kun
-vises ved aktiv/tilkoblet-tilstand.
+("for grønt") mockup, med en eksplisitt vurdering av om grønn faktisk kun
+vises ved PÅ/Connected-tilstand.
+
+#### 5.2.1 Header — i hovedsak uendret
+
+Khabat: *"Headeren er bra... ingen store endringer."* Kun: VIP kan være
+gull; Wallet/profil kan være gull. Meldinger og Settings-ikonene
+uendret. **Ikke** en full redesign-oppgave — en liten presisering.
 
 ### 5.3 Starlink — WOW-faktoren
 
+**Revidert tekst** (var "Secure • Stable • Satellite", se korrigering
+øverst i seksjonen).
+
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Vis Starlink-parabol (dish), ikke bare tekst | Not started | — | — | — | — | — | — |
-| Tekst: "Secure • Stable • Satellite" | Not started | — | — | — | — | — | — |
+| Vis Starlink-parabol (dish), ikke bare tekst — stor, ikke liten | Not started | — | — | — | — | — | — |
+| Tekst: Secure / Stable / Private / Low latency | Not started | — | — | — | — | — | — |
 | Premium badge | Not started | — | — | — | — | — | — |
-| Følelse av ekte satellittnettverk | Not started | — | — | — | — | — | designvurdering, ikke kun en oppgaveliste |
+| Følelse av ekte satellittnettverk — "Wow, dette er noe annet enn en vanlig VPN" | Not started | — | — | — | — | — | designvurdering, ikke kun en oppgaveliste |
 | **Ingen landsnavn vist — kun "STARLINK"** | Not started | — | — | — | — | — | hard krav, ikke valgfritt |
 
-### 5.4 Speedometer — instrument, ikke skjermfyller
+### 5.4 Speedometer — lite, premium instrument
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Gjøres lite — dominerer ikke skjermen | Not started | — | — | — | — | — | — |
-| Viser kun: ping, live speed, connection quality | Not started | — | — | — | — | — | — |
+| Mye mindre enn en full skjermfyller — inspirert av sportsbil-instrumenter | Not started | — | — | — | — | — | — |
+| Viser kun: Current Speed, Latency, Status | Not started | — | — | — | — | — | — |
+| Dominerer ikke skjermen | Not started | — | — | — | — | — | — |
 
-### 5.5 Tap-knappen — omdefinert: Tap → Earn ZAR, ikke Connect
+### 5.5 Tap to Earn ZAR — erstatter connect-knappens gamle plass
 
 **Viktig kobling:** dette er samme ZAR-mekanisme som § 9 (REAL Wallet)
 allerede dokumenterer (ZAR er allerede live som tap-to-earn-valuta siden
-build 92, jf. § 9.0) — denne redesignen endrer *konteksten* rundt
-tap-knappen (Connect blir egen knapp), ikke selve ZAR-mekanismen fra bunnen.
+build 92, jf. § 9.0) — denne redesignen endrer *konteksten og plasseringen*
+(egen seksjon, en levende aktivitet mens VPN er tilkoblet), ikke selve
+ZAR-mekanismen fra bunnen.
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Connect blir en egen, separat knapp (ikke lenger det tap-knappen gjør) | Not started | — | — | — | — | — | — |
-| Tap-knapp: gir litt ZAR per tap | Not started | — | — | — | — | — | § 9.0 (eksisterende ZAR-mekanisme) |
-| Hver tapping sender anonym nettverksdiagnostikk | Not started | — | — | — | — | — | koble til eksisterende Tap-to-Learn-telemetri (§ 3, `NODE_INTELLIGENCE_ARCHITECTURE.md`) hvis den samme infrastrukturen kan gjenbrukes — sjekk før noe bygges nytt |
-| Tester latency | Not started | — | — | — | — | — | samme |
-| Tester stabilitet | Not started | — | — | — | — | — | samme |
-| Trener AI (Adaptive Routing / node-telemetri) | Not started | — | — | — | — | — | § 3 — Adaptive Routing er feature-flagget AV per Rule 7, denne endrer ikke det |
-| Hjelper hele nettverket — brukerfølelsen skal være "jeg bidrar", ikke bare "jeg tjener" | Not started | — | — | — | — | — | designvurdering |
+| Egen "Tap to Earn ZAR"-seksjon, ikke lenger sammenfallende med connect-knappen | Not started | — | — | — | — | — | — |
+| Genererer ZAR per tap | Not started | — | — | — | — | — | § 9.0 (eksisterende ZAR-mekanisme) |
+| Hjelper AI med å analysere nettverket | Not started | — | — | — | — | — | § 3 Adaptive Routing |
+| Samler: latency, stabilitet, routing, packet loss, server score | Not started | — | — | — | — | — | koble til eksisterende Tap-to-Learn-telemetri (§ 3, `NODE_INTELLIGENCE_ARCHITECTURE.md`) hvis samme infrastruktur kan gjenbrukes — sjekk før noe bygges nytt |
+| Føles som en levende aktivitet mens VPN er tilkoblet, ikke en engangsknapp | Not started | — | — | — | — | — | designvurdering |
+| Brukerfølelsen: "jeg hjelper nettverket OG tjener ZAR samtidig" | Not started | — | — | — | — | — | designvurdering |
 
-### 5.6 Servervalg — forenklet til to valg
+#### 5.5.1 Connect-knappen — egen, enkel, fargekodet (nytt i revisjonen)
+
+| Tilstand | Farge | Status |
+|---|---|---|
+| OFF | Gull outline | Not started |
+| ON | Grønn | Not started |
+| Disconnecting | Rød | Not started |
+
+Ren, premium knapp — ingen ekstra dekor utover fargetilstanden.
+
+### 5.6 Servervalg — uendret fra forrige runde
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Kun to valg: "AI Auto ⭐ (anbefalt)" eller "Manual" | Not started | — | — | — | — | — | — |
-| AI Auto er standard (forhåndsvalgt) | Not started | — | — | — | — | — | § 3 Adaptive Routing må faktisk styre "AI Auto"-valget med ekte logikk, ikke en tilfeldig/statisk serverliste presentert som "AI" |
+| To valg: AI Auto (standard) og Manual (for avanserte brukere) | Not started | — | — | — | — | — | — |
+| AI Auto er forhåndsvalgt | Not started | — | — | — | — | — | § 3 Adaptive Routing må faktisk styre "AI Auto"-valget med ekte logikk, ikke en tilfeldig/statisk serverliste presentert som "AI" |
 
-### 5.7 Bannerrekkefølge
+### 5.7 Bannerrekkefølge — **snudd i revisjonen**
 
 | Rekkefølge | Banner | Status |
 |---|---|---|
-| 1 | AdMob/AdsGram banner | Not started |
-| 2 | Watch Ad → Free Data | Not started |
-| 3 | Invite 11 friends → Unlock Starlink | Not started |
+| 1 | Gratis kvote (Watch video) | Not started |
+| 2 | Inviter 11 venner → Starlink Premium | Not started |
+| 3 | AdMob/AdsGram banner | Not started |
 
-**Hard krav:** akkurat denne rekkefølgen, ikke omvendt — Starlink skal
-føles eksklusivt, ikke som det første/enkleste alternativet. Avhenger av
-§ 2 (Ads & Revenue, som selv er sperret til Agent A er ferdig med
-AdsGram) for at "AdMob/AdsGram banner" faktisk viser ekte annonser,
-ikke placeholder.
+**Dette er MOTSATT rekkefølge av den forrige versjonen av denne
+seksjonen** (som hadde AdMob/AdsGram først) — bruk denne, ikke den gamle.
+Avhenger av § 2 (Ads & Revenue, selv sperret til Agent A er ferdig med
+AdsGram) for at AdMob/AdsGram-banneret faktisk viser ekte annonser.
 
-### 5.8 Footer — ikke ferdig ennå
+#### 5.7.1 Starlink Premium-kort (nytt i revisjonen)
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Shahnameh får egen knapp i footeren | Not started | — | — | — | — | — | — |
-| Enkel, moderne footer (full design kommer senere — ikke spesifisert enda) | Not started | — | — | — | — | — | venter på egen designrunde fra Khabat |
+| Stort gull-kort med Starlink-parabol | Not started | — | — | — | — | — | — |
+| Tekst i retning: "STARLINK PREMIUM / Invite only 11 friends / Unlock secure satellite routing" | Not started | — | — | — | — | — | — |
+| Skal føles som noe folk *får lyst til* å oppnå, ikke bare en informasjonsboks | Not started | — | — | — | — | — | designvurdering |
 
-### 5.9 Følelsen — mål, ikke en oppgave med egen rad
+### 5.8 Footer — **fullt spesifisert i revisjonen** (var "ikke ferdig ennå")
 
-Khabats formulering, direkte: *"Dette ser ikke ut som en VPN"* → *"Dette
-ser ut som fremtidens kommunikasjonsplattform."* Mindre informasjon per
-skjerm enn i dag, mer luft, mer premium. Dette er et kvalitetsmål som
-§ 5.1–§ 5.8 samlet skal oppfylle — verifiseres ved skjermbilde-gjennomgang
-mot dette målet spesifikt, ikke en egen kode-oppgave.
+| Fane | Ikon | Status |
+|---|---|---|
+| Home | 🏠 | Not started |
+| Stats | 📊 | Not started |
+| Shahnameh | 📖 | Not started |
+| Profile | 👤 | Not started |
+
+**Ingen egen VPN-knapp i footeren** — konsistent med § 5.1 (VPN er én
+funksjon, ikke appens identitet). Shahnameh direkte tilgjengelig, ikke
+gjemt bak et annet menyvalg.
+
+### 5.9 Følelsen — kvantifisert i revisjonen: 90 % premium / 10 % gaming
+
+Khabats formulering: *"Dette ser ikke ut som en VPN"* → *"Dette ser ut som
+fremtidens kommunikasjonsplattform."* Konkretisert denne runden:
+**90 % premium, 10 % gaming — ikke omvendt.** Mer luft, mer spacing, større
+typografi, mindre visuell støy. Mer Apple/SpaceX. Mindre cyberpunk. Vi
+skal imponere med kvalitet, ikke med mange effekter. Dette er et
+kvalitetsmål som § 5.1–§ 5.8 samlet skal oppfylle — verifiseres ved
+skjermbilde-gjennomgang mot dette målet spesifikt, ikke en egen kode-oppgave.
 
 **Seksjonens Done:** alle underseksjoner `Live`, skjermbilder av alle
 berørte skjermer, **og** en eksplisitt vurdering (ikke bare påstått) av om
-§ 5.9s mål faktisk er nådd — sammenlign mot forrige "for grønn"-mockup som
-referansepunkt for hva som IKKE er målet.
+90/10-målet i § 5.9 faktisk er nådd — sammenlign mot forrige "for
+grønt"-mockup som referansepunkt for hva som IKKE er målet. Preview vist
+til Khabat før hver større endring (prosessregelen øverst i seksjonen),
+ikke bare ved ferdigstillelse.
 
 ---
 
