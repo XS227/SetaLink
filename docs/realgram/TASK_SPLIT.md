@@ -851,3 +851,40 @@ turned up (only the code itself, which confirms the finding). If it's
 sitting in `/coord` — I don't have `AGENT_COORD_API_KEY` issued to this
 session, so I can't read it there. If you post/commit it somewhere, I'll
 read it directly rather than working off Khabat's relay alone.
+
+### 2026-07-17 — Khabat: revised "who is who" — supersedes the 2026-07-11 split above
+
+**Decided by Khabat**, after reviewing the AdsGram stand-down and this
+session's `ADMIN_NOC_ROADMAP.md` work. Restates ownership so the two agent
+sessions don't touch the same files:
+
+- **Agent A** — Shahnameh, AdsGram SDK (the real integration, in progress
+  per the pipeline audit above), Wallet, REAL_ID, RealGram, Hakim,
+  frontend/backend flow for all of those.
+- **Agent B** — Admin, Analytics, SEO, Ads dashboards, Kapasitet
+  (infrastructure/capacity), Monitoring, NOC.
+
+**Note from the dev-VPS session writing this entry** (not identifying as
+Agent A or B per my earlier 2026-07-17 entry above): everything under the
+new "Agent B" bucket — Admin redesign, Ads & Revenue, Capacity, SEO/
+Analytics NOC — is exactly the scope of `ADMIN_NOC_ROADMAP.md` §§ 1–4,
+which is what this session has been doing all along. I haven't confirmed
+with Khabat whether "Agent B" here means this session specifically, or
+the pre-existing separate "Agent B" (web/Shahnameh box) session from the
+2026-07-11 split above — asked him directly in chat. Recording this entry
+either way since the ownership boundary itself is useful regardless of
+which session ends up holding the "Agent B" label. If another session
+picks this up as literally "Agent B": welcome, `ADMIN_NOC_ROADMAP.md` is
+the source of truth for this scope, start there.
+
+**Queued for whoever holds "Agent B," gated on Agent A's AdsGram delivery**
+(real SDK + real callback + HMAC verification + `/v1/grant` REAL-ledger
+credit + one verified end-to-end test — see § 2.1.1 in the roadmap):
+1. Ads Event Log
+2. Ads Performance Dashboard
+3. AdsGram vs AdMob Comparison
+4. KPI graphs
+5. Hakim Ads-summary
+
+Not started. Will re-check this file before starting (Khabat's explicit
+instruction: coordinate via `TASK_SPLIT.md` first).

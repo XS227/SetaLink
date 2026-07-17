@@ -214,6 +214,30 @@ begge Shahnameh-repoene, ingen egen audit-fil. Kun koden selv, som
 bekrefter funnet. Om den ligger i `/coord`, har ikke denne økten
 `AGENT_COORD_API_KEY` — kan ikke lese den derfra.
 
+#### 2.1.2 Kø for når Agent A er ferdig (Khabats instruks, 2026-07-17)
+
+**Sperret til Agent A har levert alle fem:** ekte AdsGram SDK, ekte
+callback, HMAC-verifisering, REAL-ledger-kreditering (`/v1/grant`), **og**
+én verifisert ende-til-ende-test. Ingen av radene under starter før det.
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| 1. Ads Event Log | Not started | — | — | — | — | — | Agent As AdsGram-levering, se over |
+| 2. Ads Performance Dashboard | Not started | — | — | — | — | — | samme, + Ads Event Log (1) som datakilde |
+| 3. AdsGram vs AdMob Comparison | Not started | — | — | — | — | — | samme, + § 2s AdMob-rader (eCPM/fill rate osv.) |
+| 4. KPI-grafer | Not started | — | — | — | — | — | samme |
+| 5. Hakim Ads-oppsummering | Not started | — | — | — | — | — | § 8 (Hakim), § 8.0 sannhetsprinsippet — må lese ekte data fra (1)–(4), ikke oppsummere plausibelt |
+
+**Rollefordeling (Khabat, 2026-07-17, supersedert 2026-07-11-splitten i
+`TASK_SPLIT.md`):** Agent A eier Shahnameh/AdsGram SDK/Wallet/REAL_ID/
+RealGram/Hakim/frontend-backend-flyt; Agent B eier Admin/Analytics/SEO/
+Ads-dashboards/Kapasitet/Infrastruktur/Monitoring/NOC — se
+`TASK_SPLIT.md`s nye oppføring for detaljer. **Uavklart:** om "Agent B" i
+denne splitten er meg (denne dev-VPS-økten) eller den opprinnelige,
+separate Agent B-økten — spurt Khabat direkte om dette i chat. Køen over
+starter uansett når Agent A er ferdig, av hvilken økt som helst som eier
+"Agent B"-omfanget.
+
 ---
 
 ## § 3 — Prioritet 3: Infrastruktur / Kapasitet
