@@ -208,23 +208,67 @@ seksjonen kan bli `Live`):** ekte AdMob-konto med `admob_app_id` /
 `admob_rewarded_unit_id` satt (i dag placeholders, jf.
 `docs/REWARDED-ADS-RECOVERY.md` §4).
 
+### 2.0 Annonsetype-taksonomi (Khabat, 2026-07-18 — bindende, gjelder hele § 2)
+
+**Funn som utløste dette:** det faste banneret på Realink/RealGram-forsiden
+er **AdMob** (vanlig Google-bannerformat, annonsørnavn, "Open"-knapp) —
+**ikke** AdsGram. AdsGram-panelet (Shahnameh sin Rewarded Video Unit)
+viser derimot ekte, verifisert aktivitet admin aldri har fanget opp:
+
+| Dato | Impressions | Clicks | Merknad |
+|---|---|---|---|
+| 2026-07-17 | 6 | — | |
+| 2026-07-16 | 3 | — | |
+| 2026-07-12 | 3 | 1 | |
+| **Totalt synlig i AdsGram-panelet** | | | ~0,04 USDT |
+
+**Dette er ekte tall fra Khabats eget AdsGram-panel — bruk som
+fasit/kryssjekk** når den ekte AdsGram-integrasjonen (§ 2.1) faktisk bygges:
+de nye admin-tallene skal kunne gjenskape akkurat disse tallene for samme
+periode, ellers er integrasjonen ikke korrekt.
+
+**Hard regel — gjelder hele databasen og hele admin, ikke bare denne
+seksjonen:** banner-, rewarded- og interstitial-visninger skal **aldri**
+telles sammen eller vises som én "Rewarded Views"-sum. De er strukturelt
+forskjellige annonseformater fra (potensielt) forskjellige nettverk og
+skal holdes atskilt gjennom hele kjeden — database, API, admin-UI.
+
+**Fire distinkte annonsetyper, ikke to:**
+
+| # | Type | Nettverk | Status i dag |
+|---|---|---|---|
+| 1 | Banner | AdMob | Live i appen (Realink/RealGram-forsiden), **ikke separat sporet i admin** |
+| 2 | Rewarded video | AdMob | Delvis sporet i dagens admin-tabell under — men mulig sammenblandet med type 4, se rad "Suspicious events"/"Rewarded dashboard" |
+| 3 | Interstitial | AdMob | Ukjent om denne finnes i appen i det hele tatt — avklar før det bygges en admin-side for noe som ikke eksisterer |
+| 4 | Rewarded video | AdsGram (Shahnameh) | **Stub — se § 2.1.** Ekte aktivitet finnes i AdsGram sitt eget panel (tabellen over), men når aldri admin |
+
+**Per type skal admin kunne vise:** impressions, completed views, clicks,
+fill rate, eCPM, revenue, utdelt GB/gems/quota, kostnad per belønning,
+netto resultat/ROI. Ikke alle felt gir mening for alle typer (banner har
+ingen "completed views", interstitial har ingen "reward") — vis kun det
+som faktisk gjelder for typen, ikke tomme felt fremstilt som `0`.
+
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
 | AdMob-konto koblet med ekte ID-er | Not started | — | — | — | — | — | Khabat må skaffe AdMob-konto |
-| Rewarded dashboard (samlet oversikt) | Not started | — | — | — | — | — | AdMob-konto |
-| Revenue trend (graf: i dag/7d/30d) | Not started | — | — | — | — | — | AdMob-konto |
+| **Avklar om dagens "Rewarded dashboard"/`ads-metrics` faktisk er AdMob Rewarded, eller en blanding** | Not started | — | — | — | — | — | kode-revisjon av `admin/api.php`s `ads-metrics`-case før noe merkes `Live` |
+| AdMob Banner — eget kort/seksjon (impressions, clicks, revenue) | Not started | — | — | — | — | — | AdMob-konto. **Finnes ikke sporet i admin i dag i det hele tatt** |
+| AdMob Rewarded — eget kort/seksjon | Not started | — | — | — | — | — | AdMob-konto |
+| AdMob Interstitial — eget kort/seksjon, **hvis den faktisk finnes i appen** | Not started | — | — | — | — | — | avklar eksistens først |
+| Revenue trend (graf: i dag/7d/30d), **per type, ikke slått sammen** | Not started | — | — | — | — | — | AdMob-konto |
 | Recovery trend (graf over tid) | Not started | — | — | — | — | — | — |
-| Ad fill rate (ekte, fra AdMob) | Not started | — | — | — | — | — | AdMob-konto |
-| eCPM (ekte, fra AdMob-konto/API) | Not started | — | — | — | — | — | AdMob-konto |
+| Ad fill rate (ekte, fra AdMob), per type | Not started | — | — | — | — | — | AdMob-konto |
+| eCPM (ekte, fra AdMob-konto/API), per type | Not started | — | — | — | — | — | AdMob-konto |
 | Top users (høyest ad-reward-volum) | Not started | — | — | — | — | — | — |
-| Suspicious events (review-kø) | In progress | feat/starlink-node-phase1 | — | — | — | kode finnes i `admin/api.php` `ads-metrics`, ikke verifisert live | — |
+| Suspicious events (review-kø) | In progress | feat/starlink-node-phase1 | — | — | — | kode finnes i `admin/api.php` `ads-metrics`, ikke verifisert live, **ikke bekreftet hvilken(e) annonsetype(r) den faktisk dekker** | — |
 | Quota usage (ads vs betaling vs referral vs recovery) | Not started | — | — | — | — | — | — |
-| Reward statistics (completion/avbrutt-rate, snitt reward/device) | Not started | — | — | — | — | — | — |
+| Reward statistics (completion/avbrutt-rate, snitt reward/device), per type | Not started | — | — | — | — | — | — |
 | Ad network health (SSV-endepunkt oppe, feilrate) | Not started | — | — | — | — | — | — |
 | Remote config (rediger ad-nøkler i UI) | In progress | feat/starlink-node-phase1 | — | — | — | kode finnes, ikke verifisert live | — |
 
 **Seksjonens Done:** AdMob-konto `Live`, alle rader `Live` med 100% ekte
-tall (ingen placeholder-eCPM), skjermbilder.
+tall (ingen placeholder-eCPM), **de fire annonsetypene vist atskilt, ikke
+slått sammen**, skjermbilder.
 
 ### 2.1 AdsGram (Shahnameh) — separat annonsesystem, **funnet reelt ødelagt** 2026-07-17
 
@@ -271,6 +315,28 @@ gjelder uansett hvilken vei som brukes).
 | Sette `ADSGRAM_BLOCK_ID_BRONZE/SILVER/GOLD` i Shahnameh `.env` | Not started | — | — | — | — | — | samme — vent på Agent A |
 | Egen hendelseslogg-tabell for AdsGram-visninger (ikke bare saldo-inkrement) | Not started | — | — | — | — | — | **Sperret: ikke start før Agent As ekte AdsGram SDK-integrasjon er levert OG én test har gått gjennom hele kjeden** |
 | Admin-side/visning for AdsGram-hendelser (Shahnameh-siden, ikke SetaLink-adminet) | Not started | — | — | — | — | — | samme sperre |
+
+#### 2.1.0 Den ekte integrasjonsflyten (Khabat, 2026-07-18 — bindende spesifikasjon for Agent As bygg)
+
+**Ikke bruk manuelt innskrevne eller estimerte AdsGram-tall som permanent
+løsning.** Åtte steg, alle må være reelle, ikke simulert:
+
+| # | Steg | Status |
+|---|---|---|
+| 1 | Brukeren starter AdsGram-annonsen (ekte SDK, ikke stub) | Not started — dette er Agent As hovedoppgave |
+| 2 | AdsGram bekrefter fullført visning | Not started |
+| 3 | Callback/verifisering mottas på backend | Delvis kode finnes (`handleCallback()`), men aldri reelt truffet — se § 2.1.1 |
+| 4 | Eventet lagres i databasen | Not started — ingen hendelsestabell finnes ennå (kun saldo-inkrement), se § 2.1.2 |
+| 5 | Brukeren krediteres **kun én gang** (idempotent) | Delvis — `creditAdReward()`s cooldown-mønster gir delvis idempotens, ikke verifisert mot duplikate callbacks spesifikt |
+| 6 | Admin leser **de samme lagrede eventene** — ikke en separat, parallell kilde | Not started |
+| 7 | Duplikate callbacks må være idempotente | Se rad 5 |
+| 8 | Mislykkede eller uverifiserte visninger skal **ikke** gi reward | Delvis — `handleCallback()` avviser allerede ugyldig `secret`/`blockId`, men uten reward-visning i admin er dette ikke verifiserbart i praksis ennå |
+
+**Hvis AdsGram ikke tilbyr et direkte statistikk-API for earnings:**
+impressions/completions/rewards kan komme fra våre egne verifiserte
+events (steg 3–4 over), men **offisiell inntekt merkes eksplisitt "venter
+på AdsGram rapport/import"** — aldri et anslått tall fremstilt som ekte.
+Samme prinsipp som § 0.1/§ 8.0, anvendt på annonseinntekt spesifikt.
 
 #### 2.1.1 Agent As pipeline-audit — dypere rotårsak enn antatt (2026-07-17)
 
@@ -354,11 +420,39 @@ callback, HMAC-verifisering, REAL-ledger-kreditering (`/v1/grant`), **og**
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| 1. Ads Event Log | Not started | — | — | — | — | — | Agent As AdsGram-levering, se over |
-| 2. Ads Performance Dashboard | Not started | — | — | — | — | — | samme, + Ads Event Log (1) som datakilde |
+| 1. Ads Event Log | Not started | — | — | — | — | — | Agent As AdsGram-levering, se over — **feltskjema presisert 2026-07-18, se § 2.1.2.1** |
+| 2. Ads Performance Dashboard | Not started | — | — | — | — | — | samme, + Ads Event Log (1) som datakilde — **per annonsetype, jf. § 2.0-taksonomien, ikke slått sammen** |
 | 3. AdsGram vs AdMob Comparison | Not started | — | — | — | — | — | samme, + § 2s AdMob-rader (eCPM/fill rate osv.) |
 | 4. KPI-grafer | Not started | — | — | — | — | — | samme |
 | 5. Hakim Ads-oppsummering | Not started | — | — | — | — | — | § 8 (Hakim), § 8.0 sannhetsprinsippet — må lese ekte data fra (1)–(4), ikke oppsummere plausibelt |
+
+##### 2.1.2.1 Ads Event Log — feltskjema (Khabat, 2026-07-18)
+
+Én rad per annonsehendelse, **uavhengig av type** (banner/rewarded/
+interstitial, AdMob/AdsGram) — dette er kilden § 2.0s taksonomi og
+§ 2.1.2s Performance Dashboard begge leser fra, ikke separate tabeller
+per nettverk.
+
+| Felt | Betydning |
+|---|---|
+| `provider` | `admob` \| `adsgram` |
+| `format` | `banner` \| `rewarded` \| `interstitial` |
+| `app_source` | `realgram` \| `shahnameh` |
+| `user_id` | REAL_ID/telegram_id — se § 6.1/§ 2.1 for hvilken identitet som faktisk er tilgjengelig på hvert punkt i kjeden |
+| `unit_id` | AdMob/AdsGram enhets-ID |
+| `impression_at` | Tidspunkt annonsen ble vist |
+| `completed_at` | Tidspunkt visningen ble fullført (rewarded/interstitial — `null` for banner) |
+| `callback_received` | Om server-side callback faktisk kom inn |
+| `reward_granted` | Om belønning faktisk ble gitt |
+| `reward_amount` | Beløp/mengde belønnet |
+| `revenue` | Inntekt — `null`/"venter på rapport" hvis ikke offisielt bekreftet, aldri et gjettet tall, jf. § 2.1.0 |
+| `external_event_id` | AdsGram/AdMob sin egen hendelses-ID, for idempotens og kryssjekk mot deres paneler |
+| `status`/`error` | Feilkode/status for hendelser som ikke fullførte |
+
+**Hard regel (samme som § 2.0):** `format` skiller banner fra rewarded fra
+interstitial i **denne samme tabellen** — ikke separate tabeller som kan
+drive fra hverandre. Én kilde, filtrert på `format`/`provider`, ikke flere
+kilder som må holdes synkronisert manuelt.
 
 **Rollefordeling (Khabat, 2026-07-17, supersedert 2026-07-11-splitten i
 `TASK_SPLIT.md`):** Agent A eier Shahnameh/AdsGram SDK/Wallet/REAL_ID/
