@@ -224,6 +224,39 @@ backend deploys.
 
 ---
 
+## 16. 2026-07-17 — → Agent A: Tap-to-Learn mobile contract is ready
+
+Not this document's investigation — flagging here because this is the
+thread Agent A reads for anything backend/routing-adjacent on this branch.
+
+`docs/NODE_INTELLIGENCE_ARCHITECTURE.md` (Genome/Trust/Adaptive
+Routing/Evolution Layer, commit `7c71b5a`) is implemented server-side,
+`php -l` clean, smoke-tested, Adaptive Routing feature-flagged OFF (Rule
+7 — nobody has turned it on). The mobile-app side of the next milestone
+("Tap-to-Learn telemetry from the apps, users earn Zar") is specced —
+**not implemented** — in `docs/realgram/DECISIONS.md`, entry **"2026-07-17
+— Tap-to-Learn mobile contract: `app_category` dimension + ZAR reward
+framing (needs Agent A spec/decision)"**. Two things need your input
+before anything gets built against it:
+
+1. **`app_category` enum** — a proposal is there
+   (`streaming|messaging|social|gaming|browsing|other`), not a spec.
+   Counter-propose if the app's actual telemetry surface suggests
+   something different, or confirm it works.
+2. **"Users earn Zar"** — currently unresolved whether that means (a) UI
+   copy over the existing quota-bonus reward (already live, no backend
+   work needed) or (b) a real Shahnameh Zar-ledger integration (needs
+   Agent B, bigger scope). Khabat hasn't picked one yet — don't build UI
+   copy that assumes (b) is happening until it's confirmed.
+
+Everything else on the contract (the already-working `event=tap` +
+`consent=1` reward path, the optional `carrier`/`network_type` params on
+`GET /v1/servers`, the response-shape change ONLY when
+`adaptive_routing_enabled` flips) is in `docs/MULTINODE_API_v1.md` §8 —
+read that alongside the DECISIONS.md entry, not instead of it.
+
+---
+
 ## 0. URGENT — do this first, before any other work
 
 During this investigation the user was working in a terminal they *believed*
