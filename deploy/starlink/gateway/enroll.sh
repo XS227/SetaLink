@@ -113,13 +113,17 @@ VPS_API_URL=${VPS_API_URL%starlink-enroll.php}starlink-heartbeat.php
 NODE_ID=$NODE_ID
 HEARTBEAT_TOKEN=$HEARTBEAT_TOKEN
 WG_IFACE=$WG_IFACE
+WAN_IFACE=$WAN_IFACE
+HANDSHAKE_STALE_SECS=180
 EOF
 chmod 600 "$HB_ENV_FILE"
-echo "Wrote $HB_ENV_FILE — heartbeat.sh (unchanged) will pick this up automatically."
+echo "Wrote $HB_ENV_FILE — heartbeat.sh AND watchdog.sh (both unchanged) pick this up automatically."
 
 echo
 echo "== Next steps (same as the manual Phase 1 path from here) =="
 echo "  1. sysctl -w net.ipv4.ip_forward=1 (and persist in /etc/sysctl.conf)"
 echo "  2. systemctl enable --now wg-quick@$WG_IFACE"
-echo "  3. Schedule heartbeat.sh every ~30s (cron/systemd-timer)"
+echo "  3. Install heartbeat.sh + watchdog.sh + the systemd timers -- see setup-raspberrypi.sh's"
+echo "     'Installing heartbeat.sh + watchdog.sh' section for the exact install/enable commands"
+echo "     (this enrollment script only writes config, it doesn't install the scripts themselves)."
 echo "  4. In the admin panel, confirm this node shows ONLINE within ~90s, then flip 'enabled' when ready."

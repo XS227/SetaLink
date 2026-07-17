@@ -65,7 +65,36 @@ fi
 /etc/init.d/network restart
 
 echo
+echo "-- Installing heartbeat.sh + watchdog.sh via cron (no systemd on OpenWrt) --"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+GATEWAY_DIR="/opt/starlink-gateway"
+mkdir -p "$GATEWAY_DIR"
+cp "$SCRIPT_DIR/../heartbeat.sh" "$GATEWAY_DIR/heartbeat.sh"
+cp "$SCRIPT_DIR/../watchdog.sh" "$GATEWAY_DIR/watchdog.sh"
+chmod 755 "$GATEWAY_DIR/heartbeat.sh" "$GATEWAY_DIR/watchdog.sh"
+
+HB_ENV_FILE="/etc/starlink-heartbeat.env"
+if [ ! -f "$HB_ENV_FILE" ]; then
+  cp "$SCRIPT_DIR/../config.template.env" "$HB_ENV_FILE"
+  sed -i "s/^WG_IFACE=.*/WG_IFACE=$WG_IFACE/" "$HB_ENV_FILE"
+  chmod 600 "$HB_ENV_FILE"
+  echo "Wrote $HB_ENV_FILE -- fill in VPS_API_URL and HEARTBEAT_TOKEN (admin panel's 'Generate"
+  echo "heartbeat token'), and set WAN_IFACE if this router's WAN-side interface isn't the"
+  echo "default (check with: uci show network | grep wan)."
+fi
+
+# No systemd on OpenWrt -- cron is the standard mechanism. Runs even if the
+# router reboots, since /etc/crontabs is persisted config, not overlay-tmp.
+( crontab -l 2>/dev/null | grep -v 'starlink-gateway/heartbeat.sh' | grep -v 'starlink-gateway/watchdog.sh'
+  echo "* * * * * $GATEWAY_DIR/heartbeat.sh >/dev/null 2>&1"
+  echo "* * * * * sleep 30; $GATEWAY_DIR/watchdog.sh >/dev/null 2>&1"
+) | crontab -
+/etc/init.d/cron restart
+
+echo
 echo "== Done. Verify with: =="
 echo "     wg show"
 echo "     ping -c3 10.90.0.1        # should reach the VPS over the tunnel"
-echo "== Next: set up the heartbeat script (heartbeat.sh) as a cron job. =="
+echo "== Note: OpenWrt typically has no python3, so heartbeat.sh's Node Console command"
+echo "   dispatch (remote wg_status/restart_wireguard/etc.) will no-op here -- telemetry"
+echo "   and watchdog self-healing still work fully. opkg install python3-light to enable it."

@@ -76,3 +76,88 @@ response="$(curl -fsS --max-time 6 \
 # guaranteed present on OpenWrt) — written as-is, whatever consumes it
 # parses the JSON itself.
 [[ -n "$response" ]] && echo "$response" > "${STARLINK_HB_STATE_FILE:-/tmp/starlink-node-config.json}" 2>/dev/null || true
+
+# --- Node Console (Phase 1, 2026-07-17): dispatch pending commands, report
+# results. Keys MUST match lib/node_console.php's NC_COMMAND_REGISTRY exactly
+# -- this case statement is the node-side half of the two-independent-
+# enforcement-points rule (server registry + this allowlist; never a raw
+# string executed from the server). Requires python3 for safe JSON parsing/
+# encoding of command output (ships by default on Raspberry Pi OS/Debian).
+# If python3 is absent, this whole block is skipped -- heartbeat delivery
+# itself is unaffected, only remote-command dispatch is unavailable (logged
+# once so it's visible, not silently missing).
+if [[ -n "$response" ]] && command -v python3 >/dev/null 2>&1; then
+  cmd_lines="$(printf '%s' "$response" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for c in (data.get("commands") or []):
+    print("\t".join([str(c.get("command_id","")), str(c.get("command_key","")), str(c.get("token",""))]))
+' 2>/dev/null || true)"
+
+  if [[ -n "$cmd_lines" ]]; then
+    result_url="${VPS_API_URL/starlink-heartbeat.php/starlink-command-result.php}"
+    while IFS=$'\t' read -r cmd_id cmd_key token; do
+      # Defensive: command_id/token are always hex (bin2hex / hash_hmac
+      # output server-side) -- reject anything else rather than passing it
+      # through to the shell/python invocations below.
+      [[ "$cmd_id" =~ ^[0-9a-f]+$ && "$token" =~ ^[0-9a-f]+$ ]] || continue
+
+      cmd_start_ms="$(date +%s%3N)"
+      success=true
+      case "$cmd_key" in
+        wg_status)
+          output="$(wg show 2>&1 || true)"
+          ;;
+        network_status)
+          output="$(ip addr show 2>&1; echo '---'; ip route show 2>&1)"
+          ;;
+        last_100_logs)
+          output="$(tail -n 100 "${STARLINK_LOG_DIR:-/var/log/starlink-gateway}/watchdog.log" 2>&1 || echo '(no watchdog.log yet)')"
+          ;;
+        refresh_telemetry)
+          # No-op signal: the heartbeat that just ran IS the refresh.
+          output="telemetry refresh acknowledged -- next heartbeat cycle carries current state"
+          ;;
+        restart_wireguard)
+          if systemctl restart "wg-quick@$WG_IFACE" 2>&1; then
+            output="restarted wg-quick@$WG_IFACE"
+          else
+            output="failed to restart wg-quick@$WG_IFACE"
+            success=false
+          fi
+          ;;
+        *)
+          output="unknown command_key on this gateway: $cmd_key"
+          success=false
+          ;;
+      esac
+      duration_ms=$(( $(date +%s%3N) - cmd_start_ms ))
+
+      if [[ -n "$result_url" && "$result_url" != "$VPS_API_URL" ]]; then
+        payload_file="$(mktemp)"
+        printf '%s' "$output" | python3 -c "
+import json, sys
+print(json.dumps({
+    'command_id': '$cmd_id',
+    'token': '$token',
+    'success': $([ "$success" = true ] && echo True || echo False),
+    'duration_ms': $duration_ms,
+    'output': sys.stdin.read()[:8000],
+}))
+" > "$payload_file" 2>/dev/null
+
+        curl -fsS --max-time 6 \
+          -X POST "$result_url" \
+          -H "Authorization: Bearer $HEARTBEAT_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d @"$payload_file" >/dev/null 2>&1 || true
+        rm -f "$payload_file"
+      fi
+    done <<< "$cmd_lines"
+  fi
+elif [[ -n "$response" ]] && ! command -v python3 >/dev/null 2>&1; then
+  : # python3 missing -- command dispatch unavailable, telemetry unaffected. Not logged every cycle to avoid log spam; see setup script output for the one-time warning.
+fi
