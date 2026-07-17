@@ -100,6 +100,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='starlink'?' active':'' ?>" data-page="starlink">
       <?= icon('globe') ?> Starlink
     </div>
+    <div class="nav-item<?= $page==='insights'?' active':'' ?>" data-page="insights">
+      <?= icon('globe') ?> User Insights
+    </div>
     <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
       <?= icon('chart') ?> AI Diagnosis
     </div>
@@ -329,6 +332,114 @@ function icon(string $name): string {
             <thead><tr><th>Device ID</th><th>App Version</th><th>Model</th><th>Last Seen</th></tr></thead>
             <tbody id="iosRecentBody"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: USER INSIGHTS                                          -->
+    <!-- Aggregate, privacy-safe. Source: admin/api.php?action=user-  -->
+    <!-- insights. No per-user destination logging: carriers are      -->
+    <!-- ASN-derived operator names, reachability is the app's own    -->
+    <!-- connectivity probes. See public/api.php normalize_carrier(). -->
+    <!-- ============================================================ -->
+    <div data-view="insights" hidden>
+      <div class="stat-grid" id="insTotals">
+        <div class="stat-card"><div class="stat-label">Total Devices</div><div class="stat-value" id="insTotalDevices">—</div><div class="stat-sub">all registered</div></div>
+        <div class="stat-card"><div class="stat-label">Active 24h</div><div class="stat-value" id="insActive24">—</div><div class="stat-sub" id="insActive7">— in 7d</div></div>
+        <div class="stat-card"><div class="stat-label">Premium</div><div class="stat-value" id="insPremium">—</div><div class="stat-sub">paid / gifted</div></div>
+        <div class="stat-card"><div class="stat-label">Data Volume</div><div class="stat-value" id="insTotalGb">—</div><div class="stat-sub">GB, all sessions</div></div>
+        <div class="stat-card"><div class="stat-label">Longest Session</div><div class="stat-value" id="insLongest">—</div><div class="stat-sub">single connection</div></div>
+      </div>
+
+      <!-- Reachability: from the app's own connectivity probes (probe_* in -->
+      <!-- connect_telemetry), never per-user destination logs. -->
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Service Reachability <span class="panel-sub" id="insReachSub">from in-app connectivity probes · 30d</span></span></div>
+        <div class="panel-body">
+          <div class="stat-grid">
+            <div class="stat-card"><div class="stat-label">Instagram</div><div class="stat-value" id="insReachInstagram">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Telegram</div><div class="stat-value" id="insReachTelegram">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Google</div><div class="stat-value" id="insReachGoogle">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Cloudflare</div><div class="stat-value" id="insReachCloudflare">—</div><div class="stat-sub">% probes OK</div></div>
+            <div class="stat-card"><div class="stat-label">Apple</div><div class="stat-value" id="insReachApple">—</div><div class="stat-sub">% probes OK</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">📡 Mobile Carriers <span class="panel-sub">ASN-derived · never raw IP</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Carrier</th><th>Devices</th></tr></thead>
+              <tbody id="insCarrierTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Geography <span class="panel-sub">by country</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Country</th><th>Devices</th></tr></thead>
+              <tbody id="insGeoTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Platforms</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Platform</th><th>Devices</th></tr></thead>
+              <tbody id="insPlatformTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> Device Brands <span class="panel-sub">top 10</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Brand</th><th>Devices</th></tr></thead>
+              <tbody id="insBrandTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('package') ?> Plans</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Plan</th><th>Devices</th></tr></thead>
+              <tbody id="insPlanTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Protocols <span class="panel-sub">sessions · GB</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Protocol</th><th>Sessions</th><th>GB</th></tr></thead>
+              <tbody id="insProtocolTbl"><tr><td colspan="3" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">🛰️ Nodes <span class="panel-sub">connects · 30d</span></span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Node</th><th>Connects</th></tr></thead>
+              <tbody id="insNodeTbl"><tr><td colspan="2" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Longest Sessions</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Device</th><th>Protocol</th><th>Duration</th><th>MB</th><th>Day</th></tr></thead>
+              <tbody id="insLongestTbl"><tr><td colspan="5" class="tbl-empty">—</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -1638,6 +1749,7 @@ const pageTitles = {
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
   starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
+  insights:  ['User Insights', 'aggregate carriers · geo · devices · reachability · no per-user tracking'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
@@ -3223,6 +3335,59 @@ views.installs = {
           }).join('')
         : '<tr><td colspan="7" class="tbl-empty">No install events reported yet</td></tr>';
     } catch(e) { toast('Install diagnostics: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: USER INSIGHTS ──────────────────────────────────────────────
+// Aggregate, privacy-safe breakdowns from admin/api.php?action=user-insights.
+// No per-user destination logging: carriers are ASN-derived operator names,
+// reachability comes from the app's own connectivity probes.
+views.insights = {
+  init() { this.load(); },
+  fmtDur(secs) {
+    secs = Number(secs) || 0;
+    if (secs < 60) return secs + 's';
+    if (secs < 3600) return Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+    return Math.floor(secs/3600) + 'h ' + Math.floor((secs%3600)/60) + 'm';
+  },
+  pct(v) { return (v===null || v===undefined || isNaN(v)) ? '—' : Math.round(v) + '%'; },
+  rows(tbody, list, cols, cells) {
+    const el = $(tbody); if (!el) return;
+    el.innerHTML = (list && list.length)
+      ? list.map(cells).join('')
+      : `<tr><td colspan="${cols}" class="tbl-empty">No data</td></tr>`;
+  },
+  async load() {
+    try {
+      const d = await api.get('user-insights');
+      const t = d.totals || {}, r = d.reachability || {};
+
+      $('insTotalDevices').textContent = t.total_devices ?? '—';
+      $('insActive24').textContent     = t.active_24h ?? '—';
+      $('insActive7').textContent      = (t.active_7d ?? '—') + ' in 7d';
+      $('insPremium').textContent      = t.premium ?? '—';
+      $('insTotalGb').textContent      = (t.total_gb ?? 0) + ' GB';
+      $('insLongest').textContent      = this.fmtDur(t.longest_secs);
+
+      $('insReachInstagram').textContent  = this.pct(r.instagram);
+      $('insReachTelegram').textContent   = this.pct(r.telegram);
+      $('insReachGoogle').textContent     = this.pct(r.google);
+      $('insReachCloudflare').textContent = this.pct(r.cloudflare);
+      $('insReachApple').textContent      = this.pct(r.apple);
+      $('insReachSub').textContent = `from in-app connectivity probes · ${d.days ?? 30}d`;
+
+      this.rows('insCarrierTbl', d.carriers, 2, x=>`<tr><td>${esc(x.carrier)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insGeoTbl', d.geo, 2, x=>`<tr><td>${esc(x.country)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insPlatformTbl', d.platforms, 2, x=>`<tr><td>${esc(x.platform)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insBrandTbl', d.brands, 2, x=>`<tr><td>${esc(x.brand)}</td><td>${x.devices}</td></tr>`);
+      this.rows('insPlanTbl', d.plans, 2, x=>`<tr><td>${esc(x.plan||'free')}</td><td>${x.devices}</td></tr>`);
+      this.rows('insProtocolTbl', d.protocols, 3, x=>`<tr><td>${esc(x.protocol)}</td><td>${x.sessions}</td><td>${x.gb ?? 0}</td></tr>`);
+      this.rows('insNodeTbl', d.nodes, 2, x=>`<tr><td>${esc(x.node_id)}</td><td>${x.connects}</td></tr>`);
+      this.rows('insLongestTbl', d.longest, 5, x=>`<tr>`
+        + `<td style="font-family:var(--mono);font-size:.72rem">${esc(x.device)}</td>`
+        + `<td>${esc(x.protocol)}</td><td>${this.fmtDur(x.duration_secs)}</td>`
+        + `<td>${x.mb ?? 0}</td><td class="mobile-hide">${esc(x.day||'')}</td></tr>`);
+    } catch(e) { toast('User insights: '+e.message,'error'); }
   },
 };
 

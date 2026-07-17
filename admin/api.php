@@ -1524,6 +1524,65 @@ switch ($action) {
     case 'server-stats':        api_ok(cli_json('server-stats', [], 8)); break;
     case 'connection-analytics': api_ok(cli_json('connection-analytics', [], 8)); break;
 
+    // Aggregate, privacy-safe user insights for the dashboard. NO per-user
+    // destination logging: "category reachability" comes from the app's own
+    // connectivity probes (probe_* in connect_telemetry), and "carrier" is the
+    // ASN-derived operator name (never the raw IP).
+    case 'user-insights': {
+        $db   = open_analytics_db();
+        $days = max(1, min(90, (int)($_GET['days'] ?? 30)));
+        $since = "datetime('now', '-" . $days . " days')";
+        $q = function (string $sql) use ($db) {
+            try { return $db->query($sql)->fetchAll(PDO::FETCH_ASSOC); }
+            catch (\Throwable $e) { return []; }
+        };
+        $carriers = $q("SELECT COALESCE(NULLIF(carrier,''),'(unknown)') AS carrier, COUNT(*) AS devices
+                        FROM devices GROUP BY carrier ORDER BY devices DESC LIMIT 20");
+        $geo = $q("SELECT COALESCE(NULLIF(country,''),'?') AS country, COUNT(*) AS devices
+                   FROM devices GROUP BY country ORDER BY devices DESC LIMIT 20");
+        $platforms = $q("SELECT COALESCE(NULLIF(platform,''),'?') AS platform, COUNT(*) AS devices
+                         FROM devices GROUP BY platform ORDER BY devices DESC");
+        $brands = $q("SELECT COALESCE(NULLIF(manufacturer,''),'?') AS brand, COUNT(*) AS devices
+                      FROM devices GROUP BY manufacturer ORDER BY devices DESC LIMIT 10");
+        $plans = $q("SELECT plan, COUNT(*) AS devices FROM devices GROUP BY plan ORDER BY devices DESC");
+        $longest = $q("SELECT substr(device_id,1,16) AS device, COALESCE(NULLIF(protocol,''),'?') AS protocol,
+                              duration_secs, ROUND((bytes_sent+bytes_recv)/1048576.0,1) AS mb, date(ended_at) AS day
+                       FROM vpn_sessions ORDER BY duration_secs DESC LIMIT 10");
+        $protocols = $q("SELECT COALESCE(NULLIF(protocol,''),'?') AS protocol, COUNT(*) AS sessions,
+                                ROUND(SUM(bytes_sent+bytes_recv)/1073741824.0,2) AS gb
+                         FROM vpn_sessions GROUP BY protocol ORDER BY sessions DESC");
+        $nodes = $q("SELECT node_id, COUNT(*) AS connects FROM connect_telemetry
+                     WHERE created_at >= " . $since . " GROUP BY node_id ORDER BY connects DESC LIMIT 12");
+        $reach = $q("SELECT
+              ROUND(100.0*AVG(CASE WHEN probe_instagram IN (0,1) THEN probe_instagram END),0)  AS instagram,
+              ROUND(100.0*AVG(CASE WHEN probe_telegram  IN (0,1) THEN probe_telegram  END),0)  AS telegram,
+              ROUND(100.0*AVG(CASE WHEN probe_google    IN (0,1) THEN probe_google    END),0)  AS google,
+              ROUND(100.0*AVG(CASE WHEN probe_cloudflare IN (0,1) THEN probe_cloudflare END),0) AS cloudflare,
+              ROUND(100.0*AVG(CASE WHEN probe_apple     IN (0,1) THEN probe_apple     END),0)  AS apple
+            FROM connect_telemetry WHERE created_at >= " . $since);
+        $totals = $q("SELECT
+              (SELECT COUNT(*) FROM devices) AS total_devices,
+              (SELECT COUNT(*) FROM devices WHERE last_seen >= datetime('now','-1 day'))  AS active_24h,
+              (SELECT COUNT(*) FROM devices WHERE last_seen >= datetime('now','-7 days')) AS active_7d,
+              (SELECT COUNT(*) FROM devices WHERE plan='premium') AS premium,
+              (SELECT ROUND(SUM(bytes_sent+bytes_recv)/1073741824.0,1) FROM vpn_sessions) AS total_gb,
+              (SELECT MAX(duration_secs) FROM vpn_sessions) AS longest_secs");
+        api_ok([
+            'days'         => $days,
+            'totals'       => $totals[0] ?? new \stdClass(),
+            'carriers'     => $carriers,
+            'geo'          => $geo,
+            'platforms'    => $platforms,
+            'brands'       => $brands,
+            'plans'        => $plans,
+            'longest'      => $longest,
+            'protocols'    => $protocols,
+            'nodes'        => $nodes,
+            'reachability' => $reach[0] ?? new \stdClass(),
+        ]);
+        break;
+    }
+
     // Multi-node visibility: which device is using which node + the test allowlist.
     case 'node-usage': {
         $db = open_analytics_db();
