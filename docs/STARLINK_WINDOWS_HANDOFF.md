@@ -309,9 +309,8 @@ public → wg-starlink0 = private, forwarding enabled on both adapters.
    (symptom: `ICMP net unreachable` from 10.90.0.2 for everything). Fix:
    re-bind ICS (Wi-Fi properties → Sharing → off → on) +
    `Set-NetIPInterface -InterfaceAlias wg-starlink0 -AddressFamily IPv4
-   -Forwarding Enabled`. **TODO (unbuilt): `watchdog.ps1` should assert
-   both on every run** so a toggle/reboot self-heals. Until then: after
-   any tunnel toggle or reboot, expect to re-do the re-bind by hand.
+   -Forwarding Enabled`. **✅ BUILT 2026-07-17 (§18): `watchdog.ps1` now
+   asserts both on every run** — a toggle/reboot self-heals within ~60s.
 
 ### What this unblocks
 
@@ -321,6 +320,40 @@ admin tab) can now be deployed to production per the §13 plan — the
 in the prod DB. The mobile-app data path (VLESS test-UUID `e5e6b692…` on
 fi-hel:8443 → starlink-exit outbound) is configured and `xray -test`-clean;
 first real-device test can happen whenever a client with that UUID dials in.
+
+---
+
+## 18. 2026-07-17 — watchdog.ps1 rewritten: toggle-amnesia self-heal + handshake-based liveness (Agent A)
+
+Closes §17 root cause 5's TODO. Two changes, both live in
+`deploy/starlink/gateway/windows/watchdog.ps1` (ASCII-clean, parse-validated):
+
+1. **Exit-path assert every run**: if ICS's 192.168.137.1 is missing from
+   the tunnel adapter, re-bind ICS programmatically (HNetCfg.HNetShare COM:
+   clear all stale bindings, then Wi-Fi=public / tunnel=private, wait for the
+   address) and re-enable IPv4 forwarding on BOTH adapters if disabled.
+   Re-asserted after every service start/restart the watchdog itself performs
+   (those recreate the adapter too). Each ICS heal is appended to
+   disconnects.log — the exit WAS down for users until the heal.
+
+2. **Liveness no longer trusts ping replies**: fi-hel's ufw drops ICMP over
+   the tunnel BY DESIGN (only 51820/udp open — verified 17/7), so the old
+   ping-or-restart logic would have restart-looped every 60s against the live
+   peer, re-triggering the exact amnesia duty 1 fixes. Now: ping serves to
+   *stimulate* a handshake, health is judged by handshake age via `wg.exe
+   show <tunnel> latest-handshakes` (>180s stale → restart). The old header
+   comment claiming Windows has no wg CLI was wrong — wg.exe ships in
+   `%ProgramFiles%\WireGuard` (§17 root cause 2 used it).
+
+Defaults updated to the LIVE §17 config (peer 192.168.137.2, ICS
+192.168.137.1) since the Scheduled Task only passes -ServiceName and
+-StarlinkAdapterName. NOTE: `1-provision-gateway.ps1` defaults are still
+10.90.x — unchanged, out of scope here.
+
+Surface action needed (one-time): re-pull watchdog.ps1 (raw.githubusercontent,
+repo is public) over the installed copy — the Scheduled Task
+(`ReaLink-Starlink-Watchdog`, every 60s) picks it up on the next run, no
+re-registration needed.
 
 ---
 
