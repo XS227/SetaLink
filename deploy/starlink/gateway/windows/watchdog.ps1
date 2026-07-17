@@ -194,6 +194,45 @@ function Assert-Forwarding($alias) {
     }
 }
 
+function Clear-GhostHomeNetEntries {
+    # EnableSharing 0x80040201 (EVENT_E_ALL_SUBSCRIBERS_FAILED) root cause,
+    # per Microsoft KB828807 and a confirmed fix on the archived MSDN thread
+    # for this exact post-reboot scenario: the ICS configuration store (WMI
+    # namespace root\Microsoft\HomeNet) keeps IsIcsPublic/IsIcsPrivate flags
+    # for connections whose adapter NO LONGER EXISTS. WireGuard destroys and
+    # recreates its adapter on every toggle/service restart, and this Surface
+    # has been through several tunnel incarnations (wg-starlink0, test0,
+    # the 10.90.x era), so ghost entries accumulate. When EnableSharing fires
+    # its COM event, the subscriber chain chokes on the ghosts and the whole
+    # event fails -- which is also why one manual UI toggle "fixes" it: the
+    # Sharing tab rewrites this store. The COM clearing loop in Invoke-IcsBind
+    # cannot reach these, because EnumEveryConnection only enumerates LIVE
+    # connections. So: clear the flags straight in the WMI store.
+    try {
+        $entries = @(Get-CimInstance -Namespace 'root/Microsoft/HomeNet' `
+            -ClassName 'HNet_ConnectionProperties' -ErrorAction Stop)
+    } catch {
+        Log "WARN: cannot read root\Microsoft\HomeNet WMI store ($_) -- skipping ghost-entry cleanup."
+        return
+    }
+    $liveGuids = @(Get-NetAdapter -IncludeHidden -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.InterfaceGuid.ToString().ToLower() })
+    foreach ($entry in $entries) {
+        if (-not (($entry.IsIcsPublic -eq $true) -or ($entry.IsIcsPrivate -eq $true))) { continue }
+        $ref = [string]$entry.Connection
+        $kind = 'live connection still flagged after COM disable'
+        if ($ref -match '\{[0-9a-fA-F\-]+\}') {
+            if ($liveGuids -notcontains $Matches[0].ToLower()) { $kind = 'GHOST (adapter no longer exists)' }
+        }
+        try {
+            Set-CimInstance -InputObject $entry -Property @{ IsIcsPublic = $false; IsIcsPrivate = $false } -ErrorAction Stop
+            Log "ICS store cleanup: cleared $kind -- $ref"
+        } catch {
+            Log "WARN: could not clear HomeNet entry $ref ($_)."
+        }
+    }
+}
+
 function Invoke-IcsBind {
     # Programmatic equivalent of Wi-Fi properties -> Sharing -> off -> on:
     # clear every existing sharing binding, then public on Starlink,
@@ -220,6 +259,10 @@ function Invoke-IcsBind {
         Log "ERROR: ICS re-bind impossible -- connection not found (public '$StarlinkAdapterName': $([bool]$publicCfg), private '$TunnelAdapterName': $([bool]$privateCfg))."
         return $false
     }
+    # Ghost entries in the HomeNet WMI store make EnableSharing throw
+    # 0x80040201 -- clear them AFTER the COM disable loop (so anything the
+    # COM path failed to clear gets swept too) and BEFORE EnableSharing.
+    Clear-GhostHomeNetEntries
     # Drop any stale ICS address before enabling: a leftover 192.168.137.1
     # from a dead binding makes the post-bind wait (and any address-based
     # check) pass without NAT actually working. ICS re-assigns it on enable.
@@ -266,13 +309,16 @@ function Rebind-Ics {
         # after boot. Kick the chain and retry once. Seen live on the
         # Surface after the 2026-07-17 reboot.
         Log "ICS bind failed -- kicking SharedAccess + dependency chain, then retrying once."
-        foreach ($svc in 'MpsSvc', 'netman', 'RasMan') {
+        # EventSystem (COM+ Event System) and SENS dispatch the very event
+        # that 0x80040201 says found no working subscriber; the rest are
+        # ICS's classic service dependencies.
+        foreach ($svc in 'EventSystem', 'SENS', 'MpsSvc', 'netman', 'RasMan') {
             Start-Service -Name $svc -ErrorAction SilentlyContinue
         }
         Restart-SharedAccessHard
         Start-Sleep -Seconds 3
         if (-not (Invoke-IcsBind)) {
-            Log "ERROR: ICS bind still failing after service restart. Manual fallback: Wi-Fi properties -> Sharing -> off -> on (select '$TunnelAdapterName') -- with EnableRebootPersistConnection=1 that binding now survives reboots."
+            Log "ERROR: ICS bind still failing after service restart AND HomeNet ghost cleanup (KB828807). Check the 'ICS store cleanup' lines above -- if none appeared, the store read failed. Manual fallback: Wi-Fi properties -> Sharing -> off -> on (select '$TunnelAdapterName') -- with EnableRebootPersistConnection=1 that binding now survives reboots."
             return $false
         }
     }

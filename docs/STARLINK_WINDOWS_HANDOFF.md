@@ -437,6 +437,81 @@ ONLINE+routable while the exit blackholes (the exact monitoring blind spot
 
 ---
 
+## 20. 2026-07-17 — §19 result: watchdog detects correctly but `EnableSharing` throws 0x80040201; ROOT CAUSE FOUND (ghost entries in the HomeNet WMI store, KB828807) + programmatic fix shipped (Agent A)
+
+§19 steps 1–2 were done: the Surface now runs the current watchdog, and its
+log proves the DETECTION chain works end to end:
+
+1. `ICS binding check: address present but sharing bindings are gone … treating as amnesia.` ✅ (the de8fd4b COM-level check caught exactly the §19 false-healthy state)
+2. `Toggle amnesia detected … re-binding ICS.` ✅
+3. `WARN: EnableSharing threw … 0x80040201` ❌
+4. `ERROR: ICS bind still failing after service restart.` ❌ — the b16e466 service-kick retry didn't help either.
+
+**Question this raised: is programmatic ICS re-bind after reboot simply
+impossible on Windows (UI required), or is there a supported sequence?**
+
+**Answer: it is NOT a hard Windows limitation — root cause identified.**
+`0x80040201` = `EVENT_E_ALL_SUBSCRIBERS_FAILED`: `EnableSharing` publishes a
+COM event to the ICS subscriber chain, and the whole event fails. An archived
+MSDN thread with our EXACT scenario ("COMException 0x80040201 when setting
+Internet Connection Sharing **after restarting the PC**") was resolved via
+**Microsoft KB828807**: the ICS configuration store — WMI namespace
+`root\Microsoft\HomeNet`, class `HNet_ConnectionProperties` — retains
+`IsIcsPublic`/`IsIcsPrivate` flags for connections **whose adapter no longer
+exists**. The event subscribers choke on those ghost entries and the whole
+enable fails. This maps 1:1 onto our box:
+
+- WireGuard for Windows destroys/recreates its adapter on every toggle,
+  service restart and reboot (§17 root cause 5), and this Surface has been
+  through several tunnel incarnations (`wg-starlink0`, `test0`, the 10.90.x
+  era) — the ghost entries are practically guaranteed.
+- The watchdog's COM clearing loop can't reach them: `EnumEveryConnection`
+  only enumerates LIVE connections. Ghosts are invisible to the entire
+  `HNetCfg.HNetShare` API surface — they only exist in the WMI store.
+- It explains why one manual UI toggle "fixes" it (reported in every
+  independent hit on this error): the Sharing tab rewrites the store.
+  The UI isn't doing anything privileged — it's doing cleanup.
+
+**Fix shipped in watchdog.ps1 (this commit):** new
+`Clear-GhostHomeNetEntries` clears `IsIcsPublic`/`IsIcsPrivate` on every
+still-flagged `HNet_ConnectionProperties` entry (ghost or not — we re-enable
+the two bindings we want immediately after) via `Get-CimInstance`/
+`Set-CimInstance`, called inside `Invoke-IcsBind` after the COM disable loop
+and before `EnableSharing`. Logs each cleared entry as
+`ICS store cleanup: cleared GHOST (adapter no longer exists) -- …`.
+Also added `EventSystem` (COM+ Event System) and `SENS` to the service-kick
+list — they dispatch the very event that is failing.
+
+**Surface steps:**
+
+1. Re-pull `watchdog.ps1` from the branch (raw.githubusercontent,
+   `feat/starlink-node-phase1`) over the installed copy.
+2. Run it once by hand (same arguments as the task) and read
+   `logs\watchdog.log`. Expected sequence:
+   `Toggle amnesia detected` → one or more `ICS store cleanup: cleared …`
+   lines → `HEALED: ICS re-bound, 192.168.137.1 back on …`.
+3. If it STILL fails after ghost cleanup: do the manual UI toggle ONCE
+   (Wi-Fi properties → Sharing → off → on, tunnel adapter selected). With
+   `EnableRebootPersistConnection=1` (already asserted by the watchdog,
+   b16e466) the binding now persists across reboots, so the watchdog only
+   needs the programmatic path for toggle-amnesia during uptime — and
+   report the log lines so we see whether the store cleanup ran at all.
+4. Then the §19 finale, still pending: server-side exit check from fi-hel
+   (`curl --interface 192.168.137.2 https://ifconfig.me` = Starlink IP),
+   followed by ONE more reboot — the exit must come back with no manual
+   action (§19 check 5, still unproven).
+
+**Plan B if KB828807 cleanup does not cure it** (decreasing preference):
+(a) rely on `EnableRebootPersistConnection=1` + one last manual toggle —
+reboot persistence makes the 0x80040201 path a rare event; (b) drop ICS for
+WinNAT: install the `VirtualMachinePlatform` feature + reboot to materialize
+`MSFT_NetNat` (absent today, §14.2), then `New-NetNat` + a static
+192.168.137.1 on the tunnel adapter — no COM events anywhere in that path,
+fully scriptable; (c) the architecture note's real answer: a Linux gateway
+(GL.iNet/RPi) — Windows ICS is the fragile part, and it is the stopgap.
+
+---
+
 ## 0. URGENT — do this first, before any other work
 
 During this investigation the user was working in a terminal they *believed*
