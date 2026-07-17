@@ -950,10 +950,13 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
 if ($rel === '/starlink/unlock-status') {
     $unlock = v1_starlink_unlock($pdo, $deviceId);
     $nodeOut = null;
+    $hasConnected = false;
     foreach ($nodes as $id => $n) {
         if (!isset($n['_row'])) continue;
         $row = $n['_row'];
         $down = v1_starlink_down($n);
+        $hbAge = !empty($row['last_heartbeat_at'])
+            ? max(0, time() - strtotime((string)$row['last_heartbeat_at'])) : null;
         $nodeOut = [
             'id'          => $id,
             'available'   => !$down,
@@ -963,10 +966,36 @@ if ($rel === '/starlink/unlock-status') {
             'statusNote'  => $down ? 'auto_returns_when_healthy' : null,
             'maxSessions' => (int)($row['max_sessions'] ?? 0),
             'country'     => $row['country'],
+            // Starlink Experience addendum #2 (Khabat 2026-07-17 ~10:30):
+            // health + safe telemetry for the dedicated Starlink page's
+            // status/advanced sections. Numbers only — the node's WAN/exit
+            // addresses never leave the server.
+            'health'      => st_health_state($row),
+            'telemetry'   => [
+                'latencyMs'            => $row['latency_ms'] !== null ? (int)$row['latency_ms'] : null,
+                'packetLossPct'        => $row['packet_loss_pct'] !== null ? (float)$row['packet_loss_pct'] : null,
+                'uptimeSecs'           => $row['uptime_secs'] !== null ? (int)$row['uptime_secs'] : null,
+                'downloadKbps'         => $row['measured_download_kbps'] !== null ? (int)$row['measured_download_kbps'] : null,
+                'uploadKbps'           => $row['measured_upload_kbps'] !== null ? (int)$row['measured_upload_kbps'] : null,
+                'sessions'             => (int)($row['current_sessions'] ?? 0),
+                'lastHeartbeatAgeSecs' => $hbAge,
+            ],
         ];
+        // First-connect achievement: node_usage records every /config fetch,
+        // so "no row yet" = this device has never routed via Starlink. The
+        // client shows the one-time celebration only while hasConnected is
+        // still false at connect time (survives reinstalls, unlike local
+        // storage). Actual tunnel-up detection stays client-side.
+        if ($deviceId !== null && $deviceId !== '') {
+            try {
+                $uq = $pdo->prepare("SELECT 1 FROM node_usage WHERE device_id = ? AND node_id = ?");
+                $uq->execute([$deviceId, $id]);
+                $hasConnected = (bool)$uq->fetchColumn();
+            } catch (\Throwable $e) {}
+        }
         break;
     }
-    v1_send(['unlock' => $unlock, 'node' => $nodeOut]);
+    v1_send(['unlock' => $unlock, 'node' => $nodeOut, 'hasConnected' => $hasConnected]);
 }
 
 v1_send(['message' => 'not found'], 404);

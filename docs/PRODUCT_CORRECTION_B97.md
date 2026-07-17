@@ -201,3 +201,77 @@ satellite, freedom, identity, reward, community), not "VPN".
 
 Mysterious, premium, Persian fantasy, modern, Gen Z, emotional, rewarding.
 Less "VPN dashboard", more "next-generation platform".
+
+---
+
+# ADDENDUM #2 — STARLINK IS AN EXPERIENCE, NOT A SERVER (Khabat, 2026-07-17 ~10:30)
+
+Khabat's framing, verbatim intent: **"Ikke selg Starlink som en server. Selg
+det som en opplevelse."** The user should think *"how on earth can I connect
+to Starlink through my phone?"* — not *"oh, another server."* This extends
+the hero addendum above; nothing in it is replaced.
+
+## 1. Starlink as a hero experience (framing)
+
+```
+🛰️ STARLINK ACCESS
+Powered by Satellite
+Available through Premium or 11 verified invites
+```
+
+- A clear explanation of WHY this is special (your traffic leaves Earth's
+  terrestrial infrastructure; satellite exit; censorship-resilient).
+- A small unlock animation the moment `unlock.unlocked` flips to true for
+  the user (client compares against last seen state locally).
+
+## 2. Dedicated Starlink page (NEW screen)
+
+Tapping the Home card or the server-list entry opens a full Starlink page:
+
+- **Status** — online/maintenance/offline with the auto-returns copy.
+- **Unlock progression** — locked users: progress bar `n / 11`, invite CTA,
+  Premium upsell. Unlocked users: how they unlocked it.
+- **Benefits** — why satellite matters; the "wow" education section.
+- **Node health** — `node.health` (ONLINE / DEGRADED / MAINTENANCE /
+  OFFLINE) rendered as a friendly health indicator.
+- **Telemetry (advanced, collapsible)** — latency, packet loss, uptime,
+  sessions, last-heartbeat age; for power users. Render only fields that
+  are non-null.
+
+Everything is served by the extended `GET /v1/starlink/unlock-status`
+(LIVE on prod, verified 2026-07-17 with locked + unlocked bearers):
+
+```json
+{ "unlock": { "unlocked": true, "reason": "premium|test_mode|invites",
+              "invitesVerified": 2, "invitesRequired": 11 },
+  "node":   { "id": "starlink-no-01", "available": true, "status": "online",
+              "statusNote": null, "maxSessions": 1, "country": "Norway",
+              "health": "ONLINE",
+              "telemetry": { "latencyMs": 52, "packetLossPct": 0,
+                             "uptimeSecs": 19259, "downloadKbps": null,
+                             "uploadKbps": null, "sessions": 0,
+                             "lastHeartbeatAgeSecs": 46 } },
+  "hasConnected": false }
+```
+
+No IPs are ever exposed — telemetry is numbers only.
+
+## 3. First connection = achievement
+
+When the user connects through Starlink the FIRST time, it must feel like
+an accomplishment. Not `Connected.` but:
+
+```
+🛰️ Satellite Route Active
+You are now connected through the ReaLink Starlink network.
+```
+
+Short animation + visual "wow" moment (glow/star burst; optional subtle
+success sound). Subsequent connects get the lighter "🛰️ Connected through
+Starlink" state from the hero addendum — the big moment is once.
+
+- **Trigger:** selected node `nodeType === "STARLINK"` AND tunnel up AND
+  `hasConnected === false` from unlock-status (server-side truth that
+  survives reinstalls; node_usage-backed). After showing it once, also set
+  a local flag so a slow usage-record never double-fires it.
+- Goal per Khabat: this is the detail users remember and tell others about.
