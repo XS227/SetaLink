@@ -453,31 +453,52 @@ backend er ferdig."*
 | Tekst: "REAL is more than a token." → "Freedom • Community • Knowledge" | Not started | — | — | — | — | — | samme |
 | Fade fra logo til app | Not started | — | — | — | — | — | samme |
 | Ingen eksplosjoner/overdrevne effekter — rolig, premium, filmatisk | Not started | — | — | — | — | — | designprinsipp, ikke en oppgave i seg selv |
+| **Hakim dukker rolig opp** — kun avatar + navn, ingen chatboble, ingen supportbot-følelse | Not started | — | — | — | — | — | § 8 (Hakim må eksistere som karakter/avatar først) |
+| Én kort velkomst: *"Velkommen. Du har funnet mer enn en app. Du har funnet et fellesskap."* + `[Fortsett]` | Not started | — | — | — | — | — | samme |
 
-### 7.2 Onboarding (5–6 sider, kan hoppes over)
+**Hakim som første karakter, lagt til 2026-07-17:** dette er **ikke** en
+chatboble eller en supportbot-introduksjon — Hakim leder brukeren inn i
+RealGram-universet én gang, rolig, så trer han tilbake til
+tilgjengelig-når-ønsket (§ 8.1s "aldri mase"-regel, se under). Dette er
+det første av mange stedene samme visuelle karakter (§ 8.1.1) må gjenkjennes.
 
-| Side | Innhold | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
-|---|---|---|---|---|---|---|---|---|
-| 1 | 🌍 Fri internettilgang — koble til VPN/Starlink-noder | Not started | — | — | — | — | — | § 1–3, § 6 Fase 1 |
-| 2 | 💬 RealGram — snakk med venner/clan/krigere | Not started | — | — | — | — | — | avhenger av § 6 Fase 1 faktisk live (ikke vis en funksjon som ikke finnes) |
-| 3 | ⚔️ Shahnameh — lær historie, fullfør oppdrag, bygg helten | Not started | — | — | — | — | — | § 1–3 |
-| 4 | ⚡ REAL Rewards — tjen ZAR, konverter, se annonser, inviter | Not started | — | — | — | — | — | § 2 (Ads & Revenue) |
-| 5 | 🛰 Starlink — inviter 11 venner, lås opp ruting | Not started | — | — | — | — | — | § 3 (Kapasitet) |
-| 6 | 🚀 "Velkommen til RealGram" / "Alt er klart" + [Koble til] | Not started | — | — | — | — | — | alle over |
+### 7.2 Onboarding (5–6 sider, kan hoppes over) — Hakim-narrert
 
-**Hard regel:** ingen onboarding-side skal reklamere for en funksjon som
-ikke faktisk er `Live` (§ 0.1) på det tidspunktet siden vises til en ekte
-bruker — spesielt side 2 (RealGram-meldinger) og side 5 (Starlink), som
-begge i dag er under bygging, ikke ferdige.
+Hver side har nå én kort Hakim-linje i tillegg til ikon/tittel — dette
+erstatter de tidligere generiske beskrivelsene under, ikke et tillegg til dem.
 
-### 7.3 Help Center ("Learn")
+| Side | Innhold | Hakim-linje | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 🌍 VPN | *"Frihet begynner med en trygg forbindelse."* | Not started | — | — | — | — | — | § 1–3, § 6 Fase 1 |
+| 2 | 🛰 Starlink | *"Noen bygger nettverket. Andre styrker det."* | Not started | — | — | — | — | — | § 3 (Kapasitet) |
+| 3 | 💬 RealGram | *"Et community er sterkere enn en kontaktliste."* | Not started | — | — | — | — | — | avhenger av § 6 Fase 1 faktisk live |
+| 4 | ⚔️ Shahnameh | *"Historier skaper helter. Helter bygger fellesskap."* | Not started | — | — | — | — | — | § 1–3 |
+| 5 | 💰 REAL Wallet | *"Verdi er sterkest når den deles."* | Not started | — | — | — | — | — | § 9 (Wallet & Community Economy) |
+| 6 | 🚀 "Velkommen til RealGram" / "Alt er klart" + [Koble til] | — | Not started | — | — | — | — | — | alle over |
+
+**Hard regel (uendret, nå også gjeldende Hakim-linjene):** ingen
+onboarding-side eller Hakim-linje skal reklamere for en funksjon som ikke
+faktisk er `Live` (§ 0.1) på det tidspunktet siden vises til en ekte
+bruker — spesielt side 2 (Starlink), side 3 (RealGram-meldinger) og side 5
+(REAL Wallet-enhet av REAL/ZAR/Data), som alle i dag er under bygging.
+
+### 7.3 Help Center — er egentlig Hakim, ikke en separat FAQ-UI
+
+**Presisert 2026-07-17:** brukeren søker ikke i en FAQ-liste — brukeren
+**spør Hakim**, og Hakim svarer ved å bruke den ekte dokumentasjonen under
+som kilde. Kategoriene/artikkelstrukturen nedenfor er derfor **Hakims
+kunnskapsbase**, ikke en konkurrerende browse-UI — se § 8.6 for
+spørsmål/svar-grensesnittet selv. Rekkefølgen "brukeren spør → Hakim
+svarer fra ekte dokumentasjon" er selve poenget: hvis dokumentasjonen
+under mangler, må Hakim si ⚪ "jeg vet ikke ennå" (§ 8.0), ikke gjette.
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Egen seksjon (ikke bare FAQ), med søk | Not started | — | — | — | — | — | § 1–3 |
+| Dokumentasjonskilde (ikke en egen browse-først-UI) med søkbar struktur | Not started | — | — | — | — | — | § 1–3 |
 | Kategorier: VPN, Starlink, Shahnameh, RealGram, Clan, REAL, ZAR, Rewards, Ads, Data Sharing, Security, Troubleshooting, Getting Started | Not started | — | — | — | — | — | samme |
 | Artikkelmal: illustrasjon + kort forklaring + steg-for-steg + video (senere) + relaterte artikler | Not started | — | — | — | — | — | samme |
 | Kjerneartikler: invitere venner, Starlink, tjene REAL, hva er ZAR, sende datakvote, clans, koble Telegram, spille Shahnameh | Not started | — | — | — | — | — | artikler om Starlink/RealGram/datakvote/Telegram avhenger av at § 3/§ 6 faktisk er live |
+| Hakim-spørsmål/svar-grensesnitt bruker denne kilden | Not started | — | — | — | — | — | § 8.6, samme dokumentasjon |
 
 ### 7.4 Innebygde guider (contextual overlay, første gang en funksjon åpnes)
 
@@ -496,9 +517,26 @@ begge i dag er under bygging, ikke ferdige.
 | 4 | Spill første Shahnameh-kapittel | Not started | — | — | — | — | — | — |
 | 5 | Bli med i en clan | Not started | — | — | — | — | — | § 6 Fase 2 (clan-chat) |
 
-**Seksjonens Done:** alle underseksjoner `Live` med skjermbilder, **og**
-verifisert at ingen onboarding/help-center-tekst reklamerer for noe som
-ikke faktisk er live på deployment-tidspunktet.
+### 7.6 Første gang appen åpnes — Hakim hjelper direkte (ikke en veiviser-modal)
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Opprette profil | Not started | — | — | — | — | — | § 6.1 (`realgram_profiles`) |
+| Velge @handle | Not started | — | — | — | — | — | § 6.1 |
+| Forklare wallet | Not started | — | — | — | — | — | § 9 (REAL Wallet) |
+| Forklare ZAR | Not started | — | — | — | — | — | § 9 |
+| Forklare REAL | Not started | — | — | — | — | — | § 9 |
+| Forklare datakvote | Not started | — | — | — | — | — | eksisterende quota-ledger |
+| Forklare clan | Not started | — | — | — | — | — | § 6.5 |
+| Forklare hvordan man inviterer venner | Not started | — | — | — | — | — | eksisterende `referral_uses` |
+
+**Hard regel:** dette er Hakim som svarer/veileder direkte når brukeren
+trenger det (§ 8.1s "tilgjengelig, ikke masete") — **ikke** en tvungen
+7-stegs modal-veiviser brukeren må klikke seg gjennom før appen åpnes.
+
+**Seksjonens Done (§ 7 samlet):** alle underseksjoner `Live` med
+skjermbilder, **og** verifisert at ingen onboarding/help-center/Hakim-tekst
+reklamerer for noe som ikke faktisk er live på deployment-tidspunktet.
 
 ---
 
@@ -545,11 +583,24 @@ ikke verifisert, uansett hvor bra de to første ser ut.
 | Lengde | Kort og tydelig, aldri langdryg |
 | Stemme | Føles som en mentor, ikke teknisk support |
 | Kulturelt anker | Små, naturlig plasserte sitater fra Shahnameh — aldri påtvunget der det ikke passer |
+| **Tilgjengelighet** | Aldri masete — ingen popup-spam, ingen "Hei! Trenger du hjelp?"-varsler. Hakim er tilgjengelig når brukeren selv oppsøker ham, ikke pushy |
+| **Visuell identitet** | **Samme avatar overalt** — VPN, Shahnameh, Wallet (§ 9), Admin, Community. Skal alltid føles som samme person, uansett sone (§ 8.1.1) |
 
 **Verifisering ved `Live`:** et lite eksempel-utvalg av faktiske Hakim-svar
 (minimum: én VPN-anbefaling, én Shahnameh-hint, ett Help Center-svar)
 vedlagt skjermbilde-leveransen, så tonen kan vurderes mot tabellen over —
-ikke bare påstått fulgt.
+ikke bare påstått fulgt. For Tilgjengelighet/Visuell identitet:
+skjermbilder av Hakims avatar fra minst tre ulike soner side om side (bevis
+på gjenkjennbarhet), og en eksplisitt bekreftelse på at ingen uoppfordret
+popup/varsel fra Hakim finnes i implementasjonen.
+
+**Langsiktig merkevareposisjon (kontekst, ikke en oppgave i seg selv):**
+Hakim er ment å bli et av tre ting brukeren husker når de tenker på
+RealGram — REAL-logoen, Hakim, Community — ikke bare "en VPN-app". Dette
+er hvorfor visuell/tonal konsistens (denne seksjonen) og
+sannhetsprinsippet (§ 8.0) begge er bindende, ikke valgfrie finpuss: en
+karakter som skal *bære merkevaren* kan ikke variere i utseende eller lyve
+i svar uten at hele poenget forsvinner.
 
 #### 8.1.1 Kontekstuell tone (samme karakter, ulik oppførsel per sone)
 
@@ -677,7 +728,129 @@ er synlig atskilt (§ 8.9), skjermbilder.
 
 ---
 
-## § 9 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
+## § 9 — REALGRAM WALLET, VIZH & COMMUNITY ECONOMY
+
+Lagt til 2026-07-17 på Khabats instruks. **Vizh** brukes her som navnet på
+**overføringsfunksjonen** ("trykk Vizh for å sende"), ikke som navnet på
+walleten selv — Khabats egen presisering i samme melding. Walleten heter
+**REAL Wallet**; Vizh er knappen/handlingen, omtrent slik "Vipps" er blitt
+et verb.
+
+### 9.0 Hva finnes allerede — les før noe designes som "nytt"
+
+**Viktig funn, verifisert direkte i `docs/realgram/TASK_SPLIT.md` og
+`DECISIONS.md`, 2026-07-17:** en betydelig del av "REAL Wallet" er
+**allerede live**, ikke et nytt konsept:
+
+- **REAL-saldo + innløsning:** panelets `real-wallet`-handling (A-2) og
+  mobilens wallet-kort på Profile + redeem-sheet (A-3), gated bak
+  remote-config `rc_real_wallet_enabled`. Per `TASK_SPLIT.md` linje 192:
+  **"The full wallet loop is LIVE for build-88 devices."** Backend:
+  Shahnameh-siden `/v1/verify-spend`, `/v1/balance/:account`, `/v1/spend`
+  (B-1), live mot `real_balance`-ledgeren siden 2026-07-11/12.
+- **ZAR:** allerede live siden build 92 som tap-to-earn-mynt mens
+  tilkoblet (`TASK_SPLIT.md` B-15/linje 756) — **ZAR→REAL-konvertering er
+  IKKE bygget ennå**, kun ZAR-opptjening.
+- **Data Quota:** eksisterende ledger (`lib/quota_economy.php`), inkludert
+  p2p-overføring (`qe_transfer()`, se `REALGRAM_NATIVE_MESSAGING_DESIGN.md`
+  § 0 — allerede live, brukt av § 6.6).
+- **Tonkeeper:** brukes allerede for premium-betaling
+  (`docs/PREMIUM-REAL-PAYMENTS.md` — Tonkeeper-deeplink, TON Connect), men
+  **kun for kjøp**, ikke som en generell import/eksport-bro for en
+  eksisterende REAL-saldo.
+
+**Det som faktisk er nytt i dette kapittelet:**
+1. **Én samlet REAL Wallet-visning** på tvers av REAL + ZAR + Data (i dag
+   tre separate steder/skjermer).
+2. **ZAR→REAL-konvertering** (opptjening finnes, konvertering finnes ikke).
+3. **Vizh — p2p-overføring av REAL og ZAR mellom brukere** (Data-transfer
+   finnes allerede via § 6.6; REAL/ZAR har i dag kun bruker→system
+   (redeem), ikke bruker→bruker).
+4. **Tonkeeper som generell import/eksport-bro**, ikke bare betalingsflyt.
+5. **Community Treasury + transparens** — helt nytt, ingen eksisterende kode.
+
+### 9.1 REAL Wallet (samlet visning)
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Saldo-visning: REAL, ZAR, Data Quota, plass til fremtidige tokens | Not started | — | — | — | — | — | § 9.0 — kombinerer tre eksisterende kilder, ikke ny ledger |
+| Samme wallet-komponent brukt i VPN, RealGram og Shahnameh (§ 9.6) | Not started | — | — | — | — | — | — |
+| Del av brukerprofilen (§ 6.1) | Not started | — | — | — | — | — | § 6.1 |
+
+### 9.2 Vizh (ویژ) — overføringshandlingen
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| "Vizh"-knapp fra chat eller brukerprofil | Not started | — | — | — | — | — | § 6.2/§ 6.4 (UI-plassering) |
+| Send Data | Not started | — | — | — | — | — | **Allerede live backend** — `qe_transfer()`, kun UI-kobling gjenstår (samme som § 6.6) |
+| Send REAL | Not started | — | — | — | — | — | **Ny** — dagens REAL-ledger støtter bruker→system, ikke bruker→bruker; trenger egen p2p-transfer-funksjon, samme rigor som `qe_transfer()` (atomisk, idempotent, anti-fraud) |
+| Send ZAR | Not started | — | — | — | — | — | **Ny**, samme som Send REAL — pluss ZAR→REAL-konvertering (§ 9.0 punkt 2) må avklares først: sendes ZAR som ZAR, eller konverteres den underveis? Åpent spørsmål, ikke besluttet her |
+| Mottaker får: push-varsel + melding i chat + wallet oppdatert + historikk | Not started | — | — | — | — | — | § 6 (meldingssystem), samme mønster som § 1.4 i messaging-designdokumentet |
+
+**Hard regel:** Send REAL og Send ZAR er **pengeoverføring**, ikke en
+visuell mockup — samme regel som § 6.6 allerede sier om datakvote, nå
+strengere fordi REAL/ZAR er verditokens. Backend-ledger for p2p REAL/ZAR
+må være sikker, testet og gjennomgått **før** noe her settes `Live` — ikke
+etter.
+
+### 9.3 Tonkeeper (ekstern blockchain-bro)
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| REAL Wallet er dagligwalleten — brukeren trenger normalt ikke åpne Tonkeeper | Not started | — | — | — | — | — | designprinsipp, ikke egen kodeoppgave |
+| REAL Wallet → Tonkeeper-flyt ved faktiske blockchain-operasjoner | Not started | — | — | — | — | — | utvider eksisterende Tonkeeper-deeplink fra `PREMIUM-REAL-PAYMENTS.md` |
+| Koble egen Tonkeeper-konto | Not started | — | — | — | — | — | — |
+| Eksportere REAL (RealGram → on-chain) | Not started | — | — | — | — | — | on-chain REAL-pris er fortsatt simulert per `INTEGRATION_MAP.md` §1 — avklar hva "eksport" betyr før implementering |
+| Importere REAL (on-chain → RealGram) | Not started | — | — | — | — | — | samme |
+
+### 9.4 Community First — prinsipp (styringsbeslutning, ikke kode)
+
+| Punkt | Status |
+|---|---|
+| RealGram skal ikke maksimere profitt — målet er et selvforsterkende community | Not started (prinsipp, må formaliseres skriftlig og godkjennes av Khabat) |
+| Inntektskilder: AdsGram, AdMob, Premium, fremtidige tjenester | Delvis live — AdsGram/AdMob eksisterer (§ 2), Premium designet men ikke skipet (`PREMIUM-REAL-PAYMENTS.md`) |
+| Etter driftskostnader (servere, Starlink, båndbredde, utvikling, sikkerhet, likviditetsbuffer) → overskudd tilbake til communityet | Not started — krever regnskapsmessig kildekobling, se § 9.7 |
+
+### 9.5 Community Treasury
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| 7 bruksområder: liquidity buyback, airdrops, gratis datakvote, Shahnameh-belønninger, clan rewards, referral rewards, community events | Not started | — | — | — | — | — | § 9.4 må være besluttet først |
+| Admin-styrt prosentfordeling (eksempel: 40 % liquidity / 30 % airdrops / 20 % data quota / 10 % reserve) | Not started | — | — | — | — | — | knyttes til § 1 admin-arbeid — egen adminside, samme designsystem |
+| Fordelingen er justerbar av admin, ikke hardkodet | Not started | — | — | — | — | — | — |
+
+**Hard regel:** enhver Treasury-fordeling som vises — til brukere eller i
+admin — må være **ekte, utbetalte/reserverte tall**, aldri en projeksjon
+fremstilt som et faktum. Samme prinsipp som § 0.1/§ 8.0, anvendt på
+faktiske pengestrømmer: dette er stedet i hele roadmapen der en
+placeholder-verdi ville gjøre mest skade.
+
+### 9.6 Delt wallet i Shahnameh
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Shahnameh viser REAL, ZAR, Data, Rewards, Achievements fra samme wallet som VPN/RealGram | Not started | — | — | — | — | — | § 9.1, krever avklaring med Agent B/Shahnameh-backend om felles datamodell |
+
+### 9.7 Transparens
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Offentlig synlig: annonseinntekt inn | Not started | — | — | — | — | — | § 2 (Ads & Revenue) må ha ekte tall først |
+| Offentlig synlig: serverkostnader ut | Not started | — | — | — | — | — | § 3 (Kapasitet) |
+| Offentlig synlig: beløp tilbake til liquidity | Not started | — | — | — | — | — | § 9.5 |
+| Offentlig synlig: airdroppet beløp | Not started | — | — | — | — | — | § 9.5 |
+| Offentlig synlig: delt datakvote | Not started | — | — | — | — | — | § 9.5 |
+
+**Seksjonens Done (§ 9 samlet):** § 9.0s fem "faktisk nytt"-punkter alle
+`Live` med ekte tall/koblinger (ingen av dem gjenoppfinner det som
+allerede finnes), Community Treasury-fordelingen faktisk admin-justerbar
+og verifisert med et ekte tall-eksempel (ikke bare et forslag),
+transparens-tallene i § 9.7 lest fra samme kilder som admin selv bruker
+(§ 2/§ 3) — aldri en egen, separat "pen versjon" av tallene, skjermbilder.
+
+---
+
+## § 10 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
 
 Enhver agent som rapporterer status på en oppgave i denne roadmapen skal
 oppdatere raden direkte i denne filen (Status/Branch/Commit/PR/Deploy-tid/
