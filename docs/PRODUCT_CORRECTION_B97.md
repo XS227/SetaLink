@@ -134,3 +134,70 @@ rank card already shows, one economy.
   of the b97 APK when B hands it off (same flow as b96, §25/§26).
 - **B (drives):** items 1–7 in the app, screenshots + proofs, Persian
   changelog, tag + CI build v0.9.67-b97.
+
+---
+
+# HOTFIX ADDENDUM — MAKE STARLINK THE HERO (Khabat, 2026-07-17 ~09:00)
+
+Context from Khabat: "We finally achieved something extraordinary. A user in
+Iran can connect to Starlink through ReaLink. The UI does not communicate
+this at all. This must become the emotional highlight of the product."
+This addendum EXTENDS items 2 and 4 above and adds splash/branding work.
+The Starlink exit is LIVE (exit verified from fi-hel, node open,
+handoff §29) — this is real, not aspirational copy.
+
+## Home — Starlink replaces the Shahnameh promotion
+
+Large premium card in the old promo slot:
+
+```
+🛰️ STARLINK ACCESS
+Internet without terrestrial infrastructure.
+⭐ Premium        — or —        🔥 Unlock by inviting 11 verified friends
+██████░░░░  6 / 11
+[ Invite friends ]
+```
+
+- Unlocked: button becomes **Connect via Starlink**.
+- Maintenance: "Starlink is temporarily unavailable. Automatically returns
+  when healthy." — **keep the card visible. Never hide the product.**
+- All states are already served by `GET /v1/starlink/unlock-status`
+  (unlocked/reason/invitesVerified/invitesRequired + node
+  status/available/statusNote/maxSessions).
+
+## Server list — Starlink must never look like another VPN server
+
+```
+🛰️ NORWAY
+STARLINK          Premium · Satellite
+```
+
+Completely distinct visual style: gold accents, satellite icon, glowing
+border, maybe animated stars, maybe NEW / LIMITED. Make users curious.
+Server side now sends `hero: true` and `badges: ["NEW","LIMITED"]` on the
+Starlink meta (LIVE) — render badges from the server so they can be
+changed without an app rebuild.
+
+## After connection — celebrate it
+
+Not just "Connected":
+
+```
+🛰️ Connected through Starlink     — or —     ⭐ Satellite route active
+```
+
+Tiny animation, glow, optional success sound. Client detects via the
+selected node's `nodeType === "STARLINK"`.
+
+## Splash/intro — plant the RealGram seed
+
+Keep the animations. Replace the branding: REAL logo, below it
+**REALGRAM — Connected Intelligence**, then **Powered by ReaLink**.
+Not dominant — just planting the seed. The first seconds should already
+communicate the future scope (communication, games, learning, AI,
+satellite, freedom, identity, reward, community), not "VPN".
+
+## Overall design direction (applies to all b97 screens)
+
+Mysterious, premium, Persian fantasy, modern, Gen Z, emotional, rewarding.
+Less "VPN dashboard", more "next-generation platform".

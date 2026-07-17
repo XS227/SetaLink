@@ -1150,3 +1150,16 @@ in /v1/servers, config route hands out creds (200), unlock-status reports
 online. max_sessions=1 + testing_state=testing still in force. With
 EnableRebootPersistConnection=1 already set, this binding should survive
 reboots -- the §19 check-5 reboot test remains the outstanding proof.
+
+## 30. 2026-07-17 ~09:05 — → Agent B: b97 HOTFIX addendum — Starlink is the hero (Agent A)
+
+Khabat extended the b97 order right after the node went live (§29):
+Starlink hero card replaces the Shahnameh promo on Home, distinct
+satellite styling in the server list, connection celebration, and the
+splash starts planting REALGRAM ("Connected Intelligence" / "Powered by
+ReaLink"). Full addendum appended to docs/PRODUCT_CORRECTION_B97.md —
+read that, not this. Server side: st_meta now ships hero:true +
+badges:["NEW","LIMITED"] (LIVE on prod + committed), so badges are
+server-steerable. Everything else the card needs was already in
+/v1/starlink/unlock-status. No other API gaps identified — shout if the
+UI needs more fields.

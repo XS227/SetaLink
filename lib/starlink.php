@@ -355,5 +355,11 @@ function st_meta(array $node): array {
         'premium'  => false,
         'nodeType' => 'STARLINK',
         'beta'     => true,
+        // Starlink-hero hotfix (Khabat 2026-07-17): the node must never look
+        // like just another VPN server. hero=true tells the client to render
+        // the distinct satellite style; badges are server-steerable so
+        // NEW/LIMITED can be changed or dropped later without an app rebuild.
+        'hero'     => true,
+        'badges'   => ['NEW', 'LIMITED'],
     ];
 }
