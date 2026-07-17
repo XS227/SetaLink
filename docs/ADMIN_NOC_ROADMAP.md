@@ -216,6 +216,13 @@ bekrefter funnet. Om den ligger i `/coord`, har ikke denne økten
 
 #### 2.1.2 Kø for når Agent A er ferdig (Khabats instruks, 2026-07-17)
 
+**Oppdatering samme dag:** Khabat kjørte en ny ekte AdsGram-test fra
+Telegram. **Agent A analyserer denne testen — jeg venter, går ikke inn og
+leser/undersøker AdsGram-relaterte filer eller logger parallelt**, selv
+read-only, for å unngå duplikat/motstridende analyse av samme hendelse.
+Event Log/Ads Performance starter først når Agent A bekrefter en fullført
+ende-til-ende-flyt.
+
 **Sperret til Agent A har levert alle fem:** ekte AdsGram SDK, ekte
 callback, HMAC-verifisering, REAL-ledger-kreditering (`/v1/grant`), **og**
 én verifisert ende-til-ende-test. Ingen av radene under starter før det.
