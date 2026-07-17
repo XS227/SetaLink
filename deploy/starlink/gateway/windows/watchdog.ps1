@@ -80,8 +80,20 @@ param(
     # stimulate-ping below guarantees traffic just flowed.
     [int]$HandshakeStaleSeconds = 180,
 
-    [string]$LogDir = (Join-Path $PSScriptRoot 'logs')
+    # Empty = resolved next to this script file. NOT a $PSScriptRoot param
+    # default -- $PSScriptRoot has been observed EMPTY on the Surface
+    # gateway, and Join-Path throws on an empty path (see heartbeat.ps1).
+    [string]$LogDir = ''
 )
+
+if (-not $LogDir) {
+    $scriptDir = $PSScriptRoot
+    if (-not $scriptDir -and $MyInvocation.MyCommand.Path) {
+        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    }
+    if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+    $LogDir = Join-Path $scriptDir 'logs'
+}
 
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 $logFile = Join-Path $LogDir 'watchdog.log'

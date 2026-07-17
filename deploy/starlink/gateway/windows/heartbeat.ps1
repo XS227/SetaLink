@@ -19,7 +19,11 @@
 
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = (Join-Path $PSScriptRoot 'gateway.env'),
+    # Empty = resolved next to this script file (see $scriptDir below --
+    # deliberately NOT a $PSScriptRoot param default: $PSScriptRoot has been
+    # observed EMPTY on the Surface gateway, and Join-Path throws on an empty
+    # path, killing the script before gateway.env is even read).
+    [string]$ConfigPath = '',
     # fi-hel's tunnel-internal address (test0, handoff section 17) -- the
     # live config, NOT the original 10.90.x design.
     [string]$TunnelPeerAddress = '192.168.137.2',
@@ -28,8 +32,17 @@ param(
     [string]$TunnelAdapterName = '',
     # Handshake older than this = tunnel considered dead (see watchdog.ps1).
     [int]$HandshakeStaleSeconds = 180,
-    [string]$LogDir = (Join-Path $PSScriptRoot 'logs')
+    [string]$LogDir = ''
 )
+
+# Resolve the script's own directory without trusting $PSScriptRoot.
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir -and $MyInvocation.MyCommand.Path) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+if (-not $ConfigPath) { $ConfigPath = Join-Path $scriptDir 'gateway.env' }
+if (-not $LogDir) { $LogDir = Join-Path $scriptDir 'logs' }
 
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 $logFile = Join-Path $LogDir 'heartbeat.log'
