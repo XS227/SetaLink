@@ -1,27 +1,32 @@
 {
-  "version": "0.9.49",
-  "versionCode": 65,
-  "releaseDate": "2026-06-26",
+  "version": "0.9.62",
+  "versionCode": 89,
+  "releaseDate": "2026-07-17",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.49.apk",
+  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.62.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.49-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.49-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.62-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.62-universal.apk",
   "checksum": {
-    "sha256": "087e1026c13b3bfa18de6e582b360073edcd2d2089daa4c8d5154c750b01b831",
+    "sha256": "be662a943fb7c8474326655d33b0e6c59b12217ddbb5f2b31fa4a12821aab6b1",
     "algorithm": "sha256"
   },
-  "size": 56958699,
-  "changelog": [],
+  "size": 57069481,
+  "changelog": [
+    "New: Starlink satellite exit option (auto-detected, no setup needed)",
+    "Smarter Instagram diagnostics collection",
+    "Better connection stability and telemetry",
+    "Bug fixes and infrastructure improvements"
+  ],
   "channels": {
     "stable": {
-      "version": "0.9.49",
-      "versionCode": 65,
-      "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.49.apk",
-      "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.49-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.49-universal.apk"
+      "version": "0.9.62",
+      "versionCode": 89,
+      "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.62.apk",
+      "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.62-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.62-universal.apk"
     },
     "experimental": {
       "version": "0.9.28",
