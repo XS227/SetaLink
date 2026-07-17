@@ -3,6 +3,12 @@
 // always reports the build it was actually compiled into. Keeping this in sync
 // with the native build is what stops the OTA checker from offering an update
 // that is already installed.
-export const APP_VERSION    = '0.9.68';
-export const APP_BUILD      = '95';
-export const APP_BUILD_CODE = 95;
+//
+// Marketing version deliberately held at 0.9.67 (2026-07-17, Khabat's
+// staged-rollout decision) even though this build contains everything the
+// 0.9.68 line was going to ship -- versionCode/build number is what
+// actually gates updates and channel promotion, not this string. See
+// docs/DEPLOYMENT_CHECKLIST.md's "Staged rollout" section.
+export const APP_VERSION    = '0.9.67';
+export const APP_BUILD      = '96';
+export const APP_BUILD_CODE = 96;
