@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','insights','seoranks','aidiag','installs','devices','logs','tunnellogs','release','config','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
