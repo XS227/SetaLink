@@ -398,7 +398,85 @@ Ikke bygg alt som én stor uverifisert leveranse. Hver fase følger § 0.1 og
 
 ---
 
-## § 7 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
+## § 7 — REALGRAM CINEMATIC ONBOARDING & HELP CENTER
+
+Lagt til 2026-07-17 på Khabats instruks. **Dette er kosmetisk/UI-arbeid på
+mobilappen** — samme kategori Khabat selv eksplitt satte på vent i denne
+roadmapens aller første instruks: *"Jeg ønsker ikke flere kosmetiske
+endringer før infrastrukturen er ferdig."* og *"Ingen APK før admin og
+backend er ferdig."*
+
+> **📌 Sekvensering (antagelse — si fra hvis feil):** § 7 legges inn i
+> roadmapen nå (§ 0.3-regelen: nytt arbeid dokumenteres før det bygges),
+> men **kodesperret** til § 1 (Admin Redesign), § 2 (Ads & Revenue) og
+> § 3 (Kapasitet) står som `Live`, **og** § 6s Fase 1
+> (messaging) er godkjent og har startet. Ingenting under er implementert
+> eller påbegynt. Hvis Khabat vil at noe spesifikt her (f.eks. Help
+> Center-strukturen, som er innhold/dokumentasjon mer enn kode) skal
+> prioriteres tidligere, må det sies eksplisitt — antagelsen over gjelder
+> til noe annet er bekreftet.
+
+### 7.1 Åpningssekvens (cinematic intro, 3–6 sek)
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Mørk scene + svak ørkenvind-lyd | Not started | — | — | — | — | — | § 1–3, § 6 Fase 1 |
+| Gyllen sand-animasjon som gradvis forsvinner | Not started | — | — | — | — | — | samme |
+| REAL-logo avdekkes i polert gull under sanden | Not started | — | — | — | — | — | samme |
+| Svakt gullskinn sprer seg | Not started | — | — | — | — | — | samme |
+| Tekst: "REAL is more than a token." → "Freedom • Community • Knowledge" | Not started | — | — | — | — | — | samme |
+| Fade fra logo til app | Not started | — | — | — | — | — | samme |
+| Ingen eksplosjoner/overdrevne effekter — rolig, premium, filmatisk | Not started | — | — | — | — | — | designprinsipp, ikke en oppgave i seg selv |
+
+### 7.2 Onboarding (5–6 sider, kan hoppes over)
+
+| Side | Innhold | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 🌍 Fri internettilgang — koble til VPN/Starlink-noder | Not started | — | — | — | — | — | § 1–3, § 6 Fase 1 |
+| 2 | 💬 RealGram — snakk med venner/clan/krigere | Not started | — | — | — | — | — | avhenger av § 6 Fase 1 faktisk live (ikke vis en funksjon som ikke finnes) |
+| 3 | ⚔️ Shahnameh — lær historie, fullfør oppdrag, bygg helten | Not started | — | — | — | — | — | § 1–3 |
+| 4 | ⚡ REAL Rewards — tjen ZAR, konverter, se annonser, inviter | Not started | — | — | — | — | — | § 2 (Ads & Revenue) |
+| 5 | 🛰 Starlink — inviter 11 venner, lås opp ruting | Not started | — | — | — | — | — | § 3 (Kapasitet) |
+| 6 | 🚀 "Velkommen til RealGram" / "Alt er klart" + [Koble til] | Not started | — | — | — | — | — | alle over |
+
+**Hard regel:** ingen onboarding-side skal reklamere for en funksjon som
+ikke faktisk er `Live` (§ 0.1) på det tidspunktet siden vises til en ekte
+bruker — spesielt side 2 (RealGram-meldinger) og side 5 (Starlink), som
+begge i dag er under bygging, ikke ferdige.
+
+### 7.3 Help Center ("Learn")
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Egen seksjon (ikke bare FAQ), med søk | Not started | — | — | — | — | — | § 1–3 |
+| Kategorier: VPN, Starlink, Shahnameh, RealGram, Clan, REAL, ZAR, Rewards, Ads, Data Sharing, Security, Troubleshooting, Getting Started | Not started | — | — | — | — | — | samme |
+| Artikkelmal: illustrasjon + kort forklaring + steg-for-steg + video (senere) + relaterte artikler | Not started | — | — | — | — | — | samme |
+| Kjerneartikler: invitere venner, Starlink, tjene REAL, hva er ZAR, sende datakvote, clans, koble Telegram, spille Shahnameh | Not started | — | — | — | — | — | artikler om Starlink/RealGram/datakvote/Telegram avhenger av at § 3/§ 6 faktisk er live |
+
+### 7.4 Innebygde guider (contextual overlay, første gang en funksjon åpnes)
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Overlay peker på nøkkelknapper, 2–3 korte steg, ingen lange tekster | Not started | — | — | — | — | — | § 1–3, § 6 Fase 1 |
+| Eksempler: "Her finner du Starlink", "Her sender du datakvote", "Her ser du helten din" | Not started | — | — | — | — | — | samme |
+
+### 7.5 Progressiv opplæring (dag 1–5, gradvis funksjonsoppdagelse)
+
+| Dag | Mål | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|---|
+| 1 | Koble VPN | Not started | — | — | — | — | — | — |
+| 2 | Se første annonse | Not started | — | — | — | — | — | § 2 |
+| 3 | Inviter én venn | Not started | — | — | — | — | — | — |
+| 4 | Spill første Shahnameh-kapittel | Not started | — | — | — | — | — | — |
+| 5 | Bli med i en clan | Not started | — | — | — | — | — | § 6 Fase 2 (clan-chat) |
+
+**Seksjonens Done:** alle underseksjoner `Live` med skjermbilder, **og**
+verifisert at ingen onboarding/help-center-tekst reklamerer for noe som
+ikke faktisk er live på deployment-tidspunktet.
+
+---
+
+## § 8 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
 
 Enhver agent som rapporterer status på en oppgave i denne roadmapen skal
 oppdatere raden direkte i denne filen (Status/Branch/Commit/PR/Deploy-tid/
