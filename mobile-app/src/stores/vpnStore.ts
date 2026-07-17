@@ -18,6 +18,12 @@ export interface VpnServer {
   ping:      number;
   load:      number;
   premium:   boolean;
+  /** Node type from the backend catalog (e.g. 'STARLINK'). Was never carried
+   *  through syncToVpnStore() in stores/serverStore.ts, which silently broke
+   *  every selectedServer?.nodeType === 'STARLINK' check in the app (the
+   *  server-pill Starlink badge in HomeScreen included) — fixed alongside
+   *  this field, see serverStore.ts's syncToVpnStore(). */
+  nodeType?: string;
 }
 
 interface SessionBytes { sent: number; received: number }

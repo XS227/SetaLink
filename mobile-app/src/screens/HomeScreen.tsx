@@ -6,6 +6,8 @@ import {
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { ConnectButton } from '../components/ConnectButton';
 import { GoldBeatBurst } from '../components/GoldBeatBurst';
+import { StarlinkHeroCard } from '../components/StarlinkHeroCard';
+import { StarlinkCelebration } from '../components/StarlinkCelebration';
 import { StatusBadge }   from '../components/StatusBadge';
 import { TopBar }             from '../components/TopBar';
 import { MetricPill }    from '../components/MetricPill';
@@ -20,6 +22,8 @@ import { useAuthStore }        from '../stores/authStore';
 import { useZarStore }         from '../stores/zarStore';
 import { useAIStore }          from '../stores/aiStore';
 import { useServerStore }      from '../stores/serverStore';
+import { useStarlinkStore }    from '../stores/starlinkStore';
+import { useSettingsStore }    from '../stores/settingsStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
@@ -88,6 +92,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   const { greeting } = useGreeting();
   const user = useAuthStore((s) => s.user);
+  const authToken = useAuthStore((s) => s.token);
   const autoConnect = useAIStore((s) => s.autoConnect);
   const getImportedCreds = useServerStore((s) => s.getImportedCreds);
   const selectedId = useServerStore((s) => s.selectedId);
@@ -118,6 +123,34 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     if (isConnected && !wasConnectedRef.current) setGoldBurst(k => k + 1);
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
+
+  // b97: Starlink unlock/progress card data — fetched on mount and refreshed
+  // after every connect (invite progress and hasConnected can both change).
+  const starlinkStatus = useStarlinkStore((s) => s.status);
+  useEffect(() => {
+    if (authToken) useStarlinkStore.getState().fetch(authToken);
+  }, [authToken]);
+
+  // "Satellite Route Active" — once-per-device first-connect achievement
+  // (b97 addendum #2). Server truth (`hasConnected`, node_usage-backed,
+  // survives reinstalls) is the real gate; the local settingsStore flag is
+  // only a same-session guard against a stale/slow usage-record double
+  // firing this. Own ref (not shared with the gold-burst effect above) so
+  // effect execution order between the two can never matter.
+  const [starlinkBurst, setStarlinkBurst] = useState(0);
+  const wasConnectedForStarlinkRef = useRef(false);
+  useEffect(() => {
+    const justConnected = isConnected && !wasConnectedForStarlinkRef.current;
+    if (justConnected && selectedServer?.nodeType === 'STARLINK') {
+      const settings = useSettingsStore.getState();
+      if (starlinkStatus?.hasConnected === false && !settings.hasSeenStarlinkCelebration) {
+        settings.markStarlinkCelebrationSeen();
+        setStarlinkBurst(k => k + 1);
+      }
+      if (authToken) useStarlinkStore.getState().fetch(authToken);
+    }
+    wasConnectedForStarlinkRef.current = isConnected;
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Friendly status message shown below connect button while connecting
   const connectingLabel = (() => {
@@ -201,6 +234,23 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     }
   };
 
+  // Starlink hero card actions (b97). "Connect via Starlink" selects the
+  // Starlink node then reuses whatever connect path is already correct for
+  // the current state (fresh connect vs. switching an active session) —
+  // same split ServersScreen uses elsewhere for server selection.
+  const handleStarlinkConnect = () => {
+    const nodeId = starlinkStatus?.node?.id;
+    if (!nodeId) return;
+    useServerStore.getState().selectServer(nodeId);
+    if (connectionState === 'connected') {
+      useVpnStore.getState().switchServer();
+    } else if (connectionState === 'idle' || connectionState === 'failed') {
+      connect();
+    }
+  };
+  const handleStarlinkInvite  = () => (onNavigate as (tab: string) => void)('profile');
+  const handleStarlinkUpgrade = () => (onNavigate as (tab: string) => void)('upgrade');
+
   const protocol = selectedServer
     ? `${selectedServer.protocol} · ${selectedServer.transport}`
     : 'VLESS · Reality';
@@ -208,6 +258,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   return (
     <View style={styles.screen}>
       {isConnected && <View style={styles.ambientGlow} pointerEvents="none" />}
+      {/* Positioned relative to the screen root (not the scroll content) so
+          it overlays the top of the viewport regardless of scroll offset. */}
+      <StarlinkCelebration burstKey={starlinkBurst} />
 
       <ScrollView
         style={styles.scroll}
@@ -401,6 +454,21 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.aiArrowText}>›</Text>
             </View>
           </TouchableOpacity>
+        </Animated.View>
+
+        {/* b97: Starlink unlock/progress card — replaces the old Shahnameh
+            promo slot, first in the repurposed promo order (Starlink, then
+            the ad/reward surfaces below). Renders null until the first
+            fetch resolves or if the server has no Starlink node configured
+            at all — never an empty gap. */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+          <StarlinkHeroCard
+            status={starlinkStatus}
+            isConnectedViaStarlink={isConnected && selectedServer?.nodeType === 'STARLINK'}
+            onConnect={handleStarlinkConnect}
+            onInvite={handleStarlinkInvite}
+            onUpgrade={handleStarlinkUpgrade}
+          />
         </Animated.View>
 
         {/* B-19: Home's two ad surfaces — 1 AdMob banner (rotates with the

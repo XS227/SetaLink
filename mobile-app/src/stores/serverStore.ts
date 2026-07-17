@@ -23,6 +23,19 @@ export interface ServerRecord {
   nodeType?: string;
   /** Backend-flagged beta/testing node (e.g. Starlink Phase 1). */
   beta?: boolean;
+  /** b97: Starlink meta additions from GET /v1/servers (lib/starlink.php
+   *  st_meta() + per-request availability merge in v1.php). available=false
+   *  means the node must render disabled, NOT be hidden — the catalog keeps
+   *  listing it through maintenance/offline so the promo never disappears. */
+  available?:  boolean;
+  status?:     'online' | 'maintenance' | 'offline';
+  statusNote?: string;
+  /** Server-steerable: true renders the distinct gold/satellite hero style
+   *  instead of a normal row, independent of client version. */
+  hero?:       boolean;
+  /** Server-steerable badge chips (e.g. ['NEW','LIMITED']) — can change or
+   *  disappear without an app rebuild. */
+  badges?:     string[];
 }
 
 // Coming-soon placeholder entries — shown greyed out, never selectable
@@ -237,6 +250,7 @@ function syncToVpnStore(record: ServerRecord): void {
       ping:      record.ping,
       load:      record.load,
       premium:   record.premium ?? false,
+      nodeType:  record.nodeType,
     });
   } catch {}
 }

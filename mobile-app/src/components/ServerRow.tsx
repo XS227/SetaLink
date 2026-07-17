@@ -41,6 +41,15 @@ export interface Server {
    *  devices in the first place (the catalog simply omits it for them), this
    *  only controls the "Beta" badge + copy for the devices that DO see it. */
   beta?: boolean;
+  /** b97: node temporarily can't take new sessions (maintenance/offline).
+   *  Row stays visible and selectable-looking, connect just fails fast with
+   *  the unavailable copy — never silently removed from the list. */
+  available?:  boolean;
+  /** Server-steerable: renders the distinct gold/satellite hero row style
+   *  instead of the normal row, independent of client version. */
+  hero?:       boolean;
+  /** Server-steerable badge chips (e.g. ['NEW','LIMITED']). */
+  badges?:     string[];
 }
 
 interface Props {
@@ -73,10 +82,16 @@ function LoadBar({ load }: { load: number }) {
 function ServerRowComponent({ server, onSelect, onDelete }: Props) {
   const { t } = useT();
   const pingLabel = server.ping === 0 ? '—' : `${server.ping}ms`;
+  const unavailable = server.available === false;
 
   return (
     <TouchableOpacity
-      style={[styles.row, server.selected && styles.selectedRow]}
+      style={[
+        styles.row,
+        server.hero && styles.heroRow,
+        server.selected && styles.selectedRow,
+        unavailable && styles.unavailableRow,
+      ]}
       onPress={() => onSelect(server)}
       activeOpacity={0.7}
     >
@@ -85,7 +100,7 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
         <View style={styles.flagBox}><FlagGlyph flag={server.flag} brand={isBrandNode(server.id)} size={28} /></View>
         <View style={styles.nameBlock}>
           <View style={styles.nameRow}>
-            <Text style={[styles.country, server.selected && styles.selectedText]} numberOfLines={1}>
+            <Text style={[styles.country, server.hero && styles.heroText, server.selected && styles.selectedText]} numberOfLines={1}>
               {server.country}
             </Text>
             {server.imported && (
@@ -94,7 +109,11 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
               </View>
             )}
           </View>
-          <Text style={styles.city} numberOfLines={1}>{server.city}</Text>
+          <Text style={styles.city} numberOfLines={1}>
+            {unavailable && server.statusNote === 'auto_returns_when_healthy'
+              ? t('sl.unavailable')
+              : server.city}
+          </Text>
         </View>
       </View>
 
@@ -108,12 +127,17 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
         <Text style={styles.protocol}>{server.protocol}</Text>
       </View>
 
-      {/* Tags (built-in servers only) */}
-      {server.tags && server.tags.length > 0 && !server.imported && (
+      {/* Tags + server-steerable badges (built-in servers only) */}
+      {((server.tags && server.tags.length > 0) || (server.badges && server.badges.length > 0)) && !server.imported && (
         <View style={styles.tags}>
-          {server.tags.map(tag => (
+          {server.tags?.map(tag => (
             <View key={tag} style={[styles.tag, TAG_STYLES[tag] || styles.tagDefault]}>
               <Text style={[styles.tagText, TAG_TEXT[tag] || {}]}>{t(tagLabelKey(tag)) || tag}</Text>
+            </View>
+          ))}
+          {server.badges?.map(badge => (
+            <View key={badge} style={[styles.tag, styles.heroBadge]}>
+              <Text style={[styles.tagText, styles.heroBadgeText]}>{badge}</Text>
             </View>
           ))}
         </View>
@@ -179,6 +203,20 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.active,
     backgroundColor: 'rgba(0,232,122,0.05)',
   },
+  // b97: Starlink "must never look like another VPN server" — distinct
+  // gold/satellite identity, server-steerable via meta.hero.
+  heroRow: {
+    borderWidth: 1.5,
+    borderColor: Colors.gold[400],
+    backgroundColor: 'rgba(212,175,55,0.06)',
+  },
+  heroText: { color: Colors.gold[400] },
+  unavailableRow: { opacity: 0.55 },
+  heroBadge: {
+    backgroundColor: 'rgba(212,175,55,0.14)',
+    borderColor: 'rgba(212,175,55,0.4)',
+  },
+  heroBadgeText: { color: Colors.gold[400] },
   left: {
     flexDirection: 'row',
     alignItems: 'center',
