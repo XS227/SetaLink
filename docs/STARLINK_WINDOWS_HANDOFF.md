@@ -2,8 +2,11 @@
 
 **Date:** 2026-07-15 · **Status:** ~~Blocked on an unresolved network-path problem~~
 **RESOLVED 2026-07-16 — root cause proven, see §13.** The §0 production audit
-is complete and clean. The only remaining step needs the user at the Surface
-(§13.4).
+is complete and clean.
+**2026-07-17 — see §21/§22: the remaining Windows ICS `0x80040201` issue is
+classified as an isolated OS-specific blocker, not a project blocker. Windows
+Surface = controlled internal testing only. Linux gateway (Raspberry Pi) is
+now the primary path — see docs/NODE_CONSOLE_ARCHITECTURE.md.**
 
 ---
 
@@ -512,7 +515,88 @@ fully scriptable; (c) the architecture note's real answer: a Linux gateway
 
 ---
 
-## 0. URGENT — do this first, before any other work
+## 21. 2026-07-17, later — §20 follow-up investigation CLOSED for now: `0x80040201` reclassified as an isolated Windows-ICS blocker, not fixed; Linux gateway promoted to the primary path
+
+Live back-and-forth diagnosis (Khabat at the Surface + this agent) after §20 shipped
+`Clear-GhostHomeNetEntries`. Summary of what was actually learned, then the
+decision.
+
+**What we found, in order:**
+
+1. The new watchdog **is** running correctly and detecting toggle amnesia
+   every cycle (proves §18/§20's detection logic is sound). But the loop
+   never resolves: `Toggle amnesia detected` → `Re-binding ICS` →
+   `EnableSharing threw HRESULT 0x80040201` → `Could not clear HomeNet
+   entry` → `ICS bind still failing` → next cycle, same thing.
+2. Checked whether `HNet_ConnectionProperties.IsIcsPublic`/`IsIcsPrivate`
+   are provider-marked read-only (would explain `Set-CimInstance` always
+   failing regardless of technique). **Ruled out**: `Get-CimClass` shows
+   `read=True, write=True` on both properties — this is not a permissions
+   or read-only-provider problem.
+3. Checked whether the specific ghost GUID
+   (`4F630E25-A5A3-86BE-C8E2-F73083B316D6`) still resolves to anything at
+   all. A fresh, independent `Get-WmiObject` lookup for it returned
+   nothing — the instance the watchdog's own `Get-CimInstance` enumerated
+   moments earlier can no longer be found by a subsequent query, by
+   `Set-CimInstance`, or by anything else. It is not a stable, independently
+   addressable record; it appears to be a transient/short-lived artifact
+   that stops resolving between one query and the next.
+4. Checked Plug-and-Play (`Get-PnpDevice` + Device Manager, hidden devices
+   shown) for a ghosted WireGuard adapter that this GUID might still trace
+   back to at the device-tree level. **Ruled out**: no ghost WireGuard
+   adapter exists in PnP at all — only the unrelated stock `RAS Async
+   Adapter`. Whatever HomeNet is tracking, it is not backed by a live or
+   hidden PnP device record we can remove.
+
+**Where this leaves it:** the stale GUID is very likely a residual
+`IsIcsPublic`/`IsIcsPrivate` flag from an earlier WireGuard adapter
+incarnation (WireGuard mints a new adapter GUID on every
+toggle/service-restart — §17 root cause 5 — and this Surface has cycled
+through several: `wg-starlink0`, `test0`, the original `10.90.x` design).
+It is writable by schema, not tied to any PnP device, and not reliably
+re-resolvable a moment after it's first seen. Two explanations remain
+open and were **not** resolved before calling time on this for tonight:
+(a) HomeNet's store on this Windows 11 build is a short-lived/dynamic
+cache rather than a persisted list the old KB828807-era remedy assumed,
+so the "ghost" is closer to noise than a real object to clear; or (b) the
+watchdog's own tunnel-restart duty is repeatedly minting fresh short-lived
+ghosts faster than any of them can be cleanly resolved, making the retry
+loop partly self-sustaining. Deciding between these would need a live
+raw-log GUID-across-cycles comparison and a full-hive registry search for
+the literal GUID string — real further work, just not tonight's.
+
+**Decision (Khabat, 2026-07-17): stop chasing this tonight.** Classified
+as an **isolated Windows-ICS blocker**, not a design flaw in the Node
+Console/heartbeat/watchdog architecture around it (§18/§20's detection and
+self-heal *reporting* additions are sound and stay shipped as-is — see
+§22 below for the further hardening done in parallel). Consequences:
+
+- The Windows Surface gateway is **not blocking the project**. It's kept
+  running for **controlled internal testing only** (Khabat + Agent A/this
+  agent's own verification), not for real Iran test users, until either
+  this is fixed or it's fully superseded.
+- **The Linux gateway (`deploy/starlink/gateway/`, Raspberry Pi path) is
+  promoted from "long-term/Plan B" to the primary path forward** — see
+  §22. This was already flagged as the architecturally sounder option in
+  §20's own "Plan B" list (no COM event chain exists on Linux at all —
+  `wg-quick`'s `PostUp`/`PostDown` manage NAT declaratively), so this
+  isn't a new direction, just an accelerated one.
+- If a supported Windows fix is found later (the registry-search /
+  GUID-across-cycles evidence above, or a WinNAT-via-VirtualMachinePlatform
+  path per §20 Plan B option (b)), it merges in as an improvement to the
+  Windows path — it is explicitly **not a gate** on any other work.
+
+---
+
+## 22. 2026-07-17, later — Linux gateway (Raspberry Pi) brought to parity with the hardened Windows path; Node Console wired end-to-end on both platforms
+
+Done while the Windows ICS investigation above was paused, per Khabat's
+"continue Linux in parallel" instruction. Scope: bring
+`deploy/starlink/gateway/` (Linux/Raspberry Pi) up to the same
+self-healing + remote-command level as the Windows scripts, and finish
+wiring Node Console (docs/NODE_CONSOLE_ARCHITECTURE.md, new) end-to-end on
+both platforms. Full detail in that architecture doc and in the commit
+history on `feat/starlink-node-phase1`; not duplicated here.
 
 During this investigation the user was working in a terminal they *believed*
 was the Hetzner test box (`fi-hel`, `65.109.183.7`) but was actually connected
