@@ -64,6 +64,32 @@ Hver rad/oppgave i tabellene under skal ha disse feltene utfylt (bruk
 
 `Status: Live` krever at alle syv punkter i § 0.1 er oppfylt for den raden.
 
+### 0.5 RealGram designprinsipp: én-hånd-bruk (bindende for ALL ny RealGram-UI)
+
+Lagt til 2026-07-17 på Khabats instruks. Gjelder retroaktivt som en
+godkjenningsport for **§ 6, § 7 og § 8** — ingen skjerm fra de seksjonene
+kan settes `Live` uten at den også består sjekken under. Dette er ikke en
+egen oppgaveliste med Status-rader (det er en kvalitetsport), men en
+eksplisitt del av "Verifisering"-feltet for enhver skjerm i de nevnte
+seksjonene.
+
+**Regelen:**
+- Kjernehandlinger — koble til VPN, åpne chats, spille Shahnameh, sende
+  datakvote, åpne Starlink, åpne profil — skal nås med **maksimalt 1–2
+  trykk**, med én hånd.
+- Ingen skjerm skal føles tom.
+- Ingen skjerm skal ha **mer enn én hovedhandling**.
+- Ingen funksjon skal kreve at brukeren leter (jf. § 7.4 innebygde
+  guider, § 8 Hakim — begge finnes delvis *for* å forhindre leting, ikke
+  som erstatning for at navigasjonen selv er tydelig).
+- Hver side skal kunne svare på: *"Hva er det viktigste brukeren skal
+  gjøre her?"* — hvis svaret er uklart, er siden ikke ferdig designet.
+
+**Hvordan det verifiseres (ikke bare påstås):** når en skjerm fra § 6/§ 7/
+§ 8 rapporteres `Live`, skal "Verifisering"-feltet eksplisitt bekrefte
+antall trykk til hver relevant kjernehandling fra skjermen, ikke bare at
+skjermen finnes.
+
 ---
 
 ## § 1 — Prioritet 1: Admin Redesign (HELE adminet, ikke bare Ads)
@@ -476,7 +502,90 @@ ikke faktisk er live på deployment-tidspunktet.
 
 ---
 
-## § 8 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
+## § 8 — Hakim AI · Guardian of the Network
+
+Lagt til 2026-07-17 på Khabats instruks. Én AI-assistent, samme
+personlighet og samme "ansikt" overalt i økosystemet (VPN → RealGram →
+Shahnameh → Starlink → REAL) — den røde tråden som gjør de fem
+delsystemene til ett merkevareopplevd hele.
+
+> **🚫 Hard regel, ikke forhandlingsbar:** Hakim skal **aldri** anbefale,
+> forklare eller "hjelpe med" noe basert på data som ikke faktisk finnes
+> ennå. En nodeanbefaling må lese ekte telemetri fra § 3 (Kapasitet); et
+> ulest-sammendrag må lese ekte meldingsdata fra § 6; en referral-status
+> må lese ekte data fra eksisterende `referral_uses`. Hvis den underliggende
+> dataen ikke er `Live` (§ 0.1) ennå, skal Hakim for det området enten
+> være skjult/deaktivert eller si eksplisitt at funksjonen ikke er
+> tilgjengelig ennå — **aldri** gi et plausibelt, oppdiktet svar. Dette er
+> samme prinsipp som resten av denne roadmapen er bygget rundt (ingen
+> placeholder-data presentert som ekte), bare enda strengere her fordi en
+> AI-assistent som dikter opp svar er verre enn et dashboard som viser
+> `0` — brukeren stoler på at Hakim *vet*.
+
+### 8.1 Personlighet (bindende spesifikasjon, ikke smakssak)
+
+| Egenskap | Krav |
+|---|---|
+| Tone | Klok og rolig, inspirert av en gammel vismann — **ikke** en morsom chatbot |
+| Lengde | Kort og tydelig, aldri langdryg |
+| Stemme | Føles som en mentor, ikke teknisk support |
+| Kulturelt anker | Små, naturlig plasserte sitater fra Shahnameh — aldri påtvunget der det ikke passer |
+
+**Verifisering ved `Live`:** et lite eksempel-utvalg av faktiske Hakim-svar
+(minimum: én VPN-anbefaling, én Shahnameh-hint, ett Help Center-svar)
+vedlagt skjermbilde-leveransen, så tonen kan vurderes mot tabellen over —
+ikke bare påstått fulgt.
+
+### 8.2 I VPN
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Anbefaler beste node | Not started | — | — | — | — | — | § 3 (ekte node-telemetri må være `Live` først) |
+| Forklarer hvorfor en node er raskere/mer stabil | Not started | — | — | — | — | — | § 3 |
+| Varsler når Starlink er tilgjengelig | Not started | — | — | — | — | — | § 3 Starlink-kapasitet |
+| Hjelper ved tilkoblingsproblemer | Not started | — | — | — | — | — | eksisterende diagnostikk (`Network Intel`-fanen) |
+
+### 8.3 I Shahnameh
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Veileder gjennom historiene | Not started | — | — | — | — | — | Shahnameh-backend (separat repo) — grensesnitt TBC med Agent B |
+| Gir hint i oppdrag | Not started | — | — | — | — | — | samme |
+| Forteller om persisk historie/mytologi | Not started | — | — | — | — | — | innholdsarbeid, ikke bare kode |
+| Belønner progresjon | Not started | — | — | — | — | — | eksisterende REAL/milestone-ledger |
+
+### 8.4 I RealGram
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Finner venner/clan-medlemmer | Not started | — | — | — | — | — | § 6 (identitet/clan-data må være `Live`) |
+| Oppsummerer uleste meldinger | Not started | — | — | — | — | — | § 6 (ekte meldingsdata) |
+| Oversetter meldinger mellom språk (ved behov) | Not started | — | — | — | — | — | § 6, + valg av oversettelses-API (ikke besluttet) |
+| Foreslår relevante grupper/communities | Not started | — | — | — | — | — | § 6 Fase 2 (clans) |
+
+### 8.5 I REAL-økonomien
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Forklarer hvordan man tjener REAL/ZAR | Not started | — | — | — | — | — | § 2 (ekte tall, ikke placeholder) |
+| Viser referral-fremgang | Not started | — | — | — | — | — | eksisterende `referral_uses`-tabell |
+| Forklarer hvordan datakvoter fungerer | Not started | — | — | — | — | — | — |
+| Hjelper med overføringer | Not started | — | — | — | — | — | eksisterende `qe_transfer()`, se `REALGRAM_NATIVE_MESSAGING_DESIGN.md` § 0 |
+
+### 8.6 I Help Center (erstatter tradisjonell FAQ)
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Fritekst-spørsmål ("Hvordan får jeg Starlink?" osv.) besvares direkte av Hakim | Not started | — | — | — | — | — | § 7.3 (Help Center-innhold må finnes som kilde) |
+| Erstatter navigering gjennom hjelpesider, ikke bare et tillegg til dem | Not started | — | — | — | — | — | samme |
+
+**Seksjonens Done:** hver deltabell `Live` med ekte data-koblinger
+(ingen fabrikkerte svar, jf. hard regel øverst), personlighetskravene i
+§ 8.1 verifisert med eksempel-svar, skjermbilder.
+
+---
+
+## § 9 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
 
 Enhver agent som rapporterer status på en oppgave i denne roadmapen skal
 oppdatere raden direkte i denne filen (Status/Branch/Commit/PR/Deploy-tid/
