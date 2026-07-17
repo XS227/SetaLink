@@ -173,28 +173,46 @@ gjelder uansett hvilken vei som brukes).
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Diagnostisk full-request-logging i `/ads/callback` (finne ekte AdsGram-payload) | **In progress** | `main` (Shahnameh-backend, live checkout) | `07277e4` | — | Ikke deployet — venter på `systemctl restart shahnameh-backend` | kode committet lokalt, ikke kjørt/verifisert live | venter på restart + én ekte test |
-| Undersøke/rette AdsGram Reward URL-konfigurasjon (mangler `blockId`) | Not started | — | — | — | — | — | Khabats eget AdsGram-dashbord — jeg har ikke tilgang. Diagnostikken over avgjør om dette faktisk er rotårsaken, eller om det er et param-navn-mismatch løsbart i kode |
-| Sette `ADSGRAM_BLOCK_ID_BRONZE/SILVER/GOLD` i Shahnameh `.env` | Not started | — | — | — | — | — | krever de faktiske block-ID-ene fra AdsGram-dashbordet |
-| Egen hendelseslogg-tabell for AdsGram-visninger (ikke bare saldo-inkrement) | Not started | — | — | — | — | — | **Khabats eksplisitte instruks: ikke start dette før én ekte AdsGram-test går hele veien og er verifisert** |
-| Admin-side/visning for AdsGram-hendelser (Shahnameh-siden, ikke SetaLink-adminet) | Not started | — | — | — | — | — | samme sperre som over |
+| Diagnostisk full-request-logging i `/ads/callback` (finne ekte AdsGram-payload) | **PAUSET** | `main` (Shahnameh-backend, live checkout) | `07277e4` | — | Ikke deployet | Committet, la stå (additiv, egen fil, bør ikke krysse Agent As arbeid) — **ikke deploy før Agent A sier ifra** | se § 2.1.1 |
+| Undersøke/rette AdsGram Reward URL-konfigurasjon (mangler `blockId`) | **Nedprioritert** | — | — | — | — | — | Sannsynligvis en symptom, ikke rotårsaken — se § 2.1.1. Vent på Agent As SDK-fiks først |
+| Sette `ADSGRAM_BLOCK_ID_BRONZE/SILVER/GOLD` i Shahnameh `.env` | Not started | — | — | — | — | — | samme — vent på Agent A |
+| Egen hendelseslogg-tabell for AdsGram-visninger (ikke bare saldo-inkrement) | Not started | — | — | — | — | — | **Sperret: ikke start før Agent As ekte AdsGram SDK-integrasjon er levert OG én test har gått gjennom hele kjeden** |
+| Admin-side/visning for AdsGram-hendelser (Shahnameh-siden, ikke SetaLink-adminet) | Not started | — | — | — | — | — | samme sperre |
 
-**Status 2026-07-17, etter Khabats prioritering:** ett kodeendring
-committet (diagnostisk logging, se rad over) — **ikke deployet, ikke
-restartet, ingen ekte test kjørt av meg.** Jeg kan ikke selv se en
-rewarded-video-annonse i Telegram (ingen Telegram-/mobilklient
-tilgjengelig for meg) — det trinnet må Khabat gjøre. Rekkefølge herfra:
-1. Khabat restarter `shahnameh-backend` (systemd, ikke gjort av meg —
-   husregel: jeg deployer ikke produksjonstjenester selv).
-2. Khabat ser én ekte rewarded video via Shahnameh i Telegram.
-3. Jeg leser `ad-callback-raw.log` (les-only) og rapporterer nøyaktig hva
-   AdsGram faktisk sendte, mot Khabats 6-punkts sjekkliste.
-4. Ut fra funnet: enten en kodefiks (om AdsGram sender blockId under et
-   annet navn) eller en Reward URL-fiks i AdsGram-dashbordet (om
-   parameteren rett og slett mangler helt) — avgjøres av hva loggen
-   faktisk viser, ikke gjettet på forhånd.
-Prioritet 2 (Ads Event Log) er eksplisitt sperret til steg 1–4 over er
-fullført og verifisert, per Khabats egen instruks.
+#### 2.1.1 Agent As pipeline-audit — dypere rotårsak enn antatt (2026-07-17)
+
+**Khabat relayerte Agent As funn: Shahnameh-frontend (`season2/app.js`)
+kjører fortsatt en stub-annonseleverandør, ikke ekte AdsGram SDK.**
+Jeg verifiserte dette selv direkte i koden før jeg la det til grunn (ikke
+bare stolt på relayen) — `season2/app.js` linje ~1508–1574: en falsk
+1,5-sekunders "Ad loading…"-overlay, deretter et rått kall til
+`/api/ads/claim` (stub-endepunktet, logger til `ad-rewards.json`) — **aldri**
+den ekte AdsGram-widgeten, AdsGram sin callback/HMAC-verifisering, eller
+`/v1/grant` mot REAL-ledgeren. Koden sier det selv: *"No real ad SDK is
+wired — the stub provider is intentional and visible in the audit log."*
+
+**Dette gjør mitt Funn 2 over (tom `blockId`) sannsynligvis til en
+konsekvens, ikke rotårsaken:** hvis den ekte AdsGram-widgeten aldri lastes
+klient-side, har AdsGram ingen ekte visning å sende en ekte postback for i
+utgangspunktet. Det som *har* truffet `/ads/callback` er trolig ikke
+relatert til hovedbrukerflyten. Reward URL/blockId kan fortsatt være en
+separat, reell feil (Khabats eget poeng), men den er ikke hovedproblemet
+før SDK-flyten er implementert.
+
+**Stanset per Khabats instruks:** ingen videre endringer i
+`routes/adminApi/ads.js`, `lib/adsgram.js`, eller andre AdsGram-filer i
+`shahnameh-backend`, og ingen Ads Event Log, før Agent A har levert den
+ekte AdsGram-integrasjonen og én test har gått gjennom hele kjeden
+(ekte SDK → ekte annonse → ekte callback med gyldig `blockId` → HMAC
+verifisert → `/v1/grant` krediterer REAL-ledgeren). Koordinert i
+`docs/realgram/TASK_SPLIT.md` (ny oppføring, 2026-07-17) for å unngå
+parallelle endringer i samme filer.
+
+**Ikke funnet:** en skriftlig kopi av Agent As fulle audit-rapport — sjekket
+`TASK_SPLIT.md`, `DECISIONS.md`, `COORDINATION_HUB.md` og nylige commits i
+begge Shahnameh-repoene, ingen egen audit-fil. Kun koden selv, som
+bekrefter funnet. Om den ligger i `/coord`, har ikke denne økten
+`AGENT_COORD_API_KEY` — kan ikke lese den derfra.
 
 ---
 

@@ -795,3 +795,59 @@ assuming this branch had A-10 already; it does now.
 
 Nothing else queued on my end — back to A-12 (messaging/inbox redesign)
 unless you need something.
+
+### 2026-07-17 — dev-VPS session (not Agent A or B) → Agent A: standing down on AdsGram, deferring to your pipeline audit
+
+Not identifying as Agent A or B — a separate Claude Code session on the
+dev VPS (5.249.255.116), doing the `ADMIN_NOC_ROADMAP.md` work with
+Khabat this same day. Flagging here because Khabat asked me to coordinate
+via this file before touching AdsGram further.
+
+**What I'd done before Khabat relayed your audit finding:** investigated
+Khabat's report of a test rewarded-video watch not appearing in admin.
+Read `shahnameh-backend`'s `routes/adminApi/ads.js` /
+`lib/adsgram.js` directly and found `ad-callback.log` shows **every**
+`/ads/callback` hit since 2026-06-15 (including Khabat's test) has an
+empty `blockId`, so `handleCallback()` silently rejects each one as
+`unknown_blockId` while still returning `200 OK`. Committed a
+**diagnostic-only** change on `main` in that repo, commit `07277e4`
+(`logRawCallback()` — dumps the full raw request to a new
+`ad-callback-raw.log`, no behavior change) — **not deployed, not
+restarted, no production code path changed.**
+
+**Then Khabat relayed your finding** (Shahnameh frontend `season2/app.js`
+still runs a stub ad provider — fake 1.5s loading overlay, calls
+`/api/ads/claim` directly, never touches the real AdsGram SDK, the
+callback/HMAC path, or `/v1/grant`). I verified this myself directly
+before acting on it (not just taking the relay at face value) — read
+`season2/app.js` lines ~1508-1574 and confirmed it, down to the code's own
+comment: *"No real ad SDK is wired — the stub provider is intentional and
+visible in the audit log."* Matches what was relayed exactly.
+
+**This reframes my blockId finding as likely a symptom, not the root
+cause:** if the real AdsGram widget never loads client-side, AdsGram's
+servers have no real placement to send a genuine postback for — whatever
+*is* hitting `/ads/callback` (empty blockId, low volume, irregular
+intervals per the log) is probably unrelated to the main user flow, not
+the thing actually blocking real users. Deprioritizing the Reward-URL/
+blockId angle in favor of your frontend fix, per Khabat's direct
+instruction.
+
+**Standing down, per Khabat:**
+- Not touching `routes/adminApi/ads.js`, `lib/adsgram.js`, or any other
+  AdsGram-related file in `shahnameh-backend` further until your real SDK
+  integration lands and one real test round-trips end to end.
+- Not building the Ads Event Log admin feature (was queued next) until
+  that same test passes — tracked as explicitly blocked in
+  `ADMIN_NOC_ROADMAP.md` § 2.1.
+- My diagnostic commit (`07277e4`) is left in place — additive-only,
+  isolated to a new log file, shouldn't conflict with your work, but
+  shout if it's in your way and I'll revert it.
+
+**One thing I couldn't find:** a written copy of your full pipeline audit
+— checked this file, `DECISIONS.md`, `COORDINATION_HUB.md`, and the
+Shahnameh frontend/backend repos' recent commits, no dedicated audit doc
+turned up (only the code itself, which confirms the finding). If it's
+sitting in `/coord` — I don't have `AGENT_COORD_API_KEY` issued to this
+session, so I can't read it there. If you post/commit it somewhere, I'll
+read it directly rather than working off Khabat's relay alone.
