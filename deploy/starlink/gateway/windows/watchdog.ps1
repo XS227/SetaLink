@@ -137,18 +137,11 @@ function Assert-Forwarding($alias) {
     }
 }
 
-function Rebind-Ics {
-    # ICS lives in the SharedAccess service; the COM calls below silently do
-    # nothing useful if it's stopped.
-    $sharedAccess = Get-Service -Name 'SharedAccess' -ErrorAction SilentlyContinue
-    if ($sharedAccess -and $sharedAccess.Status -ne 'Running') {
-        Log "SharedAccess (ICS) service is $($sharedAccess.Status) -- starting it."
-        Start-Service -Name 'SharedAccess'
-    }
-
+function Invoke-IcsBind {
     # Programmatic equivalent of Wi-Fi properties -> Sharing -> off -> on:
     # clear every existing sharing binding, then public on Starlink,
-    # private on the tunnel adapter.
+    # private on the tunnel adapter. Fresh COM object on every attempt --
+    # a SharedAccess restart invalidates previously fetched config objects.
     $netShare = New-Object -ComObject HNetCfg.HNetShare
     $publicCfg = $null
     $privateCfg = $null
@@ -173,9 +166,53 @@ function Rebind-Ics {
     try {
         $publicCfg.EnableSharing(0)   # 0 = ICSSHARINGTYPE_PUBLIC
         $privateCfg.EnableSharing(1)  # 1 = ICSSHARINGTYPE_PRIVATE
+        return $true
     } catch {
-        Log "ERROR: EnableSharing failed: $_"
+        Log "WARN: EnableSharing threw: $_"
         return $false
+    }
+}
+
+function Rebind-Ics {
+    # Root cause of the post-reboot amnesia (proven on the Surface
+    # 2026-07-17): since Windows 10 1709, ICS deliberately does NOT re-engage
+    # its sharing binding after a restart unless this registry value is set
+    # (Microsoft KB4055559). Asserting it here is idempotent and makes every
+    # future reboot keep the binding, so this whole function becomes a
+    # backstop instead of a per-boot necessity.
+    $saKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\SharedAccess'
+    $persist = (Get-ItemProperty -Path $saKey -Name 'EnableRebootPersistConnection' -ErrorAction SilentlyContinue).EnableRebootPersistConnection
+    if ($persist -ne 1) {
+        New-ItemProperty -Path $saKey -Name 'EnableRebootPersistConnection' -Value 1 -PropertyType DWord -Force | Out-Null
+        Set-Service -Name 'SharedAccess' -StartupType Automatic
+        Log "HEALED: EnableRebootPersistConnection was unset -- ICS was dropping its binding on every reboot (KB4055559). Set =1, SharedAccess startup -> Automatic."
+    }
+
+    # ICS lives in the SharedAccess service; the COM calls below silently do
+    # nothing useful if it's stopped.
+    $sharedAccess = Get-Service -Name 'SharedAccess' -ErrorAction SilentlyContinue
+    if ($sharedAccess -and $sharedAccess.Status -ne 'Running') {
+        Log "SharedAccess (ICS) service is $($sharedAccess.Status) -- starting it."
+        Start-Service -Name 'SharedAccess'
+    }
+
+    if (-not (Invoke-IcsBind)) {
+        # EnableSharing raising 0x80040201 (EVENT_E_ALL_SUBSCRIBERS_FAILED,
+        # "An event was unable to invoke any of the subscribers") means the
+        # enable event never reached ICS's subscriber service chain
+        # (SharedAccess/netman/RasMan) -- wedged, or not yet up this early
+        # after boot. Kick the chain and retry once. Seen live on the
+        # Surface after the 2026-07-17 reboot.
+        Log "ICS bind failed -- kicking SharedAccess + dependency chain, then retrying once."
+        foreach ($svc in 'MpsSvc', 'netman', 'RasMan') {
+            Start-Service -Name $svc -ErrorAction SilentlyContinue
+        }
+        Restart-Service -Name 'SharedAccess' -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 3
+        if (-not (Invoke-IcsBind)) {
+            Log "ERROR: ICS bind still failing after service restart. Manual fallback: Wi-Fi properties -> Sharing -> off -> on (select '$TunnelAdapterName') -- with EnableRebootPersistConnection=1 that binding now survives reboots."
+            return $false
+        }
     }
     # ICS assigns $IcsInternalAddress to the private adapter asynchronously.
     for ($i = 0; $i -lt 15; $i++) {
