@@ -448,6 +448,29 @@ if ($rel === '/payments/packages' || strncmp($rel, '/payments/', 10) === 0) {
 
 $nodes = v1_nodes($pdo, $deviceId);
 
+/** Best-effort country from a client IP: cached lookup first, then a
+ *  1-second-budget external geo API, empty string on any failure/private IP.
+ *  Extracted from the telemetry handler so /servers can reuse it for
+ *  Adaptive Routing context without requiring any mobile-app change for the
+ *  'country' dimension — see docs/NODE_INTELLIGENCE_ARCHITECTURE.md. */
+function v1_geo_country(PDO $pdo, string $clientIp): string {
+    if ($clientIp === '' || $clientIp === '127.0.0.1' || $clientIp === '::1'
+        || str_starts_with($clientIp, '10.') || str_starts_with($clientIp, '192.168.')) {
+        return '';
+    }
+    try {
+        $gc = $pdo->prepare("SELECT country FROM geo_cache WHERE ip=? LIMIT 1");
+        $gc->execute([$clientIp]);
+        $c = (string)($gc->fetchColumn() ?: '');
+        if ($c !== '') return $c;
+    } catch (\Throwable $_) {}
+    $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
+    $raw = @file_get_contents("http://ip-api.com/json/{$clientIp}?fields=countryCode", false, $ctx);
+    if (!$raw) return '';
+    $j = json_decode($raw, true);
+    return substr((string)($j['countryCode'] ?? ''), 0, 4);
+}
+
 // ── Connect telemetry ─────────────────────────────────────────────────────────
 // POST /v1/telemetry/connect — anonymous connect outcome upload.
 // No PII stored: country is geo-derived server-side; ISP/carrier are hashed.
@@ -467,25 +490,10 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         if (!ni_telemetry_gate($pdo, $clientIp)) {
             v1_send(['ok' => true, 'throttled' => true]);
         }
-        $country = '';
-        if ($clientIp && $clientIp !== '127.0.0.1' && $clientIp !== '::1'
-            && !str_starts_with($clientIp, '10.') && !str_starts_with($clientIp, '192.168.')) {
-            // Use cached geo lookup if available in the analytics DB
-            try {
-                $gc = $pdo->prepare("SELECT country FROM geo_cache WHERE ip=? LIMIT 1");
-                $gc->execute([$clientIp]);
-                $country = (string)($gc->fetchColumn() ?: '');
-            } catch (\Throwable $_) {}
-            if ($country === '') {
-                $ctx = stream_context_create(['http' => ['timeout' => 1, 'ignore_errors' => true]]);
-                $raw = @file_get_contents("http://ip-api.com/json/{$clientIp}?fields=countryCode", false, $ctx);
-                if ($raw) {
-                    $j = json_decode($raw, true);
-                    $country = substr((string)($j['countryCode'] ?? ''), 0, 4);
-                }
-            }
-        }
+        $country = v1_geo_country($pdo, $clientIp);
         ni_record($pdo, [
+            'device_id'     => $deviceId ?? '',
+            'decision_id'   => v1_body('decision_id'),
             'event'         => $rawTelemetryEvent,
             'node_id'       => v1_body('node_id') ?: 'primary',
             'profile_id'    => v1_body('profile_id') ?: null,
@@ -587,6 +595,7 @@ if ($rel === '/servers') {
     $scores = [];
     try { ni_init_tables($pdo); $scores = ni_node_scores($pdo, 7); } catch (\Throwable $_) {}
     $out = [];
+    $eligibleIds = [];
     foreach ($nodes as $id => $n) {
         if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) continue; // hide test nodes
         // Auto-hide a non-primary node that is freshly DOWN, so users aren't
@@ -601,9 +610,39 @@ if ($rel === '/servers') {
         if (isset($scores[$id]['success_rate'])) {
             $meta['successScore'] = (float)$scores[$id]['success_rate'];
         }
-        $out[] = $meta;
+        $out[$id] = $meta;
+        $eligibleIds[] = $id;
     }
-    v1_send($out);
+
+    // Adaptive Routing — RULE 7: OFF by default (docs/CLAUDE_REALINK_RULES.md).
+    // When off, behaviour is byte-for-byte what it was before: annotated,
+    // unsorted, no decision recorded. See docs/NODE_INTELLIGENCE_ARCHITECTURE.md.
+    try {
+        if (ni_adaptive_routing_enabled($pdo) && count($eligibleIds) > 1) {
+            $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
+            if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
+            $context = array_filter([
+                'country'      => v1_geo_country($pdo, $clientIp) ?: null,
+                'carrier'      => trim((string)($_GET['carrier'] ?? '')) ?: null,
+                'network_type' => trim((string)($_GET['network_type'] ?? '')) ?: null,
+            ]);
+            $ranked = ni_rank_nodes($pdo, $eligibleIds, $context);
+            $decisionId = ni_record_routing_decision($pdo, (string)($deviceId ?? ''), $context, $ranked);
+            $sorted = [];
+            foreach ($ranked as $r) {
+                $meta = $out[$r['node_id']];
+                $meta['routingScore'] = $r['score'];
+                $meta['routingLevel'] = $r['context_level'];
+                $sorted[] = $meta;
+            }
+            v1_send(['servers' => $sorted, 'decisionId' => $decisionId]);
+        }
+    } catch (\Throwable $_) {
+        // Adaptive routing must never break server listing — fall through
+        // to the unsorted legacy response below on any failure.
+    }
+
+    v1_send(array_values($out));
 }
 
 if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {

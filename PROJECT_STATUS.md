@@ -5,6 +5,16 @@
 > `docs/realgram/IMPLEMENTATION_PLAN.md`. Everything you need is in the repo —
 > you should not need any conversation history to continue.
 
+## Node Intelligence (Genome / Trust / Adaptive Routing / Evolution)
+
+**`docs/NODE_INTELLIGENCE_ARCHITECTURE.md`** (2026-07-16) — four new layers
+on top of the existing Tap-to-Learn telemetry engine. Implemented and
+smoke-tested server-side; **Adaptive Routing is feature-flagged OFF and has
+never routed real traffic** (Rule 7). Cross-boundary contract for
+`GET /v1/servers` documented in `docs/MULTINODE_API_v1.md` §8 — Agent A:
+read that before building against the new response shape. One open
+contract question for you there (`app_category`), not yet answered.
+
 ## ⚠️ If you are picking up the Starlink Windows-gateway work, stop and read this first
 
 **`docs/STARLINK_WINDOWS_HANDOFF.md`** — **RESOLVED 2026-07-16, see its §13.**

@@ -1532,6 +1532,68 @@ switch ($action) {
         break;
     }
 
+    // Node Genome + Telemetry Trust + Adaptive Routing + Evolution Layer —
+    // see docs/NODE_INTELLIGENCE_ARCHITECTURE.md. Read-only visibility;
+    // adaptive_routing_enabled is toggled via the dedicated
+    // 'routing-toggle' action below (Rule 7: explicit action, never implicit).
+    case 'node-genome': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $node = trim((string)($_GET['node'] ?? ''));
+        $recentDecisions = $db->query(
+            "SELECT decision_id, device_id, context_json, predicted_node, selected_node,
+                    outcome_json, created_at, outcome_recorded_at
+               FROM routing_decisions ORDER BY created_at DESC LIMIT 100"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $trustSummary = $db->query(
+            "SELECT COUNT(*) AS devices, AVG(trust_score) AS avg_trust,
+                    SUM(flagged_reports) AS flagged, SUM(total_reports) AS total
+               FROM device_trust"
+        )->fetch(PDO::FETCH_ASSOC) ?: [];
+        api_ok([
+            'genomes'            => $node !== '' ? [$node => ni_node_genome($db, $node)] : ni_all_genomes($db),
+            'routing_enabled'    => ni_adaptive_routing_enabled($db),
+            'routing_weights'    => ni_routing_weights($db),
+            'recent_decisions'   => $recentDecisions,
+            'trust_summary'      => $trustSummary,
+        ]);
+        break;
+    }
+
+    // Explicit, single-purpose toggle for the Adaptive Routing feature flag.
+    // RULE 7 (docs/CLAUDE_REALINK_RULES.md): this is the ONLY place that can
+    // turn it on — nothing in lib/node_intel.php or public/v1.php ever
+    // flips this setting itself. POST ?action=routing-toggle&enabled=1|0
+    case 'routing-toggle': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $enabled = ((string)($_POST['enabled'] ?? $_GET['enabled'] ?? '0')) === '1' ? '1' : '0';
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('adaptive_routing_enabled',?,datetime('now'))")
+            ->execute([$enabled]);
+        api_ok(['adaptive_routing_enabled' => $enabled === '1']);
+        break;
+    }
+
+    // Set (or clear, with bonus=0) a policy bonus for one node or a whole
+    // node_type class — see ni_policy_bonus(). POST ?action=routing-set-bonus
+    // &node_id=starlink-no-01&bonus=15  OR  &node_type=starlink&bonus=15
+    case 'routing-set-bonus': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $nodeId   = trim((string)($_POST['node_id']   ?? $_GET['node_id']   ?? ''));
+        $nodeType = trim((string)($_POST['node_type'] ?? $_GET['node_type'] ?? ''));
+        $bonus    = (float)($_POST['bonus'] ?? $_GET['bonus'] ?? 0);
+        if ($nodeId === '' && $nodeType === '') api_err('node_id or node_type required', 400);
+        $key = $nodeId !== '' ? "node_policy_bonus_{$nodeId}" : "node_policy_bonus_type_{$nodeType}";
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))")
+            ->execute([$key, $bonus]);
+        api_ok(['key' => $key, 'bonus' => $bonus]);
+        break;
+    }
+
     // AI Diagnosis — enriched sessions with cause/confidence/suggestions + pattern alerts.
     // ?action=ai-diagnosis&limit=20&days=14
     case 'ai-diagnosis': {

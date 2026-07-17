@@ -82,6 +82,10 @@ function ni_init_tables(PDO $pdo): void
         "throughput_kbps       INTEGER DEFAULT NULL",   // lightweight estimate, optional
         "battery_level_pct     INTEGER DEFAULT NULL",   // mobile only
         "asn_hash              TEXT    DEFAULT NULL",   // same ni_anon() hashing as isp_hash
+        // Telemetry Trust Engine + Adaptive Routing + Evolution Layer (2026-07-16)
+        "trust_weight          REAL    DEFAULT 1.0",    // 0.0-1.0, set by ni_trust_weight_for_event()
+        "decision_id           TEXT    DEFAULT NULL",   // links back to routing_decisions, when this
+                                                          // session originated from a ranked /v1/servers call
     ];
     // Deliberately NO device_id column here, ever — connect_telemetry stays
     // fully anonymous per this file's existing privacy model (see file
@@ -118,6 +122,78 @@ function ni_init_tables(PDO $pdo): void
         earned_at  TEXT NOT NULL DEFAULT (datetime('now')),
         PRIMARY KEY (device_id, badge_key)
     )");
+
+    // ── Telemetry Trust Engine ──────────────────────────────────────────
+    // Device-identified by necessity (a trust score is meaningless without
+    // being tied to a reporter) — same identifiability class as
+    // tap_intel_contributions, never joined against the anonymous
+    // connect_telemetry rows except via the derived trust_weight column
+    // written back at insert time (see ni_trust_weight_for_event()).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS device_trust (
+        device_id       TEXT PRIMARY KEY,
+        trust_score     REAL    NOT NULL DEFAULT 0.3,
+        total_reports   INTEGER NOT NULL DEFAULT 0,
+        flagged_reports INTEGER NOT NULL DEFAULT 0,
+        updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    )");
+
+    // Short-lived replay-detection window — payload hash, not content, and
+    // pruned aggressively (see ni_trust_replay_seen()). Not a permanent log.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS telemetry_replay_seen (
+        payload_hash TEXT PRIMARY KEY,
+        seen_at      INTEGER NOT NULL
+    )");
+
+    // ── Node Genome ──────────────────────────────────────────────────────
+    // One row per (node_id, dimension, segment) — e.g. ('starlink-no-01',
+    // 'app_category', 'telegram') or ('starlink-no-01', 'daypart', 'evening').
+    // Trust-weighted aggregate, rebuilt periodically by ni_rebuild_genome().
+    // 'core' dimension uses fixed segments: reliability | latency | packet_loss_free.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS node_capability_profile (
+        node_id               TEXT    NOT NULL,
+        dimension             TEXT    NOT NULL,
+        segment                TEXT    NOT NULL,
+        samples               INTEGER NOT NULL DEFAULT 0,
+        trust_weighted_samples REAL   NOT NULL DEFAULT 0,
+        success_rate          REAL    DEFAULT NULL,
+        avg_latency_ms        REAL    DEFAULT NULL,
+        avg_jitter_ms         REAL    DEFAULT NULL,
+        reconnect_rate        REAL    DEFAULT NULL,
+        stability_score       REAL    DEFAULT NULL,
+        updated_at            TEXT    NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (node_id, dimension, segment)
+    )");
+
+    // ── Adaptive Routing ─────────────────────────────────────────────────
+    // Per-dimension multipliers used by ni_rank_nodes()'s composite score.
+    // Seeded with defaults on first read (see ni_routing_weights()) — this
+    // table starts empty; it is NOT a config file to hand-edit, it is the
+    // thing the Evolution Layer nudges over time.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS routing_weights (
+        dimension        TEXT PRIMARY KEY,
+        weight           REAL NOT NULL,
+        last_adjustment  REAL NOT NULL DEFAULT 0,
+        updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    )");
+
+    // ── Evolution Layer ──────────────────────────────────────────────────
+    // One row per ranked /v1/servers response (only written when adaptive
+    // routing is actually active — see ni_adaptive_routing_enabled()).
+    // outcome_json is filled in later, asynchronously, when a telemetry
+    // event carrying this decision_id arrives (see ni_attach_decision_outcome()).
+    $pdo->exec("CREATE TABLE IF NOT EXISTS routing_decisions (
+        decision_id        TEXT PRIMARY KEY,
+        device_id          TEXT    DEFAULT NULL,
+        context_json       TEXT    NOT NULL,
+        ranked_json        TEXT    NOT NULL,
+        predicted_node     TEXT    NOT NULL,
+        selected_node      TEXT    DEFAULT NULL,
+        outcome_json       TEXT    DEFAULT NULL,
+        created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+        outcome_recorded_at TEXT   DEFAULT NULL
+    )");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS rd_created ON routing_decisions(created_at)");
+    @$pdo->exec("CREATE INDEX IF NOT EXISTS rd_device   ON routing_decisions(device_id, created_at)");
 }
 
 /** Validate a telemetry trigger — unknown values fall back to 'connect' so a
@@ -226,6 +302,13 @@ function ni_record(PDO $pdo, array $d): void
     $ipVersion = (string)($d['ip_version'] ?? '');
     $ipVersion = in_array($ipVersion, ['ipv4', 'ipv6', 'dual', 'unknown'], true) ? $ipVersion : null;
 
+    // Telemetry Trust Engine — device_id is used TRANSIENTLY here only (to
+    // score and update trust), never stored on this row. Same posture as
+    // ni_award_tap_contribution(): the anonymous fact table and the
+    // device-identified bookkeeping never merge.
+    $deviceId = (string)($d['device_id'] ?? '');
+    $trustWeight = ni_trust_weight_for_event($pdo, $deviceId, $d);
+
     $pdo->prepare(
         "INSERT INTO connect_telemetry
             (event,node_id,profile_id,sni,protocol,platform,app_version,build_number,
@@ -237,8 +320,9 @@ function ni_record(PDO $pdo, array $d): void
              nat_type,ip_version,rtt_ms,network_switched,
              tunnel_mode,cp1_readable,cp4_connections,cp4_first_dest,
              ios_version,device_model,
-             trigger_type,jitter_ms,reconnect_count,throughput_kbps,battery_level_pct,asn_hash)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             trigger_type,jitter_ms,reconnect_count,throughput_kbps,battery_level_pct,asn_hash,
+             trust_weight,decision_id)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )->execute([
         ni_valid_event((string)($d['event']        ?? 'connect_fail')),
         substr((string)($d['node_id']    ?? 'primary'),  0, 40),
@@ -290,7 +374,15 @@ function ni_record(PDO $pdo, array $d): void
         ($d['throughput_kbps'] ?? null) !== null && $d['throughput_kbps'] !== '' ? max(0, (int)$d['throughput_kbps']) : null,
         ($d['battery_level']   ?? null) !== null && $d['battery_level']   !== '' ? max(0, min(100, (int)$d['battery_level'])) : null,
         ni_anon((string)($d['asn'] ?? '')) ?: null,
+        $trustWeight,
+        substr((string)($d['decision_id'] ?? ''), 0, 40) ?: null,
     ]);
+
+    if ($deviceId !== '') ni_update_device_trust($pdo, $deviceId, $trustWeight);
+    $decisionId = (string)($d['decision_id'] ?? '');
+    if ($decisionId !== '') ni_attach_decision_outcome($pdo, $decisionId, $d);
+    ni_maybe_rebuild_genome($pdo);
+    ni_evolve_weights($pdo);
 }
 
 // ── Tap-to-Learn rewards ──────────────────────────────────────────────────
@@ -395,6 +487,543 @@ function ni_award_tap_contribution(PDO $pdo, string $deviceId, bool $consent): ?
         'total_contributions'  => $total,
         'new_badges'           => $newBadges,
     ];
+}
+
+// ── Telemetry Trust Engine ──────────────────────────────────────────────
+//
+// Weights, not gates. A single implausible or replayed report doesn't get a
+// device banned — it gets THAT event a trust_weight of 0, so it can't move
+// the Node Genome, while the device's longer-term trust_score still recovers
+// or decays gradually. New/unknown devices start at a modest 0.3 (not 0, not
+// 1.0) — enough that early legitimate users aren't invisible to the Genome,
+// low enough that a burst of fabricated reports from a brand-new device_id
+// can't swing a node's score before its pattern is established.
+
+/** Physically-plausible bounds per field. Values outside these are not
+ *  "unlikely" — they are impossible for a real device on a real network, so
+ *  a violation zeroes this event's trust_weight outright rather than merely
+ *  lowering it. Deliberately generous (we want real edge cases, e.g. very
+ *  high-latency satellite links, to pass) — this catches garbage, not
+ *  merely unusual readings. */
+const NI_TRUST_BOUNDS = [
+    'latency_ms'       => [1, 20000],
+    'jitter_ms'        => [0, 5000],
+    'rtt_ms'           => [1, 20000],
+    'reconnect_count'  => [0, 500],
+    'throughput_kbps'  => [0, 2_000_000], // 2 Gbps ceiling
+    'battery_level'    => [0, 100],
+    'time_to_connect_ms' => [0, 120000],
+    'session_duration_secs' => [0, 172800], // 48h ceiling
+];
+
+/** True if every bounded field present in $d is within NI_TRUST_BOUNDS.
+ *  Fields that are absent/null are not checked — this validates plausibility
+ *  of what was reported, it does not require every field to be present. */
+function ni_trust_plausible(array $d): bool
+{
+    foreach (NI_TRUST_BOUNDS as $field => [$min, $max]) {
+        $v = $d[$field] ?? null;
+        if ($v === null || $v === '') continue;
+        if (!is_numeric($v)) return false;
+        $v = (float)$v;
+        if ($v < $min || $v > $max) return false;
+    }
+    return true;
+}
+
+/** True if this exact report (device + a wide set of its numeric/text
+ *  fields + a narrow time bucket) has already been seen — a naive replay,
+ *  not a sophisticated attack, but the cheap/common case worth catching.
+ *  Records the hash as a side effect so a second identical report within
+ *  the window is caught; prunes opportunistically like ni_telemetry_rotate.
+ *
+ *  Deliberately a 5-SECOND bucket, not minute-granularity: a device sending
+ *  legitimately similar (not identical) readings a few times a minute is
+ *  normal — e.g. jitter_ms or reconnect_count are often unchanged between
+ *  two genuinely distinct events. Widening the field set AND narrowing the
+ *  time window (rather than either alone) is what keeps false positives on
+ *  real traffic low while still catching an actual replayed payload. */
+function ni_trust_replay_seen(PDO $pdo, string $deviceId, array $d): bool
+{
+    if ($deviceId === '') return false; // nothing to correlate against
+    $material = implode('|', [
+        $deviceId,
+        (string)($d['node_id'] ?? ''), (string)($d['event'] ?? ''),
+        (string)($d['latency_ms'] ?? ''), (string)($d['jitter_ms'] ?? ''),
+        (string)($d['reconnect_count'] ?? ''), (string)($d['trigger'] ?? ''),
+        (string)($d['session_duration_secs'] ?? ''), (string)($d['bytes_sent'] ?? ''),
+        (string)($d['bytes_recv'] ?? ''), (string)($d['time_to_connect_ms'] ?? ''),
+        (string)($d['sni'] ?? ''),
+        intdiv(time(), 5), // 5-second bucket
+    ]);
+    $hash = hash('sha256', $material);
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS telemetry_replay_seen (payload_hash TEXT PRIMARY KEY, seen_at INTEGER NOT NULL)");
+        if (random_int(1, 100) === 1) {
+            $pdo->prepare("DELETE FROM telemetry_replay_seen WHERE seen_at < ?")->execute([time() - 300]);
+        }
+        $st = $pdo->prepare("SELECT 1 FROM telemetry_replay_seen WHERE payload_hash = ?");
+        $st->execute([$hash]);
+        if ($st->fetchColumn()) return true;
+        $pdo->prepare("INSERT OR IGNORE INTO telemetry_replay_seen (payload_hash, seen_at) VALUES (?, ?)")
+            ->execute([$hash, time()]);
+        return false;
+    } catch (\Throwable $e) {
+        return false; // fail-open — same posture as ni_telemetry_gate
+    }
+}
+
+/** Current trust_score for a device, or the 0.3 default for one never seen. */
+function ni_device_trust_score(PDO $pdo, string $deviceId): float
+{
+    if ($deviceId === '') return 0.3;
+    try {
+        $st = $pdo->prepare("SELECT trust_score FROM device_trust WHERE device_id = ?");
+        $st->execute([$deviceId]);
+        $v = $st->fetchColumn();
+        return $v !== false ? max(0.05, min(1.0, (float)$v)) : 0.3;
+    } catch (\Throwable $e) {
+        return 0.3;
+    }
+}
+
+/** The single entry point ni_record() calls: combines plausibility (hard
+ *  gate), replay detection (hard gate), and the device's standing trust
+ *  score (soft multiplier) into one 0.0-1.0 weight for THIS event. Anonymous
+ *  callers (no device_id) get a flat 0.5 — plausible-but-unattributable data
+ *  still has some value, just never enough to dominate a Genome dimension. */
+function ni_trust_weight_for_event(PDO $pdo, string $deviceId, array $d): float
+{
+    if (!ni_trust_plausible($d)) return 0.0;
+    if ($deviceId !== '' && ni_trust_replay_seen($pdo, $deviceId, $d)) return 0.0;
+    return $deviceId !== '' ? ni_device_trust_score($pdo, $deviceId) : 0.5;
+}
+
+/** Nudge a device's standing trust score toward the quality of its most
+ *  recent event (EMA, alpha=0.1 — deliberately slow-moving so one bad report
+ *  can't crater a long-trusted device, and one good report can't launder a
+ *  bad one). Call once per telemetry write, after ni_trust_weight_for_event(). */
+function ni_update_device_trust(PDO $pdo, string $deviceId, float $eventTrust): void
+{
+    if ($deviceId === '') return;
+    try {
+        $current = ni_device_trust_score($pdo, $deviceId);
+        $alpha = 0.1;
+        $updated = max(0.05, min(1.0, $current + $alpha * ($eventTrust - $current)));
+        $flaggedInc = $eventTrust <= 0.0 ? 1 : 0;
+        $pdo->prepare(
+            "INSERT INTO device_trust (device_id, trust_score, total_reports, flagged_reports, updated_at)
+             VALUES (?, ?, 1, ?, datetime('now'))
+             ON CONFLICT(device_id) DO UPDATE SET
+                trust_score = ?, total_reports = total_reports + 1,
+                flagged_reports = flagged_reports + ?, updated_at = datetime('now')"
+        )->execute([$deviceId, $updated, $flaggedInc, $updated, $flaggedInc]);
+    } catch (\Throwable $e) {}
+}
+
+// ── Node Genome ──────────────────────────────────────────────────────────
+//
+// A node's capability profile as a set of trust-weighted scores broken down
+// by context dimension, instead of one global health number. Rebuilt
+// periodically (probabilistically triggered, same pattern as
+// ni_telemetry_rotate — no cron dependency) from connect_telemetry, using
+// trust_weight as the aggregation weight so low-trust reports barely move
+// the numbers. `policy_bonus` is READ SEPARATELY from settings and is never
+// mixed into the stored profile rows — see ni_node_genome().
+
+const NI_GENOME_REBUILD_DAYS = 14;
+
+/** Segment a raw connect_telemetry row into its Genome (dimension, segment)
+ *  pairs. A single row can and usually does contribute to several dimensions
+ *  at once (its country, its daypart, its network_type, ...). app_category
+ *  is intentionally absent — no client sends it yet; see
+ *  docs/NODE_INTELLIGENCE_ARCHITECTURE.md §app_category contract. */
+function ni_genome_segments_for_row(array $r): array
+{
+    $segs = [];
+    if (!empty($r['country']))       $segs[] = ['country',  strtoupper((string)$r['country'])];
+    if (!empty($r['carrier_name']))  $segs[] = ['carrier',  strtolower((string)$r['carrier_name'])];
+    if (!empty($r['network_type']))  $segs[] = ['network',  (string)$r['network_type']];
+    if (!empty($r['created_at'])) {
+        $hour = (int)gmdate('G', strtotime((string)$r['created_at']));
+        $daypart = $hour < 6 ? 'night' : ($hour < 12 ? 'morning' : ($hour < 18 ? 'afternoon' : 'evening'));
+        $segs[] = ['daypart', $daypart];
+    }
+    return $segs;
+}
+
+/** Rebuild node_capability_profile from the last NI_GENOME_REBUILD_DAYS of
+ *  connect_telemetry. Trust-weighted: a row with trust_weight=0 contributes
+ *  zero to every dimension it would otherwise touch. Call probabilistically
+ *  (see ni_maybe_rebuild_genome()) — this does a full table scan, don't call
+ *  it on every request. */
+function ni_rebuild_genome(PDO $pdo, int $days = NI_GENOME_REBUILD_DAYS): void
+{
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $rows = $pdo->prepare(
+        "SELECT node_id, country, carrier_name, network_type, created_at, event,
+                latency_ms, jitter_ms, reconnect_count, trust_weight
+           FROM connect_telemetry
+          WHERE created_at >= ? AND trust_weight > 0"
+    );
+    $rows->execute([$since]);
+
+    // node_id => dimension => segment => accumulator
+    $acc = [];
+    $bump = function (string $node, string $dim, string $seg, array $r) use (&$acc) {
+        $w = max(0.0, min(1.0, (float)($r['trust_weight'] ?? 1.0)));
+        $a = &$acc[$node][$dim][$seg];
+        $a ??= ['w' => 0.0, 'ok_w' => 0.0, 'lat_sum' => 0.0, 'lat_w' => 0.0,
+                'jit_sum' => 0.0, 'jit_w' => 0.0, 'reconn_w' => 0.0, 'n' => 0];
+        $a['w'] += $w;
+        $a['n']++;
+        if ($r['event'] === 'connect_ok') $a['ok_w'] += $w;
+        if ($r['latency_ms'] !== null) { $a['lat_sum'] += $w * (float)$r['latency_ms']; $a['lat_w'] += $w; }
+        if ($r['jitter_ms']  !== null) { $a['jit_sum'] += $w * (float)$r['jitter_ms'];  $a['jit_w'] += $w; }
+        if (($r['reconnect_count'] ?? null) > 0) $a['reconn_w'] += $w;
+    };
+
+    foreach ($rows->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $node = (string)$r['node_id'];
+        // Core dimension — every row contributes here regardless of context.
+        $bump($node, 'core', 'reliability', $r);
+        foreach (ni_genome_segments_for_row($r) as [$dim, $seg]) {
+            $bump($node, $dim, $seg, $r);
+        }
+    }
+
+    $now = gmdate('Y-m-d H:i:s');
+    $up = $pdo->prepare(
+        "INSERT INTO node_capability_profile
+            (node_id, dimension, segment, samples, trust_weighted_samples,
+             success_rate, avg_latency_ms, avg_jitter_ms, reconnect_rate, stability_score, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?)
+         ON CONFLICT(node_id, dimension, segment) DO UPDATE SET
+            samples=excluded.samples, trust_weighted_samples=excluded.trust_weighted_samples,
+            success_rate=excluded.success_rate, avg_latency_ms=excluded.avg_latency_ms,
+            avg_jitter_ms=excluded.avg_jitter_ms, reconnect_rate=excluded.reconnect_rate,
+            stability_score=excluded.stability_score, updated_at=excluded.updated_at"
+    );
+    foreach ($acc as $node => $dims) {
+        foreach ($dims as $dim => $segs) {
+            foreach ($segs as $seg => $a) {
+                if ($a['w'] <= 0) continue;
+                $successRate = round(($a['ok_w'] / $a['w']) * 100, 1);
+                $avgLatency  = $a['lat_w'] > 0 ? round($a['lat_sum'] / $a['lat_w'], 1) : null;
+                $avgJitter   = $a['jit_w'] > 0 ? round($a['jit_sum'] / $a['jit_w'], 1) : null;
+                $reconnRate  = round(($a['reconn_w'] / $a['w']) * 100, 1);
+                // Stability: success rate discounted by reconnect frequency —
+                // a node that "succeeds" but reconnects constantly isn't stable.
+                $stability = round(max(0, $successRate - $reconnRate * 0.5), 1);
+                $up->execute([$node, $dim, $seg, $a['n'], round($a['w'], 2),
+                    $successRate, $avgLatency, $avgJitter, $reconnRate, $stability, $now]);
+            }
+        }
+    }
+}
+
+/** Probabilistic trigger, same pattern as ni_telemetry_rotate() — call from
+ *  the telemetry write path so the Genome stays fresh without a dedicated
+ *  cron job or background process. */
+function ni_maybe_rebuild_genome(PDO $pdo): void
+{
+    try {
+        if (random_int(1, 30) !== 1) return; // roughly every 30th write
+        ni_rebuild_genome($pdo);
+    } catch (\Throwable $e) {}
+}
+
+/** Assemble one node's full Genome as a nested structure for the dashboard
+ *  and the routing engine. policy_bonus is read from settings and kept in
+ *  its own top-level key — NEVER blended into the measured dimensions, so
+ *  it's always possible to see what was measured vs. what was a deliberate
+ *  product decision (Khabat, 2026-07-16: "keep policy bonuses completely
+ *  separate from measured quality"). */
+function ni_node_genome(PDO $pdo, string $nodeId): array
+{
+    ni_init_tables($pdo);
+    $st = $pdo->prepare("SELECT dimension, segment, samples, trust_weighted_samples,
+                                 success_rate, avg_latency_ms, avg_jitter_ms, reconnect_rate, stability_score
+                            FROM node_capability_profile WHERE node_id = ?");
+    $st->execute([$nodeId]);
+    $genome = ['node_id' => $nodeId];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $genome[$r['dimension']][$r['segment']] = [
+            'samples'          => (int)$r['samples'],
+            'trust_weighted_n' => (float)$r['trust_weighted_samples'],
+            'success_rate'     => $r['success_rate']   !== null ? (float)$r['success_rate']   : null,
+            'avg_latency_ms'   => $r['avg_latency_ms']  !== null ? (float)$r['avg_latency_ms']  : null,
+            'avg_jitter_ms'    => $r['avg_jitter_ms']   !== null ? (float)$r['avg_jitter_ms']   : null,
+            'reconnect_rate'   => $r['reconnect_rate']  !== null ? (float)$r['reconnect_rate']  : null,
+            'stability_score'  => $r['stability_score'] !== null ? (float)$r['stability_score'] : null,
+        ];
+    }
+    $genome['policy_bonus'] = ni_policy_bonus($pdo, $nodeId);
+    return $genome;
+}
+
+/** Admin-set, node- or node-type-scoped bonus points (e.g. "+15 for all
+ *  Starlink nodes while we build up adoption data"). Settings keys:
+ *  node_policy_bonus_<node_id> (specific) takes precedence over
+ *  node_policy_bonus_type_<node_type> (whole class). Both default to 0. */
+function ni_policy_bonus(PDO $pdo, string $nodeId, string $nodeType = ''): float
+{
+    try {
+        $st = $pdo->prepare("SELECT value FROM settings WHERE key = ?");
+        $st->execute(["node_policy_bonus_{$nodeId}"]);
+        $v = $st->fetchColumn();
+        if ($v !== false && is_numeric($v)) return (float)$v;
+        if ($nodeType !== '') {
+            $st->execute(["node_policy_bonus_type_{$nodeType}"]);
+            $v = $st->fetchColumn();
+            if ($v !== false && is_numeric($v)) return (float)$v;
+        }
+    } catch (\Throwable $e) {}
+    return 0.0;
+}
+
+/** All nodes currently present in the Genome table, for the dashboard. */
+function ni_all_genomes(PDO $pdo): array
+{
+    ni_init_tables($pdo);
+    $ids = $pdo->query("SELECT DISTINCT node_id FROM node_capability_profile")->fetchAll(PDO::FETCH_COLUMN);
+    $out = [];
+    foreach ($ids as $id) $out[$id] = ni_node_genome($pdo, (string)$id);
+    return $out;
+}
+
+// ── Adaptive Routing ─────────────────────────────────────────────────────
+//
+// RULE 7 (docs/CLAUDE_REALINK_RULES.md): routing real user traffic based on
+// this requires explicit human approval. ni_adaptive_routing_enabled() is
+// OFF by default and MUST stay off until Khabat turns it on deliberately —
+// nothing in this file flips that setting itself.
+
+const NI_ROUTING_DEFAULT_WEIGHTS = [
+    'success_rate' => 1.0,
+    'latency'      => 0.6,
+    'stability'    => 0.8,
+    'congestion'   => 0.4,
+];
+
+/** Feature flag — settings key 'adaptive_routing_enabled', default OFF. */
+function ni_adaptive_routing_enabled(PDO $pdo): bool
+{
+    try {
+        $st = $pdo->query("SELECT value FROM settings WHERE key='adaptive_routing_enabled'");
+        return (string)($st->fetchColumn() ?: '0') === '1';
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
+/** Current routing weights, seeded with NI_ROUTING_DEFAULT_WEIGHTS on first
+ *  read. These are what ni_evolve_weights() nudges over time — never edited
+ *  by hand in normal operation, but readable/settable via the admin API for
+ *  a manual override if the learned weights ever need a reset. */
+function ni_routing_weights(PDO $pdo): array
+{
+    ni_init_tables($pdo);
+    $rows = $pdo->query("SELECT dimension, weight FROM routing_weights")->fetchAll(PDO::FETCH_KEY_PAIR);
+    if (empty($rows)) {
+        $ins = $pdo->prepare("INSERT OR IGNORE INTO routing_weights (dimension, weight) VALUES (?, ?)");
+        foreach (NI_ROUTING_DEFAULT_WEIGHTS as $dim => $w) $ins->execute([$dim, $w]);
+        return NI_ROUTING_DEFAULT_WEIGHTS;
+    }
+    return array_map('floatval', $rows);
+}
+
+/** Look up a node's Genome dimension/segment score with hierarchical
+ *  fallback: try the full requested segment, then progressively broader
+ *  segments, until a cell with >= NI_MIN_SEGMENT_SAMPLES trust-weighted
+ *  samples is found. Returns null (not zero) when nothing usable exists at
+ *  any level — the caller then falls back to the node's global score. */
+const NI_MIN_SEGMENT_SAMPLES = 5.0;
+
+function ni_genome_lookup(array $genome, string $dimension, ?string $segment): ?array
+{
+    if ($segment === null) return null;
+    $cell = $genome[$dimension][$segment] ?? null;
+    if ($cell !== null && $cell['trust_weighted_n'] >= NI_MIN_SEGMENT_SAMPLES) return $cell;
+    return null; // caller decides the next fallback step, not this function
+}
+
+/**
+ * Rank candidate nodes for a given request context. Context keys (all
+ * optional — missing ones are simply skipped in the fallback chain):
+ *   ['country' => 'IR', 'carrier' => 'mci', 'network_type' => 'wifi']
+ *
+ * Returns nodes sorted best-first:
+ *   [ ['node_id'=>.., 'score'=>.., 'breakdown'=>[...], 'context_level'=>..], ... ]
+ *
+ * 'context_level' records which fallback tier actually produced the score
+ * (e.g. 'carrier', 'country', 'global') — kept in the response for the
+ * Evolution Layer and for admin auditability, never hidden.
+ */
+function ni_rank_nodes(PDO $pdo, array $candidateIds, array $context): array
+{
+    $weights = ni_routing_weights($pdo);
+    $globalScores = ni_node_scores($pdo, 7);
+    $out = [];
+
+    foreach ($candidateIds as $nodeId) {
+        $genome = ni_node_genome($pdo, $nodeId);
+        $core = $genome['core']['reliability'] ?? null;
+
+        // Try context-specific cells, most specific first.
+        $tiers = [];
+        if (!empty($context['carrier']))     $tiers[] = ['carrier', strtolower((string)$context['carrier'])];
+        if (!empty($context['country']))     $tiers[] = ['country', strtoupper((string)$context['country'])];
+        if (!empty($context['network_type']))$tiers[] = ['network', (string)$context['network_type']];
+
+        $chosen = null; $level = 'global';
+        foreach ($tiers as [$dim, $seg]) {
+            $cell = ni_genome_lookup($genome, $dim, $seg);
+            if ($cell !== null) { $chosen = $cell; $level = $dim; break; }
+        }
+        if ($chosen === null && $core !== null && $core['trust_weighted_n'] >= NI_MIN_SEGMENT_SAMPLES) {
+            $chosen = $core; $level = 'core';
+        }
+
+        $successRate = $chosen['success_rate']  ?? ($globalScores[$nodeId]['success_rate']  ?? 50.0);
+        $avgLatency  = $chosen['avg_latency_ms'] ?? ($globalScores[$nodeId]['avg_latency_ms'] ?? 200.0);
+        $stability   = $chosen['stability_score'] ?? $successRate;
+        if ($level === 'global') $level = isset($globalScores[$nodeId]) ? 'global' : 'cold_start';
+
+        // Latency: lower is better, normalise to a 0-100 "goodness" score
+        // against a 1000ms ceiling (anything worse floors at 0).
+        $latencyGoodness = max(0.0, 100.0 - min(1000.0, (float)$avgLatency) / 10.0);
+        // Congestion: cheap proxy from reconnect_rate (no direct congestion
+        // signal exists yet) — a node reconnecting a lot under load reads as congested.
+        $congestionGoodness = 100.0 - (float)($chosen['reconnect_rate'] ?? 0.0);
+
+        $score = $weights['success_rate'] * (float)$successRate
+               + $weights['latency']      * $latencyGoodness
+               + $weights['stability']    * (float)$stability
+               + $weights['congestion']   * $congestionGoodness;
+
+        $bonus = ni_policy_bonus($pdo, $nodeId);
+        $score += $bonus;
+
+        $out[] = [
+            'node_id'       => $nodeId,
+            'score'         => round($score, 2),
+            'context_level' => $level,
+            'breakdown'     => [
+                'success_rate' => $successRate, 'latency_ms' => $avgLatency,
+                'stability'    => $stability,   'congestion_goodness' => round($congestionGoodness, 1),
+                'policy_bonus' => $bonus,
+            ],
+        ];
+    }
+
+    usort($out, fn($a, $b) => $b['score'] <=> $a['score']);
+    return $out;
+}
+
+// ── Evolution Layer ──────────────────────────────────────────────────────
+//
+// Every ranked /v1/servers response IS an experiment: it predicts which
+// node will perform best for this context. When that session later reports
+// telemetry back (carrying the same decision_id), we can compare prediction
+// to outcome and nudge routing_weights accordingly. This is deliberately
+// simple, bounded arithmetic — an exponential-moving-average-style nudge
+// per dimension, NOT gradient descent or a trained model. Given this runs in
+// PHP/SQLite on a 1GB box with no ML runtime, that's a scope decision, not
+// an oversight: it is auditable (every adjustment is small, logged, and
+// reversible) rather than a black box.
+
+/** Record a routing decision. Returns the decision_id to hand back to the
+ *  client so a later telemetry POST can close the loop. Only called when
+ *  ni_adaptive_routing_enabled() is true. */
+function ni_record_routing_decision(PDO $pdo, string $deviceId, array $context, array $ranked): string
+{
+    ni_init_tables($pdo);
+    $decisionId = bin2hex(random_bytes(16));
+    $predicted = $ranked[0]['node_id'] ?? null;
+    if ($predicted === null) return $decisionId; // nothing to record against
+    $pdo->prepare(
+        "INSERT INTO routing_decisions (decision_id, device_id, context_json, ranked_json, predicted_node)
+         VALUES (?,?,?,?,?)"
+    )->execute([$decisionId, $deviceId ?: null, json_encode($context), json_encode($ranked), $predicted]);
+    return $decisionId;
+}
+
+/** Called from the telemetry write path when a report carries a decision_id.
+ *  Merges outcome signals into the original decision row — idempotent-ish
+ *  (later calls for the same decision just overwrite with fresher data,
+ *  since a session reports connect then disconnect against the same id). */
+function ni_attach_decision_outcome(PDO $pdo, string $decisionId, array $telemetry): void
+{
+    if ($decisionId === '') return;
+    try {
+        $outcome = [
+            'node_id'          => $telemetry['node_id']       ?? null,
+            'event'            => $telemetry['event']         ?? null,
+            'latency_ms'       => $telemetry['latency_ms']    ?? null,
+            'reconnect_count'  => $telemetry['reconnect_count'] ?? null,
+            'session_duration_secs' => $telemetry['session_duration_secs'] ?? null,
+            'internet_ok'      => $telemetry['internet_ok']   ?? null,
+        ];
+        $pdo->prepare(
+            "UPDATE routing_decisions
+                SET selected_node = ?, outcome_json = ?, outcome_recorded_at = datetime('now')
+              WHERE decision_id = ?"
+        )->execute([$telemetry['node_id'] ?? null, json_encode($outcome), $decisionId]);
+    } catch (\Throwable $e) {}
+}
+
+/** Compare recently-completed decisions' predictions to their outcomes and
+ *  nudge routing_weights by a small bounded step. Simple heuristic: if the
+ *  predicted-top node's outcome shows a real connect_ok with no reconnects,
+ *  reinforce the dimensions that favoured it; a failure or heavy reconnects
+ *  dampens them. Steps are small (max 3%) and clamped to [0.1, 3.0] so the
+ *  system can't run away or zero out a dimension. Probabilistically
+ *  triggered like ni_maybe_rebuild_genome() — no cron dependency. */
+function ni_evolve_weights(PDO $pdo): void
+{
+    try {
+        if (random_int(1, 50) !== 1) return;
+        ni_init_tables($pdo);
+        $rows = $pdo->query(
+            "SELECT ranked_json, predicted_node, outcome_json FROM routing_decisions
+              WHERE outcome_recorded_at IS NOT NULL
+                AND outcome_recorded_at >= datetime('now', '-1 day')
+              ORDER BY outcome_recorded_at DESC LIMIT 200"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($rows)) return;
+
+        $weights = ni_routing_weights($pdo);
+        $delta = array_fill_keys(array_keys($weights), 0.0);
+        $n = 0;
+        foreach ($rows as $r) {
+            $outcome = json_decode((string)$r['outcome_json'], true);
+            if (!is_array($outcome) || ($outcome['node_id'] ?? null) !== $r['predicted_node']) continue;
+            $good = ($outcome['event'] ?? '') === 'connect_ok'
+                 && (int)($outcome['reconnect_count'] ?? 0) === 0;
+            $step = $good ? 0.03 : -0.03;
+            // Attribute the nudge to whichever dimensions this decision's
+            // breakdown actually leaned on most (ranked_json[0].breakdown).
+            $ranked = json_decode((string)$r['ranked_json'], true);
+            $breakdown = $ranked[0]['breakdown'] ?? [];
+            if (($breakdown['success_rate'] ?? 0) > 70) $delta['success_rate'] += $step;
+            if (($breakdown['latency_ms']   ?? 999) < 100) $delta['latency'] += $step;
+            if (($breakdown['stability']    ?? 0) > 70) $delta['stability'] += $step;
+            if (($breakdown['congestion_goodness'] ?? 0) > 70) $delta['congestion'] += $step;
+            $n++;
+        }
+        if ($n === 0) return;
+
+        $up = $pdo->prepare(
+            "UPDATE routing_weights SET weight = ?, last_adjustment = ?, updated_at = datetime('now') WHERE dimension = ?"
+        );
+        foreach ($weights as $dim => $w) {
+            $adj = max(-0.1, min(0.1, $delta[$dim] ?? 0.0)); // hard per-cycle cap regardless of sample count
+            $new = max(0.1, min(3.0, $w + $adj));
+            if ($new !== $w) $up->execute([$new, round($new - $w, 4), $dim]);
+        }
+    } catch (\Throwable $e) {}
 }
 
 /**
