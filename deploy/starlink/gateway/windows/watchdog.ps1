@@ -83,16 +83,36 @@ param(
     # Empty = resolved next to this script file. NOT a $PSScriptRoot param
     # default -- $PSScriptRoot has been observed EMPTY on the Surface
     # gateway, and Join-Path throws on an empty path (see heartbeat.ps1).
-    [string]$LogDir = ''
+    [string]$LogDir = '',
+
+    # Node Console (2026-07-17): where gateway.env lives, so self-heals can
+    # be reported to public/starlink-command-result.php -- see
+    # Send-SelfHealReport below. Deliberately non-fatal if missing/unfilled:
+    # this watchdog's core job (local self-healing) must keep working even
+    # if the server side of reporting is unreachable or unconfigured.
+    [string]$ConfigPath = ''
 )
 
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir -and $MyInvocation.MyCommand.Path) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
+
 if (-not $LogDir) {
-    $scriptDir = $PSScriptRoot
-    if (-not $scriptDir -and $MyInvocation.MyCommand.Path) {
-        $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-    }
-    if (-not $scriptDir) { $scriptDir = (Get-Location).Path }
     $LogDir = Join-Path $scriptDir 'logs'
+}
+if (-not $ConfigPath) { $ConfigPath = Join-Path $scriptDir 'gateway.env' }
+
+# --- Load gateway.env for self-heal reporting only. Same KEY=VALUE format
+#     as heartbeat.ps1, but unlike heartbeat.ps1 a missing/incomplete config
+#     is NOT fatal here -- Send-SelfHealReport just no-ops. ---
+$cfg = @{}
+if (Test-Path $ConfigPath) {
+    Get-Content $ConfigPath | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object {
+        $k, $v = $_ -split '=', 2
+        $cfg[$k.Trim()] = $v.Trim()
+    }
 }
 
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
@@ -111,6 +131,48 @@ function Log($msg) {
 
 function Record-Disconnect {
     Add-Content -Path $disconnectsLog -Value (Get-Date).ToUniversalTime().ToString('o')
+}
+
+# Node Console (2026-07-17): report this watchdog's own repairs to
+# public/starlink-command-result.php as self-heal events (self_heal:true,
+# no command_id/token -- see lib/node_console.php:nc_report_self_heal()).
+# This is what feeds node_command_events, which ni_rebuild_genome() folds
+# into the node's stability score (lib/node_intel.php) -- "every executed
+# command/repair becomes part of the self-learning infrastructure."
+# Deliberately best-effort: a reporting failure must never affect the local
+# self-heal it's describing, which has already happened by the time this
+# is called.
+function Send-SelfHealReport {
+    param(
+        [Parameter(Mandatory)][string]$RecoveryAction,
+        [Parameter(Mandatory)][bool]$Success,
+        [int]$DurationMs = 0,
+        [string]$HealthBefore = '',
+        [string]$HealthAfter = ''
+    )
+    if (-not $cfg.ContainsKey('VPS_API_URL') -or -not $cfg.ContainsKey('NODE_ID') -or -not $cfg.ContainsKey('HEARTBEAT_TOKEN')) {
+        return  # gateway.env not present/filled here -- silently skip, this is optional telemetry
+    }
+    if ($cfg['VPS_API_URL'] -notmatch 'starlink-heartbeat\.php$') {
+        Log "WARN: cannot derive command-result URL from VPS_API_URL='$($cfg['VPS_API_URL'])' -- skipping self-heal report."
+        return
+    }
+    $resultUrl = $cfg['VPS_API_URL'] -replace 'starlink-heartbeat\.php$', 'starlink-command-result.php'
+    $payload = [ordered]@{
+        self_heal       = $true
+        recovery_action = $RecoveryAction
+        success         = $Success
+        duration_ms     = $DurationMs
+        health_before   = $HealthBefore
+        health_after    = $HealthAfter
+    } | ConvertTo-Json -Compress
+    try {
+        Invoke-RestMethod -Uri $resultUrl -Method Post `
+            -Headers @{ Authorization = "Bearer starlink-node-$($cfg['NODE_ID']):$($cfg['HEARTBEAT_TOKEN'])" } `
+            -ContentType 'application/json' -Body $payload -TimeoutSec 6 | Out-Null
+    } catch {
+        Log "WARN: could not report self-heal '$RecoveryAction' to server: $($_.Exception.Message)"
+    }
 }
 
 if (-not $TunnelAdapterName) {
@@ -339,10 +401,15 @@ function Assert-ExitPath {
     }
     if (-not (Test-IcsBound)) {
         Log "Toggle amnesia detected: $IcsInternalAddress missing from '$TunnelAdapterName' -- re-binding ICS."
-        if (Rebind-Ics) {
+        $rebindStart = Get-Date
+        $rebindOk = Rebind-Ics
+        $rebindMs = [int]((Get-Date) - $rebindStart).TotalMilliseconds
+        if ($rebindOk) {
             Log "HEALED: ICS re-bound, $IcsInternalAddress back on '$TunnelAdapterName'."
             Record-Disconnect  # the exit was down for users until this heal
         }
+        Send-SelfHealReport -RecoveryAction 'ics_rebind' -Success $rebindOk -DurationMs $rebindMs `
+            -HealthBefore 'toggle_amnesia' -HealthAfter $(if ($rebindOk) { 'healed' } else { 'still_down' })
     }
     # Section 17: forwarding must be enabled on BOTH adapters, and it dies
     # with the adapter just like the ICS address does.
@@ -386,10 +453,16 @@ if (-not $svc) {
 }
 if ($svc.Status -ne 'Running') {
     Log "Service '$ServiceName' is $($svc.Status), not Running -- starting it."
+    $svcStart = Get-Date
     Start-Service -Name $ServiceName
     Record-Disconnect
     Start-Sleep -Seconds 5
     Assert-ExitPath  # fresh adapter = ICS address and forwarding are gone
+    $svcNow = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
+    $svcOk = ($svcNow -and $svcNow.Status -eq 'Running')
+    Send-SelfHealReport -RecoveryAction 'service_start' -Success $svcOk `
+        -DurationMs ([int]((Get-Date) - $svcStart).TotalMilliseconds) `
+        -HealthBefore $svc.Status -HealthAfter $(if ($svcOk) { 'Running' } else { $svcNow.Status })
     exit 0
 }
 
@@ -417,6 +490,7 @@ if ($null -eq $age) {
 }
 
 Log "Tunnel stale -- handshake ${age}s ago (limit ${HandshakeStaleSeconds}s) despite stimulate-ping. Restarting $ServiceName."
+$tunnelRestartStart = Get-Date
 Restart-Service -Name $ServiceName -Force
 Record-Disconnect
 Start-Sleep -Seconds 5
@@ -424,8 +498,12 @@ Assert-ExitPath  # restart recreated the adapter -- heal ICS/forwarding again
 
 Test-Connection -ComputerName $TunnelPeerAddress -Count 3 -Quiet -ErrorAction SilentlyContinue | Out-Null
 $retryAge = Get-HandshakeAgeSeconds
-if ($null -ne $retryAge -and $retryAge -le $HandshakeStaleSeconds) {
+$tunnelHealed = ($null -ne $retryAge -and $retryAge -le $HandshakeStaleSeconds)
+if ($tunnelHealed) {
     Log "Restart fixed it -- handshake ${retryAge}s ago."
 } else {
     Log "Still stale after restart. Will retry on next scheduled run. If this repeats across many runs, check the Surface's WireGuard config (wg.exe show, section 17 root cause 2), fi-hel's test0 status, and only then suspect Starlink."
 }
+Send-SelfHealReport -RecoveryAction 'tunnel_restart' -Success $tunnelHealed `
+    -DurationMs ([int]((Get-Date) - $tunnelRestartStart).TotalMilliseconds) `
+    -HealthBefore "stale_${age}s" -HealthAfter $(if ($tunnelHealed) { "healed_${retryAge}s" } else { 'still_stale' })

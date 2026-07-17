@@ -169,6 +169,77 @@ $payload = [ordered]@{
     wifi_state         = $wifiState
 } | ConvertTo-Json -Compress
 
+# Node Console (Phase 1, 2026-07-17) -- allowlist executor. Keys MUST match
+# lib/node_console.php's NC_COMMAND_REGISTRY exactly; this switch is the
+# node-side half of the two-independent-enforcement-points rule from that
+# file's header (server registry + this allowlist -- never a raw string
+# executed from the server). Add a new command here AND to the server
+# registry together; a key present only here is simply never sent, a key
+# present only server-side hits the default branch below and reports failure.
+function Invoke-NodeCommand([string]$CommandKey) {
+    $out = ''
+    $ok = $true
+    try {
+        switch ($CommandKey) {
+            'wg_status' {
+                $wgExe = Join-Path $env:ProgramFiles 'WireGuard\wg.exe'
+                $out = if (Test-Path $wgExe) { (& $wgExe show) -join "`n" } else { 'wg.exe not found' }
+            }
+            'network_status' {
+                $out = (Get-NetIPConfiguration | Format-List | Out-String)
+            }
+            'last_100_logs' {
+                $out = if (Test-Path $logFile) { (Get-Content $logFile -Tail 100) -join "`n" } else { '(no watchdog.log yet)' }
+            }
+            'refresh_telemetry' {
+                # No-op signal command: the NEXT heartbeat this script already
+                # sends is the refresh. Nothing extra to do beyond ack it.
+                $out = 'telemetry refresh acknowledged -- next heartbeat cycle carries current state'
+            }
+            'restart_wireguard' {
+                $wgSvc = @(Get-Service -Name 'WireGuardTunnel$*' -ErrorAction SilentlyContinue)
+                if ($wgSvc.Count -eq 0) { throw 'no WireGuardTunnel$* service found' }
+                Restart-Service -Name $wgSvc[0].Name -Force
+                $out = "restarted service $($wgSvc[0].Name)"
+            }
+            default {
+                $ok = $false
+                $out = "unknown command_key on this gateway: $CommandKey"
+            }
+        }
+    } catch {
+        $ok = $false
+        $out = "error: $($_.Exception.Message)"
+    }
+    return @{ success = $ok; output = $out }
+}
+
+# Node Console: report an admin-enqueued command's result back. Never
+# reports for a command_id this script wasn't handed by the server, and
+# never runs anything the server didn't send a signed token for --
+# server-side nc_report_command_result() re-verifies the signature anyway.
+function Send-CommandResult($cfg, [string]$CommandId, [string]$Token, [bool]$Success, [string]$Output, [int]$DurationMs) {
+    $resultUrl = $cfg['VPS_API_URL'] -replace 'starlink-heartbeat\.php$', 'starlink-command-result.php'
+    if ($resultUrl -eq $cfg['VPS_API_URL']) {
+        Log "WARN: cannot derive command-result URL from VPS_API_URL -- not reporting result for $CommandId."
+        return
+    }
+    $payload = [ordered]@{
+        command_id  = $CommandId
+        token       = $Token
+        success     = $Success
+        output      = $Output
+        duration_ms = $DurationMs
+    } | ConvertTo-Json -Compress
+    try {
+        Invoke-RestMethod -Uri $resultUrl -Method Post `
+            -Headers @{ Authorization = "Bearer starlink-node-$($cfg['NODE_ID']):$($cfg['HEARTBEAT_TOKEN'])" } `
+            -ContentType 'application/json' -Body $payload -TimeoutSec 6 | Out-Null
+    } catch {
+        Log "WARN: could not report command result for $CommandId -- $($_.Exception.Message)"
+    }
+}
+
 try {
     $resp = Invoke-RestMethod -Uri $cfg['VPS_API_URL'] -Method Post `
         -Headers @{ Authorization = "Bearer starlink-node-$($cfg['NODE_ID']):$($cfg['HEARTBEAT_TOKEN'])" } `
@@ -183,6 +254,22 @@ try {
     if ($resp.config) {
         $configFile = Join-Path $LogDir 'node-config.json'
         $resp.config | ConvertTo-Json -Compress | Set-Content -Path $configFile -ErrorAction SilentlyContinue
+    }
+
+    # Node Console: dispatch any pending commands the server attached to
+    # this heartbeat response, then report each result. At most 5 per
+    # nc_pending_commands_for_node() -- runs inline, heartbeat cadence
+    # (~33s) is frequent enough that this never meaningfully delays it.
+    if ($resp.commands) {
+        foreach ($cmd in @($resp.commands)) {
+            Log "Node Console: running command '$($cmd.command_key)' (id=$($cmd.command_id))."
+            $cmdStart = Get-Date
+            $result = Invoke-NodeCommand -CommandKey $cmd.command_key
+            $durMs = [int]((Get-Date) - $cmdStart).TotalMilliseconds
+            Log "Node Console: '$($cmd.command_key)' finished success=$($result.success) in ${durMs}ms."
+            Send-CommandResult -cfg $cfg -CommandId $cmd.command_id -Token $cmd.token `
+                -Success $result.success -Output $result.output -DurationMs $durMs
+        }
     }
 } catch {
     Log "Failed to send heartbeat: $($_.Exception.Message)"
