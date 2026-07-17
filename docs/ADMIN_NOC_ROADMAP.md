@@ -415,7 +415,7 @@ Ikke bygg alt som én stor uverifisert leveranse. Hver fase følger § 0.1 og
 | 1a | Denne seksjonen lagt inn i `ADMIN_NOC_ROADMAP.md` | Done (denne commiten) | — |
 | 1b | Krysshenvisning lagt inn i produkt-roadmapen (`docs/realgram/PRODUCT_VISION.md`) — **avdekket en uløst produktkonflikt i samme slag: `PRODUCT_VISION.md` beskriver RealGram som en TDLib-basert Telegram-klient som speiler brukerens ekte Telegram-chatter; § 6 her beskriver et eget RealGram-native meldingssystem der Telegram kun er en inngang. Ikke reconcilert — se varsel i `PRODUCT_VISION.md`.** | Done (denne commiten) | — (konflikt, ikke innhold, venter på Khabat) |
 | 2 | Foreslått datamodell vist | Testing (skrevet, venter på gjennomgang) | Nei — se `REALGRAM_NATIVE_MESSAGING_DESIGN.md` § 1 |
-| 3 | Kartlegging av hvilke eksisterende user-ID-systemer som må slås sammen | Testing (skrevet, én åpen avklaring med Agent B/Shahnameh) | Nei — se samme dok § 2 |
+| 3 | Kartlegging av hvilke eksisterende user-ID-systemer som må slås sammen | Testing (skrevet, **Shahnameh-feltet bekreftet 2026-07-17** — `season2_users.telegram_id`, lest direkte fra backend-koden, ingen åpne avklaringer igjen) | Nei — se samme dok § 2 |
 | 4 | Migreringsplan (eksisterende VPN-/Shahnameh-brukere mister ikke konto eller saldo) | Testing (skrevet, venter på gjennomgang) | Nei — se samme dok § 3 |
 | 5 | Wireframes: Chats, Direct Message, Warrior Profile, Clan Chat | Testing (tekst-wireframes skrevet + Artifact publisert) | Nei — se samme dok § 5 |
 | 6 | Godkjenning fra Khabat | Not started | Nei |
@@ -769,13 +769,46 @@ et verb.
 4. **Tonkeeper som generell import/eksport-bro**, ikke bare betalingsflyt.
 5. **Community Treasury + transparens** — helt nytt, ingen eksisterende kode.
 
-### 9.1 REAL Wallet (samlet visning)
+### 9.1 REAL Wallet (samlet visning) — designprinsipp, utvidet 2026-07-17
+
+**Grunnregel:** REAL Wallet skal føles som **én enkel lommebok**, uansett
+hvor mange systemer som faktisk ligger under (VPN-panelet, Shahnameh
+MongoDB, Tonkeeper, ecosystem-API-en i § 9.0). Brukeren skal **aldri**
+måtte forstå eller se den forskjellen — kun:
+
+**Én profil. Én wallet. Én historikk. Én identitet.**
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Saldo-visning: REAL, ZAR, Data Quota, plass til fremtidige tokens | Not started | — | — | — | — | — | § 9.0 — kombinerer tre eksisterende kilder, ikke ny ledger |
+| Saldo-visning: 💰 REAL, ⚡ ZAR, 🌐 Data, 🎁 Rewards, 📈 History | Not started | — | — | — | — | — | § 9.0 — kombinerer eksisterende kilder (`real_ecosystem_tx`/`season2_users` + `quota_transactions`), ikke ny ledger |
+| Trykk på en saldo → Hakim forklarer hvor den kommer fra og hva den kan brukes til | Not started | — | — | — | — | — | § 8 (Hakim), § 8.0 (må lese ekte kildedata, aldri gjette forklaringen) |
 | Samme wallet-komponent brukt i VPN, RealGram og Shahnameh (§ 9.6) | Not started | — | — | — | — | — | — |
 | Del av brukerprofilen (§ 6.1) | Not started | — | — | — | — | — | § 6.1 |
+
+#### 9.1.1 Én samlet historikk (ikke separate lister per system)
+
+| Transaksjonstype | Status | Kilde (ekte, ikke oppfunnet) |
+|---|---|---|
+| Earned from Shahnameh | Not started | `real_ecosystem_tx` (`kind='grant'`) / Shahnameh AdsGram-motor |
+| Referral reward | Not started | `referral_uses` (denne repoen) + tilsvarende på Shahnameh-siden |
+| Ad reward | Not started | `ad_reward_events` (`REWARDED-ADS-RECOVERY.md`) |
+| Community reward | Not started | § 9.5 Community Treasury — finnes ikke ennå, avhenger av at Treasury er bygget |
+| Sent via Vizh | Not started | § 9.2 (ny p2p-ledger) |
+| Received via Vizh | Not started | § 9.2 |
+| REAL conversion | Not started | ZAR→REAL-konvertering, § 9.0 punkt 2 (ikke bygget ennå) |
+| ZAR conversion | Not started | samme |
+| Data transfer | Not started | **allerede live** — `quota_transfer`/`qe_transfer()` |
+| Premium purchase | Not started | `docs/PREMIUM-REAL-PAYMENTS.md` — designet, ikke skipet til mobil |
+
+**Hard regel:** denne tabellen viser eksplisitt at en "samlet historikk" i
+praksis må slå sammen minst tre-fire forskjellige eksisterende/planlagte
+kilder (`real_ecosystem_tx`, `quota_transactions`, `ad_reward_events`,
+`referral_uses`, fremtidig Vizh-ledger). Brukeren skal aldri se sømmen —
+men det betyr at sammenslåingslaget selv er en ekte teknisk oppgave, ikke
+bare en UI-visning av én tabell. Ingen rad her kan settes `Live` før den
+faktisk leser fra kilden sin, jf. § 0.1/§ 8.0 — en historikk-rad som ser
+riktig ut men er hardkodet er nøyaktig den typen placeholder-data denne
+roadmapen finnes for å luke ut.
 
 ### 9.2 Vizh (ویژ) — overføringshandlingen
 

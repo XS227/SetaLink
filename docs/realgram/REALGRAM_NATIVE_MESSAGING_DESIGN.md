@@ -56,13 +56,57 @@ Verified directly in this repo, 2026-07-17:
   — reuse it for § 6.1's Telegram identity link, don't invent a second
   mechanism.
 
-**Open question, not answered from this repo** (Shahnameh backend is a
-separate repo/VPS project, `/var/www/backend/backend`, per
-`INTEGRATION_MAP.md` §1): the exact field name Shahnameh uses for its
-player ID (`season2User.js` has `real_balance`; the player-identifying
-field wasn't confirmed this session). **Agent B must confirm this before
-§ 2's mapping table below is filled in for real** — treated as a named
-placeholder (`shahnameh_player_id`) until then.
+**RESOLVED 2026-07-17** (was an open question — Shahnameh backend turned
+out to be directly readable from this VPS at `/var/www/backend/backend`,
+same box, no separate-repo blocker after all): read
+`model/season2User.js` directly.
+
+- **Shahnameh's player-identifying field is `telegram_id`** (`String,
+  required, unique, index`) — Shahnameh has **no separate internal player
+  ID**; Telegram identity *is* the primary key. `season2_users` also
+  carries `clan_id`, `referral_code`, `referred_by`, `zar`, `real_balance`,
+  `gems`, `farr`, `level`, `xp` directly on the same document.
+- **An ecosystem-wide `@handle` already exists and is already live** —
+  `season2_users.handle` (unique, sparse), exposed via a real,
+  Bearer-authed API (`routes/api/ecosystem.js`, task B-14, contract §7 in
+  `docs/realgram/DECISIONS.md`):
+  - `GET /v1/handle-lookup?handle=...` → `{available: true}` or
+    `{available: false, account: "<telegram_id>"}`.
+  - `POST /v1/handle-claim {account, handle}` → claims/changes a handle,
+    atomic via the schema's unique sparse index, `409 handle_taken` on
+    conflict.
+  **This changes § 1.1 below: RealGram's `@handle` must not be a second,
+  independent handle namespace — it should read/write through this
+  existing contract, not reinvent one.** Fixed in § 1.1 and § 2.
+- **The REAL balance API is a full, already-live contract**, not just a
+  raw DB field — `routes/api/ecosystem.js`, Bearer-auth'd with
+  `REAL_ECOSYSTEM_API_KEY` (`docs/realgram/TASK_SPLIT.md` §API contracts
+  2–5):
+  ```
+  GET  /v1/balance/:account                              — contract 3
+  POST /v1/verify-spend {account, amount, tx_ref}         — contract 2
+  POST /v1/spend  {account, amount, purpose, idempotency_key}   — contract 4
+  POST /v1/grant  {account, amount, reason,  idempotency_key}   — contract 5
+  POST /v1/sso-token {account, device_id?}                — contract §6
+  GET  /v1/sso/jwks.json                                  — public, no auth
+  ```
+  `account` is always `season2_users.telegram_id`. `/v1/spend` and
+  `/v1/grant` are claim-first idempotent (unique index on `(account,
+  idempotency_key, kind)` in `real_ecosystem_tx`) — same double-submit
+  protection pattern as `qe_transfer()` in this repo, independently
+  arrived at on the other side of the ecosystem. `/v1/spend`,
+  `/v1/verify-spend`, `/v1/grant` are **user↔system only** — confirms
+  § 4's "Send REAL/ZAR has no p2p path today" finding; nothing here
+  does account-to-account transfer.
+- **`real_ecosystem_tx`** (Mongo, `model/realEcosystemTx.js`) is already a
+  real transaction ledger — one document per spend/grant attempt, fields
+  `account, idempotency_key, tx_ref, kind ('spend'|'grant'), amount,
+  purpose, status, balance_after, created_at`. **This is a second,
+  separate transaction log from this repo's own `quota_transactions`** —
+  relevant to § 9's "unified history" requirement (`ADMIN_NOC_ROADMAP.md`
+  § 9.1.1): a unified REAL Wallet history has to merge rows from *at least*
+  `real_ecosystem_tx` (Shahnameh side) and `quota_transactions`/
+  `quota_transfer` (this repo), not read from one table.
 
 ---
 
@@ -81,7 +125,11 @@ pattern.
 -- The one durable, permanent RealGram identity. Everything else links to this.
 CREATE TABLE IF NOT EXISTS realgram_profiles (
     id              TEXT PRIMARY KEY,   -- new UUID, generated at profile creation
-    handle          TEXT UNIQUE,        -- @handle, user-chosen, nullable until set
+    handle          TEXT UNIQUE,        -- @handle — MIRROR of season2_users.handle (ecosystem-wide,
+                                         -- already live via /v1/handle-lookup + /v1/handle-claim),
+                                         -- not an independently owned namespace. Write-through: a
+                                         -- claim here must call /v1/handle-claim, not just insert
+                                         -- locally. Nullable until set.
     display_name    TEXT    DEFAULT '',
     avatar_url      TEXT    DEFAULT '',
     language        TEXT    DEFAULT '',
@@ -97,7 +145,7 @@ CREATE TABLE IF NOT EXISTS realgram_identity_links (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     profile_id      TEXT    NOT NULL REFERENCES realgram_profiles(id),
     system          TEXT    NOT NULL,
-    external_id     TEXT    NOT NULL,   -- devices.device_id | shahnameh_player_id | trustai real_account | telegram user id
+    external_id     TEXT    NOT NULL,   -- devices.device_id | shahnameh season2_users.telegram_id | trustai real_account | telegram user id
     linked_at       TEXT    DEFAULT (datetime('now')),
     UNIQUE(system, external_id)         -- one external identity maps to exactly one profile
 );
@@ -248,8 +296,17 @@ Four systems, verified state per § 0:
 | SetaLink/ReaLink (this repo) | `devices.device_id` (anonymous, `SL-227-xxxx`-shaped) | **Always present** — every existing user has one |
 | SetaLink/ReaLink (this repo) | `devices.user_id` | Present for some devices (added by later migration) |
 | TrustAI | `real_account` (via SSO JWT `sub`) | Present only for devices whose owner explicitly linked TrustAI |
-| Shahnameh | `shahnameh_player_id` (placeholder name — real field TBC by Agent B) | Present only for devices whose owner plays Shahnameh and has linked via `linkvpn_<deviceId>` |
+| Shahnameh | `season2_users.telegram_id` (**confirmed 2026-07-17** — read directly from `/var/www/backend/backend/model/season2User.js`; Shahnameh has no separate player ID, Telegram identity *is* the primary key) | Present only for devices whose owner plays Shahnameh and has linked via `linkvpn_<deviceId>` |
 | Telegram | Telegram user ID | Present only for devices whose owner went through the bot's `linkvpn_<deviceId>` flow, or a future direct Telegram login |
+
+**Consequence of the confirmation above:** since Shahnameh's player ID
+*is* a Telegram ID, links 4 and 5 below resolve to **the same value** for
+any device that has done the `linkvpn_<deviceId>` handshake — one
+handshake yields both the `telegram` and `shahnameh` identity links at
+once, they're just tagged under different `system` values in
+`realgram_identity_links` (schema allows this: `UNIQUE(system,
+external_id)` is per-system, not global). Don't build two separate
+lookups for what's actually one linked fact.
 
 **Merge rule:** `devices.device_id` is the anchor, because it's the only
 identifier guaranteed to exist for every current user (it's the VPN
@@ -274,17 +331,23 @@ identity itself). The merge is therefore:
    **only** when a device has already completed the bot's
    `linkvpn_<deviceId>` handshake — same principle, read the existing
    link, don't re-implement the handshake.
-5. `realgram_identity_links` row `('shahnameh', shahnameh_player_id)` —
-   **blocked on Agent B confirming the field name and where the
-   device↔player mapping is stored today** (same `linkvpn_<deviceId>`
-   handshake likely already records this; needs a direct read of the
-   Shahnameh backend to confirm, not guessed here).
+5. `realgram_identity_links` row `('shahnameh', telegram_id)` — **same
+   value as step 4** (see consequence note above), created alongside it
+   from the same `linkvpn_<deviceId>` handshake record, not a second
+   lookup. `@handle` sync: when this link is created, pull
+   `season2_users.handle` (if already claimed there) into
+   `realgram_profiles.handle` via `GET /v1/handle-lookup`, rather than
+   prompting the user to pick a handle they may have already claimed
+   ecosystem-wide.
 
 **What this deliberately does NOT do:** invent a new cross-system login or
 a new linking mechanism. Every link in step 3–5 reuses a bridge that
-already exists and is already live. The only genuinely new concept is
-`realgram_profiles` itself (the unifying row) and `@handle` (net new,
-chosen by the user in Fase 1 onboarding).
+already exists and is already live — **including `@handle` now**, corrected
+2026-07-17: it's not net-new, it's `season2_users.handle` via the already-
+live `/v1/handle-lookup`/`/v1/handle-claim` contract, synced in
+(§ 2 step 5), not invented fresh in RealGram. The only genuinely new
+concept left is `realgram_profiles` itself — the unifying row that didn't
+exist in any system before.
 
 ---
 
