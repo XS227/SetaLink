@@ -51,6 +51,15 @@
 [CmdletBinding()]
 param()
 
+# Loaded BEFORE the elevation check on purpose -- the elevation-failure
+# path below shows a MessageBox, which needs this assembly already loaded
+# (an earlier revision of this script loaded it after, so a cancelled UAC
+# prompt would throw "Unable to find type" instead of showing the intended
+# message -- fixed 2026-07-17, caught in review before ever being packaged).
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
 # ---------------------------------------------------------------------------
 # Self-elevation: if not already Administrator, relaunch elevated. A GUI
 # double-clicked from Explorer won't have inherited an elevated shell, and
@@ -64,6 +73,7 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     $psi.FileName = 'powershell.exe'
     $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     $psi.Verb = 'runas'
+    $psi.UseShellExecute = $true  # required for the 'runas' verb to trigger UAC -- explicit, not relying on the ProcessStartInfo default
     try {
         [Diagnostics.Process]::Start($psi) | Out-Null
     } catch {
@@ -73,10 +83,6 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     }
     exit
 }
-
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-[System.Windows.Forms.Application]::EnableVisualStyles()
 
 # Resolve the script's own directory without trusting $PSScriptRoot (same
 # defensive pattern as heartbeat.ps1/watchdog.ps1 -- $PSScriptRoot has been
@@ -291,6 +297,16 @@ $btnClose.Add_Click({ $form.Close() })
 # (never inline-reimplemented) and inspects its exit code / gateway-state.json
 # / log output for success -- consistent with how remove-gateway.ps1 already
 # reads gateway-state.json rather than guessing what was done.
+#
+# Known UX rough edge, not a correctness bug: DoEvents() inside
+# Write-UiLog/Set-ChecklistState keeps the window repainting BETWEEN steps,
+# but the actual blocking calls within a step (Invoke-WebRequest, msiexec
+# -Wait, WaitForExit()) run synchronously with no DoEvents during them --
+# Windows may show "Not Responding" for the seconds-to-minutes a download or
+# provisioning run takes, even though it's working correctly underneath. A
+# full async/BackgroundWorker rewrite would remove this but adds real
+# concurrency-bug risk that isn't verifiable without a Windows box to test
+# against -- documented trade-off, not an oversight.
 # ---------------------------------------------------------------------------
 
 function Invoke-ChildScript {
@@ -347,34 +363,57 @@ function Step-InstallWireGuard {
         Set-ChecklistState -Key 'wireguard' -State 'ok' -Detail 'already installed'
         return $true
     }
-    Write-UiLog 'Not found -- downloading the official installer from wireguard.com...'
-    # Official, stable download URL for the WireGuard for Windows installer
-    # (documented at https://www.wireguard.com/install/, same source the
-    # README already points a human installer at -- this just automates the
-    # download+silent-install of exactly that).
-    $installerUrl = 'https://download.wireguard.com/windows-client/wireguard-installer.exe'
-    $installerPath = Join-Path $env:TEMP 'wireguard-installer.exe'
+    Write-UiLog 'Not found -- downloading the official WireGuard MSI...'
+    # Uses the MSI directly via msiexec, NOT wireguard-installer.exe's own
+    # flags -- WireGuard's own enterprise docs (git.zx2c4.com/wireguard-windows/
+    # about/docs/enterprise.md) describe wireguard-installer.exe only as a
+    # bootstrapper that "selects the correct MSI... and executes it," and
+    # explicitly do NOT document any silent-install switch for it. Verified
+    # 2026-07-17: no such flag is documented anywhere, so shipping this
+    # installer with a guessed switch (e.g. /S, common for NSIS/Inno but
+    # this bootstrapper is neither) would risk it doing nothing or popping
+    # an unexpected interactive window during what's supposed to be
+    # unattended setup. The docs instead point enterprise deployers at the
+    # MSI + msiexec /quiet + the documented DO_NOT_LAUNCH property -- both
+    # msiexec's silent flags and DO_NOT_LAUNCH are real, stable, documented
+    # behavior, unlike the bootstrapper's flags.
+    #
+    # Version is pinned (1.1, current as of 2026-07-17, verified reachable
+    # via a direct HEAD request against download.wireguard.com) rather than
+    # scraped from the directory listing at runtime -- a stale pin fails
+    # LOUDLY (404, caught below, clear message to install manually) instead
+    # of a scraper silently breaking when the page's HTML changes. Bump this
+    # if WireGuard ships a new version and this starts 404ing.
+    $wgMsiVersion = '1.1'
+    $arch = if ([Environment]::Is64BitOperatingSystem) {
+        if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'amd64' }
+    } else { 'x86' }
+    $installerUrl = "https://download.wireguard.com/windows-client/wireguard-$arch-$wgMsiVersion.msi"
+    $installerPath = Join-Path $env:TEMP "wireguard-$arch-$wgMsiVersion.msi"
     try {
         Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing -TimeoutSec 60
     } catch {
         Set-ChecklistState -Key 'wireguard' -State 'fail' -Detail 'download failed'
-        Write-UiLog "Download failed: $($_.Exception.Message). Install WireGuard for Windows manually from https://www.wireguard.com/install/ and click Start Setup again."
+        Write-UiLog "Download failed from $installerUrl -- $($_.Exception.Message). If WireGuard has released a newer version, this installer's pinned version ($wgMsiVersion) may be stale; check https://download.wireguard.com/windows-client/ for the current filename. Otherwise install WireGuard for Windows manually from https://www.wireguard.com/install/ and click Start Setup again."
         return $false
     }
-    Write-UiLog 'Installing silently (/S)...'
+    Write-UiLog 'Installing silently (msiexec /quiet, DO_NOT_LAUNCH=1)...'
     try {
-        # WireGuard's installer supports /S for a silent, no-UI install
-        # (documented installer behavior for this specific installer).
-        $p = Start-Process -FilePath $installerPath -ArgumentList '/S' -Wait -PassThru
+        # DO_NOT_LAUNCH=1 is the documented MSI property that stops WireGuard's
+        # GUI from popping open right after install (enterprise.md).
+        $msiArgs = "/i `"$installerPath`" /quiet /norestart DO_NOT_LAUNCH=1"
+        $p = Start-Process -FilePath 'msiexec.exe' -ArgumentList $msiArgs -Wait -PassThru
         Start-Sleep -Seconds 3  # installer exits before PATH/services fully settle
         $installed = Get-Command 'wireguard.exe' -ErrorAction SilentlyContinue
-        if ($installed) {
+        # msiexec exit codes: 0 = success, 3010 = success, reboot required.
+        $msiOk = $p.ExitCode -eq 0 -or $p.ExitCode -eq 3010
+        if ($installed -and $msiOk) {
             Set-ChecklistState -Key 'wireguard' -State 'ok' -Detail 'installed'
-            Write-UiLog "Installed: $($installed.Source)"
+            Write-UiLog "Installed: $($installed.Source)$(if ($p.ExitCode -eq 3010) { ' (reboot recommended before provisioning)' })"
             return $true
         } else {
-            Set-ChecklistState -Key 'wireguard' -State 'fail' -Detail "installer exit $($p.ExitCode)"
-            Write-UiLog "wireguard.exe still not found after silent install (installer exit code $($p.ExitCode)). Install manually and retry."
+            Set-ChecklistState -Key 'wireguard' -State 'fail' -Detail "msiexec exit $($p.ExitCode)"
+            Write-UiLog "wireguard.exe still not found after silent install (msiexec exit code $($p.ExitCode)). Install manually from https://www.wireguard.com/install/ and retry."
             return $false
         }
     } catch {
