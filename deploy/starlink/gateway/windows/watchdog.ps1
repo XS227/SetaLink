@@ -119,10 +119,67 @@ if (-not $TunnelAdapterName) {
 
 # --- Exit-path assert helpers (duty 1) ---------------------------------------
 
-function Test-IcsBound {
+function Test-IcsAddress {
     $addr = Get-NetIPAddress -InterfaceAlias $TunnelAdapterName -AddressFamily IPv4 `
         -ErrorAction SilentlyContinue | Where-Object { $_.IPAddress -eq $IcsInternalAddress }
     return [bool]$addr
+}
+
+function Test-IcsBound {
+    # The address alone is NOT sufficient: after the 2026-07-17 reboot the
+    # adapter kept 192.168.137.1 while the ICS binding itself was dead (NAT
+    # off, "net unreachable" for every forwarded packet) and this watchdog
+    # sat false-healthy for hours. Verify the actual sharing bindings too.
+    if (-not (Test-IcsAddress)) { return $false }
+    try {
+        $ns = New-Object -ComObject HNetCfg.HNetShare
+        $pubOk = $false
+        $privOk = $false
+        foreach ($conn in @($ns.EnumEveryConnection)) {
+            try {
+                $props = $ns.NetConnectionProps.Invoke($conn)
+                $cfg = $ns.INetSharingConfigurationForINetConnection.Invoke($conn)
+            } catch { continue }
+            if (-not $cfg.SharingEnabled) { continue }
+            if ($props.Name -eq $StarlinkAdapterName -and $cfg.SharingConnectionType -eq 0) { $pubOk = $true }
+            if ($props.Name -eq $TunnelAdapterName -and $cfg.SharingConnectionType -eq 1) { $privOk = $true }
+        }
+        if (-not ($pubOk -and $privOk)) {
+            Log "ICS binding check: address present but sharing bindings are gone (public=$pubOk private=$privOk) -- treating as amnesia."
+            return $false
+        }
+        return $true
+    } catch {
+        Log "WARN: could not query ICS sharing state via COM ($_) -- falling back to address-presence only."
+        return $true
+    }
+}
+
+function Restart-SharedAccessHard {
+    # A plain Restart-Service can hang forever on 'Waiting for service ... to
+    # stop' (seen live 2026-07-17) -- SharedAccess wedges in StopPending and
+    # never comes down, which would also wedge this watchdog run. Give it a
+    # short grace period, then kill the hosting process (only if SharedAccess
+    # is alone in it) and start fresh.
+    Stop-Service -Name 'SharedAccess' -Force -NoWait -ErrorAction SilentlyContinue
+    for ($i = 0; $i -lt 10; $i++) {
+        if ((Get-Service -Name 'SharedAccess').Status -eq 'Stopped') { break }
+        Start-Sleep -Seconds 1
+    }
+    if ((Get-Service -Name 'SharedAccess').Status -ne 'Stopped') {
+        $svcProc = (Get-CimInstance Win32_Service -Filter "Name='SharedAccess'").ProcessId
+        if ($svcProc) {
+            $tenants = @(Get-CimInstance Win32_Service -Filter "ProcessId=$svcProc")
+            if ($tenants.Count -le 1) {
+                Log "SharedAccess wedged in $((Get-Service SharedAccess).Status) -- killing its host process $svcProc."
+                Stop-Process -Id $svcProc -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+            } else {
+                Log "WARN: SharedAccess wedged but shares process $svcProc with $($tenants.Count - 1) other service(s) -- not killing it."
+            }
+        }
+    }
+    Start-Service -Name 'SharedAccess' -ErrorAction SilentlyContinue
 }
 
 function Assert-Forwarding($alias) {
@@ -163,6 +220,11 @@ function Invoke-IcsBind {
         Log "ERROR: ICS re-bind impossible -- connection not found (public '$StarlinkAdapterName': $([bool]$publicCfg), private '$TunnelAdapterName': $([bool]$privateCfg))."
         return $false
     }
+    # Drop any stale ICS address before enabling: a leftover 192.168.137.1
+    # from a dead binding makes the post-bind wait (and any address-based
+    # check) pass without NAT actually working. ICS re-assigns it on enable.
+    Remove-NetIPAddress -InterfaceAlias $TunnelAdapterName -IPAddress $IcsInternalAddress `
+        -Confirm:$false -ErrorAction SilentlyContinue
     try {
         $publicCfg.EnableSharing(0)   # 0 = ICSSHARINGTYPE_PUBLIC
         $privateCfg.EnableSharing(1)  # 1 = ICSSHARINGTYPE_PRIVATE
@@ -207,7 +269,7 @@ function Rebind-Ics {
         foreach ($svc in 'MpsSvc', 'netman', 'RasMan') {
             Start-Service -Name $svc -ErrorAction SilentlyContinue
         }
-        Restart-Service -Name 'SharedAccess' -Force -ErrorAction SilentlyContinue
+        Restart-SharedAccessHard
         Start-Sleep -Seconds 3
         if (-not (Invoke-IcsBind)) {
             Log "ERROR: ICS bind still failing after service restart. Manual fallback: Wi-Fi properties -> Sharing -> off -> on (select '$TunnelAdapterName') -- with EnableRebootPersistConnection=1 that binding now survives reboots."
@@ -217,7 +279,7 @@ function Rebind-Ics {
     # ICS assigns $IcsInternalAddress to the private adapter asynchronously.
     for ($i = 0; $i -lt 15; $i++) {
         Start-Sleep -Seconds 1
-        if (Test-IcsBound) { return $true }
+        if (Test-IcsAddress) { return $true }
     }
     Log "ERROR: ICS re-bound but '$TunnelAdapterName' never got $IcsInternalAddress within 15s."
     return $false
