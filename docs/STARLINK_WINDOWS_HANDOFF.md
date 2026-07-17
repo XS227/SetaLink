@@ -257,6 +257,73 @@ read that alongside the DECISIONS.md entry, not instead of it.
 
 ---
 
+## 17. 2026-07-17 ~00:30 — ✅✅ E2E VERIFIED (Agent A + Khabat live): Starlink exit works end to end, firewall ON
+
+```
+curl -4 --interface 192.168.137.2 https://ifconfig.me  (from fi-hel)
+→ 209.198.157.28        ← Starlink WAN (CGNAT), stable across repeated runs
+   (fi-hel's own exit is 65.109.183.7 — source proven different)
+~620 KB/s download through the full chain, ~54 ms RTT over the tunnel
+```
+
+Survived Windows Firewall being re-enabled (firewall never filtered the
+*forwarded* traffic — it only blocked replies to the Surface's own
+addresses, which is why ping/DNS against 192.168.137.1 stayed dead even
+while NAT worked).
+
+### The FINAL working configuration (differs from §13/§15 — read this, not those)
+
+**fi-hel `/etc/wireguard/test0.conf`** (backups: `.bak-1099`, `.bak-1090`):
+- `Address = 192.168.137.2/24` — fi-hel is a *client inside ICS's own
+  hardwired subnet*. This is the trick that made ICS NAT the traffic:
+  ICS only translates 192.168.137.0/24, so instead of fighting that
+  (VirtualMachinePlatform/WinNAT/reboot), the tunnel was renumbered INTO it.
+- `Table = off` + `PostUp` policy routing (`from 192.168.137.2 table 99`,
+  `default dev test0 table 99`) — AllowedIPs 0.0.0.0/0 must not touch the
+  main routing table.
+- `[Peer] AllowedIPs = 0.0.0.0/0` — **required**: after ICS de-NAT, replies
+  arrive sourced from arbitrary internet IPs; any /32 here silently drops
+  every reply. (This was a latent bug in the ORIGINAL 10.99/10.90 design —
+  it would have blackholed even with working NAT.)
+- xray `starlink-exit` outbound: `sendThrough: 192.168.137.2`
+  (config.json backups alongside).
+
+**Surface (Windows)**: tunnel `wg-starlink0`, `[Interface] Address` still
+10.90.0.2 (harmless, coexists), ICS-assigned 192.168.137.1 on the same
+adapter, `[Peer] AllowedIPs = 192.168.137.2/32`, ICS: Wi-Fi(Starlink) =
+public → wg-starlink0 = private, forwarding enabled on both adapters.
+
+### Root causes, in the order they were peeled off tonight
+
+1. **Subnet mismatch** (§15): fi-hel spoke 10.99.0.x, Surface 10.90.0.x —
+   cryptokey routing dropped all data silently while handshake stayed green.
+2. **Surface AllowedIPs stale** (10.90.0.1/32): user's GUI edit didn't
+   apply the first time — verify with `wg.exe show`, never trust the edit.
+3. **fi-hel AllowedIPs /32**: return traffic from internet IPs needs 0/0
+   (see above).
+4. **ICS subnet limitation**: ICS only NATs 192.168.137.0/24 → renumber
+   the tunnel into it.
+5. **Toggle amnesia — THE remaining operational fragility**: WireGuard for
+   Windows destroys/recreates the adapter on every Deactivate/Activate.
+   The ICS 192.168.137.1 address AND per-interface forwarding die with it
+   (symptom: `ICMP net unreachable` from 10.90.0.2 for everything). Fix:
+   re-bind ICS (Wi-Fi properties → Sharing → off → on) +
+   `Set-NetIPInterface -InterfaceAlias wg-starlink0 -AddressFamily IPv4
+   -Forwarding Enabled`. **TODO (unbuilt): `watchdog.ps1` should assert
+   both on every run** so a toggle/reboot self-heals. Until then: after
+   any tunnel toggle or reboot, expect to re-do the re-bind by hand.
+
+### What this unblocks
+
+The management plane (lib/starlink.php + heartbeat + enroll + v1 catalog +
+admin tab) can now be deployed to production per the §13 plan — the
+`starlink_wg_endpoint`/`starlink_wg_public_key` settings rows are already
+in the prod DB. The mobile-app data path (VLESS test-UUID `e5e6b692…` on
+fi-hel:8443 → starlink-exit outbound) is configured and `xray -test`-clean;
+first real-device test can happen whenever a client with that UUID dials in.
+
+---
+
 ## 0. URGENT — do this first, before any other work
 
 During this investigation the user was working in a terminal they *believed*
