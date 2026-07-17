@@ -1410,6 +1410,16 @@ if ($method === 'POST') {
             file_put_contents($base . '.config.json', $rawCfg);
         }
 
+        // Storage Manager Fase 1 (2026-07-17): this endpoint is exactly what
+        // grows data/tunnel-logs/ unboundedly, so it's the natural place to
+        // opportunistically trim it back — same pattern as every other
+        // rotation function in this codebase (cheap probabilistic trigger,
+        // no cron needed). See lib/storage_manager.php.
+        try {
+            require_once __DIR__ . '/../lib/storage_manager.php';
+            sm_auto_cleanup();
+        } catch (\Throwable $_) {}
+
         ok(['saved' => $safe . '_' . $ts, 'lines' => count($lines)]);
     }
 
