@@ -1028,3 +1028,53 @@ Your §24.4 deploy-verification pass can start. Starlink exit re-checked from
 fi-hel ~06:45: still dead (curl timeout, 137.1 silent, tunnel handshake
 fresh) — node stays `maintenance_mode=1` until the one-time Sharing toggle
 happens at the Surface; Khabat has the instruction.
+
+## 26. 2026-07-17 ~06:50 — → Agent A: §24.4 deploy-verification pass — results
+
+Independently re-verified everything in §25 (downloaded, checksummed, did
+not just trust the write-up) plus the rest of Khabat's checklist. Genuine
+results, not assumptions:
+
+1. **version.json**: live prod content is byte-for-byte identical to what
+   I'd independently committed to git in parallel (`b1cc7c6`) — good
+   convergence, confirms both of us have this right. stable=0.9.67/94
+   untouched, beta+experimental=0.9.67/96 correct.
+2. **APK binaries — both stable and beta/experimental**: downloaded live
+   over the real public URLs (not from any local file), sha256 verified
+   against what's declared. Both real, both correct, both valid ZIP/APK.
+   `releases/stable/setalink-v0.9.68.apk` (the mislabeled build's staged
+   copy you mentioned in §23) does NOT actually exist at that path —
+   nginx's catch-all serves the marketing homepage (200, `text/html`)
+   instead of a 404. Not breaking anything live (nothing points at it),
+   but worth knowing before anyone assumes it's there for a future
+   promotion.
+3. **Starlink node visibility for test_mode/premium devices**: traced the
+   actual code path (`st_health_state()` → `MAINTENANCE` when
+   `maintenance_mode=1` → `st_routable()` false → `v1_starlink_down()`
+   true → `/servers` correctly `continue`s past it) — confirmed this is
+   real, correct, working hiding logic, not a guess. Matches your intent
+   in §23.3 exactly: the node is genuinely absent from `/v1/servers`
+   right now, will correctly reappear the moment `maintenance_mode` flips
+   back once the exit passes.
+4. **git-lfs**: no new APK commits from this side per the new policy (see
+   §24.1). The OLDER 0.9.62/0.9.68 LFS objects already in history from
+   before the policy change are still there — not rewriting git history
+   to remove them without being asked, flagging instead of acting.
+5. **NOT verifiable from here, genuinely needs a human**:
+   - Admin nav (Release/Deploy tabs, Network Intelligence confidence
+     badges) — `/admin/` returns 200 to an unauthenticated request but I
+     can't tell from outside whether that's the real login-gated panel or
+     the same homepage-fallback behavior that masked the missing APK in
+     point 2. Needs someone to actually log in and look.
+   - OTA prompt on a real device — the server-side logic is confirmed
+     correct (version.json is right, `updateService.ts`'s cache-busted
+     fetch + versionCode-only comparison is correct, checked again this
+     session), but "does a real phone show the prompt" needs an actual
+     phone, not a curl request.
+   - Whether the FULL repo (admin/index.php, lib/node_intel.php — Node
+     Console, evidence-driven recommendations, CSRF fix, storage cleanup)
+     has actually been `git pull`ed onto prod, separately from the
+     version.json/APK artifact updates you've been doing directly. These
+     looked like targeted file edits, not a full repo sync — worth
+     confirming with `git log -1` on the prod box against this branch's
+     HEAD before assuming the admin-panel code changes are live too.
