@@ -418,3 +418,89 @@ than an on-device test would tell us.
 **Not yet verified:** this was written on the VPS (1GB RAM, no local
 builds per house rules) — needs an actual device/simulator pass before
 the flag flips. Nothing here has been type-checked or run.
+
+### 2026-07-17 — Tap-to-Learn mobile contract: `app_category` dimension + ZAR reward framing (needs Agent A spec/decision)
+
+**Requested by:** Khabat, as the named "next milestone" after
+`docs/NODE_INTELLIGENCE_ARCHITECTURE.md` (Genome/Trust/Adaptive
+Routing/Evolution Layer, server-side, `feat/starlink-node-phase1`
+commit `7c71b5a`) — wiring real mobile-app telemetry into that engine so
+users earn Zar while anonymously contributing.
+**Owner of this spec:** written from the backend/`/v1/*` side (my
+territory per `COORDINATION_HUB.md`'s role split). The actual mobile-app
+work (`mobile-app/`) is Agent A's — this is the handshake this doc exists
+for, not an implementation.
+
+**Most of the transport already exists — read this first.** `POST
+/v1/telemetry/connect` with `event=tap` (and `trigger=tap`, `consent=1`,
+plus a `device-` bearer token) already records an anonymous observation
+AND triggers `ni_award_tap_contribution()` — rate-limited to one reward
+per 15 minutes per device, currently crediting the **quota-bonus ledger**
+(`qe_ledger_add()`, `tap_intel_reward_bytes` setting, default 2MB), the
+same mechanism ad-rewards use. **This is not building a reward path from
+scratch — it's specifying the two things that path is still missing.**
+
+#### 1. `app_category` — no contract exists yet, proposing one
+
+Fifth Genome dimension (`docs/NODE_INTELLIGENCE_ARCHITECTURE.md` §7 flags
+this as the one open gap). Proposed field on the existing telemetry POST:
+
+```
+POST /v1/telemetry/connect
+Authorization: Bearer device-<device_id>
+{ ..., "app_category": "streaming" }
+```
+
+**Proposed enum** (client-inferred, not user-declared — asking a user to
+categorize their own traffic is bad UX and adds a decision point to every
+tap): `streaming | messaging | social | gaming | browsing | other`. Open
+question back to Agent A: is there already a signal in the app (active
+foreground app detection, per-profile hints, whatever `probe_telegram`/
+`probe_instagram`'s existing per-app probes are based on) that could set
+this automatically, or does it need new client logic? If inference isn't
+reliable, `"other"` as the default is fine — the dimension degrades
+gracefully to the existing four when absent, per the architecture doc.
+**Not decided:** the exact enum. This is a proposal, not a spec — Agent A
+should counter-propose if the app's actual telemetry surface suggests
+different categories.
+
+#### 2. "Users earn Zar" — needs a decision, not an assumption
+
+Khabat's framing says users earn **Zar**. What's actually wired today
+credits **quota bytes**, not Zar — Zar is a Shahnameh-side, client-local
+concept (per the original Tap-to-Learn commit, `ec8de6d`: *"True ZAR/REAL
+crediting for taps is explicitly NOT built here... no existing
+remote-credit API from this side"*). That's still true. Two ways to close
+this gap, genuinely different in scope:
+
+- **(a) Framing only, no backend change:** the mobile app's UI copy calls
+  the existing quota-bonus reward "Zar" (or converts bytes→a displayed Zar
+  number client-side, cosmetically) without any new server-side crediting
+  path. Cheapest, ships immediately, but Zar shown here wouldn't be the
+  same Zar balance Shahnameh tracks — two numbers that only coincidentally
+  share a name.
+- **(b) Real Zar crediting:** a new integration between `/v1/telemetry/
+  connect`'s reward path and Shahnameh's actual Zar ledger — needs a
+  contract with Agent B (Shahnameh/ecosystem owner per the role split),
+  not something this doc can spec unilaterally since it's Agent B's
+  system. Bigger scope: auth between systems, idempotency, and reconciling
+  Shahnameh's own reward/anti-abuse rules with `ni_award_tap_contribution`'s
+  15-minute cooldown.
+
+**Not deciding this here** — flagging it before Agent A builds UI copy
+that implies (b) when only (a) exists, or vice versa. Khabat: which one?
+
+#### 3. Sampling / batching (original brief: 30-60s windows)
+
+Server-side rate limiting (`ni_telemetry_gate`'s per-IP/minute cap,
+`ni_award_tap_contribution`'s 15-minute reward cooldown) already bounds
+worst-case volume regardless of client cadence, so this is a
+recommendation, not a hard requirement: batch tap-triggered observations
+client-side into a single `/v1/telemetry/connect` call per ~30-60s
+connected window rather than one call per tap, per the original brief.
+Reduces request volume; does not change server-side behavior either way.
+
+**Status:** spec only. Nothing in `mobile-app/` has been touched. Server
+side already tolerates `app_category`'s absence and either reward framing
+choice without further backend work — (b) is the only path here that
+would require new backend work, and only after Agent B scopes it.
