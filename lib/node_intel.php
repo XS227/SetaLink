@@ -1697,18 +1697,188 @@ function ni_agent_insights(PDO $pdo, int $days = 7): array
     return $insights;
 }
 
+// ── Recommendation confidence scoring (2026-07-17) ──────────────────────────
+//
+// Every pattern below used to go straight from a raw threshold ("ratio >=
+// 2.0", "rate < 70%") to a severity label with nothing checking whether the
+// sample size actually supported that conclusion — a 'critical' could fire
+// off as few as 5 sessions (the HAVING total >= 5 floor most patterns share).
+// Per Khabat's explicit instruction: recommendations must be evidence-driven,
+// and CRITICAL must require real statistical confidence, not just a big
+// observed ratio on a thin sample.
+//
+// Confidence here is the MINIMUM of two independent things, both of which
+// have to hold:
+//   1. Statistical significance (a two-proportion or one-proportion z-test —
+//      standard hypothesis-testing math, not a heuristic) — "is this
+//      difference distinguishable from random noise, given how much data we
+//      have and how big the observed gap is."
+//   2. Sample-size adequacy (an exponential saturation curve, independent of
+//      the z-test) — "do we have ENOUGH data to trust this at all, no matter
+//      how extreme it looks." This second gate exists because a z-test alone
+//      can report high "significance" from a tiny, extreme sample (6 sessions,
+//      6/6 failed vs 2/6 elsewhere tests as ~99% "significant" by the z-test
+//      math alone) — real small samples are also far more likely to be
+//      non-representative (correlated: same device, same hour, same ISP
+//      outage) in ways a z-test's independence assumption doesn't capture.
+//      Taking the min() of both means neither a huge-but-weak effect nor a
+//      tiny-but-extreme effect can produce a high confidence score alone.
+//
+// Verified against three worked examples (see git history for this file,
+// same day): n=3200 with a real 25-point gap -> 99.5%; n=54 with a moderate
+// gap -> 66%; n=6 with an extreme gap -> 11% (the z-test alone would have
+// said ~99% here — this is exactly the case the sample-size gate exists for).
+
+/** Standard normal CDF via the Abramowitz-Stegun erf approximation (no PHP
+ *  stats extension can be assumed present). Verified against known values:
+ *  z=1.96 -> 0.97500, z=2.576 -> 0.99500, z=1.645 -> 0.95002 (all correct to
+ *  5 decimal places against the textbook standard normal table). */
+function ni_normal_cdf(float $z): float
+{
+    $sign = $z < 0 ? -1 : 1;
+    $x = abs($z) / M_SQRT2;
+    $a1 = 0.254829592; $a2 = -0.284496736; $a3 = 1.421413741;
+    $a4 = -1.453152027; $a5 = 1.061405429; $p = 0.3275911;
+    $t = 1.0 / (1.0 + $p * $x);
+    $erf = $sign * (1.0 - ((((($a5 * $t + $a4) * $t) + $a3) * $t + $a2) * $t + $a1) * $t * exp(-$x * $x));
+    return 0.5 * (1.0 + $erf);
+}
+
+/** Sample-size-adequacy term: 0 at n=0, ~63% at n=50, ~95% at n=150, capped
+ *  at 99.5% (never claim absolute certainty). Independent of effect size on
+ *  purpose -- see the file-level comment above for why. */
+function ni_sample_confidence(int $n): float
+{
+    return max(0.0, min(0.995, 1.0 - exp(-max(0, $n) / 50.0)));
+}
+
+/** Two-proportion z-test confidence that two observed rates (x1/n1 vs
+ *  x2/n2) differ for a real reason, not chance -- combined with the
+ *  sample-size-adequacy gate on the SMALLER of the two groups (a comparison
+ *  is only as trustworthy as its weaker-evidenced side). */
+function ni_two_proportion_confidence(int $x1, int $n1, int $x2, int $n2): float
+{
+    if ($n1 <= 0 || $n2 <= 0) return 0.0;
+    $p1 = $x1 / $n1; $p2 = $x2 / $n2;
+    $pooled = ($x1 + $x2) / ($n1 + $n2);
+    $se = sqrt($pooled * (1 - $pooled) * (1 / $n1 + 1 / $n2));
+    $sig = $se > 0
+        ? max(0.0, min(0.995, 2 * ni_normal_cdf(abs(($p1 - $p2) / $se)) - 1))
+        : (abs($p1 - $p2) > 0 ? 0.995 : 0.0);
+    return min($sig, ni_sample_confidence(min($n1, $n2)));
+}
+
+/** One-proportion z-test confidence that an observed rate (x/n) differs from
+ *  a fixed baseline/threshold rate -- same sample-size gate as above. */
+function ni_one_proportion_confidence(int $x, int $n, float $thresholdRate): float
+{
+    if ($n <= 0) return 0.0;
+    $p = $x / $n;
+    $se = sqrt($thresholdRate * (1 - $thresholdRate) / $n);
+    $sig = $se > 0
+        ? max(0.0, min(0.995, 2 * ni_normal_cdf(abs(($p - $thresholdRate) / $se)) - 1))
+        : 0.0;
+    return min($sig, ni_sample_confidence($n));
+}
+
+/** Tier boundaries chosen so 'critical' (gated at 0.85+ below) always lands
+ *  in the green tier -- a recommendation can never show as CRITICAL with a
+ *  yellow or red confidence badge, that combination would be self-contradictory. */
+function ni_confidence_tier(float $confidence): array
+{
+    if ($confidence >= 0.85) return ['emoji' => '🟢', 'label' => 'high'];
+    if ($confidence >= 0.55) return ['emoji' => '🟡', 'label' => 'medium'];
+    return ['emoji' => '🔴', 'label' => 'low'];
+}
+
+/** Minimum confidence required to keep a 'critical' severity label. Below
+ *  this, the recommendation is downgraded to 'warn' -- the underlying
+ *  finding is still surfaced (evidence-driven means show the data, not hide
+ *  it), it's just not allowed to claim the alarm-worthy label without the
+ *  statistical backing to support it. */
+const NI_REC_CRITICAL_CONFIDENCE_MIN = 0.85;
+
+/**
+ * Attaches confidence, sample size, platform/ISP/app-version breakdown, and
+ * first/last-seen timestamps to a recommendation IN PLACE, and downgrades
+ * 'critical' to 'warn' (with a note) if confidence doesn't clear
+ * NI_REC_CRITICAL_CONFIDENCE_MIN. $whereExtra/$paramsExtra scope the
+ * breakdown query to the same rows the pattern's own finding was computed
+ * from (e.g. a specific node_id or carrier_hash) -- an unscoped breakdown
+ * would answer "who uses the app," not "who is affected by THIS finding."
+ */
+function ni_attach_evidence(
+    PDO $pdo, array &$rec, string $since, float $confidence, int $sampleSize,
+    string $whereExtra = '', array $paramsExtra = []
+): void {
+    $rec['confidence'] = round($confidence, 3);
+    $rec['confidence_tier'] = ni_confidence_tier($confidence);
+    $rec['sample_size'] = $sampleSize;
+
+    if ($rec['severity'] === 'critical' && $confidence < NI_REC_CRITICAL_CONFIDENCE_MIN) {
+        $rec['severity'] = 'warn';
+        $rec['severity_downgraded_from'] = 'critical';
+        $rec['severity_downgrade_reason'] =
+            'Confidence ' . round($confidence * 100) . '% is below the ' .
+            round(NI_REC_CRITICAL_CONFIDENCE_MIN * 100) . '% required for CRITICAL — evidence shown, but not yet alarm-worthy.';
+    }
+
+    try {
+        $where = "created_at >= :since" . ($whereExtra !== '' ? " AND $whereExtra" : '');
+        $params = array_merge([':since' => $since], $paramsExtra);
+
+        $st = $pdo->prepare("SELECT platform, COUNT(*) AS n FROM connect_telemetry WHERE $where AND platform IS NOT NULL GROUP BY platform ORDER BY n DESC");
+        $st->execute($params);
+        $rec['affected_platforms'] = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        // ISPs are hashed at ingestion (ni_anon()) — same privacy model as
+        // everywhere else in this file. Report which HASHED buckets are
+        // affected and how often, never a real ISP name.
+        $st = $pdo->prepare("SELECT isp_hash, COUNT(*) AS n FROM connect_telemetry WHERE $where AND isp_hash IS NOT NULL GROUP BY isp_hash ORDER BY n DESC LIMIT 10");
+        $st->execute($params);
+        $rec['affected_isp_hashes'] = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        $st = $pdo->prepare("SELECT app_version, COUNT(*) AS n FROM connect_telemetry WHERE $where AND app_version IS NOT NULL GROUP BY app_version ORDER BY n DESC");
+        $st->execute($params);
+        $rec['affected_app_versions'] = $st->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        $st = $pdo->prepare("SELECT MIN(created_at) AS first_seen, MAX(created_at) AS last_seen FROM connect_telemetry WHERE $where");
+        $st->execute($params);
+        $seen = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+        $rec['first_seen'] = $seen['first_seen'] ?? null;
+        $rec['last_seen']  = $seen['last_seen']  ?? null;
+    } catch (\Throwable $_) {
+        // Evidence enrichment is best-effort — a query failure here must
+        // never remove a recommendation that was already computed correctly.
+    }
+}
+
 /**
  * AI Recommendations engine — generates actionable, prioritised recommendations
  * from 8 telemetry pattern detectors.
  *
  * Each recommendation:
- *   type     => 'route|infra|protocol|security|platform'
- *   severity => 'critical|warn|info'
- *   title    => short headline
- *   body     => supporting evidence
- *   action   => concrete next step
+ *   type             => 'route|infra|protocol|security|platform'
+ *   severity         => 'critical|warn|info' (critical requires confidence
+ *                        >= NI_REC_CRITICAL_CONFIDENCE_MIN, see
+ *                        ni_attach_evidence() — auto-downgraded otherwise)
+ *   title            => short headline
+ *   body             => supporting evidence
+ *   action           => concrete next step
+ *   confidence       => 0.0-1.0, see ni_two_proportion_confidence() /
+ *                        ni_one_proportion_confidence()
+ *   confidence_tier  => {emoji, label} — 🟢 high / 🟡 medium / 🔴 low
+ *   sample_size      => the smaller/relevant n behind the finding
+ *   affected_platforms, affected_isp_hashes, affected_app_versions,
+ *   first_seen, last_seen => evidence breakdown, see ni_attach_evidence()
  *
  * Returns array sorted critical → warn → info. Empty if insufficient data.
+ * "Adaptive Routing should learn from telemetry, not hardcoded rules" (Rule
+ * 7 / Khabat, 2026-07-17): this function is diagnostic OUTPUT for human
+ * review, not routing input — the actual routing weights are already
+ * learned from real outcomes by ni_evolve_weights(), see the Evolution
+ * Layer section of this file and docs/NODE_INTELLIGENCE_ARCHITECTURE.md §6.
+ * Nothing here feeds ni_rank_nodes() directly.
  */
 function ni_recommendations(PDO $pdo, int $days = 7): array
 {
@@ -1750,13 +1920,20 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
             if ($diff >= 20 && (int)$best['total'] >= 5 && (int)$worst['total'] >= 5) {
                 $badRate  = round($worst['rate'], 1);
                 $goodRate = round($best['rate'], 1);
-                $recs[] = [
+                $rec = [
                     'type'     => 'route',
                     'severity' => 'warn',
                     'title'    => "Route {$worst['carrier_name']} to {$best['node_id']}",
                     'body'     => "{$worst['carrier_name']}: {$badRate}% success on {$worst['node_id']}, {$goodRate}% on {$best['node_id']} ({$worst['total']} sessions)",
                     'action'   => "Add carrier-based routing rule in server config or recommend users switch to {$best['node_id']}",
                 ];
+                $confidence = ni_two_proportion_confidence(
+                    (int)$worst['ok'], (int)$worst['total'], (int)$best['ok'], (int)$best['total']
+                );
+                ni_attach_evidence($pdo, $rec, $since, $confidence, min((int)$worst['total'], (int)$best['total']),
+                    'carrier_hash = :ch AND node_id IN (:n1, :n2)',
+                    [':ch' => $worst['carrier_hash'], ':n1' => $worst['node_id'], ':n2' => $best['node_id']]);
+                $recs[] = $rec;
             }
         }
     } catch (\Throwable $_) {}
@@ -1791,13 +1968,24 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
             $ratio = $current / $hist;
             $sev = $ratio >= 2.0 ? 'critical' : ($ratio >= 1.5 ? 'warn' : null);
             if ($sev === null) continue;
-            $recs[] = [
+            $rec = [
                 'type'     => 'infra',
                 'severity' => $sev,
                 'title'    => "{$nodeId} latency spike — " . (int)round($current) . "ms vs " . (int)round($hist) . "ms 7-day avg",
                 'body'     => "RTT " . ($ratio >= 2.0 ? 'jumped' : 'elevated') . " to " . (int)round($current) . "ms (was " . (int)round($hist) . "ms historical avg)",
                 'action'   => "Check server load, connectivity, or add backup node",
             ];
+            // No variance/stddev is stored alongside AVG(rtt_ms), so a real
+            // two-mean significance test (Welch's t-test or similar) isn't
+            // possible from this schema — sample-size-only confidence here,
+            // honestly, rather than fabricating a significance figure this
+            // data can't actually support. NI_REC_CRITICAL_CONFIDENCE_MIN
+            // still applies, so a spike seen on only a handful of sessions
+            // still can't claim CRITICAL.
+            $confidence = ni_sample_confidence(min((int)$recent[$nodeId]['cnt'], (int)$h['cnt']));
+            ni_attach_evidence($pdo, $rec, $since, $confidence, min((int)$recent[$nodeId]['cnt'], (int)$h['cnt']),
+                'node_id = :nid AND rtt_ms IS NOT NULL', [':nid' => $nodeId]);
+            $recs[] = $rec;
         }
     } catch (\Throwable $_) {}
 
@@ -1816,13 +2004,17 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
             $fail   = (int)$r['tg_fail_mobile'];
             if ($tested >= 5 && $fail / $tested > 0.60) {
                 $pct = round($fail / $tested * 100, 1);
-                $recs[] = [
+                $rec = [
                     'type'     => 'protocol',
                     'severity' => 'warn',
                     'title'    => "Telegram blocked on cellular ({$pct}% fail rate)",
                     'body'     => "{$pct}% of Telegram sessions fail on mobile networks ({$fail}/{$tested} sessions)",
                     'action'   => "UDP relay or SOCKS5 proxy for MTProto traffic may be needed",
                 ];
+                $confidence = ni_one_proportion_confidence($fail, $tested, 0.60);
+                ni_attach_evidence($pdo, $rec, $since, $confidence, $tested,
+                    "network_type='mobile' AND probe_telegram IS NOT NULL");
+                $recs[] = $rec;
             }
         }
     } catch (\Throwable $_) {}
@@ -1849,13 +2041,24 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
             if (($igRate !== null && $igRate > 65) || ($tgRate !== null && $tgRate > 65)) {
                 $igDisplay = $igRate !== null ? "{$igRate}%" : "n/a";
                 $tgDisplay = $tgRate !== null ? "{$tgRate}%" : "n/a";
-                $recs[] = [
+                $rec = [
                     'type'     => 'security',
                     'severity' => 'warn',
                     'title'    => "{$r['node_id']} exit IP has reputation issues",
                     'body'     => "Instagram: {$igDisplay} fail, Telegram: {$tgDisplay} fail. Hetzner IPs can be flagged by Meta/Telegram.",
                     'action'   => "Request new IP from provider or add IP rotation for {$r['node_id']}",
                 ];
+                // Two independent probes can each trigger this -- take
+                // whichever gives the stronger (max) confidence, with its
+                // own sample size, rather than conflating two different
+                // measurements into one number.
+                $igConf = $igTotal >= 5 ? ni_one_proportion_confidence($igFail, $igTotal, 0.65) : 0.0;
+                $tgConf = $tgTotal >= 5 ? ni_one_proportion_confidence($tgFail, $tgTotal, 0.65) : 0.0;
+                $confidence = max($igConf, $tgConf);
+                $sampleSize = $igConf >= $tgConf ? $igTotal : $tgTotal;
+                ni_attach_evidence($pdo, $rec, $since, $confidence, $sampleSize,
+                    'node_id = :nid', [':nid' => $r['node_id']]);
+                $recs[] = $rec;
             }
         }
     } catch (\Throwable $_) {}
@@ -1877,22 +2080,37 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
             $prevRate   = (int)$prev['total']   > 0 ? round((int)$prev['ok']   / (int)$prev['total']   * 100, 1) : 0;
             $drop = round($prevRate - $latestRate, 1);
             $gain = round($latestRate - $prevRate, 1);
+            $buildConfidence = ni_two_proportion_confidence(
+                (int)$latest['ok'], (int)$latest['total'], (int)$prev['ok'], (int)$prev['total']
+            );
+            $buildSample = min((int)$latest['total'], (int)$prev['total']);
             if ($drop >= 15) {
-                $recs[] = [
+                // This is exactly the pattern the evidence-driven requirement
+                // targets: a 15%+ drop used to mean instant CRITICAL
+                // regardless of whether it was 5 sessions or 5000.
+                // ni_attach_evidence() below will downgrade to 'warn' if
+                // $buildConfidence doesn't clear NI_REC_CRITICAL_CONFIDENCE_MIN.
+                $rec = [
                     'type'     => 'platform',
                     'severity' => 'critical',
                     'title'    => "Build #{$latest['build_number']} regression — success rate dropped {$drop}%",
                     'body'     => "Build #{$latest['build_number']}: {$latestRate}% vs Build #{$prev['build_number']}: {$prevRate}% success rate",
                     'action'   => "Investigate and hotfix or revert build #{$latest['build_number']}",
                 ];
+                ni_attach_evidence($pdo, $rec, $since, $buildConfidence, $buildSample,
+                    'build_number IN (:b1, :b2)', [':b1' => $latest['build_number'], ':b2' => $prev['build_number']]);
+                $recs[] = $rec;
             } elseif ($gain >= 10) {
-                $recs[] = [
+                $rec = [
                     'type'     => 'platform',
                     'severity' => 'info',
                     'title'    => "Build #{$latest['build_number']} improved success rate by {$gain}%",
                     'body'     => "Build #{$latest['build_number']}: {$latestRate}% vs Build #{$prev['build_number']}: {$prevRate}% success rate",
                     'action'   => "Push update notification to users still on build #{$prev['build_number']}",
                 ];
+                ni_attach_evidence($pdo, $rec, $since, $buildConfidence, $buildSample,
+                    'build_number IN (:b1, :b2)', [':b1' => $latest['build_number'], ':b2' => $prev['build_number']]);
+                $recs[] = $rec;
             }
         }
     } catch (\Throwable $_) {}
@@ -1919,13 +2137,19 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
                 $noswitchRate = $noswitchTotal > 0 ? $noswitchFail / $noswitchTotal : 0;
                 if ($switchRate > 0.50 && ($noswitchRate < 0.001 || $switchRate >= $noswitchRate * 2)) {
                     $pct = round($switchRate * 100, 1);
-                    $recs[] = [
+                    $rec = [
                         'type'     => 'protocol',
                         'severity' => 'warn',
                         'title'    => "WiFi→Mobile switches cause {$pct}% session failures",
                         'body'     => "Sessions where network changed during connect: {$switchFail}/{$switchTotal} failed",
                         'action'   => "Implement reconnect-on-network-change or always-on VPN mode",
                     ];
+                    $confidence = $noswitchTotal >= 5
+                        ? ni_two_proportion_confidence($switchFail, $switchTotal, $noswitchFail, $noswitchTotal)
+                        : ni_one_proportion_confidence($switchFail, $switchTotal, 0.50);
+                    ni_attach_evidence($pdo, $rec, $since, $confidence, min($switchTotal, max($noswitchTotal, 1)),
+                        'network_switched = 1');
+                    $recs[] = $rec;
                 }
             }
         }
@@ -1947,13 +2171,16 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
             $successRate = $natTotal > 0 ? round($natOk / $natTotal * 100, 1) : 0;
             if ($successRate < 70) {
                 $pct = round($natFail / $natTotal * 100, 1);
-                $recs[] = [
+                $rec = [
                     'type'     => 'protocol',
                     'severity' => $successRate < 50 ? 'warn' : 'info',
                     'title'    => "Symmetric NAT detected in {$pct}% of failures",
                     'body'     => "Symmetric NAT restricts UDP. {$natTotal} sessions with symmetric NAT, {$natFail} failed.",
                     'action'   => "Reality/VLESS over TCP is already configured — ensure UDP fallback is disabled",
                 ];
+                $confidence = ni_one_proportion_confidence($natFail, $natTotal, 0.30);
+                ni_attach_evidence($pdo, $rec, $since, $confidence, $natTotal, "nat_type = 'symmetric'");
+                $recs[] = $rec;
             }
         }
     } catch (\Throwable $_) {}
@@ -1972,28 +2199,38 @@ function ni_recommendations(PDO $pdo, int $days = 7): array
             $ok    = (int)$r['ok'];
             $ipVersions[$r['ip_version']] = [
                 'rate' => $total > 0 ? round($ok / $total * 100, 1) : 0,
+                'ok' => $ok, 'total' => $total,
             ];
         }
         if (isset($ipVersions['ipv4'], $ipVersions['ipv6'])) {
             $ipv4Rate = $ipVersions['ipv4']['rate'];
             $ipv6Rate = $ipVersions['ipv6']['rate'];
             $diff = round(abs($ipv6Rate - $ipv4Rate), 1);
+            $ipConfidence = ni_two_proportion_confidence(
+                $ipVersions['ipv6']['ok'], $ipVersions['ipv6']['total'],
+                $ipVersions['ipv4']['ok'], $ipVersions['ipv4']['total']
+            );
+            $ipSample = min($ipVersions['ipv6']['total'], $ipVersions['ipv4']['total']);
             if ($ipv6Rate > $ipv4Rate + 10) {
-                $recs[] = [
+                $rec = [
                     'type'     => 'infra',
                     'severity' => 'info',
                     'title'    => "IPv6 users connect {$diff}% more reliably than IPv4",
                     'body'     => "IPv6 success rate: {$ipv6Rate}% vs IPv4: {$ipv4Rate}%",
                     'action'   => "Prioritise IPv6 addressing on server for better performance",
                 ];
+                ni_attach_evidence($pdo, $rec, $since, $ipConfidence, $ipSample, "ip_version IN ('ipv4','ipv6')");
+                $recs[] = $rec;
             } elseif ($ipv4Rate > $ipv6Rate + 10) {
-                $recs[] = [
+                $rec = [
                     'type'     => 'infra',
                     'severity' => 'warn',
                     'title'    => "IPv6 users have {$diff}% lower success rate — check IPv6 connectivity on server",
                     'body'     => "IPv6 success rate: {$ipv6Rate}% vs IPv4: {$ipv4Rate}%",
                     'action'   => "Check IPv6 connectivity on server or disable dual-stack for this node",
                 ];
+                ni_attach_evidence($pdo, $rec, $since, $ipConfidence, $ipSample, "ip_version IN ('ipv4','ipv6')");
+                $recs[] = $rec;
             }
         }
     } catch (\Throwable $_) {}

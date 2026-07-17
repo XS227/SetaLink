@@ -2697,16 +2697,38 @@ views.intel = {
     const typeIcon = t => ({route:'🔀',infra:'🖥',protocol:'📡',security:'🔒',platform:'📱'})[t]||'•';
 
     el.innerHTML = `<div style="display:flex;flex-direction:column;gap:.6rem">`
-      + rows.map(r => `
+      + rows.map(r => {
+        // Evidence-driven display (2026-07-17): every recommendation now
+        // carries a statistical confidence score + the raw evidence behind
+        // it (sample size, affected platforms/ISPs/app versions, first/last
+        // seen) — see ni_attach_evidence()/ni_two_proportion_confidence() in
+        // lib/node_intel.php. Shown up front, not buried, per Khabat's
+        // explicit "must remain evidence-driven" instruction.
+        const tier = r.confidence_tier || {emoji:'⚪',label:'unknown'};
+        const confPct = r.confidence != null ? Math.round(r.confidence * 100) : null;
+        const platforms = Object.entries(r.affected_platforms || {}).map(([k,v]) => `${esc(k)} (${v})`).join(', ') || '—';
+        const versions   = Object.entries(r.affected_app_versions || {}).map(([k,v]) => `${esc(k)} (${v})`).join(', ') || '—';
+        const ispCount   = Object.keys(r.affected_isp_hashes || {}).length;
+        const downgradeNote = r.severity_downgraded_from
+          ? `<div style="font-size:.7rem;color:#fbbf24;margin-top:.3rem">⚠ Downgraded from ${esc(r.severity_downgraded_from).toUpperCase()}: ${esc(r.severity_downgrade_reason||'')}</div>`
+          : '';
+        return `
         <div style="border-left:3px solid ${sev(r.severity)};background:rgba(255,255,255,.03);border-radius:0 6px 6px 0;padding:.65rem .85rem">
-          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap">
             <span style="font-size:.68rem;font-weight:700;color:${sev(r.severity)};letter-spacing:.04em">${sevLabel(r.severity)}</span>
             <span style="font-size:.7rem;color:var(--muted-2);background:rgba(255,255,255,.06);padding:1px 6px;border-radius:3px">${typeIcon(r.type)} ${esc((r.type||'').toUpperCase())}</span>
             <span style="font-size:.85rem;font-weight:700;color:var(--text)">${esc(r.title)}</span>
+            ${confPct != null ? `<span style="font-size:.72rem;font-weight:700;margin-left:auto;white-space:nowrap">${tier.emoji} ${confPct}% confidence (${r.sample_size ?? '?'} sessions)</span>` : ''}
           </div>
           <div style="font-size:.8rem;color:var(--muted);margin-bottom:.3rem">${esc(r.body)}</div>
           <div style="font-size:.75rem;color:var(--accent)">→ ${esc(r.action)}</div>
-        </div>`).join('')
+          ${downgradeNote}
+          <div style="font-size:.7rem;color:var(--muted-2);margin-top:.4rem;padding-top:.4rem;border-top:1px solid rgba(255,255,255,.06)">
+            Platforms: ${platforms} &nbsp;·&nbsp; App versions: ${versions} &nbsp;·&nbsp; ISPs affected: ${ispCount}
+            ${r.first_seen ? `&nbsp;·&nbsp; First seen: ${esc(r.first_seen)} &nbsp;·&nbsp; Last seen: ${esc(r.last_seen||'')}` : ''}
+          </div>
+        </div>`;
+      }).join('')
       + '</div>';
   },
   async loadDiagSessions() {
