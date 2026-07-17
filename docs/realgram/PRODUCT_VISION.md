@@ -1,5 +1,19 @@
 # RealGram — Product Vision
 
+> **⚠️ 2026-07-17 — read `docs/ADMIN_NOC_ROADMAP.md` § 6 before building
+> anything messaging-related.** Khabat's § 6 spec ("REALGRAM COMMUNITY &
+> MESSAGING") describes RealGram as its **own native messaging system**
+> (RealGram-native identity, DMs, clan chats — Telegram is an optional
+> entry point/bot-link only, explicitly **not** mirroring a user's real
+> Telegram chats). That is a different product shape than this document's
+> "log in with your existing Telegram account, see your existing Telegram
+> chats inside RealGram" premise below. This conflict has not been
+> resolved — flag it to Khabat rather than picking one silently. § 6 is
+> under a coding freeze pending data-model/migration-plan/wireframe
+> approval (§ 6.12), so nothing needs reconciling by a specific date, but
+> whoever eventually builds either direction should get this settled
+> first.
+
 ## The promise
 
 **"Open RealGram. Your Telegram works."**

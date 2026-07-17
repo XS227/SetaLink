@@ -220,7 +220,175 @@ av alle SEO/Analytics-sider.
 
 ---
 
-## § 5 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
+## § 6 — REALGRAM COMMUNITY & MESSAGING (ny hovedfunksjon)
+
+Lagt til 2026-07-17 på Khabats eksplisitte instruks, **før** videre
+implementering av dette området.
+
+**Kontekst:** dagens "Inbox" er ikke en meldingstjeneste — det er i praksis
+en support-ticketliste med anonyme tekniske ID-er (`SL-227-xxxx`). Dette
+er kjernefunksjonen som gjør ReaLink til **RealGram**: bygges om fra
+bunnen, ikke pusses på.
+
+> **🚫 Kodesperre:** ingen kode for § 6 skrives før alle seks punktene i
+> § 6.12 "Før koding" er levert og eksplisitt godkjent av Khabat. Denne
+> seksjonen legges inn i roadmapen *nå* nettopp for å unngå at noen
+> begynner å implementere før datamodell, ID-sammenslåing, migreringsplan
+> og wireframes er på plass — jf. § 0.3 (roadmapen er eneste sannhetskilde,
+> nytt arbeid legges inn her før koding starter, ikke etterpå).
+
+### 6.1 Felles identitet
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Én permanent intern bruker-ID som forener RealGram user ID, VPN ID, Shahnameh player ID, referral/clan ID | Not started | — | — | — | — | — | venter på § 6.12 (datamodell + ID-sammenslåingsplan) |
+| Profilfelter: display name, unikt @handle, avatar, Shahnameh-persona/helt, level/XP, clan, inviterte venner, online-status, språk, REAL/ZAR-balanse, tilgjengelig kvote | Not started | — | — | — | — | — | § 6.12 |
+| Skjul tekniske `SL-227-xxxx`-ID-er fra primær UI (kun synlig i profil/admin) | Not started | — | — | — | — | — | § 6.12 |
+| Valgfri Telegram-ID-kobling til profilen (ikke eneste identitet) | Not started | — | — | — | — | — | § 6.12, § 6.7 |
+
+### 6.2 RealGram hovedskjerm
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Søkefelt | Not started | — | — | — | — | — | § 6.12 |
+| Samtaleliste: avatar, navn/@handle, siste melding, tidspunkt, ulest badge, levert/lest-status, typing indicator, online-status, pinned, mute-status | Not started | — | — | — | — | — | § 6.12 |
+| Ny samtale-knapp | Not started | — | — | — | — | — | § 6.12 |
+| Filtre: Alle / Venner / Clan / Shahnameh / Support / Grupper | Not started | — | — | — | — | — | § 6.12 |
+| Support = kun én chat i systemet, ikke hele meldingstjenesten | Not started | — | — | — | — | — | § 6.12 |
+
+### 6.3 Direktemeldinger
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Start samtale med: clan-medlemmer, venner, inviterte, nylige medspillere, Shahnameh-ranking/community, @handle eller QR | Not started | — | — | — | — | — | § 6.12 |
+| Tekst, emoji, svar, redigering, sletting, kopiering, intern videresending | Not started | — | — | — | — | — | § 6.12 |
+| Bilder; filer (senere, Fase 3) | Not started | — | — | — | — | — | § 6.12, § 6.11 Fase 3 |
+| Delivered/read-status, typing-status, online/last seen | Not started | — | — | — | — | — | § 6.12 |
+| Blokkering og rapportering | Not started | — | — | — | — | — | § 6.10 |
+| Live-oppdatering via WebSocket (eller tilsvarende) — ingen refresh-følelse | Not started | — | — | — | — | — | § 6.12 |
+
+### 6.4 Shahnameh Community
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Shahnameh-profil flettet med VPN/RealGram-profil (felles ID, § 6.1) | Not started | — | — | — | — | — | § 6.1, § 6.12 |
+| Fra spillerprofil: se helt/persona, level/chapter-progress, clan, achievements | Not started | — | — | — | — | — | § 6.12 |
+| Fra spillerprofil: legg til venn, send melding, inviter til clan, send datakvote, send REAL/ZAR (når økonomien tillater), utfordre/inviter til aktivitet (senere) | Not started | — | — | — | — | — | § 6.6 (kvote/REAL), § 6.12 |
+| Game-fane Community-del: Clan chat, Friends, Nearby/online warriors, Leaderboard, Recent players, Invitations, Community events | Not started | — | — | — | — | — | § 6.12 |
+
+### 6.5 Clans og grupper
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Automatisk clan group chat + announcement channel per clan | Not started | — | — | — | — | — | § 6.12 |
+| Medlemsliste, roller (owner/commander/moderator/member) | Not started | — | — | — | — | — | § 6.12 |
+| Invite link/code, clan-avatar og navn | Not started | — | — | — | — | — | § 6.12 |
+| Shared achievements, referral progress; clan data pool (eventuelt, senere) | Not started | — | — | — | — | — | § 6.12 |
+| Gruppesamtaler: adminroller, festede meldinger, medlemmer, invitasjoner, mute, rapportering, unread count | Not started | — | — | — | — | — | § 6.12 |
+
+### 6.6 Sende datakvote ("Send data")
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Flyt: velg mottaker → velg mengde → vis egen kvote → bekreft → sikker ledger-transaksjon → systemmelding i chat ("Du sendte 500 MB") → push + saldo-oppdatering hos mottaker | Not started | — | — | — | — | — | § 6.12, sikker backend-ledger (se krav) |
+| Atomisk transaksjon, ingen dobbeltbruk | Not started | — | — | — | — | — | — |
+| Rate limiting, min/maks | Not started | — | — | — | — | — | — |
+| Anti-fraud | Not started | — | — | — | — | — | — |
+| Historikk i admin | Not started | — | — | — | — | — | knyttes til § 3 admin-arbeid |
+| Remote deaktiverings-bryter | Not started | — | — | — | — | — | — |
+| Tydelig skille kjøpt/opptjent/overførbar kvote (om nødvendig) | Not started | — | — | — | — | — | — |
+
+**Hard regel:** dette skal **ikke** implementeres som en visuell mockup —
+backend-ledgeren må være sikker og testet før funksjonen settes `Live`
+(§ 0.1 punkt 6 gjelder strengt her: "verifisert med ekte data" betyr en
+ekte, testet pengetransaksjon, ikke en UI som later som).
+
+### 6.7 Telegram-samspill
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Inngang A: start via Telegram-bot | Not started | — | — | — | — | — | § 6.12 |
+| Inngang B: start via RealGram-appen | Not started | — | — | — | — | — | § 6.12 |
+| Inngang C: koble Telegram-konto til RealGram-profil (senere) | Not started | — | — | — | — | — | § 6.1, § 6.12 |
+| RealGram og Shahnameh fungerer uten Telegram; ingen gjestekontoer; én varig bruker-ID | Not started | — | — | — | — | — | § 6.1 |
+| Telegram-brukere informeres om at clan-chat/vennemeldinger/kvoteoverføring finnes i RealGram | Not started | — | — | — | — | — | — |
+
+**Hard regel:** ikke kopier private Telegram-meldinger inn i RealGram. Kun
+konto-/bot-kobling og eksplisitt community-funksjonalitet deles.
+
+### 6.8 Navigasjon
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Hovednav: Home/VPN, **Chats** (primærfane, ikke konvoluttikon i header), Shahnameh, Servers, Profile | Not started | — | — | — | — | — | § 6.12 |
+| Vurder å samle Servers under VPN hvis fem faner blir for mye | Not started | — | — | — | — | — | designbeslutning, avklares i wireframe (§ 6.12 pkt 5) |
+
+### 6.9 Designkrav
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Levende, sosialt, raskt, premium, persisk-first, moderne messenger — ikke supportsystem-følelse | Not started | — | — | — | — | — | § 6.12 |
+| Dagens mørke RealGram-tema videreført, men: tydelige avatarer, færre tomme flater, kompakte samtalerader | Not started | — | — | — | — | — | § 6.12 |
+| Online green; gull kun for premium/REAL/Shahnameh-rang | Not started | — | — | — | — | — | § 6.12 |
+| God RTL-støtte | Not started | — | — | — | — | — | § 6.12 |
+| Egne Shahnameh-badges og clan-symboler | Not started | — | — | — | — | — | § 6.12 |
+| Korrekt safe area, intet innhold bak bottom navigation | Not started | — | — | — | — | — | § 6.12 |
+| Konsekvent bruk av navnet REALGRAM — ingen synlig SetaLink/TrustAI/interne prosjekt-ID-er | Not started | — | — | — | — | — | — |
+
+### 6.10 Sikkerhet og moderering
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Block user, report user/message | Not started | — | — | — | — | — | § 6.12 |
+| Spam rate limiting | Not started | — | — | — | — | — | — |
+| DM privacy setting: hvem kan finne meg / sende melding / sende clan-invite | Not started | — | — | — | — | — | — |
+| Moderator/admin queue, audit log | Not started | — | — | — | — | — | knyttes til § 1 admin-arbeid |
+| Sikker lagring | Not started | — | — | — | — | — | — |
+| Push notification privacy | Not started | — | — | — | — | — | — |
+| Sletting av konto og meldingsdata etter policy | Not started | — | — | — | — | — | policy må defineres først |
+| Krypteringsmodell avklart og dokumentert | Not started | — | — | — | — | — | **må gjøres før noe kalles "sikker"/"privat"** |
+
+**Hard regel:** ikke bruk "secure" eller "private" som teknisk påstand om
+denne meldingstjenesten før krypteringsmodellen faktisk er avklart og
+dokumentert — jf. § 0.2 (forbudte ord uten dekning).
+
+### 6.11 Leveransefaser
+
+Ikke bygg alt som én stor uverifisert leveranse. Hver fase følger § 0.1 og
+§ 6.12 fullt ut før neste fase starter.
+
+| Fase | Innhold | Status |
+|---|---|---|
+| **Fase 1** | Felles brukerprofil, @handle, samtaleliste, 1-til-1 tekstchat live, online/read/typing, support som vanlig chat, søk etter brukere, blokkering/rapportering | Not started |
+| **Fase 2** | Shahnameh-profiler, venner, clan-chat, grupper, spillerkontakt, push-varsler | Not started |
+| **Fase 3** | Sikker kvoteoverføring, REAL/ZAR-overføring, bilder/filer, community events, avansert moderering | Not started |
+
+### 6.12 Done-krav for § 6 (i tillegg til § 0.1, ikke i stedet for)
+
+**Før noe i § 6 rapporteres ferdig**, i tillegg til § 0.1s syv steg:
+
+- [ ] Testet med **minst to ekte brukere**
+- [ ] Live meldinger verifisert på **to enheter**
+- [ ] Skjermbilder av: chat list, direct chat, profile, clan
+- [ ] Ingen placeholder-data presentert som ekte data
+
+**Før koding starter på NOE i § 6 (kodesperre, se varsel øverst i § 6):**
+
+| # | Leveranse | Status | Godkjent av Khabat |
+|---|---|---|---|
+| 1a | Denne seksjonen lagt inn i `ADMIN_NOC_ROADMAP.md` | Done (denne commiten) | — |
+| 1b | Krysshenvisning lagt inn i produkt-roadmapen (`docs/realgram/PRODUCT_VISION.md`) — **avdekket en uløst produktkonflikt i samme slag: `PRODUCT_VISION.md` beskriver RealGram som en TDLib-basert Telegram-klient som speiler brukerens ekte Telegram-chatter; § 6 her beskriver et eget RealGram-native meldingssystem der Telegram kun er en inngang. Ikke reconcilert — se varsel i `PRODUCT_VISION.md`.** | Done (denne commiten) | — (konflikt, ikke innhold, venter på Khabat) |
+| 2 | Foreslått datamodell vist | Not started | Nei |
+| 3 | Kartlegging av hvilke eksisterende user-ID-systemer som må slås sammen | Not started | Nei |
+| 4 | Migreringsplan (eksisterende VPN-/Shahnameh-brukere mister ikke konto eller saldo) | Not started | Nei |
+| 5 | Wireframes: Chats, Direct Message, Warrior Profile, Clan Chat | Not started | Nei |
+| 6 | Godkjenning fra Khabat | Not started | Nei |
+
+**Fase 1-koding kan ikke starte før rad 2–6 over er `Done`/`Ja`.**
+
+---
+
+## § 7 — Rapporteringsformat (bindende, erstatter fritekst-rapportering)
 
 Enhver agent som rapporterer status på en oppgave i denne roadmapen skal
 oppdatere raden direkte i denne filen (Status/Branch/Commit/PR/Deploy-tid/
