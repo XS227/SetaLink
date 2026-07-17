@@ -19,6 +19,9 @@ export interface DeviceEntitlement {
   quota?:            QuotaSummary;
   milestones?:       MilestoneProgress;
   packages?:         PurchasedPackage[];
+  // REAL-ID: the linked ecosystem account ('' = not linked yet). Shared across
+  // Shahnameh, 3REAL, TrustAI, RealGram. Set by linking via @shahnameh_bot or RealGram.
+  linked_real_account?: string;
 }
 
 /** Server-side quota ledger breakdown (bytes). All profile cards read this. */

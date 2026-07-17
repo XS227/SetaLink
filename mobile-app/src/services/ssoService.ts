@@ -1,14 +1,19 @@
 /**
  * Ecosystem SSO client (contract 6).
  *
- * The REAL ecosystem backend is the identity provider: it mints a short-lived
- * JWT for a linked account, signed with its own key, and every ecosystem app
- * (Shahnameh, 3real, TrustAI, …) verifies it with the published public key.
- * The app never holds the ecosystem API key — the SetaLink panel proxies the
- * mint. This service just asks the panel for a token for the current device.
+ * REAL-ID is the canonical identity shared across all REAL ecosystem products
+ * (Shahnameh, 3REAL, TrustAI, RealGram). The panel proxies the SSO mint so
+ * the app never holds the ecosystem API key.
  *
- * Fails safe: `unlinked` → the caller should prompt the user to link their REAL
- * account; `unavailable` → the issuer isn't live yet, load the game as a guest.
+ * Flow:
+ *   1. App sends device_id (secure lookup key) to the panel.
+ *   2. Panel checks for a linked REAL-ID and mints a short-lived RS256 JWT.
+ *   3. JWT + real_id are passed to the WebView URL for authentication.
+ *
+ * status values:
+ *   'ok'          — JWT minted; game opens directly, no extra login
+ *   'unlinked'    — device has no REAL-ID; caller shows creation prompt
+ *   'unavailable' — issuer unreachable; caller may retry silently
  */
 
 const BASE_URL = 'https://setalink.no/api.php';
@@ -39,15 +44,40 @@ export async function getSsoToken(deviceId: string): Promise<SsoResult> {
 }
 
 /**
- * Build the game URL to load in the WebView. The SSO token (when present) is
- * passed as a query param the ecosystem app reads to authenticate; the
- * device_id is always passed so the game can attribute activity / offer to
- * link even before SSO is live. Guests just get the plain game.
+ * Build the authenticated game URL.
+ *
+ * Identity in the URL (priority order):
+ *   sso=JWT     primary auth — game verifies with RS256 public key
+ *   real_id     REAL-ID for pre-auth routing / ZAR attribution
+ *   device_id   security context (rate-limiting, anti-abuse only — NOT the account)
+ *   src         traffic source tag
  */
-export function buildGameUrl(sso: SsoResult, deviceId: string): string {
-  const base = sso.game_url || 'https://shahnameh.setaei.com';
-  const sep  = base.includes('?') ? '&' : '?';
+/**
+ * Silently probe SSO on mount/tab-open. If already linked server-side
+ * (e.g. user linked via Telegram deep-link in a previous session), this
+ * caches the REAL-ID in authStore so the gate disappears immediately.
+ * Never throws; safe to call without awaiting.
+ */
+export async function checkAndCacheRealId(deviceId: string): Promise<void> {
+  if (!deviceId) return;
+  try {
+    const r = await getSsoToken(deviceId);
+    if (r.status === 'ok' && r.account) {
+      // Lazy require avoids circular import: ssoService ↛ authStore at module load.
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useAuthStore } = require('../stores/authStore');
+      const current = useAuthStore.getState().user?.realId;
+      if (!current) useAuthStore.getState().setRealId(r.account);
+    }
+  } catch { /* network unreachable — ignore */ }
+}
+
+export function buildGameUrl(sso: SsoResult, deviceId: string, realId?: string): string {
+  const base   = sso.game_url || 'https://shahnameh.setaei.com';
+  const sep    = base.includes('?') ? '&' : '?';
   const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
+  const id     = realId || sso.account;
+  if (id)                                params.set('real_id', id);
   if (sso.status === 'ok' && sso.token) params.set('sso', sso.token);
   return `${base}${sep}${params.toString()}`;
 }

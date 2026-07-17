@@ -1,20 +1,49 @@
+/**
+ * ssoGame.test.tsx
+ *
+ * Tests for the ssoService URL-building contract and the REAL-ID gated
+ * GameScreen hub.
+ *
+ * Architecture:
+ *   - authStore.user.realId === '' → RealIdGate shown, hub hidden, no WebView
+ *   - authStore.user.realId !== '' → hub shown, WebView only inside closed modal
+ */
+
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { buildGameUrl, SsoResult } from '../services/ssoService';
 
-// react-native-webview is a native module — mock it so the screen renders.
 jest.mock('react-native-webview', () => ({ WebView: 'WebView' }));
-
-const mockGetSsoToken = jest.fn();
-jest.mock('../services/ssoService', () => ({
-  ...jest.requireActual('../services/ssoService'),
-  getSsoToken: (...a: any[]) => mockGetSsoToken(...a),
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+// Mutable so individual tests can set realId
+let mockRealId = '';
 jest.mock('../stores/authStore', () => ({
-  useAuthStore: (sel: any) => sel({ user: { deviceId: 'dev-9' } }),
+  useAuthStore: (sel: any) => sel({ user: { deviceId: 'dev-9', realId: mockRealId } }),
+  // setRealId exposed for tests that check linked flow
+  useAuthStore_getState: () => ({ setRealId: jest.fn(), user: { realId: mockRealId } }),
+}));
+
+jest.mock('../stores/identityStore', () => ({
+  useIdentityStore: (sel: any) => sel({ avatarEmoji: '🦁', avatarColor: '#D4AF37', persona: 'king', handle: 'warrior' }),
+}));
+jest.mock('../stores/vpnStore', () => ({
+  useVpnStore: (sel: any) => sel({ connectionState: 'connected' }),
+}));
+jest.mock('../stores/zarStore', () => ({
+  useZarStore: (sel: any) => sel({ balance: 42, earnedToday: 10 }),
+  ZAR_DAILY_CAP: 500,
 }));
 jest.mock('../i18n', () => ({ useT: () => ({ t: (k: string) => k, lang: 'en' }) }));
+jest.mock('../services/ssoService', () => ({
+  ...jest.requireActual('../services/ssoService'),
+  getSsoToken: jest.fn().mockResolvedValue({
+    status: 'ok', token: 'jwt.x', expires_in: 300, account: 'real-user-1',
+    game_url: 'https://shahnameh.setaei.com', sso_enabled: true,
+  }),
+}));
 
 import { GameScreen } from '../screens/GameScreen';
 
@@ -22,17 +51,30 @@ const base: SsoResult = {
   status: 'unavailable', token: '', expires_in: 0, account: '',
   game_url: 'https://shahnameh.setaei.com', sso_enabled: true,
 };
-const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
-describe('buildGameUrl (SSO contract 6)', () => {
-  it('passes device_id + src always, sso token only when authenticated', () => {
+// ── buildGameUrl contract ─────────────────────────────────────────────────────
+describe('buildGameUrl', () => {
+  it('always passes device_id and src; adds sso token when authenticated', () => {
     const guest = buildGameUrl({ ...base, status: 'unavailable' }, 'dev-1');
     expect(guest).toContain('device_id=dev-1');
     expect(guest).toContain('src=realink');
     expect(guest).not.toContain('sso=');
 
-    const authed = buildGameUrl({ ...base, status: 'ok', token: 'jwt.abc.def' }, 'dev-1');
+    const authed = buildGameUrl({ ...base, status: 'ok', token: 'jwt.abc.def', account: 'user1' }, 'dev-1');
     expect(authed).toContain('sso=jwt.abc.def');
+  });
+
+  it('passes real_id from SsoResult.account when no explicit realId', () => {
+    const url = buildGameUrl({ ...base, status: 'ok', token: 'jwt.x', account: 'acct-42' }, 'dev-1');
+    expect(url).toContain('real_id=acct-42');
+    // device_id should NOT be used as the identity value
+    expect(url).not.toContain('real_id=dev-1');
+  });
+
+  it('prefers explicit realId over SsoResult.account', () => {
+    const url = buildGameUrl({ ...base, account: 'fallback' }, 'dev-1', 'preferred-id');
+    expect(url).toContain('real_id=preferred-id');
+    expect(url).not.toContain('real_id=fallback');
   });
 
   it('respects a remote-config game_url with existing query', () => {
@@ -41,33 +83,55 @@ describe('buildGameUrl (SSO contract 6)', () => {
   });
 });
 
-describe('GameScreen', () => {
-  beforeEach(() => jest.clearAllMocks());
+// ── GameScreen without REAL-ID → shows gate ──────────────────────────────────
+describe('GameScreen without REAL-ID', () => {
+  beforeEach(() => { mockRealId = ''; });
 
-  it('shows the link prompt when the account is unlinked', async () => {
-    mockGetSsoToken.mockResolvedValue({ ...base, status: 'unlinked' });
+  it('shows the REAL-ID gate and hides the hub', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<GameScreen />); });
-    await flush();
-    const texts = tree.root.findAllByType('Text' as any)
+
+    const texts = tree.root
+      .findAllByType('Text' as any)
       .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
-    expect(texts).toContain('game.linkTitle');
-    expect(tree.root.findAll((n) => n.type === ('WebView' as any)).length).toBe(0);
+
+    expect(texts).toContain('realId.gateTitle');
+    expect(texts).not.toContain('game.enterShahnameh');
   });
 
-  it('renders the WebView when authenticated', async () => {
-    mockGetSsoToken.mockResolvedValue({ ...base, status: 'ok', token: 'jwt.x' });
+  it('has no WebView when showing the gate', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<GameScreen />); });
-    await flush();
-    expect(tree.root.findAll((n) => n.type === ('WebView' as any)).length).toBe(1);
+    expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(0);
+  });
+});
+
+// ── GameScreen with REAL-ID → shows hub ──────────────────────────────────────
+describe('GameScreen with REAL-ID', () => {
+  beforeEach(() => { mockRealId = 'real-user-1'; });
+
+  it('renders the hub without an open WebView modal', () => {
+    let tree!: renderer.ReactTestRenderer;
+    act(() => { tree = renderer.create(<GameScreen />); });
+    expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(0);
   });
 
-  it('loads the WebView (guest) when the issuer is unavailable', async () => {
-    mockGetSsoToken.mockResolvedValue({ ...base, status: 'unavailable' });
+  it('shows ZAR balance in the hub', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<GameScreen />); });
-    await flush();
-    expect(tree.root.findAll((n) => n.type === ('WebView' as any)).length).toBe(1);
+    const texts = tree.root
+      .findAllByType('Text' as any)
+      .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
+    expect(texts.some((t) => String(t).includes('42'))).toBe(true);
+  });
+
+  it('shows the enter-game CTA and not the REAL-ID gate', () => {
+    let tree!: renderer.ReactTestRenderer;
+    act(() => { tree = renderer.create(<GameScreen />); });
+    const texts = tree.root
+      .findAllByType('Text' as any)
+      .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
+    expect(texts).toContain('game.enterShahnameh');
+    expect(texts).not.toContain('realId.gateTitle');
   });
 });

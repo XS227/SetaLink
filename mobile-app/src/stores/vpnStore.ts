@@ -18,6 +18,9 @@ export interface VpnServer {
   ping:      number;
   load:      number;
   premium:   boolean;
+  nodeType?: string;
+  hero?:     boolean;
+  tags?:     string[];
 }
 
 interface SessionBytes { sent: number; received: number }

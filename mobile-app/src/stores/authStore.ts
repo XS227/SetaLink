@@ -29,6 +29,9 @@ export interface AuthUser {
   quota: QuotaSummary | null;
   milestones: MilestoneProgress | null;
   packages: PurchasedPackage[];
+  // REAL-ID: canonical identity shared across all REAL ecosystem products
+  // (Shahnameh, 3REAL, TrustAI, RealGram). Empty string = not linked yet.
+  realId: string;
 }
 
 interface InvitePayload {
@@ -54,6 +57,7 @@ interface AuthState {
   verifyPin:             (pin: string) => boolean;
   addBonusBytes:         (bytes: number) => void;
   applyQuotaSummary:     (summary: QuotaSummary) => void;
+  setRealId:             (realId: string) => void;
 }
 
 const ONE_GB_BYTES = 1024 * 1024 * 1024;
@@ -106,6 +110,7 @@ export const useAuthStore = create<AuthState>()(
             quota: null,
             milestones: null,
             packages: [],
+            realId: '',
           },
           token: `anon-token-${Date.now()}`,
           isAuthenticated: true,
@@ -138,6 +143,7 @@ export const useAuthStore = create<AuthState>()(
             quota:                e.quota ?? null,
             milestones:           e.milestones ?? null,
             packages:             e.packages ?? [],
+            realId:               e.linked_real_account || '',
           },
           token:           `device-${e.device_id}`,
           isAuthenticated: true,
@@ -164,6 +170,7 @@ export const useAuthStore = create<AuthState>()(
             quota:             e.quota ?? prev.user.quota,
             milestones:        e.milestones ?? prev.user.milestones,
             packages:          e.packages ?? prev.user.packages,
+            realId:            e.linked_real_account || prev.user.realId,
           },
         };
       }),
@@ -196,6 +203,10 @@ export const useAuthStore = create<AuthState>()(
         if (!prev.user) return prev;
         return { user: { ...prev.user, quotaBytesTotal: prev.user.quotaBytesTotal + bytes } };
       }),
+      setRealId: (realId) => set((prev) => ({
+        user: prev.user ? { ...prev.user, realId } : null,
+      })),
+
       // Apply a fresh server quota breakdown (e.g. right after a transfer) so the
       // profile cards reflect the new balances without a full re-sync.
       applyQuotaSummary: (summary) => set((prev) => {
