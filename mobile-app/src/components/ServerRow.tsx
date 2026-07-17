@@ -29,16 +29,24 @@ export interface Server {
   ping: number;
   load: number;          // 0–100
   protocol: string;
-  tags?: string[];       // 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming'
+  tags?: string[];       // 'Recommended' | 'Fastest' | 'Stealth' | 'Streaming' | 'Starlink' | 'Beta' | 'Premium' | 'Community' | 'Experimental' | 'Satellite'
   premium?: boolean;
   selected?: boolean;
   imported?: boolean;    // true for user-imported servers (shows delete action)
+  /** Node type from the backend catalog (e.g. 'STARLINK'). Display hint only —
+   *  the client always dials the same VLESS address/creds regardless. Mirrors
+   *  ServerRecord in stores/serverStore.ts — keep both in sync. */
+  nodeType?: string;
+  /** Backend-flagged as a beta/testing node. */
+  beta?: boolean;
 }
 
 interface Props {
   server: Server;
   onSelect: (server: Server) => void;
   onDelete?: (server: Server) => void;
+  favorite?: boolean;
+  onToggleFavorite?: (server: Server) => void;
 }
 
 function PingDot({ ping }: { ping: number }) {
@@ -62,9 +70,9 @@ function LoadBar({ load }: { load: number }) {
   );
 }
 
-function ServerRowComponent({ server, onSelect, onDelete }: Props) {
+function ServerRowComponent({ server, onSelect, onDelete, favorite, onToggleFavorite }: Props) {
   const { t } = useT();
-  const pingLabel = server.ping === 0 ? '—' : `${server.ping}ms`;
+  const pingLabel = server.ping === 0 ? '—' : `${server.ping}`;
 
   return (
     <TouchableOpacity
@@ -72,6 +80,19 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
       onPress={() => onSelect(server)}
       activeOpacity={0.7}
     >
+      {/* Favorite star — display/sort hint only, never affects connectivity */}
+      {onToggleFavorite && (
+        <TouchableOpacity
+          style={styles.favoriteBtn}
+          onPress={() => onToggleFavorite(server)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={[styles.favoriteIcon, favorite && styles.favoriteIconActive]}>
+            {favorite ? '★' : '☆'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Flag + Country */}
       <View style={styles.left}>
         <View style={styles.flagBox}><FlagGlyph flag={server.flag} brand={isBrandNode(server.id)} size={28} /></View>
@@ -86,26 +107,29 @@ function ServerRowComponent({ server, onSelect, onDelete }: Props) {
               </View>
             )}
           </View>
-          <Text style={styles.city} numberOfLines={1}>{server.city}</Text>
         </View>
       </View>
 
-      {/* Metrics */}
+      {/* Metrics — ping is the headline number, everything else recedes */}
       <View style={styles.right}>
         <View style={styles.pingRow}>
           <PingDot ping={server.ping} />
           <Text style={styles.pingText}>{pingLabel}</Text>
+          {server.ping !== 0 && <Text style={styles.pingUnit}>ms</Text>}
         </View>
         <LoadBar load={server.load} />
-        <Text style={styles.protocol}>{server.protocol}</Text>
       </View>
 
-      {/* Tags (built-in servers only) */}
+      {/* Tags (built-in servers only) — dynamic: any tag the backend sends
+          renders with a sensible default even if it's not in TAG_STYLES yet,
+          so new badge types (see TAG_EMOJI) never need a client release. */}
       {server.tags && server.tags.length > 0 && !server.imported && (
         <View style={styles.tags}>
           {server.tags.map(tag => (
             <View key={tag} style={[styles.tag, TAG_STYLES[tag] || styles.tagDefault]}>
-              <Text style={[styles.tagText, TAG_TEXT[tag] || {}]}>{t(tagLabelKey(tag)) || tag}</Text>
+              <Text style={[styles.tagText, TAG_TEXT[tag] || {}]}>
+                {TAG_EMOJI[tag] ? `${TAG_EMOJI[tag]} ` : ''}{t(tagLabelKey(tag)) || tag}
+              </Text>
             </View>
           ))}
         </View>
@@ -133,21 +157,44 @@ export const ServerRow = React.memo(ServerRowComponent, (prev, next) =>
   prev.server.selected === next.server.selected &&
   prev.server.ping     === next.server.ping     &&
   prev.server.load     === next.server.load     &&
-  prev.server.imported === next.server.imported
+  prev.server.imported === next.server.imported &&
+  prev.favorite        === next.favorite
 );
 
+// Extensible tag → style/emoji maps. New badge types (Community, Experimental,
+// Satellite, whatever comes next) just need one line added here — the render
+// path above already handles any tag string, styled or not, so the backend
+// can introduce new badges without a client release (item 7 of the ReaLink
+// Next Build brief: "forbered dynamiske noder").
 const TAG_STYLES: Record<string, object> = {
-  Recommended: { backgroundColor: 'rgba(0,232,122,0.12)', borderColor: Colors.border.glow },
-  Fastest:     { backgroundColor: 'rgba(51,153,255,0.12)', borderColor: 'rgba(51,153,255,0.3)' },
-  Stealth:     { backgroundColor: 'rgba(120,80,255,0.12)', borderColor: 'rgba(120,80,255,0.3)' },
-  Streaming:   { backgroundColor: 'rgba(255,184,0,0.12)', borderColor: 'rgba(255,184,0,0.3)' },
+  Recommended:  { backgroundColor: 'rgba(0,232,122,0.12)', borderColor: Colors.border.glow },
+  Fastest:      { backgroundColor: 'rgba(51,153,255,0.12)', borderColor: 'rgba(51,153,255,0.3)' },
+  Stealth:      { backgroundColor: 'rgba(120,80,255,0.12)', borderColor: 'rgba(120,80,255,0.3)' },
+  Streaming:    { backgroundColor: 'rgba(255,184,0,0.12)', borderColor: 'rgba(255,184,0,0.3)' },
+  Starlink:     { backgroundColor: 'rgba(120,180,255,0.12)', borderColor: 'rgba(120,180,255,0.3)' },
+  Beta:         { backgroundColor: 'rgba(255,140,60,0.12)', borderColor: 'rgba(255,140,60,0.3)' },
+  Premium:      { backgroundColor: 'rgba(201,164,42,0.14)', borderColor: 'rgba(201,164,42,0.4)' },
+  Community:    { backgroundColor: 'rgba(0,200,150,0.12)', borderColor: 'rgba(0,200,150,0.3)' },
+  Experimental: { backgroundColor: 'rgba(255,100,100,0.12)', borderColor: 'rgba(255,100,100,0.3)' },
+  Satellite:    { backgroundColor: 'rgba(120,180,255,0.12)', borderColor: 'rgba(120,180,255,0.3)' },
 };
 
 const TAG_TEXT: Record<string, object> = {
-  Recommended: { color: Colors.emerald[400] },
-  Fastest:     { color: Colors.blue[400] },
-  Stealth:     { color: '#9B77FF' },
-  Streaming:   { color: '#FFB800' },
+  Recommended:  { color: Colors.emerald[400] },
+  Fastest:      { color: Colors.blue[400] },
+  Stealth:      { color: '#9B77FF' },
+  Streaming:    { color: '#FFB800' },
+  Starlink:     { color: '#78B4FF' },
+  Beta:         { color: '#FF8C3C' },
+  Premium:      { color: '#C9A42A' },
+  Community:    { color: '#00C896' },
+  Experimental: { color: '#FF6464' },
+  Satellite:    { color: '#78B4FF' },
+};
+
+const TAG_EMOJI: Record<string, string> = {
+  Fastest: '🔥', Starlink: '⭐', Premium: '👑',
+  Community: '🌍', Experimental: '🚀', Satellite: '🛰',
 };
 
 const styles = StyleSheet.create({
@@ -178,12 +225,17 @@ const styles = StyleSheet.create({
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], flexWrap: 'nowrap' },
   flag: { fontSize: 28 },
   flagBox: { width: 30, alignItems: 'center', justifyContent: 'center' },
+  // Name is the primary read in the row now (city/protocol text dropped —
+  // "mindre tekst, mer fokus på navn") — sized up one step from before.
   country: {
-    fontSize: Typography.size.base,
+    fontSize: Typography.size.md,
     fontFamily: Typography.family.heading,
     color: Colors.text.primary,
     flexShrink: 1,
   },
+  favoriteBtn: { paddingRight: 2 },
+  favoriteIcon: { fontSize: 18, color: Colors.text.muted },
+  favoriteIconActive: { color: '#FFB800' },
   selectedText: { color: Colors.emerald[400] },
   city: {
     fontSize: Typography.size.xs,
@@ -206,12 +258,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   right: { alignItems: 'flex-end', gap: 4 },
-  pingRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  pingDot: { width: 6, height: 6, borderRadius: 3 },
+  pingRow: { flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  pingDot: { width: 6, height: 6, borderRadius: 3, marginRight: 1 },
+  // Ping is the headline metric now ("tydelig latency ... lett å lese") —
+  // bumped a size and switched to the heading family so it reads at a glance.
   pingText: {
-    fontSize: Typography.size.xs,
+    fontSize: Typography.size.sm,
+    fontFamily: Typography.family.heading,
+    color: Colors.text.primary,
+  },
+  pingUnit: {
+    fontSize: 10,
     fontFamily: Typography.family.mono,
-    color: Colors.text.secondary,
+    color: Colors.text.muted,
   },
   loadTrack: {
     width: 48,

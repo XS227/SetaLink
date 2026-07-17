@@ -25,6 +25,7 @@ interface SettingsState {
   hasSelectedLanguage:  boolean;
   hasSeenWelcome:       boolean;
   hasSeenTelegramTip:   boolean;   // Path B0 post-connect tip — shown once
+  hasSeenStarlinkCelebration: boolean;  // first-ever Starlink connect — shown once
   pendingReferralCode:  string | null;
   updateChannel:        'stable' | 'beta' | 'experimental';
 
@@ -45,6 +46,7 @@ interface SettingsState {
   completeLanguageSelection: () => void;
   markWelcomeSeen:           () => void;
   markTelegramTipSeen:       () => void;
+  markStarlinkCelebrationSeen: () => void;
   setPendingReferralCode:    (code: string | null) => void;
   setUpdateChannel:          (c: 'stable' | 'beta' | 'experimental') => void;
 }
@@ -68,6 +70,7 @@ export const useSettingsStore = create<SettingsState>()(
       hasSelectedLanguage:  false,
       hasSeenWelcome:       false,
       hasSeenTelegramTip:   false,
+      hasSeenStarlinkCelebration: false,
       pendingReferralCode:  null,
       updateChannel:        'stable',
 
@@ -89,6 +92,7 @@ export const useSettingsStore = create<SettingsState>()(
       completeLanguageSelection: () => set({ hasSelectedLanguage: true }),
       markWelcomeSeen:           () => set({ hasSeenWelcome: true }),
       markTelegramTipSeen:       () => set({ hasSeenTelegramTip: true }),
+      markStarlinkCelebrationSeen: () => set({ hasSeenStarlinkCelebration: true }),
       setPendingReferralCode:    (code) => set({ pendingReferralCode: code }),
       setUpdateChannel:          (c) => set({ updateChannel: c }),
     }),

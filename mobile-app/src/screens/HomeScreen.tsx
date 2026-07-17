@@ -6,6 +6,7 @@ import {
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { ConnectButton } from '../components/ConnectButton';
 import { GoldBeatBurst } from '../components/GoldBeatBurst';
+import { StarlinkCelebration } from '../components/StarlinkCelebration';
 import { StatusBadge }   from '../components/StatusBadge';
 import { MetricPill }    from '../components/MetricPill';
 import { CoverageIcon }  from '../components/CoverageIcon';
@@ -17,6 +18,7 @@ import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
 import { useAIStore }          from '../stores/aiStore';
 import { useServerStore }      from '../stores/serverStore';
+import { useSettingsStore }    from '../stores/settingsStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
@@ -112,13 +114,28 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   });
 
   // Gold heartbeat celebration: fire one coin burst on each transition INTO
-  // connected (never on re-render while already connected).
+  // connected (never on re-render while already connected). Also carries the
+  // one-time "Satellite Route Active" milestone (Starlink only, guarded by a
+  // persisted flag) — kept in the SAME effect as the ref flip below so the
+  // two checks can't race: a separate effect reading wasConnectedRef after
+  // this one has already flipped it would never see "just connected".
   const [goldBurst, setGoldBurst] = useState(0);
+  const [starlinkBurst, setStarlinkBurst] = useState(0);
   const wasConnectedRef = useRef(false);
   useEffect(() => {
-    if (isConnected && !wasConnectedRef.current) setGoldBurst(k => k + 1);
+    const justConnected = isConnected && !wasConnectedRef.current;
+    if (justConnected) {
+      setGoldBurst(k => k + 1);
+      if (selectedServer?.nodeType === 'STARLINK') {
+        const settings = useSettingsStore.getState();
+        if (!settings.hasSeenStarlinkCelebration) {
+          settings.markStarlinkCelebrationSeen();
+          setStarlinkBurst(k => k + 1);
+        }
+      }
+    }
     wasConnectedRef.current = isConnected;
-  }, [isConnected]);
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Friendly status message shown below connect button while connecting
   const connectingLabel = (() => {
@@ -183,6 +200,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   return (
     <View style={styles.screen}>
       {isConnected && <View style={styles.ambientGlow} pointerEvents="none" />}
+      {/* Positioned relative to the screen root (not the scroll content) so
+          it overlays the top of the viewport regardless of scroll offset —
+          see StarlinkCelebration's own top/left/right styling. */}
+      <StarlinkCelebration burstKey={starlinkBurst} />
 
       <ScrollView
         style={styles.scroll}

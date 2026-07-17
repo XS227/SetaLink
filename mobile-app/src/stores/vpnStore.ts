@@ -18,6 +18,9 @@ export interface VpnServer {
   ping:      number;
   load:      number;
   premium:   boolean;
+  /** Node type from the backend catalog (e.g. 'STARLINK'). Mirrors
+   *  ServerRecord.nodeType in stores/serverStore.ts — keep both in sync. */
+  nodeType?: string;
 }
 
 interface SessionBytes { sent: number; received: number }

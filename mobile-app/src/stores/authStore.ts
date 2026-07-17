@@ -18,7 +18,12 @@ export interface AuthUser {
   lastSeen: string;
   securedWithBiometric: boolean;
   status: 'active' | 'expired' | 'blocked';
-  plan: 'free';
+  // Backend's DeviceEntitlement.plan is an untyped string (new plan values can
+  // ship without a client release) — widened here from the old 'free'-only
+  // type so premium gating (e.g. the Starlink node) has something real to
+  // check. Treat any value other than 'free' defensively as non-premium
+  // unless it's explicitly 'premium' — see hasStarlinkAccess() below.
+  plan: 'free' | 'premium';
   planExpiry: string | null;
   inviteCount: number;
   activeInviteCount: number;
@@ -63,6 +68,23 @@ const STARTER_QUOTA_BYTES = 5 * ONE_GB_BYTES;
 
 function randomId(prefix: string): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+}
+
+// Backend's entitlement.plan is an untyped string — normalize defensively so
+// an unrecognized value (typo, a future plan tier not yet handled here) never
+// silently grants premium-gated features. Only an exact 'premium' unlocks.
+function normalizePlan(raw: string | undefined): 'free' | 'premium' {
+  return raw === 'premium' ? 'premium' : 'free';
+}
+
+/** Starlink hero-node access: Premium plan, or having invited at least 11
+ *  people (clan/referral growth path) — either unlocks it. Exported so the
+ *  same rule can gate the hero card AND any future Starlink entry that shows
+ *  up in the regular server list, without duplicating the threshold. */
+export const STARLINK_INVITE_THRESHOLD = 11;
+export function hasStarlinkAccess(user: AuthUser | null): boolean {
+  if (!user) return false;
+  return user.plan === 'premium' || user.inviteCount >= STARLINK_INVITE_THRESHOLD;
 }
 
 // Extract the unique suffix from SL-227-XXXXXXXX style user IDs
@@ -128,7 +150,7 @@ export const useAuthStore = create<AuthState>()(
             lastSeen:             now,
             securedWithBiometric: false,
             status:               e.blocked ? 'blocked' : 'active',
-            plan:                 'free',
+            plan:                 normalizePlan((e as any).plan),
             planExpiry:           e.valid_until ?? null,
             inviteCount:          (e as any).invite_count ?? 0,
             activeInviteCount:    (e as any).active_invite_count ?? 0,
@@ -154,7 +176,7 @@ export const useAuthStore = create<AuthState>()(
             quotaBytesTotal:   e.quota_bytes_total,
             quotaBytesUsed:    Math.min(e.quota_bytes_total, Math.max(0, e.quota_bytes_used)),
             status:            e.blocked ? 'blocked' : 'active',
-            plan:              'free',
+            plan:              normalizePlan((e as any).plan ?? prev.user.plan),
             planExpiry:        e.valid_until ?? null,
             inviteCount:       (e as any).invite_count ?? prev.user.inviteCount,
             activeInviteCount: (e as any).active_invite_count ?? prev.user.activeInviteCount,

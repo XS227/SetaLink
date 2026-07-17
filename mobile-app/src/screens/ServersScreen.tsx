@@ -4,16 +4,18 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
-import { ServerRow } from '../components/ServerRow';
+import { ServerRow, Server } from '../components/ServerRow';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { EcosystemBanner } from '../components/EcosystemBanner';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { StarlinkHeroCard } from '../components/StarlinkHeroCard';
 
 import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
 import { useAIStore }   from '../stores/aiStore';
-import { useAuthStore } from '../stores/authStore';
+import { useAuthStore, hasStarlinkAccess, STARLINK_INVITE_THRESHOLD } from '../stores/authStore';
+import { useInboxStore } from '../stores/inboxStore';
 import { useT, tagLabelKey } from '../i18n';
 
 interface Props {
@@ -26,11 +28,14 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const {
     selectedId, filter, query, selectServer, setFilter,
     filteredServers, servers, isLoading, loadError,
-    importedCreds,
+    importedCreds, favoriteIds, toggleFavorite,
   } = useServerStore();
   const { connectionState, connect, switchServer } = useVpnStore();
   const { activeMode }  = useAIStore();
-  const userPlan        = useAuthStore((s) => s.user?.plan ?? 'free');
+  const user             = useAuthStore((s) => s.user);
+  const userPlan         = user?.plan ?? 'free';
+  const starlinkUnlocked = hasStarlinkAccess(user);
+  const unreadCount       = useInboxStore((s) => s.unreadCount());
 
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
@@ -69,14 +74,27 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   );
   const comingSoon = COMING_SOON_SERVERS.filter((s) => !liveCountries.has(s.country.toLowerCase()));
 
+  // The real backend-provided Starlink node, if the catalog has one (Phase 1
+  // is test-gated, so this is null for virtually everyone right now — the
+  // hero card below handles that as a "coming soon" state, not an error).
+  const starlinkServer = useMemo(
+    () => servers.find((s) => s.nodeType === 'STARLINK'),
+    [servers],
+  );
+  // Regular list excludes the Starlink node — it always renders separately as
+  // the hero card up top, never duplicated as a normal row.
   const filtered = filteredServers(activeMode)
-    .filter((s) => !s.comingSoon)
+    .filter((s) => !s.comingSoon && s.nodeType !== 'STARLINK')
     .map((s) => ({
       ...s,
       selected: s.id === selectedId,
       imported: !!importedCreds[s.id],
     }));
   const selected    = servers.find((s) => s.id === selectedId);
+
+  const handleToggleFavorite = useCallback((server: Server) => {
+    toggleFavorite(server.id);
+  }, [toggleFavorite]);
 
   const ctaLabel = isTransitioning
     ? t('sv.switching')
@@ -92,23 +110,43 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
+        {/* Header — simplified to just brand, connection status, notifications,
+            settings (ReaLink Next Build item 3). Activity + location count
+            moved into the filter row below. */}
         <View style={styles.header}>
-          <Text style={styles.title}>{t('sv.title')}</Text>
+          <View style={styles.brandRow}>
+            <Text style={styles.brandMark}>◆</Text>
+            <Text style={styles.title}>{t('sv.title')}</Text>
+          </View>
           <View style={styles.headerRight}>
             {isLoading && (
               <ActivityIndicator size="small" color={Colors.emerald[400]} style={{ marginRight: Spacing[1] }} />
             )}
+            <View style={styles.statusPill}>
+              <View style={[
+                styles.statusDot,
+                isConnected && styles.statusDotConnected,
+                isTransitioning && styles.statusDotTransitioning,
+              ]} />
+              <Text style={styles.statusPillText}>
+                {isConnected ? t('sv.connected') : isTransitioning ? t('sv.switching') : ''}
+              </Text>
+            </View>
             <TouchableOpacity
-              style={styles.activityBtn}
-              onPress={() => onNavigate('activity')}
+              style={styles.iconBtn}
+              onPress={() => (onNavigate as (tab: string) => void)('inbox')}
               activeOpacity={0.75}
             >
-              <Text style={styles.activityBtnText}>≡ {t('set.activity')}</Text>
+              <Text style={styles.iconBtnGlyph}>🔔</Text>
+              {unreadCount > 0 && <View style={styles.unreadDot} />}
             </TouchableOpacity>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>{servers.length} {t('sv.locations')}</Text>
-            </View>
+            <TouchableOpacity
+              style={styles.iconBtn}
+              onPress={() => onNavigate('settings' as NavTab)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.iconBtnGlyph}>⚙</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -118,7 +156,8 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           </View>
         )}
 
-        {/* Filter tabs */}
+        {/* Filter tabs — Activity link + location count moved here from the
+            header (item 3), as trailing entries in the same scroll row. */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -135,10 +174,33 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
               <Text style={[styles.filterLabel, filter === tab && styles.filterLabelActive]}>{t(tagLabelKey(tab)) || tab}</Text>
             </TouchableOpacity>
           ))}
+          <TouchableOpacity
+            style={styles.filterTab}
+            onPress={() => onNavigate('activity')}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.filterLabel}>≡ {t('set.activity')}</Text>
+          </TouchableOpacity>
+          <View style={styles.countBadge}>
+            <Text style={styles.countText}>{servers.length} {t('sv.locations')}</Text>
+          </View>
         </ScrollView>
 
         {/* AI Picks carousel removed — the list below is the single source of
             truth; users just scroll to pick an available server. */}
+
+        {/* Starlink hero node — always first, above the filtered list, per
+            ReaLink Next Build items 2/5/8. Independent of the active filter
+            tab (it's a featured slot, not a regular result). */}
+        <StarlinkHeroCard
+          server={starlinkServer}
+          hasAccess={starlinkUnlocked}
+          inviteCount={user?.inviteCount ?? 0}
+          inviteThreshold={STARLINK_INVITE_THRESHOLD}
+          onSelect={(s) => handleSelectServer(s.id)}
+          onUpgrade={() => (onNavigate as (tab: string) => void)('upgrade')}
+          onInvite={() => onNavigate('profile')}
+        />
 
         {/* Active servers */}
         <View style={styles.section}>
@@ -159,12 +221,15 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                   server={s}
                   onSelect={(sv) => handleSelectServer(sv.id)}
                   onDelete={undefined}
+                  favorite={favoriteIds.includes(s.id)}
+                  onToggleFavorite={handleToggleFavorite}
                 />
-                {/* Banners interleaved at fixed positions:
-                    after server 1 → watch-ad (free quota),
-                    after server 3 → Shahnameh, after server 4 → 3real. */}
+                {/* Banners interleaved at fixed positions. Shahnameh removed
+                    (item 1/6 — it's integrated into ReaLink/RealGram directly
+                    now, game progress moved to Profile/Earn, no ad-card
+                    replacement): after server 1 → watch-ad, after server 4 →
+                    3real. No duplicates. */}
                 {i === 0 && <WatchAdCard style={styles.ecoBanner} />}
-                {i === 2 && <EcosystemBanner pin="shahnameh" onOpenGame={() => (onNavigate as (tab: string) => void)('game')} style={styles.ecoBanner} />}
                 {i === 3 && <EcosystemBanner pin="threereal" style={styles.ecoBanner} />}
               </React.Fragment>
             ))
@@ -222,13 +287,25 @@ const styles = StyleSheet.create({
   content: { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
 
   header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  brandRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+  brandMark:   { fontSize: 14, color: Colors.emerald[400] },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   title:       { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
-  countBadge:  { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  countBadge:  { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4, justifyContent: 'center' },
   countText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
 
-  activityBtn:      { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[3], paddingVertical: Spacing[1] + 2 },
-  activityBtnText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary },
+  // Compact connection-status pill — the only status surfaced in the
+  // simplified header (item 3); collapses to just a dot when idle.
+  statusPill:  { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusDot:   { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.text.muted },
+  statusDotConnected:    { backgroundColor: Colors.emerald[400] },
+  statusDotTransitioning:{ backgroundColor: '#FFB800' },
+  statusPillText: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
+
+  iconBtn:      { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
+  iconBtnGlyph: { fontSize: 16, color: Colors.text.secondary },
+  unreadDot:    { position: 'absolute', top: 6, right: 7, width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.status.disconnected, borderWidth: 1, borderColor: Colors.bg.surface },
+
   ecoBanner:        { marginHorizontal: Spacing[5], marginBottom: Spacing[3] },
   cachedBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
   cachedBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },

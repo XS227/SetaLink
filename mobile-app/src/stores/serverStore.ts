@@ -18,6 +18,12 @@ export interface ServerRecord {
   comingSoon?:  boolean;
   /** Telemetry-derived success rate (0–100) from the last 7 days. Backend-provided. */
   successScore?: number;
+  /** Node type from the backend catalog (e.g. 'STARLINK', see lib/starlink.php
+   *  st_meta()). Display hint only — mirrors ServerRow.tsx's Server interface,
+   *  keep both in sync. */
+  nodeType?:    string;
+  /** Backend-flagged as a beta/testing node. */
+  beta?:        boolean;
 }
 
 // Coming-soon placeholder entries — shown greyed out, never selectable
@@ -182,6 +188,12 @@ interface ServerState {
   loadError:     string | null;
   importedCreds: Record<string, ServerCredentials>;  // serverId → creds
 
+  /** User-starred server ids — display/sort hint only, never affects
+   *  connectivity. Persisted. */
+  favoriteIds: string[];
+  toggleFavorite: (id: string) => void;
+  isFavorite: (id: string) => boolean;
+
   // isUser=true (default) records a sticky user preference; failover passes
   // false so it can switch the active node without hijacking that preference.
   selectServer:  (id: string, isUser?: boolean) => void;
@@ -224,6 +236,7 @@ function syncToVpnStore(record: ServerRecord): void {
       ping:      record.ping,
       load:      record.load,
       premium:   record.premium ?? false,
+      nodeType:  record.nodeType,
     });
   } catch {}
 }
@@ -241,6 +254,14 @@ export const useServerStore = create<ServerState>()(
   // Seed the bundled cf-edge creds so the stealth node is connectable even
   // before (or without) a successful catalog fetch.
   importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS },
+
+  favoriteIds: [],
+  toggleFavorite: (id) => set((state) => ({
+    favoriteIds: state.favoriteIds.includes(id)
+      ? state.favoriteIds.filter((f) => f !== id)
+      : [...state.favoriteIds, id],
+  })),
+  isFavorite: (id) => get().favoriteIds.includes(id),
 
   selectServer: (id, isUser = true) => {
     // A manual tap sets the sticky preference; failover (isUser=false) only
@@ -670,6 +691,7 @@ export const useServerStore = create<ServerState>()(
         importedCreds: state.importedCreds,
         selectedId:    state.selectedId,
         userSelectedId: state.userSelectedId,
+        favoriteIds:   state.favoriteIds,
       }),
       // On app start, sync the persisted selected server into vpnStore
       onRehydrateStorage: () => (state) => {
