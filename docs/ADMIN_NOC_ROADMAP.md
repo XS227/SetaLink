@@ -94,12 +94,71 @@ skjermen finnes.
 
 ## § 1 — Prioritet 1: Admin Redesign (HELE adminet, ikke bare Ads)
 
+### 1.0 Inventar (utført 2026-07-17 — lest direkte fra kode på 7 brancher, ikke antatt)
+
+**Kritisk funn før tabellen:** `main` har **ikke** dashboard-adminet i det
+hele tatt — `main:admin/index.php` er 398 linjer og er det **gamle
+CLI-produkt-adminet** (navngitte brukere, enkelt tabell+skjema), en helt
+annen kodebase enn de ~4300–4700-linjers tabbede dashboard-adminene under.
+**Ingen** av fanene i tabellen under har noensinne blitt merget til
+`main`. Og siden prod-deploy er `scp`-basert, ikke git (§0, jf.
+`DEPLOYMENT_CHECKLIST.md`), vet jeg **ikke** hvilken versjon som faktisk
+kjører på `setalink.no` akkurat nå — SSH-forsøk mot prod feilet tidligere
+denne uken (permission denied), så jeg kan ikke verifisere det live selv.
+Kolonnen "Live på prod?" under er derfor `Ukjent`, ikke gjettet.
+
+**Ingen branch har alt.** Sjekket `feat/starlink-node-phase1`,
+`feat/admin-insights`, `feat/admin-intel-v2`, `feat/ecosystem-admin-visibility`,
+`fix/admin-bootstrap-alt-profiles` — alle deler en felles kjerne på 13
+faner, men to av dem har hver sin unike fane **ingen andre grener har**:
+`feat/starlink-node-phase1` har **Starlink**; `feat/admin-insights` har
+**User Insights** og **SEO Ranks**. De har aldri blitt kombinert.
+
+| Khabats side | Finnes? | Synlig i meny? | Ferdig? | Placeholder? | Live på prod? | Mangler helt? |
+|---|---|---|---|---|---|---|
+| Dashboard | Ja, felles kjerne (alle grener) | Ja | Delvis — live monitoring finnes, ikke NOC-nivå (§ 4.5-kravet) | Nei | Ukjent | Nei (i kode) |
+| Analytics | Ja, felles kjerne | Ja | Delvis — 30-dagers grafer, men ikke GA4/GSC-koblet (§ 4) | Delvis | Ukjent | Nei (i kode) |
+| Ads & Revenue | Ja, felles kjerne | Ja | Nei — placeholder eCPM, AdMob-ID-er mangler (§ 2) | Ja | Ukjent, trolig ikke (aldri merget) | Nei (i kode) |
+| Payments | Ja, felles kjerne | Ja | Ikke verifisert innhold denne runden | Ukjent | Ukjent | Nei (i kode) |
+| Iran Debug | Ja, felles kjerne | Ja | Ikke verifisert innhold | Ukjent | Ukjent | Nei (i kode) |
+| Network Intel | Ja, felles kjerne (+ Node Health på starlink-grenen) | Ja | Delvis — Node Health er cron-basert, ikke sanntid (§ 3) | Delvis | Ukjent | Nei (i kode) |
+| User Insights | **Kun på `feat/admin-insights`** | Kun der | Ikke verifisert innhold | Ukjent | **Nei, ikke merget noe sted** | Ja, i alle andre grener |
+| SEO | Delvis — kun enkel "SEO Ranks" (keyword-posisjoner) på `feat/admin-insights` | Kun der | Nei — full § 4 Command Center (GA4/GSC/AdMob/Google Ads-API) er 100 % "Not started" | Delvis | Nei | **Ja**, som samlet NOC-side |
+| Rankings | **Uklart hva som menes** — nærmest treff er "SEO Ranks" eller Referrals-fanens leaderboard-undertekst | — | — | — | — | Trenger presisering fra Khabat før jeg antar |
+| Starlink | **Kun på `feat/starlink-node-phase1`** | Kun der | Delvis (beta/testing-stadium) | Delvis | **Nei, ikke merget noe sted** | Ja, i alle andre grener |
+| Device Releases | Trolig dekket av "Release"-fanen (se under) | — | — | — | — | Ikke som egen fane — overlapp, ikke mangel |
+| APK Channels | Dekket av "Release"-fanen (undertekst nevner det eksplisitt) | Ja | Ikke verifisert innhold | Ukjent | Ukjent | Nei — samme fane |
+| Health | Delvis dekket (Release-undertekst + Node Health-panel) | Delvis | Nei som samlet side | — | — | **Ja**, som egen, samlet "System Health" |
+| Monitoring | Delvis dekket av Dashboard | Delvis | Nei som dedikert NOC-monitoringsside | — | — | **Ja**, som egen fane utover Dashboard |
+| Logs | Ja, felles kjerne | Ja | Ikke verifisert innhold | Ukjent | Ukjent | Nei (i kode) |
+| API Status | — | — | — | — | — | **Ja, mangler helt** — ingen fane funnet noe sted |
+| Event Log | — | — | — | — | — | **Ja, mangler helt** — dette er § 2.1.2s Ads Event Log, eksplisitt sperret til Agent A er ferdig |
+| Wallet | — | — | — | — | — | **Ja, mangler helt som admin-fane** — backend-loopen er live (§ 9.0), men ingen admin-visning av den finnes noe sted |
+| Users | Delvis dekket av "Devices" (device-sentrisk, ikke samlet profil) | Delvis | — | — | — | **Ja**, som samlet bruker/profil-visning — avhenger av § 6.1s identitetsarbeid |
+| REAL Economy | Delvis dekket av "Payments" (REAL vs USDT, intents) | Delvis | — | — | — | **Ja**, som samlet økonomi-/treasury-oversikt (§ 9) |
+| Community | — | — | — | — | — | **Ja, mangler helt** — avhenger av § 6 (messaging/clan), "Not started" |
+| Hakim | — | — | — | — | — | **Ja, mangler helt som admin-fane** — MEN: `hakim-bot.service` kjører allerede i produksjon (siden 11. juli) med ekte data i `hakim.db` (`bot_messages`, `bot_users`), og koden har en kommentar som eksplisitt sier den er ment for "admin live-log view" — ingen web-UI leser den ennå |
+| Settings | Delvis dekket av "Config" (remote config · bootstrap server · settings) | Delvis | — | — | — | Trenger presisering: er dette ment å være bredere enn Config? |
+
+**Store, tidligere udokumenterte funn fra dette inventaret:**
+1. **Dashboard-adminet har aldri eksistert på `main`** — hele
+   4300+-linjers tabbede panelet lever kun på feature-branches.
+2. **`feat/starlink-node-phase1` og `feat/admin-insights` har hver sine
+   unike sider som aldri er kombinert** — Starlink finnes ikke der
+   User Insights/SEO Ranks finnes, og omvendt.
+3. **Jeg kan ikke bekrefte hva som faktisk kjører på `setalink.no`** —
+   ingen fungerende SSH-tilgang denne uken, og prod er uansett ikke git,
+   så "hvilken branch" er strengt tatt ikke et spørsmål med noe entydig
+   svar der.
+
+### 1.1 Konsolideringsplan (forslag, ikke igangsatt)
+
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Inventar: alle eksisterende faner i `admin/index.php`, merket redesignet/ikke | Not started | — | — | — | — | — | — |
-| Ett felles designsystem (farger, typografi, spacing, kort/panel/tabell/graf/badge-komponenter) | Not started | — | — | — | — | — | — |
-| Modernisere hver fane (utvides til én rad per fane når inventaret er klart) | Not started | — | — | — | — | — | venter på inventar |
-| Konsistent global navigasjon/sidebar på alle sider | Not started | — | — | — | — | — | — |
+| Velg konsolideringsgren (forslag: `feat/starlink-node-phase1` som base — flest faner + Node Console/Health — cherry-pick User Insights + SEO Ranks fra `feat/admin-insights` inn i den, fremfor å merge 500+ commits rått) | Not started | — | — | — | — | — | **Venter på Khabats bekreftelse — se chat** |
+| Ett felles designsystem (farger, typografi, spacing, kort/panel/tabell/graf/badge-komponenter) | Not started | — | — | — | — | — | venter på konsolideringsgren |
+| Modernisere/bygge hver fane (utvides til én rad per fane) | Not started | — | — | — | — | — | venter på konsolideringsgren |
+| Konsistent global navigasjon/sidebar på alle sider — ingen skjulte/tomme menyvalg | Not started | — | — | — | — | — | — |
 | Lesbart på NOC-storskjerm og laptop | Not started | — | — | — | — | — | — |
 | Erstatt "bare tabell"-visninger med graf+tabell der relevant | Not started | — | — | — | — | — | — |
 
