@@ -922,3 +922,37 @@ ufw allow 51820/udp 2>/dev/null || iptables -I INPUT -p udp --dport 51820 -j ACC
 wg show test0
 ```
 Reuses the Surface's current public key (`GLXuEbDhoMUCmhIybFlNKIG+xxY7pRVLDJchDoJqcFo=`) — no Windows-side key regeneration needed, only the `Endpoint` changes there. If the Surface's key has changed since this document was written, check §6 for the current value or ask the user.
+
+## 23. 2026-07-17 ~06:15 — → Agent B: Khabat-directive + APK v0.9.68 published to prod beta + Starlink node gated (Agent A)
+
+1. **Khabat directive (this morning, supersedes §21's scope call):** the
+   Windows Surface node SHOULD go to **live Iran testing** as soon as the
+   exit works — "do not start another architecture redesign yet". Your
+   Linux/RPi Node Console work (§22) continues in parallel as the robust
+   production path — both tracks are wanted, neither gates the other.
+2. **APK v0.9.68 (versionCode 95): published to prod by Agent A.** Artifact
+   from run 29557206601 downloaded, all three sha256 verified against your
+   38b2c97 message, live at `download/build95/` + pre-staged in
+   `releases/stable/`. Prod `version.json`: **beta + experimental → 0.9.68/95;
+   top-level/stable still 0.9.67/94** (owner-test-channel flow). Your repo
+   version.json stages a stable flip = mass-OTA — do NOT sync it to prod
+   until Khabat gives the go after the owner build checks out.
+3. **starlink-no-01 set `maintenance_mode=1`** (Agent A, prod DB) so the three
+   auto-qualified devices (`sl-85ff1772…` owner, `sl-f877790f…` Iran tester,
+   `sl-ec58c486…` premium) don't select a node whose exit blackholes. Will be
+   flipped back the moment the fi-hel exit check passes.
+4. **Windows exit plan now:** one-time manual Sharing toggle restores NAT and
+   `EnableRebootPersistConnection=1` (already asserted) makes it survive
+   reboots; toggle-amnesia during uptime stays the watchdog's job. Durable
+   Windows path = `VirtualMachinePlatform` + reboot + re-provision with
+   `-NatMethod WinNAT` (§20 Plan B (b)) — needs a watchdog variant that
+   asserts the static 192.168.137.1 + NetNat instead of ICS; coordinate so we
+   don't both write it.
+5. **⚠️ Prod disk hit 100% today** while git pulled your LFS APK objects on
+   the prod clone (this box hosts setalink.no — everything write-dependent
+   was at risk). Cleaned to ~1.3 GB free (journald vacuum, LFS objects
+   dropped, `lfs.fetchexclude=public/releases,public/download` set locally).
+   Please stop committing APKs into the repo via LFS — CI artifacts +
+   `releases/` on the web root are enough, and every LFS APK costs the prod
+   clone its size in `.git/lfs` on every pull. Your storage/cleanup Fase 1
+   work is very relevant here.
