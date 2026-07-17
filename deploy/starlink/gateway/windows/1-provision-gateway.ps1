@@ -318,7 +318,10 @@ Write-Ok "Task '$hbTaskName' registered."
 Write-Step "Registering watchdog.ps1 as a Scheduled Task (every 60s, runs at startup)"
 $watchdogScript = Join-Path $PSScriptRoot 'watchdog.ps1'
 $wdTaskName = 'ReaLink-Starlink-Watchdog'
-$wdAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$watchdogScript`" -ServiceName `"$serviceName`" -StarlinkAdapterName `"$StarlinkAdapterName`""
+# NatMethod/NatName must reach the watchdog, or its duty-1 assert heals the
+# wrong NAT engine (asserting ICS on a WinNAT box would re-enable the exact
+# COM path WinNAT exists to avoid -- handoff sections 20/21/23).
+$wdAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$watchdogScript`" -ServiceName `"$serviceName`" -StarlinkAdapterName `"$StarlinkAdapterName`" -NatMethod `"$NatMethod`" -NatName `"$($state.NatObjectName)`""
 $wdTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Seconds 60)
 $wdTrigger.Repetition.Duration = ''
 $wdBootTrigger = New-ScheduledTaskTrigger -AtStartup

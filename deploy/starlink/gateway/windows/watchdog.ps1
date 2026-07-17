@@ -90,7 +90,25 @@ param(
     # Send-SelfHealReport below. Deliberately non-fatal if missing/unfilled:
     # this watchdog's core job (local self-healing) must keep working even
     # if the server side of reporting is unreachable or unconfigured.
-    [string]$ConfigPath = ''
+    [string]$ConfigPath = '',
+
+    # Which NAT engine duty 1 asserts (handoff sections 20/21/23). ICS is the
+    # legacy default and what the Surface runs today. WinNAT is the durable
+    # path once VirtualMachinePlatform is enabled: a static internal IP plus
+    # a MSFT_NetNat instance, no COM event chain anywhere -- so the
+    # 0x80040201 failure mode cannot exist. 1-provision-gateway.ps1 passes
+    # this through to the Scheduled Task when provisioned with
+    # -NatMethod WinNAT.
+    [ValidateSet('ICS', 'WinNAT')]
+    [string]$NatMethod = 'ICS',
+
+    # NetNat instance name (WinNAT mode only). Default matches
+    # 1-provision-gateway.ps1's NatObjectName.
+    [string]$NatName = 'ReaLinkStarlinkNat',
+
+    # Prefix length for the internal subnet (WinNAT mode only; ICS hardwires
+    # its own /24).
+    [int]$InternalPrefixLength = 24
 )
 
 $scriptDir = $PSScriptRoot
@@ -393,10 +411,64 @@ function Rebind-Ics {
     return $false
 }
 
+function Test-WinNatBound {
+    # WinNAT exit health = (a) the static internal address is on the tunnel
+    # adapter AND (b) the NetNat instance exists. They die independently:
+    # the address dies with the adapter on every WireGuard toggle (the same
+    # amnesia ICS suffers), while the NetNat instance persists across
+    # reboots but can be lost to Hyper-V/WSL2 NAT churn ("only one WinNAT
+    # per box" -- see the provision script's pre-flight).
+    if (-not (Test-IcsAddress)) { return $false }
+    return [bool](Get-NetNat -Name $NatName -ErrorAction SilentlyContinue)
+}
+
+function Rebind-WinNat {
+    # Plain CIM operations, no COM events -- the 0x80040201 subscriber
+    # failure that plagues the ICS path (sections 20/21) cannot happen here.
+    $prefix = ($IcsInternalAddress -replace '\.\d+$', '.0') + "/$InternalPrefixLength"
+    if (-not (Test-IcsAddress)) {
+        try {
+            New-NetIPAddress -InterfaceAlias $TunnelAdapterName -IPAddress $IcsInternalAddress `
+                -PrefixLength $InternalPrefixLength -ErrorAction Stop | Out-Null
+            Log "WinNAT re-bind: static $IcsInternalAddress/$InternalPrefixLength restored on '$TunnelAdapterName'."
+        } catch {
+            Log "ERROR: could not assign $IcsInternalAddress to '$TunnelAdapterName': $_"
+            return $false
+        }
+    }
+    if (-not (Get-NetNat -Name $NatName -ErrorAction SilentlyContinue)) {
+        try {
+            New-NetNat -Name $NatName -InternalIPInterfaceAddressPrefix $prefix -ErrorAction Stop | Out-Null
+            Log "WinNAT re-bind: NetNat '$NatName' ($prefix) recreated."
+        } catch {
+            Log "ERROR: New-NetNat '$NatName' ($prefix) failed: $_ -- 'Invalid class' = MSFT_NetNat missing (VirtualMachinePlatform not enabled, section 14.2); otherwise check Get-NetNat for a competing NAT (WinNAT allows only one)."
+            return $false
+        }
+    }
+    return $true
+}
+
 function Assert-ExitPath {
     $wgAdapter = Get-NetAdapter -Name $TunnelAdapterName -ErrorAction SilentlyContinue
     if (-not $wgAdapter) {
         Log "WARN: tunnel adapter '$TunnelAdapterName' does not exist -- cannot assert exit path (is the tunnel service creating it?)."
+        return
+    }
+    if ($NatMethod -eq 'WinNAT') {
+        if (-not (Test-WinNatBound)) {
+            Log "Toggle amnesia detected (WinNAT): $IcsInternalAddress or NetNat '$NatName' missing from '$TunnelAdapterName' -- re-binding."
+            $rebindStart = Get-Date
+            $rebindOk = Rebind-WinNat
+            $rebindMs = [int]((Get-Date) - $rebindStart).TotalMilliseconds
+            if ($rebindOk) {
+                Log "HEALED: WinNAT exit path restored ($IcsInternalAddress + NetNat '$NatName')."
+                Record-Disconnect  # the exit was down for users until this heal
+            }
+            Send-SelfHealReport -RecoveryAction 'winnat_rebind' -Success $rebindOk -DurationMs $rebindMs `
+                -HealthBefore 'toggle_amnesia' -HealthAfter $(if ($rebindOk) { 'healed' } else { 'still_down' })
+        }
+        Assert-Forwarding $TunnelAdapterName
+        Assert-Forwarding $StarlinkAdapterName
         return
     }
     if (-not (Test-IcsBound)) {
