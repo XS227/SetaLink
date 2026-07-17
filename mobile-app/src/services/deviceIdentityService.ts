@@ -54,14 +54,25 @@ export async function getStableDeviceId(): Promise<string> {
   return id;
 }
 
+// Carrier/operator name, cached from the fingerprint, so connect telemetry can
+// tag each attempt with the network it ran on — the signal that drives
+// per-operator learned routing server-side. Empty until the first fingerprint.
+let _cachedCarrier = '';
+export function getCachedCarrier(): string { return _cachedCarrier; }
+
 // Returns hardware fingerprint metadata for registration.
 export async function getDeviceFingerprint(): Promise<Record<string, string | number>> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { NativeModules } = require('react-native');
     const mod = NativeModules?.XrayModule;
-    if (mod?.getDeviceFingerprint) return await mod.getDeviceFingerprint();
-    if (mod?.getDeviceInfo)        return await mod.getDeviceInfo();
+    const fp = mod?.getDeviceFingerprint ? await mod.getDeviceFingerprint()
+             : mod?.getDeviceInfo        ? await mod.getDeviceInfo()
+             : {};
+    if (fp && typeof fp.carrier_name === 'string' && fp.carrier_name.trim()) {
+      _cachedCarrier = fp.carrier_name.trim();
+    }
+    return fp;
   } catch {}
   return {};
 }

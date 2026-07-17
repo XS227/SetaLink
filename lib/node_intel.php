@@ -225,7 +225,9 @@ function ni_anon(string $raw): string
 /** Validate an event value — unknown values become 'connect_fail'. */
 function ni_valid_event(string $e): string
 {
-    return in_array($e, ['connect_ok', 'connect_fail', 'internet_fail', 'probe_fail'], true) ? $e : 'connect_fail';
+    // quic_probe        — app-process (tunnel-path) QUIC evidence, build 80+
+    // quic_probe_direct — extension (direct-path) control measurement, build 80+
+    return in_array($e, ['connect_ok', 'connect_fail', 'internet_fail', 'probe_fail', 'quic_probe', 'quic_probe_direct'], true) ? $e : 'connect_fail';
 }
 
 /** Validate platform. */
@@ -1171,7 +1173,7 @@ function ni_node_scores(PDO $pdo, int $days = 7): array
                 AVG(CASE WHEN latency_ms IS NOT NULL THEN latency_ms END) AS avg_latency,
                 MAX(created_at)                                 AS last_at
            FROM connect_telemetry
-          WHERE created_at >= ?
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
           GROUP BY node_id
           ORDER BY total DESC"
     );
@@ -1187,6 +1189,66 @@ function ni_node_scores(PDO $pdo, int $days = 7): array
             'success_rate'   => $total > 0 ? round($ok / $total * 100, 1) : null,
             'avg_latency_ms' => $r['avg_latency'] !== null ? (int)round((float)$r['avg_latency']) : null,
             'last_event_at'  => $r['last_at'],
+        ];
+    }
+    return $out;
+}
+
+/**
+ * Classify a free-text carrier/operator name into a family key. Node
+ * reachability from Iran is carrier-dependent (Hetzner is blackholed on
+ * Irancell/TCI but works on MCI; the Stealth/CDN node saves Irancell/TCI), so
+ * grouping by operator is what makes per-operator routing possible.
+ */
+function ni_carrier_families(): array {
+    return [
+        'irancell' => ['Irancell', 'MTN', 'ایرانسل'],
+        'mci'      => ['MCI', 'Hamrah', 'همراه'],
+        'tci'      => ['TCI', 'Telecommunication Company of Iran', 'مخابرات'],
+        'rightel'  => ['Rightel', 'رایتل'],
+        'shatel'   => ['Shatel', 'شاتل'],
+    ];
+}
+
+function ni_carrier_family(string $name): string {
+    $n = trim($name);
+    if ($n === '' || $n === '--') return '';
+    $nl = strtolower($n);
+    foreach (ni_carrier_families() as $fam => $toks) {
+        foreach ($toks as $t) {
+            if (strpos($nl, strtolower($t)) !== false || strpos($n, $t) !== false) return $fam;
+        }
+    }
+    return '';
+}
+
+/**
+ * Per-node success rate for a single carrier family, from connect_telemetry's
+ * carrier_name. Thinner data than the global scores, so callers should require
+ * a minimum sample before trusting it and fall back to global (see v1.php).
+ */
+function ni_node_scores_by_carrier(PDO $pdo, string $family, int $days = 21): array {
+    $fams = ni_carrier_families();
+    if (!isset($fams[$family])) return [];
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $likes = []; $args = [$since];
+    foreach ($fams[$family] as $t) { $likes[] = 'carrier_name LIKE ?'; $args[] = '%' . $t . '%'; }
+    $where = implode(' OR ', $likes);
+    $rows = $pdo->prepare(
+        "SELECT node_id, COUNT(*) AS total, SUM(event='connect_ok') AS ok
+           FROM connect_telemetry
+          WHERE created_at >= ? AND carrier_name IS NOT NULL AND carrier_name <> '' AND ($where)
+          GROUP BY node_id"
+    );
+    $rows->execute($args);
+    $out = [];
+    foreach ($rows->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $total = (int)$r['total'];
+        $out[$r['node_id']] = [
+            'total'        => $total,
+            'ok'           => (int)$r['ok'],
+            'success_rate' => $total > 0 ? round((int)$r['ok'] / $total * 100, 1) : null,
         ];
     }
     return $out;
@@ -2471,7 +2533,7 @@ function ni_query_diag_sessions(PDO $pdo, array $filters = []): array
         if (strtolower($srv) === 'finland') {
             $where[] = "(server_label='Finland' OR server_ip='65.109.183.7')";
         } elseif (strtolower($srv) === 'germany') {
-            $where[] = "(server_label LIKE 'Germany%' OR server_label='Primary' OR server_ip='178.104.77.231')";
+            $where[] = "(server_label LIKE 'Germany%' OR server_label='Primary' OR server_ip='91.107.158.53')";
         } else {
             $where[]  = "(server_ip=? OR server_label=?)";
             $params[] = $srv;
@@ -2724,4 +2786,197 @@ function ni_ai_diagnosis(PDO $pdo, int $limit = 20, int $days = 14): array
             'cp4_fail'   => count(array_filter($sessions, fn($s) => $s['conclusion_code'] === 'cp4_fail')),
         ],
     ];
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Intelligence v2 — country × node matrix + self-learned routing (2026-07-02)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Country × node connect-success matrix for the admin analytics view.
+ * Returns [country => [node_label => ['total','ok','success_rate']]].
+ */
+function ni_country_node_matrix(PDO $pdo, int $days = 14): array
+{
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $st = $pdo->prepare(
+        "SELECT COALESCE(NULLIF(country,''),'??') AS country, node_id,
+                COUNT(*) AS total, SUM(event='connect_ok') AS ok
+           FROM connect_telemetry
+          WHERE created_at >= ?
+          GROUP BY country, node_id
+          ORDER BY total DESC"
+    );
+    $st->execute([$since]);
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $label = ni_server_label((string)$r['node_id']);
+        $total = (int)$r['total']; $ok = (int)$r['ok'];
+        $cell  = &$out[$r['country']][$label];
+        // Same label can aggregate several node_ids (e.g. IP + 'fi-hel')
+        $cell['total'] = ($cell['total'] ?? 0) + $total;
+        $cell['ok']    = ($cell['ok'] ?? 0) + $ok;
+        $cell['success_rate'] = $cell['total'] > 0
+            ? round($cell['ok'] / $cell['total'] * 100, 1) : null;
+        if (in_array((string)$r['node_id'], ni_last_resort_nodes(), true)) $cell['last_resort'] = true;
+        unset($cell);
+    }
+    return $out;
+}
+
+/**
+ * Wilson score lower bound (95%) — pessimistic success estimate so a node
+ * with 3/3 never outranks one with 90/100.
+ */
+function ni_wilson(int $ok, int $total): float
+{
+    if ($total === 0) return 0.0;
+    $z = 1.96; $p = $ok / $total;
+    $den = 1 + $z * $z / $total;
+    $centre = $p + $z * $z / (2 * $total);
+    $margin = $z * sqrt(($p * (1 - $p) + $z * $z / (4 * $total)) / $total);
+    return max(0.0, ($centre - $margin) / $den);
+}
+
+/**
+ * SELF-LEARNED ROUTING: rank nodes per country by Wilson-scored connect
+ * success. The bootstrap endpoint consults this to serve each country the
+ * node that actually works there — the agent learns from every attempt.
+ * Returns ['countries' => [CC => [ ['node','label','ok','total','score'], … ]],
+ *          'global' => [...same...], 'computed_at' => iso, 'days' => N].
+ */
+/** Nodes only reached as a last resort (stealth/CDN fallback). Their failure
+ * counts are selection-biased — they see the traffic nothing else could carry —
+ * so rankings and the admin analyst flag them instead of trusting raw rates. */
+function ni_last_resort_nodes(): array {
+    return ['cf-edge', 'server-reality-cf', 'cf.setalink.no', 'alanya-turist.no', '104.21.61.220'];
+}
+
+/** Synthetic rows from self-tests — never real user connects; excluded from rankings. */
+function ni_synthetic_nodes(): array {
+    return ['ratelimit-test', 'repair-verify'];
+}
+
+function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): array
+{
+    ni_init_tables($pdo);
+    // Freshness first (2026-07-05): stale telemetry must disable ranking.
+    $latest = null; $rowsTotal = 0;
+    try {
+        $latest    = $pdo->query("SELECT MAX(created_at) FROM connect_telemetry")->fetchColumn() ?: null;
+        $rowsTotal = (int)$pdo->query("SELECT COUNT(*) FROM connect_telemetry")->fetchColumn();
+    } catch (\Throwable $_) {}
+    $stale = ($latest === null) || ((time() - (strtotime($latest . ' UTC') ?: 0)) > 7 * 86400);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $st = $pdo->prepare(
+        "SELECT COALESCE(NULLIF(country,''),'??') AS country, node_id,
+                COUNT(*) AS total, SUM(event='connect_ok') AS ok
+           FROM connect_telemetry
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
+          GROUP BY country, node_id"
+    );
+    $st->execute([$since]);
+
+    $per = []; $glob = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $node = (string)$r['node_id'];
+        $cc   = strtoupper((string)$r['country']);
+        $t    = (int)$r['total']; $ok = (int)$r['ok'];
+        $per[$cc][$node]['total'] = ($per[$cc][$node]['total'] ?? 0) + $t;
+        $per[$cc][$node]['ok']    = ($per[$cc][$node]['ok'] ?? 0) + $ok;
+        $glob[$node]['total']     = ($glob[$node]['total'] ?? 0) + $t;
+        $glob[$node]['ok']        = ($glob[$node]['ok'] ?? 0) + $ok;
+    }
+
+    $rank = function (array $nodes, ?int $min = null) use ($minAttempts): array {
+        $rows = [];
+        $min  = $min ?? $minAttempts;
+        foreach ($nodes as $node => $c) {
+            if ($c['total'] < $min) continue;
+            if (in_array($node, ni_synthetic_nodes(), true)) continue;
+            $rows[] = [
+                'node'  => $node,
+                'label' => ni_server_label($node),
+                'ok'    => $c['ok'],
+                'total' => $c['total'],
+                'success_rate' => round($c['ok'] / $c['total'] * 100, 1),
+                'score' => round(ni_wilson($c['ok'], $c['total']), 4),
+                'last_resort' => in_array($node, ni_last_resort_nodes(), true),
+            ];
+        }
+        usort($rows, fn($a, $b) => $b['score'] <=> $a['score']);
+        return $rows;
+    };
+
+    $countries = [];
+    foreach ($per as $cc => $nodes) {
+        $ranked = $rank($nodes);
+        if ($ranked) $countries[$cc] = $ranked;
+    }
+
+    // Per-operator rankings — the dimension that actually varies inside Iran
+    // (Hetzner blackholed on Irancell/TCI, fine on MCI). Thinner data, so a
+    // lower sample floor; consumers fall back to country/global when empty.
+    $carStmt = $pdo->prepare(
+        "SELECT carrier_name, node_id, COUNT(*) AS total, SUM(event='connect_ok') AS ok
+           FROM connect_telemetry
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
+                AND carrier_name IS NOT NULL AND carrier_name <> '' AND carrier_name <> '--'
+          GROUP BY carrier_name, node_id"
+    );
+    $carStmt->execute([$since]);
+    $perCar = [];
+    foreach ($carStmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $fam = ni_carrier_family((string)$r['carrier_name']);
+        if ($fam === '') continue;
+        $node = (string)$r['node_id'];
+        $perCar[$fam][$node]['total'] = ($perCar[$fam][$node]['total'] ?? 0) + (int)$r['total'];
+        $perCar[$fam][$node]['ok']    = ($perCar[$fam][$node]['ok'] ?? 0) + (int)$r['ok'];
+    }
+    $carriers = [];
+    foreach ($perCar as $fam => $nodes) {
+        $ranked = $rank($nodes, 4);
+        if ($ranked) $carriers[$fam] = $ranked;
+    }
+
+    return [
+        'countries'   => $countries,
+        'carriers'    => $carriers,
+        'global'      => $rank($glob),
+        'computed_at' => gmdate('c'),
+        'days'        => $days,
+        'min_attempts'=> $minAttempts,
+        'telemetry_latest' => $latest,
+        'telemetry_rows'   => $rowsTotal,
+        'stale'            => $stale,
+    ];
+}
+
+/**
+ * Cached wrapper — recomputes at most every $maxAgeSec (default 10 min) and
+ * persists the result in settings('ni_learned_routing') so bootstrap reads
+ * are cheap.
+ */
+function ni_get_learned_routing(PDO $pdo, int $maxAgeSec = 600): array
+{
+    try {
+        $st = $pdo->prepare("SELECT value FROM settings WHERE key='ni_learned_routing'");
+        $st->execute();
+        if ($row = $st->fetch(PDO::FETCH_ASSOC)) {
+            $cached = json_decode((string)$row['value'], true);
+            if (is_array($cached) && isset($cached['computed_at'])
+                && (time() - strtotime($cached['computed_at'])) < $maxAgeSec) {
+                return $cached;
+            }
+        }
+    } catch (\Throwable $e) { /* settings table may not exist yet */ }
+
+    $fresh = ni_learned_routing($pdo);
+    try {
+        $pdo->prepare("INSERT INTO settings(key,value) VALUES('ni_learned_routing',?)
+                       ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+            ->execute([json_encode($fresh)]);
+    } catch (\Throwable $e) { /* read-only DB etc. — serve fresh anyway */ }
+    return $fresh;
 }
