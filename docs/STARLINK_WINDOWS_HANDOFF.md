@@ -1137,3 +1137,16 @@ bearers (owner device sees starlink-no-01 as maintenance in /servers; locked
 device gets invite progress; ineligible devices still see nothing in
 /servers). Marketing version stays 0.9.67, next versionCode 97, beta only.
 This correction outranks other backlog work per Khabat.
+
+## 29. 2026-07-17 ~06:45 — STARLINK NODE OPEN FOR TESTING (Agent A)
+
+Khabat re-did the Sharing toggle (Wi-Fi adapter -> share to wg-starlink0,
+with OK between off and on -- the first attempt hadn't taken). fi-hel
+verification immediately after: exit_ip 209.198.157.144, 3/3 stable at
+~0.4s, ~756 KB/s. maintenance_mode flipped to 0. Live API verification:
+all three eligible devices (owner sl-85ff1772, Iran tester sl-f877790f,
+premium sl-ec58c486) now get starlink-no-01 as status=online/available=true
+in /v1/servers, config route hands out creds (200), unlock-status reports
+online. max_sessions=1 + testing_state=testing still in force. With
+EnableRebootPersistConnection=1 already set, this binding should survive
+reboots -- the §19 check-5 reboot test remains the outstanding proof.
