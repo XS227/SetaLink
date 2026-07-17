@@ -421,11 +421,36 @@ class XrayModule: NSObject {
     // TCP vs forced-H3 to the same host; the pair proves/disproves a QUIC
     // blackhole on the TUNNEL path. Result goes to the App Group (same key
     // the diagnostics export reads) and back to JS, which owns telemetry.
+    // Classifies a failed probe's raw error into one of a small, fixed set of
+    // reasons an admin can actually act on (matches lib/node_intel.php's
+    // NI_ERROR_CATEGORIES additions: 'dns_failed', 'tls_failed', 'timeout').
+    // Built from URLError.Code, which is Apple's own stable classification
+    // of what went wrong in the URL Loading System -- not a guess from the
+    // human-readable description string, which varies by locale/iOS version.
+    private static func probeFailureCategory(ok: Bool, error: Error?) -> String {
+        if ok { return "ok" }
+        guard let urlErr = error as? URLError else { return "unknown" }
+        switch urlErr.code {
+        case .cannotFindHost, .dnsLookupFailed:
+            return "dns_failed"
+        case .secureConnectionFailed, .serverCertificateUntrusted,
+             .serverCertificateHasBadDate, .serverCertificateNotYetValid,
+             .serverCertificateHasUnknownRoot, .clientCertificateRejected:
+            return "tls_failed"
+        case .timedOut:
+            return "timeout"
+        case .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet:
+            return "connection_failed"
+        default:
+            return "unknown"
+        }
+    }
+
     @objc func runQuicProbe(_ resolve: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let host = "https://www.instagram.com/favicon.ico"
-            func probe(http3: Bool) -> (ok: Bool, ms: Int, detail: String) {
+            func probe(http3: Bool) -> (ok: Bool, ms: Int, detail: String, category: String) {
                 let cfg = URLSessionConfiguration.ephemeral
                 cfg.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                 cfg.timeoutIntervalForRequest = 6.0
@@ -433,15 +458,19 @@ class XrayModule: NSObject {
                 var req = URLRequest(url: URL(string: host)!)
                 if http3, #available(iOS 15.0, *) { req.assumesHTTP3Capable = true }
                 let start = Date(); let sem = DispatchSemaphore(value: 0)
-                var ok = false; var detail = ""
+                var ok = false; var detail = ""; var rawError: Error? = nil
                 let task = session.dataTask(with: req) { _, resp, err in
                     if let h = resp as? HTTPURLResponse { ok = true; detail = "HTTP \(h.statusCode)" }
-                    else if let e = err { detail = e.localizedDescription }
+                    else if let e = err { detail = e.localizedDescription; rawError = e }
                     sem.signal()
                 }
                 task.resume()
-                if sem.wait(timeout: .now() + 6.5) == .timedOut { task.cancel(); detail = "timeout" }
-                return (ok, Int(Date().timeIntervalSince(start) * 1000), detail)
+                if sem.wait(timeout: .now() + 6.5) == .timedOut {
+                    task.cancel(); detail = "timeout"
+                    rawError = URLError(.timedOut)
+                }
+                let category = XrayModule.probeFailureCategory(ok: ok, error: rawError)
+                return (ok, Int(Date().timeIntervalSince(start) * 1000), detail, category)
             }
             let tcp  = probe(http3: false)
             let quic = probe(http3: true)
@@ -449,20 +478,22 @@ class XrayModule: NSObject {
                         : (tcp.ok && quic.ok) ? "QUIC_OK"
                         : (!tcp.ok && !quic.ok) ? "BOTH_FAIL"
                         : "TCP_FAIL_QUIC_OK"
-            let line = "TCP=\(tcp.ok ? "ok" : "fail")(\(tcp.ms)ms,\(tcp.detail)) " +
-                       "QUIC=\(quic.ok ? "ok" : "fail")(\(quic.ms)ms,\(quic.detail)) ⇒ \(verdict) [app-path]"
+            let line = "TCP=\(tcp.ok ? "ok" : "fail")(\(tcp.ms)ms,\(tcp.detail),\(tcp.category)) " +
+                       "QUIC=\(quic.ok ? "ok" : "fail")(\(quic.ms)ms,\(quic.detail),\(quic.category)) ⇒ \(verdict) [app-path]"
             self?.shared?.set(line, forKey: "last_quic_evidence")
             self?.shared?.set(Int(Date().timeIntervalSince1970), forKey: "last_quic_evidence_at")
             self?.shared?.synchronize()
             let out: [String: Any] = [
-                "verdict":    verdict,
-                "line":       line,
-                "tcpOk":      tcp.ok,
-                "tcpMs":      tcp.ms,
-                "tcpDetail":  tcp.detail,
-                "quicOk":     quic.ok,
-                "quicMs":     quic.ms,
-                "quicDetail": quic.detail,
+                "verdict":      verdict,
+                "line":         line,
+                "tcpOk":        tcp.ok,
+                "tcpMs":        tcp.ms,
+                "tcpDetail":    tcp.detail,
+                "tcpCategory":  tcp.category,
+                "quicOk":       quic.ok,
+                "quicMs":       quic.ms,
+                "quicDetail":   quic.detail,
+                "quicCategory": quic.category,
             ]
             resolve(out)
         }

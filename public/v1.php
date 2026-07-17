@@ -542,6 +542,13 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'throughput_kbps'      => v1_body('throughput_kbps') !== '' ? (int)v1_body('throughput_kbps') : null,
             'battery_level'        => v1_body('battery_level')   !== '' ? (int)v1_body('battery_level')   : null,
             'asn'                  => v1_body('asn'),
+            // Instagram quic_probe diagnostics (2026-07-17) — see doc comment
+            // on these fields in mobile-app/src/services/api/telemetry.api.ts.
+            'probe_ms'             => v1_body('probe_ms')        !== '' ? (int)v1_body('probe_ms')        : null,
+            'probe_outbound'       => v1_body('probe_outbound'),
+            'probe_tcp_detail'     => v1_body('probe_tcp_detail'),
+            'probe_tcp_category'   => v1_body('probe_tcp_category'),
+            'probe_quic_detail'    => v1_body('probe_quic_detail'),
         ]);
         ni_telemetry_rotate($pdo); // enforce the retention cap (occasional trim)
         // Auto-create structured diagnostic session for every disconnect event (build 68+).

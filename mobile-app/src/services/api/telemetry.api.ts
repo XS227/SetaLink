@@ -87,6 +87,36 @@ export interface ConnectTelemetryPayload {
   tunnel_mode?: string;
   /** Probe latency in ms (quic_probe: the QUIC leg). */
   probe_ms?: number;
+  /**
+   * Instagram QUIC-probe diagnostics (2026-07-17, from a real iOS tester
+   * report of "Instagram occasionally fails to open"). An extensive static
+   * audit of every routing path (Smart Bypass, per-app catalog, AI routing
+   * rules, native VPN app-exclusion) found no rule that bypasses Instagram —
+   * see docs comments in xrayConfigBuilder.ts/iranBypassRules.ts. Rather than
+   * guess at a fix, these fields let the NEXT build collect the evidence
+   * automatically instead: exactly which outbound path Instagram traffic
+   * took, and — on failure — why (DNS/TLS/timeout/connection), per leg
+   * (TCP and QUIC probed separately, see XrayModule.runQuicProbe).
+   * error_category carries the QUIC leg's category (the one implicated by
+   * the known QUIC-blackhole history, see build 78-80 comments); the TCP
+   * leg's category/detail travel in the two probe_tcp_* fields below since
+   * error_category is a single shared column across all event types.
+   */
+  /** Expected Xray outboundTag for the QUIC leg given the current routing
+   *  config and server flow — 'proxy-quic' (Vision-flow servers) or 'proxy'
+   *  (everyone else). Computed client-side from known, deterministic routing
+   *  rules (see buildXrayConfig) — not read back from Xray's own logs, so it
+   *  reflects what the client BUILT the config to do, not certain proof of
+   *  what Xray actually did at runtime; still the best available signal
+   *  without deeper native log instrumentation. */
+  probe_outbound?: string;
+  /** TCP leg's raw failure detail (NSURLError description, truncated). */
+  probe_tcp_detail?: string;
+  /** TCP leg's failure category: dns_failed | tls_failed | timeout |
+   *  connection_failed | ok | unknown. */
+  probe_tcp_category?: string;
+  /** QUIC leg's raw failure detail. */
+  probe_quic_detail?: string;
 }
 
 /**

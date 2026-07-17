@@ -86,6 +86,19 @@ function ni_init_tables(PDO $pdo): void
         "trust_weight          REAL    DEFAULT 1.0",    // 0.0-1.0, set by ni_trust_weight_for_event()
         "decision_id           TEXT    DEFAULT NULL",   // links back to routing_decisions, when this
                                                           // session originated from a ranked /v1/servers call
+        // Instagram QUIC-probe diagnostics (2026-07-17) -- real iOS tester
+        // report of "Instagram occasionally fails to open". A static audit
+        // found no routing-rule bypass; these fields let quic_probe events
+        // (see mobile-app/src/services/quicEvidenceService.ts) carry per-leg
+        // (TCP vs QUIC) evidence instead of guessing at a fix. error_category
+        // (existing column) carries the QUIC leg's category; probe_ms
+        // (already sent by the client since build 80 but never stored until
+        // now) and these three carry the rest.
+        "probe_ms              INTEGER DEFAULT NULL",   // quic_probe: QUIC leg latency, ms
+        "probe_outbound        TEXT    DEFAULT NULL",   // expected Xray outboundTag for the QUIC leg ('proxy'/'proxy-quic')
+        "probe_tcp_detail      TEXT    DEFAULT NULL",   // TCP leg's raw NSURLError description
+        "probe_tcp_category    TEXT    DEFAULT NULL",   // TCP leg's category, same enum as error_category
+        "probe_quic_detail     TEXT    DEFAULT NULL",   // QUIC leg's raw NSURLError description
     ];
     // Deliberately NO device_id column here, ever — connect_telemetry stays
     // fully anonymous per this file's existing privacy model (see file
@@ -237,6 +250,21 @@ function ni_valid_network(string $n): string
 const NI_ERROR_CATEGORIES = [
     'config_error', 'xray_failed', 'proxy_not_ready', 'routing_failed',
     'server_unreachable', 'dns_failed', 'captive_portal', 'app_blocked', 'unknown',
+    // Added 2026-07-17 for the Instagram quic_probe diagnostics (see
+    // XrayModule.probeFailureCategory on iOS) -- distinct from the existing
+    // 'server_unreachable'/'dns_failed' because these are the specific,
+    // named reasons a URLSession probe can fail at the socket/TLS layer.
+    'tls_failed', 'timeout', 'connection_failed',
+];
+
+// Same list plus 'ok', for probe_tcp_category (not run through the
+// error_category column, so not gated by the validation above) -- kept as
+// a literal, not array_merge(NI_ERROR_CATEGORIES, ...), because top-level
+// const expressions in this PHP version don't accept function calls.
+const NI_PROBE_CATEGORIES = [
+    'config_error', 'xray_failed', 'proxy_not_ready', 'routing_failed',
+    'server_unreachable', 'dns_failed', 'captive_portal', 'app_blocked', 'unknown',
+    'tls_failed', 'timeout', 'connection_failed', 'ok',
 ];
 
 // ── Abuse guard for the anonymous telemetry endpoint (2026-07-05) ────────────
@@ -302,6 +330,13 @@ function ni_record(PDO $pdo, array $d): void
     $ipVersion = (string)($d['ip_version'] ?? '');
     $ipVersion = in_array($ipVersion, ['ipv4', 'ipv6', 'dual', 'unknown'], true) ? $ipVersion : null;
 
+    // Instagram quic_probe diagnostics (2026-07-17) -- probe_tcp_category is
+    // client-reported and not otherwise validated, so gate it the same way
+    // error_category is gated just above (unrecognized -> null, never a
+    // free-text value in what's meant to be a small fixed enum column).
+    $probeTcpCat = (string)($d['probe_tcp_category'] ?? '');
+    $probeTcpCat = in_array($probeTcpCat, NI_PROBE_CATEGORIES, true) ? $probeTcpCat : null;
+
     // Telemetry Trust Engine — device_id is used TRANSIENTLY here only (to
     // score and update trust), never stored on this row. Same posture as
     // ni_award_tap_contribution(): the anonymous fact table and the
@@ -321,8 +356,9 @@ function ni_record(PDO $pdo, array $d): void
              tunnel_mode,cp1_readable,cp4_connections,cp4_first_dest,
              ios_version,device_model,
              trigger_type,jitter_ms,reconnect_count,throughput_kbps,battery_level_pct,asn_hash,
-             trust_weight,decision_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             trust_weight,decision_id,
+             probe_ms,probe_outbound,probe_tcp_detail,probe_tcp_category,probe_quic_detail)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )->execute([
         ni_valid_event((string)($d['event']        ?? 'connect_fail')),
         substr((string)($d['node_id']    ?? 'primary'),  0, 40),
@@ -359,8 +395,12 @@ function ni_record(PDO $pdo, array $d): void
         $ipVersion,
         ($d['rtt_ms'] ?? null) !== null && $d['rtt_ms'] !== '' ? max(0, (int)$d['rtt_ms']) : null,
         ($d['network_switched'] ?? null) !== null && $d['network_switched'] !== '' ? (int)(bool)$d['network_switched'] : null,
-        // Build 68 checkpoint fields
-        substr((string)($d['tunnel_mode']    ?? ''), 0, 20) ?: null,
+        // Build 68 checkpoint fields. 30, not 20 -- 'QUIC_BLACKHOLE_LIKELY' (a
+        // real runQuicProbe verdict, build 80) is 21 chars and was silently
+        // truncating to 'QUIC_BLACKHOLE_LIKEL' at the old limit (found
+        // 2026-07-17 while adding the Instagram probe diagnostics, via a
+        // smoke-test round-trip, not by inspection alone).
+        substr((string)($d['tunnel_mode']    ?? ''), 0, 30) ?: null,
         substr((string)($d['cp1_readable']   ?? ''), 0, 10) ?: null,
         ($d['cp4_connections'] ?? null) !== null && $d['cp4_connections'] !== '' ? max(0, (int)$d['cp4_connections']) : null,
         substr((string)($d['cp4_first_dest'] ?? ''), 0, 120) ?: null,
@@ -376,6 +416,12 @@ function ni_record(PDO $pdo, array $d): void
         ni_anon((string)($d['asn'] ?? '')) ?: null,
         $trustWeight,
         substr((string)($d['decision_id'] ?? ''), 0, 40) ?: null,
+        // Instagram quic_probe diagnostics (2026-07-17)
+        ($d['probe_ms'] ?? null) !== null && $d['probe_ms'] !== '' ? max(0, (int)$d['probe_ms']) : null,
+        substr((string)($d['probe_outbound']    ?? ''), 0, 20)   ?: null,
+        substr((string)($d['probe_tcp_detail']  ?? ''), 0, 200)  ?: null,
+        $probeTcpCat,
+        substr((string)($d['probe_quic_detail'] ?? ''), 0, 200)  ?: null,
     ]);
 
     if ($deviceId !== '') ni_update_device_trust($pdo, $deviceId, $trustWeight);

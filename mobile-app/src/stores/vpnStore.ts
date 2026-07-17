@@ -170,7 +170,17 @@ export const useVpnStore = create<VpnState>((set, get) => {
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { scheduleQuicEvidenceProbe } = require('../services/quicEvidenceService') as typeof import('../services/quicEvidenceService');
-        scheduleQuicEvidenceProbe(server?.id, () => get().connectionState === 'connected');
+        // Vision-flow servers reject UDP/443 on the main proxy outbound, so
+        // the config routes their QUIC leg through the flow-less twin
+        // 'proxy-quic' instead (see buildQuicProxyOutbound in
+        // xrayConfigBuilder.ts) — report which one so the Instagram
+        // diagnostics telemetry (2026-07-17) reflects the path actually in
+        // effect for this connection, not a hardcoded guess.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useServerStore: _useServerStoreForQuic } = require('./serverStore') as typeof import('./serverStore');
+        const creds = server ? _useServerStoreForQuic.getState().getImportedCreds(server.id) : null;
+        const quicOutboundTag = creds?.flow === 'xtls-rprx-vision' ? 'proxy-quic' : 'proxy';
+        scheduleQuicEvidenceProbe(server?.id, () => get().connectionState === 'connected', quicOutboundTag);
       } catch {}
 
       try {

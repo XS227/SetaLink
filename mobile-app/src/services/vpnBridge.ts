@@ -47,14 +47,18 @@ export interface ProbeDiagnostics {
 
 /** Build 80 — app-process QUIC probe result (traverses the TUN on iOS). */
 export interface QuicProbeResult {
-  verdict:    string; // QUIC_OK | QUIC_BLACKHOLE_LIKELY | BOTH_FAIL | TCP_FAIL_QUIC_OK
-  line:       string; // human-readable 'TCP=… QUIC=… ⇒ VERDICT [app-path]'
-  tcpOk:      boolean;
-  tcpMs:      number;
-  tcpDetail:  string;
-  quicOk:     boolean;
-  quicMs:     number;
-  quicDetail: string;
+  verdict:      string; // QUIC_OK | QUIC_BLACKHOLE_LIKELY | BOTH_FAIL | TCP_FAIL_QUIC_OK
+  line:         string; // human-readable 'TCP=… QUIC=… ⇒ VERDICT [app-path]'
+  tcpOk:        boolean;
+  tcpMs:        number;
+  tcpDetail:    string;
+  /** dns_failed | tls_failed | timeout | connection_failed | ok | unknown —
+   *  see XrayModule.probeFailureCategory() (iOS native). 2026-07-17. */
+  tcpCategory:  string;
+  quicOk:       boolean;
+  quicMs:       number;
+  quicDetail:   string;
+  quicCategory: string;
 }
 
 export interface VpnAdapter {
@@ -132,8 +136,8 @@ class MockAdapter implements VpnAdapter {
   }
   async runQuicProbe(): Promise<QuicProbeResult> {
     return { verdict: 'QUIC_OK', line: 'TCP=ok(50ms,HTTP 200) QUIC=ok(60ms,HTTP 200) ⇒ QUIC_OK [app-path] (mock)',
-             tcpOk: true, tcpMs: 50, tcpDetail: 'HTTP 200 (mock)',
-             quicOk: true, quicMs: 60, quicDetail: 'HTTP 200 (mock)' };
+             tcpOk: true, tcpMs: 50, tcpDetail: 'HTTP 200 (mock)', tcpCategory: 'ok',
+             quicOk: true, quicMs: 60, quicDetail: 'HTTP 200 (mock)', quicCategory: 'ok' };
   }
 }
 
