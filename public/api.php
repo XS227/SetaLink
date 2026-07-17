@@ -31,6 +31,8 @@ require_once __DIR__ . '/../lib/messaging.php';
 require_once __DIR__ . '/../lib/trustai.php';
 // REAL token economy — account linking + server-verified redemption (A2).
 require_once __DIR__ . '/../lib/real_economy.php';
+// Ads performance comparison (AdsGram vs AdMob ingestion + query helpers).
+require_once __DIR__ . '/../lib/ads_perf.php';
 
 header('Content-Type: application/json');
 // CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
@@ -540,6 +542,9 @@ if ($method === 'GET') {
             'user_id'           => $dev['user_id']        ?? '',
             'referral_code'     => $dev['referral_code'],
             'plan'              => $dev['plan'],
+            // Test-account flag, orthogonal to plan — lets a premium tester
+            // keep quota while exercising free-tier-gated features (ads).
+            'test_mode'         => (int)($dev['test_mode'] ?? 0) === 1,
             'quota_bytes_total' => (int)$dev['quota_bytes_total'],
             'quota_bytes_used'  => (int)$dev['quota_bytes_used'],
             'valid_until'       => $dev['valid_until'],
@@ -551,7 +556,9 @@ if ($method === 'GET') {
             'country'           => $dev['country'] ?? '',
             'quota'             => $summary,
             'milestones'        => $milestones,
-            'packages'          => $packages,
+            'packages'            => $packages,
+            // REAL-ID: ecosystem account shared across Shahnameh, 3REAL, TrustAI, RealGram.
+            'linked_real_account' => (string)($dev['linked_real_account'] ?? ''),
         ]);
     }
 
@@ -642,6 +649,34 @@ if ($method === 'GET') {
             'count'              => count($invitees),
             'total_earned_bytes' => $total,
             'invitees'           => $invitees,
+        ]);
+    }
+
+    if ($action === 'sso-token') {
+        // Ecosystem SSO (contract 6): mint a short-lived JWT for the device's
+        // linked REAL account so the in-app game (and any ecosystem WebView)
+        // authenticates without a separate login. Fails safe: 'unlinked' → app
+        // prompts to link; 'unavailable' → app loads the game as a guest. The
+        // game_url / issuer come from remote-config so they rotate without a
+        // release. The app never holds real_api_key — the panel proxies.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $rc = [];
+        try {
+            $rc = $pdo->query("SELECT key, value FROM settings WHERE key IN ('rc_game_url','rc_ecosystem_sso_enabled')")
+                      ->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
+        } catch (\Exception $e) {}
+        $result = re_sso_token($pdo, $deviceId);
+        ok([
+            'status'      => $result['status'],                     // ok | unlinked | unavailable
+            'token'       => $result['token']      ?? '',
+            'expires_in'  => $result['expires_in'] ?? 0,
+            'account'     => $result['account']    ?? '',
+            'game_url'    => (string)($rc['rc_game_url'] ?? 'https://shahnameh.setaei.com'),
+            'sso_enabled' => (bool)(int)($rc['rc_ecosystem_sso_enabled'] ?? 1),
         ]);
     }
 
@@ -736,34 +771,6 @@ if ($method === 'GET') {
         ok(['available' => true, 'reason' => '', 'reserved' => true]);
     }
 
-    if ($action === 'sso-token') {
-        // Ecosystem SSO (contract 6): mint a short-lived JWT for the device's
-        // linked REAL account so the in-app game (and any ecosystem WebView)
-        // authenticates without a separate login. Fails safe: 'unlinked' → app
-        // prompts to link; 'unavailable' → app loads the game as a guest. The
-        // game_url / issuer come from remote-config so they rotate without a
-        // release. The app never holds real_api_key — the panel proxies.
-        $deviceId = trim($_GET['device_id'] ?? '');
-        if (!$deviceId) err('missing device_id');
-        $pdo = db();
-        re_ensure_schema($pdo);
-        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
-        $rc = [];
-        try {
-            $rc = $pdo->query("SELECT key, value FROM settings WHERE key IN ('rc_game_url','rc_ecosystem_sso_enabled')")
-                      ->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
-        } catch (\Exception $e) {}
-        $result = re_sso_token($pdo, $deviceId);
-        ok([
-            'status'      => $result['status'],                     // ok | unlinked | unavailable
-            'token'       => $result['token']      ?? '',
-            'expires_in'  => $result['expires_in'] ?? 0,
-            'account'     => $result['account']    ?? '',
-            'game_url'    => (string)($rc['rc_game_url'] ?? 'https://shahnameh.setaei.com'),
-            'sso_enabled' => (bool)(int)($rc['rc_ecosystem_sso_enabled'] ?? 1),
-        ]);
-    }
-
     if ($action === 'resolve-recipient') {
         // Look up a transfer recipient by device_id / user_id / referral_code so
         // the Send-GB confirmation screen can show who will receive the quota.
@@ -810,7 +817,7 @@ if ($method === 'POST') {
         $sdkVersion    = (int)($_POST['sdk_version'] ?? 0);
         $androidVer    = substr(trim($_POST['android_version'] ?? ''), 0, 20);
         $abi           = substr(trim($_POST['abi']             ?? ''), 0, 80);
-        // Carrier/operator name → feeds per-operator learned routing.
+        // Carrier/operator name -> feeds per-operator learned routing.
         $carrier       = substr(trim($_POST['carrier']         ?? ''), 0, 80);
         if (!$deviceId) err('missing device_id');
 
@@ -896,9 +903,6 @@ if ($method === 'POST') {
             $dev = $stmt->fetch();
         }
 
-        // Store the carrier separately (kept out of the big INSERT/UPDATE above
-        // to avoid touching their column lists). Only when the client sent one —
-        // never blank an existing value. Drives per-operator learned routing.
         if ($carrier !== '') {
             try { $pdo->prepare("UPDATE devices SET carrier=? WHERE device_id=?")->execute([$carrier, $deviceId]); }
             catch (\Exception $e) { /* carrier column absent on very old schemas */ }
@@ -910,6 +914,7 @@ if ($method === 'POST') {
             'user_id'             => $dev['user_id']        ?? '',
             'referral_code'       => $dev['referral_code'],
             'plan'                => $dev['plan'],
+            'test_mode'           => (int)($dev['test_mode'] ?? 0) === 1,
             'quota_bytes_total'   => (int)$dev['quota_bytes_total'],
             'quota_bytes_used'    => (int)$dev['quota_bytes_used'],
             'valid_until'         => $dev['valid_until'],
@@ -1426,19 +1431,136 @@ if ($method === 'POST') {
     }
 
     if ($action === 'link-real-account') {
-        // A2: bind this device to a REAL/Shahnameh account. The proof is minted
-        // by the ecosystem backend during the wallet deep-link flow and verified
-        // against the shared real_link_secret — the client can't fabricate it.
+        // A2: bind this device to a REAL account. Proof minted by Telegram bot
+        // (B-3) or RealGram web gate — both yield the same canonical Telegram
+        // user_id as the account string, so re-linking from either path is
+        // idempotent (no duplicate accounts possible for the same person).
         $deviceId = trim($_POST['device_id'] ?? '');
         $account  = trim($_POST['real_account'] ?? '');
         $ts       = (int)($_POST['ts'] ?? 0);
         $sig      = trim($_POST['sig'] ?? '');
+        $source   = in_array($_POST['source'] ?? '', ['telegram','realgram'], true)
+                    ? $_POST['source'] : 'unknown';
         if (!$deviceId || $account === '' || !$ts || $sig === '') err('missing params');
         $pdo = db();
         re_ensure_schema($pdo);
         if (!re_verify_link_proof($pdo, $deviceId, $account, $ts, $sig)) err('invalid link proof');
+        // Log re-links for dedup audit (same device, different account = suspicious).
+        $existing = re_linked_account($pdo, $deviceId);
+        if ($existing !== '' && $existing !== $account) {
+            try {
+                $pdo->prepare(
+                    "INSERT OR IGNORE INTO analytics (type, device_id, value, created_at)
+                     VALUES ('real_relink', ?, ?, datetime('now'))"
+                )->execute([$deviceId, json_encode(['old'=>$existing,'new'=>$account,'src'=>$source])]);
+            } catch (\Exception $_) {}
+        }
         if (!re_link_account($pdo, $deviceId, $account)) err('unknown device');
+        // Stamp the link timestamp for conversion analytics (adp_conversion_series).
+        try {
+            $pdo->prepare(
+                "UPDATE devices SET real_linked_at = datetime('now')
+                 WHERE device_id = ? AND (real_linked_at IS NULL OR real_linked_at = '')"
+            )->execute([$deviceId]);
+        } catch (\Exception $_) {}
         ok(['linked_real_account' => $account]);
+    }
+
+    if ($action === 'realgram-link-gate') {
+        // Web linking page loaded inside an in-app WebView for the RealGram path.
+        // Delegates to the ecosystem /link-gate which handles Telegram auth and
+        // mints the HMAC proof; the ecosystem then returns a
+        // setalink://link-real-account deep-link the WebView intercepts.
+        // If the ecosystem is not configured, serves a fallback HTML page that
+        // guides the user to the Telegram bot — no app release needed to update.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $cfg    = re_service_config($pdo);
+        $apiUrl = rtrim($cfg['api_url'], '/');
+
+        if ($apiUrl !== '') {
+            // Ecosystem is configured: delegate to /link-gate
+            $gate = $apiUrl . '/link-gate?' . http_build_query([
+                'device_id'       => $deviceId,
+                'callback_scheme' => 'setalink',
+                'src'             => 'realink',
+            ]);
+            header('Location: ' . $gate, true, 302);
+            exit;
+        }
+
+        // Fallback: ecosystem not yet reachable via web — serve inline HTML.
+        header('Content-Type: text/html; charset=utf-8');
+        $safeId = htmlspecialchars($deviceId, ENT_QUOTES, 'UTF-8');
+        echo <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>RealGram Login</title>
+  <style>
+    body { margin:0; font-family: system-ui, sans-serif; background:#0d0d0f;
+           color:#e8e8ea; display:flex; flex-direction:column; align-items:center;
+           justify-content:center; min-height:100vh; padding:32px; box-sizing:border-box; text-align:center; }
+    h2   { color:#D4AF37; margin-bottom:12px; }
+    p    { color:#9CA3AF; line-height:1.6; margin-bottom:28px; }
+    .btn { display:inline-block; padding:14px 32px; background:#D4AF37;
+           color:#0d0d0f; border-radius:12px; text-decoration:none;
+           font-weight:700; font-size:15px; margin-top:8px; }
+    .sub { font-size:12px; color:#6B7280; margin-top:20px; }
+  </style>
+</head>
+<body>
+  <h2>⚔ RealGram Login</h2>
+  <p>Link your REAL-ID to unlock Shahnameh and earn across all REAL apps.<br>
+     Open the Telegram bot to verify your identity — no account registration required.</p>
+  <a class="btn" href="https://t.me/shahnameh_bot?start=linkvpn_{$safeId}">
+    Continue with Telegram
+  </a>
+  <p class="sub">Your REAL-ID is your Telegram identity.<br>
+     It works across ReaLink, RealGram, Shahnameh, TrustAI and 3REAL.</p>
+</body>
+</html>
+HTML;
+        exit;
+    }
+
+    if ($action === 'save-real-profile') {
+        // Ecosystem profile write: persists ReaLink identity (handle, avatar,
+        // persona) to the shared real_profiles table so all REAL ecosystem apps
+        // (Shahnameh, RealGram, TrustAI, 3REAL) can read it without re-asking.
+        // Only accepted for devices that have a linked REAL-ID.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        $account = re_linked_account($pdo, $deviceId);
+        if ($account === '') err('no linked real account');
+        re_save_profile($pdo, $account, [
+            'handle'       => trim($_POST['handle']       ?? ''),
+            'display_name' => trim($_POST['display_name'] ?? ''),
+            'avatar_emoji' => trim($_POST['avatar_emoji'] ?? ''),
+            'avatar_color' => trim($_POST['avatar_color'] ?? ''),
+            'persona'      => trim($_POST['persona']      ?? ''),
+        ]);
+        ok(['account' => $account, 'saved' => true]);
+    }
+
+    if ($action === 'get-real-profile') {
+        // Ecosystem profile read: open to all apps (no device auth required).
+        // Returns stored profile for a given REAL account, or {account} only
+        // if the user hasn't saved one yet. All ecosystem apps call this to
+        // get avatar/handle before a JWT (B-8) is available.
+        $account = trim($_GET['account'] ?? '');
+        if (!$account) err('missing account');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        $profile = re_get_profile($pdo, $account);
+        ok($profile ?: ['account' => $account]);
     }
 
     if ($action === 'redeem-real') {
@@ -1554,6 +1676,35 @@ if ($method === 'POST') {
         }
 
         ok(['saved' => $safe . '_' . $ts, 'lines' => count($lines)]);
+    }
+
+    // ── push-adsgram-perf ──────────────────────────────────────────────────
+    // Server-to-server: Agent B's Shahnameh/bot server pushes daily AdsGram
+    // performance stats so the admin panel can compare them against AdMob.
+    // Auth: Authorization: Bearer <real_api_key>  (same key as /v1/* endpoints)
+    // Body (JSON): { date, active_users, rewarded_views, revenue_usd, ecpm_usd,
+    //                fill_rate, gb_granted, avg_watch_time_s }
+    if ($action === 'push-adsgram-perf') {
+        if ($method !== 'POST') { err('POST required'); }
+
+        $db  = open_analytics_db();
+        re_ensure_schema($db);
+        $cfg     = re_config($db);
+        $api_key = trim((string)($cfg['api_key'] ?? ''));
+        $auth    = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
+        if ($api_key === '' || !hash_equals('Bearer ' . $api_key, $auth)) {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'error' => 'unauthorized']);
+            exit;
+        }
+
+        $body = json_decode(file_get_contents('php://input'), true) ?: [];
+        $date = preg_replace('/[^0-9\-]/', '', (string)($body['date'] ?? date('Y-m-d')));
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) err('invalid date');
+
+        adp_init_table($db);
+        adp_upsert($db, $date, 'adsgram', $body);
+        ok(['date' => $date, 'platform' => 'adsgram']);
     }
 
     err('unknown action');
