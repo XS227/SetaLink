@@ -508,7 +508,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.50;
+				MARKETING_VERSION = 0.9.62;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -540,7 +540,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.50;
+				MARKETING_VERSION = 0.9.62;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -576,7 +576,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.9.50;
+				MARKETING_VERSION = 0.9.62;
 				PRODUCT_BUNDLE_IDENTIFIER = "no.setalink.realink.tunnel";
 				PRODUCT_NAME = RealinkTunnel;
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -609,7 +609,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 0.9.50;
+				MARKETING_VERSION = 0.9.62;
 				PRODUCT_BUNDLE_IDENTIFIER = "no.setalink.realink.tunnel";
 				PRODUCT_NAME = RealinkTunnel;
 				PROVISIONING_PROFILE_SPECIFIER = "";
