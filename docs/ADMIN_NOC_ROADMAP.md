@@ -173,14 +173,28 @@ gjelder uansett hvilken vei som brukes).
 
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
-| Undersøke/rette AdsGram Reward URL-konfigurasjon (mangler `blockId`) | Not started | — | — | — | — | — | Khabats eget AdsGram-dashbord — jeg har ikke tilgang, kun funnet symptomet i loggen |
+| Diagnostisk full-request-logging i `/ads/callback` (finne ekte AdsGram-payload) | **In progress** | `main` (Shahnameh-backend, live checkout) | `07277e4` | — | Ikke deployet — venter på `systemctl restart shahnameh-backend` | kode committet lokalt, ikke kjørt/verifisert live | venter på restart + én ekte test |
+| Undersøke/rette AdsGram Reward URL-konfigurasjon (mangler `blockId`) | Not started | — | — | — | — | — | Khabats eget AdsGram-dashbord — jeg har ikke tilgang. Diagnostikken over avgjør om dette faktisk er rotårsaken, eller om det er et param-navn-mismatch løsbart i kode |
 | Sette `ADSGRAM_BLOCK_ID_BRONZE/SILVER/GOLD` i Shahnameh `.env` | Not started | — | — | — | — | — | krever de faktiske block-ID-ene fra AdsGram-dashbordet |
-| Egen hendelseslogg-tabell for AdsGram-visninger (ikke bare saldo-inkrement) | Not started | — | — | — | — | — | ny tabell, samme mønster som `ad_reward_events` i AdMob-systemet over |
-| Admin-side/visning for AdsGram-hendelser (Shahnameh-siden, ikke SetaLink-adminet) | Not started | — | — | — | — | — | avhenger av hendelseslogg-tabellen over |
+| Egen hendelseslogg-tabell for AdsGram-visninger (ikke bare saldo-inkrement) | Not started | — | — | — | — | — | **Khabats eksplisitte instruks: ikke start dette før én ekte AdsGram-test går hele veien og er verifisert** |
+| Admin-side/visning for AdsGram-hendelser (Shahnameh-siden, ikke SetaLink-adminet) | Not started | — | — | — | — | — | samme sperre som over |
 
-**Ingen kode er endret eller deployet av meg** — dette er kun undersøkt og
-dokumentert, ingen skriving til produksjons-Shahnameh-backenden. Si fra om
-du vil at jeg går videre med noe av dette.
+**Status 2026-07-17, etter Khabats prioritering:** ett kodeendring
+committet (diagnostisk logging, se rad over) — **ikke deployet, ikke
+restartet, ingen ekte test kjørt av meg.** Jeg kan ikke selv se en
+rewarded-video-annonse i Telegram (ingen Telegram-/mobilklient
+tilgjengelig for meg) — det trinnet må Khabat gjøre. Rekkefølge herfra:
+1. Khabat restarter `shahnameh-backend` (systemd, ikke gjort av meg —
+   husregel: jeg deployer ikke produksjonstjenester selv).
+2. Khabat ser én ekte rewarded video via Shahnameh i Telegram.
+3. Jeg leser `ad-callback-raw.log` (les-only) og rapporterer nøyaktig hva
+   AdsGram faktisk sendte, mot Khabats 6-punkts sjekkliste.
+4. Ut fra funnet: enten en kodefiks (om AdsGram sender blockId under et
+   annet navn) eller en Reward URL-fiks i AdsGram-dashbordet (om
+   parameteren rett og slett mangler helt) — avgjøres av hva loggen
+   faktisk viser, ikke gjettet på forhånd.
+Prioritet 2 (Ads Event Log) er eksplisitt sperret til steg 1–4 over er
+fullført og verifisert, per Khabats egen instruks.
 
 ---
 
