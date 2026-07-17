@@ -285,9 +285,19 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           >
             <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
             <View style={styles.serverInfo}>
-              <Text style={styles.serverName}>
-                {selectedServer ? selectedServer.country : t('home.selectServer')}
-              </Text>
+              <View style={styles.serverNameRow}>
+                <Text style={styles.serverName}>
+                  {selectedServer ? selectedServer.country : t('home.selectServer')}
+                </Text>
+                {/* Starlink exit indicator -- only while actually connected through
+                    one, not just when one happens to be selected/queued (matches
+                    the "connected to a Starlink exit" requirement, not "picked"). */}
+                {isConnected && selectedServer?.nodeType === 'STARLINK' && (
+                  <View style={styles.starlinkBadge}>
+                    <Text style={styles.starlinkBadgeText}>🛰 {t('srv.starlink')}</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.serverSub}>
                 {selectedServer
                   ? `${selectedServer.city} · ${selectedServer.protocol}`
@@ -495,8 +505,23 @@ const styles = StyleSheet.create({
   serverPillActive: { borderColor: Colors.border.glow, backgroundColor: 'rgba(0,232,122,0.04)' },
   serverFlag:   { fontSize: 28 },
   serverInfo:   { flex: 1 },
+  serverNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   serverName:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
   serverSub:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  starlinkBadge: {
+    backgroundColor: 'rgba(120,180,255,0.14)',
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(120,180,255,0.35)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  starlinkBadgeText: {
+    fontSize: 9,
+    fontFamily: Typography.family.label,
+    color: '#78B4FF',
+    letterSpacing: 0.3,
+  },
   serverMeta:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pingDot:      { width: 6, height: 6, borderRadius: 3 },
   serverPing:   { fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.emerald[400] },

@@ -187,6 +187,42 @@ function nc_expire_stale_commands(PDO $pdo): void
               WHERE status IN ('pending','running') AND token_expires_at < datetime('now')"
         );
     } catch (\Throwable $e) {}
+    nc_rotate($pdo);
+}
+
+const NC_COMMANDS_MAX_ROWS = 20000;
+const NC_EVENTS_MAX_ROWS   = 50000; // a flapping/self-healing node can write one row/minute here
+
+/** Bounded retention for both Node Console tables -- found missing during
+ *  the disk-space cleanup pass, 2026-07-17. A node stuck in a self-heal
+ *  loop (see docs/STARLINK_WINDOWS_HANDOFF.md §21 for exactly this
+ *  scenario) would otherwise write node_command_events rows indefinitely
+ *  with nothing ever trimming them. Same cheap-probabilistic-trigger +
+ *  oldest-first-delete pattern as ni_telemetry_rotate() /
+ *  ni_routing_decisions_rotate() in lib/node_intel.php.
+ *  ni_rebuild_genome() only ever reads a bounded recent window (NI_GENOME_
+ *  REBUILD_DAYS) for the stability-score penalty, so trimming old rows
+ *  here never affects the Genome/self-learning math -- only the raw audit
+ *  history's disk footprint. */
+function nc_rotate(PDO $pdo): void
+{
+    try {
+        if (random_int(1, 30) !== 1) return;
+        $n = (int)$pdo->query("SELECT COUNT(*) FROM node_commands")->fetchColumn();
+        if ($n > NC_COMMANDS_MAX_ROWS) {
+            $cut = $n - NC_COMMANDS_MAX_ROWS;
+            $pdo->prepare("DELETE FROM node_commands WHERE command_id IN
+                           (SELECT command_id FROM node_commands ORDER BY enqueued_at ASC LIMIT ?)")
+                ->execute([$cut]);
+        }
+        $n = (int)$pdo->query("SELECT COUNT(*) FROM node_command_events")->fetchColumn();
+        if ($n > NC_EVENTS_MAX_ROWS) {
+            $cut = $n - NC_EVENTS_MAX_ROWS;
+            $pdo->prepare("DELETE FROM node_command_events WHERE id IN
+                           (SELECT id FROM node_command_events ORDER BY created_at ASC LIMIT ?)")
+                ->execute([$cut]);
+        }
+    } catch (\Throwable $_) {}
 }
 
 /**

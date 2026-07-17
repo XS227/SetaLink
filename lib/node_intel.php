@@ -467,11 +467,23 @@ function ni_award_tap_contribution(PDO $pdo, string $deviceId, bool $consent): ?
         return null; // still cooling down — no reward this tap, try again later
     }
 
-    $rewardBytes = NI_TAP_REWARD_DEFAULT_BYTES;
+    $baseRewardBytes = NI_TAP_REWARD_DEFAULT_BYTES;
     try {
         $v = $pdo->query("SELECT value FROM settings WHERE key='tap_intel_reward_bytes'")->fetchColumn();
-        if (is_numeric($v) && (int)$v > 0) $rewardBytes = (int)$v;
+        if (is_numeric($v) && (int)$v > 0) $baseRewardBytes = (int)$v;
     } catch (\Throwable $e) {}
+
+    // Weight by measurement quality, not a flat amount: a device with a
+    // long history of plausible, non-replayed reports (high trust_score,
+    // see the Telemetry Trust Engine above) contributes more USEFUL signal
+    // per tap than a brand-new or previously-flagged one, so it earns more.
+    // Uses the SAME trust_score the Genome itself already weights this
+    // device's observations by (ni_device_trust_score(), 0.05-1.0) — the tap
+    // triggering this call already ran through ni_record() ->
+    // ni_update_device_trust() earlier in the same request (see
+    // public/v1.php), so this reads the just-updated score, not a stale one.
+    $trustScore = ni_device_trust_score($pdo, $deviceId);
+    $rewardBytes = (int)round($baseRewardBytes * $trustScore);
 
     require_once __DIR__ . '/quota_economy.php';
     qe_ledger_add($pdo, $deviceId, 'tap_intel_reward', $rewardBytes, 'network intelligence contribution');
@@ -484,6 +496,8 @@ function ni_award_tap_contribution(PDO $pdo, string $deviceId, bool $consent): ?
 
     return [
         'rewarded_bytes'       => $rewardBytes,
+        'base_reward_bytes'    => $baseRewardBytes,
+        'quality_multiplier'   => round($trustScore, 2),
         'total_contributions'  => $total,
         'new_badges'           => $newBadges,
     ];
@@ -983,6 +997,8 @@ function ni_rank_nodes(PDO $pdo, array $candidateIds, array $context): array
 /** Record a routing decision. Returns the decision_id to hand back to the
  *  client so a later telemetry POST can close the loop. Only called when
  *  ni_adaptive_routing_enabled() is true. */
+const NI_ROUTING_DECISIONS_MAX_ROWS = 50000; // same retention pattern as NI_TELEMETRY_MAX_ROWS
+
 function ni_record_routing_decision(PDO $pdo, string $deviceId, array $context, array $ranked): string
 {
     ni_init_tables($pdo);
@@ -993,7 +1009,27 @@ function ni_record_routing_decision(PDO $pdo, string $deviceId, array $context, 
         "INSERT INTO routing_decisions (decision_id, device_id, context_json, ranked_json, predicted_node)
          VALUES (?,?,?,?,?)"
     )->execute([$decisionId, $deviceId ?: null, json_encode($context), json_encode($ranked), $predicted]);
+    ni_routing_decisions_rotate($pdo);
     return $decisionId;
+}
+
+/** Same bounded-retention pattern as ni_telemetry_rotate() -- this table had
+ *  no cap at all until this was added (found during the disk-space cleanup
+ *  pass, 2026-07-17): every ranked /v1/servers call under Adaptive Routing
+ *  writes one row here, unbounded, which is exactly the kind of slow
+ *  unbounded growth that produced the recurring disk-space warning on a
+ *  1GB VPS. */
+function ni_routing_decisions_rotate(PDO $pdo): void
+{
+    try {
+        if (random_int(1, 50) !== 1) return;
+        $n = (int)$pdo->query("SELECT COUNT(*) FROM routing_decisions")->fetchColumn();
+        if ($n <= NI_ROUTING_DECISIONS_MAX_ROWS) return;
+        $cut = $n - NI_ROUTING_DECISIONS_MAX_ROWS;
+        $pdo->prepare("DELETE FROM routing_decisions WHERE decision_id IN
+                       (SELECT decision_id FROM routing_decisions ORDER BY created_at ASC LIMIT ?)")
+            ->execute([$cut]);
+    } catch (\Throwable $_) {}
 }
 
 /** Called from the telemetry write path when a report carries a decision_id.
