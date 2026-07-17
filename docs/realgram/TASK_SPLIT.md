@@ -888,7 +888,41 @@ handle / display_name / avatar_emoji / avatar_color / persona
 The panel looks up the `account` from `device_id` and upserts. This is
 the shared source of truth for all REAL apps' display identity.
 
-**3. Read `?real_id=` in Shahnameh for referral attribution (LOW)**
+**3. Push AdsGram daily stats to the panel (NEW — Phase 1 ads comparison)**
+
+Khabat wants to compare AdsGram vs AdMob on real data before deciding which
+platform to prioritise. The admin panel now has an **Ads Performance** section
+that shows a live comparison table + charts. AdMob data is already there
+(computed from the existing `ad_reward_events` table). Your side shows "—"
+until you push daily summaries.
+
+Daily (e.g. via a cron job at 23:55), POST to:
+```
+POST https://setalink.no/api.php?mobile=1&action=push-adsgram-perf&_token=setalink-mobile-diag-v1
+Authorization: Bearer <real_api_key>
+Content-Type: application/json
+
+{
+  "date":             "2026-07-17",
+  "active_users":     1234,
+  "rewarded_views":   4567,
+  "revenue_usd":      13.71,
+  "ecpm_usd":         3.0,
+  "fill_rate":        0.91,
+  "gb_granted":       3.2,
+  "avg_watch_time_s": 28.4
+}
+→ { "ok": true, "date": "2026-07-17", "platform": "adsgram" }
+```
+
+`fill_rate` and `avg_watch_time_s` are optional — send 0 if not available.
+The endpoint is idempotent: re-pushing the same date overwrites.
+
+KPIs that matter most per the strategy: eCPM, revenue/user (ARPDAU), fill
+rate, GB/utdelt, retention (tracked separately via linked devices conversion
+rate). Decision window: 30–60 days of parallel data.
+
+**4. Read `?real_id=` in Shahnameh for referral attribution (LOW)**
 
 The game URL now always carries `?real_id=<account>` (set by the app
 before the SSO JWT exists or as a redundant ID alongside it). Use this
