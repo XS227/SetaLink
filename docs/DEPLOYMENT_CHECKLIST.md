@@ -7,12 +7,98 @@ continuing**, do not skip ahead. This is a checklist to be followed with a
 pen (or by literally checking `- [ ]` boxes in an editor), not a reference
 to skim.
 
-**Who runs this:** whoever has SSH/deploy access to the production VPS —
-Claude in this session does not (no SSH access to `setalink.no`'s box,
-confirmed repeatedly this session; every git push in this session landed
-on GitHub only, never on production directly). Sections marked
+**Who runs this:** whoever has SSH/deploy access to the production VPS.
+**Update, 2026-07-17:** a Claude Code session on the dev VPS was granted
+working SSH access to production for this exact deploy (key
+`docs/deploy/prod-audit-key.pub`, see §"Real deployment path" below) — the
+"Claude has no SSH access" note above no longer holds universally, but
+should not be assumed true in future sessions either; confirm access fresh
+each time rather than trusting this file's history. Sections marked
 **(automatable via `gh`)** can be run by an agent with `gh` CLI access;
-everything else needs a human with production/App Store Connect access.
+everything else needs a human with production/App Store Connect access
+unless SSH access has been separately, explicitly granted.
+
+---
+
+## Real deployment path — Android APK + version.json (verified 2026-07-17)
+
+**Sections 2 and 3 below (git pull / git lfs pull) describe a workflow that
+does not exist on the real production box.** Verified directly:
+`/var/www/setalink` on production is **not a git repository at all**
+(`git rev-parse --abbrev-ref HEAD` → `fatal: not a git repository`). The
+Android APK/version.json release path is plain file management — `scp`/
+`cp`, not `git pull` — and (as far as this session verified) always has
+been; the "targeted file edits, not a full repo sync" suspicion flagged in
+`docs/realgram/AGENT_HANDOFF.md` days earlier was correct. Whether the PHP
+backend (`v1.php`, `lib/starlink.php`, admin panel) deploys differently was
+**not verified this session** — do not assume either way without checking.
+
+**Host / user / access:**
+- Host: `5.249.252.221`, hostname `vps-5348441` — **always confirm with
+  `hostname` after connecting**, before running anything else (see
+  `docs/STARLINK_WINDOWS_HANDOFF.md` §2 for why this specific check matters
+  — a prior session worked on production while believing it was the
+  disposable Hetzner test box).
+- Host key fingerprint (verify before trusting `known_hosts`):
+  `SHA256:bXEaqnHLLo8ePtf9r5LZB//1gTAl5Mya23dGf+tOdjA`
+- **Login user is `ubuntu`, not `root`.** `PermitRootLogin` is set to
+  `without-password` (pubkey-only would theoretically work), but the only
+  account actually provisioned with a usable key is `ubuntu`; every
+  privileged file operation needs `sudo` (passwordless for `ubuntu` in this
+  session).
+- SSH key: `docs/deploy/prod-audit-key.pub` (public half; the private key
+  lives only on whichever box was granted access, `~/.ssh/id_ed25519_prod_audit`
+  on the dev VPS as of 2026-07-17). Public keys aren't secret — this file is
+  safe to keep in git. Add it to `/home/ubuntu/.ssh/authorized_keys` (not
+  `/root/.ssh/`) to grant a new box/session access; pull it with `curl` from
+  GitHub's raw URL rather than retyping — manual transcription of this key
+  produced multiple silent one-character mismatches (case swaps, l/1
+  confusion) before this was figured out.
+
+**Docroot:** `setalink.no` is served from `/var/www/setalink/public` on
+production (nginx `server_name setalink.no www.setalink.no`, TLS terminated
+on `127.0.0.1:4430`, SNI-routed via an nginx `stream` block on :443 — see
+`nginx -T` output for the full block). `/download/version.json` and
+`/download/buildNN/*.apk` are served as plain static files (`try_files`
+falling through to them directly); `/releases/stable/*.apk` is the
+`stable`-channel equivalent, untouched by a beta/experimental release.
+
+**Steps that actually work, in order:**
+
+1. Build the APK via CI (`gh workflow run release-apk.yml --ref <branch>`),
+   download the artifact, verify checksums + `unzip -l` validity + decode
+   `AndroidManifest.xml` directly to confirm versionCode/versionName (don't
+   trust `build.gradle` alone — parse the compiled manifest; see this
+   session's transcript for a minimal Python AXML parser, no `aapt` needed).
+2. `scp` the three renamed APKs to production (`/tmp/` first, `sudo mv`/`cp`
+   into place — `ubuntu` doesn't own `/var/www/setalink/public/download/`):
+   ```
+   mkdir -p /var/www/setalink/public/download/buildNN   # sudo, owned by www-data
+   # scp app-arm64-v8a-release.apk, app-armeabi-v7a-release.apk,
+   #     app-universal-release.apk to production /tmp/, then per-file:
+   sudo cp /tmp/app-arm64-v8a-release.apk   .../buildNN/setalink-vX.Y.Z.apk
+   sudo cp /tmp/app-armeabi-v7a-release.apk .../buildNN/setalink-vX.Y.Z-arm32.apk
+   sudo cp /tmp/app-universal-release.apk   .../buildNN/setalink-vX.Y.Z-universal.apk
+   sudo chown www-data:www-data .../buildNN/*.apk && sudo chmod 644 .../buildNN/*.apk
+   ```
+   Verify `sha256sum` on production matches the CI-built checksum *before*
+   moving into the web-served path — confirms the transfer wasn't corrupted.
+3. Edit `version.json` with a small Python script (not `sed` — the file is
+   structured JSON with a top-level/`channels.stable`/`channels.beta`/
+   `channels.experimental` shape, and top-level fields mirror `stable`, not
+   the channel being released). `sudo cp` a timestamped backup first. Update
+   **only** `channels.beta` and `channels.experimental`
+   (version/versionCode/apkUrl/apkUrlArm32/apkUrlUniversal) — leave
+   `channels.stable` and every top-level field untouched for a beta/
+   experimental-only release. `sudo chown www-data:www-data` +
+   `sudo chmod 664` the file back afterward (ubuntu can't write it directly;
+   it's `www-data`-owned).
+4. **Verify against the live public URL, not the file on disk** —
+   `curl https://setalink.no/download/version.json`, then actually download
+   the APK from its public URL and re-check the checksum + decode the
+   manifest again. This is the only verification that actually proves the
+   deploy works end-to-end (nginx caching, wrong docroot, stale file — any
+   of those would pass a same-box file check but fail this one).
 
 ---
 

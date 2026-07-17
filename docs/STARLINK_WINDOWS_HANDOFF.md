@@ -1163,3 +1163,61 @@ badges:["NEW","LIMITED"] (LIVE on prod + committed), so badges are
 server-steerable. Everything else the card needs was already in
 /v1/starlink/unlock-status. No other API gaps identified — shout if the
 UI needs more fields.
+
+## 31. 2026-07-17 ~10:20 — §0 audit finally run and confirmed (Claude, dev-box session, Khabat's explicit go-ahead)
+
+**§0's audit — outstanding since this document's very first section, "do
+not consider this investigation clean until this audit has actually been
+run and confirmed" — is now actually done.** Ran directly on production
+(`ubuntu@5.249.252.221`, hostname confirmed `vps-5348441` first, host key
+fingerprint checked against §2's table before trusting anything):
+
+1. **Rogue key (`vps@shahnameh`): FOUND, confirmed byte-identical to §0's
+   documented key, removed.** §0 guessed it might be in
+   `/root/.ssh/authorized_keys` — it was actually in
+   `/home/ubuntu/.ssh/authorized_keys` (root login isn't the real access
+   path on this box; more on that below). Backed up to
+   `/home/ubuntu/.ssh/authorized_keys.bak-20260717-audit` before removing
+   with `sed -i '/vps@shahnameh/d'`. This means the earlier "production
+   audited clean" note in §13 was checking the wrong file the whole time —
+   the key had been sitting there since whenever §0's original incident
+   happened, undetected until now.
+2. **`LogLevel DEBUG3`: NOT present.** `sshd_config` shows
+   `#LogLevel INFO` (default, commented). No backup file
+   (`sshd_config.bak-debug`) exists either, consistent with this never
+   having been set. Clean, no action needed.
+3. **WireGuard artifacts: mostly clean, one harmless trace.**
+   `wireguard-tools` is installed (`wg` binary present) and a
+   `wg-quick@test0.service` systemd unit exists, but `/etc/wireguard/` has
+   no `.conf` files and `wg show` reports nothing active — the unit is
+   `disabled`/`inactive (dead)`. Nothing live to remove; left as-is per
+   Khabat's explicit instruction (removing a disabled, config-less unit
+   would be pure cleanup, not a safety fix).
+
+**Also resolved while in here — how production access actually works,**
+since half of this session was spent discovering it the hard way (multiple
+failed SSH attempts as `root`/`deploy`/`admin`, a multi-round SSH-key
+transcription saga — see `docs/DEPLOYMENT_CHECKLIST.md`'s new "Real
+deployment path" section for the durable version of this):
+- Login user is `ubuntu`, not `root`, despite `PermitRootLogin
+  without-password` technically allowing pubkey root auth — no working key
+  is actually provisioned for `root`.
+- `/var/www/setalink` on production is **not a git repository** — every
+  past "deploy" (this session's own b97/build97 release included) is file
+  copy (`scp`/`cp`), never `git pull`. This confirms the suspicion
+  `docs/realgram/AGENT_HANDOFF.md` raised days ago and never got answered.
+- `docs/deploy/prod-audit-key.pub` now exists in-repo specifically so
+  future sessions granted access can `curl` the exact bytes instead of
+  retyping a 68-character base64 string through a chat/console relay —
+  that transcription step alone cost most of this session's wall-clock
+  time, across several silently-wrong "it matches now" claims that only
+  the actual SSH handshake (not eyeballing the fingerprint text) proved
+  false.
+
+**Deployed as part of this same session:** Android build97
+(versionCode 97, versionName 0.9.67, marketing version held per policy) to
+`channels.beta`/`channels.experimental` only, `stable` untouched. Verified
+by downloading the live APK from the public `setalink.no` URL afterward
+(not trusting the on-disk file) and decoding its compiled
+`AndroidManifest.xml` directly. Full command sequence in
+`docs/DEPLOYMENT_CHECKLIST.md`.
