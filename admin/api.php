@@ -3911,5 +3911,80 @@ switch ($action) {
         api_ok(['status'=>'ok','profile'=>$tb_d]);
         break;
 
+    // ── HAKIM ADMIN (ADMIN_NOC_ROADMAP.md § 8.11) ───────────────────────
+    // Reads hakim-bot's actual running state — systemctl + hakim.db.
+    // Never fabricates a status; § 8.0's truth principle applies to this
+    // panel too. bot_config also holds openai_api_key/anthropic_api_key/
+    // telegram_token in plaintext — NEVER select or echo those columns.
+    case 'hakim-status': {
+        $HAKIM_DB = '/var/www/shahnameh/hakim-bot/hakim.db';
+        $status = trim((string)@shell_exec('systemctl is-active hakim-bot 2>&1'));
+        $out = [
+            'bot_status' => in_array($status, ['active', 'inactive', 'failed'], true) ? $status : 'unknown',
+            'provider' => null, 'model' => null, 'bot_active' => null, 'config_updated_at' => null,
+            'messages_in' => null, 'user_count' => null,
+            'requests_logged' => 0, 'success_rate' => null, 'avg_latency_ms' => null,
+            'recent_errors' => [], 'knowledge_summary' => null,
+        ];
+        if (is_readable($HAKIM_DB)) {
+            try {
+                $hdb = new PDO('sqlite:' . $HAKIM_DB, null, null, [
+                    PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
+                    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                ]);
+                $cfg = [];
+                foreach ($hdb->query("SELECT key, value FROM bot_config WHERE key IN ('ai_provider','bot_active','openai_model','anthropic_model')") as $r) {
+                    $cfg[$r['key']] = $r['value'];
+                }
+                $out['provider']   = $cfg['ai_provider'] ?? null;
+                $out['model']      = (($cfg['ai_provider'] ?? '') === 'anthropic') ? ($cfg['anthropic_model'] ?? null) : ($cfg['openai_model'] ?? null);
+                $out['bot_active'] = isset($cfg['bot_active']) ? (strtolower($cfg['bot_active']) === 'true') : null;
+
+                $out['config_updated_at'] = $hdb->query("SELECT MAX(updated_at) AS m FROM bot_config")->fetch()['m'] ?? null;
+                $out['messages_in']       = (int)($hdb->query("SELECT COUNT(*) AS c FROM bot_messages WHERE direction='in'")->fetch()['c'] ?? 0);
+                $out['user_count']        = (int)($hdb->query("SELECT COUNT(*) AS c FROM bot_users")->fetch()['c'] ?? 0);
+
+                // bot_requests only exists after a restart picks up the
+                // 2026-07-17 instrumentation commit — fail soft, not fabricated.
+                try {
+                    $reqCount = (int)($hdb->query("SELECT COUNT(*) AS c FROM bot_requests")->fetch()['c'] ?? 0);
+                    $out['requests_logged'] = $reqCount;
+                    if ($reqCount > 0) {
+                        $out['success_rate']   = round(((float)$hdb->query("SELECT AVG(success) AS a FROM bot_requests")->fetch()['a']) * 100, 1);
+                        $out['avg_latency_ms'] = round((float)$hdb->query("SELECT AVG(latency_ms) AS a FROM bot_requests")->fetch()['a']);
+                        $out['recent_errors']  = $hdb->query("SELECT ts, provider, fallback_used, error FROM bot_requests WHERE success=0 ORDER BY ts DESC LIMIT 10")->fetchAll();
+                    }
+                } catch (\Throwable $e) { /* bot_requests doesn't exist yet — bot not restarted since instrumentation */ }
+            } catch (\Throwable $e) { /* hakim.db unreadable/locked — report unknown, not a guess */ }
+        }
+        $kdir = '/var/www/shahnameh/hakim-bot/realshahnameh';
+        if (is_dir($kdir)) {
+            $files = array_values(array_filter(scandir($kdir), fn($f) => is_file("$kdir/$f")));
+            $bytes = 0; foreach ($files as $f) $bytes += filesize("$kdir/$f");
+            $out['knowledge_summary'] = count($files) . ' file(s), ' . round($bytes / 1024, 1) . ' KB total';
+        }
+        api_ok($out);
+        break;
+    }
+
+    // GET hakim-test-query?question=... — sends a REAL message to the live
+    // bot's configured provider (costs a real OpenAI/Anthropic API call).
+    case 'hakim-test-query': {
+        $question = trim((string)($_GET['question'] ?? ''));
+        if ($question === '') api_err('missing question');
+        if (mb_strlen($question) > 500) api_err('question too long (max 500 chars)');
+        $script = '/var/www/shahnameh/hakim-bot/admin_test_query.py';
+        if (!is_readable($script)) api_err('admin_test_query.py not deployed yet');
+        $cmd = 'cd /var/www/shahnameh/hakim-bot && /usr/bin/python3 admin_test_query.py '
+             . escapeshellarg($question) . ' 2>&1';
+        $raw = @shell_exec($cmd);
+        $j = json_decode((string)$raw, true);
+        if (!is_array($j) || !isset($j['answer'])) {
+            api_err('Hakim test query failed: ' . substr((string)$raw, 0, 300));
+        }
+        api_ok(['answer' => $j['answer']]);
+        break;
+    }
+
     default: api_err('unknown action');
 }
