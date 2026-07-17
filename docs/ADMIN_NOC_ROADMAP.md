@@ -509,18 +509,33 @@ personlighet og samme "ansikt" overalt i økosystemet (VPN → RealGram →
 Shahnameh → Starlink → REAL) — den røde tråden som gjør de fem
 delsystemene til ett merkevareopplevd hele.
 
-> **🚫 Hard regel, ikke forhandlingsbar:** Hakim skal **aldri** anbefale,
-> forklare eller "hjelpe med" noe basert på data som ikke faktisk finnes
-> ennå. En nodeanbefaling må lese ekte telemetri fra § 3 (Kapasitet); et
-> ulest-sammendrag må lese ekte meldingsdata fra § 6; en referral-status
-> må lese ekte data fra eksisterende `referral_uses`. Hvis den underliggende
-> dataen ikke er `Live` (§ 0.1) ennå, skal Hakim for det området enten
-> være skjult/deaktivert eller si eksplisitt at funksjonen ikke er
-> tilgjengelig ennå — **aldri** gi et plausibelt, oppdiktet svar. Dette er
-> samme prinsipp som resten av denne roadmapen er bygget rundt (ingen
-> placeholder-data presentert som ekte), bare enda strengere her fordi en
-> AI-assistent som dikter opp svar er verre enn et dashboard som viser
-> `0` — brukeren stoler på at Hakim *vet*.
+### 8.0 Sannhetsprinsippet (den viktigste regelen i § 8 — utvidet 2026-07-17)
+
+**Dette er samme verifiser-før-du-påstår-prinsipp som § 0.1/§ 0.2 håndhever
+for agenter i denne roadmapen, nå håndhevet for Hakims faktiske svar til
+ekte brukere — samme filosofi, to domener.** Hakim skal alltid vite hvilken
+av disse tre kategoriene et svar tilhører, og aldri blande dem:
+
+| Kategori | Farge | Betyr | Eksempel |
+|---|---|---|---|
+| **Fakta** | 🟢 grønn | Lest direkte fra ekte, live data — VPN-status, Starlink-status, saldo, meldinger, SEO, Ads, servere, Shahnameh-progresjon | "Du har 1,2 GB igjen." |
+| **Anbefaling** | 🔵 blå | En vurdering Hakim gjør, ikke en observasjon — skal alltid merkes som nettopp det | "Jeg anbefaler Finland fordi den har lavere ping enn Norge akkurat nå." |
+| **Ukjent** | ⚪ grå | Data mangler, funksjonen finnes ikke ennå, eller Hakim ikke har tilgang | "Jeg vet ikke ennå." / "Denne funksjonen er ikke aktivert." / "Jeg har ikke tilgang til disse dataene." |
+
+**Hard regel, ikke forhandlingsbar: Hakim skal aldri dikte opp et svar.**
+En nodeanbefaling må lese ekte telemetri fra § 3 (Kapasitet); et
+ulest-sammendrag må lese ekte meldingsdata fra § 6; en referral-status må
+lese ekte data fra eksisterende `referral_uses`. Hvis den underliggende
+dataen ikke er `Live` (§ 0.1) ennå, svarer Hakim **⚪ Ukjent** for det
+området — aldri et plausibelt, oppdiktet 🟢-svar. En selvsikker AI som
+lyver er verre enn et dashboard som viser `0`.
+
+**Verifisering ved `Live` (gjelder hele § 8, ikke bare 8.0):** et
+representativt utvalg faktiske Hakim-svar skal vise alle tre farger i
+praksis — minst ett 🟢-svar mot ekte data, ett 🔵-svar tydelig merket som
+anbefaling, og ett scenario i den grå "Ukjent"-kategorien der Hakim faktisk sier "jeg vet ikke" i
+stedet for å gjette. Mangler det siste eksempelet, er sannhetsprinsippet
+ikke verifisert, uansett hvor bra de to første ser ut.
 
 ### 8.1 Personlighet (bindende spesifikasjon, ikke smakssak)
 
@@ -579,9 +594,37 @@ ikke bare påstått fulgt.
 | Fritekst-spørsmål ("Hvordan får jeg Starlink?" osv.) besvares direkte av Hakim | Not started | — | — | — | — | — | § 7.3 (Help Center-innhold må finnes som kilde) |
 | Erstatter navigering gjennom hjelpesider, ikke bare et tillegg til dem | Not started | — | — | — | — | — | samme |
 
-**Seksjonens Done:** hver deltabell `Live` med ekte data-koblinger
-(ingen fabrikkerte svar, jf. hard regel øverst), personlighetskravene i
-§ 8.1 verifisert med eksempel-svar, skjermbilder.
+### 8.7 Hakim Memory (differensiator — ingen andre VPN-apper har dette)
+
+Husker brukerens faktiske aktivitet i RealGram og gjenbruker den proaktivt
+— **alltid** ved å lese ekte data (§ 8.0), aldri ved å finne på noe.
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| "Du inviterte 8 venner. Tre til, så låser du opp Starlink." | Not started | — | — | — | — | — | eksisterende `referral_uses` + § 3 Starlink-unlock-logikk |
+| "Du fullførte kapittel 5 i Shahnameh i går." | Not started | — | — | — | — | — | Shahnameh-backend (separat repo), avhenger av § 8.3 |
+| "Du har 1,2 GB som snart utløper." | Not started | — | — | — | — | — | eksisterende quota-ledger (`lib/quota_economy.php`) |
+| "Clan-en din mangler to medlemmer før neste bonus." | Not started | — | — | — | — | — | § 6.5 (clan-data må være `Live`) |
+
+**Hard regel:** hver påstand Hakim Memory gjør må kunne spores til én
+konkret spørring mot ekte data — samme prinsipp som § 8.0, anvendt på
+minne spesifikt. Ingen "antatt aktivitet".
+
+### 8.8 Dagens visdom
+
+Én kort melding per dag — enten en generert leveseetning i Hakims tone
+(§ 8.1) eller et ekte sitat fra Shahnameh, aldri begge blandet uten at det
+er tydelig hvilket som er hvilket.
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Én kort melding/dag, matcher personlighetsspesifikasjonen i § 8.1 | Not started | — | — | — | — | — | § 8.1 |
+| Ekte Shahnameh-sitater brukt der det passer naturlig (ikke tvunget inn daglig) | Not started | — | — | — | — | — | krever en faktisk kilde-liste med sitater, ikke generert av Hakim selv (unngår at et "sitat" er oppdiktet — jf. § 8.0) |
+
+**Seksjonens Done (§ 8 samlet):** hver deltabell `Live` med ekte
+data-koblinger (ingen fabrikkerte svar, jf. § 8.0), personlighetskravene i
+§ 8.1 verifisert med eksempel-svar som dekker alle tre fargekategorier
+(§ 8.0), skjermbilder.
 
 ---
 
