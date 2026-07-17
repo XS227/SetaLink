@@ -309,10 +309,42 @@ bekrefter funnet. Om den ligger i `/coord`, har ikke denne økten
 
 #### 2.1.2 Kø for når Agent A er ferdig (Khabats instruks, 2026-07-17)
 
-**Oppdatering samme dag:** Khabat kjørte en ny ekte AdsGram-test fra
-Telegram. **Agent A analyserer denne testen — jeg venter, går ikke inn og
-leser/undersøker AdsGram-relaterte filer eller logger parallelt**, selv
-read-only, for å unngå duplikat/motstridende analyse av samme hendelse.
+**Oppdatering samme dag (runde 1):** Khabat kjørte en ny ekte AdsGram-test
+fra Telegram. Ventet først — rørte ikke AdsGram-filer/-logger parallelt
+med Agent As analyse.
+
+**Oppdatering, runde 2:** Khabat kjørte enda en test (belønning viste som
+gitt, admin fortsatt 0) og ba **denne økten** eksplisitt undersøke hele
+kjeden og finne den faktiske rotårsaken (ikke en workaround). Gjort,
+read-only + kun diagnostisk logging, ingen forretningslogikk endret:
+
+**Definitivt funnet — sporet admin-dashboardets egen lesevei, ikke bare
+callback-loggen:** `GET /season2/admin/ads-stats`
+(`routes/adminApi/season2Admin.js:524`) leser **kun** to kilder:
+`ad-callback.log` (skrevet kun av den ekte callback-en) og
+`Season2User.ad_watch_count`/`last_ad_watch` (skrevet kun av
+`creditAdReward()`, kalt fra enten den ekte callback-en eller den ekte
+klient-rapporterte veien `/season2/ads/verify-reward`). Knappen brukeren
+faktisk trykker (`season2/app.js`s `grant()`) kaller `POST /api/ads/claim`
+— stub-handleren — som skriver til en **helt separat fil**
+(`ad-rewards.json`) og aldri rører noen av de to kildene admin faktisk
+leser. **Det er strukturelt umulig for denne veien å noensinne flytte
+admin-tallene, uansett hvor mange ganger noen trykker.** Ikke en
+backend/database/admin-API-feil — alle tre leser riktig fra riktig sted.
+Kjeden brekker ved første steg: klienten kaller aldri et
+ekte-AdsGram-koblet endepunkt i det hele tatt.
+
+Lagt til enda en diagnostisk logglinje (`shahnameh-backend` commit
+`0db15a5`): hvert `/api/ads/claim`-treff logges nå til en ny
+`ad-stub-claim.log`, så en side-om-side-sammenligning mot
+`ad-callback-raw.log` (runde 1s diagnostikk) gjør dette observerbart i
+praksis, ikke bare bevisbart ved kodelesing. Ingen av de to diagnostiske
+commitene er deployet.
+
+**Postet til den faktiske koordineringsbus-branchen** (`feature/realgram-foundation`,
+ikke `docs/admin-noc-roadmap` som forrige runde — oppdaget at mine
+tidligere notater trolig aldri nådde Agent A siden de lå på feil branch).
+
 Event Log/Ads Performance starter først når Agent A bekrefter en fullført
 ende-til-ende-flyt.
 
