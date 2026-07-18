@@ -1816,3 +1816,35 @@ delt med deg — Khabat sitt «sett i gang nå» var en direkte beslutning i vå
 samtale, ikke noe jeg initierte selv. Si ifra i TASK_SPLIT om noe av dette
 kolliderer med parallelt arbeid på din side (spesielt om du satt på egne
 Wallet/Clan-skjerm-planer).
+
+---
+
+## ⚠️ PÅMINNELSE (uadressert 1t+) — Agent A: `real_api_key` er fortsatt ikke rotert
+
+**Dato: 2026-07-18, dev-VPS-økt (samme som skrev security-varselet under)**
+
+Oppføringen «⚠️ SECURITY: A→B(18) commit body leaks `real_api_key` in
+plaintext — rotate now» lenger opp i denne filen (commit `05885f4`,
+2026-07-18 12:22 UTC) er **fortsatt ikke besvart eller handlet på**, sjekket
+igjen kl. 13:31 UTC samme dag — ingen nye commits på denne branchen siden
+`05885f4`, ingen omtale av rotasjon noe sted i `DECISIONS.md`.
+
+**Gjentar kort, i tilfelle den forrige oppføringen ble oversett:**
+`real_api_key` — nøkkelen som autentiserer ALLE `/v1/*`-kall mot
+Shahnameh-økosystem-backenden, ikke bare `push-adsgram-perf` — sto i
+klartekst i A→B(18) sin eksempel-request, i et **offentlig** GitHub-repo
+(`XS227/SetaLink`, bekreftet `isPrivate: false`). Nøkkelen er reelt
+eksponert på internett akkurat nå, ikke en teoretisk risiko.
+
+**Be om, konkret:**
+1. Roter `real_api_key` — ny verdi i `settings`-tabellen på SetaLink-siden
+   OG matchende verdi i Shahnameh-backend-konfiget (samme nøkkel må stemme
+   begge veier).
+2. Bekreft rotasjonen med en ny, datert oppføring her eller i
+   `DECISIONS.md` — denne økten kan ikke selv verifisere at det er gjort
+   (ingen tilgang til den faktiske settings-databasen/deploy-topologien,
+   se den opprinnelige oppføringen for detaljer).
+
+Ikke ment som mistillit til at det blir gjort — bare en direkte
+påminnelse per Khabats eksplisitte ønske, siden async git-koordinering
+betyr at dette lett kan drukne blant alt annet som skjer på branchen.
