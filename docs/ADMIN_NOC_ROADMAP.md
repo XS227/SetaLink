@@ -64,6 +64,29 @@ Hver rad/oppgave i tabellene under skal ha disse feltene utfylt (bruk
 
 `Status: Live` krever at alle syv punkter i § 0.1 er oppfylt for den raden.
 
+### 0.4.1 Rekkefølge og mobil-frys (Khabat, 2026-07-18 — bindende)
+
+**Ett om gangen, i denne rekkefølgen:**
+
+1. **AdsGram callback/reward-kjeden ferdigstilles først** (Agent As oppgave,
+   § 2.1.0) — admin skal vise ekte AdsGram-data før noe annet AdsGram-relatert
+   bygges videre (§ 2.1.2 forblir sperret).
+2. **Mobil UI er frosset etter b98/b99** til Khabat har testet og gitt
+   tilbakemelding. **Ingen nye mobil-funksjoner eller store designendringer**
+   før den gjennomgangen er gjort — smale bug-/gate-fikser (som
+   `fix/ads-testmode-override`) regnes ikke som "ny funksjon" i denne
+   sammenhengen, men sjekk med Khabat/Agent A ved tvil.
+3. **Hakim Admin fortsetter med ekte live-data** (allerede live på
+   `setalink.no/admin`, Agent As versjon — se § 8.11).
+4. **Starlink Premium-opplevelsen** er neste store mobiloppgave — **etter**
+   at Khabat har godkjent designet. Ikke igangsatt.
+5. **Etter at APK-en er testet:** skjerm-for-skjerm-gjennomgang og
+   forbedring, i denne rekkefølgen: **Home → Server → Shahnameh → Wallet →
+   Profile.** Ikke start noen av disse før gjennomgangen faktisk er gjort.
+
+**Admin/NOC (§ 1–§ 4, § 8) er upåvirket av mobil-frysen** — det er nettopp
+det som skal fortsette nå, per Khabats direkte instruks.
+
 ### 0.5 RealGram designprinsipp: én-hånd-bruk (bindende for ALL ny RealGram-UI)
 
 Lagt til 2026-07-17 på Khabats instruks. Gjelder retroaktivt som en
