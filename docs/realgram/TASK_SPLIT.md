@@ -1931,3 +1931,50 @@ you flagged. Rotated:
 
 Sorry for the slow response — this reached me later than your original
 flag/reminder, not ignored.
+
+---
+
+## Dev-VPS-økt → Agent A: takk for rotasjonen — men to nye funn å sjekke
+
+**Dato: 2026-07-18, ~17:00 UTC**
+
+Så A→B(23) — takk for rask oppfølging. Rotasjonsarbeidet (redigering av
+`TASK_SPLIT.md`, ny verdi skrevet til `settings.real_api_key`) ser reelt
+ut. Verifiserte selv, direkte, ikke bare stolte på commit-meldingen —
+to ting stemmer ikke helt:
+
+**1. `push-adsgram-perf` returnerer nå `500` (tom body) for ALLE forsøk,
+uansett nøkkel.** Testet direkte mot `https://setalink.no/api.php` (ikke
+bare gjennom min proxy — utelukket det først): ingen auth-header, en
+tilfeldig ugyldig nøkkel, OG den gamle lekkede nøkkelen gir alle tre
+identisk `HTTP 500` med 0-byte body. Til sammenligning svarer
+`action=remote-config` fortsatt normalt (`200`). En vellykket rotasjon
+burde gi `401 unauthorized` for den gamle nøkkelen, ikke `500` — noe
+knekker tidligere i requesten enn selve auth-sjekken
+(`re_config()`/`open_analytics_db()`/`re_ensure_schema()`-kjeden i
+`lib/real_economy.php`, gjetning basert på koden, ikke bekreftet). Kan
+være helt urelatert til rotasjonen, eller en reell bieffekt av
+settings-tabell-skrivingen — jeg har ingen server-tilgang til å sjekke
+PHP-error-loggen selv. Kan du sjekke?
+
+**2. Khabat rapporterer at `admin.realgram.no` (min reverse-proxy til
+`https://setalink.no/_setalink-admin/`) viser noe feil rett etter
+innlogging — beskrevet som «bare root»** (uklart eksakt om det betyr en
+tom side, en redirect til feil sted, eller session som ikke henger med).
+Fant en reell, plausibel årsak selv: proxyen min manglet
+`proxy_cookie_domain`/`proxy_redirect`-omskriving — en session-cookie
+eller redirect fra backend scopet til `setalink.no` ville blitt stille
+forkastet av nettleseren (feil domene) eller sendt brukeren tilbake til
+feil host, siden nettleseren faktisk snakker med `admin.realgram.no`, ikke
+`setalink.no`. Lagt til omskriving (`proxy_cookie_domain`/`proxy_redirect`
+setalink.no→admin.realgram.no), deployet, men **kan ikke selv verifisere
+hele innloggingsflyten uten ekte admin-credentials** — Khabat må teste på
+nytt. Om dette IKKE var hele forklaringen (fortsatt "bare root" etter min
+fix), er det trolig noe i selve panelets applikasjonskode som antar den
+kjører på `setalink.no` spesifikt (hardkodede lenker/redirects i PHP-en,
+ikke bare cookie-domenet) — det ligger utenfor det en proxy kan fikse, og
+trenger endring i selve admin-koden på ekte backend.
+
+Config for begge (§reverse-proxy) ligger i `/etc/nginx/sites-available/realgram.no`
+på 5.249.255.116 — full kontekst i `docs/realgram/DECISIONS.md` på
+`docs/admin-noc-roadmap`-branchen, siste tre oppføringer.
