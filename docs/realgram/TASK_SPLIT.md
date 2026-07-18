@@ -1672,3 +1672,60 @@ ikke GB direkte.
 **Følge av dette:** tallene som nå begynner å komme inn i NOC-en er ekte,
 men nesten null, helt til Reward URL-en over er fikset i AdsGram-dashboardet
 — da begynner ekte brukertrafikk å telle med i stedet for testkontoen.
+
+---
+
+## A→B(21) — v0.9.68 (build 102/101) testbuild kuttet — AdMob-testMode + Starlink
+
+**Dato: 2026-07-18**
+
+Khabat ba om en ny testbuild (0.9.68, ikke høyere) for å teste AdMob på iOS
+og Starlink-noden. Kuttet fra `feat/b97-experience` (samme integrasjonsgren
+som b96–b101). Ingen nye store funksjoner lagt til — kun det som allerede
+var ferdig og stabilt, pluss én liten cherry-pick:
+
+- **Hentet inn `fix/ads-testmode-override` (f4c6b64, ikke tidligere merget):**
+  per-device `testMode`-override (`devices.test_mode`) så en premium-tester
+  kan se AdMob-annonser uten å røre ekte plan/kvote. Original commit
+  konfliktet mot dagens HomeScreen.tsx (Starlink-refaktorering siden) —
+  reimplementert manuelt mot nåværende struktur (`faa98bc`), samme
+  oppførsel: `userShowsAds = plan==='free' || testMode` på interstitial-
+  preload, post-connect-interstitial, connect-tap-interstitial og
+  server-liste-banneret. Kvote-utløpt-blokken er bevisst kun plan-styrt.
+  Backend eksponerer allerede `test_mode` i begge entitlement-responser
+  (`public/api.php:547,917`) — ingen backend-endring trengtes.
+- Starlink hero-kort/status/telemetri var allerede på plass i
+  `feat/b97-experience` (bekreftet: 32 Starlink-treff i HomeScreen.tsx,
+  `/v1/starlink/unlock-status` live og auth-gated på `api.setalink.no`).
+- AdMob-ID-ene var allerede ekte prod-ID-er (`ca-app-pub-5788265416382988/…`),
+  `TestIds` kun i `__DEV__`, alle ad-kall try/catch-innpakket.
+- Rørte IKKE noe AdsGram/NOC-relatert — ren mobile-app-build.
+
+**Kvalitetssjekk:** `tsc --noEmit` rent. `eslint` 0 nye feil (3 pre-eksisterende
+`react-hooks/rules-of-hooks`-feil i ProfileScreen/WelcomeScreen/deepLinkService
+— urørt av denne builden). Jest: 352/353 grønne; `ssoGame.test.tsx` feiler
+og krasjer prosessen ved teardown — bekreftet pre-eksisterende (samme feil
+uavhengig av mine 3 filer, ikke noe jeg rørte).
+
+**Versjon:** Android `versionCode 102` / `versionName 0.9.68` (bygget fra
+tag `v0.9.68-b102`, commit `6e2c333`). iOS marketing version leses fortsatt
+fra `package.json` (allerede 0.9.68 fra gårsdagens merge) — CI-run-nummer
+ble build/CFBundleVersion `101`. Signeringssertifikat identisk med stable
+(`997056494…`) — installerer som OTA over eksisterende app, ingen avinstallering.
+
+**Publisert:** Android APK-ene ligger i `download/build102/`, `version.json`
+sine `beta`- og `experimental`-kanaler peker dit (0.9.68/102) — `stable`
+urørt (fortsatt 0.9.67/99), ingen masse-OTA. iOS lastet opp til TestFlight
+(`UPLOAD SUCCEEDED`, build 101) — ASC-prosessering viste ennå `NOT_FOUND`
+11 min etter opplasting (normal Apple-indekseringsforsinkelse, ikke feil).
+
+**Kjente åpne punkter:**
+1. iOS build 101 må sjekkes i TestFlight om ~30-60 min for å bekrefte
+   `processingState=VALID` (`gh workflow run "iOS — ASC build status" -f build_number=101`).
+2. `starlink-command-result.php` finnes i repoet men er IKKE live på
+   `/var/www/setalink/public/` — sjekk om noe i denne builden faktisk
+   trenger den (så vidt jeg kan se: nei, appen bruker kun
+   `/v1/starlink/unlock-status`, ikke denne filen direkte).
+3. ~~Testeren må ha `devices.test_mode=1`~~ — sjekket live: `sl-f877790f-06bc-3cb8-f6de-bb7adcecc461`
+   har allerede `plan=premium, test_mode=1`. Klar til å se AdMob-annonser
+   så snart hun er på build 102+.
