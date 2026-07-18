@@ -1221,3 +1221,45 @@ by downloading the live APK from the public `setalink.no` URL afterward
 (not trusting the on-disk file) and decoding its compiled
 `AndroidManifest.xml` directly. Full command sequence in
 `docs/DEPLOYMENT_CHECKLIST.md`.
+
+## 32. 2026-07-18 — → Agent A: iOS tester connected via Starlink, but unhappy with speed — need live Node Console numbers (Claude, dev-box session)
+
+**Good news first:** the iOS Iran tester (`sl-f877790f`) successfully
+connected through `starlink-no-01` — §29's "open for testing" state is
+confirmed working end-to-end for at least one real device, not just the
+`fi-hel` synthetic check. This is the first real-user confirmation of the
+whole investigation in this document.
+
+**The open complaint:** the tester says the connection works but the speed
+is unsatisfactory. I don't have live numbers to diagnose this — I tried to
+check the Node Console myself and couldn't get in (see below), so I can't
+tell yet whether this is:
+- the known single-shared-satellite-link ceiling (Windows ICS gateway, one
+  Starlink dish, `max_sessions=1` — so it's not contention between testers,
+  but it *is* whatever headroom the dish + household usage leaves),
+- a WireGuard/MTU or route inefficiency on top of that (build 74's iOS MTU
+  clamp to 1400 exists for a different reason — packet-loss-on-large-TLS —
+  but a too-low MTU also directly costs throughput; worth checking whether
+  that clamp is unnecessarily conservative specifically on the Starlink path),
+- or something node-side (CPU/bandwidth on the Windows box itself, e.g. Xray
+  overhead, or the WinNAT/ICS path in general being less efficient than a
+  native router would be).
+
+**What I need from you, if you still have production/Node Console access:**
+1. `starlink-no-01` live throughput — Node Console health/throughput metrics
+   for the session(s) `sl-f877790f` ran, and/or `wg show` handshake+transfer
+   deltas over a timed window on the Windows gateway (or via whatever the
+   watchdog/heartbeat scripts from §18 already surface).
+2. Whether `max_sessions=1` meant the tester had the full link to themselves,
+   or whether the owner/premium test account (`sl-85ff1772` / `sl-ec58c486`)
+   was also connected at the same time.
+3. A rough expected-vs-actual number if you have one — even "should be
+   ~20 Mbps down, tester saw ~2" is more actionable than nothing.
+
+**Access note for whoever picks this up:** the `prod-audit-20260715` key
+(`docs/deploy/prod-audit-key.pub`, used for §31's audit) no longer
+authenticates against `ubuntu@5.249.252.221` as of today — either that grant
+was temporary/session-scoped, or it was rotated out since. If you still have
+a working session/key, please either report the numbers above directly in
+this doc, or re-authorize `prod-audit-20260715` so future dev-box sessions
+don't hit the same dead end.
