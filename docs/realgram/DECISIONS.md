@@ -465,3 +465,82 @@ Deliverables 1–4 written up in
 decision yet — this entry records the direction decision itself. The
 coding freeze in `ADMIN_NOC_ROADMAP.md` § 6 stays in effect until Khabat
 explicitly signs off on the design-doc deliverables above.
+
+---
+
+### 2026-07-18 — realgram.no acquired; RealGram becomes the launch brand; new marketing site built (dev-VPS session, not Agent A/B)
+
+**Khabat's instruction, this date:** domain `realgram.no` is registered.
+RealGram is "the new product we're launching" — a modern marketing site
+should be built for it, connected to the existing ecosystem/brand work,
+with `api.realgram.no` and `admin.realgram.no` as the intended subdomain
+layout, a rewritten SEO strategy/keywords, and — separately — "in the app
+we only talk about RealGram going forward." `setalink.no` is meant to
+eventually forward to `realgram.no`. A dedicated RealGram repo is wanted
+**later** ("seinere"), explicitly not now.
+
+**Done in this pass (this dev-VPS session, 5.249.255.116):**
+- New static site at `/var/www/realgram/` (`index.html`, `style.css`,
+  `app.js`, `brand/` — copied from this repo's `brand/` folder, reusing the
+  existing marks/lockups rather than inventing new ones). Built against
+  `docs/realgram/BRAND.md` and `docs/realgram/UI_DESIGN_SYSTEM.md`'s
+  already-decided tokens (purple `#C77DFF` as RealGram's identity accent,
+  emerald/blue/gold as established, glassmorphism recipe, Inter +
+  JetBrains Mono) — no new colors/fonts introduced.
+- `SEO_STRATEGY.md` (in that same directory) — new keyword strategy for
+  `realgram.no`, explicitly scoped around the 2026-07-10 compliance rule
+  below (kept separate from Realink's existing "VPN Built for Iran"/
+  anti-censorship framing, which is unchanged and untouched).
+- nginx: `/etc/nginx/sites-available/realgram.no`, enabled, tested
+  (`nginx -t`), reloaded cleanly — confirmed `setalink.no` and the other
+  ~11 sites on this box still serve `200` after the reload. Three server
+  blocks: `realgram.no`/`www.realgram.no` (real content), and
+  `api.realgram.no`/`admin.realgram.no` (placeholder — `503`/"coming soon"
+  page, no backend behind them yet).
+
+**Verified:** the site renders correctly locally (`curl -H "Host:
+realgram.no" http://127.0.0.1/` → `200`, real content). **Not yet
+verified live** — DNS for `realgram.no` does not point at this box yet, no
+HTTPS cert issued (Let's Encrypt needs live DNS to complete the HTTP-01
+challenge), so `https://realgram.no/` does not resolve to this yet from
+the public internet. §0.1's seven-step "done" bar (this repo's own rule)
+is not met — treat this as **In progress**, not shipped, until DNS +
+cert + a real external check happen.
+
+**Deliberately NOT done in this pass, and why:**
+1. **DNS record itself** — this session doesn't have registrar/DNS-provider
+   credentials for `realgram.no`. The box's addresses to point at:
+   `A 5.249.255.116`, `AAAA 2a02:2350:a:103:f816:3eff:feba:8c39` (same
+   addresses `setalink.no` already resolves to). Khabat needs to add these
+   at whatever registrar/DNS host holds `realgram.no`.
+2. **`api.realgram.no` / `admin.realgram.no` real implementations** — only
+   placeholder vhosts exist. Building the real API and a real admin panel
+   is a much bigger scope than a landing page and wasn't started.
+3. **`setalink.no` → `realgram.no` redirect** — deliberately **not** wired
+   up yet. Flipping this now would redirect live production traffic for
+   the existing, shipping VPN product to a site that isn't even
+   DNS-reachable yet. Sequencing: get `realgram.no` fully live and
+   confirmed first, then redirect, not the other way round.
+4. **"In the app we only talk about RealGram going forward"** — recorded
+   here as Khabat's instruction, **not implemented**. This collides
+   directly with two standing freezes already on record: § 0.4.1 of
+   `ADMIN_NOC_ROADMAP.md` ("Mobil UI er frosset etter b98/b99 til Khabat
+   har testet") and this same file's 2026-07-17 entry above (RealGram
+   native messaging is under an explicit coding freeze pending Khabat's
+   design-doc sign-off). Also `mobile-app/` is Agent A's owned surface
+   per the standing role split, not this session's. If Khabat wants a
+   narrow, copy-only rename pass now (not the full § 5/§ 6 rebuild), that
+   needs to be said explicitly and probably logged as its own roadmap
+   item first, per this repo's own § 0.3 rule ("new work goes in the
+   roadmap before implementation starts").
+5. **Dedicated `realgram` repo** — Khabat said "later" explicitly; not
+   created.
+
+**Compliance note carried over, unchanged:** the 2026-07-10 decision above
+("No Telegram branding, no 'official product' implication... must not
+market itself as bypassing a government blockade") still applies to
+RealGram's public copy. `SEO_STRATEGY.md` was written inside that
+constraint. If RealGram absorbing the Realink/VPN identity (§5.1,
+`ADMIN_NOC_ROADMAP.md`, "REALINK = REALGRAM, ett produkt") is meant to
+loosen this rule, that's Khabat's call to make explicitly — not assumed
+here.

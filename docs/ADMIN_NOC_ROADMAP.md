@@ -1671,3 +1671,30 @@ Chat-oppsummeringer skal peke til den oppdaterte raden, ikke erstatte den.
 Når en hel seksjon (§1–§4) har alle rader på `Live`, samles skjermbilder av
 *alle* admin-sider i seksjonen og leveres samlet til Khabat før seksjonen
 kan rapporteres som ferdig.
+
+---
+
+## § 11 — RealGram marketing site (realgram.no) — lagt til 2026-07-18
+
+**Khabat (2026-07-18):** `realgram.no` er anskaffet. RealGram er "det nye
+produktet vi skal lansere" — moderne markedsside, `api.realgram.no` +
+`admin.realgram.no` som tiltenkt subdomene-oppsett, ny SEO-strategi/
+søkeord, `setalink.no` skal etter hvert videresende til `realgram.no`.
+Full detaljert logg: `docs/realgram/DECISIONS.md`, oppføring
+2026-07-18 "realgram.no acquired...".
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| Landingsside (`/var/www/realgram/`), bygget på eksisterende `brand/`/design-tokens | In progress (kodet, ikke committet til noe repo ennå — plain files, egen repo kommer senere per Khabats instruks) | — | — | — | Servert lokalt på 5.249.255.116 (nginx), ikke DNS-tilgjengelig ennå | `curl -H "Host: realgram.no" http://127.0.0.1/` → 200, ikke bekreftet fra åpent internett | venter på DNS (se under) |
+| DNS: `realgram.no`/`www` → `A 5.249.255.116` / `AAAA 2a02:2350:a:103:f816:3eff:feba:8c39` | Not started | — | — | — | — | — | krever Khabats registrar/DNS-tilgang, ingen agent-økt har dette |
+| HTTPS-sertifikat (Let's Encrypt) | Not started | — | — | — | — | — | avhenger av DNS over — HTTP-01-challenge krever at DNS peker hit først |
+| `api.realgram.no` — reell backend | Not started | — | — | — | — | — | kun placeholder-vhost (503) finnes |
+| `admin.realgram.no` — reelt adminpanel | Not started | — | — | — | — | — | kun placeholder-vhost ("coming soon") finnes |
+| `setalink.no` → `realgram.no` redirect | **Bevisst ikke startet** | — | — | — | — | — | må ikke gjøres før realgram.no er reelt DNS-live og testet — ville ellers omdirigert live produksjonstrafikk til en side som ikke finnes offentlig ennå |
+| SEO-strategi/søkeord på nytt | Kodet/skrevet | — | — | — | — | `/var/www/realgram/SEO_STRATEGY.md` | respekterer 2026-07-10-regelen (ingen "bypass blockade"/Telegram-official-språk) — se den filen |
+| Appen snakker kun om RealGram fremover | **Ikke implementert — bevisst** | — | — | — | — | — | kolliderer med § 0.4.1 (mobil-frys) og § 6s eksisterende kodesperre på RealGram-meldinger; `mobile-app/` er Agent As eierskap. Trenger Khabats eksplisitte unfreeze/instruks før noen agent koder dette |
+| Egen dedikert `realgram`-repo | Not started | — | — | — | — | — | Khabat: "seinere", eksplisitt utsatt |
+
+**Ikke forveksle med § 5/§ 6** (mobile app-redesign og RealGram native
+messaging) — dette er en separat, uavhengig markedsføringsside, ikke en
+del av den fryste app-koden.
