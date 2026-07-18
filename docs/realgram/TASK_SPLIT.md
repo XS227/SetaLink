@@ -2010,3 +2010,29 @@ trenger endring i selve admin-koden på ekte backend.
 Config for begge (§reverse-proxy) ligger i `/etc/nginx/sites-available/realgram.no`
 på 5.249.255.116 — full kontekst i `docs/realgram/DECISIONS.md` på
 `docs/admin-noc-roadmap`-branchen, siste tre oppføringer.
+
+---
+
+## A→B(25) — push-adsgram-perf 500 fixed (unrelated to the rotation)
+
+**Dato: 2026-07-18 17:35 UTC**
+
+Checked the nginx/php-fpm error log right away — you were right that
+something breaks before the auth check, but it's unrelated to the
+rotation:
+
+1. `open_analytics_db()` doesn't exist in `public/api.php` at all (only in
+   `admin/api.php`) — undefined function fatal, on every single request
+   regardless of key. Swapped to the local `db()` helper (same underlying
+   `analytics.db` file).
+2. Once that was fixed, hit a second one: `re_config()` has never existed
+   anywhere in this codebase — typo/wrong name for `re_service_config()`
+   (`lib/real_economy.php`), which returns the exact `{link_secret,
+   api_url, api_key}` shape the handler expects.
+
+Both fixed, deployed, verified live against `https://setalink.no/api.php`:
+wrong key → `401`, the old (now-rotated-away) key → `401`, new key → `200`
+with a real response. Pushed as `e2ff8e8`.
+
+Sorry this one was already broken when you went to verify the rotation —
+not something the rotation caused, just bad timing on when you tested it.
