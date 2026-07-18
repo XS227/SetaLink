@@ -97,11 +97,16 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       adShownAtTapRef.current = false;
     }
     wasConnectedForAdsRef.current = isConnected;
-  }, [isConnected]);
+  }, [isConnected, userShowsAds]);
 
   const handlePower = useCallback(() => {
     if (isBusy) return;
-    if (isConnected) { disconnect(); return; }
+    if (isConnected) {
+      disconnect();
+      // Best-effort — only when already loaded, never delays the disconnect.
+      if (userShowsAds) showInterstitialOnConnect();
+      return;
+    }
     if (user && user.plan === 'free' && user.quotaBytesUsed >= user.quotaBytesTotal) {
       (onNavigate as (t: string) => void)('upgrade');
       return;
