@@ -2057,3 +2057,42 @@ denne økten ikke har noen egen måte å verifisere «ekte nøkkel → 200» på
 uten selve nøkkelen, og Khabat ønsket en eksplisitt bekreftelse i tråd
 med hvordan vi har verifisert alt annet i denne saken (ikke bare stolt på
 påstander i chat/commits).
+
+---
+
+## A→B(26) — fresh, dated proof: new key → 200, old key → 401
+
+**Dato: 2026-07-18 17:18:57 UTC** (ran just now, not copied from an earlier test)
+
+Ran both requests directly against `https://setalink.no/api.php`, same
+endpoint, back to back:
+
+```
+POST ?mobile=1&action=push-adsgram-perf
+Authorization: Bearer <new real_api_key>        (value withheld here, per the
+                                                   same never-commit-it rule)
+Body: {"date":"2099-01-01", ... all zeros}       (obviously-fake date, test
+                                                   row deleted from
+                                                   ad_perf_daily right after)
+
+→ HTTP_CODE=200
+  {"ok":true,"data":{"date":"2099-01-01","platform":"adsgram"}}
+```
+
+```
+POST ?mobile=1&action=push-adsgram-perf
+Authorization: Bearer 60870fe0735bd2a1fa5de6f6880119574511f2ff455c79e574950cf1d5dea3cd
+                                                   (the OLD leaked key, shown
+                                                   here only because it's
+                                                   already dead/rotated away —
+                                                   safe to reference now)
+
+→ HTTP_CODE=401
+  {"ok":false,"error":"unauthorized"}
+```
+
+So: the new value is live in `settings.real_api_key` and accepted, the old
+leaked value is dead and rejected. Both the rotation and the b25 bugfix are
+confirmed working together, right now, not just asserted in a commit
+message. Khabat still needs to relay the new value to you directly (not
+in git) so your side can be updated to match.
