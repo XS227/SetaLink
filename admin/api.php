@@ -4138,5 +4138,146 @@ switch ($action) {
         break;
     }
 
+    // ── Unified user profile ─────────────────────────────────────────────
+    case 'user-profile': {
+        $db  = open_analytics_db();
+        init_device_tables($db);
+        $did = trim((string)($_GET['device_id'] ?? ''));
+        if (!$did) api_err('device_id required');
+
+        $dev = $db->prepare('SELECT * FROM devices WHERE device_id=?');
+        $dev->execute([$did]);
+        $d = $dev->fetch(PDO::FETCH_ASSOC);
+        if (!$d) api_err('device not found', 404);
+        ensure_user_id($db, $d);
+
+        // ── Identity: handle / persona from device_handles + real_profiles ──
+        $dh = $db->prepare('SELECT handle,display_name,avatar_emoji,avatar_color FROM device_handles WHERE device_id=?');
+        $dh->execute([$did]);
+        $handle_row = $dh->fetch(PDO::FETCH_ASSOC) ?: [];
+        $rp = ['handle'=>'','display_name'=>'','avatar_emoji'=>'','persona'=>''];
+        if (!empty($d['linked_real_account'])) {
+            $rq = $db->prepare('SELECT handle,display_name,avatar_emoji,persona FROM real_profiles WHERE account=?');
+            $rq->execute([$d['linked_real_account']]);
+            $rp = $rq->fetch(PDO::FETCH_ASSOC) ?: $rp;
+        }
+        $identity = [
+            'device_id'           => $d['device_id'],
+            'user_id'             => $d['user_id'] ?? '',
+            'linked_real_account' => $d['linked_real_account'] ?? '',
+            'real_linked_at'      => $d['real_linked_at'] ?? '',
+            'handle'              => $rp['handle'] ?: ($handle_row['handle'] ?? ''),
+            'display_name'        => $rp['display_name'] ?: ($handle_row['display_name'] ?? ''),
+            'avatar_emoji'        => $rp['avatar_emoji'] ?: ($handle_row['avatar_emoji'] ?? ''),
+            'persona'             => $rp['persona'] ?? '',
+            'plan'                => $d['plan'] ?? 'free',
+            'country'             => $d['country'] ?? '',
+            'country_name'        => $d['country_name'] ?? '',
+            'platform'            => normalize_platform($d),
+            'app_version'         => $d['app_version'] ?? '',
+            'created_at'          => $d['created_at'] ?? '',
+            'last_seen'           => $d['last_seen'] ?? '',
+            'stealth_unlocked'    => (bool)($d['stealth_unlocked'] ?? false),
+            'test_mode'           => (bool)($d['test_mode'] ?? false),
+            'blocked'             => (bool)($d['blocked'] ?? false),
+        ];
+
+        // ── Wallet: quota + last 8 transactions ─────────────────────────────
+        $total_bytes = (int)($d['quota_bytes_total'] ?? 1073741824);
+        $used_bytes  = (int)($d['quota_bytes_used']  ?? 0);
+        $txq = $db->prepare('SELECT type,bytes,created_at,metadata FROM quota_transactions WHERE device_id=? ORDER BY id DESC LIMIT 8');
+        $txq->execute([$did]);
+        $wallet = [
+            'quota_total_gb'  => round($total_bytes / 1073741824, 2),
+            'quota_used_gb'   => round($used_bytes  / 1073741824, 2),
+            'quota_free_gb'   => round(max(0, $total_bytes - $used_bytes) / 1073741824, 2),
+            'quota_pct'       => $total_bytes > 0 ? round($used_bytes / $total_bytes * 100) : 0,
+            'transactions'    => $txq->fetchAll(PDO::FETCH_ASSOC),
+        ];
+
+        // ── Freedom: VPN session summary ─────────────────────────────────────
+        $sess_all = $db->prepare("SELECT protocol, bytes_sent, bytes_recv, duration_secs, started_at, ended_at, COALESCE(probe_result,'') AS probe_result FROM vpn_sessions WHERE device_id=? ORDER BY id DESC LIMIT 200");
+        $sess_all->execute([$did]);
+        $sessions_raw = $sess_all->fetchAll(PDO::FETCH_ASSOC);
+        $total_sessions = count($sessions_raw);
+        $total_bytes_vpn = array_sum(array_column($sessions_raw, 'bytes_recv')) + array_sum(array_column($sessions_raw, 'bytes_sent'));
+        $proto_counts = array_count_values(array_column($sessions_raw, 'protocol'));
+        arsort($proto_counts);
+        $success = array_filter($sessions_raw, fn($s) => in_array($s['probe_result'], ['ok','connected','success',''], true));
+        $freedom = [
+            'total_sessions'  => $total_sessions,
+            'total_gb'        => round($total_bytes_vpn / 1073741824, 3),
+            'top_protocol'    => $proto_counts ? array_key_first($proto_counts) : '',
+            'success_rate_pct'=> $total_sessions > 0 ? round(count($success) / $total_sessions * 100) : 0,
+            'last_session_at' => $sessions_raw[0]['started_at'] ?? '',
+            'recent_sessions' => array_slice($sessions_raw, 0, 5),
+        ];
+
+        // ── Clan: referral tree ───────────────────────────────────────────────
+        $parent_q = $db->prepare("SELECT d.user_id, d.device_id, d.referral_code FROM referral_uses ru JOIN devices d ON d.device_id=ru.referrer_device_id WHERE ru.new_device_id=? LIMIT 1");
+        $parent_q->execute([$did]);
+        $parent = $parent_q->fetch(PDO::FETCH_ASSOC) ?: null;
+        $children_q = $db->prepare("SELECT d.user_id, d.device_id, d.country, d.plan, d.last_seen, ru.status, ru.created_at FROM referral_uses ru JOIN devices d ON d.device_id=ru.new_device_id WHERE ru.referrer_device_id=? ORDER BY ru.id DESC LIMIT 20");
+        $children_q->execute([$did]);
+        $children = $children_q->fetchAll(PDO::FETCH_ASSOC);
+        $active_invites = (int)$db->prepare("SELECT COUNT(*) FROM referral_uses ru JOIN devices d ON d.device_id=ru.new_device_id WHERE ru.referrer_device_id=? AND (d.internet_ok=1 OR d.last_seen>=datetime('now','-7 days'))")->execute([$did]) ? $db->prepare("SELECT COUNT(*) FROM referral_uses ru JOIN devices d ON d.device_id=ru.new_device_id WHERE ru.referrer_device_id=? AND (d.internet_ok=1 OR d.last_seen>=datetime('now','-7 days'))")->execute([$did]) && 0 : 0;
+        // simpler active count
+        $ac = $db->prepare("SELECT COUNT(*) FROM referral_uses ru JOIN devices d ON d.device_id=ru.new_device_id WHERE ru.referrer_device_id=? AND d.last_seen>=datetime('now','-7 days')");
+        $ac->execute([$did]);
+        $clan = [
+            'invite_count'   => (int)($d['invite_count'] ?? count($children)),
+            'active_invites' => (int)$ac->fetchColumn(),
+            'referred_by'    => $parent,
+            'referrals'      => $children,
+            'rank'           => count($children) >= 10 ? 'king' : (count($children) >= 3 ? 'pahlavan' : 'warrior'),
+        ];
+
+        // ── Chat activity ────────────────────────────────────────────────────
+        $sent_q = $db->prepare("SELECT COUNT(*) FROM user_messages WHERE sender_device=?");
+        $sent_q->execute([$did]);
+        $recv_q = $db->prepare("SELECT COUNT(*) FROM user_messages WHERE recipient_device=?");
+        $recv_q->execute([$did]);
+        $last_msg_q = $db->prepare("SELECT created_at FROM user_messages WHERE sender_device=? OR recipient_device=? ORDER BY id DESC LIMIT 1");
+        $last_msg_q->execute([$did, $did]);
+        $chat = [
+            'messages_sent'     => (int)$sent_q->fetchColumn(),
+            'messages_received' => (int)$recv_q->fetchColumn(),
+            'last_message_at'   => ($last_msg_q->fetch(PDO::FETCH_ASSOC) ?: ['created_at'=>''])['created_at'],
+        ];
+
+        // ── Activity timeline (last 30 events across all tables) ─────────────
+        $timeline = [];
+        // VPN sessions
+        foreach (array_slice($sessions_raw, 0, 10) as $s) {
+            $timeline[] = ['ts'=>$s['started_at'],'type'=>'vpn','icon'=>'🌐','label'=>'Connected via '.($s['protocol']??'?'),'detail'=>round(((int)$s['bytes_recv']+(int)$s['bytes_sent'])/1048576,1).' MB'];
+        }
+        // Install events
+        $iev = $db->prepare("SELECT event,current_version,target_version,created_at FROM install_events WHERE device_id=? ORDER BY id DESC LIMIT 10");
+        $iev->execute([$did]);
+        foreach ($iev->fetchAll(PDO::FETCH_ASSOC) as $e) {
+            $timeline[] = ['ts'=>$e['created_at'],'type'=>'install','icon'=>'📦','label'=>ucfirst(str_replace('_',' ',$e['event'])),'detail'=>($e['current_version']??'').' → '.($e['target_version']??'')];
+        }
+        // Referral events
+        foreach ($children as $c) {
+            $timeline[] = ['ts'=>$c['created_at'],'type'=>'referral','icon'=>'👥','label'=>'Invited '.(($c['user_id']??'')?:'new user'),'detail'=>$c['status']??'credited'];
+        }
+        // Quota transactions
+        foreach ($wallet['transactions'] as $t) {
+            $gb = round(abs((int)$t['bytes'])/1073741824, 2);
+            $timeline[] = ['ts'=>$t['created_at'],'type'=>'quota','icon'=>'💰','label'=>ucfirst(str_replace('_',' ',$t['type'])),'detail'=>($t['bytes']>0?'+':'-').$gb.' GB'];
+        }
+        // App events (game/game_screen taps etc)
+        $aev = $db->prepare("SELECT event,props,created_at FROM app_events WHERE device_id=? ORDER BY id DESC LIMIT 10");
+        $aev->execute([$did]);
+        foreach ($aev->fetchAll(PDO::FETCH_ASSOC) as $e) {
+            $timeline[] = ['ts'=>$e['created_at'],'type'=>'app','icon'=>'🎮','label'=>ucfirst(str_replace('_',' ',$e['event'])),'detail'=>$e['props']??''];
+        }
+        usort($timeline, fn($a,$b) => strcmp($b['ts'],$a['ts']));
+        $timeline = array_slice($timeline, 0, 30);
+
+        api_ok(compact('identity','wallet','freedom','clan','chat','timeline'));
+        break;
+    }
+
     default: api_err('unknown action');
 }

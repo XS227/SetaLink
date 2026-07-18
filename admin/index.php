@@ -1648,18 +1648,101 @@ function icon(string $name): string {
     <!-- — never a plausible invented status. § 8.0 applies here too.  -->
     <!-- ============================================================ -->
     <!-- ============================================================ -->
-    <!-- VIEW: PROFILE (placeholder)                                 -->
+    <!-- VIEW: PROFILE                                               -->
     <!-- ============================================================ -->
     <div data-view="profile" hidden>
-      <div class="panel">
-        <div class="panel-header"><span class="panel-title">👤 User Profiles</span></div>
-        <div class="panel-body" style="padding:2rem;text-align:center;color:var(--text-muted)">
-          <div style="font-size:2rem;margin-bottom:.75rem">👤</div>
-          <div style="font-weight:600;margin-bottom:.5rem">User Profile Management</div>
-          <div style="font-size:.85rem">Shahnameh identity · handle · persona · ZAR balance · invite tree</div>
-          <div style="margin-top:1.5rem;font-size:.8rem;opacity:.6">Coming in next sprint — data from ecosystem_profiles + identity_store</div>
+
+      <!-- Search bar -->
+      <div class="panel" style="margin-bottom:.75rem">
+        <div class="panel-body" style="padding:.75rem 1rem;display:flex;gap:.75rem;align-items:center">
+          <input id="profileSearch" class="input" style="flex:1;max-width:420px"
+                 placeholder="Device ID, User ID, or handle…" autocomplete="off" spellcheck="false">
+          <button class="btn btn-primary btn-sm" id="profileSearchBtn">Look up</button>
+          <span id="profileSearchStatus" style="font-size:.8rem;color:var(--text-muted)"></span>
         </div>
       </div>
+
+      <!-- Profile card (hidden until loaded) -->
+      <div id="profileCard" hidden>
+
+        <!-- ── Identity row ── -->
+        <div class="panel" style="margin-bottom:.75rem">
+          <div class="panel-header">
+            <span class="panel-title" id="profTitle">👤 User</span>
+            <span class="badge" id="profPlanBadge" style="margin-left:.5rem"></span>
+            <span class="badge" id="profCountryBadge" style="margin-left:.25rem"></span>
+          </div>
+          <div class="panel-body" style="padding:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem">
+            <div class="stat-mini"><div class="stat-mini-label">REAL ID</div><div class="stat-mini-val" id="profRealId" style="font-family:monospace;font-size:.78rem">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">User ID</div><div class="stat-mini-val" id="profUserId" style="font-family:monospace;font-size:.78rem">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">Handle</div><div class="stat-mini-val" id="profHandle">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">Persona</div><div class="stat-mini-val" id="profPersona">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">Platform</div><div class="stat-mini-val" id="profPlatform">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">App version</div><div class="stat-mini-val" id="profAppVersion">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">Joined</div><div class="stat-mini-val" id="profCreated">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">Last seen</div><div class="stat-mini-val" id="profLastSeen">—</div></div>
+          </div>
+        </div>
+
+        <!-- ── 4-column stat row ── -->
+        <div class="stat-grid" style="margin-bottom:.75rem" id="profStatGrid">
+          <div class="stat-card"><div class="stat-label">💰 Free Quota</div><div class="stat-value" id="profQuotaFree">—</div><div class="stat-sub" id="profQuotaSub">—</div></div>
+          <div class="stat-card"><div class="stat-label">🌐 VPN Sessions</div><div class="stat-value" id="profSessions">—</div><div class="stat-sub" id="profSessionsSub">—</div></div>
+          <div class="stat-card"><div class="stat-label">👥 Invites</div><div class="stat-value" id="profInvites">—</div><div class="stat-sub" id="profInvitesSub">—</div></div>
+          <div class="stat-card"><div class="stat-label">💬 Messages</div><div class="stat-value" id="profMessages">—</div><div class="stat-sub" id="profMessagesSub">—</div></div>
+        </div>
+
+        <!-- ── Bottom 3 columns ── -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-bottom:.75rem">
+
+          <!-- Freedom stats -->
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">🌍 Freedom Network</span></div>
+            <div class="panel-body" style="padding:.75rem">
+              <div class="kv-list" id="profFreedomList"></div>
+              <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem" id="profTopProtocol"></div>
+            </div>
+          </div>
+
+          <!-- Clan & referrals -->
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">👥 Clan</span></div>
+            <div class="panel-body" style="padding:.75rem">
+              <div id="profClanRank" style="font-size:1.1rem;font-weight:700;margin-bottom:.5rem"></div>
+              <div class="kv-list" id="profClanList"></div>
+              <div id="profClanReferrals" style="margin-top:.5rem;font-size:.78rem;color:var(--text-muted)"></div>
+            </div>
+          </div>
+
+          <!-- Shahnameh -->
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">🎮 Shahnameh</span></div>
+            <div class="panel-body" style="padding:.75rem">
+              <div id="profShahnamehLinked" style="margin-bottom:.5rem;font-size:.85rem"></div>
+              <div class="kv-list" id="profShahnamehList"></div>
+              <div style="margin-top:.75rem;font-size:.75rem;color:var(--text-muted)">Full progression lives on the RealGram/Shahnameh backend</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- ── Activity Timeline ── -->
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">📜 Activity Timeline</span><span class="panel-sub">last 30 events</span></div>
+          <div class="panel-body" style="padding:0">
+            <table class="tbl" id="profTimeline">
+              <thead><tr><th>When</th><th>Type</th><th>Event</th><th>Detail</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /profileCard -->
+
+      <div id="profileEmpty" style="padding:3rem;text-align:center;color:var(--text-muted)">
+        Enter a Device ID, User ID, or @handle above to view a unified profile.
+      </div>
+
     </div>
 
     <!-- ============================================================ -->
@@ -1811,6 +1894,7 @@ function icon(string $name): string {
   </div>
   <div class="modal-footer">
     <button class="btn btn-secondary" onclick="closeModal()">Close</button>
+    <button class="btn btn-secondary btn-sm" id="devProfileBtn" style="display:none">👤 Full Profile</button>
     <button class="btn btn-primary" id="devMsgBtn" style="display:none">Send message</button>
   </div>
 </div>
@@ -4168,6 +4252,8 @@ window.devDetail = async function(did) {
     $('devDetailTitle').textContent = `${countryFlag(dev.country||'')} ${uid}`.trim();
     $('devMsgBtn').style.display = '';
     $('devMsgBtn').onclick = ()=>devMessage(did, uid);
+    $('devProfileBtn').style.display = '';
+    $('devProfileBtn').onclick = ()=>devOpenProfile(did);
     const kv = (k,v) => `<div style="display:flex;justify-content:space-between;gap:1rem;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--muted-2)">${k}</span><span style="text-align:right;font-family:var(--mono)">${v||'—'}</span></div>`;
     const gb = n => fmtBytes(n||0);
     const isIos = (dev.platform||'').toLowerCase() === 'ios';
@@ -4234,6 +4320,12 @@ window.devDetail = async function(did) {
   } catch(e) {
     $('devDetailBody').innerHTML = `<p style="font-size:.8rem;color:var(--danger)">${esc(e.message)}</p>`;
   }
+};
+window.devOpenProfile = function(did) {
+  closeModal();
+  $('profileSearch').value = did;
+  navigate('profile');
+  setTimeout(()=>views.profile.lookup(), 100);
 };
 window.devMessage = function(did, label) {
   views.devices.msgTargetId = did || '';
@@ -5069,6 +5161,103 @@ $('cfgTestBootstrap').onclick = async()=>{
     $('bsTestResult').innerHTML = `<span style="color:var(--danger)">✗ FAILED</span> — ${esc(e.message)}`;
   }
 };
+
+// ── VIEW: USER PROFILE ───────────────────────────────────────────────
+views.profile = {
+  init() {
+    $('profileSearchBtn').onclick = () => this.lookup();
+    $('profileSearch').onkeydown  = e => { if (e.key === 'Enter') this.lookup(); };
+  },
+  async lookup() {
+    const q = $('profileSearch').value.trim();
+    if (!q) return;
+    const st = $('profileSearchStatus');
+    st.textContent = 'Loading…';
+    $('profileCard').hidden = true;
+    $('profileEmpty').hidden = true;
+    try {
+      const d = await api.get('user-profile', { device_id: q });
+      this.render(d);
+      $('profileCard').hidden = false;
+      st.textContent = '';
+    } catch(e) {
+      st.textContent = e.message || 'Not found';
+      $('profileEmpty').hidden = false;
+    }
+  },
+  render(d) {
+    const I = d.identity, W = d.wallet, F = d.freedom, C = d.clan, CH = d.chat;
+
+    // Title
+    const emoji = I.avatar_emoji || '👤';
+    const name  = I.handle ? `${emoji} @${I.handle}` : `${emoji} ${I.user_id || I.device_id.slice(0,12)+'…'}`;
+    $('profTitle').textContent = name;
+    $('profPlanBadge').textContent = I.plan.toUpperCase();
+    $('profPlanBadge').className = 'badge ' + (I.plan === 'premium' ? 'badge-ok' : 'badge-muted');
+    $('profCountryBadge').textContent = (I.country||'?') + (I.country_name ? ' '+I.country_name : '');
+    $('profCountryBadge').className = 'badge badge-muted';
+
+    // Identity grid
+    $('profRealId').textContent    = I.linked_real_account || '— not linked';
+    $('profUserId').textContent     = I.user_id || '—';
+    $('profHandle').textContent     = I.handle || '—';
+    $('profPersona').textContent    = I.persona ? { king:'👑 King', queen:'👸 Queen', warrior:'⚔️ Warrior' }[I.persona] || I.persona : '—';
+    $('profPlatform').textContent   = { android:'🤖 Android', ios:'🍎 iOS' }[I.platform] || I.platform || '—';
+    $('profAppVersion').textContent = I.app_version || '—';
+    $('profCreated').textContent    = I.created_at ? I.created_at.slice(0,10) : '—';
+    $('profLastSeen').textContent   = I.last_seen   ? relTime(I.last_seen)    : '—';
+
+    // Top stats
+    $('profQuotaFree').textContent   = W.quota_free_gb + ' GB';
+    $('profQuotaSub').textContent    = `${W.quota_used_gb} / ${W.quota_total_gb} GB used (${W.quota_pct}%)`;
+    $('profSessions').textContent    = fmtNum(F.total_sessions);
+    $('profSessionsSub').textContent = F.total_gb + ' GB · ' + (F.success_rate_pct) + '% success';
+    $('profInvites').textContent     = C.invite_count;
+    $('profInvitesSub').textContent  = C.active_invites + ' active (7d)';
+    $('profMessages').textContent    = fmtNum(CH.messages_sent + CH.messages_received);
+    $('profMessagesSub').textContent = `${CH.messages_sent} sent · ${CH.messages_received} received`;
+
+    // Freedom
+    $('profFreedomList').innerHTML = kvRow('Total sessions', fmtNum(F.total_sessions))
+      + kvRow('Data transferred', F.total_gb + ' GB')
+      + kvRow('Success rate', F.success_rate_pct + '%')
+      + kvRow('Last connected', F.last_session_at ? relTime(F.last_session_at) : '—');
+    $('profTopProtocol').textContent = F.top_protocol ? '🔗 Preferred: ' + F.top_protocol : '';
+
+    // Clan
+    const rankLabel = { king:'👑 King', pahlavan:'🛡️ Pahlavan', warrior:'⚔️ Warrior' }[C.rank] || C.rank;
+    $('profClanRank').textContent  = rankLabel;
+    $('profClanList').innerHTML = kvRow('Total invites', C.invite_count)
+      + kvRow('Active (7d)', C.active_invites)
+      + kvRow('Referred by', C.referred_by ? (C.referred_by.user_id || C.referred_by.device_id.slice(0,10)+'…') : '— organic');
+    $('profClanReferrals').textContent = C.referrals.length
+      ? 'Invited: ' + C.referrals.slice(0,5).map(r=>r.user_id||r.device_id.slice(0,8)+'…').join(', ') + (C.referrals.length>5?` +${C.referrals.length-5} more`:'')
+      : 'No referrals yet';
+
+    // Shahnameh
+    if (I.linked_real_account) {
+      $('profShahnamehLinked').innerHTML = `<span class="badge badge-ok">✓ Linked</span> ${I.linked_real_account}`;
+      $('profShahnamehList').innerHTML = kvRow('REAL ID', I.linked_real_account)
+        + kvRow('Linked', I.real_linked_at ? I.real_linked_at.slice(0,10) : '?')
+        + kvRow('Persona', I.persona || '—');
+    } else {
+      $('profShahnamehLinked').innerHTML = '<span class="badge badge-muted">Not linked</span>';
+      $('profShahnamehList').innerHTML = kvRow('Status', 'Gate not yet passed');
+    }
+
+    // Timeline
+    const tbody = document.querySelector('#profTimeline tbody');
+    tbody.innerHTML = d.timeline.map(e =>
+      `<tr><td style="white-space:nowrap;font-size:.78rem">${e.ts?.slice(0,16)||'?'}</td>` +
+      `<td>${e.icon}</td>` +
+      `<td style="font-size:.82rem">${esc(e.label)}</td>` +
+      `<td style="font-size:.78rem;color:var(--text-muted)">${esc(String(e.detail||''))}</td></tr>`
+    ).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:1rem">No events yet</td></tr>';
+  },
+};
+function kvRow(k,v){ return `<div style="display:flex;justify-content:space-between;font-size:.82rem;padding:.2rem 0;border-bottom:1px solid var(--border-subtle)"><span style="color:var(--text-muted)">${esc(k)}</span><span style="font-weight:500">${esc(String(v))}</span></div>`; }
+function relTime(ts){ if(!ts)return'—'; const d=Math.round((Date.now()-new Date(ts+' UTC').getTime())/60000); if(d<2)return'just now'; if(d<60)return d+'m ago'; if(d<1440)return Math.round(d/60)+'h ago'; return Math.round(d/1440)+'d ago'; }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // ── VIEW: HAKIM ADMIN ────────────────────────────────────────────────
 // Every field reads hakim-bot's actual running state (systemctl, hakim.db)
