@@ -1,7 +1,7 @@
 {
   "version": "0.9.67",
-  "versionCode": 94,
-  "releaseDate": "2026-07-16",
+  "versionCode": 99,
+  "releaseDate": "2026-07-18",
   "rolloutChannel": "stable",
   "minSupported": "0.9.7",
   "forceUpdate": false,
@@ -10,20 +10,20 @@
   "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.67-arm32.apk",
   "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.67-universal.apk",
   "checksum": {
-    "sha256": "4166576c38b1ffc668b931f2b571f0c5e70b2ca45598663393273d293767f06a",
+    "sha256": "ed2d067d8cf7f3302f315614749f8870a9324061658d770479a98fe288f3b022",
     "algorithm": "sha256"
   },
-  "size": 57089341,
+  "size": 57139953,
   "changelog": [
-    "New: play the Shahnameh game right inside the app (Game screen)",
+    "New: Starlink satellite connection — dedicated hero card and tracking screen",
+    "New: play Shahnameh directly from the RealGram shortcut (no linking gate for connected users)",
     "New: link your account with TrustAI to grow your rewards",
-    "Faster and more reliable app updates",
     "Stability and performance improvements"
   ],
   "channels": {
     "stable": {
       "version": "0.9.67",
-      "versionCode": 94,
+      "versionCode": 99,
       "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.67.apk",
       "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.67-arm32.apk",
       "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.67-universal.apk"
