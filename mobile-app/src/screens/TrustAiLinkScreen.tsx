@@ -65,7 +65,7 @@ export function TrustAiLinkScreen({ onBack }: { onBack?: () => void }) {
 
   const [ssoStatus, setSsoStatus] = useState<'loading' | 'ok' | 'unlinked' | 'unavailable'>('loading');
   const [linkState, setLinkState] = useState<LinkState>('idle');
-  const webRef = useRef<WebView>(null);
+  const webRef = useRef<React.ElementRef<typeof WebView>>(null);
 
   useEffect(() => {
     if (!deviceId) { setSsoStatus('unavailable'); return; }
