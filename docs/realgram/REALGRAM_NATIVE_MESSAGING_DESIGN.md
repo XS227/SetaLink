@@ -397,6 +397,44 @@ never-lose guarantee (points 3–4) is a separate, larger, cross-repo effort
 that needs its own scoping conversation with whoever owns the Shahnameh
 backend session — not silently assumed as part of § 6 Fase 1.
 
+#### 2.1.1 SSO consequence: Shahnameh must never ask "how do you want to log in?" when a REAL-ID already exists (Khabat, 2026-07-18)
+
+**Principle, stated directly:** REAL-ID is the master identity across the
+whole ecosystem (RealGram, Shahnameh, TrustAI, 3REAL, Wallet, future
+services). Telegram is *a way to create or link* a REAL-ID, never a
+second, competing identity a linked user gets asked to choose again.
+Pseudocode goal: `if (realIdSession.exists()) { loginWithRealId();
+openGame(); } else { showLoginOptions(); }` — no linked user should ever
+log in twice.
+
+**Verified, not assumed — read `GameScreen.tsx` directly rather than
+taking the flow on faith:**
+
+- **Scenario 1 (RealGram → Shahnameh):** built, same-day, commit
+  `048f229` (`feature/realgram-foundation`). A `checking` state shows a
+  neutral gold spinner while an already-linked account's SSO status is
+  silently confirmed server-side — the old behavior (gate flashing
+  briefly before disappearing) is gone. Users arriving via the RealGram
+  Home shortcut go straight into the game, no screen, no choice.
+- **Scenario 2 (Telegram → Shahnameh):** already built — the "not linked"
+  gate's own file header documents it: Telegram bot auth and RealGram
+  linking resolve to *the same canonical account* (Telegram `user_id`),
+  so switching between entry paths never creates a duplicate identity.
+- **Scenario 3 (Web/Desktop, direct to Shahnameh's own site):** **not
+  verified this session.** The gate described above lives in the React
+  Native app's `GameScreen.tsx` — Shahnameh also has a separate website
+  (`/var/www/shahnameh`, own login/admin surfaces) that was not checked
+  for the same "REAL-ID first, Telegram as fallback choice" behavior.
+  Don't assume it matches Scenario 3 the pseudocode implies until someone
+  actually reads that code too.
+
+**What this means for § 1's identity-links design:** no change needed —
+the `realgram_identity_links` table (§ 1.1) already models Telegram as
+one link among several pointing at one REAL_ID-shaped profile, which is
+exactly this principle. What's new here is confirmation that Agent A's
+app-side implementation already follows it in the two scenarios that
+touch the mobile app, not a new design requirement.
+
 ---
 
 ## 3. Migration plan
