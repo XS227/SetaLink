@@ -611,3 +611,37 @@ whoever owns that project, not touched here.
 subdomains have no real backend, the `setalink.no` redirect is still
 deliberately not wired up, and the app-copy rebrand is still not
 implemented pending Khabat's explicit unfreeze.
+
+---
+
+### 2026-07-18 — api.realgram.no + admin.realgram.no: DNS added, HTTPS issued (same session, second follow-up)
+
+Khabat added DNS for both (`A`/`AAAA`, same box). Certbot run for both in
+one call (`-d admin.realgram.no -d api.realgram.no`) — single SAN cert
+covers both names, confirmed via `openssl x509 -ext subjectAltName`.
+
+**Same stream-router mistake repeated by certbot itself, fixed the same
+way:** certbot doesn't know about this box's `stream{}` SNI-router
+architecture (documented in the entry above) — it added `listen 443 ssl`
+directly to both placeholder server blocks again, which briefly caused
+the same `bind() to 0.0.0.0:443 failed` error during certbot's own
+reload. Fixed immediately, same session: moved `api.realgram.no` to
+`127.0.0.1:8462` and `admin.realgram.no` to `127.0.0.1:8463` (each with
+`proxy_protocol`/`real_ip_header`, same convention as `realgram.no`
+itself and every other site on the box), added both to the `stream{}`
+map, reloaded — clean, no errors on that reload. **Worth remembering for
+next time:** any future `certbot --nginx -d <name>.realgram.no` on this
+box will need this same manual fix afterward; certbot has no way to know
+about the stream router on its own.
+
+**Verified externally** (not just this box, which has its own local
+resolver-cache lag on every DNS change so far — noted again for the
+pattern, not a real problem each time): `dig @1.1.1.1`/`@8.8.8.8`/`@9.9.9.9`
+resolve both; `https://api.realgram.no/` → `503` (the intended stub JSON
+body); `https://admin.realgram.no/` → `200`, the "coming soon" page;
+both `http://` → `301`. Re-checked `realgram.no` and the rest of the
+box's sites again after this reload too — still all `200`.
+
+**Still nothing built behind either** — this was DNS + cert only, per
+Khabat's explicit ask ("kjør certbot for begge"). Real API and real admin
+panel remain `Not started`.
