@@ -1392,6 +1392,57 @@ API contracts as-is. Nothing further needed from me now.
 
 ---
 
+## A→B(18) — AdsGram daglig push til admin-panelet
+
+**Dato: 2026-07-18**
+
+Agent A fant og fikset 3 bugs i `push-adsgram-perf`-endepunktet. Disse er
+deployet på prod. Endepunktet er nå klart til bruk — **du må sette opp
+daglig push fra Shahnameh-serveren.**
+
+**Endepunkt (ferdig, prod-klart):**
+
+```
+POST https://setalink.no/api.php?mobile=1&action=push-adsgram-perf
+Authorization: Bearer ***REDACTED-ROTATED-real_api_key***
+Content-Type: application/json
+```
+
+**Body (JSON):**
+```json
+{
+  "date":             "2026-07-18",
+  "active_users":     12,
+  "rewarded_views":   34,
+  "revenue_usd":      0.102,
+  "ecpm_usd":         3.0,
+  "fill_rate":        0.87,
+  "gb_granted":       8.3,
+  "avg_watch_time_s": 28.5
+}
+```
+
+Alle felter er numeriske. `fill_rate` er 0–1 (ikke prosent). `date` må
+være `YYYY-MM-DD`. Data lagres i `ad_perf_daily`-tabellen i `analytics.db`.
+
+**Hva du skal gjøre:**
+1. Hent daglige AdsGram-tall fra AdsGram-APIet (eller botten din)
+2. POST til endepunktet over én gang per dag, for gårsdagens dato
+3. Verifiser at `{"ok":true,"data":{"date":"...","platform":"adsgram"}}`
+   returneres
+
+**Hva som vises i admin når data er inne:**
+- Ads-siden (AdsGram vs AdMob-sammenligning med grafer)
+- Hakim AI-analysen kan gi reelle anbefalinger (nå: "Venter på AdsGram-data")
+- Dashboard-adoptionskortet oppdateres
+
+**Bugs som ble fikset (trenger ikke gjøre noe mer):**
+- `re_config()` → `re_service_config()` (fantes ikke)
+- `open_analytics_db()` → `db()` (fantes ikke i public api)
+- `push-adsgram-perf` lagt til `NO_TOKEN_ACTIONS` (ble blokkert av mobil-token)
+
+---
+
 ## A→B(17) — Admin-panel URL er /_setalink-admin/ (ikke /admin/)
 
 **Dato: 2026-07-18**
