@@ -909,7 +909,10 @@ limt sammen — design sammenslåingslaget først.
 - ✅ Freedom Stats-tilnærming (§ 5.10.2) — besluttet (fem rå verdier, ingen score i v1)
 - ✅ REAL Wallet-kort-varianten — besluttet (tre tall: REAL · GB · TON), med hard "aldri simulert TON"-regel
 - ✅ Activity/History-kortet (§ 5.10.3) — spesifisert (samlet tidslinje på tvers av RealGram/VPN/Wallet/Shahnameh)
-- ⬜ **Eneste gjenstående:** designmal-godkjenning — **levert 2026-07-18:** https://claude.ai/code/artifact/9d9686d0-3556-48ce-bc73-cbdc12d9e667 — venstre side rekonstruert direkte fra `season2/profile.html`/`style.css` (ekte kildekode, ikke antatt), høyre side bygget med samme fargetokens (`--gold: #f4c56b`, samme mørke bunn). **Venter på Khabats godkjenning**, ikke bekreftet ennå
+- ⬜ **Eneste gjenstående:** designmal-godkjenning — **levert 2026-07-18, oppdatert samme dag:** https://claude.ai/code/artifact/9d9686d0-3556-48ce-bc73-cbdc12d9e667 — venstre side rekonstruert direkte fra `season2/profile.html`/`style.css` (ekte kildekode, ikke antatt), høyre side bygget med samme fargetokens (`--gold: #f4c56b`, samme mørke bunn). **To presiseringer fra Khabat innarbeidet:**
+  1. **Kortrekkefølge endret:** Hero → Wallet → Freedom Stats → **Activity Timeline** → Achievements → Clan (Timeline flyttet opp fra sist til rett under Wallet/Freedom Stats, Clan flyttet ned). Begrunnelse: hvem jeg er → hva jeg eier → hva som nettopp skjedde → achievements → clan — mer dynamisk enn å avslutte på Clan.
+  2. **Samlende tagline på Hero-kortet, forslag, ikke låst:** "One REAL ID · Every part of the Freedom ecosystem" (vist i artifacten) ELLER "One Identity · Chat · Freedom · Wallet · Shahnameh" — Khabat kalte idéen "RealGrams kjennetegn", men har ikke valgt ordlyd ennå
+  **Fortsatt venter på Khabats endelige godkjenning**, ikke bekreftet
 
 Alle innholdsbeslutninger for § 5.10 er nå tatt. Gjenstår kun den visuelle
 side-om-side-godkjenningen og selve byggingen — sistnevnte fortsatt
