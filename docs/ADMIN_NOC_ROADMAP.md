@@ -817,7 +817,7 @@ scrolling; data og referral atskilt vs. blandet sammen.
 | **Hero** | 👑 ReaLink · @realink · ⭐ Premium · 🛡 Founder · 🌍 Freedom Leader · #227 | Not started |
 | **REAL Wallet** | "4.8K REAL · 1100 GB · +5% Premium bonus" ELLER tre små tall REAL/GB/TON | Not started — velg én variant, ikke begge, før bygging (Khabat presenterte begge som alternativer) |
 | **Stats** | 4 kort: GB (Data) · Invites · Referral % · Level | Not started |
-| **Freedom Stats** | Countries Connected · Nodes Used · Average Speed · Freedom Score | Not started — se § 5.10.2 for foreslått beregning, **venter på Khabats godkjenning, ikke besluttet** |
+| **Freedom Stats** | **Besluttet 2026-07-18 — ingen sammensatt score i v1.** Fem rå verdier: 🌍 Countries Connected · 📡 Nodes Used · ⚡ Average Speed · 📊 Uptime/Connection Stability · 📦 Data Shared | Not started — se § 5.10.2, beslutningen er tatt, kun bygging gjenstår (fortsatt under mobil-frysen) |
 | **Community/Clan** | "Freedom Clan" · Members · Traffic shared · Community Rank · "Your Clan →" | Not started — avhenger av § 6.5 (clan-data) |
 | **Achievements** | Sjekkliste: First Connection, Sent First GB, 10 Friends Invited, Premium Member, Starlink Explorer, Freedom Founder | Not started |
 | **Activity/History** | Ikke detaljert av Khabat ennå — trenger egen spesifikasjon før bygging | Not started, uspesifisert |
@@ -825,35 +825,42 @@ scrolling; data og referral atskilt vs. blandet sammen.
 **Den gamle, lange profilsiden fases ut** når disse kortene er på plass —
 ikke ved siden av den.
 
-#### 5.10.1 Bunn-navigasjon — **forslag: § 5.10 supersederer § 5.8, venter på Khabats OK**
+#### 5.10.1 Bunn-navigasjon — **✅ GODKJENT av Khabat 2026-07-18**
 
-| Kilde | Faner |
-|---|---|
-| § 5.8 (forrige runde) | 🏠 Home · 📊 Stats · 📖 Shahnameh · 👤 Profile |
-| § 5.10 (denne runden) | 🏠 Home · 💬 Chats · 🌐 Freedom · 💎 Wallet · 👥 Clan · 👤 Profile |
+**Vedtatt, erstatter § 5.8 (beholdt som historikk, ikke lenger
+gjeldende):**
 
-**Forslag, 2026-07-18 — ikke bare "nyere derfor gjeldende", en faktisk
-begrunnelse:** § 5.8s egen "Shahnameh"-fane motsier § 5.10s kjerneprinsipp
-— hvis Shahnameh **ikke** er en separat app, bare en visning av samme
-konto ("Play åpner bare Shahnameh-visningen"), gir en dedikert
-"Shahnameh"-knapp i bunn-navigasjonen feil signal (antyder noe separat).
-"Freedom" (§ 5.10) er en mer treffende samlebetegnelse. I tillegg krever
-§ 6 (RealGram-meldinger) uansett en Chats-fane i bunn-navigasjonen —
-§ 5.8 hadde ingen, § 5.10 har det. **Konklusjon: § 5.10.1 bør erstatte
-§ 5.8 som gjeldende footer-spesifikasjon**, ikke bare stå ved siden av
-den — men dette er fortsatt et forslag, ikke besluttet av Khabat ennå.
-§ 5.8 beholdes i dokumentet som historikk, samme mønster som
-bannerrekkefølge-revisjonen.
+> 🏠 Home · 💬 Chats · 🌐 Freedom · 💎 Wallet · 👥 Clan · 👤 Profile
 
-#### 5.10.2 Freedom Score — foreslått beregning (2026-07-18, venter på godkjenning)
+Khabats begrunnelse, direkte: *"Dette passer bedre med visjonen om at
+Shahnameh ikke er en separat app, men en del av samme univers."* Samme
+resonnement som ble foreslått — bekreftet, ikke bare akseptert på tro.
 
-**Prinsipp: kun ekte, allerede sporbare tall — ingen oppdiktet "vibe-score"**
-(samme regel som § 8.0/§ 0.1 gjelder her: en tallverdi presentert som en
-prestasjon må faktisk være utledet av ekte data, aldri estimert for
-show). Forslag til sammensetning, alle komponenter fra data som allerede
-finnes i `connect_telemetry`/`vpn_sessions`:
+#### 5.10.2 Freedom Stats — **✅ BESLUTTET 2026-07-18: ingen sammensatt score i v1**
 
-| Komponent | Kilde | Vekt (forslag) |
+Khabat valgte det enklere alternativet som ble nevnt som et gyldig valg i
+forslaget: **ikke lås en Freedom Score ennå.** Direkte sitat: *"Ikke lag
+en kunstig poengsum ennå... Når vi har nok reelle brukerdata kan vi senere
+innføre en Freedom Score basert på disse verdiene."* v1 viser fem rå
+verdier, ingen vekting, ingen sammensatt tall:
+
+- 🌍 Countries Connected
+- 📡 Nodes Used
+- ⚡ Average Speed
+- 📊 Uptime / Connection Stability (**ny** — ikke i det opprinnelige
+  4-korts-forslaget, lagt til av Khabat i denne beslutningen)
+- 📦 Data Shared
+
+**En sammensatt Freedom Score er eksplisitt utsatt, ikke forkastet** —
+revurderes når det finnes nok reell brukerdata til at en score faktisk
+betyr noe, ikke før. § 5.10.2s tidligere vektings-forslag (komponenter,
+ikke de faktiske vektene) kan gjenbrukes da, men er ikke lenger noe å
+bygge mot nå.
+
+Opprinnelig, nå historisk forslag-kontekst (komponentene under kan
+gjenbrukes når Freedom Score faktisk bygges senere):
+
+| Komponent | Kilde | Vekt (forslag, ikke lenger aktuelt for v1) |
 |---|---|---|
 | Distinkte land tilkoblet | node→land-mapping, `connect_telemetry` | f.eks. 10 poeng/land, tak ved 10 land |
 | Distinkte noder brukt | `node_id`, `connect_telemetry`/`vpn_sessions` | f.eks. 5 poeng/node |
@@ -868,12 +875,15 @@ vekting (bare vis de fire rå tallene, dropp en sammensatt "score" til
 videre) — også et gyldig valg, nevnt fordi en sammensatt score er mer
 kompleks å forklare til brukeren enn fire separate, forståelige tall.
 
-**Seksjonens Done (§ 5.10):** designmal godkjent av Khabat (skjermbilde av
-faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-
-versjon), REAL Wallet-kort-varianten valgt (ikke begge), Freedom
-Score-forslaget i § 5.10.2 godkjent eller justert, Activity/History
-spesifisert, § 5.10.1s footer-forslag bekreftet av Khabat — **før** noe
-av dette bygges, i tillegg til den generelle mobil-frysen i § 0.4.1.
+**Seksjonens Done (§ 5.10) — status 2026-07-18:**
+- ✅ Footer (§ 5.10.1) — godkjent
+- ✅ Freedom Stats-tilnærming (§ 5.10.2) — besluttet (fem rå verdier, ingen score i v1)
+- ⬜ REAL Wallet-kort-varianten — **fortsatt ikke valgt** (Khabat presenterte to alternativer, ingen bekreftet ennå)
+- ⬜ Activity/History-kortet — **fortsatt uspesifisert**
+- ⬜ Designmal-godkjenning (skjermbilde av faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-versjon) — ikke gjort
+
+Gjenstående to punkter må avklares **før** noe av § 5.10 bygges, i tillegg
+til den generelle mobil-frysen i § 0.4.1.
 
 **Seksjonens Done (§ 5 samlet):** alle underseksjoner `Live`, skjermbilder
 av alle berørte skjermer, **og** en eksplisitt vurdering (ikke bare
