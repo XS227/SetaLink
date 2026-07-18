@@ -530,6 +530,14 @@ function icon(string $name): string {
         <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="adsConfigBannerText"></div>
       </div>
 
+      <!-- ADMIN_NOC_ROADMAP.md § 2.0: four distinct ad types, never summed
+           into one "Rewarded Views" number. Section below (stat-grid through
+           Config) is specifically AdMob Rewarded — labeled so, not generic
+           "Ads". Banner/Interstitial/AdsGram get their own panels after it. -->
+      <div class="panel" style="margin-bottom:1rem;background:rgba(91,140,255,.08)">
+        <div class="panel-body" style="font-size:.8rem"><strong>AdMob Rewarded Video</strong> — the section below (through "Config") is this ad type specifically, backed by AdMob's server-side verification (SSV). See AdMob Banner / AdMob Interstitial / AdsGram Rewarded further down for the other three.</div>
+      </div>
+
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-label">Ads Watched (today)</div><div class="stat-value" id="adsToday">—</div><div class="stat-sub" id="adsWeek">— this week</div></div>
         <div class="stat-card"><div class="stat-label">Est. Revenue (30d)</div><div class="stat-value" id="adsRev30">—</div><div class="stat-sub" id="adsRevAll">— all time</div></div>
@@ -571,6 +579,53 @@ function icon(string $name): string {
         <div class="panel-body">
           <div id="adsConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.6rem .9rem"></div>
           <div id="adsCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
+        </div>
+      </div>
+
+      <!-- ADMIN_NOC_ROADMAP.md § 2.0 — the three ad surfaces with NO
+           admin visibility today. Built honestly: real ad units exist and
+           are live in the app (mobile-app/src/services/adsService.ts), but
+           no impression/click event ever reaches this server for banner or
+           interstitial — AdMob's SSV only exists for rewarded ads. Showing
+           "0" here would look like real, verified zero activity; it is
+           actually "not instrumented yet", so it says that instead. -->
+      <div class="panel" style="margin-top:1.5rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('package') ?> AdMob Banner</span></div>
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted-2)">
+          Live in-app (Home + first row of Servers list), real AdMob ad units
+          — but no impression/click telemetry is sent to this server. AdMob's
+          Server-Side Verification (SSV) only exists for rewarded ads; a plain
+          banner has no equivalent callback. To get real numbers here, the app
+          needs to report its own <code>LOADED</code>/<code>CLICKED</code>
+          events (via the existing <code>track-event</code> analytics
+          endpoint) — not built yet. eCPM/fill-rate/revenue for this surface
+          can otherwise only come from the AdMob Reporting API directly
+          (same OAuth/service-account pattern as § 4's Search Console
+          integration) — also not connected.
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('package') ?> AdMob Interstitial</span></div>
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted-2)">
+          Live in-app on Connect (and the Iran post-connect fallback path,
+          <code>adsService.ts</code>). Same gap as Banner above: the SDK's
+          <code>LOADED</code>/<code>CLOSED</code>/<code>ERROR</code> events
+          fire client-side only, nothing is reported to this server today.
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('package') ?> AdsGram Rewarded (Shahnameh)</span></div>
+        <div class="panel-body" style="font-size:.82rem;color:var(--muted-2)">
+          Separate system, separate backend (Shahnameh, not this panel) —
+          <strong>currently blocked, not just unmeasured.</strong> The
+          in-app button calls a stub endpoint that never reaches AdsGram's
+          real callback/verification flow, so real AdsGram activity
+          (confirmed in AdsGram's own dashboard) never reaches any admin.
+          Fix owned by Agent A — see coordination log. This panel will read
+          real AdsGram event data once that lands; showing nothing here
+          until then rather than a placeholder "0".
         </div>
       </div>
     </div>
