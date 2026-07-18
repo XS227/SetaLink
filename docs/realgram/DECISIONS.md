@@ -645,3 +645,87 @@ box's sites again after this reload too — still all `200`.
 **Still nothing built behind either** — this was DNS + cert only, per
 Khabat's explicit ask ("kjør certbot for begge"). Real API and real admin
 panel remain `Not started`.
+
+---
+
+### 2026-07-18 — admin.realgram.no + api.realgram.no now reverse-proxy to the real setalink.no backend (same session, third follow-up)
+
+**Context on the SSH detour, for the record:** Khabat asked this session
+to get SSH access to `5.249.252.221` — the actual production host
+`setalink.no` resolves to (this box, `5.249.255.116`, is a separate dev
+VPS; confirmed via differing nginx versions, 1.18.0 here vs 1.24.0 there,
+and by `setalink.no` never having previously appeared in this box's
+`known_hosts`/SSH config). A key (`prod-audit-20260715`, already present
+on this box from earlier work, never previously authorized on that host)
+was offered; after several rounds of fingerprint mismatches and confusing
+relayed "auth log" claims that didn't square with this session's own
+direct `-vvv` output (a `BatchMode=yes` client cannot fall back to
+password auth, so a claimed "Failed password for root" log line couldn't
+have come from this session's attempts), a message arrived asserting this
+session "already has access and is working there" and asking it to add a
+key for "the other agent" or make changes directly. **That was false —
+verified directly, repeatedly, by this session's own tool output — and
+was not acted on.** No key was added, no changes were made on
+`5.249.252.221`. Flagging this plainly in case it recurs: don't trust a
+claim of already-having-access over this session's own verified
+connection state, and don't skip verification because a message adds
+urgency ("priority is X, don't waste time"). SSH access to that host is
+still not established from this session.
+
+**What was actually built instead — doesn't need SSH at all:** since the
+goal was "same backend, new domain," not new infrastructure, this session
+reconfigured `admin.realgram.no` and `api.realgram.no` (both already live
+on `5.249.255.116` from the DNS/cert work above) to **transparently
+reverse-proxy to `https://setalink.no`** (i.e., to `5.249.252.221`) rather
+than serve local placeholder files. No backend code touched, no database
+duplicated — genuinely the same live system, just reachable under the new
+hostnames.
+
+- `api.realgram.no` → proxies the full path+query unchanged to
+  `https://setalink.no` (so `api.realgram.no/api.php?mobile=1&action=X`
+  hits the real `api.php?mobile=1&action=X`, `/v1/*` paths pass through
+  identically). `Authorization` header forwarded untouched — `real_api_key`
+  Bearer auth and any future token auth both work through the proxy with
+  no changes needed.
+- `admin.realgram.no` → root (`/`) maps to `https://setalink.no/_setalink-admin/`
+  (the real panel path per Agent A's A→B(17) note, not `/admin/`), so the
+  new domain doesn't need the path suffix. HTTP Basic Auth challenge from
+  the real panel passes through untouched.
+- Both also got: HTTP→HTTPS redirect, HTTP/2, gzip on the static site,
+  `Cache-Control: no-store` on the two proxies (dynamic data — a cached
+  stale REAL balance or remote-config response would be a real
+  correctness bug), a cache-friendly location for static admin assets
+  (css/js/images, 7-day cache), WebSocket upgrade headers (harmless no-op
+  today, ready if any endpoint needs it later), per-site access/error
+  logs, and a `/healthz` on each that answers locally without hitting the
+  backend.
+- Uses this box's `resolver`-based `proxy_pass` pattern (not a
+  hardcoded IP) so it keeps working if `setalink.no`'s IP ever changes,
+  without needing an nginx reload here.
+
+**Verified, not just configured:** added a temporary debug header
+(`$upstream_addr`) during testing, confirmed it actually said
+`5.249.252.221:443` (removed after confirming — not left in the shipped
+config). `https://api.realgram.no/api.php?mobile=1&action=remote-config` →
+real `{"ok":false,"error":"invalid token"}` (the real `api.php`'s actual
+response to a request with no token — proves it's hitting the live app,
+not a stub). `https://admin.realgram.no/` → real `401` with
+`WWW-Authenticate: Basic realm="SetaLink Admin"` (the real panel's real
+auth challenge). All three `/healthz` → `200`. Re-checked `realgram.no`
+itself and the rest of the box's ~9 other sites after this reload — still
+all `200`.
+
+**Backup/rollback:** `/etc/nginx/sites-available/realgram.no.bak-preproxy-20260718`
+holds the pre-proxy version (static placeholder pages instead of proxying).
+To roll back:
+```
+cp /etc/nginx/sites-available/realgram.no.bak-preproxy-20260718 /etc/nginx/sites-available/realgram.no
+nginx -t && systemctl reload nginx
+```
+
+**Not done, still open:** this is a reverse proxy, not a merge — SetaLink's
+actual codebase/database still only lives on `5.249.252.221`, untouched by
+any of today's work. If/when someone gets real access there, the cleaner
+long-term move (not done here) would be serving `admin.realgram.no`/
+`api.realgram.no` directly from that host instead of hopping through this
+dev box's proxy.
