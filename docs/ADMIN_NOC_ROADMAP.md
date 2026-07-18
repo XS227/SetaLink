@@ -274,6 +274,7 @@ som faktisk gjelder for typen, ikke tomme felt fremstilt som `0`.
 | Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
 |---|---|---|---|---|---|---|---|
 | AdMob-konto koblet med ekte ID-er | Not started | — | — | — | — | — | Khabat må skaffe AdMob-konto |
+| **§ 2.0-taksonomi bygget i admin** — AdMob Rewarded tydelig merket, tre nye ærlig-tomme paneler (Banner/Interstitial/AdsGram) forklarer nøyaktig hvorfor de mangler tall, ikke fabrikkert `0` | **Testing** | `feat/admin-noc-consolidated` | `d6523f8` | — | Ikke deployet | `php -l` OK | Banner/Interstitial trenger enten klient-event-rapportering (ikke bygget, rører ikke mobil pga. frys) eller AdMob Reporting API (ikke koblet) |
 | **Avklar om dagens "Rewarded dashboard"/`ads-metrics` faktisk er AdMob Rewarded, eller en blanding** | Not started | — | — | — | — | — | kode-revisjon av `admin/api.php`s `ads-metrics`-case før noe merkes `Live` |
 | AdMob Banner — eget kort/seksjon (impressions, clicks, revenue) | Not started | — | — | — | — | — | AdMob-konto. **Finnes ikke sporet i admin i dag i det hele tatt** |
 | AdMob Rewarded — eget kort/seksjon | Not started | — | — | — | — | — | AdMob-konto |
