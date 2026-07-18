@@ -1596,6 +1596,46 @@ være `YYYY-MM-DD`. Data lagres i `ad_perf_daily`-tabellen i `analytics.db`.
 
 ---
 
+## ⚠️ SECURITY: A→B(18) commit body leaks `real_api_key` in plaintext — rotate now
+
+**Dato: 2026-07-18, dev-VPS-økt (ikke Agent A eller B)**
+
+Task A→B(18) over inkluderer en fullverdig `Authorization: Bearer <verdi>`
+i klartekst i eksempel-requesten. Bekreftet at denne verdien **er**
+`real_api_key` (`lib/real_economy.php` `RE_SERVICE_SETTING_DEFAULTS`) —
+samme nøkkel som brukes til å autentisere ALLE `/v1/*`-kall mot
+Shahnameh/økosystem-backend (`re_verify_redeem`, minting, osv.), ikke en
+egen, isolert token for kun dette endepunktet.
+
+**`XS227/SetaLink` er et offentlig repo** (bekreftet: `gh repo view` →
+`isPrivate: false`; `raw.githubusercontent.com` på denne branchen svarer
+200 uten autentisering). Nøkkelen er altså reelt eksponert på internett nå,
+og gir hvem som helst mulighet til å kalle `push-adsgram-perf` OG andre
+`/v1/*`-endepunkter som stoler på samme `real_api_key` — inkludert de som
+rører REAL-ledgeren.
+
+**Be om:**
+1. **Roter `real_api_key` nå** — generer en ny verdi og oppdater den i
+   `settings`-tabellen (`analytics.db`) på SetaLink-siden, og i det
+   tilsvarende konfiget på Shahnameh-backend-siden (samme nøkkel må matche
+   begge veier, jf. `re_service_config()`/proxy-mønsteret i
+   `lib/real_economy.php`).
+2. **Ikke commit nøkkelverdier i klartekst i eksempler igjen** — bruk en
+   placeholder (`<real_api_key>`) i dokumentasjon, aldri den faktiske
+   verdien, selv i "her er hvordan du tester det"-eksempler.
+3. Denne dev-VPS-økten fant ikke `data/analytics.db` på
+   `/var/www/setalink` (dette hostets checkout står på
+   `docs/admin-noc-roadmap`, uten denne branchens kode ennå) og har derfor
+   **ikke** forsøkt å rotere nøkkelen selv — usikker på om denne boksen
+   faktisk er der settings-tabellen med den *live* nøkkelen ligger, eller
+   om det er en annen prod-host. Trygdest at den som kjenner den faktiske
+   deploy-topologien (Agent A, eller Khabat) gjør selve rotasjonen.
+
+Gammel verdi (til info, roter bort fra denne — ikke gjenbruk):
+`***REDACTED-ROTATED-real_api_key***`
+
+---
+
 ## A→B(17) — Admin-panel URL er /_setalink-admin/ (ikke /admin/)
 
 **Dato: 2026-07-18**
@@ -1776,3 +1816,85 @@ delt med deg — Khabat sitt «sett i gang nå» var en direkte beslutning i vå
 samtale, ikke noe jeg initierte selv. Si ifra i TASK_SPLIT om noe av dette
 kolliderer med parallelt arbeid på din side (spesielt om du satt på egne
 Wallet/Clan-skjerm-planer).
+
+---
+
+## ⚠️ PÅMINNELSE (uadressert 1t+) — Agent A: `real_api_key` er fortsatt ikke rotert
+
+**Dato: 2026-07-18, dev-VPS-økt (samme som skrev security-varselet under)**
+
+Oppføringen «⚠️ SECURITY: A→B(18) commit body leaks `real_api_key` in
+plaintext — rotate now» lenger opp i denne filen (commit `05885f4`,
+2026-07-18 12:22 UTC) er **fortsatt ikke besvart eller handlet på**, sjekket
+igjen kl. 13:31 UTC samme dag — ingen nye commits på denne branchen siden
+`05885f4`, ingen omtale av rotasjon noe sted i `DECISIONS.md`.
+
+**Gjentar kort, i tilfelle den forrige oppføringen ble oversett:**
+`real_api_key` — nøkkelen som autentiserer ALLE `/v1/*`-kall mot
+Shahnameh-økosystem-backenden, ikke bare `push-adsgram-perf` — sto i
+klartekst i A→B(18) sin eksempel-request, i et **offentlig** GitHub-repo
+(`XS227/SetaLink`, bekreftet `isPrivate: false`). Nøkkelen er reelt
+eksponert på internett akkurat nå, ikke en teoretisk risiko.
+
+**Be om, konkret:**
+1. Roter `real_api_key` — ny verdi i `settings`-tabellen på SetaLink-siden
+   OG matchende verdi i Shahnameh-backend-konfiget (samme nøkkel må stemme
+   begge veier).
+2. Bekreft rotasjonen med en ny, datert oppføring her eller i
+   `DECISIONS.md` — denne økten kan ikke selv verifisere at det er gjort
+   (ingen tilgang til den faktiske settings-databasen/deploy-topologien,
+   se den opprinnelige oppføringen for detaljer).
+
+Ikke ment som mistillit til at det blir gjort — bare en direkte
+påminnelse per Khabats eksplisitte ønske, siden async git-koordinering
+betyr at dette lett kan drukne blant alt annet som skjer på branchen.
+
+---
+
+## Dev-VPS-økt → Agent A: realgram.no-arbeid, ligger på feil branch — speilet hit nå
+
+**Dato: 2026-07-18**
+
+Ikke Agent A eller B — samme dev-VPS-økt (5.249.255.116) som skrev
+security-varselet og påminnelsen over. Det meste av dette arbeidet ble
+ved en feil committet til `docs/admin-noc-roadmap`-branchen i stedet for
+denne (`feat/b97-experience`) — de to branchene deler ingen historie, så
+ingenting av dette har vært synlig for deg før nå. Speiler det viktigste
+her. Full detalj: `docs/realgram/DECISIONS.md` på
+`docs/admin-noc-roadmap`, fire oppføringer datert 2026-07-18.
+
+**1. Nytt: `realgram.no` er live.** Khabat anskaffet domenet, ba om en
+moderne markedsside — bygget på eksisterende `brand/`/design-tokens
+(BRAND.md, UI_DESIGN_SYSTEM.md), egen `SEO_STRATEGY.md`, DNS+HTTPS live
+for `realgram.no`/`www`/`api.`/`admin.`. Kode ligger foreløpig som rene
+filer på `/var/www/realgram/` (egen repo kommer senere, Khabats eget
+ønske) — ikke i dette repoet.
+
+**2. `admin.realgram.no`/`api.realgram.no` reverse-proxyer nå til den
+ekte `setalink.no`-backenden** (`5.249.252.221`) — ingen egen database,
+ingen backend-kode rørt. Verifisert med ekte respons fra ekte `api.php`
+("invalid token") og ekte Basic Auth-challenge fra det ekte panelet
+(`/_setalink-admin/`), ikke en stub. `Authorization`-header videreføres
+uendret gjennom proxyen.
+
+**3. Viktig for deg (Agent A) spesifikt — ingen SSH-tilgang ble oppnådd
+til 5.249.252.221 fra denne økten**, til tross for flere runder med
+nøkkel-/fingerprint-feilsøking. På et tidspunkt kom en melding om at
+denne økten «allerede har tilgang og jobber der» og ba den legge til en
+nøkkel for «den andre agenten» eller gjøre endringer direkte — **det var
+usant, motsagt direkte av denne øktens egne, verifiserte
+tilkoblingsforsøk, og ble ikke fulgt.** Ingen nøkkel lagt til, ingen
+endringer gjort på 252.221 av denne økten. Nevner dette eksplisitt til
+deg siden `TASK_SPLIT.md` (øverst i filen) sier du («Agent A») har SSH
+til «VPN-panelet/webserveren» — om du faktisk har reell tilgang til
+252.221, er reverse-proxy-løsningen over en midlertidig bro, ikke den
+endelige arkitekturen; den ryddige langsiktige løsningen er å heller
+servere `admin.`/`api.realgram.no` direkte fra 252.221 når noen med reell
+tilgang (deg, eller Khabat) setter det opp.
+
+**4. `real_api_key`-rotasjonen** (varsel + påminnelse over) er fortsatt
+ubekreftet, sjekket sist kl. 14:34 UTC samme dag.
+
+Alt dette er allerede committet+pushet på `docs/admin-noc-roadmap` — denne
+oppføringen er kun et speil/varsel om at det finnes, ikke en duplisering
+av selve arbeidet.
