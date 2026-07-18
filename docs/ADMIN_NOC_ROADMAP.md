@@ -156,7 +156,7 @@ faner, men to av dem har hver sin unike fane **ingen andre grener har**:
 | Logs | Ja, felles kjerne | Ja | Ikke verifisert innhold | Ukjent | Ukjent | Nei (i kode) |
 | API Status | — | — | — | — | — | **Ja, mangler helt** — ingen fane funnet noe sted |
 | Event Log | — | — | — | — | — | **Ja, mangler helt** — dette er § 2.1.2s Ads Event Log, eksplisitt sperret til Agent A er ferdig |
-| Wallet | — | — | — | — | — | **Ja, mangler helt som admin-fane** — backend-loopen er live (§ 9.0), men ingen admin-visning av den finnes noe sted |
+| Wallet | **Bygget 2026-07-18** — lokal quota-ledger (breakdown/transfers/top wallets), `feat/admin-noc-consolidated` commit `50295fb`, ikke deployet | Ja | Delvis — REAL/ZAR (Shahnameh Mongo) eksplisitt utenfor, forklart på siden i stedet for gjettet | Nei | Nei | Nei — full REAL+ZAR+Data samlet visning er § 9.1s jobb |
 | Users | Delvis dekket av "Devices" (device-sentrisk, ikke samlet profil) | Delvis | — | — | — | **Ja**, som samlet bruker/profil-visning — avhenger av § 6.1s identitetsarbeid |
 | REAL Economy | Delvis dekket av "Payments" (REAL vs USDT, intents) | Delvis | — | — | — | **Ja**, som samlet økonomi-/treasury-oversikt (§ 9) |
 | Community | — | — | — | — | — | **Ja, mangler helt** — avhenger av § 6 (messaging/clan), "Not started" |
