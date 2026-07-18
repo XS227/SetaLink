@@ -54,7 +54,7 @@ $token = ($method === 'POST')
 // the PacketTunnelExtension / VPN service, which has no access to the app's token
 // store, and they are device_id-validated + size-clamped in their handlers. The
 // token itself ships inside the app binary, so it is not a real secret anyway.
-const NO_TOKEN_ACTIONS = ['submit-tunnel-log'];
+const NO_TOKEN_ACTIONS = ['submit-tunnel-log', 'push-adsgram-perf'];
 
 if (!in_array($action, NO_TOKEN_ACTIONS, true) && !hash_equals(MOBILE_TOKEN, $token)) {
     echo json_encode(['ok' => false, 'error' => 'invalid token']);
@@ -608,6 +608,112 @@ if ($method === 'GET') {
         if (!$deviceId) err('missing device_id');
         $pdo = db();
         ok(['transfers' => qe_transfer_history($pdo, $deviceId, 50)]);
+    }
+
+    if ($action === 'activity-timeline') {
+        // §5.10.3: one merged feed across RealGram/VPN/Wallet/Shahnameh instead
+        // of four separate lists — mirrors the same merge already built for the
+        // admin panel (admin/api.php 'user-profile' timeline block), scoped to
+        // the calling device instead of admin-wide, plus three sources that
+        // admin version doesn't include: quota_transfer, real_redemptions,
+        // milestone_claims.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+
+        $offset  = max(0, (int)($_GET['offset'] ?? 0));
+        $limit   = min(50, max(5, (int)($_GET['limit'] ?? 20)));
+        $fetchN  = $offset + $limit * 3 + 30; // enough raw rows per source to fill a page after merging
+
+        $timeline = [];
+
+        $sess = $pdo->prepare("SELECT protocol, bytes_sent, bytes_recv, duration_secs, started_at
+                                FROM vpn_sessions WHERE device_id=? ORDER BY id DESC LIMIT ?");
+        $sess->execute([$deviceId, $fetchN]);
+        foreach ($sess->fetchAll(PDO::FETCH_ASSOC) as $s) {
+            $timeline[] = ['ts' => $s['started_at'], 'type' => 'vpn', 'icon' => '🌐',
+                'label'  => 'Connected via ' . ($s['protocol'] ?? '?'),
+                'detail' => round(((int)$s['bytes_recv'] + (int)$s['bytes_sent']) / 1048576, 1) . ' MB · '
+                          . round(($s['duration_secs'] ?? 0) / 60) . 'm'];
+        }
+
+        $ref = $pdo->prepare("SELECT d.user_id, ru.status, ru.created_at
+                               FROM referral_uses ru JOIN devices d ON d.device_id = ru.new_device_id
+                               WHERE ru.referrer_device_id = ? ORDER BY ru.id DESC LIMIT ?");
+        $ref->execute([$deviceId, $fetchN]);
+        foreach ($ref->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $timeline[] = ['ts' => $r['created_at'], 'type' => 'referral', 'icon' => '👥',
+                'label' => 'Invited ' . ($r['user_id'] ?: 'new user'), 'detail' => $r['status'] ?? 'credited'];
+        }
+
+        $tx = $pdo->prepare("SELECT type, bytes, created_at FROM quota_transactions
+                              WHERE device_id=? ORDER BY id DESC LIMIT ?");
+        $tx->execute([$deviceId, $fetchN]);
+        foreach ($tx->fetchAll(PDO::FETCH_ASSOC) as $t) {
+            $gb = round(abs((int)$t['bytes']) / 1073741824, 2);
+            $timeline[] = ['ts' => $t['created_at'], 'type' => 'quota', 'icon' => '💰',
+                'label' => ucfirst(str_replace('_', ' ', $t['type'])),
+                'detail' => (((int)$t['bytes']) > 0 ? '+' : '-') . $gb . ' GB'];
+        }
+
+        // Allowlist only — app_events is mostly diagnostic noise (AD_LOAD_ERROR
+        // alone is the majority of all rows). §5.10.3 wants a narrative of real
+        // activity ("Watched rewarded ad", "Connected via Starlink"), not error
+        // logs, so only events that represent something the user actually did
+        // surface here. Extend this list as more meaningful events are added —
+        // do not just switch to "all events" again.
+        $appEventAllowlist = ['PAYMENT_CONFIRMED_REAL', 'TONKEEPER_OPENED'];
+        $placeholders = implode(',', array_fill(0, count($appEventAllowlist), '?'));
+        $app = $pdo->prepare("SELECT event, props, created_at FROM app_events
+                               WHERE device_id=? AND event IN ($placeholders) ORDER BY id DESC LIMIT ?");
+        $app->execute([$deviceId, ...$appEventAllowlist, $fetchN]);
+        foreach ($app->fetchAll(PDO::FETCH_ASSOC) as $e) {
+            $timeline[] = ['ts' => $e['created_at'], 'type' => 'app', 'icon' => '🎮',
+                'label'  => ucfirst(str_replace('_', ' ', $e['event'])),
+                'detail' => strlen($e['props'] ?? '') < 80 ? ($e['props'] ?? '') : substr($e['props'], 0, 77) . '…'];
+        }
+
+        // Sent/received transfers — sender and receiver both see it, worded from
+        // their own side.
+        $sent = $pdo->prepare("SELECT receiver_device, bytes, created_at FROM quota_transfer
+                                WHERE sender_device=? AND status='completed' ORDER BY id DESC LIMIT ?");
+        $sent->execute([$deviceId, $fetchN]);
+        foreach ($sent->fetchAll(PDO::FETCH_ASSOC) as $tr) {
+            $timeline[] = ['ts' => $tr['created_at'], 'type' => 'transfer', 'icon' => '🔄',
+                'label' => 'Sent ' . round((int)$tr['bytes'] / 1073741824, 2) . ' GB', 'detail' => ''];
+        }
+        $recv = $pdo->prepare("SELECT sender_device, bytes, created_at FROM quota_transfer
+                                WHERE receiver_device=? AND status='completed' ORDER BY id DESC LIMIT ?");
+        $recv->execute([$deviceId, $fetchN]);
+        foreach ($recv->fetchAll(PDO::FETCH_ASSOC) as $tr) {
+            $timeline[] = ['ts' => $tr['created_at'], 'type' => 'transfer', 'icon' => '🎁',
+                'label' => 'Received ' . round((int)$tr['bytes'] / 1073741824, 2) . ' GB', 'detail' => ''];
+        }
+
+        $redeem = $pdo->prepare("SELECT real_amount, quota_bytes, status, created_at FROM real_redemptions
+                                  WHERE device_id=? ORDER BY id DESC LIMIT ?");
+        $redeem->execute([$deviceId, $fetchN]);
+        foreach ($redeem->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $timeline[] = ['ts' => $r['created_at'], 'type' => 'redemption', 'icon' => '💎',
+                'label'  => 'Redeemed ' . (int)$r['real_amount'] . ' REAL',
+                'detail' => round((int)$r['quota_bytes'] / 1073741824, 2) . ' GB · ' . ($r['status'] ?? '')];
+        }
+
+        $mile = $pdo->prepare("SELECT milestone, bytes, claimed_at FROM milestone_claims
+                                WHERE device_id=? ORDER BY claimed_at DESC LIMIT ?");
+        $mile->execute([$deviceId, $fetchN]);
+        foreach ($mile->fetchAll(PDO::FETCH_ASSOC) as $m) {
+            $timeline[] = ['ts' => $m['claimed_at'], 'type' => 'milestone', 'icon' => '🏆',
+                'label'  => 'Milestone ' . (int)$m['milestone'] . ' reached',
+                'detail' => round((int)$m['bytes'] / 1073741824, 2) . ' GB'];
+        }
+
+        usort($timeline, fn($a, $b) => strcmp($b['ts'], $a['ts']));
+        $total    = count($timeline);
+        $timeline = array_slice($timeline, $offset, $limit);
+
+        ok(['timeline' => $timeline, 'total' => $total, 'offset' => $offset, 'limit' => $limit]);
     }
 
     if ($action === 'referral-earnings') {
