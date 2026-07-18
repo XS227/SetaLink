@@ -184,12 +184,15 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   }, []);
 
   // Warm up an interstitial so it's ready by the first Connect tap. Ad gates are
-  // FAIL-CLOSED: ads only when the plan is known to be 'free' — an unloaded or
-  // stale-synced user must never show a premium account an ad. Best-effort.
+  // FAIL-CLOSED: ads only when the plan is known to be 'free', OR the backend has
+  // explicitly flagged this device testMode (devices.test_mode) — a per-device ad
+  // QA override for a premium tester, never inferred, always server-controlled.
+  // An unloaded or stale-synced user must never show a premium account an ad.
+  const userShowsAds = user?.plan === 'free' || !!user?.testMode;
   useEffect(() => {
-    if (user?.plan !== 'free') return;
+    if (!userShowsAds) return;
     initAds().then(preloadInterstitial).catch(() => {});
-  }, [user?.plan]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userShowsAds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Where Google is unreachable outside the tunnel (Iran), the tap-time ad is
   // never ready — show it once the tunnel is up instead, so the ad streams
@@ -198,7 +201,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const wasConnectedForAdsRef = useRef(false);
   useEffect(() => {
     if (isConnected && !wasConnectedForAdsRef.current) {
-      if (user?.plan === 'free' && !adShownAtTapRef.current) {
+      if (userShowsAds && !adShownAtTapRef.current) {
         showInterstitialAfterConnect();
       }
       adShownAtTapRef.current = false;
@@ -226,9 +229,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       }
       // Start connecting first so the ad can never delay or block the tunnel.
       connect();
-      // Best-effort ad revenue on each new connection — only for users KNOWN to
-      // be on the free plan, and only if an interstitial is already loaded.
-      adShownAtTapRef.current = user?.plan === 'free'
+      // Best-effort ad revenue on each new connection — free plan or an explicit
+      // testMode override, and only if an interstitial is already loaded.
+      adShownAtTapRef.current = userShowsAds
         ? showInterstitialOnConnect()
         : false;
     }
@@ -475,7 +478,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             ecosystem promo, was built but never wired in) + 1 rewarded-video
             invite card. Both already gate ad-free for premium internally. */}
         <Animated.View style={{ transform: [{ translateY: contentTranslate }], marginTop: Spacing[3] }}>
-          <HomeBanner showAds={user?.plan === 'free'} />
+          <HomeBanner showAds={userShowsAds} />
         </Animated.View>
 
         {/* Watch ad → earn data */}

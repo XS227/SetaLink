@@ -20,6 +20,10 @@ export interface AuthUser {
   status: 'active' | 'expired' | 'blocked';
   plan: string;               // 'free' | 'premium' | 'team' | … (from entitlement)
   planExpiry: string | null;
+  // Server-controlled ad-testing override for a specific device (devices.test_mode)
+  // — lets a premium tester see ads without changing her actual plan/quota.
+  // Ad gates check (plan === 'free' || testMode), never testMode alone.
+  testMode: boolean;
   inviteCount: number;
   activeInviteCount: number;
   stealthUnlocked: boolean;
@@ -99,6 +103,7 @@ export const useAuthStore = create<AuthState>()(
             status: 'active',
             plan: 'free',
             planExpiry: null,
+            testMode: false,
             inviteCount: 0,
             activeInviteCount: 0,
             stealthUnlocked: false,
@@ -128,9 +133,11 @@ export const useAuthStore = create<AuthState>()(
             lastSeen:             now,
             securedWithBiometric: false,
             status:               e.blocked ? 'blocked' : 'active',
-            // The backend owns the plan; ad gates are fail-closed on plan==='free'.
+            // The backend owns the plan; ad gates are fail-closed on plan==='free'
+            // (or testMode, for an explicit per-device ad-testing override).
             plan:                 e.plan || 'free',
             planExpiry:           e.valid_until ?? null,
+            testMode:             (e as any).test_mode ?? false,
             inviteCount:          (e as any).invite_count ?? 0,
             activeInviteCount:    (e as any).active_invite_count ?? 0,
             stealthUnlocked:      (e as any).stealth_unlocked ?? false,
@@ -157,6 +164,7 @@ export const useAuthStore = create<AuthState>()(
             status:            e.blocked ? 'blocked' : 'active',
             plan:              e.plan || 'free',
             planExpiry:        e.valid_until ?? null,
+            testMode:          (e as any).test_mode ?? prev.user.testMode,
             inviteCount:       (e as any).invite_count ?? prev.user.inviteCount,
             activeInviteCount: (e as any).active_invite_count ?? prev.user.activeInviteCount,
             stealthUnlocked:   (e as any).stealth_unlocked ?? prev.user.stealthUnlocked,
