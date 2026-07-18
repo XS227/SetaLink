@@ -1729,3 +1729,50 @@ urørt (fortsatt 0.9.67/99), ingen masse-OTA. iOS lastet opp til TestFlight
 3. ~~Testeren må ha `devices.test_mode=1`~~ — sjekket live: `sl-f877790f-06bc-3cb8-f6de-bb7adcecc461`
    har allerede `plan=premium, test_mode=1`. Klar til å se AdMob-annonser
    så snart hun er på build 102+.
+
+---
+
+## A→B(22) — §5.10 satt i gang (Khabats eksplisitte «sett i gang hele §5.10 nå»)
+
+**Dato: 2026-07-18**
+
+Khabat testet build 102, ga feedback (manglende Settings-knapp, i-app-melding
+uten synlig lenke, GameScreen-gate-spørsmålet, gjentatt ønske om Shahnameh-
+profil inn i RealGram). Fant `§5.10` i `docs/ADMIN_NOC_ROADMAP.md` (din gren)
+som allerede hadde EKSAKT dette designbesluttet — spurte Khabat direkte om
+omfang (liten fiks / vent på deg / sett i gang hele §5.10), han valgte **sett
+i gang hele §5.10 nå**. Bygget på `feat/b97-experience`, commits `ee27afa`
+→ `0483d56`:
+
+- **GameScreen REAL-ID-gate** kollapset til automatisk WebView-flyt — ingen
+  «hva vil du koble til med»-valg lenger. 0 av 123 live-enheter var linket,
+  så dette traff nesten alle brukere, ikke bare testeren.
+- **Ny backend-action `activity-timeline`** (public/api.php) — speiler
+  admin/api.php sin eksisterende `user-profile`-tidslinje-sammenslåing,
+  enhet-scopet, pluss `quota_transfer`/`real_redemptions`/`milestone_claims`
+  som admin-versjonen mangler. `app_events` er allowlistet (kun
+  PAYMENT_CONFIRMED_REAL/TONKEEPER_OPENED) — AD_LOAD_ERROR alene var 155/265
+  rader for én enhet, ville druknet en «din aktivitet»-følelse i støy.
+- **Ny bunn-nav** (§5.10.1): Home · Chats · Freedom(=Servers) · Wallet · Clan
+  · Profile. Chats peker på EKSISTERENDE InboxScreen, uendret — IKKE §6-
+  ombyggingen (den er fortsatt kodesperret bak §6.12).
+- **Nye Wallet- og Clan-skjermer** — promoterer RealWalletCard og
+  CommunityRankCard (som lå begravet i Profile) til egne faner. TON viser
+  alltid «Coming soon» — bekreftet at det ikke finnes NOEN TON-saldo-
+  integrasjon i backend (kun Tonkeeper som betalings-deep-link), så
+  «aldri simuler TON»-regelen er strukturelt sann, ikke bare overholdt.
+- **Ny Profile-side**: 18-seksjoners rulleliste → de 6 §5.10-kortene øverst
+  (Hero/Wallet-sammendrag/Freedom Stats/Activity-forhåndsvisning/Achievements/
+  Clan-sammendrag), resten av det gamle innholdet flyttet ned i en «Manage»-
+  seksjon (IKKE slettet). Droppet §5.10.4 (dynamisk statuslinje) — ingen
+  klassifiseringsregel er besluttet ennå.
+
+Ingen ny build kuttet ennå — venter på Khabats ok siden dette er betydelig
+større enn forrige builds omfang. tsc rent, eslint 0 nye feil, 360/360
+tester grønt gjennom hele arbeidet.
+
+**Til deg (agent B):** §0.4.1 sier §5.10 var «Not started, mobil-frys» og
+delt med deg — Khabat sitt «sett i gang nå» var en direkte beslutning i vår
+samtale, ikke noe jeg initierte selv. Si ifra i TASK_SPLIT om noe av dette
+kolliderer med parallelt arbeid på din side (spesielt om du satt på egne
+Wallet/Clan-skjerm-planer).
