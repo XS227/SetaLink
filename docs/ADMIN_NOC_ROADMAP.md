@@ -64,28 +64,38 @@ Hver rad/oppgave i tabellene under skal ha disse feltene utfylt (bruk
 
 `Status: Live` krever at alle syv punkter i § 0.1 er oppfylt for den raden.
 
-### 0.4.1 Rekkefølge og mobil-frys (Khabat, 2026-07-18 — bindende)
+### 0.4.1 Rekkefølge og mobil-frys (Khabat, 2026-07-18 — bindende, **revidert samme dag**)
 
-**Ett om gangen, i denne rekkefølgen:**
+**Revisjon:** "Ikke bygg flere admin-sider nå" (2026-07-18, andre melding
+samme dag) **setter admin/NOC-byggingen på pause** — punkt 3 under er
+derfor ikke lenger "fortsett nå", det henger på ny instruks. § 5.10 (Profile
+= Shahnameh-identitet) er samtidig eksplisitt kalt "fundamentet for hele
+RealGram-identiteten" — elevert prioritet, men **fortsatt under
+mobil-frysen** i punkt 2, ikke frigitt for bygging. Se merknad i § 5.10s
+åpning.
+
+**Ett om gangen, i denne rekkefølgen — nåværende status:**
 
 1. **AdsGram callback/reward-kjeden ferdigstilles først** (Agent As oppgave,
    § 2.1.0) — admin skal vise ekte AdsGram-data før noe annet AdsGram-relatert
-   bygges videre (§ 2.1.2 forblir sperret).
+   bygges videre (§ 2.1.2 forblir sperret). Uendret.
 2. **Mobil UI er frosset etter b98/b99** til Khabat har testet og gitt
    tilbakemelding. **Ingen nye mobil-funksjoner eller store designendringer**
    før den gjennomgangen er gjort — smale bug-/gate-fikser (som
    `fix/ads-testmode-override`) regnes ikke som "ny funksjon" i denne
-   sammenhengen, men sjekk med Khabat/Agent A ved tvil.
-3. **Hakim Admin fortsetter med ekte live-data** (allerede live på
-   `setalink.no/admin`, Agent As versjon — se § 8.11).
-4. **Starlink Premium-opplevelsen** er neste store mobiloppgave — **etter**
-   at Khabat har godkjent designet. Ikke igangsatt.
+   sammenhengen, men sjekk med Khabat/Agent A ved tvil. Uendret — § 5.10 er
+   dokumentert, ikke frigitt.
+3. **Admin/NOC (§ 1–§ 4, § 8): PÅ PAUSE** fra 2026-07-18 — ikke bygg flere
+   admin-sider før Khabat sier fra igjen. Hakim Admin fortsetter likevel å
+   samle ekte live-data passivt (§ 8.11) — det krever ingen ny bygging.
+4. **Starlink Premium-opplevelsen** vs. **§ 5.10 Profile-identitet** — begge
+   er nå kandidater for "neste store mobiloppgave", ikke avklart seg imellom.
+   Ikke igangsatt, uansett hvilken.
 5. **Etter at APK-en er testet:** skjerm-for-skjerm-gjennomgang og
    forbedring, i denne rekkefølgen: **Home → Server → Shahnameh → Wallet →
    Profile.** Ikke start noen av disse før gjennomgangen faktisk er gjort.
-
-**Admin/NOC (§ 1–§ 4, § 8) er upåvirket av mobil-frysen** — det er nettopp
-det som skal fortsette nå, per Khabats direkte instruks.
+   § 5.10s Profile-redesign henger sammen med denne gjennomgangens
+   Profile-punkt — trolig samme arbeid, ikke to separate runder.
 
 ### 0.5 RealGram designprinsipp: én-hånd-bruk (bindende for ALL ny RealGram-UI)
 
@@ -760,12 +770,89 @@ skal imponere med kvalitet, ikke med mange effekter. Dette er et
 kvalitetsmål som § 5.1–§ 5.8 samlet skal oppfylle — verifiseres ved
 skjermbilde-gjennomgang mot dette målet spesifikt, ikke en egen kode-oppgave.
 
-**Seksjonens Done:** alle underseksjoner `Live`, skjermbilder av alle
-berørte skjermer, **og** en eksplisitt vurdering (ikke bare påstått) av om
-90/10-målet i § 5.9 faktisk er nådd — sammenlign mot forrige "for
-grønt"-mockup som referansepunkt for hva som IKKE er målet. Preview vist
-til Khabat før hver større endring (prosessregelen øverst i seksjonen),
-ikke bare ved ferdigstillelse.
+### 5.10 RealGram Profile = Shahnameh Profile — fundamentet for hele identiteten (Khabat, 2026-07-18)
+
+**Dette er ikke en visuell finpuss — det er en arkitekturbeslutning som
+overstyrer hvordan resten av § 5 tolkes.** Fortsatt under samme
+mobil-frys som resten av § 5 (§ 0.4.1) — dokumentert nå fordi Khabat
+kalte det "fundamentet", ikke fordi det er frigitt for bygging.
+
+**Kjerneprinsippet, Khabats egne ord:** *"Du er allerede i spillet selv om
+du ikke har trykket på Play enda."* ReaLink/RealGram-profilen og
+Shahnameh-profilen blir **samme identitet**, ikke to kontoer som
+synkroniseres:
+
+```
+ReaLink ID (= REAL_ID, jf. REALGRAM_NATIVE_MESSAGING_DESIGN.md § 2.1)
+      │
+      ├── Chats
+      ├── VPN
+      ├── Wallet
+      ├── Clan
+      ├── Referral
+      ├── Shahnameh
+      └── Marketplace
+```
+
+Én bruker, én wallet, én REAL-balanse, én clan, ett level. "Play" åpner
+**kun Shahnameh-visningen av samme konto** — ingen ny konto opprettes,
+ingen gjestebruker, ingen synkronisering skjer, fordi det aldri var to
+kontoer å synkronisere.
+
+**Direkte kobling til allerede gjort arbeid:** dette er ikke en ny
+retning — det er en skjerping av § 2.1s REAL_ID-prinsipp og § 2.1.1s
+allerede-bekreftede SSO-flyt (§ 6.1 her) til å også gjelde **profilens
+faktiske innhold**, ikke bare innloggingen. Elevert fra "langsiktig, fint
+å ha" til "fundamentet" — se § 0.4.1, rekkefølgen er under revurdering.
+
+**Designmal: Shahnameh Profile/Chronicle**, fordi den (Khabats egen
+vurdering) *føles som en identitet* mens dagens RealGram-profil *føles
+som et kontrollpanel*. Forskjellen konkretisert: stor hero-profil øverst
+(avatar+tittel+rang) vs. lange tekstbokser; REAL-balanse som egen
+fremhevet "wallet" vs. gjemt i en lang GB-boks; små, pene kort vs. mye
+scrolling; data og referral atskilt vs. blandet sammen.
+
+| Kort | Innhold (Khabats eksempel) | Status |
+|---|---|---|
+| **Hero** | 👑 ReaLink · @realink · ⭐ Premium · 🛡 Founder · 🌍 Freedom Leader · #227 | Not started |
+| **REAL Wallet** | "4.8K REAL · 1100 GB · +5% Premium bonus" ELLER tre små tall REAL/GB/TON | Not started — velg én variant, ikke begge, før bygging (Khabat presenterte begge som alternativer) |
+| **Stats** | 4 kort: GB (Data) · Invites · Referral % · Level | Not started |
+| **Freedom Stats** | Countries Connected · Nodes Used · Average Speed · Freedom Score | Not started — "Freedom Score" er en ny, ikke-definert metrik, avklar beregning før bygging |
+| **Community/Clan** | "Freedom Clan" · Members · Traffic shared · Community Rank · "Your Clan →" | Not started — avhenger av § 6.5 (clan-data) |
+| **Achievements** | Sjekkliste: First Connection, Sent First GB, 10 Friends Invited, Premium Member, Starlink Explorer, Freedom Founder | Not started |
+| **Activity/History** | Ikke detaljert av Khabat ennå — trenger egen spesifikasjon før bygging | Not started, uspesifisert |
+
+**Den gamle, lange profilsiden fases ut** når disse kortene er på plass —
+ikke ved siden av den.
+
+#### 5.10.1 Bunn-navigasjon — **avviker fra § 5.8, ikke reconcilert**
+
+| Kilde | Faner |
+|---|---|
+| § 5.8 (forrige runde) | 🏠 Home · 📊 Stats · 📖 Shahnameh · 👤 Profile |
+| § 5.10 (denne runden) | 🏠 Home · 💬 Chats · 🌐 Freedom · 💎 Wallet · 👥 Clan · 👤 Profile |
+
+**Dette er reelt forskjellig, ikke en presisering** — Stats/Shahnameh som
+egne faner er borte (falt inn i Profile, konsistent med "Play er bare en
+visning av samme konto"), Chats/Wallet/Clan er nye egne faner. Bruk
+§ 5.10s versjon som gjeldende inntil Khabat sier noe annet — den er nyere
+og eksplisitt begrunnet i identitetsprinsippet, men § 5.8 er ikke slettet
+herfra, kun markert utdatert, samme mønster som bannerrekkefølge-endringen
+tidligere i § 5.
+
+**Seksjonens Done (§ 5.10):** designmal godkjent av Khabat (skjermbilde av
+faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-
+versjon), REAL Wallet-kort-varianten valgt (ikke begge), "Freedom
+Score"-beregningen definert, Activity/History spesifisert, bunn-
+navigasjonen reconcilert med § 5.8 — **før** noe av dette bygges, i tillegg
+til den generelle mobil-frysen i § 0.4.1.
+
+**Seksjonens Done (§ 5 samlet):** alle underseksjoner `Live`, skjermbilder
+av alle berørte skjermer, **og** en eksplisitt vurdering (ikke bare
+påstått) av om 90/10-målet i § 5.9 faktisk er nådd — sammenlign mot
+forrige "for grønt"-mockup som referansepunkt for hva som IKKE er målet.
+Preview vist til Khabat før hver større endring (prosessregelen øverst i
+seksjonen), ikke bare ved ferdigstillelse.
 
 ---
 
