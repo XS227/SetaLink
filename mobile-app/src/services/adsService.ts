@@ -15,6 +15,18 @@ import mobileAds, {
   RewardedAd, RewardedAdEventType, AdEventType, TestIds, MaxAdContentRating,
   InterstitialAd,
 } from 'react-native-google-mobile-ads';
+import { trackEvent } from './analytics';
+
+// Lazy require to avoid a static import cycle (adsService is imported by
+// screens that authStore itself doesn't depend on, but keep the same
+// lazy pattern used for vpnStore below just in case).
+function currentDeviceId(): string | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useAuthStore } = require('../stores/authStore');
+    return useAuthStore.getState().user?.deviceId;
+  } catch { return undefined; }
+}
 
 // Real ids (must match backend admob_app_id / admob_rewarded_unit_id). Test ad unit
 // in dev so we never serve live ads against test traffic.
@@ -128,6 +140,23 @@ const INTERSTITIAL_MAX_AGE_MS = 55 * 60_000;
 // never pops long after the user moved on.
 let _pendingShowUntil = 0;
 let _pendingRetries   = 0;
+const MAX_PENDING_RETRIES = 3;
+const RETRY_BACKOFF_MS    = 1200;
+
+// A load against a blocked direct network (Iran) doesn't fail fast — it can hang
+// for many seconds before AdMob's SDK gives up. Left unbounded, that hang used to
+// occupy `_interLoading` for the whole post-connect window, so the tunnel-side
+// retry (which just wants a *new* request) silently no-op'ed against the guard
+// below. This timeout force-fails a stuck load so a fresh one can start.
+const INTERSTITIAL_LOAD_TIMEOUT_MS = 8_000;
+let _loadToken = 0;       // bumped on every new load; late callbacks from a
+                          // superseded attempt check this and no-op instead of
+                          // corrupting the state of whatever load replaced them
+let _loadTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearLoadTimer(): void {
+  if (_loadTimer) { clearTimeout(_loadTimer); _loadTimer = null; }
+}
 
 function vpnConnectedNow(): boolean {
   try {
@@ -147,19 +176,45 @@ function interstitialIsStale(): boolean {
 }
 
 function dropInterstitial(): void {
+  clearLoadTimer();
   _interstitial = null; _interReady = false; _interLoading = false;
+}
+
+/** Bounded, backed-off retry shared by the load-error and load-timeout paths —
+ *  only fires while a post-connect show window is still open, so a market
+ *  where AdMob simply never fills doesn't retry forever. */
+function retryPendingLoad(): void {
+  if (!(_pendingShowUntil && Date.now() <= _pendingShowUntil)) return;
+  if (_pendingRetries >= MAX_PENDING_RETRIES) return;
+  _pendingRetries += 1;
+  setTimeout(() => preloadInterstitial(), RETRY_BACKOFF_MS);
 }
 
 /** Preload one interstitial so it is ready by the next Connect tap. Idempotent;
  *  self-reloads after each show/error. Never throws. */
 export function preloadInterstitial(): void {
   if (_interReady || _interLoading) return;
+  const token = ++_loadToken;
   try {
     _interLoading = true;
     const ad = InterstitialAd.createForAdRequest(INTERSTITIAL_UNIT_ID, {
       requestNonPersonalizedAdsOnly: true,
     });
+
+    _loadTimer = setTimeout(() => {
+      if (token !== _loadToken) return;   // a newer load already replaced this one
+      trackEvent('AD_LOAD_ERROR', currentDeviceId(), {
+        slot: 'interstitial', code: 'timeout',
+        message: `load exceeded ${INTERSTITIAL_LOAD_TIMEOUT_MS}ms — likely blocked direct network`,
+      });
+      _interLoading = false;
+      _loadTimer = null;
+      retryPendingLoad();
+    }, INTERSTITIAL_LOAD_TIMEOUT_MS);
+
     ad.addAdEventListener(AdEventType.LOADED, () => {
+      if (token !== _loadToken) return;   // stale — a fresher attempt has since started
+      clearLoadTimer();
       _interReady = true; _interLoading = false;
       _interLoadedAt = Date.now();
       _interLoadedViaVpn = vpnConnectedNow();
@@ -171,17 +226,22 @@ export function preloadInterstitial(): void {
       }
     });
     ad.addAdEventListener(AdEventType.CLOSED, () => {
+      if (token !== _loadToken) return;
       dropInterstitial();
       preloadInterstitial();   // get the next one ready
     });
-    ad.addAdEventListener(AdEventType.ERROR, () => {
+    ad.addAdEventListener(AdEventType.ERROR, (e: any) => {
+      if (token !== _loadToken) return;
+      // Was silent before — interstitial failures had zero telemetry, unlike
+      // the rewarded path's AD_LOAD_ERROR, which made "no ads at all" reports
+      // impossible to diagnose (no-fill vs network vs something else).
+      trackEvent('AD_LOAD_ERROR', currentDeviceId(), {
+        slot: 'interstitial', code: e?.code || '', message: e?.message || '',
+      });
       dropInterstitial();
       // Loads started just before the tunnel came up often die in the network
-      // switch — retry (bounded) while a post-connect window is open.
-      if (_pendingShowUntil && Date.now() <= _pendingShowUntil && _pendingRetries < 2) {
-        _pendingRetries += 1;
-        preloadInterstitial();
-      }
+      // switch — retry (bounded, backed off) while a post-connect window is open.
+      retryPendingLoad();
     });
     _interstitial = ad;
     ad.load();
@@ -236,6 +296,29 @@ export function showInterstitialAfterConnect(windowMs = 12_000): boolean {
   _pendingShowUntil = Date.now() + windowMs;
   _pendingRetries   = 0;
   if (_interReady) dropInterstitial();   // stale leftover → replace via tunnel
+  // Force a genuinely fresh load through the now-up tunnel. A preload kicked off
+  // before the tunnel existed may still be in flight (and, against a blocked
+  // direct network, can hang well past this point) — invalidate it via the token
+  // and clear the loading flag so the call below actually starts a new request
+  // instead of being no-op'ed by the "already loading" guard.
+  _loadToken += 1;
+  _interLoading = false;
   preloadInterstitial();
   return false;
+}
+
+/**
+ * Call when the VPN tunnel goes down. Never fires a new load attempt here — in
+ * a market where Google is only reachable through the tunnel that would just be
+ * a doomed direct-network request. Only clears in-flight state so a stuck
+ * loading flag can't block the fresh load `showInterstitialAfterConnect` fires
+ * on the next Connect. Any already-loaded creative is left in place; the
+ * existing staleness check drops it lazily at show-time if it was fetched via
+ * the (now-down) tunnel.
+ */
+export function notifyVpnDisconnected(): void {
+  _loadToken += 1;
+  clearLoadTimer();
+  _interLoading = false;
+  _pendingShowUntil = 0;
 }

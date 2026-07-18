@@ -61,6 +61,14 @@ function _showOpenAdIfDue(trigger: 'cold_start' | 'foreground'): void {
   const now = Date.now();
   if (now - _lastOpenAdAt < OPEN_AD_MIN_GAP_MS) return;
 
+  // Skip while disconnected: in markets where Google is only reachable through
+  // the tunnel (Iran), a preload attempted here has nothing to load through and
+  // just hangs/fails. HomeScreen's connect-transition effect fires a fresh,
+  // tunnel-side load as soon as the user actually connects, so this open/
+  // foreground trigger only needs to cover the case where the tunnel is
+  // already up (e.g. reopening the app while still connected).
+  if (useVpnStore.getState().connectionState !== 'connected') return;
+
   initAds().then(() => {
     if (showInterstitialOnConnect()) {
       _lastOpenAdAt = now;

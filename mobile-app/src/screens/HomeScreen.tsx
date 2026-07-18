@@ -19,7 +19,7 @@ import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { useT }                from '../i18n';
-import { initAds, preloadInterstitial, showInterstitialOnConnect, showInterstitialAfterConnect } from '../services/adsService';
+import { initAds, preloadInterstitial, showInterstitialOnConnect, showInterstitialAfterConnect, notifyVpnDisconnected } from '../services/adsService';
 
 import Svg, { Path } from 'react-native-svg';
 
@@ -83,11 +83,16 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   // and must not be blocked from connecting.
   const userShowsAds = user?.plan === 'free' || !!user?.testMode;
 
-  // Ad preload
+  // Ad preload — only while the tunnel is already up. A preload kicked off
+  // before Connect has nothing to load through in markets where Google is
+  // blocked on the direct network (Iran); it just hangs/fails and, worse, used
+  // to occupy the "loading" slot so the real post-connect load below couldn't
+  // start. The connect transition below fires its own fresh load, so nothing
+  // is lost by skipping this while disconnected.
   useEffect(() => {
-    if (!userShowsAds) return;
+    if (!userShowsAds || !isConnected) return;
     initAds().then(preloadInterstitial).catch(() => {});
-  }, [userShowsAds]);
+  }, [userShowsAds, isConnected]);
 
   const adShownAtTapRef       = useRef(false);
   const wasConnectedForAdsRef = useRef(false);
@@ -95,6 +100,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     if (isConnected && !wasConnectedForAdsRef.current) {
       if (userShowsAds && !adShownAtTapRef.current) showInterstitialAfterConnect();
       adShownAtTapRef.current = false;
+    }
+    if (!isConnected && wasConnectedForAdsRef.current) {
+      notifyVpnDisconnected();
     }
     wasConnectedForAdsRef.current = isConnected;
   }, [isConnected, userShowsAds]);

@@ -41,6 +41,11 @@ jest.mock('../stores/vpnStore', () => {
   };
 });
 
+jest.mock('../services/analytics', () => ({
+  __esModule: true,
+  trackEvent: jest.fn(),
+}));
+
 type AdsModule = typeof import('../services/adsService');
 
 describe('interstitial ads on connect', () => {
@@ -52,6 +57,7 @@ describe('interstitial ads on connect', () => {
 
   beforeEach(() => {
     jest.resetModules();   // fresh adsService module state per test
+    jest.useFakeTimers();  // the load-timeout guard schedules a real setTimeout otherwise
     const adMock = (jest.requireMock('react-native-google-mobile-ads') as any).__mock;
     listeners = adMock.listeners;
     show = adMock.show;
@@ -62,6 +68,11 @@ describe('interstitial ads on connect', () => {
     setVpnState('idle');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     ads = require('../services/adsService');
+  });
+
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
   });
 
   it('does NOT show and does NOT throw when no ad is loaded (kicks a preload)', () => {
@@ -116,5 +127,84 @@ describe('interstitial ads on connect', () => {
     setVpnState('idle');          // user dropped the tunnel before the ad loaded
     listeners['loaded']?.();
     expect(show).not.toHaveBeenCalled();
+  });
+});
+
+describe('tunnel-gated preload (Iran fix — Khabat, 2026-07-18)', () => {
+  let ads: AdsModule;
+  let load: jest.Mock;
+  let setVpnState: (s: string) => void;
+  let trackEvent: jest.Mock;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useFakeTimers();
+    const adMock = (jest.requireMock('react-native-google-mobile-ads') as any).__mock;
+    load = adMock.load;
+    load.mockClear();
+    setVpnState = (jest.requireMock('../stores/vpnStore') as any).__setConnectionState;
+    setVpnState('idle');
+    trackEvent = (jest.requireMock('../services/analytics') as any).trackEvent;
+    trackEvent.mockClear();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    ads = require('../services/adsService');
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('a load kicked off before Connect does not block the fresh tunnel-side load', () => {
+    // A pre-connect preload attempt is in flight (never resolves — the direct
+    // network to Google is blocked) when the user taps Connect.
+    ads.preloadInterstitial();
+    expect(load).toHaveBeenCalledTimes(1);
+
+    setVpnState('connected');
+    ads.showInterstitialAfterConnect();
+
+    // Without the fix this would be a no-op (blocked by the "already loading"
+    // guard); the fix invalidates the stale in-flight attempt so a genuinely
+    // new request goes out through the now-up tunnel.
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('a stuck load times out, logs AD_LOAD_ERROR(code=timeout), and can then retry', () => {
+    setVpnState('connected');
+    ads.showInterstitialAfterConnect();
+    expect(load).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(8_000);
+
+    expect(trackEvent).toHaveBeenCalledWith(
+      'AD_LOAD_ERROR', undefined,
+      expect.objectContaining({ slot: 'interstitial', code: 'timeout' }),
+    );
+    // Bounded retry (backed off) should fire a second load attempt.
+    jest.advanceTimersByTime(1_200);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('notifyVpnDisconnected clears the loading flag without starting a new request', () => {
+    ads.preloadInterstitial();          // pre-connect attempt, never resolves
+    expect(load).toHaveBeenCalledTimes(1);
+
+    ads.notifyVpnDisconnected();
+    expect(load).toHaveBeenCalledTimes(1);   // no new request fired on disconnect itself
+
+    // The next preload call is now free to start (loading flag was stuck before the fix).
+    ads.preloadInterstitial();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('disconnect then reconnect allows a brand new load (open network still works normally)', () => {
+    setVpnState('connected');
+    ads.showInterstitialAfterConnect();
+    expect(load).toHaveBeenCalledTimes(1);
+
+    setVpnState('idle');
+    ads.notifyVpnDisconnected();
+
+    setVpnState('connected');
+    ads.showInterstitialAfterConnect();
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });
