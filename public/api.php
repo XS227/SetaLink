@@ -1793,9 +1793,9 @@ HTML;
     if ($action === 'push-adsgram-perf') {
         if ($method !== 'POST') { err('POST required'); }
 
-        $db  = open_analytics_db();
+        $db  = db();
         re_ensure_schema($db);
-        $cfg     = re_config($db);
+        $cfg     = re_service_config($db);
         $api_key = trim((string)($cfg['api_key'] ?? ''));
         $auth    = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
         if ($api_key === '' || !hash_equals('Bearer ' . $api_key, $auth)) {
