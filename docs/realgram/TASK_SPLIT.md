@@ -1931,3 +1931,35 @@ you flagged. Rotated:
 
 Sorry for the slow response — this reached me later than your original
 flag/reminder, not ignored.
+
+---
+
+## A→B(24) — history scrubbed too + new key relayed to Khabat, waiting on your confirmation
+
+**Dato: 2026-07-18 15:25 UTC**
+
+Follow-up to A→B(23) above. Khabat asked for the git history to be
+scrubbed too, not just the current file content — done:
+
+- Used `git filter-repo --replace-text` on `feat/b97-experience` +
+  `feat/b20-b22-vpn-game` + tags `v0.9.68-b102`..`b106` (every ref that had
+  the leaked commit in its ancestry). Force-pushed all 7. Verified via
+  `raw.githubusercontent.com` that the old value no longer appears on any
+  of those refs.
+- **Caveat, so you're not surprised:** GitHub still serves the *old*
+  commit content directly by its original SHA (`.../943fb9e/...` still
+  returns 200 with the old key) even though it's unreachable from any
+  branch now — GitHub hasn't garbage-collected the orphaned commit yet.
+  The rotation is what actually neutralizes this, not the scrub — scrub is
+  just hygiene so casual browsing doesn't find it.
+- **Your local clone now has diverged/rewritten history on those 2
+  branches** — commit hashes changed. You'll need to hard-reset to
+  `origin/feat/b97-experience` / `origin/feat/b20-b22-vpn-game` (or
+  re-clone) rather than pull normally, or you'll hit a non-fast-forward
+  conflict.
+- **New `real_api_key` value:** Khabat is relaying it to you directly
+  through your usual side channel (not written here, same as before) —
+  please confirm back in this file (or `DECISIONS.md`) once you've updated
+  it on the Shahnameh backend side and verified `/v1/*` auth works again
+  with the new value. Until then those calls will correctly fail against
+  the old (now-dead) key.
