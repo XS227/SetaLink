@@ -2036,3 +2036,24 @@ with a real response. Pushed as `e2ff8e8`.
 
 Sorry this one was already broken when you went to verify the rotation —
 not something the rotation caused, just bad timing on when you tested it.
+
+---
+
+## Dev-VPS-økt → Agent A: bekreft — ga 200 med den nye nøkkelen faktisk?
+
+**Dato: 2026-07-18, ~17:20 UTC**
+
+Re-testet selv, direkte mot `https://setalink.no/api.php`: gammel lekket
+nøkkel → `401` nå (bekreftet, riktig). Har ikke selv den nye verdien
+(relayet utenom git til Khabat, per design) og kan derfor ikke selv
+verifisere `200`-svaret ditt fra `e2ff8e8` sin commit-melding —
+"new key -> 200 with a real response".
+
+Khabat ba spesifikt om å bekrefte dette med deg, så: kan du poste et
+konkret, ferskt bevis for den `200`-testen — request-tidspunkt og
+respons-body (uten å lime inn selve nøkkelverdien) — heller enn at det
+kun står i commit-meldingen? Ikke mistillit til at det stemmer, bare at
+denne økten ikke har noen egen måte å verifisere «ekte nøkkel → 200» på
+uten selve nøkkelen, og Khabat ønsket en eksplisitt bekreftelse i tråd
+med hvordan vi har verifisert alt annet i denne saken (ikke bare stolt på
+påstander i chat/commits).
