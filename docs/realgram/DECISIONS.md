@@ -544,3 +544,70 @@ constraint. If RealGram absorbing the Realink/VPN identity (§5.1,
 `ADMIN_NOC_ROADMAP.md`, "REALINK = REALGRAM, ett produkt") is meant to
 loosen this rule, that's Khabat's call to make explicitly — not assumed
 here.
+
+---
+
+### 2026-07-18 — realgram.no: DNS live, HTTPS issued, and a real nginx architecture bug found + fixed (same dev-VPS session, follow-up to the entry above)
+
+**DNS added by Khabat** (`A`/`AAAA` on the apex, then `www` — added in two
+steps, both confirmed via `dig @1.1.1.1`/`@8.8.8.8` and a real HTTP
+round-trip once each landed). Both `realgram.no` and `www.realgram.no`
+resolve to `5.249.255.116` / `2a02:2350:a:103:f816:3eff:feba:8c39`, same
+as `setalink.no`.
+
+**Correction to the previous entry's nginx description — it was wrong in
+a way worth recording so nobody repeats it:** the original
+`/etc/nginx/sites-available/realgram.no` used `listen 443 ssl` /
+`listen [::]:443 ssl` directly, copying the pattern from `setalink`'s own
+site file. **This box does not actually serve :443 that way.**
+`nginx.conf` has a `stream {}` block (`ssl_preread` SNI router) that owns
+the real public `:443` socket and proxies to a per-site `127.0.0.1:84xx`
+loopback port with `proxy_protocol` — every other site on this box
+(`trustai.no` → `8445`, `3real.no` → `8452`, `.setalink.no` → `8460`,
+etc.) is wired this way; only the redirect-from-`:80` block is a normal
+direct listener. Because `realgram.no` wasn't in the `stream{}` map, real
+traffic silently fell through to that map's `default → 127.0.0.1:4443`
+backend and got a generic TLS handshake failure — and because the new
+site's own `listen 443 ssl` was competing with the stream block's `listen
+443` for the same socket, `nginx -s reload` briefly logged `bind() to
+0.0.0.0:443 failed (98: Address already in use)` during the certbot
+deploy (transient — the master recovered to a stable single-listener
+state on its own; verified via `systemctl status`, no restart needed).
+
+**Fix:** moved `realgram.no`'s HTTPS server block to
+`listen 127.0.0.1:8461 ssl proxy_protocol;` (same `real_ip_header
+proxy_protocol; set_real_ip_from 127.0.0.1;` convention as `trustai`'s
+site file), and added `realgram.no`/`www.realgram.no → 127.0.0.1:8461` to
+the `stream{}` map in `nginx.conf`. `api.realgram.no`/`admin.realgram.no`
+were deliberately left out of that map — no cert, no DNS added for them
+today, still HTTP-only placeholders on `:80`.
+
+**Verified, this time actually live (not just localhost):**
+- `dig realgram.no @1.1.1.1` / `@8.8.8.8` and `www.realgram.no` likewise
+  → `5.249.255.116`.
+- `curl https://realgram.no/` and `https://www.realgram.no/` → `200`,
+  real page content (checked via `--resolve` to rule out this box's own
+  stale local resolver cache, which lagged behind public resolvers by a
+  few minutes both times a DNS record was added).
+- `curl http://realgram.no/` → `301` to `https://`.
+- `openssl s_client -connect realgram.no:443 -servername realgram.no` →
+  valid Let's Encrypt cert, `CN=realgram.no`, issued `2026-07-18`, expires
+  `2026-10-16`, auto-renewal registered by certbot.
+- Every other site on the box re-checked after both nginx reloads today
+  (`setalink.no`, `trustai.no`, `3real.no`, `setai.no`, `dadashi.no`,
+  `fjon.setai.no`, `somiklinikken.no`, `numerologist.setai.no`) — all
+  still `200`.
+
+**Found, not caused by this work, not fixed (out of scope):**
+`styrk-karriere.no` returns connection failures — its enabled nginx site
+file only contains the `:80`→`:443` redirect block, no actual
+`127.0.0.1:8457 ssl` server block exists to answer it, so the stream
+map's routing target for it is simply empty. Zero hits in
+`access.log`/`access.log.1` for that host, so this predates today and
+isn't collateral damage from the realgram.no change — flagging for
+whoever owns that project, not touched here.
+
+**Still open, unchanged from the previous entry:** `api.`/`admin.`
+subdomains have no real backend, the `setalink.no` redirect is still
+deliberately not wired up, and the app-copy rebrand is still not
+implemented pending Khabat's explicit unfreeze.
