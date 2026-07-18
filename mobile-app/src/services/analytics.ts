@@ -10,6 +10,13 @@ import { APP_VERSION } from '../utils/version';
 
 const BASE_URL = 'https://setalink.no/api.php';
 const TOKEN    = 'setalink-mobile-diag-v1';
+// Matches entitlementService's mobilePost/mobileGet timeout. Without this, a
+// fetch on a stalled connection (common on degraded/throttled networks) never
+// resolves OR rejects, so `.catch()` never fires — the call just hangs
+// forever and silently vanishes instead of failing fast. That made every
+// telemetry call from at least one Iran tester's device disappear without a
+// trace, even the ones meant to report an ad load failure.
+const TIMEOUT  = 10_000;
 
 /** Canonical event names (keep in sync with what the screens emit). */
 export const Events = {
@@ -38,9 +45,14 @@ export function trackEvent(
     form.append('app_version', APP_VERSION);
     if (deviceId) form.append('device_id', deviceId);
     if (props)    form.append('props', JSON.stringify(props));
-    // Fire-and-forget: do not await, swallow all errors.
-    fetch(`${BASE_URL}?mobile=1&action=track-event`, { method: 'POST', body: form })
-      .catch(() => {});
+    // Fire-and-forget: do not await, swallow all errors. The AbortController
+    // still matters even though nothing awaits the result — without it, a
+    // stalled connection leaks the request forever instead of giving up.
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), TIMEOUT);
+    fetch(`${BASE_URL}?mobile=1&action=track-event`, { method: 'POST', body: form, signal: ctrl.signal })
+      .catch(() => {})
+      .finally(() => clearTimeout(tid));
   } catch {
     /* never let analytics break the UI */
   }
