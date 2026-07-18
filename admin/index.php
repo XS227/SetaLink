@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals','insights','seoranks','starlink','tunnellogs'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals','insights','seoranks','starlink','tunnellogs','hakim'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -130,6 +130,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='config'?' active':'' ?>" data-page="config">
       <?= icon('settings') ?> Config
+    </div>
+    <div class="nav-item<?= $page==='hakim'?' active':'' ?>" data-page="hakim">
+      <?= icon('chart') ?> Hakim
     </div>
   </nav>
   <div class="sidebar-footer">Realink v0.9.12 &middot; <?= h($auth_user) ?></div>
@@ -1610,6 +1613,70 @@ function icon(string $name): string {
             <button class="btn btn-ghost btn-sm" id="cfgTestBootstrap"><?= icon('check') ?> Test Endpoint</button>
           </div>
           <div id="bsTestResult" style="margin-top:.5rem;font-size:.75rem;color:var(--muted)"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: HAKIM ADMIN (ADMIN_NOC_ROADMAP.md § 8.11)               -->
+    <!-- Reads hakim-bot's ACTUAL running state (systemctl, hakim.db)  -->
+    <!-- — never a plausible invented status. § 8.0 applies here too.  -->
+    <!-- ============================================================ -->
+    <div data-view="hakim" hidden>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Bot Status</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div><span class="dot" id="hakimStatusDot"></span> <strong id="hakimStatusText">—</strong></div>
+              <div>Model: <strong id="hakimModel">—</strong></div>
+              <div>Bot active flag: <strong id="hakimActiveFlag">—</strong></div>
+              <div>Config last updated: <strong id="hakimLastUpdate">—</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Requests</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div>Total messages in: <strong id="hakimReqTotal">—</strong></div>
+              <div>Users: <strong id="hakimUserCount">—</strong></div>
+              <div>Success rate: <strong id="hakimSuccessRate">—</strong></div>
+              <div>Avg response time: <strong id="hakimAvgLatency">—</strong></div>
+            </div>
+            <p id="hakimReqNote" style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem"></p>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Recent Errors</span><span class="panel-sub" id="hakimErrorCount"></span></div>
+        <div id="hakimErrorList" style="max-height:220px;overflow-y:auto">
+          <div class="loading"><div class="spinner"></div></div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Knowledge Sources</span></div>
+          <div class="panel-body" id="hakimKnowledge">—</div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Advisor Mode</span></div>
+          <div class="panel-body">
+            <p style="font-size:.75rem;color:var(--muted-2)">
+              Not implemented yet client-side (§ 8.9) — no config to show.
+              This panel will control it once built.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Test Hakim</span><span class="panel-sub">sends a real message to the live bot — costs a real API call</span></div>
+        <div class="panel-body">
+          <div class="form-group">
+            <textarea class="input" id="hakimTestQuestion" rows="2" placeholder="e.g. Hvordan fungerer Rikets Ære?"></textarea>
+          </div>
+          <button class="btn btn-primary" id="hakimTestBtn"><?= icon('refresh') ?> Send test question</button>
+          <div id="hakimTestResult" style="margin-top:.75rem;font-size:.82rem;white-space:pre-wrap"></div>
         </div>
       </div>
     </div>
@@ -4943,6 +5010,58 @@ $('cfgTestBootstrap').onclick = async()=>{
     $('bsTestResult').innerHTML = `<span style="color:var(--danger)">✗ FAILED</span> — ${esc(e.message)}`;
   }
 };
+
+// ── VIEW: HAKIM ADMIN ────────────────────────────────────────────────
+// Every field reads hakim-bot's actual running state (systemctl, hakim.db)
+// via the hakim-status API action — never a plausible invented status.
+// See ADMIN_NOC_ROADMAP.md § 8.0/§ 8.11.
+views.hakim = {
+  init() { this.load(); },
+  async load() {
+    try {
+      const d = await api.get('hakim-status');
+      const dot = $('hakimStatusDot');
+      dot.className = 'dot ' + (d.bot_status === 'active' ? 'dot-ok' : d.bot_status === 'unknown' ? 'dot-unk' : 'dot-bad');
+      $('hakimStatusText').textContent = d.bot_status === 'active' ? 'Online' : d.bot_status === 'unknown' ? 'Unknown' : 'Offline';
+      $('hakimModel').textContent = d.provider ? `${d.provider} (${d.model || '?'})` : '—';
+      $('hakimActiveFlag').textContent = d.bot_active === null ? '—' : (d.bot_active ? 'true' : 'false');
+      $('hakimLastUpdate').textContent = d.config_updated_at || '—';
+      $('hakimReqTotal').textContent = d.messages_in ?? '—';
+      $('hakimUserCount').textContent = d.user_count ?? '—';
+      if (d.requests_logged > 0) {
+        $('hakimSuccessRate').textContent = d.success_rate != null ? `${d.success_rate}%` : '—';
+        $('hakimAvgLatency').textContent = d.avg_latency_ms != null ? `${d.avg_latency_ms} ms` : '—';
+        $('hakimReqNote').textContent = `Based on ${d.requests_logged} instrumented request(s) since the last bot restart.`;
+      } else {
+        $('hakimSuccessRate').textContent = 'No data yet';
+        $('hakimAvgLatency').textContent = 'No data yet';
+        $('hakimReqNote').textContent = 'Instrumentation was added 2026-07-17 but hakim-bot has not been restarted since — success rate and latency need a restart to start collecting.';
+      }
+      $('hakimErrorCount').textContent = `${(d.recent_errors||[]).length} shown`;
+      $('hakimErrorList').innerHTML = (d.recent_errors||[]).length
+        ? d.recent_errors.map(e => `
+          <div style="padding:.4rem .6rem;border-bottom:1px solid var(--border);font-size:.75rem">
+            <span style="color:var(--muted-2)">${esc(e.ts)}</span> —
+            <span style="color:var(--danger)">${esc(e.error||'unknown')}</span>
+            (provider: ${esc(e.provider)}${e.fallback_used ? ', fallback' : ''})
+          </div>`).join('')
+        : `<div class="panel-empty">No errors logged${d.requests_logged>0?'':' — no instrumented requests yet'}.</div>`;
+      $('hakimKnowledge').textContent = d.knowledge_summary || '—';
+    } catch(e) { toast('Hakim: '+e.message,'error'); }
+  },
+};
+$('hakimTestBtn')?.addEventListener('click', async () => {
+  const q = $('hakimTestQuestion').value.trim();
+  if (!q) return;
+  const resultEl = $('hakimTestResult');
+  resultEl.textContent = 'Asking Hakim… (real API call, a few seconds)';
+  try {
+    const d = await api.get('hakim-test-query', {question: q});
+    resultEl.textContent = d.answer || '(empty response)';
+  } catch(e) {
+    resultEl.textContent = 'Error: ' + e.message;
+  }
+});
 
 // ── VIEW: REFERRALS ──────────────────────────────────────────────────
 views.referrals = {
