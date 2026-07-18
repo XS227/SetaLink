@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Share, Linking,
   Modal, ActivityIndicator,
@@ -9,23 +9,66 @@ import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { useAuthStore }    from '../stores/authStore';
 import { useSettingsStore } from '../stores/settingsStore';
-import { useSessionStore } from '../stores/sessionStore';
+import { useSessionStore, SessionRecord } from '../stores/sessionStore';
 import { useToastStore }   from '../stores/toastStore';
 import { useVpnStore }     from '../stores/vpnStore';
 import { formatBytes, prettyPackageName } from '../utils/formatters';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { useT, TKey } from '../i18n';
 import { useReferral, syncEntitlement } from '../services/entitlementService';
+import { getRealWallet, RealWalletInfo } from '../services/realWalletService';
+import { getActivityTimeline, ActivityEvent } from '../services/activityService';
 import { WatchAdCard } from '../components/WatchAdCard';
 import { TopBar } from '../components/TopBar';
-import { CommunityRankCard } from '../components/CommunityRankCard';
+import { getCommunityRank, getClanId } from '../components/CommunityRankCard';
 import { EcosystemFooter } from '../components/EcosystemFooter';
 import { RealWalletCard } from '../components/RealWalletCard';
-import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { IdentityHeader } from '../components/IdentityHeader';
 import { getCachedConfig } from '../services/remoteConfigService';
 import { useInboxStore } from '../stores/inboxStore';
-import { useDMStore } from '../stores/dmStore';
+
+// ── §5.10 Freedom Stats — five raw values, no composite score (2026-07-18
+// decision: "don't invent a score yet — when we have enough real user data we
+// can introduce one later"). Derived entirely from the local session log, so
+// it renders instantly with no network round-trip.
+function computeFreedomStats(sessions: SessionRecord[]) {
+  const countries = new Set(sessions.map(s => s.serverFlag).filter(Boolean));
+  const nodes      = new Set(sessions.map(s => s.serverId).filter(Boolean));
+  const withSpeed   = sessions.filter(s => s.duration > 0);
+  const avgMbps     = withSpeed.length > 0
+    ? withSpeed.reduce((sum, s) => sum + ((s.sentBytes + s.recvBytes) * 8) / s.duration / 1e6, 0) / withSpeed.length
+    : 0;
+  const successRate = sessions.length > 0
+    ? sessions.filter(s => s.status === 'success').length / sessions.length
+    : 0;
+  const totalGb = sessions.reduce((sum, s) => sum + s.sentBytes + s.recvBytes, 0) / 1e9;
+  return {
+    countries: countries.size,
+    nodes: nodes.size,
+    avgMbps: Math.round(avgMbps * 10) / 10,
+    successPct: Math.round(successRate * 100),
+    totalGb: Math.round(totalGb * 10) / 10,
+  };
+}
+
+// ── §5.10 Achievements — checklist, all derivable from data already on
+// AuthUser/sessionStore. Best-effort mapping (no approved copy/mockup was
+// available) — flagged for Khabat to adjust criteria if these aren't quite
+// what he meant by each title.
+function computeAchievements(sessions: SessionRecord[], user: {
+  plan: string; inviteCount: number; stealthUnlocked: boolean;
+}) {
+  const totalGb = sessions.reduce((sum, s) => sum + s.sentBytes + s.recvBytes, 0) / 1e9;
+  const usedStarlink = sessions.some(s => /starlink/i.test(s.serverName) || /starlink/i.test(s.route ?? ''));
+  return [
+    { key: 'firstConnect',  icon: '🌐', done: sessions.length > 0 },
+    { key: 'firstGb',       icon: '📦', done: totalGb >= 1 },
+    { key: 'tenInvites',    icon: '👥', done: user.inviteCount >= 10 },
+    { key: 'premium',       icon: '⭐', done: user.plan !== 'free' },
+    { key: 'starlink',      icon: '🛰️', done: usedStarlink },
+    { key: 'founder',       icon: '🏛️', done: user.stealthUnlocked },
+  ];
+}
 
 // ── Plan meta ─────────────────────────────────────────────────────────────────
 
@@ -193,9 +236,23 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
 
   const [showQr, setShowQr] = useState(false);
   const [applyingPending, setApplyingPending] = useState(false);
-  const inboxMessages = useInboxStore((s) => s.messages);
+  // Kept fresh here (not read directly — TopBar/Chats tab render the unread
+  // badge) so it's already warm by the time the user opens Chats.
   const refreshInbox  = useInboxStore((s) => s.refresh);
-  const unreadDm      = useDMStore((s) => s.messages.filter(m => m.direction === 'in' && !m.read).length);
+
+  // §5.10 cards
+  const { sessions } = useSessionStore();
+  const [wallet, setWallet]     = useState<RealWalletInfo | null>(null);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const freedomStats  = useMemo(() => computeFreedomStats(sessions), [sessions]);
+  // Guarded field access (not `user.plan`) — this runs before the `if (!user)
+  // return null` guard below, so hook order stays identical across the
+  // null→loaded transition (see rules-of-hooks).
+  const achievements  = useMemo(() => computeAchievements(sessions, {
+    plan: user?.plan ?? 'free',
+    inviteCount: user?.inviteCount ?? 0,
+    stealthUnlocked: user?.stealthUnlocked ?? false,
+  }), [sessions, user?.plan, user?.inviteCount, user?.stealthUnlocked]);
 
   const navTo = onNavigate as (tab: string) => void;
 
@@ -205,6 +262,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
       // Pull the server-side quota ledger (breakdown + milestones + packages)
       // so all profile cards render from authoritative server data.
       syncEntitlement(user.deviceId).then(updateFromEntitlement).catch(() => {});
+      getRealWallet(user.deviceId).then(setWallet).catch(() => {});
+      getActivityTimeline(user.deviceId, 5).then((r) => setActivity(r.timeline)).catch(() => {});
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -242,7 +301,8 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
   const monthSessions = sessionsThisMonth();
   const daysLeft      = getDaysRemaining(user.planExpiry);
 
-  const unreadCount = inboxMessages.filter(m => !m.read).length + unreadDm;
+  const clanRank = getCommunityRank(user.activeInviteCount);
+  const clanId   = getClanId(user.userId || primaryId);
 
   // Milestone progression — server-driven (only approved referrals count).
   const msData  = user.milestones;
@@ -367,30 +427,125 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </GlassCard>
         )}
 
-        {/* Identity header (A-11) — avatar + @handle + nickname, tap to edit */}
+        {/* ── §5.10 Hero ── avatar + @handle + nickname (tap to edit), plus a
+            couple of earned chips. Skips §5.10.4's "dynamic status line" — no
+            classification rule has been decided yet (Khabat's own doc: "needs
+            a concrete rule before building, not just nice titles"). */}
         <IdentityHeader seedId={user.deviceId} fallbackId={primaryId} planLabel={planLabel} />
+        {(isUnlimited || user.stealthUnlocked) && (
+          <View style={styles.heroChipRow}>
+            {isUnlimited && (
+              <View style={styles.heroChip}><Text style={styles.heroChipText}>⭐ {t('pr.planPremium')}</Text></View>
+            )}
+            {user.stealthUnlocked && (
+              <View style={styles.heroChip}><Text style={styles.heroChipText}>🛡 {t('ach.founder')}</Text></View>
+            )}
+          </View>
+        )}
 
-        {/* Referral & community — B-21 declutter: ONE section (code + invitees
-            + TrustAI %) instead of three cards scattered across the screen.
-            Rank tiers (3/6/10) are defined once in
-            CommunityRankCard.RANK_THRESHOLDS — TrustAI's own ambassador tier
-            ladder, not a separate app-invented one. */}
+        {/* ── §5.10 Wallet summary ── REAL wallet promoted to its own tab;
+            this is just the headline numbers + a link there. */}
+        <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('wallet')}>
+          <GlassCard style={styles.summaryCard} glowColor={Colors.gold[400]}>
+            <View style={styles.summaryHeader}>
+              <Text style={styles.cardLabel}>{t('wallet.title')}</Text>
+              <Text style={styles.actionChevron}>›</Text>
+            </View>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryValue}>{wallet?.balance != null ? wallet.balance.toLocaleString() : '—'}</Text>
+                <Text style={styles.summaryLabel}>REAL</Text>
+              </View>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryValue}>{(user.quotaBytesTotal / 1e9).toFixed(0)}</Text>
+                <Text style={styles.summaryLabel}>GB</Text>
+              </View>
+              <View style={styles.summaryCell}>
+                <Text style={styles.summaryValue}>{t('wallet.tonComingSoon')}</Text>
+                <Text style={styles.summaryLabel}>TON</Text>
+              </View>
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
+        {/* ── §5.10.2 Freedom Stats ── five raw values, no composite score
+            (decided 2026-07-18 — see computeFreedomStats above). */}
+        <GlassCard style={styles.card}>
+          <Text style={styles.cardLabel}>{t('fs.title')}</Text>
+          <View style={styles.statsGrid}>
+            <View style={styles.statCell}><Text style={styles.statValue}>{freedomStats.countries}</Text><Text style={styles.statLabel}>{t('fs.countries')}</Text></View>
+            <View style={styles.statCell}><Text style={styles.statValue}>{freedomStats.nodes}</Text><Text style={styles.statLabel}>{t('fs.nodes')}</Text></View>
+            <View style={styles.statCell}><Text style={styles.statValue}>{freedomStats.avgMbps}</Text><Text style={styles.statLabel}>{t('fs.speed')}</Text></View>
+            <View style={styles.statCell}><Text style={styles.statValue}>{freedomStats.successPct}%</Text><Text style={styles.statLabel}>{t('fs.uptime')}</Text></View>
+            <View style={styles.statCell}><Text style={styles.statValue}>{freedomStats.totalGb}</Text><Text style={styles.statLabel}>{t('fs.dataShared')}</Text></View>
+          </View>
+        </GlassCard>
+
+        {/* ── §5.10.3 Activity Timeline ── merged RealGram/VPN/Wallet/Shahnameh
+            feed (activity-timeline endpoint), preview of the 5 most recent. */}
+        <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('activity')}>
+          <GlassCard style={styles.card}>
+            <View style={styles.summaryHeader}>
+              <Text style={styles.cardLabel}>{t('ac.title')}</Text>
+              <Text style={styles.actionChevron}>›</Text>
+            </View>
+            {activity.length === 0 ? (
+              <Text style={styles.activityEmpty}>{t('ac.empty')}</Text>
+            ) : (
+              activity.map((e, i) => (
+                <View key={i} style={styles.activityRow}>
+                  <Text style={styles.activityIcon}>{e.icon}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.activityLabel} numberOfLines={1}>{e.label}</Text>
+                    {!!e.detail && <Text style={styles.activityDetail} numberOfLines={1}>{e.detail}</Text>}
+                  </View>
+                </View>
+              ))
+            )}
+          </GlassCard>
+        </TouchableOpacity>
+
+        {/* ── §5.10 Achievements ── checklist derived from data already on
+            AuthUser/sessionStore (see computeAchievements above). */}
+        <GlassCard style={styles.card}>
+          <Text style={styles.cardLabel}>{t('ach.title')}</Text>
+          <View style={styles.achList}>
+            {achievements.map((a) => (
+              <View key={a.key} style={styles.achRow}>
+                <Text style={[styles.achIcon, !a.done && styles.achIconDim]}>{a.icon}</Text>
+                <Text style={[styles.achLabel, a.done && styles.achLabelDone]}>{t(`ach.${a.key}` as TKey)}</Text>
+                {a.done && <Text style={styles.achCheck}>✓</Text>}
+              </View>
+            ))}
+          </View>
+        </GlassCard>
+
+        {/* ── §5.10 Clan summary ── CommunityRankCard promoted to its own tab;
+            this is just the rank + clan chip + a link there. */}
+        <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('clan')}>
+          <GlassCard style={styles.summaryCard} glowColor={Colors.gold[400]}>
+            <View style={styles.summaryHeader}>
+              <Text style={styles.cardLabel}>{t('nav.clan')}</Text>
+              <Text style={styles.actionChevron}>›</Text>
+            </View>
+            <View style={styles.clanSummaryRow}>
+              <Text style={styles.clanSummaryIcon}>{clanRank.icon}</Text>
+              <Text style={styles.clanSummaryText}>{t(`pr.rank_${clanRank.key}` as TKey)}</Text>
+              {!!clanId && (
+                <View style={styles.clanChip}><Text style={styles.clanChipText}>{t('pr.clanLabel')} {clanId}</Text></View>
+              )}
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
+        {/* ── Manage — everything else from the old Profile that doesn't have
+            a home in the six §5.10 cards above; not deleted, just folded
+            in here so nothing is silently dropped. */}
+        <Text style={styles.manageHeading}>{t('pr.manage')}</Text>
+
+        {/* Referral code sharing — the rank/earnings summary now lives in the
+            Clan summary card above, so this block is just the code itself. */}
         <GlassCard style={styles.referralHubCard} glowColor={Colors.gold[400]}>
-          <CommunityRankCard
-            userId={user.userId || primaryId}
-            inviteCount={user.inviteCount}
-            activeInviteCount={user.activeInviteCount}
-            onInvite={handleShareReferral}
-            bare
-            hideInviteBtn
-          />
-
-          <View style={styles.referralHubDivider} />
-
-          <ReferralEarningsDonut deviceId={user.deviceId} onInvite={handleShareReferral} bare hideInviteBtn />
-
-          <View style={styles.referralHubDivider} />
-
           <View style={styles.referralHeader}>
             <Text style={styles.cardLabel}>{t('pr.referralCode')}</Text>
             <View style={styles.rewardBadge}>
@@ -592,27 +747,6 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
           </GlassCard>
         </TouchableOpacity>
 
-        {/* Inbox entry */}
-        <TouchableOpacity activeOpacity={0.85} onPress={() => navTo('inbox')}>
-          <GlassCard style={styles.inboxCard}>
-            <View style={styles.inboxRow}>
-              <Text style={styles.inboxIcon}>📬</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.inboxTitle}>{t('pr.inbox')}</Text>
-                <Text style={styles.inboxSub}>
-                  {inboxMessages.length > 0 ? t('pr.inboxOpen') : t('pr.inboxEmpty')}
-                </Text>
-              </View>
-              {unreadCount > 0 && (
-                <View style={styles.inboxBadge}>
-                  <Text style={styles.inboxBadgeText}>{unreadCount} {t('pr.inboxNew')}</Text>
-                </View>
-              )}
-              <Text style={styles.actionChevron}>›</Text>
-            </View>
-          </GlassCard>
-        </TouchableOpacity>
-
         {/* Invite reward milestones */}
         <GlassCard style={styles.msCard}>
           <View style={styles.referralHeader}>
@@ -788,14 +922,50 @@ const styles = StyleSheet.create({
   sendGbTitle:      { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
   sendGbDesc:       { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
 
-  // Inbox entry
-  inboxCard:        { paddingVertical: Spacing[3] },
-  inboxRow:         { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  inboxIcon:        { fontSize: 22 },
-  inboxTitle:       { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  inboxSub:         { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  inboxBadge:       { backgroundColor: 'rgba(255,80,80,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(255,80,80,0.35)', paddingHorizontal: Spacing[2], paddingVertical: 2 },
-  inboxBadgeText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FF5050' },
+  // §5.10 Hero chips
+  heroChipRow:      { flexDirection: 'row', gap: Spacing[2], justifyContent: 'center' },
+  heroChip:         { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
+  heroChipText:     { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary },
+
+  // §5.10 generic card + Wallet/Clan summary cards
+  card:             { padding: Spacing[4], gap: Spacing[3] },
+  summaryCard:      { padding: Spacing[4], gap: Spacing[3] },
+  summaryHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  summaryRow:       { flexDirection: 'row', gap: Spacing[3] },
+  summaryCell:      { flex: 1, alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, paddingVertical: Spacing[3] },
+  summaryValue:     { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  summaryLabel:     { fontSize: 11, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+
+  // §5.10.2 Freedom Stats
+  statsGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing[3] },
+  statCell:         { width: '30%', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, paddingVertical: Spacing[3] },
+  statValue:        { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
+  statLabel:        { fontSize: 10, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2, textAlign: 'center' },
+
+  // §5.10.3 Activity Timeline
+  activityEmpty:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted },
+  activityRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], paddingVertical: 6 },
+  activityIcon:     { fontSize: 18 },
+  activityLabel:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.primary },
+  activityDetail:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, marginTop: 1 },
+
+  // §5.10 Achievements
+  achList:          { gap: Spacing[2] },
+  achRow:           { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  achIcon:          { fontSize: 18 },
+  achIconDim:       { opacity: 0.3 },
+  achLabel:         { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted },
+  achLabelDone:     { color: Colors.text.primary },
+  achCheck:         { fontSize: 14, color: Colors.emerald[400], fontFamily: Typography.family.heading },
+
+  // §5.10 Clan summary
+  clanSummaryRow:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  clanSummaryIcon:  { fontSize: 28 },
+  clanSummaryText:  { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  clanChip:         { borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.gold[400] + '55', backgroundColor: Colors.gold[400] + '14', paddingHorizontal: 10, paddingVertical: 3 },
+  clanChipText:     { fontSize: Typography.size.xs, color: Colors.gold[400], fontFamily: Typography.family.heading },
+
+  manageHeading:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1, marginTop: Spacing[2] },
 
   // B-21: one merged referral/community card (rank + earnings donut + code)
   referralHubCard:    { gap: Spacing[3] },
