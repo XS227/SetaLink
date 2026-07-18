@@ -1596,6 +1596,46 @@ være `YYYY-MM-DD`. Data lagres i `ad_perf_daily`-tabellen i `analytics.db`.
 
 ---
 
+## ⚠️ SECURITY: A→B(18) commit body leaks `real_api_key` in plaintext — rotate now
+
+**Dato: 2026-07-18, dev-VPS-økt (ikke Agent A eller B)**
+
+Task A→B(18) over inkluderer en fullverdig `Authorization: Bearer <verdi>`
+i klartekst i eksempel-requesten. Bekreftet at denne verdien **er**
+`real_api_key` (`lib/real_economy.php` `RE_SERVICE_SETTING_DEFAULTS`) —
+samme nøkkel som brukes til å autentisere ALLE `/v1/*`-kall mot
+Shahnameh/økosystem-backend (`re_verify_redeem`, minting, osv.), ikke en
+egen, isolert token for kun dette endepunktet.
+
+**`XS227/SetaLink` er et offentlig repo** (bekreftet: `gh repo view` →
+`isPrivate: false`; `raw.githubusercontent.com` på denne branchen svarer
+200 uten autentisering). Nøkkelen er altså reelt eksponert på internett nå,
+og gir hvem som helst mulighet til å kalle `push-adsgram-perf` OG andre
+`/v1/*`-endepunkter som stoler på samme `real_api_key` — inkludert de som
+rører REAL-ledgeren.
+
+**Be om:**
+1. **Roter `real_api_key` nå** — generer en ny verdi og oppdater den i
+   `settings`-tabellen (`analytics.db`) på SetaLink-siden, og i det
+   tilsvarende konfiget på Shahnameh-backend-siden (samme nøkkel må matche
+   begge veier, jf. `re_service_config()`/proxy-mønsteret i
+   `lib/real_economy.php`).
+2. **Ikke commit nøkkelverdier i klartekst i eksempler igjen** — bruk en
+   placeholder (`<real_api_key>`) i dokumentasjon, aldri den faktiske
+   verdien, selv i "her er hvordan du tester det"-eksempler.
+3. Denne dev-VPS-økten fant ikke `data/analytics.db` på
+   `/var/www/setalink` (dette hostets checkout står på
+   `docs/admin-noc-roadmap`, uten denne branchens kode ennå) og har derfor
+   **ikke** forsøkt å rotere nøkkelen selv — usikker på om denne boksen
+   faktisk er der settings-tabellen med den *live* nøkkelen ligger, eller
+   om det er en annen prod-host. Trygdest at den som kjenner den faktiske
+   deploy-topologien (Agent A, eller Khabat) gjør selve rotasjonen.
+
+Gammel verdi (til info, roter bort fra denne — ikke gjenbruk):
+`***REDACTED-ROTATED-real_api_key***`
+
+---
+
 ## A→B(17) — Admin-panel URL er /_setalink-admin/ (ikke /admin/)
 
 **Dato: 2026-07-18**
