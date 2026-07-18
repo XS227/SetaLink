@@ -31,6 +31,10 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const { connectionState, connect, switchServer } = useVpnStore();
   const { activeMode }  = useAIStore();
   const userPlan        = useAuthStore((s) => s.user?.plan ?? 'free');
+  // Per-device ad-testing override (devices.test_mode) — same rule as HomeScreen's
+  // userShowsAds: a premium tester can be flagged server-side to see ads without
+  // touching her actual plan/quota.
+  const userTestMode    = useAuthStore((s) => !!s.user?.testMode);
 
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
@@ -165,7 +169,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
                     first row) — the rewarded-video card and the ecosystem
                     cross-promos that used to interleave here were "internal
                     banners"; that surface now belongs to Home only. */}
-                {i === 0 && <AdBanner show={userPlan === 'free'} style={styles.ecoBanner} />}
+                {i === 0 && <AdBanner show={userPlan === 'free' || userTestMode} style={styles.ecoBanner} />}
               </React.Fragment>
             ))
           )}

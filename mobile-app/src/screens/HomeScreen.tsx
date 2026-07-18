@@ -74,17 +74,26 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
 
+  // Ad gates are FAIL-CLOSED: ads only when the plan is known to be 'free', OR
+  // the backend has explicitly flagged this device testMode (devices.test_mode)
+  // — a per-device ad QA override for a premium tester, never inferred, always
+  // server-controlled. An unloaded or stale-synced user must never show a
+  // premium account an ad. The quota-exhausted connect-block below is
+  // deliberately left plan-only — a testMode tester has real premium quota
+  // and must not be blocked from connecting.
+  const userShowsAds = user?.plan === 'free' || !!user?.testMode;
+
   // Ad preload
   useEffect(() => {
-    if (user?.plan !== 'free') return;
+    if (!userShowsAds) return;
     initAds().then(preloadInterstitial).catch(() => {});
-  }, [user?.plan]);
+  }, [userShowsAds]);
 
   const adShownAtTapRef       = useRef(false);
   const wasConnectedForAdsRef = useRef(false);
   useEffect(() => {
     if (isConnected && !wasConnectedForAdsRef.current) {
-      if (user?.plan === 'free' && !adShownAtTapRef.current) showInterstitialAfterConnect();
+      if (userShowsAds && !adShownAtTapRef.current) showInterstitialAfterConnect();
       adShownAtTapRef.current = false;
     }
     wasConnectedForAdsRef.current = isConnected;
@@ -98,8 +107,8 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       return;
     }
     connect();
-    adShownAtTapRef.current = user?.plan === 'free' ? showInterstitialOnConnect() : false;
-  }, [isBusy, isConnected, user, connect, disconnect, onNavigate]);
+    adShownAtTapRef.current = userShowsAds ? showInterstitialOnConnect() : false;
+  }, [isBusy, isConnected, user, userShowsAds, connect, disconnect, onNavigate]);
 
   // Starlink referral progress
   const inviteCount  = user?.inviteCount ?? 0;

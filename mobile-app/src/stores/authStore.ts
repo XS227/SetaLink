@@ -23,6 +23,10 @@ export interface AuthUser {
   inviteCount: number;
   activeInviteCount: number;
   stealthUnlocked: boolean;
+  // Per-device ad-QA override (devices.test_mode) — lets a premium tester see
+  // AdMob ads without touching her real plan/quota. Defaults false everywhere
+  // so no existing user gains ad visibility by accident.
+  testMode: boolean;
   country: string;          // ISO code geo-detected by the backend ('' if unknown)
   // v0.9.31 server-side quota ledger. Null until the entitlement carries it;
   // the profile cards prefer this over any client-side derivation.
@@ -106,6 +110,7 @@ export const useAuthStore = create<AuthState>()(
             inviteCount: 0,
             activeInviteCount: 0,
             stealthUnlocked: false,
+            testMode: false,
             country: '',
             quota: null,
             milestones: null,
@@ -139,6 +144,7 @@ export const useAuthStore = create<AuthState>()(
             inviteCount:          (e as any).invite_count ?? 0,
             activeInviteCount:    (e as any).active_invite_count ?? 0,
             stealthUnlocked:      (e as any).stealth_unlocked ?? false,
+            testMode:             (e as any).test_mode ?? false,
             country:              (e as any).country ?? '',
             quota:                e.quota ?? null,
             milestones:           e.milestones ?? null,
@@ -166,6 +172,7 @@ export const useAuthStore = create<AuthState>()(
             inviteCount:       (e as any).invite_count ?? prev.user.inviteCount,
             activeInviteCount: (e as any).active_invite_count ?? prev.user.activeInviteCount,
             stealthUnlocked:   (e as any).stealth_unlocked ?? prev.user.stealthUnlocked,
+            testMode:          (e as any).test_mode ?? prev.user.testMode,
             country:           (e as any).country || prev.user.country,
             quota:             e.quota ?? prev.user.quota,
             milestones:        e.milestones ?? prev.user.milestones,
