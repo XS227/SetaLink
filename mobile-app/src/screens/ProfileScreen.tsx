@@ -326,7 +326,20 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.title}>{t('pr.title')}</Text>
-          <TopBar onNavigate={onNavigate as (tab: string) => void} />
+          <View style={styles.headerActions}>
+            <TopBar onNavigate={onNavigate as (tab: string) => void} />
+            {/* Settings — TopBar dropped its gear icon in the b97 declutter on
+                the understanding it would live here instead (see TopBar.tsx
+                header comment); the button never actually got re-added, so
+                Settings became unreachable from anywhere in the app. */}
+            <TouchableOpacity
+              style={styles.settingsBtn}
+              onPress={() => (onNavigate as (tab: string) => void)('settings')}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.settingsIcon}>⚙️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Pending referral banner */}
@@ -704,6 +717,7 @@ const styles = StyleSheet.create({
   scroll:           { flex: 1 },
   content:          { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
   header:           { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerActions:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   title:            { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   settingsBtn:      { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   settingsIcon:     { fontSize: 18, color: Colors.text.secondary },

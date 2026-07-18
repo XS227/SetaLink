@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
-  Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert,
+  Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -18,6 +18,17 @@ const REALINK_LOGO = require('../assets/logo_mark.png');
 // Disappearing-message timer steps the composer chip cycles through (seconds
 // after the recipient reads; 0 = permanent). Wickr-style, kept playful.
 const BURN_STEPS = [0, 30, 60, 300, 3600, 86400] as const;
+
+// Admin announcements (e.g. "new build ready") often carry a plain-text URL
+// in the body — messages were previously rendered as inert <Text>, so the
+// link was there but not tappable (users had to manually select+copy it).
+const URL_RE = /https?:\/\/[^\s]+/;
+
+/** First http(s) URL found in a message body, or null. */
+export function extractUrl(body: string): string | null {
+  const m = body.match(URL_RE);
+  return m ? m[0] : null;
+}
 
 /** Compact human label for a burn duration: 30s · 1m · 5m · 1h · 24h. */
 export function burnLabel(secs: number): string {
@@ -318,6 +329,19 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                       <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, burning && styles.bubbleBurn]}>
                         {!!m.title && <Text style={styles.bubbleTitle}>{m.title}</Text>}
                         <Text style={[styles.bubbleText, out && styles.bubbleTextOut]}>{m.body}</Text>
+                        {(() => {
+                          const url = extractUrl(m.body);
+                          if (!url) return null;
+                          return (
+                            <TouchableOpacity
+                              style={styles.bubbleLinkBtn}
+                              activeOpacity={0.75}
+                              onPress={() => Linking.openURL(url).catch(() => {})}
+                            >
+                              <Text style={styles.bubbleLinkText}>🔗 {t('dm.openLink')}</Text>
+                            </TouchableOpacity>
+                          );
+                        })()}
                         {burning && (
                           <Text style={styles.burnNote}>
                             🔥 {m.expiresAt
@@ -480,6 +504,8 @@ const styles = StyleSheet.create({
   bubbleTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.emerald[400], marginBottom: 3 },
   bubbleText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.primary, lineHeight: 20 },
   bubbleTextOut: { color: '#021b10' },
+  bubbleLinkBtn: { marginTop: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: Radius.sm, paddingHorizontal: Spacing[2], paddingVertical: 4 },
+  bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400] },
   bubbleTime:    { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end', marginTop: 2 },
   bubbleTimeOut: { color: 'rgba(2,27,16,0.6)' },
   bubbleBurn:    { borderWidth: 1, borderColor: 'rgba(255,140,60,0.5)' },
