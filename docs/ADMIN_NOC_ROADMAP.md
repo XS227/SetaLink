@@ -817,7 +817,7 @@ scrolling; data og referral atskilt vs. blandet sammen.
 | **Hero** | 👑 ReaLink · @realink · ⭐ Premium · 🛡 Founder · 🌍 Freedom Leader · #227 | Not started |
 | **REAL Wallet** | "4.8K REAL · 1100 GB · +5% Premium bonus" ELLER tre små tall REAL/GB/TON | Not started — velg én variant, ikke begge, før bygging (Khabat presenterte begge som alternativer) |
 | **Stats** | 4 kort: GB (Data) · Invites · Referral % · Level | Not started |
-| **Freedom Stats** | Countries Connected · Nodes Used · Average Speed · Freedom Score | Not started — "Freedom Score" er en ny, ikke-definert metrik, avklar beregning før bygging |
+| **Freedom Stats** | Countries Connected · Nodes Used · Average Speed · Freedom Score | Not started — se § 5.10.2 for foreslått beregning, **venter på Khabats godkjenning, ikke besluttet** |
 | **Community/Clan** | "Freedom Clan" · Members · Traffic shared · Community Rank · "Your Clan →" | Not started — avhenger av § 6.5 (clan-data) |
 | **Achievements** | Sjekkliste: First Connection, Sent First GB, 10 Friends Invited, Premium Member, Starlink Explorer, Freedom Founder | Not started |
 | **Activity/History** | Ikke detaljert av Khabat ennå — trenger egen spesifikasjon før bygging | Not started, uspesifisert |
@@ -825,27 +825,55 @@ scrolling; data og referral atskilt vs. blandet sammen.
 **Den gamle, lange profilsiden fases ut** når disse kortene er på plass —
 ikke ved siden av den.
 
-#### 5.10.1 Bunn-navigasjon — **avviker fra § 5.8, ikke reconcilert**
+#### 5.10.1 Bunn-navigasjon — **forslag: § 5.10 supersederer § 5.8, venter på Khabats OK**
 
 | Kilde | Faner |
 |---|---|
 | § 5.8 (forrige runde) | 🏠 Home · 📊 Stats · 📖 Shahnameh · 👤 Profile |
 | § 5.10 (denne runden) | 🏠 Home · 💬 Chats · 🌐 Freedom · 💎 Wallet · 👥 Clan · 👤 Profile |
 
-**Dette er reelt forskjellig, ikke en presisering** — Stats/Shahnameh som
-egne faner er borte (falt inn i Profile, konsistent med "Play er bare en
-visning av samme konto"), Chats/Wallet/Clan er nye egne faner. Bruk
-§ 5.10s versjon som gjeldende inntil Khabat sier noe annet — den er nyere
-og eksplisitt begrunnet i identitetsprinsippet, men § 5.8 er ikke slettet
-herfra, kun markert utdatert, samme mønster som bannerrekkefølge-endringen
-tidligere i § 5.
+**Forslag, 2026-07-18 — ikke bare "nyere derfor gjeldende", en faktisk
+begrunnelse:** § 5.8s egen "Shahnameh"-fane motsier § 5.10s kjerneprinsipp
+— hvis Shahnameh **ikke** er en separat app, bare en visning av samme
+konto ("Play åpner bare Shahnameh-visningen"), gir en dedikert
+"Shahnameh"-knapp i bunn-navigasjonen feil signal (antyder noe separat).
+"Freedom" (§ 5.10) er en mer treffende samlebetegnelse. I tillegg krever
+§ 6 (RealGram-meldinger) uansett en Chats-fane i bunn-navigasjonen —
+§ 5.8 hadde ingen, § 5.10 har det. **Konklusjon: § 5.10.1 bør erstatte
+§ 5.8 som gjeldende footer-spesifikasjon**, ikke bare stå ved siden av
+den — men dette er fortsatt et forslag, ikke besluttet av Khabat ennå.
+§ 5.8 beholdes i dokumentet som historikk, samme mønster som
+bannerrekkefølge-revisjonen.
+
+#### 5.10.2 Freedom Score — foreslått beregning (2026-07-18, venter på godkjenning)
+
+**Prinsipp: kun ekte, allerede sporbare tall — ingen oppdiktet "vibe-score"**
+(samme regel som § 8.0/§ 0.1 gjelder her: en tallverdi presentert som en
+prestasjon må faktisk være utledet av ekte data, aldri estimert for
+show). Forslag til sammensetning, alle komponenter fra data som allerede
+finnes i `connect_telemetry`/`vpn_sessions`:
+
+| Komponent | Kilde | Vekt (forslag) |
+|---|---|---|
+| Distinkte land tilkoblet | node→land-mapping, `connect_telemetry` | f.eks. 10 poeng/land, tak ved 10 land |
+| Distinkte noder brukt | `node_id`, `connect_telemetry`/`vpn_sessions` | f.eks. 5 poeng/node |
+| Total data befridd (GB) | `vpn_sessions` sum bytes | f.eks. 2 poeng/GB, tak for å unngå at rene tunge brukere dominerer |
+| Tilkoblingspålitelighet | vellykkede/forsøkte connects, `probe_ok`-rate | f.eks. opptil 20 poeng ved 100 % |
+| Sammenhengende aktive dager (streak) | `last_seen`/`created_at`-mønster | f.eks. 3 poeng/dag, tak ved 30 |
+
+**Dette er et forslag, ikke en beslutning** — vektene er eksempler, ikke
+faste. Trenger Khabats godkjenning (eller justering) av selve
+komponentene og vektingen før noe bygges. Alternativt: en enklere v1 uten
+vekting (bare vis de fire rå tallene, dropp en sammensatt "score" til
+videre) — også et gyldig valg, nevnt fordi en sammensatt score er mer
+kompleks å forklare til brukeren enn fire separate, forståelige tall.
 
 **Seksjonens Done (§ 5.10):** designmal godkjent av Khabat (skjermbilde av
 faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-
-versjon), REAL Wallet-kort-varianten valgt (ikke begge), "Freedom
-Score"-beregningen definert, Activity/History spesifisert, bunn-
-navigasjonen reconcilert med § 5.8 — **før** noe av dette bygges, i tillegg
-til den generelle mobil-frysen i § 0.4.1.
+versjon), REAL Wallet-kort-varianten valgt (ikke begge), Freedom
+Score-forslaget i § 5.10.2 godkjent eller justert, Activity/History
+spesifisert, § 5.10.1s footer-forslag bekreftet av Khabat — **før** noe
+av dette bygges, i tillegg til den generelle mobil-frysen i § 0.4.1.
 
 **Seksjonens Done (§ 5 samlet):** alle underseksjoner `Live`, skjermbilder
 av alle berørte skjermer, **og** en eksplisitt vurdering (ikke bare
