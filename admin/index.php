@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','insights','seoranks','aidiag','installs','devices','logs','tunnellogs','release','config','hakim','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','insights','seoranks','aidiag','installs','devices','logs','tunnellogs','release','config','hakim','wallet','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -134,6 +134,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='hakim'?' active':'' ?>" data-page="hakim">
       <?= icon('chart') ?> Hakim
+    </div>
+    <div class="nav-item<?= $page==='wallet'?' active':'' ?>" data-page="wallet">
+      <?= icon('dollar') ?> Wallet
     </div>
   </nav>
   <div class="sidebar-footer">Realink v0.9.12 &middot; <?= h($auth_user) ?></div>
@@ -1676,6 +1679,63 @@ function icon(string $name): string {
       </div>
     </div>
 
+    <!-- ============================================================ -->
+    <!-- VIEW: WALLET (ADMIN_NOC_ROADMAP.md § 1.0 "Wallet")            -->
+    <!-- Local quota ledger only — REAL/ZAR live on Shahnameh's Mongo, -->
+    <!-- not reachable from this DB. Says so, doesn't fake a number.   -->
+    <!-- ============================================================ -->
+    <div data-view="wallet" hidden>
+      <div class="panel" style="margin-bottom:1rem;background:rgba(245,158,11,.08)">
+        <div class="panel-body" style="font-size:.8rem">
+          This page shows the <strong>local data-quota ledger</strong> only
+          (this panel's own SQLite DB). <strong>REAL and ZAR balances live on
+          Shahnameh's separate backend (Mongo)</strong> and are not queryable
+          from here — no aggregate cross-system endpoint exists yet (see
+          <code>REALGRAM_NATIVE_MESSAGING_DESIGN.md</code> § 0 for the two
+          ledgers involved). Showing a REAL/ZAR total here would be a guess;
+          this page doesn't do that.
+        </div>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Total Quota Granted</div><div class="stat-value" id="wGranted">—</div><div class="stat-sub">sum, all devices</div></div>
+        <div class="stat-card"><div class="stat-label">Total Quota Used</div><div class="stat-value" id="wUsed">—</div><div class="stat-sub">sum, all devices</div></div>
+        <div class="stat-card"><div class="stat-label">Devices with Ledger Activity</div><div class="stat-value" id="wDevices">—</div></div>
+        <div class="stat-card"><div class="stat-label">Transfers (Vizh-style)</div><div class="stat-value" id="wTransferCount">—</div><div class="stat-sub" id="wTransferBytes">—</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Breakdown by Source</span></div>
+        <div class="panel-body">
+          <table class="data-table" style="width:100%">
+            <thead><tr><th>Source</th><th>Bytes</th><th>Transactions</th></tr></thead>
+            <tbody id="wBreakdownBody"><tr><td colspan="3" style="opacity:.6">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Top Wallets</span></div>
+          <div class="panel-body">
+            <table class="data-table" style="width:100%">
+              <thead><tr><th>Device</th><th>Plan</th><th>Total</th><th>Used</th></tr></thead>
+              <tbody id="wTopBody"><tr><td colspan="4" style="opacity:.6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Recent Transfers</span></div>
+          <div class="panel-body">
+            <table class="data-table" style="width:100%">
+              <thead><tr><th>From</th><th>To</th><th>Bytes</th><th>When</th></tr></thead>
+              <tbody id="wTransfersBody"><tr><td colspan="4" style="opacity:.6">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /page-content -->
 </main>
 </div><!-- /layout -->
@@ -1955,6 +2015,7 @@ const pageTitles = {
   release:   ['Release', 'APK channels · version.json · health'],
   config:    ['Config', 'remote config · bootstrap server · settings'],
   hakim:     ['Hakim', 'bot status · model · requests · knowledge · live test'],
+  wallet:    ['Wallet', 'quota ledger breakdown · transfers · top wallets · local only, no REAL/ZAR'],
   referrals: ['Referrals', 'invite analytics · leaderboard · conversion'],
 };
 
@@ -4951,6 +5012,47 @@ $('hakimTestBtn')?.addEventListener('click', async () => {
     resultEl.textContent = 'Error: ' + e.message;
   }
 });
+
+// ── VIEW: WALLET ─────────────────────────────────────────────────────
+// Local quota ledger only — see the on-page note re: REAL/ZAR living on
+// a different backend entirely. Never blends the two. Reuses the shared
+// fmtBytes() helper (defined near the top of this script) for display.
+views.wallet = {
+  init() { this.load(); },
+  async load() {
+    try {
+      const d = await api.get('wallet-overview');
+      $('wGranted').textContent = fmtBytes(d.total_granted_bytes);
+      $('wUsed').textContent    = fmtBytes(d.total_used_bytes);
+      $('wDevices').textContent = d.wallet_devices;
+      $('wTransferCount').textContent = d.transfer_count;
+      $('wTransferBytes').textContent = fmtBytes(d.transfer_bytes) + ' moved';
+
+      const labels = {
+        starter_bonus: 'Starter bonus', referral: 'Referral', purchase: 'Purchase',
+        ad_reward: 'Ad reward', promotion: 'Promotion',
+        transfer_in: 'Transfer in', transfer_out: 'Transfer out',
+        admin_adjustment: 'Admin adjustment',
+      };
+      $('wBreakdownBody').innerHTML = Object.entries(labels).map(([key, label]) => {
+        const row = d.breakdown[key] || {bytes: 0, count: 0};
+        return `<tr><td>${esc(label)}</td><td>${fmtBytes(row.bytes)}</td><td>${row.count}</td></tr>`;
+      }).join('');
+
+      $('wTopBody').innerHTML = (d.top_wallets || []).length
+        ? d.top_wallets.map(w => `
+          <tr><td>${esc(w.user_id || w.device_id)}</td><td>${esc(w.plan||'free')}</td>
+              <td>${fmtBytes(w.quota_bytes_total)}</td><td>${fmtBytes(w.quota_bytes_used)}</td></tr>`).join('')
+        : '<tr><td colspan="4" style="opacity:.6">No devices yet.</td></tr>';
+
+      $('wTransfersBody').innerHTML = (d.recent_transfers || []).length
+        ? d.recent_transfers.map(t => `
+          <tr><td>${esc(t.sender_device)}</td><td>${esc(t.receiver_device)}</td>
+              <td>${fmtBytes(t.bytes)}</td><td>${esc(t.created_at)}</td></tr>`).join('')
+        : '<tr><td colspan="4" style="opacity:.6">No transfers yet.</td></tr>';
+    } catch(e) { toast('Wallet: '+e.message,'error'); }
+  },
+};
 
 // ── VIEW: REFERRALS ──────────────────────────────────────────────────
 views.referrals = {

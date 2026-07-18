@@ -2899,6 +2899,66 @@ switch ($action) {
         ]);
         break;
 
+    // ── WALLET (ADMIN_NOC_ROADMAP.md § 1.0 "Wallet" — mangler helt som admin-fane) ──
+    // Aggregates the LOCAL quota ledger (lib/quota_economy.php's
+    // quota_transactions/quota_transfer, SQLite, this panel's own DB) across
+    // ALL devices. Deliberately does NOT attempt to show REAL/ZAR balances —
+    // those live on Shahnameh's separate Mongo backend (season2_users,
+    // real_ecosystem_tx), not queryable from this PHP process/DB at all.
+    // Showing a REAL/ZAR number here would mean either a live cross-server
+    // call per page load (no aggregate endpoint exists on that side yet) or
+    // a guess — neither is honest, so this page says so instead of faking it.
+    case 'wallet-overview': {
+        $db = open_analytics_db();
+        qe_init_tables($db);
+
+        $byType = [];
+        foreach ($db->query("SELECT type, COALESCE(SUM(bytes),0) AS s, COUNT(*) AS c FROM quota_transactions GROUP BY type") as $r) {
+            $byType[$r['type']] = ['bytes' => (int)$r['s'], 'count' => (int)$r['c']];
+        }
+        $sumOf = function (array $types) use ($byType): int {
+            $t = 0; foreach ($types as $ty) $t += $byType[$ty]['bytes'] ?? 0; return $t;
+        };
+
+        $totalGranted   = (int)$db->query("SELECT COALESCE(SUM(quota_bytes_total),0) FROM devices")->fetchColumn();
+        $totalUsed      = (int)$db->query("SELECT COALESCE(SUM(quota_bytes_used),0) FROM devices")->fetchColumn();
+        $walletDevices  = (int)$db->query("SELECT COUNT(DISTINCT device_id) FROM quota_transactions")->fetchColumn();
+
+        $transferCount  = (int)$db->query("SELECT COUNT(*) FROM quota_transfer")->fetchColumn();
+        $transferBytes  = (int)$db->query("SELECT COALESCE(SUM(bytes),0) FROM quota_transfer")->fetchColumn();
+        $recentTransfers = $db->query(
+            "SELECT sender_device, receiver_device, bytes, status, created_at
+             FROM quota_transfer ORDER BY id DESC LIMIT 20")->fetchAll(PDO::FETCH_ASSOC);
+
+        $topWallets = $db->query(
+            "SELECT device_id, user_id, plan, quota_bytes_total, quota_bytes_used, referral_code
+             FROM devices ORDER BY quota_bytes_total DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+
+        api_ok([
+            'breakdown' => [
+                'starter_bonus'    => $byType['starter_bonus'] ?? ['bytes' => 0, 'count' => 0],
+                'referral'         => ['bytes' => $sumOf(['referral_reward', 'referral_level2']),
+                                        'count' => ($byType['referral_reward']['count'] ?? 0) + ($byType['referral_level2']['count'] ?? 0)],
+                'purchase'         => ['bytes' => $sumOf(['purchase', 'purchase_real', 'purchase_usdt']),
+                                        'count' => ($byType['purchase']['count'] ?? 0) + ($byType['purchase_real']['count'] ?? 0) + ($byType['purchase_usdt']['count'] ?? 0)],
+                'ad_reward'        => $byType['ad_reward'] ?? ['bytes' => 0, 'count' => 0],
+                'promotion'        => $byType['promotion'] ?? ['bytes' => 0, 'count' => 0],
+                'transfer_in'      => $byType['transfer_in'] ?? ['bytes' => 0, 'count' => 0],
+                'transfer_out'     => $byType['transfer_out'] ?? ['bytes' => 0, 'count' => 0],
+                'admin_adjustment' => $byType['admin_adjustment'] ?? ['bytes' => 0, 'count' => 0],
+            ],
+            'total_granted_bytes' => $totalGranted,
+            'total_used_bytes'    => $totalUsed,
+            'wallet_devices'      => $walletDevices,
+            'transfer_count'      => $transferCount,
+            'transfer_bytes'      => $transferBytes,
+            'recent_transfers'    => $recentTransfers,
+            'top_wallets'         => $topWallets,
+            'checked_at'          => date('Y-m-d H:i:s'),
+        ]);
+        break;
+    }
+
     case 'payments-metrics':
         // Premium payments overview: packages, REAL vs USDT revenue/GB, discount
         // cost/value, and intent lists (pending/confirmed/failed).
