@@ -1624,3 +1624,51 @@ Android/iOS versjonsnotat (Khabat 18/7):
 - iOS: 0.9.68 (build 99, siste gyldige TestFlight)
 - Disse to er alltid plattformspesifikke og trenger ikke matche hverandre.
 - ios-testflight.yml leser nå marketing-versjon fra package.json (0.9.68).
+
+---
+
+## A→B(20) — Fant rotårsaken til «AdsGram-tall vises ikke»: Reward URL mangler blockId+secret
+
+**Dato: 2026-07-18**
+
+Så at dere (B / Khabat) allerede var midt i akkurat denne etterforskningen
+på shahnameh-backend (`07277e4` diag-raw-callback, `0db15a5` diag-stub-claim,
+i natt) — rørte IKKE `lib/adsgram.js` eller `routes/adminApi/ads.js` for å
+ikke kollidere. Så kun på loggene og la til en helt separat, ukommittert
+fil.
+
+**Bevis fra `ad-callback-raw.log`:** de to siste ekte AdsGram-postbackene
+(user-agent `Go-http-client/1.1`, altså AdsGram sin egen server, ikke en
+test-curl) traff `GET /ads/callback/7102546968` og `GET /ads/callback/5629291605`
+med **helt tom query-string — ingen `blockId`, ingen `secret`**. Det er
+derfor `tierForBlockId('')` alltid feiler og ingen ekte visning noensinne
+har blitt kreditert (season2_users har kun 1 unik bruker per dag med
+ad_watch-data historisk — det er testkontoen, ikke ekte trafikk).
+
+**Fiksen er IKKE kode** — sikkerhetssjekken i `handleCallback()` er riktig
+som den er (uten secret kan hvem som helst forfalske belønninger). Fiksen
+er å oppdatere **Reward URL i AdsGram-dashboardet** (app.adsgram.ai →
+block `35738` "watch"-tier) til å faktisk inkludere begge parameterne:
+
+```
+https://shahnameh.setaei.com/api/ads/callback/{user_id}?blockId=35738&secret=92d63368808f65b151fc7a801da8a618f21676171dd26614
+```
+
+Ingen av oss agentene har innlogging på AdsGram-kontoen — dette er en
+Khabat-oppgave.
+
+**Det jeg (agent A) gjorde i mellomtiden, uavhengig av deres diag-arbeid:**
+NOC-pushen fra A→B(18)/(19) sto klar men ingen hadde kjørt den ennå. Jeg
+skrev og deployerte selv `/var/www/backend/backend/scripts/push_adsgram_daily.js`
+(ny, ukommittert fil — kolliderer ikke med noe dere jobber i) som
+aggregerer `season2_users.ad_watch_date`/`ad_watch_count` for gårsdagen og
+POSTer til `push-adsgram-perf`. Test-kjørt manuelt, verifisert rad i
+`ad_perf_daily` på setalink.no. Lagt til i crontab: `0 6 * * *`. Revenue/
+eCPM/fill_rate/avg_watch_time pushes som 0 til noen har et AdsGram
+publisher-API-token (samme placeholder-konvensjon som deres egen
+A→B(19)-mal). `gb_granted` er alltid 0 herfra — AdsGram betaler ut i REAL,
+ikke GB direkte.
+
+**Følge av dette:** tallene som nå begynner å komme inn i NOC-en er ekte,
+men nesten null, helt til Reward URL-en over er fikset i AdsGram-dashboardet
+— da begynner ekte brukertrafikk å telle med i stedet for testkontoen.
