@@ -4,14 +4,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
 
-export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile' | 'game';
+export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile' | 'game' | 'chats' | 'wallet' | 'clan';
 
 type NavItem = { key: NavTab; icon: string };
 
+// §5.10.1 — approved 2026-07-18: Home · Chats · Freedom · Wallet · Clan · Profile.
+// "Freedom" reuses the existing 'servers' tab/screen (label+icon change only —
+// no new screen). 'ai'/'activity'/'game' keep their NavTab values (still used
+// elsewhere for navigation) but no longer have a footer slot.
 const TABS: NavItem[] = [
   { key: 'home',    icon: '⬡' },
-  { key: 'servers', icon: '◈' },
-  { key: 'game',    icon: '⚔' },
+  { key: 'chats',   icon: '💬' },
+  { key: 'servers', icon: '🌐' },
+  { key: 'wallet',  icon: '💎' },
+  { key: 'clan',    icon: '👥' },
+  { key: 'profile', icon: '👤' },
 ];
 
 interface Props {
@@ -25,11 +32,14 @@ export function BottomNav({ active, onPress }: Props) {
 
   const LABELS: Record<NavTab, Parameters<typeof t>[0]> = {
     home:     'nav.home',
-    servers:  'nav.servers',
+    servers:  'nav.freedom',
     ai:       'nav.ai',
     activity: 'nav.activity',
     profile:  'nav.profile',
     game:     'nav.game',
+    chats:    'nav.chats',
+    wallet:   'nav.wallet',
+    clan:     'nav.clan',
   };
 
   return (

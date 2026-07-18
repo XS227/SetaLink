@@ -43,6 +43,8 @@ import { BiometricLockScreen }      from '../components/BiometricLockScreen';
 import { PremiumScreen }            from '../screens/PremiumScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
 import { TransferScreen }          from '../screens/TransferScreen';
+import { WalletScreen }            from '../screens/WalletScreen';
+import { ClanScreen }              from '../screens/ClanScreen';
 
 import { runBootSequence }       from '../services/bootService';
 import { claimPendingReferral }  from '../services/deepLinkService';
@@ -75,6 +77,9 @@ const SCREEN_TO_TAB: Record<string, NavTab> = {
   Activity: 'activity',
   Profile:  'profile',
   Game:     'game',
+  Chats:    'chats',
+  Wallet:   'wallet',
+  Clan:     'clan',
 };
 
 const TAB_TO_SCREEN: Record<NavTab, keyof MainTabParamList> = {
@@ -84,6 +89,9 @@ const TAB_TO_SCREEN: Record<NavTab, keyof MainTabParamList> = {
   activity: 'Activity',
   profile:  'Profile',
   game:     'Game',
+  chats:    'Chats',
+  wallet:   'Wallet',
+  clan:     'Clan',
 };
 
 type ScreenAdapterProps = { navigation: any; route: any };
@@ -261,6 +269,13 @@ function MainTabs() {
             BottomNav.TAB_KEYS). Profile stays registered here so it's still
             reachable via TopBar's profile icon, just no longer in the footer. */}
         <Tab.Screen name="Game"     component={GameAdapter} />
+        {/* §5.10.1 — approved 2026-07-18 footer: Home · Chats · Freedom(Servers)
+            · Wallet · Clan · Profile. AI/Activity/Game stay registered (reachable
+            via TopBar/Home shortcuts) but no longer have a footer slot — see
+            BottomNav.tsx TABS. */}
+        <Tab.Screen name="Chats"    component={ChatsAdapter} />
+        <Tab.Screen name="Wallet"   component={WalletAdapter} />
+        <Tab.Screen name="Clan"     component={ClanAdapter} />
       </Tab.Navigator>
 
       {/* Optional update banner — dismissible */}
@@ -371,6 +386,22 @@ function ActivityAdapter({ navigation, route }: ScreenAdapterProps) {
 function GameAdapter() {
   // Tab screen now (B-22) — no back button, the footer is how you leave it.
   return <GameScreen />;
+}
+
+function ChatsAdapter({ navigation }: ScreenAdapterProps) {
+  // §5.10.1: Chats is now a top-level tab (was buried in a Profile card).
+  // InboxScreen's own header always renders a back button (it doubles as a
+  // Stack-pushed screen for the support/notification deep-link cases) — as a
+  // tab there's nothing to "go back" to, so it returns to Home.
+  return <InboxScreen onBack={() => navigation.navigate('Home')} />;
+}
+
+function WalletAdapter({ navigation, route }: ScreenAdapterProps) {
+  return <WalletScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'wallet'} onNavigate={makeOnNavigate(navigation)} />;
+}
+
+function ClanAdapter({ navigation, route }: ScreenAdapterProps) {
+  return <ClanScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'clan'} onNavigate={makeOnNavigate(navigation)} />;
 }
 
 function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
