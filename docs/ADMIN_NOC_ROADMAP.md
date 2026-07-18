@@ -815,7 +815,7 @@ scrolling; data og referral atskilt vs. blandet sammen.
 | Kort | Innhold (Khabats eksempel) | Status |
 |---|---|---|
 | **Hero** | 👑 ReaLink · @realink · ⭐ Premium · 🛡 Founder · 🌍 Freedom Leader · #227 | Not started |
-| **REAL Wallet** | "4.8K REAL · 1100 GB · +5% Premium bonus" ELLER tre små tall REAL/GB/TON | Not started — velg én variant, ikke begge, før bygging (Khabat presenterte begge som alternativer) |
+| **REAL Wallet** | **✅ Besluttet 2026-07-18: tre små tall — REAL · GB · TON** | Not started — bygging gjenstår (mobil-frys). **TON-tallet forutsetter § 9.3 (Tonkeeper-bro) eller minst en lesbar on-chain-saldo** — REAL sin on-chain-pris er fortsatt simulert per `INTEGRATION_MAP.md` §1, avklar hva TON-tallet faktisk viser (Tonkeeper-saldo? intern REAL-til-TON-konvertering?) før bygging, ikke gjett |
 | **Stats** | 4 kort: GB (Data) · Invites · Referral % · Level | Not started |
 | **Freedom Stats** | **Besluttet 2026-07-18 — ingen sammensatt score i v1.** Fem rå verdier: 🌍 Countries Connected · 📡 Nodes Used · ⚡ Average Speed · 📊 Uptime/Connection Stability · 📦 Data Shared | Not started — se § 5.10.2, beslutningen er tatt, kun bygging gjenstår (fortsatt under mobil-frysen) |
 | **Community/Clan** | "Freedom Clan" · Members · Traffic shared · Community Rank · "Your Clan →" | Not started — avhenger av § 6.5 (clan-data) |
@@ -878,11 +878,11 @@ kompleks å forklare til brukeren enn fire separate, forståelige tall.
 **Seksjonens Done (§ 5.10) — status 2026-07-18:**
 - ✅ Footer (§ 5.10.1) — godkjent
 - ✅ Freedom Stats-tilnærming (§ 5.10.2) — besluttet (fem rå verdier, ingen score i v1)
-- ⬜ REAL Wallet-kort-varianten — **fortsatt ikke valgt** (Khabat presenterte to alternativer, ingen bekreftet ennå)
+- ✅ REAL Wallet-kort-varianten — besluttet (tre tall: REAL · GB · TON), men TON-datakilden er ikke avklart (se raden over)
 - ⬜ Activity/History-kortet — **fortsatt uspesifisert**
 - ⬜ Designmal-godkjenning (skjermbilde av faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-versjon) — ikke gjort
 
-Gjenstående to punkter må avklares **før** noe av § 5.10 bygges, i tillegg
+Gjenstående punkter må avklares **før** noe av § 5.10 bygges, i tillegg
 til den generelle mobil-frysen i § 0.4.1.
 
 **Seksjonens Done (§ 5 samlet):** alle underseksjoner `Live`, skjermbilder
