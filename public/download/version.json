@@ -30,17 +30,17 @@
     },
     "experimental": {
       "version": "0.9.67",
-      "versionCode": 99,
-      "apkUrl": "https://setalink.no/download/build99/setalink-v0.9.67.apk",
-      "apkUrlArm32": "https://setalink.no/download/build99/setalink-v0.9.67-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/download/build99/setalink-v0.9.67-universal.apk"
+      "versionCode": 101,
+      "apkUrl": "https://setalink.no/download/build101/setalink-v0.9.67.apk",
+      "apkUrlArm32": "https://setalink.no/download/build101/setalink-v0.9.67-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
       "version": "0.9.67",
-      "versionCode": 99,
-      "apkUrl": "https://setalink.no/download/build99/setalink-v0.9.67.apk",
-      "apkUrlArm32": "https://setalink.no/download/build99/setalink-v0.9.67-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/download/build99/setalink-v0.9.67-universal.apk"
+      "versionCode": 101,
+      "apkUrl": "https://setalink.no/download/build101/setalink-v0.9.67.apk",
+      "apkUrlArm32": "https://setalink.no/download/build101/setalink-v0.9.67-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     }
   },
   "rollout": {
