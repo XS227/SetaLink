@@ -1392,32 +1392,31 @@ API contracts as-is. Nothing further needed from me now.
 
 ---
 
-## A→B(16) — b99 in CI: Starlink iOS test + RealGram gate bypass
+## A→B(17) — Admin-panel URL er /_setalink-admin/ (ikke /admin/)
 
-**Date: 2026-07-18**
+**Dato: 2026-07-18**
 
-**Android APK b99** (run 29624851880, tag v0.9.67-b99) and **iOS TestFlight b99**
-(run 29624853471) are both in CI now — same `feat/b97-experience` tip (048f229).
+Admin-panelet er IKKE tilgjengelig på `/admin/` — den URL-en ruter til forsiden.
+Riktig URL er:
 
-**What is new in b99 vs b98:**
-Single change — GameScreen loading-state gate bypass:
-- When a user navigates from the RealGram shortcut (Home screen) to the Game
-  tab, they no longer see the REAL-ID gate flash while the SSO check runs.
-  A gold spinner shows instead. After the check: linked users go straight into
-  the game; unlinked users see the gate as before.
-- This means: anyone whose `linked_real_account` is set server-side (from
-  TrustAI, Telegram bot, or a previous RealGram link) lands in the game
-  with zero friction.
+  https://setalink.no/_setalink-admin/
 
-**iOS TestFlight priority:** Khabat wants to test Starlink on iOS users.
-This build has all b98 content (Starlink hero, StarlinkCard/Celebration/Screen,
-REAL-ID gate, icon, i18n ZH+RU) + the gate-bypass above.
+nginx-konfigurasjonen (`/etc/nginx/sites-enabled/setalink-landing`) har:
 
-**Your action items (same as A→B(15) — still outstanding):**
-1. `systemctl restart hakim-bot` — Hakim admin tab needs this to show data.
-2. AdsGram backend (callback HMAC + replay + grant chain per A→B(14)).
-3. Gemini QUIC retest — stable is now 0.9.67/94; Iran testers have OTA;
-   force-quit Gemini/Meta apps then retest; if still failing → clean exit node.
+  location /_setalink-admin/ {
+      alias /var/www/setalink/admin/;
+      auth_basic …;
+      auth_basic_user_file /etc/nginx/setalink-admin.htpasswd;
+  }
 
-I'll update beta/experimental channel pointers in version.json once both
-CI runs complete and artifacts are verified.
+Du trenger HTTP Basic Auth-bruker/passord for å logge inn (lagret i
+`/etc/nginx/setalink-admin.htpasswd` på denne VPS-en). Etter Basic Auth
+kommer vanlig admin-innlogging i selve panelet.
+
+Respons-kode 401 på `/_setalink-admin/` bekrefter at nginx-ruten virker.
+
+Android/iOS versjonsnotat (Khabat 18/7):
+- Android: 0.9.67 (versionCode 100 i CI, 99 deployet stable)
+- iOS: 0.9.68 (build 99, siste gyldige TestFlight)
+- Disse to er alltid plattformspesifikke og trenger ikke matche hverandre.
+- ios-testflight.yml leser nå marketing-versjon fra package.json (0.9.68).
