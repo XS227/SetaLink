@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','insights','seoranks','aidiag','installs','devices','logs','tunnellogs','release','config','hakim','wallet','referrals'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','insights','seoranks','aidiag','installs','devices','logs','tunnellogs','release','config','hakim','wallet','apistatus','referrals'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -137,6 +137,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='wallet'?' active':'' ?>" data-page="wallet">
       <?= icon('dollar') ?> Wallet
+    </div>
+    <div class="nav-item<?= $page==='apistatus'?' active':'' ?>" data-page="apistatus">
+      <?= icon('grid') ?> API Status
     </div>
   </nav>
   <div class="sidebar-footer">Realink v0.9.12 &middot; <?= h($auth_user) ?></div>
@@ -1736,6 +1739,60 @@ function icon(string $name): string {
       </div>
     </div>
 
+    <!-- ============================================================ -->
+    <!-- VIEW: API STATUS (ADMIN_NOC_ROADMAP.md § 1.0 "API Status")    -->
+    <!-- ============================================================ -->
+    <div data-view="apistatus" hidden>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Local Services</span><span class="panel-sub">this admin process's own host</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div><span class="dot" id="asXrayDot"></span> Xray</div>
+              <div><span class="dot" id="asNginxDot"></span> nginx</div>
+              <div><span class="dot" id="asPortDot"></span> :8443</div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Ecosystem API</span><span class="panel-sub">Shahnameh backend</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div>Configured: <strong id="asEcoConfigured">—</strong></div>
+              <div>Reachable: <span class="dot" id="asEcoDot"></span></div>
+              <div>Link secret: <strong id="asEcoSecret">—</strong></div>
+              <div>API key: <strong id="asEcoKey">—</strong></div>
+            </div>
+            <p style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem" id="asEcoUrl"></p>
+          </div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">AdMob</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div>Configured: <strong id="asAdmobConfigured">—</strong></div>
+              <div>SSV enabled: <strong id="asAdmobSsv">—</strong></div>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Google Search Console Sync</span></div>
+          <div class="panel-body">
+            <div id="asGscLast">—</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title">Hakim Bot</span><span class="panel-sub">see the Hakim page for full detail</span></div>
+        <div class="panel-body">
+          <div><span class="dot" id="asHakimDot"></span> <strong id="asHakimText">—</strong></div>
+          <p style="font-size:.7rem;color:var(--muted-2);margin-top:.5rem" id="asHakimNote"></p>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /page-content -->
 </main>
 </div><!-- /layout -->
@@ -2016,6 +2073,7 @@ const pageTitles = {
   config:    ['Config', 'remote config · bootstrap server · settings'],
   hakim:     ['Hakim', 'bot status · model · requests · knowledge · live test'],
   wallet:    ['Wallet', 'quota ledger breakdown · transfers · top wallets · local only, no REAL/ZAR'],
+  apistatus: ['API Status', 'local services · ecosystem API · AdMob · GSC sync · Hakim bot'],
   referrals: ['Referrals', 'invite analytics · leaderboard · conversion'],
 };
 
@@ -5051,6 +5109,42 @@ views.wallet = {
               <td>${fmtBytes(t.bytes)}</td><td>${esc(t.created_at)}</td></tr>`).join('')
         : '<tr><td colspan="4" style="opacity:.6">No transfers yet.</td></tr>';
     } catch(e) { toast('Wallet: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: API STATUS ─────────────────────────────────────────────────
+views.apistatus = {
+  init() { this.load(); },
+  async load() {
+    const setDot = (id, ok) => {
+      const el = $(id); if (!el) return;
+      el.className = 'dot ' + (ok===true?'dot-ok':ok===false?'dot-bad':'dot-unk');
+    };
+    try {
+      const d = await api.get('api-status');
+      setDot('asXrayDot',  d.local.xray);
+      setDot('asNginxDot', d.local.nginx);
+      setDot('asPortDot',  d.local.port_8443);
+
+      $('asEcoConfigured').textContent = d.ecosystem_api.configured ? 'yes' : 'no';
+      setDot('asEcoDot', d.ecosystem_api.reachable);
+      $('asEcoSecret').textContent = d.ecosystem_api.link_secret_configured ? 'set' : 'not set';
+      $('asEcoKey').textContent    = d.ecosystem_api.api_key_configured ? 'set' : 'not set';
+      $('asEcoUrl').textContent    = d.ecosystem_api.url
+        ? `URL: ${d.ecosystem_api.url}`
+        : 'Not configured — reachability not checked.';
+
+      $('asAdmobConfigured').textContent = d.admob.configured ? 'yes' : 'no';
+      $('asAdmobSsv').textContent        = d.admob.ssv_enabled ? 'enabled' : 'disabled';
+
+      $('asGscLast').textContent = d.gsc.last_sync
+        ? `Last sync: ${d.gsc.last_sync}`
+        : 'Never synced (or gsc_last_sync not set).';
+
+      setDot('asHakimDot', d.hakim_bot.status === 'active' ? true : d.hakim_bot.status === 'unknown' ? null : false);
+      $('asHakimText').textContent = d.hakim_bot.status;
+      $('asHakimNote').textContent = d.hakim_bot.topology_note;
+    } catch(e) { toast('API Status: '+e.message,'error'); }
   },
 };
 

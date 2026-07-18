@@ -3976,6 +3976,77 @@ switch ($action) {
     // Never fabricates a status; § 8.0's truth principle applies to this
     // panel too. bot_config also holds openai_api_key/anthropic_api_key/
     // telegram_token in plaintext — NEVER select or echo those columns.
+    // ── API STATUS (ADMIN_NOC_ROADMAP.md § 1.0 "API Status" — mangler helt) ──
+    // Cross-service health for the NOC view. Local checks (systemctl/socket)
+    // only mean something if this PHP process runs on the same host as the
+    // service being checked -- true for xray/nginx (same box as this panel),
+    // NOT verified for hakim-bot (see the on-page note; found during the
+    // Hakim Admin build that hakim-bot runs on the dev VPS, this panel may
+    // not). Remote checks (ecosystem API) are real HTTP calls, so they're
+    // correct regardless of which box runs this code.
+    case 'api-status': {
+        $db = open_analytics_db();
+
+        // Local: reuse the exact same checks as `heartbeat` rather than a
+        // second, potentially-drifting implementation.
+        $xray  = trim((string)@shell_exec('systemctl is-active xray.service 2>/dev/null'))  === 'active';
+        $nginx = trim((string)@shell_exec('systemctl is-active nginx.service 2>/dev/null')) === 'active';
+        $port8443 = @fsockopen('127.0.0.1', 8443, $errNo, $errStr, 1) !== false;
+
+        // Ecosystem API (Shahnameh, real_economy.php's own helper -- config
+        // status only, never the secret values).
+        $eco = re_ecosystem_status($db);
+        $ecoReachable = null; // null = not configured / not checked, not "down"
+        if ($eco['api_url'] !== '') {
+            $jwksUrl = rtrim($eco['api_url'], '/') . '/sso/jwks.json';
+            $raw = @shell_exec('curl -sk --max-time 5 -o /dev/null -w "%{http_code}" '
+                . escapeshellarg($jwksUrl) . ' 2>/dev/null');
+            $ecoReachable = (trim((string)$raw) === '200');
+        }
+
+        // AdMob (config presence only -- reachability of Google's own ad
+        // network isn't ours to probe).
+        ar_init_tables($db);
+        $arCfg = ar_config($db);
+
+        // GSC sync freshness.
+        $gscLast = null;
+        try {
+            $gscLast = $db->query("SELECT value FROM settings WHERE key='gsc_last_sync'")->fetchColumn() ?: null;
+        } catch (\Throwable $e) { /* gsc tables may not exist if never synced */ }
+
+        // Hakim bot -- best-effort local check; 'unknown' (not 'down') if
+        // this process isn't on the same host as hakim-bot.service.
+        $hakimStatus = trim((string)@shell_exec('systemctl is-active hakim-bot 2>&1'));
+        $hakimStatus = in_array($hakimStatus, ['active', 'inactive', 'failed'], true) ? $hakimStatus : 'unknown';
+
+        api_ok([
+            'local' => [
+                'xray' => $xray, 'nginx' => $nginx, 'port_8443' => $port8443,
+            ],
+            'ecosystem_api' => [
+                'configured' => $eco['api_url'] !== '',
+                'url'        => $eco['api_url'],
+                'reachable'  => $ecoReachable, // null = not configured, not checked
+                'link_secret_configured' => $eco['link_secret_configured'],
+                'api_key_configured'     => $eco['api_key_configured'],
+            ],
+            'admob' => [
+                'ssv_enabled' => (bool)$arCfg['admob_ssv_enabled'],
+                'configured'  => $arCfg['admob_rewarded_unit_id'] !== '',
+            ],
+            'gsc' => [
+                'last_sync' => $gscLast,
+            ],
+            'hakim_bot' => [
+                'status' => $hakimStatus,
+                'topology_note' => 'Local systemctl check -- only meaningful if this admin process shares a host with hakim-bot.service. "unknown" may mean the bot is fine but on a different box, not that it is down. See the Hakim page for the authoritative status.',
+            ],
+            'checked_at' => date('Y-m-d H:i:s'),
+        ]);
+        break;
+    }
+
     case 'hakim-status': {
         $HAKIM_DB = '/var/www/shahnameh/hakim-bot/hakim.db';
         $status = trim((string)@shell_exec('systemctl is-active hakim-bot 2>&1'));
