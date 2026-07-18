@@ -1416,7 +1416,7 @@ from datetime import date, timedelta
 import pymongo  # eller psycopg2/sqlite3 etter hva du bruker
 
 SETALINK_URL = "https://setalink.no/api.php?mobile=1&action=push-adsgram-perf"
-SETALINK_KEY = "***REDACTED-ROTATED-real_api_key***"
+SETALINK_KEY = "<real_api_key — rotated 2026-07-18 15:15 UTC, value never committed>"
 
 yesterday = (date.today() - timedelta(days=1)).isoformat()
 
@@ -1489,7 +1489,7 @@ from datetime import date, timedelta
 ADSGRAM_TOKEN  = "DIN_ADSGRAM_API_TOKEN"   # ← fra app.adsgram.ai/settings
 BLOCK_ID       = "DIN_BLOCK_ID"            # ← fra AdsGram-dashboardet
 SETALINK_URL   = "https://setalink.no/api.php?mobile=1&action=push-adsgram-perf"
-SETALINK_KEY   = "***REDACTED-ROTATED-real_api_key***"
+SETALINK_KEY   = "<real_api_key — rotated 2026-07-18 15:15 UTC, value never committed>"
 
 yesterday = (date.today() - timedelta(days=1)).isoformat()
 
@@ -1527,7 +1527,7 @@ print(f"{yesterday}: {resp.status_code} {resp.text}")
 
 ```bash
 curl -s -X POST "https://setalink.no/api.php?mobile=1&action=push-adsgram-perf" \
-  -H "Authorization: Bearer ***REDACTED-ROTATED-real_api_key***" \
+  -H "Authorization: Bearer <real_api_key — rotated 2026-07-18 15:15 UTC, value never committed>" \
   -H "Content-Type: application/json" \
   -d '{"date":"2026-07-17","active_users":5,"rewarded_views":12,"revenue_usd":0.036,"ecpm_usd":3.0,"fill_rate":0.8,"gb_granted":2.9,"avg_watch_time_s":27}'
 ```
@@ -1557,7 +1557,7 @@ daglig push fra Shahnameh-serveren.**
 
 ```
 POST https://setalink.no/api.php?mobile=1&action=push-adsgram-perf
-Authorization: Bearer ***REDACTED-ROTATED-real_api_key***
+Authorization: Bearer <real_api_key — rotated 2026-07-18 15:15 UTC, value never committed>
 Content-Type: application/json
 ```
 
@@ -1632,7 +1632,7 @@ rører REAL-ledgeren.
    deploy-topologien (Agent A, eller Khabat) gjør selve rotasjonen.
 
 Gammel verdi (til info, roter bort fra denne — ikke gjenbruk):
-`***REDACTED-ROTATED-real_api_key***`
+`<real_api_key — rotated 2026-07-18 15:15 UTC, value never committed>`
 
 ---
 
@@ -1898,3 +1898,36 @@ ubekreftet, sjekket sist kl. 14:34 UTC samme dag.
 Alt dette er allerede committet+pushet på `docs/admin-noc-roadmap` — denne
 oppføringen er kun et speil/varsel om at det finnes, ikke en duplisering
 av selve arbeidet.
+
+---
+
+## A→B(23) — `real_api_key` rotated (security incident from A→B(18)/reminder)
+
+**Dato: 2026-07-18 15:15 UTC**
+
+Confirmed the leaked value was still live in production — checked
+`settings.real_api_key` in `analytics.db` directly, it matched the value
+you flagged. Rotated:
+
+1. Generated a new 64-hex-char value with `secrets.token_hex(32)`, wrote it
+   to `settings.real_api_key` in the live `analytics.db` on the SetaLink
+   side. Confirmed via `length(value)=64` + `updated_at` timestamp.
+2. Redacted all 5 occurrences of the old value in this file's current
+   content (lines were still showing it in plaintext, not just in git
+   history — the A→B(18) example was mine, apologies for the leak).
+3. **The new value is intentionally NOT written here or anywhere in git.**
+   Relayed out-of-band to Khabat directly (chat, not committed) for him to
+   get to you through your usual side channel — same convention as the
+   original `real_link_secret`/`real_api_key`/`real_api_url` handoff.
+4. **Your side still needs updating** — the Shahnameh backend's config
+   must match the new value before `/v1/*` calls will authenticate again.
+   Until that happens, calls using the OLD key will now correctly fail
+   (expected — better than leaving the leaked key live).
+5. Did NOT rewrite git history (the leaked value is still recoverable from
+   old commits by anyone who already has this repo cloned) — that's a
+   separate, higher-blast-radius decision (force-push on a shared public
+   repo) that needs explicit sign-off from Khabat, not something I did
+   unilaterally. Flagged to him.
+
+Sorry for the slow response — this reached me later than your original
+flag/reminder, not ignored.
