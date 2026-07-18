@@ -815,12 +815,12 @@ scrolling; data og referral atskilt vs. blandet sammen.
 | Kort | Innhold (Khabats eksempel) | Status |
 |---|---|---|
 | **Hero** | 👑 ReaLink · @realink · ⭐ Premium · 🛡 Founder · 🌍 Freedom Leader · #227 | Not started |
-| **REAL Wallet** | **✅ Besluttet 2026-07-18: tre små tall — REAL · GB · TON** | Not started — bygging gjenstår (mobil-frys). **TON-tallet forutsetter § 9.3 (Tonkeeper-bro) eller minst en lesbar on-chain-saldo** — REAL sin on-chain-pris er fortsatt simulert per `INTEGRATION_MAP.md` §1, avklar hva TON-tallet faktisk viser (Tonkeeper-saldo? intern REAL-til-TON-konvertering?) før bygging, ikke gjett |
+| **REAL Wallet** | **✅ Besluttet 2026-07-18: tre tall — 💰 REAL · 🌐 GB · 💎 TON.** **Hard regel, samme dag:** TON skal **aldri** være simulert. Hvis Tonkeeper/on-chain-integrasjonen (§ 9.3) ikke er klar: vis `—`, eller "Coming Soon", eller skjul TON-kortet midlertidig — **aldri et oppdiktet saldo-tall** | Not started — bygging gjenstår (mobil-frys). Samme § 0.1/§ 8.0-prinsipp som resten av roadmapen, nå eksplisitt for dette kortet spesifikt |
 | **Stats** | 4 kort: GB (Data) · Invites · Referral % · Level | Not started |
 | **Freedom Stats** | **Besluttet 2026-07-18 — ingen sammensatt score i v1.** Fem rå verdier: 🌍 Countries Connected · 📡 Nodes Used · ⚡ Average Speed · 📊 Uptime/Connection Stability · 📦 Data Shared | Not started — se § 5.10.2, beslutningen er tatt, kun bygging gjenstår (fortsatt under mobil-frysen) |
 | **Community/Clan** | "Freedom Clan" · Members · Traffic shared · Community Rank · "Your Clan →" | Not started — avhenger av § 6.5 (clan-data) |
 | **Achievements** | Sjekkliste: First Connection, Sent First GB, 10 Friends Invited, Premium Member, Starlink Explorer, Freedom Founder | Not started |
-| **Activity/History** | Ikke detaljert av Khabat ennå — trenger egen spesifikasjon før bygging | Not started, uspesifisert |
+| **Activity/History** | **✅ Spesifisert 2026-07-18 — se § 5.10.3, en samlet tidslinje, ikke en transaksjonsliste** | Not started — bygging gjenstår (mobil-frys) |
 
 **Den gamle, lange profilsiden fases ut** når disse kortene er på plass —
 ikke ved siden av den.
@@ -875,15 +875,45 @@ vekting (bare vis de fire rå tallene, dropp en sammensatt "score" til
 videre) — også et gyldig valg, nevnt fordi en sammensatt score er mer
 kompleks å forklare til brukeren enn fire separate, forståelige tall.
 
+#### 5.10.3 Activity/History — **✅ SPESIFISERT 2026-07-18: samlet tidslinje, ikke transaksjonsliste**
+
+Khabats eksempler, direkte:
+
+- 🎁 Invited Ali (+5 GB)
+- 📺 Watched rewarded ad (+1 GB)
+- 🌐 Shared 2.3 GB
+- 🛡 Connected via Starlink Node
+- 👥 Joined Falcon Clan
+- ⚔ Completed Chapter 44
+- 💰 Received 250 REAL
+- 🔄 Sent 50 REAL
+
+**Kjerneprinsipp:** historikken samler aktivitet fra **RealGram, VPN,
+Wallet og Shahnameh i én felles tidslinje** — brukeren skal oppleve at alt
+skjer på samme REAL_ID, ikke fire separate logger som tilfeldigvis vises
+på samme skjerm.
+
+**Teknisk konsekvens, ikke bare en UI-oppgave:** dette krever en reell
+sammenslåingsjobb på tvers av kilder som i dag lever helt separat —
+`quota_transactions`/`quota_transfer` (denne repoen, § 9.1.1 har allerede
+identifisert dette samme sammenslåingsbehovet for Wallet-historikken),
+`real_ecosystem_tx`/Shahnameh-spillhendelser (Mongo, annen backend),
+RealGram-meldinger/clan-hendelser (§ 6, ikke bygget ennå). **Samme mønster
+som § 2.1.2.1s Ads Event Log** — én samlet, filtrerbar hendelseslogg
+brukeren ser étt sted, ikke fire kilder som må holdes synkronisert
+manuelt i UI-et. Ikke start bygging av dette som fire separate lister
+limt sammen — design sammenslåingslaget først.
+
 **Seksjonens Done (§ 5.10) — status 2026-07-18:**
 - ✅ Footer (§ 5.10.1) — godkjent
 - ✅ Freedom Stats-tilnærming (§ 5.10.2) — besluttet (fem rå verdier, ingen score i v1)
-- ✅ REAL Wallet-kort-varianten — besluttet (tre tall: REAL · GB · TON), men TON-datakilden er ikke avklart (se raden over)
-- ⬜ Activity/History-kortet — **fortsatt uspesifisert**
-- ⬜ Designmal-godkjenning (skjermbilde av faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-versjon) — ikke gjort
+- ✅ REAL Wallet-kort-varianten — besluttet (tre tall: REAL · GB · TON), med hard "aldri simulert TON"-regel
+- ✅ Activity/History-kortet (§ 5.10.3) — spesifisert (samlet tidslinje på tvers av RealGram/VPN/Wallet/Shahnameh)
+- ⬜ **Eneste gjenstående:** designmal-godkjenning — skjermbilde av faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-versjon, ikke gjort ennå
 
-Gjenstående punkter må avklares **før** noe av § 5.10 bygges, i tillegg
-til den generelle mobil-frysen i § 0.4.1.
+Alle innholdsbeslutninger for § 5.10 er nå tatt. Gjenstår kun den visuelle
+side-om-side-godkjenningen og selve byggingen — sistnevnte fortsatt
+sperret av mobil-frysen i § 0.4.1, ikke frigitt av dette.
 
 **Seksjonens Done (§ 5 samlet):** alle underseksjoner `Live`, skjermbilder
 av alle berørte skjermer, **og** en eksplisitt vurdering (ikke bare
