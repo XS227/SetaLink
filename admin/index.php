@@ -22,7 +22,7 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals','insights','seoranks','starlink','tunnellogs','hakim'], true)) $page = 'dashboard';
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals','insights','seoranks','starlink','tunnellogs','hakim','wallet','profile'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -57,7 +57,7 @@ function icon(string $name): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>Realink Admin</title>
+  <title>ReaLink Admin</title>
   <link rel="icon" href="/assets/logo/shirokhorshid/favicon.ico">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -71,71 +71,96 @@ function icon(string $name): string {
 <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" alt="SL">
+    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" alt="RL">
     <div>
-      <div class="sidebar-logo-text">Realink</div>
+      <div class="sidebar-logo-text">ReaLink</div>
       <div class="sidebar-logo-sub">Admin Panel</div>
     </div>
   </div>
   <nav class="sidebar-nav">
-    <div class="nav-section">Monitor</div>
+
+    <!-- ── 📊 Dashboard ── -->
     <div class="nav-item<?= $page==='dashboard'?' active':'' ?>" data-page="dashboard">
       <?= icon('grid') ?> Dashboard
     </div>
-    <div class="nav-item<?= $page==='analytics'?' active':'' ?>" data-page="analytics">
-      <?= icon('chart') ?> Analytics
-    </div>
-    <div class="nav-item<?= $page==='ads'?' active':'' ?>" data-page="ads">
-      <?= icon('dollar') ?> Ads &amp; Revenue
-    </div>
-    <div class="nav-item<?= $page==='payments'?' active':'' ?>" data-page="payments">
-      <?= icon('card') ?> Payments
-    </div>
-    <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
-      <?= icon('globe') ?> Iran Debug
-    </div>
-    <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
-      <?= icon('chart') ?> Network Intel
+
+    <!-- ── 👥 Users ── -->
+    <div class="nav-section">👥 Users</div>
+    <div class="nav-item<?= $page==='devices'?' active':'' ?>" data-page="devices">
+      <?= icon('devices') ?> Devices
     </div>
     <div class="nav-item<?= $page==='insights'?' active':'' ?>" data-page="insights">
       <?= icon('globe') ?> User Insights
     </div>
-    <div class="nav-item<?= $page==='seoranks'?' active':'' ?>" data-page="seoranks">
-      <?= icon('chart') ?> SEO Ranks
+    <div class="nav-item<?= $page==='installs'?' active':'' ?>" data-page="installs">
+      <?= icon('download') ?> Install Diagnostics
+    </div>
+    <div class="nav-item<?= $page==='profile'?' active':'' ?>" data-page="profile">
+      <?= icon('devices') ?> Profiles
+    </div>
+
+    <!-- ── 🌐 Freedom Network ── -->
+    <div class="nav-section">🌐 Freedom Network</div>
+    <div class="nav-item<?= $page==='iran'?' active':'' ?>" data-page="iran">
+      <?= icon('globe') ?> Censorship Debug
+    </div>
+    <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
+      <?= icon('chart') ?> AI Routing Intel
+    </div>
     <div class="nav-item<?= $page==='starlink'?' active':'' ?>" data-page="starlink">
-      <?= icon('globe') ?> Starlink
+      🛰️ Starlink Node
     </div>
     <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
-      <?= icon('chart') ?> AI Diagnosis
-    </div>
-    <div class="nav-item<?= $page==='installs'?' active':'' ?>" data-page="installs">
-      <?= icon('devices') ?> Install Diag
-    </div>
-    <div class="nav-section">Manage</div>
-    <div class="nav-item<?= $page==='devices'?' active':'' ?>" data-page="devices">
-      <?= icon('devices') ?> Devices
-    </div>
-    <div class="nav-item<?= $page==='referrals'?' active':'' ?>" data-page="referrals">
-      <?= icon('gift') ?> Referrals
-    </div>
-    <div class="nav-item<?= $page==='logs'?' active':'' ?>" data-page="logs">
-      <?= icon('log') ?> Logs
+      <?= icon('chart') ?> AI Diagnostics
     </div>
     <div class="nav-item<?= $page==='tunnellogs'?' active':'' ?>" data-page="tunnellogs">
       <?= icon('log') ?> Tunnel Logs
     </div>
-    <div class="nav-section">System</div>
+
+    <!-- ── 💰 Economy ── -->
+    <div class="nav-section">💰 Economy</div>
+    <div class="nav-item<?= $page==='ads'?' active':'' ?>" data-page="ads">
+      <?= icon('dollar') ?> Ads (AdsGram · AdMob)
+    </div>
+    <div class="nav-item<?= $page==='payments'?' active':'' ?>" data-page="payments">
+      <?= icon('card') ?> Payments &amp; Packages
+    </div>
+    <div class="nav-item<?= $page==='referrals'?' active':'' ?>" data-page="referrals">
+      <?= icon('gift') ?> Referrals
+    </div>
+    <div class="nav-item<?= $page==='wallet'?' active':'' ?>" data-page="wallet">
+      💎 REAL Wallet
+    </div>
+
+    <!-- ── 🎮 Community ── -->
+    <div class="nav-section">🎮 Community</div>
+    <div class="nav-item<?= $page==='hakim'?' active':'' ?>" data-page="hakim">
+      📖 Shahnameh AI (Hakim)
+    </div>
+
+    <!-- ── 🛠 System ── -->
+    <div class="nav-section">🛠 System</div>
     <div class="nav-item<?= $page==='release'?' active':'' ?>" data-page="release">
-      <?= icon('package') ?> Release
+      <?= icon('package') ?> Release &amp; OTA
     </div>
     <div class="nav-item<?= $page==='config'?' active':'' ?>" data-page="config">
       <?= icon('settings') ?> Config
     </div>
-    <div class="nav-item<?= $page==='hakim'?' active':'' ?>" data-page="hakim">
-      <?= icon('chart') ?> Hakim
+    <div class="nav-item<?= $page==='logs'?' active':'' ?>" data-page="logs">
+      <?= icon('log') ?> Logs
     </div>
+
+    <!-- ── 📈 Analytics ── -->
+    <div class="nav-section">📈 Analytics</div>
+    <div class="nav-item<?= $page==='analytics'?' active':'' ?>" data-page="analytics">
+      <?= icon('chart') ?> Growth &amp; Usage
+    </div>
+    <div class="nav-item<?= $page==='seoranks'?' active':'' ?>" data-page="seoranks">
+      <?= icon('chart') ?> SEO Ranks
+    </div>
+
   </nav>
-  <div class="sidebar-footer">Realink v0.9.12 &middot; <?= h($auth_user) ?></div>
+  <div class="sidebar-footer">ReaLink v0.9.67 &middot; <?= h($auth_user) ?></div>
 </aside>
 
 <!-- ── Main ─────────────────────────────────────────────────────────── -->
@@ -1622,6 +1647,36 @@ function icon(string $name): string {
     <!-- Reads hakim-bot's ACTUAL running state (systemctl, hakim.db)  -->
     <!-- — never a plausible invented status. § 8.0 applies here too.  -->
     <!-- ============================================================ -->
+    <!-- ============================================================ -->
+    <!-- VIEW: PROFILE (placeholder)                                 -->
+    <!-- ============================================================ -->
+    <div data-view="profile" hidden>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">👤 User Profiles</span></div>
+        <div class="panel-body" style="padding:2rem;text-align:center;color:var(--text-muted)">
+          <div style="font-size:2rem;margin-bottom:.75rem">👤</div>
+          <div style="font-weight:600;margin-bottom:.5rem">User Profile Management</div>
+          <div style="font-size:.85rem">Shahnameh identity · handle · persona · ZAR balance · invite tree</div>
+          <div style="margin-top:1.5rem;font-size:.8rem;opacity:.6">Coming in next sprint — data from ecosystem_profiles + identity_store</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: WALLET (placeholder)                                   -->
+    <!-- ============================================================ -->
+    <div data-view="wallet" hidden>
+      <div class="panel">
+        <div class="panel-header"><span class="panel-title">💎 REAL Wallet</span></div>
+        <div class="panel-body" style="padding:2rem;text-align:center;color:var(--text-muted)">
+          <div style="font-size:2rem;margin-bottom:.75rem">💎</div>
+          <div style="font-weight:600;margin-bottom:.5rem">REAL Economy</div>
+          <div style="font-size:.85rem">ZAR balances · REAL token · wallet transactions · top earners · burn rate</div>
+          <div style="margin-top:1.5rem;font-size:.8rem;opacity:.6">Coming soon — requires zar_store ledger API + REAL wallet contract</div>
+        </div>
+      </div>
+    </div>
+
     <div data-view="hakim" hidden>
       <div class="two-col">
         <div class="panel">
@@ -1944,22 +1999,26 @@ $('sidebarOverlay').addEventListener('click', closeSidebar);
 // ── Router ───────────────────────────────────────────────────────────
 let activeView='', refreshTimer=null;
 const pageTitles = {
-  dashboard: ['Dashboard', 'live monitoring · auto-refresh 10s'],
-  analytics: ['Analytics', 'growth & usage trends · 30-day charts'],
-  ads:       ['Ads & Revenue', 'rewarded ads · recovery quota · revenue vs cost'],
-  payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
-  iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
-  intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
-  insights:  ['User Insights', 'aggregate carriers · geo · devices · reachability · no per-user tracking'],
-  seoranks:  ['SEO Ranks', 'target keyword positions over time · Iran filtershekan intent'],
-  starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
-  installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
-  devices:   ['Devices', 'device management · quota · payments'],
-  logs:      ['Logs', 'structured log viewer'],
-  tunnellogs:['Tunnel Logs', 'per-device PacketTunnelProvider diagnostics · stage · server · final error'],
-  release:   ['Release', 'APK channels · version.json · health'],
-  config:    ['Config', 'remote config · bootstrap server · settings'],
-  referrals: ['Referrals', 'invite analytics · leaderboard · conversion'],
+  dashboard: ['Dashboard',            'live monitoring · auto-refresh 10s'],
+  analytics: ['Growth & Usage',       'growth & usage trends · 30-day charts'],
+  ads:       ['Ads — AdsGram · AdMob','rewarded ads · AdsGram callback · AdMob config · revenue vs cost'],
+  payments:  ['Payments & Packages',  'premium packages · REAL vs USDT · intents · transaction log'],
+  iran:      ['Censorship Debug',     'censorship diagnostics · Iranian ISP analysis · bypass routes'],
+  intel:     ['AI Routing Intel',     'connect telemetry · learned node scores · ISP/platform breakdown'],
+  insights:  ['User Insights',        'aggregate carriers · geo · devices · reachability · no per-user tracking'],
+  seoranks:  ['SEO Ranks',            'target keyword positions · Iran filtershekan intent · GSC sync'],
+  starlink:  ['Starlink Node',        'exit-node (beta) · tunnel health · unlock status · allowlist'],
+  installs:  ['Install Diagnostics',  'app versions · Android/iOS · ABI split · install failures'],
+  devices:   ['Devices',              'device management · quota · plan · payments'],
+  logs:      ['Logs',                 'structured log viewer · xray · nginx · error log'],
+  tunnellogs:['Tunnel Logs',          'per-device PacketTunnelProvider diagnostics · stage · server · final error'],
+  release:   ['Release & OTA',        'APK channels · version.json · iOS TestFlight · health'],
+  config:    ['Config',               'remote config · bootstrap server · feature flags'],
+  referrals: ['Referrals',            'invite analytics · leaderboard · conversion · bonus grants'],
+  hakim:     ['Shahnameh AI (Hakim)', 'bot status · requests · errors · knowledge sources · test interface'],
+  aidiag:    ['AI Diagnostics',       'node recommendation quality · confidence scores · failure analysis'],
+  profile:   ['User Profiles',        'Shahnameh identity · handle · persona · ZAR · invite tree'],
+  wallet:    ['REAL Wallet',          'ZAR balances · REAL token · wallet transactions · top earners'],
 };
 
 function navigate(page) {
@@ -1970,7 +2029,7 @@ function navigate(page) {
   const [title, sub] = pageTitles[page];
   $('pageTitle').textContent = title;
   $('pageSub').textContent = sub;
-  document.title = `Realink Admin — ${title}`;
+  document.title = `ReaLink Admin — ${title}`;
   const url = new URL(location.href);
   url.searchParams.set('page', page);
   history.pushState({page}, '', url);
