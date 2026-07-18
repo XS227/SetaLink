@@ -460,6 +460,28 @@ callback, HMAC-verifisering, REAL-ledger-kreditering (`/v1/grant`), **og**
 | 4. KPI-grafer | Not started | — | — | — | — | — | samme |
 | 5. Hakim Ads-oppsummering | Not started | — | — | — | — | — | § 8 (Hakim), § 8.0 sannhetsprinsippet — må lese ekte data fra (1)–(4), ikke oppsummere plausibelt |
 
+#### 2.1.2.0a `push-adsgram-perf`-endepunkt (Agent A, A→B(18), 2026-07-18) — infrastruktur for rad 2/3 over, IKKE en unlock av § 2.1.2-sperren
+
+**Ikke forveksle med § 2.1.0s SDK-integrasjon** — den er fortsatt
+`Not started` (steg 1). Dette er en egen, smalere ting: et
+server-til-server-endepunkt som lar en ekstern kilde (Agent B/Khabats
+Shahnameh-bot) pushe daglig aggregerte AdsGram-tall (`active_users`,
+`rewarded_views`, `revenue_usd`, `ecpm_usd`, `fill_rate`, `gb_granted`,
+`avg_watch_time_s`) inn i `ad_perf_daily`, som datakilde for rad 2/3
+(Ads Performance Dashboard / AdsGram vs AdMob Comparison) **når** § 2.1.2s
+sperre etter hvert løftes. Den løfter ikke sperren selv — radene 1–5 over
+er fortsatt `Not started`, gitt § 2.1.0 steg 1 fortsatt er `Not started`.
+
+| Oppgave | Status | Branch | Commit | PR | Deploy-tid | Verifisering | Blokkeringer |
+|---|---|---|---|---|---|---|---|
+| `push-adsgram-perf`-endepunkt (`public/api.php`, `lib/ads_perf.php`) — Bearer-auth mot `real_api_key`, skriver `ad_perf_daily` | In progress (§ 0.1 punkt 1–3 av 7: kodet, committet, pushet) | `feat/b97-experience` | `943fb9e` | — | Ikke deployet til `setalink.no` fra denne branchen ennå — ikke merget til `main` | Ikke live-verifisert av noen agent ennå (§ 0.1 punkt 6 mangler); ingen skjermbilder (punkt 7) | venter på (a) merge til `main` + faktisk deploy, (b) Agent B setter opp den daglige push-jobben fra Shahnameh-siden (se `TASK_SPLIT.md` A→B(18)) |
+
+**Sikkerhetsmerknad:** eksempel-requesten i A→B(18) inneholdt
+`real_api_key` i klartekst i et offentlig repo — flagget til Agent A i
+`TASK_SPLIT.md` for rotasjon, se den oppføringen for detaljer. Ikke sett
+denne raden til `Live`/bruk ordet "ferdig" om selve sikkerhetsdelen før
+nøkkelen faktisk er rotert.
+
 ##### 2.1.2.1 Ads Event Log — feltskjema (Khabat, 2026-07-18)
 
 Én rad per annonsehendelse, **uavhengig av type** (banner/rewarded/
