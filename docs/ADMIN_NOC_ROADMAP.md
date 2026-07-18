@@ -904,15 +904,42 @@ brukeren ser étt sted, ikke fire kilder som må holdes synkronisert
 manuelt i UI-et. Ikke start bygging av dette som fire separate lister
 limt sammen — design sammenslåingslaget først.
 
-**Seksjonens Done (§ 5.10) — status 2026-07-18:**
+**Seksjonens Done (§ 5.10) — ✅ ALLE INNHOLDS-/DESIGNBESLUTNINGER TATT, 2026-07-18:**
 - ✅ Footer (§ 5.10.1) — godkjent
 - ✅ Freedom Stats-tilnærming (§ 5.10.2) — besluttet (fem rå verdier, ingen score i v1)
 - ✅ REAL Wallet-kort-varianten — besluttet (tre tall: REAL · GB · TON), med hard "aldri simulert TON"-regel
 - ✅ Activity/History-kortet (§ 5.10.3) — spesifisert (samlet tidslinje på tvers av RealGram/VPN/Wallet/Shahnameh)
-- ⬜ **Eneste gjenstående:** designmal-godkjenning — **levert 2026-07-18, oppdatert samme dag:** https://claude.ai/code/artifact/9d9686d0-3556-48ce-bc73-cbdc12d9e667 — venstre side rekonstruert direkte fra `season2/profile.html`/`style.css` (ekte kildekode, ikke antatt), høyre side bygget med samme fargetokens (`--gold: #f4c56b`, samme mørke bunn). **To presiseringer fra Khabat innarbeidet:**
-  1. **Kortrekkefølge endret:** Hero → Wallet → Freedom Stats → **Activity Timeline** → Achievements → Clan (Timeline flyttet opp fra sist til rett under Wallet/Freedom Stats, Clan flyttet ned). Begrunnelse: hvem jeg er → hva jeg eier → hva som nettopp skjedde → achievements → clan — mer dynamisk enn å avslutte på Clan.
-  2. **Samlende tagline på Hero-kortet, forslag, ikke låst:** "One REAL ID · Every part of the Freedom ecosystem" (vist i artifacten) ELLER "One Identity · Chat · Freedom · Wallet · Shahnameh" — Khabat kalte idéen "RealGrams kjennetegn", men har ikke valgt ordlyd ennå
-  **Fortsatt venter på Khabats endelige godkjenning**, ikke bekreftet
+- ✅ **Designmal — GODKJENT av Khabat:** https://claude.ai/code/artifact/9d9686d0-3556-48ce-bc73-cbdc12d9e667 (venstre side rekonstruert direkte fra `season2/profile.html`/`style.css`, ekte kildekode). Kortrekkefølge: Hero → Wallet → Freedom Stats → Activity Timeline → Achievements → Clan. Hero-tagline vist ("One REAL ID · Every part of the Freedom ecosystem"), alternativ ordlyd notert, ingen låst ennå.
+- ⬜ **Ny, samme dag (§ 5.10.4): dynamisk statuslinje på Hero-kortet** — se under, egen liten avklaring gjenstår før bygging
+
+**Byggesperren i § 0.4.1 gjelder fortsatt** — alle designbeslutninger er
+tatt, men ingenting bygges før mobil-frysen løftes.
+
+#### 5.10.4 Dynamisk statuslinje på Hero-kortet (Khabat, 2026-07-18 — ny idé, ikke ferdig avklart)
+
+**Ikke en fast tittel — reflekterer faktisk bruk.** Khabats eksempler:
+
+- 🟢 Freedom Builder
+- 🟡 Community Leader
+- 🔵 Starlink Pioneer
+- 🟣 Founder
+- 🟠 Shahnameh Hero
+- ⚪ Explorer
+
+En bruker som deler mye data får en annen status enn en som mest spiller
+eller mest bygger community — statusen endrer seg med bruksmønsteret, ikke
+statisk. Vist i den godkjente designmalen (Hero-kortet, over handle,
+under avataren).
+
+**Åpent, ikke besluttet:** hvilken regel avgjør hvilken status som vises
+— f.eks. størst andel av total aktivitet siste N dager fordelt på
+kategorier (data delt vs. Shahnameh-spilletid vs.
+referral/community-aktivitet vs. Starlink-bruk)? Samme prinsipp som
+Freedom Stats (§ 5.10.2) og hele roadmapens § 0.1/§ 8.0: **en status
+presentert som noe brukeren har "opptjent" må faktisk være utledet av
+ekte, sporbar aktivitet — aldri en plausibel gjetning.** Trenger en
+konkret klassifiseringsregel før bygging, ikke bare et sett fine
+titler.
 
 Alle innholdsbeslutninger for § 5.10 er nå tatt. Gjenstår kun den visuelle
 side-om-side-godkjenningen og selve byggingen — sistnevnte fortsatt
