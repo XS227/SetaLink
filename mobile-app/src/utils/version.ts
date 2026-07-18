@@ -4,5 +4,5 @@
 // with the native build is what stops the OTA checker from offering an update
 // that is already installed.
 export const APP_VERSION    = '0.9.67';
-export const APP_BUILD      = '94';
-export const APP_BUILD_CODE = 94;
+export const APP_BUILD      = '100';
+export const APP_BUILD_CODE = 100;
