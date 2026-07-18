@@ -909,7 +909,7 @@ limt sammen — design sammenslåingslaget først.
 - ✅ Freedom Stats-tilnærming (§ 5.10.2) — besluttet (fem rå verdier, ingen score i v1)
 - ✅ REAL Wallet-kort-varianten — besluttet (tre tall: REAL · GB · TON), med hard "aldri simulert TON"-regel
 - ✅ Activity/History-kortet (§ 5.10.3) — spesifisert (samlet tidslinje på tvers av RealGram/VPN/Wallet/Shahnameh)
-- ⬜ **Eneste gjenstående:** designmal-godkjenning — skjermbilde av faktisk Shahnameh Profile/Chronicle side om side med foreslått RealGram-versjon, ikke gjort ennå
+- ⬜ **Eneste gjenstående:** designmal-godkjenning — **levert 2026-07-18:** https://claude.ai/code/artifact/9d9686d0-3556-48ce-bc73-cbdc12d9e667 — venstre side rekonstruert direkte fra `season2/profile.html`/`style.css` (ekte kildekode, ikke antatt), høyre side bygget med samme fargetokens (`--gold: #f4c56b`, samme mørke bunn). **Venter på Khabats godkjenning**, ikke bekreftet ennå
 
 Alle innholdsbeslutninger for § 5.10 er nå tatt. Gjenstår kun den visuelle
 side-om-side-godkjenningen og selve byggingen — sistnevnte fortsatt
