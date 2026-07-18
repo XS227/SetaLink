@@ -7,6 +7,7 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
+import { HomeBanner }      from '../components/HomeBanner';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
@@ -319,6 +320,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.shortcutSub}>{t('home.community')}</Text>
             </View>
           </TouchableOpacity>
+        </Animated.View>
+
+        {/* ── Ad banner — rotates AdMob banner ⇄ ecosystem promo (Khabat, 2026-07-18:
+             re-added so AdMob can be verified from Home, not just the Freedom tab) ── */}
+        <Animated.View style={fadeStyle}>
+          <HomeBanner seed={0} showAds={userShowsAds} />
         </Animated.View>
       </ScrollView>
 

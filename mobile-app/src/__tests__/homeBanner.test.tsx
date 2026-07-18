@@ -23,6 +23,12 @@ jest.mock('../components/EcosystemBanner', () => {
   return { EcosystemBanner: () => React.createElement('EcosystemBanner', { testID: 'promo' }) };
 });
 
+jest.mock('../services/analytics', () => ({ trackEvent: jest.fn() }));
+
+jest.mock('../stores/authStore', () => ({
+  useAuthStore: { getState: () => ({ user: { deviceId: 'dev-test-1' } }) },
+}));
+
 import { HomeBanner } from '../components/HomeBanner';
 
 const has = (root: any, testID: string) => root.findAllByProps({ testID }).length > 0;

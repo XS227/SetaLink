@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet } from 'react-native';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { Colors, Radius, Spacing } from '../design/tokens';
-import { BANNER_UNIT_ID } from '../services/adsService';
+import { TrackedBannerAd } from './TrackedBannerAd';
 import { EcosystemBanner } from './EcosystemBanner';
 
 /**
@@ -47,10 +46,8 @@ export function HomeBanner({ seed = 0, showAds }: Props) {
 
       {showAd && (
         <View style={adLoaded ? styles.adWrap : styles.hidden} pointerEvents={adLoaded ? 'auto' : 'none'}>
-          <BannerAd
-            unitId={BANNER_UNIT_ID}
-            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-            requestOptions={{ requestNonPersonalizedAdsOnly: true }}
+          <TrackedBannerAd
+            slot="home_banner"
             onAdLoaded={() => setAdLoaded(true)}
             onAdFailedToLoad={() => { setAdLoaded(false); setPhase('promo'); }}
           />
