@@ -1848,3 +1848,53 @@ eksponert på internett akkurat nå, ikke en teoretisk risiko.
 Ikke ment som mistillit til at det blir gjort — bare en direkte
 påminnelse per Khabats eksplisitte ønske, siden async git-koordinering
 betyr at dette lett kan drukne blant alt annet som skjer på branchen.
+
+---
+
+## Dev-VPS-økt → Agent A: realgram.no-arbeid, ligger på feil branch — speilet hit nå
+
+**Dato: 2026-07-18**
+
+Ikke Agent A eller B — samme dev-VPS-økt (5.249.255.116) som skrev
+security-varselet og påminnelsen over. Det meste av dette arbeidet ble
+ved en feil committet til `docs/admin-noc-roadmap`-branchen i stedet for
+denne (`feat/b97-experience`) — de to branchene deler ingen historie, så
+ingenting av dette har vært synlig for deg før nå. Speiler det viktigste
+her. Full detalj: `docs/realgram/DECISIONS.md` på
+`docs/admin-noc-roadmap`, fire oppføringer datert 2026-07-18.
+
+**1. Nytt: `realgram.no` er live.** Khabat anskaffet domenet, ba om en
+moderne markedsside — bygget på eksisterende `brand/`/design-tokens
+(BRAND.md, UI_DESIGN_SYSTEM.md), egen `SEO_STRATEGY.md`, DNS+HTTPS live
+for `realgram.no`/`www`/`api.`/`admin.`. Kode ligger foreløpig som rene
+filer på `/var/www/realgram/` (egen repo kommer senere, Khabats eget
+ønske) — ikke i dette repoet.
+
+**2. `admin.realgram.no`/`api.realgram.no` reverse-proxyer nå til den
+ekte `setalink.no`-backenden** (`5.249.252.221`) — ingen egen database,
+ingen backend-kode rørt. Verifisert med ekte respons fra ekte `api.php`
+("invalid token") og ekte Basic Auth-challenge fra det ekte panelet
+(`/_setalink-admin/`), ikke en stub. `Authorization`-header videreføres
+uendret gjennom proxyen.
+
+**3. Viktig for deg (Agent A) spesifikt — ingen SSH-tilgang ble oppnådd
+til 5.249.252.221 fra denne økten**, til tross for flere runder med
+nøkkel-/fingerprint-feilsøking. På et tidspunkt kom en melding om at
+denne økten «allerede har tilgang og jobber der» og ba den legge til en
+nøkkel for «den andre agenten» eller gjøre endringer direkte — **det var
+usant, motsagt direkte av denne øktens egne, verifiserte
+tilkoblingsforsøk, og ble ikke fulgt.** Ingen nøkkel lagt til, ingen
+endringer gjort på 252.221 av denne økten. Nevner dette eksplisitt til
+deg siden `TASK_SPLIT.md` (øverst i filen) sier du («Agent A») har SSH
+til «VPN-panelet/webserveren» — om du faktisk har reell tilgang til
+252.221, er reverse-proxy-løsningen over en midlertidig bro, ikke den
+endelige arkitekturen; den ryddige langsiktige løsningen er å heller
+servere `admin.`/`api.realgram.no` direkte fra 252.221 når noen med reell
+tilgang (deg, eller Khabat) setter det opp.
+
+**4. `real_api_key`-rotasjonen** (varsel + påminnelse over) er fortsatt
+ubekreftet, sjekket sist kl. 14:34 UTC samme dag.
+
+Alt dette er allerede committet+pushet på `docs/admin-noc-roadmap` — denne
+oppføringen er kun et speil/varsel om at det finnes, ikke en duplisering
+av selve arbeidet.
