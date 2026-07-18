@@ -24,12 +24,15 @@ export function WatchAdCard({ style }: { style?: object }) {
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   const showToast = useToastStore((s) => s.show);
   const [busy, setBusy] = useState(false);
-  const isPremium = user?.plan === 'premium';
+  // Same rule as HomeScreen/ServersScreen: a device flagged testMode
+  // (devices.test_mode) is a premium account under ad-QA and must still see
+  // ads here, even though real premium users are ad-free and have no use
+  // for bonus data on an unlimited plan.
+  const showsAds = user?.plan === 'free' || !!user?.testMode;
 
-  useEffect(() => { if (!isPremium) initAds(); }, [isPremium]);
+  useEffect(() => { if (showsAds) initAds(); }, [showsAds]);
 
-  // Premium is ad-free — and has no use for bonus data on an unlimited plan.
-  if (isPremium) return null;
+  if (!showsAds) return null;
 
   const onPress = async () => {
     const deviceId = user?.deviceId;
@@ -52,7 +55,7 @@ export function WatchAdCard({ style }: { style?: object }) {
     } catch (e) {
       // Light telemetry only (no-fill is expected until AdMob finishes evaluation).
       const err = e as Error & { code?: string };
-      trackEvent('AD_LOAD_ERROR', deviceId, { code: err?.code || '', message: err?.message || '' });
+      trackEvent('AD_LOAD_ERROR', deviceId, { slot: 'rewarded', code: err?.code || '', message: err?.message || '' });
       showToast(t('pr.adFailed'), 'error', 3000);
     } finally {
       setBusy(false);
