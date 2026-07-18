@@ -150,14 +150,20 @@ const wvStyles = StyleSheet.create({
 });
 
 // ── REAL-ID gate ─────────────────────────────────────────────────────────────
-// Shown until the user links a REAL-ID. Both paths result in the same canonical
-// account string (Telegram user_id), so no duplicate accounts are possible even
-// if the user later switches between Telegram bot and RealGram.
+// "You're already in the game before you've pressed Play" (§5.10 principle,
+// 2026-07-18) — ReaLink/RealGram and Shahnameh are one account, so Play must
+// never ask the user to CHOOSE how to link. Both old paths (RealGram WebView /
+// Telegram bot) funnel through the same Telegram auth server-side and yield the
+// same canonical account string — presenting them as two competing buttons was
+// itself "the question", not a real choice. Now: the WebView opens automatically
+// on mount. The Telegram-bot link only reappears as a small fallback if that
+// WebView is closed or fails without completing — never as a first-class option.
 function RealIdGate({ deviceId }: { deviceId: string }) {
   const { t }  = useT();
   const insets = useSafeAreaInsets();
-  const [checking, setChecking] = useState(false);
-  const [showRealGram, setShowRealGram] = useState(false);
+  const [checking, setChecking]     = useState(false);
+  const [showRealGram, setShowRealGram] = useState(true); // auto-open
+  const [linkFailed, setLinkFailed] = useState(false);
   const [error, setError] = useState('');
 
   const openTelegramBot = useCallback(() => {
@@ -169,7 +175,14 @@ function RealIdGate({ deviceId }: { deviceId: string }) {
     // authStore.realId was already set by the handler — gate will un-render
   }, []);
 
-  // "Check again" — user may have completed the Telegram bot flow and returned.
+  // WebView closed or failed to load without completing linking — fall back
+  // to a minimal retry screen instead of leaving the user stuck.
+  const handleWebViewClosed = useCallback(() => {
+    setShowRealGram(false);
+    setLinkFailed(true);
+  }, []);
+
+  // "Check again" — user may have completed the Telegram bot fallback and returned.
   const checkLinked = useCallback(async () => {
     setChecking(true);
     setError('');
@@ -187,58 +200,50 @@ function RealIdGate({ deviceId }: { deviceId: string }) {
     }
   }, [deviceId, t]);
 
+  if (showRealGram) {
+    return (
+      <RealGramLinkWebView
+        deviceId={deviceId}
+        onLinked={handleLinked}
+        onClose={handleWebViewClosed}
+      />
+    );
+  }
+
   return (
-    <>
-      <View style={[gateStyles.container, { paddingBottom: insets.bottom + 24 }]}>
-        <Text style={gateStyles.bigIcon}>⚔️</Text>
-        <Text style={gateStyles.title}>{t('realId.gateTitle')}</Text>
-        <Text style={gateStyles.body}>{t('realId.gateBody')}</Text>
+    <View style={[gateStyles.container, { paddingBottom: insets.bottom + 24 }]}>
+      <Text style={gateStyles.bigIcon}>⚔️</Text>
+      <Text style={gateStyles.title}>{t('realId.gateTitle')}</Text>
+      <Text style={gateStyles.body}>
+        {linkFailed ? t('realId.linkClosedBody') : t('realId.gateBody')}
+      </Text>
 
-        <View style={gateStyles.hint}>
-          <Text style={gateStyles.hintText}>{t('realId.ecosystemHint')}</Text>
-        </View>
+      <TouchableOpacity
+        style={gateStyles.primaryBtn}
+        onPress={() => { setLinkFailed(false); setShowRealGram(true); }}
+        activeOpacity={0.85}
+      >
+        <Text style={gateStyles.primaryBtnText}>{t('realId.tryAgain')}</Text>
+      </TouchableOpacity>
 
-        {/* Primary: RealGram (in-app, no Telegram bot required) */}
-        <TouchableOpacity
-          style={gateStyles.primaryBtn}
-          onPress={() => setShowRealGram(true)}
-          activeOpacity={0.85}
-        >
-          <Text style={gateStyles.primaryBtnText}>{t('realId.linkRealgram')}</Text>
-        </TouchableOpacity>
+      {/* Fallback only — not a competing first-class choice. */}
+      <TouchableOpacity onPress={openTelegramBot} activeOpacity={0.7}>
+        <Text style={gateStyles.fallbackLink}>{t('realId.linkTelegram')}</Text>
+      </TouchableOpacity>
 
-        {/* Secondary: Telegram bot (for users who prefer the bot flow) */}
-        <TouchableOpacity
-          style={gateStyles.secondaryBtn}
-          onPress={openTelegramBot}
-          activeOpacity={0.8}
-        >
-          <Text style={gateStyles.secondaryBtnText}>{t('realId.linkTelegram')}</Text>
-        </TouchableOpacity>
+      <TouchableOpacity
+        style={gateStyles.checkBtn}
+        onPress={checkLinked}
+        disabled={checking}
+        activeOpacity={0.7}
+      >
+        {checking
+          ? <ActivityIndicator size="small" color={Colors.text.muted} />
+          : <Text style={gateStyles.checkBtnText}>{t('realId.checkLinked')}</Text>}
+      </TouchableOpacity>
 
-        {/* After returning from Telegram bot — check if linked */}
-        <TouchableOpacity
-          style={gateStyles.checkBtn}
-          onPress={checkLinked}
-          disabled={checking}
-          activeOpacity={0.7}
-        >
-          {checking
-            ? <ActivityIndicator size="small" color={Colors.text.muted} />
-            : <Text style={gateStyles.checkBtnText}>{t('realId.checkLinked')}</Text>}
-        </TouchableOpacity>
-
-        {!!error && <Text style={gateStyles.errorText}>{error}</Text>}
-      </View>
-
-      {showRealGram && (
-        <RealGramLinkWebView
-          deviceId={deviceId}
-          onLinked={handleLinked}
-          onClose={() => setShowRealGram(false)}
-        />
-      )}
-    </>
+      {!!error && <Text style={gateStyles.errorText}>{error}</Text>}
+    </View>
   );
 }
 
@@ -250,18 +255,11 @@ const gateStyles = StyleSheet.create({
                      color: Colors.text.primary, textAlign: 'center' },
   body:            { fontSize: 13, color: Colors.text.muted, textAlign: 'center',
                      fontFamily: Typography.family.body, lineHeight: 20 },
-  hint:            { backgroundColor: 'rgba(212,175,55,0.08)', borderRadius: Radius.lg,
-                     paddingVertical: Spacing[2], paddingHorizontal: Spacing[4],
-                     borderWidth: 1, borderColor: 'rgba(212,175,55,0.2)' },
-  hintText:        { fontSize: 11, color: Colors.gold[600], fontFamily: Typography.family.mono,
-                     textAlign: 'center' },
   primaryBtn:      { width: '100%', backgroundColor: Colors.gold[400], borderRadius: Radius.xl,
                      paddingVertical: Spacing[4], alignItems: 'center' },
   primaryBtnText:  { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.bg.void },
-  secondaryBtn:    { width: '100%', borderRadius: Radius.xl, paddingVertical: Spacing[3],
-                     alignItems: 'center', borderWidth: 1, borderColor: Colors.border.default,
-                     minHeight: 44 },
-  secondaryBtnText:{ fontSize: 13, color: Colors.text.secondary, fontFamily: Typography.family.body },
+  fallbackLink:    { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body,
+                     textDecorationLine: 'underline', marginTop: Spacing[1] },
   checkBtn:        { paddingVertical: Spacing[2], minHeight: 36 },
   checkBtnText:    { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body,
                      textDecorationLine: 'underline' },

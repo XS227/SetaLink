@@ -536,6 +536,8 @@ const EN = {
 
   'realId.gateTitle':    'Create your REAL-ID',
   'realId.gateBody':     'REAL-ID is your shared identity across ReaLink, RealGram, Shahnameh, TrustAI and 3REAL. Create one to open the game without a separate login.',
+  'realId.linkClosedBody': 'Setup was closed before finishing. Try again to jump straight in.',
+  'realId.tryAgain':      'Try again',
   'realId.linkRealgram':  'Connect with RealGram',
   'realId.linkTelegram':  'Or link via Telegram bot',
   'realId.checkLinked':   "I've linked — check again",
@@ -1233,6 +1235,8 @@ const FA: typeof EN = {
 
   'realId.gateTitle':    'REAL-ID خود را بسازید',
   'realId.gateBody':     'REAL-ID هویت مشترک شما در ReaLink، RealGram، Shahnameh، TrustAI و 3REAL است. یک بار بسازید تا بدون ورود جداگانه بازی کنید.',
+  'realId.linkClosedBody': 'راه‌اندازی قبل از اتمام بسته شد. دوباره تلاش کن تا مستقیم وارد شوی.',
+  'realId.tryAgain':      'تلاش دوباره',
   'realId.linkRealgram':  'اتصال با RealGram',
   'realId.linkTelegram':  'یا از طریق ربات تلگرام',
   'realId.checkLinked':   'متصل شدم — دوباره بررسی کن',
@@ -1907,6 +1911,8 @@ const ZH: typeof EN = {
 
   'realId.gateTitle':    '创建你的 REAL-ID',
   'realId.gateBody':     'REAL-ID 是你在 ReaLink、RealGram、Shahnameh、TrustAI 和 3REAL 之间的共同身份。创建后无需单独登录即可进入游戏。',
+  'realId.linkClosedBody': '设置在完成前被关闭。再试一次即可直接进入。',
+  'realId.tryAgain':      '重试',
   'realId.linkRealgram':  '通过 RealGram 连接',
   'realId.linkTelegram':  '或通过 Telegram 机器人关联',
   'realId.checkLinked':   '我已关联 — 再次检查',
@@ -2574,6 +2580,8 @@ const RU: typeof EN = {
 
   'realId.gateTitle':    'Создайте REAL-ID',
   'realId.gateBody':     'REAL-ID — это ваша единая идентичность в ReaLink, RealGram, Shahnameh, TrustAI и 3REAL. Создайте один раз — и входите в игру без отдельного логина.',
+  'realId.linkClosedBody': 'Настройка была закрыта до завершения. Попробуйте снова, чтобы сразу войти.',
+  'realId.tryAgain':      'Попробовать снова',
   'realId.linkRealgram':  'Подключить через RealGram',
   'realId.linkTelegram':  'Или привязать через Telegram-бот',
   'realId.checkLinked':   'Я привязал — проверить снова',

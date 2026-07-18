@@ -5,8 +5,10 @@
  * GameScreen hub.
  *
  * Architecture:
- *   - authStore.user.realId === '' → RealIdGate shown, hub hidden, no WebView
- *   - authStore.user.realId !== '' → hub shown, WebView only inside closed modal
+ *   - authStore.user.realId === '' → RealIdGate auto-opens the RealGram link
+ *     WebView immediately (§5.10: Play must never ask "what do you want to
+ *     link with" — see GameScreen.tsx RealIdGate comment), hub hidden
+ *   - authStore.user.realId !== '' → hub shown, no linking WebView
  */
 
 import React from 'react';
@@ -83,11 +85,11 @@ describe('buildGameUrl', () => {
   });
 });
 
-// ── GameScreen without REAL-ID → shows gate ──────────────────────────────────
+// ── GameScreen without REAL-ID → auto-opens linking WebView, hides the hub ───
 describe('GameScreen without REAL-ID', () => {
   beforeEach(() => { mockRealId = ''; });
 
-  it('shows the REAL-ID gate and hides the hub', () => {
+  it('opens the RealGram link WebView immediately, with no choice screen', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<GameScreen />); });
 
@@ -95,14 +97,13 @@ describe('GameScreen without REAL-ID', () => {
       .findAllByType('Text' as any)
       .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
 
-    expect(texts).toContain('realId.gateTitle');
+    // No "what do you want to link with" gate text, no enter-game CTA either —
+    // RealIdGate defaults straight to the RealGramLinkWebView modal (RN's
+    // Modal isn't traversable through react-test-renderer in this harness,
+    // so we assert by absence of both other states rather than the modal's
+    // own content).
+    expect(texts).not.toContain('realId.gateTitle');
     expect(texts).not.toContain('game.enterShahnameh');
-  });
-
-  it('has no WebView when showing the gate', () => {
-    let tree!: renderer.ReactTestRenderer;
-    act(() => { tree = renderer.create(<GameScreen />); });
-    expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(0);
   });
 });
 
