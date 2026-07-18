@@ -154,7 +154,7 @@ faner, men to av dem har hver sin unike fane **ingen andre grener har**:
 | Health | Delvis dekket (Release-undertekst + Node Health-panel) | Delvis | Nei som samlet side | — | — | **Ja**, som egen, samlet "System Health" |
 | Monitoring | Delvis dekket av Dashboard | Delvis | Nei som dedikert NOC-monitoringsside | — | — | **Ja**, som egen fane utover Dashboard |
 | Logs | Ja, felles kjerne | Ja | Ikke verifisert innhold | Ukjent | Ukjent | Nei (i kode) |
-| API Status | — | — | — | — | — | **Ja, mangler helt** — ingen fane funnet noe sted |
+| API Status | **Bygget 2026-07-18** — lokale tjenester, Ecosystem API (ekte reachability-sjekk), AdMob, GSC-sync, Hakim bot. `feat/admin-noc-consolidated` commit `88c3b36` | Ja | Nei | Nei | Nei | Nei — **viktig funn:** Hakim-bot-sjekken forutsetter samme host som adminet; funnet at hakim-bot faktisk kjører på dev-VPS-en, ikke nødvendigvis der adminet deployes — flagget som "unknown" i UI, ikke gjettet som "down" |
 | Event Log | — | — | — | — | — | **Ja, mangler helt** — dette er § 2.1.2s Ads Event Log, eksplisitt sperret til Agent A er ferdig |
 | Wallet | **Bygget 2026-07-18** — lokal quota-ledger (breakdown/transfers/top wallets), `feat/admin-noc-consolidated` commit `50295fb`, ikke deployet | Ja | Delvis — REAL/ZAR (Shahnameh Mongo) eksplisitt utenfor, forklart på siden i stedet for gjettet | Nei | Nei | Nei — full REAL+ZAR+Data samlet visning er § 9.1s jobb |
 | Users | Delvis dekket av "Devices" (device-sentrisk, ikke samlet profil) | Delvis | — | — | — | **Ja**, som samlet bruker/profil-visning — avhenger av § 6.1s identitetsarbeid |
