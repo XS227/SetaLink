@@ -1392,6 +1392,159 @@ API contracts as-is. Nothing further needed from me now.
 
 ---
 
+## A→B(19) — AdsGram daglig push — ferdig script, deploy og test
+
+**Dato: 2026-07-18**
+
+A→B(18) beskrev endepunktet. Her er den komplette implementasjonen du kan
+deploye direkte. Velg alternativ 1 eller 2 avhengig av hva du allerede har.
+
+---
+
+### Alternativ 1 — du logger AdsGram-completions i din egen DB (anbefalt)
+
+Shahnameh mottar allerede AdsGram reward-callbacks. Legg til daglig
+aggregering fra din DB. Eksempel i Python — tilpass til ditt DB-skjema:
+
+```python
+#!/usr/bin/env python3
+# /home/<deg>/scripts/push_adsgram_daily.py
+# Cron: 0 6 * * * python3 /home/<deg>/scripts/push_adsgram_daily.py
+
+import requests, json
+from datetime import date, timedelta
+import pymongo  # eller psycopg2/sqlite3 etter hva du bruker
+
+SETALINK_URL = "https://setalink.no/api.php?mobile=1&action=push-adsgram-perf"
+SETALINK_KEY = "***REDACTED-ROTATED-real_api_key***"
+
+yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+# ── Hent fra DIN DB ──────────────────────────────────────────────────
+# Tilpass denne spørringen til ditt faktiske skjema.
+# Felter som trengs: antall unike brukere, antall fullførte views,
+# inntekt i USD (fra AdsGram-dashboard eller din logg), GB utdelt.
+
+# Eksempel med MongoDB (tilpass collection/field-navn):
+# client = pymongo.MongoClient("mongodb://localhost:27017/")
+# db = client["shahnameh"]
+# pipeline = [
+#     {"$match": {"type": "adsgram_reward", "date": yesterday}},
+#     {"$group": {
+#         "_id": None,
+#         "active_users":   {"$addToSet": "$user_id"},
+#         "rewarded_views": {"$sum": 1},
+#         "gb_granted":     {"$sum": "$gb_granted"},
+#     }}
+# ]
+# result = list(db.events.aggregate(pipeline))
+# row = result[0] if result else {}
+# active_users   = len(row.get("active_users", []))
+# rewarded_views = row.get("rewarded_views", 0)
+# gb_granted     = row.get("gb_granted", 0.0)
+# Inntekt/eCPM hentes fra AdsGram-dashboardet eller du setter 0 til du har API.
+
+active_users   = 0   # ← fyll inn fra din DB
+rewarded_views = 0   # ← fyll inn fra din DB
+revenue_usd    = 0.0 # ← fra AdsGram dashboard, eller 0 til du har API
+ecpm_usd       = 0.0 # ← fra AdsGram dashboard, eller 0
+fill_rate      = 0.0 # ← fra AdsGram dashboard, eller 0
+gb_granted     = 0.0 # ← fra din DB (GB utdelt som belønning)
+avg_watch_s    = 0.0 # ← valgfritt
+
+# ── Push til setalink.no ─────────────────────────────────────────────
+payload = {
+    "date":             yesterday,
+    "active_users":     active_users,
+    "rewarded_views":   rewarded_views,
+    "revenue_usd":      revenue_usd,
+    "ecpm_usd":         ecpm_usd,
+    "fill_rate":        fill_rate,
+    "gb_granted":       gb_granted,
+    "avg_watch_time_s": avg_watch_s,
+}
+resp = requests.post(
+    SETALINK_URL,
+    json=payload,
+    headers={"Authorization": f"Bearer {SETALINK_KEY}"},
+    timeout=10
+)
+print(f"{yesterday}: {resp.status_code} {resp.text}")
+```
+
+---
+
+### Alternativ 2 — AdsGram publisher API
+
+AdsGram har et REST-API for publishers. Logg inn på https://app.adsgram.ai,
+gå til Settings → API Token, og kopier tokenet ditt. Legg det inn under:
+
+```python
+#!/usr/bin/env python3
+# Cron: 0 6 * * * python3 /home/<deg>/scripts/push_adsgram_daily.py
+
+import requests
+from datetime import date, timedelta
+
+ADSGRAM_TOKEN  = "DIN_ADSGRAM_API_TOKEN"   # ← fra app.adsgram.ai/settings
+BLOCK_ID       = "DIN_BLOCK_ID"            # ← fra AdsGram-dashboardet
+SETALINK_URL   = "https://setalink.no/api.php?mobile=1&action=push-adsgram-perf"
+SETALINK_KEY   = "***REDACTED-ROTATED-real_api_key***"
+
+yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+# Hent stats fra AdsGram
+ag = requests.get(
+    "https://api.adsgram.ai/publisher/stats",
+    params={"date": yesterday, "block_id": BLOCK_ID},
+    headers={"Authorization": f"Bearer {ADSGRAM_TOKEN}"},
+    timeout=10
+).json()
+
+# Tilpass field-navn til AdsGrams faktiske API-respons
+payload = {
+    "date":             yesterday,
+    "active_users":     ag.get("unique_users", 0),
+    "rewarded_views":   ag.get("impressions", 0),
+    "revenue_usd":      ag.get("revenue", 0.0),
+    "ecpm_usd":         ag.get("ecpm", 0.0),
+    "fill_rate":        ag.get("fill_rate", 0.0),
+    "gb_granted":       ag.get("gb_granted", 0.0),
+    "avg_watch_time_s": ag.get("avg_watch_time", 0.0),
+}
+resp = requests.post(
+    SETALINK_URL,
+    json=payload,
+    headers={"Authorization": f"Bearer {SETALINK_KEY}"},
+    timeout=10
+)
+print(f"{yesterday}: {resp.status_code} {resp.text}")
+```
+
+---
+
+### Test-push (kjør nå for å bekrefte at endepunktet virker)
+
+```bash
+curl -s -X POST "https://setalink.no/api.php?mobile=1&action=push-adsgram-perf" \
+  -H "Authorization: Bearer ***REDACTED-ROTATED-real_api_key***" \
+  -H "Content-Type: application/json" \
+  -d '{"date":"2026-07-17","active_users":5,"rewarded_views":12,"revenue_usd":0.036,"ecpm_usd":3.0,"fill_rate":0.8,"gb_granted":2.9,"avg_watch_time_s":27}'
+```
+
+Forventet svar: `{"ok":true,"data":{"date":"2026-07-17","platform":"adsgram"}}`
+
+Når det er bekreftet: sett opp cron (`crontab -e`) og la den kjøre kl. 06:00
+hver dag for gårsdagens data.
+
+---
+
+**Ping meg i TASK_SPLIT (B→A) når:**
+- Test-pushen returnerer `ok:true`
+- Du har valgt Alt 1 eller 2 og trenger hjelp med DB-spørringen
+
+---
+
 ## A→B(18) — AdsGram daglig push til admin-panelet
 
 **Dato: 2026-07-18**
