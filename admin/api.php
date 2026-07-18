@@ -4182,17 +4182,27 @@ switch ($action) {
             'blocked'             => (bool)($d['blocked'] ?? false),
         ];
 
-        // ── Wallet: quota + last 8 transactions ─────────────────────────────
+        // ── Wallet ───────────────────────────────────────────────────────────
         $total_bytes = (int)($d['quota_bytes_total'] ?? 1073741824);
         $used_bytes  = (int)($d['quota_bytes_used']  ?? 0);
-        $txq = $db->prepare('SELECT type,bytes,created_at,metadata FROM quota_transactions WHERE device_id=? ORDER BY id DESC LIMIT 8');
+        // Lifetime GB earned = sum of all positive quota_transactions
+        $lifetime_q = $db->prepare('SELECT COALESCE(SUM(bytes),0) FROM quota_transactions WHERE device_id=? AND bytes>0');
+        $lifetime_q->execute([$did]);
+        $lifetime_bytes = (int)$lifetime_q->fetchColumn();
+        $txq = $db->prepare('SELECT type,bytes,created_at,metadata FROM quota_transactions WHERE device_id=? ORDER BY id DESC LIMIT 10');
         $txq->execute([$did]);
         $wallet = [
-            'quota_total_gb'  => round($total_bytes / 1073741824, 2),
-            'quota_used_gb'   => round($used_bytes  / 1073741824, 2),
-            'quota_free_gb'   => round(max(0, $total_bytes - $used_bytes) / 1073741824, 2),
-            'quota_pct'       => $total_bytes > 0 ? round($used_bytes / $total_bytes * 100) : 0,
-            'transactions'    => $txq->fetchAll(PDO::FETCH_ASSOC),
+            'quota_total_gb'   => round($total_bytes   / 1073741824, 2),
+            'quota_used_gb'    => round($used_bytes     / 1073741824, 2),
+            'quota_free_gb'    => round(max(0, $total_bytes - $used_bytes) / 1073741824, 2),
+            'quota_pct'        => $total_bytes > 0 ? round($used_bytes / $total_bytes * 100) : 0,
+            'lifetime_gb'      => round($lifetime_bytes / 1073741824, 2),
+            'plan'             => $d['plan'] ?? 'free',
+            'plan_expiry'      => $d['valid_until'] ?? null,
+            // REAL and TON balances live on Shahnameh/chain backends — placeholder
+            'real_balance'     => null,
+            'ton_balance'      => null,
+            'transactions'     => $txq->fetchAll(PDO::FETCH_ASSOC),
         ];
 
         // ── Freedom: VPN session summary ─────────────────────────────────────
@@ -4247,35 +4257,60 @@ switch ($action) {
 
         // ── Activity timeline (last 30 events across all tables) ─────────────
         $timeline = [];
-        // VPN sessions
-        foreach (array_slice($sessions_raw, 0, 10) as $s) {
-            $timeline[] = ['ts'=>$s['started_at'],'type'=>'vpn','icon'=>'🌐','label'=>'Connected via '.($s['protocol']??'?'),'detail'=>round(((int)$s['bytes_recv']+(int)$s['bytes_sent'])/1048576,1).' MB'];
-        }
-        // Install events
-        $iev = $db->prepare("SELECT event,current_version,target_version,created_at FROM install_events WHERE device_id=? ORDER BY id DESC LIMIT 10");
-        $iev->execute([$did]);
-        foreach ($iev->fetchAll(PDO::FETCH_ASSOC) as $e) {
-            $timeline[] = ['ts'=>$e['created_at'],'type'=>'install','icon'=>'📦','label'=>ucfirst(str_replace('_',' ',$e['event'])),'detail'=>($e['current_version']??'').' → '.($e['target_version']??'')];
-        }
-        // Referral events
-        foreach ($children as $c) {
-            $timeline[] = ['ts'=>$c['created_at'],'type'=>'referral','icon'=>'👥','label'=>'Invited '.(($c['user_id']??'')?:'new user'),'detail'=>$c['status']??'credited'];
-        }
-        // Quota transactions
-        foreach ($wallet['transactions'] as $t) {
-            $gb = round(abs((int)$t['bytes'])/1073741824, 2);
-            $timeline[] = ['ts'=>$t['created_at'],'type'=>'quota','icon'=>'💰','label'=>ucfirst(str_replace('_',' ',$t['type'])),'detail'=>($t['bytes']>0?'+':'-').$gb.' GB'];
-        }
-        // App events (game/game_screen taps etc)
-        $aev = $db->prepare("SELECT event,props,created_at FROM app_events WHERE device_id=? ORDER BY id DESC LIMIT 10");
-        $aev->execute([$did]);
-        foreach ($aev->fetchAll(PDO::FETCH_ASSOC) as $e) {
-            $timeline[] = ['ts'=>$e['created_at'],'type'=>'app','icon'=>'🎮','label'=>ucfirst(str_replace('_',' ',$e['event'])),'detail'=>$e['props']??''];
-        }
-        usort($timeline, fn($a,$b) => strcmp($b['ts'],$a['ts']));
-        $timeline = array_slice($timeline, 0, 30);
+        // ── Activity timeline (paginated, filterable) ────────────────────────
+        $tl_offset  = max(0, (int)($_GET['tl_offset']  ?? 0));
+        $tl_limit   = min(50, max(10, (int)($_GET['tl_limit'] ?? 30)));
+        $tl_filter  = trim((string)($_GET['tl_filter'] ?? ''));  // vpn|install|referral|quota|app|''
+        $tl_page_size = $tl_limit;
 
-        api_ok(compact('identity','wallet','freedom','clan','chat','timeline'));
+        // Fetch enough raw events to fill a page after merging
+        $fetch_n = $tl_offset + $tl_page_size * 3 + 30;
+
+        foreach (array_slice($sessions_raw, 0, min($fetch_n, count($sessions_raw))) as $s) {
+            $timeline[] = ['ts'=>$s['started_at'],'type'=>'vpn','icon'=>'🌐',
+                'label'=>'Connected via '.($s['protocol']??'?'),
+                'detail'=>round(((int)$s['bytes_recv']+(int)$s['bytes_sent'])/1048576,1).' MB · '.round(($s['duration_secs']??0)/60).'m'];
+        }
+        $iev = $db->prepare("SELECT event,current_version,target_version,created_at FROM install_events WHERE device_id=? ORDER BY id DESC LIMIT ?");
+        $iev->execute([$did, $fetch_n]);
+        foreach ($iev->fetchAll(PDO::FETCH_ASSOC) as $e) {
+            $timeline[] = ['ts'=>$e['created_at'],'type'=>'install','icon'=>'📦',
+                'label'=>ucfirst(str_replace('_',' ',$e['event'])),
+                'detail'=>($e['current_version']??'').' → '.($e['target_version']??'')];
+        }
+        foreach ($children as $c) {
+            $timeline[] = ['ts'=>$c['created_at'],'type'=>'referral','icon'=>'👥',
+                'label'=>'Invited '.($c['user_id'] ?: 'new user'),
+                'detail'=>$c['status']??'credited'];
+        }
+        $tq2 = $db->prepare("SELECT type,bytes,created_at FROM quota_transactions WHERE device_id=? ORDER BY id DESC LIMIT ?");
+        $tq2->execute([$did, $fetch_n]);
+        foreach ($tq2->fetchAll(PDO::FETCH_ASSOC) as $t) {
+            $gb = round(abs((int)$t['bytes'])/1073741824, 2);
+            $timeline[] = ['ts'=>$t['created_at'],'type'=>'quota','icon'=>'💰',
+                'label'=>ucfirst(str_replace('_',' ',$t['type'])),
+                'detail'=>($t['bytes']>0?'+':'-').$gb.' GB'];
+        }
+        $aev = $db->prepare("SELECT event,props,created_at FROM app_events WHERE device_id=? ORDER BY id DESC LIMIT ?");
+        $aev->execute([$did, $fetch_n]);
+        foreach ($aev->fetchAll(PDO::FETCH_ASSOC) as $e) {
+            $timeline[] = ['ts'=>$e['created_at'],'type'=>'app','icon'=>'🎮',
+                'label'=>ucfirst(str_replace('_',' ',$e['event'])),
+                'detail'=>strlen($e['props']??'') < 80 ? ($e['props']??'') : substr($e['props'],0,77).'…'];
+        }
+
+        usort($timeline, fn($a,$b) => strcmp($b['ts'],$a['ts']));
+        if ($tl_filter) {
+            $timeline = array_values(array_filter($timeline, fn($e) => $e['type'] === $tl_filter));
+        }
+        $tl_total = count($timeline);
+        $timeline  = array_slice($timeline, $tl_offset, $tl_page_size);
+
+        api_ok(compact('identity','wallet','freedom','clan','chat','timeline') + [
+            'tl_total'  => $tl_total,
+            'tl_offset' => $tl_offset,
+            'tl_limit'  => $tl_page_size,
+        ]);
         break;
     }
 

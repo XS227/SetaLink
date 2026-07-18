@@ -1665,16 +1665,20 @@ function icon(string $name): string {
       <!-- Profile card (hidden until loaded) -->
       <div id="profileCard" hidden>
 
-        <!-- ── Identity row ── -->
+        <!-- ── 👤 Identity ── -->
         <div class="panel" style="margin-bottom:.75rem">
-          <div class="panel-header">
-            <span class="panel-title" id="profTitle">👤 User</span>
-            <span class="badge" id="profPlanBadge" style="margin-left:.5rem"></span>
-            <span class="badge" id="profCountryBadge" style="margin-left:.25rem"></span>
+          <div class="panel-header" style="gap:.5rem">
+            <span style="font-size:1.6rem;line-height:1" id="profAvatar">👤</span>
+            <div>
+              <span class="panel-title" id="profTitle">Identity</span>
+              <span class="badge" id="profPlanBadge" style="margin-left:.5rem;vertical-align:middle"></span>
+              <span class="badge" id="profCountryBadge" style="margin-left:.25rem;vertical-align:middle"></span>
+              <span class="badge badge-muted" id="profBlockedBadge" style="margin-left:.25rem;vertical-align:middle;display:none;background:var(--danger-dim);color:var(--danger)">BLOCKED</span>
+            </div>
           </div>
-          <div class="panel-body" style="padding:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem">
-            <div class="stat-mini"><div class="stat-mini-label">REAL ID</div><div class="stat-mini-val" id="profRealId" style="font-family:monospace;font-size:.78rem">—</div></div>
-            <div class="stat-mini"><div class="stat-mini-label">User ID</div><div class="stat-mini-val" id="profUserId" style="font-family:monospace;font-size:.78rem">—</div></div>
+          <div class="panel-body" style="padding:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.65rem">
+            <div class="stat-mini"><div class="stat-mini-label">REAL_ID</div><div class="stat-mini-val" id="profRealId" style="font-size:.75rem;font-family:monospace;word-break:break-all">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">User ID</div><div class="stat-mini-val" id="profUserId" style="font-size:.78rem;font-family:monospace">—</div></div>
             <div class="stat-mini"><div class="stat-mini-label">Handle</div><div class="stat-mini-val" id="profHandle">—</div></div>
             <div class="stat-mini"><div class="stat-mini-label">Persona</div><div class="stat-mini-val" id="profPersona">—</div></div>
             <div class="stat-mini"><div class="stat-mini-label">Platform</div><div class="stat-mini-val" id="profPlatform">—</div></div>
@@ -1684,56 +1688,81 @@ function icon(string $name): string {
           </div>
         </div>
 
-        <!-- ── 4-column stat row ── -->
-        <div class="stat-grid" style="margin-bottom:.75rem" id="profStatGrid">
-          <div class="stat-card"><div class="stat-label">💰 Free Quota</div><div class="stat-value" id="profQuotaFree">—</div><div class="stat-sub" id="profQuotaSub">—</div></div>
-          <div class="stat-card"><div class="stat-label">🌐 VPN Sessions</div><div class="stat-value" id="profSessions">—</div><div class="stat-sub" id="profSessionsSub">—</div></div>
-          <div class="stat-card"><div class="stat-label">👥 Invites</div><div class="stat-value" id="profInvites">—</div><div class="stat-sub" id="profInvitesSub">—</div></div>
-          <div class="stat-card"><div class="stat-label">💬 Messages</div><div class="stat-value" id="profMessages">—</div><div class="stat-sub" id="profMessagesSub">—</div></div>
+        <!-- ── 💎 Wallet ── -->
+        <div class="panel" style="margin-bottom:.75rem">
+          <div class="panel-header"><span class="panel-title">💎 Wallet</span></div>
+          <div class="panel-body" style="padding:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:.65rem">
+            <div class="stat-mini"><div class="stat-mini-label">GB Free</div><div class="stat-mini-val" id="profGbFree">—</div><div style="font-size:.7rem;color:var(--text-muted)" id="profGbUsed">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">Lifetime Earned</div><div class="stat-mini-val" id="profGbLifetime">—</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">REAL</div><div class="stat-mini-val" id="profRealBal" style="color:var(--gold,#F5A623)">—</div><div style="font-size:.68rem;color:var(--text-muted)">via Shahnameh</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">TON</div><div class="stat-mini-val" id="profTonBal">—</div><div style="font-size:.68rem;color:var(--text-muted)">via TON wallet</div></div>
+            <div class="stat-mini"><div class="stat-mini-label">Plan</div><div class="stat-mini-val" id="profWalletPlan">—</div><div style="font-size:.7rem;color:var(--text-muted)" id="profPlanExpiry"></div></div>
+          </div>
         </div>
 
-        <!-- ── Bottom 3 columns ── -->
+        <!-- ── 3-column: Freedom · Community · Shahnameh ── -->
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-bottom:.75rem">
 
-          <!-- Freedom stats -->
+          <!-- 🌍 Freedom -->
           <div class="panel">
-            <div class="panel-header"><span class="panel-title">🌍 Freedom Network</span></div>
+            <div class="panel-header"><span class="panel-title">🌍 Freedom</span></div>
             <div class="panel-body" style="padding:.75rem">
-              <div class="kv-list" id="profFreedomList"></div>
-              <div style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem" id="profTopProtocol"></div>
+              <div id="profFreedomList"></div>
+              <div style="font-size:.73rem;color:var(--text-muted);margin-top:.4rem;font-style:italic" id="profTopProtocol"></div>
             </div>
           </div>
 
-          <!-- Clan & referrals -->
+          <!-- 👥 Community -->
           <div class="panel">
-            <div class="panel-header"><span class="panel-title">👥 Clan</span></div>
+            <div class="panel-header"><span class="panel-title">👥 Community</span></div>
             <div class="panel-body" style="padding:.75rem">
-              <div id="profClanRank" style="font-size:1.1rem;font-weight:700;margin-bottom:.5rem"></div>
-              <div class="kv-list" id="profClanList"></div>
-              <div id="profClanReferrals" style="margin-top:.5rem;font-size:.78rem;color:var(--text-muted)"></div>
+              <div id="profClanRank" style="font-size:1.05rem;font-weight:700;margin-bottom:.5rem"></div>
+              <div id="profClanList"></div>
+              <div id="profClanReferrals" style="margin-top:.5rem;font-size:.76rem;color:var(--text-muted);line-height:1.4"></div>
             </div>
           </div>
 
-          <!-- Shahnameh -->
+          <!-- 🎮 Shahnameh -->
           <div class="panel">
-            <div class="panel-header"><span class="panel-title">🎮 Shahnameh</span></div>
+            <div class="panel-header">
+              <span class="panel-title">🎮 Shahnameh</span>
+              <span class="badge badge-muted" id="profShahnamehBadge" style="margin-left:.5rem;font-size:.65rem">NOT LINKED</span>
+            </div>
             <div class="panel-body" style="padding:.75rem">
-              <div id="profShahnamehLinked" style="margin-bottom:.5rem;font-size:.85rem"></div>
-              <div class="kv-list" id="profShahnamehList"></div>
-              <div style="margin-top:.75rem;font-size:.75rem;color:var(--text-muted)">Full progression lives on the RealGram/Shahnameh backend</div>
+              <div id="profShahnamehList"></div>
+              <div style="margin-top:.75rem;padding:.5rem;background:var(--bg-2);border-radius:4px;font-size:.72rem;color:var(--text-muted)">
+                Hero · Chapter · Level · Clan · XP · REAL Earned will populate here once the Shahnameh backend exposes a <code>/v1/profile/:real_id</code> endpoint (Agent B).
+              </div>
             </div>
           </div>
 
         </div>
 
-        <!-- ── Activity Timeline ── -->
+        <!-- ── 📜 Activity ── -->
         <div class="panel">
-          <div class="panel-header"><span class="panel-title">📜 Activity Timeline</span><span class="panel-sub">last 30 events</span></div>
+          <div class="panel-header">
+            <span class="panel-title">📜 Activity</span>
+            <div style="margin-left:auto;display:flex;gap:.4rem;align-items:center">
+              <select id="profTlFilter" class="input" style="font-size:.75rem;padding:.2rem .4rem;height:auto">
+                <option value="">All types</option>
+                <option value="vpn">🌐 VPN</option>
+                <option value="quota">💰 Wallet</option>
+                <option value="referral">👥 Referral</option>
+                <option value="install">📦 Install</option>
+                <option value="app">🎮 App</option>
+              </select>
+            </div>
+          </div>
           <div class="panel-body" style="padding:0">
             <table class="tbl" id="profTimeline">
-              <thead><tr><th>When</th><th>Type</th><th>Event</th><th>Detail</th></tr></thead>
+              <thead><tr><th style="white-space:nowrap">When</th><th></th><th>Event</th><th>Detail</th></tr></thead>
               <tbody></tbody>
             </table>
+            <div id="profTlNav" style="display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;border-top:1px solid var(--border);font-size:.78rem">
+              <button class="btn btn-ghost btn-sm" id="profTlPrev" disabled>← Earlier</button>
+              <span id="profTlInfo" style="color:var(--text-muted)"></span>
+              <button class="btn btn-ghost btn-sm" id="profTlNext">Later →</button>
+            </div>
           </div>
         </div>
 
@@ -5164,10 +5193,16 @@ $('cfgTestBootstrap').onclick = async()=>{
 
 // ── VIEW: USER PROFILE ───────────────────────────────────────────────
 views.profile = {
+  _devId: null, _tlOffset: 0, _tlLimit: 30, _tlFilter: '', _tlTotal: 0,
+
   init() {
     $('profileSearchBtn').onclick = () => this.lookup();
     $('profileSearch').onkeydown  = e => { if (e.key === 'Enter') this.lookup(); };
+    $('profTlFilter').onchange = () => this._loadTimeline(0, $('profTlFilter').value);
+    $('profTlPrev').onclick = () => this._loadTimeline(Math.max(0, this._tlOffset - this._tlLimit), this._tlFilter);
+    $('profTlNext').onclick = () => this._loadTimeline(this._tlOffset + this._tlLimit, this._tlFilter);
   },
+
   async lookup() {
     const q = $('profileSearch').value.trim();
     if (!q) return;
@@ -5185,74 +5220,116 @@ views.profile = {
       $('profileEmpty').hidden = false;
     }
   },
+
   render(d) {
     const I = d.identity, W = d.wallet, F = d.freedom, C = d.clan, CH = d.chat;
+    this._devId = I.device_id;
+    this._tlOffset = d.tl_offset ?? 0;
+    this._tlFilter = '';
 
-    // Title
-    const emoji = I.avatar_emoji || '👤';
-    const name  = I.handle ? `${emoji} @${I.handle}` : `${emoji} ${I.user_id || I.device_id.slice(0,12)+'…'}`;
+    // ── Identity header ──
+    $('profAvatar').textContent = I.avatar_emoji || '👤';
+    const name = I.handle ? `@${I.handle}` : (I.user_id || I.device_id.slice(0,12)+'…');
     $('profTitle').textContent = name;
-    $('profPlanBadge').textContent = I.plan.toUpperCase();
+    $('profPlanBadge').textContent = (I.plan||'free').toUpperCase();
     $('profPlanBadge').className = 'badge ' + (I.plan === 'premium' ? 'badge-ok' : 'badge-muted');
     $('profCountryBadge').textContent = (I.country||'?') + (I.country_name ? ' '+I.country_name : '');
     $('profCountryBadge').className = 'badge badge-muted';
+    $('profBlockedBadge').style.display = I.blocked ? '' : 'none';
 
-    // Identity grid
-    $('profRealId').textContent    = I.linked_real_account || '— not linked';
+    // ── Identity grid ──
+    $('profRealId').textContent     = I.linked_real_account || '— not linked';
     $('profUserId').textContent     = I.user_id || '—';
     $('profHandle').textContent     = I.handle || '—';
     $('profPersona').textContent    = I.persona ? { king:'👑 King', queen:'👸 Queen', warrior:'⚔️ Warrior' }[I.persona] || I.persona : '—';
     $('profPlatform').textContent   = { android:'🤖 Android', ios:'🍎 iOS' }[I.platform] || I.platform || '—';
     $('profAppVersion').textContent = I.app_version || '—';
     $('profCreated').textContent    = I.created_at ? I.created_at.slice(0,10) : '—';
-    $('profLastSeen').textContent   = I.last_seen   ? relTime(I.last_seen)    : '—';
+    $('profLastSeen').textContent   = I.last_seen ? relTime(I.last_seen) : '—';
 
-    // Top stats
-    $('profQuotaFree').textContent   = W.quota_free_gb + ' GB';
-    $('profQuotaSub').textContent    = `${W.quota_used_gb} / ${W.quota_total_gb} GB used (${W.quota_pct}%)`;
-    $('profSessions').textContent    = fmtNum(F.total_sessions);
-    $('profSessionsSub').textContent = F.total_gb + ' GB · ' + (F.success_rate_pct) + '% success';
-    $('profInvites').textContent     = C.invite_count;
-    $('profInvitesSub').textContent  = C.active_invites + ' active (7d)';
-    $('profMessages').textContent    = fmtNum(CH.messages_sent + CH.messages_received);
-    $('profMessagesSub').textContent = `${CH.messages_sent} sent · ${CH.messages_received} received`;
+    // ── Wallet ──
+    $('profGbFree').textContent     = W.quota_free_gb != null ? W.quota_free_gb + ' GB' : '—';
+    $('profGbUsed').textContent     = W.quota_used_gb != null ? `${W.quota_used_gb} / ${W.quota_total_gb} GB used` : '';
+    $('profGbLifetime').textContent = W.lifetime_gb   != null ? W.lifetime_gb + ' GB' : '—';
+    $('profRealBal').textContent    = W.real_balance  != null ? W.real_balance  : '— (Shahnameh)';
+    $('profTonBal').textContent     = W.ton_balance   != null ? W.ton_balance   : '— (TON wallet)';
+    $('profWalletPlan').textContent = (W.plan || I.plan || 'free').replace(/^\w/, c=>c.toUpperCase());
+    $('profPlanExpiry').textContent = W.plan_expiry ? 'Expires ' + W.plan_expiry.slice(0,10) : '';
 
-    // Freedom
-    $('profFreedomList').innerHTML = kvRow('Total sessions', fmtNum(F.total_sessions))
-      + kvRow('Data transferred', F.total_gb + ' GB')
+    // ── Freedom ──
+    $('profFreedomList').innerHTML = kvRow('Sessions', fmtNum(F.total_sessions))
+      + kvRow('Data', F.total_gb + ' GB')
       + kvRow('Success rate', F.success_rate_pct + '%')
       + kvRow('Last connected', F.last_session_at ? relTime(F.last_session_at) : '—');
     $('profTopProtocol').textContent = F.top_protocol ? '🔗 Preferred: ' + F.top_protocol : '';
 
-    // Clan
-    const rankLabel = { king:'👑 King', pahlavan:'🛡️ Pahlavan', warrior:'⚔️ Warrior' }[C.rank] || C.rank;
-    $('profClanRank').textContent  = rankLabel;
+    // ── Community ──
+    const rankLabel = { king:'👑 King', pahlavan:'🛡️ Pahlavan', warrior:'⚔️ Warrior' }[C.rank] || C.rank || '⚔️ Warrior';
+    $('profClanRank').textContent = rankLabel;
     $('profClanList').innerHTML = kvRow('Total invites', C.invite_count)
       + kvRow('Active (7d)', C.active_invites)
+      + kvRow('Messages', fmtNum((CH.messages_sent||0)+(CH.messages_received||0)))
       + kvRow('Referred by', C.referred_by ? (C.referred_by.user_id || C.referred_by.device_id.slice(0,10)+'…') : '— organic');
-    $('profClanReferrals').textContent = C.referrals.length
+    $('profClanReferrals').textContent = C.referrals?.length
       ? 'Invited: ' + C.referrals.slice(0,5).map(r=>r.user_id||r.device_id.slice(0,8)+'…').join(', ') + (C.referrals.length>5?` +${C.referrals.length-5} more`:'')
       : 'No referrals yet';
 
-    // Shahnameh
+    // ── Shahnameh ──
+    const badge = $('profShahnamehBadge');
     if (I.linked_real_account) {
-      $('profShahnamehLinked').innerHTML = `<span class="badge badge-ok">✓ Linked</span> ${I.linked_real_account}`;
-      $('profShahnamehList').innerHTML = kvRow('REAL ID', I.linked_real_account)
-        + kvRow('Linked', I.real_linked_at ? I.real_linked_at.slice(0,10) : '?')
-        + kvRow('Persona', I.persona || '—');
+      badge.textContent = '✓ LINKED';
+      badge.style.cssText = 'margin-left:.5rem;font-size:.65rem;background:var(--ok-dim,#1a3a2a);color:var(--ok,#4ade80)';
+      $('profShahnamehList').innerHTML =
+          kvRow('REAL_ID',      I.linked_real_account)
+        + kvRow('Linked at',    I.real_linked_at ? I.real_linked_at.slice(0,10) : '?')
+        + kvRow('Persona',      I.persona || '—')
+        + kvRow('Hero',         '— (Shahnameh backend)')
+        + kvRow('Chapter',      '— (Shahnameh backend)')
+        + kvRow('Level',        '— (Shahnameh backend)')
+        + kvRow('Clan',         '— (Shahnameh backend)')
+        + kvRow('XP',           '— (Shahnameh backend)')
+        + kvRow('REAL Earned',  '— (Shahnameh backend)');
     } else {
-      $('profShahnamehLinked').innerHTML = '<span class="badge badge-muted">Not linked</span>';
-      $('profShahnamehList').innerHTML = kvRow('Status', 'Gate not yet passed');
+      badge.textContent = 'NOT LINKED';
+      badge.style.cssText = 'margin-left:.5rem;font-size:.65rem';
+      $('profShahnamehList').innerHTML = kvRow('Status', 'Gate not passed')
+        + kvRow('Hero','—') + kvRow('Chapter','—') + kvRow('Level','—')
+        + kvRow('Clan','—') + kvRow('XP','—') + kvRow('REAL Earned','—');
     }
 
-    // Timeline
+    // ── Activity (initial page) ──
+    this._renderTimeline(d.timeline, d.tl_total ?? d.timeline?.length ?? 0);
+  },
+
+  _renderTimeline(rows, total) {
     const tbody = document.querySelector('#profTimeline tbody');
-    tbody.innerHTML = d.timeline.map(e =>
-      `<tr><td style="white-space:nowrap;font-size:.78rem">${e.ts?.slice(0,16)||'?'}</td>` +
-      `<td>${e.icon}</td>` +
-      `<td style="font-size:.82rem">${esc(e.label)}</td>` +
+    tbody.innerHTML = (rows||[]).map(e =>
+      `<tr><td style="white-space:nowrap;font-size:.78rem">${esc(e.ts?.slice(0,16)||'?')}</td>` +
+      `<td style="font-size:1rem">${e.icon||''}</td>` +
+      `<td style="font-size:.82rem">${esc(e.label||'')}</td>` +
       `<td style="font-size:.78rem;color:var(--text-muted)">${esc(String(e.detail||''))}</td></tr>`
-    ).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:1rem">No events yet</td></tr>';
+    ).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:1rem">No events</td></tr>';
+
+    this._tlTotal = total;
+    const from = total > 0 ? this._tlOffset + 1 : 0;
+    const to   = Math.min(this._tlOffset + this._tlLimit, total);
+    $('profTlInfo').textContent  = total > 0 ? `${from}–${to} of ${total}` : 'No events';
+    $('profTlPrev').disabled = this._tlOffset <= 0;
+    $('profTlNext').disabled = to >= total;
+  },
+
+  async _loadTimeline(offset, filter) {
+    this._tlOffset = offset;
+    this._tlFilter = filter;
+    try {
+      const d = await api.get('user-profile', {
+        device_id: this._devId,
+        tl_offset: offset,
+        tl_limit:  this._tlLimit,
+        tl_filter: filter || '',
+      });
+      this._renderTimeline(d.timeline, d.tl_total ?? d.timeline?.length ?? 0);
+    } catch(e) { toast('Timeline: ' + e.message, 'error'); }
   },
 };
 function kvRow(k,v){ return `<div style="display:flex;justify-content:space-between;font-size:.82rem;padding:.2rem 0;border-bottom:1px solid var(--border-subtle)"><span style="color:var(--text-muted)">${esc(k)}</span><span style="font-weight:500">${esc(String(v))}</span></div>`; }
