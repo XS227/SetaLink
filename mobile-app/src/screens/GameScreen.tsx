@@ -380,11 +380,19 @@ export function GameScreen() {
 
   const [webPath, setWebPath]   = useState<string | null>(null);
   const [burstKey, setBurstKey] = useState(0);
+  // True while we're checking whether the user has a linked account server-side.
+  // Prevents the gate from flashing for users navigating from RealGram who are
+  // already linked (linked_real_account set in entitlement).
+  const [checking, setChecking] = useState(!realId && !!deviceId);
 
   // On first render: silently probe SSO in case the user already linked via
-  // a deep-link in a previous session but realId wasn't cached yet.
+  // a deep-link or RealGram in a previous session but realId wasn't cached yet.
   useEffect(() => {
-    if (!realId && deviceId) checkAndCacheRealId(deviceId);
+    if (!realId && deviceId) {
+      checkAndCacheRealId(deviceId).finally(() => setChecking(false));
+    } else {
+      setChecking(false);
+    }
   }, [deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dailyPct    = Math.min(1, earnedToday / ZAR_DAILY_CAP);
@@ -399,6 +407,17 @@ export function GameScreen() {
     const res = useZarStore.getState().tap();
     if (res.earned > 0) setBurstKey((k) => k + 1);
   }, [isConnected]);
+
+  // While probing server-side link status, show a neutral spinner so users
+  // who are already linked (e.g. navigating from the RealGram shortcut)
+  // never see the gate flash.
+  if (checking) {
+    return (
+      <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color={Colors.gold[400]} />
+      </View>
+    );
+  }
 
   // Gate: show REAL-ID creation prompt if not linked
   if (!realId) {
@@ -508,6 +527,7 @@ const GOLD = Colors.gold[400];
 
 const styles = StyleSheet.create({
   screen:   { flex: 1, backgroundColor: Colors.bg.void },
+  centered: { justifyContent: 'center', alignItems: 'center' },
   scroll:   { flex: 1 },
   content:  { paddingHorizontal: Spacing[5], paddingTop: Spacing[4], gap: Spacing[4] },
 
