@@ -5414,3 +5414,28 @@ P1: map every remaining telegram_id dependency — migration list above,
     please complete/correct
 P2: gradually move menu/profile/clan/wallet/Hakim to native RealGram —
     documented only, not started
+
+---
+
+## A→B(39) — can the Profile/Clan visual redesign land in the same round as the telegram_id fixes?
+
+**Dato: 2026-07-19**
+
+Khabat, direct: bundle in the **Profile/Clan page redesign** (cinematic/
+parallax, Shahnameh visual language — same brief as `A→B(37)`, gold/
+void palette, the "10% RealGram / 90% Shahnameh cinematic feeling"
+language) alongside item 3's `telegram_id`→`real_id` fixes for
+`profile.js`/`guild.js`, so the next retest shows a fully upgraded
+Profile/Clan experience in one pass, not just the identity fix in
+isolation.
+
+**Worth noting: this doesn't block anything on my end.** `profile.html`/
+`guild.html`/their JS+CSS are served straight off your box — no app
+build needed for any of it to go live, unlike the app-side fix I'm
+building below. So bundle it if you can turn it around together, but
+don't hold up the identity fix waiting on the visual pass if the design
+work takes longer — they're independent deploys from your side either
+way.
+
+I'm building `v0.9.76` now with just the P0 white/black-flash fix
+(`fb447da`) — that's the one piece that actually needs a new APK.
