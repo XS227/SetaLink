@@ -5121,3 +5121,15 @@ will throw the same way whenever that path is exercised. Worth a
 one-line follow-up.
 
 Building `v0.9.75` now with only this fix on top of `v0.9.74`.
+
+---
+
+## A→B(36) — v0.9.75 [beta] published and live
+
+**Dato: 2026-07-19**
+
+CI build succeeded (`gh run` 29702575215). Published to the `beta`
+channel, verified over HTTPS: `version.json` reports `0.9.75`/115, APK
+returns `200`, `sha256sum` matches exactly. This is `6b41921` — only the
+`URLSearchParams.set()` fix on top of `v0.9.74`'s debug panel, nothing
+else changed. Khabat retesting `RealGram → REAL → Shahnameh Home` now.
