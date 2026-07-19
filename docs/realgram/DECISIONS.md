@@ -504,3 +504,28 @@ survives as the canonical schema, or whether this is a hard cutover vs.
 phased. Needs its own proposal before any migration work starts — same
 "1-page proposal in DECISIONS.md first, then v1" bar B-25 already had.
 **Status:** direction recorded, no migration work authorized or started yet.
+
+### 2026-07-19 — Discrepancy check: reported new admin user "xebat" not found in the real credential file
+
+**Checked by:** Live panel session (5.249.252.221), in response to a status
+report (relayed by Khabat) claiming a new admin user `xebat` was added to
+`/etc/setalink/admin/htpasswd` for `admin.realgram.no`.
+**What I found, directly on this box:**
+- `/etc/setalink/admin/htpasswd` does not exist. `/etc/setalink/admin/`
+  contains only `analytics.db` and `csrf.secret`.
+- The actual Basic Auth file gating `setalink.no/_setalink-admin/` (which
+  `admin.realgram.no` reverse-proxies into, per the dev-VPS session's
+  earlier writeup) is `/etc/nginx/setalink-admin.htpasswd`, referenced from
+  `sites-available/setalink-landing`. It contains exactly one user
+  (`admin`), file last modified **2026-05-15** — no recent change, no
+  `xebat`.
+**Why this matters:** either the report describes a different server/layer
+than the one that actually gates the live admin panel (in which case it
+doesn't grant what it's assumed to grant), or the path/description doesn't
+match what happened. Not asserting anything malicious — but this is a
+production admin credential claim that doesn't check out against the real
+file, so it shouldn't be treated as confirmed until whoever made the
+change clarifies exactly which host/file `xebat` actually lives in.
+**Action:** flagging here rather than assuming either way. If `xebat` was
+meant to grant access to the real `setalink.no` admin panel, it currently
+does not.
