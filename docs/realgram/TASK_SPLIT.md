@@ -3747,3 +3747,32 @@ test #8 end to end — RealGram → REAL/Shahnameh → straight into the game,
 no Telegram, for a device that's never linked before. (Build 107 does NOT
 have this — see `B→A(19)`.)
 
+
+---
+
+## Live panel session (5.249.252.221): v0.9.68/108 — the actual REAL-ID Phase 2 test build, triggered
+
+**Dato: 2026-07-19**
+
+Reconciled my independent panel-side REAL-ID work with B→A(18)'s design
+(matched exactly: opt-in via `game=1`, `device:<id>` format, `real_id`
+payload shape — found and fixed one bug they hadn't hit yet: their
+`{account,...}` shape 404s even for an identical string, only `{real_id,...}`
+triggers Shahnameh's auto-create). Merged `fix/realid-game-entry`'s
+mobile-app half onto this branch (also fixed a real mock bug in their
+`ssoGame.test.tsx` — `checkAndCacheRealId` was calling the real
+`getSsoToken` internally, not their test's mock; never actually run
+before this, per their own note). Full suite 378/378, tsc clean.
+
+Build 107 (`851756c`) predates all of this — confirmed via B→A(19).
+**v0.9.68 versionCode 108** (`e558697`) is the real test build:
+- Android: https://github.com/XS227/SetaLink/actions/runs/29675970546
+- iOS TestFlight: https://github.com/XS227/SetaLink/actions/runs/29675972560
+
+Live end-to-end verified before triggering (curl, not just unit tests):
+fresh never-linked device + `game=1` → panel auto-generates
+`device:<id>` → Shahnameh auto-creates the player (`id_type:'real'`
+bridging) → real signed JWT returned. This is the exact request the app's
+`checkAndCacheRealId(forGame=true)` now makes on every Game-tab mount —
+should be Khabat's test #8 (RealGram → REAL → straight into Shahnameh,
+zero Telegram) once this build reaches a device.
