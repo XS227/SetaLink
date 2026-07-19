@@ -73,6 +73,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private var cp4TotalConns:     Int    = 0
     private var cp4FirstDest:      String = ""
     private var cp1PeekEverSaw:    Bool   = false
+    // B->A(11) reconnect-race fix: the fd findUtunFd() picked for THIS session,
+    // so stopTunnel can close it explicitly and findUtunFd() can refuse to
+    // re-hand out a fd that's still torn down from the previous session.
+    private var currentTunFd:      Int32  = -1
+    // Signaled by startHevEngine's thread the moment hev_socks5_tunnel_main
+    // returns (quit completed or early exit) — stopTunnel waits on this
+    // (bounded) before reporting done, so a fast reconnect can't race a utun
+    // fd that the OS/HEV hasn't actually released yet.
+    private let hevShutdownSemaphore = DispatchSemaphore(value: 0)
     #endif
 
     /// Network type derived from the first path interface captured by NWPathMonitor.
@@ -201,11 +210,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 self.submitTelemetry(event: "connect_fail", errorCategory: "routing_failed")
                 return self.fail("HEV TUN settings: \(e.localizedDescription)", shared: shared, completionHandler)
             }
-            let tunFd = self.findUtunFd()
+            let tunFd = self.findUtunFd(excluding: self.currentTunFd)
             guard tunFd >= 0 else {
                 self.submitTelemetry(event: "connect_fail", errorCategory: "tun_fd_unavailable")
                 return self.fail("HEV: TUN fd unavailable after settings applied", shared: shared, completionHandler)
             }
+            self.currentTunFd = tunFd
             guard let cfgPath = self.writeHevConfig(tunFd: tunFd) else {
                 return self.fail("HEV: config write failed", shared: shared, completionHandler)
             }
@@ -392,8 +402,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         cp4FirstDest: cp4FirstDest.isEmpty ? nil : cp4FirstDest)
         cp1Timer?.cancel();     cp1Timer     = nil
         xrayLogTimer?.cancel(); xrayLogTimer = nil
-        hev_socks5_tunnel_quit()
+        // B->A(11) reconnect-race fix, part 2/3: block (bounded) until the HEV
+        // engine thread has actually returned from hev_socks5_tunnel_main
+        // before telling the OS teardown is done. Previously completionHandler()
+        // fired immediately after the quit *signal*, with nothing confirming the
+        // engine had released the fd — a fast reconnect could then race
+        // findUtunFd() against a descriptor HEV was still holding.
+        if hevEngineThread != nil {
+            hev_socks5_tunnel_quit()
+            let waited = hevShutdownSemaphore.wait(timeout: .now() + 2.0)
+            appendLog(waited == .success ? "HEV: engine thread confirmed exited"
+                                          : "HEV: engine shutdown wait timed out after 2s — proceeding anyway")
+        }
         hevEngineThread = nil
+        // Part 3/3: close the fd this session actually opened. Previously
+        // tunFd only existed as a closure-local `let`, never closed here, so
+        // the descriptor leaked into the reused-instance reconnect window
+        // that findUtunFd()'s stale-fd exclusion (above) now also guards.
+        if currentTunFd >= 0 {
+            close(currentTunFd)
+            appendLog("HEV: closed tunFd=\(currentTunFd)")
+            currentTunFd = -1
+        }
         #else
         submitTelemetry(event: "disconnect", disconnectReason: reasonStr, tunnelMode: "proxy")
         #endif
@@ -593,13 +623,31 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     ///
     /// Technique: getsockopt(fd, SYSPROTO_CONTROL=2, UTUN_OPT_IFNAME=2) succeeds
     /// only on the utun socket — same approach used by WireGuard-iOS.
-    private func findUtunFd() -> Int32 {
-        var buf = [UInt8](repeating: 0, count: 64)
-        var len = socklen_t(buf.count)
-        for fd: Int32 in 0 ..< 256 {
-            if getsockopt(fd, 2 /* SYSPROTO_CONTROL */, 2 /* UTUN_OPT_IFNAME */, &buf, &len) == 0 {
-                return fd
+    ///
+    /// B->A(11) reconnect-race fix: on a fast reconnect within the same
+    /// provider instance, the previous session's fd number can still pass
+    /// this check for a brief window after teardown (the OS hasn't fully
+    /// reclaimed it yet) — a single pass would then hand HEV a dead
+    /// descriptor and no packets would ever be readable. `excluding` skips a
+    /// known-stale match, and a short bounded retry (up to ~1s total) covers
+    /// the case where the NEW utun device also isn't materialized yet right
+    /// after setTunnelNetworkSettings's completion fires.
+    private func findUtunFd(excluding staleFd: Int32 = -1) -> Int32 {
+        func scan() -> Int32 {
+            var buf = [UInt8](repeating: 0, count: 64)
+            var len = socklen_t(buf.count)
+            for fd: Int32 in 0 ..< 256 {
+                if fd == staleFd { continue }
+                if getsockopt(fd, 2 /* SYSPROTO_CONTROL */, 2 /* UTUN_OPT_IFNAME */, &buf, &len) == 0 {
+                    return fd
+                }
             }
+            return -1
+        }
+        for attempt in 0 ..< 5 {
+            let found = scan()
+            if found >= 0 { return found }
+            if attempt < 4 { Thread.sleep(forTimeInterval: 0.2) }
         }
         return -1
     }
@@ -654,7 +702,7 @@ misc:
     private func startHevEngine(cfgPath: String, tunFd: Int32) {
         let fd = tunFd
         let path = cfgPath
-        let thr = Thread {
+        let thr = Thread { [weak self] in
             path.withCString { cPath in
                 let rc = hev_socks5_tunnel_main(cPath, fd)
                 // rc != 0 means HEV exited early (bad config, fd error, etc.)
@@ -664,6 +712,12 @@ misc:
                         shared.synchronize()
                     }
                 }
+                // hev_socks5_tunnel_main only returns once the engine has
+                // actually released fd — either after tunnel_quit() or an
+                // early exit. stopTunnel waits on this so it never reports
+                // teardown done (and lets a reconnect proceed) before the
+                // fd is genuinely free.
+                self?.hevShutdownSemaphore.signal()
             }
         }
         thr.name = "HevSocks5TunnelThread"
