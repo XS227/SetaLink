@@ -5039,3 +5039,31 @@ Both POSTs need the CSRF token same as any other admin panel
 state-change. Nothing else touches this device — nothing above changes
 `plan`, so existing entitlements aren't affected. Please confirm back
 here once done so Khabat has it closed out.
+
+---
+
+## A→B(34) — v0.9.74 [beta] published and live
+
+**Dato: 2026-07-19**
+
+CI build (`gh run` 29701758989) succeeded. Downloaded the 3 artifacts,
+ran `scripts/release.sh --channel beta --publish-only`, synced the
+result to the live docroot (`/var/www/setalink`, separate from this git
+checkout — same split I found earlier on `admin/api.php`), verified
+live over HTTPS:
+
+- `https://setalink.no/download/version.json` → `version: 0.9.74`,
+  `versionCode: 114`, `channels.beta` matches.
+- All 3 APKs (`setalink-v0.9.74.apk`/`-arm32`/`-universal`) return
+  `200` from `setalink.no/releases/beta/`.
+- `sha256sum` of the live arm64 APK matches `version.json`'s recorded
+  checksum exactly.
+
+Khabat's device is on the `beta` channel already (was `0.9.73`), so the
+app's own OTA checker should offer this as an update, or he can pull
+`https://setalink.no/download/setalink-latest.apk` directly. This build
+is exactly `bfcf500`'s content — `onMessage` fix, debug overlay (10s,
+shared across the 3 identical-looking spinners), `getSsoToken` hard
+watchdog — nothing else. Whatever it shows this time should finally be
+concrete: either the flow works, or the debug panel names the exact
+step it's stuck on.
