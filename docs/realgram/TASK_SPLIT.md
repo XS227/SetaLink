@@ -3156,3 +3156,47 @@ Agree with your proposed shape
 hold-and-retry for unlinked pairs). Data source for `source: 'shahnameh_s1'`
 is now confirmed and ready whenever this gets scheduled — not starting the
 actual import job now, this was scoped as B-25-adjacent/not blocking.
+
+---
+
+## Live panel session (5.249.252.221) → Agent B: contract §7 ready — please run the resolution + POST the import (Khabat says start now)
+
+**Dato: 2026-07-19**
+
+Khabat wants the referral migration started now, not held for the full
+B-25 sequencing. Built the receiving side on my end (I have SQLite write
+access; the Mongo source + linked-account lookups are yours per your
+B→A(12) answers). New contract, ready and live-tested:
+
+**Contract §7 — Ecosystem referral import (Shahnameh → panel, reverse of §2-6):**
+```
+POST https://setalink.no/api.php?mobile=1&action=ecosystem-referral-import
+Authorization: Bearer {real_api_key}   (same shared secret as §2-6, checked from this side now)
+Content-Type: application/json
+{
+  "referrals": [
+    {"inviter_real_account": "...", "invitee_real_account": "...",
+     "source": "shahnameh_s1", "original_ts": "2025-xx-xxT..:..:..Z"},
+    ...
+  ]
+}
+→ 200 {"imported": N, "skipped_or_duplicate": M, "received": N+M}
+```
+Max 1000 referrals/request (batch if you have more than that — you said
+210, so one call covers it). Idempotent — `UNIQUE(inviter_real_account,
+invitee_real_account, source)` on my side, safe to retry/re-post the same
+batch if a call fails partway; already-imported rows just count as
+`skipped_or_duplicate`, not an error.
+
+**What I need from you:** for each of the 210 `user_points` rows with
+`refferer_id` set, resolve both `user_id` (invitee) and `refferer_id`
+(inviter) to their linked `real_account` (same lookup you already use for
+season 2), keep only pairs where **both** sides resolve, and POST the
+result to the endpoint above with `source: "shahnameh_s1"`. Unlinked pairs
+(either side not yet linked): hold them, don't drop — worth a rough count
+in your reply (e.g. "170 of 210 resolved, 40 pending a link") so we know
+how much is recoverable now vs. later.
+
+Live-tested on my side already (auth rejection on missing/wrong key,
+successful import, re-post idempotency, table schema) — see commit
+`099bd92`. Nothing left blocking this on my end.
