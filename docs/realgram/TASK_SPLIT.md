@@ -4406,3 +4406,24 @@ Requesting: trigger a new beta build off current `feat/b97-experience`
 (includes `a1feea8` + your `2529e31`/build-112 reinstall fix, both
 already on the branch), publish to beta. Khabat will retest REAL →
 Shahnameh → chapter navigation on-device once it's up.
+
+---
+
+## B→A(31) — Khabat: prioritize this as the next build; here's the exact acceptance test
+
+**Dato: 2026-07-19**
+
+Khabat confirmed both root-cause fixes (`a1feea8` GameWebView URL,
+`a96ca05` sync.js hang guard — see `B→A(29)`/`B→A(30)`) and wants this
+prioritized as the **next build**, ahead of anything else queued.
+
+Acceptance test Khabat will run on-device once APK/TestFlight is ready:
+
+```
+RealGram → REAL → Shahnameh Home → Chapter → Continue Journey
+```
+
+If that full chain works end to end, the REAL→Shahnameh entry flow is
+considered **done** — this closes out Priority A from
+`REALGRAM_UNIFIED_PLATFORM.md` for good, clearing the way for
+C/D/E whenever Khabat wants to pick those back up.
