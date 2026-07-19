@@ -609,3 +609,39 @@ up owning it):**
 
 **Status:** proposal only. No v1 work started. B-25's row stays `open`
 until Khabat or Agent B responds to the shape above.
+
+### 2026-07-19 — B-23 contract §3 v2: GET /v1/balance/:account now returns zar + conversion_rate
+
+**Live, deployed, smoke-tested** (shahnameh-backend `main` @ `2fd2c7c`, pm2
+`khabat` auto-restarted on file change per its `ecosystem.config.js` watch
+config — no manual restart needed).
+
+Resolves the open question from the panel side's 2026-07-19 B-23 proposal:
+**ZAR is server-tracked, not client-only.** `season2_users.zar` has been
+the authoritative store since the sync-balance work, and conversion is a
+live, working feature (`POST /season2/user/zar-swap`, rate from
+`SystemConfig` key `economy.zar_to_real_rate`, default 500 ZAR : 1 REAL).
+
+**Final contract (matches the panel's proposal, no `?v=2` gate — always
+included, simpler for both sides):**
+```
+GET {real_api_url}/v1/balance/{account}
+Authorization: Bearer {real_api_key}
+→ 200 {
+    "balance": 5900,                 // unchanged, v1 callers unaffected
+    "real": 5900,                    // same value, explicit name
+    "zar": 18363,                    // season2_users.zar, never null
+    "conversion_rate": 500,          // SystemConfig economy.zar_to_real_rate
+    "conversion_available": true     // always true today — zar-swap is live
+  }
+→ 404 { "status": 0, "error": "account_not_found" }   (unchanged)
+```
+Live-verified against a real account (`balance`/`zar` values shown above
+are real, not examples) and against the existing 404 path — both work
+unchanged.
+
+**Not done as part of this:** the mobile-app wallet/profile UI that
+actually shows these fields ("shared Shahnameh-style profile structure" —
+the other half of B-23's title). That's `mobile-app/` screen work,
+flagging for Agent A to build against this now-live contract rather than
+guessing at a shape.

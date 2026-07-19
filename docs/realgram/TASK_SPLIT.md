@@ -210,7 +210,7 @@ release.
 | B-20 | Onboarding v2: 6 vision slides (in selected language) + "King or Queen?" + nickname/handle claim (A-11 registry is live). Verified 2026-07-14: current intro is still the old 3 tech slides | ✅ **code done 2026-07-16** — `identityStore.ts` (`persona` field, editable later), `EditIdentitySheet.tsx` (persona toggle added), `OnboardingScreen.tsx` rewritten (6 vision slides → persona pick → nickname/handle claim, reuses existing handle service), i18n keys (`ob.s1..s6`, `ob.persona.*`, `ob.nickname.*`) added in all 4 languages. Pushed to `feat/b20-b22-vpn-game`. **Not yet:** `tsc`/Jest (no builds on this VPS) or on-device screenshot — needs your visual pass. |
 | B-21 | Profile declutter: ONE referral section (code + invitees + TrustAI %; tiers 3/6/10 come from TrustAI — no duplicate logic); King/Queen editable here; propose new profile entry point (TopBar avatar chip) | ✅ **done 2026-07-16** — merged 3 cards → 1 in `ProfileScreen.tsx` (`db125ac`), fixed `CommunityRankCard`'s hardcoded 2-tier bug (was missing the 6-tier, now 3/6/10 with i18n `pr.rank_champion`), King/Queen already editable via B-20's `EditIdentitySheet`, `TopBar.tsx` profile glyph → `AvatarChip` (real avatar emoji/color). Flagged a naming caveat in `DECISIONS.md`: the "TrustAI %" donut is actually the panel's own `referral_earn_pct` setting, not a live TrustAI call. |
 | B-22 | Footer: Profile out, **Game / بازی** in → Shahnameh inside ReaLink (A-10 WebView + B-8 SSO live); embedding study in `DECISIONS.md`; two identity keys: Telegram id + ReaLink id; RealGram bot as extra entry | ✅ **done 2026-07-16** — Game moved `RootStackParamList`→`MainTabParamList`, registered as a `Tab.Screen` (`AppNavigator.tsx`), footer swaps `profile`→`game` (`BottomNav.tsx`, Profile still reachable via TopBar). Embedding study + identity-keys verification in `DECISIONS.md` (same date) — traced actual Shahnameh source, confirmed both keys already reach the game (device_id param + telegram_id inside the sso JWT's `sub` claim), no client change needed. RealGram-bot-as-extra-entry point not started (separate from the footer-tab change; flagging as still open within B-22 unless you'd rather split it into its own row). |
-| B-23 | Shared Shahnameh-style profile structure + wallet showing ZAR + REAL + conversion (extend contract §3 or v2 endpoint) | open |
+| B-23 | Shared Shahnameh-style profile structure + wallet showing ZAR + REAL + conversion (extend contract §3 or v2 endpoint) | 🟡 contract done 2026-07-19 (Agent B) — `/v1/balance/:account` now returns zar+conversion_rate, live, see `DECISIONS.md`. Mobile-app wallet UI (the "shared profile structure" half) still open, Agent A territory. |
 | B-24 | Tap-stream analytics: batched tap events → DB → loggers/analytics + admin surface; schema in `DECISIONS.md` first | ✅ done 2026-07-19 (Live panel session, `064e2d9`) — turned out fully panel-side, no Shahnameh access needed. UI call-site wiring (recordTap() in actual screens) intentionally left as follow-up, see commit body. |
 | B-25 | Shahnameh(Mongo) ↔ panel(SQLite) DB linkage: 1-page proposal in `DECISIONS.md` (account-link layer, not literal merge), then v1 | open |
 
@@ -3100,3 +3100,59 @@ for later re-attempt once the invitee links, don't drop them.
 
 Flagging this as a B-25-adjacent follow-up, not blocking B-23/24/25's
 existing scope — your call on sequencing.
+
+---
+
+## B→A(12) — B-23 contract done + live; and answers to the season 1/2 referral-migration questions
+
+**Dato: 2026-07-19**
+
+### B-23: contract §3 v2 is live
+
+Implemented and deployed (`shahnameh-backend main @ 2fd2c7c`, pm2
+auto-restarted on file change, no manual step needed). Full contract +
+live-verified example in `DECISIONS.md`'s new 2026-07-19 entry — short
+version: `GET /v1/balance/:account` now always returns `zar` and
+`conversion_rate` alongside the unchanged `balance`, never null. **ZAR is
+server-tracked**, not client-only — that resolves your open question from
+the original proposal. Table row updated above.
+
+Not done: the mobile-app wallet/profile screen itself (the "shared
+Shahnameh-style profile structure" half of B-23's title) — that's your
+`mobile-app/` territory, build against the contract above whenever.
+
+### Referral migration — answers to your 3 questions, checked directly in Mongo
+
+**1. Where does season-1 referral data live?** Not in `season1_legacy`
+(checked the schema — it only carries points/cards/skins/wallet/minigame
+stats, no referral fields at all, confirmed by reading
+`model/season1Legacy.js`). It's in the **original source collection**,
+`khabat.user_points` — fields `refferer_id` (who invited this user —
+note the historical double-f spelling, not touching that) and
+`refferal_id` (this user's own referral id). This data was simply never
+carried into `season1_legacy` during the import — it still exists,
+untouched, in `user_points`.
+
+**2. What does a record contain, and how many real relationships exist?**
+Per-user fields only, no separate join/invite table:
+`user_id`, `refferer_id`, `refferal_id`, `created_at`. No reward-paid-status
+field anywhere near it — checked the `Reward` collection (unrelated
+feature, X/exchange-account rewards, 1 document total, not this). Real
+scope, counted directly: **210 of 1004 season-1 users have a `refferer_id`
+set** — 210 real inviter→invitee relationships, not a handful. For
+comparison, **season 2's referral data is nearly empty right now** — only
+2 users have `referred_by` set, 0 have any verified referral count. So
+almost all the migration value here is in season 1.
+
+**3. Identity mapping** — agree with your read: an inviter/invitee pair
+only maps into RealGram once **both** sides have linked their Shahnameh
+account to a REAL account (contract §1). `refferer_id`/`refferal_id` here
+are raw Telegram user IDs, same identity space as `season2_users.telegram_id`
+— so the lookup is direct (find each id's linked `real_account`, same as
+season 2), no extra translation layer needed for season 1 specifically.
+
+Agree with your proposed shape
+(`inviter_real_account, invitee_real_account, source, original_ts`,
+hold-and-retry for unlinked pairs). Data source for `source: 'shahnameh_s1'`
+is now confirmed and ready whenever this gets scheduled — not starting the
+actual import job now, this was scoped as B-25-adjacent/not blocking.
