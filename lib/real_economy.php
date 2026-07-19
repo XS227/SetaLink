@@ -565,6 +565,62 @@ function re_sso_token(PDO $pdo, string $deviceId, bool $allowRealIdFallback = fa
 }
 
 /**
+ * Sync a batch of RealGram tap-to-earn taps to Shahnameh (contract §8,
+ * docs/realgram/REALGRAM_UNIFIED_PLATFORM.md §B, Khabat 2026-07-19). The
+ * app's tap button used to be purely local; this makes the server the one
+ * source of truth for ZAR, same as the Mini App's own tap loop already is.
+ *
+ * Always resolves an account via re_ensure_real_id() (not
+ * re_linked_account()) — ZAR-earning must work for a device that's never
+ * linked Telegram, same reasoning as the REAL-ID SSO auto-fallback: there
+ * is no product reason tapping the coin should require a Telegram account
+ * to exist first.
+ *
+ * Returns:
+ *   ['ok'=>true,  'zar'=>int, 'zar_earned'=>int, 'capped'=>bool]
+ *   ['ok'=>false, 'error'=>string]          structured denial from Shahnameh
+ *   ['ok'=>false, 'error'=>'unavailable']   service missing/unreachable/malformed
+ */
+function re_tap_sync(PDO $pdo, string $deviceId, int $taps): array {
+    if ($taps <= 0) return ['ok' => false, 'error' => 'bad_request'];
+    $account = re_ensure_real_id($pdo, $deviceId);
+
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
+        return ['ok' => false, 'error' => 'unavailable'];
+    }
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/tap-sync');
+    $headers = ['Content-Type: application/json'];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode(['account' => $account, 'taps' => $taps]),
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false) return ['ok' => false, 'error' => 'unavailable'];
+
+    $json = json_decode((string)$body, true);
+    if ($http === 200 && is_array($json) && isset($json['zar']) && is_numeric($json['zar'])) {
+        return [
+            'ok'         => true,
+            'zar'        => (int)$json['zar'],
+            'zar_earned' => (int)($json['zar_earned'] ?? 0),
+            'capped'     => (bool)($json['capped'] ?? false),
+        ];
+    }
+    if ($http >= 400 && $http < 500 && is_array($json) && !empty($json['error']) && is_string($json['error'])) {
+        return ['ok' => false, 'error' => substr($json['error'], 0, 64)];
+    }
+    return ['ok' => false, 'error' => 'unavailable'];
+}
+
+/**
  * Validate a redeem request and price it. Shared by redeem-real (pre-executed
  * spend) and redeem-real-spend (panel-orchestrated spend). Returns
  * ['error'=>string] or ['account'=>, 'quota_bytes'=>, 'rates'=>].

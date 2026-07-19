@@ -2,12 +2,20 @@
  * zarStore — Shahnameh tap-to-earn balance inside RealGram.
  *
  * While the VPN is connected, each tap on the big REAL coin earns ZAR — the
- * Shahnameh in-game currency. ZAR converts to REAL in a later step (backend
- * exchange not built yet), so for now the balance lives on-device and is the
- * visible bridge between the two apps.
+ * Shahnameh in-game currency, converted to REAL via the existing
+ * /user/zar-swap endpoint. `tap()` still increments `balance` locally and
+ * instantly for tap-feel — no visible lag — but as of contract §8
+ * (REALGRAM_UNIFIED_PLATFORM.md §B, 2026-07-19) the SERVER is the actual
+ * source of truth: zarSyncService.ts buffers taps and periodically flushes
+ * them to Shahnameh, and `reconcileFromServer()` below overwrites `balance`
+ * with whatever the server returns after each flush. That's what makes ZAR
+ * consistent across devices/pages — every flush, from any device, converges
+ * on the one number the server holds; local state is a between-flush cache,
+ * not the system of record.
  *
- * A generous daily cap keeps pre-backend balances honest enough to migrate
- * once the exchange exists.
+ * The local daily tap cap below is a client-side UX safety net only — the
+ * real anti-abuse cap (DAILY_ZAR_CAP, on ZAR value, not tap count) lives
+ * server-side and is enforced independently.
  */
 
 import { create } from 'zustand';
@@ -34,6 +42,12 @@ interface ZarState {
 
   /** Register one coin tap; returns what it earned so the UI can react. */
   tap: (now?: Date) => ZarTapResult;
+
+  /** Overwrite local balance with the server's authoritative total after a
+   * zarSyncService flush. Never additive — the server value always wins,
+   * even if it's lower than the optimistic local count (e.g. this device's
+   * unsynced taps got capped server-side by DAILY_ZAR_CAP). */
+  reconcileFromServer: (serverZar: number) => void;
 }
 
 export function applyTap(
@@ -67,6 +81,8 @@ export const useZarStore = create<ZarState>()(
         set(next);
         return result;
       },
+
+      reconcileFromServer: (serverZar) => set({ balance: serverZar }),
     }),
     {
       name:    'realink-zar',

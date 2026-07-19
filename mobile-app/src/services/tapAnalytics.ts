@@ -13,7 +13,14 @@ const TIMEOUT        = 10_000;
 const FLUSH_INTERVAL_MS = 15_000;
 const MAX_BATCH_SIZE    = 30; // flush early if the buffer fills up between timers
 
-type Tap = { screen: string; element: string; ts: number };
+type Tap = {
+  screen: string; element: string; ts: number;
+  // Optional — only set when the device is VPN-connected at tap time
+  // (REALGRAM_UNIFIED_PLATFORM.md §B, 2026-07-19): tap responsiveness/
+  // frequency correlated with the active protocol/node is an anonymous
+  // connection-quality signal, unrelated to and never gating any economy.
+  protocol?: string; node?: string;
+};
 
 let buffer: Tap[] = [];
 let deviceId: string | undefined;
@@ -27,8 +34,8 @@ export function initTapAnalytics(id: string): void {
 }
 
 /** Record a tap — cheap, synchronous, never touches the network directly. */
-export function recordTap(screen: string, element: string): void {
-  buffer.push({ screen, element, ts: Date.now() });
+export function recordTap(screen: string, element: string, protocol?: string, node?: string): void {
+  buffer.push({ screen, element, ts: Date.now(), protocol, node });
   if (buffer.length >= MAX_BATCH_SIZE) flush();
 }
 

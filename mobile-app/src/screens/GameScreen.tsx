@@ -39,6 +39,7 @@ import { linkRealAccount }  from '../services/realWalletService';
 import { parseDeepLink }    from '../services/deepLinkService';
 import { pushEcosystemProfile } from '../services/ecosystemProfileService';
 import { getCachedConfig }  from '../services/remoteConfigService';
+import { initZarSync, recordZarTap } from '../services/zarSyncService';
 
 const BASE_GAME_URL  = 'https://shahnameh.setaei.com';
 const PANEL_API      = 'https://setalink.no/api.php';
@@ -449,6 +450,14 @@ export function GameScreen() {
     return () => { cancelled = true; };
   }, [deviceId, realId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Server-synced ZAR (contract §8, REALGRAM_UNIFIED_PLATFORM.md §B):
+  // start buffering/flushing taps to Shahnameh once deviceId is known.
+  // initZarSync is safe to call again (resets the flush timer) so this
+  // doesn't need to guard against re-running when deviceId changes shape.
+  useEffect(() => {
+    if (deviceId) initZarSync(deviceId);
+  }, [deviceId]);
+
   const dailyPct    = Math.min(1, earnedToday / ZAR_DAILY_CAP);
   const cappedToday = earnedToday >= ZAR_DAILY_CAP;
 
@@ -459,7 +468,10 @@ export function GameScreen() {
   const handleTap = useCallback(() => {
     if (!isConnected) return;
     const res = useZarStore.getState().tap();
-    if (res.earned > 0) setBurstKey((k) => k + 1);
+    if (res.earned > 0) {
+      setBurstKey((k) => k + 1);
+      recordZarTap(); // buffers for the next server sync — see zarSyncService
+    }
   }, [isConnected]);
 
   // While probing server-side link status, show a neutral spinner so users

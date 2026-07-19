@@ -1613,6 +1613,16 @@ if ($method === 'POST') {
         // Batched UI tap telemetry (B-24). Client buffers taps and flushes
         // periodically instead of one HTTP call per tap — keep this cheap
         // and best-effort, same posture as track-event above.
+        //
+        // protocol/node (2026-07-19, REALGRAM_UNIFIED_PLATFORM.md §B, "tap
+        // data should anonymously inform speed/stability/node-quality
+        // analysis"): optional, sent only when the device is VPN-connected
+        // at tap time (client already knows this from vpnStore — no new
+        // client-side lookup). Deliberately kept on THIS anonymous UI-tap
+        // table, not the ZAR-earning tap-sync action above — tap
+        // responsiveness/frequency correlated with active protocol/node is
+        // a connection-quality signal, unrelated to and never gating the
+        // ZAR economy.
         $deviceId   = trim($_POST['device_id'] ?? '');
         $appVersion = substr(trim($_POST['app_version'] ?? ''), 0, 20);
         $taps       = json_decode((string)($_POST['taps'] ?? ''), true);
@@ -1628,20 +1638,26 @@ if ($method === 'POST') {
             received_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
             app_version TEXT
         )");
+        try { $pdo->exec("ALTER TABLE tap_events ADD COLUMN protocol TEXT NOT NULL DEFAULT ''"); }
+        catch (\Exception $e) { /* column exists */ }
+        try { $pdo->exec("ALTER TABLE tap_events ADD COLUMN node TEXT NOT NULL DEFAULT ''"); }
+        catch (\Exception $e) { /* column exists */ }
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_tap_events_screen ON tap_events(screen)");
         $pdo->exec("CREATE INDEX IF NOT EXISTS idx_tap_events_ts ON tap_events(ts)");
         $ins = $pdo->prepare(
-            "INSERT INTO tap_events (device_id, screen, element, ts, app_version) VALUES (?,?,?,?,?)"
+            "INSERT INTO tap_events (device_id, screen, element, ts, app_version, protocol, node) VALUES (?,?,?,?,?,?,?)"
         );
         $pdo->beginTransaction();
         $inserted = 0;
         foreach ($taps as $t) {
             if (!is_array($t)) continue;
-            $screen  = substr(trim((string)($t['screen'] ?? '')), 0, 64);
-            $element = substr(trim((string)($t['element'] ?? '')), 0, 64);
-            $ts      = (int)($t['ts'] ?? 0);
+            $screen   = substr(trim((string)($t['screen'] ?? '')), 0, 64);
+            $element  = substr(trim((string)($t['element'] ?? '')), 0, 64);
+            $ts       = (int)($t['ts'] ?? 0);
+            $protocol = substr(trim((string)($t['protocol'] ?? '')), 0, 16);
+            $node     = substr(trim((string)($t['node'] ?? '')), 0, 64);
             if ($screen === '' || $element === '' || $ts <= 0) continue;
-            $ins->execute([$deviceId, $screen, $element, $ts, $appVersion]);
+            $ins->execute([$deviceId, $screen, $element, $ts, $appVersion, $protocol, $node]);
             $inserted++;
         }
         $pdo->commit();
@@ -1862,6 +1878,25 @@ if ($method === 'POST') {
             'quota_bytes' => $quotaBytes,
             'new_total'   => $total,
             'balance'     => $spend['balance_after']]);
+    }
+
+    if ($action === 'tap-sync') {
+        // Contract §8 (2026-07-19, docs/realgram/REALGRAM_UNIFIED_PLATFORM.md
+        // §B): server-authoritative ZAR for the tap-to-earn button.
+        // Deliberately no realid.enabled-style gate here — unlike sso-token's
+        // game=1 opt-in (which had to protect TrustAiLinkScreen's separate
+        // behavior), tap-sync is a NEW action nothing else calls, so there's
+        // no existing caller to accidentally change.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $taps     = (int)($_POST['taps'] ?? 0);
+        if (!$deviceId) err('missing device_id');
+        if ($taps <= 0) err('missing taps');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $result = re_tap_sync($pdo, $deviceId, $taps);
+        if (!$result['ok']) err($result['error'] === 'unavailable' ? 'sync unavailable' : $result['error']);
+        ok(['zar' => $result['zar'], 'zar_earned' => $result['zar_earned'], 'capped' => $result['capped']]);
     }
 
     if ($action === 'submit-tunnel-log') {

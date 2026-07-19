@@ -41,6 +41,16 @@ describe('tapAnalytics — batched tap telemetry (B-24)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('includes protocol/node when passed (connection-quality signal, optional)', () => {
+    recordTap('Game', 'tap_coin', 'VLESS+Reality', 'node-42');
+    recordTap('Game', 'tap_coin'); // no VPN context — omitted, not empty strings
+    flushTapAnalytics();
+    const body = fetchMock.mock.calls[0][1].body as FormData;
+    const taps = JSON.parse((body as any).get('taps'));
+    expect(taps[0]).toMatchObject({ protocol: 'VLESS+Reality', node: 'node-42' });
+    expect(taps[1].protocol).toBeUndefined();
+  });
+
   it('flushTapAnalytics sends immediately and clears the buffer', () => {
     recordTap('Profile', 'avatar_chip');
     flushTapAnalytics();
