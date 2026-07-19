@@ -98,10 +98,11 @@ describe('GameScreen without REAL-ID', () => {
       .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
 
     // No "what do you want to link with" gate text, no enter-game CTA either —
-    // RealIdGate defaults straight to the RealGramLinkWebView modal (RN's
-    // Modal isn't traversable through react-test-renderer in this harness,
-    // so we assert by absence of both other states rather than the modal's
-    // own content).
+    // RealIdGate defaults straight to RealGramLinkWebView (inline since
+    // 2026-07-19, no longer a <Modal> — Shahnameh reads as a page of the
+    // app, not an external page opened on top of it). Still asserting by
+    // absence of both other states rather than the WebView's own content,
+    // since the mocked WebView renders no meaningful text either way.
     expect(texts).not.toContain('realId.gateTitle');
     expect(texts).not.toContain('game.enterShahnameh');
   });

@@ -18,7 +18,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Image, Linking, Modal, Pressable,
+  ActivityIndicator, Image, Linking, Pressable,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -96,43 +96,42 @@ function RealGramLinkWebView({
   }, [deviceId, afterLink]);
 
   return (
-    <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[wvStyles.container, { paddingTop: insets.top }]}>
-        <View style={wvStyles.bar}>
-          <Text style={wvStyles.barTitle}>RealGram</Text>
-          <TouchableOpacity onPress={onClose} style={wvStyles.closeBtn} hitSlop={12}>
-            <Text style={wvStyles.closeText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-        {busy ? (
-          <View style={wvStyles.loader}>
-            <ActivityIndicator color={Colors.gold[400]} size="large" />
-            <Text style={wvStyles.linkingText}>{t('realId.retrying')}</Text>
-          </View>
-        ) : (
-          <WebView
-            source={{ uri: url }}
-            style={wvStyles.web}
-            startInLoadingState
-            renderLoading={() => (
-              <View style={wvStyles.loader}>
-                <ActivityIndicator color={Colors.gold[400]} size="large" />
-              </View>
-            )}
-            originWhitelist={['https://*', 'setalink://*']}
-            onNavigationStateChange={handleNavChange}
-            onMessage={handleMessage}
-            injectedJavaScriptBeforeContentLoaded={`
-              const meta = document.createElement('meta');
-              meta.name = 'viewport';
-              meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
-              document.head.appendChild(meta);
-              true;
-            `}
-          />
-        )}
+    <View style={[wvStyles.container, { paddingTop: insets.top }]}>
+      <View style={wvStyles.bar}>
+        <TouchableOpacity onPress={onClose} style={wvStyles.backBtn} hitSlop={12}>
+          <Text style={wvStyles.backText}>‹</Text>
+        </TouchableOpacity>
+        <Text style={wvStyles.barTitle}>RealGram</Text>
+        <View style={wvStyles.backBtn} />
       </View>
-    </Modal>
+      {busy ? (
+        <View style={wvStyles.loader}>
+          <ActivityIndicator color={Colors.gold[400]} size="large" />
+          <Text style={wvStyles.linkingText}>{t('realId.retrying')}</Text>
+        </View>
+      ) : (
+        <WebView
+          source={{ uri: url }}
+          style={wvStyles.web}
+          startInLoadingState
+          renderLoading={() => (
+            <View style={wvStyles.loader}>
+              <ActivityIndicator color={Colors.gold[400]} size="large" />
+            </View>
+          )}
+          originWhitelist={['https://*', 'setalink://*']}
+          onNavigationStateChange={handleNavChange}
+          onMessage={handleMessage}
+          injectedJavaScriptBeforeContentLoaded={`
+            const meta = document.createElement('meta');
+            meta.name = 'viewport';
+            meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+            document.head.appendChild(meta);
+            true;
+          `}
+        />
+      )}
+    </View>
   );
 }
 
@@ -141,9 +140,9 @@ const wvStyles = StyleSheet.create({
   bar:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
                 padding: Spacing[4], borderBottomWidth: 1, borderBottomColor: Colors.border.subtle },
   barTitle:   { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  closeBtn:   { width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+  backBtn:    { width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: Colors.bg.surface, borderRadius: 18 },
-  closeText:  { fontSize: 14, color: Colors.text.secondary },
+  backText:   { fontSize: 22, color: Colors.text.secondary, marginTop: -2 },
   loader:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing[3] },
   linkingText:{ fontSize: 14, color: Colors.text.muted, fontFamily: Typography.family.body },
   web:        { flex: 1 },
@@ -267,11 +266,17 @@ const gateStyles = StyleSheet.create({
                      fontFamily: Typography.family.body },
 });
 
-// ── Authenticated game WebView modal ─────────────────────────────────────────
-// SSO token is fetched fresh; REAL-ID goes in URL as identity; device_id as security.
+// ── Authenticated game view — inline, not a modal ────────────────────────────
+// SSO token is fetched fresh; REAL-ID goes in URL as identity; device_id as
+// security. Deliberately NOT a <Modal>: a sliding popup with its own title
+// bar and X-close reads as "an external page opened on top of the app" —
+// Shahnameh is meant to feel like a page of RealGram, not a browser tab
+// launched inside it (Khabat, 2026-07-19). Renders in the same screen space
+// the Game tab's hub occupies, with a plain back arrow like any other
+// in-app navigation, not a dismiss action.
 function GameWebView({
-  path, deviceId, realId, onClose,
-}: { path: string; deviceId: string; realId: string; onClose: () => void }) {
+  path, deviceId, realId, onBack,
+}: { path: string; deviceId: string; realId: string; onBack: () => void }) {
   const insets  = useSafeAreaInsets();
   const [url, setUrl]     = useState('');
   const [ready, setReady] = useState(false);
@@ -296,39 +301,38 @@ function GameWebView({
   }, [deviceId, path, realId]);
 
   return (
-    <Modal animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[wvStyles.container, { paddingTop: insets.top }]}>
-        <View style={wvStyles.bar}>
-          <Text style={wvStyles.barTitle}>SHAHNAMEH</Text>
-          <TouchableOpacity onPress={onClose} style={wvStyles.closeBtn} hitSlop={12}>
-            <Text style={wvStyles.closeText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-        {!ready ? (
-          <View style={wvStyles.loader}>
-            <ActivityIndicator color={Colors.gold[400]} size="large" />
-          </View>
-        ) : (
-          <WebView
-            source={{ uri: url }}
-            style={wvStyles.web}
-            startInLoadingState
-            renderLoading={() => (
-              <View style={wvStyles.loader}><ActivityIndicator color={Colors.gold[400]} size="large" /></View>
-            )}
-            originWhitelist={['https://*']}
-            allowsBackForwardNavigationGestures
-            injectedJavaScriptBeforeContentLoaded={`
-              const meta = document.createElement('meta');
-              meta.name = 'viewport';
-              meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
-              document.head.appendChild(meta);
-              true;
-            `}
-          />
-        )}
+    <View style={[wvStyles.container, { paddingTop: insets.top }]}>
+      <View style={wvStyles.bar}>
+        <TouchableOpacity onPress={onBack} style={wvStyles.backBtn} hitSlop={12}>
+          <Text style={wvStyles.backText}>‹</Text>
+        </TouchableOpacity>
+        <Text style={wvStyles.barTitle}>SHAHNAMEH</Text>
+        <View style={wvStyles.backBtn} />
       </View>
-    </Modal>
+      {!ready ? (
+        <View style={wvStyles.loader}>
+          <ActivityIndicator color={Colors.gold[400]} size="large" />
+        </View>
+      ) : (
+        <WebView
+          source={{ uri: url }}
+          style={wvStyles.web}
+          startInLoadingState
+          renderLoading={() => (
+            <View style={wvStyles.loader}><ActivityIndicator color={Colors.gold[400]} size="large" /></View>
+          )}
+          originWhitelist={['https://*']}
+          allowsBackForwardNavigationGestures
+          injectedJavaScriptBeforeContentLoaded={`
+            const meta = document.createElement('meta');
+            meta.name = 'viewport';
+            meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
+            document.head.appendChild(meta);
+            true;
+          `}
+        />
+      )}
+    </View>
   );
 }
 
@@ -426,6 +430,23 @@ export function GameScreen() {
     );
   }
 
+  // Game content replaces the hub in the same tab — not a modal overlaid on
+  // top of it. This is meant to read as "you're on a different page of
+  // RealGram now", the same feel as navigating to any other tab, not
+  // "an external page just opened" (Khabat, 2026-07-19).
+  if (webPath !== null) {
+    return (
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <GameWebView
+          path={webPath}
+          deviceId={deviceId}
+          realId={realId}
+          onBack={() => setWebPath(null)}
+        />
+      </View>
+    );
+  }
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <ScrollView
@@ -507,16 +528,6 @@ export function GameScreen() {
           <Text style={styles.enterBtnArrow}>›</Text>
         </TouchableOpacity>
       </ScrollView>
-
-      {/* In-app WebView modal — SSO/JWT, real_id as identity, no extra login */}
-      {webPath !== null && (
-        <GameWebView
-          path={webPath}
-          deviceId={deviceId}
-          realId={realId}
-          onClose={() => setWebPath(null)}
-        />
-      )}
     </View>
   );
 }
