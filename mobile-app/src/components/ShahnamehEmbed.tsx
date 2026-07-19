@@ -36,7 +36,7 @@ import { WebView, WebViewNavigation } from 'react-native-webview';
 import type {
   WebViewNavigationEvent, WebViewErrorEvent, WebViewHttpErrorEvent, ShouldStartLoadRequest,
 } from 'react-native-webview/lib/WebViewTypes';
-import { Colors, Radius, Spacing, Typography } from '../design/tokens';
+import { Colors, Layout, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { useIdentityStore } from '../stores/identityStore';
 import { useAuthStore } from '../stores/authStore';
@@ -280,7 +280,11 @@ const wvStyles = StyleSheet.create({
   },
   loader:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing[3], paddingHorizontal: Spacing[6] },
   linkingText:{ fontSize: 14, color: Colors.text.muted, fontFamily: Typography.family.body },
-  web:        { flex: 1 },
+  web:        { flex: 1, backgroundColor: Colors.bg.void },
+  webWrap:    { flex: 1 },
+  // Opaque — must fully hide the WebView's own paint underneath until
+  // pageVisuallyReady, not just add a spinner on top of a visible page.
+  pageLoadingOverlay: { backgroundColor: Colors.bg.void },
   errorText:  { fontSize: 13, color: '#FF6B6B', textAlign: 'center', fontFamily: Typography.family.body, lineHeight: 20 },
   retryBtn:      { backgroundColor: Colors.gold[400], borderRadius: Radius.xl,
                    paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },
@@ -430,6 +434,16 @@ function ShahnamehWebView({
   const [loadError, setLoadError]     = useState('');   // set by onError/onHttpError/timeout
   const [canGoBack, setCanGoBack]     = useState(false);
   const [retryKey, setRetryKey]       = useState(0);    // bump to force a full WebView remount
+  // True once season2 has actually painted Home (or onLoadEnd fired as a
+  // fallback) — NOT the same as `ready` above, which only means "our own
+  // URL is built." Khabat, 2026-07-19 (post-fix retest): a few seconds of
+  // white/black screen showed before Home appeared, because the WebView
+  // itself was visible and painting the whole time `ready` was true. Until
+  // this flips, a native gold-on-void overlay covers the WebView instead —
+  // the WebView keeps loading underneath so it can still fire the
+  // postMessage that flips this — so the user only ever sees native
+  // Shahnameh/REAL-styled loading, never the page's own blank/white paint.
+  const [pageVisuallyReady, setPageVisuallyReady] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearLoadTimeout = useCallback(() => {
@@ -449,6 +463,7 @@ function ShahnamehWebView({
     console.log(`[REALDBG:7/7][${debugLabel}] ShahnamehWebView MOUNTED (RealIdGate passed) — fresh sso-token call for the WebView URL`, { deviceId, path, realId, retryKey });
     debugBus.report('webview:mounted, fetching sso-token');
     setLoadError('');
+    setPageVisuallyReady(false);
     getSsoToken(deviceId, true).then((r) => {
       console.log(`[REALDBG:7/7][${debugLabel}] ShahnamehWebView: sso-token resolved`, { status: r.status, hasToken: !!r.token, account: r.account });
       debugBus.report('webview:sso-token resolved', `status=${r.status} hasToken=${!!r.token}`);
@@ -538,26 +553,32 @@ function ShahnamehWebView({
           </TouchableOpacity>
         </View>
       )}
-      {!loadError && !ready ? (
+      {!loadError && !ready && (
         showDebug ? <DebugOverlay debugLabel={debugLabel} /> : (
           <View style={wvStyles.loader}>
             <ActivityIndicator color={Colors.gold[400]} size="large" />
           </View>
         )
-      ) : !loadError && (
-        <WebView
-          key={retryKey}
-          ref={webRef}
-          source={{ uri: url }}
-          style={wvStyles.web}
-          javaScriptEnabled
-          startInLoadingState
-          renderLoading={() => (
-            showDebug ? <DebugOverlay debugLabel={debugLabel} /> : (
-              <View style={wvStyles.loader}><ActivityIndicator color={Colors.gold[400]} size="large" /></View>
-            )
-          )}
-          originWhitelist={['https://*']}
+      )}
+      {!loadError && ready && (
+        // Khabat, 2026-07-19 (post-fix retest): "noen sekunder med hvit/
+        // svart skjerm" before Home appeared — the WebView was visible and
+        // painting its own blank/white surface for the whole gap between
+        // `ready` (our URL is built) and the page actually rendering
+        // something. The WebView now always mounts here (so it can load
+        // and fire the postMessage that flips `pageVisuallyReady`), but a
+        // native, Shahnameh/REAL-styled overlay covers it — same visual
+        // language as the rest of this screen — until that happens, so the
+        // user only ever sees ONE controlled native loading experience,
+        // never the page's own default paint.
+        <View style={wvStyles.webWrap}>
+          <WebView
+            key={retryKey}
+            ref={webRef}
+            source={{ uri: url }}
+            style={wvStyles.web}
+            javaScriptEnabled
+            originWhitelist={['https://*']}
           allowsBackForwardNavigationGestures
           sharedCookiesEnabled
           thirdPartyCookiesEnabled
@@ -569,6 +590,11 @@ function ShahnamehWebView({
             console.log(`[REALDBG:7/7][${debugLabel}] WebView onLoadEnd`, { url: e.nativeEvent.url, title: (e.nativeEvent as any).title });
             debugBus.report('native:onLoadEnd', e.nativeEvent.url, { lastNativeEvent: 'onLoadEnd' });
             clearLoadTimeout();
+            // Fallback reveal: if season2's postMessage step never arrives
+            // (older cached page, message dropped, etc.), don't leave the
+            // native overlay up forever once the browser itself says the
+            // page finished loading.
+            setPageVisuallyReady(true);
           }}
           onError={(e: WebViewErrorEvent): void => {
             console.log(`[REALDBG:7/7][${debugLabel}] WebView onError (native load failure)`, {
@@ -628,16 +654,40 @@ function ShahnamehWebView({
                 lastPageStep: step,
                 ...(msg.error ? { lastPageError: String(msg.error) } : {}),
               });
+              // Primary reveal signal (Khabat, 2026-07-19: kill the white/
+              // black flash before Home shows). home.js's own boot sequence
+              // renders Home from local cache before touching the network
+              // (bootHomeHydration — see B->A(29)) — "sync-render-done" is
+              // the earliest step where there's actually something on
+              // screen worth showing, well before the slower
+              // "realsync-ready" (fresh-from-server) step.
+              if (step.includes('sync-render-done') || step.includes('realsync-ready')) {
+                setPageVisuallyReady(true);
+              }
             } catch { /* ignore non-JSON / non-season2debug messages */ }
           }}
+          // Tell season2's own CSS how much space RealGram's native bottom
+          // tab bar occupies, so its scroll containers/menus can reserve
+          // room for it — there's no native safe-area for a sibling native
+          // view like our tab bar, only for the OS chrome (Khabat's
+          // "RealGram bottom nav dekker spillinnhold" report, 2026-07-19).
           injectedJavaScriptBeforeContentLoaded={`
+            document.documentElement.style.setProperty('--realgram-bottom-nav-height', '${Layout.bottomNavHeight}px');
             const meta = document.createElement('meta');
             meta.name = 'viewport';
             meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
             document.head.appendChild(meta);
             true;
           `}
-        />
+          />
+          {!pageVisuallyReady && (
+            <View style={[StyleSheet.absoluteFillObject, wvStyles.loader, wvStyles.pageLoadingOverlay]}>
+              {showDebug ? <DebugOverlay debugLabel={debugLabel} /> : (
+                <ActivityIndicator color={Colors.gold[400]} size="large" />
+              )}
+            </View>
+          )}
+        </View>
       )}
     </View>
   );

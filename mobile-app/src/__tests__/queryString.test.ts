@@ -16,16 +16,16 @@ describe('buildQueryString', () => {
     // this device's URLSearchParams implements the constructor + toString()
     // but throws "URLSearchParams.set is not implemented" for .set(). Prove
     // buildQueryString works even when .set() is broken.
-    const OriginalUSP = (global as any).URLSearchParams;
+    const OriginalUSP = (globalThis as any).URLSearchParams;
     class ThrowingSetURLSearchParams extends OriginalUSP {
       set(): never { throw new Error('URLSearchParams.set is not implemented'); }
     }
-    (global as any).URLSearchParams = ThrowingSetURLSearchParams;
+    (globalThis as any).URLSearchParams = ThrowingSetURLSearchParams;
     try {
       expect(() => buildQueryString({ src: 'realink', sso: 'token' })).not.toThrow();
       expect(buildQueryString({ src: 'realink', sso: 'token' })).toBe('src=realink&sso=token');
     } finally {
-      (global as any).URLSearchParams = OriginalUSP;
+      (globalThis as any).URLSearchParams = OriginalUSP;
     }
   });
 });
