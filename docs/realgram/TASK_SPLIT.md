@@ -3835,3 +3835,66 @@ stale git-repo copy — only `channels.beta` touched, everything else
 200 + correct size + sha256. This is the REAL-ID Phase 2 test build
 (`e558697`/merged at `1b40d68`) — no Telegram widget needed to reach
 Shahnameh from RealGram.
+
+---
+
+## Live panel session (5.249.252.221) → Agent A (dev-box, needs a connected device): build 108 real-device test — REAL→Shahnameh still doesn't work, found where but not why
+
+**Dato: 2026-07-19**
+
+Khabat tested build 108 on a real Android device (Samsung SM-S918B,
+`sl-85ff1772-8673-c696-4504-e09165882c5e`). Full report has 7 items;
+this entry covers the two that block Phase 2 per Khabat's explicit
+priority order.
+
+**#5 — REAL → Shahnameh still doesn't work.** Confirmed the built commit
+(`e558697`) genuinely contains the fix (`checkAndCacheRealId`/`forGame`/
+`game=1` all present, checked via `git show e558697:...`). But server-side
+evidence shows the client never actually attempts it:
+
+```
+nginx access.log: zero sso-token requests from sl-85ff1772... after
+                   register-device fired at 06:45:14 (build 108's
+                   first launch)
+app_events:        AD_BANNER_LOADED firing normally for this device at
+                   06:36-06:45 (proves the app is running, network is
+                   fine, other API calls succeed)
+devices table:     linked_real_account still empty
+```
+
+So this isn't a network/server issue (ads prove connectivity works) and
+isn't a wrong-build issue (verified the commit). The client-side code
+that should call `checkAndCacheRealId` on Game-tab mount either isn't
+running, or isn't reaching the network call.
+
+**Best hypothesis, unconfirmed — needs on-device debugging to verify:**
+`GameScreen.tsx`'s effect only calls `checkAndCacheRealId` when
+`!realId && deviceId` — both read from `useAuthStore` via
+`useAuthStore((s) => s.user?.deviceId ?? '')`. If `deviceId` is empty at
+the exact moment `GameScreen` first mounts (e.g. a Zustand `persist`
+rehydration race on a cold app start right after installing/updating),
+the condition is false, the probe is skipped entirely (not attempted,
+not failed), and `RealIdGate` falls straight to its internal retry
+screen with no network call ever made — matching every symptom above
+exactly. I can't confirm this without Metro/Chrome DevTools/Xcode console
+access to a real running instance — that's the ask here.
+
+**#6 — Wallet still shows old.** Confirmed `RealWalletCard`'s ZAR/
+conversion-rate rendering code IS in `e558697` (`git show` verified), and
+`rc_real_wallet_enabled=1` + a live `remote-config` call both confirm the
+server reports `wallet_enabled: true`. Can't explain why it's not
+rendering without device access — possibly the same root cause as #5 if
+config/link-state loading shares a timing path.
+
+**Other 5 items from Khabat's report** (splash still shows Realink
+branding/old logo, language flow inconsistent — this device is actually
+registered with `language: فارسی` server-side, confirming it's real —,
+onboarding order/persona-lock product suggestions, no interstitial/
+rewarded ads on first open despite banners loading fine per app_events):
+not investigated in depth here — flagging so nothing's lost, but #5/#6
+are Khabat's explicit priority before anything else, per their own
+message.
+
+Need someone with an actual connected device (Metro logs minimum, ideally
+breakpoints) to find why `checkAndCacheRealId` isn't firing/completing on
+a real cold start. I've exhausted what server-log correlation can tell me.
