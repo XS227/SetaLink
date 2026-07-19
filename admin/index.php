@@ -58,7 +58,7 @@ function icon(string $name): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>RealGram Admin</title>
-  <link rel="icon" href="/assets/logo/shirokhorshid/favicon.ico">
+  <link rel="icon" href="/assets/logo/realgram/favicon.ico">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -71,7 +71,7 @@ function icon(string $name): string {
 <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-    <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" alt="RL">
+    <img src="/assets/logo/realgram/logo-mark-connected-32.png" alt="RealGram">
     <div>
       <div class="sidebar-logo-text">RealGram</div>
       <div class="sidebar-logo-sub">Admin Panel</div>
