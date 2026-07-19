@@ -57,7 +57,7 @@ function icon(string $name): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
-  <title>ReaLink Admin</title>
+  <title>RealGram Admin</title>
   <link rel="icon" href="/assets/logo/shirokhorshid/favicon.ico">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -73,7 +73,7 @@ function icon(string $name): string {
   <div class="sidebar-logo">
     <img src="/assets/logo/shirokhorshid/logo-mark-connected-32.png" alt="RL">
     <div>
-      <div class="sidebar-logo-text">ReaLink</div>
+      <div class="sidebar-logo-text">RealGram</div>
       <div class="sidebar-logo-sub">Admin Panel</div>
     </div>
   </div>
@@ -160,7 +160,7 @@ function icon(string $name): string {
     </div>
 
   </nav>
-  <div class="sidebar-footer">ReaLink v0.9.67 &middot; <?= h($auth_user) ?></div>
+  <div class="sidebar-footer">RealGram v0.9.67 &middot; <?= h($auth_user) ?></div>
 </aside>
 
 <!-- ── Main ─────────────────────────────────────────────────────────── -->
@@ -839,7 +839,7 @@ function icon(string $name): string {
     <!-- ============================================================ -->
     <div data-view="intel" hidden>
       <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
-        <span style="font-size:1.1rem;font-weight:700">Realink Network Intelligence</span>
+        <span style="font-size:1.1rem;font-weight:700">RealGram Network Intelligence</span>
         <select class="select btn-sm" id="intelDays" style="width:110px">
           <option value="1">Last 24h</option>
           <option value="7" selected>Last 7 days</option>
@@ -1520,7 +1520,7 @@ function icon(string $name): string {
           <div class="panel-body">
             <div class="form-group">
               <label>Server Label</label>
-              <input class="input" id="cfgLabel" placeholder="Realink VPN">
+              <input class="input" id="cfgLabel" placeholder="RealGram VPN">
             </div>
             <div class="form-group">
               <label>Telegram Support URL</label>
@@ -2142,7 +2142,7 @@ function navigate(page) {
   const [title, sub] = pageTitles[page];
   $('pageTitle').textContent = title;
   $('pageSub').textContent = sub;
-  document.title = `ReaLink Admin — ${title}`;
+  document.title = `RealGram Admin — ${title}`;
   const url = new URL(location.href);
   url.searchParams.set('page', page);
   history.pushState({page}, '', url);
