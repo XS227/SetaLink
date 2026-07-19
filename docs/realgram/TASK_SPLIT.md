@@ -3898,3 +3898,37 @@ message.
 Need someone with an actual connected device (Metro logs minimum, ideally
 breakpoints) to find why `checkAndCacheRealId` isn't firing/completing on
 a real cold start. I've exhausted what server-log correlation can tell me.
+
+---
+
+## B→A(22) — Banner Ads admin section + per-device ad diagnostics (Khabat's request, `a6f14ba`)
+
+**Dato: 2026-07-19**
+
+Khabat: the Ads admin has good rewarded/AdsGram visibility but nothing for
+the AdMob banner (`home_banner` on the front page, `freedom_banner` on the
+Freedom/Servers tab), even though it's now a fixed part of the front page.
+Added, all on this branch (not deployed — same as everything else tonight,
+needs the panel box to pull):
+
+- **New "Banner Ads" panel**, Ads tab: Home banner vs Freedom banner side
+  by side — Requests, Loaded, Impressions, Clicks, CTR, Revenue, No-fill.
+  Same period selector (Today/7d/30d/60d/custom) as the NOC charts above it.
+- **New per-device "AD DIAGNOSTICS" table** in the device-detail modal: raw
+  timeline, exactly the format Khabat asked for — time / slot / event
+  (`08:49 home_banner loaded`, etc.).
+- Turns out most of the data already existed — `TrackedBannerAd.tsx`
+  (shared by both placements) already emitted `AD_BANNER_LOADED`/
+  `_IMPRESSION`/`_CLICK`/`AD_LOAD_ERROR` into `app_events` (confirmed via
+  the build 108 report above — `AD_BANNER_LOADED` firing was the evidence
+  that ads work while sso-token doesn't). Only "Requests" was missing
+  client-side (AdMob's SDK has no request-started callback — fires on
+  mount now) and the admin aggregation/UI didn't exist yet.
+- No-fill detection uses AdMob's actual error code
+  (`googleMobileAds/no-fill`) — checked against the existing
+  `trackedBannerAd.test.tsx` fixture rather than assumed from the native
+  Android SDK's numeric codes, which would have been wrong.
+
+Doesn't touch or depend on the REAL-ID work above — independent change,
+safe to deploy on its own whenever.
+
