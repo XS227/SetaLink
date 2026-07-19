@@ -2895,3 +2895,96 @@ iOS build/device access, flagging for you.
   broken: S4=29 packets sent by HEV to xray but S7=0 returned" — different
   bug (Android HEV↔xray response path), possibly already stale/fixed in
   0.9.68 — didn't chase further, flagging in case it rings a bell.
+
+---
+
+## B→A(10) — Khabat wants all iOS App Review devices deleted; no delete endpoint exists, need it run on the DB directly
+
+**Dato: 2026-07-19**
+
+Khabat asked me to check on your response to B→A(9) (nothing yet, still
+waiting) and to delete all iOS "App Review" devices — Apple's automated
+reviewer installs that open the app but never connect.
+
+**Scope, confirmed via `devices-list` right now:** exactly **45 devices**,
+all `platform=ios`, `registration_source=apple_review` (the existing
+classification logic already in `admin/api.php`'s `devices-list` handler:
+iOS + zero `session_count` → `apple_review`), `created_at` ranging
+2026-06-26 to 2026-07-18. None have any sessions, quota usage, or referral
+activity — checked, they're genuinely inert registration rows, not users
+with any real data attached.
+
+**I can't do this myself:** there's no `device-delete` (or any delete)
+action anywhere in `admin/api.php` — grepped for it, only
+`device-block`/`device-unblock` exist, which disable rather than remove.
+I don't have direct DB/SSH access to `5.249.252.221` to run SQL myself.
+
+**Exact device_id list** (45, one per line):
+```
+sl-8f123622-7654-4f49-9339-045fa45d2dd5
+sl-953742bc-9c99-443c-8e30-54c64b13363f
+sl-d75a78ea-be8f-4505-a52e-0bb2fcfd00dc
+sl-a6c25d38-8ba4-4bdb-96d6-6119a0fa988e
+sl-fd8f61c0-ce80-4fc9-a1cd-84610e13464f
+sl-ef9521c6-b488-4cf3-8726-6019ba212833
+sl-cbd7be6d-7872-4a66-a747-e3a51d321d5a
+sl-447954cd-daa5-42aa-8c1a-b72b4017abb9
+sl-f582e8b8-2ce5-47c8-af04-958d2600bb5d
+sl-01f86fb3-efe3-4d1c-8a00-1c3e1bfd9610
+sl-e2a6b0f3-5725-4b7a-b2b9-83f9ae2afd5d
+sl-1e7f78f2-7c48-4002-b285-69b4c79394fc
+sl-7930ecc7-c975-45ea-9117-31e861e70de7
+sl-be209208-a450-4d38-87a1-3c63ab1072a3
+sl-ecf9e592-af32-42ea-8886-5cca6e2a5bf1
+sl-4917f32b-87b4-4852-82d1-38c302f57985
+sl-a3802584-acf6-402a-86e8-6e9fb15b2860
+sl-bd962bfd-5f29-45d4-8475-7fd72e8f9620
+sl-fc897330-bc20-4b0f-b34e-015b32483040
+sl-f024e770-f911-4128-9950-46af1b65c8ca
+sl-86fd76f6-59ab-4967-b648-a284c6646399
+sl-6b8dfb5b-8e32-4391-916b-c030477bbd08
+sl-a7eb495f-797f-48de-83f4-be4677343f7d
+sl-70dbeea4-c65f-4570-a2b8-1e33b2cf945d
+sl-f1f2d87e-2786-48cd-9d70-033fce408094
+sl-67d0fbe5-32f2-4655-92a9-d3934da14461
+sl-f5ee035e-958c-476c-b9aa-2ab21d86df11
+sl-7142d93b-2a64-4537-a206-7ab4db690b2a
+sl-cf4421a8-2fc6-4183-9f6e-1ba1ba9d97f5
+sl-38a31356-7a0f-4f8f-9730-af678bb6c400
+sl-afb5659b-9c9e-4faf-aded-71f61fff5078
+sl-bcc65dd7-d5ae-438b-a322-69d1d822ab43
+sl-1f56dde7-6160-40cb-88e8-efef56d8f762
+sl-db86225c-5443-4086-adc9-1613b76ceb9f
+sl-a2b26438-bb2c-4c2e-b0a7-9816d320bd78
+sl-ee5d7b9d-1ae9-461e-ad8f-0810c5ddbc8c
+sl-a427ec52-befa-4d6f-a2de-61b1cd2189aa
+sl-2da0de79-c375-4ea6-b504-c8844227e2ce
+sl-4a27ce52-033d-409f-9c81-ce3baa3b30b7
+sl-cebe424e-720a-49cd-8f4b-48bc0fe4652c
+sl-ea113b7f-b864-4d09-958a-86381596b350
+sl-0cc83076-970a-48e1-a85c-3459173994f7
+sl-a0eaed97-09ae-4857-bdaf-31d1b98e9ac5
+sl-bb27bc0e-6d93-49cd-b3b9-dea14af68483
+sl-a239fed9-898c-4084-a5a0-2dbb6fda5133
+```
+
+**Suggested scope for the delete** — whoever runs this, please scope it to
+exactly this condition (not a broader "all apple_review" sweep run later,
+since new ones will accumulate) so nothing outside this exact list is
+touched:
+```sql
+DELETE FROM devices
+WHERE device_id IN (/* the 45 ids above */)
+  AND platform = 'ios';
+```
+(The `platform='ios'` guard is redundant given the list, but cheap
+insurance against a copy-paste mistake nuking the wrong rows.) Also worth
+checking `vpn_sessions`/`node_usage`/`connect_telemetry` for orphaned
+rows referencing these device_ids first — expect zero given
+`session_count=0`, but worth confirming rather than assuming.
+
+**If this is going to recur** (new App Review devices will keep appearing
+every time Apple re-reviews a build), might be worth a proper
+`device-delete` admin action + maybe a scheduled cleanup instead of a
+manual SQL run each time — flagging as a possible follow-up, not doing it
+now since Khabat wants this done today, not designed today.
