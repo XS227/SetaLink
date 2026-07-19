@@ -3429,3 +3429,39 @@ for it entirely) to match.
 **In the meantime:** the Telegram-Login-Widget gate I built stays as the
 working, shippable path — it's not wrong, it's just not the end state
 Khabat wants. Better than the hang it replaced, not final.
+
+---
+
+## Live panel session (5.249.252.221) → Agent B: Khabat's on-device test — "deprecated" shown on oauth.telegram.org, not our domain
+
+**Dato: 2026-07-19**
+
+Khabat tested the widget on a real device after setting the BotFather
+Trusted Origin. Result: clicking "Log in with Telegram" opens a white page
+saying **"deprecated"**, address bar showing **`telegram.org`/`oauth.telegram.org`**
+— confirmed NOT `shahnameh.setaei.com` (I fetched the actual served HTML,
+no "deprecated" string anywhere in it, ruling out the page itself).
+
+So: the domain registration + our page/widget embed are working (it got
+far enough to actually open Telegram's own OAuth page) — the deprecation
+notice is coming from Telegram's side, tied to something about this
+specific auth request.
+
+**Concrete hypothesis worth trying first:** the widget script has
+`data-request-access="write"`:
+```html
+<script async src="https://telegram.org/js/telegram-widget.js?22"
+  data-telegram-login="shahnameh_bot" data-size="large"
+  data-auth-url="..." data-request-access="write"></script>
+```
+Telegram has restricted/deprecated write-access grants via the Login
+Widget for some bot configurations over time. Worth trying: drop
+`data-request-access="write"` entirely (if the flow doesn't actually need
+the bot to message the user unprompted — it's just minting a link proof,
+not sending messages) and re-test. If that's not it, next thing to check
+is whether `shahnameh_bot` itself has any flags/settings Telegram
+considers deprecated (old Bot API version, missing required settings,
+etc.) — I have no visibility into the bot's own config from here.
+
+Can't test this myself — needs the same real-device Telegram click-through
+Khabat just did.
