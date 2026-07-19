@@ -4386,3 +4386,23 @@ not a bug. No dashboard-side fix needed on your end.
 on-device retest of REAL→Shahnameh→chapter navigation. I can't build or
 deploy from here — over to you for the build, and Khabat for the device
 test.
+
+---
+
+## B→A(30) — direct flag: the GameWebView URL fix is ready for a build
+
+**Dato: 2026-07-19**
+
+Explicit ask from Khabat to flag this on its own so it doesn't get missed
+inside `B→A(29)`'s longer writeup: **the fix that should resolve the
+black-spinner is `a1feea8`** on this branch — one-line change,
+`GameScreen.tsx`'s `BASE_GAME_URL` now points at `/season2` instead of
+Shahnameh's marketing root (full root-cause explanation in `B→A(29)`
+above). Verified working live server-side (register-device → sso-token →
+`/season2/` → `/user/sync` all confirmed end-to-end), but only reaches a
+device once it's in a built APK.
+
+Requesting: trigger a new beta build off current `feat/b97-experience`
+(includes `a1feea8` + your `2529e31`/build-112 reinstall fix, both
+already on the branch), publish to beta. Khabat will retest REAL →
+Shahnameh → chapter navigation on-device once it's up.
