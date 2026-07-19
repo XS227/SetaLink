@@ -257,6 +257,45 @@ function re_linked_account(PDO $pdo, string $deviceId): string {
     return (string)($st->fetchColumn() ?: '');
 }
 
+/**
+ * REAL-ID Phase 2 (Khabat, 2026-07-19): every device gets a permanent
+ * REAL-ID automatically — no Telegram widget, no external login in the
+ * default flow. If the device already has a linked_real_account (either a
+ * prior auto-generated id, or a real Telegram-verified one from
+ * re_link_account()), that value wins unchanged. Telegram linking later
+ * (existing flow, unmodified) simply overwrites this with the verified
+ * account — re_link_account() already does an unconditional UPDATE, so
+ * that upgrade path needed zero changes here.
+ *
+ * Format: 'rg_' + 32 hex chars (128-bit random) — prefixed so it's visibly
+ * distinguishable from a Telegram-derived numeric account id, in case that
+ * distinction ever matters downstream (Shahnameh, analytics, support).
+ */
+function re_ensure_real_id(PDO $pdo, string $deviceId): string {
+    $existing = re_linked_account($pdo, $deviceId);
+    if ($existing !== '') return $existing;
+
+    $newId = 'rg_' . bin2hex(random_bytes(16));
+    // Guard the UPDATE on still-empty so a concurrent request racing the same
+    // device can't clobber a value the other request just set.
+    $st = $pdo->prepare(
+        "UPDATE devices SET linked_real_account=?
+         WHERE device_id=? AND (linked_real_account IS NULL OR linked_real_account='')"
+    );
+    $st->execute([$newId, $deviceId]);
+    if ($st->rowCount() > 0) {
+        try {
+            $pdo->prepare(
+                "UPDATE devices SET real_linked_at = datetime('now')
+                 WHERE device_id = ? AND (real_linked_at IS NULL OR real_linked_at = '')"
+            )->execute([$deviceId]);
+        } catch (\Exception $_) {}
+        return $newId;
+    }
+    // Lost the race — someone else's value is now there; use it instead.
+    return re_linked_account($pdo, $deviceId);
+}
+
 // ── Phase 2 (A2): server-verified redemption ─────────────────────────────────
 
 /**
@@ -472,8 +511,13 @@ function re_spend(PDO $pdo, string $realAccount, float $realAmount, string $idem
  *   ['status'=>'unavailable']              issuer not configured/reachable yet
  */
 function re_sso_token(PDO $pdo, string $deviceId): array {
-    $account = re_linked_account($pdo, $deviceId);
-    if ($account === '') return ['status' => 'unlinked'];
+    // Phase 2: always resolves to something now — auto-generates a
+    // permanent REAL-ID on first call if the device has neither an
+    // auto-generated nor a Telegram-verified account yet. 'unlinked' is no
+    // longer a real outcome of this function; kept as a status value only
+    // for API-shape compatibility with older app builds that still check
+    // for it.
+    $account = re_ensure_real_id($pdo, $deviceId);
 
     $cfg = re_service_config($pdo);
     if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
