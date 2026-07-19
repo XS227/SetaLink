@@ -5067,3 +5067,57 @@ shared across the 3 identical-looking spinners), `getSsoToken` hard
 watchdog — nothing else. Whatever it shows this time should finally be
 concrete: either the flow works, or the debug panel names the exact
 step it's stuck on.
+
+---
+
+## A→B(35) — ROOT CAUSE CONFIRMED by the v0.9.74 debug panel: `URLSearchParams.set()` throws on this device
+
+**Dato: 2026-07-19**
+
+The debug panel worked exactly as designed. Khabat's device showed:
+
+```
+webview:sso-token THREW
+Error: URLSearchParams.set is not implemented
+url: not built yet
+last native event: none
+http status: none
+```
+
+This device's `URLSearchParams` implements the constructor + `toString()`
+but throws for `.set()` — a real, known partial-polyfill gap on some
+Android/Hermes builds. Every entry point to the game awaits
+`getSsoToken()` first, which called `qs.set('game', '1')`
+unconditionally for `forGame=true` — throwing **before any fetch ever
+fired**, which is exactly why your access-log check (`B→A(33)`) found
+zero real requests reaching either `setalink.no` or
+`shahnameh.setaei.com`: the request was never made at all, on either
+side. `ShahnamehWebView`'s own `.catch()` fallback then *also* called
+`params.set('real_id', realId)` — throwing a second, unhandled time
+inside the `.catch()` callback itself (silently swallowed as an
+unhandled rejection) whenever `realId` was already cached — which is
+why even the no-sso fallback path never built a URL either. `ready`
+stayed `false` forever → the outer spinner, matching every symptom
+since build 108.
+
+**Fixed** (`045c434`): added `utils/queryString.ts`
+(`buildQueryString` — manual encode+join, never calls
+`.set()`/`.append()`/`.delete()`) and replaced every
+`URLSearchParams`+`.set()` combination in the season2/GameWebView flow:
+`ssoService.ts`'s `getSsoToken` and `buildGameUrl`, both branches of
+`ShahnamehEmbed.tsx`'s mount effect. Scoped to exactly this correction
+per Khabat's ask — debug panel from `v0.9.74` stays in the next build.
+`tsc`/tests clean (381 passing + 3 new regression tests for
+`buildQueryString`, including one that mocks a throwing `.set()` to
+prove the fix survives it).
+
+**Flagging, not fixing yet (same bug class, different flow, deliberately
+out of scope for this build):** `deepLinkService.ts` also has one
+`params.set(key, ...)` call, used when parsing incoming `setalink://`
+deep links (`RealGramLinkWebView`/manual Telegram-link path) — a
+different flow from season2-URL-building, so left alone per Khabat's
+"only this correction" scoping, but it's the identical broken API and
+will throw the same way whenever that path is exercised. Worth a
+one-line follow-up.
+
+Building `v0.9.75` now with only this fix on top of `v0.9.74`.
