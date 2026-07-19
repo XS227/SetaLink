@@ -2,7 +2,7 @@
  * PremiumScreen — "Upgrade with REAL".
  *
  * REAL-first premium purchase. Packages/prices come from the server (never hardcoded);
- * payment is server-verified via the intent flow. REAL is the native Realink / SETAEI /
+ * payment is server-verified via the intent flow. REAL is the native RealGram / SETAEI /
  * Shahnameh ecosystem utility token, shown first and visually highlighted with its
  * discount. USDT is shown only when the backend reports methods.USDT = true.
  *

@@ -1,5 +1,5 @@
 /**
- * CommunityRankCard — the member's standing in the Realink community.
+ * CommunityRankCard — the member's standing in the RealGram community.
  *
  * Rank climbs with TrustAI-verified invites (activeInviteCount): Warrior →
  * Pahlavan (3) → Champion (6) → King (10) — the same 3/6/10 tier ladder

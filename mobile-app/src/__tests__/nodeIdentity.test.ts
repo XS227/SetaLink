@@ -28,7 +28,7 @@ describe('resolveNodeIdentity — authoritative node labelling', () => {
 
   it('never guesses a country for a fully unknown node', () => {
     const id = resolveNodeIdentity('9.9.9.9');
-    expect(id.country).toBe('Realink Node');
+    expect(id.country).toBe('RealGram Node');
     expect(id.city).toContain('9.9.9.9');
   });
 });

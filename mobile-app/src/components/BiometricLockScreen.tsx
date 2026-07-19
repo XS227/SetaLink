@@ -38,7 +38,7 @@ export function BiometricLockScreen({ visible, onUnlock }: Props) {
         setLoading(false);
         return;
       }
-      const success = await BiometricService.authenticate('Realink', t('lock.unlock'));
+      const success = await BiometricService.authenticate('RealGram', t('lock.unlock'));
       if (success) { onUnlock(); return; }
       setMode(pinCode ? 'pin-entry' : 'pin-create');
     } catch (e: any) {
@@ -118,7 +118,7 @@ export function BiometricLockScreen({ visible, onUnlock }: Props) {
         <View style={styles.lockOrb}>
           <Text style={styles.lockIcon}>🔒</Text>
         </View>
-        <Text style={styles.title}>Realink</Text>
+        <Text style={styles.title}>RealGram</Text>
         <Text style={styles.subtitle}>{modeTitle}</Text>
 
         {modeHint ? <Text style={styles.hint}>{modeHint}</Text> : null}

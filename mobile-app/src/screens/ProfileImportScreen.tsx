@@ -78,7 +78,7 @@ export function ProfileImportScreen({ onBack }: Props) {
     const sid  = creds.shortId ? `&sid=${encodeURIComponent(creds.shortId)}` : '';
     const sni  = creds.sni ? `&sni=${encodeURIComponent(creds.sni)}` : '';
     const pbk  = creds.publicKey ? `&pbk=${encodeURIComponent(creds.publicKey)}` : '';
-    const name = encodeURIComponent(rec.city || rec.country || 'Realink');
+    const name = encodeURIComponent(rec.city || rec.country || 'RealGram');
 
     const uri = `vless://${creds.uuid}@${endpoint}:${creds.port}?security=reality&encryption=none&type=tcp${pbk}${sid}${sni}${flow}${fp}#${name}`;
 
@@ -155,7 +155,7 @@ export function ProfileImportScreen({ onBack }: Props) {
             {importedEntries.map((s) => {
               const creds = importedCreds[s.id];
               const friendlyName = s.country === 'Netherlands' || !s.country
-                ? 'Realink Edge'
+                ? 'RealGram Edge'
                 : `${s.country}${s.city ? ' · ' + s.city : ''}`;
               return (
                 <View key={s.id} style={styles.profileRow}>

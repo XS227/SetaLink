@@ -1,5 +1,5 @@
 /**
- * Centralized API client for the Realink backend.
+ * Centralized API client for the RealGram backend.
  *
  * All HTTP calls go through request() so auth headers, timeouts, and
  * 401 auto-logout are handled in one place.

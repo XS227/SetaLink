@@ -2,7 +2,7 @@
  * Ecosystem profile service — cross-app identity layer.
  *
  * The `real_profiles` table on the SetaLink panel is the single source of truth
- * for a user's visible identity across all REAL products (ReaLink, RealGram,
+ * for a user's visible identity across all REAL products (RealGram, RealGram,
  * Shahnameh, TrustAI, 3REAL). This service reads/writes it so the user only
  * sets their avatar and handle once, and it follows them everywhere.
  *
@@ -59,7 +59,7 @@ async function get(action: string, params: Record<string, string>): Promise<unkn
 }
 
 /**
- * Push the current ReaLink identity to the shared profile store.
+ * Push the current RealGram identity to the shared profile store.
  * Called after REAL-ID linking and when the user updates their profile.
  * Silently no-ops on network failure (profile sync is best-effort).
  */

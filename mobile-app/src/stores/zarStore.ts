@@ -1,5 +1,5 @@
 /**
- * zarStore — Shahnameh tap-to-earn balance inside Realink.
+ * zarStore — Shahnameh tap-to-earn balance inside RealGram.
  *
  * While the VPN is connected, each tap on the big REAL coin earns ZAR — the
  * Shahnameh in-game currency. ZAR converts to REAL in a later step (backend

@@ -50,7 +50,7 @@ export const useInboxStore = create<InboxState>()(
             .filter(m => !existing.has(m.id))
             .map(m => ({
               id:        m.id,
-              title:     m.title || 'Realink',
+              title:     m.title || 'RealGram',
               body:      m.body,
               createdAt: m.created_at,
               read:      false,

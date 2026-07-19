@@ -5,7 +5,7 @@ import { useT, tagLabelKey } from '../i18n';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
-// Brand nodes render the Realink logo mark instead of a flag emoji. Keyed off
+// Brand nodes render the RealGram logo mark instead of a flag emoji. Keyed off
 // the node id (Cloudflare-fronted stealth nodes are 'cf-*') so it works no
 // matter what the catalog puts in the flag field — older app builds that lack
 // this component simply show the catalog's fallback emoji.
@@ -13,7 +13,7 @@ export function isBrandNode(id: string | undefined): boolean {
   return !!id && id.startsWith('cf-');
 }
 
-/** Renders the Realink logo for brand nodes, otherwise the flag emoji. */
+/** Renders the RealGram logo for brand nodes, otherwise the flag emoji. */
 export function FlagGlyph({ flag, brand, size = 28 }: { flag: string; brand?: boolean; size?: number }) {
   if (brand) {
     return <Image source={REALINK_LOGO} style={{ width: size, height: size, resizeMode: 'contain' }} />;

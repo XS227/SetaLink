@@ -191,25 +191,25 @@ function buildEntry(cfg: ParsedVlessConfig, index: number): ImportedServer {
   const countryFromAddress = detectCountry(cfg.address);
   const countryInfo        = countryFromName ?? countryFromAddress;
 
-  // 2. Build display name in "Realink X N" format (max ~22 chars before dedup)
+  // 2. Build display name in "RealGram X N" format (max ~22 chars before dedup)
   let titleBase: string;
   let flagChar: string;
 
   if (provider) {
-    // Known cloud/hosting provider: "Realink Oracle", "Realink Hetzner"
-    titleBase = `Realink ${provider.label}`;
+    // Known cloud/hosting provider: "RealGram Oracle", "RealGram Hetzner"
+    titleBase = `RealGram ${provider.label}`;
     flagChar  = countryInfo?.flag ?? provider.flag;
   } else if (countryInfo) {
-    // Detected country: "Realink Germany", "Realink Finland"
-    titleBase = `Realink ${countryInfo.country}`;
+    // Detected country: "RealGram Germany", "RealGram Finland"
+    titleBase = `RealGram ${countryInfo.country}`;
     flagChar  = countryInfo.flag;
   } else if (rawName && rawName.length <= 32 && !rawName.includes(':')) {
     // Fragment is a user-given label — use up to 14 chars after stripping flags
     const stripped = rawName.replace(/\p{Regional_Indicator}{2}/gu, '').trim();
-    titleBase = stripped.length > 1 ? `Realink ${stripped.slice(0, 14)}` : 'Realink Custom';
+    titleBase = stripped.length > 1 ? `RealGram ${stripped.slice(0, 14)}` : 'RealGram Custom';
     flagChar  = extractFlag(rawName) ?? '⚡';
   } else {
-    titleBase = 'Realink Custom';
+    titleBase = 'RealGram Custom';
     flagChar  = '⚡';
   }
 

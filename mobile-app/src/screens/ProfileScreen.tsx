@@ -822,14 +822,14 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         </TouchableOpacity>
 
         <GlassCard>
-          <Text style={styles.footerBrand}>Realink</Text>
+          <Text style={styles.footerBrand}>RealGram</Text>
           <TouchableOpacity onLongPress={() => navTo('diagnostics')} delayLongPress={1500}>
             <Text style={styles.footerMeta}>v{APP_VERSION} ({APP_BUILD})</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={handleOpenWebsite}>
             <Text style={styles.footerLink}>https://setalink.no</Text>
           </TouchableOpacity>
-          <Text style={styles.footerCopy}>© 2026 Realink. {t('st.allRights')}</Text>
+          <Text style={styles.footerCopy}>© 2026 RealGram. {t('st.allRights')}</Text>
           <EcosystemFooter />
         </GlassCard>
 

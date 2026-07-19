@@ -438,9 +438,9 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
         </Section>
 
         <View style={styles.about}>
-          <Text style={styles.appName}>Realink</Text>
+          <Text style={styles.appName}>RealGram</Text>
           <Text style={styles.version}>v{APP_VERSION} · Build {APP_BUILD}</Text>
-          <Text style={styles.legal}>© 2026 Realink. {t('st.allRights')}</Text>
+          <Text style={styles.legal}>© 2026 RealGram. {t('st.allRights')}</Text>
           <EcosystemFooter />
         </View>
 

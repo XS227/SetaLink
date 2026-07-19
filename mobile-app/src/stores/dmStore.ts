@@ -10,7 +10,7 @@ import type { DirectMessage } from '../services/entitlementService';
  * `refresh()` pulls the device's full thread (inbox + sent) from list-messages.
  * The server is the source of truth, so we replace the local cache on each
  * fetch rather than merging. Bodies are decrypted server-side. Recipients are
- * addressed by Realink ID only — no phone/email/IP is ever involved.
+ * addressed by RealGram ID only — no phone/email/IP is ever involved.
  */
 
 interface DMState {

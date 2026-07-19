@@ -3,7 +3,7 @@ type LogLevel = 'info' | 'warn' | 'error' | 'debug';
 
 function log(level: LogLevel, tag: string, ...args: unknown[]): void {
   if (!__DEV__) return;
-  const prefix = `[Realink:${tag}]`;
+  const prefix = `[RealGram:${tag}]`;
   const ts     = new Date().toISOString().slice(11, 23);
   switch (level) {
     case 'error': console.error(prefix, ts, ...args); break;

@@ -57,7 +57,7 @@ interface Props {
 
 /**
  * Inbox — one unified messenger surface (2026-07-07). WhatsApp/Telegram style:
- * a single conversation list holding the pinned official ReaLink thread (the
+ * a single conversation list holding the pinned official RealGram thread (the
  * announcements we send) alongside user-to-user DM threads. Tapping any row
  * opens the same chat-bubble view. A push-notification tap deep-links straight
  * into its thread via `initialThreadKey`.

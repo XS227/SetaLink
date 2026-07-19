@@ -151,7 +151,7 @@ export function executeDeepLink(action: DeepLinkAction, navigation: any): void {
               // Cache REAL-ID so GameScreen hub unlocks immediately.
               useAuthStore.getState().setRealId(action.account);
               useToastStore.getState().show('REAL account linked 🎉', 'success');
-              // Push current ReaLink identity to the shared ecosystem profile so
+              // Push current RealGram identity to the shared ecosystem profile so
               // Shahnameh/RealGram/TrustAI see the correct avatar and handle
               // without asking the user again.
               // eslint-disable-next-line @typescript-eslint/no-var-requires

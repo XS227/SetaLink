@@ -92,7 +92,7 @@ export function WelcomeScreen({ onStart }: Props) {
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Join Realink with my code: ${referralCode}\nhttps://setalink.no/?ref=${referralCode}`,
+        message: `Join RealGram with my code: ${referralCode}\nhttps://setalink.no/?ref=${referralCode}`,
       });
     } catch { /* share dismissed */ }
   };
@@ -112,7 +112,7 @@ export function WelcomeScreen({ onStart }: Props) {
         {/* Hero */}
         <View style={styles.heroSection}>
           <View style={styles.logoOrb} />
-          <Text style={styles.appName}>Realink</Text>
+          <Text style={styles.appName}>RealGram</Text>
           <Text style={styles.heroTitle}>You're all set.</Text>
           <Text style={styles.heroSub}>
             Your free account is ready. No registration, no email required.

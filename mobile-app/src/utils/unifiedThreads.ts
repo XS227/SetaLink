@@ -7,7 +7,7 @@ import { groupDmsByPeer } from './dmThreads';
  * style. Collapses the two former tabs (user-to-user DMs + admin announcements)
  * into a single conversation list:
  *
- *   • a pinned two-way "Support" thread wired to the ReaLink support account
+ *   • a pinned two-way "Support" thread wired to the RealGram support account
  *     (SUPPORT_USER_ID). It carries every admin announcement AND any direct
  *     support DMs, so everything from us — and the user's replies to us — lives
  *     in one chat. Always present so a user can reach support with one tap.
@@ -17,7 +17,7 @@ import { groupDmsByPeer } from './dmThreads';
  * opens the same chat-bubble view.
  */
 
-// The ReaLink support account. Messages the user sends the Support thread are
+// The RealGram support account. Messages the user sends the Support thread are
 // addressed here; incoming DMs from this id (and all admin announcements) render
 // in the Support thread.
 export const SUPPORT_USER_ID = 'SL-227-62DAC5F0';

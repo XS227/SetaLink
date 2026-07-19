@@ -48,9 +48,9 @@ interface NodeIdentity { country: string; city: string; flag: string }
 const NODE_IDENTITY: Record<string, NodeIdentity> = {
   '65.109.183.7':   { country: 'Finland', city: 'Hetzner · Helsinki', flag: '🇫🇮' },
   '91.107.158.53': { country: 'Germany', city: 'Hetzner · Nürnberg', flag: '🇩🇪' },
-  // CDN-fronted stealth node — branded as Realink (never surface the CDN vendor
+  // CDN-fronted stealth node — branded as RealGram (never surface the CDN vendor
   // name in the UI). Address is the current Cloudflare-fronted apex.
-  'alanya-turist.no': { country: 'Realink', city: 'Secure Edge · Stealth', flag: '☁️' },
+  'alanya-turist.no': { country: 'RealGram', city: 'Secure Edge · Stealth', flag: '☁️' },
 };
 export function resolveNodeIdentity(
   address?: string,
@@ -59,7 +59,7 @@ export function resolveNodeIdentity(
   const known = address ? NODE_IDENTITY[address] : undefined;
   if (known) return known;
   return {
-    country: fallback?.country || 'Realink Node',
+    country: fallback?.country || 'RealGram Node',
     city:    fallback?.city    || (address ? `Reality · ${address}` : 'Reality'),
     flag:    fallback?.flag    || '🌐',
   };
@@ -83,7 +83,7 @@ export const CF_EDGE_ID = 'cf-edge';
 
 export const BUNDLED_CF_EDGE: ServerRecord = {
   id:        CF_EDGE_ID,
-  country:   'Realink',
+  country:   'RealGram',
   city:      'Secure Edge · Stealth',
   flag:      '☁️',
   ping:      60,
@@ -542,7 +542,7 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-ws',
-          country:   'Realink Edge',
+          country:   'RealGram Edge',
           city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      55,
@@ -553,7 +553,7 @@ export const useServerStore = create<ServerState>()(
         },
         {
           id:        'server-xhttp',
-          country:   'Realink Edge',
+          country:   'RealGram Edge',
           city:      'Old Edge WS/XHTTP fallback',
           flag:      '🌐',
           ping:      50,

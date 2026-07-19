@@ -22,10 +22,10 @@ const BOOTSTRAP_URL =
 
 const BOOTSTRAP_CACHE_KEY = 'emergency_bootstrap_v6';
 
-// vless://92a861cd-6029-4882-9de5-35d9291e0828@65.109.183.7:443?type=tcp&encryption=none&security=reality&pbk=eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU&fp=chrome&sni=www.cloudflare.com&sid=b3a824bd&flow=xtls-rprx-vision#Realink-Finland
+// vless://92a861cd-6029-4882-9de5-35d9291e0828@65.109.183.7:443?type=tcp&encryption=none&security=reality&pbk=eGL5TwzXjS4_kQrqAGBrY2K6MqjRXmz70xYhcgXUXwU&fp=chrome&sni=www.cloudflare.com&sid=b3a824bd&flow=xtls-rprx-vision#RealGram-Finland
 const HARDCODED_PROFILE: EmergencyProfile = {
   id:          'server-emergency',
-  label:       'Realink Finland',
+  label:       'RealGram Finland',
   uuid:        '92a861cd-6029-4882-9de5-35d9291e0828',
   address:     '65.109.183.7',
   port:        443,

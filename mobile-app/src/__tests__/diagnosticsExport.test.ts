@@ -22,7 +22,7 @@ describe('buildDiagnosticsReport', () => {
   it('produces a non-empty report containing all required fields', () => {
     const out = buildDiagnosticsReport(base);
     expect(out.length).toBeGreaterThan(0);
-    expect(out).toContain('Realink Diagnostic Report');
+    expect(out).toContain('RealGram Diagnostic Report');
     expect(out).toContain('0.9.34 (build 51)');
     expect(out).toContain('dev-abc');
     expect(out).toContain('android 34');

@@ -208,7 +208,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
     const report = await buildReport();
     Alert.alert('Export Diagnostic Report', 'Share the report or copy it to the clipboard.', [
       { text: 'Copy', onPress: () => { Clipboard.setString(report); Alert.alert('Copied', 'Diagnostic report copied to clipboard.'); } },
-      { text: 'Share', onPress: () => { Share.share({ message: report, title: 'Realink Diagnostic Report' }).catch(() => {}); } },
+      { text: 'Share', onPress: () => { Share.share({ message: report, title: 'RealGram Diagnostic Report' }).catch(() => {}); } },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };

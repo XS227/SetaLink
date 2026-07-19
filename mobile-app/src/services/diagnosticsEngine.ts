@@ -84,7 +84,7 @@ const STATIC_HOPS: RouteHop[] = [
   { hop: 1, ip: '10.0.0.1',     rtt: '1ms', label: 'Local Gateway' },
   { hop: 2, ip: '(ISP)',        rtt: '—',   label: 'ISP Transit' },
   { hop: 3, ip: '(CDN edge)',   rtt: '—',   label: 'CDN Edge' },
-  { hop: 4, ip: '(VPN exit)',   rtt: '—',   label: 'Realink Node' },
+  { hop: 4, ip: '(VPN exit)',   rtt: '—',   label: 'RealGram Node' },
   { hop: 5, ip: '(hidden)',     rtt: '—',   label: 'Destination' },
 ];
 
@@ -130,7 +130,7 @@ export function snapshot(server?: ServerHint): DiagnosticsSnapshot {
     { hop: 1, ip: '10.0.0.1',   rtt: '1ms',          label: 'Local Gateway' },
     { hop: 2, ip: '(ISP)',      rtt: '—',            label: 'ISP Transit' },
     { hop: 3, ip: '(CDN edge)', rtt: `${edgeRtt}ms`, label: 'CDN Edge' },
-    { hop: 4, ip: '(VPN exit)', rtt: `${nodeRtt}ms`, label: `Realink ${cc}·0${nodeNum}` },
+    { hop: 4, ip: '(VPN exit)', rtt: `${nodeRtt}ms`, label: `RealGram ${cc}·0${nodeNum}` },
     { hop: 5, ip: '(hidden)',   rtt: '—',            label: 'Destination' },
   ];
 

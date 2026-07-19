@@ -1,5 +1,5 @@
 /**
- * EcosystemBanner — rotating promo strip for the Realink/REAL ecosystem.
+ * EcosystemBanner — rotating promo strip for the RealGram/REAL ecosystem.
  *
  * Cycles between the Shahnameh game (earn REAL) and the 3real exchange (trade REAL),
  * both carrying the REAL token mark. Different screens pass a `seed` so they start on

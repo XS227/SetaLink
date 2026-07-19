@@ -1,4 +1,4 @@
-// Realink Design System — V1
+// RealGram Design System — V1
 // Scandinavian · Futuristic · Minimal · Cinematic
 
 export const Colors = {

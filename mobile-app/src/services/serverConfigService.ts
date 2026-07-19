@@ -4,7 +4,7 @@ declare var btoa: (data: string) => string;
 /**
  * Server config service — resolves per-server Xray credentials.
  *
- * In production this calls the Realink API:
+ * In production this calls the RealGram API:
  *   GET /api/v1/servers/{serverId}/config
  *   Authorization: Bearer {token}
  *

@@ -51,7 +51,7 @@ export const BiometricService: BiometricService = {
   },
 
   async authenticate(
-    title = 'Realink',
+    title = 'RealGram',
     subtitle = 'Verify your identity to unlock',
   ): Promise<boolean> {
     if (!BiometricModule) return false;

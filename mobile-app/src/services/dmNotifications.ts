@@ -38,7 +38,7 @@ export function newIncomingToNotify(
     .filter(m => m.direction === 'in' && !m.read && !seen.has(m.id))
     .map(m => ({
       id:     m.id,
-      sender: m.peerUserId || m.peerDevice || 'Realink',
+      sender: m.peerUserId || m.peerDevice || 'RealGram',
       route:  m.peerDevice ? `inbox:${m.peerDevice}` : 'inbox',
     }));
 }

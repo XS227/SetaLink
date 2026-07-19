@@ -1,6 +1,6 @@
 /**
  * EcosystemFooter — the REAL ecosystem brand row shown with the copyright
- * line, so users see Realink is one piece of a unified package:
+ * line, so users see RealGram is one piece of a unified package:
  * game · learn · earn · connect · free.
  *
  * The wordmark chips are typographic placeholders; agent B's RealGram
@@ -14,7 +14,7 @@ import { Colors, Typography, Radius } from '../design/tokens';
 import { useT } from '../i18n';
 
 const BRANDS: { name: string; color: string }[] = [
-  { name: 'Realink',   color: Colors.emerald[400] },
+  { name: 'RealGram',   color: Colors.emerald[400] },
   { name: 'Shahnameh', color: Colors.gold[400] },
   { name: 'TrustAI',   color: Colors.blue[400] },
   { name: 'RealGram',  color: '#C77DFF' },
