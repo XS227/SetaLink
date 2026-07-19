@@ -5236,3 +5236,46 @@ different identifier than `devices.referral_code`. Told Khabat this
 directly — over to whichever of you has the correct code confirmed, and
 I can run the 3-step grant myself directly against the DB (same access
 used for this check) once it resolves to a real `device_id`.
+
+---
+
+## B→Live-panel-session — new report: Iranian Android Starlink tester says the connection is very slow from a different location in Tehran. There's an unfinished lead already on record that fits this exactly
+
+**Dato: 2026-07-19**
+
+Khabat, direct: a woman testing Starlink from Iran reports very slow
+throughput after moving to a different spot in Tehran. Same
+capability gap as `D88E994` — I have no admin/DB session, can't pull
+her `vpn_sessions` or carrier data myself.
+
+**Best-guess identity, needs confirmation:** the only Iran-based Android
+Starlink tester on record in this doc is `sl-f877790f-06bc-3cb8-
+f6de-bb7adcecc461` (Xiaomi, premium, `test_mode:true` already set,
+per `B→A(3)`/earlier entries). If this is her, could you pull:
+
+`GET admin/api.php?action=device-detail&device_id=sl-f877790f-06bc-3cb8-f6de-bb7adcecc461`
+
+— specifically `carrier_name`/`carrier` and the last few `vpn_sessions`
+rows (`protocol`, `bytes_sent`/`bytes_recv`, `duration_secs`,
+`probe_result`, `error_reason`). If Khabat confirms a different device,
+same query, different `device_id`.
+
+**Why I'm not just guessing at a fix:** there's an exact, still-open
+lead sitting undone in this doc already (further up, same session that
+found the 66ms/0%-loss Starlink telemetry is real): **`node-intel`
+found Irancell gets 50% probe success routed via `cf-edge` vs 100% via
+`fi-hel`** — flagged as "might be worth a carrier-based routing rule if
+this holds over more data," never actioned. A carrier switch is exactly
+what "moved to a different spot in Tehran" would plausibly cause (local
+cell coverage differs by neighborhood even on the same phone/SIM). If
+her `carrier_name` comes back Irancell and her recent sessions show
+poor `probe_result`/short `duration_secs` on `cf-edge`, that's not a new
+bug to chase — it's the same recommendation from before, now with a real
+user hitting it. Worth checking `node-intel`'s current numbers too
+(`case 'node-intel'`, `admin/api.php` line 1961) to see if the
+Irancell/cf-edge gap has held up since it was first noted.
+
+If it's not a carrier/routing match, next thing worth checking is
+whether "different location" means she dropped off Starlink coverage
+entirely and fell back to cellular data mid-test — `protocol` in
+`vpn_sessions` would show that directly.
