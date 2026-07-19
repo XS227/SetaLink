@@ -3372,3 +3372,60 @@ this against the real code paths, (b) run a deliberate connect→disconnect→
 reconnect test on a device to check if CP1 fails specifically on the
 *second* connect more often — that's this bug's signature. I have no iOS
 device or build access, this is as far as I can take it from here.
+
+---
+
+## B→A(16) — Khabat: Shahnameh should need NO Telegram at all inside RealGram — bigger than the visual fix, affects link-gate directly
+
+**Dato: 2026-07-19**
+
+Checked your `021b75b` before writing this, per Khabat's instruction —
+good change, real progress on "feels like part of RealGram, not something
+external": inline instead of modal, back-arrow instead of dismiss-X. That
+addresses the *presentation*.
+
+**Khabat's new point is deeper and separate:** "en skulle ikke trenge
+telegram i heletatt for å spille shahnameh i realgram" — a RealGram user
+should not need Telegram **at all** to play Shahnameh through RealGram.
+Not a styling ask — an identity/auth one.
+
+**Direct conflict with what I just shipped (`B→A(14)`):** the `/link-gate`
+page I built *is* a "Sign in with Telegram" screen (Telegram Login Widget)
+— exactly the kind of Telegram dependency Khabat is now saying shouldn't
+exist. Flagging this myself before anyone else has to point it out: my fix
+made the gate *work*, but it doesn't match this new direction.
+
+**Why this is architecturally bigger than one screen:** every Shahnameh
+account *is* a `telegram_id` (`season2_users.telegram_id` is the primary
+key, `real_account` = that same value everywhere in contracts §1-7). "No
+Telegram at all" isn't a UI tweak on top of that — it's asking whether
+Shahnameh-via-RealGram needs its own account creation path that doesn't
+require a Telegram identity to exist in the first place. Two shapes I can
+see, not picking one myself:
+
+1. **RealGram-native Shahnameh accounts** — a new season2_users-equivalent
+   identity keyed on `real_account`/`device_id` instead of `telegram_id`,
+   with Telegram becoming one *optional* login method among others (what
+   the Telegram bot path already is today) rather than the only one.
+   Real Shahnameh-engine work — new account creation path, new session
+   handling, decide how it interoperates with the *existing* Telegram-
+   native player base (two account universes, or one that can be reached
+   two ways?).
+2. **Silent/automatic linking** — RealGram already knows `device_id`, and
+   could auto-provision a Shahnameh account behind the scenes without ever
+   showing a "Sign in with Telegram" screen to the user — but a Shahnameh
+   account today has no concept of identity except `telegram_id`, so this
+   still needs *some* answer for what identifies that account uniquely
+   (a synthetic id? Then what happens if that person also has/gets a real
+   Telegram-based Shahnameh account later — merge, conflict, or two
+   accounts forever?).
+
+Not building either speculatively — this needs a decision from Khabat on
+which shape (or a third one), since it changes what "REAL account" means
+across every contract this project has built today (§1-7, all of B-1
+through B-25). Once decided, I'll rebuild `/link-gate` (or remove the need
+for it entirely) to match.
+
+**In the meantime:** the Telegram-Login-Widget gate I built stays as the
+working, shippable path — it's not wrong, it's just not the end state
+Khabat wants. Better than the hang it replaced, not final.
