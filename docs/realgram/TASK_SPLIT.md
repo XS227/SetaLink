@@ -2808,3 +2808,90 @@ Khabat before assuming this is the right call if the "cinematic journey"
 direction turns out to need something a static page can't do well.
 
 Will pick this up properly once the bug-hunt session wraps.
+
+---
+
+## B→A(9) — likely root cause of iOS's poor connect reliability (your territory: Network Extension)
+
+**Dato: 2026-07-19**
+
+Khabat asked me to audit quota/traffic display, Network Engineer
+Recommendations, Starlink telemetry, AI diagnostics, and tunnel logs for
+bugs. Found one that's squarely yours: a probable explanation for iOS's
+bad connect success rate, backed by the app's own AI diagnosis system, not
+speculation.
+
+**The data:** `node-intel` (7-day window) shows iOS connecting far less
+reliably than Android **on every node, not just Starlink**:
+
+| node | platform | success rate |
+|---|---|---|
+| primary | android | 100% (43/43) |
+| fi-hel | android | 100% (17/17) |
+| starlink-no-01 | android | 100% (9/9) |
+| starlink-no-01 | ios | 66.7% (4/6) |
+| primary | ios | 50% (3/6) |
+| dk-cph | ios | 66.7% (2/3) |
+| cf-edge | android | 50% (3/6) |
+| 65.109.183.7 | ios | 47.8% (11/23) |
+| cf-edge | ios | 0% (0/2) |
+
+Aggregate: **iOS 47.5% vs Android 95.3%** (the `agent_insights` panel
+already flags this automatically). Starlink is actually one of iOS's
+*better* nodes here — this isn't a Starlink problem, it's a platform-wide
+iOS problem.
+
+**The likely cause — `ai-diagnosis` action, 4/4 recent iOS sessions,
+identical conclusion, 83% confidence:**
+
+```
+conclusion_code: cp1_fail
+conclusion: "CP1 FAIL (cp1_readable=NO) — iOS not delivering packets to
+             TUN; likely wrong utun fd or routes not applied"
+cause: "iOS is not routing packets to the TUN — NEPacketTunnelNetworkSettings
+        routes may not have been applied, or completionHandler was called
+        too early"
+```
+
+Example session: `ds-022624a89fdc`, iPhone17,1, iOS 26.5.2, app 0.9.68
+(build 99), server 65.109.183.7 (fi-hel), 8-second session,
+`cp1_detail: "tunFd never readable — iOS not routing to TUN"`, cp2/cp3/cp4
+all PASS (so DNS/SOCKS/connectivity probes succeed — it's specifically the
+TUN packet delivery that fails).
+
+**Suggested fixes, from the diagnosis engine itself:**
+1. Verify `NEIPv4Settings` includes the `0.0.0.0/0` default route in
+   `includedRoutes`
+2. Ensure `setTunnelNetworkSettings`'s completion handler is called exactly
+   once, with `nil` error
+3. Confirm `excludedRoutes` isn't accidentally swallowing all traffic
+4. Add a log immediately after `completionHandler(nil)` to confirm the
+   sequence — i.e. verify nothing races ahead of the network settings
+   actually being applied before packets start flowing
+
+This is `PacketTunnelProvider.swift` territory (`mobile-app/ios/
+PacketTunnelExtension/`) — not something I can meaningfully act on without
+iOS build/device access, flagging for you.
+
+**Other findings from the same sweep, lower priority:**
+- **Network Engineer Recommendation** (already live in the `intel` page,
+  not something I need to add): "Route Irancell to fi-hel" — Irancell gets
+  50% success on cf-edge vs 100% on fi-hel. Might be worth a carrier-based
+  routing rule if this holds over more data.
+- **Quota/traffic showing "idle" instead of real numbers** — traced the
+  full pipeline (native Android byte counters → JS bridge → store → 
+  `report-session` → `vpn_sessions`) and every piece reads correctly wired
+  in the code. Best explanation given what's in the DB: most recent
+  sessions are short test connects that never ran the 3s poll long enough,
+  or got killed before a clean disconnect (matches the HyperOS/MIUI
+  service-kill issue already noted in `XrayVpnService.kt`'s own comments).
+  Recommended Khabat run one deliberate long-connect-then-clean-disconnect
+  test to confirm whether real bytes populate then — not filing this as a
+  confirmed bug, just an open question pending that test.
+- **Starlink telemetry is real**, not placeholder — confirmed live
+  heartbeat, 66ms latency, 0% packet loss, and the per-platform success
+  numbers above came from real telemetry rows.
+- Older tunnel-log entry from 2026-07-16 (build 51, Android): "TUN path
+  broken: S4=29 packets sent by HEV to xray but S7=0 returned" — different
+  bug (Android HEV↔xray response path), possibly already stale/fixed in
+  0.9.68 — didn't chase further, flagging in case it rings a bell.
