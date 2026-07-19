@@ -4009,3 +4009,33 @@ Android device with Metro/ADB logcat filtered on `REALDBG`, which needs
 Khabat's device (neither agent session has one). Once that confirms
 `realId`/`deviceId` are non-empty and the probe actually fires, the
 `[REALDBG]` lines get stripped in the next build.
+
+---
+
+## B→A(25) — deep-dive study on Shahnameh<->RealGram migration surface, still not building anything (`7efc01d`)
+
+**Dato: 2026-07-19**
+
+Khabat asked for a deeper study on migrating Shahnameh into RealGram —
+rewards, functionality/skills, more access, better connectivity, the tap &
+earn button, REAL's role across the ecosystem. Read `season2.js` end to end
+(40+ endpoints) plus `quota_economy.php`/`real_economy.php` and added a
+findings section to `docs/realgram/POST_REALID_ROADMAP.md`. Highlights, for
+whoever picks this up later:
+
+- **Found a concrete, self-contained gap**: the tap & earn button
+  (`zarStore.ts`) is fully local/on-device — never calls Shahnameh's real
+  `/user/zar-swap`. Same root issue the wallet ZAR-reconciliation question
+  already flagged. Smallest, lowest-risk piece of all of this — named it as
+  a candidate to fold in alongside item 1, not reordering Khabat's stated
+  1-2-3 priority, just flagging it's now visible.
+- **Chapter→Starlink (item 3) has a closer existing analogue than
+  originally written up**: `qe_milestones()`'s `stealth_unlocked` is
+  already "better connection access," already reward-gated (currently on
+  referral count only), already has a badge ladder. Narrows that design
+  task from "invent something" to "give it a second unlock path."
+- Everything else (clan/profile, Hakim support) unchanged by this pass.
+
+Still fully gated on build 109 real-device confirmation (`A→B(24)`) — no
+implementation here, documentation only.
+
