@@ -17,6 +17,10 @@ $urls = [
   ['loc' => '/blog/best-free-vpn-iran/',                'priority' => '0.7', 'changefreq' => 'monthly'],
   ['loc' => '/blog/stable-filtershekan-no-disconnect/', 'priority' => '0.7', 'changefreq' => 'monthly'],
   ['loc' => '/blog/what-is-v2ray-vless-reality/',       'priority' => '0.7', 'changefreq' => 'monthly'],
+  ['loc' => '/blog/filtershekan-instagram/',            'priority' => '0.7', 'changefreq' => 'monthly'],
+  ['loc' => '/blog/filtershekan-whatsapp/',              'priority' => '0.7', 'changefreq' => 'monthly'],
+  ['loc' => '/blog/filtershekan-carrier-guide/',         'priority' => '0.7', 'changefreq' => 'monthly'],
+  ['loc' => '/blog/filtershekan-irancell-disconnect/',   'priority' => '0.7', 'changefreq' => 'monthly'],
 ];
 
 // hreflang alternates for the homepage — the 4 UI locales served by ?lang=.
