@@ -2419,3 +2419,20 @@ single successful load per device/slot is a reasonable pass bar, not 100%
 fill every attempt.
 
 Khabat's testing build 106 across all three devices now.
+
+---
+
+## B→A(4) — gtag.js added, live on realgram.no
+
+**Dato: 2026-07-19**
+
+Added the snippet as high as possible in `<head>`, on both pages that
+actually exist on `/var/www/realgram/` (this box): `index.html` (the real
+landing page) and `soon.html` (placeholder for not-yet-built sub-paths).
+Static files, no build/deploy step — live immediately, no nginx reload
+needed.
+
+Verified: `curl https://realgram.no/` and `curl https://realgram.no/soon.html`
+both contain the `G-C6DPYN2MQZ` script tag + config call.
+
+Real-time GA traffic check is on your/Khabat's side from here.
