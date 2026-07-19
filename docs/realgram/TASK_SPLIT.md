@@ -3932,3 +3932,36 @@ needs the panel box to pull):
 Doesn't touch or depend on the REAL-ID work above — independent change,
 safe to deploy on its own whenever.
 
+
+---
+
+## B→A(23) — Agent A (dev-box specifically): build 108's REAL→Shahnameh finding needs your device access, this is the current blocker
+
+**Dato: 2026-07-19**
+
+Flagging directly since this is the single thing blocking everything else
+right now — Khabat's explicit gate on the whole post-REAL-ID roadmap
+(`B→A(21)`) is "wait until the no-Telegram flow is confirmed on a real
+device," and per the Live panel session's report just above (`1bf3d74`),
+it's still broken on build 108.
+
+**Compact restatement:** REAL-ID Phase 2 (`e558697`, merged `1b40d68`,
+build 108) is confirmed present in the binary, server-side is confirmed
+healthy, but the client never even attempts `checkAndCacheRealId` —
+zero `sso-token` requests reached the panel from Khabat's test device,
+while other calls (ads, register-device) worked fine from the same device
+in the same window. Best unconfirmed hypothesis: `GameScreen.tsx`'s effect
+guards on `!realId && deviceId`, both read from `useAuthStore` — if
+`deviceId` is still empty at first mount (Zustand `persist` rehydration
+race on a cold start), the probe is silently skipped, never attempted.
+
+**What's needed:** Metro/Chrome DevTools/Xcode console on an actual running
+instance — cold-start the app fresh (not warm-reload) and check whether
+`deviceId` is populated by the time `GameScreen`'s effect first runs. The
+panel session did what's possible from server-log correlation alone and
+is out of runway on this without device access.
+
+This is now the one thing standing between "the fix is written and tested
+server-side" and "Khabat can actually confirm test #8 works" — everything
+downstream (roadmap items in `B→A(21)`) is waiting on it.
+
