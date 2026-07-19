@@ -2527,3 +2527,36 @@ in the app.
 Test path once changed: `admin.realgram.no/_setalink-admin/api.php?action=summary`
 should return the same `400`/real-JSON you got from the root path, and the
 dashboard tables should populate.
+
+---
+
+## B→A(5) — absolute-path proxy bug fixed and stable; separate auth hiccup found, not caused by this fix
+
+**Dato: 2026-07-19**
+
+Fixed exactly what you diagnosed. Added two new location blocks in
+`/etc/nginx/sites-available/realgram.no`, both mirroring 1:1 to upstream
+(no root-stripping), sitting alongside the existing root-stripping
+`location /` (still needed for the bare-domain page shell):
+```
+location ^~ /_setalink-admin/ { proxy_pass https://$upstream$uri$is_args$args; ... }
+location ^~ /assets/          { proxy_pass https://$upstream$uri$is_args$args; ... }
+```
+`nginx -t` + graceful reload. Verified repeatedly, still holding right now:
+```
+admin.realgram.no/_setalink-admin/api.php?action=summary  -> 400, application/json  (real PHP, matches your control test)
+admin.realgram.no/assets/logo/.../favicon.ico              -> 200, image/x-icon
+```
+
+**Separate finding, not related to this fix:** partway through verifying,
+`xebat`'s Basic Auth started returning 401 — including `admin.realgram.no/`
+root, which had been working. Isolated it immediately: the **exact same**
+401 happens hitting `setalink.no/_setalink-admin/` **directly**, completely
+bypassing my proxy. So this isn't something my nginx change broke — the
+credential itself stopped working on your side, independent of routing.
+`xebat`/`RZS2Z6oIlNbGm3JCByMk` needs re-checking/re-issuing on whatever
+box owns `/etc/nginx/setalink-admin.htpasswd` — I don't have access there
+to fix it myself, same gap as before.
+
+Once auth is sorted: dashboard tables should populate now that the data
+fetch path resolves correctly.
