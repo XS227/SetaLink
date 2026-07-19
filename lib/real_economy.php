@@ -267,15 +267,16 @@ function re_linked_account(PDO $pdo, string $deviceId): string {
  * account — re_link_account() already does an unconditional UPDATE, so
  * that upgrade path needed zero changes here.
  *
- * Format: 'rg_' + 32 hex chars (128-bit random) — prefixed so it's visibly
- * distinguishable from a Telegram-derived numeric account id, in case that
- * distinction ever matters downstream (Shahnameh, analytics, support).
+ * Format: 'device:<deviceId>' — matches Agent B's shahnameh-backend
+ * convention exactly (main@272d17b, id_type:'real' bridging in
+ * /user/sync), not an arbitrary format of my own — their side already
+ * auto-creates a season2_users doc keyed on this exact shape.
  */
 function re_ensure_real_id(PDO $pdo, string $deviceId): string {
     $existing = re_linked_account($pdo, $deviceId);
     if ($existing !== '') return $existing;
 
-    $newId = 'rg_' . bin2hex(random_bytes(16));
+    $newId = 'device:' . $deviceId;
     // Guard the UPDATE on still-empty so a concurrent request racing the same
     // device can't clobber a value the other request just set.
     $st = $pdo->prepare(
@@ -510,14 +511,17 @@ function re_spend(PDO $pdo, string $realAccount, float $realAmount, string $idem
  *   ['status'=>'unlinked']                 device has no linked REAL account
  *   ['status'=>'unavailable']              issuer not configured/reachable yet
  */
-function re_sso_token(PDO $pdo, string $deviceId): array {
-    // Phase 2: always resolves to something now — auto-generates a
-    // permanent REAL-ID on first call if the device has neither an
-    // auto-generated nor a Telegram-verified account yet. 'unlinked' is no
-    // longer a real outcome of this function; kept as a status value only
-    // for API-shape compatibility with older app builds that still check
-    // for it.
-    $account = re_ensure_real_id($pdo, $deviceId);
+function re_sso_token(PDO $pdo, string $deviceId, bool $allowRealIdFallback = false): array {
+    // Phase 2, opt-in only (Agent B's design, matched exactly — this action
+    // is shared with TrustAiLinkScreen, a separate product neither of us
+    // owns, so the fallback must not change behavior for callers that don't
+    // ask for it). $allowRealIdFallback=true auto-generates a permanent
+    // REAL-ID instead of returning 'unlinked'; false preserves the exact
+    // original behavior.
+    $account = $allowRealIdFallback
+        ? re_ensure_real_id($pdo, $deviceId)
+        : re_linked_account($pdo, $deviceId);
+    if ($account === '') return ['status' => 'unlinked'];
 
     $cfg = re_service_config($pdo);
     if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
@@ -526,9 +530,17 @@ function re_sso_token(PDO $pdo, string $deviceId): array {
     $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/sso-token');
     $headers = ['Content-Type: application/json'];
     if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    // Two request shapes now live on Agent B's side: {account,...} (original,
+    // requires a pre-existing season2_users doc) and {real_id,...} (new,
+    // find-or-creates via id_type:'real' bridging). The auto-fallback path
+    // MUST use real_id — {account} 404s account_not_found for a brand-new id
+    // even though it's the exact same string (confirmed live, 2026-07-19).
+    $payload = $allowRealIdFallback
+        ? ['real_id' => $account, 'device_id' => $deviceId]
+        : ['account'  => $account, 'device_id' => $deviceId];
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode(['account' => $account, 'device_id' => $deviceId]),
+        CURLOPT_POSTFIELDS     => json_encode($payload),
         CURLOPT_HTTPHEADER     => $headers,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,

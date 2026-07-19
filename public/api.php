@@ -781,7 +781,14 @@ if ($method === 'GET') {
             $rc = $pdo->query("SELECT key, value FROM settings WHERE key IN ('rc_game_url','rc_ecosystem_sso_enabled')")
                       ->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
         } catch (\Exception $e) {}
-        $result = re_sso_token($pdo, $deviceId);
+        // Phase 2 opt-in: only 'game=1' callers get the REAL-ID auto-fallback
+        // (Agent B's design — this action is shared with TrustAiLinkScreen,
+        // a separate product neither of us owns; must not change its
+        // behavior). The app's forGame=true path (GameScreen/ssoService)
+        // sets this once it ships; older installed builds omit it and see
+        // the original 'unlinked'/'ok' behavior unchanged.
+        $allowRealIdFallback = ($_GET['game'] ?? '') === '1';
+        $result = re_sso_token($pdo, $deviceId, $allowRealIdFallback);
         ok([
             'status'      => $result['status'],                     // ok | unlinked | unavailable
             'token'       => $result['token']      ?? '',
