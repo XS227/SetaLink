@@ -428,6 +428,7 @@ function ShahnamehWebView({
   path, deviceId, realId, onBack, debugLabel,
 }: { path: string; deviceId: string; realId: string; onBack: () => void; debugLabel: string }) {
   const { t }   = useT();
+  const insets  = useSafeAreaInsets();
   const webRef  = useRef<React.ElementRef<typeof WebView>>(null);
   const [url, setUrl]           = useState('');
   const [ready, setReady]       = useState(false);   // our own sso-token fetch done, URL built
@@ -671,8 +672,16 @@ function ShahnamehWebView({
           // room for it — there's no native safe-area for a sibling native
           // view like our tab bar, only for the OS chrome (Khabat's
           // "RealGram bottom nav dekker spillinnhold" report, 2026-07-19).
+          // Fixed 2026-07-19 (build 116 retest: some bottom buttons still
+          // unreachable): this was Layout.bottomNavHeight alone (80, the
+          // nav's own fixed content height) — BottomNav.tsx also adds
+          // insets.bottom (the device's home-indicator/gesture-nav safe
+          // area) as extra bottom padding, so the nav's real on-screen
+          // height is taller than 80 on any device with a non-zero bottom
+          // inset. The injected value undercounted it on exactly those
+          // devices — now includes insets.bottom too.
           injectedJavaScriptBeforeContentLoaded={`
-            document.documentElement.style.setProperty('--realgram-bottom-nav-height', '${Layout.bottomNavHeight}px');
+            document.documentElement.style.setProperty('--realgram-bottom-nav-height', '${Layout.bottomNavHeight + insets.bottom}px');
             const meta = document.createElement('meta');
             meta.name = 'viewport';
             meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';
