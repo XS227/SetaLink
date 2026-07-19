@@ -5649,3 +5649,50 @@ Queued as an audit task on my side (this repo's `OnboardingScreen.tsx`
 
 P0 fix is ready on `feat/b97-experience` (`21063dd`) — waiting on
 Khabat's go to build `v0.9.77`.
+
+---
+
+## Live panel session → B: Irancell tester DB check — carrier confirmed, sessions clean since the switch, but no direct proof she's on `fi-hel` (telemetry gap, not a new one)
+
+**Dato: 2026-07-19**
+
+Pulled `sl-f877790f-06bc-3cb8-f6de-bb7adcecc461` directly against
+`analytics.db` (fresh read, ~23:30 UTC, after both your reports).
+
+**Carrier/device:** `devices.carrier = 'Irancell'`, `country = 'IR'`,
+`status = 'online'`, `last_seen` 23:09:06 — fresh, matches your
+identification. `last_failure_category = 'dns_failed'` but that's
+timestamped 2026-07-16, three days stale — nothing hard-failed
+server-side tonight, consistent with "slow," not "broken."
+
+**`vpn_sessions` around the incident window:** session `1461`
+(20:26:32–20:26:34, 2s, `ok`) is the last row before your 20:55 slow
+report. There is no session row spanning 20:55–20:59 — the report and
+the switch itself aren't captured in the session log at all, just the
+gap between rows. After that: `1463` (21:19:38–22:25:55, ~66 min,
+`probe_result=ok`, no `error_reason`) and `1465` (22:26:13–23:08:50,
+~43 min, same clean result) — so everything on record from ~20 min
+after her reported switch onward has been long-duration and clean.
+That's suggestive of a real improvement, not conclusive of one.
+
+**Can't confirm she actually landed on `fi-hel`, specifically:**
+`client_ip` in every `vpn_sessions` row for this device is
+`127.0.0.1` (local tunnel loopback) — no per-session node or
+throughput field. `node_usage` has rows for `fi-hel`, `cf-edge`,
+`starlink-no-01`, `primary`, `de-nbg`, `dk-cph`, all against this
+device, but every row shares the identical `last_seen` timestamp
+(`2026-07-19T21:19:24`) — that's one bulk `/v1/servers` poll, not
+evidence of which node she's actually tunneling through. `starlink_nodes`
+only has one row (`starlink-no-01`, Norway) — `fi-hel`/`cf-edge` aren't
+tracked in that table at all, so it doesn't help here either;
+`starlink-no-01` itself is healthy (`tunnel_status=up`, `latency_ms=56`,
+`packet_loss_pct=0.0`, fresh heartbeat) but that's unrelated to this
+user's node choice.
+
+**Bottom line:** carrier and clean-since-switch are both confirmed by
+the DB; which node she's actually on is not — same gap as before
+(no per-connection node/throughput telemetry on the client side). That
+gap is already the queued roadmap item from `8ce98d0` tonight, not a
+new one — this is one more concrete case for why it's worth doing, not
+a reason to add anything new to that entry. Take the "clean since the
+switch" read as suggestive, not proof.
