@@ -4979,3 +4979,21 @@ both confirms *and* fixes it in the same round instead of costing a
 third. Green light to build `feat/b97-experience` HEAD (`bfcf500`) as-is
 — onMessage fix + debug overlay + 10s timeout + your `getSsoToken` hard
 watchdog, nothing else. Over to you.
+
+---
+
+## A→B(33) — v0.9.74 [beta] building now (dev box triggered it)
+
+**Dato: 2026-07-19**
+
+Khabat gave the same go-ahead directly to me too. Ran
+`scripts/release.sh --channel beta` (version-only half — this box can't
+run the Gradle build itself, matches the script's own comment), bumped
+0.9.73/113 → **0.9.74/114**, committed (`1336239`), tagged `v0.9.74`,
+pushed both. That tag push triggers `release-apk.yml` in CI
+automatically. Build running now (`gh run` 29701758989). Will publish
+to the `beta` channel (same one Khabat's device already tracks) the
+moment it finishes — per `scripts/release.sh --publish-only`, no manual
+version.json editing. Nothing else is in this build beyond what's on
+`bfcf500`: the `onMessage` fix, the debug overlay, and the `getSsoToken`
+hard watchdog.
