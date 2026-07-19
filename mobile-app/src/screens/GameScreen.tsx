@@ -19,7 +19,7 @@
  * account identity embedded in the JWT and passed as real_id= to the game URL.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Image, Pressable,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
@@ -182,18 +182,38 @@ function RealIdGate({ deviceId }: { deviceId: string }) {
 
   // "Try again" — retries the same silent REAL-ID probe GameScreen ran on
   // mount. The primary, expected-to-work path (req #6).
+  //
+  // TEMP DEBUG (2026-07-19, build-109 real-device report): this callback
+  // previously had ZERO logging — a tap that did nothing was indistinguishable
+  // from a tap that never registered. Also: the old copy here always said
+  // "Could not reach server", even when the server had responded fine but
+  // just wasn't 'ok', and even when getSsoToken never got a response at all.
+  // Khabat proved server + REAL-ID backend both up via direct curl with this
+  // exact device_id — so "can't reach server" is actively wrong messaging.
+  // Replaced with a flow-internal-error message; the real reason still goes
+  // to [REALDBG] logs, not the user-facing string.
   const retry = useCallback(async () => {
+    console.log('[REALDBG:4/7] RealIdGate "Try again" PRESSED', { deviceId, hasDeviceId: !!deviceId });
+    if (!deviceId) {
+      console.log('[REALDBG:4/7] ABORTING retry — deviceId is empty, getSsoToken will not be called');
+      setError(t('realId.internalError'));
+      return;
+    }
     setChecking(true);
     setError('');
     try {
       const r = await getSsoToken(deviceId, true);
+      console.log('[REALDBG:4/7] retry: getSsoToken returned', { status: r.status, hasAccount: !!r.account });
       if (r.status === 'ok' && r.account) {
         useAuthStore.getState().setRealId(r.account);
+        console.log('[REALDBG:4/7] retry: setRealId applied — gate should un-render now', { account: r.account });
       } else {
-        setError(t('realId.checkFailed'));
+        console.log('[REALDBG:4/7] retry: server responded but status did not qualify', { status: r.status });
+        setError(t('realId.internalError'));
       }
-    } catch {
-      setError(t('realId.checkFailed'));
+    } catch (e: any) {
+      console.log('[REALDBG:4/7] retry: getSsoToken THREW', { name: e?.name, message: e?.message });
+      setError(t('realId.internalError'));
     } finally {
       setChecking(false);
     }
@@ -271,9 +291,18 @@ function GameWebView({
 
   useEffect(() => {
     // TEMP DEBUG (2026-07-19) — remove once confirmed fixed on device.
-    console.log('[REALDBG] GameWebView effect: before /v1/sso-token', { deviceId, path, realId });
+    // Reached only once RealIdGate has already passed (realId truthy) — this
+    // is step 7 (navigating into the actual game view) mounting, which fires
+    // its OWN fresh /v1/sso-token call (a second, later one than the
+    // mount-time probe in GameScreen). There is no separate "/user/sync"
+    // request anywhere in this build's flow — the minted token in the game
+    // URL itself is what the game backend uses to sync the account. If step
+    // 6 in Khabat's spec is expected to be a distinct network call, it does
+    // not exist yet in this code and needs to be built, not just logged.
+    console.log('[REALDBG:7/7] GameWebView MOUNTED (RealIdGate passed) — this is a fresh, second sso-token call for the WebView URL', { deviceId, path, realId });
+    console.log('[REALDBG:6/7] NOTE: no separate /user/sync call exists in this flow — skipping (not a bug, just not implemented)');
     getSsoToken(deviceId, true).then((r) => {
-      console.log('[REALDBG] GameWebView effect: after /v1/sso-token (ok)', { status: r.status, hasToken: !!r.token, account: r.account });
+      console.log('[REALDBG:7/7] GameWebView: sso-token resolved', { status: r.status, hasToken: !!r.token, account: r.account });
       if (r.status === 'ok' && r.account && !useAuthStore.getState().user?.realId) {
         useAuthStore.getState().setRealId(r.account);
       }
@@ -282,15 +311,17 @@ function GameWebView({
       if (realId) params.set('real_id', realId);
       if (r.status === 'ok' && r.token) params.set('sso', r.token);
       const finalUrl = `${base}?${params}`;
-      console.log('[REALDBG] before WebView opens', { url: finalUrl });
+      console.log('[REALDBG:7/7] WebView opening', { url: finalUrl });
       setUrl(finalUrl);
       setReady(true);
     }).catch((e) => {
-      console.log('[REALDBG] GameWebView effect: after /v1/sso-token (threw)', e);
+      console.log('[REALDBG:7/7] GameWebView: sso-token THREW — opening WebView WITHOUT sso token (fallback path)', {
+        name: e?.name, message: e?.message,
+      });
       const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
       if (realId) params.set('real_id', realId);
       const finalUrl = `${BASE_GAME_URL}${path}?${params}`;
-      console.log('[REALDBG] before WebView opens (fallback path)', { url: finalUrl });
+      console.log('[REALDBG:7/7] WebView opening (fallback path, no sso token)', { url: finalUrl });
       setUrl(finalUrl);
       setReady(true);
     });
@@ -393,14 +424,18 @@ export function GameScreen() {
   // yet. If deviceId isn't populated yet, POLL for it (bounded) instead of
   // skipping the probe outright.
   useEffect(() => {
-    // TEMP DEBUG (2026-07-19, Khabat's build-108 REAL->Shahnameh report) —
-    // remove once confirmed fixed on a real device.
-    console.log('[REALDBG] GameScreen mount/effect', {
-      deviceId, realId, hasDeviceId: !!deviceId, hasRealId: !!realId,
-    });
+    // TEMP DEBUG (2026-07-19, Khabat's build-109 real-device report: zero
+    // /v1/sso-token requests EVER leave the phone, incl. after "Try again").
+    // Numbered to match Khabat's flow spec (REAL button -> realId ->
+    // deviceId -> checkAndCacheRealId -> /v1/sso-token -> navigate). Every
+    // branch below logs explicitly, including ones that previously failed
+    // silently, so a missing step is provable instead of guessed.
+    // Remove once confirmed fixed on a real device.
+    console.log('[REALDBG:2/7] GameScreen mount: realId read from authStore', { realId, hasRealId: !!realId });
+    console.log('[REALDBG:3/7] GameScreen mount: deviceId read from authStore', { deviceId, hasDeviceId: !!deviceId });
 
     if (realId) {
-      console.log('[REALDBG] realId already present — skipping probe');
+      console.log('[REALDBG:4/7] SKIPPING checkAndCacheRealId — realId already cached, nothing to probe');
       setChecking(false);
       return;
     }
@@ -408,16 +443,18 @@ export function GameScreen() {
     let cancelled = false;
 
     const runProbe = (id: string) => {
-      console.log('[REALDBG] remote config at probe time', getCachedConfig());
-      console.log('[REALDBG] calling checkAndCacheRealId (forGame=true internally)', { deviceId: id });
+      console.log('[REALDBG:4/7] remote config at probe time', getCachedConfig());
+      console.log('[REALDBG:4/7] checkAndCacheRealId STARTING (forGame=true internally)', { deviceId: id });
       checkAndCacheRealId(id)
         .then(() => {
-          console.log('[REALDBG] checkAndCacheRealId resolved', {
+          console.log('[REALDBG:4/7] checkAndCacheRealId returned (see ssoService [REALDBG:5/7] logs above for why)', {
             realIdAfter: useAuthStore.getState().user?.realId || '(still empty)',
           });
         })
         .catch((e) => {
-          console.log('[REALDBG] checkAndCacheRealId threw', e);
+          // checkAndCacheRealId's own contract is "never throws" (see
+          // ssoService.ts) — reaching this .catch would itself be a bug.
+          console.log('[REALDBG:4/7] UNEXPECTED — checkAndCacheRealId threw despite its never-throws contract', e);
         })
         .finally(() => { if (!cancelled) setChecking(false); });
     };
@@ -429,18 +466,19 @@ export function GameScreen() {
 
     // deviceId not ready yet — WAIT instead of skipping. Poll briefly,
     // bounded to ~5s so a genuinely broken auth store doesn't spin forever.
-    console.log('[REALDBG] deviceId empty at mount — waiting instead of skipping');
+    console.log('[REALDBG:3/7] deviceId empty at mount — WAITING instead of skipping (polling authStore)');
     let attempts = 0;
     const maxAttempts = 25; // 25 * 200ms = 5s
     const poll = () => {
       if (cancelled) return;
       attempts++;
       const liveDeviceId = useAuthStore.getState().user?.deviceId ?? '';
-      console.log('[REALDBG] poll for deviceId', { attempt: attempts, liveDeviceId });
+      console.log('[REALDBG:3/7] poll for deviceId', { attempt: attempts, liveDeviceId });
       if (liveDeviceId) {
         runProbe(liveDeviceId);
       } else if (attempts >= maxAttempts) {
-        console.log('[REALDBG] gave up waiting for deviceId after', attempts, 'attempts (~5s)');
+        console.log('[REALDBG:3/7] GAVE UP waiting for deviceId after', attempts,
+          'attempts (~5s) — checkAndCacheRealId will NEVER run this mount, deviceId genuinely never populated');
         setChecking(false);
       } else {
         setTimeout(poll, 200);
@@ -449,6 +487,25 @@ export function GameScreen() {
     poll();
     return () => { cancelled = true; };
   }, [deviceId, realId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // TEMP DEBUG (2026-07-19, build-109 real-device report): the identity
+  // effect above has deps [deviceId, realId] and this is a bottom-tab screen
+  // (createBottomTabNavigator keeps tabs mounted after first visit) — so if
+  // the FIRST-EVER mount of this tab this session already resolved to
+  // realId='' (checking=false), pressing the REAL/RealGram Home shortcut
+  // again just re-focuses the SAME already-decided screen instance without
+  // re-running the identity effect (its deps haven't changed). That would
+  // look exactly like "pressing REAL again does nothing" if someone presses
+  // the Home shortcut instead of the in-gate "Try again" button. Logged as a
+  // plain mount-timestamp ref (not useFocusEffect — GameScreen is rendered
+  // standalone in tests, outside any NavigationContainer, and useFocusEffect
+  // throws without one) so this stays testable and still proves/disproves
+  // the theory from a Metro/logcat capture. Remove once confirmed on device.
+  const mountedAtRef = useRef<number | null>(null);
+  if (mountedAtRef.current === null) {
+    mountedAtRef.current = Date.now();
+    console.log('[REALDBG:mount] GameScreen instance created', { mountedAt: mountedAtRef.current });
+  }
 
   // Server-synced ZAR (contract §8, REALGRAM_UNIFIED_PLATFORM.md §B):
   // start buffering/flushing taps to Shahnameh once deviceId is known.

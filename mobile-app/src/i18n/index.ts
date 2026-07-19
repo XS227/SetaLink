@@ -568,6 +568,12 @@ const EN = {
   'realId.retrying':      'Checking…',
   'realId.notLinkedYet':  'Not linked yet — follow the steps in the app and try again.',
   'realId.checkFailed':   'Could not reach server — check your connection.',
+  // 2026-07-19: server + REAL-ID backend confirmed reachable (Khabat, direct
+  // curl test) while the app showed checkFailed and sent zero requests — the
+  // old copy was actively wrong. Used when the REAL-ID flow fails/never
+  // starts client-side; do not reuse checkFailed's "can't reach server"
+  // wording for this path.
+  'realId.internalError': 'Internal error in the REAL-ID flow — please try again.',
 
   'trustai.profileTitle': 'TrustAI',
   'trustai.profileBtn':   'Link account',
@@ -1289,6 +1295,7 @@ const FA: typeof EN = {
   'realId.retrying':      'در حال بررسی…',
   'realId.notLinkedYet':  'هنوز متصل نشده — مراحل را کامل کن و دوباره تلاش کن.',
   'realId.checkFailed':   'اتصال به سرور ممکن نیست — اینترنت خود را بررسی کن.',
+  'realId.internalError': 'خطای داخلی در روند REAL-ID — لطفاً دوباره تلاش کن.',
 
   'trustai.profileTitle': 'TrustAI',
   'trustai.profileBtn':   'اتصال حساب',
@@ -1987,6 +1994,7 @@ const ZH: typeof EN = {
   'realId.retrying':      '检查中…',
   'realId.notLinkedYet':  '尚未关联 — 请完成步骤后再试。',
   'realId.checkFailed':   '无法连接服务器 — 请检查你的网络。',
+  'realId.internalError': 'REAL-ID 流程内部错误 — 请重试。',
 
   'trustai.profileTitle': 'TrustAI',
   'trustai.profileBtn':   '关联账户',
@@ -2678,6 +2686,7 @@ const RU: typeof EN = {
   'realId.retrying':      'Проверяю…',
   'realId.notLinkedYet':  'Ещё не привязан — выполните шаги и попробуйте снова.',
   'realId.checkFailed':   'Не удалось подключиться к серверу — проверьте соединение.',
+  'realId.internalError': 'Внутренняя ошибка в процессе REAL-ID — попробуйте снова.',
 
   'trustai.profileTitle': 'TrustAI',
   'trustai.profileBtn':   'Привязать аккаунт',

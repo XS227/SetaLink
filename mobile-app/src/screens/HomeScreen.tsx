@@ -301,9 +301,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             style={styles.shortcutRewards}
             onPress={() => {
               // TEMP DEBUG (2026-07-19, remove once REAL->Shahnameh is
-              // confirmed fixed on a real device — Khabat's build-108 report).
-              console.log('[REALDBG] REAL button pressed (Home shortcut)');
+              // confirmed fixed on a real device — Khabat's build-109 report).
+              console.log('[REALDBG:1/7] REAL button PRESSED (Home shortcut) — calling onNavigate("game")');
               onNavigate('game');
+              console.log('[REALDBG:7/7] onNavigate("game") call returned (does not confirm the tab actually gained focus — bottom-tab navigation is fire-and-forget from here)');
             }}
             activeOpacity={0.82}
           >
@@ -318,9 +319,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             style={styles.shortcutRealgram}
             onPress={() => {
               // TEMP DEBUG (2026-07-19, remove once REAL->Shahnameh is
-              // confirmed fixed on a real device — Khabat's build-108 report).
-              console.log('[REALDBG] RealGram button pressed (Home shortcut)');
+              // confirmed fixed on a real device — Khabat's build-109 report).
+              console.log('[REALDBG:1/7] RealGram button PRESSED (Home shortcut) — calling onNavigate("game")');
               onNavigate('game');
+              console.log('[REALDBG:7/7] onNavigate("game") call returned (does not confirm the tab actually gained focus — bottom-tab navigation is fire-and-forget from here)');
             }}
             activeOpacity={0.82}
           >

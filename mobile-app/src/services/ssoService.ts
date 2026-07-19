@@ -43,12 +43,35 @@ export interface SsoResult {
 export async function getSsoToken(deviceId: string, forGame = false): Promise<SsoResult> {
   const qs = new URLSearchParams({ mobile: '1', action: 'sso-token', _token: TOKEN, device_id: deviceId });
   if (forGame) qs.set('game', '1');
+  const url = `${BASE_URL}?${qs.toString()}`;
+  // TEMP DEBUG (2026-07-19, Khabat's build-109 real-device report: zero
+  // /v1/sso-token requests ever leave the phone, incl. after "Try again").
+  // This is the actual network boundary — log here so nothing upstream
+  // (checkAndCacheRealId's catch, RealIdGate.retry) can hide *why* a call
+  // never completed. Remove once confirmed fixed on device.
+  console.log('[REALDBG:5/7] getSsoToken: about to fetch', { url, deviceId, forGame });
   const ctrl = new AbortController();
-  const tid  = setTimeout(() => ctrl.abort(), TIMEOUT);
+  const tid  = setTimeout(() => {
+    console.log('[REALDBG:5/7] getSsoToken: TIMEOUT firing abort()', { url, timeoutMs: TIMEOUT });
+    ctrl.abort();
+  }, TIMEOUT);
   try {
-    const res  = await fetch(`${BASE_URL}?${qs.toString()}`, { signal: ctrl.signal });
+    let res;
+    try {
+      res = await fetch(url, { signal: ctrl.signal });
+    } catch (e: any) {
+      console.log('[REALDBG:5/7] getSsoToken: fetch() itself threw — request never reached the server', {
+        name: e?.name, message: e?.message,
+      });
+      throw e;
+    }
+    console.log('[REALDBG:5/7] getSsoToken: fetch resolved', { httpStatus: res.status });
     const json = await res.json() as { ok: boolean; data?: SsoResult; error?: string };
-    if (!json.ok || !json.data) throw new Error(json.error ?? 'sso error');
+    if (!json.ok || !json.data) {
+      console.log('[REALDBG:5/7] getSsoToken: server responded but json.ok is false', { json });
+      throw new Error(json.error ?? 'sso error');
+    }
+    console.log('[REALDBG:5/7] getSsoToken: success', { status: json.data.status, hasToken: !!json.data.token });
     return json.data;
   } finally {
     clearTimeout(tid);
@@ -71,17 +94,42 @@ export async function getSsoToken(deviceId: string, forGame = false): Promise<Ss
  * Never throws; safe to call without awaiting.
  */
 export async function checkAndCacheRealId(deviceId: string): Promise<void> {
-  if (!deviceId) return;
+  // TEMP DEBUG (2026-07-19, build-109 real-device report) — this function's
+  // contract is "never throws", which previously meant its catch swallowed
+  // the real failure reason completely (getSsoToken's exact error was never
+  // visible anywhere). Logging every branch here so "why" is always on
+  // record even though the function still resolves cleanly for callers.
+  console.log('[REALDBG:4/7] checkAndCacheRealId: starting', { deviceId, hasDeviceId: !!deviceId });
+  if (!deviceId) {
+    console.log('[REALDBG:4/7] checkAndCacheRealId: ABORTING — deviceId is empty, getSsoToken will never be called');
+    return;
+  }
   try {
     const r = await getSsoToken(deviceId, true);
+    console.log('[REALDBG:4/7] checkAndCacheRealId: getSsoToken returned', { status: r.status, hasAccount: !!r.account });
     if (r.status === 'ok' && r.account) {
       // Lazy require avoids circular import: ssoService ↛ authStore at module load.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { useAuthStore } = require('../stores/authStore');
       const current = useAuthStore.getState().user?.realId;
-      if (!current) useAuthStore.getState().setRealId(r.account);
+      if (!current) {
+        useAuthStore.getState().setRealId(r.account);
+        console.log('[REALDBG:4/7] checkAndCacheRealId: setRealId applied', { account: r.account });
+      } else {
+        console.log('[REALDBG:4/7] checkAndCacheRealId: realId already cached, not overwriting', { current });
+      }
+    } else {
+      console.log('[REALDBG:4/7] checkAndCacheRealId: NOT applying — status/account did not qualify', {
+        status: r.status, account: r.account,
+      });
     }
-  } catch { /* network unreachable — ignore */ }
+  } catch (e: any) {
+    // Previously: silent. This is the exact reason "Try again" can look like
+    // it does nothing — getSsoToken threw and nobody ever saw why.
+    console.log('[REALDBG:4/7] checkAndCacheRealId: getSsoToken THREW (swallowed for caller, logged here)', {
+      name: e?.name, message: e?.message,
+    });
+  }
 }
 
 export function buildGameUrl(sso: SsoResult, deviceId: string, realId?: string): string {
