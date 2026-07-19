@@ -26,4 +26,4 @@ blog_head($a);
 </ul>
 
 <p>👉 <a href="/download/setalink-latest.apk">دانلود ری‌لینک</a> — فیلترشکن هوشمند با اتصال پایدار و ۵ گیگابایت رایگان.</p>
-<?php blog_footer($a);
+<?php blog_faq($a); blog_footer($a);

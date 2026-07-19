@@ -8,6 +8,15 @@ $LOGO   = '/assets/logo/setalink-mark-256.png';
 $OG_IMG = 'https://setalink.no' . $LOGO;
 
 // slug => metadata. body lives in each article's own index.php.
+// Optional 'faq' key: array of ['q'=>..., 'a'=>...] pairs -> emits FAQPage
+// JSON-LD in blog_head() for that article (SEO, 2026-07-19).
+//
+// SEO note (2026-07-19): 'فیلترشکن پرسرعت' ("fast VPN") used to be a target
+// keyword on BOTH best-free-vpn-iran and stable-filtershekan-no-disconnect —
+// the two pages were competing for the same query instead of reinforcing
+// each other. Kept it on best-free-vpn-iran (speed is a core "best VPN"
+// buying criterion); the disconnect article now targets its own distinct
+// term instead (see 'keywords' below).
 $BLOG_ARTICLES = [
   'best-free-vpn-iran' => [
     'title' => 'بهترین فیلترشکن رایگان برای ایران در ۲۰۲۶ | راهنمای انتخاب',
@@ -21,9 +30,19 @@ $BLOG_ARTICLES = [
     'title' => 'چرا فیلترشکن قطع می‌شود؟ راهکار اتصال پایدار و بدون قطعی',
     'h1'    => 'چرا فیلترشکن قطع می‌شود و چطور اتصال پایدار داشته باشیم',
     'desc'  => 'دلایل قطع‌شدن فیلترشکن در ایران (DPI، مسدودسازی SNI، مشکل QUIC) و راهکارهای عملی برای اتصال پایدار و بدون قطعی با ری‌لینک.',
-    'keywords' => 'فیلترشکن بدون قطعی, فیلترشکن قطع میشود, فیلترشکن پایدار, فیلترشکن پرسرعت, اتصال فیلترشکن',
+    'keywords' => 'فیلترشکن بدون قطعی, فیلترشکن قطع میشود, فیلترشکن پایدار, رفع قطعی فیلترشکن, اتصال فیلترشکن',
     'date'  => '2026-07-10',
     'excerpt' => 'قطع‌شدن مداوم فیلترشکن آزاردهنده است. چرا اتفاق می‌افتد و چطور یک اتصال پایدار بسازیم.',
+    'faq' => [
+      ['q' => 'چرا فیلترشکن با وجود اتصال، مدام قطع می‌شود؟',
+       'a' => 'معمولاً به این دلیل که سیستم فیلترینگ ایران نام دامنه (SNI) اتصال شما را شناسایی و مسدود می‌کند. فیلترشکن‌هایی که از پروتکل Reality و به‌روزرسانی خودکار SNI استفاده می‌کنند، این نوع قطعی را برطرف می‌کنند.'],
+      ['q' => 'چرا تلگرام کار می‌کند اما اینستاگرام و واتساپ باز نمی‌شوند؟',
+       'a' => 'اینستاگرام و واتساپ از پروتکل QUIC روی UDP استفاده می‌کنند که خیلی از فیلترشکن‌ها آن را درست هدایت نمی‌کنند؛ تلگرام چون TCP است معمولاً کار می‌کند. راه‌حل: بعد از تعویض سرور، اپلیکیشن را کاملاً ببندید (force-quit) و دوباره باز کنید تا نشست‌های قدیمی QUIC پاک شوند.'],
+      ['q' => 'چرا بعضی صفحات نیمه‌باز می‌مانند و لود نمی‌شوند؟',
+       'a' => 'روی شبکه‌های موبایل ایران، بسته‌های بزرگ گاهی گم می‌شوند. فیلترشکن‌هایی که اندازه بسته (MSS/MTU) را به‌صورت خودکار تنظیم می‌کنند، این مشکل را برطرف می‌کنند.'],
+      ['q' => 'چطور بهترین سرور را برای اپراتور خودم انتخاب کنم؟',
+       'a' => 'اگر یک سرور از یک اپراتور (مثلاً ایرانسل) مسدود است ولی از اپراتور دیگر باز، فیلترشکن‌های هوشمند به‌صورت خودکار بهترین سرور را برای شبکه شما اولویت می‌دهند. اگر یک نود کند بود، گزینه Stealth (Cloudflare) را امتحان کنید.'],
+    ],
   ],
   'what-is-v2ray-vless-reality' => [
     'title' => 'V2Ray، VLESS و Reality چیست؟ راهنمای عبور از فیلترینگ',
@@ -86,6 +105,19 @@ function blog_head(array $a): void {
         ],
       ],
     ];
+    // FAQPage schema (SEO, 2026-07-19) — only emitted for articles that
+    // define a 'faq' array, so it stays accurate (Google penalizes FAQ
+    // rich-result markup that doesn't match visible on-page content).
+    if (!empty($a['faq'])) {
+      $ld['@graph'][] = [
+        '@type' => 'FAQPage',
+        'mainEntity' => array_map(fn($f) => [
+          '@type' => 'Question',
+          'name' => $f['q'],
+          'acceptedAnswer' => ['@type' => 'Answer', 'text' => $f['a']],
+        ], $a['faq']),
+      ];
+    }
     echo '<script type="application/ld+json">' . json_encode($ld, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . '</script>';
     echo '</head><body dir="rtl"><div class="page-wrap">';
     // Simple nav
@@ -97,6 +129,19 @@ function blog_head(array $a): void {
     echo '<nav aria-label="breadcrumb" style="font-size:.8rem;color:var(--muted-2);margin-bottom:1rem"><a href="/?lang=fa" style="color:var(--muted)">خانه</a> › <a href="/blog/" style="color:var(--muted)">وبلاگ</a> › ' . htmlspecialchars($a['h1']) . '</nav>';
     echo '<h1 style="font-size:2rem;line-height:1.4;margin-bottom:.5rem">' . htmlspecialchars($a['h1']) . '</h1>';
     echo '<p style="color:var(--muted-2);font-size:.85rem;margin-bottom:1.5rem">به‌روزرسانی ' . htmlspecialchars($a['date']) . ' · نویسنده: تیم ری‌لینک</p>';
+}
+
+// Renders the FAQ visibly in the article body — Google's FAQPage rich-result
+// guidelines require the marked-up Q&A to actually be visible on the page,
+// not schema-only. Call right before blog_footer() on articles that have
+// an 'faq' array; shares the same data as the JSON-LD in blog_head().
+function blog_faq(array $a): void {
+    if (empty($a['faq'])) return;
+    echo '<h2 style="font-size:1.2rem;margin-top:2rem">سوالات متداول</h2>';
+    foreach ($a['faq'] as $f) {
+        echo '<h3 style="font-size:1rem;margin:1rem 0 .3rem">' . htmlspecialchars($f['q']) . '</h3>';
+        echo '<p>' . htmlspecialchars($f['a']) . '</p>';
+    }
 }
 
 function blog_footer(array $a): void {
