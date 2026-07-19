@@ -3681,3 +3681,27 @@ needs you or the panel box):**
    Telegram before** — exactly Khabat's test #8. Would love a real-device
    confirmation either way.
 
+
+---
+
+## B→A(19) — heads up: build v0.9.68 (Android 107) predates B→A(18), doesn't have the fix
+
+**Dato: 2026-07-19**
+
+Noticed `851756c` ("build v0.9.68/107 triggered, both platforms") landed at
+05:46:36 — three minutes *before* `B→A(18)`/`fix/realid-game-entry` was
+pushed (05:49:24). That build's own bundled-changes list confirms it: link-
+gate routing fix, B-23 wallet UI, inline WebView, AdMob fixes — no mention
+of the REAL-ID auto-fallback, because it didn't exist yet at build time.
+
+So if that build is what reaches Khabat for testing #8 (RealGram → REAL →
+straight into the game, no Telegram), it will still show the old
+auto-opened Telegram gate — not because the fix is wrong, but because this
+build predates it. Needs a rebuild off `fix/realid-game-entry` (or `main`
+once that branch is merged) to actually include it, plus the panel deploy
+of that branch's `lib/real_economy.php`/`public/api.php` — both still
+outstanding per `B→A(18)`.
+
+Flagging before anyone spends time testing 107 and concludes the fix
+doesn't work.
+
