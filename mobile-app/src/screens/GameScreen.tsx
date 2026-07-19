@@ -1,16 +1,19 @@
 /**
  * GameScreen — Shahnameh hub.
  *
- * REAL-ID identity gate:
- *   - REAL-ID set → hub shown; tapping any section opens SSO/JWT-authenticated WebView
- *   - REAL-ID absent → gate with two equal paths:
- *       1. Telegram bot (@shahnameh_bot) — for bot-preference users
- *       2. RealGram WebView — in-app web auth via shahnameh.setaei.com/api/link-gate
- *          (same Telegram auth under the hood → same canonical account → no duplicates)
+ * REAL-ID is the primary identity here — Telegram is never required to
+ * play (Khabat, 2026-07-19, TASK_SPLIT.md). On mount, GameScreen silently
+ * probes the SSO endpoint with forGame=true (checkAndCacheRealId): the
+ * panel mints straight off this device's own RealGram identity when no
+ * Telegram account is linked yet, rather than reporting 'unlinked' — so
+ * for virtually every RealGram user this resolves instantly and they never
+ * see any gate at all, Telegram or otherwise.
  *
- * On mount: silently probes the SSO endpoint; if already linked server-side
- * (e.g. linked in a previous session via deep-link) the REAL-ID is cached and
- * the gate disappears without user action.
+ * REAL-ID identity gate (RealIdGate below) only renders when that silent
+ * probe genuinely fails (backend unreachable/misconfigured): an internal
+ * RealGram error + retry, never an auto-opened Telegram screen. Linking an
+ * existing Telegram account's history is still possible from here, but as
+ * a manual, clearly-secondary action — never automatic, never the default.
  *
  * DeviceId = secure lookup key only (anti-abuse, rate-limiting). REAL-ID is the
  * account identity embedded in the JWT and passed as real_id= to the game URL.
@@ -18,7 +21,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Image, Linking, Pressable,
+  ActivityIndicator, Image, Pressable,
   ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -38,7 +41,6 @@ import { pushEcosystemProfile } from '../services/ecosystemProfileService';
 
 const BASE_GAME_URL  = 'https://shahnameh.setaei.com';
 const PANEL_API      = 'https://setalink.no/api.php';
-const BOT_LINK_BASE  = 'https://t.me/shahnameh_bot?start=linkvpn_';
 
 // ── RealGram in-app linking WebView ──────────────────────────────────────────
 // Opens the ecosystem link-gate page. Intercepts the setalink:// deep-link that
@@ -149,48 +151,44 @@ const wvStyles = StyleSheet.create({
 });
 
 // ── REAL-ID gate ─────────────────────────────────────────────────────────────
-// "You're already in the game before you've pressed Play" (§5.10 principle,
-// 2026-07-18) — RealGram and Shahnameh are one account, so Play must
-// never ask the user to CHOOSE how to link. Both old paths (RealGram WebView /
-// Telegram bot) funnel through the same Telegram auth server-side and yield the
-// same canonical account string — presenting them as two competing buttons was
-// itself "the question", not a real choice. Now: the WebView opens automatically
-// on mount. The Telegram-bot link only reappears as a small fallback if that
-// WebView is closed or fails without completing — never as a first-class option.
+// Reached only when GameScreen's silent on-mount probe (checkAndCacheRealId,
+// forGame=true) did NOT come back with a REAL-ID — with the panel's REAL-ID
+// auto-fallback (2026-07-19), that probe mints straight off this device's own
+// RealGram identity with no Telegram involvement, so it should succeed for
+// virtually every RealGram user and this screen should rarely render at all.
+// When it does (backend misconfigured/unreachable), Khabat's explicit
+// requirement is an INTERNAL RealGram error + retry — never a Telegram login
+// screen, and never auto-opened. Linking an existing Telegram account is a
+// separate, clearly-optional, manually-triggered action here (not a
+// first-class or automatic path) — the real home for it is profile/settings
+// (see TASK_SPLIT.md), this is a stopgap until that's built.
 function RealIdGate({ deviceId }: { deviceId: string }) {
   const { t }  = useT();
   const insets = useSafeAreaInsets();
-  const [checking, setChecking]     = useState(false);
-  const [showRealGram, setShowRealGram] = useState(true); // auto-open
-  const [linkFailed, setLinkFailed] = useState(false);
+  const [checking, setChecking]         = useState(false);
+  const [showRealGram, setShowRealGram] = useState(false); // manual only, never auto-opens
   const [error, setError] = useState('');
-
-  const openTelegramBot = useCallback(() => {
-    Linking.openURL(`${BOT_LINK_BASE}${deviceId}`);
-  }, [deviceId]);
 
   const handleLinked = useCallback(() => {
     setShowRealGram(false);
     // authStore.realId was already set by the handler — gate will un-render
   }, []);
 
-  // WebView closed or failed to load without completing linking — fall back
-  // to a minimal retry screen instead of leaving the user stuck.
   const handleWebViewClosed = useCallback(() => {
     setShowRealGram(false);
-    setLinkFailed(true);
   }, []);
 
-  // "Check again" — user may have completed the Telegram bot fallback and returned.
-  const checkLinked = useCallback(async () => {
+  // "Try again" — retries the same silent REAL-ID probe GameScreen ran on
+  // mount. The primary, expected-to-work path (req #6).
+  const retry = useCallback(async () => {
     setChecking(true);
     setError('');
     try {
-      const r = await getSsoToken(deviceId);
+      const r = await getSsoToken(deviceId, true);
       if (r.status === 'ok' && r.account) {
         useAuthStore.getState().setRealId(r.account);
-      } else if (r.status === 'unlinked') {
-        setError(t('realId.notLinkedYet'));
+      } else {
+        setError(t('realId.checkFailed'));
       }
     } catch {
       setError(t('realId.checkFailed'));
@@ -213,35 +211,26 @@ function RealIdGate({ deviceId }: { deviceId: string }) {
     <View style={[gateStyles.container, { paddingBottom: insets.bottom + 24 }]}>
       <Text style={gateStyles.bigIcon}>⚔️</Text>
       <Text style={gateStyles.title}>{t('realId.gateTitle')}</Text>
-      <Text style={gateStyles.body}>
-        {linkFailed ? t('realId.linkClosedBody') : t('realId.gateBody')}
-      </Text>
+      <Text style={gateStyles.body}>{t('realId.gateBody')}</Text>
 
       <TouchableOpacity
         style={gateStyles.primaryBtn}
-        onPress={() => { setLinkFailed(false); setShowRealGram(true); }}
+        onPress={retry}
+        disabled={checking}
         activeOpacity={0.85}
       >
-        <Text style={gateStyles.primaryBtnText}>{t('realId.tryAgain')}</Text>
-      </TouchableOpacity>
-
-      {/* Fallback only — not a competing first-class choice. */}
-      <TouchableOpacity onPress={openTelegramBot} activeOpacity={0.7}>
-        <Text style={gateStyles.fallbackLink}>{t('realId.linkTelegram')}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={gateStyles.checkBtn}
-        onPress={checkLinked}
-        disabled={checking}
-        activeOpacity={0.7}
-      >
         {checking
-          ? <ActivityIndicator size="small" color={Colors.text.muted} />
-          : <Text style={gateStyles.checkBtnText}>{t('realId.checkLinked')}</Text>}
+          ? <ActivityIndicator size="small" color={Colors.bg.void} />
+          : <Text style={gateStyles.primaryBtnText}>{t('realId.tryAgain')}</Text>}
       </TouchableOpacity>
 
       {!!error && <Text style={gateStyles.errorText}>{error}</Text>}
+
+      {/* Manual, clearly-optional — never automatic, never the default path.
+          Only relevant to an existing Telegram player (req #4/#5). */}
+      <TouchableOpacity onPress={() => setShowRealGram(true)} activeOpacity={0.7}>
+        <Text style={gateStyles.fallbackLink}>{t('realId.linkTelegram')}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -258,10 +247,7 @@ const gateStyles = StyleSheet.create({
                      paddingVertical: Spacing[4], alignItems: 'center' },
   primaryBtnText:  { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.bg.void },
   fallbackLink:    { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body,
-                     textDecorationLine: 'underline', marginTop: Spacing[1] },
-  checkBtn:        { paddingVertical: Spacing[2], minHeight: 36 },
-  checkBtnText:    { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body,
-                     textDecorationLine: 'underline' },
+                     textDecorationLine: 'underline', marginTop: Spacing[2] },
   errorText:       { fontSize: 12, color: '#FF6B6B', textAlign: 'center',
                      fontFamily: Typography.family.body },
 });
@@ -282,7 +268,7 @@ function GameWebView({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    getSsoToken(deviceId).then((r) => {
+    getSsoToken(deviceId, true).then((r) => {
       if (r.status === 'ok' && r.account && !useAuthStore.getState().user?.realId) {
         useAuthStore.getState().setRealId(r.account);
       }
