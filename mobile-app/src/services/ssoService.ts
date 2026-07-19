@@ -16,6 +16,8 @@
  *   'unavailable' — issuer unreachable; caller may retry silently
  */
 
+import { buildQueryString } from '../utils/queryString';
+
 const BASE_URL = 'https://setalink.no/api.php';
 const TOKEN    = 'setalink-mobile-diag-v1';
 const TIMEOUT  = 10_000;
@@ -41,9 +43,17 @@ export interface SsoResult {
  *   keeps the original 'unlinked' behavior.
  */
 export async function getSsoToken(deviceId: string, forGame = false): Promise<SsoResult> {
-  const qs = new URLSearchParams({ mobile: '1', action: 'sso-token', _token: TOKEN, device_id: deviceId });
-  if (forGame) qs.set('game', '1');
-  const url = `${BASE_URL}?${qs.toString()}`;
+  // Root cause (Khabat, 2026-07-19, confirmed via the on-device debug panel):
+  // this device's URLSearchParams throws "URLSearchParams.set is not
+  // implemented" — the .set() call below used to throw synchronously, before
+  // any fetch ever fired, which is why zero requests ever reached the server
+  // and the WebView's URL was "not built yet" even in the fallback path.
+  // buildQueryString never calls .set()/.append()/.delete().
+  const qs = buildQueryString({
+    mobile: '1', action: 'sso-token', _token: TOKEN, device_id: deviceId,
+    game: forGame ? '1' : undefined,
+  });
+  const url = `${BASE_URL}?${qs}`;
   // TEMP DEBUG (2026-07-19, Khabat's build-109 real-device report: zero
   // /v1/sso-token requests ever leave the phone, incl. after "Try again").
   // This is the actual network boundary — log here so nothing upstream
@@ -151,11 +161,14 @@ export async function checkAndCacheRealId(deviceId: string): Promise<void> {
 }
 
 export function buildGameUrl(sso: SsoResult, deviceId: string, realId?: string): string {
-  const base   = sso.game_url || 'https://shahnameh.setaei.com';
-  const sep    = base.includes('?') ? '&' : '?';
-  const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
-  const id     = realId || sso.account;
-  if (id)                                params.set('real_id', id);
-  if (sso.status === 'ok' && sso.token) params.set('sso', sso.token);
-  return `${base}${sep}${params.toString()}`;
+  const base = sso.game_url || 'https://shahnameh.setaei.com';
+  const sep  = base.includes('?') ? '&' : '?';
+  const id   = realId || sso.account;
+  const qs = buildQueryString({
+    src: 'realink',
+    device_id: deviceId,
+    real_id: id || undefined,
+    sso: (sso.status === 'ok' && sso.token) ? sso.token : undefined,
+  });
+  return `${base}${sep}${qs}`;
 }

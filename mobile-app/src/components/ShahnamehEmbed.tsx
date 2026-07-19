@@ -45,6 +45,7 @@ import { linkRealAccount } from '../services/realWalletService';
 import { parseDeepLink } from '../services/deepLinkService';
 import { pushEcosystemProfile } from '../services/ecosystemProfileService';
 import { getCachedConfig } from '../services/remoteConfigService';
+import { buildQueryString } from '../utils/queryString';
 
 // '/' off the bare domain is shahnameh.setaei.com's public marketing/
 // landing page (a separate Next.js deployment, no game logic at all —
@@ -454,11 +455,19 @@ function ShahnamehWebView({
       if (r.status === 'ok' && r.account && !useAuthStore.getState().user?.realId) {
         useAuthStore.getState().setRealId(r.account);
       }
-      const base   = `${BASE_GAME_URL}${path}`;
-      const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
-      if (realId) params.set('real_id', realId);
-      if (r.status === 'ok' && r.token) params.set('sso', r.token);
-      const finalUrl = `${base}?${params}`;
+      const base = `${BASE_GAME_URL}${path}`;
+      // Root cause (Khabat, 2026-07-19, confirmed via the debug panel below):
+      // this device's URLSearchParams throws "URLSearchParams.set is not
+      // implemented" — .set() used to throw here synchronously, before the
+      // WebView URL was ever built (matches "url: not built yet" in the
+      // debug panel). buildQueryString never calls .set()/.append()/.delete().
+      const qs = buildQueryString({
+        src: 'realink',
+        device_id: deviceId,
+        real_id: realId || undefined,
+        sso: (r.status === 'ok' && r.token) ? r.token : undefined,
+      });
+      const finalUrl = `${base}?${qs}`;
       console.log(`[REALDBG:7/7][${debugLabel}] WebView opening`, { url: finalUrl, hasSsoParam: finalUrl.includes('sso='), hasRealIdParam: finalUrl.includes('real_id=') });
       debugBus.report('webview:url built', undefined, { url: finalUrl });
       setUrl(finalUrl);
@@ -469,9 +478,12 @@ function ShahnamehWebView({
         name: e?.name, message: e?.message,
       });
       debugBus.report('webview:sso-token THREW (fallback, no sso param)', `${e?.name}: ${e?.message}`);
-      const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
-      if (realId) params.set('real_id', realId);
-      const finalUrl = `${BASE_GAME_URL}${path}?${params}`;
+      const qs = buildQueryString({
+        src: 'realink',
+        device_id: deviceId,
+        real_id: realId || undefined,
+      });
+      const finalUrl = `${BASE_GAME_URL}${path}?${qs}`;
       console.log(`[REALDBG:7/7][${debugLabel}] WebView opening (fallback path, no sso token)`, { url: finalUrl });
       debugBus.report('webview:url built (fallback, no sso)', undefined, { url: finalUrl });
       setUrl(finalUrl);
