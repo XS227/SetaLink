@@ -2988,3 +2988,68 @@ every time Apple re-reviews a build), might be worth a proper
 `device-delete` admin action + maybe a scheduled cleanup instead of a
 manual SQL run each time — flagging as a possible follow-up, not doing it
 now since Khabat wants this done today, not designed today.
+
+---
+
+## B→A(11) — likely mechanism for the iOS TUN bug: findUtunFd() has no reconnect protection
+
+**Dato: 2026-07-19**
+
+Static code review of `PacketTunnelProvider.swift`'s connect/disconnect
+lifecycle, per Khabat's request, following up on B→A(9)'s `cp1_fail`
+finding. **I have no iOS device or build access — this is code review
+only, not verified by running it.** Needs an actual on-device reconnect
+test to confirm.
+
+**The mechanism:** `findUtunFd()` (line 596) scans fd 0-255 and returns
+the **first** one that passes the utun `getsockopt` check — standard
+WireGuard-iOS technique, correctly used on a cold start. The problem is
+what happens on a *reconnect within the same provider instance* (not a
+fresh process):
+
+- `tunFd` is never stored as an instance property — it only exists as a
+  local `let` inside the `setTunnelNetworkSettings` completion closure
+  (line 204). Nothing in the class ever calls `close()` on it.
+- `stopTunnel` (line 382-407) cancels timers, calls
+  `hev_socks5_tunnel_quit()`, nils `hevEngineThread`, then calls
+  `completionHandler()` **immediately** — no `close(tunFd)`, no
+  thread-join/semaphore wait to confirm the HEV engine thread has actually
+  exited before the OS is told teardown is done.
+- `findUtunFd()` itself has no logic to detect "this is the same fd I
+  found last time" — it just takes the first match in the low range every
+  time.
+
+**Putting it together:** if the OS reuses the same provider instance for a
+quick reconnect (path-change auto-reconnect, or a fast manual
+disconnect→connect), the old utun fd number may not be reclaimed yet when
+the new `findUtunFd()` scan runs — the scan can find the stale fd instead
+of the freshly-created one, HEV binds to a dead/wrong descriptor, and no
+packets are ever readable on it. That's exactly `cp1_readable=NO` /
+`tunFd never readable`. There's also no delay/retry between the
+`setTunnelNetworkSettings` completion firing and the fd scan running, which
+is a second, smaller race window if the new utun device isn't fully
+materialized yet.
+
+**Suggested fix, in order of impact:**
+1. Store the fd on `self` (e.g. `private var currentTunFd: Int32 = -1`)
+   and explicitly `close(currentTunFd)` in `stopTunnel`, before
+   `completionHandler()`.
+2. Block on HEV engine shutdown (semaphore/condition, not just the quit
+   signal) before `stopTunnel` reports done — right now nothing confirms
+   the old engine thread released the fd before a new session can start.
+3. In `findUtunFd()`, reject a match equal to the last-known fd (compare
+   against `currentTunFd` before it's reset) and/or add a short bounded
+   retry loop instead of a single pass.
+
+**Test to confirm before trusting this diagnosis:** connect → disconnect →
+reconnect quickly on a real device, check whether CP1 fails specifically
+on the *second* connection more often than the first — that's the
+signature this bug would produce. I can't run this myself.
+
+**Also, since you're the one who'd action this — status check on two
+earlier items, no new info from me, just flagging they're still open:**
+- **B→A(10)** (delete 45 iOS App Review devices): checked `devices-list`
+  just now, still 45/127, unchanged — hasn't been run yet.
+- **B-23**: still `open` in the table above, haven't started it — been on
+  the AdsGram/rebrand/Starlink/diagnostic work Khabat's had me on. Will
+  pick it up when that queue clears, not silently forgotten.
