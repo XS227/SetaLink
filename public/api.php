@@ -54,7 +54,7 @@ $token = ($method === 'POST')
 // the PacketTunnelExtension / VPN service, which has no access to the app's token
 // store, and they are device_id-validated + size-clamped in their handlers. The
 // token itself ships inside the app binary, so it is not a real secret anyway.
-const NO_TOKEN_ACTIONS = ['submit-tunnel-log', 'push-adsgram-perf'];
+const NO_TOKEN_ACTIONS = ['submit-tunnel-log', 'push-adsgram-perf', 'ecosystem-referral-import'];
 
 if (!in_array($action, NO_TOKEN_ACTIONS, true) && !hash_equals(MOBILE_TOKEN, $token)) {
     echo json_encode(['ok' => false, 'error' => 'invalid token']);
@@ -1461,6 +1461,67 @@ if ($method === 'POST') {
         $pdo->prepare("INSERT INTO app_events (device_id, event, props, app_version) VALUES (?,?,?,?)")
             ->execute([$deviceId, $event, $props, $appVersion]);
         ok(['logged' => true]);
+    }
+
+    if ($action === 'ecosystem-referral-import') {
+        // Contract §7 (new, 2026-07-19): Shahnameh → panel, the reverse
+        // direction of §2-6. Service-to-service only (exempted from
+        // MOBILE_TOKEN above, NO_TOKEN_ACTIONS) — authenticates instead
+        // with the SAME shared secret (real_api_key) already used for
+        // panel→Shahnameh calls, just checked from this side now. Imports
+        // resolved (both sides already SSO-linked) inviter/invitee pairs
+        // from Shahnameh's referral history into ecosystem_referrals —
+        // separate from ReaLink's own device-based referral_uses table,
+        // which this does not touch.
+        $authHeader = '';
+        foreach (['HTTP_AUTHORIZATION', 'REDIRECT_HTTP_AUTHORIZATION'] as $k) {
+            if (!empty($_SERVER[$k])) { $authHeader = $_SERVER[$k]; break; }
+        }
+        $presented = '';
+        if (preg_match('/Bearer\s+(.+)/i', $authHeader, $m)) $presented = trim($m[1]);
+        $pdo = db();
+        $expected = (string)($pdo->query(
+            "SELECT value FROM settings WHERE key='real_api_key'"
+        )->fetchColumn() ?: '');
+        if ($expected === '' || !hash_equals($expected, $presented)) {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'error' => 'unauthorized']);
+            exit;
+        }
+
+        $body = json_decode((string)file_get_contents('php://input'), true);
+        $rows = is_array($body['referrals'] ?? null) ? $body['referrals'] : [];
+        if (count($rows) === 0) err('missing referrals');
+        if (count($rows) > 1000) $rows = array_slice($rows, 0, 1000); // sanity clamp
+
+        $pdo->exec("CREATE TABLE IF NOT EXISTS ecosystem_referrals (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            inviter_real_account  TEXT NOT NULL,
+            invitee_real_account  TEXT NOT NULL,
+            source                TEXT NOT NULL,
+            original_ts           TEXT,
+            imported_at           TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(inviter_real_account, invitee_real_account, source)
+        )");
+        $ins = $pdo->prepare(
+            "INSERT OR IGNORE INTO ecosystem_referrals
+                (inviter_real_account, invitee_real_account, source, original_ts)
+             VALUES (?,?,?,?)"
+        );
+        $imported = 0; $skipped = 0;
+        $pdo->beginTransaction();
+        foreach ($rows as $r) {
+            if (!is_array($r)) { $skipped++; continue; }
+            $inviter = trim((string)($r['inviter_real_account'] ?? ''));
+            $invitee = trim((string)($r['invitee_real_account'] ?? ''));
+            $source  = substr(trim((string)($r['source'] ?? '')), 0, 32);
+            $ts      = trim((string)($r['original_ts'] ?? ''));
+            if ($inviter === '' || $invitee === '' || $source === '') { $skipped++; continue; }
+            $ins->execute([$inviter, $invitee, $source, $ts !== '' ? $ts : null]);
+            if ($ins->rowCount() > 0) $imported++; else $skipped++; // rowCount=0 => UNIQUE hit, already imported
+        }
+        $pdo->commit();
+        ok(['imported' => $imported, 'skipped_or_duplicate' => $skipped, 'received' => count($rows)]);
     }
 
     if ($action === 'track-taps-batch') {
