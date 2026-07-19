@@ -906,6 +906,78 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'realgram-link-gate') {
+        // Web linking page loaded inside an in-app WebView for the RealGram path
+        // (GameScreen's RealIdGate -> RealGramLinkWebView, source: {uri}). This
+        // MUST live in the GET block -- a WebView's source.uri always issues a
+        // GET request, never POST. This handler previously lived inside the
+        // if ($method === 'POST') block below, so every real load hit THIS
+        // block's 'unknown action' fallback instead -- the WebView rendered
+        // that raw JSON error and looked blank/broken to the user (reported
+        // 2026-07-19, build 106: "REAL button -> WebView -> blank white
+        // screen"). Moved here, 2026-07-19.
+        //
+        // Delegates to the ecosystem /link-gate which handles Telegram auth and
+        // mints the HMAC proof; the ecosystem then returns a
+        // setalink://link-real-account deep-link the WebView intercepts.
+        // If the ecosystem is not configured, serves a fallback HTML page that
+        // guides the user to the Telegram bot — no app release needed to update.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $cfg    = re_service_config($pdo);
+        $apiUrl = rtrim($cfg['api_url'], '/');
+
+        if ($apiUrl !== '') {
+            // Ecosystem is configured: delegate to /link-gate
+            $gate = $apiUrl . '/link-gate?' . http_build_query([
+                'device_id'       => $deviceId,
+                'callback_scheme' => 'setalink',
+                'src'             => 'realink',
+            ]);
+            header('Location: ' . $gate, true, 302);
+            exit;
+        }
+
+        // Fallback: ecosystem not yet reachable via web — serve inline HTML.
+        header('Content-Type: text/html; charset=utf-8');
+        $safeId = htmlspecialchars($deviceId, ENT_QUOTES, 'UTF-8');
+        echo <<<HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+  <title>RealGram Login</title>
+  <style>
+    body { margin:0; font-family: system-ui, sans-serif; background:#0d0d0f;
+           color:#e8e8ea; display:flex; flex-direction:column; align-items:center;
+           justify-content:center; min-height:100vh; padding:32px; box-sizing:border-box; text-align:center; }
+    h2   { color:#D4AF37; margin-bottom:12px; }
+    p    { color:#9CA3AF; line-height:1.6; margin-bottom:28px; }
+    .btn { display:inline-block; padding:14px 32px; background:#D4AF37;
+           color:#0d0d0f; border-radius:12px; text-decoration:none;
+           font-weight:700; font-size:15px; margin-top:8px; }
+    .sub { font-size:12px; color:#6B7280; margin-top:20px; }
+  </style>
+</head>
+<body>
+  <h2>⚔ RealGram Login</h2>
+  <p>Link your REAL-ID to unlock Shahnameh and earn across all REAL apps.<br>
+     Open the Telegram bot to verify your identity — no account registration required.</p>
+  <a class="btn" href="https://t.me/shahnameh_bot?start=linkvpn_{$safeId}">
+    Continue with Telegram
+  </a>
+  <p class="sub">Your REAL-ID is your Telegram identity.<br>
+     It works across ReaLink, RealGram, Shahnameh, TrustAI and 3REAL.</p>
+</body>
+</html>
+HTML;
+        exit;
+    }
+
     err('unknown action');
 }
 
@@ -1670,69 +1742,6 @@ if ($method === 'POST') {
             )->execute([$deviceId]);
         } catch (\Exception $_) {}
         ok(['linked_real_account' => $account]);
-    }
-
-    if ($action === 'realgram-link-gate') {
-        // Web linking page loaded inside an in-app WebView for the RealGram path.
-        // Delegates to the ecosystem /link-gate which handles Telegram auth and
-        // mints the HMAC proof; the ecosystem then returns a
-        // setalink://link-real-account deep-link the WebView intercepts.
-        // If the ecosystem is not configured, serves a fallback HTML page that
-        // guides the user to the Telegram bot — no app release needed to update.
-        $deviceId = trim($_GET['device_id'] ?? '');
-        if (!$deviceId) err('missing device_id');
-        $pdo = db();
-        re_ensure_schema($pdo);
-        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
-        $cfg    = re_service_config($pdo);
-        $apiUrl = rtrim($cfg['api_url'], '/');
-
-        if ($apiUrl !== '') {
-            // Ecosystem is configured: delegate to /link-gate
-            $gate = $apiUrl . '/link-gate?' . http_build_query([
-                'device_id'       => $deviceId,
-                'callback_scheme' => 'setalink',
-                'src'             => 'realink',
-            ]);
-            header('Location: ' . $gate, true, 302);
-            exit;
-        }
-
-        // Fallback: ecosystem not yet reachable via web — serve inline HTML.
-        header('Content-Type: text/html; charset=utf-8');
-        $safeId = htmlspecialchars($deviceId, ENT_QUOTES, 'UTF-8');
-        echo <<<HTML
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-  <title>RealGram Login</title>
-  <style>
-    body { margin:0; font-family: system-ui, sans-serif; background:#0d0d0f;
-           color:#e8e8ea; display:flex; flex-direction:column; align-items:center;
-           justify-content:center; min-height:100vh; padding:32px; box-sizing:border-box; text-align:center; }
-    h2   { color:#D4AF37; margin-bottom:12px; }
-    p    { color:#9CA3AF; line-height:1.6; margin-bottom:28px; }
-    .btn { display:inline-block; padding:14px 32px; background:#D4AF37;
-           color:#0d0d0f; border-radius:12px; text-decoration:none;
-           font-weight:700; font-size:15px; margin-top:8px; }
-    .sub { font-size:12px; color:#6B7280; margin-top:20px; }
-  </style>
-</head>
-<body>
-  <h2>⚔ RealGram Login</h2>
-  <p>Link your REAL-ID to unlock Shahnameh and earn across all REAL apps.<br>
-     Open the Telegram bot to verify your identity — no account registration required.</p>
-  <a class="btn" href="https://t.me/shahnameh_bot?start=linkvpn_{$safeId}">
-    Continue with Telegram
-  </a>
-  <p class="sub">Your REAL-ID is your Telegram identity.<br>
-     It works across ReaLink, RealGram, Shahnameh, TrustAI and 3REAL.</p>
-</body>
-</html>
-HTML;
-        exit;
     }
 
     if ($action === 'save-real-profile') {
