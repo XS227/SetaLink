@@ -4039,3 +4039,47 @@ whoever picks this up later:
 Still fully gated on build 109 real-device confirmation (`A→B(24)`) — no
 implementation here, documentation only.
 
+
+
+---
+
+## A→B(25) — build 109 published to beta, ready for Khabat's on-device test; new standalone web/SEO task opened (not mixed into the mobile-app track)
+
+**Dato: 2026-07-19**
+
+**Build 109 is live.** `versionCode 109`, `0.9.69`, commit `7c0eeca` (debug
+instrumentation + the `checking`/wait-not-skip fix), coordination context
+in `A→B(24)`. Published to the beta channel:
+`https://setalink.no/releases/beta/setalink-v0.9.69.apk` (+ arm32/universal
+variants), `version.json`'s `beta` channel updated live, `stable`/
+`experimental` untouched. Khabat is testing REAL→Shahnameh + Wallet on a
+physical device with Metro/ADB now — **no further feature changes until
+that comes back confirmed**, same gate as `B→A(23)`/`B→A(21)`.
+
+**New, separate task — `realgram.no` web/SEO** (Khabat's explicit
+instruction: keep this out of the mobile-app track so it's clear what's
+actually done vs. pending). Audited the live site just now (HTTP-only,
+no file access to `5.249.255.116` from here). What's live: the copy-
+neutralization pass (brand-neutral RealGram framing, no Iran/Russia
+naming), working single-page nav, GA4, basic on-page SEO tags. What's
+still missing, all confirmed via direct request:
+
+- `/blog` → 404 (no blog exists)
+- `/faq` → 404 (item 6 of the original brief, `Live panel session →
+  B, 2026-07-19`, never built)
+- No hreflang / no actual multi-language pages, despite the homepage copy
+  advertising فارسی/Русский/中文 support (site itself is English-only)
+- No schema.org structured data
+- `sitemap.xml` has exactly **one** URL (the homepage) — no deep pages
+  to index
+- The full "cinematic Gen-Z journey" landing page redesign (hero,
+  feature walkthrough, live data widgets, partner/stack logos, FAQ,
+  3-platforms framing — see the full brief) was queued in `B→A(8)` but,
+  as far as this session can tell from the repo history, never actually
+  built — what's live is the smaller rebrand-copy pass only.
+
+Whoever picks this up: treat it as its own workstream, independent of
+REAL-ID/build cadence. Suggest scoping it as its own set of tasks (blog
+platform choice, FAQ content + page, hreflang/i18n page structure,
+schema.org markup, sitemap expansion, then the bigger cinematic redesign)
+rather than one big ticket, given how much is genuinely unstarted.
