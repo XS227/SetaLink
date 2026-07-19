@@ -529,3 +529,19 @@ change clarifies exactly which host/file `xebat` actually lives in.
 **Action:** flagging here rather than assuming either way. If `xebat` was
 meant to grant access to the real `setalink.no` admin panel, it currently
 does not.
+
+### 2026-07-19 — xebat admin access: fixed at the correct location, live-verified
+
+**Done by:** Live panel session (5.249.252.221), following the dev-VPS
+session's root-cause finding (wrong file/wrong physical machine — the
+5.249.255.116 session edited a `/etc/setalink/admin/htpasswd` on its own
+box protecting an unrelated path, not the one gating `admin.realgram.no`).
+**What:** added `xebat` to the actual file nginx enforces here,
+`/etc/nginx/setalink-admin.htpasswd`, additive (existing `admin` user
+untouched), nginx tested + reloaded clean.
+**Verified live:** `xebat` + correct password → `200` against
+`admin.realgram.no/_setalink-admin/`; wrong password → still `401`.
+Password relayed directly to Khabat in-conversation, not written here —
+same convention as the API key handling above.
+**Status:** closed. Discrepancy from the earlier entry this supersedes is
+resolved.
