@@ -39,7 +39,16 @@ import { pushEcosystemProfile } from '../services/ecosystemProfileService';
 import { getCachedConfig }  from '../services/remoteConfigService';
 import { initZarSync } from '../services/zarSyncService';
 
-const BASE_GAME_URL  = 'https://shahnameh.setaei.com';
+// '/' is shahnameh.setaei.com's public marketing/landing page (a separate
+// Next.js deployment, no game logic at all — confirmed 2026-07-19 by
+// reading its source: no real_id/sso parsing, no JWT verification, no
+// profile/treasury/chapter fetch anywhere in it). The actual playable game
+// — sync.js's REAL-ID/SSO handling, home.js's profile/treasury/chapter
+// hydration — lives at /season2/ (index.html), a completely different,
+// vanilla-JS codebase. This was the real cause of A->B(28)'s black-spinner
+// report: the WebView loaded successfully (200 OK, real content) but that
+// content had zero code to ever act on real_id/sso/device_id.
+const BASE_GAME_URL  = 'https://shahnameh.setaei.com/season2';
 const PANEL_API      = 'https://setalink.no/api.php';
 
 // ── RealGram in-app linking WebView ──────────────────────────────────────────
