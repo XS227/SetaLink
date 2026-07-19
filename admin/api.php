@@ -1669,6 +1669,31 @@ switch ($action) {
     // destination logging: "category reachability" comes from the app's own
     // connectivity probes (probe_* in connect_telemetry), and "carrier" is the
     // ASN-derived operator name (never the raw IP).
+    // Batched UI tap telemetry (B-24). Ingested via public/api.php's
+    // track-taps-batch action into tap_events; this just aggregates it.
+    case 'tap-stream-summary': {
+        $db    = open_analytics_db();
+        $days  = max(1, min(90, (int)($_GET['days'] ?? 7)));
+        $since = "(strftime('%s','now','-" . $days . " days')*1000)";
+        $q = function (string $sql) use ($db) {
+            try { return $db->query($sql)->fetchAll(PDO::FETCH_ASSOC); }
+            catch (\Throwable $e) { return []; }
+        };
+        $byScreen  = $q("SELECT screen, COUNT(*) AS taps FROM tap_events
+                         WHERE ts >= " . $since . " GROUP BY screen ORDER BY taps DESC LIMIT 20");
+        $byElement = $q("SELECT screen, element, COUNT(*) AS taps FROM tap_events
+                         WHERE ts >= " . $since . " GROUP BY screen, element ORDER BY taps DESC LIMIT 30");
+        $totals    = $q("SELECT COUNT(*) AS total_taps, COUNT(DISTINCT device_id) AS devices
+                         FROM tap_events WHERE ts >= " . $since);
+        api_ok([
+            'days'       => $days,
+            'totals'     => $totals[0] ?? new \stdClass(),
+            'by_screen'  => $byScreen,
+            'by_element' => $byElement,
+        ]);
+        break;
+    }
+
     case 'user-insights': {
         $db   = open_analytics_db();
         $days = max(1, min(90, (int)($_GET['days'] ?? 30)));

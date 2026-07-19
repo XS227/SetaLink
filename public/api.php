@@ -1463,6 +1463,45 @@ if ($method === 'POST') {
         ok(['logged' => true]);
     }
 
+    if ($action === 'track-taps-batch') {
+        // Batched UI tap telemetry (B-24). Client buffers taps and flushes
+        // periodically instead of one HTTP call per tap — keep this cheap
+        // and best-effort, same posture as track-event above.
+        $deviceId   = trim($_POST['device_id'] ?? '');
+        $appVersion = substr(trim($_POST['app_version'] ?? ''), 0, 20);
+        $taps       = json_decode((string)($_POST['taps'] ?? ''), true);
+        if (!is_array($taps) || count($taps) === 0) err('missing taps');
+        if (count($taps) > 200) $taps = array_slice($taps, 0, 200); // abuse clamp
+        $pdo = db();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS tap_events (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id   TEXT,
+            screen      TEXT NOT NULL,
+            element     TEXT NOT NULL,
+            ts          INTEGER NOT NULL,
+            received_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+            app_version TEXT
+        )");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_tap_events_screen ON tap_events(screen)");
+        $pdo->exec("CREATE INDEX IF NOT EXISTS idx_tap_events_ts ON tap_events(ts)");
+        $ins = $pdo->prepare(
+            "INSERT INTO tap_events (device_id, screen, element, ts, app_version) VALUES (?,?,?,?,?)"
+        );
+        $pdo->beginTransaction();
+        $inserted = 0;
+        foreach ($taps as $t) {
+            if (!is_array($t)) continue;
+            $screen  = substr(trim((string)($t['screen'] ?? '')), 0, 64);
+            $element = substr(trim((string)($t['element'] ?? '')), 0, 64);
+            $ts      = (int)($t['ts'] ?? 0);
+            if ($screen === '' || $element === '' || $ts <= 0) continue;
+            $ins->execute([$deviceId, $screen, $element, $ts, $appVersion]);
+            $inserted++;
+        }
+        $pdo->commit();
+        ok(['logged' => $inserted]);
+    }
+
     if ($action === 'transfer-quota') {
         // Send GB to a friend. Atomic, audited (quota_transfer + two ledger rows).
         // Starter quota is never transferable; min 100 MB; max = transferable balance.

@@ -158,6 +158,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='seoranks'?' active':'' ?>" data-page="seoranks">
       <?= icon('chart') ?> SEO Ranks
     </div>
+    <div class="nav-item<?= $page==='tapstream'?' active':'' ?>" data-page="tapstream">
+      <?= icon('chart') ?> Tap Stream
+    </div>
 
   </nav>
   <div class="sidebar-footer">RealGram v0.9.67 &middot; <?= h($auth_user) ?></div>
@@ -377,6 +380,31 @@ function icon(string $name): string {
     <!-- ASN-derived operator names, reachability is the app's own    -->
     <!-- connectivity probes. See public/api.php normalize_carrier(). -->
     <!-- ============================================================ -->
+    <div data-view="tapstream" hidden>
+      <div class="stat-grid" id="tapTotals">
+        <div class="stat-card"><div class="stat-label">Total Taps</div><div class="stat-value" id="tapTotalTaps">—</div><div class="stat-sub" id="tapDaysSub">last 7d</div></div>
+        <div class="stat-card"><div class="stat-label">Devices Tapping</div><div class="stat-value" id="tapDevices">—</div><div class="stat-sub">unique device_id</div></div>
+      </div>
+      <div class="two-col" style="margin-top:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">📱 By Screen</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Screen</th><th>Taps</th></tr></thead>
+              <tbody id="tapScreenTbl"><tr><td colspan="2" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">🎯 By Element</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Screen</th><th>Element</th><th>Taps</th></tr></thead>
+              <tbody id="tapElementTbl"><tr><td colspan="3" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div data-view="insights" hidden>
       <div class="stat-grid" id="insTotals">
         <div class="stat-card"><div class="stat-label">Total Devices</div><div class="stat-value" id="insTotalDevices">—</div><div class="stat-sub">all registered</div></div>
@@ -2120,6 +2148,7 @@ const pageTitles = {
   intel:     ['AI Routing Intel',     'connect telemetry · learned node scores · ISP/platform breakdown'],
   insights:  ['User Insights',        'aggregate carriers · geo · devices · reachability · no per-user tracking'],
   seoranks:  ['SEO Ranks',            'target keyword positions · Iran filtershekan intent · GSC sync'],
+  tapstream: ['Tap Stream',           'batched UI tap telemetry · top screens & elements (B-24)'],
   starlink:  ['Starlink Node',        'exit-node (beta) · tunnel health · unlock status · allowlist'],
   installs:  ['Install Diagnostics',  'app versions · Android/iOS · ABI split · install failures'],
   devices:   ['Devices',              'device management · quota · plan · payments'],
@@ -3882,6 +3911,30 @@ views.insights = {
   },
 };
 
+// ── VIEW: TAP STREAM (B-24) ──────────────────────────────────────────
+// Reads admin/api.php?action=tap-stream-summary, aggregated from
+// tap_events (ingested via public/api.php's track-taps-batch).
+views.tapstream = {
+  init() { this.load(); },
+  rows(tbody, list, cols, cells) {
+    const el = $(tbody); if (!el) return;
+    el.innerHTML = (list && list.length)
+      ? list.map(cells).join('')
+      : `<tr><td colspan="${cols}" class="tbl-empty">No data</td></tr>`;
+  },
+  async load() {
+    try {
+      const d = await api.get('tap-stream-summary');
+      const t = d.totals || {};
+      $('tapTotalTaps').textContent = t.total_taps ?? '—';
+      $('tapDevices').textContent   = t.devices ?? '—';
+      $('tapDaysSub').textContent   = `last ${d.days ?? 7}d`;
+      this.rows('tapScreenTbl', d.by_screen, 2, x=>`<tr><td>${esc(x.screen)}</td><td>${x.taps}</td></tr>`);
+      this.rows('tapElementTbl', d.by_element, 3, x=>`<tr><td>${esc(x.screen)}</td><td>${esc(x.element)}</td><td>${x.taps}</td></tr>`);
+    } catch(e) { toast('Tap stream: '+e.message,'error'); }
+  },
+};
+
 // ── VIEW: SEO RANKS ──────────────────────────────────────────────────
 // Keyword position tracker. Reads admin/api.php?action=seo-ranks, renders a
 // position-over-time chart (Y inverted — 1 at top), a summary table, and a
@@ -5334,8 +5387,6 @@ views.profile = {
 };
 function kvRow(k,v){ return `<div style="display:flex;justify-content:space-between;font-size:.82rem;padding:.2rem 0;border-bottom:1px solid var(--border-subtle)"><span style="color:var(--text-muted)">${esc(k)}</span><span style="font-weight:500">${esc(String(v))}</span></div>`; }
 function relTime(ts){ if(!ts)return'—'; const d=Math.round((Date.now()-new Date(ts+' UTC').getTime())/60000); if(d<2)return'just now'; if(d<60)return d+'m ago'; if(d<1440)return Math.round(d/60)+'h ago'; return Math.round(d/1440)+'d ago'; }
-function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
 // ── VIEW: HAKIM ADMIN ────────────────────────────────────────────────
 // Every field reads hakim-bot's actual running state (systemctl, hakim.db)
 // via the hakim-status API action — never a plausible invented status.
