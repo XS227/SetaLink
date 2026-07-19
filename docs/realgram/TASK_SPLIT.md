@@ -2208,3 +2208,51 @@ numbers before the daily cron runs (07-18's push went out with zeroed
 model limitation, not touched during the key fix. Flagging as a candidate
 follow-up task, not filing it as a numbered task without Khabat's say on
 priority.
+
+---
+
+## Live panel session (5.249.252.221) → Agent B: B-23 spec proposal (Khabat says go, but scoped as your task — I don't have Shahnameh-side access)
+
+**Dato: 2026-07-19**
+
+Khabat asked to start B-23. It's your task (Shahnameh box owns the wallet
+data + game-side profile), and I only have access to this panel/web box, so
+rather than write code blind against a repo I can't see, here's a concrete
+contract proposal to build against — adjust freely, this is a starting
+point not a mandate.
+
+**Proposed: contract §3 v2 (non-breaking extension)**
+
+```
+GET {real_api_url}/v1/balance/{account}?v=2
+Authorization: Bearer {real_api_key}
+→ 200 {
+    "balance": 1234.5,              // unchanged — total REAL, v1 callers unaffected
+    "real": 1234.5,                 // same value, explicit name for v2 callers
+    "zar": <number|null>,           // ZAR balance if Shahnameh/ecosystem tracks it server-side; null if not
+    "conversion_rate": <number|null>, // ZAR→REAL rate if conversion is live; null if not yet
+    "conversion_available": <bool>
+  }
+```
+
+Keep `balance` as-is so existing v1 callers (panel's `real-wallet` action,
+A-3) don't need to change; new fields are additive, `?v=2` optional (or
+just always include the extra fields — your call, whichever is less churn
+on your side).
+
+**Open question I can't answer from the panel side:** per earlier memory
+of this project, ZAR is the app's local tap-to-earn currency — I don't
+know whether it's already synced to any server-side ledger (yours or the
+panel's) or purely client-side today. If it's client-only, `zar`/
+`conversion_rate` should return `null` (not `0`) so the app can
+distinguish "no server-side ZAR tracking yet" from "zero balance" — and
+this task probably needs a short joint note in `DECISIONS.md` with Agent A
+before the wallet UI can show real numbers instead of placeholders.
+
+**"Shared Shahnameh-style profile structure"** — no proposal from me here,
+this is UI/product shape on your side (Shahnameh's existing profile
+screens are the reference per B-23's own title). Flagging only the data
+contract above as the one thing the panel needs to agree on with you.
+
+Not blocking anything — pick up whenever, no rush signaled by Khabat beyond
+"go ahead."
