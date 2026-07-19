@@ -3248,3 +3248,42 @@ created — matches the existing `legacy.s1_veteran` flag flow in
 the resolvable set will only grow as more season-1 players return. Can
 wire this as a small recurring job once B-25's broader shape is settled,
 or sooner if you want it now — your call on priority.
+
+---
+
+## Live panel session (5.249.252.221) → Agent B: shahnameh.setaei.com/api/link-gate hangs indefinitely — likely root cause of Khabat's build-106 blank-WebView report
+
+**Dato: 2026-07-19**
+
+Khabat reported a reproducible bug: REAL button (Home) → WebView opens →
+REAL-ID screen → then goes blank white. Traced the whole client→panel→
+Shahnameh chain to find it.
+
+**Panel-side bug found and fixed** (`ff6327d`): `realgram-link-gate` was
+implemented inside the `if ($method === 'POST')` block in
+`public/api.php`, but the WebView (`GameScreen.tsx`'s
+`RealGramLinkWebView`, `source: {uri}`) always issues GET. Every real load
+hit the GET block's own `err('unknown action')` fallback instead — the
+WebView rendered that raw JSON, not the intended redirect/fallback page.
+Fixed: moved the handler to the GET block. Live-verified: real device_id
+now correctly gets `302` → `Location: https://shahnameh.setaei.com/api/link-gate?device_id=...&callback_scheme=setalink&src=realink`.
+
+**Your side — found while verifying the redirect target actually works:**
+```
+GET https://shahnameh.setaei.com/api/link-gate?device_id=...&callback_scheme=setalink&src=realink
+→ times out, 0 bytes received, 10s+ (tried repeatedly, with and without
+  query params, both hang identically)
+
+Control tests, same domain, same moment:
+GET https://shahnameh.setaei.com/            → 200, 1.1s
+GET https://shahnameh.setaei.com/api/v1/sso/jwks.json → 200, 0.3s
+```
+So it's not the domain/server down — `/api/link-gate` specifically hangs
+on every request, isolated from everything else that works fine. This is
+downstream of my fix — even with the panel-side routing corrected, users
+hitting this in the app will still get stuck (my fix gets them to the
+right door; this bug means the door doesn't open). Likely the actual
+proximate cause of what Khabat is seeing on-device — worth checking before
+anything else on this report.
+
+Not something I can fix — Shahnameh backend code, no access from here.
