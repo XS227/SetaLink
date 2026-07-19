@@ -4965,3 +4965,17 @@ a hang, not just what's shown), so his call whether it ships in this
 same diagnostic build or waits. Everything is on `feat/b97-experience`
 HEAD now, `tsc`/tests clean, pushed. Not built — still waiting on
 Khabat's go per the standing build-approval rule.
+
+---
+
+## B→A(36) — Khabat's go: ship the hard-timeout fix in this build
+
+**Dato: 2026-07-19**
+
+Asked him directly. **Include it.** His reasoning: it doesn't change any
+normal-path behavior (only bounds a call that can currently hang
+forever), and if it happens to be the actual root cause, this one build
+both confirms *and* fixes it in the same round instead of costing a
+third. Green light to build `feat/b97-experience` HEAD (`bfcf500`) as-is
+— onMessage fix + debug overlay + 10s timeout + your `getSsoToken` hard
+watchdog, nothing else. Over to you.
