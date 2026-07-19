@@ -545,3 +545,67 @@ Password relayed directly to Khabat in-conversation, not written here —
 same convention as the API key handling above.
 **Status:** closed. Discrepancy from the earlier entry this supersedes is
 resolved.
+
+### 2026-07-19 — B-25 prerequisite: 1-page consolidation proposal (SetaLink SQLite + Shahnameh Mongo → one RealGram store)
+
+**Proposed by:** Live panel session (5.249.252.221), while waiting on Agent
+B/Khabat's other in-flight items. This is the "1-page proposal in
+DECISIONS.md first" that B-25 itself requires before any v1 work — not an
+implementation, a framing doc to get a decision on.
+
+**Current state (two independent systems, bridged, not integrated):**
+- **SetaLink** — SQLite (`/var/www/setalink/data/analytics.db`): devices,
+  VPN entitlements, `settings` (incl. the ecosystem secrets), `real_redemptions`
+  ledger, referral tracking, `device_handles` (A-11 registry).
+- **Shahnameh** — MongoDB (`season2User` model): game accounts, `real_balance`
+  (source of truth for REAL itself), AdsGram reward crediting, Telegram
+  identity.
+- **Bridge today:** an HMAC account-link proof (contract §1) plus four HTTP
+  contracts (§2-6: verify-spend, balance, spend, grant, SSO). Two databases,
+  one thin API bridge — exactly what the 2026-07-19 "single admin/DB" entry
+  above says isn't the end state.
+
+**What "one database" would actually require (in order of how hard each is):**
+1. **One identity** — already effectively true: the SSO JWT (`sub` =
+   `real_account`) + `device_handles` registry means both sides already
+   agree on who a user is. Low risk to formalize.
+2. **One wallet ledger** — harder: `real_balance` (Mongo, source of truth
+   for REAL) and `real_redemptions` (SQLite, VPN-side spend/grant records)
+   would need to become one ledger with one writer. Whichever side stops
+   being authoritative needs every write path re-pointed, live, without
+   double-crediting or losing history mid-migration.
+3. **One admin panel** — mechanical once (1) and (2) are true: today's
+   `_setalink-admin/` and Shahnameh's own admin surface would need a single
+   UI reading one store instead of two teams maintaining two dashboards
+   against two schemas.
+4. **One physical database** — the last and riskiest step, not a
+   prerequisite for (1)-(3): a shared logical model can live on two engines
+   behind one API for a long time. Forcing SQLite and Mongo onto one engine
+   is a separate, much bigger call (which engine, export/import, downtime
+   window) that doesn't need to happen just to satisfy "one admin, one
+   source of truth."
+
+**Recommended shape (not a mandate — for Khabat/Agent B to weigh in on):**
+Treat this as **(1) and (3) first, (2) second, (4) maybe never.** Concretely:
+one identity + one admin surface can be built as a read-side aggregation
+layer (one dashboard, two backing stores, same as how B-1's API already
+lets the panel read Shahnameh data without owning it) well before anyone
+touches which store is the wallet's source of truth. That gets Khabat the
+visible "it's all RealGram now" outcome fast and safely; the ledger merge
+(2) — the part with real money/real user balances at stake — can follow on
+its own, slower, more carefully reviewed timeline.
+
+**Open questions this proposal does NOT answer (need Khabat + whoever ends
+up owning it):**
+- Does "one database" mean literally one engine, or one logical model
+  behind the API bridge that already exists? (This proposal assumes the
+  latter is an acceptable interim state, possibly permanent — worth an
+  explicit yes/no.)
+- If the wallet ledger does merge eventually, which side's schema wins —
+  Mongo's (Shahnameh already treats `real_balance` as canonical) or a new
+  third store neither side currently owns?
+- Who owns the merged admin surface's *code*, given Agent A owns the SQLite
+  panel and Agent B owns the Mongo backend today?
+
+**Status:** proposal only. No v1 work started. B-25's row stays `open`
+until Khabat or Agent B responds to the shape above.
