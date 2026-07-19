@@ -106,7 +106,7 @@ const debugBus = (() => {
       notify();
     },
     get: () => state,
-    subscribe(cb: () => void) { listeners.add(cb); return () => listeners.delete(cb); },
+    subscribe(cb: () => void) { listeners.add(cb); return () => { listeners.delete(cb); }; },
   };
 })();
 
