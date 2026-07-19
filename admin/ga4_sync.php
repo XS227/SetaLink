@@ -172,6 +172,18 @@ function ga4_sync(PDO $db, int $days = 30): array {
     ]);
     $totalsFlat = ga4_flatten($totals);
 
+    // Breakdown by data stream (web/iOS/Android) — a GA4 property can have
+    // several streams feeding it; runReport at the property level already
+    // aggregates all of them by default, this just makes that visible
+    // instead of hiding which stream each user/session came from.
+    $platform = ga4_run_report($token, $propertyId, [
+        'dateRanges' => $range,
+        'dimensions' => [['name' => 'platform'], ['name' => 'streamName']],
+        'metrics'    => [['name' => 'activeUsers'], ['name' => 'screenPageViews']],
+        'orderBys'   => [['metric' => ['metricName' => 'activeUsers'], 'desc' => true]],
+        'limit'      => 10,
+    ]);
+
     $cache = [
         'property_id' => $propertyId,
         'days'        => $days,
@@ -180,6 +192,7 @@ function ga4_sync(PDO $db, int $days = 30): array {
         'by_day'      => ga4_flatten($byDay),
         'pages'       => ga4_flatten($pages),
         'geo'         => ga4_flatten($geo),
+        'platforms'   => ga4_flatten($platform),
     ];
     ga4_setting($db, 'ga4_cache', json_encode($cache));
     ga4_setting($db, 'ga4_last_sync', date('Y-m-d H:i:s'));

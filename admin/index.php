@@ -430,6 +430,15 @@ function icon(string $name): string {
           </div>
         </div>
       </div>
+
+      <div class="panel" style="margin-top:.7rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('devices') ?> By Data Stream <span class="panel-sub">web / iOS / Android — all streams on this GA4 property</span></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="tbl"><thead><tr><th>Platform</th><th>Stream</th><th>Users</th><th>Views</th></tr></thead>
+            <tbody id="ga4PlatformTbl"><tr><td colspan="4" class="tbl-empty">Not synced yet</td></tr></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->
@@ -2366,6 +2375,9 @@ views.analytics = {
     $('ga4PagesTbl').innerHTML = pagesRows.length ? pagesRows.join('') : '<tr><td colspan="2" class="tbl-empty">No data</td></tr>';
     const geoRows = (cache.geo || []).map(r=>`<tr><td>${esc(r[0]||'')}</td><td>${r[1]||0}</td></tr>`);
     $('ga4GeoTbl').innerHTML = geoRows.length ? geoRows.join('') : '<tr><td colspan="2" class="tbl-empty">No data</td></tr>';
+    // [platform, streamName, activeUsers, screenPageViews]
+    const platRows = (cache.platforms || []).map(r=>`<tr><td>${esc(r[0]||'')}</td><td>${esc(r[1]||'')}</td><td>${r[2]||0}</td><td>${r[3]||0}</td></tr>`);
+    $('ga4PlatformTbl').innerHTML = platRows.length ? platRows.join('') : '<tr><td colspan="4" class="tbl-empty">No data</td></tr>';
   },
   async saveGa4Property() {
     const pid = ($('ga4Property').value || '').trim();
