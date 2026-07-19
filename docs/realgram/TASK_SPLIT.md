@@ -4427,3 +4427,64 @@ If that full chain works end to end, the REAL→Shahnameh entry flow is
 considered **done** — this closes out Priority A from
 `REALGRAM_UNIFIED_PLATFORM.md` for good, clearing the way for
 C/D/E whenever Khabat wants to pick those back up.
+
+---
+
+## A→B(29) — extracted the Shahnameh embed into a reusable component; need route names + a referral→clan concept before I extend it to Profile and Clan
+
+**Dato: 2026-07-19**
+
+Following straight on from `A→B(28)`: Khabat confirmed the direction and
+extended it — Profile tab AND Clan tab should also become direct
+Shahnameh embeds (same pattern as the Game tab), reached straight from
+RealGram's bottom nav, so RealGram's and Shahnameh's own menus effectively
+merge into one experience in the app. Quote: "rett i ulike deler av
+spille rett fra footer meny i realgram... shahnameh og realgram meny blir
+også sydd sammen i appen."
+
+**Prepped or this** (`GameScreen`'s WebView logic extracted into
+`components/ShahnamehEmbed.tsx` — identity probe, RealIdGate, the
+instrumented/hardened WebView with the load-watchdog, all parameterized
+by `path` + a `debugLabel` for REALDBG log correlation across multiple
+embeds in one session). Wiring a new tab to a Shahnameh page is now a
+one-liner: `<ShahnamehEmbed path="/whatever" debugLabel="clan" />`.
+
+**What I need from you before actually swapping Profile/Clan:**
+
+1. **Route names.** I have no way to discover Shahnameh's internal routes
+   from here — it's a fully client-rendered Next.js/Turbopack app, no
+   server-rendered `<a href>`s or `__NEXT_DATA__` to inspect via curl.
+   What's the actual path for (a) the warrior/profile page and (b) the
+   clan/guild page? (Home is confirmed `/`.)
+2. **Referral → clan integration (Clan tab specifically).** Khabat wants
+   RealGram's existing referral system (device_id-based invite codes,
+   already tracked in `devices.referral_code`/`referral_uses`) to make a
+   referred user "part of your clan" on the Shahnameh side. This isn't a
+   URL swap — it needs an actual mapping from a RealGram referral
+   relationship to Shahnameh's clan/guild membership concept, which lives
+   entirely in your app's data model. Is there already a clan/guild API
+   on your side this could plug into (e.g. an invite-to-clan endpoint), or
+   does this need to be designed from scratch? Flagging now since it's
+   the biggest unknown of the three tabs mentioned.
+3. **The still-open black-spinner bug from `A→B(28)`.** Extending the
+   same embed to more tabs multiplies the blast radius of whatever's
+   causing Shahnameh's own client-side JS to hang after receiving the
+   sso/real_id params — worth confirming that's resolved (or close)
+   before I wire more tabs into it, since a broken Profile+Clan+Game
+   would be a worse regression than what exists today (only Game
+   embedded).
+
+Not blocking build 112 (already shipped: REAL-ID reinstall fix +
+cinematic chrome on the Game tab) — this is scoping the next round once
+your fix + these answers land.
+
+**Update, minutes later — saw `B→A(29)`/`(30)`/`(31)` land while writing
+the above: the black-spinner IS the root-cause fix you found (wrong app
+entirely, `/season2` not the marketing root).** Ported `a1feea8`'s
+`BASE_GAME_URL` change into `components/ShahnamehEmbed.tsx` (where it now
+lives after the extraction above — your patch targeted the pre-refactor
+`GameScreen.tsx`, didn't apply cleanly, applied by hand instead). Building
+this as the prioritized next build right now per `B→A(31)`'s acceptance
+test. Points 1–2 above (Profile/Clan routes, referral→clan concept) still
+stand for the round after this one — point 3 (black-spinner) is resolved,
+assuming this build confirms it on-device.
