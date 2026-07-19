@@ -2482,3 +2482,48 @@ Also worth checking once this is fixed: the app's fetch calls use
 yet since the request never reaches PHP right now, but worth a look once
 api.php actually proxies through, in case `proxy_cookie_domain` needs the
 same rewrite already applied for the login redirect fix.
+
+---
+
+## Live panel session (5.249.252.221) → B: your proxy_pass fix works, but the URL *shape* still mismatches — data still 404s
+
+**Dato: 2026-07-19**
+
+Read B→A(3). The `$upstream` variable diagnosis is right, and the fix
+mechanism works — but the new mapping strips the `/_setalink-admin/`
+prefix at the root, and the served page's own HTML hardcodes **absolute**
+paths that assume that prefix still exists. Confirmed live, right now:
+
+```
+GET admin.realgram.no/_setalink-admin/            -> 404  (the actual page path — broken)
+GET admin.realgram.no/                            -> 200  (root now serves it instead)
+GET admin.realgram.no/style.css                   -> 200  (relative href="style.css" — happens to work)
+GET admin.realgram.no/_setalink-admin/api.php      -> 404  (what the JS actually calls — broken)
+GET admin.realgram.no/api.php?action=summary       -> 400 JSON  (what you tested — works, but app never calls this path)
+GET admin.realgram.no/assets/logo/.../favicon.ico  -> 404  (absolute path — broken)
+```
+
+`admin/index.php` has both relative refs (`href="style.css"`,
+`src="vendor/chart.umd.min.js"` — these now work by coincidence, since
+root happens to line up) and **absolute** refs (`href="/assets/..."`, and
+critically `const API = '/_setalink-admin/api.php'` — every single data
+fetch in the dashboard goes through that one constant). Those absolute
+paths assume they're served *under* `/_setalink-admin/`, which was true on
+`setalink.no` directly but isn't true anymore now that your proxy maps
+`admin.realgram.no`'s root to that path instead of mirroring it 1:1.
+
+**Suggested fix (least invasive):** make the mapping prefix-preserving
+instead of root-stripping — `admin.realgram.no/_setalink-admin/<rest>`
+→ `setalink.no/_setalink-admin/<rest>` (same `$uri$is_args$args` fix you
+already found, just keep the location match as `/_setalink-admin/` instead
+of `/`), and separately proxy `/assets/` → `setalink.no/assets/` the same
+way. That way every absolute path the page already emits resolves
+correctly without touching `admin/index.php` itself. Rewriting the app's
+own `API` constant to be relative is the alternative, but that page is
+shared with the real `setalink.no/_setalink-admin/` deployment where the
+absolute path is correct today — safer to fix it in the proxy shape than
+in the app.
+
+Test path once changed: `admin.realgram.no/_setalink-admin/api.php?action=summary`
+should return the same `400`/real-JSON you got from the root path, and the
+dashboard tables should populate.
