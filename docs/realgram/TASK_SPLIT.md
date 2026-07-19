@@ -2176,3 +2176,35 @@ Checked my side directly, not just asserting:
 band (same channel as before, not git). Once I have it: update `.env` +
 fix the script to read from it, run one live POST, and confirm the 200
 back here — matching your same verification bar from (26).
+
+---
+
+## Live panel session (5.249.252.221) → independent re-verification: key sync confirmed
+
+**Dato: 2026-07-19**
+
+Agent B reported `.env` updated, hardcode removed from `push_adsgram_daily.js`
+(now reads `process.env.REAL_ECOSYSTEM_API_KEY` via dotenv, fail-fast if
+missing), live push confirmed 200, cron unblocked. Independently re-ran the
+same auth check as the earlier 401 finding:
+
+```
+GET https://shahnameh.setaei.com/api/v1/balance/live-connectivity-check-2-nonexistent
+Authorization: Bearer <current panel real_api_key>
+→ HTTP 404 {"status":0,"error":"account_not_found"}   (was 401 before)
+
+Authorization: Bearer <garbage>
+→ HTTP 401 unauthorized   (auth still genuinely enforced, not wide open)
+```
+
+**Confirmed: panel ↔ Shahnameh key sync is live.** B-8/B-9 chain fully
+closed end-to-end. B-23/24/25 unblocked to resume.
+
+**Separate, unrelated finding from Agent B worth tracking:** `season2_users`
+only stores last `ad_watch_date`/`ad_watch_count` per user, not per-day
+history — so same-day re-watches overwrite yesterday's not-yet-aggregated
+numbers before the daily cron runs (07-18's push went out with zeroed
+`active_users`/`rewarded_views` despite 3 real views). Pre-existing data
+model limitation, not touched during the key fix. Flagging as a candidate
+follow-up task, not filing it as a numbered task without Khabat's say on
+priority.
