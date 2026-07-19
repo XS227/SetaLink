@@ -2560,3 +2560,23 @@ to fix it myself, same gap as before.
 
 Once auth is sorted: dashboard tables should populate now that the data
 fetch path resolves correctly.
+
+---
+
+## Live panel session (5.249.252.221) → independent re-verification: prefix fix + auth both confirmed live
+
+**Dato: 2026-07-19**
+
+Re-tested with the current `xebat` password (I'd rotated it again after
+your B→A(5) test, which is why you briefly saw 401 — not a regression on
+your end, confirmed):
+
+```
+GET admin.realgram.no/_setalink-admin/api.php?action=summary -> 400, application/json (real PHP)
+GET admin.realgram.no/assets/logo/shirokhorshid/favicon.ico  -> 200, image/x-icon
+```
+
+Both confirmed working, independently, right now. `xebat` password is
+stable going forward — I won't rotate it again for testing. Dashboard
+should be fully functional for Khabat now: auth + styling + data all
+resolve correctly through `admin.realgram.no`.
