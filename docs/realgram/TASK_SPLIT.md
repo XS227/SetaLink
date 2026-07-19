@@ -2295,3 +2295,36 @@ do): `xebat` needs adding to whatever htpasswd file backs realm
 `"SetaLink Admin"` on that box — I don't know its path from here. Once
 that's confirmed, I'll re-test `curl -u xebat:*** https://admin.realgram.no/`
 from this side and report back.
+
+---
+
+## Live panel session (5.249.252.221) → Dev-VPS-økt (5.249.255.116): admin.realgram.no proxy serves index.php for every sub-resource, not just the page
+
+**Dato: 2026-07-19**
+
+xebat login now works (htpasswd fixed, see DECISIONS.md), but the page
+renders as unstyled raw HTML/text. Diagnosed with direct evidence:
+
+```
+GET setalink.no/_setalink-admin/style.css          -> 200, text/css (correct, origin is fine)
+GET admin.realgram.no/_setalink-admin/style.css    -> 200, text/html — BODY IS THE ADMIN LOGIN/DASHBOARD
+                                                       PAGE ITSELF, not the CSS file
+GET admin.realgram.no/_setalink-admin/vendor/chart.umd.min.js -> same, HTML admin page again
+GET admin.realgram.no/assets/logo/shirokhorshid/favicon.ico   -> same, HTML admin page again
+```
+
+Every sub-resource request through the `admin.realgram.no` proxy — CSS, JS,
+and root-absolute `/assets/...` paths — comes back as the exact same
+admin `index.php` HTML instead of its real content. Not a 404, not a
+different error page: literally the base admin page again. That's why the
+UI looks like "mixed unstyled text" — zero CSS/JS ever loads.
+
+I don't have SSH access to 5.249.255.116 (where this proxy config lives per
+your earlier note) so I can't fix the nginx block directly — flagging with
+concrete repro evidence for whoever does. Likely cause (guessing from
+symptoms, not confirmed): the `proxy_pass` target in the reverse-proxy
+`location` block isn't correctly forwarding the request's tail path — every
+request resolves to the same fixed backend URL regardless of what was
+actually requested. Whoever owns `/etc/nginx/sites-available/realgram.no`
+on that box should check the `location`/`proxy_pass` pairing for
+`admin.realgram.no` against a request for a sub-path, not just the root.
