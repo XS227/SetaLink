@@ -482,3 +482,25 @@ the dead `if (tab === 'game')` special-case in `makeOnNavigate` removed
 correctly since `Game` is a sibling tab now), old `Stack.Screen name="Game"`
 removed. Needs an on-device pass to confirm the tab bar renders correctly
 and the WebView still loads/authenticates as before.
+
+### 2026-07-19 — End-state architecture: ONE admin + ONE database, under RealGram — everything else consolidates into it
+
+**Decided by:** Khabat, explicit instruction.
+**What:** there is not meant to be a permanent separate Shahnameh admin/DB
+(Mongo) and SetaLink admin/DB (SQLite) sitting alongside a RealGram one.
+The end state is a single unified system under RealGram: one GitHub repo,
+one set of servers, one domain, one API, one admin panel, one database.
+Shahnameh's and SetaLink's current admin panels and databases are not
+permanent parallel systems — they consolidate into RealGram's over time.
+**Why it matters:** this supersedes/reframes how **B-25** (`docs/realgram/TASK_SPLIT.md`
+— "Shahnameh(Mongo) ↔ panel(SQLite) DB linkage") was scoped. B-25's own
+text explicitly said "account-link layer, not literal merge" — that framing
+no longer matches the target end state per this entry. Whoever picks up
+B-25 (or plans anything DB/admin-architecture-shaped for RealGram) should
+treat literal consolidation as the actual goal, an account-link layer as at
+most an interim step, not the destination.
+**Not yet decided/specified here:** timeline, migration order, which side
+survives as the canonical schema, or whether this is a hard cutover vs.
+phased. Needs its own proposal before any migration work starts — same
+"1-page proposal in DECISIONS.md first, then v1" bar B-25 already had.
+**Status:** direction recorded, no migration work authorized or started yet.
