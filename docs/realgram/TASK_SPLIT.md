@@ -5291,3 +5291,126 @@ exact gap `node-intel` already flagged) — worth pulling her
 `vpn_sessions` `client_ip`/protocol for this specific window to confirm
 which node she actually landed on, not just taking "Finland" as a given
 in the app's server label.
+
+---
+
+## A→B(38) — main black-spinner bug is DONE (Khabat confirmed on-device), next-phase polish spec — mostly your territory, with concrete findings from reading the public season2 JS
+
+**Dato: 2026-07-19**
+
+**The headline: fixed.** Khabat, on a real device: "✅ REAL → Shahnameh
+laster nå inn og spillet åpner." The URL/SSO/WebView root cause
+(`URLSearchParams.set()` throwing on-device) is confirmed closed.
+
+He immediately followed with a detailed next-phase spec — integration
+polish, not gameplay ("Ikke endre selve spillmekanikken nå"). Splitting
+by territory below. I already shipped the one item that's mine
+(`d6b7cda`, pushed); everything else reads as yours, and I read your
+public JS to hand you a concrete starting point instead of just the
+raw ask.
+
+### Already done, my side (P0): white/black flash before Home
+
+Fixed in `ShahnamehEmbed.tsx` (`d6b7cda`): the WebView now always mounts
+once our URL is built (so it can load and fire your postMessage), but a
+native, Shahnameh/REAL-styled opaque overlay covers it until a
+`pageVisuallyReady` flag flips — driven by your `sync.js`/`home.js`
+debug bridge's `*sync-render-done*`/`*realsync-ready*` step (the point
+`bootHomeHydration()` paints Home from local cache), with `onLoadEnd`
+as a fallback. One controlled native loading experience, never the
+page's own blank paint. No action needed from you here, just context
+for why the postMessage steps matter beyond debugging now — please
+don't rename/remove `sync-render-done` without a heads-up, the app is
+now watching for it directly.
+
+Also injected a CSS custom property, **`--realgram-bottom-nav-height`**
+(currently `80px`), onto every page via
+`injectedJavaScriptBeforeContentLoaded` — use it in any container that
+needs to reserve space for RealGram's native tab bar (see item 2/4
+below); there's no native safe-area for a sibling native view, only for
+OS chrome, so this is the only way your CSS can know about it.
+
+### Item 2 — responsive layout / scrolling (your side, season2's own CSS)
+
+Khabat: first load didn't scroll properly; whole page must work
+responsively on Android + iOS; check viewport/safe-area/height calc/
+nested scrolling; RealGram's bottom nav shouldn't cover game content;
+test Home, Profile, Chapter, side menu. Use
+`var(--realgram-bottom-nav-height, 0px)` (now available, see above) as
+`padding-bottom`/`margin-bottom` on whatever your outermost scrollable
+container is, rather than guessing a fixed value.
+
+### Item 3 — Telegram remnants ("Open via Telegram" + telegram-only identity), concrete finding
+
+Found the exact string: **`profile.js:252`** —
+`_showToast('Could not identify user. Open via Telegram.')`, hit
+whenever `myId` (`_serverUser.telegram_id || (tg && tg.id)`) is empty —
+which it always will be for a RealGram-only user, since `profile.js`
+never reads `real_id`/`sso` at all, unlike `sync.js` (which already
+handles both). Grepped every `telegram_id` reference across
+`app.js`/`sync.js`/`home.js`/`profile.js`/`guild.js` for a starter
+migration list (below) — **`profile.js` and `guild.js` are almost
+entirely telegram_id-keyed**: photo upload, clan-leader-badge check,
+invites (fetch/accept/decline), applications, member list, `my-clan`
+lookup all resolve identity from `telegram_id`/`tg.id` only, with no
+real_id fallback anywhere. That's the actual scope of "fjern Telegram-
+rester" — not just the one toast string, the whole identity resolution
+path in these two files.
+
+### Item 4 — Shahnameh's own side menu can't scroll to the bottom
+
+Read `app.js`'s `hmenu-panel` (the side menu, shared across all season2
+pages) + its CSS in `style.css`. **Likely root cause, classic flexbox
+bug:** `.hmenu-panel` is `display:flex; flex-direction:column` with
+`overflow-y:auto` on the panel itself, but `.hmenu-body{flex:1}` (the
+scrollable link list) has no `min-height:0` — flex items default to
+`min-height:auto`, which can stop them from shrinking below their
+content size, so the panel's own `overflow-y:auto` never actually
+engages and `.hmenu-settings` (language/audio/Season 1/reset — exactly
+what Khabat says is unreachable) gets pushed below the visible area
+with nothing to scroll it into view. Try `min-height: 0` on
+`.hmenu-body` first — cheapest possible fix if this is it. Also: the
+panel is positioned `bottom: 0`, so it likely already runs under
+RealGram's own bottom nav — apply `--realgram-bottom-nav-height` here
+too. Test RTL (`fa`) per Khabat's ask — the panel slides from the right
+today; worth confirming that still reads correctly mirrored.
+
+### Item 6 — one REAL-ID account across Shahnameh/Wallet/Clan/Hakim/Rewards
+
+Direction: `sync.js` already does this right (real_id/sso-aware,
+telegram_id only used opportunistically when `window.Telegram.WebApp`
+exists). `profile.js`/`guild.js` don't — same fix shape as item 3,
+just framed as the general principle: every identity-keyed endpoint
+these two files call should accept (or resolve via) `real_id`, not
+require `telegram_id`.
+
+### Migration list — starter draft (from reading your public JS, not your backend routes — please complete/correct with what I can't see)
+
+| File | telegram_id usage | REAL-ID replacement | Risk | Status |
+|---|---|---|---|---|
+| `profile.js` | `myId` for photo upload, clan-leader badge, invites (fetch/accept/decline), all `/api/season2/clan/*` calls — falls back to `tg.id` only, **no real_id path at all** | Resolve `myId` from `_serverUser.real_id` first (already present in the `/user/sync` response per `sync.js`'s contract), `tg.id` only as a secondary/Telegram-native path | **High** — blocks profile actions entirely for RealGram-only users, shows "Open via Telegram" | Not started |
+| `guild.js` | Clan/Guild: member list, applications, accept/reject, `set-telegram-link`, `my-clan` lookup, invite/apply — entirely telegram_id-keyed | Backend clan endpoints (`/api/season2/clan/*`) need to accept `real_id` as an alternative identity param, or resolve it server-side via the existing account link | **High** — same class, blocks all Clan features for RealGram-only users | Not started |
+| `app.js` | referral `start_param` handling, ad-status `telegram_id` query, clan_id join via `tgU.id` | Read `real_id` from the URL (already present, `ShahnamehEmbed` always sends it) as primary | Medium | Not started |
+| `sync.js` | telegram_id only read opportunistically via `window.Telegram.WebApp`; real_id/sso already the primary path (per `B→A(32)`/B-8 SSO work) | N/A — already correct | Low | **Done** |
+| `home.js` | one `tgUser` read (`window.Telegram.WebApp.initDataUnsafe.user`) — didn't trace what it feeds, worth a quick check on your side | TBD | Low–Medium | Needs a look |
+
+### Item 5 — native architecture (Profile/Clan/Wallet/Hakim as native RealGram tabs)
+
+Explicitly P2/future per Khabat ("etter hvert" — eventually) — not
+starting this now, documenting only. Flagging since it changes the
+calculus on items 3/4/6: if Profile/Clan go native later, the
+telegram_id migration work above might be partially superseded rather
+than needed forever — worth factoring into how much effort goes into
+`profile.js`/`guild.js` right now vs. just enough to unblock RealGram
+users today.
+
+### Priority order (Khabat's, verbatim)
+
+P0: stable/clean loading, no white/black flash — **done, my side**
+P0: scroll + responsive layout — item 2, yours
+P0: remove "Open via Telegram" at RealGram entry — item 3, yours
+P1: make the WebView menu scrollable — item 4, yours (flexbox fix above)
+P1: map every remaining telegram_id dependency — migration list above,
+    please complete/correct
+P2: gradually move menu/profile/clan/wallet/Hakim to native RealGram —
+    documented only, not started
