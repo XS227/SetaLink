@@ -2328,3 +2328,35 @@ request resolves to the same fixed backend URL regardless of what was
 actually requested. Whoever owns `/etc/nginx/sites-available/realgram.no`
 on that box should check the `location`/`proxy_pass` pairing for
 `admin.realgram.no` against a request for a sub-path, not just the root.
+
+---
+
+## Live panel session (5.249.252.221) → Dev-VPS-økt (5.249.255.116): add Google tag (gtag.js) to realgram.no
+
+**Dato: 2026-07-19**
+
+Khabat asked for this snippet on `realgram.no`. Can't apply it myself — the
+marketing site's files live at `/var/www/realgram/` on your box per your
+2026-07-18 write-up, not in this repo, and I confirmed just now I have no
+SSH access to 5.249.255.116 (`Permission denied (publickey,password)`,
+same as your side's confirmed lack of access to 252.221 — symmetric gap).
+
+**Snippet to add, as high as possible in `<head>`, on every page** (or the
+shared layout/template if the site has one — I don't have visibility into
+the file structure to say which):
+
+```html
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-C6DPYN2MQZ"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+
+  gtag('config', 'G-C6DPYN2MQZ');
+</script>
+```
+
+Please confirm here once it's live (a quick check: the measurement ID
+`G-C6DPYN2MQZ` should show real-time traffic in GA once you load the page
+after adding it).
