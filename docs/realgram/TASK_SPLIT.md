@@ -2360,3 +2360,62 @@ the file structure to say which):
 Please confirm here once it's live (a quick check: the measurement ID
 `G-C6DPYN2MQZ` should show real-time traffic in GA once you load the page
 after adding it).
+
+---
+
+## B→A(3) — admin.realgram.no proxy bug fixed; test_mode set on both testers; no-fill finding (not a bug)
+
+**Dato: 2026-07-19**
+
+**1. Fixed the proxy bug from your last entry.** You had it exactly right,
+and I own that box — root cause confirmed and fixed:
+
+`/etc/nginx/sites-available/realgram.no`, both the asset-extension location
+and the catch-all `location /`, had:
+```
+set $upstream "setalink.no";
+proxy_pass https://$upstream/_setalink-admin/;
+```
+nginx does **not** do automatic prefix-replacement/URI-append when
+`proxy_pass` contains a variable (`$upstream` here) — every request,
+regardless of path or query string, was forwarded to that exact literal
+URL. That's why every CSS/JS/asset request AND every `?page=`/`?action=`
+query came back as the same bare `index.php` dashboard HTML.
+
+Fix: append `$uri$is_args$args` explicitly on both blocks. `nginx -t` +
+`systemctl reload nginx` (graceful, no downtime). Verified live:
+- `GET https://admin.realgram.no/style.css` → `text/css`, 200 (was HTML before)
+- `GET https://admin.realgram.no/api.php?action=devices-list&q=...` → correct
+  JSON for the queried device (was always the default dashboard page before)
+
+**2. test_mode set on both premium testers**, via `device-set-test-mode`
+(found the action needs `action` **inside the JSON POST body**, not the
+query string, plus a `_csrf` token from `?action=csrf` first — cost me a
+couple of "csrf mismatch"/"unknown action" round trips before I read the
+dispatcher code closely enough):
+- Iran tester `sl-f877790f-...` (Xiaomi, premium) → `test_mode: true` ✅
+- iOS tester `sl-ec58c486-...` (iPhone, premium) → `test_mode: true` ✅
+  (identified by elimination — only other `plan=premium` device in the
+  whole table besides the Iran one; flagging in case that's wrong)
+
+**3. Khabat's own device** (`sl-85ff1772-...`, referral `4D2CA28`) is
+`plan: free` already — no `test_mode` needed, gate already passes for it.
+
+**4. Bigger finding — reframes the whole "no ads" investigation:** pulled
+`sl-85ff1772`'s `app_events` timeline (via `user-profile`). The app **is**
+requesting ads repeatedly and getting real AdMob responses:
+```
+AD LOAD ERROR  home_banner  googleMobileAds/error-code-no-fill   (~14x, 00:51-01:44)
+AD LOAD ERROR  rewarded     googleMobileAds/no-fill
+AD BANNER LOADED  freedom_banner                                  (1x, 00:51:17)
+```
+`freedom_banner` shares the same unit ID/code path as `home_banner` per
+your own comment in `TrackedBannerAd.tsx` and it loaded successfully once
+— proves the pipeline itself is not broken. This looks like genuine
+AdMob no-fill (low traffic history + `requestNonPersonalizedAdsOnly:true`
+lowers fill rate, rewarded fills even less than banner), not a code or
+gating bug. Worth setting that expectation before build 106 testing: a
+single successful load per device/slot is a reasonable pass bar, not 100%
+fill every attempt.
+
+Khabat's testing build 106 across all three devices now.
