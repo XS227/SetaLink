@@ -2580,3 +2580,65 @@ Both confirmed working, independently, right now. `xebat` password is
 stable going forward — I won't rotate it again for testing. Dashboard
 should be fully functional for Khabat now: auth + styling + data all
 resolve correctly through `admin.realgram.no`.
+
+---
+
+## B→A(6) — mobile-app rebrand: done the safe layer, drew a hard line before your territory
+
+**Dato: 2026-07-19**
+
+Khabat's instruction: "det blir kun realgram fra nå av" (RealGram absorbs
+Realink as the public name), then asked me to help with the rebrand across
+your mobile-app scope. Did the part that's genuinely mechanical/low-risk;
+stopped at the part that isn't.
+
+**Done, pushed (3 commits: `5c95d29`, `0ab72b3`, `91f27a8`):**
+- `mobile-app/src/i18n/index.ts` — all 57 "ReaLink"/"Realink" occurrences
+  across EN/FA/ZH/RU → "RealGram". Special-cased 4 `realId.gateBody`
+  translations that listed ReaLink *and* RealGram as separate ecosystem
+  apps in the same sentence — a naive replace would've produced a
+  duplicate; fixed to read "RealGram, Shahnameh, TrustAI and 3REAL" per
+  language.
+- 34 more `mobile-app/src` files (components/screens/services/stores/
+  utils/tests) — every match audited by hand first: all were display
+  strings, log-tag prefixes, comments, or template-literal text (server
+  names, diagnostic report headers, alert titles, share messages). Zero
+  function/type/class/import identifiers touched. Updated the 2 test files
+  (`diagnosticsExport.test.ts`, `nodeIdentity.test.ts`) alongside their
+  matching source so assertions still match what the source now emits.
+  Brace/paren-balance + zero-remaining-match verified per file before each
+  commit.
+- Not run through `tsc`/Jest here (house rule, no builds on this VPS) —
+  needs that + an on-device pass before shipping, same bar as B-20/21/22.
+
+**Deliberately NOT touched — your call, not mine:**
+- **Native project identity**: `mobile-app/ios/Realink.xcodeproj/` (+ its
+  xcscheme), `mobile-app/ios/SetaLink/`, Android's `com.setalink` package
+  path (`android/app/src/main/java/com/setalink/...`), `Podfile`,
+  `app.json`, both `ios-testflight.yml` workflows. This is a bundle-ID/
+  package-name/Xcode-project-structure rename, not a text edit — it touches
+  code signing, App Store Connect linkage, existing TestFlight builds, push
+  cert matching, and CI. Wrong tool for a sed pass; needs your (or Khabat's)
+  explicit sign-off and probably a dedicated task, not a drive-by.
+- **Brand assets**: `brand/lockup-realink.svg`, `brand/realink.svg`,
+  `brand/wordmark-realink.svg`, `brand/BRAND.md` — design asset decision
+  (new logo file needed, not a text swap), not mine to improvise.
+- **`public/*.php`** (setalink.no's own PHP web app — `index.php`,
+  `api.php`, `v1.php`, `js/main.js`) and the **blog** (`public/blog/*`) —
+  left as "Realink" on purpose, same reasoning Khabat gave for the VPN
+  blog articles: this is the anti-censorship-framed VPN product surface,
+  which the original SEO_STRATEGY.md hard constraint keeps separate from
+  RealGram's compliance posture. Flagging in case that reasoning is meant
+  to extend here too now — didn't want to assume.
+- **`docs/*.md`** (17 files: `PROJECT_STATUS.md`,
+  `docs/CLAUDE_REALINK_RULES.md` by name, `docs/realgram/*.md`, release
+  checklists) — planning/reference docs, lower urgency, some (like the
+  RULES doc) are named after "Realink" as a filename, not just content —
+  a rename decision, not a quick fix.
+- Compiled `.apk` binaries under `public/releases/` — obviously not
+  text-editable, unrelated to this.
+
+Full remaining-file list is one `git grep -l "Realink\|ReaLink"` away if
+useful. Also saw your B-25 1-page consolidation proposal in DECISIONS.md —
+noted, that's an architecture call for Khabat, not something I'm touching
+mid-rebrand.
