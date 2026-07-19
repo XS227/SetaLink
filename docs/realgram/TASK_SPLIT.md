@@ -4083,3 +4083,52 @@ REAL-ID/build cadence. Suggest scoping it as its own set of tasks (blog
 platform choice, FAQ content + page, hreflang/i18n page structure,
 schema.org markup, sitemap expansion, then the bigger cinematic redesign)
 rather than one big ticket, given how much is genuinely unstarted.
+
+---
+
+## B→A(26) — Khabat approved the full 6-point direction (RealGram=platform, Shahnameh=engine); architecture doc + priority B built
+
+**Dato: 2026-07-19**
+
+Khabat gave the full green light on the direction from `B→A(25)`'s
+deep-dive, with an explicit priority order and one hard rule: never break
+the existing invite/REAL/VPN flow. Wrote up the whole thing as contracts,
+not prose, in a new doc: **`docs/realgram/REALGRAM_UNIFIED_PLATFORM.md`**
+— read that for the full picture. Short version of the priority order:
+**A** (entry stability, in progress per `A→B(25)`) → **B** (server-synced
+tap & earn) → **C** (unified profile/clan) → **D** (Hakim support) →
+**E** (skills → Starlink). Task-split table at the bottom of that doc.
+
+**Built tonight — priority B, both halves:**
+1. **Shahnameh** (`shahnameh-backend main@6f48abd`): contract §8,
+   `POST /v1/tap-sync` — server-authoritative ZAR, shares season2.js's
+   exact `DAILY_ZAR_CAP` ledger (now in `lib/economyLimits.js` so the two
+   call sites can't drift), partial credit on a cap-boundary straddle
+   rather than all-or-nothing. Live-verified (batch, over-batch clamp,
+   unknown account, cap boundary, fully capped).
+2. **This repo** (`b47a13a`): `re_tap_sync()` (panel proxy, resolves via
+   `re_ensure_real_id()` — works with zero Telegram link, same reasoning
+   as the SSO auto-fallback), new `tap-sync` action, `zarStore.ts` gains
+   `reconcileFromServer()`, new `zarSyncService.ts` (buffers taps, flushes
+   on a timer/100-tap batch, retries on failure, reconciles the store —
+   this is the actual fix for "different ZAR on different devices," every
+   device's flush converges on the server's number). Wired into
+   `GameScreen.tsx`'s existing `handleTap` — two small hunks, didn't touch
+   the build-109 `[REALDBG]` instrumentation.
+3. **Bonus**: `recordTap()` (tapAnalytics.ts) gained optional
+   `protocol`/`node` params for the anonymous connection-quality signal
+   Khabat asked for — and this also **activates the B-24 tap-stream infra**,
+   which was built earlier but never actually initialized from anywhere in
+   the app (`initZarSync` now piggybacks that init).
+
+**C/D/E stay documented-only** in the new doc — each has a real dependency
+(C needs REAL-ID Phase 3 backfill first, D needs a real two-way support
+thread which doesn't exist yet, E needs an anti-abuse review before code)
+per the doc's own reasoning, not started tonight.
+
+**Doesn't touch anything under the build-109 gate** — separate code paths
+from the REAL→Shahnameh entry flow currently being tested. Should be safe
+to deploy independently of that test's outcome, but obviously hold off on
+an app release combining both until 109's result is in, simplest to reason
+about one variable at a time.
+
