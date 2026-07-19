@@ -299,7 +299,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         <Animated.View style={[styles.shortcutsRow, fadeStyle]}>
           <TouchableOpacity
             style={styles.shortcutRewards}
-            onPress={() => onNavigate('game')}
+            onPress={() => {
+              // TEMP DEBUG (2026-07-19, remove once REAL->Shahnameh is
+              // confirmed fixed on a real device — Khabat's build-108 report).
+              console.log('[REALDBG] REAL button pressed (Home shortcut)');
+              onNavigate('game');
+            }}
             activeOpacity={0.82}
           >
             <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.shortcutIcon} />
@@ -311,7 +316,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
           <TouchableOpacity
             style={styles.shortcutRealgram}
-            onPress={() => onNavigate('game')}
+            onPress={() => {
+              // TEMP DEBUG (2026-07-19, remove once REAL->Shahnameh is
+              // confirmed fixed on a real device — Khabat's build-108 report).
+              console.log('[REALDBG] RealGram button pressed (Home shortcut)');
+              onNavigate('game');
+            }}
             activeOpacity={0.82}
           >
             <Text style={styles.shortcutRealgramIcon}>💬</Text>

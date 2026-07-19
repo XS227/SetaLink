@@ -38,6 +38,7 @@ import { getSsoToken, checkAndCacheRealId } from '../services/ssoService';
 import { linkRealAccount }  from '../services/realWalletService';
 import { parseDeepLink }    from '../services/deepLinkService';
 import { pushEcosystemProfile } from '../services/ecosystemProfileService';
+import { getCachedConfig }  from '../services/remoteConfigService';
 
 const BASE_GAME_URL  = 'https://shahnameh.setaei.com';
 const PANEL_API      = 'https://setalink.no/api.php';
@@ -268,7 +269,10 @@ function GameWebView({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // TEMP DEBUG (2026-07-19) — remove once confirmed fixed on device.
+    console.log('[REALDBG] GameWebView effect: before /v1/sso-token', { deviceId, path, realId });
     getSsoToken(deviceId, true).then((r) => {
+      console.log('[REALDBG] GameWebView effect: after /v1/sso-token (ok)', { status: r.status, hasToken: !!r.token, account: r.account });
       if (r.status === 'ok' && r.account && !useAuthStore.getState().user?.realId) {
         useAuthStore.getState().setRealId(r.account);
       }
@@ -276,12 +280,17 @@ function GameWebView({
       const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
       if (realId) params.set('real_id', realId);
       if (r.status === 'ok' && r.token) params.set('sso', r.token);
-      setUrl(`${base}?${params}`);
+      const finalUrl = `${base}?${params}`;
+      console.log('[REALDBG] before WebView opens', { url: finalUrl });
+      setUrl(finalUrl);
       setReady(true);
-    }).catch(() => {
+    }).catch((e) => {
+      console.log('[REALDBG] GameWebView effect: after /v1/sso-token (threw)', e);
       const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
       if (realId) params.set('real_id', realId);
-      setUrl(`${BASE_GAME_URL}${path}?${params}`);
+      const finalUrl = `${BASE_GAME_URL}${path}?${params}`;
+      console.log('[REALDBG] before WebView opens (fallback path)', { url: finalUrl });
+      setUrl(finalUrl);
       setReady(true);
     });
   }, [deviceId, path, realId]);
@@ -368,20 +377,77 @@ export function GameScreen() {
 
   const [webPath, setWebPath]   = useState<string | null>(null);
   const [burstKey, setBurstKey] = useState(0);
-  // True while we're checking whether the user has a linked account server-side.
-  // Prevents the gate from flashing for users navigating from RealGram who are
-  // already linked (linked_real_account set in entitlement).
-  const [checking, setChecking] = useState(!realId && !!deviceId);
+  // True while we're checking/waiting for identity to be ready. Starts true
+  // whenever there's no realId yet — INCLUDING when deviceId itself isn't
+  // populated yet (e.g. a Zustand persist rehydration race on a cold app
+  // start). Previously this only started checking when deviceId was
+  // already truthy, so an empty deviceId at mount time silently skipped
+  // the whole probe instead of waiting for it — Khabat's build-108 report:
+  // zero /v1/sso-token requests ever attempted on a real device. Fix,
+  // 2026-07-19: wait for deviceId instead of giving up when it's empty.
+  const [checking, setChecking] = useState(!realId);
 
   // On first render: silently probe SSO in case the user already linked via
-  // a deep-link or RealGram in a previous session but realId wasn't cached yet.
+  // a deep-link or RealGram in a previous session but realId wasn't cached
+  // yet. If deviceId isn't populated yet, POLL for it (bounded) instead of
+  // skipping the probe outright.
   useEffect(() => {
-    if (!realId && deviceId) {
-      checkAndCacheRealId(deviceId).finally(() => setChecking(false));
-    } else {
+    // TEMP DEBUG (2026-07-19, Khabat's build-108 REAL->Shahnameh report) —
+    // remove once confirmed fixed on a real device.
+    console.log('[REALDBG] GameScreen mount/effect', {
+      deviceId, realId, hasDeviceId: !!deviceId, hasRealId: !!realId,
+    });
+
+    if (realId) {
+      console.log('[REALDBG] realId already present — skipping probe');
       setChecking(false);
+      return;
     }
-  }, [deviceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    let cancelled = false;
+
+    const runProbe = (id: string) => {
+      console.log('[REALDBG] remote config at probe time', getCachedConfig());
+      console.log('[REALDBG] calling checkAndCacheRealId (forGame=true internally)', { deviceId: id });
+      checkAndCacheRealId(id)
+        .then(() => {
+          console.log('[REALDBG] checkAndCacheRealId resolved', {
+            realIdAfter: useAuthStore.getState().user?.realId || '(still empty)',
+          });
+        })
+        .catch((e) => {
+          console.log('[REALDBG] checkAndCacheRealId threw', e);
+        })
+        .finally(() => { if (!cancelled) setChecking(false); });
+    };
+
+    if (deviceId) {
+      runProbe(deviceId);
+      return () => { cancelled = true; };
+    }
+
+    // deviceId not ready yet — WAIT instead of skipping. Poll briefly,
+    // bounded to ~5s so a genuinely broken auth store doesn't spin forever.
+    console.log('[REALDBG] deviceId empty at mount — waiting instead of skipping');
+    let attempts = 0;
+    const maxAttempts = 25; // 25 * 200ms = 5s
+    const poll = () => {
+      if (cancelled) return;
+      attempts++;
+      const liveDeviceId = useAuthStore.getState().user?.deviceId ?? '';
+      console.log('[REALDBG] poll for deviceId', { attempt: attempts, liveDeviceId });
+      if (liveDeviceId) {
+        runProbe(liveDeviceId);
+      } else if (attempts >= maxAttempts) {
+        console.log('[REALDBG] gave up waiting for deviceId after', attempts, 'attempts (~5s)');
+        setChecking(false);
+      } else {
+        setTimeout(poll, 200);
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [deviceId, realId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dailyPct    = Math.min(1, earnedToday / ZAR_DAILY_CAP);
   const cappedToday = earnedToday >= ZAR_DAILY_CAP;
@@ -400,6 +466,7 @@ export function GameScreen() {
   // who are already linked (e.g. navigating from the RealGram shortcut)
   // never see the gate flash.
   if (checking) {
+    console.log('[REALDBG] render: spinner (checking=true)', { deviceId, realId });
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={Colors.gold[400]} />
@@ -409,6 +476,7 @@ export function GameScreen() {
 
   // Gate: show REAL-ID creation prompt if not linked
   if (!realId) {
+    console.log('[REALDBG] render: RealIdGate (realId empty after checking)', { deviceId, realId });
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <RealIdGate deviceId={deviceId} />
@@ -506,7 +574,11 @@ export function GameScreen() {
         {/* ── Enter game button ── */}
         <TouchableOpacity
           style={styles.enterBtn}
-          onPress={() => setWebPath('/')}
+          onPress={() => {
+            // TEMP DEBUG (2026-07-19) — remove once confirmed fixed on device.
+            console.log('[REALDBG] Enter Shahnameh pressed', { deviceId, realId });
+            setWebPath('/');
+          }}
           activeOpacity={0.85}
         >
           <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.enterBtnIcon} />

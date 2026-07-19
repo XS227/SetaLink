@@ -2,10 +2,15 @@ import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { Linking } from 'react-native';
 
-// Remote config gates the whole card — swap it per test.
+// Remote config gates the whole card — swap it per test. getRemoteConfig is
+// the async fetch the card now also awaits on mount (2026-07-19 fix: it must
+// not rely solely on a cache some other screen may not have populated yet),
+// so it defaults to resolving whatever getCachedConfig currently returns.
 const mockGetCachedConfig = jest.fn();
+const mockGetRemoteConfig = jest.fn((..._a: any[]) => Promise.resolve(mockGetCachedConfig()));
 jest.mock('../services/remoteConfigService', () => ({
   getCachedConfig: (...a: any[]) => mockGetCachedConfig(...a),
+  getRemoteConfig: (...a: any[]) => mockGetRemoteConfig(...a),
 }));
 
 const mockGetRealWallet   = jest.fn();
@@ -33,7 +38,12 @@ const texts = (tree: renderer.ReactTestRenderer): string[] =>
     React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'),
   ) as string[];
 
-const flush = () => act(async () => { await Promise.resolve(); });
+// Multiple ticks: mount effect awaits getRemoteConfig() → setEnabled() →
+// re-render → second effect awaits getRealWallet() → setWallet().
+const flush = () => act(async () => {
+  await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+  await Promise.resolve(); await Promise.resolve();
+});
 
 describe('RealWalletCard — remote-config gate + redeem flow', () => {
   beforeEach(() => {

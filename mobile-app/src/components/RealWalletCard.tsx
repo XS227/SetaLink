@@ -18,7 +18,7 @@ import { GlassCard } from './GlassCard';
 import { REAL_TOKEN_IMAGE } from './EcosystemBanner';
 import { useT } from '../i18n';
 import { useToastStore } from '../stores/toastStore';
-import { getCachedConfig } from '../services/remoteConfigService';
+import { getCachedConfig, getRemoteConfig } from '../services/remoteConfigService';
 import {
   getRealWallet, redeemRealSpend, RealWalletInfo,
 } from '../services/realWalletService';
@@ -37,15 +37,44 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
   const { t } = useT();
   const showToast = useToastStore((s) => s.show);
 
-  const enabled = getCachedConfig()?.ecosystem?.wallet_enabled === true;
+  // getCachedConfig() is a synchronous MMKV snapshot — it only reflects
+  // whatever the LAST completed getRemoteConfig() fetch wrote, and nothing
+  // in ProfileScreen/WalletScreen ever calls getRemoteConfig() themselves
+  // (only autoConnector.ts does, on VPN connect). A render before that
+  // background fetch lands reads a stale/default config forever, since
+  // nothing re-renders this card afterwards. So: seed from cache, but also
+  // kick off (and wait on) a real fetch here, same "wait not skip"
+  // treatment as GameScreen's realId probe (Khabat, 2026-07-19).
+  const [enabled, setEnabled] = useState(() => getCachedConfig()?.ecosystem?.wallet_enabled === true);
 
   const [wallet, setWallet]   = useState<RealWalletInfo | null>(null);
   const [gb, setGb]           = useState(1);
   const [busy, setBusy]       = useState(false);
 
   useEffect(() => {
+    console.log('[REALDBG][wallet] mount', {
+      deviceId, cachedEnabled: getCachedConfig()?.ecosystem?.wallet_enabled === true,
+    });
+    let cancelled = false;
+    getRemoteConfig()
+      .then((cfg) => {
+        const live = cfg?.ecosystem?.wallet_enabled === true;
+        console.log('[REALDBG][wallet] getRemoteConfig resolved', { live, ecosystem: cfg?.ecosystem });
+        if (!cancelled) setEnabled(live);
+      })
+      .catch((e) => console.log('[REALDBG][wallet] getRemoteConfig threw', e));
+    return () => { cancelled = true; };
+  }, [deviceId]);
+
+  useEffect(() => {
+    console.log('[REALDBG][wallet] fetch-wallet effect', { enabled, deviceId, hasDeviceId: !!deviceId });
     if (!enabled || !deviceId) return;
-    getRealWallet(deviceId).then(setWallet).catch(() => {});
+    getRealWallet(deviceId)
+      .then((w) => {
+        console.log('[REALDBG][wallet] getRealWallet resolved', w);
+        setWallet(w);
+      })
+      .catch((e) => console.log('[REALDBG][wallet] getRealWallet threw', e));
   }, [enabled, deviceId]);
 
   const rates = wallet?.rates;
@@ -63,7 +92,10 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
     return Math.max(1, cap);
   }, [rates, wallet]);
 
-  if (!enabled || !wallet) return null;
+  if (!enabled || !wallet) {
+    console.log('[REALDBG][wallet] render: null (hidden)', { enabled, hasWallet: !!wallet });
+    return null;
+  }
 
   const linked = wallet.linked_account !== '';
 
