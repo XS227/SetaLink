@@ -1,25 +1,20 @@
 {
-  "version": "0.9.67",
-  "versionCode": 99,
-  "releaseDate": "2026-07-18",
-  "rolloutChannel": "stable",
+  "version": "0.9.68",
+  "versionCode": 108,
+  "releaseDate": "2026-07-19",
+  "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/stable/setalink-v0.9.67.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.68.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/stable/setalink-v0.9.67-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/stable/setalink-v0.9.67-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.68-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.68-universal.apk",
   "checksum": {
-    "sha256": "ed2d067d8cf7f3302f315614749f8870a9324061658d770479a98fe288f3b022",
+    "sha256": "dce527ffd4eceee3cfb0accc50fd1d9c30663b950a11a1fadee1f352226c5f14",
     "algorithm": "sha256"
   },
-  "size": 57139953,
-  "changelog": [
-    "New: Starlink satellite connection — dedicated hero card and tracking screen",
-    "New: play Shahnameh directly from the RealGram shortcut (no linking gate for connected users)",
-    "New: link your account with TrustAI to grow your rewards",
-    "Stability and performance improvements"
-  ],
+  "size": 57150597,
+  "changelog": [],
   "channels": {
     "stable": {
       "version": "0.9.67",
@@ -36,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.67",
-      "versionCode": 101,
-      "apkUrl": "https://setalink.no/download/build101/setalink-v0.9.67.apk",
-      "apkUrlArm32": "https://setalink.no/download/build101/setalink-v0.9.67-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
+      "version": "0.9.68",
+      "versionCode": 108,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.68.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.68-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.68-universal.apk"
     }
   },
   "rollout": {
