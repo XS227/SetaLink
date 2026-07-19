@@ -3,6 +3,6 @@
 // always reports the build it was actually compiled into. Keeping this in sync
 // with the native build is what stops the OTA checker from offering an update
 // that is already installed.
-export const APP_VERSION    = '0.9.71';
-export const APP_BUILD      = '111';
-export const APP_BUILD_CODE = 111;
+export const APP_VERSION    = '0.9.72';
+export const APP_BUILD      = '112';
+export const APP_BUILD_CODE = 112;
