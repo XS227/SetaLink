@@ -31,6 +31,13 @@ import { TrackedBannerAd } from '../components/TrackedBannerAd';
 describe('TrackedBannerAd — shared config + telemetry for Home and Freedom banners', () => {
   beforeEach(() => mockTrackEvent.mockClear());
 
+  it('fires AD_BANNER_REQUEST on mount, tagged with slot', () => {
+    act(() => { renderer.create(<TrackedBannerAd slot="home_banner" />); });
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      'AD_BANNER_REQUEST', 'dev-test-1', { slot: 'home_banner' },
+    );
+  });
+
   it('tags load telemetry with the given slot', () => {
     const tree = renderer.create(<TrackedBannerAd slot="home_banner" />);
     const banner = tree.root.findByProps({ testID: 'banner-ad' });

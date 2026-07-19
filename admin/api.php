@@ -3123,6 +3123,76 @@ switch ($action) {
         ]);
         break;
 
+    case 'banner-ads-stats':
+        // Banner Ads section (Khabat, 2026-07-19): Home banner vs Freedom banner,
+        // per-placement funnel (Requests -> Loaded -> Impressions -> Clicks),
+        // CTR, revenue (summed from AdMob's onPaid, already in app_events via
+        // TrackedBannerAd.tsx), and no-fill rate — this is the AdMob NATIVE
+        // banner data the rewarded/AdsGram-focused NOC above doesn't cover.
+        // Same window convention as ads-perf-comparison (from/to or days).
+        $db = open_analytics_db();
+        $from_raw = trim($_GET['from'] ?? '');
+        $to_raw   = trim($_GET['to']   ?? '');
+        if ($from_raw && $to_raw
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from_raw)
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to_raw)) {
+            // as-is
+        } else {
+            $days_raw = (int)($_GET['days'] ?? 30);
+            $days     = max(1, min(90, $days_raw));
+            $from_raw = gmdate('Y-m-d', strtotime("-{$days} days"));
+            $to_raw   = gmdate('Y-m-d');
+        }
+        $fromDt = $from_raw . ' 00:00:00';
+        $toDt   = gmdate('Y-m-d', strtotime($to_raw) + 86400) . ' 00:00:00'; // exclusive
+
+        $slots = ['home_banner' => [], 'freedom_banner' => []];
+        try {
+            $st = $db->prepare("
+                SELECT
+                    json_extract(props,'\$.slot') AS slot,
+                    SUM(CASE WHEN event='AD_BANNER_REQUEST'    THEN 1 ELSE 0 END) AS requests,
+                    SUM(CASE WHEN event='AD_BANNER_LOADED'     THEN 1 ELSE 0 END) AS loaded,
+                    SUM(CASE WHEN event='AD_BANNER_IMPRESSION' THEN 1 ELSE 0 END) AS impressions,
+                    SUM(CASE WHEN event='AD_BANNER_CLICK'      THEN 1 ELSE 0 END) AS clicks,
+                    SUM(CASE WHEN event='AD_BANNER_IMPRESSION'
+                             THEN CAST(json_extract(props,'\$.value') AS REAL) ELSE 0 END) AS revenue,
+                    SUM(CASE WHEN event='AD_LOAD_ERROR'
+                             AND json_extract(props,'\$.code')='googleMobileAds/no-fill'
+                             THEN 1 ELSE 0 END) AS no_fill
+                FROM app_events
+                WHERE event IN ('AD_BANNER_REQUEST','AD_BANNER_LOADED','AD_BANNER_IMPRESSION',
+                                 'AD_BANNER_CLICK','AD_LOAD_ERROR')
+                  AND json_extract(props,'\$.slot') IN ('home_banner','freedom_banner')
+                  AND created_at >= ? AND created_at < ?
+                GROUP BY slot
+            ");
+            $st->execute([$fromDt, $toDt]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $slot = $row['slot'];
+                if (!isset($slots[$slot])) continue;
+                $impressions = (int)$row['impressions'];
+                $clicks      = (int)$row['clicks'];
+                $slots[$slot] = [
+                    'requests'    => (int)$row['requests'],
+                    'loaded'      => (int)$row['loaded'],
+                    'impressions' => $impressions,
+                    'clicks'      => $clicks,
+                    'ctr'         => $impressions > 0 ? round($clicks / $impressions * 100, 2) : null,
+                    'revenue_usd' => round((float)$row['revenue'], 4),
+                    'no_fill'     => (int)$row['no_fill'],
+                ];
+            }
+        } catch (\Exception $e) { /* app_events doesn't exist yet — zeros below */ }
+
+        $zero = ['requests'=>0,'loaded'=>0,'impressions'=>0,'clicks'=>0,'ctr'=>null,'revenue_usd'=>0.0,'no_fill'=>0];
+        api_ok([
+            'window'         => ['from' => $from_raw, 'to' => $to_raw],
+            'home_banner'    => $slots['home_banner']    ?: $zero,
+            'freedom_banner' => $slots['freedom_banner'] ?: $zero,
+        ]);
+        break;
+
     case 'payments-metrics':
         // Premium payments overview: packages, REAL vs USDT revenue/GB, discount
         // cost/value, and intent lists (pending/confirmed/failed).
@@ -3451,10 +3521,47 @@ switch ($action) {
                             ORDER BY id DESC LIMIT 10");
         $ev->execute([$did]);
         $dev['platform'] = normalize_platform($dev);
+
+        // Banner ad diagnostics (Khabat, 2026-07-19): a raw, per-event timeline
+        // ("08:49 home_banner loaded") so admin can answer "does it load / show
+        // / get clicked / earn / no-fill" for THIS device specifically — the
+        // curated activity timeline (get-device-timeline in public/api.php)
+        // deliberately excludes this noise, this is the technical counterpart.
+        // app_events is created lazily by public/api.php's track-event — may
+        // not exist yet on a fresh install.
+        $adEvents = [];
+        try {
+            $ae = $db->prepare("SELECT event, props, created_at FROM app_events
+                                 WHERE device_id=?
+                                   AND event IN ('AD_BANNER_REQUEST','AD_BANNER_LOADED',
+                                                  'AD_BANNER_IMPRESSION','AD_BANNER_CLICK',
+                                                  'AD_LOAD_ERROR')
+                                 ORDER BY id DESC LIMIT 30");
+            $ae->execute([$did]);
+            foreach ($ae->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $props = json_decode((string)($row['props'] ?? ''), true) ?: [];
+                $kind = [
+                    'AD_BANNER_REQUEST'    => 'request',
+                    'AD_BANNER_LOADED'     => 'loaded',
+                    'AD_BANNER_IMPRESSION' => 'impression',
+                    'AD_BANNER_CLICK'      => 'click',
+                ][$row['event']] ?? (
+                    ($props['code'] ?? '') === 'googleMobileAds/no-fill' ? 'no_fill' : 'error'
+                );
+                $adEvents[] = [
+                    'created_at' => $row['created_at'],
+                    'slot'       => $props['slot'] ?? '',
+                    'kind'       => $kind,
+                    'detail'     => $kind === 'error' ? (string)($props['message'] ?? '') : '',
+                ];
+            }
+        } catch (\Exception $e) { /* app_events doesn't exist yet — no events */ }
+
         api_ok([
             'device'         => $dev,
             'sessions'       => $sessions,
             'install_events' => $ev->fetchAll(PDO::FETCH_ASSOC),
+            'ad_events'      => $adEvents,
         ]);
         break;
     }

@@ -9,7 +9,7 @@
  * user is, and be able to compare the two placements).
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { BANNER_UNIT_ID } from '../services/adsService';
 import { trackEvent } from '../services/analytics';
@@ -24,6 +24,16 @@ type Props = {
 };
 
 export function TrackedBannerAd({ slot, onAdLoaded, onAdFailedToLoad }: Props) {
+  // AdMob's SDK has no "request started" callback of its own — the BannerAd
+  // view requests automatically on mount. Fired here (not derived server-side
+  // as loaded+failed) so admin's Requests column reflects every mount
+  // attempt, even one that never resolves (e.g. the app backgrounded before
+  // load/fail fired) — see docs/realgram/TASK_SPLIT.md banner-ads-admin entry.
+  useEffect(() => {
+    trackEvent('AD_BANNER_REQUEST', useAuthStore.getState().user?.deviceId, { slot });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slot]);
+
   return (
     <BannerAd
       unitId={BANNER_UNIT_ID}

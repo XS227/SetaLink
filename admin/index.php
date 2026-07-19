@@ -736,6 +736,23 @@ function icon(string $name): string {
         </div>
       </div>
 
+      <!-- ── Banner Ads (Home / Freedom placements) ─────────────────── -->
+      <div class="panel" style="margin-top:.75rem;margin-bottom:.75rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Banner Ads <span class="panel-sub">AdMob — Home &amp; Freedom placements, same period as above</span></span></div>
+        <div class="panel-body">
+          <div class="two-col">
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">HOME BANNER</div>
+              <table class="tbl" style="width:100%"><tbody id="bannerAdsHome"></tbody></table>
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">FREEDOM BANNER</div>
+              <table class="tbl" style="width:100%"><tbody id="bannerAdsFreedom"></tbody></table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="panel" style="margin-top:.5rem">
         <div class="panel-header"><span class="panel-title"><?= icon('person') ?> Suspicious Reward Events <span class="panel-sub" id="adsReviewCount">review queue</span></span></div>
         <div class="panel-body">
@@ -2547,6 +2564,7 @@ views.ads = {
           this.nocDays = parseInt(days, 10);
           this.nocFrom = null; this.nocTo = null;
           this.loadNoc();
+          this.loadBanner();
         }
       };
     });
@@ -2554,13 +2572,14 @@ views.ads = {
     if (applyBtn) applyBtn.onclick = () => {
       const f = ($('nocFrom') || {}).value;
       const t = ($('nocTo')   || {}).value;
-      if (f && t && f <= t) { this.nocFrom = f; this.nocTo = t; this.loadNoc(); }
+      if (f && t && f <= t) { this.nocFrom = f; this.nocTo = t; this.loadNoc(); this.loadBanner(); }
     };
     const rfr = $('adsNocRefresh');
-    if (rfr) rfr.onclick = () => this.loadNoc();
+    if (rfr) rfr.onclick = () => { this.loadNoc(); this.loadBanner(); };
 
     this.load();
     this.loadNoc();
+    this.loadBanner();
   },
 
   async save() {
@@ -2768,6 +2787,32 @@ views.ads = {
     // Cumulative revenue
     const cumul = (arr) => { let s=0; return (arr||[]).map(v => (s += (v||0), Math.round(s*1000)/1000)); };
     mk('chNocCumul', 'line', [line('AdMob kumulativ', cumul(am.rev_series),AM,true), line('AdsGram kumulativ',cumul(ag.rev_series),AG,true)]);
+  },
+
+  // ── Banner Ads (Home / Freedom) ──────────────────────────────────────
+  // Requests/Loaded/Impressions/Clicks/CTR/Revenue/No-fill per placement
+  // (Khabat, 2026-07-19) — same period selector as the NOC charts above.
+  async loadBanner() {
+    const params = this.nocFrom && this.nocTo
+      ? { from: this.nocFrom, to: this.nocTo }
+      : { days: this.nocDays };
+    let d;
+    try { d = await api.get('banner-ads-stats', params); } catch (e) { return; }
+    const row = (label, v) => `<tr><td style="font-size:.76rem;color:var(--muted-2)">${label}</td><td style="font-size:.76rem;text-align:right;font-family:var(--mono)">${v}</td></tr>`;
+    const renderSlot = (id, s) => {
+      const el = $(id); if (!el) return;
+      el.innerHTML = [
+        row('Requests',    s.requests ?? 0),
+        row('Loaded',      s.loaded ?? 0),
+        row('Impressions', s.impressions ?? 0),
+        row('Clicks',      s.clicks ?? 0),
+        row('CTR',         s.ctr == null ? '—' : s.ctr.toFixed(2) + '%'),
+        row('Revenue',     this.fmtUsd(s.revenue_usd, 4)),
+        row('No-fill',     s.no_fill ?? 0),
+      ].join('');
+    };
+    renderSlot('bannerAdsHome',    d.home_banner    || {});
+    renderSlot('bannerAdsFreedom', d.freedom_banner || {});
   },
 };
 
@@ -4529,6 +4574,21 @@ window.devDetail = async function(did) {
         <td style="font-size:.68rem">${s.via_vpn?'<span title="report sent through the tunnel">via VPN</span>':esc(s.client_ip||'—')}</td>
       </tr>`;
     }).join('') || '<tr><td colspan="7" class="tbl-empty">No sessions reported</td></tr>';
+    // Ad diagnostics (Khabat, 2026-07-19): raw per-event timeline so this
+    // device's banner behaviour can be read directly — "does it load, does
+    // it show, does anyone click, does it earn, is it no-fill or something
+    // else". Deliberately raw (not the curated activity narrative elsewhere).
+    const kindColor = { loaded:'var(--ok)', impression:'#60a5fa', click:'#d4af37',
+                         no_fill:'#f59e0b', error:'var(--danger)', request:'var(--muted-2)' };
+    const adRows = (d.ad_events || []).map(e => {
+      const time = (e.created_at || '').slice(11, 16) || '—';
+      return `<tr>
+        <td style="font-size:.68rem;font-family:var(--mono)">${esc(time)}</td>
+        <td style="font-size:.68rem;font-family:var(--mono)">${esc(e.slot || '—')}</td>
+        <td style="font-size:.68rem;color:${kindColor[e.kind] || 'var(--muted-2)'}">${esc(e.kind)}</td>
+        <td style="font-size:.65rem;color:var(--muted-2)">${esc(e.detail || '')}</td>
+      </tr>`;
+    }).join('') || '<tr><td colspan="4" class="tbl-empty">No banner ad events reported</td></tr>';
     $('devDetailBody').innerHTML = `
       ${devRows}
       <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">RECENT SESSIONS <span style="font-weight:400;color:var(--muted-2)">— this device only</span></div>
@@ -4536,6 +4596,10 @@ window.devDetail = async function(did) {
       <table class="tbl" style="margin-top:.3rem"><thead><tr>
         <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Probe</th><th>Error</th><th>Reported from</th>
       </tr></thead><tbody>${sess}</tbody></table>
+      <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">AD DIAGNOSTICS <span style="font-weight:400;color:var(--muted-2)">— banner requests/loads/impressions/clicks, this device only</span></div>
+      <table class="tbl" style="margin-top:.3rem"><thead><tr>
+        <th>When</th><th>Slot</th><th>Event</th><th>Detail</th>
+      </tr></thead><tbody>${adRows}</tbody></table>
       <p style="margin-top:.7rem;font-size:.68rem;color:var(--muted-2)">Per-device app breakdown (Instagram/Telegram…) is not collected yet —
       all clients share one xray identity. The combined view for all users is on the Devices page.</p>`;
   } catch(e) {
