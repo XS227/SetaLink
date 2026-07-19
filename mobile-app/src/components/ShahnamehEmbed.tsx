@@ -336,8 +336,13 @@ function RealIdGate({ deviceId, debugLabel }: { deviceId: string; debugLabel: st
         setError(t('realId.internalError'));
       }
     } catch (e: any) {
-      console.log(`[REALDBG:4/7][${debugLabel}] retry: getSsoToken THREW`, { name: e?.name, message: e?.message });
-      setError(t('realId.internalError'));
+      console.log(`[REALDBG:4/7][${debugLabel}] retry: getSsoToken THREW`, { name: e?.name, message: e?.message, code: e?.code });
+      // Debug suffix (Khabat, 2026-07-19): getSsoToken now has its own hard
+      // watchdog (ssoService.ts) so this can no longer hang forever, but
+      // surfacing WHY it failed (e.g. code=HARD_TIMEOUT means the fetch
+      // never settled even after abort()) directly here means Khabat can
+      // read the reason off this screen without adb.
+      setError(`${t('realId.internalError')} [${e?.code || e?.name || 'error'}]`);
     } finally {
       setChecking(false);
     }

@@ -55,13 +55,31 @@ export async function getSsoToken(deviceId: string, forGame = false): Promise<Ss
     console.log('[REALDBG:5/7] getSsoToken: TIMEOUT firing abort()', { url, timeoutMs: TIMEOUT });
     ctrl.abort();
   }, TIMEOUT);
+  // Hard watchdog, independent of the AbortController above (2026-07-19,
+  // Khabat's black-spinner investigation): server-side access-log evidence
+  // shows real Android requests never even reach shahnameh.setaei.com on
+  // the affected device, which points here — some Android/network stacks
+  // (plausibly this app's own VPN tunnel) don't actually unstick a
+  // genuinely hung fetch() when .abort() is called, leaving this whole
+  // function's promise pending forever despite the timer above firing.
+  // Every caller (checkAndCacheRealId -> ShahnamehEmbed's identity probe,
+  // RealIdGate.retry, ShahnamehWebView) awaits this directly, so an
+  // unbounded hang here is indistinguishable from "still loading" at every
+  // one of those call sites — exactly the reported symptom. This forces a
+  // bound regardless of whether abort() actually works on this device.
+  const hardTimeout = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      console.log('[REALDBG:5/7] getSsoToken: HARD TIMEOUT — fetch() never settled even after abort(), forcing failure', { url, afterMs: TIMEOUT + 3000 });
+      reject(Object.assign(new Error('sso-token hard timeout'), { code: 'HARD_TIMEOUT' }));
+    }, TIMEOUT + 3000);
+  });
   try {
     let res;
     try {
-      res = await fetch(url, { signal: ctrl.signal });
+      res = await Promise.race([fetch(url, { signal: ctrl.signal }), hardTimeout]);
     } catch (e: any) {
       console.log('[REALDBG:5/7] getSsoToken: fetch() itself threw — request never reached the server', {
-        name: e?.name, message: e?.message,
+        name: e?.name, message: e?.message, code: e?.code,
       });
       throw e;
     }
