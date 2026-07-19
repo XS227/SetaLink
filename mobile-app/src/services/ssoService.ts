@@ -29,8 +29,20 @@ export interface SsoResult {
   sso_enabled: boolean;
 }
 
-export async function getSsoToken(deviceId: string): Promise<SsoResult> {
+/**
+ * @param forGame - true only for Shahnameh game entry points (GameScreen:
+ *   checkAndCacheRealId, GameWebView, RealIdGate.checkLinked). Opts into the
+ *   panel's REAL-ID auto-fallback (re_sso_token() in real_economy.php): no
+ *   linked Telegram account -> mint straight off the device's own RealGram
+ *   identity instead of returning 'unlinked', so opening the game never
+ *   requires a Telegram sign-in. Deliberately NOT the default —
+ *   TrustAiLinkScreen shares this same call and is a separate product this
+ *   repo doesn't own; auto-provisioning there hasn't been discussed, so it
+ *   keeps the original 'unlinked' behavior.
+ */
+export async function getSsoToken(deviceId: string, forGame = false): Promise<SsoResult> {
   const qs = new URLSearchParams({ mobile: '1', action: 'sso-token', _token: TOKEN, device_id: deviceId });
+  if (forGame) qs.set('game', '1');
   const ctrl = new AbortController();
   const tid  = setTimeout(() => ctrl.abort(), TIMEOUT);
   try {
@@ -61,7 +73,7 @@ export async function getSsoToken(deviceId: string): Promise<SsoResult> {
 export async function checkAndCacheRealId(deviceId: string): Promise<void> {
   if (!deviceId) return;
   try {
-    const r = await getSsoToken(deviceId);
+    const r = await getSsoToken(deviceId, true);
     if (r.status === 'ok' && r.account) {
       // Lazy require avoids circular import: ssoService ↛ authStore at module load.
       // eslint-disable-next-line @typescript-eslint/no-var-requires
