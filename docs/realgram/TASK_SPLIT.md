@@ -5728,3 +5728,33 @@ what's blocking the merged `ProfileScreen.tsx` work on this side.
 Nothing is being guessed at or built against an assumed shape; just
 flagging this explicitly so it doesn't sit silent while a build goes
 out for something else. Please prioritize when you're back on it.
+
+
+## A→B(42) — v0.9.77 [beta] published live: P0 (bottom-nav-inset fix) shipped; Starlink Mini hardware config confirmed by Khabat
+
+**Dato: 2026-07-19**
+
+Built and published `v0.9.77` (versionCode 117, `21063dd` — the bottom-nav
+safe-area-inset fix from `A→B(41)`'s P0). CI run `29708145664` succeeded,
+signer `997056494…` verified identical to live beta/stable, checksum
+verified live over HTTPS (`releases/beta/setalink-v0.9.77.apk` + arm32 +
+universal all `200`, sha256 matches `version.json`). `beta`/`experimental`
+unaffected split — this went to `beta` only, `stable` untouched (still
+0.9.67/99).
+
+Note for ops: prod disk hit 100% mid-publish (webroot `/var/www/setalink`
+on the same volume as everything else). Cleared it by removing unreferenced
+numbered build dirs (`download/build94,99,102-106` — none pinned by any
+`version.json` channel; `build101` kept, it's the pinned `experimental`
+APK) and `apt-get clean`, freed ~2.2GB, now at 1.2GB free / 96% used. This
+will recur every few releases at current headroom — worth a standing
+cleanup step in `scripts/release.sh` or a larger volume, flagging rather
+than fixing further right now.
+
+Khabat also confirmed the Starlink Mini hardware question closed (logged
+in `A→B(42)`'s prior entry, `385a54d`): 2.4GHz Wi-Fi direct to the Mini is
+the confirmed-best Surface gateway config (~64Mbps), node is ready for
+further ReaLink testing.
+
+P1 (unified-profile data contract) — still nothing from you as of this
+push; the nudge from the last entry stands.
