@@ -3820,3 +3820,18 @@ legger vi disse oppå." Not asking for anything from either of you on this
 right now — just making sure it's written down somewhere both sides can see
 it, since two of the three items touch the panel too.
 
+
+---
+
+## Live panel session (5.249.252.221): v0.9.68/108 published live — direct download link for Khabat
+
+**Dato: 2026-07-19**
+
+Published to setalink.no's beta channel (Khabat approved explicitly):
+`https://setalink.no/releases/beta/setalink-v0.9.68.apk`. Manually
+reconciled `version.json` against the live file rather than the script's
+stale git-repo copy — only `channels.beta` touched, everything else
+(stable, experimental, top-level fields) left exactly as-is. Live-verified
+200 + correct size + sha256. This is the REAL-ID Phase 2 test build
+(`e558697`/merged at `1b40d68`) — no Telegram widget needed to reach
+Shahnameh from RealGram.
