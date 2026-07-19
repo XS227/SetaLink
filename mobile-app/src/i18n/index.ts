@@ -556,8 +556,8 @@ const EN = {
   'game.rewardsSub':      'Claim ZAR, REAL and data rewards',
   'game.enterShahnameh':  'Enter Shahnameh',
 
-  'realId.gateTitle':    'Create your REAL-ID',
-  'realId.gateBody':     'REAL-ID is your shared identity across RealGram, Shahnameh, TrustAI and 3REAL. Create one to open the game without a separate login.',
+  'realId.gateTitle':    "Couldn't connect your account",
+  'realId.gateBody':     "We couldn't set up your REAL-ID automatically — this is usually temporary. Tap try again, or link an existing Telegram account below.",
   'realId.linkClosedBody': 'Setup was closed before finishing. Try again to jump straight in.',
   'realId.tryAgain':      'Try again',
   'realId.linkRealgram':  'Connect with RealGram',
@@ -1277,8 +1277,8 @@ const FA: typeof EN = {
   'game.rewardsSub':       'ZAR، REAL و حجم داده دریافت کن',
   'game.enterShahnameh':   'ورود به شاهنامه',
 
-  'realId.gateTitle':    'REAL-ID خود را بسازید',
-  'realId.gateBody':     'REAL-ID هویت مشترک شما در RealGram، Shahnameh، TrustAI و 3REAL است. یک بار بسازید تا بدون ورود جداگانه بازی کنید.',
+  'realId.gateTitle':    'اتصال حساب شما ممکن نشد',
+  'realId.gateBody':     'راه‌اندازی خودکار REAL-ID انجام نشد — معمولاً موقتی است. دوباره تلاش کن، یا از طریق حساب تلگرام موجود متصل شو.',
   'realId.linkClosedBody': 'راه‌اندازی قبل از اتمام بسته شد. دوباره تلاش کن تا مستقیم وارد شوی.',
   'realId.tryAgain':      'تلاش دوباره',
   'realId.linkRealgram':  'اتصال با RealGram',
@@ -1975,8 +1975,8 @@ const ZH: typeof EN = {
   'game.rewardsSub':       '领取 ZAR、REAL 和流量奖励',
   'game.enterShahnameh':   '进入 Shahnameh',
 
-  'realId.gateTitle':    '创建你的 REAL-ID',
-  'realId.gateBody':     'REAL-ID 是你在 RealGram、Shahnameh、TrustAI 和 3REAL 之间的共同身份。创建后无需单独登录即可进入游戏。',
+  'realId.gateTitle':    '账号连接失败',
+  'realId.gateBody':     '自动设置 REAL-ID 未成功 — 这通常是暂时的。点击重试,或使用已有的 Telegram 账号关联。',
   'realId.linkClosedBody': '设置在完成前被关闭。再试一次即可直接进入。',
   'realId.tryAgain':      '重试',
   'realId.linkRealgram':  '通过 RealGram 连接',
@@ -2666,8 +2666,8 @@ const RU: typeof EN = {
   'game.rewardsSub':       'Получайте ZAR, REAL и трафик',
   'game.enterShahnameh':   'Войти в Shahnameh',
 
-  'realId.gateTitle':    'Создайте REAL-ID',
-  'realId.gateBody':     'REAL-ID — это ваша единая идентичность в RealGram, Shahnameh, TrustAI и 3REAL. Создайте один раз — и входите в игру без отдельного логина.',
+  'realId.gateTitle':    'Не удалось подключить аккаунт',
+  'realId.gateBody':     'Автоматическая настройка REAL-ID не завершилась — обычно это временно. Попробуйте снова или привяжите существующий аккаунт Telegram ниже.',
   'realId.linkClosedBody': 'Настройка была закрыта до завершения. Попробуйте снова, чтобы сразу войти.',
   'realId.tryAgain':      'Попробовать снова',
   'realId.linkRealgram':  'Подключить через RealGram',
