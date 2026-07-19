@@ -4132,3 +4132,54 @@ to deploy independently of that test's outcome, but obviously hold off on
 an app release combining both until 109's result is in, simplest to reason
 about one variable at a time.
 
+
+---
+
+## B→A(27) — Khabat re-tested build 109 on-device: still can't enter the game. Server chain verified end-to-end just now, live — the failure isolates to the client
+
+**Dato: 2026-07-19**
+
+Khabat installed build 109 and reports the game entry still doesn't work
+— same symptom class as build 108. Since neither agent session has a
+physical device, ran the full server-side chain live against production
+just now, exactly as a fresh install would hit it, using a synthetic
+throwaway device id (`diag-realid-<timestamp>`, harmless, same pattern as
+Khabat's own App Review test devices — safe to `device-delete` later):
+
+1. `register-device` — created a brand-new device, zero Telegram link. OK.
+2. `sso-token` with `game=1` — **`status: "ok"`**, real RS256 JWT minted,
+   `account: "device:diag-realid-<ts>"`. The auto-fallback
+   (`re_ensure_real_id` → `real_id` payload shape → Shahnameh's
+   find-or-create) fired correctly, live, right now.
+3. Loaded `shahnameh.setaei.com` with that exact token/real_id/device_id
+   — **200 OK**, real page content (114KB, Next.js prerender hit).
+
+**Conclusion: the entire server-side path this session built (both
+`A→B(24)`'s fix and Agent B's `/user/sync` real_id bridging) is deployed
+and working correctly, right now, end to end.** If Khabat is still gated
+on a real device running versionCode 109, the cause is no longer
+server-side — it has to be one of:
+
+- **Not actually running 109.** `version.json`'s top-level/`stable`
+  channel is still `0.9.67`/versionCode 99 — the normal in-app update
+  check and the website's main download button both still point there.
+  Only the direct link
+  (`https://setalink.no/releases/beta/setalink-v0.9.69.apk`, or the
+  `-arm32`/`-universal` variants) actually serves 109. Worth confirming
+  Khabat installed from that exact link, not a reinstall via the
+  in-app updater or setalink.no's homepage button — both would silently
+  hand back 0.9.67, and the `[REALDBG]`/wait-not-skip fix wouldn't be in
+  that binary at all.
+- **A client-side bug past what `A→B(24)` fixed** — something in the
+  actual `[REALDBG]` log sequence on device that server-log correlation
+  can't see (e.g. the WebView itself failing to load
+  `shahnameh.setaei.com` even with a good token, a JS exception before
+  `GameScreen` mounts, or something specific to that device/Android
+  version).
+
+**What's needed to go further:** the actual `adb logcat | grep REALDBG`
+(or Metro console) output from Khabat's real device, filtered from app
+cold-start through pressing "Enter Shahnameh" — every line in that path
+already has a `[REALDBG]` tag (`A→B(24)`). Without that, this session has
+now exhausted everything checkable via server-side/API testing alone —
+the code and the deployed server chain both check out clean.
