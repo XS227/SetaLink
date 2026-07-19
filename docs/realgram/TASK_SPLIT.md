@@ -211,7 +211,7 @@ release.
 | B-21 | Profile declutter: ONE referral section (code + invitees + TrustAI %; tiers 3/6/10 come from TrustAI — no duplicate logic); King/Queen editable here; propose new profile entry point (TopBar avatar chip) | ✅ **done 2026-07-16** — merged 3 cards → 1 in `ProfileScreen.tsx` (`db125ac`), fixed `CommunityRankCard`'s hardcoded 2-tier bug (was missing the 6-tier, now 3/6/10 with i18n `pr.rank_champion`), King/Queen already editable via B-20's `EditIdentitySheet`, `TopBar.tsx` profile glyph → `AvatarChip` (real avatar emoji/color). Flagged a naming caveat in `DECISIONS.md`: the "TrustAI %" donut is actually the panel's own `referral_earn_pct` setting, not a live TrustAI call. |
 | B-22 | Footer: Profile out, **Game / بازی** in → Shahnameh inside ReaLink (A-10 WebView + B-8 SSO live); embedding study in `DECISIONS.md`; two identity keys: Telegram id + ReaLink id; RealGram bot as extra entry | ✅ **done 2026-07-16** — Game moved `RootStackParamList`→`MainTabParamList`, registered as a `Tab.Screen` (`AppNavigator.tsx`), footer swaps `profile`→`game` (`BottomNav.tsx`, Profile still reachable via TopBar). Embedding study + identity-keys verification in `DECISIONS.md` (same date) — traced actual Shahnameh source, confirmed both keys already reach the game (device_id param + telegram_id inside the sso JWT's `sub` claim), no client change needed. RealGram-bot-as-extra-entry point not started (separate from the footer-tab change; flagging as still open within B-22 unless you'd rather split it into its own row). |
 | B-23 | Shared Shahnameh-style profile structure + wallet showing ZAR + REAL + conversion (extend contract §3 or v2 endpoint) | open |
-| B-24 | Tap-stream analytics: batched tap events → DB → loggers/analytics + admin surface; schema in `DECISIONS.md` first | open |
+| B-24 | Tap-stream analytics: batched tap events → DB → loggers/analytics + admin surface; schema in `DECISIONS.md` first | ✅ done 2026-07-19 (Live panel session, `064e2d9`) — turned out fully panel-side, no Shahnameh access needed. UI call-site wiring (recordTap() in actual screens) intentionally left as follow-up, see commit body. |
 | B-25 | Shahnameh(Mongo) ↔ panel(SQLite) DB linkage: 1-page proposal in `DECISIONS.md` (account-link layer, not literal merge), then v1 | open |
 
 ## Sync points
@@ -2697,3 +2697,62 @@ device), but the two dedicated testers haven't actually run build 106
 against their now-flagged accounts yet — that's the only thing standing
 between "confirmed" and "still pending" on this row. Not something either
 of us can close from the server side; needs the actual device tests.
+
+---
+
+## Live panel session (5.249.252.221) → B / whoever has realgram.no access: front-page redesign brief (Khabat, 2026-07-19)
+
+**Dato: 2026-07-19**
+
+Khabat wants `realgram.no`'s front page rebuilt — I can't touch it myself
+(no access to `/var/www/realgram/` on `5.249.255.116`), so relaying the
+full brief here for whoever picks it up.
+
+**Direction, in Khabat's words:** Gen-Z cinematic journey/adventure framing.
+Present RealGram's different features. Core message: "better, faster,
+stronger together" — the connect + game + earn pieces reinforcing each
+other, not three separate products. Million-dollar-app-landing-page
+production quality, not a placeholder page.
+
+**Concrete asks:**
+1. **Cinematic hero** — Gen-Z-coded visual journey/adventure motif (not a
+   generic SaaS hero). Feature the game (Shahnameh) and the REAL token
+   alongside the VPN/connect story — all one ecosystem, one narrative.
+2. **Feature walkthrough** — the different things RealGram actually does
+   (connect, play/earn via Shahnameh, the REAL token economy), framed as
+   one journey rather than a feature grid.
+3. **Live data on the page** — real numbers/charts, not static claims.
+   `api.realgram.no` already reverse-proxies to this panel's `api.php`
+   (confirmed working end-to-end as of `11d7496`) — safe, non-sensitive
+   aggregate numbers are available today via the `user-insights` action
+   (total devices, active 24h/7d, data volume — no per-user data) and now
+   also `tap-stream-summary` (today's B-24 work, just shipped). Whoever
+   builds this should pick specific fields to surface, not proxy the whole
+   admin API to the public.
+4. **"First to ship Starlink connectivity" claim** — ReaLink/RealGram's
+   Starlink exit-node work (see `starlink-hero-experience.md`/Phase 1 notes
+   elsewhere in this project) is the basis for this claim. Verify current
+   truth of "first" before publishing it as a public marketing claim —
+   that's a factual claim, not just copy, and I don't have visibility into
+   competitors from here.
+5. **Partner/stack logos** — Starlink, Fable 5, Claude, OpenAI, Google.
+   Each of these has real trademark/usage-policy constraints (especially
+   OpenAI and Google) — check each one's brand-usage guidelines before
+   publishing logos, not just drop them on the page. Flagging this as a
+   real risk, not a formality.
+6. **FAQ page.**
+7. **"3 different platforms"** — matches the existing Path A (Telegram Mini
+   App) / Path B (independent client) / web distinction already in
+   `PRODUCT_VISION.md`/`ARCHITECTURE.md`. Reuse that framing rather than
+   inventing new platform names.
+8. **Multi-language** — the ReaLink app already ships EN/FA/ZH/RU
+   (`i18n` in `mobile-app/`) — matching that set is the obvious baseline
+   unless Khabat wants a different language mix for the marketing site
+   specifically.
+
+**Not specified by Khabat, worth asking before building:** exact copy,
+which screenshots/assets exist already vs. need creating, and whether this
+replaces the current `index.html`/`soon.html` static files in place or is
+a bigger rebuild (framework, build step). Given `gtag.js` is already live
+on the current pages (`fa0110a`), keep that intact through whatever
+replaces them.
