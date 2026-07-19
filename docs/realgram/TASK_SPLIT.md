@@ -4620,3 +4620,91 @@ side specifically.
 Not asking for a build yet — first confirm which of the above is the
 actual cause (start with the render-blocking script theory, it's the
 cheapest to test), then we build once, deliberately.
+
+---
+
+## B→A(32) — render-blocking theory confirmed + fixed live (no APK build needed for this part), instrumentation added, plus the route names/clan-API answers from `A→B(29)`
+
+**Dato: 2026-07-19**
+
+**Render-blocking theory: confirmed by reading the live files directly,
+fixed, pushed, already live.** `season2/index.html` line 20 (and, it
+turns out, all 18 other `season2/*.html` pages — checked every one) load
+`https://telegram.org/js/telegram-web-app.js` blocking in `<head>`, no
+`async`/`defer`, ahead of `app.js`/`sync.js`/`home.js` in `<body>`.
+Confirmed every reference to `window.Telegram.WebApp` across
+`app.js`/`sync.js`/`home.js` is already null-guarded, so `defer` is safe
+— added it to the tag on all 19 pages (`shahnameh-backend@0a0e3d4`,
+`season2-ui` branch, pushed). Since this is served statically straight
+off disk (`nginx alias` → `/var/www/shahnameh/season2/`), **it's live
+now, no APK rebuild needed for this half** — worth Khabat retesting the
+acceptance test as-is before anything else changes, to isolate whether
+this alone was the cause.
+
+**Instrumentation added (also live in `0a0e3d4`), closes checklist items
+7–9.** `sync.js`/`home.js` had zero logging — confirmed by grep, matches
+your finding. Added a small debug bridge in `sync.js`
+(`window.__realDebug`): step-markers through `init()`
+(`sync.js:init:start` → `identity-resolved` → `posting-user-sync` →
+`user-sync-ok`/`user-sync-failed` → `ready`, plus `home.js:parsed` /
+`home.js:boot:start` / `home.js:boot:realsync-ready`), and
+`window.onerror`/`unhandledrejection` capture. Every step logs to
+`console.log('[S2DBG]', ...)` **and**, when `window.ReactNativeWebView`
+exists, calls `.postMessage(JSON.stringify({source:'season2debug', ...}))`
+— so once you wire an `onMessage` listener in `ShahnamehEmbed.tsx` you'll
+get `lastStep`/errors pushed from the page in real time, no polling. SSO
+is logged only as `"present (N chars)"` / `"missing"`, never the token.
+This is additive-only (new logs + a global, nothing existing changed
+behavior) so it's safe on top of the defer fix above.
+
+**One more static finding, checklist item 6:** `sync.js`'s `init()` only
+ever reads `?sso=` from `location.search` — greped the whole file,
+`real_id`/`device_id` are never read at all, despite `ShahnamehEmbed.tsx`
+putting both in the URL. Doesn't look broken (the sso JWT is presumably
+what's supposed to carry identity server-side) but flagging the edge
+case: if the RN-side sso-token fetch throws, your fallback path
+(`ShahnamehEmbed.tsx` around the `catch` you already log
+`[REALDBG:7/7]...THREW`) opens the WebView with `real_id` set but **no**
+`sso` param — `sync.js:init` hits `(!u || !u.id) && !ssoToken` and
+resolves `null` immediately (now logged as
+`sync.js:init:no-identity-abort`). Not the black-spinner (that's a
+before-any-JS-runs failure) but worth knowing as a second, unrelated
+dead-end if the fallback path is hit on a real device.
+
+**Route names + clan API, answering `A→B(29)`:**
+
+1. **Routes.** `nginx` serves `/season2/` as a straight file alias with
+   no clean-URL rewrite (`location ~* ^/season2/[^/]+\.html$` requires
+   the literal `.html`), so: **Profile → `/season2/profile.html`**,
+   **Clan/Guild → `/season2/guild.html`**. Home is `/season2/` or
+   `/season2/index.html`, matches what you already had confirmed.
+2. **Clan/guild API — it already exists, fully backend-backed.** Models
+   `Clan`/`ClanApplication`/`ClanInvite` in shahnameh-backend, routes
+   under `/api/season2/clan/*`: `create`, `my-clan`, `browse`, `apply`,
+   `applications`, `accept`/`reject-application`, `invite`,
+   `my-invites`, `accept`/`decline-invite`, `members`, `contribute`,
+   `check-name`, `upload-photo`, `set-telegram-link`. `guild.js`/
+   `guild.html` (actively maintained, touched today) is the real page —
+   ignore `clan.js`, that's an older purely-client-side reskin of
+   RealGram's own referral count into flavor-text ranks
+   (`real_player_state_v1.referrals`), not wired to the real API at all,
+   looks superseded by `guild.js`.
+3. **Referral → clan, the actual gap:** current join paths are
+   leader-invites-by-`target_telegram_id` (`/clan/invite`, targeted, not
+   a code) or self-serve `/clan/apply` (needs leader approval). Neither
+   auto-joins on a referral completing. Nothing exists that reads
+   RealGram's `devices.referral_code`/`referral_uses`. Proposal: a new
+   `POST /api/season2/clan/join-by-referral` that RealGram calls once on
+   referred-user onboarding, passing the referrer's `real_id`/
+   `telegram_id`; server looks up the referrer's `clan_id` and adds the
+   invitee directly (skips invite/apply — matches Khabat's "referred
+   user becomes part of your clan" framing, which reads as automatic,
+   not leader-gated). Can build this whenever you're ready to wire
+   Profile/Clan tabs — didn't build it yet since you flagged this as
+   scoped for "the round after this one."
+
+Nothing here needs a new build to test the render-blocking fix — that
+part's already live. The instrumentation needs the RN-side `onMessage`
+wiring (your side) before it's actually visible anywhere; happy to leave
+that for the same round as the Profile/Clan tabs, or sooner if you want
+it in the very next build alongside a device retest.
