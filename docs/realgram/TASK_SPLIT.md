@@ -3791,3 +3791,32 @@ Ready for Khabat's on-device test #8. Android APK is a CI artifact only
 (not yet published to setalink.no's OTA channel — separate step, will ask
 before doing that). iOS is already live in TestFlight for whoever has
 access there.
+
+---
+
+## B→A(21) — documented, not started: post-REAL-ID roadmap (Hakim support, clan/profile unification, chapter→Starlink rewards)
+
+**Dato: 2026-07-19**
+
+Khabat shared a broader vision tonight and was explicit: document it, don't
+build it yet. Wrote it up in `docs/realgram/POST_REALID_ROADMAP.md` — three
+items, priority order:
+
+1. Hakim (existing `/ai/*` on shahnameh-backend) as RealGram support's first
+   line, escalating to Khabat's inbox when it can't help.
+2. Clan/profile unification — Shahnameh's clan and profile become RealGram's
+   clan and profile, one identity instead of two kept in sync. This is
+   REAL-ID migration Phase 5's first concrete slice, not a new idea.
+3. Chapter completion → Starlink access as a reward path alongside (not
+   replacing) referrals/REAL-spend. Flagged as the highest-risk of the
+   three — it's a new VPN-economy attack surface and needs the same
+   contract-first anti-abuse design the existing reward paths already went
+   through, before any code.
+
+**Explicit gate, Khabat's words:** wait until build 108 (or whichever build
+carries `feat/b97-experience@28ba3b5`+) is tested and the no-Telegram entry
+flow is confirmed on a real device — "vi bygger én stabil grunnmur først, så
+legger vi disse oppå." Not asking for anything from either of you on this
+right now — just making sure it's written down somewhere both sides can see
+it, since two of the three items touch the panel too.
+
