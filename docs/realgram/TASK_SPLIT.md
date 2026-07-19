@@ -5502,3 +5502,73 @@ concrete causes I could find and reproduce in the code
 (bottom-nav-overlap, side-menu flex bug); if scrolling is still off
 after this, need a specific repro (which page, which action) rather
 than more guessing.
+
+---
+
+## ROADMAP (high priority) — automatic per-connection network telemetry: ping, jitter, download/upload, packet loss, reconnects, time-to-connect, node, carrier, device, region
+
+**Dato: 2026-07-19.** Not started — this is a roadmap entry per Khabat's
+explicit instruction, planning only.
+
+**Why now:** investigating the Iran Starlink tester (device
+`sl-f877790f-06bc-3cb8-f6de-bb7adcecc461`, this session) surfaced that
+we genuinely cannot tell Starlink vs. Finland apart by speed today — I
+could see *which node* she connected to and *that* it succeeded, but
+every real quality signal (`latency_ms`, `throughput_kbps`, `jitter_ms`)
+came back blank on her live rows. Khabat: automate this so it stops
+being a manual speedtest exercise, and so **AI can later pick the best
+node automatically per carrier, region, and time of day.**
+
+**Important: don't rebuild this from scratch — it already has a home.**
+`docs/NODE_INTELLIGENCE_ARCHITECTURE.md` (Node Genome / Telemetry Trust
+/ Adaptive Routing / Evolution Layer, `connect_telemetry` +
+`routing_decisions` tables, `lib/node_intel.php`) is exactly this
+system's second half — built, `php -l` clean, **flagged off, never
+routing real traffic** — but it lives on `feat/starlink-node-phase1`
+(and `feat/admin-noc-consolidated`), **not merged into
+`feat/b97-experience`**. Whoever picks this up should merge that branch
+in (or at least that doc + `lib/node_intel.php`) before starting, so the
+new telemetry actually feeds the AI-routing layer that already exists
+instead of duplicating it.
+
+**Field-by-field gap, checked directly against `mobile-app/src/services/
+autoConnector.ts` + `api/telemetry.api.ts` and live `connect_telemetry`
+rows (this session):**
+
+| Field | Schema column | Client sends it today? | Gap |
+|---|---|---|---|
+| ping (ms) | `latency_ms` | Wired (`p.latencyMs`) but empty/0 on real rows checked tonight | Needs a real, reliable measurement — not just plumbing |
+| jitter | `jitter_ms` | Column exists; **no client code sends it at all** | Needs measurement + wiring, from scratch |
+| download (Mbps) | `throughput_kbps` | Column exists; **no client code sends it** | Needs an actual speed-test/throughput measurement, from scratch |
+| upload (Mbps) | — | **No column at all** | Needs schema migration + measurement |
+| reconnects | `reconnect_count` | Wired (`result.retryCount`) | Looked more populated than the others — verify accuracy |
+| packet loss | — | **No column at all** | Needs schema migration + measurement |
+| time to connect | `time_to_connect_ms` | Wired (`p.latencyMs`, questionable — looks duplicated from ping, not a separate measurement) | Verify this is actually measuring connect-time, not re-sending latency |
+| node | `node_id` | **Already works** (`starlink-no-01`/`primary`/etc., confirmed live tonight) | None |
+| carrier | `carrier_name` | **Already works** (confirmed `Irancell` live tonight) | None |
+| device model | `device_model` | Column exists, client-sendable | Confirm always populated (was blank on the Starlink-specific rows I checked) |
+| region | `country` (server-derived from IP) | **Already works** | If "region" means finer than country (province/city), that's new scope — clarify with Khabat |
+
+**Logging cadence, per Khabat:** after every connection AND at periodic
+intervals during a session (not just connect/disconnect) — the current
+`connect_telemetry` design is event-triggered only (`connect_ok`/
+`connect_fail`/etc.), so periodic mid-session sampling is new behavior,
+not just filling in existing fields.
+
+**Anonymity:** already the existing convention in this table
+(`isp_hash`/`carrier_hash`/`asn_hash` — hashed, not raw) — extend the
+same pattern to whatever's new here, don't introduce a raw identifier
+regression.
+
+**Scope note for whoever picks this up:** this is real device-side
+network measurement (ping/jitter/throughput/packet-loss), not just
+plumbing existing fields through — expect this to need actual
+measurement logic (e.g., a lightweight probe against a known-good
+endpoint), most likely `mobile-app/` (Agent A's side, `autoConnector.ts`
++ `telemetry.api.ts`) for collection, with schema migration + the
+`node_intel.php` genome/AI layer (Agent B's side, once merged) to
+consume it. Splitting the actual implementation is a separate
+conversation — this entry is the "what and why," not a build plan.
+
+**Until this exists:** manual speedtests are the only way to compare
+Starlink vs. Finland, per Khabat.
