@@ -2,7 +2,7 @@
  * ssoGame.test.tsx
  *
  * Tests for the ssoService URL-building contract and the REAL-ID gated
- * GameScreen hub.
+ * GameScreen.
  *
  * Architecture (updated 2026-07-19, REAL-ID auto-fallback — Khabat req that
  * Shahnameh never require Telegram inside RealGram):
@@ -14,12 +14,26 @@
  *     INTERNAL retry screen (realId.gateTitle) — never an auto-opened
  *     Telegram/RealGram WebView. Linking an existing Telegram account is a
  *     manual, secondary action only, never automatic.
- *   - authStore.user.realId !== '' → hub shown, no linking WebView
+ *   - authStore.user.realId !== '' → GameScreen renders GameWebView
+ *     (Shahnameh's own homepage) directly — no native hub, no "Enter
+ *     Shahnameh" button (2026-07-19 redesign: "RealGram-versjonen skal i
+ *     praksis være Shahnameh-siden innebygd direkte", Khabat — the native
+ *     card hub was a parallel/duplicate page and is gone).
  */
 
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 import { buildGameUrl, SsoResult } from '../services/ssoService';
+
+// GameWebView (2026-07-19 redesign) arms a real 20s setTimeout as a load
+// watchdog. The test WebView mock below never fires onLoadEnd/onError (it's
+// just the string 'WebView', not an actual native view), so that timer is
+// always still pending when a test finishes — with real timers it fires
+// tens of seconds later, after Jest has torn the environment down, crashing
+// the process. Fake timers keep it inert unless a test explicitly advances
+// the clock; Promise microtask chains (the `await Promise.resolve()` flushes
+// throughout this file) are unaffected by this and still resolve normally.
+jest.useFakeTimers();
 
 jest.mock('react-native-webview', () => ({ WebView: 'WebView' }));
 jest.mock('react-native-safe-area-context', () => ({
@@ -123,19 +137,22 @@ describe('GameScreen without a cached REAL-ID, server-side probe succeeds', () =
 
   beforeEach(() => { mockRealId = ''; mockSetRealId.mockClear(); mockGetSsoToken.mockClear(); });
 
-  it('never shows a Telegram/RealGram WebView or the retry gate — resolves straight to the hub', async () => {
+  it('never shows the retry gate — resolves straight into the Shahnameh WebView, no Telegram/RealGram linking screen', async () => {
     let tree!: renderer.ReactTestRenderer;
     await act(async () => {
       tree = renderer.create(<GameScreen />);
       await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
 
-    expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(0);
+    // Exactly one WebView — Shahnameh itself. Not zero (no native hub to
+    // fall back to anymore) and not more than one (no auto-opened linking
+    // WebView alongside it).
+    expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(1);
     const texts = tree.root
       .findAllByType('Text' as any)
       .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
     expect(texts).not.toContain('realId.gateTitle');
-    expect(texts).toContain('game.enterShahnameh');
   });
 
   it('probes with forGame=true (req #1/#2/#3: RealGram auto-provisions via REAL-ID)', async () => {
@@ -172,32 +189,39 @@ describe('GameScreen without a cached REAL-ID, server-side probe fails (req #6)'
   });
 });
 
-// ── GameScreen with REAL-ID → shows hub ──────────────────────────────────────
+// ── GameScreen with REAL-ID → embeds Shahnameh directly ──────────────────────
+// 2026-07-19 redesign (Khabat): no native hub screen at all — GameScreen IS
+// GameWebView once REAL-ID is known. GameWebView's own sso-token fetch
+// (a second, later call than any identity probe) is async, so these need
+// promise-flushing act() calls, not sync ones.
 describe('GameScreen with REAL-ID', () => {
-  beforeEach(() => { mockRealId = 'real-user-1'; });
+  beforeEach(() => { mockRealId = 'real-user-1'; mockGetSsoToken.mockClear(); });
 
-  it('renders the hub without an open WebView modal', () => {
-    let tree!: renderer.ReactTestRenderer;
-    act(() => { tree = renderer.create(<GameScreen />); });
-    expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(0);
+  const flush = () => act(async () => {
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    await Promise.resolve(); await Promise.resolve();
   });
 
-  it('shows ZAR balance in the hub', () => {
+  it('renders exactly one WebView (Shahnameh itself), not a native hub', async () => {
     let tree!: renderer.ReactTestRenderer;
-    act(() => { tree = renderer.create(<GameScreen />); });
+    await act(async () => { tree = renderer.create(<GameScreen />); });
+    await flush();
+    expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(1);
+  });
+
+  it('does not show the REAL-ID gate', async () => {
+    let tree!: renderer.ReactTestRenderer;
+    await act(async () => { tree = renderer.create(<GameScreen />); });
+    await flush();
     const texts = tree.root
       .findAllByType('Text' as any)
       .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
-    expect(texts.some((t) => String(t).includes('42'))).toBe(true);
-  });
-
-  it('shows the enter-game CTA and not the REAL-ID gate', () => {
-    let tree!: renderer.ReactTestRenderer;
-    act(() => { tree = renderer.create(<GameScreen />); });
-    const texts = tree.root
-      .findAllByType('Text' as any)
-      .flatMap((n) => React.Children.toArray(n.props.children).filter((c) => typeof c === 'string'));
-    expect(texts).toContain('game.enterShahnameh');
     expect(texts).not.toContain('realId.gateTitle');
+  });
+
+  it('fetches a fresh sso token for the embedded WebView URL (forGame=true)', async () => {
+    await act(async () => { renderer.create(<GameScreen />); });
+    await flush();
+    expect(mockGetSsoToken).toHaveBeenCalledWith('dev-9', true);
   });
 });

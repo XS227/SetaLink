@@ -21,25 +21,23 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Image, Pressable,
-  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, WebViewNavigation } from 'react-native-webview';
+import type {
+  WebViewNavigationEvent, WebViewErrorEvent, WebViewHttpErrorEvent, ShouldStartLoadRequest,
+} from 'react-native-webview/lib/WebViewTypes';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
-import { GoldBeatBurst }    from '../components/GoldBeatBurst';
-import { REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
 import { useT }             from '../i18n';
 import { useIdentityStore } from '../stores/identityStore';
-import { useVpnStore }      from '../stores/vpnStore';
-import { useZarStore, ZAR_DAILY_CAP } from '../stores/zarStore';
 import { useAuthStore }     from '../stores/authStore';
 import { getSsoToken, checkAndCacheRealId } from '../services/ssoService';
 import { linkRealAccount }  from '../services/realWalletService';
 import { parseDeepLink }    from '../services/deepLinkService';
 import { pushEcosystemProfile } from '../services/ecosystemProfileService';
 import { getCachedConfig }  from '../services/remoteConfigService';
-import { initZarSync, recordZarTap } from '../services/zarSyncService';
+import { initZarSync } from '../services/zarSyncService';
 
 const BASE_GAME_URL  = 'https://shahnameh.setaei.com';
 const PANEL_API      = 'https://setalink.no/api.php';
@@ -147,9 +145,13 @@ const wvStyles = StyleSheet.create({
   backBtn:    { width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: Colors.bg.surface, borderRadius: 18 },
   backText:   { fontSize: 22, color: Colors.text.secondary, marginTop: -2 },
-  loader:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing[3] },
+  loader:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing[3], paddingHorizontal: Spacing[6] },
   linkingText:{ fontSize: 14, color: Colors.text.muted, fontFamily: Typography.family.body },
   web:        { flex: 1 },
+  errorText:  { fontSize: 13, color: '#FF6B6B', textAlign: 'center', fontFamily: Typography.family.body, lineHeight: 20 },
+  retryBtn:      { backgroundColor: Colors.gold[400], borderRadius: Radius.xl,
+                   paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },
+  retryBtnText:  { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.bg.void },
 });
 
 // ── REAL-ID gate ─────────────────────────────────────────────────────────────
@@ -274,20 +276,50 @@ const gateStyles = StyleSheet.create({
                      fontFamily: Typography.family.body },
 });
 
+const WEBVIEW_LOAD_TIMEOUT_MS = 20_000;
+
 // ── Authenticated game view — inline, not a modal ────────────────────────────
 // SSO token is fetched fresh; REAL-ID goes in URL as identity; device_id as
 // security. Deliberately NOT a <Modal>: a sliding popup with its own title
 // bar and X-close reads as "an external page opened on top of the app" —
 // Shahnameh is meant to feel like a page of RealGram, not a browser tab
 // launched inside it (Khabat, 2026-07-19). Renders in the same screen space
-// the Game tab's hub occupies, with a plain back arrow like any other
-// in-app navigation, not a dismiss action.
+// the Game tab occupies, with a plain back arrow like any other in-app
+// navigation, not a dismiss action.
+//
+// This is now the ONLY thing GameScreen shows once REAL-ID resolves (build
+// 111, Khabat 2026-07-19: "RealGram-versjonen skal i praksis være
+// Shahnameh-siden innebygd direkte" — the real Shahnameh page's own
+// profile/Treasury/chapter-progress/bottom-nav IS the design, not a native
+// re-implementation). Also the fix target for Khabat's build-110 report:
+// pressing "ورود به شاهنامه"/Chapter/Continue opened a black screen with a
+// spinner that never finished. WebView previously had NO onLoadStart/
+// onLoadEnd/onError/onHttpError/timeout — a hang anywhere in that chain was
+// indistinguishable from "still loading". All of that is instrumented below.
 function GameWebView({
   path, deviceId, realId, onBack,
 }: { path: string; deviceId: string; realId: string; onBack: () => void }) {
   const insets  = useSafeAreaInsets();
-  const [url, setUrl]     = useState('');
-  const [ready, setReady] = useState(false);
+  const { t }   = useT();
+  const webRef  = useRef<React.ElementRef<typeof WebView>>(null);
+  const [url, setUrl]           = useState('');
+  const [ready, setReady]       = useState(false);   // our own sso-token fetch done, URL built
+  const [loadError, setLoadError]     = useState('');   // set by onError/onHttpError/timeout
+  const [canGoBack, setCanGoBack]     = useState(false);
+  const [retryKey, setRetryKey]       = useState(0);    // bump to force a full WebView remount
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearLoadTimeout = useCallback(() => {
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+  }, []);
+
+  const armLoadTimeout = useCallback((forUrl: string) => {
+    clearLoadTimeout();
+    timeoutRef.current = setTimeout(() => {
+      console.log('[REALDBG:7/7] GameWebView TIMEOUT — page never fired onLoadEnd within', WEBVIEW_LOAD_TIMEOUT_MS, 'ms', { url: forUrl });
+      setLoadError(t('game.webviewTimedOut'));
+    }, WEBVIEW_LOAD_TIMEOUT_MS);
+  }, [clearLoadTimeout, t]);
 
   useEffect(() => {
     // TEMP DEBUG (2026-07-19) — remove once confirmed fixed on device.
@@ -299,8 +331,9 @@ function GameWebView({
     // URL itself is what the game backend uses to sync the account. If step
     // 6 in Khabat's spec is expected to be a distinct network call, it does
     // not exist yet in this code and needs to be built, not just logged.
-    console.log('[REALDBG:7/7] GameWebView MOUNTED (RealIdGate passed) — this is a fresh, second sso-token call for the WebView URL', { deviceId, path, realId });
+    console.log('[REALDBG:7/7] GameWebView MOUNTED (RealIdGate passed) — this is a fresh, second sso-token call for the WebView URL', { deviceId, path, realId, retryKey });
     console.log('[REALDBG:6/7] NOTE: no separate /user/sync call exists in this flow — skipping (not a bug, just not implemented)');
+    setLoadError('');
     getSsoToken(deviceId, true).then((r) => {
       console.log('[REALDBG:7/7] GameWebView: sso-token resolved', { status: r.status, hasToken: !!r.token, account: r.account });
       if (r.status === 'ok' && r.account && !useAuthStore.getState().user?.realId) {
@@ -311,9 +344,10 @@ function GameWebView({
       if (realId) params.set('real_id', realId);
       if (r.status === 'ok' && r.token) params.set('sso', r.token);
       const finalUrl = `${base}?${params}`;
-      console.log('[REALDBG:7/7] WebView opening', { url: finalUrl });
+      console.log('[REALDBG:7/7] WebView opening', { url: finalUrl, hasSsoParam: finalUrl.includes('sso='), hasRealIdParam: finalUrl.includes('real_id=') });
       setUrl(finalUrl);
       setReady(true);
+      armLoadTimeout(finalUrl);
     }).catch((e) => {
       console.log('[REALDBG:7/7] GameWebView: sso-token THREW — opening WebView WITHOUT sso token (fallback path)', {
         name: e?.name, message: e?.message,
@@ -324,24 +358,53 @@ function GameWebView({
       console.log('[REALDBG:7/7] WebView opening (fallback path, no sso token)', { url: finalUrl });
       setUrl(finalUrl);
       setReady(true);
+      armLoadTimeout(finalUrl);
     });
-  }, [deviceId, path, realId]);
+    return () => clearLoadTimeout();
+  }, [deviceId, path, realId, retryKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const retry = useCallback(() => {
+    console.log('[REALDBG:7/7] GameWebView "Try again" pressed — remounting WebView', { url });
+    setLoadError('');
+    setReady(false);
+    setRetryKey((k) => k + 1);
+  }, [url]);
+
+  const goBack = useCallback(() => {
+    if (canGoBack) {
+      console.log('[REALDBG:7/7] GameWebView back arrow — WebView.goBack() (in-page history)');
+      webRef.current?.goBack();
+    } else {
+      console.log('[REALDBG:7/7] GameWebView back arrow — no in-page history, leaving to caller onBack()');
+      onBack();
+    }
+  }, [canGoBack, onBack]);
 
   return (
     <View style={[wvStyles.container, { paddingTop: insets.top }]}>
       <View style={wvStyles.bar}>
-        <TouchableOpacity onPress={onBack} style={wvStyles.backBtn} hitSlop={12}>
+        <TouchableOpacity onPress={goBack} style={wvStyles.backBtn} hitSlop={12}>
           <Text style={wvStyles.backText}>‹</Text>
         </TouchableOpacity>
         <Text style={wvStyles.barTitle}>SHAHNAMEH</Text>
         <View style={wvStyles.backBtn} />
       </View>
-      {!ready ? (
+      {!!loadError && (
+        <View style={wvStyles.loader}>
+          <Text style={wvStyles.errorText}>{loadError}</Text>
+          <TouchableOpacity style={wvStyles.retryBtn} onPress={retry} activeOpacity={0.85}>
+            <Text style={wvStyles.retryBtnText}>{t('realId.tryAgain')}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {!loadError && !ready ? (
         <View style={wvStyles.loader}>
           <ActivityIndicator color={Colors.gold[400]} size="large" />
         </View>
-      ) : (
+      ) : !loadError && (
         <WebView
+          key={retryKey}
+          ref={webRef}
           source={{ uri: url }}
           style={wvStyles.web}
           startInLoadingState
@@ -350,6 +413,46 @@ function GameWebView({
           )}
           originWhitelist={['https://*']}
           allowsBackForwardNavigationGestures
+          sharedCookiesEnabled
+          thirdPartyCookiesEnabled
+          onLoadStart={(e: WebViewNavigationEvent): void => {
+            console.log('[REALDBG:7/7] WebView onLoadStart', { url: e.nativeEvent.url });
+          }}
+          onLoadEnd={(e: WebViewNavigationEvent | WebViewErrorEvent): void => {
+            console.log('[REALDBG:7/7] WebView onLoadEnd', { url: e.nativeEvent.url, title: (e.nativeEvent as any).title });
+            clearLoadTimeout();
+          }}
+          onError={(e: WebViewErrorEvent): void => {
+            console.log('[REALDBG:7/7] WebView onError (native load failure)', {
+              url: e.nativeEvent.url, code: e.nativeEvent.code, description: e.nativeEvent.description,
+            });
+            clearLoadTimeout();
+            setLoadError(t('game.webviewLoadError'));
+          }}
+          onHttpError={(e: WebViewHttpErrorEvent): void => {
+            console.log('[REALDBG:7/7] WebView onHttpError (server responded with an error status)', {
+              url: e.nativeEvent.url, statusCode: e.nativeEvent.statusCode,
+            });
+            clearLoadTimeout();
+            setLoadError(t('game.webviewLoadError'));
+          }}
+          onNavigationStateChange={(state: WebViewNavigation): void => {
+            // Every hop in a redirect chain fires this — exactly what's
+            // needed to see a redirect loop or a bounce to an unexpected
+            // origin/scheme instead of guessing from a stuck spinner.
+            console.log('[REALDBG:7/7] WebView onNavigationStateChange', {
+              url: state.url, loading: state.loading, title: state.title,
+              canGoBack: state.canGoBack, navigationType: (state as any).navigationType,
+            });
+            setCanGoBack(state.canGoBack);
+          }}
+          onShouldStartLoadWithRequest={(req: ShouldStartLoadRequest): boolean => {
+            const allowed = req.url.startsWith('https://');
+            if (!allowed) {
+              console.log('[REALDBG:7/7] WebView BLOCKED non-https navigation (would otherwise hang silently)', { url: req.url });
+            }
+            return allowed;
+          }}
           injectedJavaScriptBeforeContentLoaded={`
             const meta = document.createElement('meta');
             meta.name = 'viewport';
@@ -363,52 +466,24 @@ function GameWebView({
   );
 }
 
-// ── Hub section card ──────────────────────────────────────────────────────────
-function HubCard({
-  icon, title, sub, accent, onPress,
-}: { icon: string; title: string; sub: string; accent?: string; onPress: () => void }) {
-  return (
-    <TouchableOpacity
-      style={[hubStyles.card, accent ? { borderColor: accent + '40' } : null]}
-      onPress={onPress}
-      activeOpacity={0.8}
-    >
-      <Text style={hubStyles.icon}>{icon}</Text>
-      <View style={hubStyles.text}>
-        <Text style={[hubStyles.title, accent ? { color: accent } : null]}>{title}</Text>
-        <Text style={hubStyles.sub}>{sub}</Text>
-      </View>
-      <Text style={hubStyles.arrow}>›</Text>
-    </TouchableOpacity>
-  );
-}
-
-const hubStyles = StyleSheet.create({
-  card:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
-           backgroundColor: Colors.bg.surface, borderRadius: Radius.lg,
-           padding: Spacing[4], borderWidth: 1, borderColor: Colors.border.subtle },
-  icon:  { fontSize: 24 },
-  text:  { flex: 1, gap: 2 },
-  title: { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  sub:   { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
-  arrow: { fontSize: 18, color: Colors.text.muted },
-});
-
 // ── Main GameScreen ───────────────────────────────────────────────────────────
+// Khabat, 2026-07-19: the previous native "hub" here (tap-to-earn card,
+// Daily Missions/Story/Heroes/Rewards cards, an "Enter Shahnameh" button)
+// was a separate, simplified re-implementation living alongside the real
+// Shahnameh site — explicitly NOT what was wanted: "RealGram-versjonen skal
+// i praksis være Shahnameh-siden innebygd direkte... Ikke lag en ny
+// parallell spillforside." Shahnameh's own page already has the profile
+// card, Treasury (FARR/ZAR/GEMS/XP/REAL/TON), Continue Journey, chapter
+// progress and its own bottom nav (Home/Tap/Heroes/Learn/Earn/Guild/
+// Social) — that IS the design. So GameScreen no longer renders a native
+// destination screen at all: once REAL-ID resolves, it goes straight into
+// GameWebView pointed at Shahnameh's homepage ('/'), which is that design,
+// live. The identity-check spinner below is the only "skeleton" state.
 export function GameScreen() {
-  const { t }       = useT();
-  const insets      = useSafeAreaInsets();
   const deviceId    = useAuthStore((s) => s.user?.deviceId ?? '');
   const realId      = useAuthStore((s) => s.user?.realId   ?? '');
-  const persona     = useIdentityStore((s) => s.persona);
-  const handle      = useIdentityStore((s) => s.handle);
-  const avatarEmoji = useIdentityStore((s) => s.avatarEmoji);
-  const balance     = useZarStore((s) => s.balance);
-  const earnedToday = useZarStore((s) => s.earnedToday);
-  const isConnected = useVpnStore((s) => s.connectionState === 'connected');
+  const insets      = useSafeAreaInsets();
 
-  const [webPath, setWebPath]   = useState<string | null>(null);
-  const [burstKey, setBurstKey] = useState(0);
   // True while we're checking/waiting for identity to be ready. Starts true
   // whenever there's no realId yet — INCLUDING when deviceId itself isn't
   // populated yet (e.g. a Zustand persist rehydration race on a cold app
@@ -508,32 +583,21 @@ export function GameScreen() {
   }
 
   // Server-synced ZAR (contract §8, REALGRAM_UNIFIED_PLATFORM.md §B):
-  // start buffering/flushing taps to Shahnameh once deviceId is known.
-  // initZarSync is safe to call again (resets the flush timer) so this
-  // doesn't need to guard against re-running when deviceId changes shape.
+  // starts Shahnameh's tap-sync flush timer once deviceId is known. Also
+  // piggybacks tapAnalytics' own init (see zarSyncService.ts) — kept even
+  // though the native tap-to-earn card is gone (2026-07-19 redesign), since
+  // this is that system's only wiring point and taps now happen inside the
+  // embedded Shahnameh page itself, which still goes through this same
+  // buffered sync path server-side.
   useEffect(() => {
     if (deviceId) initZarSync(deviceId);
   }, [deviceId]);
 
-  const dailyPct    = Math.min(1, earnedToday / ZAR_DAILY_CAP);
-  const cappedToday = earnedToday >= ZAR_DAILY_CAP;
-
-  const personaLabel = persona === 'king'
-    ? `👑 ${t('game.king')}`
-    : persona === 'queen' ? `👸 ${t('game.queen')}` : null;
-
-  const handleTap = useCallback(() => {
-    if (!isConnected) return;
-    const res = useZarStore.getState().tap();
-    if (res.earned > 0) {
-      setBurstKey((k) => k + 1);
-      recordZarTap(); // buffers for the next server sync — see zarSyncService
-    }
-  }, [isConnected]);
-
   // While probing server-side link status, show a neutral spinner so users
   // who are already linked (e.g. navigating from the RealGram shortcut)
-  // never see the gate flash.
+  // never see the gate flash. This is the ONLY native "skeleton" state —
+  // once realId resolves, GameWebView (the real Shahnameh page) is the
+  // entire screen (Khabat, 2026-07-19 redesign — no parallel native hub).
   if (checking) {
     console.log('[REALDBG] render: spinner (checking=true)', { deviceId, realId });
     return (
@@ -553,154 +617,20 @@ export function GameScreen() {
     );
   }
 
-  // Game content replaces the hub in the same tab — not a modal overlaid on
-  // top of it. This is meant to read as "you're on a different page of
-  // RealGram now", the same feel as navigating to any other tab, not
-  // "an external page just opened" (Khabat, 2026-07-19).
-  if (webPath !== null) {
-    return (
-      <View style={[styles.screen, { paddingTop: insets.top }]}>
-        <GameWebView
-          path={webPath}
-          deviceId={deviceId}
-          realId={realId}
-          onBack={() => setWebPath(null)}
-        />
-      </View>
-    );
-  }
-
+  console.log('[REALDBG] render: GameWebView (realId present) — Shahnameh homepage IS the game screen', { deviceId, realId });
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.content, { paddingBottom: 80 + insets.bottom }]}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* ── Hero identity ── */}
-        <View style={styles.hero}>
-          <View style={styles.heroLeft}>
-            <Text style={styles.heroAvatar}>{avatarEmoji}</Text>
-            <View style={styles.heroMeta}>
-              {personaLabel && <Text style={styles.personaTag}>{personaLabel}</Text>}
-              {handle && <Text style={styles.handle}>@{handle}</Text>}
-              <Text style={styles.heroTitle}>SHAHNAMEH</Text>
-            </View>
-          </View>
-          <View style={styles.zarPill}>
-            <Text style={styles.zarLabel}>ZAR</Text>
-            <Text style={styles.zarValue}>{balance.toLocaleString()}</Text>
-          </View>
-        </View>
-
-        {/* ── REAL coin: tap-to-earn ── */}
-        <View style={styles.tapCard}>
-          <View style={styles.tapCardLeft}>
-            <Pressable onPress={handleTap} style={styles.coinBtn}>
-              <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.coin} />
-              <GoldBeatBurst burstKey={burstKey} />
-            </Pressable>
-          </View>
-          <View style={styles.tapCardRight}>
-            <Text style={styles.tapTitle}>{t('game.tapToEarn')}</Text>
-            <Text style={styles.tapSub}>
-              {cappedToday
-                ? t('game.capReached')
-                : isConnected
-                  ? t('game.tapHintConnected')
-                  : t('game.connectFirst')}
-            </Text>
-            <View style={styles.tapProgress}>
-              <View style={styles.tapBar}>
-                <View style={[styles.tapBarFill, { flex: dailyPct }]} />
-                <View style={{ flex: 1 - dailyPct }} />
-              </View>
-              <Text style={styles.tapProgressText}>{earnedToday}/{ZAR_DAILY_CAP}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Hub sections ── */}
-        <View style={styles.sectionGroup}>
-          <HubCard
-            icon="⚔️" title={t('game.dailyMissions')} sub={t('game.dailyMissionsSub')}
-            accent={Colors.gold[400]} onPress={() => setWebPath('/quests')}
-          />
-          <HubCard
-            icon="📖" title={t('game.storyProgress')} sub={t('game.storyProgressSub')}
-            onPress={() => setWebPath('/story')}
-          />
-          <HubCard
-            icon="🦸" title={t('game.heroes')} sub={t('game.heroesSub')}
-            onPress={() => setWebPath('/heroes')}
-          />
-          <HubCard
-            icon="🏆" title={t('game.rewards')} sub={t('game.rewardsSub')}
-            accent={Colors.gold[400]} onPress={() => setWebPath('/rewards')}
-          />
-        </View>
-
-        {/* ── Enter game button ── */}
-        <TouchableOpacity
-          style={styles.enterBtn}
-          onPress={() => {
-            // TEMP DEBUG (2026-07-19) — remove once confirmed fixed on device.
-            console.log('[REALDBG] Enter Shahnameh pressed', { deviceId, realId });
-            setWebPath('/');
-          }}
-          activeOpacity={0.85}
-        >
-          <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.enterBtnIcon} />
-          <Text style={styles.enterBtnText}>{t('game.enterShahnameh')}</Text>
-          <Text style={styles.enterBtnArrow}>›</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      <GameWebView
+        path="/"
+        deviceId={deviceId}
+        realId={realId}
+        onBack={() => {}}
+      />
     </View>
   );
 }
 
-const GOLD = Colors.gold[400];
-
 const styles = StyleSheet.create({
   screen:   { flex: 1, backgroundColor: Colors.bg.void },
   centered: { justifyContent: 'center', alignItems: 'center' },
-  scroll:   { flex: 1 },
-  content:  { paddingHorizontal: Spacing[5], paddingTop: Spacing[4], gap: Spacing[4] },
-
-  hero:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heroLeft:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  heroAvatar: { fontSize: 38 },
-  heroMeta:   { gap: 2 },
-  heroTitle:  { fontSize: 18, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 1 },
-  personaTag: { fontSize: 12, color: GOLD, fontFamily: Typography.family.heading },
-  handle:     { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
-  zarPill:    { alignItems: 'center', backgroundColor: 'rgba(212,175,55,0.1)',
-                borderRadius: Radius.lg, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2],
-                borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)' },
-  zarLabel:   { fontSize: 10, color: Colors.gold[600], fontFamily: Typography.family.heading, letterSpacing: 1.5 },
-  zarValue:   { fontSize: 22, color: GOLD, fontFamily: Typography.family.heading },
-
-  tapCard:     { flexDirection: 'row', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl,
-                 borderWidth: 1, borderColor: 'rgba(212,175,55,0.15)', overflow: 'hidden' },
-  tapCardLeft: { width: 90, alignItems: 'center', justifyContent: 'center',
-                 padding: Spacing[3], borderRightWidth: 1, borderRightColor: Colors.border.subtle },
-  coinBtn:     { width: 60, height: 60, alignItems: 'center', justifyContent: 'center' },
-  coin:        { width: 60, height: 60, borderRadius: 30 },
-  tapCardRight:{ flex: 1, padding: Spacing[4], gap: Spacing[2], justifyContent: 'center' },
-  tapTitle:    { fontSize: 13, fontFamily: Typography.family.heading, color: GOLD, letterSpacing: 0.5 },
-  tapSub:      { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
-  tapProgress: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], marginTop: 2 },
-  tapBar:      { flex: 1, height: 4, borderRadius: 2, flexDirection: 'row',
-                 backgroundColor: 'rgba(212,175,55,0.12)', overflow: 'hidden' },
-  tapBarFill:  { backgroundColor: GOLD, borderRadius: 2 },
-  tapProgressText: { fontSize: 10, color: Colors.text.muted, fontFamily: Typography.family.mono },
-
-  sectionGroup: { gap: Spacing[3] },
-
-  enterBtn:     { flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
-                  backgroundColor: 'rgba(212,175,55,0.12)', borderRadius: Radius.xl,
-                  padding: Spacing[4], borderWidth: 1, borderColor: 'rgba(212,175,55,0.3)' },
-  enterBtnIcon: { width: 36, height: 36, borderRadius: 18 },
-  enterBtnText: { flex: 1, fontSize: 15, fontFamily: Typography.family.heading, color: GOLD },
-  enterBtnArrow:{ fontSize: 22, color: Colors.gold[600] },
 });

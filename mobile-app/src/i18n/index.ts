@@ -555,6 +555,8 @@ const EN = {
   'game.rewards':         'Rewards',
   'game.rewardsSub':      'Claim ZAR, REAL and data rewards',
   'game.enterShahnameh':  'Enter Shahnameh',
+  'game.webviewLoadError': "Couldn't load Shahnameh — check your connection and try again.",
+  'game.webviewTimedOut':  'Shahnameh is taking too long to load. Try again.',
 
   'realId.gateTitle':    "Couldn't connect your account",
   'realId.gateBody':     "We couldn't set up your REAL-ID automatically — this is usually temporary. Tap try again, or link an existing Telegram account below.",
@@ -1282,6 +1284,8 @@ const FA: typeof EN = {
   'game.rewards':          'جوایز',
   'game.rewardsSub':       'ZAR، REAL و حجم داده دریافت کن',
   'game.enterShahnameh':   'ورود به شاهنامه',
+  'game.webviewLoadError': 'بارگذاری شاهنامه ممکن نشد — اتصال خود را بررسی کن و دوباره تلاش کن.',
+  'game.webviewTimedOut':  'بارگذاری شاهنامه خیلی طول کشید. دوباره تلاش کن.',
 
   'realId.gateTitle':    'اتصال حساب شما ممکن نشد',
   'realId.gateBody':     'راه‌اندازی خودکار REAL-ID انجام نشد — معمولاً موقتی است. دوباره تلاش کن، یا از طریق حساب تلگرام موجود متصل شو.',
@@ -1981,6 +1985,8 @@ const ZH: typeof EN = {
   'game.rewards':          '奖励',
   'game.rewardsSub':       '领取 ZAR、REAL 和流量奖励',
   'game.enterShahnameh':   '进入 Shahnameh',
+  'game.webviewLoadError': '无法加载 Shahnameh — 请检查网络后重试。',
+  'game.webviewTimedOut':  'Shahnameh 加载时间过长,请重试。',
 
   'realId.gateTitle':    '账号连接失败',
   'realId.gateBody':     '自动设置 REAL-ID 未成功 — 这通常是暂时的。点击重试,或使用已有的 Telegram 账号关联。',
@@ -2673,6 +2679,8 @@ const RU: typeof EN = {
   'game.rewards':          'Награды',
   'game.rewardsSub':       'Получайте ZAR, REAL и трафик',
   'game.enterShahnameh':   'Войти в Shahnameh',
+  'game.webviewLoadError': 'Не удалось загрузить Shahnameh — проверьте соединение и попробуйте снова.',
+  'game.webviewTimedOut':  'Shahnameh загружается слишком долго. Попробуйте снова.',
 
   'realId.gateTitle':    'Не удалось подключить аккаунт',
   'realId.gateBody':     'Автоматическая настройка REAL-ID не завершилась — обычно это временно. Попробуйте снова или привяжите существующий аккаунт Telegram ниже.',
