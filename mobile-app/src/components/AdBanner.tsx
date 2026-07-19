@@ -1,9 +1,17 @@
 /**
- * AdBanner — a single bare AdMob banner ad (B-19: Servers gets "1 AdMob
- * only", no promo rotation — unlike HomeBanner, which deliberately mixes
- * in the ecosystem cross-promo for Home). Hidden until it loads (no blank
+ * AdBanner — a single, fixed AdMob banner ad (B-19: Servers gets "1 AdMob
+ * only", no promo rotation — unlike HomeBanner, which falls back to the
+ * ecosystem cross-promo for Home). Invisible until it loads (no blank
  * flash) and collapses to nothing on load failure (no dead space). Premium
  * users never see it — gate with `show` at the call site.
+ *
+ * Revised 2026-07-19: was collapsing this to `height: 0` pre-load and
+ * un-collapsing it once `onAdLoaded` fired. That let the banner report as
+ * loaded (telemetry fires regardless of layout) while never actually
+ * becoming visible — collapsing a live native ad view's height doesn't
+ * reliably make the native side re-measure once JS flips the style back.
+ * Now the ad view stays normally laid out/measured throughout; only its
+ * position + opacity change, which native views handle correctly.
  */
 
 import React, { useState } from 'react';
@@ -13,15 +21,19 @@ import { TrackedBannerAd } from './TrackedBannerAd';
 
 export function AdBanner({ show, style }: { show: boolean; style?: object }) {
   const [loaded, setLoaded] = useState(false);
+  const [failed, setFailed] = useState(false);
 
-  if (!show) return null;
+  if (!show || failed) return null;
 
   return (
-    <View style={[loaded ? styles.wrap : styles.hidden, style]} pointerEvents={loaded ? 'auto' : 'none'}>
+    <View
+      style={[loaded ? styles.wrap : styles.pending, style]}
+      pointerEvents={loaded ? 'auto' : 'none'}
+    >
       <TrackedBannerAd
         slot="freedom_banner"
         onAdLoaded={() => setLoaded(true)}
-        onAdFailedToLoad={() => setLoaded(false)}
+        onAdFailedToLoad={() => setFailed(true)}
       />
     </View>
   );
@@ -37,5 +49,14 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.subtle,
     overflow: 'hidden',
   },
-  hidden: { height: 0, overflow: 'hidden', opacity: 0 },
+  // Fully laid out/measured (real native view, real adaptive-banner size),
+  // just off-flow and invisible until there's an ad to show — see header
+  // comment for why this replaced a height:0 collapse.
+  pending: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    opacity: 0,
+  },
 });

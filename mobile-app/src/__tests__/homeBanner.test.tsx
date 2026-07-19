@@ -33,34 +33,33 @@ import { HomeBanner } from '../components/HomeBanner';
 
 const has = (root: any, testID: string) => root.findAllByProps({ testID }).length > 0;
 
-describe('HomeBanner — rotating ad ⇄ promo', () => {
-  beforeEach(() => jest.useFakeTimers());
-  afterEach(() => jest.useRealTimers());
-
+describe('HomeBanner — fixed ad with promo fallback (no rotation)', () => {
   it('premium users (showAds=false) only ever see the promo, never an ad', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<HomeBanner showAds={false} />); });
-    act(() => { jest.advanceTimersByTime(60000); });
     expect(has(tree.root, 'promo')).toBe(true);
     expect(has(tree.root, 'banner-ad')).toBe(false);
   });
 
-  it('free users start on the promo, then the ad slot mounts after the interval', () => {
+  it('free users mount the ad slot immediately, promo stays up until it loads (no blank flash)', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<HomeBanner showAds={true} />); });
-    // Initially promo, no ad mounted yet.
-    expect(has(tree.root, 'promo')).toBe(true);
-    expect(has(tree.root, 'banner-ad')).toBe(false);
-    // After the rotation interval the ad slot mounts (promo stays until it loads).
-    act(() => { jest.advanceTimersByTime(12000); });
     expect(has(tree.root, 'banner-ad')).toBe(true);
-    expect(has(tree.root, 'promo')).toBe(true);   // no blank flash — promo still up
+    expect(has(tree.root, 'promo')).toBe(true);   // ad not loaded yet — promo still up
   });
 
-  it('falls back to the promo when the ad fails to load', () => {
+  it('once the ad loads, it replaces the promo and stays — no timer reverts it back', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<HomeBanner showAds={true} />); });
-    act(() => { jest.advanceTimersByTime(12000); });
+    const banner = tree.root.findByProps({ testID: 'banner-ad' });
+    act(() => { banner.props.onAdLoaded(); });
+    expect(has(tree.root, 'banner-ad')).toBe(true);
+    expect(has(tree.root, 'promo')).toBe(false);
+  });
+
+  it('falls back to the promo for good when the ad fails to load', () => {
+    let tree!: renderer.ReactTestRenderer;
+    act(() => { tree = renderer.create(<HomeBanner showAds={true} />); });
     const banner = tree.root.findByProps({ testID: 'banner-ad' });
     act(() => { banner.props.onAdFailedToLoad(new Error('no fill')); });
     expect(has(tree.root, 'banner-ad')).toBe(false);

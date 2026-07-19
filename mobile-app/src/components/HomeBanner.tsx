@@ -1,55 +1,54 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Colors, Radius, Spacing } from '../design/tokens';
 import { TrackedBannerAd } from './TrackedBannerAd';
 import { EcosystemBanner } from './EcosystemBanner';
 
 /**
- * HomeBanner — rotates the front-page banner slot between a paid AdMob banner
- * and our own EcosystemBanner promo (Khabat 2026-07-08).
+ * HomeBanner — a fixed AdMob banner on the front page, falling back to our
+ * own EcosystemBanner promo when there's no ad to show (Khabat 2026-07-08,
+ * revised 2026-07-19: dropped the timed ad/promo rotation — a banner slot
+ * doesn't need to cycle, it just needs to show the right thing once it's
+ * ready).
  *
  * Rules:
- *  • Premium users are ad-free → always the ecosystem promo.
- *  • For free users the slot flips to the ad every ROTATE_MS, but the promo stays
- *    visible until the ad has actually loaded (no blank flash), and any ad
- *    load-failure falls straight back to the promo — the ad never leaves an empty
- *    or broken strip on screen.
+ *  • Premium users are ad-free → always the ecosystem promo, no ad requested.
+ *  • Free users: request the ad once per mount. Promo stays visible until the
+ *    ad has actually loaded (no blank flash) or fails (falls back to promo
+ *    for good on this mount — no retry loop fighting the layout).
+ *  • The ad view is always mounted (so AdMob can size/load it), just
+ *    positioned off-screen and invisible pre-load instead of collapsed to
+ *    height 0 — collapsing a live native ad view's height and un-collapsing
+ *    it later doesn't reliably force the native side to re-measure, which is
+ *    how a banner can log as loaded and still never actually appear.
  */
-const ROTATE_MS = 12000;
-
 type Props = {
   /** Offset so different screens start the promo on different items. */
   seed?: number;
-  /** Include paid ads in the rotation (free users only). */
+  /** Request a paid ad for this placement (free users only). */
   showAds: boolean;
 };
 
 export function HomeBanner({ seed = 0, showAds }: Props) {
-  const [phase, setPhase]       = useState<'promo' | 'ad'>('promo');
   const [adLoaded, setAdLoaded] = useState(false);
+  const [adFailed, setAdFailed] = useState(false);
 
-  useEffect(() => {
-    if (!showAds) { setPhase('promo'); setAdLoaded(false); return; }
-    const id = setInterval(() => {
-      setPhase(p => (p === 'promo' ? 'ad' : 'promo'));
-      setAdLoaded(false);   // fresh request each ad turn; promo shows until it loads
-    }, ROTATE_MS);
-    return () => clearInterval(id);
-  }, [showAds]);
-
-  const showAd = showAds && phase === 'ad';
+  const adShowing = showAds && adLoaded && !adFailed;
 
   return (
     <View>
-      {/* Promo stays up until the ad has loaded — avoids a blank slot. */}
-      {(!showAd || !adLoaded) && <EcosystemBanner seed={seed} />}
+      {/* Promo covers: ads off, ad not loaded yet, or ad failed. */}
+      {!adShowing && <EcosystemBanner seed={seed} />}
 
-      {showAd && (
-        <View style={adLoaded ? styles.adWrap : styles.hidden} pointerEvents={adLoaded ? 'auto' : 'none'}>
+      {showAds && !adFailed && (
+        <View
+          style={adLoaded ? styles.adWrap : styles.adPending}
+          pointerEvents={adLoaded ? 'auto' : 'none'}
+        >
           <TrackedBannerAd
             slot="home_banner"
             onAdLoaded={() => setAdLoaded(true)}
-            onAdFailedToLoad={() => { setAdLoaded(false); setPhase('promo'); }}
+            onAdFailedToLoad={() => setAdFailed(true)}
           />
         </View>
       )}
@@ -69,5 +68,15 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.subtle,
     overflow: 'hidden',
   },
-  hidden: { height: 0, overflow: 'hidden', opacity: 0 },
+  // Still fully laid out/measured (so AdMob's adaptive-banner sizing and the
+  // native view itself are real, not zeroed) — just moved out of flow and
+  // made invisible until it has something to show. No height/overflow
+  // tricks, which is what left native views stuck at a stale size before.
+  adPending: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    opacity: 0,
+  },
 });
