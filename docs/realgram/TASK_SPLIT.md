@@ -3549,3 +3549,30 @@ problem. Not fixing this myself (design decision: which value wins, is
 there a one-time migration/reconciliation, does the local counter get
 retired) — flagging for whoever owns the mobile app's ZAR display logic to
 decide before/alongside shipping the build above.
+
+---
+
+## Live panel session (5.249.252.221): new build triggered — v0.9.68 versionCode 107 [beta]
+
+**Dato: 2026-07-19**
+
+Khabat asked for a build bundling everything ready today. Bumped
+versionCode 106→107 (`146d0a3`) and triggered both CI workflows from
+`feat/b97-experience` (not `main` — nobody merges there but Khabat):
+- Android: https://github.com/XS227/SetaLink/actions/runs/29675345236
+- iOS TestFlight: https://github.com/XS227/SetaLink/actions/runs/29675347134
+
+**Included:** B-23 wallet UI (REAL+ZAR+conversion), inline Shahnameh
+WebView (no more modal), B-24 tap-stream analytics infra, AdMob banner
+fixes (rotation removed, height:0 collapse bug fixed), link-gate routing
+fix (all app-side changes from today, on this branch).
+
+**Explicitly excluded:** iOS Network Extension / findUtunFd fixes (B→A(9)/
+B→A(11)) — diagnosed only, no Swift code written, per Khabat's own "if
+ready" condition — they're not.
+
+**Not done as part of this:** publishing the built APK to
+`setalink.no`'s live OTA channel (`scripts/release.sh --publish-only`)
+— that's a separate step with its own channel choice (stable/beta/
+owner-test) and mass-OTA implications flagged in this project's own
+rules. Will ask before doing that once the APK artifact exists.
