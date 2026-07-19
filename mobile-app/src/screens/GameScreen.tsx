@@ -145,6 +145,14 @@ const wvStyles = StyleSheet.create({
   backBtn:    { width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
                 backgroundColor: Colors.bg.surface, borderRadius: 18 },
   backText:   { fontSize: 22, color: Colors.text.secondary, marginTop: -2 },
+  // Cinematic embed (2026-07-19): floats over the WebView instead of a
+  // fixed header bar, so Shahnameh's own page reads as full-bleed.
+  floatingBack: {
+    position: 'absolute', top: Spacing[3], left: Spacing[4], zIndex: 10,
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(10,10,14,0.55)', borderRadius: 18,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
+  },
   loader:     { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing[3], paddingHorizontal: Spacing[6] },
   linkingText:{ fontSize: 14, color: Colors.text.muted, fontFamily: Typography.family.body },
   web:        { flex: 1 },
@@ -299,7 +307,6 @@ const WEBVIEW_LOAD_TIMEOUT_MS = 20_000;
 function GameWebView({
   path, deviceId, realId, onBack,
 }: { path: string; deviceId: string; realId: string; onBack: () => void }) {
-  const insets  = useSafeAreaInsets();
   const { t }   = useT();
   const webRef  = useRef<React.ElementRef<typeof WebView>>(null);
   const [url, setUrl]           = useState('');
@@ -380,15 +387,24 @@ function GameWebView({
     }
   }, [canGoBack, onBack]);
 
+  // No title bar, no border, no "SHAHNAMEH" label — Khabat, 2026-07-19: "la
+  // det bli 10% RealGram design og 90% Shahnameh... må ha den cinematic
+  // følelsen". A persistent header reads as browser chrome wrapped around
+  // an external page; Shahnameh's own homepage already carries the
+  // profile/Treasury/nav design, so this should feel like arriving on a
+  // page of the app, not opening a tab inside it. Only a small floating
+  // back affordance remains, overlaid on the content instead of eating a
+  // fixed strip of vertical space.
   return (
-    <View style={[wvStyles.container, { paddingTop: insets.top }]}>
-      <View style={wvStyles.bar}>
-        <TouchableOpacity onPress={goBack} style={wvStyles.backBtn} hitSlop={12}>
-          <Text style={wvStyles.backText}>‹</Text>
-        </TouchableOpacity>
-        <Text style={wvStyles.barTitle}>SHAHNAMEH</Text>
-        <View style={wvStyles.backBtn} />
-      </View>
+    <View style={wvStyles.container}>
+      <TouchableOpacity
+        onPress={goBack}
+        style={wvStyles.floatingBack}
+        hitSlop={12}
+        activeOpacity={0.75}
+      >
+        <Text style={wvStyles.backText}>‹</Text>
+      </TouchableOpacity>
       {!!loadError && (
         <View style={wvStyles.loader}>
           <Text style={wvStyles.errorText}>{loadError}</Text>

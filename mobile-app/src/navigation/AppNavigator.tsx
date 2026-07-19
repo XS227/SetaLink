@@ -477,7 +477,30 @@ function SplashAdapter({ navigation }: ScreenAdapterProps) {
           const { hasOnboarded, hasSelectedLanguage, hasSeenWelcome } = useSettingsStore.getState();
 
           if (!hasSelectedLanguage) { clearTimeout(watchdog); navigation.replace('Language'); return; }
-          if (!hasOnboarded)        { clearTimeout(watchdog); navigation.replace('Onboarding'); return; }
+
+          if (!hasOnboarded) {
+            // Khabat, 2026-07-19: a reinstall (or a fresh install on hardware
+            // that already played RealGram/Shahnameh before) must NOT force a
+            // brand-new @handle claim. register-device's fingerprint dedup
+            // (android_id_hash) already reunites reinstalls with the same
+            // account server-side — this just checks for an existing REAL-ID
+            // BEFORE forcing Onboarding, instead of only after it finishes.
+            // (register-device's response was also missing linked_real_account
+            // entirely until this same change — see api.php — so this check
+            // would have silently always failed before.)
+            step = 'checkExistingRealId';
+            const registered      = await tryAutoRegister();
+            const existingRealId  = registered ? useAuthStore.getState().user?.realId : '';
+            if (existingRealId) {
+              useSettingsStore.getState().completeOnboarding();
+              clearTimeout(watchdog);
+              navigation.replace(hasSeenWelcome ? 'Main' : 'Welcome');
+              return;
+            }
+            clearTimeout(watchdog);
+            navigation.replace('Onboarding');
+            return;
+          }
 
           if (result.status === 'auth_required') {
             step = 'autoRegister';

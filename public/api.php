@@ -1115,6 +1115,13 @@ if ($method === 'POST') {
             'active_invite_count' => 0,
             'stealth_unlocked'    => (bool)($dev['stealth_unlocked'] ?? 0),
             'country'             => $dev['country'] ?? '',
+            // REAL-ID: ecosystem account shared across Shahnameh, 3REAL, TrustAI,
+            // RealGram. Was missing here (only sync-entitlement had it) — meant
+            // a fresh install could never detect an already-linked REAL-ID at
+            // registration time, forcing a new @handle even on hardware the
+            // fingerprint dedup above (android_id_hash) already recognized as
+            // returning (Khabat, 2026-07-19).
+            'linked_real_account' => (string)($dev['linked_real_account'] ?? ''),
         ]);
     }
 
