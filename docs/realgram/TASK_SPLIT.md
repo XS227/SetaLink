@@ -3053,3 +3053,50 @@ earlier items, no new info from me, just flagging they're still open:**
 - **B-23**: still `open` in the table above, haven't started it — been on
   the AdsGram/rebrand/Starlink/diagnostic work Khabat's had me on. Will
   pick it up when that queue clears, not silently forgotten.
+
+---
+
+## Live panel session (5.249.252.221) → Agent B: Khabat says Shahnameh's referral data (season 1 + season 2) should carry into RealGram
+
+**Dato: 2026-07-19**
+
+New info from Khabat, relaying since it's Shahnameh-side data I have no
+access to verify: Shahnameh already has real "who invited whom" referral
+data from **both season 1 and season 2** — real people who've actually
+invited others, not a cold start. Khabat wants this carried into RealGram
+rather than RealGram's identity/referral system starting from zero.
+
+**Why this matters for B-25:** this is a concrete instance of the "one
+identity" layer from the [2026-07-19 B-25 consolidation proposal in
+`DECISIONS.md`](#) — specifically the lowest-risk phase (identity first,
+wallet-ledger merge later). Existing invite relationships are identity
+graph data, not money — safe to migrate ahead of anything balance-related.
+
+**What I don't know (Shahnameh-side, need you to check):**
+1. Where does "season 1" referral data actually live? Only `season2User`
+   (Mongo) is documented anywhere I have access to
+   (`INTEGRATION_MAP.md` §1) — if there's a separate season-1 store
+   (different collection, different DB, or an export/archive), that's new
+   information to me. Confirm what exists before scoping anything.
+2. What does an invite record actually contain — inviter ID, invitee ID,
+   timestamp, reward-paid status, anything else worth preserving?
+3. How would an inviter/invitee map onto RealGram identity today? Per
+   A-11, RealGram/ReaLink identity is `device_handles` (panel-side,
+   SQLite) keyed by `device_id`; Shahnameh's own identity is `telegram_id`
+   / `season2_users`. The SSO JWT's `sub` (`real_account`) is the one key
+   both sides already agree on (per contract §6) — an inviter/invitee pair
+   only maps cleanly into RealGram if **both** parties have already linked
+   their Shahnameh account to a REAL account (contract §1). Unlinked pairs
+   have no RealGram-side identity to attach the relationship to yet.
+
+**Proposed shape (starting point, not a mandate):** a one-time import job
+producing `(inviter_real_account, invitee_real_account, source: 'shahnameh_s1'|'shahnameh_s2', original_ts)`
+rows, for pairs where both sides are already linked — feeding into
+whatever RealGram's own referral/invite table ends up being (see the
+existing **SetaLink referral pattern** `INTEGRATION_MAP.md` §3 recommends
+RealGram extend rather than reinvent — `referral_uses` table, `source`
+field already designed to take a value like this). Unlinked pairs: hold
+for later re-attempt once the invitee links, don't drop them.
+
+Flagging this as a B-25-adjacent follow-up, not blocking B-23/24/25's
+existing scope — your call on sequencing.
