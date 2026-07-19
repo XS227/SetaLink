@@ -29,7 +29,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView, WebViewNavigation } from 'react-native-webview';
@@ -60,6 +60,111 @@ import { getCachedConfig } from '../services/remoteConfigService';
 // here since BASE_GAME_URL now lives in this shared component instead).
 const BASE_GAME_URL = 'https://shahnameh.setaei.com/season2';
 const PANEL_API     = 'https://setalink.no/api.php';
+
+// ── Debug bus (2026-07-19, Khabat: "vi trenger konkret runtime-bevis fra
+// enheten, ikke flere antakelser") ──────────────────────────────────────
+// A device retest still black-screens even with app storage fully wiped —
+// ruling out WebView cache — and server logs confirm the request never
+// reaches shahnameh.setaei.com at all, so whatever's hanging is upstream
+// of the WebView, in one of THREE separate spinners that all render
+// identically (gold ActivityIndicator on void bg): ShahnamehEmbed's own
+// "checking" gate, ShahnamehWebView's own "waiting for sso-token" gate,
+// and finally react-native-webview's own startInLoadingState/renderLoading
+// spinner once the WebView actually mounts. Module-level so state survives
+// the component-tree boundary between those three without prop-drilling a
+// callback through RealIdGate/ShahnamehWebView/ShahnamehEmbed. Never sent
+// off-device — purely an on-screen (no-adb-needed) diagnostic.
+type DebugEntry = { step: string; at: number; detail?: string };
+type DebugState = {
+  startedAt: number;
+  trace: DebugEntry[];
+  url: string;
+  lastNativeEvent: string;
+  lastPageStep: string;
+  lastPageError: string;
+  httpStatus: number | undefined;
+  nativeError: string;
+};
+const debugBus = (() => {
+  const state: DebugState = {
+    startedAt: Date.now(), trace: [], url: '', lastNativeEvent: '',
+    lastPageStep: '', lastPageError: '', httpStatus: undefined, nativeError: '',
+  };
+  const listeners = new Set<() => void>();
+  const notify = () => listeners.forEach((l) => l());
+  return {
+    report(step: string, detail?: string, patch?: Partial<DebugState>) {
+      state.trace = [...state.trace.slice(-11), { step, at: Date.now(), detail }];
+      if (patch) Object.assign(state, patch);
+      notify();
+    },
+    reset() {
+      state.startedAt = Date.now();
+      state.trace = [];
+      state.url = ''; state.lastNativeEvent = ''; state.lastPageStep = '';
+      state.lastPageError = ''; state.httpStatus = undefined; state.nativeError = '';
+      notify();
+    },
+    get: () => state,
+    subscribe(cb: () => void) { listeners.add(cb); return () => listeners.delete(cb); },
+  };
+})();
+
+function useDebugBus(): DebugState {
+  const [, force] = useState(0);
+  useEffect(() => debugBus.subscribe(() => force((n) => n + 1)), []);
+  return debugBus.get();
+}
+
+// True once `ms` has elapsed since the shared debugBus start (NOT since
+// whichever of the three spinners is currently on-screen — a single
+// 10s-from-first-render budget, matching Khabat's ask, not a fresh 10s
+// grace period every time one gate hands off to the next).
+function useShowDebugAfter(ms: number): boolean {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    const remaining = Math.max(0, ms - (Date.now() - debugBus.get().startedAt));
+    const tid = setTimeout(() => setShow(true), remaining);
+    return () => clearTimeout(tid);
+  }, [ms]);
+  return show;
+}
+
+const DEBUG_OVERLAY_AFTER_MS = 10_000;
+
+function DebugOverlay({ debugLabel }: { debugLabel: string }) {
+  const d = useDebugBus();
+  const elapsedS = ((Date.now() - d.startedAt) / 1000).toFixed(1);
+  return (
+    <View style={debugStyles.wrap}>
+      <Text style={debugStyles.title}>Still loading — {debugLabel} — {elapsedS}s</Text>
+      <ScrollView style={debugStyles.scroll} contentContainerStyle={debugStyles.scrollContent}>
+        <Text style={debugStyles.mono}>url: {d.url || '(not built yet)'}</Text>
+        <Text style={debugStyles.mono}>last native event: {d.lastNativeEvent || '(none)'}</Text>
+        <Text style={debugStyles.mono}>last page step: {d.lastPageStep || '(none — page JS may never have run)'}</Text>
+        <Text style={debugStyles.mono}>http status: {d.httpStatus ?? '(none)'}</Text>
+        <Text style={debugStyles.mono}>native error: {d.nativeError || '(none)'}</Text>
+        <Text style={debugStyles.mono}>page error: {d.lastPageError || '(none)'}</Text>
+        <Text style={debugStyles.sectionTitle}>trace:</Text>
+        {d.trace.map((e, i) => (
+          <Text key={i} style={debugStyles.traceLine}>
+            +{((e.at - d.startedAt) / 1000).toFixed(1)}s  {e.step}{e.detail ? ` — ${e.detail}` : ''}
+          </Text>
+        ))}
+      </ScrollView>
+    </View>
+  );
+}
+
+const debugStyles = StyleSheet.create({
+  wrap:         { flex: 1, backgroundColor: '#0a0a0e', padding: 16, gap: 8 },
+  title:        { color: '#FF6B6B', fontSize: 14, fontWeight: '700', marginBottom: 4 },
+  scroll:       { flex: 1 },
+  scrollContent:{ gap: 4, paddingBottom: 24 },
+  mono:         { color: '#C8D8F0', fontSize: 11, fontFamily: 'monospace' },
+  sectionTitle: { color: '#8A9BBF', fontSize: 11, fontWeight: '700', marginTop: 8 },
+  traceLine:    { color: '#8A9BBF', fontSize: 10, fontFamily: 'monospace' },
+});
 
 // ── RealGram in-app linking WebView ──────────────────────────────────────────
 // Opens the ecosystem link-gate page. Intercepts the setalink:// deep-link that
@@ -293,7 +398,7 @@ const gateStyles = StyleSheet.create({
                      fontFamily: Typography.family.body },
 });
 
-const WEBVIEW_LOAD_TIMEOUT_MS = 20_000;
+const WEBVIEW_LOAD_TIMEOUT_MS = 10_000; // lowered from 20s per Khabat/A->B(30)'s explicit deliverable ask
 
 // ── Authenticated Shahnameh view — inline, not a modal ───────────────────────
 // SSO token is fetched fresh; REAL-ID goes in URL as identity; device_id as
@@ -329,15 +434,18 @@ function ShahnamehWebView({
     clearLoadTimeout();
     timeoutRef.current = setTimeout(() => {
       console.log(`[REALDBG:7/7][${debugLabel}] ShahnamehWebView TIMEOUT — page never fired onLoadEnd within`, WEBVIEW_LOAD_TIMEOUT_MS, 'ms', { url: forUrl });
+      debugBus.report('webview:timeout', `no onLoadEnd within ${WEBVIEW_LOAD_TIMEOUT_MS}ms`);
       setLoadError(t('game.webviewTimedOut'));
     }, WEBVIEW_LOAD_TIMEOUT_MS);
   }, [clearLoadTimeout, t, debugLabel]);
 
   useEffect(() => {
     console.log(`[REALDBG:7/7][${debugLabel}] ShahnamehWebView MOUNTED (RealIdGate passed) — fresh sso-token call for the WebView URL`, { deviceId, path, realId, retryKey });
+    debugBus.report('webview:mounted, fetching sso-token');
     setLoadError('');
     getSsoToken(deviceId, true).then((r) => {
       console.log(`[REALDBG:7/7][${debugLabel}] ShahnamehWebView: sso-token resolved`, { status: r.status, hasToken: !!r.token, account: r.account });
+      debugBus.report('webview:sso-token resolved', `status=${r.status} hasToken=${!!r.token}`);
       if (r.status === 'ok' && r.account && !useAuthStore.getState().user?.realId) {
         useAuthStore.getState().setRealId(r.account);
       }
@@ -347,6 +455,7 @@ function ShahnamehWebView({
       if (r.status === 'ok' && r.token) params.set('sso', r.token);
       const finalUrl = `${base}?${params}`;
       console.log(`[REALDBG:7/7][${debugLabel}] WebView opening`, { url: finalUrl, hasSsoParam: finalUrl.includes('sso='), hasRealIdParam: finalUrl.includes('real_id=') });
+      debugBus.report('webview:url built', undefined, { url: finalUrl });
       setUrl(finalUrl);
       setReady(true);
       armLoadTimeout(finalUrl);
@@ -354,16 +463,20 @@ function ShahnamehWebView({
       console.log(`[REALDBG:7/7][${debugLabel}] ShahnamehWebView: sso-token THREW — opening WebView WITHOUT sso token (fallback path)`, {
         name: e?.name, message: e?.message,
       });
+      debugBus.report('webview:sso-token THREW (fallback, no sso param)', `${e?.name}: ${e?.message}`);
       const params = new URLSearchParams({ src: 'realink', device_id: deviceId });
       if (realId) params.set('real_id', realId);
       const finalUrl = `${BASE_GAME_URL}${path}?${params}`;
       console.log(`[REALDBG:7/7][${debugLabel}] WebView opening (fallback path, no sso token)`, { url: finalUrl });
+      debugBus.report('webview:url built (fallback, no sso)', undefined, { url: finalUrl });
       setUrl(finalUrl);
       setReady(true);
       armLoadTimeout(finalUrl);
     });
     return () => clearLoadTimeout();
   }, [deviceId, path, realId, retryKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const showDebug = useShowDebugAfter(DEBUG_OVERLAY_AFTER_MS);
 
   const retry = useCallback(() => {
     console.log(`[REALDBG:7/7][${debugLabel}] "Try again" pressed — remounting WebView`, { url });
@@ -409,18 +522,23 @@ function ShahnamehWebView({
         </View>
       )}
       {!loadError && !ready ? (
-        <View style={wvStyles.loader}>
-          <ActivityIndicator color={Colors.gold[400]} size="large" />
-        </View>
+        showDebug ? <DebugOverlay debugLabel={debugLabel} /> : (
+          <View style={wvStyles.loader}>
+            <ActivityIndicator color={Colors.gold[400]} size="large" />
+          </View>
+        )
       ) : !loadError && (
         <WebView
           key={retryKey}
           ref={webRef}
           source={{ uri: url }}
           style={wvStyles.web}
+          javaScriptEnabled
           startInLoadingState
           renderLoading={() => (
-            <View style={wvStyles.loader}><ActivityIndicator color={Colors.gold[400]} size="large" /></View>
+            showDebug ? <DebugOverlay debugLabel={debugLabel} /> : (
+              <View style={wvStyles.loader}><ActivityIndicator color={Colors.gold[400]} size="large" /></View>
+            )
           )}
           originWhitelist={['https://*']}
           allowsBackForwardNavigationGestures
@@ -428,14 +546,19 @@ function ShahnamehWebView({
           thirdPartyCookiesEnabled
           onLoadStart={(e: WebViewNavigationEvent): void => {
             console.log(`[REALDBG:7/7][${debugLabel}] WebView onLoadStart`, { url: e.nativeEvent.url });
+            debugBus.report('native:onLoadStart', e.nativeEvent.url, { lastNativeEvent: 'onLoadStart' });
           }}
           onLoadEnd={(e: WebViewNavigationEvent | WebViewErrorEvent): void => {
             console.log(`[REALDBG:7/7][${debugLabel}] WebView onLoadEnd`, { url: e.nativeEvent.url, title: (e.nativeEvent as any).title });
+            debugBus.report('native:onLoadEnd', e.nativeEvent.url, { lastNativeEvent: 'onLoadEnd' });
             clearLoadTimeout();
           }}
           onError={(e: WebViewErrorEvent): void => {
             console.log(`[REALDBG:7/7][${debugLabel}] WebView onError (native load failure)`, {
               url: e.nativeEvent.url, code: e.nativeEvent.code, description: e.nativeEvent.description,
+            });
+            debugBus.report('native:onError', `code=${e.nativeEvent.code} ${e.nativeEvent.description}`, {
+              lastNativeEvent: 'onError', nativeError: `${e.nativeEvent.code}: ${e.nativeEvent.description}`,
             });
             clearLoadTimeout();
             setLoadError(t('game.webviewLoadError'));
@@ -443,6 +566,9 @@ function ShahnamehWebView({
           onHttpError={(e: WebViewHttpErrorEvent): void => {
             console.log(`[REALDBG:7/7][${debugLabel}] WebView onHttpError (server responded with an error status)`, {
               url: e.nativeEvent.url, statusCode: e.nativeEvent.statusCode,
+            });
+            debugBus.report('native:onHttpError', `status=${e.nativeEvent.statusCode}`, {
+              lastNativeEvent: 'onHttpError', httpStatus: e.nativeEvent.statusCode,
             });
             clearLoadTimeout();
             setLoadError(t('game.webviewLoadError'));
@@ -455,14 +581,37 @@ function ShahnamehWebView({
               url: state.url, loading: state.loading, title: state.title,
               canGoBack: state.canGoBack, navigationType: (state as any).navigationType,
             });
+            debugBus.report('native:onNavigationStateChange', `loading=${state.loading} url=${state.url}`, {
+              lastNativeEvent: 'onNavigationStateChange',
+            });
             setCanGoBack(state.canGoBack);
           }}
           onShouldStartLoadWithRequest={(req: ShouldStartLoadRequest): boolean => {
             const allowed = req.url.startsWith('https://');
             if (!allowed) {
               console.log(`[REALDBG:7/7][${debugLabel}] WebView BLOCKED non-https navigation (would otherwise hang silently)`, { url: req.url });
+              debugBus.report('native:BLOCKED non-https navigation', req.url);
             }
             return allowed;
+          }}
+          // Bridge for season2's own window.__realDebug bridge (sync.js):
+          // it already calls window.ReactNativeWebView.postMessage({source:
+          // 'season2debug', step/error, ...}) on every init step and on any
+          // window.onerror/unhandledrejection — this WebView simply never
+          // had an onMessage handler to receive it (Khabat's checklist
+          // point 3/4, 2026-07-19). Without this, those postMessage calls
+          // were firing into the void the whole time.
+          onMessage={(e: { nativeEvent: { data: string } }): void => {
+            try {
+              const msg = JSON.parse(e.nativeEvent.data) as Record<string, unknown>;
+              if (msg.source !== 'season2debug') return;
+              const step = String(msg.step || (msg.error ? `error:${msg.error}` : 'page-message'));
+              console.log(`[REALDBG:7/7][${debugLabel}] page postMessage (season2debug)`, msg);
+              debugBus.report(`page:${step}`, JSON.stringify(msg).slice(0, 200), {
+                lastPageStep: step,
+                ...(msg.error ? { lastPageError: String(msg.error) } : {}),
+              });
+            } catch { /* ignore non-JSON / non-season2debug messages */ }
           }}
           injectedJavaScriptBeforeContentLoaded={`
             const meta = document.createElement('meta');
@@ -499,6 +648,11 @@ export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel:
   // /v1/sso-token requests ever attempted on a real device. Fix, 2026-07-19:
   // wait for deviceId instead of giving up when it's empty.
   const [checking, setChecking] = useState(!realId);
+  const showDebug = useShowDebugAfter(DEBUG_OVERLAY_AFTER_MS);
+
+  // One shared diagnostic clock per actual mount of this screen (not per
+  // re-render) — see the debugBus comment above.
+  useEffect(() => { debugBus.reset(); }, []);
 
   // On first render: silently probe SSO in case the user already linked via
   // a deep-link or RealGram in a previous session but realId wasn't cached
@@ -507,9 +661,11 @@ export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel:
   useEffect(() => {
     console.log(`[REALDBG:2/7][${debugLabel}] mount: realId read from authStore`, { realId, hasRealId: !!realId });
     console.log(`[REALDBG:3/7][${debugLabel}] mount: deviceId read from authStore`, { deviceId, hasDeviceId: !!deviceId });
+    debugBus.report('embed:mounted', `deviceId=${deviceId || '(empty)'} realId=${realId || '(empty)'}`);
 
     if (realId) {
       console.log(`[REALDBG:4/7][${debugLabel}] SKIPPING checkAndCacheRealId — realId already cached, nothing to probe`);
+      debugBus.report('embed:skip-probe (realId already cached)');
       setChecking(false);
       return;
     }
@@ -519,16 +675,19 @@ export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel:
     const runProbe = (id: string) => {
       console.log(`[REALDBG:4/7][${debugLabel}] remote config at probe time`, getCachedConfig());
       console.log(`[REALDBG:4/7][${debugLabel}] checkAndCacheRealId STARTING (forGame=true internally)`, { deviceId: id });
+      debugBus.report('embed:checkAndCacheRealId starting');
       checkAndCacheRealId(id)
         .then(() => {
           console.log(`[REALDBG:4/7][${debugLabel}] checkAndCacheRealId returned (see ssoService [REALDBG:5/7] logs above for why)`, {
             realIdAfter: useAuthStore.getState().user?.realId || '(still empty)',
           });
+          debugBus.report('embed:checkAndCacheRealId returned', `realIdAfter=${useAuthStore.getState().user?.realId || '(still empty)'}`);
         })
         .catch((e) => {
           // checkAndCacheRealId's own contract is "never throws" (see
           // ssoService.ts) — reaching this .catch would itself be a bug.
           console.log(`[REALDBG:4/7][${debugLabel}] UNEXPECTED — checkAndCacheRealId threw despite its never-throws contract`, e);
+          debugBus.report('embed:checkAndCacheRealId UNEXPECTEDLY THREW', String(e));
         })
         .finally(() => { if (!cancelled) setChecking(false); });
     };
@@ -541,6 +700,7 @@ export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel:
     // deviceId not ready yet — WAIT instead of skipping. Poll briefly,
     // bounded to ~5s so a genuinely broken auth store doesn't spin forever.
     console.log(`[REALDBG:3/7][${debugLabel}] deviceId empty at mount — WAITING instead of skipping (polling authStore)`);
+    debugBus.report('embed:deviceId empty — polling authStore');
     let attempts = 0;
     const maxAttempts = 25; // 25 * 200ms = 5s
     const poll = () => {
@@ -549,10 +709,12 @@ export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel:
       const liveDeviceId = useAuthStore.getState().user?.deviceId ?? '';
       console.log(`[REALDBG:3/7][${debugLabel}] poll for deviceId`, { attempt: attempts, liveDeviceId });
       if (liveDeviceId) {
+        debugBus.report('embed:deviceId appeared', `after ${attempts} polls`);
         runProbe(liveDeviceId);
       } else if (attempts >= maxAttempts) {
         console.log(`[REALDBG:3/7][${debugLabel}] GAVE UP waiting for deviceId after`, attempts,
           'attempts (~5s) — checkAndCacheRealId will NEVER run this mount, deviceId genuinely never populated');
+        debugBus.report('embed:GAVE UP waiting for deviceId', `after ${attempts} polls (~5s)`);
         setChecking(false);
       } else {
         setTimeout(poll, 200);
@@ -570,7 +732,9 @@ export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel:
     console.log(`[REALDBG][${debugLabel}] render: spinner (checking=true)`, { deviceId, realId });
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={Colors.gold[400]} />
+        {showDebug
+          ? <DebugOverlay debugLabel={debugLabel} />
+          : <ActivityIndicator size="large" color={Colors.gold[400]} />}
       </View>
     );
   }
