@@ -58,7 +58,7 @@ describe('zarSyncService — server-authoritative ZAR sync', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toContain('action=tap-sync');
-    expect((opts.body as FormData).get('taps')).toBe('2');
+    expect((opts.body as any).get('taps')).toBe('2');
     expect(mockReconcile).toHaveBeenCalledWith(42);
   });
 
@@ -81,7 +81,7 @@ describe('zarSyncService — server-authoritative ZAR sync', () => {
     fetchMock.mockResolvedValueOnce({ json: async () => ({ ok: true, data: { zar: 10, zar_earned: 5, capped: false } }) });
     await flushZarSync();
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect((fetchMock.mock.calls[1][1].body as FormData).get('taps')).toBe('1');
+    expect((fetchMock.mock.calls[1][1].body as any).get('taps')).toBe('1');
     expect(mockReconcile).toHaveBeenCalledWith(10);
   });
 
@@ -89,6 +89,6 @@ describe('zarSyncService — server-authoritative ZAR sync', () => {
     for (let i = 0; i < 100; i++) recordZarTap();
     await Promise.resolve(); // let the fire-and-forget flush() microtask start
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect((fetchMock.mock.calls[0][1].body as FormData).get('taps')).toBe('100');
+    expect((fetchMock.mock.calls[0][1].body as any).get('taps')).toBe('100');
   });
 });
