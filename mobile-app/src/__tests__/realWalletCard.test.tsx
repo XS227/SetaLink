@@ -85,6 +85,37 @@ describe('RealWalletCard — remote-config gate + redeem flow', () => {
     expect(mockToast).toHaveBeenCalledWith('wallet.success', 'success');
   });
 
+  it('shows ZAR balance and conversion rate alongside REAL when the server sends them (B-23)', async () => {
+    mockGetCachedConfig.mockReturnValue({ ecosystem: { wallet_enabled: true } });
+    mockGetRealWallet.mockResolvedValue({
+      linked_account: 'real:kb', balance: 500, zar: 1250, conversion_rate: 0.4,
+      rates: RATES, redeemed_today_bytes: 0,
+    });
+    let tree!: renderer.ReactTestRenderer;
+    act(() => { tree = renderer.create(<RealWalletCard deviceId="dev-1" />); });
+    await flush();
+
+    const all = texts(tree);
+    expect(all.some((t) => t.includes('500') && t.includes('REAL'))).toBe(true);
+    expect(all.some((t) => t.includes('1,250') && t.includes('ZAR'))).toBe(true);
+    expect(all).toContain('wallet.conversionHint');
+  });
+
+  it('omits ZAR/conversion display when the server does not send them', async () => {
+    mockGetCachedConfig.mockReturnValue({ ecosystem: { wallet_enabled: true } });
+    mockGetRealWallet.mockResolvedValue({
+      linked_account: 'real:kb', balance: 500, zar: null, conversion_rate: null,
+      rates: RATES, redeemed_today_bytes: 0,
+    });
+    let tree!: renderer.ReactTestRenderer;
+    act(() => { tree = renderer.create(<RealWalletCard deviceId="dev-1" />); });
+    await flush();
+
+    const all = texts(tree);
+    expect(all.some((t) => t.includes('ZAR'))).toBe(false);
+    expect(all).not.toContain('wallet.conversionHint');
+  });
+
   it('surfaces a structured denial from the panel as an error toast', async () => {
     mockGetCachedConfig.mockReturnValue({ ecosystem: { wallet_enabled: true } });
     mockGetRealWallet.mockResolvedValue({

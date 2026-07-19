@@ -85,6 +85,48 @@ function re_ensure_schema(PDO $pdo): void {
     foreach (RE_REFERRAL_SETTING_DEFAULTS as $k => $v) $ins->execute([$k, $v]);
     try { $pdo->exec("ALTER TABLE devices ADD COLUMN linked_real_account TEXT DEFAULT ''"); }
     catch (\Exception $e) { /* column exists */ }
+    // Ecosystem profile store: single source for avatar/handle/persona shared
+    // across all REAL products. Written by ReaLink; read by Shahnameh, RealGram,
+    // TrustAI, 3REAL. Authoritative once B-8 (JWT issuer) is live — callers
+    // should prefer the JWT claims when present and fall back to this table.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS real_profiles (
+        account      TEXT PRIMARY KEY,
+        handle       TEXT NOT NULL DEFAULT '',
+        display_name TEXT NOT NULL DEFAULT '',
+        avatar_emoji TEXT NOT NULL DEFAULT '',
+        avatar_color TEXT NOT NULL DEFAULT '',
+        persona      TEXT NOT NULL DEFAULT '',
+        updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+    )");
+}
+
+// ── Ecosystem profile (cross-app shared identity) ─────────���───────────────────
+
+/** Upsert a profile for the given REAL account. Only the non-empty fields are updated. */
+function re_save_profile(PDO $pdo, string $account, array $fields): void {
+    $allowed = ['handle','display_name','avatar_emoji','avatar_color','persona'];
+    $sets = [];
+    $vals = [];
+    foreach ($allowed as $col) {
+        if (isset($fields[$col]) && $fields[$col] !== '') {
+            $sets[] = "$col = ?";
+            $vals[] = (string)$fields[$col];
+        }
+    }
+    if (empty($sets)) return;
+    $sets[]  = "updated_at = datetime('now')";
+    $vals[]  = $account;
+    // INSERT default row first so UPDATE always has a target.
+    $pdo->prepare("INSERT OR IGNORE INTO real_profiles (account) VALUES (?)")->execute([$account]);
+    $pdo->prepare("UPDATE real_profiles SET " . implode(', ', $sets) . " WHERE account = ?")->execute($vals);
+}
+
+/** Read profile for the given REAL account. Returns [] if not found. */
+function re_get_profile(PDO $pdo, string $account): array {
+    $st = $pdo->prepare("SELECT account, handle, display_name, avatar_emoji, avatar_color, persona, updated_at FROM real_profiles WHERE account = ?");
+    $st->execute([$account]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    return $row ?: [];
 }
 
 /** Referral reward config (plan C3). */
@@ -323,6 +365,42 @@ function re_fetch_balance(PDO $pdo, string $realAccount): ?float {
     $json = json_decode((string)$body, true);
     if (!is_array($json) || !isset($json['balance']) || !is_numeric($json['balance'])) return null;
     return (float)$json['balance'];
+}
+
+/**
+ * Full wallet breakdown for the B-23 wallet UI: balance (REAL), zar, and
+ * conversion_rate, straight from contract §3 v2 (shahnameh-backend
+ * main@2fd2c7c, 2026-07-19) — re_fetch_balance() above only ever extracted
+ * `balance` and silently dropped the other two fields. Same request shape,
+ * kept as a separate function rather than changing re_fetch_balance()'s
+ * return type, since nothing else calls it.
+ */
+function re_fetch_wallet_detail(PDO $pdo, string $realAccount): ?array {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) return null;
+
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/balance/' . rawurlencode($realAccount));
+    $headers = [];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false || $http !== 200) return null;
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json) || !isset($json['balance']) || !is_numeric($json['balance'])) return null;
+    return [
+        'balance'          => (float)$json['balance'],
+        'zar'              => isset($json['zar']) && is_numeric($json['zar']) ? (float)$json['zar'] : null,
+        'conversion_rate'  => isset($json['conversion_rate']) && is_numeric($json['conversion_rate'])
+                               ? (float)$json['conversion_rate'] : null,
+    ];
 }
 
 /**

@@ -24,6 +24,10 @@ export interface RealWalletRates {
 export interface RealWalletInfo {
   linked_account:       string;   // '' = not linked
   balance:              number | null;
+  /** ZAR balance (game currency) — B-23, contract §3 v2. Server-tracked, not client-only. */
+  zar:                  number | null;
+  /** ZAR→REAL conversion rate, when the ecosystem publishes one. */
+  conversion_rate:      number | null;
   rates:                RealWalletRates;
   redeemed_today_bytes: number;
 }

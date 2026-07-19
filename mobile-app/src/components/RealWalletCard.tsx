@@ -92,11 +92,22 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
         <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.coin} />
         <Text style={styles.title}>{t('wallet.title')}</Text>
         {linked && (
-          <Text style={styles.balance}>
-            {wallet.balance != null ? `${wallet.balance.toLocaleString()} REAL` : '—'}
-          </Text>
+          <View style={styles.balances}>
+            <Text style={styles.balance}>
+              {wallet.balance != null ? `${wallet.balance.toLocaleString()} REAL` : '—'}
+            </Text>
+            {wallet.zar != null && (
+              <Text style={styles.zarBalance}>{`${wallet.zar.toLocaleString()} ZAR`}</Text>
+            )}
+          </View>
         )}
       </View>
+
+      {linked && wallet.conversion_rate != null && (
+        <Text style={styles.conversionHint}>
+          {t('wallet.conversionHint').replace('{rate}', wallet.conversion_rate.toLocaleString())}
+        </Text>
+      )}
 
       {!linked ? (
         <>
@@ -152,7 +163,11 @@ const styles = StyleSheet.create({
   header:       { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   coin:         { width: 26, height: 26, borderRadius: 13 },
   title:        { flex: 1, color: Colors.text.primary, fontSize: 15, fontFamily: Typography.family.heading },
+  balances:     { alignItems: 'flex-end' },
   balance:      { color: Colors.gold[400], fontSize: 14, fontFamily: Typography.family.heading },
+  zarBalance:   { color: Colors.text.secondary, fontSize: 11.5, fontFamily: Typography.family.body, marginTop: 1 },
+  conversionHint:{ color: Colors.text.secondary, fontSize: 11, fontFamily: Typography.family.body,
+                  marginTop: Spacing[2], opacity: 0.8 },
   hint:         { color: Colors.text.secondary, fontSize: 12.5, marginTop: Spacing[3], lineHeight: 18 },
   linkBtn:      { marginTop: Spacing[3], alignSelf: 'flex-start', paddingHorizontal: Spacing[4],
                   paddingVertical: 8, borderRadius: Radius.md, backgroundColor: Colors.gold[400] },

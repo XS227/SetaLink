@@ -595,9 +595,15 @@ if ($method === 'GET') {
         re_ensure_schema($pdo);
         if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
         $account = re_linked_account($pdo, $deviceId);
+        // B-23 (2026-07-19): full wallet detail (balance/zar/conversion_rate)
+        // from contract §3 v2 — falls back to a balance-only shape if the
+        // ecosystem is unreachable, same fail-open posture as before.
+        $wallet = $account !== '' ? re_fetch_wallet_detail($pdo, $account) : null;
         ok([
             'linked_account'       => $account,
-            'balance'              => $account !== '' ? re_fetch_balance($pdo, $account) : null,
+            'balance'              => $wallet['balance']         ?? null,
+            'zar'                  => $wallet['zar']             ?? null,
+            'conversion_rate'      => $wallet['conversion_rate'] ?? null,
             'rates'                => re_settings($pdo),
             'redeemed_today_bytes' => re_redeemed_today($pdo, $deviceId),
         ]);
