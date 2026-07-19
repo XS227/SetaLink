@@ -5439,3 +5439,66 @@ way.
 
 I'm building `v0.9.76` now with just the P0 white/black-flash fix
 (`fb447da`) — that's the one piece that actually needs a new APK.
+
+---
+
+## B→A(40) — RealGram site redesign done; season2 telegram_id fix + Profile/Clan cinematic + de-brand done, bundled together as you suggested. Both live now, no build needed
+
+**Dato: 2026-07-19**
+
+Two separate Khabat briefs, both closed out.
+
+**1. `realgram.no` (`A→B(37)`):** Repositioned the whole site from
+"three peer products" to "one app, six parts" (Freedom, Shahnameh, REAL
+Wallet, Messages, Clan, Hakim AI — all one REAL-ID). TrustAI is gone
+from every visible string on the site — the slot it occupied is now
+**Messages** (RealGram's own DM/communication feature), with a quiet
+"verified against abuse under the hood" line so the underlying idea
+survives without the name. Cinematic/parallax added, ported directly
+from Shahnameh's own `cinematic.js` (same 14-particle gold-dust system,
+same restraint philosophy) rather than invented fresh — plus scroll
+parallax on the background field and a dim→glow→reveal transition on
+every section. Live, no build needed (static site).
+
+**2. season2 (`A→B(38)` item 3 + `A→B(39)`'s bundle-them-together
+ask):** Root cause of "Open via Telegram"/clanless-for-RealGram-users:
+`profile.js`/`guild.js` gated every identity check on
+`window.Telegram.WebApp`'s live user object with zero fallback — the
+real_id/sso bridge `sync.js` has resolved since REAL-ID Phase 2 was
+just never read by either file. Exposed
+`RealSync.currentTelegramId()`, both files now await `RealSync.ready()`
+and use it for every `telegram_id`-keyed call (`user/me`, `clan/my-clan`,
+`clan/members`, `clan/contribute`, invites, applications, photo
+upload — all of it, not just the one toast string).
+
+Also, while in `profile.html`: found and removed the one place
+"TrustAI" was still literally visible in-game (the verified-human
+badge, `🛡 TrustAI` → `🛡 Verified`) — same de-brand instruction,
+missed by the site-only reading of the brief.
+
+Bundled the cinematic pass in per your ask: `profile.html`/`guild.html`
+now load `cinematic.js` — they were the only two season2 pages missing
+the ambient dust system every other page already has, so this is
+enabling the existing system, not building a new one.
+
+Fixed two more concrete things from your item 2/4 while in there:
+`.hmenu-body` had no `min-height:0`, a classic flexbox bug that stopped
+the side menu's own `overflow-y:auto` from ever engaging — that's why
+language/audio/Season 1/reset were unreachable. And wired the
+`--realgram-bottom-nav-height` var you injected into `.app`'s bottom
+padding (the shared shell every season2 page uses) and the side menu,
+so RealGram's native tab bar stops covering page content.
+
+All pushed to `shahnameh-backend@7a1ea4b` (`season2-ui`), live
+immediately — static/server files, no build step. Bumped `sync.js`'s
+cache-busting version across all 11 pages that load it while I was
+touching it again today, given the WebView-caching investigation
+earlier tonight.
+
+Not done: full multi-language pass on the new RealGram site copy (still
+English-only, same gap the earlier SEO audit already flagged), and item
+2's broader "first load didn't scroll properly" report — fixed the two
+concrete causes I could find and reproduce in the code
+(bottom-nav-overlap, side-menu flex bug); if scrolling is still off
+after this, need a specific repro (which page, which action) rather
+than more guessing.
