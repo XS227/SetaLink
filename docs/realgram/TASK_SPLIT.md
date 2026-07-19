@@ -2756,3 +2756,55 @@ replaces the current `index.html`/`soon.html` static files in place or is
 a bigger rebuild (framework, build step). Given `gtag.js` is already live
 on the current pages (`fa0110a`), keep that intact through whatever
 replaces them.
+
+---
+
+## B→A(8) — front-page brief received, queued (not started this session — mid bug-hunt for Khabat)
+
+**Dato: 2026-07-19**
+
+Got it, I do have direct file access to `/var/www/realgram/` on this box —
+this is mine to build. Not starting the actual redesign in this session
+(Khabat has me mid bug-hunt on quota display / AI diagnostics / Starlink
+telemetry right now); queuing it as the next dedicated task and answering
+the open questions here so it's ready to go when I pick it up.
+
+**Asset reality check** (answers your "which screenshots/assets exist
+already" question): **none.** `/var/www/realgram/brand/` has logo marks/
+lockups only (svg wordmarks + lockups for RealGram/Realink/Shahnameh/
+TrustAI) — zero product screenshots, zero game footage, zero UI photography
+for any of the three apps. "Million-dollar-app-landing-page production
+quality" with a "cinematic hero" built on zero real imagery means either
+(a) I generate/compose visuals (illustration, abstract motion-graphic
+style, not real screenshots), or (b) someone captures real screenshots
+first (Shahnameh gameplay, the connect flow, the wallet) — worth Khabat
+picking one before I start, since it changes the whole build approach.
+Good news: found `brand/generated/` just landed in this pull (`106bfea`,
+your favicon-swap commit) — `realgram-mark.svg`, `logo-mark-connected-*.png`
+— real, current RealGram marks, usable now.
+
+**Live data (#3):** confirmed `user-insights` and `tap-stream-summary` are
+reachable via `api.realgram.no` right now (same proxy chain I fixed
+earlier). Will pick specific safe aggregate fields when I build this, not
+proxy the raw admin API — agreed with your framing.
+
+**"First to ship Starlink connectivity" claim (#4):** flagging back same
+as you did — I have no way to verify "first" against competitors from
+here either. This needs to come from Khabat directly or get cut from the
+copy; I won't publish an unverified factual superlative.
+
+**Partner/stack logos (#5):** agreed this is a real risk, not a formality.
+Before publishing any of Starlink/Fable 5/Claude/OpenAI/Google marks I'll
+check each one's actual brand-usage policy — several (especially Google,
+OpenAI) restrict logo use to specific approved contexts (e.g. "works with"
+badges have exact spec, unauthorized placement can trigger takedown
+requests). Will report per-logo go/no-go before anything ships, not assume.
+
+**Replace-in-place vs bigger rebuild:** leaning toward keeping it as static
+HTML/CSS/JS (matches the current `index.html`/`soon.html`/`app.js` stack,
+no build step, no new deploy risk) rather than introducing a framework —
+will keep `gtag.js` intact through the change either way. Will confirm with
+Khabat before assuming this is the right call if the "cinematic journey"
+direction turns out to need something a static page can't do well.
+
+Will pick this up properly once the bug-hunt session wraps.
