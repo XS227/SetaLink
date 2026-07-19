@@ -371,6 +371,65 @@ function icon(string $name): string {
           </table>
         </div>
       </div>
+
+      <!-- ============================================================ -->
+      <!-- Google Analytics (GA4) — real users/pages/geo from Google,   -->
+      <!-- separate from SEO Ranks (search-query positions). Source:    -->
+      <!-- admin/api.php?action=ga4-summary / ga4-sync (B-24 follow-up, -->
+      <!-- Khabat 2026-07-19). -->
+      <!-- ============================================================ -->
+      <div class="panel" style="margin-top:1.5rem">
+        <div class="panel-header"><span class="panel-title">📊 Google Analytics <span class="panel-sub" id="ga4Status">checking…</span></span></div>
+        <div class="panel-body">
+          <div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap">
+            <label style="font-size:.8rem;color:var(--muted)">GA4 Property ID
+              <input type="text" id="ga4Property" class="input" style="width:160px" placeholder="123456789">
+            </label>
+            <button class="btn btn-ghost" id="ga4SaveBtn" type="button">Save</button>
+            <button class="btn btn-primary" id="ga4SyncBtn" type="button">Sync from Google Analytics</button>
+            <span id="ga4Msg" style="font-size:.8rem;color:var(--muted);align-self:center"></span>
+          </div>
+          <div id="ga4Setup" style="display:none;margin-top:.7rem;font-size:.78rem;color:var(--muted-2);line-height:1.7">
+            <strong>Not connected yet.</strong> One-time setup: 1) Google Cloud → enable "Google Analytics Data API"
+            (reuses the same service account as Search Console). 2) In Google Analytics → Admin → Property Access
+            Management for the property (e.g. realgram.no) → add <code>realink-gsc@real-499116.iam.gserviceaccount.com</code>
+            with <em>Viewer</em> access — this is a separate grant from Search Console, both are needed for their
+            own integrations. 3) Find the numeric Property ID (Admin → Property Settings), enter it above, Save,
+            then Sync.
+          </div>
+        </div>
+      </div>
+
+      <div class="stat-grid" style="margin-top:.7rem" id="ga4Totals">
+        <div class="stat-card"><div class="stat-label">Active Users</div><div class="stat-value" id="ga4Users">—</div><div class="stat-sub" id="ga4DaysSub">last 30d</div></div>
+        <div class="stat-card"><div class="stat-label">New Users</div><div class="stat-value" id="ga4NewUsers">—</div><div class="stat-sub">last 30d</div></div>
+        <div class="stat-card"><div class="stat-label">Page Views</div><div class="stat-value" id="ga4Views">—</div><div class="stat-sub">last 30d</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Session</div><div class="stat-value" id="ga4AvgSession">—</div><div class="stat-sub">duration</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:.7rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Active Users <span class="panel-sub">per day</span></span></div>
+        <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chGa4Users"></canvas></div></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">📄 Top Pages</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Page</th><th>Views</th></tr></thead>
+              <tbody id="ga4PagesTbl"><tr><td colspan="2" class="tbl-empty">Not synced yet</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('globe') ?> Geography</span></div>
+          <div class="panel-body" style="overflow-x:auto">
+            <table class="tbl"><thead><tr><th>Country</th><th>Users</th></tr></thead>
+              <tbody id="ga4GeoTbl"><tr><td colspan="2" class="tbl-empty">Not synced yet</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->
@@ -2188,6 +2247,8 @@ $('seoSaveBtn')?.addEventListener('click', ()=>views.seoranks.save());
 $('seoAddKwBtn')?.addEventListener('click', ()=>views.seoranks.addKeyword());
 $('gscSyncBtn')?.addEventListener('click', ()=>views.seoranks.syncGsc());
 $('gscSaveBtn')?.addEventListener('click', ()=>views.seoranks.saveGscConfig());
+$('ga4SaveBtn')?.addEventListener('click', ()=>views.analytics.saveGa4Property());
+$('ga4SyncBtn')?.addEventListener('click', ()=>views.analytics.syncGa4());
 
 // ── Heartbeat (all pages) ────────────────────────────────────────────
 async function runHeartbeat() {
@@ -2259,6 +2320,69 @@ views.analytics = {
       anaR.status === 'fulfilled' ? anaR.value : {},
       dmR.status  === 'fulfilled' ? dmR.value  : {},
     );
+    this.loadGa4();
+  },
+  // ── Google Analytics (GA4) — separate from the internal charts above ──
+  async loadGa4() {
+    try {
+      const d = await api.get('ga4-summary');
+      $('ga4Property').value = d.property_id || '';
+      $('ga4Setup').style.display = d.configured ? 'none' : '';
+      if (!d.key_present) {
+        $('ga4Status').textContent = 'service-account key missing';
+      } else if (!d.property_id) {
+        $('ga4Status').textContent = 'not configured';
+      } else if (d.last_sync) {
+        $('ga4Status').textContent = 'last synced ' + d.last_sync;
+      } else {
+        $('ga4Status').textContent = 'configured, not synced yet';
+      }
+      this.renderGa4(d.cache);
+    } catch (e) { $('ga4Status').textContent = 'error: ' + e.message; }
+  },
+  renderGa4(cache) {
+    if (!cache) return;
+    const t = cache.totals || ['0','0','0','0'];
+    $('ga4Users').textContent      = t[0] ?? '—';
+    $('ga4NewUsers').textContent   = t[1] ?? '—';
+    $('ga4Views').textContent      = t[2] ?? '—';
+    const secs = Math.round(+t[3] || 0);
+    $('ga4AvgSession').textContent = secs ? (Math.floor(secs/60) + 'm ' + (secs%60) + 's') : '—';
+    $('ga4DaysSub').textContent    = 'last ' + (cache.days ?? 30) + 'd';
+
+    const byDay = cache.by_day || []; // [[date, activeUsers, screenPageViews], ...]
+    const labels = byDay.map(r => (r[0]||'').replace(/^(\d{4})(\d{2})(\d{2})$/, '$2-$3'));
+    if (typeof Chart !== 'undefined') {
+      if (this.charts.ga4Users) { try { this.charts.ga4Users.destroy(); } catch(e){} }
+      this.charts.ga4Users = new Chart($('chGa4Users'), {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Active Users', data: byDay.map(r => +r[1]||0),
+          borderColor: this.PALETTE[3], backgroundColor: 'rgba(239,68,68,.15)', fill: true, tension: .3, pointRadius: 2 }] },
+        options: this._baseOpts({ plugins: { legend: { display: false } } }),
+      });
+    }
+
+    const pagesRows = (cache.pages || []).map(r=>`<tr><td style="font-family:var(--mono);font-size:.75rem">${esc(r[0]||'')}</td><td>${r[1]||0}</td></tr>`);
+    $('ga4PagesTbl').innerHTML = pagesRows.length ? pagesRows.join('') : '<tr><td colspan="2" class="tbl-empty">No data</td></tr>';
+    const geoRows = (cache.geo || []).map(r=>`<tr><td>${esc(r[0]||'')}</td><td>${r[1]||0}</td></tr>`);
+    $('ga4GeoTbl').innerHTML = geoRows.length ? geoRows.join('') : '<tr><td colspan="2" class="tbl-empty">No data</td></tr>';
+  },
+  async saveGa4Property() {
+    const pid = ($('ga4Property').value || '').trim();
+    if (!/^\d+$/.test(pid)) { $('ga4Msg').textContent = 'Property ID must be numeric'; return; }
+    try {
+      await api.post({ action: 'ga4-save-property', property_id: pid });
+      $('ga4Msg').textContent = 'Saved.';
+      this.loadGa4();
+    } catch (e) { $('ga4Msg').textContent = 'Error: ' + e.message; }
+  },
+  async syncGa4() {
+    $('ga4Msg').textContent = 'Syncing…';
+    try {
+      await api.get('ga4-sync');
+      $('ga4Msg').textContent = 'Synced.';
+      this.loadGa4();
+    } catch (e) { $('ga4Msg').textContent = 'Error: ' + e.message; toast('GA4 sync: '+e.message,'error'); }
   },
   renderSummary(ts) {
     const sum = a => (a || []).reduce((x, y) => x + (+y || 0), 0);

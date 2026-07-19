@@ -89,6 +89,7 @@ function seo_ranks_seed(PDO $db): int {
 }
 
 require_once __DIR__ . '/gsc_sync.php';  // Google Search Console → keyword_ranks
+require_once __DIR__ . '/ga4_sync.php';  // Google Analytics (GA4) → dashboard cache
 
 function open_analytics_db(): PDO {
     $db = new PDO('sqlite:' . realpath(__DIR__ . '/../data') . '/analytics.db', null, null,
@@ -1691,6 +1692,46 @@ switch ($action) {
             'by_screen'  => $byScreen,
             'by_element' => $byElement,
         ]);
+        break;
+    }
+
+    // Google Analytics (GA4) for the Analytics page — real users/pages/geo
+    // from Google, not just the internal analytics.db charts above. Cached
+    // read (no live API call) so page loads stay fast; ga4-sync refreshes it.
+    case 'ga4-summary': {
+        $db    = open_analytics_db();
+        $cache = json_decode(ga4_setting($db, 'ga4_cache', null, '{}'), true) ?: null;
+        api_ok([
+            'configured'  => ga4_key_present() && trim(ga4_setting($db, 'ga4_property_id')) !== '',
+            'key_present' => ga4_key_present(),
+            'property_id' => ga4_setting($db, 'ga4_property_id'),
+            'last_sync'   => ga4_setting($db, 'ga4_last_sync'),
+            'cache'       => $cache,
+        ]);
+        break;
+    }
+    case 'ga4-sync': {
+        $db = open_analytics_db();
+        if (!ga4_key_present()) {
+            api_err('GA4 key not installed. Reuses ' . GA4_KEY_PATH . ' (same as Search Console) — '
+                  . 'grant that service account "Viewer" access on the GA4 property first.');
+        }
+        try { api_ok(ga4_sync($db)); }
+        catch (\Throwable $e) { api_err('GA4 sync failed: ' . $e->getMessage()); }
+        break;
+    }
+    case 'ga4-save-property': {
+        $db = open_analytics_db();
+        $pid = trim((string)($_POST['property_id'] ?? $_GET['property_id'] ?? ''));
+        if ($pid === '') {
+            // JS posts JSON (Content-Type: application/json), which PHP
+            // never populates $_POST for — read the raw body as a fallback.
+            $raw = json_decode((string)file_get_contents('php://input'), true);
+            $pid = trim((string)($raw['property_id'] ?? ''));
+        }
+        if ($pid === '' || !preg_match('/^\d+$/', $pid)) api_err('numeric property_id required');
+        ga4_setting($db, 'ga4_property_id', $pid);
+        api_ok(['property_id' => $pid]);
         break;
     }
 
