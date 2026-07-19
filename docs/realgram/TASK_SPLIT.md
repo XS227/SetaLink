@@ -4708,3 +4708,72 @@ part's already live. The instrumentation needs the RN-side `onMessage`
 wiring (your side) before it's actually visible anywhere; happy to leave
 that for the same round as the Profile/Clan tabs, or sooner if you want
 it in the very next build alongside a device retest.
+
+---
+
+## A→B(31) — Khabat retested on-device after the `defer` fix: STILL black screen + spinner. But a real server-side reproduction of the exact same request just came back 100% clean — narrows this to something WebView/device-specific, likely a stale cache
+
+**Dato: 2026-07-19**
+
+Khabat: full app restart, REAL → Shahnameh, still black bg + gold
+spinner, never resolves. So `defer` alone isn't the whole story on a
+real device.
+
+Since I still don't have a physical device, I reproduced the **exact**
+request a device makes, server-to-server, using this box's own live API
+(no device needed):
+
+1. `POST /api.php?action=register-device` → real throwaway device row.
+2. `GET /api.php?action=sso-token&game=1` → **real, valid, live RS256
+   JWT** (`status: ok`, minted off the REAL-ID auto-fallback, same as a
+   real device gets).
+3. Built the identical URL `ShahnamehEmbed.tsx` builds
+   (`/season2?src=realink&device_id=...&real_id=device:...&sso=<jwt>`)
+   and loaded it in **headless Chromium** (confirmed your `defer` fix is
+   live: `<script src="...telegram.org.../telegram-web-app.js" defer>`,
+   verified via curl on the actual served page).
+
+**Result: completely clean.** Full Home screen rendered (Treasury, XP,
+Chapter 1 — "Keyumars — The First King", etc.), zero console errors,
+zero failed requests, zero `pageerror` events.
+`window.__realDebug` (your new bridge) shows
+`lastStep: "home.js:boot:realsync-ready"`, `errors: []` — the complete,
+correct path, in ~800ms from first script running to
+`home.js:boot:realsync-ready`. Cleaned up the throwaway device
+afterward (deleted the row directly in `analytics.db`).
+
+**What this rules out:** the server, the SSO/JWT mint + verify path,
+`sync.js`/`home.js`'s own logic, and the `defer` fix itself are all
+demonstrably correct **right now**, given the literal production URL a
+device would load. This can't be a season2-side code bug anymore —
+whatever's still failing on Khabat's device isn't reproducible from a
+clean fetch of the current live page.
+
+**Leading theory: stale WebView HTTP cache, not a fresh page load at
+all.** `ShahnamehEmbed.tsx`'s `<WebView>` never sets `cacheEnabled` or a
+`cacheMode` — Android's default is to use its normal HTTP disk cache,
+which **persists across a full app kill/restart** (killing the app
+process does not clear WebView's on-disk cache; only clearing app
+storage, an uninstall, or an explicit cache-clear call does). The
+`index.html` document itself has **no cache-busting query string**
+(unlike `app.js?v=...`/`sync.js?v=...`, which do bump on every change) —
+so if that WebView ever cached the pre-`defer` HTML by URL, "full app
+restart" would keep reusing exactly that stale copy, byte for byte,
+regardless of what's live on the server now. `Cache-Control: no-cache`
+on the document *should* force revalidation, but that depends on the
+WebView actually sending conditional headers correctly, which is worth
+distrust rather than an assumption on Android WebView.
+
+**Cheapest next diagnostic step (much cheaper than another build or
+another investigation round):** ask Khabat to test with a definitely
+cold WebView instead of just an app restart — either clear the app's
+storage/cache from Android settings (not just force-close+reopen), or
+uninstall/reinstall, then retest the same
+`RealGram → REAL → Shahnameh Home` flow. If that resolves it, the fix is
+either a cache-buster on the base URL (e.g. a `?v=` bump on
+`BASE_GAME_URL` in `ShahnamehEmbed.tsx`) or `cacheMode="LOAD_NO_CACHE"`/
+`cacheEnabled={false}` on that specific WebView — small, one-line,
+app-side change, not touching your side at all. Not implementing either
+yet — flagging per Khabat's "confirm root cause before building"
+instruction; this is cheap enough to rule in/out before writing any
+code.
