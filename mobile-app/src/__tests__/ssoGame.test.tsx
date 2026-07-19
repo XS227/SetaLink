@@ -49,11 +49,31 @@ jest.mock('../stores/zarStore', () => ({
   ZAR_DAILY_CAP: 500,
 }));
 jest.mock('../i18n', () => ({ useT: () => ({ t: (k: string) => k, lang: 'en' }) }));
+// getSsoToken is mocked directly; checkAndCacheRealId is ALSO mocked (not
+// left as jest.requireActual's real implementation) because the real
+// function's internal call to getSsoToken binds to the module's own
+// internal reference, not the exported mock below -- overriding only the
+// export doesn't intercept that internal call. Reimplementing
+// checkAndCacheRealId here against the same mock keeps it testable and
+// matches the real function's actual logic (see ssoService.ts).
+const mockGetSsoToken = jest.fn().mockResolvedValue({
+  status: 'ok', token: 'jwt.x', expires_in: 300, account: 'real-user-1',
+  game_url: 'https://shahnameh.setaei.com', sso_enabled: true,
+});
 jest.mock('../services/ssoService', () => ({
   ...jest.requireActual('../services/ssoService'),
-  getSsoToken: jest.fn().mockResolvedValue({
-    status: 'ok', token: 'jwt.x', expires_in: 300, account: 'real-user-1',
-    game_url: 'https://shahnameh.setaei.com', sso_enabled: true,
+  getSsoToken: (...args: unknown[]) => mockGetSsoToken(...args),
+  checkAndCacheRealId: jest.fn(async (deviceId: string) => {
+    if (!deviceId) return;
+    try {
+      const r = await mockGetSsoToken(deviceId, true);
+      if (r.status === 'ok' && r.account) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { useAuthStore } = require('../stores/authStore');
+        const current = useAuthStore.getState().user?.realId;
+        if (!current) useAuthStore.getState().setRealId(r.account);
+      }
+    } catch { /* ignore, matches real implementation */ }
   }),
 }));
 
@@ -99,15 +119,15 @@ describe('buildGameUrl', () => {
 // (2026-07-19: the panel's REAL-ID auto-fallback means the on-mount probe
 // should succeed for virtually every RealGram user with zero user action.)
 describe('GameScreen without a cached REAL-ID, server-side probe succeeds', () => {
-  const { getSsoToken } = require('../services/ssoService');
+  
 
-  beforeEach(() => { mockRealId = ''; mockSetRealId.mockClear(); (getSsoToken as jest.Mock).mockClear(); });
+  beforeEach(() => { mockRealId = ''; mockSetRealId.mockClear(); mockGetSsoToken.mockClear(); });
 
   it('never shows a Telegram/RealGram WebView or the retry gate — resolves straight to the hub', async () => {
     let tree!: renderer.ReactTestRenderer;
     await act(async () => {
       tree = renderer.create(<GameScreen />);
-      await Promise.resolve(); await Promise.resolve();
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
 
     expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(0);
@@ -121,26 +141,26 @@ describe('GameScreen without a cached REAL-ID, server-side probe succeeds', () =
   it('probes with forGame=true (req #1/#2/#3: RealGram auto-provisions via REAL-ID)', async () => {
     await act(async () => {
       renderer.create(<GameScreen />);
-      await Promise.resolve(); await Promise.resolve();
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
-    expect(getSsoToken).toHaveBeenCalledWith('dev-9', true);
+    expect(mockGetSsoToken).toHaveBeenCalledWith('dev-9', true);
   });
 });
 
 // ── GameScreen without a cached REAL-ID, server-side probe fails ─────────────
 describe('GameScreen without a cached REAL-ID, server-side probe fails (req #6)', () => {
-  const { getSsoToken } = require('../services/ssoService');
+  
 
   beforeEach(() => {
     mockRealId = '';
-    (getSsoToken as jest.Mock).mockReset().mockResolvedValue({ ...base, status: 'unlinked' });
+    mockGetSsoToken.mockReset().mockResolvedValue({ ...base, status: 'unlinked' });
   });
 
   it('shows an internal RealGram retry screen, never an auto-opened Telegram WebView', async () => {
     let tree!: renderer.ReactTestRenderer;
     await act(async () => {
       tree = renderer.create(<GameScreen />);
-      await Promise.resolve(); await Promise.resolve();
+      await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
     });
 
     expect(tree.root.findAll((n) => n.type === ('WebView' as any))).toHaveLength(0);

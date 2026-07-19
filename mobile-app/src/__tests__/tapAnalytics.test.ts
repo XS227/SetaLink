@@ -8,7 +8,7 @@ describe('tapAnalytics — batched tap telemetry (B-24)', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     fetchMock = jest.fn().mockResolvedValue({ ok: true });
-    (global as any).fetch = fetchMock;
+    (globalThis as any).fetch = fetchMock;
     initTapAnalytics('dev-test-1');
   });
 
