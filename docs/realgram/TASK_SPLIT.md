@@ -213,6 +213,7 @@ release.
 | B-23 | Shared Shahnameh-style profile structure + wallet showing ZAR + REAL + conversion (extend contract §3 or v2 endpoint) | 🟡 contract done 2026-07-19 (Agent B) — `/v1/balance/:account` now returns zar+conversion_rate, live, see `DECISIONS.md`. Mobile-app wallet UI (the "shared profile structure" half) still open, Agent A territory. |
 | B-24 | Tap-stream analytics: batched tap events → DB → loggers/analytics + admin surface; schema in `DECISIONS.md` first | ✅ done 2026-07-19 (Live panel session, `064e2d9`) — turned out fully panel-side, no Shahnameh access needed. UI call-site wiring (recordTap() in actual screens) intentionally left as follow-up, see commit body. |
 | B-25 | Shahnameh(Mongo) ↔ panel(SQLite) DB linkage: 1-page proposal in `DECISIONS.md` (account-link layer, not literal merge), then v1 | open |
+| B-26 | **Build 113 (v0.9.73) acceptance-test retest: still FAIL.** RealGram→REAL and RealGram→RealGram both open the WebView to black bg + gold spinner that never resolves — no Shahnameh Home. Full root-cause investigation needed on the `season2/` side (your territory) — checklist + my static findings (no device needed) in `A→B(30)` below. **Do not build a new beta until the root cause is confirmed.** | open — blocking, see `A→B(30)` |
 
 ## Sync points
 
@@ -4488,3 +4489,134 @@ this as the prioritized next build right now per `B→A(31)`'s acceptance
 test. Points 1–2 above (Profile/Clan routes, referral→clan concept) still
 stand for the round after this one — point 3 (black-spinner) is resolved,
 assuming this build confirms it on-device.
+
+---
+
+## A→B(30) — build 113/v0.9.73 acceptance test still FAILS (both entry points); static findings + full checklist, root cause not yet confirmed
+
+**Dato: 2026-07-19**
+
+Khabat retested build 113 (v0.9.73) on a real device: both entry points
+(`RealGram` and `REAL`) open the WebView to a **black background + gold
+spinner that never resolves** — no Shahnameh Home ever renders. Same
+failure on both. Acceptance test from `B→A(31)` is still **FAIL**:
+
+```
+RealGram → REAL/RealGram → Shahnameh Home
+```
+
+Khabat's instruction: **I only administer + investigate this round — no
+new features, no new beta until the root cause is confirmed.** This note
+is that handoff. I don't have a physical device or `adb` on this dev box,
+so I can't pull the on-device REALDBG logcat myself — that capture still
+needs to happen on Khabat's device or yours. What I *could* do without a
+device: read the actual live `season2/` response and its JS straight off
+your box. Findings below.
+
+### Ruled out (checked directly against the live page just now)
+
+- **CSP / X-Frame-Options / frame-ancestors:** none set at all on
+  `https://shahnameh.setaei.com/season2/` — not blocking the WebView.
+- **Mixed content:** zero `http://` references anywhere in the served
+  HTML — not an issue.
+- **Redirect loop:** `GET /season2` (no trailing slash) 301s once to
+  `/season2/?...`, then 200. One hop, not a loop — but worth knowing
+  because `onNavigationStateChange` will legitimately fire twice for this
+  on a real device; don't mistake it for a loop.
+- **Telegram.WebApp crashing the page:** every reference to
+  `window.Telegram.WebApp` in `app.js`/`sync.js`/`home.js` is defensively
+  null-checked (`window.Telegram && window.Telegram.WebApp && ...`) —
+  `sync.js` even has a comment acknowledging "no Telegram.WebApp context"
+  as an expected case. A **missing** Telegram global will not throw.
+
+### Prime suspect — render-blocking `telegram.org` script with no timeout/fallback
+
+`season2/index.html` loads, in `<head>` (line 20), **before** any of the
+game's own scripts:
+
+```html
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+```
+
+No `async`, no `defer`. `app.js`, `i18n/*.js`, `sync.js`, `home.js` are
+all declared far down in `<body>` (lines 469-480). A classic blocking
+`<script src>` in `<head>` halts HTML parsing until that request
+resolves (success *or* error) — so if the request to `telegram.org`
+hangs or is merely slow (exactly what filtered/throttled networks do —
+the population this whole ecosystem exists to serve), **none of
+app.js/sync.js/home.js ever get parsed, let alone executed.** That
+matches "black background, gold spinner, never resolves, no Home" more
+precisely than anything else I could find. This needs on-device
+confirmation (does the hang correlate with `telegram.org` reachability
+from that network?), but it's the cleanest lead and cheap to test by
+adding `defer` + a load/error handler with a short timeout on that one
+tag.
+
+### Second finding — `sync.js` and `home.js` have ZERO console logging
+
+Grepped both files: **no `console.log`/`console.error` at all.** `app.js`
+has a handful, gated behind an `APP_DEBUG` flag (unknown state in prod).
+This means Khabat's checklist items 7 and 8 below — "first log from
+sync.js" / "first log from home.js" — currently have **nothing to find**,
+on any device, until logging is added there. This is the actual blocker
+to root-causing this from logs the way the RN side already can (its
+`[REALDBG:7/7]` instrumentation in `ShahnamehEmbed.tsx` is solid:
+onLoadStart/onNavigationStateChange/onHttpError/onError/onLoadEnd/URL-
+built/sso-param-presence are all already logged client-side — that half
+just needs an actual device to read).
+
+### Full checklist from Khabat — please work through all of these on your side
+
+1. URL actually loaded (confirm the season2 URL + query params a real
+   device receives, byte for byte).
+2. `onLoadStart` — already logged RN-side, needs device capture.
+3. `onNavigationStateChange` — already logged RN-side, needs device
+   capture (watch for the 301 hop above, and for any bounce to an
+   unexpected origin/scheme).
+4. `onHttpError` / `onError` — already logged RN-side.
+5. `onLoadEnd` — already logged RN-side; if this NEVER fires, that alone
+   supports the render-blocking-script theory above.
+6. Injected JS / SSO params — confirm `sync.js` actually reads `?sso=`,
+   `?real_id=`, `?device_id=` from `location.search` the way it expects.
+7. First log from `season2/sync.js` — **currently impossible, see above,
+   needs logging added first.**
+8. First log from `season2/home.js` — **currently impossible, see above,
+   needs logging added first.**
+9. JS runtime errors — add a `window.onerror`/`unhandledrejection`
+   listener if one doesn't already exist; none of the three files have
+   one.
+10. Cookies/localStorage — RN WebView has `sharedCookiesEnabled` +
+    `thirdPartyCookiesEnabled` both true; check nothing in `sync.js`'s
+    localStorage read/write path (`RealPlayer.set()` etc., see the
+    `a96ca05` hang-guard from `B→A(29)`) throws in a WebView's storage
+    context differently than a normal mobile browser tab.
+11. Cached old URL — HTML document itself came back
+    `Cache-Control: no-cache`, and the JS files are all version-querystring
+    busted (`?v=202607191834` etc.) — looks fine, but worth a real check
+    since the RN side remounts the WebView by `key={retryKey}` on retry,
+    not by force-reloading.
+
+### Required deliverable — visible debug fallback, max 10s, no more infinite spinner
+
+Khabat wants a debug error screen after **max 10 seconds** (RN side
+currently has a 20s timeout in `ShahnamehEmbed.tsx`'s
+`WEBVIEW_LOAD_TIMEOUT_MS` — needs lowering to 10s) showing:
+
+- the actual URL loaded
+- HTTP status
+- last init step completed
+- JS error (if any)
+- token/REAL-ID status **without printing the token itself** (e.g.
+  "sso: present (N chars)" / "sso: missing", not the JWT)
+
+The RN-side timeout can show URL/HTTP-status/JS-error today (it already
+has all of that from `onError`/`onHttpError`/the built URL). "Last init
+step completed" and any in-page JS error need `season2` itself to surface
+them (e.g. `window.onerror` + a running "last step" marker, posted back
+via `postMessage` so the RN error screen can display it, or rendered as
+a fallback banner directly on the page). That's the part that needs your
+side specifically.
+
+Not asking for a build yet — first confirm which of the above is the
+actual cause (start with the render-blocking script theory, it's the
+cheapest to test), then we build once, deliberately.
