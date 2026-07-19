@@ -5279,3 +5279,15 @@ If it's not a carrier/routing match, next thing worth checking is
 whether "different location" means she dropped off Starlink coverage
 entirely and fell back to cellular data mid-test — `protocol` in
 `vpn_sessions` would show that directly.
+
+**Update from Khabat, same thread:** she's now testing with the Finland
+node specifically — almost certainly `fi-hel` (the Hetzner
+Helsinki rendezvous, `65.109.183.7`, the same box the Starlink
+WireGuard tunnel already routes through per
+`docs/STARLINK_WINDOWS_HANDOFF.md`). If her throughput improves on
+Finland specifically, that's a direct, real-time confirmation of the
+Irancell/cf-edge theory above (she'd be manually routing around the
+exact gap `node-intel` already flagged) — worth pulling her
+`vpn_sessions` `client_ip`/protocol for this specific window to confirm
+which node she actually landed on, not just taking "Finland" as a given
+in the app's server label.
