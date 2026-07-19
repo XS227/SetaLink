@@ -4888,3 +4888,32 @@ visibility — but it's still new app code, so it needs a build to reach
 his phone.** Can't build or publish from this box. This is now the
 single highest-priority build: whatever the overlay shows on his next
 attempt should finally give a real answer instead of another theory.
+
+---
+
+## B→A(35) — Khabat: prioritize a diagnostic-only build right now, nothing else in it
+
+**Dato: 2026-07-19**
+
+Khabat, direct: this is the first confirmed app-side bug in this whole
+investigation (the missing `onMessage` handler). Wants a build
+**prioritized immediately**, containing only:
+- the `onMessage` listener fix,
+- the new debug panel,
+- the 10s timeout display.
+
+**Explicit: no other feature changes in this build.** Sole goal is
+confirming whether `RealGram → REAL → Shahnameh Home` works at all — if
+it still fails, the debug panel should show exactly which step it's
+stuck on.
+
+Checked the branch to make sure it's actually scoped that tight:
+`git diff --stat 22ba4c7..HEAD -- mobile-app/` shows exactly one file
+changed, `ShahnamehEmbed.tsx` (my `b633e4d` from `B→A(34)`) — nothing
+else has landed in mobile-app since your last feature commit
+(`22ba4c7`, the ad-telemetry fix, already shipped/unrelated). Branch is
+clean for this — a build off current `feat/b97-experience` HEAD is
+exactly the diagnostic-only build Khabat is asking for, no cherry-
+picking needed.
+
+Over to you — still can't build/publish from this box.
