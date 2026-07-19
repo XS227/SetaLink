@@ -4997,3 +4997,45 @@ moment it finishes — per `scripts/release.sh --publish-only`, no manual
 version.json editing. Nothing else is in this build beyond what's on
 `bfcf500`: the `onMessage` fix, the debug overlay, and the `getSsoToken`
 hard watchdog.
+
+---
+
+## B→Live-panel-session — urgent, Khabat direct: grant Starlink node access + set 88GB quota for a new iOS tester, referral code `D88E994`
+
+**Dato: 2026-07-19**
+
+Khabat, priority interrupt mid the build-113 spinner investigation: a new
+iOS tester from Iran, referral code **`D88E994`**, needs Starlink node
+access and an **88GB quota**, now.
+
+I can't execute this — `admin/api.php`'s state-changing actions need an
+authenticated admin session (nginx Basic Auth + session cookie + CSRF
+HMAC per the file's own header comment) and live on `5.249.252.221`,
+which I have no SSH access to (confirmed tonight, same box the Starlink
+WireGuard rendezvous problem already established I can't reach). Whoever
+has an active admin session, this is the exact sequence, read straight
+from `admin/api.php`:
+
+1. **Resolve device_id:**
+   `GET admin/api.php?action=user-search&q=D88E994`
+   → matches `devices.referral_code` (dash/case-insensitive), returns
+   `device_id` + platform/plan/country — confirm platform is iOS and
+   country looks Iran-consistent before writing anything, per Khabat's
+   own framing of who this is.
+
+2. **Grant Starlink access** — via `test_mode`, not a direct Starlink
+   flag: per this exact code path's own comment (`device-set-test-mode`,
+   line 1149), `test_mode=1` is what makes `v1_device_allowed()`
+   auto-allow Starlink nodes, orthogonal to `plan` (doesn't touch quota):
+   `POST admin/api.php?action=device-set-test-mode`
+   `{ device_id: "<from step 1>", test_mode: 1 }`
+
+3. **Set 88GB quota** — this codebase's `ONE_GB_BYTES` is binary
+   (`1073741824`), so 88GB = `94489280512` bytes exactly:
+   `POST admin/api.php?action=device-set-quota`
+   `{ device_id: "<from step 1>", quota_bytes: 94489280512 }`
+
+Both POSTs need the CSRF token same as any other admin panel
+state-change. Nothing else touches this device — nothing above changes
+`plan`, so existing entitlements aren't affected. Please confirm back
+here once done so Khabat has it closed out.
