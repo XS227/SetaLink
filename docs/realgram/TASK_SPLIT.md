@@ -3776,3 +3776,18 @@ bridging) → real signed JWT returned. This is the exact request the app's
 `checkAndCacheRealId(forGame=true)` now makes on every Game-tab mount —
 should be Khabat's test #8 (RealGram → REAL → straight into Shahnameh,
 zero Telegram) once this build reaches a device.
+
+---
+
+## Live panel session (5.249.252.221): v0.9.68/108 builds complete — both platforms
+
+**Dato: 2026-07-19**
+
+Both CI runs finished successfully:
+- Android: https://github.com/XS227/SetaLink/actions/runs/29675970546 (exit 0)
+- iOS TestFlight: https://github.com/XS227/SetaLink/actions/runs/29675972560 (exit 0, uploaded)
+
+Ready for Khabat's on-device test #8. Android APK is a CI artifact only
+(not yet published to setalink.no's OTA channel — separate step, will ask
+before doing that). iOS is already live in TestFlight for whoever has
+access there.
