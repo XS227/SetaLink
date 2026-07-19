@@ -465,15 +465,45 @@ function re_spend(PDO $pdo, string $realAccount, float $realAmount, string $idem
 // prompts to link) until the issuer (Agent B, task B-8) exists.
 
 /**
- * Mint an SSO token for a device's linked REAL account (contract 6).
+ * Mint an SSO token for a device (contract 6, extended §6b 2026-07-19 —
+ * REAL-ID migration Phase 2, docs/realgram/TASK_SPLIT.md).
+ *
+ * Prefers an existing Telegram-linked account when one exists (unchanged —
+ * an existing player's progress always wins, never overridden). Otherwise,
+ * when $allowRealIdFallback is true, falls back to the device's own durable
+ * RealGram identity (device_id) as a REAL-ID instead of reporting
+ * 'unlinked': this device already has a real, native identity in this panel
+ * with zero Telegram involvement, so there is no reason opening Shahnameh
+ * should require one. Shahnameh finds-or-creates the season2_users account
+ * for this real_id on first sync — see routes/api/season2.js /user/sync
+ * (shahnameh-backend, separate repo).
+ *
+ * $allowRealIdFallback defaults FALSE and must be opted into per call site
+ * (public/api.php's `sso-token` action passes it only when `$_GET['game']`
+ * is set, i.e. GameScreen.tsx's calls): this same mint is shared with
+ * TrustAI linking (TrustAiLinkScreen.tsx), a separate product on a separate
+ * backend this repo doesn't own — silently auto-provisioning a
+ * pseudo-account there would be an undiscussed behavior change outside
+ * this fix's scope (Shahnameh entry only). Old app builds never send
+ * `game`, so they keep today's 'unlinked' behavior unchanged.
+ *
+ * `device:` prefix namespaces this from a future proper realgram_profiles.id
+ * (REALGRAM_NATIVE_MESSAGING_DESIGN.md § 1.1, not yet built/approved) — that
+ * migration can swap this for the real profile UUID later with zero
+ * Shahnameh-side change needed, since it treats real_id as an opaque string.
+ *
  * Returns:
  *   ['status'=>'ok', 'token'=>string, 'expires_in'=>int, 'account'=>string]
- *   ['status'=>'unlinked']                 device has no linked REAL account
- *   ['status'=>'unavailable']              issuer not configured/reachable yet
+ *   ['status'=>'unlinked']     no linked account and fallback not requested
+ *   ['status'=>'unavailable']  issuer not configured/reachable, or the
+ *                              REAL-ID path isn't enabled on Shahnameh yet
+ *                              (realid.enabled flag) — game still loads,
+ *                              as a guest, never a Telegram-login wall.
  */
-function re_sso_token(PDO $pdo, string $deviceId): array {
+function re_sso_token(PDO $pdo, string $deviceId, bool $allowRealIdFallback = false): array {
     $account = re_linked_account($pdo, $deviceId);
-    if ($account === '') return ['status' => 'unlinked'];
+    if ($account === '' && !$allowRealIdFallback) return ['status' => 'unlinked'];
+    $realId  = $account === '' ? ('device:' . $deviceId) : null;
 
     $cfg = re_service_config($pdo);
     if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
@@ -484,7 +514,9 @@ function re_sso_token(PDO $pdo, string $deviceId): array {
     if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
     curl_setopt_array($ch, [
         CURLOPT_POST           => true,
-        CURLOPT_POSTFIELDS     => json_encode(['account' => $account, 'device_id' => $deviceId]),
+        CURLOPT_POSTFIELDS     => json_encode($realId !== null
+            ? ['real_id' => $realId, 'device_id' => $deviceId]
+            : ['account' => $account, 'device_id' => $deviceId]),
         CURLOPT_HTTPHEADER     => $headers,
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
@@ -493,6 +525,9 @@ function re_sso_token(PDO $pdo, string $deviceId): array {
     $body = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
     curl_close($ch);
+    // 503 here specifically means realid.enabled is off on Shahnameh's side
+    // — degrade to guest/unavailable, exactly like any other unreachable-
+    // issuer case, never surface a Telegram prompt for it.
     if ($body === false || $http !== 200) return ['status' => 'unavailable'];
 
     $json = json_decode((string)$body, true);
@@ -504,7 +539,7 @@ function re_sso_token(PDO $pdo, string $deviceId): array {
         'token'      => $json['token'],
         'expires_in' => isset($json['expires_in']) && is_numeric($json['expires_in'])
                         ? (int)$json['expires_in'] : 900,
-        'account'    => $account,
+        'account'    => $realId ?? $account,
     ];
 }
 

@@ -781,7 +781,11 @@ if ($method === 'GET') {
             $rc = $pdo->query("SELECT key, value FROM settings WHERE key IN ('rc_game_url','rc_ecosystem_sso_enabled')")
                       ->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
         } catch (\Exception $e) {}
-        $result = re_sso_token($pdo, $deviceId);
+        // `game=1` (GameScreen.tsx only, TrustAiLinkScreen never sends it):
+        // opts into the REAL-ID auto-fallback in re_sso_token() so opening
+        // Shahnameh from RealGram never requires a Telegram sign-in first.
+        // See that function's docblock for why this isn't the default.
+        $result = re_sso_token($pdo, $deviceId, !empty($_GET['game']));
         ok([
             'status'      => $result['status'],                     // ok | unlinked | unavailable
             'token'       => $result['token']      ?? '',
