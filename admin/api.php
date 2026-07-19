@@ -816,6 +816,65 @@ if ($method === 'POST') {
         $db->prepare("UPDATE devices SET blocked=? WHERE device_id=?")->execute([$block, $did]);
         api_ok(['blocked' => (bool)$block]);
     }
+    // Permanent device removal — for inert registrations (Apple/Google review
+    // installs that open the app but never connect). Refuses real devices
+    // (any vpn_session or non-zero quota_bytes_used) unless force=true is
+    // explicitly sent, so this can't accidentally wipe an active user.
+    // Accepts either a single device_id or a device_ids array for batch
+    // cleanup (App Review devices recur in batches every re-review).
+    if ($action === 'device-delete') {
+        $ids = [];
+        if (!empty($parsed['device_ids']) && is_array($parsed['device_ids'])) {
+            $ids = array_values(array_filter(array_map('strval', $parsed['device_ids'])));
+        } elseif (!empty($parsed['device_id'])) {
+            $ids = [(string)$parsed['device_id']];
+        }
+        if (!$ids) api_err('device_id or device_ids required');
+        $force = !empty($parsed['force']);
+        $db = open_analytics_db();
+        init_device_tables($db);
+
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        // Same session_count proxy the devices-list view uses for the
+        // apple_review classification (COUNT from vpn_sessions).
+        $st = $db->prepare("SELECT d.device_id, d.quota_bytes_used,
+                                    COALESCE(s.session_count,0) AS session_count
+                             FROM devices d
+                             LEFT JOIN (SELECT device_id, COUNT(*) AS session_count
+                                        FROM vpn_sessions GROUP BY device_id) s
+                                    ON s.device_id = d.device_id
+                             WHERE d.device_id IN ($ph)");
+        $st->execute($ids);
+        $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+        $found  = array_column($rows, 'device_id');
+        $notFound = array_values(array_diff($ids, $found));
+        $blocked  = [];
+        $toDelete = [];
+        foreach ($rows as $r) {
+            $hasActivity = ((int)$r['session_count'] > 0) || ((int)$r['quota_bytes_used'] > 0);
+            if ($hasActivity && !$force) {
+                $blocked[] = $r['device_id'];
+            } else {
+                $toDelete[] = $r['device_id'];
+            }
+        }
+
+        $deleted = [];
+        if ($toDelete) {
+            $ph2 = implode(',', array_fill(0, count($toDelete), '?'));
+            $db->prepare("DELETE FROM devices WHERE device_id IN ($ph2)")->execute($toDelete);
+            // node_usage has no bytes/session data, just per-node touch counts --
+            // harmless to cascade-clean so it doesn't accumulate orphaned rows.
+            $db->prepare("DELETE FROM node_usage WHERE device_id IN ($ph2)")->execute($toDelete);
+            $deleted = $toDelete;
+        }
+        api_ok([
+            'deleted'   => $deleted,
+            'blocked'   => $blocked,   // had real activity, needs force=true
+            'not_found' => $notFound,
+        ]);
+    }
     // Multi-node test allowlist — grant/revoke a device access to a test node
     // (e.g. node_id="fi-hel" for Helsinki). Does NOT route anyone automatically.
     if ($action === 'node-allowlist-add' || $action === 'node-allowlist-remove') {

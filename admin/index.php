@@ -1234,7 +1234,7 @@ function icon(string $name): string {
         <div class="stat-card stat-warn"><div class="stat-label">Blocked</div><div class="stat-value" id="devBlocked">—</div></div>
         <div class="stat-card"><div class="stat-label">🍎 iOS</div><div class="stat-value" id="devIos">—</div></div>
         <div class="stat-card"><div class="stat-label">🤖 Android</div><div class="stat-value" id="devAndroid">—</div></div>
-        <div class="stat-card stat-warn"><div class="stat-label">🔍 Apple Review</div><div class="stat-value" id="devAppleReview">—</div></div>
+        <div class="stat-card stat-warn"><div class="stat-label">🔍 Apple Review</div><div class="stat-value" id="devAppleReview">—</div><button class="btn btn-sm btn-danger" style="margin-top:.4rem;font-size:.65rem;padding:.2rem .5rem" onclick="devCleanupReviewDevices()" title="Delete every inert Apple/Google review device currently listed">🗑 Clean up</button></div>
         <div class="stat-card"><div class="stat-label">🔌 Never Connected</div><div class="stat-value" id="devNeverConnected">—</div></div>
       </div>
       <div class="search-row">
@@ -2037,6 +2037,7 @@ function icon(string $name): string {
   <div class="modal-footer">
     <button class="btn btn-secondary" onclick="closeModal()">Close</button>
     <button class="btn btn-secondary btn-sm" id="devProfileBtn" style="display:none">👤 Full Profile</button>
+    <button class="btn btn-danger btn-sm" id="devDeleteBtn" style="display:none">🗑 Delete</button>
     <button class="btn btn-primary" id="devMsgBtn" style="display:none">Send message</button>
   </div>
 </div>
@@ -4507,6 +4508,47 @@ window.devBlock = async function(did, action) {
     } catch(e) { toast(e.message,'error'); }
   };
 };
+window.devDelete = async function(did, force) {
+  $('confirmTitle').textContent = 'Delete Device';
+  $('confirmMsg').textContent   = `Permanently delete device ${did.substring(0,16)}…? This removes the registration row entirely — cannot be undone. Refused automatically unless the device has zero real sessions/quota use.`;
+  openModal('modalConfirm');
+  $('confirmOk').onclick = async()=>{
+    closeModal();
+    try {
+      const r = await api.post({action:'device-delete', device_id:did, force: !!force});
+      if (r.blocked && r.blocked.length) {
+        if (confirm(`Device ${did.substring(0,16)}… has real session/quota activity — this looks like an actual user, not an inert registration. Delete anyway?`)) {
+          return devDelete(did, true);
+        }
+        toast('Delete cancelled — device has real activity','warn');
+        return;
+      }
+      toast('Device deleted','ok');
+      closeModal();
+      views.devices.loadDevices();
+    } catch(e) { toast(e.message,'error'); }
+  };
+};
+// Bulk-cleanup: delete every currently-listed inert Apple/Google review
+// device in one pass instead of a manual per-device click each re-review
+// (Khabat, 2026-07-19 — this recurs every time Apple re-reviews a build).
+window.devCleanupReviewDevices = async function() {
+  const ids = (views.devices.devData || [])
+    .filter(r => r.registration_source === 'apple_review')
+    .map(r => r.device_id);
+  if (!ids.length) { toast('No inert App Review devices in the current list','ok'); return; }
+  $('confirmTitle').textContent = 'Delete App Review Devices';
+  $('confirmMsg').textContent   = `Permanently delete ${ids.length} inert iOS App Review device(s) (zero sessions, zero quota use)? Cannot be undone.`;
+  openModal('modalConfirm');
+  $('confirmOk').onclick = async()=>{
+    closeModal();
+    try {
+      const r = await api.post({action:'device-delete', device_ids: ids});
+      toast(`Deleted ${(r.deleted||[]).length} device(s)` + ((r.blocked||[]).length ? `, ${r.blocked.length} skipped (had real activity)` : ''), 'ok');
+      views.devices.loadDevices();
+    } catch(e) { toast(e.message,'error'); }
+  };
+};
 window.devDetail = async function(did) {
   $('devDetailTitle').textContent = 'Device';
   $('devDetailBody').innerHTML = '<p style="font-size:.8rem;color:var(--muted-2)">Loading…</p>';
@@ -4520,6 +4562,8 @@ window.devDetail = async function(did) {
     $('devMsgBtn').onclick = ()=>devMessage(did, uid);
     $('devProfileBtn').style.display = '';
     $('devProfileBtn').onclick = ()=>devOpenProfile(did);
+    $('devDeleteBtn').style.display = '';
+    $('devDeleteBtn').onclick = ()=>devDelete(did);
     const kv = (k,v) => `<div style="display:flex;justify-content:space-between;gap:1rem;padding:.28rem 0;border-bottom:1px solid var(--border);font-size:.76rem"><span style="color:var(--muted-2)">${k}</span><span style="text-align:right;font-family:var(--mono)">${v||'—'}</span></div>`;
     const gb = n => fmtBytes(n||0);
     const isIos = (dev.platform||'').toLowerCase() === 'ios';
