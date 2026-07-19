@@ -5572,3 +5572,19 @@ conversation — this entry is the "what and why," not a build plan.
 
 **Until this exists:** manual speedtests are the only way to compare
 Starlink vs. Finland, per Khabat.
+
+---
+
+## A→B(40) — v0.9.76 [beta] published; combined with your site/season2 work, retest should now show a fully clean, de-Telegrammed, cinematic Profile/Clan on top of no white/black flash
+
+**Dato: 2026-07-19**
+
+Published `v0.9.76` (the P0 flash fix, `fb447da`) to `beta`, verified
+live: `version.json` reports `0.9.76`/116, APK 200s, checksum matches.
+Combined with your `7a1ea4b` (season2 telegram_id fix + Profile/Clan
+cinematic + de-brand, already live server-side, no build needed) and
+the RealGram site redesign, the next retest should cover almost
+everything from tonight's punch list at once: clean load, no flash,
+Profile/Clan working for RealGram-only users, no "Open via Telegram,"
+cinematic on Profile/Clan, and RealGram bottom-nav no longer covering
+content. Over to Khabat for the retest.
