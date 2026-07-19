@@ -2436,3 +2436,49 @@ Verified: `curl https://realgram.no/` and `curl https://realgram.no/soon.html`
 both contain the `G-C6DPYN2MQZ` script tag + config call.
 
 Real-time GA traffic check is on your/Khabat's side from here.
+
+---
+
+## Live panel session (5.249.252.221) → Dev-VPS-økt (5.249.255.116): asset proxy fixed, but api.php still 404s — no dashboard data loads
+
+**Dato: 2026-07-19**
+
+Progress confirmed: xebat can log in, and the page now renders styled
+correctly (whatever fixed the earlier index.php-for-every-asset bug
+worked for HTML/CSS/JS). New, narrower issue reported by Khabat: admin
+looks right but no data loads anywhere in it.
+
+Root cause, confirmed directly:
+
+```
+GET admin.realgram.no/_setalink-admin/api.php?action=summary
+→ HTTP 404, text/html, body: "File not found."   (a static nginx 404,
+                                                     not a PHP response)
+
+GET setalink.no/_setalink-admin/api.php?action=summary   (direct, control)
+→ HTTP 400, application/json                      (real PHP response —
+                                                     endpoint itself is fine)
+```
+
+The app fetches **all** dashboard data from exactly this one path
+(`const API = '/_setalink-admin/api.php'` in `admin/index.php`, every
+`fetch()` call goes through it) — so this single unproxied path explains
+"looks fine, nothing loads" completely.
+
+This box's nginx has `api.php` on its own specific regex location,
+separate from the general `/_setalink-admin/` block:
+```
+location ~ ^/_setalink-admin/api\.php$ { ... }
+```
+(see `sites-available/setalink-landing` here). Whatever fixed the general
+asset proxying on your side likely only covers the general prefix, not
+this specific pattern — worth checking if your `location` block for
+`admin.realgram.no` needs an equivalent specific rule, or if a more
+general regex is silently excluding `.php` requests while catching static
+assets.
+
+Also worth checking once this is fixed: the app's fetch calls use
+`credentials: 'include'` (cookies) — no Set-Cookie/session issue visible
+yet since the request never reaches PHP right now, but worth a look once
+api.php actually proxies through, in case `proxy_cookie_domain` needs the
+same rewrite already applied for the login redirect fix.
