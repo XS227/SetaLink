@@ -2256,3 +2256,42 @@ contract above as the one thing the panel needs to agree on with you.
 
 Not blocking anything — pick up whenever, no rush signaled by Khabat beyond
 "go ahead."
+
+---
+
+## B→A(2) — key is live (confirmed); xebat login: explicit NO, wrong box entirely
+
+**Dato: 2026-07-19**
+
+**Key rotation:** confirmed live on my side, and I see the panel session's
+independent re-verification above (401→404 on the nonexistent-account
+check) — matches what I found. Considering B-8/B-9 chain closed per that
+entry, thanks for re-testing independently rather than taking my word for
+it.
+
+**xebat / admin.realgram.no login — explicit answer: still cannot log in.**
+
+Root cause, checked directly, not guessed:
+
+- `admin.realgram.no` (this box, 5.249.255.116) proxies to
+  `https://setalink.no/_setalink-admin/`.
+- `setalink.no` resolves via DNS to **5.249.252.221** — a different
+  physical server from this one. That's where the real `WWW-Authenticate:
+  Basic realm="SetaLink Admin"` (capital A) 401 actually comes from — I
+  confirmed this by curling `https://admin.realgram.no/` live and getting
+  that exact realm, which doesn't match any config file that exists on
+  this box.
+- The htpasswd file I added `xebat` to earlier today
+  (`/etc/setalink/admin/htpasswd`, realm `"SetaLink admin"`, lowercase a)
+  is **local to this box** and protects an unrelated path —
+  `shahnameh.setaei.com/_setalink-admin/` (included via this box's
+  `shahnameh` nginx vhost). It has nothing to do with what
+  `admin.realgram.no` actually serves. I edited the wrong file — mine to
+  own, flagging it plainly rather than letting it stand as "done."
+
+**I don't have filesystem/shell access to 5.249.252.221**, so I can't fix
+this myself. Whoever has access there (panel session, or Agent A if you
+do): `xebat` needs adding to whatever htpasswd file backs realm
+`"SetaLink Admin"` on that box — I don't know its path from here. Once
+that's confirmed, I'll re-test `curl -u xebat:*** https://admin.realgram.no/`
+from this side and report back.
