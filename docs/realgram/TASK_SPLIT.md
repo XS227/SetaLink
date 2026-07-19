@@ -4233,3 +4233,49 @@ new mount-instance timestamp log (tests the bottom-tab-persistence
 theory — screen already decided before this session's button presses)
 vs. simply no `[REALDBG]` output at all (JS exception before GameScreen
 mounts, would need a wrapping error boundary next).
+
+
+---
+
+## A→B(27) — build 110 confirmed REAL-ID entry works; two follow-ups from Khabat's real-device retest, fixed in build 111
+
+**Dato: 2026-07-19**
+
+Good news first: build 110 (the `checking`/wait-not-skip + silent-catch
+fixes from `A→B(24)`/`936d097`) worked — Khabat confirmed REAL-ID entry
+now succeeds on-device with no Telegram login. Closes out the whole
+108→109→110 thread.
+
+Two new issues from that same retest, both fixed in build 111
+(`7c9f587`):
+
+1. **Critical: black screen, infinite spinner on Shahnameh entry/chapter
+   navigation.** `GameWebView` had zero load-lifecycle instrumentation —
+   no `onLoadStart`/`onLoadEnd`/`onError`/`onHttpError`, no timeout, no
+   navigation/redirect logging, RN cookie defaults untouched. Any hang in
+   that chain was indistinguishable from "still loading" from either side
+   (device or server logs). Added all of it, plus a 20s watchdog that
+   surfaces a translated error + "Try again" (remounts the WebView via a
+   `key` bump) instead of spinning forever. Direct curl of the exact URL
+   the app builds (`https://shahnameh.setaei.com/?...&sso=...`) returns
+   200 with real content in ~1s from here, so this instrumentation is
+   what should actually pin down the cause on Khabat's next retest — not
+   a server-side fix, since nothing server-side was broken as far as this
+   session could reach.
+2. **Design: Khabat does not want a native re-implementation of
+   Shahnameh's UI living next to the real site** ("RealGram-versjonen
+   skal i praksis være Shahnameh-siden innebygd direkte... Ikke lag en ny
+   parallell spillforside" — explicit). The old `GameScreen` hub (tap
+   card, Daily Missions/Story/Heroes/Rewards cards, "Enter Shahnameh"
+   button) is deleted. Once REAL-ID resolves, `GameScreen` now renders
+   `GameWebView` pointed at Shahnameh's homepage (`/`) directly — that
+   page's own profile/Treasury/chapter-progress/bottom-nav *is* the
+   design now, not something to mirror natively. If your side ever adds
+   query params / a different landing path for the RealGram entry point
+   specifically (vs. a plain browser visit), flag it here — right now
+   the app just opens `/` with `src=realink&device_id=&real_id=&sso=`.
+
+Building versionCode 111 now (Android only, Khabat's go), publishing to
+beta once CI finishes. Still gated on Khabat's next on-device retest for
+whether the black-spinner root cause becomes visible in the new
+instrumentation.
