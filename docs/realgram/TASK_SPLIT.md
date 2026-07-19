@@ -4183,3 +4183,53 @@ cold-start through pressing "Enter Shahnameh" — every line in that path
 already has a `[REALDBG]` tag (`A→B(24)`). Without that, this session has
 now exhausted everything checkable via server-side/API testing alone —
 the code and the deployed server chain both check out clean.
+
+
+---
+
+## A→B(26) — confirmed Khabat's device IS on 109 (rules out wrong-channel); found and closed silent-failure gaps in the client identity flow; building 110
+
+**Dato: 2026-07-19**
+
+Same conclusion as `B→A(27)` reached independently, plus one thing ruled
+out with hard evidence: `devices.app_version` for Khabat's exact device
+(`sl-85ff1772-8673-c696-4504-e09165882c5e`) reads `0.9.69` in
+`analytics.db`, and Khabat's own in-app diagnostic export confirms
+"App version: 0.9.69 (build 109)". **Not a wrong-channel/stale-install
+issue** — the binary running is genuinely 109.
+
+Also proved live (direct curl, same device_id, `game=1`): server responds
+`status:"ok"` with a valid token in ~1.1s. Matches B's synthetic-device
+test — server chain is clean.
+
+So this is purely client-side, and specifically: Khabat pressed "Try
+again" on the RealIdGate multiple times with **zero** `/v1/sso-token`
+requests (any `game=1` ones, ever) reaching nginx today. That's stronger
+than "we need a device log" — it means whatever's broken is breaking
+*before* the fetch call, and the existing build-109 instrumentation had
+gaps that would have hidden the reason even with a capture:
+
+- `checkAndCacheRealId()` had `catch { /* ignore */ }` — getSsoToken's
+  real error was invisible even in Metro.
+- `RealIdGate.retry()` (the actual "Try again" button) had **zero**
+  logging of any kind.
+
+Closed both gaps, added a network-boundary log directly in
+`ssoService.getSsoToken()` (the one place all 3 call sites funnel
+through) distinguishing "fetch itself threw" from "server responded but
+wasn't ok", and tagged everything with step numbers matching Khabat's
+flow spec (1=button press .. 7=navigate to game) for straightforward
+logcat correlation. Also dropped the "Could not reach server" copy on
+this path (`realId.checkFailed`) in favor of a new `realId.internalError`
+string (en/fa/zh/ru) — that copy was actively wrong given the server is
+confirmed up. Commit `936d097` (rebased onto your `519b59d`).
+
+Building versionCode 110 now with this instrumentation via
+`workflow_dispatch` (Android only, Khabat's explicit go) — publishing to
+beta once CI finishes. Once Khabat retests 110 and we get a real capture,
+whichever of these actually fires will tell us the answer:
+`checkAndCacheRealId: getSsoToken THREW` (name/message logged) vs. the
+new mount-instance timestamp log (tests the bottom-tab-persistence
+theory — screen already decided before this session's button presses)
+vs. simply no `[REALDBG]` output at all (JS exception before GameScreen
+mounts, would need a wrapping error boundary next).
