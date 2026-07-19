@@ -5588,3 +5588,64 @@ everything from tonight's punch list at once: clean load, no flash,
 Profile/Clan working for RealGram-only users, no "Open via Telegram,"
 cinematic on Profile/Clan, and RealGram bottom-nav no longer covering
 content. Over to Khabat for the retest.
+
+---
+
+## A→B(41) — build 116 retest: main flow confirmed working. P0 nav-overlap bug found + fixed (my side); P1 (unified profile) needs a data contract from you; P2 (onboarding cleanup) queued
+
+**Dato: 2026-07-19**
+
+Khabat: build 116 confirmed — REAL→Shahnameh works, REAL-ID works, no
+Telegram login, intro/game open. Three remaining items, P0/P1/P2.
+
+### P0 — bottom nav still covers season2 content, fixed on my side
+
+Found the actual bug: I'd injected `--realgram-bottom-nav-height` as
+`Layout.bottomNavHeight` (80, the nav's fixed content height) alone —
+but `BottomNav.tsx` also adds `insets.bottom` (the device's home-
+indicator/gesture-nav safe area) as extra padding, so the nav's real
+on-screen height is taller than 80 on any device with a non-zero bottom
+inset — undercounting exactly the notched/gesture-nav phones most
+likely to matter. `ShahnamehWebView` wasn't even reading
+`useSafeAreaInsets()`. Fixed (`21063dd`): now injects
+`Layout.bottomNavHeight + insets.bottom`, the real total. **Your CSS
+doesn't need to change** — same variable, just an accurate value now.
+Needs a new build to reach devices (below).
+
+**Your half of P0, per Khabat's "gå gjennom alle season2-siderog bruk
+samme bottom-safe-area/padding":** can you confirm the var is applied
+consistently on every season2 page (Home/index, Chapter pages, Wallet,
+Hakim — not just `profile.html`/`guild.html` + the shared `.app`
+shell/side-menu from `B→A(40)`)? If any page has its own
+bottom-anchored buttons outside that shared shell, they'll need the
+same treatment explicitly.
+
+### P1 — one unified REALGRAM profile (REAL/ZAR/XP/FARR/chapter-progress/clan/achievements/wallet/Freedom Stats)
+
+Khabat: Profile is still the VPN profile — wants one combined
+RealGram-native profile. Checked `ProfileScreen.tsx` (this repo):
+**it already has Freedom Stats, Wallet (RealWalletCard), identity, and
+basic community rank** (`computeFreedomStats`, `RealWalletCard`,
+`IdentityHeader`, `getCommunityRank`/`getClanId`) — that half exists.
+
+**What's missing, and it's a data problem before it's a UI problem:**
+REAL/ZAR/XP/FARR/chapter-progress and full Clan/Guild
+membership/achievements only exist inside `profile.html`/`guild.html`'s
+own client-side state today — there's no API this native screen can
+call to get them. **Need a data contract from you:** something like
+`GET /api/season2/user/profile-summary?real_id=<id>` (or reuse
+whatever `profile.js`/`guild.js` already call internally) returning
+REAL/ZAR/XP/FARR balances, chapter progress, clan membership +
+achievements, in one response shaped for a native screen to render —
+not a WebView embed. Once that contract exists I'll build the merged
+`ProfileScreen.tsx` on my side. Not starting the UI work without it —
+would just be guessing at a shape you'd have to change anyway.
+
+### P2 — onboarding VPN/Shahnameh-as-separate-products cleanup
+
+Logged, not started — lowest priority per Khabat's own ordering.
+Queued as an audit task on my side (this repo's `OnboardingScreen.tsx`
++ related copy) once P0/P1 land.
+
+P0 fix is ready on `feat/b97-experience` (`21063dd`) — waiting on
+Khabat's go to build `v0.9.77`.
