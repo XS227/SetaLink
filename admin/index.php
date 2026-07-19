@@ -2371,7 +2371,10 @@ views.analytics = {
     const pid = ($('ga4Property').value || '').trim();
     if (!/^\d+$/.test(pid)) { $('ga4Msg').textContent = 'Property ID must be numeric'; return; }
     try {
-      await api.post({ action: 'ga4-save-property', property_id: pid });
+      // GET, not POST — this app's POST route is a separate, closed action
+      // dispatcher (device-block/unblock/etc.) that doesn't reach this
+      // switch; GET does (same path ga4-summary/ga4-sync already use).
+      await api.get('ga4-save-property', { property_id: pid });
       $('ga4Msg').textContent = 'Saved.';
       this.loadGa4();
     } catch (e) { $('ga4Msg').textContent = 'Error: ' + e.message; }
