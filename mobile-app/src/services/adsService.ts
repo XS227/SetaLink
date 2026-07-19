@@ -230,6 +230,26 @@ export function preloadInterstitial(): void {
       dropInterstitial();
       preloadInterstitial();   // get the next one ready
     });
+    // Was completely untracked before — a successful show (exactly the
+    // Connect-ad path's whole point) fired zero telemetry, unlike banner ads'
+    // AD_BANNER_IMPRESSION/CLICK (TrackedBannerAd.tsx). That made "I saw an ad
+    // on Connect but admin shows nothing" impossible to confirm from the data
+    // (Khabat, 2026-07-19 real-device report from Norway via 2 nodes).
+    ad.addAdEventListener(AdEventType.OPENED, () => {
+      if (token !== _loadToken) return;
+      trackEvent('AD_INTERSTITIAL_SHOWN', currentDeviceId(), { slot: 'interstitial' });
+    });
+    ad.addAdEventListener(AdEventType.PAID, (e: any) => {
+      if (token !== _loadToken) return;
+      // Revenue-counted impression — the real fill signal, mirrors banner's onPaid.
+      trackEvent('AD_INTERSTITIAL_IMPRESSION', currentDeviceId(), {
+        slot: 'interstitial', value: e?.value, currency: e?.currency,
+      });
+    });
+    ad.addAdEventListener(AdEventType.CLICKED, () => {
+      if (token !== _loadToken) return;
+      trackEvent('AD_INTERSTITIAL_CLICK', currentDeviceId(), { slot: 'interstitial' });
+    });
     ad.addAdEventListener(AdEventType.ERROR, (e: any) => {
       if (token !== _loadToken) return;
       // Was silent before — interstitial failures had zero telemetry, unlike

@@ -8,11 +8,11 @@
 // and showInterstitialAfterConnect() shows the ad once the tunnel is up instead.
 
 jest.mock('react-native-google-mobile-ads', () => {
-  const listeners: Record<string, () => void> = {};
+  const listeners: Record<string, (payload?: any) => void> = {};
   const show = jest.fn();
   const load = jest.fn();
   const inst = {
-    addAdEventListener: (type: string, cb: () => void) => { listeners[type] = cb; return () => {}; },
+    addAdEventListener: (type: string, cb: (payload?: any) => void) => { listeners[type] = cb; return () => {}; },
     load,
     show,
   };
@@ -24,7 +24,10 @@ jest.mock('react-native-google-mobile-ads', () => {
     }),
     RewardedAd: { createForAdRequest: jest.fn() },
     RewardedAdEventType: { LOADED: 'rewarded_loaded', EARNED_REWARD: 'earned' },
-    AdEventType: { LOADED: 'loaded', CLOSED: 'closed', ERROR: 'error' },
+    AdEventType: {
+      LOADED: 'loaded', CLOSED: 'closed', ERROR: 'error',
+      OPENED: 'opened', PAID: 'paid', CLICKED: 'clicked',
+    },
     InterstitialAd: { createForAdRequest: jest.fn(() => inst) },
     TestIds: { REWARDED: 'test-rewarded', INTERSTITIAL: 'test-interstitial' },
     MaxAdContentRating: { PG: 'PG' },
@@ -50,7 +53,7 @@ type AdsModule = typeof import('../services/adsService');
 
 describe('interstitial ads on connect', () => {
   let ads: AdsModule;
-  let listeners: Record<string, () => void>;
+  let listeners: Record<string, (payload?: any) => void>;
   let show: jest.Mock;
   let load: jest.Mock;
   let setVpnState: (s: string) => void;
@@ -206,5 +209,46 @@ describe('tunnel-gated preload (Iran fix — Khabat, 2026-07-18)', () => {
     setVpnState('connected');
     ads.showInterstitialAfterConnect();
     expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('interstitial success-path telemetry (Khabat, 2026-07-19 — saw an ad on Connect, admin showed nothing)', () => {
+  let ads: AdsModule;
+  let listeners: Record<string, (payload?: any) => void>;
+  let trackEvent: jest.Mock;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.useFakeTimers();
+    const adMock = (jest.requireMock('react-native-google-mobile-ads') as any).__mock;
+    listeners = adMock.listeners;
+    (jest.requireMock('../stores/vpnStore') as any).__setConnectionState('idle');
+    trackEvent = (jest.requireMock('../services/analytics') as any).trackEvent;
+    trackEvent.mockClear();
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    ads = require('../services/adsService');
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('a successful show/impression/click each log their own event — previously logged nothing at all', () => {
+    ads.preloadInterstitial();
+    listeners['loaded']?.();
+
+    listeners['opened']?.();
+    expect(trackEvent).toHaveBeenCalledWith(
+      'AD_INTERSTITIAL_SHOWN', undefined, { slot: 'interstitial' },
+    );
+
+    listeners['paid']?.({ value: 0.012, currency: 'USD' });
+    expect(trackEvent).toHaveBeenCalledWith(
+      'AD_INTERSTITIAL_IMPRESSION', undefined,
+      { slot: 'interstitial', value: 0.012, currency: 'USD' },
+    );
+
+    listeners['clicked']?.();
+    expect(trackEvent).toHaveBeenCalledWith(
+      'AD_INTERSTITIAL_CLICK', undefined, { slot: 'interstitial' },
+    );
   });
 });

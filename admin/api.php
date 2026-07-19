@@ -3581,11 +3581,16 @@ switch ($action) {
         $ev->execute([$did]);
         $dev['platform'] = normalize_platform($dev);
 
-        // Banner ad diagnostics (Khabat, 2026-07-19): a raw, per-event timeline
-        // ("08:49 home_banner loaded") so admin can answer "does it load / show
-        // / get clicked / earn / no-fill" for THIS device specifically — the
-        // curated activity timeline (get-device-timeline in public/api.php)
-        // deliberately excludes this noise, this is the technical counterpart.
+        // Banner + interstitial ad diagnostics (Khabat, 2026-07-19): a raw,
+        // per-event timeline ("08:49 home_banner loaded") so admin can answer
+        // "does it load / show / get clicked / earn / no-fill" for THIS
+        // device specifically — the curated activity timeline
+        // (get-device-timeline in public/api.php) deliberately excludes this
+        // noise, this is the technical counterpart.
+        // Interstitial (Connect-ad) SHOWN/IMPRESSION/CLICK added 2026-07-19:
+        // the client previously fired zero telemetry on a successful show, so
+        // a confirmed on-device ad sighting had nothing to show here (see
+        // adsService.ts).
         // app_events is created lazily by public/api.php's track-event — may
         // not exist yet on a fresh install.
         $adEvents = [];
@@ -3594,16 +3599,20 @@ switch ($action) {
                                  WHERE device_id=?
                                    AND event IN ('AD_BANNER_REQUEST','AD_BANNER_LOADED',
                                                   'AD_BANNER_IMPRESSION','AD_BANNER_CLICK',
-                                                  'AD_LOAD_ERROR')
+                                                  'AD_INTERSTITIAL_SHOWN','AD_INTERSTITIAL_IMPRESSION',
+                                                  'AD_INTERSTITIAL_CLICK','AD_LOAD_ERROR')
                                  ORDER BY id DESC LIMIT 30");
             $ae->execute([$did]);
             foreach ($ae->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 $props = json_decode((string)($row['props'] ?? ''), true) ?: [];
                 $kind = [
-                    'AD_BANNER_REQUEST'    => 'request',
-                    'AD_BANNER_LOADED'     => 'loaded',
-                    'AD_BANNER_IMPRESSION' => 'impression',
-                    'AD_BANNER_CLICK'      => 'click',
+                    'AD_BANNER_REQUEST'         => 'request',
+                    'AD_BANNER_LOADED'          => 'loaded',
+                    'AD_BANNER_IMPRESSION'      => 'impression',
+                    'AD_BANNER_CLICK'           => 'click',
+                    'AD_INTERSTITIAL_SHOWN'     => 'shown',
+                    'AD_INTERSTITIAL_IMPRESSION'=> 'impression',
+                    'AD_INTERSTITIAL_CLICK'     => 'click',
                 ][$row['event']] ?? (
                     ($props['code'] ?? '') === 'googleMobileAds/no-fill' ? 'no_fill' : 'error'
                 );
