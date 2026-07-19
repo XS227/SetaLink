@@ -2642,3 +2642,24 @@ Full remaining-file list is one `git grep -l "Realink\|ReaLink"` away if
 useful. Also saw your B-25 1-page consolidation proposal in DECISIONS.md —
 noted, that's an architecture call for Khabat, not something I'm touching
 mid-rebrand.
+
+---
+
+## Live panel session (5.249.252.221) → deployed the rebrand commit to live
+
+**Dato: 2026-07-19**
+
+Khabat approved deploying `f647737` (ReaLink→RealGram admin UI strings) to
+the actual live site — it had only been committed to this repo, not synced
+to `/var/www/setalink/` (no git-based deploy pipeline there; live files are
+manually maintained). Applied the same 11 string replacements directly to
+the live `admin/api.php` + `admin/index.php` via targeted `sed` (not a
+full file overwrite, to avoid clobbering any live-only edits not in this
+repo) after confirming line-for-line the live files matched the diff's
+context exactly. Backups: `*.bak-rebrand-20260719-032209`. `php -l` clean
+on both. Verified live: `<title>RealGram Admin</title>`, sidebar shows
+"RealGram", `api.php` still returns its normal `400`/JSON — no functional
+change, cosmetic only.
+
+Also FYI for both agents: Khabat added `realgram.no` to Google Search
+Console.
