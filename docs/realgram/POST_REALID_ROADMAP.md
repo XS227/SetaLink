@@ -144,3 +144,114 @@ gone through the same design-then-approve process the REAL-ID migration did
 (`resilient-prancing-peach.md`). Do not start Phase-1-style additive
 implementation on any of these without that step happening first, per
 Khabat's explicit sequencing above.
+
+---
+
+## Deep-dive: what "migrate Shahnameh into RealGram" actually touches
+
+**Added 2026-07-19, study only, nothing implemented.** Khabat asked to
+study further: rewards, functionality, skills, more access, better
+connection options, the tap & earn button, and REAL's role across the
+ecosystem. Read through `season2.js` (shahnameh-backend, ~2400 lines, 40+
+endpoints) and SetaLink's `lib/quota_economy.php`/`lib/real_economy.php`
+end to end to ground this in what actually exists today, not assumptions.
+
+### What Shahnameh already has (all telegram_id-keyed today, REAL-ID bridge
+makes it playable but not yet primary — Phase 5 territory per the REAL-ID
+plan)
+
+- **Heroes** (`UserHero`, `HERO_CATALOG`): owned per-account, leveled up
+  with REAL, each level scales `zar_per_hour` (passive income). Buying and
+  leveling are both server-price-checked (client-supplied cost is never
+  trusted — fixed 2026-06-23 after exactly that hole existed).
+- **Chapters + quizzes** (`ChapterProgress`, `QUIZ_CATALOG`, three tiers
+  easy/medium/hard, ≥60% correct to pass): this IS the "skills" system —
+  mastery-gated, server-verified (`isChapterQuizCleared`), can't be spoofed
+  by a client claiming `chapters[slug].done`. `grant-hero` already gates
+  certain heroes on a chapter's quiz being cleared — chapter completion
+  already unlocks *something* today, just not VPN access yet.
+  `reconcile-chapter-rewards` exists as a one-time-catch-up pattern —
+  directly reusable shape for a future chapter→Starlink reward.
+- **Daily loop**: check-in streaks (`/earn/checkin`, escalating REAL +
+  gem-every-7th-day), one-time social/partner tasks (`/earn/complete-task`,
+  `EARN_TASKS` — note `partner_tonkeeper` already exists as a task, i.e.
+  Shahnameh already rewards a RealGram-ecosystem action today), AdsGram
+  rewarded ads (bronze/silver/gold/watch tiers).
+- **Clan**: full clan system (create/browse/apply/invite/accept/contribute/
+  members), `telegram_id`-keyed exactly like the rest — this is what
+  `POST_REALID_ROADMAP.md`'s item 2 (clan/profile unification) is about.
+- **Currencies**: `zar` (in-game, earned by tap/heroes), `real_balance`
+  (the ecosystem currency, spendable ecosystem-wide via contracts §1-§7),
+  `gems` (cosmetic/premium currency), `farr` (a third, less-used currency —
+  origin/purpose not traced here, flagging as an open question rather than
+  guessing). `zar`→`real` conversion is a real, live, rate-configurable
+  endpoint (`/user/zar-swap`, rate from `SystemConfig economy.zar_to_real_rate`).
+
+### What RealGram/SetaLink already has (parallel, not yet joined)
+
+- **Referral milestone ladder** (`qe_milestones()`, Fibonacci: 3/5/8/13/21/
+  34/55 referrals): each tier grants quota bytes, a cosmetic badge
+  (scout→connector→builder→influencer→champion→legend→icon), AND
+  `stealth_unlocked` — a **better-connection unlock**, gated purely on
+  referral count today. This is the exact mechanism `POST_REALID_ROADMAP.md`
+  item 3 (chapter→Starlink) would extend, not invent from scratch — the
+  reward *type* (unlock better connectivity) already exists, just needs a
+  second unlock path.
+  - **What "stealth" concretely unlocks** wasn't traced in this pass — the
+    quota_economy.php code sets the flag but the actual routing/protocol
+    consequence lives elsewhere (likely the exit-node selection logic).
+    Worth confirming before designing a chapter-gated version of it.
+- **REAL spend/redemption**: `/v1/spend` (contract 4) already lets a linked
+  REAL account convert REAL → VPN quota, idempotent, ledgered
+  (`real_redemptions`). This is the CONSUMPTION side of REAL in the
+  ecosystem — already fully built and live.
+- **Quota transfer** (device-to-device gifting, anti-fraud capped) — social
+  layer that has no Shahnameh equivalent today (Shahnameh has no "gift your
+  hero-income to a clanmate" concept).
+- **Tap & earn button** (`zarStore.ts`, mobile-app): **this is the one
+  concrete gap worth fixing first, independent of the 3-item roadmap.** It
+  is a **fully local, on-device counter** — its own code comment says so
+  explicitly ("balance lives on-device... pre-backend balances honest
+  enough to migrate [later]"). It does NOT call Shahnameh's real
+  `season2_users.zar` field, `/user/zar-swap`, or
+  `SystemConfig economy.tap_base_zar` at all. Two consequences:
+  1. A RealGram user's ZAR from tapping and a Shahnameh player's ZAR from
+     playing are **two disconnected numbers today**, even for the same
+     REAL-ID once REAL-ID Phase 2 ships — tapping in RealGram earns nothing
+     that Shahnameh, heroes, or the zar→real swap ever sees.
+  2. This was already flagged once (Live panel session, B-23 wallet work,
+     2026-07-19) as an open reconciliation question nobody has decided yet:
+     which number wins, is there a migration, does the local counter retire.
+
+### Where this points, without picking anything yet
+
+The pattern across all three roadmap items PLUS this new finding is the
+same: **RealGram already has the reward/unlock *shapes* (badges, stealth
+unlocks, a tap button, a wallet card) — Shahnameh has the real, server-
+verified *substance* behind similar shapes (heroes, chapters, quiz mastery,
+zar/real economy) that isn't wired to them yet.** REAL-ID (already shipped)
+is what makes "wired to them" even possible — before REAL-ID Phase 2 there
+was no single identity to hang a unified reward ledger off of.
+
+**Suggested additions to the existing priority list (not reordering
+Khabat's 1-2-3, just flagging what's now visible):**
+
+- **Tap & earn ↔ Shahnameh zar bridge** looks like the smallest, most
+  self-contained piece of all of this — one endpoint (`/user/zar-swap`
+  already exists), one client-side change (call it instead of only
+  incrementing local state), no new anti-abuse surface (the swap endpoint
+  is already rate-safe via `SystemConfig`-driven rate + atomic `$gte`
+  guard). Worth considering alongside or even before item 1 (Hakim
+  support), purely on effort-vs-value grounds — not overriding Khabat's
+  stated order, just naming it since it wasn't visible before this dive.
+- **Chapter→Starlink (item 3)** has a closer analogue than initially
+  written up: `stealth_unlocked` already IS "better connection options,"
+  already reward-gated, already has a badge ladder UI. The design work
+  narrows from "invent a new reward type" to "give `stealth_unlocked` (and
+  maybe the badge ladder itself) a second unlock path keyed on chapter/quiz
+  mastery instead of only referral count" — same anti-abuse questions
+  from the original write-up still apply (this doesn't reduce that need).
+- **Clan/profile (item 2)** is unchanged by this dive — still Phase 5
+  territory, still waiting on REAL-ID backfill first.
+
+Still nothing to build here — same gate as the rest of this document.
