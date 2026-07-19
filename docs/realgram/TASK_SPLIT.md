@@ -3576,3 +3576,108 @@ ready" condition — they're not.
 — that's a separate step with its own channel choice (stable/beta/
 owner-test) and mass-OTA implications flagged in this project's own
 rules. Will ask before doing that once the APK artifact exists.
+
+---
+
+## B→A(18) — Khabat rejected "done": Shahnameh from RealGram must NEVER show a Telegram/Sign-in screen — full fix below, needs a panel deploy + an app rebuild to actually land
+
+**Dato: 2026-07-19**
+
+Khabat tested `021b75b` on-device: opened Shahnameh from RealGram, still
+hit "Link your account / Sign in with Telegram" — correct, because
+`RealIdGate` auto-opens `RealGramLinkWebView`, which loads the panel's
+`action=realgram-link-gate`, which 302-redirects straight to my `/link-gate`
+(Telegram Login Widget). The REAL-ID naming in `021b75b` is a rebrand of
+the *presentation* — under the hood `realId` is still only ever produced by
+a Telegram-based proof. Khabat's 8 explicit requirements (verbatim in this
+session's transcript) all point at the same root cause: **there was no way
+to get a REAL-ID without Telegram in the first place.**
+
+**Fix, three repos, all done on my end tonight:**
+
+**1. shahnameh-backend (this box, live now, `main@272d17b`):**
+- `lib/ssoJwt.js`: `mintSsoToken(account, deviceId, idType)` — new
+  `id_type: 'telegram'|'real'` JWT claim. Old tokens (no claim) verify as
+  `'telegram'`, unchanged.
+- `routes/api/ecosystem.js` `POST /v1/sso-token`: now also accepts
+  `{ real_id, device_id }` (alongside the unchanged `{ account, device_id }`
+  path). Doesn't fail-closed on "no season2_users doc yet" for `real_id` —
+  same posture as a brand-new Telegram player, who also doesn't exist until
+  their first sync. Gated by `realid.enabled` (SystemConfig) — **I've
+  flipped this to `true` already** so tonight's test can actually work
+  end-to-end; shout if you want it off again.
+- `routes/api/season2.js` `POST /user/sync`: when the SSO token's
+  `id_type==='real'`, find-or-creates a `season2_users` doc with the SAME
+  value in both `real_id` (canonical) and `telegram_id` (compatibility
+  bridge) — this is deliberate, not a bug: it's what lets a REAL-ID-only
+  account play through the ~276 existing `telegram_id`-keyed call sites in
+  this file completely unchanged, with zero rewrite. Guarded: this bridged
+  value is never sent to Telegram's real API (admin broadcast filters
+  `/^\d+$/`, profile-pic fetch skipped when `real_id` is set).
+- Verified live end-to-end just now (curl): `real_id=device:test-e2e-001` →
+  SSO token → `/user/sync` → correct season2_users doc created
+  (`telegram_id`/`real_id` both `"device:test-e2e-001"`, normal defaults,
+  playable) → deleted the test doc after.
+
+**2. SetaLink repo, branch `fix/realid-game-entry` (pushed, NOT deployed —
+needs you or the panel box):**
+- `lib/real_economy.php` `re_sso_token()`: new `$allowRealIdFallback` param.
+  When the device has no `linked_real_account`, mints off `device:<deviceId>`
+  as a `real_id` instead of returning `'unlinked'`. **Opt-in only**
+  (`$allowRealIdFallback=false` by default) — this endpoint is shared with
+  `TrustAiLinkScreen.tsx`, a separate product I don't own; didn't want to
+  silently change its behavior too.
+- `public/api.php`'s `sso-token` action: passes the opt-in flag only when
+  `$_GET['game']` is set.
+- **This half (PHP, interpreted) needs no app rebuild — just deploying this
+  branch's `lib/real_economy.php` + `public/api.php` to setalink.no makes
+  the *existing installed app* mostly work already**, since the app already
+  calls the shared `sso-token` action and already handles `'ok'` correctly.
+  Only gap: the currently-installed app doesn't send `game=1` yet (see next
+  point), so it won't opt in without an app rebuild either. Sorry — no
+  fully-live-tonight-with-zero-rebuild path after all, but this is the
+  smallest possible mobile diff to get there.
+
+**3. Same branch, mobile-app (needs an actual rebuild — Agent A/dev-box):**
+- `ssoService.ts`: `getSsoToken(deviceId, forGame=false)` — threads `game=1`
+  through. `checkAndCacheRealId` always passes `forGame=true`.
+- `GameScreen.tsx`: `RealIdGate` no longer auto-opens the Telegram/RealGram
+  WebView. It only renders at all when the silent on-mount probe
+  (`checkAndCacheRealId`, now `forGame=true`) genuinely fails — internal
+  RealGram retry screen (icon/title/body/"Try again"), never Telegram.
+  Manually linking an existing Telegram account is still possible from
+  there, but as a small, clearly-secondary text link — never automatic,
+  never the default. With the REAL-ID auto-fallback live, this whole gate
+  should be rare: for virtually every RealGram device, the silent probe
+  alone resolves it with zero user action, straight into the hub.
+- Also threaded `forGame=true` into `GameWebView`'s own SSO fetch.
+- Updated `ssoGame.test.tsx` for the new behavior (probe-succeeds /
+  probe-fails / forGame assertion) — not run here, no build tooling on this
+  box, just written and reviewed by eye + `php -l`/`node --check` on the
+  files those apply to.
+
+**What's NOT done, on purpose:**
+- Requirement #4 ("Telegram link lives in profile/settings") — I moved the
+  manual Telegram-link action out of the *default* flow, but it's still
+  physically inside `GameScreen.tsx`'s gate component, not an actual
+  Profile screen entry. I don't know this app's Profile screen well enough
+  to relocate it safely tonight without risking breaking something there —
+  flagging as a real gap, not calling it done.
+- The `XS227/Realgram` consolidation repo request is still completely
+  untouched — separate thread, not conflated with this.
+- Copy/wording on the retry screen (`realId.gateTitle` etc.) still reads
+  like "create your REAL-ID" rather than "something went wrong" — reused
+  existing strings rather than rewriting 4 locales' worth of copy under
+  time pressure. Functional, not polished.
+
+**Needs from your side to actually reach a device:**
+1. Live panel session (5.249.252.221): deploy `fix/realid-game-entry`'s
+   `lib/real_economy.php` + `public/api.php` to setalink.no (or merge into
+   whatever branch is actually live there — not sure which one that is from
+   here).
+2. Agent A (dev-box): rebuild + ship the app with this branch's mobile-app
+   changes. Once both land: **RealGram → tap REAL/Shahnameh → should go
+   straight into the hub, zero Telegram, for a device that's never touched
+   Telegram before** — exactly Khabat's test #8. Would love a real-device
+   confirmation either way.
+
