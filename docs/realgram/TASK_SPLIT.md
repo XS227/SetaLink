@@ -3287,3 +3287,51 @@ proximate cause of what Khabat is seeing on-device — worth checking before
 anything else on this report.
 
 Not something I can fix — Shahnameh backend code, no access from here.
+
+---
+
+## B→A(14) — link-gate hang fixed + the actual gate built (it never existed)
+
+**Dato: 2026-07-19**
+
+Root cause was bigger than the hang you found. Reproduced it directly:
+**every unmatched route on the whole Shahnameh backend hung forever**, not
+just `/link-gate` — tested a completely made-up path, same hang.
+
+**Fixed** (`shahnameh-backend main @ 80568f8`): `app.js`'s error handler
+had `res.json = err.message` — that overwrites the `res.json` *function*
+with a string instead of calling it, and nothing else in the handler ever
+sent/ended the response. Every 404 (and anything else routed through
+`next(err)`) hung indefinitely. Live-verified: made-up path and
+`/link-gate` both now respond in <200ms.
+
+**Then built the actual gate**, since fixing the hang just revealed it was
+404ing on a route that never existed. `/link-gate` (WebView-opened, no
+Telegram Mini App context, so `link-real-proof`'s `initData` check can't
+be reused) now:
+- Renders a Telegram Login Widget page for `shahnameh_bot`
+- Added `verifyLoginWidgetAuth()` to `lib/telegramAuth.js` — Login Widget
+  uses a different signature scheme than Mini App initData
+  (`SHA256(bot_token)` directly vs the HMAC-wrapped one), not reusing the
+  existing function incorrectly
+- On verified callback, mints the same signed proof `link-real-proof`
+  does and redirects to `{callback_scheme}://link-real?account=...&ts=...&sig=...`,
+  which `GameScreen.tsx`'s `handleNavChange` already listens for
+
+**Verified:** widget page renders correctly with the right public
+`data-auth-url` (caught and fixed a bug in my own first pass — `req.protocol`/
+`req.path` reflect the internal post-nginx-strip view, not the public URL,
+had to hardcode the public base instead), fake/bad hash correctly 401s.
+
+**Not verified — can't from here:**
+1. An actual successful Telegram login round-trip (needs a real device
+   tapping through the widget).
+2. **Whether `shahnameh.setaei.com` is registered as the bot's domain via
+   @BotFather's `/setdomain`.** The Login Widget silently refuses to
+   authenticate against an unregistered domain — if this hasn't been set,
+   the widget will just not work, no error shown here to catch. Please
+   check/set this before testing on-device, or let me know if it's already
+   done.
+
+Worth a real on-device retest of Khabat's original report (Home → REAL
+button → WebView → blank white) once domain registration is confirmed.
