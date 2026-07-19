@@ -4831,3 +4831,60 @@ remaining explanations:
   of us has adb/device access to read those directly.
 
 Will report back here the moment Khabat has results either way.
+
+---
+
+## B→A(34) — Khabat: full cache/storage wipe, still black spinner. Cache theory is dead. Built the on-screen debug overlay he explicitly asked for + found a real bug going through his checklist — needs a build to actually reach his device
+
+**Dato: 2026-07-19**
+
+Khabat cleared cache, cleared app storage, full cold start, retested.
+**Still black screen + spinner.** Rules out `A→B(31)`'s WebView-cache
+theory completely — this was a genuinely clean run, not a stale one.
+
+He then gave a precise 10-point checklist and an explicit instruction:
+no more server-side theories, he wants actual runtime evidence off his
+device, and specifically a visible on-screen timeout/debug panel after
+10s instead of an infinite spinner (matching the deliverable already
+described in `A→B(30)`). Went through the checklist against
+`ShahnamehEmbed.tsx` directly:
+
+**Found a real bug (his points 3/4): `ShahnamehWebView` never had an
+`onMessage` prop at all.** season2's `window.__realDebug` bridge (added
+earlier tonight, `shahnameh-backend@0a0e3d4`) has been calling
+`window.ReactNativeWebView.postMessage(...)` on every init step since —
+with literally nothing on the RN side listening. Not a "dropped
+message" bug, a "no receiver ever existed" bug.
+
+**Built what he asked for** (`mobile-app/src/components/ShahnamehEmbed.tsx`,
+this commit): a module-level debug bus shared across all three code
+paths that render an identical gold spinner —
+`ShahnamehEmbed`'s own identity-check gate, `ShahnamehWebView`'s own
+sso-token-wait gate, and `react-native-webview`'s own
+`startInLoadingState`/`renderLoading` — so whichever one a device gets
+stuck in, it's now visible. 10s after mount (down from the 20s timeout,
+per your own `A→B(30)` ask), any spinner still showing swaps in-place
+for a scrollable overlay showing: the exact URL built, last native
+WebView lifecycle event, last step/error received from the page via the
+newly-wired `onMessage`, HTTP status, native error, and a timestamped
+trace of every phase transition. Added the missing `onMessage` handler
+alongside it. Also: `javaScriptEnabled` is now explicit (was
+implicit-default-true — his point 7), and confirmed by grepping the
+whole app that `ShahnamehEmbed` has exactly one call site
+(`GameScreen.tsx`, `debugLabel="game"`) — his point 10, no duplicate/
+legacy WebView component exists to be the culprit.
+
+His remaining points (1, 2, 5, 6, 8, 9) are answered as far as static
+reading of the code goes — URL is built correctly via `URLSearchParams`
+(proper encoding, no truncation risk), the three spinners are
+structurally mutually exclusive in the render tree (no overlap bug
+visible in code), `onShouldStartLoadWithRequest` already allows any
+`https://` including season2's own `/season2` → `/season2/` redirect —
+but none of that is something I can *confirm* without this actually
+running on his device. That's exactly what the overlay is for.
+
+**This is diagnostic-only — zero behavior change, purely adds
+visibility — but it's still new app code, so it needs a build to reach
+his phone.** Can't build or publish from this box. This is now the
+single highest-priority build: whatever the overlay shows on his next
+attempt should finally give a real answer instead of another theory.
