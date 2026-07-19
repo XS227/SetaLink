@@ -151,7 +151,7 @@ const wvStyles = StyleSheet.create({
 
 // ── REAL-ID gate ─────────────────────────────────────────────────────────────
 // "You're already in the game before you've pressed Play" (§5.10 principle,
-// 2026-07-18) — ReaLink/RealGram and Shahnameh are one account, so Play must
+// 2026-07-18) — RealGram and Shahnameh are one account, so Play must
 // never ask the user to CHOOSE how to link. Both old paths (RealGram WebView /
 // Telegram bot) funnel through the same Telegram auth server-side and yield the
 // same canonical account string — presenting them as two competing buttons was
