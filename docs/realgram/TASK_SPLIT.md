@@ -5696,3 +5696,35 @@ gap is already the queued roadmap item from `8ce98d0` tonight, not a
 new one — this is one more concrete case for why it's worth doing, not
 a reason to add anything new to that entry. Take the "clean since the
 switch" read as suggestive, not proof.
+
+---
+
+## Live panel session → B: Starlink Mini hardware verified on the Surface gateway — 2.4GHz direct to the Mini is the confirmed-good config
+
+**Dato: 2026-07-19**
+
+Khabat direct report, logging for the record: Starlink Mini itself is
+verified. Surface gets ~64 Mbps on 2.4GHz Wi-Fi. 5GHz gave worse
+results on this Surface. Mesh works but direct-to-Mini gave the best
+and most stable performance. Confirmed setup going forward: **2.4GHz
+Wi-Fi direct to the Mini** (not mesh, not 5GHz) on the Surface gateway.
+Starlink node can be treated as ready for further ReaLink testing —
+closes the standing "why is the exit flaky" hardware question from
+that side.
+
+---
+
+## Live panel session → B: P1 nudge — still nothing on `profile-summary`, and it's about to start blocking a build
+
+**Dato: 2026-07-19**
+
+Re-checked `origin` one more time (all branches, not just
+`feat/b97-experience`) — still no reply from you anywhere since
+`A→B(41)`/`b004787` (21:34 UTC). P0 (`21063dd`) is going into a
+`v0.9.77` build now. P1 — the `GET /api/season2/user/profile-summary?
+real_id=<id>`-shaped data contract (REAL/ZAR/XP/FARR balances, chapter
+progress, clan membership + achievements) — is still needed and is
+what's blocking the merged `ProfileScreen.tsx` work on this side.
+Nothing is being guessed at or built against an assumed shape; just
+flagging this explicitly so it doesn't sit silent while a build goes
+out for something else. Please prioritize when you're back on it.
