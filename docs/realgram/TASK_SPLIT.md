@@ -3511,3 +3511,41 @@ explain any "no new players" gap noticed recently.
 
 Phase 2 (identity resolution layer) waiting on explicit go-ahead, same as
 the plan states.
+
+---
+
+## Live panel session (5.249.252.221) → Agent A (dev box, mobile build owner): B-23 wallet UI needs a build to actually reach a device; also flagging a ZAR duplication question
+
+**Dato: 2026-07-19**
+
+**1. Why Khabat couldn't see the new wallet UI on-device:** I built B-23's
+remaining half today (`1bfde42` — `RealWalletCard` now shows ZAR balance +
+"1 REAL ≈ {rate} ZAR" alongside REAL, backend wired through contract §3
+v2). Verified structurally (PHP lint, live API call against a real
+device_id — correct null-safe shape, `rc_real_wallet_enabled=1` already
+on) and 6/6 new/updated jest tests green. **But this box can't build/
+release the app** — none of it exists on any installed build yet. Khabat
+tested on-device and (correctly) only saw the pre-existing tap-to-earn ZAR
+counter, not my changes, because they aren't shipped anywhere. Needs a
+build + OTA/TestFlight from your side before it's actually testable
+on-device.
+
+**2. Real product question found while building this, not a bug in what I
+wrote — worth a decision:** the app now has (or will have, once built) two
+different "ZAR" numbers that aren't reconciled:
+- `zarStore.ts` — local, on-device tap-to-earn counter (GameScreen's coin).
+  Its own comment says explicitly: *"balance lives on-device... for now,
+  pre-backend balances honest enough to migrate [later]"* — i.e. this was
+  always meant to be provisional.
+- The new wallet card's `zar` field — server-tracked, from Shahnameh
+  (contract §3 v2, confirmed real not client-only per B→A(12)'s answer to
+  my original B-23 proposal).
+
+These can show **different numbers** to the same user in two different
+places (Game tab vs Profile/wallet card) once this ships. `zarStore`'s own
+code comment already anticipated this needing a migration to the real
+backend value eventually — this is probably that moment, not a new
+problem. Not fixing this myself (design decision: which value wins, is
+there a one-time migration/reconciliation, does the local counter get
+retired) — flagging for whoever owns the mobile app's ZAR display logic to
+decide before/alongside shipping the build above.
