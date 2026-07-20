@@ -753,6 +753,17 @@ function icon(string $name): string {
         </div>
       </div>
 
+      <!-- ── Grouped Ad Errors ───────────────────────────────────────── -->
+      <div class="panel" style="margin-top:.75rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Grouped Ad Errors <span class="panel-sub">AD_LOAD_ERROR aggregated by slot + code + device — repeated identical failures collapsed to one row with a count</span></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="data-table" style="width:100%;min-width:640px">
+            <thead><tr><th>Slot</th><th>Code</th><th>Domain</th><th>Device</th><th style="text-align:right">Count</th><th>VPN</th><th>Last seen</th></tr></thead>
+            <tbody id="adErrorsGrouped"><tr><td colspan="7" class="tbl-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="panel" style="margin-top:.5rem">
         <div class="panel-header"><span class="panel-title"><?= icon('person') ?> Suspicious Reward Events <span class="panel-sub" id="adsReviewCount">review queue</span></span></div>
         <div class="panel-body">
@@ -2565,7 +2576,7 @@ views.ads = {
           this.nocDays = parseInt(days, 10);
           this.nocFrom = null; this.nocTo = null;
           this.loadNoc();
-          this.loadBanner();
+          this.loadBanner(); this.loadErrorsGrouped();
         }
       };
     });
@@ -2573,14 +2584,14 @@ views.ads = {
     if (applyBtn) applyBtn.onclick = () => {
       const f = ($('nocFrom') || {}).value;
       const t = ($('nocTo')   || {}).value;
-      if (f && t && f <= t) { this.nocFrom = f; this.nocTo = t; this.loadNoc(); this.loadBanner(); }
+      if (f && t && f <= t) { this.nocFrom = f; this.nocTo = t; this.loadNoc(); this.loadBanner(); this.loadErrorsGrouped(); }
     };
     const rfr = $('adsNocRefresh');
-    if (rfr) rfr.onclick = () => { this.loadNoc(); this.loadBanner(); };
+    if (rfr) rfr.onclick = () => { this.loadNoc(); this.loadBanner(); this.loadErrorsGrouped(); };
 
     this.load();
     this.loadNoc();
-    this.loadBanner();
+    this.loadBanner(); this.loadErrorsGrouped();
   },
 
   async save() {
@@ -2802,9 +2813,12 @@ views.ads = {
     const row = (label, v) => `<tr><td style="font-size:.76rem;color:var(--muted-2)">${label}</td><td style="font-size:.76rem;text-align:right;font-family:var(--mono)">${v}</td></tr>`;
     const renderSlot = (id, s) => {
       const el = $(id); if (!el) return;
+      const requests = s.requests ?? 0, loaded = s.loaded ?? 0;
+      const successRate = requests > 0 ? (loaded / requests * 100).toFixed(1) + '%' : '—';
       el.innerHTML = [
-        row('Requests',    s.requests ?? 0),
-        row('Loaded',      s.loaded ?? 0),
+        row('Requests',    requests),
+        row('Loaded',      loaded),
+        row('Load success rate', successRate),
         row('Impressions', s.impressions ?? 0),
         row('Clicks',      s.clicks ?? 0),
         row('CTR',         s.ctr == null ? '—' : s.ctr.toFixed(2) + '%'),
@@ -2814,6 +2828,31 @@ views.ads = {
     };
     renderSlot('bannerAdsHome',    d.home_banner    || {});
     renderSlot('bannerAdsFreedom', d.freedom_banner || {});
+  },
+
+  // ── Grouped Ad Errors (Khabat, 2026-07-20) ────────────────────────────
+  // "Do not spam admin with identical errors — aggregate by slot, error
+  // code and user, show a failure count." One row per (device, slot, code)
+  // instead of a raw event list where one flaky device buries everything.
+  async loadErrorsGrouped() {
+    const params = this.nocFrom && this.nocTo
+      ? { from: this.nocFrom, to: this.nocTo }
+      : { days: this.nocDays };
+    let d;
+    try { d = await api.get('ad-errors-grouped', params); } catch (e) { return; }
+    const el = $('adErrorsGrouped'); if (!el) return;
+    const groups = d.groups || [];
+    el.innerHTML = groups.map(g => `<tr>
+        <td style="font-size:.68rem;font-family:var(--mono)">${esc(g.slot||'—')}</td>
+        <td style="font-size:.68rem;color:var(--danger)">${esc(g.code||'—')}</td>
+        <td style="font-size:.65rem;color:var(--muted-2)">${esc(g.domain||'')}</td>
+        <td style="font-size:.68rem;font-family:var(--mono)">
+          <a href="#" onclick="devDetail('${esc(g.device_id)}');return false" title="${esc(g.device_id)}">${esc((g.device_id||'').slice(0,14))}…</a>
+        </td>
+        <td style="font-size:.68rem;text-align:right"><span style="background:var(--danger);color:#fff;border-radius:999px;padding:.05em .55em;font-size:.68rem">${g.count}</span></td>
+        <td style="font-size:.68rem">${g.vpn_connected ? '🔒 VPN' : '—'}</td>
+        <td style="font-size:.65rem;color:var(--muted-2)" title="${esc(g.first_seen||'')} → ${esc(g.last_seen||'')}">${fmtRelative(g.last_seen)}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="tbl-empty">No ad load errors in this window</td></tr>';
   },
 };
 
@@ -4635,11 +4674,19 @@ window.devDetail = async function(did) {
                          no_fill:'#f59e0b', error:'var(--danger)', request:'var(--muted-2)' };
     const adRows = (d.ad_events || []).map(e => {
       const time = (e.created_at || '').slice(11, 16) || '—';
+      const range = (e.count > 1 && e.first_seen && e.first_seen !== e.created_at)
+        ? ` <span style="color:var(--muted-2)" title="first seen">since ${esc((e.first_seen||'').slice(11,16))}</span>` : '';
+      const countBadge = e.count > 1
+        ? ` <span style="background:var(--danger);color:#fff;border-radius:999px;padding:0 .4em;font-size:.62rem" title="${e.count} identical events collapsed">×${e.count}</span>`
+        : '';
+      const vpnBadge = e.vpn_connected === true ? ' <span title="VPN connected when this fired">🔒VPN</span>'
+                      : e.vpn_connected === false ? ' <span title="VPN disconnected when this fired" style="color:var(--muted-2)">direct</span>' : '';
+      const domain = e.domain ? `<span style="font-family:var(--mono);opacity:.7">${esc(e.domain)}</span> ` : '';
       return `<tr>
-        <td style="font-size:.68rem;font-family:var(--mono)">${esc(time)}</td>
+        <td style="font-size:.68rem;font-family:var(--mono)">${esc(time)}${range}</td>
         <td style="font-size:.68rem;font-family:var(--mono)">${esc(e.slot || '—')}</td>
-        <td style="font-size:.68rem;color:${kindColor[e.kind] || 'var(--muted-2)'}">${esc(e.kind)}</td>
-        <td style="font-size:.65rem;color:var(--muted-2)">${esc(e.detail || '')}</td>
+        <td style="font-size:.68rem;color:${kindColor[e.kind] || 'var(--muted-2)'}">${esc(e.kind)}${countBadge}${vpnBadge}</td>
+        <td style="font-size:.65rem;color:var(--muted-2)">${domain}${esc(e.code || '')} ${esc(e.detail || '')}</td>
       </tr>`;
     }).join('') || '<tr><td colspan="4" class="tbl-empty">No banner ad events reported</td></tr>';
     $('devDetailBody').innerHTML = `
@@ -4649,7 +4696,7 @@ window.devDetail = async function(did) {
       <table class="tbl" style="margin-top:.3rem"><thead><tr>
         <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Probe</th><th>Error</th><th>Reported from</th>
       </tr></thead><tbody>${sess}</tbody></table>
-      <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">AD DIAGNOSTICS <span style="font-weight:400;color:var(--muted-2)">— banner requests/loads/impressions/clicks, this device only</span></div>
+      <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">AD DIAGNOSTICS <span style="font-weight:400;color:var(--muted-2)">— banner requests/loads/impressions/clicks, this device only; repeated identical failures collapsed with a ×N count</span></div>
       <table class="tbl" style="margin-top:.3rem"><thead><tr>
         <th>When</th><th>Slot</th><th>Event</th><th>Detail</th>
       </tr></thead><tbody>${adRows}</tbody></table>
