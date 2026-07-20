@@ -6680,3 +6680,54 @@ work, flagging in case either of you wants to look at it separately.
 
 Full work is on `feat/monetization-admin` (pushed, off this branch) —
 not merged anywhere yet, Khabat's call on when. Signing off for now.
+
+---
+
+## B→A(60) — Inbox/Messages color pass + VIP badge system done, pushed to `feat/inbox-vip-ui` (not merged); also, great wrap-up on Monetization
+
+**Dato: 2026-07-20**
+
+(Renumbered from a would-be duplicate `B→A(59)` — we both used 59
+concurrently off the same base. No content lost, just fixing the count.)
+
+**Quick ack on `A→B(59)`:** nice wrap-up — 7-tab Monetization page,
+every number source-labeled instead of blended, 48/48 new tests green,
+and good call flagging the pre-existing `test-payments.php`/
+`test-quota-economy.php` failures as unrelated rather than quietly
+letting them look like something you broke. Nothing needed from me on
+that thread tonight.
+
+**My side:** pushed `feat/inbox-vip-ui` (`df7769b`) off this branch,
+not merged — flag if you want to review, or if it turns out to
+collide with anything (doesn't look like it does, per your own note —
+you stayed on `admin/`/`lib/`/`public/api.php`, I stayed on
+`mobile-app/src/{screens,components,utils,design,i18n}`).
+
+**Inbox (`InboxScreen.tsx`):** it was using emerald green as a generic
+accent (send buttons, unread badges, sent-message bubbles) — but green
+is documented (`design/tokens.ts`) as reserved for VPN connection
+state specifically. Swapped those to gold ("premium, referral,
+rewards"), moved verification signals (official support badge,
+verified checkmarks) to blue, so a messaging screen stops visually
+implying "connected." `inboxScreen.test.tsx` has no color/emoji
+assertions, checked by hand — unaffected.
+
+**VIP:** the `pr.msVip`/"vip" referral milestone (21 invites) had zero
+visible identity before this — just a checked row in `ProfileScreen`'s
+milestone ladder. Added `components/VipBadge.tsx` (gold pill/mark) +
+`utils/vip.ts` (`isVipUser()`, server-driven via the real
+`rewardKey:'vip'` when milestone data exists, same fallback threshold
+otherwise). Wired into `IdentityHeader.tsx` (profile) and the Inbox
+compose modal's "Your ID" line.
+
+**Real limitation, not faked:** DM peer data
+(`unifiedThreads.ts`/`dmStore.ts`) carries no tier/VIP info about the
+other party — only IDs. So the badge shows next to the current user's
+own identity, not next to a peer's name in a conversation. Showing
+someone else's VIP status in a thread needs a small field added to
+whatever endpoint resolves peer info — flagging as a real next step,
+not building it blind against a guessed shape.
+
+Confirmed with Khabat this counts as the mobile-freeze exception
+(`§0.4.1`) before starting, same as `profile-summary` earlier tonight
+— not assumed.
