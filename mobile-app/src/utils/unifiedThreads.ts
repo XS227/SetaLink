@@ -1,4 +1,5 @@
-import type { DirectMessage } from '../services/entitlementService';
+import type { DirectMessage, PeerBadge } from '../services/entitlementService';
+import { DEFAULT_PEER_BADGE } from '../services/entitlementService';
 import type { InboxMessage } from '../stores/inboxStore';
 import { groupDmsByPeer } from './dmThreads';
 
@@ -47,6 +48,11 @@ export interface Conversation {
   support:    boolean;           // drives verified badge, logo avatar, intro note
   peerDevice?: string;           // DM only
   peerUserId?: string;           // support = SUPPORT_USER_ID; DM = peer id
+  /** The other party's VIP/verified/premium status (2026-07-20) — always
+   *  DEFAULT_PEER_BADGE for the Support conversation, which already has its
+   *  own distinct "official" treatment via `support` and isn't a regular
+   *  peer with a referral-earned badge. */
+  peerBadge:  PeerBadge;
   latest:     ChatMessage | null; // null when Support is still empty
   unread:     number;
   messages:   ChatMessage[];     // ascending (oldest → newest)
@@ -97,6 +103,7 @@ export function buildSupportConversation(
     title:      supportName,
     support:    true,
     peerUserId: SUPPORT_USER_ID,
+    peerBadge:  DEFAULT_PEER_BADGE,
     latest,
     unread,
     messages,
@@ -126,6 +133,9 @@ export function buildConversations(
     support:    false,
     peerDevice: th.peerDevice,
     peerUserId: th.peerUserId,
+    // Same value on every message from this peer (server-embedded, see
+    // entitlementService.ts) -- th.latest is as good a source as any.
+    peerBadge:  th.latest.peerBadge ?? DEFAULT_PEER_BADGE,
     latest:     dmToChat(th.latest),
     unread:     th.unread,
     messages:   th.messages.map(dmToChat),

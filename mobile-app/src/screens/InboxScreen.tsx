@@ -261,9 +261,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     <Text style={[styles.itemTitle, c.unread > 0 && styles.itemTitleUnread]} numberOfLines={1}>
                       {c.title}
                     </Text>
-                    {c.support && (
+                    {(c.support || c.peerBadge.verified) && (
                       <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
                     )}
+                    {c.peerBadge.isVip && <VipBadge compact />}
                     {!!c.latest && <Text style={styles.itemDate}>{c.latest.createdAt.slice(5, 16)}</Text>}
                   </View>
                   <View style={styles.threadPreviewRow}>
@@ -298,9 +299,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 <View style={styles.threadPeerWrap}>
                   <View style={styles.threadPeerRow}>
                     <Text style={styles.threadPeer} numberOfLines={1}>{openConvo.title}</Text>
-                    {openConvo.support && (
+                    {(openConvo.support || openConvo.peerBadge.verified) && (
                       <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
                     )}
+                    {openConvo.peerBadge.isVip && <VipBadge compact />}
                   </View>
                   {openConvo.support && <Text style={styles.threadSubtitle}>{t('dm.supportTag')}</Text>}
                 </View>

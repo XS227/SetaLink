@@ -195,6 +195,70 @@ function qe_fetch_device(PDO $pdo, string $deviceId): ?array {
     return $row ?: null;
 }
 
+/**
+ * Batched badge info (VIP/verified/premium) for a set of OTHER users' devices
+ * — one query total, regardless of how many device ids are passed. Built so
+ * peer-facing surfaces (DM chat list, thread header, and later profile/
+ * search/member-list views) can show a correct badge without an N+1 lookup
+ * per row (2026-07-20, Khabat).
+ *
+ * isVip/vipTier: reuses the exact same qe_milestones() ladder
+ * qe_milestone_progress() already evaluates for the CURRENT user's own
+ * profile, but reads devices.invite_count directly instead of recomputing
+ * from referral_uses — that column is already a maintained cache (kept in
+ * sync wherever a referral is credited, see the 'Update invite_count cache'
+ * write in public/api.php) with the identical status IN ('credited',
+ * 'approved') filter, so this stays consistent with the profile screen's
+ * own numbers without a second aggregate query. vipTier is the highest
+ * reached of 'vip' (21 invites) / 'elite' (55 invites).
+ *
+ * verified/premiumUntil: a confirmed paying subscriber (plan != 'free'),
+ * premiumUntil = devices.valid_until while on a paid plan. Deliberately NOT
+ * the same thing as the official-support blue checkmark already shown in
+ * the client (that's computed from SUPPORT_USER_ID, not a per-user field,
+ * and untouched by this).
+ *
+ * Every requested device id is present in the result (defaulted to the
+ * "regular user" shape even if the row doesn't exist), so callers never
+ * need a null-check before reading a peer's badge.
+ *
+ * @return array<string, array{isVip: bool, vipTier: ?string, verified: bool, premiumUntil: ?string}>
+ */
+function qe_badge_info_for_devices(PDO $pdo, array $deviceIds): array {
+    $ids = array_values(array_unique(array_filter($deviceIds, fn($d) => $d !== '')));
+    $out = [];
+    foreach ($ids as $id) {
+        $out[$id] = ['isVip' => false, 'vipTier' => null, 'verified' => false, 'premiumUntil' => null];
+    }
+    if (!$ids) return $out;
+
+    $tiers = array_values(array_filter(
+        qe_milestones(),
+        fn($ms) => in_array($ms['rewardKey'], ['vip', 'elite'], true)
+    ));
+
+    $ph = implode(',', array_fill(0, count($ids), '?'));
+    $st = $pdo->prepare("SELECT device_id, invite_count, plan, valid_until FROM devices WHERE device_id IN ($ph)");
+    $st->execute($ids);
+
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $invites = (int)($row['invite_count'] ?? 0);
+        $tier = null;
+        foreach ($tiers as $ms) {
+            if ($invites >= $ms['count']) $tier = $ms['rewardKey'];
+        }
+        $plan = (string)($row['plan'] ?? 'free');
+        $verified = $plan !== 'free';
+        $out[$row['device_id']] = [
+            'isVip'        => $tier !== null,
+            'vipTier'      => $tier,
+            'verified'     => $verified,
+            'premiumUntil' => $verified ? ($row['valid_until'] ?? null) : null,
+        ];
+    }
+    return $out;
+}
+
 function qe_approved_invite_count(PDO $pdo, string $deviceId): int {
     $st = $pdo->prepare(
         "SELECT COUNT(*) FROM referral_uses WHERE referrer_device_id=? AND status IN ('credited','approved')");

@@ -278,6 +278,25 @@ export async function checkAdminMessages(deviceId: string): Promise<void> {
 
 // ── User-to-user direct messages (v0.9.33) ────────────────────────────────────
 
+/**
+ * Peer VIP/verified/premium status (2026-07-20) — comes back embedded on
+ * every DirectMessage via list-messages' batched `peers` map (see
+ * lib/quota_economy.php's qe_badge_info_for_devices()), never a separate
+ * per-user fetch. isVip/vipTier are earned via the referral milestone
+ * ladder ('vip' at 21 invites, 'elite' at 55); verified/premiumUntil track
+ * a confirmed paying plan — the two are independent and can both be true.
+ */
+export interface PeerBadge {
+  isVip:        boolean;
+  vipTier:      'vip' | 'elite' | null;
+  verified:     boolean;
+  premiumUntil: string | null;
+}
+
+export const DEFAULT_PEER_BADGE: PeerBadge = {
+  isVip: false, vipTier: null, verified: false, premiumUntil: null,
+};
+
 export interface DirectMessage {
   id:          number;
   direction:   'in' | 'out';
@@ -290,6 +309,10 @@ export interface DirectMessage {
   expireSecs:  number;
   /** UTC 'YYYY-MM-DD HH:MM:SS' when the message burns — set once it is read. */
   expiresAt:   string | null;
+  /** The OTHER party's badge status — same value on every message from/to
+   *  them, carried per-message purely so callers never need a second
+   *  lookup keyed by peerDevice. */
+  peerBadge:   PeerBadge;
 }
 
 /** Max characters per direct message — mirrors MSG_MAX_LEN server-side. */
@@ -316,7 +339,14 @@ export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
       peer_device: string; body: string; read: boolean; created_at: string;
       expire_secs?: number; expires_at?: string | null;
     }>;
+    /** device_id -> badge, one entry per distinct peer in `messages` — see
+     *  qe_badge_info_for_devices() server-side. Not one call per message. */
+    peers?: Record<string, {
+      isVip: boolean; vipTier: 'vip' | 'elite' | null;
+      verified: boolean; premiumUntil: string | null;
+    }>;
   };
+  const peers = data.peers ?? {};
   return (data.messages ?? []).map(m => ({
     id:         m.id,
     direction:  m.direction,
@@ -327,6 +357,7 @@ export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
     createdAt:  m.created_at,
     expireSecs: m.expire_secs ?? 0,
     expiresAt:  m.expires_at ?? null,
+    peerBadge:  peers[m.peer_device] ?? DEFAULT_PEER_BADGE,
   }));
 }
 

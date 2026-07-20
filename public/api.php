@@ -929,9 +929,17 @@ if ($method === 'GET') {
         if (!$deviceId) err('missing device_id');
         $pdo = db();
         if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $messages = dm_list($pdo, $deviceId);
+        // Peer VIP/verified badges (2026-07-20, Khabat) — one batched query
+        // for every distinct peer in this list, not one per message/thread.
+        // Keyed by device_id, same key the client already groups threads by
+        // (dmThreads.ts's groupDmsByPeer). See qe_badge_info_for_devices()'s
+        // own docblock for what isVip/vipTier/verified/premiumUntil mean.
+        $peerIds = array_values(array_unique(array_column($messages, 'peer_device')));
         ok([
-            'messages' => dm_list($pdo, $deviceId),
+            'messages' => $messages,
             'unread'   => dm_unread_count($pdo, $deviceId),
+            'peers'    => qe_badge_info_for_devices($pdo, $peerIds),
         ]);
     }
 

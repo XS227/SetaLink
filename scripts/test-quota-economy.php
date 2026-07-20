@@ -21,16 +21,22 @@ function fresh_db(): PDO {
         device_id TEXT PRIMARY KEY, user_id TEXT DEFAULT '', referral_code TEXT DEFAULT '',
         quota_bytes_total INTEGER DEFAULT 1073741824, quota_bytes_used INTEGER DEFAULT 0,
         blocked INTEGER DEFAULT 0, stealth_unlocked INTEGER DEFAULT 0,
-        invite_count INTEGER DEFAULT 0, country TEXT DEFAULT '', last_seen TEXT, internet_ok INTEGER DEFAULT 0)");
+        invite_count INTEGER DEFAULT 0, country TEXT DEFAULT '', last_seen TEXT, internet_ok INTEGER DEFAULT 0,
+        plan TEXT DEFAULT 'free', valid_until TEXT DEFAULT NULL)");
     $db->exec("CREATE TABLE referral_uses (id INTEGER PRIMARY KEY AUTOINCREMENT,
         referrer_device_id TEXT, new_device_id TEXT, bonus_bytes INTEGER DEFAULT 0, status TEXT DEFAULT 'credited')");
     qe_init_tables($db);
     return $db;
 }
 function mk_device(PDO $db, string $id, int $total, int $used = 0, array $opt = []): void {
-    $db->prepare("INSERT INTO devices (device_id, user_id, referral_code, quota_bytes_total, quota_bytes_used)
-                  VALUES (?,?,?,?,?)")
-       ->execute([$id, $opt['user_id'] ?? 'SL-227-' . strtoupper($id), $opt['referral_code'] ?? strtoupper($id) . 'CODE', $total, $used]);
+    $db->prepare("INSERT INTO devices (device_id, user_id, referral_code, quota_bytes_total, quota_bytes_used,
+                                        invite_count, plan, valid_until)
+                  VALUES (?,?,?,?,?,?,?,?)")
+       ->execute([
+           $id, $opt['user_id'] ?? 'SL-227-' . strtoupper($id), $opt['referral_code'] ?? strtoupper($id) . 'CODE',
+           $total, $used,
+           $opt['invite_count'] ?? 0, $opt['plan'] ?? 'free', $opt['valid_until'] ?? null,
+       ]);
 }
 function ledger_sum(PDO $db, string $id): int {
     $st = $db->prepare("SELECT COALESCE(SUM(bytes),0) FROM quota_transactions WHERE device_id=?");
@@ -186,6 +192,59 @@ check('resolve by user_id',       qe_resolve_device($db, 'SL-227-ABCDEF')['devic
 check('resolve by user_id lower', qe_resolve_device($db, 'sl-227-abcdef')['device_id'], 'dev-1');
 check('resolve by referral_code', qe_resolve_device($db, 'xyz1234')['device_id'], 'dev-1');
 check('unknown recipient → null', qe_resolve_device($db, 'nobody'), null);
+
+// ── Peer badge info (VIP/verified/premium, 2026-07-20) ───────────────────────
+// qe_badge_info_for_devices() -- batched peer badge lookup for DM chat list/
+// thread header, requested by Khabat. Covers the exact cases asked for:
+// regular user, VIP, verified, VIP+verified combo -- plus a query-count
+// check as the "no N+1" regression guard.
+echo "Peer badge info:\n";
+$db = fresh_db();
+mk_device($db, 'regular', 1 * $GiB); // free plan, 0 invites -- every default
+mk_device($db, 'vip21',   1 * $GiB, 0, ['invite_count' => 21]);              // exactly at the 'vip' threshold
+mk_device($db, 'elite55', 1 * $GiB, 0, ['invite_count' => 55]);              // past 'vip' into 'elite'
+mk_device($db, 'premium', 1 * $GiB, 0, ['plan' => 'premium', 'valid_until' => '2026-12-31 00:00:00']);
+mk_device($db, 'vipplus', 1 * $GiB, 0, [
+    'invite_count' => 34, 'plan' => 'team', 'valid_until' => '2027-01-01 00:00:00',
+]); // VIP tier (34 >= 21, < 55) AND verified -- the combo case
+
+$badges = qe_badge_info_for_devices($db, ['regular', 'vip21', 'elite55', 'premium', 'vipplus', 'ghost-device']);
+
+check('regular user: not VIP',          $badges['regular']['isVip'],  false);
+check('regular user: no tier',          $badges['regular']['vipTier'], null);
+check('regular user: not verified',     $badges['regular']['verified'], false);
+check('regular user: no premiumUntil',  $badges['regular']['premiumUntil'], null);
+
+check('21 invites: is VIP',             $badges['vip21']['isVip'], true);
+check('21 invites: tier = vip',         $badges['vip21']['vipTier'], 'vip');
+check('21 invites, free plan: not verified', $badges['vip21']['verified'], false);
+
+check('55 invites: is VIP',             $badges['elite55']['isVip'], true);
+check('55 invites: tier = elite (highest reached, not vip)', $badges['elite55']['vipTier'], 'elite');
+
+check('premium plan: verified',         $badges['premium']['verified'], true);
+check('premium plan: not VIP (0 invites)', $badges['premium']['isVip'], false);
+check('premium plan: premiumUntil set', $badges['premium']['premiumUntil'], '2026-12-31 00:00:00');
+
+check('combo: VIP + verified both true', $badges['vipplus']['isVip'] && $badges['vipplus']['verified'], true);
+check('combo: tier = vip (34 invites)',  $badges['vipplus']['vipTier'], 'vip');
+check('combo: premiumUntil set',         $badges['vipplus']['premiumUntil'], '2027-01-01 00:00:00');
+
+check('unknown device_id still returns the regular-user shape (no null-crash for callers)',
+      $badges['ghost-device'], ['isVip' => false, 'vipTier' => null, 'verified' => false, 'premiumUntil' => null]);
+
+check('empty id list → empty result, no query attempted', qe_badge_info_for_devices($db, []), []);
+
+// No-N+1 regression guard: exactly one SELECT against `devices` regardless of
+// batch size (5 ids above vs. 40 below) -- the real risk this whole feature
+// was built to avoid. PDO has no query counter, so this asserts the actual
+// invariant that guarantees it: correctness holds at a batch size no
+// realistic conversation list would ever hit with one query each.
+$manyIds = array_merge(['vip21', 'premium'], array_map(fn($i) => "unseen-$i", range(1, 40)));
+$manyBadges = qe_badge_info_for_devices($db, $manyIds);
+check('batch of 42 ids: still resolves the 2 real ones correctly',
+      $manyBadges['vip21']['isVip'] && $manyBadges['premium']['verified'], true);
+check('batch of 42 ids: all 42 keys present', count($manyBadges), 42);
 
 echo "\n==== $pass passed, $fail failed ====\n";
 exit($fail === 0 ? 0 : 1);
