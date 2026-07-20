@@ -3,8 +3,10 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
   Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
 } from 'react-native';
-import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
+import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { VipBadge } from '../components/VipBadge';
+import { isVipUser } from '../utils/vip';
 import { useAuthStore }  from '../stores/authStore';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
@@ -67,6 +69,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const user        = useAuthStore((s) => s.user);
   const deviceId    = user?.deviceId ?? '';
   const myId        = user?.userId ?? '';
+  const isVip       = isVipUser(user?.inviteCount ?? 0, user?.milestones ?? null);
 
   // Direct messages
   const dms           = useDMStore((s) => s.messages);
@@ -385,7 +388,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   disabled={sending || !threadDraft.trim()}
                   onPress={sendInThread}
                 >
-                  {sending ? <ActivityIndicator color="#021b10" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
+                  {sending ? <ActivityIndicator color={ACCENT_ON} size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
                 </TouchableOpacity>
               </View>
             </View>
@@ -401,7 +404,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
         >
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t('dm.composeTitle')}</Text>
-            {!!myId && <Text style={styles.modalYourId}>{t('dm.yourId')}: {myId}</Text>}
+            {!!myId && (
+              <View style={styles.yourIdRow}>
+                <Text style={styles.modalYourId}>{t('dm.yourId')}: {myId}</Text>
+                {isVip && <VipBadge compact />}
+              </View>
+            )}
 
             <Text style={styles.fieldLabel}>{t('dm.recipientLabel')}</Text>
             <TextInput
@@ -437,7 +445,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 onPress={submit}
               >
                 {sending
-                  ? <ActivityIndicator color="#021b10" size="small" />
+                  ? <ActivityIndicator color={ACCENT_ON} size="small" />
                   : <Text style={styles.sendText}>{t('dm.send')}</Text>}
               </TouchableOpacity>
             </View>
@@ -448,14 +456,27 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   );
 }
 
+// Color semantics for this screen (2026-07-20 polish pass): emerald green is
+// reserved for VPN connection state everywhere else in the app (design/
+// tokens.ts) — it was being reused here as a generic "accent" for the
+// compose/send buttons, unread badges, and sent-message bubbles, which reads
+// as "connected" noise on a screen with nothing to do with the tunnel. Gold
+// (the documented "premium, referral, rewards" brand color) now carries
+// those interactive/identity accents instead; blue marks verification
+// (official support badge, verified checkmarks) as its own distinct signal.
+// The disappearing-message orange is unrelated and untouched.
+const ACCENT       = Colors.gold[400];
+const ACCENT_ON    = Colors.text.inverse; // readable on the gold accent
+const VERIFIED     = Colors.blue[400];
+
 const styles = StyleSheet.create({
   screen:        { flex: 1, backgroundColor: Colors.bg.base },
   header:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[3] },
   backBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   backIcon:      { fontSize: 26, color: Colors.text.secondary, marginTop: -2 },
   title:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  newBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  newBtnText:    { fontSize: 22, color: '#021b10', marginTop: -2, fontWeight: '700' },
+  newBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center', ...Shadow.gold },
+  newBtnText:    { fontSize: 22, color: ACCENT_ON, marginTop: -2, fontWeight: '700' },
 
   scroll:        { flex: 1 },
   content:       { paddingHorizontal: Layout.screenPadding, gap: Spacing[3], paddingTop: Spacing[1] },
@@ -465,7 +486,7 @@ const styles = StyleSheet.create({
 
   // Conversation row (avatar + text)
   item:          { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], borderRadius: Radius.lg, padding: Spacing[3], backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle },
-  itemUnread:    { borderColor: 'rgba(0,232,122,0.25)', backgroundColor: 'rgba(0,232,122,0.05)' },
+  itemUnread:    { borderColor: 'rgba(212,175,55,0.25)', backgroundColor: 'rgba(212,175,55,0.05)' },
   itemMain:      { flex: 1, gap: 4 },
   itemHeader:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
   itemTitle:     { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.secondary },
@@ -474,14 +495,14 @@ const styles = StyleSheet.create({
   itemBody:      { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 20 },
 
   avatar:        { backgroundColor: Colors.bg.base, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
-  avatarOfficial:{ backgroundColor: 'rgba(0,232,122,0.10)', borderColor: 'rgba(0,232,122,0.4)' },
-  avatarText:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
-  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  verifiedText:  { fontSize: 10, color: '#021b10', fontWeight: '700' },
+  avatarOfficial:{ backgroundColor: 'rgba(51,153,255,0.10)', borderColor: 'rgba(51,153,255,0.4)' },
+  avatarText:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: ACCENT },
+  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: VERIFIED, alignItems: 'center', justifyContent: 'center' },
+  verifiedText:  { fontSize: 10, color: ACCENT_ON, fontWeight: '700' },
 
   threadPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  unreadBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#021b10', fontWeight: '700' },
+  unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center' },
+  unreadBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: ACCENT_ON, fontWeight: '700' },
 
   // Chat thread modal
   threadRoot:    { flex: 1, backgroundColor: Colors.bg.base },
@@ -490,7 +511,7 @@ const styles = StyleSheet.create({
   threadPeerWrap:{ flex: 1 },
   threadPeerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   threadPeer:    { flexShrink: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+  threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: VERIFIED },
   threadDeleteBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   threadDeleteIcon: { fontSize: 16 },
   threadScroll:  { flex: 1 },
@@ -500,14 +521,17 @@ const styles = StyleSheet.create({
   bubbleRowIn:   { justifyContent: 'flex-start' },
   bubble:        { maxWidth: '82%', borderRadius: Radius.lg, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
   bubbleIn:      { backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle, borderTopLeftRadius: 4 },
-  bubbleOut:     { backgroundColor: Colors.emerald[400], borderTopRightRadius: 4 },
-  bubbleTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.emerald[400], marginBottom: 3 },
+  bubbleOut:     { backgroundColor: ACCENT, borderTopRightRadius: 4 },
+  // bubbleTitle only ever renders on an announcement (always incoming, from
+  // the official account) -- blue to match the other official/verified
+  // marks, not gold (which this pass reserves for "my own" accents).
+  bubbleTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: VERIFIED, marginBottom: 3 },
   bubbleText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.primary, lineHeight: 20 },
-  bubbleTextOut: { color: '#021b10' },
+  bubbleTextOut: { color: ACCENT_ON },
   bubbleLinkBtn: { marginTop: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: Radius.sm, paddingHorizontal: Spacing[2], paddingVertical: 4 },
-  bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400] },
+  bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: ACCENT },
   bubbleTime:    { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end', marginTop: 2 },
-  bubbleTimeOut: { color: 'rgba(2,27,16,0.6)' },
+  bubbleTimeOut: { color: 'rgba(3,6,9,0.6)' },
   bubbleBurn:    { borderWidth: 1, borderColor: 'rgba(255,140,60,0.5)' },
   burnNote:      { fontSize: 10, fontFamily: Typography.family.mono, color: '#FF8C3C', marginTop: 3 },
   burnChip:      { height: 46, minWidth: 46, paddingHorizontal: 6, borderRadius: 23, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center', justifyContent: 'center' },
@@ -515,15 +539,16 @@ const styles = StyleSheet.create({
   burnChipText:  { fontSize: 13, color: '#FF8C3C', fontFamily: Typography.family.mono },
   threadInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing[2], paddingHorizontal: Layout.screenPadding, paddingVertical: Spacing[3], paddingBottom: Spacing[6], borderTopWidth: 1, borderTopColor: Colors.border.subtle },
   threadInput:   { flex: 1, maxHeight: 110, borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
-  threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  threadSendText:{ fontSize: 20, color: '#021b10', fontWeight: '700' },
-  introNote:     { backgroundColor: 'rgba(0,232,122,0.06)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
+  threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center', ...Shadow.gold },
+  threadSendText:{ fontSize: 20, color: ACCENT_ON, fontWeight: '700' },
+  introNote:     { backgroundColor: 'rgba(51,153,255,0.06)', borderWidth: 1, borderColor: 'rgba(51,153,255,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
   introText:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary, textAlign: 'center', lineHeight: 18 },
 
   modalRoot:     { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
   modalCard:     { backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Layout.screenPadding, paddingBottom: Spacing[8], gap: Spacing[2] },
   modalTitle:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, marginBottom: 2 },
-  modalYourId:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, marginBottom: Spacing[2] },
+  yourIdRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing[2] },
+  modalYourId:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
   fieldLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, marginTop: Spacing[2] },
   input:         { borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
   inputMultiline: { minHeight: 110, textAlignVertical: 'top', marginTop: Spacing[2] },
@@ -531,7 +556,7 @@ const styles = StyleSheet.create({
   modalActions:  { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   cancelBtn:     { flex: 1, paddingVertical: 14, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center' },
   cancelText:    { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: Colors.text.secondary },
-  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
+  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full, backgroundColor: ACCENT, alignItems: 'center', justifyContent: 'center', ...Shadow.gold },
   sendBtnDisabled: { opacity: 0.6 },
-  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#021b10', fontWeight: '700' },
+  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: ACCENT_ON, fontWeight: '700' },
 });

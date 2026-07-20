@@ -26,6 +26,7 @@ import { RealWalletCard } from '../components/RealWalletCard';
 import { IdentityHeader } from '../components/IdentityHeader';
 import { getCachedConfig } from '../services/remoteConfigService';
 import { useInboxStore } from '../stores/inboxStore';
+import { isVipUser } from '../utils/vip';
 
 // ── §5.10 Freedom Stats — five raw values, no composite score (2026-07-18
 // decision: "don't invent a score yet — when we have enough real user data we
@@ -314,6 +315,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
         reached: m.reached,
       }))
     : FALLBACK_MILESTONES.map(m => ({ ...m, reached: invites >= m.count }));
+  const isVip = isVipUser(invites, msData);
   const nextCount = msData
     ? msData.next_milestone
     : (FALLBACK_MILESTONES.find(m => invites < m.count)?.count ?? null);
@@ -431,7 +433,7 @@ export function ProfileScreen({ onNavigate, activeTab, onSignOut }: Props) {
             couple of earned chips. Skips §5.10.4's "dynamic status line" — no
             classification rule has been decided yet (Khabat's own doc: "needs
             a concrete rule before building, not just nice titles"). */}
-        <IdentityHeader seedId={user.deviceId} fallbackId={primaryId} planLabel={planLabel} />
+        <IdentityHeader seedId={user.deviceId} fallbackId={primaryId} planLabel={planLabel} isVip={isVip} />
         {(isUnlimited || user.stealthUnlocked) && (
           <View style={styles.heroChipRow}>
             {isUnlimited && (

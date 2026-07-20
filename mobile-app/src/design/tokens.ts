@@ -164,6 +164,13 @@ export const Shadow = {
     shadowRadius:  20,
     elevation:     10,
   },
+  gold: {
+    shadowColor:   '#D4AF37',
+    shadowOffset:  { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius:  20,
+    elevation:     10,
+  },
   card: {
     shadowColor:   '#000000',
     shadowOffset:  { width: 0, height: 8 },

@@ -4,6 +4,7 @@ import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useT } from '../i18n';
 import { useIdentityStore, displayLabel } from '../stores/identityStore';
 import { EditIdentitySheet } from './EditIdentitySheet';
+import { VipBadge } from './VipBadge';
 
 interface Props {
   /** Device/user id used to seed a default avatar + handle on first run. */
@@ -11,12 +12,16 @@ interface Props {
   /** Fallback identity string (SL-227-…) shown until a handle is set. */
   fallbackId: string;
   planLabel:  string;
+  /** Reached the "vip" referral milestone (21 invites) — shows a gold badge
+   *  next to the plan badge. Optional so every other IdentityHeader caller
+   *  keeps working unchanged. */
+  isVip?:     boolean;
 }
 
 // The profile's identity header (A-11): tappable emoji avatar + display name +
 // @handle, replacing the old logo-ring + raw device-id header. Tapping it (or
 // the "edit" affordance) opens the identity sheet.
-export function IdentityHeader({ seedId, fallbackId, planLabel }: Props) {
+export function IdentityHeader({ seedId, fallbackId, planLabel, isVip }: Props) {
   const { t } = useT();
   const { handle, handleState, displayName, avatarEmoji, avatarColor, seedFromId } =
     useIdentityStore();
@@ -47,8 +52,11 @@ export function IdentityHeader({ seedId, fallbackId, planLabel }: Props) {
               {handleState === 'reserved' && <Text style={styles.verified}>✓</Text>}
             </View>
           )}
-          <View style={styles.planBadge}>
-            <Text style={styles.planText}>{planLabel}</Text>
+          <View style={styles.badgeRow}>
+            <View style={styles.planBadge}>
+              <Text style={styles.planText}>{planLabel}</Text>
+            </View>
+            {isVip && <VipBadge compact />}
           </View>
         </View>
 
@@ -72,7 +80,8 @@ const styles = StyleSheet.create({
   handleRow:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
   handle:      { fontSize: Typography.size.sm, color: Colors.text.secondary },
   verified:    { fontSize: Typography.size.sm, color: Colors.emerald[400] },
-  planBadge:   { alignSelf: 'flex-start', marginTop: 4, backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[2], paddingVertical: 2 },
+  badgeRow:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  planBadge:   { alignSelf: 'flex-start', backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[2], paddingVertical: 2 },
   planText:    { fontSize: Typography.size.xs, color: Colors.text.secondary, textTransform: 'uppercase', letterSpacing: 1 },
   editBtn:     { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   editIcon:    { fontSize: 16, color: Colors.text.secondary },
