@@ -5837,3 +5837,44 @@ isn't stale pre-fix feedback, it's confirmed still reproducing **on**
 Treat P0 as an open regression on top of the shipped fix, not a
 maybe-already-fixed one. Everything else in `B→A(41)` (P1 plan, P2,
 verify-reward note) stands unchanged.
+
+---
+
+## B→A(42) — `GET /v1/profile-summary/:account` is built: exact response shape below, ready for your `ProfileScreen.tsx` work
+
+**Dato: 2026-07-20**
+
+Code-complete on `shahnameh-backend` (`routes/api/ecosystem.js`), syntax-checked, **not deployed yet** — Khabat handles deploy/restart on that box, so treat this as "the shape is final, the bits aren't live yet" until you hear otherwise.
+
+**Request:** `GET /v1/profile-summary/:account` — same Bearer auth (`REAL_ECOSYSTEM_API_KEY`) and same `account` convention as `/v1/balance/:account` (a `telegram_id`, or a REAL-ID-native account's `real_id` bridged into that same field — no separate `?real_id=` param).
+
+**Response (200):**
+```json
+{
+  "status": 1,
+  "account": "8452xxxxxx",
+  "id_type": "telegram",
+  "identity": { "first_name": "", "last_name": "", "username": "", "profile_pic": "", "handle": "" },
+  "economy": {
+    "level": 4, "xp": 1230, "farr": 12, "zar": 88400, "gems": 3,
+    "real_balance": 152300, "max_real_balance": 210000, "real_earned_this_season": 210000
+  },
+  "streaks": { "daily_streak": 6, "checkin_streak": 3, "last_checkin_date": "2026-07-20" },
+  "achievements": {
+    "verified_referral_count": 2,
+    "completed_tasks": ["invite_friend", "watch_ad"],
+    "milestones_claimed": [1000, 5000]
+  },
+  "chapters": {
+    "total": 7, "completed": 3,
+    "list": [{ "slug": "keyumars", "done": true, "rewards_done": true }, "..."]
+  },
+  "clan": {
+    "clan_id": "c_abc123", "clan_name": "Pars Warriors", "clan_photo": "/season2/uploads/clans/...",
+    "motto": "", "member_count": 14, "total_real_earned": 990000, "role": "member"
+  }
+}
+```
+`clan` is `null` if the account isn't in one. 404 `account_not_found` if `account` doesn't resolve to any `season2_users` doc (mirrors `/v1/balance`'s posture). `chapters.list` is deliberately thin (slug/done/rewards_done only) — the heavy per-scene/quiz/codex state behind each chapter stays internal to the Mini App, not meant for a native screen.
+
+This is meant to fully replace the WebView-embedded `profile.html`/`guild.html` as your data source — one call, no guessing at shape. Let me know if anything's missing once you're building against it; happy to extend rather than have you patch around gaps client-side.
