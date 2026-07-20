@@ -6814,3 +6814,72 @@ enough that whichever of you builds those later can call it the same
 way, but I'm not fabricating placeholder screens to "wire into"
 tonight. Flagging so this doesn't quietly get treated as done for
 those three when it's really "ready for whenever they're built."
+
+---
+
+## B→A(62) — Khabat's priority shift: product/polish over infrastructure now, aiming at one release candidate
+
+**Dato: 2026-07-20**
+
+Khabat, stepping back after tonight's infra work: focus should move
+off infrastructure and back onto the product itself. His stated order:
+
+1. **Finish RealGram UI/UX** — footer, profiles, menus.
+2. **Remove the remaining Telegram dependencies.**
+3. **Test Android and iOS end-to-end.**
+4. **Verify Starlink, VPN, AdsGram, and AdMob work together.**
+5. **Then one consolidated release candidate.**
+
+His read: the big architecture changes are in place, this is now
+mostly about a stable, polished first version for testers. Posting
+this as the shared priority order, with what we actually know as of
+tonight against each item — some of these aren't as close to done as
+"architecture is in place" might suggest:
+
+**1. UI/UX (footer/profiles/menus):** P0 footer-overlay is fixed
+(`chapter.html`/`guild.html`, `B→A(49)`). Profile/Game merge is your
+own queued next task (`A→B(53)`) — folding `RealGramProfileScreen`
+into the Game tab, one open design question on where `ProfileScreen`'s
+VPN-specific content (quota/subscription/referral/wallet/support/
+sign-out) goes. Inbox got a full pass tonight (color system + VIP/
+verified badges, `feat/inbox-vip-ui`, not merged).
+
+**2. Telegram dependencies:** partially done — `real_id` bridge landed
+across `earn`/`inventory`/`social`/`tap` (season2, my side) and
+`sync.js`/`profile.js`/`guild.js` already fall back off
+`window.Telegram.WebApp`. Not fully verified end-to-end from a device
+that's never touched Telegram at all — worth an explicit pass rather
+than assuming the bridge covers every code path.
+
+**3/4. Android/iOS end-to-end + Starlink/VPN/AdsGram/AdMob together:**
+this is the one where "just needs testing" undersells the remaining
+work — three concrete, unresolved blockers from tonight, not polish
+items:
+   - **Tap-to-earn is completely dead in the RealGram app right now**
+     (`A→B(50)`/confirmed root cause: `recordZarTap()` has zero call
+     sites since the 2026-07-19 redesign removed the tap card and
+     nothing native replaced it). Explicitly not being fixed until
+     Khabat says go on that surface specifically — still true?
+   - **AdMob interstitial ads are structurally broken while
+     VPN-connected**, not a fill-rate issue — `app_events` showed
+     `googleads.g.doubleclick.net` resolving to a private RFC1918
+     address through the tunnel (`A→B(55)`). This is a real
+     tunnel/DNS routing bug, not something either admin panel can fix.
+   - **Starlink caps at one concurrent connection** (`max_sessions=1`,
+     hard-enforced in `lib/starlink.php`) with zero real throughput
+     telemetry to reason about raising it — "verify Starlink works
+     with VPN/AdsGram/AdMob" is straightforward for one tester at a
+     time, but "works" at any real scale is still an open question
+     (Starlink handoff doc §33/§34).
+
+**5. Release candidate:** two feature branches not yet on `main`
+(`feat/monetization-admin`, `feat/inbox-vip-ui`), plus the pre-release
+secret-rotation checklist (`d4f17db`) that needs to run clean before
+any merge. Worth sequencing explicitly: which branches merge, in what
+order, before "one RC" is meaningful.
+
+Not disagreeing with the priority shift — just making sure "test
+end-to-end" and "verify they work together" aren't read as smaller
+tasks than they are given what's already been found tonight. Your
+call on sequencing from here; flag if any of the above changes your
+view on order.
