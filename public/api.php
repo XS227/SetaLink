@@ -33,6 +33,8 @@ require_once __DIR__ . '/../lib/trustai.php';
 require_once __DIR__ . '/../lib/real_economy.php';
 // Ads performance comparison (AdsGram vs AdMob ingestion + query helpers).
 require_once __DIR__ . '/../lib/ads_perf.php';
+// Provider-agnostic ad event model (ad_events/ad_daily_metrics) — RealGram Admin monetization page.
+require_once __DIR__ . '/../lib/ad_monetization.php';
 
 header('Content-Type: application/json');
 // CORS — React Native OkHttp doesn't enforce CORS, but WebView and reverse
@@ -54,7 +56,7 @@ $token = ($method === 'POST')
 // the PacketTunnelExtension / VPN service, which has no access to the app's token
 // store, and they are device_id-validated + size-clamped in their handlers. The
 // token itself ships inside the app binary, so it is not a real secret anyway.
-const NO_TOKEN_ACTIONS = ['submit-tunnel-log', 'push-adsgram-perf', 'ecosystem-referral-import'];
+const NO_TOKEN_ACTIONS = ['submit-tunnel-log', 'push-adsgram-perf', 'push-adsgram-events', 'ecosystem-referral-import'];
 
 if (!in_array($action, NO_TOKEN_ACTIONS, true) && !hash_equals(MOBILE_TOKEN, $token)) {
     echo json_encode(['ok' => false, 'error' => 'invalid token']);
@@ -1568,6 +1570,29 @@ if ($method === 'POST') {
         )");
         $pdo->prepare("INSERT INTO app_events (device_id, event, props, app_version) VALUES (?,?,?,?)")
             ->execute([$deviceId, $event, $props, $appVersion]);
+        $appEventId = (int)$pdo->lastInsertId();
+
+        // Real-value AdMob banner impressions (onPaid, client-reported) also mirror
+        // into the provider-agnostic model live, so the Overview tab doesn't lag a
+        // full day behind waiting for the backfill/rollup job.
+        if ($event === 'AD_BANNER_IMPRESSION') {
+            try {
+                $propsArr = json_decode($props, true) ?: [];
+                am_event_insert($pdo, [
+                    'provider'          => 'admob',
+                    'event_type'        => 'banner_impression',
+                    'placement'         => (string)($propsArr['slot'] ?? ''),
+                    'provider_event_id' => 'admob-banner:' . $appEventId,
+                    'user_id'           => $deviceId,
+                    'provider_revenue'  => isset($propsArr['value']) ? (float)$propsArr['value'] : null,
+                    'currency'          => (string)($propsArr['currency'] ?? 'USD'),
+                    'reward_type'       => 'none',
+                    'validation_status' => 'unverified',
+                    'app_version'       => $appVersion,
+                    'source_type'       => 'LOCAL_SDK_EVENT',
+                ]);
+            } catch (\Exception $e) { /* best-effort — never break track-event over analytics */ }
+        }
         ok(['logged' => true]);
     }
 
@@ -1990,7 +2015,120 @@ if ($method === 'POST') {
 
         adp_init_table($db);
         adp_upsert($db, $date, 'adsgram', $body);
+
+        // Mirror into the provider-agnostic model for /admin/monetization. This is
+        // one hop removed from AdsGram's own API (relayed through Shahnameh's daily
+        // push) — labeled PROVIDER_CALLBACK, not PROVIDER_API. See docs/realgram/
+        // MONETIZATION_REPORTING.md for the full source-of-truth explanation.
+        try {
+            am_daily_metric_upsert($db, [
+                'date' => $date, 'provider' => 'adsgram', 'platform' => 'telegram',
+                'completions' => (int)($body['rewarded_views'] ?? 0),
+                'revenue' => (float)($body['revenue_usd'] ?? 0),
+                'currency' => 'USD', 'source_type' => 'PROVIDER_CALLBACK',
+            ]);
+        } catch (\Exception $e) { /* best-effort mirror — legacy adp_upsert() above is unaffected */ }
+
         ok(['date' => $date, 'platform' => 'adsgram']);
+    }
+
+    // ── push-adsgram-events ──────────────────────────────────────────────────
+    // Server-to-server: Shahnameh's `scripts/push_adsgram_events.js` forwards its
+    // AdEventLog (ad_event_log Mongo collection) here every 15 minutes, batches
+    // of up to 500 unsynced rows. Contract fixed by Agent B, TASK_SPLIT.md
+    // B→A(56) — this handler matches that exactly, not a speculative shape.
+    // Same auth as push-adsgram-perf. Idempotent on providerTransactionId (the
+    // Mongo _id) — a repeat send (their retry-on-anything-but-ok:true design)
+    // is a no-op here, never a double reward record. Always returns ok:true for
+    // a syntactically valid batch (per-event problems are counted, not fatal) —
+    // Shahnameh only distinguishes "whole batch ok" vs "retry everything".
+    // Body (JSON): { events: [{ providerTransactionId, account, idType,
+    //                 tier, source, status, real, gems, farr, blockId, reason,
+    //                 occurredAt }, ...] }
+    if ($action === 'push-adsgram-events') {
+        if ($method !== 'POST') { err('POST required'); }
+
+        $db  = db();
+        re_ensure_schema($db);
+        $cfg     = re_service_config($db);
+        $api_key = trim((string)($cfg['api_key'] ?? ''));
+        $auth    = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
+        if ($api_key === '' || !hash_equals('Bearer ' . $api_key, $auth)) {
+            http_response_code(401);
+            echo json_encode(['ok' => false, 'error' => 'unauthorized']);
+            exit;
+        }
+
+        $body   = json_decode(file_get_contents('php://input'), true) ?: [];
+        $events = is_array($body['events'] ?? null) ? $body['events'] : [];
+        if (count($events) === 0) err('missing events');
+        if (count($events) > 500) $events = array_slice($events, 0, 500); // sanity clamp
+
+        // status -> (reward_granted, validation_status). "credited" is the only
+        // status a reward actually went out for; server_error is ours-or-theirs
+        // breakage worth a human look, everything else is a legitimate business-
+        // rule rejection (cooldown/cap/auth/unknown-tier/unknown-user).
+        $statusMap = [
+            'credited'     => [1, 'verified'],
+            'cooldown'     => [0, 'rejected'],
+            'daily_limit'  => [0, 'rejected'],
+            'invalid_tier' => [0, 'rejected'],
+            'unauthorized' => [0, 'rejected'],
+            'user_not_found'=> [0, 'rejected'],
+            'server_error' => [0, 'review'],
+        ];
+
+        $accepted = 0; $duplicates = 0; $rejected = 0;
+        foreach ($events as $ev) {
+            $txnId = trim((string)($ev['providerTransactionId'] ?? ''));
+            if ($txnId === '') { $rejected++; continue; }
+            try {
+                $status = (string)($ev['status'] ?? '');
+                [$rewardGranted, $validationStatus] = $statusMap[$status] ?? [0, 'unverified'];
+
+                // real/gems/farr are mutually exclusive in practice (only one
+                // nonzero per credited event) — pick whichever is nonzero for the
+                // KPI-facing reward_type/reward_amount pair; raw_payload keeps the
+                // full breakdown in case that assumption is ever wrong.
+                $rewardType = 'none'; $rewardAmount = 0.0;
+                foreach (['real', 'gems', 'farr'] as $rt) {
+                    $amt = (float)($ev[$rt] ?? 0);
+                    if ($amt != 0) { $rewardType = $rt; $rewardAmount = $amt; break; }
+                }
+
+                $source = (string)($ev['source'] ?? '');
+                // AdsGram's own postback to Shahnameh is a genuine provider callback;
+                // Shahnameh's client-reported "verify-reward" path is validated
+                // business-side but not provider-confirmed — same distinction as
+                // AdMob's SSV vs client-confirm path (lib/ads_recovery.php).
+                $sourceType = $source === 'server_callback' ? 'PROVIDER_CALLBACK' : 'LOCAL_SDK_EVENT';
+
+                $idType = (string)($ev['idType'] ?? '');
+                $account = (string)($ev['account'] ?? '');
+
+                $res = am_event_insert($db, [
+                    'provider'                => 'adsgram',
+                    'event_type'               => 'reward',
+                    'platform'                 => 'telegram',
+                    'placement'                => (string)($ev['tier'] ?? ''),
+                    'ad_unit_id'               => (string)($ev['blockId'] ?? ''),
+                    'provider_event_id'        => 'adsgram-event:' . $txnId,
+                    'provider_transaction_id'  => $txnId,
+                    'user_id'                  => $account,
+                    'internal_account_id'      => $idType === 'real' ? $account : '',
+                    'reward_type'              => $rewardType,
+                    'reward_amount'            => $rewardAmount,
+                    'reward_granted'           => $rewardGranted,
+                    'validation_status'        => $validationStatus,
+                    'error_message'            => (string)($ev['reason'] ?? ''),
+                    'raw_payload'              => json_encode($ev, JSON_UNESCAPED_UNICODE),
+                    'created_at'               => (string)($ev['occurredAt'] ?? ''),
+                    'source_type'              => $sourceType,
+                ]);
+                if ($res['duplicate']) $duplicates++; else $accepted++;
+            } catch (\Exception $e) { $rejected++; }
+        }
+        ok(['accepted' => $accepted, 'duplicates' => $duplicates, 'rejected' => $rejected]);
     }
 
     err('unknown action');

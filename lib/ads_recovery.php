@@ -12,6 +12,7 @@
  */
 
 require_once __DIR__ . '/quota_economy.php';
+require_once __DIR__ . '/ad_monetization.php';
 
 const AR_RISK_HOLD = 75;   // risk_score >= this → reward HELD for review (mirrors referrals)
 
@@ -202,6 +203,33 @@ function ar_init_reward(PDO $pdo, string $deviceId, string $nonce, string $clien
  * never double-grants. Called by the trusted SSV path (source='ssv') and, only when
  * dev_allow_client_confirm=1, by the client path (source='client').
  */
+/**
+ * Best-effort mirror of a settled ad_reward_events row into the provider-agnostic
+ * ad_events model (lib/ad_monetization.php), so /admin/monetization can show real
+ * AdMob rewarded-video KPIs without re-deriving them from ad_reward_events. Never
+ * throws — analytics logging must not be able to break the reward flow itself.
+ */
+function ar_record_ad_event(PDO $pdo, string $deviceId, string $nonce, string $adUnit, string $status, string $source, bool $ssvVerified, int $rewardBytes): void {
+    try {
+        am_event_insert($pdo, [
+            'provider'                => 'admob',
+            'event_type'              => 'reward',
+            'placement'               => 'rewarded_video',
+            'ad_unit_id'              => $adUnit,
+            'provider_event_id'       => 'admob-reward:' . $deviceId . ':' . $nonce,
+            'provider_transaction_id' => $nonce,
+            'user_id'                 => $deviceId,
+            'reward_type'             => 'gb',
+            'reward_amount'           => $rewardBytes,
+            'reward_granted'          => $status === 'confirmed' ? 1 : 0,
+            'validation_status'       => $status === 'confirmed' ? 'verified' : ($status === 'rejected' ? 'rejected' : 'review'),
+            // AdMob's SSV postback is Google's own server calling us with a signed
+            // payload — that's a genuine provider callback, not just a client report.
+            'source_type'             => $ssvVerified ? 'PROVIDER_CALLBACK' : 'LOCAL_SDK_EVENT',
+        ]);
+    } catch (\Exception $e) { /* best-effort */ }
+}
+
 function ar_confirm_reward(PDO $pdo, string $deviceId, string $nonce, string $source, bool $ssvVerified, array $cfg): array {
     ar_init_tables($pdo);
     if ($deviceId === '' || $nonce === '') throw new \RuntimeException('missing device_id or nonce');
@@ -234,12 +262,14 @@ function ar_confirm_reward(PDO $pdo, string $deviceId, string $nonce, string $so
         if (!$ok) {
             $pdo->prepare("UPDATE ad_reward_events SET status='rejected', source=?, confirmed_at=datetime('now') WHERE id=?")
                 ->execute([$source, $ev['id']]);
+            ar_record_ad_event($pdo, $deviceId, $nonce, (string)$cfg['admob_rewarded_unit_id'], 'rejected', $source, $ssvVerified, 0);
             if ($own) $pdo->commit();
             return ['granted' => false, 'rejected' => $reason];
         }
         if ((int)$ev['risk_score'] >= AR_RISK_HOLD) {
             $pdo->prepare("UPDATE ad_reward_events SET status='review', source=?, ssv_verified=?, confirmed_at=datetime('now') WHERE id=?")
                 ->execute([$source, $ssvVerified ? 1 : 0, $ev['id']]);
+            ar_record_ad_event($pdo, $deviceId, $nonce, (string)$cfg['admob_rewarded_unit_id'], 'review', $source, $ssvVerified, 0);
             if ($own) $pdo->commit();
             return ['granted' => false, 'review' => true];
         }
@@ -249,6 +279,7 @@ function ar_confirm_reward(PDO $pdo, string $deviceId, string $nonce, string $so
         $pdo->prepare(
             "UPDATE ad_reward_events SET status='confirmed', reward_bytes=?, source=?, ssv_verified=?, confirmed_at=datetime('now') WHERE id=?"
         )->execute([$reward, $source, $ssvVerified ? 1 : 0, $ev['id']]);
+        ar_record_ad_event($pdo, $deviceId, $nonce, (string)$cfg['admob_rewarded_unit_id'], 'confirmed', $source, $ssvVerified, $reward);
         if ($own) $pdo->commit();
         return ['granted' => true, 'reward_bytes' => $reward, 'new_total' => $newTotal];
     } catch (\Exception $e) {
