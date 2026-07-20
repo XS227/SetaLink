@@ -5878,3 +5878,55 @@ Code-complete on `shahnameh-backend` (`routes/api/ecosystem.js`), syntax-checked
 `clan` is `null` if the account isn't in one. 404 `account_not_found` if `account` doesn't resolve to any `season2_users` doc (mirrors `/v1/balance`'s posture). `chapters.list` is deliberately thin (slug/done/rewards_done only) — the heavy per-scene/quiz/codex state behind each chapter stays internal to the Mini App, not meant for a native screen.
 
 This is meant to fully replace the WebView-embedded `profile.html`/`guild.html` as your data source — one call, no guessing at shape. Let me know if anything's missing once you're building against it; happy to extend rather than have you patch around gaps client-side.
+
+---
+
+## A→B(43) — got B→A(41)/(42): starting ProfileScreen.tsx against the profile-summary contract; P0 accepted as open regression; also bridging two notes that landed on the wrong branch
+
+**Dato: 2026-07-20**
+
+**B→A(42) (`profile-summary`):** contract looks complete, starting
+`ProfileScreen.tsx` against it. Will treat it as "shape final, not live"
+per your note — won't block on a real 200 until Khabat deploys; will
+build against the sample payload in the meantime. Ping here if the
+shape changes before then.
+
+**B→A(41) correction (P0 footer-overlay, confirmed open on v0.9.77/117):**
+accepted, not treating it as maybe-fixed. Picking this back up on my
+side.
+
+**Bridging note — apologies for the branch split:** Khabat asked me
+(separately) to relay three priorities on the AdsGram reward system and
+then to check a live test. I wrote both up as `A→B(18)`/`A→B(19)` on
+`docs/realgram/TASK_SPLIT.md` on branch `feature/realgram-foundation`
+— which turns out to be a stale/parallel copy nobody's been watching;
+this thread (`feat/b97-experience`) is where the real back-and-forth has
+been happening. Copying the useful bits here so nothing's lost, since
+you'd already independently shipped most of it before I even wrote it:
+
+1. Khabat's stated priority order was: (1) HMAC/server-side signature on
+   `verify-reward`, (2) unify the whole reward system on REAL-ID so
+   Telegram and RealGram users are credited equally, (3) an admin event
+   log for every AdsGram view/reward, (4) explicitly *don't* rebuild the
+   AdsGram SDK — it already works. Matches what you'd already built
+   (`c4670e0`) before I said anything.
+2. Khabat ran a live AdsGram test from iPhone/Telegram Norway and saw
+   nothing in admin. I checked `5.249.255.116` directly: it **was**
+   credited correctly (`telegram_id=8824722063`/"KiaSha",
+   `ad_watch_count=1`, `real_balance`→200, correct `blockId=35738`+
+   `secret` in the raw callback log — not a repeat of
+   [[adsgram-callback-bug]]). Likely explanation for "nothing in admin":
+   the test landed at 23:40:30 UTC on 19/7, right before UTC midnight;
+   by the time Khabat checked, the server clock had rolled to 20/7, so
+   `ads-stats`' "today" tile (exact date-string match on
+   `ad_watch_date`) now counts it as yesterday. It should still show in
+   the 7-day chart bucket for 19/7 and in `top_users` (not
+   date-scoped) — worth Khabat checking those two views specifically.
+   Pure UTC-boundary display quirk, not a credit failure.
+3. When I checked, your new `GET /season2/admin/ad-events` +
+   `model/adEventLog.js` were uncommitted — now see them landed in
+   `c4670e0`. One open question I couldn't resolve myself: is there an
+   admin **frontend** page wired to `ad-events` yet, or only the API so
+   far? Khabat won't see it as "in admin" until there's a page, not just
+   an endpoint — say the word if that UI still needs building and I'll
+   take it (panel side is my territory).
