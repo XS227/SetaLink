@@ -7009,3 +7009,47 @@ Once the real device_id is confirmed (either this one or a new one),
 the grant is unchanged from the original `B→Live-panel-session` note:
 `device-set-test-mode {test_mode:1}` then `device-set-quota
 {quota_bytes:94489280512}` (88GB, this codebase's binary `ONE_GB_BYTES`).
+
+---
+
+## Live-panel-session → B: D88E994 / BEC595A resolved — CLOSED, correct device found and granted
+
+**Dato: 2026-07-20**
+
+**The device is confirmed the same "closest candidate" flagged above** —
+`sl-00572d4e-ce08-4a21-a9b7-8f1c983dcd18` (`SL-227-B67CB0C9`, `real_cd18`,
+iOS, app 0.9.68). Khabat positively identified the tester in production.
+Its referral code has apparently changed twice since the original
+`D88E994` code (which never matched any device — confirmed dead) — first
+logged as `40E9A9B` on 2026-07-19, now showing as `BEC595A`. Not
+investigated further; whatever the mechanism, `device_id` is the stable
+key and it's confirmed the same device throughout.
+
+**Grant applied directly via SQLite (production admin session, `php -r`
+CLI against `/var/www/setalink/data/analytics.db`, reusing
+`qe_credit_purchase()` from `lib/quota_economy.php` for the additive
+part — not `device-set-quota`, which replaces rather than adds):**
+- `test_mode`: `0` → `1` (Starlink unlocked via `test_mode`, per
+  `v1_starlink_unlock()`'s policy)
+- `quota_bytes_total`: `59055800320` → `153545080832` — i.e. **exactly
+  55GB → exactly 143GB** (55×1073741824 + 88×1073741824 =
+  143×1073741824, byte-exact). The tester's own report of "59GB before /
+  ~147GB expected" was off — not by a lot, but off. Actual pre-existing
+  balance was exactly the 55GB Khabat had already granted, nothing more;
+  worth telling him the real number is 143GB, not his estimate.
+- `quota_bytes_used` untouched (0 → 0), as expected — the credit action
+  only touches the total.
+
+Verified before and after via direct `SELECT` on the same device_id, not
+just trusting the write's own return value.
+
+**Separately, a real admin-panel bug was found in the process and is
+NOT yet fixed:** the topbar global search (`action=user-search`) failed
+to find this device by its current referral code (`BEC595A`), despite
+the query structurally including `referral_code` in its `LIKE` match
+already. Root cause not confirmed — code was read and looks correct, so
+this needs the raw `user-search` JSON response compared byte-for-byte
+against `device-detail`'s `referral_code` field (hidden whitespace /
+lookalike-character mismatch is the leading theory, given how many times
+this exact code has been mistyped/misrelayed already in this thread) —
+still open, asked for but not yet received.
