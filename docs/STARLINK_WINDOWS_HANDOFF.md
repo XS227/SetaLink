@@ -1372,3 +1372,80 @@ work at scale" is "we don't have the numbers to know."
 Not implementing anything here — flagging Khabat's ask + the max_sessions
 constraint together so whoever plans the Linux-gateway move starts from the
 real bottleneck instead of assuming Windows is the whole story.
+
+---
+
+## 35. 2026-07-20 — → whoever's next: a real iOS tester's "Starlink is slow
+compared to other VPNs I've tested" report, investigated fresh, plus
+Connection Diagnostics shipped so the NEXT report has real numbers (Claude,
+Agent B session)
+
+**The report, as relayed by Khabat:** the iOS tester CAN use Starlink now
+(§29's "open for testing" continues to hold), but finds it noticeably
+slower than other VPNs they've tried. Contradicts other reports the same
+day: other iOS testers and Android testers called the Starlink node
+"utrolig bra" (great). Khabat asked for the user/logs to be checked.
+
+**Investigation (before writing any code) — re-verified §32-34, nothing had
+drifted:**
+- `git fetch origin` on `feat/starlink-node-phase1`: no commits ahead of
+  `0eac88e` (§34) except the local `222b79f` (admin Starlink-access-status
+  commit) — §33's findings were still current, not stale.
+- `starlink-no-01` node health, `max_sessions=1` hard-enforcement
+  (`lib/starlink.php::st_routable()`), and the "nothing populates
+  throughput/jitter/rtt" gap all re-confirmed by re-reading the actual code
+  (not just trusting the old doc text) — still true.
+- **New this round:** grepped for a bandwidth-throttle mechanism that could
+  explain "any node feels slow for THIS specific user" independent of
+  Starlink — found `ads_recovery.php`'s `recovery_throttle_kbps` (512 kbps),
+  but confirmed (a) it defaults to routing recovery-mode traffic through
+  `fi-hel`, not Starlink, and (b) per its own comment it's "advisory→xray"
+  and, same as `starlink_nodes.allocated_kbps`, **nothing in the codebase
+  actually enforces it** (`tc`/QoS grep came back empty, same as §33 found
+  for the Starlink allocation number). Ruled out as this tester's cause.
+- **New this round:** checked the iOS MTU clamp specifically (§32 flagged it
+  as unverified). Confirmed real: `PacketTunnelProvider.swift:421`,
+  `s.mtu = NSNumber(value: 1400)`, applied globally to every SetaLink node
+  (not Starlink-specific) for a documented reason (build 74 Iran
+  "only-Telegram-opens" fix). Since it's identical across nodes, it can't
+  explain a Starlink-vs-other-SetaLink-node difference, though it may
+  explain some of the gap against entirely different VPN apps (which may
+  run MTU 1500).
+- **Still couldn't get a live number for THIS tester.** Direct SSH to prod
+  (`5.249.252.221`) was blocked by this session's sandbox policy (outbound
+  SSH auto-denied) — unlike §33's session, which was physically on the prod
+  box. Also still don't know who this iOS tester actually is — §33 already
+  found the one "iOS tester" device ID on record (`sl-f877790f`) was
+  actually **Android**, so "the iOS tester" has no confirmed device ID
+  anywhere in this doc as of today.
+
+**Conclusion relayed to Khabat:** most likely explanation is still what §32
+flagged as a hypothesis and §33/this session couldn't rule in OR out for
+lack of data — real link variability on a single consumer Starlink dish
+(household usage, weather/obstruction, satellite handoff) shared through a
+Windows ICS/NAT gateway, structurally different from the datacenter nodes.
+Not ruled out because it's the only option left after elimination — ruled
+IN as plausible, everything else (session contention, throttling, MTU,
+node health) actively checked and excluded.
+
+**What Khabat asked for next, and what shipped:** rather than keep guessing
+at the next report, build real client-side performance telemetry (RTT,
+handshake time, TCP connect time, throughput up/down, jitter, packet loss,
+reconnects, node, network type incl. Wi-Fi/5G/Starlink, MTU, device model,
+app version) plus an admin "Connection Diagnostics" page to compare
+Starlink vs Wi-Fi vs 5G vs Android/iOS vs node-vs-node. **Fully designed and
+coded this session** — see `docs/CONNECTION_DIAGNOSTICS.md` for the full
+architecture, what's real vs. approximated, and (importantly) what's
+explicitly NOT done yet (`tcp_connect_ms`/`handshake_ms` need native connect-path
+timing this session deliberately didn't touch blind; `network_generation` is
+real on iOS but will likely read "unknown" on Android without a new
+`READ_PHONE_STATE` permission this session didn't add). **Not built, not
+deployed** — code changes only, per this dev-box's VPS rules. Whoever picks
+this up next: read that doc's §4 (Known Gaps) before extending it, it exists
+specifically so nobody re-fabricates a number the way `rtt_ms` used to be
+fabricated as 30% of `latency_ms`.
+
+**Practical effect for THIS tester's open complaint:** once a build shipping
+this telemetry reaches real devices, the next "X node feels slow" report
+gets checked against `admin/index.php?page=diagnostics` instead of getting
+re-investigated from zero like §32-34 and this section had to.
