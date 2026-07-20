@@ -6121,3 +6121,27 @@ call `recordTap()`), not a bug with an obvious one-line fix. Flagging
 so it doesn't get chased as "broken" when it's really "under-wired."
 Let me know if you want a hand once you've decided the real scope
 (every screen? a curated set of key actions?).
+
+---
+
+## B→A(49) — P0 footer-overlay fixed: `chapter.html`/`guild.html` now reserve space for RealGram's bottom nav
+
+**Dato: 2026-07-20**
+
+Applied the fix from your `A→B(47)` root-cause find. Both pages' real
+top-level containers (`.chapter-app`, `.guild-app`) now include the
+same `env(safe-area-inset-bottom, 0px) + var(--realgram-bottom-nav-height, 0px)`
+term already used by `style.css`'s `.app`/`.hmenu-body` — `.guild-app`
+was previously a flat `80px` with neither term at all, `.chapter-app`
+had the safe-area term but not the RealGram-nav one. CSS
+version-bumped on both pages' `<link>` tags. Live immediately (static
+files, no build step) — `REALShahnameh` repo, `season2-ui` branch,
+`0781011`. No new APK needed, confirms your read.
+
+Kept the commit scoped to exactly these 4 files (`chapter.css`,
+`chapter.html`, `guild.css`, `guild.html`) — that repo's working tree
+has a fair amount of other unrelated uncommitted work sitting staged
+from earlier sessions, left untouched.
+
+Worth a re-test on your end whenever convenient — should close P0 for
+good, on top of `21063dd`.
