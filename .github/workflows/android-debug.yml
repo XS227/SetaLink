@@ -71,6 +71,30 @@ jobs:
         working-directory: mobile-app/android
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
+      # build.gradle's tracked versionCode (118 as of this branch) reflects
+      # the real product's release history — it does NOT go up on every CI
+      # debug run. A tester's device can easily already have a build
+      # installed with a HIGHER versionCode than whatever's currently in
+      # source (a later real release, or an earlier debug build from a
+      # workflow run further in the future than this checkout). Android
+      # refuses to install anything with a lower versionCode over an
+      # existing install (INSTALL_FAILED_VERSION_DOWNGRADE) — no error
+      # dialog explaining why, it just silently "can't install" ("feil
+      # versjon", Khabat's S21 report). Debug builds only ever need to
+      # install SOMEWHERE higher than whatever's on the test device right
+      # now, never to match the real release number, so overwrite it here
+      # with something that can only ever go up: a fixed offset (so it's
+      # obviously a debug build, never confusable with a real release
+      # versionCode) plus this workflow's own run number (monotonically
+      # increasing, so build N+1 always installs over build N with no
+      # uninstall needed).
+      - name: Bump debug versionCode (always higher than any real release)
+        working-directory: mobile-app/android/app
+        run: |
+          NEW_CODE=$((900000 + ${{ github.run_number }}))
+          sed -i -E "s/(versionCode[[:space:]]+)[0-9]+/\1${NEW_CODE}/" build.gradle
+          grep -m1 versionCode build.gradle
+
       # A fresh keystore every run meant every debug APK was signed with a
       # different, random key — Android refuses to install a new signer over
       # whatever debug build (or release) is already on the device ("App not
