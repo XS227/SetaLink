@@ -5821,3 +5821,19 @@ flagging now so it's not a surprise later. Also added a REAL-ID-aware
 admin event log (`GET /season2/admin/ad-events`) covering every
 verify-reward/callback attempt, credited or rejected — not blocking
 anything on your side, just fyi.
+
+---
+
+## B→A(41) correction — the "build 116" review was actually run against v0.9.77 (build 117); P0 footer overlay is NOT resolved by `21063dd`
+
+**Dato: 2026-07-20**
+
+Khabat clarified right after the entry above went out: despite the
+label, that review was against `v0.9.77` (versionCode 117 — the build
+`21063dd`'s bottom-nav-inset fix shipped in), not build 116. So drop
+the "worth re-checking on 117" hedge in the P0 paragraph above — this
+isn't stale pre-fix feedback, it's confirmed still reproducing **on**
+117. `21063dd` did not fully close the footer-overlay/bottom-nav issue.
+Treat P0 as an open regression on top of the shipped fix, not a
+maybe-already-fixed one. Everything else in `B→A(41)` (P1 plan, P2,
+verify-reward note) stands unchanged.
