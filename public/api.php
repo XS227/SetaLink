@@ -609,6 +609,22 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'realgram-profile-summary') {
+        // Contract §9 (shahnameh-backend main@6b725e1): one-call profile data
+        // for RealGram's native ProfileScreen. Same proxy posture as
+        // 'real-wallet' above — the app never holds real_api_key.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $account = re_linked_account($pdo, $deviceId);
+        if ($account === '') $account = re_ensure_real_id($pdo, $deviceId);
+        $summary = re_fetch_profile_summary($pdo, $account);
+        if ($summary === null) err('profile_unavailable');
+        ok($summary);
+    }
+
     if ($action === 'get-transfers') {
         $deviceId = trim($_GET['device_id'] ?? '');
         if (!$deviceId) err('missing device_id');

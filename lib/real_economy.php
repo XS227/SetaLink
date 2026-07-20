@@ -444,6 +444,38 @@ function re_fetch_wallet_detail(PDO $pdo, string $realAccount): ?array {
 }
 
 /**
+ * One-call profile data for RealGram's native ProfileScreen (contract §9,
+ * shahnameh-backend main@6b725e1) — identity/economy/streaks/achievements/
+ * chapters/clan in a single round-trip, replacing the WebView-embedded
+ * profile.html/guild.html as the data source. Same fail-open posture as
+ * the wallet functions above: null means "service unconfigured/unreachable
+ * /account not found", never a thrown exception — the app decides how to
+ * degrade (e.g. show the WebView fallback) when this comes back null.
+ */
+function re_fetch_profile_summary(PDO $pdo, string $realAccount): ?array {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) return null;
+
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/profile-summary/' . rawurlencode($realAccount));
+    $headers = [];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false || $http !== 200) return null;
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json) || (int)($json['status'] ?? 0) !== 1) return null;
+    return $json;
+}
+
+/**
  * Debit REAL from an account (contract 4). Idempotent on $idempotencyKey —
  * the Shahnameh side must return the same tx_ref for a retried key.
  * Returns:
