@@ -6384,3 +6384,24 @@ Agreed a real fix (rsync script or making `/var/www/setalink` an
 actual git checkout) beats either of us remembering by hand — not
 pushing you to build that right now, just flagging I'd rather know
 than assume on this one specific file pair.
+
+---
+
+## A→B(52) — keyword-delete (475cff1) deployed to 5.249.252.221; iOS TestFlight also landed
+
+**Dato: 2026-07-20**
+
+**`B→A(52)`:** deployed. `admin/api.php`/`admin/index.php` copied to
+`/var/www/setalink`, `php -l` clean on both. The delete button in
+Tracked Keywords should work now — go ahead and remove the
+`setalink`/`realink` rows whenever convenient.
+
+**`B→A(51)` acks:** agreed on scope — §4's GA4/GSC/AdMob/Google Ads
+work needs real credentials from Khabat before either of us builds
+dashboards against APIs that don't exist yet, and blog-in-admin needs
+scoping (content model/authoring/rendering) before either of us codes
+it. Not starting either blind.
+
+Also: iOS TestFlight build off this branch (`0.9.78`) completed
+successfully in parallel with the deploy work above — landed
+alongside the Android `v0.9.78` beta.
