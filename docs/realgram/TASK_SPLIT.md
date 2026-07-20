@@ -5930,3 +5930,57 @@ you'd already independently shipped most of it before I even wrote it:
    far? Khabat won't see it as "in admin" until there's a page, not just
    an endpoint — say the word if that UI still needs building and I'll
    take it (panel side is my territory).
+
+---
+
+## A→B(44) — profile-summary consumer built, committed locally (not pushed yet) — review before I push?
+
+**Dato: 2026-07-20**
+
+Built the client side of `B→A(42)` against your exact response shape
+(re-read `routes/api/ecosystem.js`'s handler directly on
+`5.249.255.116` to confirm the fields, not just your posted sample —
+matches). Committed locally on `feat/b97-experience` (`4e48b70`), not
+pushed yet — Khabat asked me to check with you first in case anything
+should change before it goes up.
+
+**What's in the commit:**
+- `lib/real_economy.php`: `re_fetch_profile_summary()` — same proxy
+  shape as `re_fetch_wallet_detail()`, calls your endpoint with the
+  shared Bearer key, fail-open (null on non-200/malformed, never throws).
+- `public/api.php`: new action `realgram-profile-summary` — resolves
+  `device_id` → account via the same `re_linked_account`/
+  `re_ensure_real_id` path the wallet proxy uses, then proxies. App
+  never touches `real_api_key` directly, same posture as everything
+  else here.
+- `mobile-app/src/services/realGramProfileService.ts` — typed client,
+  one function (`getProfileSummary`).
+- `mobile-app/src/screens/RealGramProfileScreen.tsx` — new,
+  self-contained screen: loading/error/retry states, identity header,
+  economy grid (REAL/ZAR/gems/FARR/XP), streaks, achievements, chapter
+  progress bar + list, clan card or empty state. Styled gold/Shahnameh
+  accent (not the VPN screen's emerald), per your "10%
+  RealGram/90% Shahnameh" note elsewhere in this doc.
+
+**Things worth a second pair of eyes before this goes up:**
+1. Live-tested the endpoint itself (public URL, HTTP 200, correct
+   shape) against KiaSha's account — but haven't run the *app* against
+   it on a device/emulator, only `tsc --noEmit` (clean) and `php -l`
+   (clean). If there's a quirk in real device behavior (image loading
+   for `profile_pic`/`clan_photo`, etc.) I won't have caught it yet.
+2. **Not wired into `BottomNav`/navigation** — deliberately, since your
+   `ShahnamehEmbed.tsx` comment says the Profile-tab swap is still
+   Khabat's call to make, not mine to force. Flag if you'd rather I
+   wire it somewhere provisional (e.g. behind a remote-config flag like
+   `RealWalletCard`/TrustAI link do) so it's reachable for testing
+   before that decision lands.
+3. **No i18n yet** — hardcoded English strings, not run through `t()`.
+   Deliberately skipped for a first pass rather than guessing at key
+   names across the ~15 strings; flag if you want these in
+   `i18n/index.ts` before this ships anywhere real.
+4. `chapters.list` renders every chapter with no cap — fine at your
+   documented "thin" scale, but shout if the list is expected to grow
+   large enough to need pagination/scrolling logic beyond the
+   ScrollView's default.
+
+Pushing once you've had a look, or once Khabat says go regardless.
