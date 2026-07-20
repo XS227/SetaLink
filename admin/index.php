@@ -120,7 +120,10 @@ function icon(string $name): string {
     <!-- ── 💰 Economy ── -->
     <div class="nav-section">💰 Economy</div>
     <div class="nav-item<?= $page==='ads'?' active':'' ?>" data-page="ads">
-      <?= icon('dollar') ?> Ads (AdsGram · AdMob)
+      <?= icon('dollar') ?> Ads (legacy NOC)
+    </div>
+    <div class="nav-item<?= $page==='monetization'?' active':'' ?>" data-page="monetization">
+      <?= icon('dollar') ?> Monetization
     </div>
     <div class="nav-item<?= $page==='payments'?' active':'' ?>" data-page="payments">
       <?= icon('card') ?> Payments &amp; Packages
@@ -769,6 +772,181 @@ function icon(string $name): string {
         <div class="panel-body">
           <div id="adsConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.6rem .9rem"></div>
           <div id="adsCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: MONETIZATION                                           -->
+    <!-- ============================================================ -->
+    <div data-view="monetization" hidden>
+      <div class="panel" style="margin-bottom:.75rem">
+        <div class="panel-body" style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center">
+          <div id="monTabs" style="display:flex;gap:.35rem;flex-wrap:wrap">
+            <button class="btn btn-small mtab active" data-mtab="overview" type="button">Overview</button>
+            <button class="btn btn-small mtab" data-mtab="admob" type="button">AdMob</button>
+            <button class="btn btn-small mtab" data-mtab="adsgram" type="button">AdsGram</button>
+            <button class="btn btn-small mtab" data-mtab="rewards" type="button">Reward Events</button>
+            <button class="btn btn-small mtab" data-mtab="reconciliation" type="button">Reconciliation</button>
+            <button class="btn btn-small mtab" data-mtab="config" type="button">Configuration</button>
+            <button class="btn btn-small mtab" data-mtab="logs" type="button">Logs</button>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center">
+            <select class="select btn-sm" id="monDays" style="width:130px">
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+            </select>
+            <button class="btn btn-small btn-ghost" id="monRefresh" type="button"><?= icon('refresh') ?></button>
+            <span class="panel-sub" id="monTs"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Overview ─────────────────────────────────────────────── -->
+      <div data-mtab-panel="overview">
+        <div id="monAlerts" style="margin-bottom:.6rem"></div>
+        <div class="stat-grid" id="monOverviewStats"></div>
+        <div class="two-col" style="margin-top:.75rem">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Reward cost <span class="panel-sub">estimated — see Configuration for valuation</span></span></div>
+            <div class="panel-body" id="monRewardCost"><div class="loading"><div class="spinner"></div></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">Rewards granted vs failed</span></div>
+            <div class="panel-body" id="monRewardCounts"><div class="loading"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── AdMob ────────────────────────────────────────────────── -->
+      <div data-mtab-panel="admob" hidden>
+        <div class="panel" style="margin-bottom:.6rem">
+          <div class="panel-body" id="monAdmobStatus"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="stat-grid" id="monAdmobStats"></div>
+        <div class="panel" style="margin-top:.6rem">
+          <div class="panel-header"><span class="panel-title">Per ad unit <span class="panel-sub">Android + iOS, broken out separately</span></span>
+            <button class="btn btn-small" id="monAdmobCsv" type="button">Export CSV</button></div>
+          <div class="tbl-wrap"><table class="data-table" style="width:100%">
+            <thead><tr><th>Ad unit</th><th>Platform</th><th>Requests</th><th>Matched</th><th>Match rate</th><th>Impressions</th><th>Clicks</th><th>eCPM</th><th>Revenue</th><th>Rewarded</th><th>Source</th></tr></thead>
+            <tbody id="monAdmobUnits"><tr><td colspan="11" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- ── AdsGram ──────────────────────────────────────────────── -->
+      <div data-mtab-panel="adsgram" hidden>
+        <div class="panel" style="margin-bottom:.6rem">
+          <div class="panel-body" id="monAdsgramStatus"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="stat-grid" id="monAdsgramStats"></div>
+        <div class="panel" style="margin-top:.6rem">
+          <div class="panel-header"><span class="panel-title">Per block <span class="panel-sub">Shahnameh + Path A Mini App</span></span>
+            <button class="btn btn-small" id="monAdsgramCsv" type="button">Export CSV</button></div>
+          <div class="tbl-wrap"><table class="data-table" style="width:100%">
+            <thead><tr><th>Block ID</th><th>Requests</th><th>Impressions</th><th>Clicks</th><th>Completions</th><th>Revenue</th><th>Currency</th><th>Source</th><th>Last event</th></tr></thead>
+            <tbody id="monAdsgramUnits"><tr><td colspan="9" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+        <div class="panel" style="margin-top:.6rem">
+          <div class="panel-header"><span class="panel-title">Import AdsGram CSV <span class="panel-sub">manual dashboard export — tagged "manual import", never shown as live provider data</span></span></div>
+          <div class="panel-body">
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+              <input type="file" id="monAdsgramCsvFile" accept=".csv,text/csv">
+              <button class="btn btn-small" id="monAdsgramCsvImport" type="button">Import</button>
+            </div>
+            <div id="monAdsgramCsvMsg" style="margin-top:.5rem;font-size:.8rem;opacity:.7">Expected columns: date, block_id, impressions, clicks, completions, revenue, currency.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Reward Events ────────────────────────────────────────── -->
+      <div data-mtab-panel="rewards" hidden>
+        <div class="panel" style="margin-bottom:.6rem">
+          <div class="panel-body" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+            <select class="select btn-sm" id="monRwProvider" style="width:130px"><option value="">All providers</option><option value="admob">AdMob</option><option value="adsgram">AdsGram</option></select>
+            <select class="select btn-sm" id="monRwStatus" style="width:150px"><option value="">All statuses</option><option value="verified">Verified</option><option value="rejected">Rejected</option><option value="review">Review</option><option value="unverified">Unverified</option></select>
+            <input class="input btn-sm" id="monRwUser" placeholder="user id" style="width:160px">
+            <button class="btn btn-small" id="monRwFilter" type="button">Filter</button>
+            <button class="btn btn-small" id="monRwCsv" type="button" style="margin-left:auto">Export CSV</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="tbl-wrap"><table class="data-table" style="width:100%">
+            <thead><tr><th>Time</th><th>Provider</th><th>Placement</th><th>User</th><th>Ad unit</th><th>Reward</th><th>Granted</th><th>Status</th><th>Source</th><th>Error</th></tr></thead>
+            <tbody id="monRewardEvents"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+          <div class="panel-body" style="display:flex;gap:.5rem;align-items:center;justify-content:flex-end">
+            <span class="panel-sub" id="monRwPageInfo"></span>
+            <button class="btn btn-small btn-ghost" id="monRwPrev" type="button">&larr; Prev</button>
+            <button class="btn btn-small btn-ghost" id="monRwNext" type="button">Next &rarr;</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Reconciliation ───────────────────────────────────────── -->
+      <div data-mtab-panel="reconciliation" hidden>
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">AdMob</span></div>
+            <div class="tbl-wrap"><table class="data-table" style="width:100%">
+              <thead><tr><th>Ad unit</th><th>Provider impr.</th><th>Provider rewards</th><th>Local rewards</th><th>Rejected</th><th>Diff</th><th>Alerts</th></tr></thead>
+              <tbody id="monReconAdmob"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">AdsGram</span></div>
+            <div class="tbl-wrap"><table class="data-table" style="width:100%">
+              <thead><tr><th>Block</th><th>Provider impr.</th><th>Provider rewards</th><th>Local rewards</th><th>Rejected</th><th>Diff</th><th>Alerts</th></tr></thead>
+              <tbody id="monReconAdsgram"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Configuration ────────────────────────────────────────── -->
+      <div data-mtab-panel="config" hidden>
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">AdMob <span class="panel-sub">Reporting API</span></span></div>
+            <div class="panel-body" id="monCfgAdmob"><div class="loading"><div class="spinner"></div></div></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">AdsGram <span class="panel-sub">publisher API + callback</span></span></div>
+            <div class="panel-body" id="monCfgAdsgram"><div class="loading"><div class="spinner"></div></div></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:.75rem">
+          <div class="panel-header"><span class="panel-title">Valuation &amp; currency <span class="panel-sub">used only for "estimated" cost/net figures — 0 = not configured</span></span>
+            <button class="btn btn-small" id="monCfgSave" type="button">Save</button></div>
+          <div class="panel-body">
+            <div id="monCfgForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:.6rem .9rem"></div>
+            <div style="margin-top:.75rem;display:flex;gap:.5rem;flex-wrap:wrap;align-items:flex-end">
+              <label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem"><span style="opacity:.6">FX currency (e.g. NOK)</span><input class="input btn-sm" id="monFxCurrency" style="width:110px"></label>
+              <label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem"><span style="opacity:.6">Rate → base currency</span><input class="input btn-sm" id="monFxRate" type="number" step="0.0001" style="width:140px"></label>
+              <button class="btn btn-small" id="monFxSave" type="button">Set FX rate</button>
+            </div>
+            <div id="monCfgMsg" style="margin-top:.6rem;font-size:.8rem;opacity:.7"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Logs ─────────────────────────────────────────────────── -->
+      <div data-mtab-panel="logs" hidden>
+        <div class="panel" style="margin-bottom:.6rem">
+          <div class="panel-header"><span class="panel-title">Admin actions</span></div>
+          <div class="tbl-wrap"><table class="data-table" style="width:100%">
+            <thead><tr><th>Time</th><th>Actor</th><th>Action</th><th>Details</th></tr></thead>
+            <tbody id="monAdminLog"><tr><td colspan="4" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">CSV imports</span></div>
+          <div class="tbl-wrap"><table class="data-table" style="width:100%">
+            <thead><tr><th>Time</th><th>Provider</th><th>File</th><th>By</th><th>Accepted</th><th>Rejected</th></tr></thead>
+            <tbody id="monCsvImports"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
         </div>
       </div>
     </div>
@@ -2228,7 +2406,8 @@ let activeView='', refreshTimer=null;
 const pageTitles = {
   dashboard: ['Dashboard',            'live monitoring · auto-refresh 10s'],
   analytics: ['Growth & Usage',       'growth & usage trends · 30-day charts'],
-  ads:       ['Ads — AdsGram · AdMob','rewarded ads · AdsGram callback · AdMob config · revenue vs cost'],
+  ads:       ['Ads (legacy NOC)','rewarded ads · AdsGram callback · AdMob config · revenue vs cost'],
+  monetization: ['Monetization', 'AdMob vs AdsGram — separated by source · verified vs estimated vs manual'],
   payments:  ['Payments & Packages',  'premium packages · REAL vs USDT · intents · transaction log'],
   iran:      ['Censorship Debug',     'censorship diagnostics · Iranian ISP analysis · bypass routes'],
   intel:     ['AI Routing Intel',     'connect telemetry · learned node scores · ISP/platform breakdown'],
@@ -2814,6 +2993,362 @@ views.ads = {
     };
     renderSlot('bannerAdsHome',    d.home_banner    || {});
     renderSlot('bannerAdsFreedom', d.freedom_banner || {});
+  },
+};
+
+// ── VIEW: MONETIZATION ───────────────────────────────────────────────
+// Every KPI here traces to a row with an explicit source_type — see
+// docs/realgram/MONETIZATION_REPORTING.md. Badge colors: verified=ok,
+// provider_reported=cyan, local=info, manual=purple, estimated=warn.
+views.monetization = {
+  tab: 'overview',
+  rwOffset: 0, rwLimit: 50, rwFilters: {},
+
+  init() {
+    if (!this._wired) {
+      this._wired = true;
+      document.querySelectorAll('#monTabs .mtab').forEach(btn => {
+        btn.addEventListener('click', () => this.switchTab(btn.dataset.mtab));
+      });
+      $('monRefresh')?.addEventListener('click', () => this.loadTab(this.tab));
+      $('monDays')?.addEventListener('change', () => this.loadTab(this.tab));
+      $('monAdmobCsv')?.addEventListener('click', () => this.exportCsv('reward-events'));
+      $('monAdsgramCsv')?.addEventListener('click', () => this.exportCsv('daily-metrics'));
+      $('monRwCsv')?.addEventListener('click', () => this.exportCsv('reward-events'));
+      $('monRwFilter')?.addEventListener('click', () => { this.rwOffset = 0; this.loadRewards(); });
+      $('monRwPrev')?.addEventListener('click', () => { this.rwOffset = Math.max(0, this.rwOffset - this.rwLimit); this.loadRewards(); });
+      $('monRwNext')?.addEventListener('click', () => { this.rwOffset += this.rwLimit; this.loadRewards(); });
+      $('monCfgSave')?.addEventListener('click', () => this.saveConfig());
+      $('monFxSave')?.addEventListener('click', () => this.saveFxRate());
+      $('monAdsgramCsvImport')?.addEventListener('click', () => this.importAdsgramCsv());
+    }
+    this.switchTab(this.tab, true);
+  },
+
+  switchTab(tab, force) {
+    if (tab === this.tab && !force) return;
+    this.tab = tab;
+    document.querySelectorAll('#monTabs .mtab').forEach(b => b.classList.toggle('active', b.dataset.mtab === tab));
+    document.querySelectorAll('[data-mtab-panel]').forEach(p => { p.hidden = p.dataset.mtabPanel !== tab; });
+    this.loadTab(tab);
+  },
+
+  loadTab(tab) {
+    const ts = $('monTs'); if (ts) ts.textContent = 'Laster…';
+    const done = () => { if (ts) ts.textContent = 'oppdatert ' + new Date().toLocaleTimeString(); };
+    const map = {
+      overview: () => this.loadOverview(), admob: () => this.loadAdmob(),
+      adsgram: () => this.loadAdsgram(), rewards: () => this.loadRewards(),
+      reconciliation: () => this.loadReconciliation(), config: () => this.loadConfig(),
+      logs: () => this.loadLogs(),
+    };
+    (map[tab] || (() => Promise.resolve()))().then(done).catch(done);
+  },
+
+  days() { return { days: ($('monDays') || {}).value || '30' }; },
+
+  fmtUsd(n, digits = 2) {
+    if (n == null) return '—';
+    return '$' + Number(n).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: Math.max(digits, 4) });
+  },
+  fmtNum(n) { return n == null ? '—' : Number(n).toLocaleString(); },
+  fmtPct(n) { return n == null ? '—' : (Number(n) * 100).toFixed(1) + '%'; },
+
+  STATUS_BADGE: {
+    verified: 'badge-ok', provider_reported: 'badge-cyan', local: 'badge-info',
+    manual: 'badge-purple', estimated: 'badge-warn',
+  },
+  statusBadge(label) {
+    if (!label) return '<span class="badge badge-muted">no data</span>';
+    const cls = this.STATUS_BADGE[label] || 'badge-muted';
+    return `<span class="badge ${cls}" title="source: ${esc(label)}">${esc(label.replace('_', ' '))}</span>`;
+  },
+
+  // Renders a breakdown array (from am_provider_summary) as "$X (verified) + $Y (estimated)"
+  // — never a single blended number when more than one source contributed.
+  revenueLine(summary) {
+    const b = summary && summary.breakdown || [];
+    if (!b.length) return '<span style="opacity:.6">no revenue data yet</span>';
+    return b.map(g => `${this.fmtUsd(g.revenue, 4)} ${g.currency || ''} ${this.statusBadge(g.status_label)}`).join(' &nbsp;+&nbsp; ');
+  },
+
+  async loadOverview() {
+    let d;
+    try { d = await api.get('monetization-overview', this.days()); } catch (e) { toast('Overview: ' + e.message, 'error'); return; }
+
+    const alertsEl = $('monAlerts');
+    if (alertsEl) {
+      const levelCls = { warn: 'badge-warn', info: 'badge-muted', error: 'badge-danger' };
+      alertsEl.innerHTML = (d.alerts || []).map(a =>
+        `<div class="panel" style="margin-bottom:.4rem"><div class="panel-body" style="display:flex;gap:.5rem;align-items:center;font-size:.82rem">
+          <span class="badge ${levelCls[a.level] || 'badge-muted'}">${esc(a.level)}</span> ${esc(a.message)}
+        </div></div>`
+      ).join('');
+    }
+
+    const stats = $('monOverviewStats');
+    if (stats) {
+      const rc = d.reward_cost || {};
+      stats.innerHTML = [
+        ['AdMob revenue', this.revenueLine(d.admob)],
+        ['AdsGram revenue', this.revenueLine(d.adsgram)],
+        ['Total impressions', this.fmtNum((d.admob.impressions||0) + (d.adsgram.impressions||0))],
+        ['Total ad requests', this.fmtNum((d.admob.requests||0) + (d.adsgram.requests||0))],
+        ['Rewards granted', this.fmtNum(d.rewards_granted_count)],
+        ['Rewards failed', this.fmtNum(d.rewards_failed_count)],
+        ['Estimated reward cost', rc.total_estimated_cost_usd == null ? '<span style="opacity:.6">not configured</span>' : this.fmtUsd(rc.total_estimated_cost_usd, 4)],
+        ['Base currency', esc(d.base_currency || 'USD')],
+      ].map(([label, v]) => `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-value" style="font-size:1.1rem">${v}</div></div>`).join('');
+    }
+
+    const costEl = $('monRewardCost');
+    if (costEl) {
+      const rows = (d.reward_cost.by_type || []);
+      costEl.innerHTML = rows.length ? `<table class="tbl" style="width:100%"><thead><tr><th>Type</th><th>Amount</th><th>Events</th><th>Users</th><th>Est. cost</th></tr></thead><tbody>` +
+        rows.map(r => `<tr><td>${esc(r.reward_type)}</td><td>${this.fmtNum(r.amount)}</td><td>${r.events}</td><td>${r.unique_users}</td><td>${r.estimated_cost_usd == null ? '<span style="opacity:.6">not configured</span>' : this.fmtUsd(r.estimated_cost_usd, 4)}</td></tr>`).join('') +
+        `</tbody></table>` : '<div style="opacity:.6">No rewards granted in this window.</div>';
+    }
+    const countsEl = $('monRewardCounts');
+    if (countsEl) {
+      countsEl.innerHTML = `<div class="stat-grid" style="grid-template-columns:1fr 1fr">
+        <div class="stat-card"><div class="stat-label">Granted</div><div class="stat-value">${this.fmtNum(d.rewards_granted_count)}</div></div>
+        <div class="stat-card"><div class="stat-label">Failed / rejected</div><div class="stat-value">${this.fmtNum(d.rewards_failed_count)}</div></div>
+      </div>`;
+    }
+  },
+
+  async loadAdmob() {
+    let d;
+    try { d = await api.get('monetization-admob', this.days()); } catch (e) { toast('AdMob: ' + e.message, 'error'); return; }
+    const s = d.sync_status || {};
+    const statusEl = $('monAdmobStatus');
+    if (statusEl) {
+      const warn = [];
+      if (!s.client_configured) warn.push('OAuth client not configured');
+      else if (!s.connected) warn.push('Not connected — click Connect AdMob');
+      if (s.last_error) warn.push('Last error: ' + s.last_error);
+      statusEl.innerHTML = `<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;font-size:.82rem">
+        <span class="badge ${s.connected ? 'badge-ok' : 'badge-warn'}">${s.connected ? 'connected' : 'not configured'}</span>
+        <span style="opacity:.7">last sync: ${esc(s.last_sync || 'never')}</span>
+        ${!s.connected ? `<a class="btn btn-small" href="/admin/admob_oauth_start.php" target="_blank">Connect AdMob</a>` : `<button class="btn btn-small" id="monAdmobSyncNow" type="button">Sync now</button><button class="btn btn-small btn-ghost" id="monAdmobDisconnect" type="button">Disconnect</button>`}
+        ${warn.length ? '<span style="color:var(--warn)">' + esc(warn.join(' · ')) + '</span>' : ''}
+      </div>`;
+      $('monAdmobSyncNow')?.addEventListener('click', async () => {
+        try { const r = await api.post({ action: 'monetization-admob-sync-now', days: 30 }); toast('AdMob sync: ' + r.rows_written + ' rows', 'ok'); this.loadAdmob(); }
+        catch (e) { toast('AdMob sync failed: ' + e.message, 'error'); }
+      });
+      $('monAdmobDisconnect')?.addEventListener('click', async () => {
+        try { await api.post({ action: 'monetization-admob-disconnect' }); toast('AdMob disconnected', 'ok'); this.loadAdmob(); }
+        catch (e) { toast(e.message, 'error'); }
+      });
+    }
+    const stats = $('monAdmobStats');
+    if (stats) {
+      const sum = d.summary || {};
+      stats.innerHTML = [
+        ['Revenue', this.revenueLine(sum)],
+        ['Requests', this.fmtNum(sum.requests)],
+        ['Matched requests', this.fmtNum(sum.matched_requests)],
+        ['Match rate', this.fmtPct(sum.requests ? sum.matched_requests / sum.requests : null)],
+        ['Impressions', this.fmtNum(sum.impressions)],
+        ['Clicks', this.fmtNum(sum.clicks)],
+        ['Rewarded completions', this.fmtNum(sum.completions)],
+        ['Rewards granted', this.fmtNum(sum.rewards_granted)],
+      ].map(([label, v]) => `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-value" style="font-size:1.05rem">${v}</div></div>`).join('');
+    }
+    const tb = $('monAdmobUnits');
+    if (tb) {
+      const units = d.ad_units || [];
+      tb.innerHTML = units.length ? units.map(u => {
+        const platform = u.platform || '<span style="opacity:.6">unknown</span>';
+        const iosWarn = u.platform === 'ios' && u.requests > 0 && u.impressions === 0
+          ? ' <span class="badge badge-warn" title="requests but zero impressions">must be evaluated</span>' : '';
+        return `<tr><td style="font-family:var(--mono);font-size:.75rem">${esc(u.ad_unit_id)}</td><td>${platform}${iosWarn}</td><td>${this.fmtNum(u.requests)}</td><td>${this.fmtNum(u.matched_requests)}</td><td>${this.fmtPct(u.match_rate)}</td><td>${this.fmtNum(u.impressions)}</td><td>${this.fmtNum(u.clicks)}</td><td>${u.ecpm == null ? '—' : this.fmtUsd(u.ecpm, 4)}</td><td>${this.fmtUsd(u.revenue, 4)}</td><td>${this.fmtNum(u.rewards_granted)}</td><td>${this.statusBadge(u.status_label)}</td></tr>`;
+      }).join('') : '<tr><td colspan="11" class="tbl-empty">No AdMob data in this window.</td></tr>';
+    }
+  },
+
+  async loadAdsgram() {
+    let d;
+    try { d = await api.get('monetization-adsgram', this.days()); } catch (e) { toast('AdsGram: ' + e.message, 'error'); return; }
+    const s = d.sync_status || {};
+    const statusEl = $('monAdsgramStatus');
+    if (statusEl) {
+      statusEl.innerHTML = `<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;font-size:.82rem">
+        <span class="badge ${s.configured ? 'badge-ok' : 'badge-warn'}">${s.configured ? 'publisher API configured' : 'publisher API not configured'}</span>
+        <span style="opacity:.7">last sync: ${esc(s.last_sync || 'never')}</span>
+        <span style="opacity:.7">known blocks: ${(d.known_block_ids || []).map(esc).join(', ') || '—'}</span>
+        ${s.configured ? `<button class="btn btn-small" id="monAdsgramSyncNow" type="button">Sync now</button>` : ''}
+        ${s.last_error ? '<span style="color:var(--warn)">' + esc(s.last_error) + '</span>' : ''}
+      </div>
+      <div style="margin-top:.4rem;font-size:.78rem;opacity:.6">Per-event data also arrives continuously via push-adsgram-events (Shahnameh's AdEventLog forwarder) — see Reward Events tab.</div>`;
+      $('monAdsgramSyncNow')?.addEventListener('click', async () => {
+        try { const r = await api.post({ action: 'monetization-adsgram-sync-now', days: 30 }); toast('AdsGram sync: ' + r.rows_written + ' rows', 'ok'); this.loadAdsgram(); }
+        catch (e) { toast('AdsGram sync failed: ' + e.message, 'error'); }
+      });
+    }
+    const stats = $('monAdsgramStats');
+    if (stats) {
+      const sum = d.summary || {};
+      stats.innerHTML = [
+        ['Revenue', this.revenueLine(sum)],
+        ['Impressions', this.fmtNum(sum.impressions)],
+        ['Clicks', this.fmtNum(sum.clicks)],
+        ['Completed rewarded views', this.fmtNum(sum.completions)],
+        ['Rewards granted', this.fmtNum(sum.rewards_granted)],
+        ['Rewards failed', this.fmtNum(sum.rewards_failed)],
+      ].map(([label, v]) => `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-value" style="font-size:1.05rem">${v}</div></div>`).join('');
+    }
+    const tb = $('monAdsgramUnits');
+    if (tb) {
+      const units = d.ad_units || [];
+      tb.innerHTML = units.length ? units.map(u =>
+        `<tr><td style="font-family:var(--mono)">${esc(u.ad_unit_id) || '—'}</td><td>${this.fmtNum(u.requests)}</td><td>${this.fmtNum(u.impressions)}</td><td>${this.fmtNum(u.clicks)}</td><td>${this.fmtNum(u.completions)}</td><td>${this.fmtUsd(u.revenue, 4)}</td><td>${esc(u.currency || '')}</td><td>${this.statusBadge(u.status_label)}</td><td>${esc(u.last_event_at || '')}</td></tr>`
+      ).join('') : '<tr><td colspan="9" class="tbl-empty">No AdsGram data in this window.</td></tr>';
+    }
+  },
+
+  async loadRewards() {
+    const params = Object.assign({ limit: this.rwLimit, offset: this.rwOffset }, this.days());
+    const provider = ($('monRwProvider') || {}).value;
+    const status = ($('monRwStatus') || {}).value;
+    const user = (($('monRwUser') || {}).value || '').trim();
+    if (provider) params.provider = provider;
+    if (status) params.validation_status = status;
+    if (user) params.user_id = user;
+    let d;
+    try { d = await api.get('monetization-reward-events', params); } catch (e) { toast('Reward events: ' + e.message, 'error'); return; }
+    const tb = $('monRewardEvents');
+    if (tb) {
+      const rows = d.rows || [];
+      tb.innerHTML = rows.length ? rows.map(r => {
+        const grantedBadge = r.reward_granted ? '<span class="badge badge-ok">yes</span>' : '<span class="badge badge-muted">no</span>';
+        const reward = r.reward_type && r.reward_type !== 'none' ? `${this.fmtNum(r.reward_amount)} ${esc(r.reward_type)}` : '—';
+        return `<tr><td style="font-size:.75rem">${esc(r.created_at)}</td><td>${esc(r.provider)}</td><td>${esc(r.placement || '—')}</td><td style="font-family:var(--mono);font-size:.72rem">${esc((r.user_id||'').slice(0,20))}</td><td style="font-family:var(--mono);font-size:.7rem">${esc(r.ad_unit_id || '—')}</td><td>${reward}</td><td>${grantedBadge}</td><td>${esc(r.validation_status)}</td><td>${this.statusBadge(r.status_label)}</td><td style="font-size:.72rem;color:var(--warn)">${esc(r.error_message || '')}</td></tr>`;
+      }).join('') : '<tr><td colspan="10" class="tbl-empty">No reward events match these filters.</td></tr>';
+    }
+    const info = $('monRwPageInfo');
+    if (info) info.textContent = `${d.offset + 1}–${Math.min(d.offset + d.rows.length, d.total)} of ${d.total}`;
+  },
+
+  async loadReconciliation() {
+    let d;
+    try { d = await api.get('monetization-reconciliation', this.days()); } catch (e) { toast('Reconciliation: ' + e.message, 'error'); return; }
+    const render = (id, rows) => {
+      const tb = $(id); if (!tb) return;
+      tb.innerHTML = rows.length ? rows.map(r => {
+        const diffCls = r.difference === 0 ? 'badge-ok' : (Math.abs(r.difference) <= 1 ? 'badge-warn' : 'badge-danger');
+        return `<tr><td style="font-family:var(--mono);font-size:.72rem">${esc(r.ad_unit_id || '—')}</td><td>${this.fmtNum(r.provider_impressions)}</td><td>${this.fmtNum(r.provider_rewards_granted)}</td><td>${this.fmtNum(r.local_rewards_granted)}</td><td>${this.fmtNum(r.local_rejected)}</td><td><span class="badge ${diffCls}">${r.difference}</span></td><td style="font-size:.72rem">${(r.alerts||[]).map(esc).join('; ') || '—'}</td></tr>`;
+      }).join('') : `<tr><td colspan="7" class="tbl-empty">No data in this window.</td></tr>`;
+    };
+    render('monReconAdmob', d.admob || []);
+    render('monReconAdsgram', d.adsgram || []);
+  },
+
+  async loadConfig() {
+    let d;
+    try { d = await api.get('monetization-config'); } catch (e) { toast('Config: ' + e.message, 'error'); return; }
+    const am = d.admob || {}, ag = d.adsgram || {};
+    const admobEl = $('monCfgAdmob');
+    if (admobEl) {
+      const s = am.sync_status || {};
+      admobEl.innerHTML = `
+        <div style="font-size:.82rem;line-height:1.9">
+          <div>OAuth client: ${s.client_configured ? '<span class="badge badge-ok">configured</span>' : '<span class="badge badge-warn">not configured</span>'}</div>
+          <div>Connected: ${s.connected ? '<span class="badge badge-ok">yes</span>' : '<span class="badge badge-muted">no</span>'}</div>
+          <div>Last successful sync: ${esc(s.last_sync || '—')}</div>
+          <div>Last error: ${esc(s.last_error || '—')}</div>
+          <div>App ID: <span style="font-family:var(--mono)">${esc(am.app_id || '—')}</span></div>
+          <div>Rewarded unit ID: <span style="font-family:var(--mono)">${esc(am.rewarded_unit_id || '—')}</span></div>
+          <div>SSV enabled: ${am.ssv_enabled ? '<span class="badge badge-ok">yes</span>' : '<span class="badge badge-warn">no</span>'}</div>
+        </div>
+        <div style="margin-top:.6rem"><a class="btn btn-small" href="${esc(am.oauth_start_url || '/admin/admob_oauth_start.php')}" target="_blank">Connect / Reconnect AdMob</a></div>`;
+    }
+    const agEl = $('monCfgAdsgram');
+    if (agEl) {
+      const s = ag.sync_status || {};
+      agEl.innerHTML = `
+        <div style="font-size:.82rem;line-height:1.9">
+          <div>Publisher API token: ${ag.token_configured ? '<span class="badge badge-ok">configured</span>' : '<span class="badge badge-warn">not configured</span>'}</div>
+          <div>Last successful sync: ${esc(s.last_sync || '—')}</div>
+          <div>Last error: ${esc(s.last_error || '—')}</div>
+          <div style="opacity:.7;margin-top:.4rem">Callback secret/block config lives in the Shahnameh backend, not this admin — see docs/realgram/MONETIZATION_REPORTING.md.</div>
+        </div>
+        <label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem;margin-top:.6rem"><span style="opacity:.6">Publisher API token</span><input class="input btn-sm" id="monAdsgramToken" type="password" placeholder="•••• (leave blank to keep current)"></label>
+        <button class="btn btn-small" id="monAdsgramTokenSave" type="button" style="margin-top:.4rem">Save token</button>`;
+      $('monAdsgramTokenSave')?.addEventListener('click', async () => {
+        const tok = ($('monAdsgramToken') || {}).value || '';
+        if (!tok) { toast('Enter a token first', 'warning'); return; }
+        try { await api.post({ action: 'monetization-config-save', adsgram_api_token: tok }); toast('AdsGram token saved', 'ok'); this.loadConfig(); }
+        catch (e) { toast(e.message, 'error'); }
+      });
+    }
+    const form = $('monCfgForm');
+    if (form) {
+      const c = d.config || {};
+      const fields = [
+        ['mon_base_currency', 'Base currency', 'text'],
+        ['mon_value_per_real_usd', 'Value per REAL (USD)', 'number'],
+        ['mon_value_per_gem_usd', 'Value per Gem (USD)', 'number'],
+        ['mon_value_per_gb_usd', 'Value per GB (USD)', 'number'],
+      ];
+      form.innerHTML = fields.map(([key, label, type]) =>
+        `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem"><span style="opacity:.6">${label}</span><input data-cfg="${key}" type="${type}" step="any" value="${esc(String(c[key] ?? ''))}" class="input btn-sm"></label>`
+      ).join('');
+    }
+    const rates = (() => { try { return JSON.parse(d.config.mon_fx_rates_json || '{}'); } catch (e) { return {}; } })();
+    const rateList = Object.keys(rates).map(k => `${k} → ${d.config.mon_base_currency}: ${rates[k].rate_to_base} (${rates[k].source}, ${rates[k].at})`).join(' · ');
+    if (rateList) { const m = $('monCfgMsg'); if (m) m.textContent = 'Configured FX rates: ' + rateList; }
+  },
+
+  async saveConfig() {
+    const body = { action: 'monetization-config-save', config: {} };
+    document.querySelectorAll('#monCfgForm input[data-cfg]').forEach(i => { body.config[i.dataset.cfg] = i.value; });
+    try { const r = await api.post(body); toast('Saved ' + (r.saved || []).length + ' fields', 'ok'); this.loadConfig(); }
+    catch (e) { toast(e.message, 'error'); }
+  },
+  async saveFxRate() {
+    const currency = (($('monFxCurrency') || {}).value || '').trim();
+    const rate = parseFloat(($('monFxRate') || {}).value);
+    if (!currency || !rate) { toast('Enter a currency and rate', 'warning'); return; }
+    try { await api.post({ action: 'monetization-config-save', fx_currency: currency, fx_rate: rate }); toast('FX rate saved', 'ok'); this.loadConfig(); }
+    catch (e) { toast(e.message, 'error'); }
+  },
+
+  async importAdsgramCsv() {
+    const file = ($('monAdsgramCsvFile') || {}).files?.[0];
+    const msg = $('monAdsgramCsvMsg');
+    if (!file) { toast('Choose a CSV file first', 'warning'); return; }
+    const text = await file.text();
+    try {
+      const r = await api.post({ action: 'monetization-adsgram-csv-import', csv: text, filename: file.name });
+      if (msg) msg.textContent = `Imported: ${r.accepted} accepted, ${r.rejected} rejected of ${r.total_rows} rows.`;
+      toast('CSV imported', 'ok');
+      this.loadAdsgram();
+    } catch (e) {
+      if (msg) msg.textContent = '✗ ' + e.message;
+      toast('Import failed: ' + e.message, 'error');
+    }
+  },
+
+  exportCsv(what) {
+    const params = new URLSearchParams(Object.assign({ action: 'monetization-csv-export', what }, this.days()));
+    window.open(`${API}?${params}`, '_blank');
+  },
+
+  async loadLogs() {
+    let d;
+    try { d = await api.get('monetization-logs'); } catch (e) { toast('Logs: ' + e.message, 'error'); return; }
+    const logTb = $('monAdminLog');
+    if (logTb) {
+      const rows = d.admin_log || [];
+      logTb.innerHTML = rows.length ? rows.map(r => `<tr><td style="font-size:.75rem">${esc(r.created_at)}</td><td>${esc(r.actor)}</td><td>${esc(r.action)}</td><td style="font-size:.72rem;font-family:var(--mono)">${esc(r.details || '')}</td></tr>`).join('') : '<tr><td colspan="4" class="tbl-empty">No admin actions logged yet.</td></tr>';
+    }
+    const csvTb = $('monCsvImports');
+    if (csvTb) {
+      const rows = d.csv_imports || [];
+      csvTb.innerHTML = rows.length ? rows.map(r => `<tr><td style="font-size:.75rem">${esc(r.imported_at)}</td><td>${esc(r.provider)}</td><td>${esc(r.filename)}</td><td>${esc(r.imported_by)}</td><td>${r.accepted_count}</td><td>${r.rejected_count}</td></tr>`).join('') : '<tr><td colspan="6" class="tbl-empty">No CSV imports yet.</td></tr>';
+    }
   },
 };
 
