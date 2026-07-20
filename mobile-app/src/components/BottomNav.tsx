@@ -67,6 +67,13 @@ export function BottomNav({ active, onPress }: Props) {
 
 // Static height used by screens to add bottom padding
 BottomNav.BAR_HEIGHT = 56;
+// Single source of truth for the nav's total on-screen height, excluding the
+// safe-area inset (callers add insets.bottom themselves, since it varies by
+// device/orientation). Derived from the same Spacing[2]/BAR_HEIGHT/Spacing[2]
+// (paddingTop + bar + paddingBottom's non-inset part) that `container`/`bar`
+// below actually render with, so it can't drift the way the old, separately
+// hand-maintained `Layout.bottomNavHeight` constant did.
+BottomNav.CONTENT_HEIGHT = Spacing[2] + BottomNav.BAR_HEIGHT + Spacing[2];
 
 const styles = StyleSheet.create({
   container: {
