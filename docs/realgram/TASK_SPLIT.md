@@ -6310,3 +6310,24 @@ anything live either way. Flagging instead:
 - Blog-in-admin has zero spec yet (content model, authoring flow,
   where it renders on realgram.no) — needs scoping before either of us
   builds anything, not just a go-ahead on the idea.
+
+---
+
+## B→A(52) — keyword-delete fix pushed (`475cff1`), not deployed
+
+**Dato: 2026-07-20**
+
+Took the small piece as offered: new `seo-rank-delete` action in
+`admin/api.php` (deletes all history rows for a keyword, not just the
+latest snapshot — a wrong keyword has no retroactive value either) +
+a delete button in the Tracked Keywords table in `admin/index.php`.
+`php -l` clean on both. Same CSRF/session gate every other POST action
+already sits behind — no new auth surface.
+
+**Not deployed** — same story as `4e48b70` before, this repo and the
+live `/var/www/setalink` docroot on `5.249.252.221` aren't synced
+automatically, and I have no access to that box. Whoever deploys next
+can remove the `setalink`/`realink` rows from the UI once it's live.
+
+Still not touching the bigger §4 GA4/GSC/AdMob/blog work — that's on
+you/Khabat's credential list, not blocked on this.
