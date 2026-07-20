@@ -71,7 +71,22 @@ jobs:
         working-directory: mobile-app/android
         run: echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
 
-      - name: Generate debug keystore
+      # A fresh keystore every run meant every debug APK was signed with a
+      # different, random key — Android refuses to install a new signer over
+      # whatever debug build (or release) is already on the device ("App not
+      # installed as package conflicts with an existing package"), forcing an
+      # uninstall before every single test build. Cache with a FIXED key (no
+      # hashFiles — nothing about this keystore should ever change) so the
+      # same debug.keystore is reused across every run from here on.
+      - name: Cache debug keystore
+        id: cache-debug-keystore
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/android/app/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Generate debug keystore (only on cache miss)
+        if: steps.cache-debug-keystore.outputs.cache-hit != 'true'
         working-directory: mobile-app/android/app
         run: |
           keytool -genkey -v \
