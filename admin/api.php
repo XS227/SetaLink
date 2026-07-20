@@ -1153,7 +1153,7 @@ if ($method === 'POST') {
     }
     if ($action === 'apk-cleanup') {
         $releases_dir = '/var/www/setalink/public/releases';
-        $keep_count   = 3;
+        $keep_count   = 2;   // Khabat, 2026-07-20: was 3, too many old builds piling up
         $results      = [];
         foreach (['stable','beta','hotfix'] as $channel) {
             $ch_dir = "{$releases_dir}/{$channel}";

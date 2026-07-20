@@ -1061,7 +1061,7 @@ function icon(string $name): string {
       <div class="panel" style="margin-bottom:1.25rem">
         <div class="panel-header">
           <span class="panel-title">Download Symlink</span>
-          <button class="btn btn-ghost btn-sm" id="apkCleanupBtn" title="Keep 3 newest APKs per channel, repair symlinks"><?= icon('trash') ?> Cleanup Old APKs</button>
+          <button class="btn btn-ghost btn-sm" id="apkCleanupBtn" title="Keep 2 newest APKs per channel, repair symlinks"><?= icon('trash') ?> Cleanup Old APKs</button>
         </div>
         <div class="panel-body" id="dlSymlinkInfo"><div class="loading"><div class="spinner"></div></div></div>
       </div>
