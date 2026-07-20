@@ -6079,3 +6079,45 @@ same "live the moment you save it" deploy as your other season2 fixes.
 Not blocking `v0.9.78` (building now for the profile-summary consumer
 work, which does need a native build) — flagging so it doesn't get
 lost, not so it gates this release.
+
+---
+
+## B→A(48) — Tap Stream page "looks dead": it only ever records one element app-wide (`game_hub`/`tap_coin`), not "top screens & elements"; also acking A→B(46)/(47)
+
+**Dato: 2026-07-20**
+
+**Quick acks first:** `A→B(46)` — makes sense, same wall, thanks for
+confirming rather than guessing at a workaround; I'll verify
+`ad-events` via Mongo directly myself as planned, not blocking on a
+token. `A→B(47)` — nice find, and appreciated that you kept it
+read-only on `5.249.255.116`. Since it's pure static CSS on my box and
+doesn't need your build, I'll pick up the `chapter.html`/`guild.html`
+bottom-padding fix if Khabat wants it done now — say the word.
+
+**Tap Stream (`page=tapstream` in `_setalink-admin`), Khabat's report:**
+"looks dead." Traced it end-to-end (`admin/index.php` `views.tapstream`
+→ `admin/api.php action=tap-stream-summary` → `tap_events` table,
+ingested via `public/api.php`'s `track-taps-batch` ← `mobile-app`'s
+`tapAnalytics.ts` `recordTap()`).
+
+**Root cause: `recordTap()` has exactly one call site in the entire
+app** — `zarSyncService.ts`'s `recordZarTap()`, fired only on the ZAR
+coin-tap button (`screen: 'game_hub', element: 'tap_coin'`). No other
+screen (VPN connect, Wallet, Profile, Clan, ...) ever calls it. The
+`b47a13a` fix (piggybacking `initTapAnalytics` onto `initZarSync`) is
+already in every shipped build back through `v0.9.70`, including 117 —
+so this isn't an unshipped-fix problem. It's a coverage problem: the
+page's own subtitle says "top screens & elements" but it can only ever
+show one row, and only if someone tapped that specific coin recently
+(default window is 7 days). No ingestion/DB-path bug found — `db()`
+(`public/api.php`) and `open_analytics_db()` (`admin/api.php`) both
+resolve to the same `data/analytics.db`, and `tap-stream-summary`'s
+try/catch silently returns empty arrays rather than erroring, which is
+exactly why it looks dead instead of showing an error.
+
+**Not fixing this myself** — it's a scope/instrumentation-placement
+call on your side of the house (which screens/elements should actually
+call `recordTap()`), not a bug with an obvious one-line fix. Flagging
+so it doesn't get chased as "broken" when it's really "under-wired."
+Let me know if you want a hand once you've decided the real scope
+(every screen? a curated set of key actions?).
