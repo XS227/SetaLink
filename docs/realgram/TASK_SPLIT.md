@@ -7053,3 +7053,119 @@ against `device-detail`'s `referral_code` field (hidden whitespace /
 lookalike-character mismatch is the leading theory, given how many times
 this exact code has been mistyped/misrelayed already in this thread) —
 still open, asked for but not yet received.
+
+---
+
+## New session → A/B — AdMob AD_LOAD_ERROR fix: timeout/backoff/telemetry/admin done and pushed; VPN bypass on production node and device testing still open
+
+**Dato: 2026-07-20**
+
+Khabat reported excessive `AD_LOAD_ERROR` on `home_banner` and interstitial
+(network-error, internal-error, `"load exceeded 8000ms"`) and asked for a
+fix in priority order: timeout/retry first, then the AdMob-through-VPN
+bypass (assessed as the likely majority cause), then banner reuse/telemetry/
+admin dedup, then a build to compare VPN ON vs OFF. Pushed as branch
+**`fix/admob-timeout-retry-bypass`** (based on this branch @ `77146a0`,
+commit `bdea908`) — **not merged**, needs review + a build/device test pass
+before it goes anywhere near `main`.
+
+**Done, in the branch:**
+1. `adsService.ts` — interstitial load timeout 8s → 15s (20s while VPN/
+   Reality is connected, via `vpnConnectedNow()`). Shared exported
+   `AD_RETRY_BACKOFF_MS = [5000, 15000, 30000]` schedule replaces the old
+   fixed-1200ms×3 retry, used by both the post-connect (`_pendingShowUntil`)
+   path and a new "ambient" retry path for a plain boot-time preload failure
+   that isn't tied to a Connect tap (previously just abandoned until the
+   next Connect). `initAds()` is now a shared promise (concurrent callers
+   await the same init instead of racing a second `mobileAds().initialize()`
+   call); `isAdsInitialized()` exported; `preloadInterstitial()` and
+   `showRewardedForData()` both gate on it instead of firing before init
+   resolves. `showInterstitialAfterConnect`'s default window raised
+   12s → 22s to stay wider than the new 20s VPN timeout.
+2. `TrackedBannerAd.tsx` — waits for `isAdsInitialized()`/`initAds()` before
+   the native `<BannerAd>` ever mounts. On `onAdFailedToLoad`, retries the
+   **same mounted instance** via the SDK's imperative ref `.load()` command
+   (confirmed via `react-native-google-mobile-ads`' own source — `BannerAd`
+   is a class component exposing `.load()`, and the native side auto-loads
+   on mount/prop-change *and* accepts a manual reload command) on the same
+   5s/15s/30s schedule, only telling the parent (`HomeBanner`/`AdBanner`)
+   to fall back to the promo once that's exhausted — previously a single
+   failure gave up immediately, no retry at all. A per-slot module lock
+   (`_slotLoading`) stops two concurrent loads for the same slot. This is
+   the closest this SDK version allows to "reuse a loaded banner" — a
+   destroyed/remounted native view still needs a fresh request, that's a
+   platform limit, not something client code can work around; what this
+   fixes is the "gave up and never retried" and "no single-flight guard"
+   parts.
+3. Telemetry — `AD_LOAD_ERROR` now carries `domain` (`error.namespace`,
+   confirmed this is the actual "domain" field this SDK exposes — there is
+   **no `responseInfo`/mediation-adapter field anywhere in
+   `react-native-google-mobile-ads` 13.6.1**, checked the library's own
+   source on GitHub before deciding not to fabricate one), `vpn_connected`,
+   and `platform`, for both the banner and interstitial paths.
+4. `admin/api.php` + `admin/index.php` — new `ad-errors-grouped` action +
+   "Grouped Ad Errors" panel (slot + code + device, count, VPN state, last
+   seen) so repeated identical failures show as one row with a ×N count
+   instead of flooding the view. `device-detail`'s per-device raw ad
+   timeline now collapses consecutive identical failures the same way, and
+   surfaces `domain`/`vpn_connected` per row. Banner Ads panel now shows a
+   computed load success rate (loaded/requests).
+5. `deploy/helsinki/xray/config.json` — added an explicit `dns` block
+   routing `googleads.g.doubleclick.net`/`doubleclick.net`/
+   `googlesyndication.com`/`admob.com`/`app-measurement.com`/
+   `googleapis.com`/`gstatic.com` to `8.8.8.8`/`1.1.1.1` (a real, non-hijacked
+   resolver), plus a direct-route rule for the same domains on the main
+   client inbounds (`inbound-ws`/`inbound-xhttp`/`inbound-httpup`/
+   `inbound-reality`/`inbound-reality-ms`/`inbound-reality-apple`) — this
+   file's ad-domain bypass previously only covered `inbound-recovery` (the
+   narrow, throttled quota-exhausted fallback tunnel from
+   `lib/ads_recovery.php`'s `ar_allowlist()` — a different, unrelated
+   mechanism), not the tunnels normal connected users are actually on.
+
+**Root cause context (already on record, not rediscovered here):**
+`B→A(62)` diagnosed this precisely — `googleads.g.doubleclick.net` resolving
+to a private RFC1918 address through the tunnel — before I picked this up.
+
+**NOT done / needs a different agent or Khabat directly, flagging honestly
+rather than claiming this is finished:**
+
+- **The Xray change above is on the Helsinki node's config only, and
+  Helsinki is a TEST-only node** (`docs/MULTINODE_API_v1.md`: allowlisted
+  testers only, everyone else is on "Denmark" by default). Confirmed via
+  `docs/NODE2_SETUP_REPORT.md` that the production node's `xray/config.json`
+  lives only on that node's own filesystem, not in this repo, and I have no
+  SSH access to it from where I ran this. **Whoever has access to the
+  production ("Denmark") VPN exit box needs to apply the same two changes
+  there**: the `dns` block (copy verbatim — domain list is exact) and a
+  routing rule sending those same domains to a `direct`/`freedom` outbound
+  on whichever inbound tags real users connect through on that box (find
+  the equivalent of `inbound-reality`/`inbound-ws`/etc. in that box's
+  config — tags may differ). Also worth an independent check on that box:
+  is there a local ad-blocking DNS resolver (dnsmasq/AdGuard Home/Pi-hole-
+  style sinkhole) running there that could be the actual source of the
+  RFC1918 resolution, rather than (or in addition to) Xray's own routing?
+  The `dns` block fix works either way, but it'd be good to know which.
+- **Unit tests updated by hand** (`adsInterstitial.test.ts`,
+  `trackedBannerAd.test.tsx`, `homeBanner.test.tsx`) to match the new
+  timeout/backoff/init-gating behavior, but **not executed** — no
+  `node_modules` on the box I did this from, and I don't run
+  build/test/install commands there per house rules. Run `npm test` (after
+  `npm install` if needed) in `mobile-app/` before merging. I'm reasonably
+  confident in the logic (traced the exact SDK source for the ref `.load()`
+  API and the error-object shape rather than guessing) but haven't seen a
+  single one of these actually go green.
+- **No APK has been built or deployed.** Once tests pass and someone's
+  comfortable with the diff, this needs a build, then the actual ask:
+  **test with VPN/Reality connected AND disconnected, and confirm
+  impressions/revenue go up** — that's a real-device pass this session
+  can't do. Compare against the `banner-ads-stats`/`ad-errors-grouped`
+  admin views before/after.
+- Did not touch `HomeScreen.tsx`/`AppNavigator.tsx` — confirmed
+  `Tab.Navigator` has no `unmountOnBlur`, so tab switches don't already
+  destroy `HomeBanner` today; couldn't confirm from code alone what *does*
+  cause repeated reloads on navigation if the fixes above don't fully
+  resolve it on-device — worth a closer look with real device logs if the
+  VPN-bypass + timeout/backoff fixes alone don't get error volume down.
+
+Branch: `fix/admob-timeout-retry-bypass` (commit `bdea908`, pushed to
+origin). Not merged into `feat/b97-experience` or `main`.
