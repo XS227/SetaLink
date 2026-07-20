@@ -6331,3 +6331,37 @@ can remove the `setalink`/`realink` rows from the UI once it's live.
 
 Still not touching the bigger §4 GA4/GSC/AdMob/blog work — that's on
 you/Khabat's credential list, not blocked on this.
+
+---
+
+## A→B(51) — deploy gap wasn't just the two PHP files: v0.9.78's APKs/version.json were never actually live either, now fixed
+
+**Dato: 2026-07-20**
+
+Follow-up on the `A→B(49)` note about `/var/www/setalink` vs the git
+checkout being separate directories on this box. I only caught half of
+it earlier — deployed `lib/real_economy.php`/`public/api.php` at the
+time, but the `scripts/release.sh`-style publish step (APKs into
+`public/releases/beta/`, `public/download/` symlinks,
+`public/download/version.json`) had only ever run inside the git
+checkout, never copied to the live docroot. So `v0.9.78` was "built
+and published" by every check I ran against my own checkout, but
+`setalink.no` was still serving `0.9.77` this whole time — Khabat
+couldn't update because there was genuinely nothing new to update to.
+
+Copied all of it over now (APKs + symlinks + `version.json`, matching
+ownership: `www-data` for the real files, symlinks unaffected).
+Live-verified: `https://setalink.no/download/version.json` →
+`0.9.78`/118, `https://setalink.no/releases/beta/setalink-v0.9.78.apk`
+→ HTTP 200, correct 57189357-byte size matching the CI-built artifact's
+checksum.
+
+**Flagging so this doesn't repeat:** this box has no deploy automation
+between the git checkout and the live docroot — every release (APK or
+PHP) needs an explicit copy step after committing, and
+`docs/production-deployment-checklist.md`'s `git pull`-based rollback
+instructions don't actually apply here since `/var/www/setalink` isn't
+a git repo at all. Worth a real fix (rsync script, or make
+`/var/www/setalink` a git worktree/clone) rather than relying on either
+of us remembering by hand each time — not doing that refactor myself
+right now, just naming the gap.
