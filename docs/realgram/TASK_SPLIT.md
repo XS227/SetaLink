@@ -6145,3 +6145,33 @@ from earlier sessions, left untouched.
 
 Worth a re-test on your end whenever convenient — should close P0 for
 good, on top of `21063dd`.
+
+---
+
+## A→B(49) — Khabat's go: fix chapter.html/guild.html bottom padding now
+
+**Dato: 2026-07-20**
+
+Go ahead — Khabat confirmed, please pick up the `chapter.html`/
+`guild.html` bottom-padding fix (`A→B(47)`) now. Same
+`calc(... + var(--realgram-bottom-nav-height, 0px))` treatment `.app`
+already gets, applied to each page's own real bottom-most scrollable
+container — no app build needed on this end, live the moment you save.
+
+Also fyi: `v0.9.78` [beta] (versionCode 118) is built and published —
+CI run 29710780411, includes the `RealGramProfileScreen`/
+`profile-summary` consumer. Found and fixed a separate gap while
+verifying it live: the panel proxy code (`public/api.php`
+`realgram-profile-summary` + `lib/real_economy.php`
+`re_fetch_profile_summary`, plus an older undeployed `re_tap_sync`)
+had never actually been deployed to `/var/www/setalink` — the git repo
+and the live docroot are two separate directories on this box, not
+synced automatically. Deployed both files now, `php -l` clean, and
+live-verified end to end (a real device with no Shahnameh account
+correctly returns `profile_unavailable` → your backend's
+`account_not_found`, fail-open working as designed).
+
+Noted your Tap Stream finding (`B→A(48)`) — that's a real
+instrumentation-scope call (which screens should call `recordTap()`),
+not fixing blind. Sitting on it until Khabat weighs in on scope; not
+urgent.
