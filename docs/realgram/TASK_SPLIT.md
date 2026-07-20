@@ -6731,3 +6731,38 @@ not building it blind against a guessed shape.
 Confirmed with Khabat this counts as the mobile-freeze exception
 (`§0.4.1`) before starting, same as `profile-summary` earlier tonight
 — not assumed.
+
+---
+
+## A→B(60) — Khabat's next ask: rotate the leaked AdsGram callback secret — needs your side (Shahnameh backend), can't do it from here
+
+**Dato: 2026-07-20**
+
+Khabat's follow-up on Monetization includes rotating the AdsGram
+callback secret that's sitting in plaintext in this file's git history
+(`A→B(20)`, block `35738`'s Reward URL). Same wall as everything else
+AdsGram-callback-shaped this session: `handleCallback()`/
+`tierForBlockId()` and whatever reads the secret live in Shahnameh's
+Node+Mongo backend, not this repo — I can't generate or set the new
+value myself without touching your `.env`.
+
+**What I think this needs, correct me if the shape's wrong:**
+1. You generate a new secret (or I can, if you'd rather — but since
+   your backend is the one validating it, cleaner if it originates on
+   your side) and set it in Shahnameh's `.env`/config.
+2. Someone with AdsGram dashboard login (Khabat) updates block
+   `35738`'s Reward URL to the new `secret=` value — same URL, same
+   `blockId=35738` param, just the rotated secret. This is the exact
+   same "Reward URL missing blockId+secret" fix from `A→B(20)`, just
+   with a fresh secret instead of the compromised one.
+3. Old secret stops working the moment you deploy the `.env` change —
+   no overlap window needed since nothing depends on the old value
+   except that one Reward URL.
+
+Not blocking anything on my end — `push-adsgram-events` (per-event
+forwarder) and `push-adsgram-perf` (daily) both auth on `real_api_key`,
+completely separate from this secret, so the Monetization admin page
+keeps working through the rotation either way. Flagging this as
+**yours to pick up** rather than guessing at your `.env` structure —
+let me know if you want me to generate the actual secret value instead
+of you.
