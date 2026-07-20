@@ -469,6 +469,25 @@ function normalize_platform(array $r): string {
     return 'android';
 }
 
+// Mirrors public/v1.php's v1_starlink_unlock() policy (premium OR test_mode
+// OR >= this-many verified active invites) so the admin panel can show the
+// same access decision the VPN gate actually uses, instead of admins having
+// to infer it from plan/test_mode by hand. Keep in sync with
+// public/v1.php's V1_STARLINK_INVITES_REQUIRED.
+const ADMIN_STARLINK_INVITES_REQUIRED = 11;
+function starlink_access_status(array $dev, int $invitesVerified): array {
+    if (($dev['plan'] ?? '') === 'premium') {
+        return ['unlocked' => true, 'reason' => 'premium'];
+    }
+    if ((int)($dev['test_mode'] ?? 0) === 1) {
+        return ['unlocked' => true, 'reason' => 'test_mode'];
+    }
+    if ($invitesVerified >= ADMIN_STARLINK_INVITES_REQUIRED) {
+        return ['unlocked' => true, 'reason' => 'invites'];
+    }
+    return ['unlocked' => false, 'reason' => null];
+}
+
 // ── Mobile POST ───────────────────────────────────────────────────────────
 if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     $tok = (string)($_POST['_token'] ?? $_GET['_token'] ?? '');
@@ -2824,8 +2843,8 @@ switch ($action) {
         $status_filter = trim((string)($_GET['status'] ?? ''));
         $where = []; $params = [];
         if ($q) {
-            $where[] = "(d.device_id LIKE ? OR d.user_id LIKE ? OR d.country LIKE ? OR d.app_version LIKE ? OR d.model LIKE ?)";
-            $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%"]);
+            $where[] = "(d.device_id LIKE ? OR d.user_id LIKE ? OR d.country LIKE ? OR d.app_version LIKE ? OR d.model LIKE ? OR d.referral_code LIKE ?)";
+            $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%","%$q%"]);
         }
         if ($plan)          { $where[] = 'd.plan=?';    $params[] = $plan; }
         if ($status_filter === 'online')  { $where[] = "(d.status='online' AND d.last_seen>=datetime('now','-180 minutes'))"; }
@@ -2835,7 +2854,8 @@ switch ($action) {
         $sql = 'SELECT d.*,
                        COALESCE(s.session_count,0) AS session_count,
                        COALESCE(s.session_bytes,0) AS session_bytes,
-                       s.last_session_at
+                       s.last_session_at,
+                       COALESCE(inv.invites_verified,0) AS invites_verified
                 FROM devices d
                 LEFT JOIN (
                     SELECT device_id,
@@ -2843,7 +2863,15 @@ switch ($action) {
                            SUM(bytes_sent+bytes_recv)     AS session_bytes,
                            MAX(ended_at)                  AS last_session_at
                     FROM vpn_sessions GROUP BY device_id
-                ) s ON s.device_id = d.device_id'
+                ) s ON s.device_id = d.device_id
+                LEFT JOIN (
+                    SELECT ru.referrer_device_id AS device_id, COUNT(*) AS invites_verified
+                    FROM referral_uses ru
+                    JOIN devices d2 ON d2.device_id = ru.new_device_id
+                    WHERE ru.status IN (\'credited\',\'approved\')
+                      AND (d2.internet_ok = 1 OR d2.last_seen >= datetime(\'now\',\'-7 days\'))
+                    GROUP BY ru.referrer_device_id
+                ) inv ON inv.device_id = d.device_id'
               . ($where ? ' WHERE '.implode(' AND ',$where) : '')
               . ' ORDER BY d.created_at DESC LIMIT 500';
         $st  = $db->prepare($sql);
@@ -2873,6 +2901,8 @@ switch ($action) {
                 $source = 'android';
             }
             $daysSince = $ls ? round((time()-strtotime((string)$ls.' UTC'))/86400, 1) : null;
+            $invitesVerified = (int)($r['invites_verified'] ?? 0);
+            $starlink = starlink_access_status($r, $invitesVerified);
             return [
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
@@ -2911,6 +2941,10 @@ switch ($action) {
                 'last_session_at'        => $r['last_session_at'] ?? null,
                 'ever_connected'         => $sessionCount > 0,
                 'days_inactive'          => $daysSince,
+                'test_mode'              => (int)($r['test_mode'] ?? 0) === 1,
+                'invites_verified'       => $invitesVerified,
+                'starlink_access'        => $starlink['unlocked'],
+                'starlink_reason'        => $starlink['reason'],
                 'registration_source'    => $source,
                 'phantom_online'         => $phantom,
             ];
@@ -2978,6 +3012,19 @@ switch ($action) {
                             ORDER BY id DESC LIMIT 10");
         $ev->execute([$did]);
         $dev['platform'] = normalize_platform($dev);
+        $invSt = $db->prepare(
+            "SELECT COUNT(*) FROM referral_uses ru
+             JOIN devices d2 ON d2.device_id = ru.new_device_id
+             WHERE ru.referrer_device_id = ?
+               AND ru.status IN ('credited','approved')
+               AND (d2.internet_ok = 1 OR d2.last_seen >= datetime('now','-7 days'))"
+        );
+        $invSt->execute([$did]);
+        $invCount = (int)$invSt->fetchColumn();
+        $dev['invites_verified'] = $invCount;
+        $starlink = starlink_access_status($dev, $invCount);
+        $dev['starlink_access'] = $starlink['unlocked'];
+        $dev['starlink_reason'] = $starlink['reason'];
         api_ok([
             'device'         => $dev,
             'sessions'       => $sessions,
