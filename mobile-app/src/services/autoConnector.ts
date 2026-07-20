@@ -659,11 +659,11 @@ function profileTelemetryEvent(p: AutoProfile): TelemetryEvent {
   return 'connect_fail';
 }
 
-function _reportTelemetry(
+async function _reportTelemetry(
   p:       AutoProfile,
   nodeId:  string,
   telemetryEnabled: boolean,
-): void {
+): Promise<void> {
   if (!telemetryEnabled) return;
   // Only upload tested profiles (skip pending/skipped — they have no data)
   if (p.status === 'pending' || p.status === 'skipped') return;
@@ -700,8 +700,27 @@ function _reportTelemetry(
     const { noteAutoConnectorReport } = require('./sessionTelemetry');
     noteAutoConnectorReport();
   } catch {}
+  const event = profileTelemetryEvent(p);
+
+  // Connection Diagnostics (2026-07-20) — device_model/mtu/network_type were
+  // already known elsewhere in the app but never reached connect_telemetry;
+  // rtt_ms used to be FABRICATED as 30% of latency_ms (a guess, not a
+  // measurement — see the removed comment this replaced). We now send only
+  // what's actually known synchronously here, and follow up with real
+  // jitter/packet-loss/throughput a few seconds after connect — see
+  // scheduleConnectionDiagnostics() below. getDeviceInfo()/getConnectionType()
+  // are both cheap/cached, safe to call on every report.
+  const device = await getDeviceInfo();
+  let connectionType: { type: 'wifi' | 'mobile' | 'unknown'; generation: '5g' | '4g' | '3g' | '2g' | 'unknown' } =
+    { type: 'unknown', generation: 'unknown' };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { getConnectionType } = require('./networkInfoService');
+    connectionType = await getConnectionType();
+  } catch {}
+
   uploadConnectTelemetry({
-    event:             profileTelemetryEvent(p),
+    event,
     node_id:           nodeId,
     profile_id:        p.id,
     sni:               p.sni,
@@ -717,10 +736,72 @@ function _reportTelemetry(
     error_category:    errorCat,
     // Extended diagnostics (Phase 7)
     ip_version:        'ipv4' as const, // Our servers are IPv4; Android native layer may override via getStats()
-    rtt_ms:            p.latencyMs ? Math.round(p.latencyMs * 0.3) : undefined,
-    // 30% of total connect latency approximates server RTT (rest is TLS + xray setup)
     // network_switched: set by Android native layer via XrayVpnService broadcast
+    // Connection Diagnostics (2026-07-20, see module doc comment above)
+    device_model:      device?.model,
+    mtu:               p.emergency ? 1280 : 1400, // matches the native TUN MTU (XrayVpnService.kt / PacketTunnelProvider.swift)
+    network_type:      connectionType.type !== 'unknown' ? connectionType.type : undefined,
+    network_generation: connectionType.generation,
+    // reconnect_count is per-run (AutoConnectResult.retryCount), not per-profile
+    // — reportToAdmin() below already sends it to the legacy admin endpoint;
+    // out of scope for this single-profile report to avoid threading it through
+    // every _reportTelemetry() call site for a field that doesn't apply per-profile.
   }, token);
+
+  if (event === 'connect_ok') {
+    scheduleConnectionDiagnostics(nodeId, p.id, connectionType.type, token);
+  }
+}
+
+// ── Connection Diagnostics follow-up (2026-07-20) ──────────────────────────────
+// A successful connect_ok report above is immediate and cheap. Real jitter/
+// packet-loss/throughput measurement takes real wall-clock time (up to ~15s
+// for the throughput leg) and must never delay or block the connect flow —
+// so it runs on its own delayed, best-effort timer and reports as a SEPARATE
+// trigger='diagnostics' telemetry row, correlated by node_id/profile_id.
+// See connectionDiagnostics.ts for the actual measurement logic and
+// docs/CONNECTION_DIAGNOSTICS.md for the architecture.
+const DIAGNOSTICS_DELAY_MS = 4_000; // let the tunnel settle before probing it
+
+function scheduleConnectionDiagnostics(
+  nodeId: string,
+  profileId: string,
+  connectionType: 'wifi' | 'mobile' | 'unknown',
+  token: string | undefined,
+): void {
+  setTimeout(async () => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const diag = require('./connectionDiagnostics');
+      const { jitterMs, packetLossPct } = await diag.runJitterPacketLossProbe();
+      let throughputDownKbps: number | undefined;
+      let throughputUpKbps:   number | undefined;
+      if (diag.shouldRunThroughputTest(connectionType)) {
+        const t = await diag.runThroughputTest();
+        throughputDownKbps = t.throughputDownKbps;
+        throughputUpKbps   = t.throughputUpKbps;
+      }
+      uploadConnectTelemetry({
+        // `event` here is a required-field placeholder — the server maps
+        // trigger='diagnostics' rows to the stored event 'diagnostics_probe'
+        // regardless of this value (see public/v1.php's /telemetry/connect
+        // handler), so this row is never counted as an extra successful connect.
+        event:       'connect_ok',
+        trigger:     'diagnostics',
+        node_id:     nodeId,
+        profile_id:  profileId,
+        platform:    Platform.OS as 'android' | 'ios',
+        app_version: APP_VERSION,
+        build_number: APP_BUILD_CODE,
+        jitter_ms:             jitterMs,
+        packet_loss_pct:       packetLossPct,
+        throughput_down_kbps:  throughputDownKbps,
+        throughput_up_kbps:    throughputUpKbps,
+      }, token);
+    } catch {
+      // Best-effort — a failed diagnostics probe must never surface to the user.
+    }
+  }, DIAGNOSTICS_DELAY_MS);
 }
 
 // ── Admin telemetry reporting (Phase 2) ───────────────────────────────────────

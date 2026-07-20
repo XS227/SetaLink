@@ -117,6 +117,48 @@ export interface ConnectTelemetryPayload {
   probe_tcp_category?: string;
   /** QUIC leg's raw failure detail. */
   probe_quic_detail?: string;
+
+  // ── Connection Diagnostics (2026-07-20) ──────────────────────────────────
+  // Real, measured performance data — added after a Starlink speed complaint
+  // (STARLINK_WINDOWS_HANDOFF.md §32-33) found latency_ms/jitter_ms/
+  // throughput_kbps/rtt_ms all existed as columns but were never actually
+  // measured or sent. See docs/CONNECTION_DIAGNOSTICS.md and
+  // services/connectionDiagnostics.ts (the module that computes these).
+  /** Anonymous, dimensionless trigger for this row. 'diagnostics' rows are
+   *  sent a few seconds after 'connect_ok', once the tunnel is confirmed
+   *  stable, and carry the heavier jitter/packet-loss/throughput probe. */
+  trigger?: 'connect' | 'disconnect' | 'tap' | 'diagnostics';
+  /** Best-effort cellular generation, orthogonal to network_type (wifi/mobile).
+   *  Native layer reports what the OS radio API says; 'unknown' means we
+   *  checked and the OS didn't say, not that we didn't check. */
+  network_generation?: '5g' | '4g' | '3g' | '2g' | 'unknown';
+  /** TUN MTU actually used for this session (1400 normal / 1280 emergency —
+   *  see PacketTunnelProvider.swift / XrayVpnService.kt). */
+  mtu?: number;
+  /** Jitter: stddev of N post-connect probe RTTs, ms. */
+  jitter_ms?: number;
+  /** Packet loss: % of post-connect probe requests that failed/timed out.
+   *  Approximated via HTTPS request failures — mobile apps have no raw ICMP
+   *  access without root, so this is the honest achievable signal, not a
+   *  true ping loss rate. */
+  packet_loss_pct?: number;
+  /** Raw TCP connect time to the node host:port, before TLS/Reality. */
+  tcp_connect_ms?: number;
+  /** TLS/Reality handshake only (derived: time_to_connect_ms - tcp_connect_ms
+   *  when both are known; omitted otherwise rather than guessed). */
+  handshake_ms?: number;
+  /** Measured download throughput, timed transfer against
+   *  GET /v1/speedtest/download. */
+  throughput_down_kbps?: number;
+  /** Measured upload throughput, timed transfer against
+   *  POST /v1/speedtest/upload. */
+  throughput_up_kbps?: number;
+  /** Device model, e.g. 'iPhone15,3' or 'Pixel 8'. Already collected by
+   *  deviceIdentityService for other purposes; just wasn't being sent here. */
+  device_model?: string;
+  /** Reconnects during this auto-connect run (AutoConnectResult.retryCount) —
+   *  already sent to the legacy admin report, wasn't reaching connect_telemetry. */
+  reconnect_count?: number;
 }
 
 /**

@@ -1626,6 +1626,28 @@ switch ($action) {
         break;
     }
 
+    // Connection Diagnostics (2026-07-20): real measured RTT/handshake/jitter/
+    // packet-loss/throughput, grouped by node, platform, or network type —
+    // added after a Starlink "feels slow" complaint (STARLINK_WINDOWS_HANDOFF.md
+    // §32-33) found there was no measured data anywhere to check. Backs the
+    // dedicated "Connection Diagnostics" admin page (distinct from Network
+    // Intel above, which is about connect SUCCESS, not connect SPEED).
+    // See docs/CONNECTION_DIAGNOSTICS.md.
+    case 'connection-diagnostics': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db   = open_analytics_db();
+        $days = max(1, min(90, (int)($_GET['days'] ?? 7)));
+        ni_init_tables($db);
+        api_ok([
+            'days'               => $days,
+            'by_node'            => ni_perf_breakdown($db, 'node_id', $days),
+            'by_platform'        => ni_perf_breakdown($db, 'platform', $days),
+            'by_network_type'    => ni_perf_breakdown($db, 'network_type', $days),
+            'by_network_generation' => ni_perf_breakdown($db, 'network_generation', $days),
+        ]);
+        break;
+    }
+
     // Node Genome + Telemetry Trust + Adaptive Routing + Evolution Layer —
     // see docs/NODE_INTELLIGENCE_ARCHITECTURE.md. Read-only visibility;
     // adaptive_routing_enabled is toggled via the dedicated

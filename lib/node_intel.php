@@ -99,6 +99,21 @@ function ni_init_tables(PDO $pdo): void
         "probe_tcp_detail      TEXT    DEFAULT NULL",   // TCP leg's raw NSURLError description
         "probe_tcp_category    TEXT    DEFAULT NULL",   // TCP leg's category, same enum as error_category
         "probe_quic_detail     TEXT    DEFAULT NULL",   // QUIC leg's raw NSURLError description
+        // Connection Diagnostics (2026-07-20) -- real client-measured performance,
+        // added after the Starlink "feels slow" complaint (STARLINK_WINDOWS_HANDOFF.md
+        // §32-33) found every existing perf column (latency_ms, jitter_ms,
+        // throughput_kbps, rtt_ms) was schema-ready but NEVER populated by the
+        // client. These are sent by the new mobile-app connectionDiagnostics.ts
+        // module as a separate trigger_type='diagnostics' row a few seconds after
+        // connect, so they never slow down the connect-report path. See
+        // docs/CONNECTION_DIAGNOSTICS.md.
+        "network_generation    TEXT    DEFAULT NULL",   // 5g|4g|3g|2g|unknown -- best-effort cellular generation, orthogonal to network_type (wifi/mobile)
+        "mtu                   INTEGER DEFAULT NULL",   // TUN MTU actually used for this session (1400 normal / 1280 emergency)
+        "packet_loss_pct       REAL    DEFAULT NULL",   // 0-100, from post-connect multi-sample HTTPS probe (no raw ICMP available on mobile)
+        "tcp_connect_ms        INTEGER DEFAULT NULL",   // raw TCP connect to the node host:port, before TLS/Reality
+        "handshake_ms          INTEGER DEFAULT NULL",   // TLS/Reality handshake only (time_to_connect_ms minus tcp_connect_ms, when both known)
+        "throughput_down_kbps  INTEGER DEFAULT NULL",   // measured download, timed transfer against /v1/speedtest/download
+        "throughput_up_kbps    INTEGER DEFAULT NULL",   // measured upload, timed transfer against /v1/speedtest/upload
     ];
     // Deliberately NO device_id column here, ever — connect_telemetry stays
     // fully anonymous per this file's existing privacy model (see file
@@ -213,7 +228,16 @@ function ni_init_tables(PDO $pdo): void
  *  malformed/older client never silently mislabels a real connect event. */
 function ni_valid_trigger(string $t): string
 {
-    return in_array($t, ['connect', 'disconnect', 'tap'], true) ? $t : 'connect';
+    // 'diagnostics' (2026-07-20): the async post-connect performance probe
+    // (jitter/packet-loss/throughput) — see ConnectionDiagnostics module.
+    return in_array($t, ['connect', 'disconnect', 'tap', 'diagnostics'], true) ? $t : 'connect';
+}
+
+/** Validate network_generation. Best-effort cellular generation; empty/unrecognised -> null (not 'unknown')
+ *  so it's distinguishable from "we checked and don't know" (which client sends as 'unknown'). */
+function ni_valid_generation(string $g): ?string
+{
+    return in_array($g, ['5g', '4g', '3g', '2g', 'unknown'], true) ? $g : null;
 }
 
 /** Anonymise ISP/carrier: first 10 chars of hex SHA-256. */
@@ -225,9 +249,14 @@ function ni_anon(string $raw): string
 /** Validate an event value — unknown values become 'connect_fail'. */
 function ni_valid_event(string $e): string
 {
-    // quic_probe        — app-process (tunnel-path) QUIC evidence, build 80+
-    // quic_probe_direct — extension (direct-path) control measurement, build 80+
-    return in_array($e, ['connect_ok', 'connect_fail', 'internet_fail', 'probe_fail', 'quic_probe', 'quic_probe_direct'], true) ? $e : 'connect_fail';
+    // quic_probe         — app-process (tunnel-path) QUIC evidence, build 80+
+    // quic_probe_direct  — extension (direct-path) control measurement, build 80+
+    // diagnostics_probe  — Connection Diagnostics async post-connect perf probe
+    //                       (2026-07-20, trigger_type='diagnostics') — NOT a
+    //                       connect attempt, must stay out of success-rate math
+    //                       the same way quic_probe* already does (see
+    //                       ni_node_scores()'s WHERE clause below).
+    return in_array($e, ['connect_ok', 'connect_fail', 'internet_fail', 'probe_fail', 'quic_probe', 'quic_probe_direct', 'diagnostics_probe'], true) ? $e : 'connect_fail';
 }
 
 /** Validate platform. */
@@ -301,6 +330,37 @@ function ni_telemetry_gate(PDO $pdo, string $clientIp): bool
     }
 }
 
+const NI_SPEEDTEST_MAX_PER_MIN = 6; // per source IP — real bytes transferred, unlike JSON telemetry, so a tighter cap
+
+/** Same bucket mechanism as ni_telemetry_gate(), separate tag + tighter cap
+ *  (speedtest moves real payload bytes, not a small JSON row — see
+ *  docs/CONNECTION_DIAGNOSTICS.md §abuse guard). Fail-open on any DB error,
+ *  same reasoning as ni_telemetry_gate: never let the guard itself break the
+ *  feature it's protecting. Fail-CLOSED (return false) is the caller's job
+ *  to interpret as "skip this request", not this function's — see call sites
+ *  in public/v1.php, which return a small JSON `{throttled:true}` instead of
+ *  serving the payload when this returns false. */
+function ni_speedtest_gate(PDO $pdo, string $clientIp): bool
+{
+    if ($clientIp === '') return true;
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS telemetry_ratelimit (
+            ip_hash TEXT NOT NULL, minute INTEGER NOT NULL, n INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (ip_hash, minute))");
+        $minute = (int)floor(time() / 60);
+        $pdo->prepare("DELETE FROM telemetry_ratelimit WHERE minute < ?")->execute([$minute - 5]);
+        $iph = substr(hash('sha256', $clientIp . '|realink-speedtest'), 0, 32);
+        $pdo->prepare("INSERT INTO telemetry_ratelimit (ip_hash, minute, n) VALUES (?,?,1)
+                       ON CONFLICT(ip_hash, minute) DO UPDATE SET n = n + 1")
+            ->execute([$iph, $minute]);
+        $st = $pdo->prepare("SELECT n FROM telemetry_ratelimit WHERE ip_hash=? AND minute=?");
+        $st->execute([$iph, $minute]);
+        return (int)$st->fetchColumn() <= NI_SPEEDTEST_MAX_PER_MIN;
+    } catch (\Throwable $_) {
+        return true;
+    }
+}
+
 function ni_telemetry_rotate(PDO $pdo): void
 {
     try {
@@ -359,8 +419,10 @@ function ni_record(PDO $pdo, array $d): void
              ios_version,device_model,
              trigger_type,jitter_ms,reconnect_count,throughput_kbps,battery_level_pct,asn_hash,
              trust_weight,decision_id,
-             probe_ms,probe_outbound,probe_tcp_detail,probe_tcp_category,probe_quic_detail)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+             probe_ms,probe_outbound,probe_tcp_detail,probe_tcp_category,probe_quic_detail,
+             network_generation,mtu,packet_loss_pct,tcp_connect_ms,handshake_ms,
+             throughput_down_kbps,throughput_up_kbps)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
     )->execute([
         ni_valid_event((string)($d['event']        ?? 'connect_fail')),
         substr((string)($d['node_id']    ?? 'primary'),  0, 40),
@@ -424,6 +486,14 @@ function ni_record(PDO $pdo, array $d): void
         substr((string)($d['probe_tcp_detail']  ?? ''), 0, 200)  ?: null,
         $probeTcpCat,
         substr((string)($d['probe_quic_detail'] ?? ''), 0, 200)  ?: null,
+        // Connection Diagnostics (2026-07-20) -- see comment on the migration above.
+        ni_valid_generation((string)($d['network_generation'] ?? '')),
+        ($d['mtu'] ?? null) !== null && $d['mtu'] !== '' ? max(0, (int)$d['mtu']) : null,
+        ($d['packet_loss_pct'] ?? null) !== null && $d['packet_loss_pct'] !== '' ? max(0.0, min(100.0, (float)$d['packet_loss_pct'])) : null,
+        ($d['tcp_connect_ms'] ?? null) !== null && $d['tcp_connect_ms'] !== '' ? max(0, (int)$d['tcp_connect_ms']) : null,
+        ($d['handshake_ms'] ?? null) !== null && $d['handshake_ms'] !== '' ? max(0, (int)$d['handshake_ms']) : null,
+        ($d['throughput_down_kbps'] ?? null) !== null && $d['throughput_down_kbps'] !== '' ? max(0, (int)$d['throughput_down_kbps']) : null,
+        ($d['throughput_up_kbps'] ?? null) !== null && $d['throughput_up_kbps'] !== '' ? max(0, (int)$d['throughput_up_kbps']) : null,
     ]);
 
     if ($deviceId !== '') ni_update_device_trust($pdo, $deviceId, $trustWeight);
@@ -1173,7 +1243,7 @@ function ni_node_scores(PDO $pdo, int $days = 7): array
                 AVG(CASE WHEN latency_ms IS NOT NULL THEN latency_ms END) AS avg_latency,
                 MAX(created_at)                                 AS last_at
            FROM connect_telemetry
-          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct','diagnostics_probe')
           GROUP BY node_id
           ORDER BY total DESC"
     );
@@ -1438,6 +1508,105 @@ function ni_network_breakdown(PDO $pdo, int $days = 7): array
             'total'        => $total,
             'ok'           => $ok,
             'success_rate' => $total > 0 ? round($ok / $total * 100, 1) : null,
+        ];
+    }
+    return $out;
+}
+
+// Whitelisted grouping dimensions for ni_perf_breakdown() — never interpolate
+// a caller-supplied column name directly into SQL.
+const NI_PERF_DIMENSIONS = ['node_id', 'platform', 'network_type', 'network_generation'];
+
+/**
+ * Connection Diagnostics — averaged real performance metrics grouped by one
+ * dimension (node, platform, or network type/generation), backing the admin
+ * "Connection Diagnostics" page. Added 2026-07-20 after the Starlink "feels
+ * slow" complaint showed there was no measured data to compare against (see
+ * docs/CONNECTION_DIAGNOSTICS.md and STARLINK_WINDOWS_HANDOFF.md §32-33/§35).
+ *
+ * Only counts rows that actually carry a measurement for a given metric
+ * (AVG/COUNT ignore NULLs in SQLite) — older client builds that don't send
+ * these fields yet simply don't contribute to the average rather than
+ * skewing it toward zero. `n_<metric>` alongside each average tells the
+ * admin page how many real samples that average is built from, so a "55ms"
+ * average from 1 sample can be shown as far less trustworthy than one from 200.
+ *
+ * Includes both 'connect'/'connect_ok' rows (which may carry rtt_ms/mtu from
+ * the connect attempt itself) and 'diagnostics' rows (the async post-connect
+ * probe carrying jitter/packet-loss/throughput) — grouped together since both
+ * describe the same dimension value, not separated by trigger_type, so a
+ * node's row reflects everything known about it.
+ */
+function ni_perf_breakdown(PDO $pdo, string $dimension, int $days = 7): array
+{
+    if (!in_array($dimension, NI_PERF_DIMENSIONS, true)) {
+        throw new \InvalidArgumentException("ni_perf_breakdown: unknown dimension '{$dimension}'");
+    }
+    ni_init_tables($pdo);
+    $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
+    $rows = $pdo->prepare(
+        "SELECT COALESCE({$dimension}, 'unknown') AS dim,
+                -- 'total'/'ok' count real connect attempts only — diagnostics_probe
+                -- rows (one per successful connect, sent a few seconds later, see
+                -- scheduleConnectionDiagnostics() in autoConnector.ts) must NOT double
+                -- them, even though those rows DO contribute to the AVG(...) metrics
+                -- below (that's the whole point of including them in this query at all).
+                SUM(event IN ('connect_ok','connect_fail','internet_fail','probe_fail')) AS total,
+                SUM(event='connect_ok')                             AS ok,
+                AVG(rtt_ms)                                         AS avg_rtt_ms,
+                COUNT(rtt_ms)                                       AS n_rtt_ms,
+                AVG(tcp_connect_ms)                                 AS avg_tcp_connect_ms,
+                COUNT(tcp_connect_ms)                                AS n_tcp_connect_ms,
+                AVG(handshake_ms)                                   AS avg_handshake_ms,
+                COUNT(handshake_ms)                                  AS n_handshake_ms,
+                AVG(time_to_connect_ms)                             AS avg_time_to_connect_ms,
+                COUNT(time_to_connect_ms)                            AS n_time_to_connect_ms,
+                AVG(jitter_ms)                                      AS avg_jitter_ms,
+                COUNT(jitter_ms)                                     AS n_jitter_ms,
+                AVG(packet_loss_pct)                                AS avg_packet_loss_pct,
+                COUNT(packet_loss_pct)                               AS n_packet_loss_pct,
+                AVG(throughput_down_kbps)                           AS avg_throughput_down_kbps,
+                COUNT(throughput_down_kbps)                          AS n_throughput_down_kbps,
+                AVG(throughput_up_kbps)                             AS avg_throughput_up_kbps,
+                COUNT(throughput_up_kbps)                            AS n_throughput_up_kbps,
+                AVG(reconnect_count)                                AS avg_reconnect_count,
+                COUNT(reconnect_count)                               AS n_reconnect_count,
+                MAX(mtu)                                            AS mtu
+           FROM connect_telemetry
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
+          GROUP BY dim
+          ORDER BY total DESC"
+    );
+    $rows->execute([$since]);
+    $out = [];
+    $round1 = static fn($v) => $v === null ? null : round((float)$v, 1);
+    foreach ($rows->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $total = (int)$r['total'];
+        $ok    = (int)$r['ok'];
+        $out[] = [
+            'dimension'               => $dimension,
+            'value'                   => $r['dim'],
+            'total'                   => $total,
+            'ok'                      => $ok,
+            'success_rate'            => $total > 0 ? round($ok / $total * 100, 1) : null,
+            'avg_rtt_ms'              => $round1($r['avg_rtt_ms']),
+            'n_rtt_ms'                => (int)$r['n_rtt_ms'],
+            'avg_tcp_connect_ms'      => $round1($r['avg_tcp_connect_ms']),
+            'n_tcp_connect_ms'        => (int)$r['n_tcp_connect_ms'],
+            'avg_handshake_ms'        => $round1($r['avg_handshake_ms']),
+            'n_handshake_ms'          => (int)$r['n_handshake_ms'],
+            'avg_time_to_connect_ms'  => $round1($r['avg_time_to_connect_ms']),
+            'n_time_to_connect_ms'    => (int)$r['n_time_to_connect_ms'],
+            'avg_jitter_ms'           => $round1($r['avg_jitter_ms']),
+            'n_jitter_ms'             => (int)$r['n_jitter_ms'],
+            'avg_packet_loss_pct'     => $round1($r['avg_packet_loss_pct']),
+            'n_packet_loss_pct'       => (int)$r['n_packet_loss_pct'],
+            'avg_throughput_down_kbps'=> $round1($r['avg_throughput_down_kbps']),
+            'n_throughput_down_kbps'  => (int)$r['n_throughput_down_kbps'],
+            'avg_throughput_up_kbps'  => $round1($r['avg_throughput_up_kbps']),
+            'n_throughput_up_kbps'    => (int)$r['n_throughput_up_kbps'],
+            'avg_reconnect_count'     => $round1($r['avg_reconnect_count']),
+            'mtu'                     => $r['mtu'] !== null ? (int)$r['mtu'] : null,
         ];
     }
     return $out;
@@ -2873,7 +3042,7 @@ function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): arr
         "SELECT COALESCE(NULLIF(country,''),'??') AS country, node_id,
                 COUNT(*) AS total, SUM(event='connect_ok') AS ok
            FROM connect_telemetry
-          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct','diagnostics_probe')
           GROUP BY country, node_id"
     );
     $st->execute([$since]);
@@ -2921,7 +3090,7 @@ function ni_learned_routing(PDO $pdo, int $days = 14, int $minAttempts = 5): arr
     $carStmt = $pdo->prepare(
         "SELECT carrier_name, node_id, COUNT(*) AS total, SUM(event='connect_ok') AS ok
            FROM connect_telemetry
-          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct')
+          WHERE created_at >= ? AND event NOT IN ('quic_probe','quic_probe_direct','diagnostics_probe')
                 AND carrier_name IS NOT NULL AND carrier_name <> '' AND carrier_name <> '--'
           GROUP BY carrier_name, node_id"
     );

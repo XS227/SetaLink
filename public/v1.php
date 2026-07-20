@@ -550,7 +550,13 @@ $publicRoutes = ($rel === '/payments/packages' && $method === 'GET')
     // handler itself never errors to the client). The iOS tunnel extension has
     // no device bearer, so gating this route silently killed all telemetry
     // (root-caused 2026-07-05: 401 + wrong-vhost fallthrough to the landing page).
-    || ($rel === '/telemetry/connect' && $method === 'POST');
+    || ($rel === '/telemetry/connect' && $method === 'POST')
+    // Speedtest (2026-07-20, Connection Diagnostics): same reasoning as
+    // telemetry/connect above — must work from a fresh tunnel before any
+    // device identity round-trip, and carries no PII (fixed-size random bytes
+    // in, byte count out). See docs/CONNECTION_DIAGNOSTICS.md.
+    || ($rel === '/speedtest/download' && $method === 'GET')
+    || ($rel === '/speedtest/upload'   && $method === 'POST');
 
 $tok = v1_bearer();
 if ($tok === '' && !$publicRoutes) {
@@ -699,6 +705,17 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         ni_init_tables($pdo);
         // Capture raw event before ni_valid_event normalises it (needed to detect 'disconnect')
         $rawTelemetryEvent = v1_body('event');
+        // Connection Diagnostics (2026-07-20): the async post-connect perf probe
+        // (scheduleConnectionDiagnostics() in autoConnector.ts) sends trigger=
+        // 'diagnostics' with whatever placeholder `event` the client happened to
+        // carry — the SERVER decides the stored event is 'diagnostics_probe' here,
+        // not the client, so this is the one place that mapping can drift. This
+        // keeps it out of connect success-rate math (ni_node_scores etc. already
+        // exclude 'diagnostics_probe', same as quic_probe*) while still landing in
+        // connect_telemetry for ni_perf_breakdown() to average.
+        if (v1_body('trigger') === 'diagnostics') {
+            $rawTelemetryEvent = 'diagnostics_probe';
+        }
         // Derive country from the client IP (best-effort, may be empty).
         $clientIp = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? '';
         if (str_contains($clientIp, ',')) $clientIp = trim(explode(',', $clientIp)[0]);
@@ -778,6 +795,17 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
             'probe_tcp_detail'     => v1_body('probe_tcp_detail'),
             'probe_tcp_category'   => v1_body('probe_tcp_category'),
             'probe_quic_detail'    => v1_body('probe_quic_detail'),
+            // Connection Diagnostics (2026-07-20) — see docs/CONNECTION_DIAGNOSTICS.md.
+            // Sent either on the normal connect report (mtu, and rtt_ms/tcp_connect_ms/
+            // handshake_ms if the client measured them synchronously) or on the async
+            // trigger='diagnostics' follow-up (jitter/packet-loss/throughput).
+            'network_generation'   => v1_body('network_generation'),
+            'mtu'                  => v1_body('mtu')                  !== '' ? (int)v1_body('mtu')                  : null,
+            'packet_loss_pct'      => v1_body('packet_loss_pct')      !== '' ? (float)v1_body('packet_loss_pct')    : null,
+            'tcp_connect_ms'       => v1_body('tcp_connect_ms')       !== '' ? (int)v1_body('tcp_connect_ms')       : null,
+            'handshake_ms'         => v1_body('handshake_ms')         !== '' ? (int)v1_body('handshake_ms')         : null,
+            'throughput_down_kbps' => v1_body('throughput_down_kbps') !== '' ? (int)v1_body('throughput_down_kbps') : null,
+            'throughput_up_kbps'   => v1_body('throughput_up_kbps')   !== '' ? (int)v1_body('throughput_up_kbps')   : null,
         ]);
         ni_telemetry_rotate($pdo);
         // Auto-create structured diagnostic session for every disconnect event (build 68+).
@@ -823,6 +851,69 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         } catch (\Throwable $_) { /* reward is best-effort, never blocks the response */ }
     }
     v1_send($tapReward ? ['ok' => true, 'reward' => $tapReward] : ['ok' => true]);
+}
+
+// ── Speedtest (Connection Diagnostics, 2026-07-20) ─────────────────────────────
+// GET /v1/speedtest/download?bytes=N  -> N random bytes (client times the download)
+// POST /v1/speedtest/upload           -> {ok:true, bytes_received:N} (client times the upload)
+// No DB writes here — this endpoint only moves bytes. The client reports the
+// resulting kbps back via /telemetry/connect's throughput_down_kbps /
+// throughput_up_kbps fields once it has computed them. See
+// docs/CONNECTION_DIAGNOSTICS.md and mobile-app connectionDiagnostics.ts.
+const V1_SPEEDTEST_MAX_BYTES = 4 * 1024 * 1024; // 4 MB cap either direction — enough to time on Starlink-class links without being a meaningful data cost on metered mobile
+
+if ($rel === '/speedtest/download' && $method === 'GET') {
+    $clientIp = v1_client_ip();
+    if (!ni_speedtest_gate($pdo, $clientIp)) {
+        v1_send(['ok' => false, 'throttled' => true], 429);
+    }
+    $bytes = (int)($_GET['bytes'] ?? 1048576); // default 1 MB
+    // Floor is 64 bytes, not e.g. 16 KB — the jitter/packet-loss probe
+    // (connectionDiagnostics.ts::runJitterPacketLossProbe) deliberately
+    // requests bytes=256 so its timing reflects round-trip overhead, not
+    // throughput. A higher floor would silently turn every "jitter" sample
+    // into a small throughput test instead.
+    $bytes = max(64, min(V1_SPEEDTEST_MAX_BYTES, $bytes));
+    header('Content-Type: application/octet-stream');
+    header('Content-Length: ' . $bytes);
+    header('Cache-Control: no-store');
+    // random_bytes() in 64 KB chunks — avoids allocating the whole payload in
+    // memory at once (relevant on the smaller VPN nodes, see CLAUDE_REALINK_RULES.md
+    // memory guidance) and avoids compressible all-zero output that some
+    // proxies/CDNs might transparently gzip and skew the timing.
+    $chunk = 65536;
+    $remaining = $bytes;
+    while ($remaining > 0) {
+        $n = min($chunk, $remaining);
+        echo random_bytes($n);
+        $remaining -= $n;
+    }
+    exit;
+}
+
+if ($rel === '/speedtest/upload' && $method === 'POST') {
+    $clientIp = v1_client_ip();
+    if (!ni_speedtest_gate($pdo, $clientIp)) {
+        v1_send(['ok' => false, 'throttled' => true], 429);
+    }
+    $len = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+    if ($len > V1_SPEEDTEST_MAX_BYTES) {
+        v1_send(['ok' => false, 'message' => 'payload too large'], 413);
+    }
+    // Read and discard in chunks rather than file_get_contents('php://input')
+    // — same memory reasoning as the download side.
+    $received = 0;
+    $in = fopen('php://input', 'rb');
+    if ($in) {
+        while (!feof($in)) {
+            $buf = fread($in, 65536);
+            if ($buf === false) break;
+            $received += strlen($buf);
+            if ($received > V1_SPEEDTEST_MAX_BYTES) break; // belt-and-suspenders vs. a lying Content-Length
+        }
+        fclose($in);
+    }
+    v1_send(['ok' => true, 'bytes_received' => $received]);
 }
 
 if ($rel === '/servers') {

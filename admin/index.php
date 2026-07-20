@@ -22,7 +22,15 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+// 'starlink' and 'tunnellogs' were already missing from this whitelist before
+// this change (same class of bug independently found+fixed on
+// feat/admin-noc-consolidated, see ADMIN_NOC_ROADMAP.md §1.1 "Reell bug
+// funnet og fikset") — a direct-load or refresh on those pages silently
+// bounced to Dashboard even though the nav item and view both worked fine
+// after a client-side click. Fixed here too since 'diagnostics' (this
+// change) hits the exact same line. 'diagnostics' = Connection Diagnostics,
+// added 2026-07-20 — see docs/CONNECTION_DIAGNOSTICS.md.
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','aidiag','installs','devices','logs','tunnellogs','release','config','referrals','diagnostics'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -96,6 +104,9 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
       <?= icon('chart') ?> Network Intel
+    </div>
+    <div class="nav-item<?= $page==='diagnostics'?' active':'' ?>" data-page="diagnostics">
+      <?= icon('chart') ?> Connection Diagnostics
     </div>
     <div class="nav-item<?= $page==='starlink'?' active':'' ?>" data-page="starlink">
       <?= icon('globe') ?> Starlink
@@ -759,6 +770,79 @@ function icon(string $name): string {
           <table>
             <thead><tr><th>Time</th><th>Event</th><th>Node</th><th>Profile</th><th>SNI</th><th>Platform</th><th>Network</th><th>Country</th><th>Stage</th><th>Latency</th></tr></thead>
             <tbody id="intelFailTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: CONNECTION DIAGNOSTICS (real measured perf, 2026-07-20) -->
+    <!-- Added after a Starlink "feels slow" complaint (see             -->
+    <!-- STARLINK_WINDOWS_HANDOFF.md §32-35) found there was no real     -->
+    <!-- measured data to check against — this page exists so the NEXT  -->
+    <!-- "X feels slow" report has actual numbers instead of a guess.    -->
+    <!-- ============================================================ -->
+    <div data-view="diagnostics" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+        <span style="font-size:1.1rem;font-weight:700">Connection Diagnostics</span>
+        <select class="select btn-sm" id="diagPerfDays" style="width:110px">
+          <option value="1">Last 24h</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="diagPerfRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <span style="font-size:.72rem;color:var(--muted)" id="diagPerfNote">Real client-measured RTT/handshake/jitter/packet-loss/throughput</span>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header">
+          <span class="panel-title">By Node — Starlink vs fi-hel vs primary</span>
+          <span class="panel-sub">this is the "Starlink vs other VPN nodes" comparison — one row per node_id</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Node</th><th>Attempts</th><th>Success</th>
+              <th>Avg RTT</th><th>Avg Handshake</th><th>Avg Connect Time</th>
+              <th>Avg Jitter</th><th>Avg Packet Loss</th>
+              <th>Avg ↓ Throughput</th><th>Avg ↑ Throughput</th><th>MTU</th>
+            </tr></thead>
+            <tbody id="diagPerfNodeTbl"><tr><td colspan="11" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-bottom:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">By Platform</span><span class="panel-sub">Android vs iOS</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Platform</th><th>Attempts</th><th>Avg RTT</th><th>Avg Jitter</th><th>Avg Loss</th><th>Avg ↓</th><th>Avg ↑</th></tr></thead>
+              <tbody id="diagPerfPlatformTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">By Network Type</span><span class="panel-sub">Wi-Fi vs mobile data</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Network</th><th>Attempts</th><th>Avg RTT</th><th>Avg Jitter</th><th>Avg Loss</th><th>Avg ↓</th><th>Avg ↑</th></tr></thead>
+              <tbody id="diagPerfNetworkTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">By Cellular Generation</span>
+          <span class="panel-sub">5G / 4G / 3G — best-effort, "unknown" means not measured, not zero (see docs/CONNECTION_DIAGNOSTICS.md)</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Generation</th><th>Attempts</th><th>Avg RTT</th><th>Avg Jitter</th><th>Avg Loss</th><th>Avg ↓</th><th>Avg ↑</th></tr></thead>
+            <tbody id="diagPerfGenerationTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1637,6 +1721,7 @@ const pageTitles = {
   payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
+  diagnostics: ['Connection Diagnostics', 'real measured RTT/jitter/throughput/packet loss — Starlink vs Wi-Fi vs 5G vs node vs node vs platform'],
   starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
@@ -2872,6 +2957,72 @@ views.intel = {
         },
       });
     } catch(e) { /* Chart.js not yet loaded / canvas issue */ }
+  },
+};
+
+// ── VIEW: CONNECTION DIAGNOSTICS (2026-07-20) ────────────────────────
+// Real measured RTT/handshake/jitter/packet-loss/throughput, backing the
+// "is Starlink actually slow, or does it just feel that way" question
+// (STARLINK_WINDOWS_HANDOFF.md §32-35) with real numbers instead of a guess.
+// This is about SPEED; views.intel above is about SUCCESS/FAILURE — related
+// but separate questions, hence a separate page rather than another intel tab.
+views.diagnostics = {
+  init() {
+    $('diagPerfRefreshBtn').addEventListener('click', ()=>this.load());
+    $('diagPerfDays').addEventListener('change', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    const days = $('diagPerfDays').value;
+    $('diagPerfNote').textContent = 'Loading…';
+    try {
+      const d = await api.get('connection-diagnostics', {days});
+      this.renderNodeTable(d.by_node || []);
+      this.renderCompactTable('diagPerfPlatformTbl', d.by_platform || [], r =>
+        `${r.value==='ios'?'🍎':r.value==='android'?'🤖':'?'} ${esc(r.value)}`);
+      this.renderCompactTable('diagPerfNetworkTbl', d.by_network_type || [], r =>
+        `${r.value==='wifi'?'📶':r.value==='mobile'?'📡':'?'} ${esc(r.value)}`);
+      this.renderCompactTable('diagPerfGenerationTbl', d.by_network_generation || [], r => esc(r.value));
+      $('diagPerfNote').textContent = `Real client-measured performance · ${days}-day window`;
+    } catch(e) {
+      $('diagPerfNote').textContent = 'Error: ' + esc(e.message);
+    }
+  },
+  // A metric with n=0 real samples is shown as "—", never "0" — an average
+  // of nothing is not a measured zero. n is shown alongside so a "55ms"
+  // built from 1 sample doesn't read as trustworthy as one built from 500.
+  fmtMetric(avg, n, unit) {
+    if (avg === null || !n) return '<span style="color:var(--muted)">—</span>';
+    return `${avg}${unit} <span style="font-size:.68rem;color:var(--muted)">(n=${fmtNum(n)})</span>`;
+  },
+  renderNodeTable(rows) {
+    if (!rows.length) { $('diagPerfNodeTbl').innerHTML = '<tr><td colspan="11" class="tbl-empty">No telemetry data yet</td></tr>'; return; }
+    const rateColor = r => r===null?'var(--muted)':r>=80?'var(--ok)':r>=50?'var(--warn)':'var(--danger)';
+    $('diagPerfNodeTbl').innerHTML = rows.map(r => `<tr>
+      <td><strong>${esc(r.value)}</strong>${r.value==='starlink-no-01'?' 🛰️':''}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+      <td>${this.fmtMetric(r.avg_rtt_ms, r.n_rtt_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_handshake_ms, r.n_handshake_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_time_to_connect_ms, r.n_time_to_connect_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_jitter_ms, r.n_jitter_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_packet_loss_pct, r.n_packet_loss_pct, '%')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_down_kbps, r.n_throughput_down_kbps, ' kbps')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_up_kbps, r.n_throughput_up_kbps, ' kbps')}</td>
+      <td>${r.mtu ?? '—'}</td>
+    </tr>`).join('');
+  },
+  renderCompactTable(tblId, rows, labelFn) {
+    if (!rows.length) { $(tblId).innerHTML = '<tr><td colspan="7" class="tbl-empty">No data</td></tr>'; return; }
+    $(tblId).innerHTML = rows.map(r => `<tr>
+      <td>${labelFn(r)}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td>${this.fmtMetric(r.avg_rtt_ms, r.n_rtt_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_jitter_ms, r.n_jitter_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_packet_loss_pct, r.n_packet_loss_pct, '%')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_down_kbps, r.n_throughput_down_kbps, ' kbps')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_up_kbps, r.n_throughput_up_kbps, ' kbps')}</td>
+    </tr>`).join('');
   },
 };
 

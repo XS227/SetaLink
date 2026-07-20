@@ -3,6 +3,7 @@ import UIKit
 import NetworkExtension
 import Security
 import CoreTelephony
+import Network
 
 typealias RCTPromiseResolveBlock = (Any?) -> Void
 typealias RCTPromiseRejectBlock  = (String?, String?, Error?) -> Void
@@ -314,6 +315,58 @@ class XrayModule: NSObject {
             "androidSdk":      0,
             "androidRelease":  UIDevice.current.systemVersion,
         ])
+    }
+
+    // MARK: - getNetworkInfo
+
+    // Connection Diagnostics (2026-07-20): network type + best-effort cellular
+    // generation for connect_telemetry (see docs/CONNECTION_DIAGNOSTICS.md).
+    // NWPathMonitor is callback-based, not synchronous, so this resolves the
+    // promise from the first path update (or a 1.5s timeout, so a slow/absent
+    // path update never hangs the caller) — mirrors the timeout pattern
+    // runTraceTest() above already uses for network calls.
+    @objc func getNetworkInfo(_ resolve: @escaping RCTPromiseResolveBlock,
+                              rejecter reject: @escaping RCTPromiseRejectBlock) {
+        let generation = Self.currentCellularGeneration()
+        let monitor = NWPathMonitor()
+        let queue = DispatchQueue(label: "no.setalink.netinfo")
+        var resolved = false
+        let finish: (String) -> Void = { type in
+            guard !resolved else { return }
+            resolved = true
+            monitor.cancel()
+            resolve(["type": type, "generation": generation])
+        }
+        queue.asyncAfter(deadline: .now() + 1.5) { finish("unknown") }
+        monitor.pathUpdateHandler = { path in
+            if path.usesInterfaceType(.wifi) { finish("wifi") }
+            else if path.usesInterfaceType(.cellular) { finish("mobile") }
+            else { finish("unknown") }
+        }
+        monitor.start(queue: queue)
+    }
+
+    // Best-effort cellular generation from CoreTelephony's radio access
+    // technology string. Empty/nil (e.g. on Wi-Fi, or a locked-down carrier)
+    // -> "unknown", same honest-null semantics as the Android side.
+    private static func currentCellularGeneration() -> String {
+        guard let tech = CTTelephonyNetworkInfo().serviceCurrentRadioAccessTechnology?.values.first else {
+            return "unknown"
+        }
+        switch tech {
+        case CTRadioAccessTechnologyNRNSA, CTRadioAccessTechnologyNR:
+            return "5g"
+        case CTRadioAccessTechnologyLTE:
+            return "4g"
+        case CTRadioAccessTechnologyWCDMA, CTRadioAccessTechnologyHSDPA, CTRadioAccessTechnologyHSUPA,
+             CTRadioAccessTechnologyCDMAEVDORev0, CTRadioAccessTechnologyCDMAEVDORevA,
+             CTRadioAccessTechnologyCDMAEVDORevB, CTRadioAccessTechnologyeHRPD:
+            return "3g"
+        case CTRadioAccessTechnologyEdge, CTRadioAccessTechnologyGPRS, CTRadioAccessTechnologyCDMA1x:
+            return "2g"
+        default:
+            return "unknown"
+        }
     }
 
     // MARK: - reportTelemetry
