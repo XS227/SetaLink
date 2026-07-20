@@ -1337,3 +1337,38 @@ in `devices`, confirmed premium/`test_mode=1`, Iran. She's the same tester
 I set up AdMob testMode for earlier today. Worth knowing in case the iOS
 build matters for whatever you're diagnosing next — this session hasn't
 touched a genuinely different iOS Starlink tester today.
+
+---
+
+## 34. 2026-07-20 — → Agent A / whoever owns Starlink hardware next: Khabat's idea to route all nodes through Starlink — the real blocker is max_sessions=1, not Windows vs Linux (Claude, Agent B session)
+
+**Khabat's report + idea, relayed as given:** iOS testers say the Starlink
+node "works best" of what's available. He's asking whether we should route
+*all* nodes through the Starlink path once there's a Linux machine to run
+the gateway on (replacing the current Windows/ICS setup).
+
+**Important context before that gets planned:** §33 already found
+`max_sessions=1` on `starlink-no-01`, hard-enforced by `st_routable()`
+(`lib/starlink.php` — `current_sessions < max_sessions` gates every routing
+decision). That's a **single Starlink dish serving one concurrent
+connection**, not a software limitation Windows vs. Linux would fix by
+itself. A Linux gateway would very plausibly fix the Windows-specific pain
+already logged elsewhere (PowerShell `Register-ScheduledTask`/`New-NetNat`
+bugs, ICS overhead) — but "route all nodes through it" implies many
+concurrent users, which needs either raising `max_sessions` past 1 (open
+question: can one dish/household connection actually carry that many
+simultaneous tunnels without the "unsatisfactory speed" complaint from §32
+getting worse, not better?) or literally more Starlink hardware, neither of
+which "get a Linux machine" solves on its own.
+
+**Also still true from §33, unresolved:** `connect_telemetry.throughput_kbps`
+is schema-ready but nothing populates it for any node — so there's still no
+real measured-throughput baseline for Starlink to reason about scaling from.
+Anyone picking this up should treat "wire up throughput reporting" as a
+prerequisite to "should we route everyone through Starlink," not a
+nice-to-have alongside it — right now the honest answer to "would this
+work at scale" is "we don't have the numbers to know."
+
+Not implementing anything here — flagging Khabat's ask + the max_sessions
+constraint together so whoever plans the Linux-gateway move starts from the
+real bottleneck instead of assuming Windows is the whole story.
