@@ -6948,3 +6948,64 @@ Also matches something from `B→A(62)`: this *is* one of the concrete
 items under "Android/iOS end-to-end" that's more than a testing task —
 watching an ad inside RealGram (not Telegram) currently produces a
 convincing-looking but fake reward.
+
+---
+
+## B→A / Live-panel-session — admin Starlink-visibility patch deployed; `D88E994` still not found on production, closing out with a locate-by-fields guide
+
+**Dato: 2026-07-20**
+
+**Deployed** (Khabat's own admin session, `admin/api.php` + `admin/index.php`
+copied to `5.249.252.221`, both pass `php -l`): commit `222b79f` on
+`feat/starlink-node-phase1` (pushed to origin). Adds a `starlink_access_status()`
+helper mirroring `public/v1.php`'s `v1_starlink_unlock()` policy
+(`plan=premium OR test_mode=1 OR >=11 verified invites`), surfaced as
+`starlink_access`/`starlink_reason`/`invites_verified`/`test_mode` on both
+`devices-list` and `device-detail`, plus a 🛰️ badge in the devices table and
+a "Starlink access" row in the device-detail modal. **Also fixed a real bug
+along the way:** `devices-list`'s `q` search never included `referral_code`
+in its `LIKE` filter — searching the admin UI for a referral code would
+silently return nothing even if the device existed. Now it does.
+
+**`D88E994` — searched again post-deploy, still zero matches.** This
+confirms the `Live panel session → B` finding from 2026-07-19 (further up
+this doc) wasn't a search-tool artifact: the referral code genuinely does
+not correspond to any row in `devices`, with or without the search fix.
+Whatever Khabat has from the tester (a code, a screenshot, a verbal
+readout) does not match what's actually in the database. **Recommend:
+close this specific code as dead and get a fresh one directly from the
+tester's in-app Settings/referral screen**, rather than continuing to
+retry the same string.
+
+**Locate-by-fields guide, for this case or the next stale-referral-code
+case:** `devices` has no dedicated "find recent iOS tester from Iran"
+filter yet, but these fields get you there:
+- **`platform`** (normalized `ios`/`android` — shown as a badge in the
+  devices list) — no query-param filter exists for this today, only `plan`
+  and `status`; you have to eyeball the badge or search a coarser proxy
+  (see below). *(Small follow-up: adding a `platform` filter to
+  `devices-list`, same pattern as the existing `plan` filter, would make
+  this a one-line SQL change — flag if wanted.)*
+- **`country`** (raw ISO code, e.g. `IR`) — already covered by the `q`
+  search, so `?action=devices-list&q=IR` narrows to Iran-registered
+  devices directly.
+- **`created_at`** — `devices-list` sorts `ORDER BY d.created_at DESC` by
+  default, so the newest registrations are always first; combined with
+  `q=IR` this puts a brand-new Iranian tester within the first few rows
+  without needing their referral code at all.
+- **`model`/`manufacturer`** (`Apple`/`iPhone*`/`iPad*`) — visible per-row,
+  useful to confirm a candidate is actually iOS once `q=IR` narrows the
+  list.
+- **`app_version`** — if Khabat knows which TestFlight build the tester
+  installed, also covered by the same `q` search.
+- The known **closest candidate from 2026-07-19** is still on record:
+  `sl-00572d4e-...`, referral code `40E9A9B`, created `2026-07-19 20:15:49`,
+  `test_mode=0`, default 5GB quota. Worth asking Khabat directly whether
+  this is actually the same tester under a misremembered/mistyped code —
+  cheaper than waiting on a fresh registration that may never come if the
+  tester already has the app installed.
+
+Once the real device_id is confirmed (either this one or a new one),
+the grant is unchanged from the original `B→Live-panel-session` note:
+`device-set-test-mode {test_mode:1}` then `device-set-quota
+{quota_bytes:94489280512}` (88GB, this codebase's binary `ONE_GB_BYTES`).
