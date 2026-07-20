@@ -619,8 +619,8 @@ function icon(string $name): string {
         <div class="panel-header"><span class="panel-title"><?= icon('grid') ?> Tracked Keywords <span class="panel-sub" id="seoKwCount">top 10 · Iran intent</span></span></div>
         <div class="panel-body" style="overflow-x:auto">
           <table class="tbl">
-            <thead><tr><th>Keyword</th><th>Current</th><th>Δ</th><th>Best</th><th>Points</th><th>Last measured</th></tr></thead>
-            <tbody id="seoRankTbl"><tr><td colspan="6" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>Keyword</th><th>Current</th><th>Δ</th><th>Best</th><th>Points</th><th>Last measured</th><th></th></tr></thead>
+            <tbody id="seoRankTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -4181,8 +4181,9 @@ views.seoranks = {
         <td>${fmtPos(k.latest)}</td><td>${dcell}</td>
         <td>${fmtPos(k.best)}</td><td>${k.points||0}</td>
         <td class="mobile-hide" style="font-size:.75rem;color:var(--muted)">${esc(k.last_at||'never')}</td>
+        <td><button class="btn btn-sm btn-danger" onclick="views.seoranks.deleteKeyword('${esc(k.keyword)}')" title="Stop tracking this keyword">${icon_str('trash')}</button></td>
       </tr>`;
-    }).join('') : '<tr><td colspan="6" class="tbl-empty">No keywords tracked</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="tbl-empty">No keywords tracked</td></tr>';
   },
   renderChart() {
     if (typeof Chart==='undefined') return;
@@ -4220,6 +4221,14 @@ views.seoranks = {
     if (!this.data.some(k=>k.keyword===v)) this.data.push({keyword:v, lang:'fa', latest:null, history:[]});
     $('seoNewKw').value='';
     this.renderInputs();
+  },
+  async deleteKeyword(kw) {
+    if (!confirm(`Stop tracking "${kw}"? This removes all its recorded history, not just the current snapshot.`)) return;
+    try {
+      const r = await api.post({action:'seo-rank-delete', keyword: kw});
+      toast(`Removed "${kw}" (${r.deleted} record${r.deleted===1?'':'s'})`, 'success');
+      this.load();
+    } catch(e) { toast('Delete failed: '+e.message, 'error'); }
   },
   async save() {
     const entries = [...document.querySelectorAll('.seo-pos')].map(el=>({

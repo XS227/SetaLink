@@ -1669,6 +1669,21 @@ PS1;
         seo_ranks_init($db);
         api_ok(['added' => seo_ranks_seed($db)]);
     }
+    // Stop tracking a keyword — removes ALL history rows for it (not just a
+    // marker), since a stale/wrong keyword (e.g. an old brand name) has no
+    // value even historically for a realgram.no-only view. No delete action
+    // existed before this (2026-07-20, Khabat: realgram.no SEO should only
+    // track realgram.no, not "setalink"/"realink" rows left over from
+    // GSC-suggested or manually-added queries).
+    if ($action === 'seo-rank-delete') {
+        $db = open_analytics_db();
+        seo_ranks_init($db);
+        $kw = trim((string)($parsed['keyword'] ?? ''));
+        if ($kw === '') api_err('keyword required');
+        $del = $db->prepare('DELETE FROM keyword_ranks WHERE keyword = ?');
+        $del->execute([$kw]);
+        api_ok(['deleted' => $del->rowCount(), 'keyword' => $kw]);
+    }
     // Pull real positions from Google Search Console into keyword_ranks.
     if ($action === 'seo-rank-gsc-sync') {
         $db = open_analytics_db();
