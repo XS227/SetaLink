@@ -562,3 +562,216 @@ function am_backfill(PDO $pdo, bool $dryRun = false): array {
 
     return $stats;
 }
+
+// ── Overview / provider summaries (spec §2/§3/§4) ───────────────────────────
+
+/** Human status label shown next to every KPI, per spec §2's worked examples. */
+function am_status_label(string $sourceType): string {
+    switch ($sourceType) {
+        case 'PROVIDER_API':       return 'verified';
+        case 'PROVIDER_CALLBACK':  return 'provider_reported';
+        case 'LOCAL_SDK_EVENT':    return 'local';
+        case 'DATABASE_AGGREGATE': return 'local';
+        case 'MANUAL_IMPORT':      return 'manual';
+        case 'ESTIMATE':
+        default:                  return 'estimated';
+    }
+}
+
+/**
+ * Provider revenue/traffic summary for a date range, grouped by
+ * (source_type, currency) — NEVER blended into one silently-summed number
+ * (spec §2: don't sum NOK+USDT; don't let an estimate masquerade as verified).
+ * `primary` is the single highest-trust group, for the KPI card headline;
+ * `breakdown` is the full list, for the "source" tooltip / detail view.
+ */
+function am_provider_summary(PDO $pdo, string $provider, string $from, string $to): array {
+    am_init_tables($pdo);
+    $st = $pdo->prepare(
+        "SELECT source_type, currency,
+                SUM(requests) AS requests, SUM(matched_requests) AS matched_requests,
+                SUM(impressions) AS impressions, SUM(clicks) AS clicks,
+                SUM(completions) AS completions, SUM(rewards_granted) AS rewards_granted,
+                SUM(rewards_failed) AS rewards_failed, SUM(revenue) AS revenue,
+                MAX(last_synced_at) AS last_synced_at
+         FROM ad_daily_metrics WHERE provider=? AND date BETWEEN ? AND ?
+         GROUP BY source_type, currency
+         ORDER BY revenue DESC"
+    );
+    $st->execute([$provider, $from, $to]);
+    $groups = $st->fetchAll(PDO::FETCH_ASSOC);
+
+    $totals = ['requests' => 0, 'matched_requests' => 0, 'impressions' => 0, 'clicks' => 0,
+               'completions' => 0, 'rewards_granted' => 0, 'rewards_failed' => 0];
+    $best = null;
+    foreach ($groups as &$g) {
+        foreach (array_keys($totals) as $k) { $totals[$k] += (int)$g[$k]; $g[$k] = (int)$g[$k]; }
+        $g['revenue']       = (float)$g['revenue'];
+        $g['status_label']  = am_status_label((string)$g['source_type']);
+        if ($best === null || am_source_rank((string)$g['source_type']) < am_source_rank((string)$best['source_type'])) $best = $g;
+    }
+    unset($g);
+
+    return ['breakdown' => $groups, 'primary' => $best] + $totals;
+}
+
+/** Ad-unit-level breakdown within one provider (spec §3/§4's "bryt ned per annonseenhet"). */
+function am_ad_unit_breakdown(PDO $pdo, string $provider, string $from, string $to): array {
+    am_init_tables($pdo);
+    $st = $pdo->prepare(
+        "SELECT ad_unit_id, platform,
+                SUM(requests) AS requests, SUM(matched_requests) AS matched_requests,
+                SUM(impressions) AS impressions, SUM(clicks) AS clicks,
+                SUM(completions) AS completions, SUM(rewards_granted) AS rewards_granted,
+                SUM(revenue) AS revenue, currency, MAX(source_type) AS source_type,
+                MAX(last_synced_at) AS last_event_at
+         FROM ad_daily_metrics WHERE provider=? AND date BETWEEN ? AND ?
+         GROUP BY ad_unit_id, platform, currency
+         ORDER BY revenue DESC"
+    );
+    $st->execute([$provider, $from, $to]);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$r) {
+        $r['requests'] = (int)$r['requests']; $r['matched_requests'] = (int)$r['matched_requests'];
+        $r['impressions'] = (int)$r['impressions']; $r['clicks'] = (int)$r['clicks'];
+        $r['completions'] = (int)$r['completions']; $r['rewards_granted'] = (int)$r['rewards_granted'];
+        $r['revenue'] = (float)$r['revenue'];
+        $r['match_rate'] = $r['requests'] > 0 ? round($r['matched_requests'] / $r['requests'], 4) : null;
+        $r['ecpm'] = $r['impressions'] > 0 ? round($r['revenue'] / $r['impressions'] * 1000, 4) : null;
+        $r['status_label'] = am_status_label((string)$r['source_type']);
+    }
+    unset($r);
+    return $rows;
+}
+
+// ── Reward Events (spec §5) ──────────────────────────────────────────────
+
+/**
+ * Paginated, filterable reward-event table. Filters: provider, validation_status
+ * ('verified'|'rejected'|'review'|'unverified' — UI maps success/failed onto
+ * this), app, user_id, reward_type, platform, ad_unit_id, from/to dates.
+ */
+function am_reward_events(PDO $pdo, array $f): array {
+    am_init_tables($pdo);
+    $where = ['1=1']; $args = [];
+    foreach ([
+        'provider' => 'provider', 'validation_status' => 'validation_status',
+        'app' => 'app', 'user_id' => 'user_id', 'reward_type' => 'reward_type',
+        'platform' => 'platform', 'ad_unit_id' => 'ad_unit_id',
+    ] as $param => $col) {
+        if (!empty($f[$param])) { $where[] = "$col = ?"; $args[] = $f[$param]; }
+    }
+    if (!empty($f['from'])) { $where[] = "date(created_at) >= ?"; $args[] = $f['from']; }
+    if (!empty($f['to']))   { $where[] = "date(created_at) <= ?"; $args[] = $f['to']; }
+    $sql = "SELECT * FROM ad_events WHERE " . implode(' AND ', $where);
+
+    $countSt = $pdo->prepare(str_replace('SELECT *', 'SELECT COUNT(*)', $sql));
+    $countSt->execute($args);
+    $total = (int)$countSt->fetchColumn();
+
+    $limit  = max(1, min(500, (int)($f['limit'] ?? 50)));
+    $offset = max(0, (int)($f['offset'] ?? 0));
+    $st = $pdo->prepare($sql . " ORDER BY id DESC LIMIT $limit OFFSET $offset");
+    $st->execute($args);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as &$r) {
+        $r['status_label'] = am_status_label((string)$r['source_type']);
+        // duplicate_of/raw_payload_hash are internal bookkeeping; raw_payload
+        // itself is safe (already sanitized on write, no secrets/tokens in it).
+    }
+    unset($r);
+    return ['rows' => $rows, 'total' => $total, 'limit' => $limit, 'offset' => $offset];
+}
+
+// ── Alerts (spec §14) ────────────────────────────────────────────────────
+
+/**
+ * $admobConfigured/$adsgramConfigured are passed in rather than checked here
+ * (admob_client_configured()/adsgram_publisher_configured() live in
+ * lib/admob_sync.php / lib/adsgram_publisher_sync.php) so this base model file
+ * has no dependency on its sibling integration files — the admin/api.php
+ * caller, which already loads all three, supplies them.
+ */
+function am_alerts(PDO $pdo, bool $admobConfigured, bool $adsgramConfigured): array {
+    am_init_tables($pdo);
+    $alerts = [];
+    $weekAgo = gmdate('Y-m-d', strtotime('-7 days'));
+
+    // AdMob iOS: requests but zero impressions.
+    $iosRow = $pdo->prepare(
+        "SELECT SUM(requests) req, SUM(impressions) impr FROM ad_daily_metrics
+         WHERE provider='admob' AND platform='ios' AND date >= ?");
+    $iosRow->execute([$weekAgo]);
+    $ios = $iosRow->fetch(PDO::FETCH_ASSOC);
+    if ($ios && (int)$ios['req'] > 0 && (int)$ios['impr'] === 0) {
+        $alerts[] = ['level' => 'warn', 'area' => 'admob', 'code' => 'ios_zero_impressions',
+            'message' => 'AdMob iOS har ' . (int)$ios['req'] . ' requests siste 7 dager, men 0 impressions.'];
+    }
+
+    // Sync staleness (only meaningful once a real integration is connected).
+    foreach (['admob_last_sync' => 'AdMob', 'adsgram_last_sync' => 'AdsGram'] as $key => $label) {
+        $st = $pdo->prepare("SELECT value FROM settings WHERE key=?");
+        $st->execute([$key]);
+        $v = (string)($st->fetchColumn() ?: '');
+        if ($v === '') continue; // never synced yet — "not configured", not an alert
+        $ts = strtotime($v);
+        if ($ts !== false && (time() - $ts) > 48 * 3600) {
+            $alerts[] = ['level' => 'warn', 'area' => strtolower($label), 'code' => 'sync_stale',
+                'message' => "$label har ikke synkronisert på over 48 timer (sist: $v)."];
+        }
+    }
+
+    // Missing credentials (informational, not urgent — surfaced here so Overview
+    // doesn't need a second round-trip to Configuration to explain "why is this empty").
+    if (!$admobConfigured) {
+        $alerts[] = ['level' => 'info', 'area' => 'admob', 'code' => 'not_configured',
+            'message' => 'AdMob Reporting API er ikke konfigurert ennå — se Configuration-fanen.'];
+    }
+    if (!$adsgramConfigured) {
+        $alerts[] = ['level' => 'info', 'area' => 'adsgram', 'code' => 'not_configured',
+            'message' => 'AdsGram publisher-API-token er ikke konfigurert — CSV-import og provider-callback-data (push-adsgram-events) fungerer uavhengig av dette.'];
+    }
+
+    return $alerts;
+}
+
+// ── Reward economy valuation (spec §11) ─────────────────────────────────
+
+/**
+ * Cost of rewards actually granted in a window, valued at the operator-configured
+ * internal price per unit (mon_value_per_*_usd) — 0 by default, meaning "not
+ * configured", never a made-up number. Every total this touches is labeled
+ * "estimated" per spec §11's explicit instruction.
+ */
+function am_reward_cost(PDO $pdo, string $from, string $to): array {
+    am_init_tables($pdo);
+    $cfg = am_config($pdo);
+    $st = $pdo->prepare(
+        "SELECT reward_type, SUM(reward_amount) AS amount, COUNT(*) AS n,
+                COUNT(DISTINCT user_id) AS unique_users
+         FROM ad_events WHERE reward_granted=1 AND date(created_at) BETWEEN ? AND ?
+         GROUP BY reward_type");
+    $st->execute([$from, $to]);
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+    $byType = []; $configured = true; $totalCostUsd = 0.0;
+    foreach ($rows as $r) {
+        $type = (string)$r['reward_type'];
+        $amount = (float)$r['amount'];
+        $valuePerUnit = match ($type) {
+            'gb'   => (float)$cfg['mon_value_per_gb_usd'],
+            'real' => (float)$cfg['mon_value_per_real_usd'],
+            'gems' => (float)$cfg['mon_value_per_gem_usd'],
+            default => 0.0,
+        };
+        if ($type === 'gb') $amount = $amount / 1073741824.0; // stored in bytes, valuation is per GB
+        $cost = $valuePerUnit > 0 ? round($amount * $valuePerUnit, 4) : null;
+        if ($cost === null && $type !== 'farr' && $type !== 'none') $configured = false;
+        if ($cost !== null) $totalCostUsd += $cost;
+        $byType[] = ['reward_type' => $type, 'amount' => $amount, 'events' => (int)$r['n'],
+            'unique_users' => (int)$r['unique_users'], 'value_per_unit_usd' => $valuePerUnit ?: null,
+            'estimated_cost_usd' => $cost];
+    }
+    return ['by_type' => $byType, 'total_estimated_cost_usd' => $configured ? round($totalCostUsd, 4) : null,
+            'fully_configured' => $configured];
+}

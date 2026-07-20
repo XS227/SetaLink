@@ -20,6 +20,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/ad_monetization.php'; // am_init_tables/am_daily_metric_upsert/am_log
+
 const ADSGRAM_API_BASE = 'https://api.adsgram.ai';
 
 function adsgram_http_get(string $url, string $token, int $timeout = 20): array {

@@ -27,6 +27,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/ad_monetization.php'; // am_init_tables/am_daily_metric_upsert/am_config
+
 const ADMOB_CLIENT_CONFIG_PATH = '/etc/setalink/admob-oauth-client.json';
 const ADMOB_TOKEN_PATH         = '/var/www/setalink/data/admob-oauth.json';
 const ADMOB_SCOPE              = 'https://www.googleapis.com/auth/admob.readonly';
