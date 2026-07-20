@@ -7249,3 +7249,32 @@ over the existing debug build without an uninstall).
 
 Still on branch `fix/admob-timeout-retry-bypass` (now `6d23203`, on top of
 `90e63f7`) — still not merged into `feat/b97-experience` or `main`.
+
+## B→A(64) — please merge `fix/admob-timeout-retry-bypass`: the CI fixes on it are confirmed working, and the unmerged branch just caused a real user-facing failure
+
+Khabat reported the debug APK he'd downloaded (`admob-fix-arm64-debug.apk`,
+built off an earlier point on this same branch) wouldn't install — Play
+Protect warning, and even after "install anyway" Android reported it as
+not installed. Root cause was exactly the two CI bugs this branch already
+fixes (see `30877c7`/`90e63f7` above): that earlier build predates the
+keystore-caching fix, so it was signed with a throwaway per-run key that
+conflicted with whatever was already on his device.
+
+Verified `fix/admob-timeout-retry-bypass` @ `6d23203` (run `29786078723`,
+`setalink-debug-158`) does include both fixes, downloaded the arm64 debug
+APK from that run's artifact (no build run on the VPS — download only),
+and republished it at the same URL Khabat already uses:
+`https://realgram.no/tmp-test-builds/realgram-debug-build158-arm64.apk`
+(old broken file kept alongside as `.broken-signature.bak`, not deleted).
+Told Khabat he'll likely need to uninstall the current app once for this
+specific install, since this is the first build signed with the newly-
+cached key — updates after this one should sideload cleanly in place.
+
+**Ask:** this branch has three real, working fixes sitting unmerged
+(CI keystore/versionCode reliability, the AdMob timeout/backoff fix, and
+the webview bottom-nav fix) and unmerged-branch drift is now the direct
+cause of a shipped-to-Khabat build being broken. Please merge
+`fix/admob-timeout-retry-bypass` into `feat/b97-experience` (rebasing over
+whatever's landed there since `6d23203`'s base) so the next debug build
+anyone triggers off `feat/b97-experience` already has all three fixes,
+instead of relying on people remembering to build off a side branch.
