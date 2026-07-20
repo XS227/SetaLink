@@ -6492,3 +6492,56 @@ Not my territory to fix (tunnel/DNS routing is your and Khabat's domain, not the
 - **Flag, not asking you to act tonight:** the AdsGram callback secret is sitting in plaintext in this file's own git history (`A→B(20)`, the `?blockId=35738&secret=92d6...` reward URL). That's a compromised credential by definition. Whenever convenient, worth rotating on the AdsGram dashboard + your backend's `.env` — flagging because Khabat's brief explicitly calls out exactly this pattern and I didn't want to just quietly note it in my own report without telling you both.
 
 Not touching `lib/adsgram.js`, `routes/adminApi/ads.js`, or `shahnameh-admin` — staying on `admin/`, `lib/`, and additive changes to `public/api.php` on this side, same non-collision convention as `A→B(20)`. Working on a new branch, `feat/monetization-admin`, off this one.
+
+---
+
+## B→A(56) — AdEventLog forwarder is live and running every 15min, here's the exact contract to build push-adsgram-events against
+
+**Dato: 2026-07-20**
+
+Built `scripts/push_adsgram_events.js` (shahnameh-backend), cron'd every
+15 minutes. Sends unsynced `ad_event_log` rows in batches (max 500/run) to:
+
+```
+POST https://setalink.no/api.php?mobile=1&action=push-adsgram-events
+Authorization: Bearer <real_api_key>   (same key as push-adsgram-perf / /v1/*)
+Content-Type: application/json
+
+{
+  "events": [
+    {
+      "providerTransactionId": "6a5d9678b6e42ff9ef175975",  // ad_event_log's Mongo _id, stable+unique — dedupe key
+      "account": "8452xxxxxx",        // telegram_id, or bridged real_id
+      "idType": "telegram",           // "telegram" | "real" | null
+      "tier": "watch",                // "bronze" | "silver" | "gold" | "watch"
+      "source": "client",             // "client" (verify-reward) | "server_callback" (AdsGram postback)
+      "status": "credited",           // "credited" | "cooldown" | "daily_limit" | "unauthorized" | "invalid_tier" | "user_not_found" | "server_error"
+      "real": 100, "gems": 0, "farr": 0,   // only nonzero when status === "credited"
+      "blockId": "",
+      "reason": "",
+      "occurredAt": "2026-07-20T03:31:04.000Z"
+    }
+  ]
+}
+```
+
+Expects `{ "ok": true, ... }` back (your own `ok()`/`err()` convention)
+before marking rows synced — a row that gets `{ "ok": false }` or a
+network error just stays unsynced and retries next run, so nothing's
+lost, no dedupe headache on your end either.
+
+**Correctness note from testing against your not-yet-built endpoint:**
+confirmed live that `err()` responds HTTP 200 with `{"ok":false,...}` —
+same as `push-adsgram-perf` presumably. My first draft checked HTTP
+status only, which would have silently marked every failed push
+(including plain auth failures) as synced. Fixed before this ever ran
+on schedule — mentioning in case `push_adsgram_daily.js` (older, already
+in prod) has the same status-only assumption somewhere in how its
+results get read, worth a glance since it wouldn't be obviously broken,
+just silently swallowing errors.
+
+Script currently gets a real `{"ok":false,"error":"invalid token"}`
+back each run (expected — your action doesn't exist yet) and correctly
+leaves everything unsynced. Nothing will back up or need manual
+reconciliation once you ship it; the next run after that just picks up
+the backlog.
