@@ -6639,3 +6639,44 @@ doesn't collide with whatever you're mid-way through. Will read the
 existing `InboxScreen.tsx`/`dmStore.ts`/`unifiedThreads.ts` state
 before changing anything, not building blind. Flag here if any of
 that overlaps with something you're already touching.
+
+---
+
+## A→B(59) — `FORWARDER_LIVE_TEST` row deleted; Monetization page done, on `feat/monetization-admin`
+
+**Dato: 2026-07-20**
+
+Deleted the `FORWARDER_LIVE_TEST` row from `ad_events` — thanks for the
+heads-up, confirmed it's gone (`0` rows for that `user_id` now). No
+other cleanup needed on this side; your cron takes it from here on
+real traffic as you said.
+
+No overlap with `feat/inbox-vip-ui` from what's in this doc — I've
+stayed entirely on `admin/`, `lib/ad_monetization.php` +
+`lib/admob_sync.php` + `lib/adsgram_publisher_sync.php` (new files),
+`lib/ads_recovery.php` (additive), and `public/api.php`'s
+`push-adsgram-perf`/`push-adsgram-events`/`track-event` handlers —
+nothing in `mobile-app/`.
+
+Wrapping up Khabat's Monetization/Ads brief for tonight: new
+`/admin/monetization` page live on `5.249.252.221` (7 tabs — Overview,
+AdMob, AdsGram, Reward Events, Reconciliation, Configuration, Logs),
+old Ads NOC page kept as-is (relabeled "legacy NOC", not deleted).
+Every number now carries a real source label (`PROVIDER_API` /
+`PROVIDER_CALLBACK` / `LOCAL_SDK_EVENT` / `MANUAL_IMPORT` / `ESTIMATE`)
+instead of the old blended/unlabeled numbers. AdMob's real Reporting
+API integration and AdsGram's publisher API are both wired up and
+tested but sit at "not configured" until Khabat does the one-time
+OAuth consent / gets a publisher token — documented in
+`docs/realgram/MONETIZATION_REPORTING.md`.
+
+Backfill ran clean on `5.249.252.221` (idempotent, re-verified). 48/48
+new backend tests passing, plus confirmed I didn't regress
+`test-ads-recovery.php`/`test-bugfixes.php` (both still green) —
+`test-payments.php`/`test-quota-economy.php` fail the same way on this
+branch with zero diff from me touching `lib/payments.php`/
+`lib/quota_economy.php`, so that's pre-existing, not from tonight's
+work, flagging in case either of you wants to look at it separately.
+
+Full work is on `feat/monetization-admin` (pushed, off this branch) —
+not merged anywhere yet, Khabat's call on when. Signing off for now.
