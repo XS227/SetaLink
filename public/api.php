@@ -2064,68 +2064,16 @@ if ($method === 'POST') {
         if (count($events) === 0) err('missing events');
         if (count($events) > 500) $events = array_slice($events, 0, 500); // sanity clamp
 
-        // status -> (reward_granted, validation_status). "credited" is the only
-        // status a reward actually went out for; server_error is ours-or-theirs
-        // breakage worth a human look, everything else is a legitimate business-
-        // rule rejection (cooldown/cap/auth/unknown-tier/unknown-user).
-        $statusMap = [
-            'credited'     => [1, 'verified'],
-            'cooldown'     => [0, 'rejected'],
-            'daily_limit'  => [0, 'rejected'],
-            'invalid_tier' => [0, 'rejected'],
-            'unauthorized' => [0, 'rejected'],
-            'user_not_found'=> [0, 'rejected'],
-            'server_error' => [0, 'review'],
-        ];
-
+        // Transform + insert logic lives in am_ingest_adsgram_event() (lib/
+        // ad_monetization.php) so it's unit-tested in isolation — see
+        // scripts/test-monetization.php.
         $accepted = 0; $duplicates = 0; $rejected = 0;
         foreach ($events as $ev) {
-            $txnId = trim((string)($ev['providerTransactionId'] ?? ''));
-            if ($txnId === '') { $rejected++; continue; }
             try {
-                $status = (string)($ev['status'] ?? '');
-                [$rewardGranted, $validationStatus] = $statusMap[$status] ?? [0, 'unverified'];
-
-                // real/gems/farr are mutually exclusive in practice (only one
-                // nonzero per credited event) — pick whichever is nonzero for the
-                // KPI-facing reward_type/reward_amount pair; raw_payload keeps the
-                // full breakdown in case that assumption is ever wrong.
-                $rewardType = 'none'; $rewardAmount = 0.0;
-                foreach (['real', 'gems', 'farr'] as $rt) {
-                    $amt = (float)($ev[$rt] ?? 0);
-                    if ($amt != 0) { $rewardType = $rt; $rewardAmount = $amt; break; }
-                }
-
-                $source = (string)($ev['source'] ?? '');
-                // AdsGram's own postback to Shahnameh is a genuine provider callback;
-                // Shahnameh's client-reported "verify-reward" path is validated
-                // business-side but not provider-confirmed — same distinction as
-                // AdMob's SSV vs client-confirm path (lib/ads_recovery.php).
-                $sourceType = $source === 'server_callback' ? 'PROVIDER_CALLBACK' : 'LOCAL_SDK_EVENT';
-
-                $idType = (string)($ev['idType'] ?? '');
-                $account = (string)($ev['account'] ?? '');
-
-                $res = am_event_insert($db, [
-                    'provider'                => 'adsgram',
-                    'event_type'               => 'reward',
-                    'platform'                 => 'telegram',
-                    'placement'                => (string)($ev['tier'] ?? ''),
-                    'ad_unit_id'               => (string)($ev['blockId'] ?? ''),
-                    'provider_event_id'        => 'adsgram-event:' . $txnId,
-                    'provider_transaction_id'  => $txnId,
-                    'user_id'                  => $account,
-                    'internal_account_id'      => $idType === 'real' ? $account : '',
-                    'reward_type'              => $rewardType,
-                    'reward_amount'            => $rewardAmount,
-                    'reward_granted'           => $rewardGranted,
-                    'validation_status'        => $validationStatus,
-                    'error_message'            => (string)($ev['reason'] ?? ''),
-                    'raw_payload'              => json_encode($ev, JSON_UNESCAPED_UNICODE),
-                    'created_at'               => (string)($ev['occurredAt'] ?? ''),
-                    'source_type'              => $sourceType,
-                ]);
-                if ($res['duplicate']) $duplicates++; else $accepted++;
+                $res = am_ingest_adsgram_event($db, $ev);
+                if (!empty($res['rejected'])) $rejected++;
+                elseif ($res['duplicate']) $duplicates++;
+                else $accepted++;
             } catch (\Exception $e) { $rejected++; }
         }
         ok(['accepted' => $accepted, 'duplicates' => $duplicates, 'rejected' => $rejected]);

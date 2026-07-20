@@ -282,6 +282,16 @@ function am_event_insert(PDO $pdo, array $e): array {
         if ($ts !== false) $createdAt = gmdate('Y-m-d H:i:s', $ts);
     }
 
+    // Compute the coalesced+validated value ONCE, then reuse it — reading
+    // $e['reward_type'] a second time after the ?? check (instead of the
+    // variable holding the coalesced result) silently binds NULL into a
+    // NOT NULL column when the key is absent, and INSERT OR IGNORE then drops
+    // the entire row without error. Caught by scripts/test-monetization.php.
+    $rewardTypeVal = (string)($e['reward_type'] ?? 'none');
+    if (!in_array($rewardTypeVal, AM_REWARD_TYPES, true)) $rewardTypeVal = 'none';
+    $validationStatusVal = (string)($e['validation_status'] ?? 'unverified');
+    if (!in_array($validationStatusVal, AM_VALIDATION_STATUSES, true)) $validationStatusVal = 'unverified';
+
     $st = $pdo->prepare(
         "INSERT OR IGNORE INTO ad_events
             (provider, event_type, app, platform, placement, ad_unit_id,
@@ -314,10 +324,10 @@ function am_event_insert(PDO $pdo, array $e): array {
         ':currency'                => (string)($e['currency'] ?? ''),
         ':provider_revenue'        => array_key_exists('provider_revenue', $e) ? $e['provider_revenue'] : null,
         ':estimated_revenue'       => array_key_exists('estimated_revenue', $e) ? $e['estimated_revenue'] : null,
-        ':reward_type'             => in_array($e['reward_type'] ?? 'none', AM_REWARD_TYPES, true) ? $e['reward_type'] : 'none',
+        ':reward_type'             => $rewardTypeVal,
         ':reward_amount'           => (float)($e['reward_amount'] ?? 0),
         ':reward_granted'          => (int)(bool)($e['reward_granted'] ?? false),
-        ':validation_status'       => in_array($e['validation_status'] ?? 'unverified', AM_VALIDATION_STATUSES, true) ? $e['validation_status'] : 'unverified',
+        ':validation_status'       => $validationStatusVal,
         ':source_type'             => $sourceType,
         ':raw_payload_hash'        => (string)($e['raw_payload_hash'] ?? ''),
         ':raw_payload'             => (string)($e['raw_payload'] ?? ''),
@@ -444,6 +454,76 @@ function am_reconciliation(PDO $pdo, string $provider, string $from, string $to)
         ];
     }
     return $out;
+}
+
+// ── AdsGram per-event ingestion (push-adsgram-events contract) ─────────────
+
+/** status -> [reward_granted, validation_status], per Agent B's AdEventLog
+ *  contract (TASK_SPLIT.md B→A(56)). "credited" is the only status a reward
+ *  actually went out for; server_error is breakage worth a human look,
+ *  everything else is a legitimate business-rule rejection. */
+const AM_ADSGRAM_STATUS_MAP = [
+    'credited'       => [1, 'verified'],
+    'cooldown'       => [0, 'rejected'],
+    'daily_limit'    => [0, 'rejected'],
+    'invalid_tier'   => [0, 'rejected'],
+    'unauthorized'   => [0, 'rejected'],
+    'user_not_found' => [0, 'rejected'],
+    'server_error'   => [0, 'review'],
+];
+
+/**
+ * Transform + insert one event from Shahnameh's AdEventLog forwarder
+ * (public/api.php's push-adsgram-events, one call per event in the batch).
+ * Pulled out of the HTTP handler so it's unit-testable — see
+ * scripts/test-monetization.php.
+ */
+function am_ingest_adsgram_event(PDO $pdo, array $ev): array {
+    $txnId = trim((string)($ev['providerTransactionId'] ?? ''));
+    if ($txnId === '') return ['inserted' => false, 'duplicate' => false, 'rejected' => true, 'reason' => 'missing providerTransactionId'];
+
+    $status = (string)($ev['status'] ?? '');
+    [$rewardGranted, $validationStatus] = AM_ADSGRAM_STATUS_MAP[$status] ?? [0, 'unverified'];
+
+    // real/gems/farr are mutually exclusive in practice (only one nonzero per
+    // credited event) — pick whichever is nonzero for the KPI-facing
+    // reward_type/reward_amount pair; raw_payload keeps the full breakdown in
+    // case that assumption is ever wrong.
+    $rewardType = 'none'; $rewardAmount = 0.0;
+    foreach (['real', 'gems', 'farr'] as $rt) {
+        $amt = (float)($ev[$rt] ?? 0);
+        if ($amt != 0) { $rewardType = $rt; $rewardAmount = $amt; break; }
+    }
+
+    // AdsGram's own postback to Shahnameh is a genuine provider callback;
+    // Shahnameh's client-reported "verify-reward" path is validated
+    // business-side but not provider-confirmed — same distinction this repo
+    // already draws for AdMob SSV vs client-confirm (lib/ads_recovery.php).
+    $source = (string)($ev['source'] ?? '');
+    $sourceType = $source === 'server_callback' ? 'PROVIDER_CALLBACK' : 'LOCAL_SDK_EVENT';
+
+    $idType  = (string)($ev['idType'] ?? '');
+    $account = (string)($ev['account'] ?? '');
+
+    return am_event_insert($pdo, [
+        'provider'                => 'adsgram',
+        'event_type'              => 'reward',
+        'platform'                => 'telegram',
+        'placement'               => (string)($ev['tier'] ?? ''),
+        'ad_unit_id'              => (string)($ev['blockId'] ?? ''),
+        'provider_event_id'       => 'adsgram-event:' . $txnId,
+        'provider_transaction_id' => $txnId,
+        'user_id'                 => $account,
+        'internal_account_id'     => $idType === 'real' ? $account : '',
+        'reward_type'             => $rewardType,
+        'reward_amount'           => $rewardAmount,
+        'reward_granted'          => $rewardGranted,
+        'validation_status'       => $validationStatus,
+        'error_message'           => (string)($ev['reason'] ?? ''),
+        'raw_payload'             => json_encode($ev, JSON_UNESCAPED_UNICODE),
+        'created_at'              => (string)($ev['occurredAt'] ?? ''),
+        'source_type'             => $sourceType,
+    ]);
 }
 
 // ── Backfill (one-time, idempotent) from the legacy tables ─────────────────
