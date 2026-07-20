@@ -520,6 +520,26 @@ function normalize_platform(array $r): string {
     return 'android';
 }
 
+// Mirrors public/v1.php's v1_starlink_unlock() policy (premium OR test_mode
+// OR >= this-many verified active invites) so the admin panel can show the
+// same access decision the VPN gate actually uses. Keep in sync with
+// public/v1.php's V1_STARLINK_INVITES_REQUIRED. $invitesVerified is always
+// an int (0 when referral data couldn't be read) so this never needs to
+// know why — callers are responsible for the try/catch around that lookup.
+const ADMIN_STARLINK_INVITES_REQUIRED = 11;
+function starlink_access_status(array $dev, int $invitesVerified): array {
+    if (($dev['plan'] ?? '') === 'premium') {
+        return ['unlocked' => true, 'reason' => 'premium'];
+    }
+    if ((int)($dev['test_mode'] ?? 0) === 1) {
+        return ['unlocked' => true, 'reason' => 'test_mode'];
+    }
+    if ($invitesVerified >= ADMIN_STARLINK_INVITES_REQUIRED) {
+        return ['unlocked' => true, 'reason' => 'invites'];
+    }
+    return ['unlocked' => false, 'reason' => null];
+}
+
 // ── Mobile POST ───────────────────────────────────────────────────────────
 if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     $tok = (string)($_POST['_token'] ?? $_GET['_token'] ?? '');
@@ -3493,8 +3513,8 @@ switch ($action) {
         $status_filter = trim((string)($_GET['status'] ?? ''));
         $where = []; $params = [];
         if ($q) {
-            $where[] = "(d.device_id LIKE ? OR d.user_id LIKE ? OR d.country LIKE ? OR d.app_version LIKE ? OR d.model LIKE ?)";
-            $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%"]);
+            $where[] = "(d.device_id LIKE ? OR d.user_id LIKE ? OR d.country LIKE ? OR d.app_version LIKE ? OR d.model LIKE ? OR d.referral_code LIKE ?)";
+            $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%","%$q%"]);
         }
         if ($plan)          { $where[] = 'd.plan=?';    $params[] = $plan; }
         if ($status_filter === 'online')  { $where[] = "(d.status='online' AND d.last_seen>=datetime('now','-180 minutes'))"; }
@@ -3518,7 +3538,24 @@ switch ($action) {
         $st  = $db->prepare($sql);
         $st->execute($params);
         $rows = $st->fetchAll(PDO::FETCH_ASSOC);
-        $result = array_map(function($r) {
+        // Starlink invites-verified count per device, same policy as
+        // public/v1.php's v1_starlink_unlock(). Isolated in its own
+        // try/catch, separate from the main query above: referral_uses is
+        // normally created by init_device_tables() at the top of this case,
+        // but this must never be able to break the devices list itself.
+        $invitesByDevice = [];
+        try {
+            $invRows = $db->query(
+                "SELECT ru.referrer_device_id AS device_id, COUNT(*) AS invites_verified
+                 FROM referral_uses ru
+                 JOIN devices d2 ON d2.device_id = ru.new_device_id
+                 WHERE ru.status IN ('credited','approved')
+                   AND (d2.internet_ok = 1 OR d2.last_seen >= datetime('now','-7 days'))
+                 GROUP BY ru.referrer_device_id"
+            )->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($invRows as $ir) { $invitesByDevice[$ir['device_id']] = (int)$ir['invites_verified']; }
+        } catch (Throwable $e) {}
+        $result = array_map(function($r) use ($invitesByDevice) {
             $ls = $r['last_seen'] ?? null;
             $ca = $r['created_at'] ?? null;
             // Online = app-reported 'online' that isn't stale.
@@ -3542,6 +3579,8 @@ switch ($action) {
                 $source = 'android';
             }
             $daysSince = $ls ? round((time()-strtotime((string)$ls.' UTC'))/86400, 1) : null;
+            $invitesVerified = $invitesByDevice[$r['device_id']] ?? 0;
+            $starlink = starlink_access_status($r, $invitesVerified);
             return [
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
@@ -3582,6 +3621,10 @@ switch ($action) {
                 'days_inactive'          => $daysSince,
                 'registration_source'    => $source,
                 'phantom_online'         => $phantom,
+                'test_mode'              => (int)($r['test_mode'] ?? 0) === 1,
+                'invites_verified'       => $invitesVerified,
+                'starlink_access'        => $starlink['unlocked'],
+                'starlink_reason'        => $starlink['reason'],
             ];
         }, $rows);
         api_ok($result);
@@ -3720,6 +3763,27 @@ switch ($action) {
                 ];
             }
         } catch (\Exception $e) { /* app_events doesn't exist yet — no events */ }
+
+        // Starlink invites-verified count, same policy as public/v1.php's
+        // v1_starlink_unlock(). referral_uses is normally created by
+        // init_device_tables() above, but guarded the same way as the
+        // app_events block just above — must never break device-detail.
+        $invitesVerified = 0;
+        try {
+            $invSt = $db->prepare(
+                "SELECT COUNT(*) FROM referral_uses ru
+                 JOIN devices d2 ON d2.device_id = ru.new_device_id
+                 WHERE ru.referrer_device_id = ?
+                   AND ru.status IN ('credited','approved')
+                   AND (d2.internet_ok = 1 OR d2.last_seen >= datetime('now','-7 days'))"
+            );
+            $invSt->execute([$did]);
+            $invitesVerified = (int)$invSt->fetchColumn();
+        } catch (\Exception $e) { /* referral_uses unavailable — treat as 0 invites */ }
+        $dev['invites_verified'] = $invitesVerified;
+        $starlink = starlink_access_status($dev, $invitesVerified);
+        $dev['starlink_access'] = $starlink['unlocked'];
+        $dev['starlink_reason'] = $starlink['reason'];
 
         api_ok([
             'device'         => $dev,
