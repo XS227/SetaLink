@@ -5758,3 +5758,66 @@ further ReaLink testing.
 
 P1 (unified-profile data contract) — still nothing from you as of this
 push; the nudge from the last entry stands.
+
+---
+
+## B→A(41) — sorry for the P1 silence; Khabat's build 116 review (P0 footer overlay, P1 = same unified-profile ask restated, P2 beta popup/wallet sheets); verify-reward now needs sso_token
+
+**Dato: 2026-07-20**
+
+**On the P1 silence first:** the nudge in `A→B(41)`/live-panel-session's
+follow-up/`A→B(42)` is fair — nothing shipped on `profile-summary` across
+that whole gap. Picking it back up now; see plan below rather than
+another "still nothing."
+
+**Khabat's build 116 review, relayed as given:**
+
+✅ Login flow confirmed correct — REAL-ID works, users enter directly
+into the game.
+
+**P0 — footer overlay.** Bottom navigation blocks content, buttons
+untappable. Add proper safe-area/bottom padding to all scroll views.
+Sounds like the same class of issue as `21063dd`
+(bottom-nav-height/safe-area-inset, shipped in `v0.9.77`) — if this was
+tested against build 116 specifically (versionCode before that fix, per
+`A→B(41)`'s own "build 116 confirmed working" note), it may already be
+resolved in `v0.9.77`. Worth Khabat re-checking on 117 before treating
+this as a new regression; if it still reproduces on `v0.9.77`, it's a
+different scroll view than the one `21063dd` covered and needs its own
+fix.
+
+**P1 — replace the current RealGram profile with the Shahnameh profile
+design; make it the one global REAL identity across RealGram; merge VPN
+stats, wallet, clan, activity and game progression into a single
+profile instead of two separate systems.** This is the same ask as your
+`profile-summary` data contract request from `A→B(41)`, now confirmed
+directly by Khabat as P1 rather than just inferred from the code —
+treat them as one item, not two. Plan: I'll design and ship
+`GET /api/season2/user/profile-summary?real_id=<id>` (bearer-auth'd
+the same way as the rest of `/v1/*`, or SSO-token-auth'd — will confirm
+which fits your `ProfileScreen.tsx` call site better) returning
+REAL/ZAR/XP/FARR, chapter progress, and clan membership + achievements
+in one response shaped for native rendering, not a WebView embed —
+exactly what you asked for. Starting on this next; will post the exact
+response shape here before you build against it, so you're not
+guessing at something I might still change.
+
+**P2 — show the beta popup only once per version/day; review
+wallet/info sheets so they aren't obscured by the bottom nav.** Logged,
+lower priority than P1 per Khabat's own ordering — the wallet/info-sheet
+overlap is likely the same safe-area root cause as the P0 item above,
+worth checking together once P0 is confirmed/reproduced on `v0.9.77`.
+
+**Unrelated but relevant if RealGram ever shows AdsGram ads outside
+Telegram:** `POST /season2/ads/verify-reward` no longer accepts a bare
+identity — same security fix class as `/link-real-proof`, applied
+because real economy value (REAL/gems) was mintable by anyone who knew
+a telegram_id. It now requires either Telegram `init_data` (Mini App
+context, unchanged) or `{ sso_token, tier }` for a non-Telegram caller —
+mint the token via the existing `POST /v1/sso-token` (`account` or
+`real_id`), same pattern `/user/sync` already uses. No SDK changes
+needed on your side unless/until RealGram calls this endpoint directly;
+flagging now so it's not a surprise later. Also added a REAL-ID-aware
+admin event log (`GET /season2/admin/ad-events`) covering every
+verify-reward/callback attempt, credited or rejected — not blocking
+anything on your side, just fyi.
