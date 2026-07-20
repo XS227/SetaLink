@@ -7169,3 +7169,83 @@ rather than claiming this is finished:**
 
 Branch: `fix/admob-timeout-retry-bypass` (commit `bdea908`, pushed to
 origin). Not merged into `feat/b97-experience` or `main`.
+
+---
+
+## New session → A/B — chapter.html footer overlay still broken on a real device despite the CSS fix (`0781011`); root cause was the native WebView bridge, fixed and pushed
+
+**Dato: 2026-07-20**
+
+Khabat retested `B→A(49)`'s P0 footer-overlay fix on a real Android device
+(current beta, v0.9.78/118) — **chapter page footer overlap still there.**
+Confirmed the server-side CSS (`chapter.css`/`guild.css`, `0781011`) is
+genuinely live and correct — that part isn't the bug. Traced the native
+WebView bridge instead (`mobile-app/src/components/ShahnamehEmbed.tsx`,
+`ShahnamehWebView`) and found the actual gap:
+
+`injectedJavaScriptBeforeContentLoaded` (the mechanism that sets
+`--realgram-bottom-nav-height` on the season2 page) **only fires once per
+WebView content load.** There is no imperative `injectJavaScript()` call
+anywhere in the file to push an update into an already-loaded page. So any
+change to `insets.bottom` after that one injection (rotation, or a
+navigation the native side doesn't count as a fresh "content load") never
+reaches the CSS variable — it either goes stale or, if the before-load
+script never fired for that particular page/navigation, falls back to the
+CSS's `var(..., 0px)` default: zero reserved space, full overlap. This
+matches what Khabat saw exactly.
+
+Separately, also found (not the direct cause of the overlap, but a real
+correctness bug sitting next to it): two different, hand-maintained
+constants for the same physical measurement — `BottomNav.BAR_HEIGHT = 56`
+(`BottomNav.tsx`, "static height used by screens to add bottom padding")
+vs `Layout.bottomNavHeight = 80` (`design/tokens.ts`, what
+`ShahnamehEmbed.tsx` actually used). They'd already drifted from each
+other.
+
+**Fixed and pushed to this branch (`6d23203`), minimal/focused, only these
+two files:**
+- `BottomNav.tsx` — added `BottomNav.CONTENT_HEIGHT`, derived directly
+  from the same `Spacing[2]`/`BAR_HEIGHT`/`Spacing[2]` the component's own
+  styles render with, replacing `Layout.bottomNavHeight` as the single
+  source of truth.
+- `ShahnamehEmbed.tsx` — extracted the `setProperty(...)` call into a
+  shared `bottomNavHeightScript(px)` helper, used by both the existing
+  before-load injection AND a new `useEffect` (keyed on the computed
+  `bottomNavHeightPx = BottomNav.CONTENT_HEIGHT + insets.bottom`) that
+  calls `webRef.current?.injectJavaScript(...)` whenever that value
+  changes — so an already-loaded page gets updated too, not just the
+  first paint.
+
+Triggered a debug-APK build off this commit (`workflow_dispatch`, run
+`29786078723`) to get this in front of a device quickly — same
+`android-debug.yml` pipeline the last two CI commits on this branch set
+up (fixed versionCode/keystore issues, so this should sideload cleanly
+over the existing debug build without an uninstall).
+
+**NOT done — flagging honestly:**
+- **Not verified on a physical device.** No way to install/test an APK
+  from this box — this is a code-level fix based on tracing the injection
+  lifecycle, not a confirmed-working retest. Please install the new debug
+  build and specifically check chapter, guild/clan, profile, and wallet
+  (the season2 pages served through `ShahnamehEmbed`) — both on first
+  load AND after leaving/returning to the tab or rotating, since that's
+  exactly the gap this fixes.
+- Only touched `ShahnamehWebView` (the season2-page embed). Did **not**
+  touch `RealGramLinkWebView` (the other WebView in the same file) — it
+  renders its own native header/back-button, no bottom nav underneath it,
+  out of scope.
+- `Layout.bottomNavHeight` in `design/tokens.ts` itself is untouched —
+  still there, still used by several native screens' own RN padding
+  (`ActivityScreen.tsx`, `ClanScreen.tsx`, `ProfileScreen.tsx`,
+  `WalletScreen.tsx`, etc.). Those aren't season2/WebView pages and
+  weren't reported broken, so left alone per "minimal, focused, no
+  unrelated changes" — but worth knowing the same 56-vs-80 drift risk
+  technically still exists over there if anyone touches `BottomNav.tsx`'s
+  layout again without also checking `tokens.ts`.
+- Same disclaimer as the AdMob fix above: no `node_modules` on this box,
+  didn't run `npm test`/`tsc` locally, relying on the CI build to catch
+  anything structurally broken (import resolution, syntax) — not a
+  substitute for an actual type-check pass before this goes near `main`.
+
+Still on branch `fix/admob-timeout-retry-bypass` (now `6d23203`, on top of
+`90e63f7`) — still not merged into `feat/b97-experience` or `main`.
