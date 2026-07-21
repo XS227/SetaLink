@@ -6,7 +6,7 @@
     <string>$(DEVELOPMENT_LANGUAGE)</string>
 
     <key>CFBundleDisplayName</key>
-    <string>Realink</string>
+    <string>RealGram</string>
 
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
@@ -51,15 +51,15 @@
 
     <!-- VPN usage description (required by App Store) -->
     <key>NSVPNUsageDescription</key>
-    <string>Realink uses a VPN connection to secure your internet traffic and bypass network restrictions.</string>
+    <string>RealGram uses a VPN connection to secure your internet traffic and bypass network restrictions.</string>
 
     <!-- Face ID -->
     <key>NSFaceIDUsageDescription</key>
-    <string>Realink uses Face ID to protect your account.</string>
+    <string>RealGram uses Face ID to protect your account.</string>
 
     <!-- ATT prompt — required by AdMob 14+ on iOS 14+; app rejected without this -->
     <key>NSUserTrackingUsageDescription</key>
-    <string>Realink shows ads to keep the service free. Your data is never sold or shared.</string>
+    <string>RealGram shows ads to keep the service free. Your data is never sold or shared.</string>
 
     <!-- AdMob iOS App ID — REQUIRED: app crashes on launch without this key.
          1. Go to admob.google.com → Apps → Add App → iOS

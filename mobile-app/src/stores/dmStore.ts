@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { storage } from '../storage/storage';
 import type { DirectMessage } from '../services/entitlementService';
+import { Logger } from '../utils/logger';
 
 /**
  * User-to-user direct messages (v0.9.33 MVP).
@@ -65,7 +66,13 @@ export const useDMStore = create<DMState>()(
             } catch {}
           }
           return unread;
-        } catch {
+        } catch (e) {
+          // Was fully silent — a failed refresh left whatever unread count was
+          // last persisted locally standing indefinitely (until the next
+          // foreground event happens to succeed), with no way to tell that's
+          // what happened (Khabat, 2026-07-22: badge showed 4 with an empty
+          // Inbox). Logging so a stuck badge is diagnosable next time.
+          Logger.warn('DMStore', `refresh failed, keeping stale local state: ${e}`);
           return get().messages.filter(m => m.direction === 'in' && !m.read).length;
         }
       },

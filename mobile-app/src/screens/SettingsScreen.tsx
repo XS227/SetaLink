@@ -13,7 +13,7 @@ import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { checkForUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
 const GITHUB_URL      = 'https://github.com/XS227/SetaLink';
-const WEBSITE_URL     = 'https://setalink.no';
+const WEBSITE_URL     = 'https://realgram.no';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -154,7 +154,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
       setUpdateStatus(result.hasUpdate ? 'available' : 'uptodate');
     } catch {
       setUpdateStatus('idle');
-      Alert.alert('Update check failed', 'Could not reach setalink.no. Try again later.');
+      Alert.alert('Update check failed', 'Could not reach realgram.no. Try again later.');
     }
   };
 
@@ -381,7 +381,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
           <Divider />
           <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(WEBSITE_URL)} activeOpacity={0.7}>
             <Text style={selStyles.label}>Website</Text>
-            <Text style={selStyles.value}>setalink.no</Text>
+            <Text style={selStyles.value}>realgram.no</Text>
           </TouchableOpacity>
         </Section>
 

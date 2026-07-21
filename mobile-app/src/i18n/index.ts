@@ -625,7 +625,7 @@ const EN = {
   'upd.installPermTitle': 'Allow app installs',
   'upd.installPermBody':  'RealGram needs permission to install updates. Enable "Install unknown apps" on the screen that just opened, then tap Download again.',
   'upd.downloadFailedTitle': 'Download failed',
-  'upd.downloadFailedBody':  'Could not download the update. Check your connection and try again, or download from setalink.no.',
+  'upd.downloadFailedBody':  'Could not download the update. Check your connection and try again, or download from realgram.no.',
   'upd.openInBrowser':    'Open in browser',
   'upd.retry':            'Retry',
 
@@ -1349,7 +1349,7 @@ const FA: typeof EN = {
   'upd.installPermTitle': 'اجازهٔ نصب برنامه',
   'upd.installPermBody':  'برای نصب به‌روزرسانی، RealGram به اجازه نیاز دارد. در صفحه‌ای که باز شد گزینهٔ «نصب برنامه‌های ناشناس» را فعال کنید و دوباره دانلود را بزنید.',
   'upd.downloadFailedTitle': 'دانلود ناموفق بود',
-  'upd.downloadFailedBody':  'دانلود به‌روزرسانی ممکن نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید یا از setalink.no دانلود کنید.',
+  'upd.downloadFailedBody':  'دانلود به‌روزرسانی ممکن نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید یا از realgram.no دانلود کنید.',
   'upd.openInBrowser':    'باز کردن در مرورگر',
   'upd.retry':            'تلاش دوباره',
 
@@ -2047,7 +2047,7 @@ const ZH: typeof EN = {
   'upd.installPermTitle': '允许安装应用',
   'upd.installPermBody': 'RealGram 需要权限来安装更新。请在刚打开的界面上启用“安装未知应用”，然后再次点击下载。',
   'upd.downloadFailedTitle': '下载失败',
-  'upd.downloadFailedBody': '无法下载更新。请检查网络后重试，或从 setalink.no 下载。',
+  'upd.downloadFailedBody': '无法下载更新。请检查网络后重试，或从 realgram.no 下载。',
   'upd.openInBrowser': '在浏览器中打开',
   'upd.retry': '重试',
 
@@ -2741,7 +2741,7 @@ const RU: typeof EN = {
   'upd.installPermTitle': 'Разрешите установку приложений',
   'upd.installPermBody': 'RealGram нужно разрешение на установку обновлений. Включите «Установка неизвестных приложений» на открывшемся экране, затем снова нажмите «Скачать».',
   'upd.downloadFailedTitle': 'Ошибка загрузки',
-  'upd.downloadFailedBody': 'Не удалось скачать обновление. Проверьте соединение и повторите или скачайте с setalink.no.',
+  'upd.downloadFailedBody': 'Не удалось скачать обновление. Проверьте соединение и повторите или скачайте с realgram.no.',
   'upd.openInBrowser': 'Открыть в браузере',
   'upd.retry': 'Повторить',
 

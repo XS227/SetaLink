@@ -122,7 +122,7 @@ class XrayModule: NSObject {
         proto.serverAddress = "vpn.setalink.no"
 
         manager.protocolConfiguration = proto
-        manager.localizedDescription  = "Realink VPN"
+        manager.localizedDescription  = "RealGram VPN"
         manager.isEnabled             = true
         manager.isOnDemandEnabled     = false   // prevent auto-reconnect on stop
 

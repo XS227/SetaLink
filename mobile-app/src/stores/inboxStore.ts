@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { storage } from '../storage/storage';
+import { Logger } from '../utils/logger';
 
 /**
  * Admin → user message inbox (announcement center).
@@ -72,7 +73,8 @@ export const useInboxStore = create<InboxState>()(
             set({ lastFetchAt: Date.now() });
           }
           return fresh.length;
-        } catch {
+        } catch (e) {
+          Logger.warn('InboxStore', `refresh failed, keeping stale local state: ${e}`);
           return 0;     // offline — retry on next poll
         }
       },

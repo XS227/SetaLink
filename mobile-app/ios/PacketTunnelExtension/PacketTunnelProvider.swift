@@ -1,4 +1,4 @@
-// PacketTunnelProvider.swift — Realink tunnel (build 65 dual-mode)
+// PacketTunnelProvider.swift — RealGram tunnel (build 65 dual-mode)
 //
 // #if HEV_AVAILABLE  → hev-socks5-tunnel full-device TUN engine (TCP all apps)
 //                      CI sets SWIFT_ACTIVE_COMPILATION_CONDITIONS="LIBXRAY_AVAILABLE HEV_AVAILABLE"

@@ -16,7 +16,7 @@
  * HomeScreen/ActivityScreen already read rather than a second backend call.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -30,6 +30,22 @@ import { formatBytes, formatDuration } from '../utils/formatters';
 import {
   getProfileSummary, ProfileSummary,
 } from '../services/realGramProfileService';
+
+// Never surface a raw backend error code — Khabat, 2026-07-21: Profile
+// showed the literal string "profile_unavailable". Map known codes to
+// something a user can actually act on; anything unrecognized still gets
+// a plain, non-technical message rather than the raw string.
+function friendlyProfileError(code: string): string {
+  switch (code) {
+    case 'profile_unavailable':
+    case 'account_not_found':
+      return "We couldn't load your profile right now. This is usually temporary.";
+    case 'missing_device_id':
+      return 'Something went wrong identifying this device.';
+    default:
+      return "We couldn't load your profile right now. This is usually temporary.";
+  }
+}
 
 interface Props {
   onBack?: () => void;
@@ -106,16 +122,39 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [profile, setProfile]   = useState<ProfileSummary | null>(null);
+  // Auto-retry twice (short backoff) before showing an error state at all —
+  // the backend call this screen depends on has been known to fail
+  // transiently (e.g. mid-migration on the server side); most users should
+  // never see a failure screen for something that resolves a second later.
+  // Manual "Try again" below still works after auto-retry gives up.
+  const autoRetriesRef = useRef(0);
 
   const load = useCallback(() => {
     if (!deviceId) return;
     setLoading(true);
     setError('');
     getProfileSummary(deviceId)
-      .then(setProfile)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Failed to load profile'))
-      .finally(() => setLoading(false));
+      .then((p) => {
+        autoRetriesRef.current = 0;
+        setProfile(p);
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        const code = e instanceof Error ? e.message : 'unknown_error';
+        if (autoRetriesRef.current < 2) {
+          autoRetriesRef.current += 1;
+          setTimeout(load, autoRetriesRef.current * 1200);
+          return; // stay in loading state through the retry
+        }
+        setError(friendlyProfileError(code));
+        setLoading(false);
+      });
   }, [deviceId]);
+
+  const handleManualRetry = useCallback(() => {
+    autoRetriesRef.current = 0;
+    load();
+  }, [load]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -131,7 +170,7 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top, gap: Spacing[4] }]}>
         <Text style={styles.errorText}>{error || 'Profile unavailable'}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={load} activeOpacity={0.85}>
+        <TouchableOpacity style={styles.retryBtn} onPress={handleManualRetry} activeOpacity={0.85}>
           <Text style={styles.retryBtnText}>Try again</Text>
         </TouchableOpacity>
       </View>

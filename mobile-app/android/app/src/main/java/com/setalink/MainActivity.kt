@@ -7,9 +7,9 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
 
-    // Must match the name registered in index.js (from app.json → "Realink").
+    // Must match the name registered in index.js (from app.json -> "RealGram").
     // Mismatch throws "Application <name> has not been registered" at launch.
-    override fun getMainComponentName(): String = "Realink"
+    override fun getMainComponentName(): String = "RealGram"
 
     override fun createReactActivityDelegate(): ReactActivityDelegate =
         DefaultReactActivityDelegate(this, mainComponentName, false)

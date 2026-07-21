@@ -15,7 +15,7 @@ class AppDelegate: RCTAppDelegate, UNUserNotificationCenterDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        self.moduleName   = "Realink"
+        self.moduleName   = "RealGram"
         self.initialProps = [:]
 
         // Own the notification center so DM notification taps deep-link into the

@@ -315,7 +315,7 @@ class XrayVpnService : VpnService() {
             // 6. Build TUN interface
             val mtu = if (emergencyMode) 1280 else 1400
             val vpnBuilder = Builder()
-                .setSession("Realink")
+                .setSession("RealGram")
                 .addAddress("10.0.0.2", 24)
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)

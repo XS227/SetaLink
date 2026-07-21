@@ -2,14 +2,17 @@ import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Colors, Radius, Spacing } from '../design/tokens';
 import { TrackedBannerAd } from './TrackedBannerAd';
-import { EcosystemBanner } from './EcosystemBanner';
+import { RealGramInfoCard } from './RealGramInfoCard';
 
 /**
- * HomeBanner — a fixed AdMob banner on the front page, falling back to our
- * own EcosystemBanner promo when there's no ad to show (Khabat 2026-07-08,
+ * HomeBanner — a fixed AdMob banner on the front page, falling back to a
+ * tasteful RealGram info card when there's no ad to show (Khabat 2026-07-08,
  * revised 2026-07-19: dropped the timed ad/promo rotation — a banner slot
  * doesn't need to cycle, it just needs to show the right thing once it's
- * ready).
+ * ready; revised again 2026-07-22: this slot is the AdMob monetization
+ * placement now — the old Shahnameh/3real cross-promo (EcosystemBanner)
+ * doesn't belong here anymore, that's a separate, deliberate placement
+ * elsewhere if/when needed).
  *
  * Rules:
  *  • Premium users are ad-free → always the ecosystem promo, no ad requested.
@@ -37,8 +40,8 @@ export function HomeBanner({ seed = 0, showAds }: Props) {
 
   return (
     <View>
-      {/* Promo covers: ads off, ad not loaded yet, or ad failed. */}
-      {!adShowing && <EcosystemBanner seed={seed} />}
+      {/* Info-card fallback covers: ads off, ad not loaded yet, or ad failed. */}
+      {!adShowing && <RealGramInfoCard />}
 
       {showAds && !adFailed && (
         <View
