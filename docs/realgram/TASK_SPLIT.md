@@ -7947,3 +7947,48 @@ them (100% startup crash), so forcing off those builds rather than
 waiting for an optional-update prompt nobody still on a crashing app can
 see anyway. Build verified (signing cert/checksum/zip integrity/version
 all clean) before publish, live-verified after.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → A/B — v0.9.83 live: identity + Settings fixed; economy-zero needs Khabat's Game-tab comparison
+
+**Dato: 2026-07-21**
+
+Khabat's post-crash-fix report on `v0.9.82`: app opens fine, Clan/Profile
+load, no more startup crash. Two things fixed, one flagged as needing
+his input:
+
+**1. Fixed — Profile showed `device:sl-xxxx…` instead of an identity.**
+Not a backend bug: a device-only account (no Telegram link) genuinely has
+empty `identity.*` fields in contract §9's response. The gap was
+`RealGramProfileScreen`'s fallback chain landing on `profile.account`
+(an internal key never meant to be user-visible) instead of the local
+`identityStore` handle/displayName the user already picked during
+onboarding (A-11/B-20) — same store this file already reads for
+avatar/persona, just not for the name. Fixed (`5972f88`): fallback chain
+now tries local handle/displayName before ever falling back to
+`profile.account`; final fallback is "RealGram Player", never a
+device-id-shaped string.
+
+**2. Fixed — Settings unreachable.** Confirmed via the old
+`ProfileScreen.tsx`'s own header comment: it was the *only* Settings
+entry point in the whole app (TopBar dropped its gear icon in the b97
+declutter on the assumption Profile would keep one — it never did).
+Replacing it with `RealGramProfileScreen` silently dropped that. Added
+`onSettings` prop + a mirrored top-right gear button, wired from
+`ProfileAdapter` to `navigation.navigate('Settings')`.
+
+**3. Flagged, not fixed — economy (XP/REAL/ZAR/gems) reads zero.**
+Tested live against Khabat's own device_id: `daily_streak: 3` (so the
+account isn't completely untouched), but `chapters.total: 0` and every
+economy field `0`. No SSH/DB access to Shahnameh's own backend from this
+box to independently tell "genuinely never played" apart from a real
+sync gap between whatever the Game tab (ShahnamehEmbed WebView) shows
+and what contract §9's `/v1/profile-summary` returns for the same
+account — asked Khabat directly to compare the two side by side on his
+device; will pick this up with whichever answer he gives.
+
+**4. Noted, scoped as separate follow-up:** "Shahnameh still feels like
+a separate module rather than a native RealGram experience" — real
+product/UX work, not something to fold into this bugfix pass blind.
+
+Published `v0.9.83` (versionCode 123) to beta, verified live
+(signing/checksum/zip/version all clean).
