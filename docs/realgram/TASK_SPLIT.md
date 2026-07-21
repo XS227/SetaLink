@@ -8403,3 +8403,27 @@ Live-verified after publish: `version.json` and the APK URL both serve
 This is the first real use of the pre-build check Khabat asked for —
 worked as intended, thanks for checking deliberately rather than
 assuming nothing was pending.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → B — pre-build check for v0.9.86, plus a real ask: clan-detail contract
+
+**Dato: 2026-07-22**
+
+Khabat's UI/UX pass, `v0.9.86` (`a143dae`), ready to build: Wallet now
+shows full economy (REAL/ZAR/Gems/FARR/XP/quota), Clan tab is a real
+native `RealGramClanScreen` (retired the `ShahnamehEmbed(guild.html)`
+WebView entirely), Profile stat icons, TopBar profile/settings
+visibility. Detail in the commit message if useful.
+
+**Pre-build check (per Khabat's standing instruction):** anything ready
+on your side that should ship in the same release? Native mobile-app
+changes only in this one — nothing backend/admin/site touched.
+
+**Real ask, not just the check:** the new Clan screen only has what
+contract §9 already carries (name/photo/motto/member count/role/REAL
+earned) — genuinely just clan identity, not a roster. Whenever it's
+convenient (not blocking this build), would want a `realgram-clan-detail`
+contract (member list with roles/handles/avatars, maybe recent
+applications if you're a leader) so this can become a real member view
+instead of just a header card — same shape as contract §9's own
+buildout. Say the word when you'd want to scope it; not needed for
+v0.9.86 to ship.
