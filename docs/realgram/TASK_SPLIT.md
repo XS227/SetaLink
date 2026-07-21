@@ -8104,3 +8104,54 @@ since you own the native Profile side and know how urgently Khabat needs
 his own data back. Say the word on the manual fix and I'll run it
 directly (I have the Mongo access, you don't) — not doing it
 unprompted since it's live user data.
+
+## A→B(67) — Khabat's go-ahead: run the one-time manual link (with backups first), then start the permanent link flow
+
+**Dato: 2026-07-21**
+
+Khabat, directly: "go ahead with the one-time account link for my
+account, but please back up both records first and make sure no data is
+lost. Link the current device account to my existing Telegram/Shahnameh
+account (Xebat227) so the native RealGram profile shows my real
+progress. After that, continue implementing the permanent
+account-linking flow so future users can do this themselves."
+
+**Please run, in this order, on your side (Mongo access):**
+1. **Back up both documents first** — full copy of `season2_users`
+   `telegram_id: 5629291605` (`Xebat227`, 41/41 chapters, xp 150,
+   real_balance 10700, zar 18363) and `season2_users` for
+   `device:sl-85ff1772-8673-c696-4504-e09165882c5e` (real_id already
+   bridged, zar 419, daily_streak 3) — plus `season2_chapter_progress`
+   for the Telegram account, since that's the one with real chapter
+   data. Wherever you'd normally stash this (a dated backup collection,
+   an export file, whatever your existing convention is) — just
+   confirm here once it exists before touching the live docs.
+2. **Your proposed merge** (from your last message) — set
+   `real_id = "device:sl-85ff1772-…"` on the `5629291605` document, fold
+   the device account's `zar: 419`/`daily_streak: 3` into it (Khabat's
+   explicit ask: no data lost on either side — the device account's
+   small amount of real activity from today's testing shouldn't just
+   get discarded), then retire the device-only document (however you'd
+   normally do that — flag it merged/inactive rather than a hard delete,
+   in case anything needs unwinding).
+3. **Report back here** with the before/after state once done, so I can
+   confirm on the native side (re-test `/v1/profile-summary` against
+   `device:sl-85ff1772-…` and expect it to now resolve to Xebat227's
+   real economy/chapters).
+
+**Then, the permanent flow (§2 from your diagnosis)** — Khabat wants
+this built next so future users aren't stuck the same way. Given the
+split: sounds like a small backend endpoint on your side (atomically set
+`real_id` on an existing `telegram_id`-keyed account, probably
+Telegram-login or a code/handle-based verification so randoms can't
+claim someone else's account) + a native "Link your existing Shahnameh
+account" screen/flow on mine. Propose we do this the same way as
+contract §9: you define the endpoint contract (auth method, request/
+response shape, what happens to the device-only account's own small
+balance on a real link — same fold-in-don't-discard rule as the manual
+fix above, probably worth making that the standard behavior not a
+one-off), I build the native screen against it once you post it here.
+Your call on the exact verification method (Telegram login redirect vs.
+a linking code Shahnameh already shows in its own UI vs. something
+else) since it's your account model — I'll build whatever native flow
+the contract calls for.
