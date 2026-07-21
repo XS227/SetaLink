@@ -28,6 +28,7 @@
   --cyan:     #39c5cf;
 
   --sidebar-w: 220px;
+  --sidebar-w-collapsed: 60px;
   --topbar-h:  52px;
   --radius:    8px;
   --radius-sm: 4px;
@@ -69,6 +70,46 @@ input, select, textarea { font: inherit; outline: none; }
   position: fixed; top: 0; left: 0; height: 100vh;
   overflow-y: auto; flex-shrink: 0;
   z-index: 100;
+  transition: width .18s ease;
+}
+
+/* ── Sidebar collapse (desktop) ──────────────────────────────────────────
+   Added 2026-07-22, Khabat: wants the sidebar minimizable for a wider
+   working view. Icon-only rail -- .nav-item text is split into a
+   .nav-label (hidden here) at runtime by the collapse-init script below,
+   since about a third of nav items are bare "emoji + text" with no
+   existing wrapper element to target from CSS alone. */
+.sidebar.collapsed { width: var(--sidebar-w-collapsed); }
+.sidebar.collapsed .sidebar-logo { justify-content: center; padding-inline: .5rem; }
+.sidebar.collapsed .sidebar-logo-text,
+.sidebar.collapsed .sidebar-logo-sub,
+.sidebar.collapsed .nav-section,
+.sidebar.collapsed .nav-label,
+.sidebar.collapsed .sidebar-footer,
+.sidebar.collapsed .nav-badge { display: none; }
+.sidebar.collapsed .nav-item { justify-content: center; margin-inline: .35rem; padding-inline: 0; }
+.sidebar-collapse-toggle {
+  background: none; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  color: var(--muted); width: 22px; height: 22px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: transform .18s ease;
+}
+.sidebar-collapse-toggle:hover { color: var(--text); border-color: var(--border-2); }
+.sidebar.collapsed .sidebar-collapse-toggle { transform: rotate(180deg); }
+.main { transition: margin-left .18s ease; }
+.sidebar.collapsed ~ .main { margin-left: var(--sidebar-w-collapsed); }
+@media (max-width: 768px) {
+  /* Collapse is a desktop-only affordance -- off-canvas drawer already
+     handles small screens, don't let the two interact. */
+  .sidebar.collapsed { width: var(--sidebar-w); }
+  .sidebar.collapsed .sidebar-logo-text,
+  .sidebar.collapsed .sidebar-logo-sub,
+  .sidebar.collapsed .nav-section,
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .sidebar-footer { display: block; }
+  .sidebar.collapsed .nav-item { justify-content: flex-start; margin-inline: .5rem; padding-inline: 1rem; }
+  .sidebar-collapse-toggle { display: none; }
+  .sidebar.collapsed ~ .main { margin-left: 0; }
 }
 
 /* ── Sidebar overlay (mobile backdrop) ───────────────────────────────── */

@@ -76,6 +76,9 @@ function icon(string $name): string {
       <div class="sidebar-logo-text">RealGram</div>
       <div class="sidebar-logo-sub">Admin Panel</div>
     </div>
+    <button class="sidebar-collapse-toggle" id="sidebarCollapseToggle" type="button" title="Collapse sidebar" aria-label="Collapse sidebar" style="margin-left:auto">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+    </button>
   </div>
   <nav class="sidebar-nav">
 
@@ -2411,6 +2414,51 @@ $('menuToggle').addEventListener('click', ()=>
   $('sidebar').classList.contains('open') ? closeSidebar() : openSidebar()
 );
 $('sidebarOverlay').addEventListener('click', closeSidebar);
+
+// ── Sidebar desktop collapse (2026-07-22, Khabat) ───────────────────────
+// About a third of .nav-item entries are bare "emoji + text" with no
+// wrapper element (e.g. "💎 REAL Wallet"), the rest are "<svg>...</svg> text".
+// One-time DOM pass: split the leading emoji (if any) into its own always-
+// visible .nav-emoji span, move everything else into a .nav-label span that
+// CSS hides in collapsed mode -- so icon-only mode works for both nav-item
+// shapes without hand-editing 22 individual PHP blocks.
+(function initSidebarCollapse() {
+  const EMOJI_RE = /^(\s*\p{Extended_Pictographic}️?\s*)/u;
+  document.querySelectorAll('.nav-item').forEach(item => {
+    const label = document.createElement('span');
+    label.className = 'nav-label';
+    Array.from(item.childNodes).forEach((node, i) => {
+      if (node.nodeType === 1 && node.tagName === 'SVG') return; // icon() output stays put, always visible
+      if (node.nodeType === 3 && i === 0) {
+        const m = node.textContent.match(EMOJI_RE);
+        if (m) {
+          const emojiSpan = document.createElement('span');
+          emojiSpan.className = 'nav-emoji';
+          emojiSpan.textContent = m[1].trim();
+          item.insertBefore(emojiSpan, node);
+          label.appendChild(document.createTextNode(node.textContent.slice(m[1].length)));
+          item.removeChild(node);
+          return;
+        }
+      }
+      label.appendChild(node);
+    });
+    item.appendChild(label);
+  });
+
+  const sidebar = $('sidebar');
+  const toggle  = $('sidebarCollapseToggle');
+  const apply = (collapsed) => {
+    sidebar.classList.toggle('collapsed', collapsed);
+    toggle.setAttribute('aria-expanded', String(!collapsed));
+  };
+  apply(localStorage.getItem('adminSidebarCollapsed') === '1');
+  toggle.addEventListener('click', () => {
+    const next = !sidebar.classList.contains('collapsed');
+    apply(next);
+    localStorage.setItem('adminSidebarCollapsed', next ? '1' : '0');
+  });
+})();
 
 // ── Router ───────────────────────────────────────────────────────────
 let activeView='', refreshTimer=null;

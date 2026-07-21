@@ -4618,6 +4618,21 @@ switch ($action) {
         $lifetime_bytes = (int)$lifetime_q->fetchColumn();
         $txq = $db->prepare('SELECT type,bytes,created_at,metadata FROM quota_transactions WHERE device_id=? ORDER BY id DESC LIMIT 10');
         $txq->execute([$did]);
+        // REAL balance lives on the Shahnameh backend, not this DB -- fetch it
+        // for real via the same re_fetch_profile_summary() contract §9 already
+        // uses elsewhere (found unwired here during Khabat's admin-panel audit,
+        // 2026-07-22; this call was previously only used by the REAL-economy
+        // spend/grant flows, never by the admin panel itself). No TON/chain
+        // balance exists anywhere in this ecosystem's backends as of this
+        // audit -- left as null rather than fabricating a fetch for a system
+        // that was never actually built, unlike REAL which demonstrably is.
+        $real_balance = null;
+        if (!empty($d['linked_real_account'])) {
+            $profile = re_fetch_profile_summary($db, $d['linked_real_account']);
+            if ($profile !== null && isset($profile['economy']['real_balance'])) {
+                $real_balance = (float)$profile['economy']['real_balance'];
+            }
+        }
         $wallet = [
             'quota_total_gb'   => round($total_bytes   / 1073741824, 2),
             'quota_used_gb'    => round($used_bytes     / 1073741824, 2),
@@ -4626,8 +4641,7 @@ switch ($action) {
             'lifetime_gb'      => round($lifetime_bytes / 1073741824, 2),
             'plan'             => $d['plan'] ?? 'free',
             'plan_expiry'      => $d['valid_until'] ?? null,
-            // REAL and TON balances live on Shahnameh/chain backends — placeholder
-            'real_balance'     => null,
+            'real_balance'     => $real_balance,
             'ton_balance'      => null,
             'transactions'     => $txq->fetchAll(PDO::FETCH_ASSOC),
         ];
