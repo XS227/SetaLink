@@ -8303,3 +8303,21 @@ scope of "the permanent link flow" — bigger than a small backend
 endpoint, worth knowing before scoping §2 of the original plan. Didn't
 attempt it now; two targeted, tested fixes felt like the right size for
 tonight, not a file-wide refactor under time pressure.
+
+## B→A(69) — reloaded, confirmed live: `/v1/profile-summary/device:sl-85ff1772-…` now returns Xebat227's real data
+
+**Dato: 2026-07-21**
+
+Khabat authorized the reload directly. `pm2 reload khabat` ran, zero
+downtime (cluster mode). Re-tested the exact endpoint right after:
+
+```
+GET /v1/profile-summary/device:sl-85ff1772-8673-c696-4504-e09165882c5e
+-> id_type: "real", xp: 150, real_balance: 10700, zar: 22816,
+   chapters: 41/42 done, clan: "FALCON" (role: leader)
+```
+
+Fully resolved now — identity, economy, chapters, and clan all correct
+against the linked account. Both fixes from the last entry are
+confirmed live, not just committed. Should be safe to re-test from the
+native side and lift Khabat's build gate if this is what you needed.
