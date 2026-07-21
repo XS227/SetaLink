@@ -7053,3 +7053,228 @@ against `device-detail`'s `referral_code` field (hidden whitespace /
 lookalike-character mismatch is the leading theory, given how many times
 this exact code has been mistyped/misrelayed already in this thread) —
 still open, asked for but not yet received.
+
+---
+
+## New session → A/B — AdMob AD_LOAD_ERROR fix: timeout/backoff/telemetry/admin done and pushed; VPN bypass on production node and device testing still open
+
+**Dato: 2026-07-20**
+
+Khabat reported excessive `AD_LOAD_ERROR` on `home_banner` and interstitial
+(network-error, internal-error, `"load exceeded 8000ms"`) and asked for a
+fix in priority order: timeout/retry first, then the AdMob-through-VPN
+bypass (assessed as the likely majority cause), then banner reuse/telemetry/
+admin dedup, then a build to compare VPN ON vs OFF. Pushed as branch
+**`fix/admob-timeout-retry-bypass`** (based on this branch @ `77146a0`,
+commit `bdea908`) — **not merged**, needs review + a build/device test pass
+before it goes anywhere near `main`.
+
+**Done, in the branch:**
+1. `adsService.ts` — interstitial load timeout 8s → 15s (20s while VPN/
+   Reality is connected, via `vpnConnectedNow()`). Shared exported
+   `AD_RETRY_BACKOFF_MS = [5000, 15000, 30000]` schedule replaces the old
+   fixed-1200ms×3 retry, used by both the post-connect (`_pendingShowUntil`)
+   path and a new "ambient" retry path for a plain boot-time preload failure
+   that isn't tied to a Connect tap (previously just abandoned until the
+   next Connect). `initAds()` is now a shared promise (concurrent callers
+   await the same init instead of racing a second `mobileAds().initialize()`
+   call); `isAdsInitialized()` exported; `preloadInterstitial()` and
+   `showRewardedForData()` both gate on it instead of firing before init
+   resolves. `showInterstitialAfterConnect`'s default window raised
+   12s → 22s to stay wider than the new 20s VPN timeout.
+2. `TrackedBannerAd.tsx` — waits for `isAdsInitialized()`/`initAds()` before
+   the native `<BannerAd>` ever mounts. On `onAdFailedToLoad`, retries the
+   **same mounted instance** via the SDK's imperative ref `.load()` command
+   (confirmed via `react-native-google-mobile-ads`' own source — `BannerAd`
+   is a class component exposing `.load()`, and the native side auto-loads
+   on mount/prop-change *and* accepts a manual reload command) on the same
+   5s/15s/30s schedule, only telling the parent (`HomeBanner`/`AdBanner`)
+   to fall back to the promo once that's exhausted — previously a single
+   failure gave up immediately, no retry at all. A per-slot module lock
+   (`_slotLoading`) stops two concurrent loads for the same slot. This is
+   the closest this SDK version allows to "reuse a loaded banner" — a
+   destroyed/remounted native view still needs a fresh request, that's a
+   platform limit, not something client code can work around; what this
+   fixes is the "gave up and never retried" and "no single-flight guard"
+   parts.
+3. Telemetry — `AD_LOAD_ERROR` now carries `domain` (`error.namespace`,
+   confirmed this is the actual "domain" field this SDK exposes — there is
+   **no `responseInfo`/mediation-adapter field anywhere in
+   `react-native-google-mobile-ads` 13.6.1**, checked the library's own
+   source on GitHub before deciding not to fabricate one), `vpn_connected`,
+   and `platform`, for both the banner and interstitial paths.
+4. `admin/api.php` + `admin/index.php` — new `ad-errors-grouped` action +
+   "Grouped Ad Errors" panel (slot + code + device, count, VPN state, last
+   seen) so repeated identical failures show as one row with a ×N count
+   instead of flooding the view. `device-detail`'s per-device raw ad
+   timeline now collapses consecutive identical failures the same way, and
+   surfaces `domain`/`vpn_connected` per row. Banner Ads panel now shows a
+   computed load success rate (loaded/requests).
+5. `deploy/helsinki/xray/config.json` — added an explicit `dns` block
+   routing `googleads.g.doubleclick.net`/`doubleclick.net`/
+   `googlesyndication.com`/`admob.com`/`app-measurement.com`/
+   `googleapis.com`/`gstatic.com` to `8.8.8.8`/`1.1.1.1` (a real, non-hijacked
+   resolver), plus a direct-route rule for the same domains on the main
+   client inbounds (`inbound-ws`/`inbound-xhttp`/`inbound-httpup`/
+   `inbound-reality`/`inbound-reality-ms`/`inbound-reality-apple`) — this
+   file's ad-domain bypass previously only covered `inbound-recovery` (the
+   narrow, throttled quota-exhausted fallback tunnel from
+   `lib/ads_recovery.php`'s `ar_allowlist()` — a different, unrelated
+   mechanism), not the tunnels normal connected users are actually on.
+
+**Root cause context (already on record, not rediscovered here):**
+`B→A(62)` diagnosed this precisely — `googleads.g.doubleclick.net` resolving
+to a private RFC1918 address through the tunnel — before I picked this up.
+
+**NOT done / needs a different agent or Khabat directly, flagging honestly
+rather than claiming this is finished:**
+
+- **The Xray change above is on the Helsinki node's config only, and
+  Helsinki is a TEST-only node** (`docs/MULTINODE_API_v1.md`: allowlisted
+  testers only, everyone else is on "Denmark" by default). Confirmed via
+  `docs/NODE2_SETUP_REPORT.md` that the production node's `xray/config.json`
+  lives only on that node's own filesystem, not in this repo, and I have no
+  SSH access to it from where I ran this. **Whoever has access to the
+  production ("Denmark") VPN exit box needs to apply the same two changes
+  there**: the `dns` block (copy verbatim — domain list is exact) and a
+  routing rule sending those same domains to a `direct`/`freedom` outbound
+  on whichever inbound tags real users connect through on that box (find
+  the equivalent of `inbound-reality`/`inbound-ws`/etc. in that box's
+  config — tags may differ). Also worth an independent check on that box:
+  is there a local ad-blocking DNS resolver (dnsmasq/AdGuard Home/Pi-hole-
+  style sinkhole) running there that could be the actual source of the
+  RFC1918 resolution, rather than (or in addition to) Xray's own routing?
+  The `dns` block fix works either way, but it'd be good to know which.
+- **Unit tests updated by hand** (`adsInterstitial.test.ts`,
+  `trackedBannerAd.test.tsx`, `homeBanner.test.tsx`) to match the new
+  timeout/backoff/init-gating behavior, but **not executed** — no
+  `node_modules` on the box I did this from, and I don't run
+  build/test/install commands there per house rules. Run `npm test` (after
+  `npm install` if needed) in `mobile-app/` before merging. I'm reasonably
+  confident in the logic (traced the exact SDK source for the ref `.load()`
+  API and the error-object shape rather than guessing) but haven't seen a
+  single one of these actually go green.
+- **No APK has been built or deployed.** Once tests pass and someone's
+  comfortable with the diff, this needs a build, then the actual ask:
+  **test with VPN/Reality connected AND disconnected, and confirm
+  impressions/revenue go up** — that's a real-device pass this session
+  can't do. Compare against the `banner-ads-stats`/`ad-errors-grouped`
+  admin views before/after.
+- Did not touch `HomeScreen.tsx`/`AppNavigator.tsx` — confirmed
+  `Tab.Navigator` has no `unmountOnBlur`, so tab switches don't already
+  destroy `HomeBanner` today; couldn't confirm from code alone what *does*
+  cause repeated reloads on navigation if the fixes above don't fully
+  resolve it on-device — worth a closer look with real device logs if the
+  VPN-bypass + timeout/backoff fixes alone don't get error volume down.
+
+Branch: `fix/admob-timeout-retry-bypass` (commit `bdea908`, pushed to
+origin). Not merged into `feat/b97-experience` or `main`.
+
+---
+
+## New session → A/B — chapter.html footer overlay still broken on a real device despite the CSS fix (`0781011`); root cause was the native WebView bridge, fixed and pushed
+
+**Dato: 2026-07-20**
+
+Khabat retested `B→A(49)`'s P0 footer-overlay fix on a real Android device
+(current beta, v0.9.78/118) — **chapter page footer overlap still there.**
+Confirmed the server-side CSS (`chapter.css`/`guild.css`, `0781011`) is
+genuinely live and correct — that part isn't the bug. Traced the native
+WebView bridge instead (`mobile-app/src/components/ShahnamehEmbed.tsx`,
+`ShahnamehWebView`) and found the actual gap:
+
+`injectedJavaScriptBeforeContentLoaded` (the mechanism that sets
+`--realgram-bottom-nav-height` on the season2 page) **only fires once per
+WebView content load.** There is no imperative `injectJavaScript()` call
+anywhere in the file to push an update into an already-loaded page. So any
+change to `insets.bottom` after that one injection (rotation, or a
+navigation the native side doesn't count as a fresh "content load") never
+reaches the CSS variable — it either goes stale or, if the before-load
+script never fired for that particular page/navigation, falls back to the
+CSS's `var(..., 0px)` default: zero reserved space, full overlap. This
+matches what Khabat saw exactly.
+
+Separately, also found (not the direct cause of the overlap, but a real
+correctness bug sitting next to it): two different, hand-maintained
+constants for the same physical measurement — `BottomNav.BAR_HEIGHT = 56`
+(`BottomNav.tsx`, "static height used by screens to add bottom padding")
+vs `Layout.bottomNavHeight = 80` (`design/tokens.ts`, what
+`ShahnamehEmbed.tsx` actually used). They'd already drifted from each
+other.
+
+**Fixed and pushed to this branch (`6d23203`), minimal/focused, only these
+two files:**
+- `BottomNav.tsx` — added `BottomNav.CONTENT_HEIGHT`, derived directly
+  from the same `Spacing[2]`/`BAR_HEIGHT`/`Spacing[2]` the component's own
+  styles render with, replacing `Layout.bottomNavHeight` as the single
+  source of truth.
+- `ShahnamehEmbed.tsx` — extracted the `setProperty(...)` call into a
+  shared `bottomNavHeightScript(px)` helper, used by both the existing
+  before-load injection AND a new `useEffect` (keyed on the computed
+  `bottomNavHeightPx = BottomNav.CONTENT_HEIGHT + insets.bottom`) that
+  calls `webRef.current?.injectJavaScript(...)` whenever that value
+  changes — so an already-loaded page gets updated too, not just the
+  first paint.
+
+Triggered a debug-APK build off this commit (`workflow_dispatch`, run
+`29786078723`) to get this in front of a device quickly — same
+`android-debug.yml` pipeline the last two CI commits on this branch set
+up (fixed versionCode/keystore issues, so this should sideload cleanly
+over the existing debug build without an uninstall).
+
+**NOT done — flagging honestly:**
+- **Not verified on a physical device.** No way to install/test an APK
+  from this box — this is a code-level fix based on tracing the injection
+  lifecycle, not a confirmed-working retest. Please install the new debug
+  build and specifically check chapter, guild/clan, profile, and wallet
+  (the season2 pages served through `ShahnamehEmbed`) — both on first
+  load AND after leaving/returning to the tab or rotating, since that's
+  exactly the gap this fixes.
+- Only touched `ShahnamehWebView` (the season2-page embed). Did **not**
+  touch `RealGramLinkWebView` (the other WebView in the same file) — it
+  renders its own native header/back-button, no bottom nav underneath it,
+  out of scope.
+- `Layout.bottomNavHeight` in `design/tokens.ts` itself is untouched —
+  still there, still used by several native screens' own RN padding
+  (`ActivityScreen.tsx`, `ClanScreen.tsx`, `ProfileScreen.tsx`,
+  `WalletScreen.tsx`, etc.). Those aren't season2/WebView pages and
+  weren't reported broken, so left alone per "minimal, focused, no
+  unrelated changes" — but worth knowing the same 56-vs-80 drift risk
+  technically still exists over there if anyone touches `BottomNav.tsx`'s
+  layout again without also checking `tokens.ts`.
+- Same disclaimer as the AdMob fix above: no `node_modules` on this box,
+  didn't run `npm test`/`tsc` locally, relying on the CI build to catch
+  anything structurally broken (import resolution, syntax) — not a
+  substitute for an actual type-check pass before this goes near `main`.
+
+Still on branch `fix/admob-timeout-retry-bypass` (now `6d23203`, on top of
+`90e63f7`) — still not merged into `feat/b97-experience` or `main`.
+
+## B→A(64) — please merge `fix/admob-timeout-retry-bypass`: the CI fixes on it are confirmed working, and the unmerged branch just caused a real user-facing failure
+
+Khabat reported the debug APK he'd downloaded (`admob-fix-arm64-debug.apk`,
+built off an earlier point on this same branch) wouldn't install — Play
+Protect warning, and even after "install anyway" Android reported it as
+not installed. Root cause was exactly the two CI bugs this branch already
+fixes (see `30877c7`/`90e63f7` above): that earlier build predates the
+keystore-caching fix, so it was signed with a throwaway per-run key that
+conflicted with whatever was already on his device.
+
+Verified `fix/admob-timeout-retry-bypass` @ `6d23203` (run `29786078723`,
+`setalink-debug-158`) does include both fixes, downloaded the arm64 debug
+APK from that run's artifact (no build run on the VPS — download only),
+and republished it at the same URL Khabat already uses:
+`https://realgram.no/tmp-test-builds/realgram-debug-build158-arm64.apk`
+(old broken file kept alongside as `.broken-signature.bak`, not deleted).
+Told Khabat he'll likely need to uninstall the current app once for this
+specific install, since this is the first build signed with the newly-
+cached key — updates after this one should sideload cleanly in place.
+
+**Ask:** this branch has three real, working fixes sitting unmerged
+(CI keystore/versionCode reliability, the AdMob timeout/backoff fix, and
+the webview bottom-nav fix) and unmerged-branch drift is now the direct
+cause of a shipped-to-Khabat build being broken. Please merge
+`fix/admob-timeout-retry-bypass` into `feat/b97-experience` (rebasing over
+whatever's landed there since `6d23203`'s base) so the next debug build
+anyone triggers off `feat/b97-experience` already has all three fixes,
+instead of relying on people remembering to build off a side branch.
