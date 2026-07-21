@@ -7326,3 +7326,74 @@ this box: no way to run the actual RealGram app here. Worth Khabat (or
 whoever's got a device handy) confirming a RealGram-only account's ad
 watch now shows up in `GET /season2/admin/ad-events` / the Monetization
 page, not just the coin animation.
+
+---
+
+## New session (dev-VPS, 5.249.255.116) → A/B — standing in on ads (APK/iOS/backend), per Khabat: the other agent isn't reachable right now
+
+**Dato: 2026-07-21**
+
+Khabat asked this session to take over whatever's outstanding on ads —
+APK, iOS, backend — "slik at ads kan dukke opp i admin" (so ads show up
+in admin), since the agent that's been driving `feat/b97-experience`
+isn't available right now. Not claiming the "Agent A" or "Agent B"
+label — picking up open threads, same as the 2026-07-17 entry above.
+
+**Verified before touching anything (didn't trust the file's own claims
+without checking):**
+- The AdsGram Telegram-flow reward pipeline is real and live end to end.
+  Queried `ad_event_log` directly: a genuine AdsGram server callback
+  (`source: server_callback`, `block_id: 35738` = the `watch` tier,
+  correct `ADSGRAM_CALLBACK_SECRET`) landed 2026-07-21T00:48:35Z,
+  `status: credited`, `real: 100`, and `synced_to_setalink_at` is set —
+  it already reached SetaLink's NOC. `ad-callback-raw.log` shows this
+  same real postback pattern (non-empty blockId, correct secret) going
+  back to 2026-07-19, so B→A(63)'s "blockId always empty" bug is
+  confirmed fixed and has been for two days, not just today.
+- `scripts/push_adsgram_events.js` (every 15 min) and
+  `scripts/push_adsgram_daily.js` (daily 06:00 UTC) are both live in
+  root's crontab on this box and both logging clean 200s to
+  setalink.no's `push-adsgram-perf`/events endpoints.
+- iOS isn't stalled or missing wiring: `mobile-app/ios/SetaLink/Info.plist`
+  has a real (non-placeholder) `GADApplicationIdentifier`, and
+  `adsService.ts` has real, distinct AdMob unit IDs for iOS vs Android
+  for rewarded/interstitial/banner — not TestIds outside `__DEV__`.
+  `ios-testflight.yml` has been running successfully off this branch
+  (last green run: build 108, ~1 day ago).
+
+**Done just now:**
+1. `shahnameh-backend` — `scripts/push_adsgram_daily.js` was untracked
+   (working, in cron since 07-18, just never committed). Committed +
+   pushed to `main` (`795d974`) so it isn't at risk of being lost.
+2. Triggered fresh **Android Debug APK** (run `29856735439`) and
+   **iOS — TestFlight** (run `29856740065`) builds off this branch
+   (`feat/b97-experience` @ `adf704b`) — the first builds of either
+   platform since `d961042` (AdMob timeout/retry/backoff + CI keystore
+   fix) landed. Neither had been built since that merge.
+
+**Not done / not mine to do from here, flagging honestly:**
+- **No SSH access from this box to setalink.no's live PHP host
+  (5.249.252.221)** — can't verify the `admob_app_id`/
+  `admob_rewarded_unit_id` settings-table values or SSV callback logs
+  live on that box. `docs/REWARDED-ADS-RECOVERY.md` §4 (written earlier)
+  says those were still placeholders at the time, but that predates the
+  real ad-unit IDs found in `adsService.ts`/`Info.plist` above — someone
+  with access to that box should confirm the settings-table values match
+  the real IDs, not the doc's stale claim.
+- **Neither new build is device-tested yet** — same standing disclaimer
+  as everything else in this file: no way to install an APK or a
+  TestFlight build from this box. Once they're up (~10-15 min for iOS,
+  ~7-8 min for Android from dispatch), someone needs to actually watch a
+  rewarded ad on both platforms and confirm it shows up in
+  `GET /season2/admin/ad-events` and the SetaLink Ads/Monetization admin
+  pages — that's the real bar for "ads dukker opp i admin," not just
+  "the pipeline looks right from the code."
+- Left the existing dirty local checkout on `docs/admin-noc-roadmap`
+  (mobile-app iOS project file + changelog WIP) completely alone — did
+  all of the above from a separate scratch worktree so as not to touch
+  someone else's in-progress work.
+
+Will keep an eye on the two build runs and report back here once they
+land — if the other agent comes back online in the meantime, happy to
+hand off, this isn't meant to be a permanent takeover of the AdsGram
+lane.
