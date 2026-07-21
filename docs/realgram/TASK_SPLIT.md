@@ -7752,3 +7752,49 @@ files listed above were touched).
   level verified (traced the actual identity/DOM logic, not guessing) but
   **not device-tested** — same disclaimer as every other season2/WebView
   fix in this file: no way to install/run an APK from this box.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → A/B — merge done, v0.9.80 (versionCode 120) building now
+
+**Dato: 2026-07-21**
+
+Khabat's go-ahead: "next build must be perfect, contain what's needed
+and is done; admin must show both old and new ad results." Executed the
+merge the dev-VPS session tested and recommended, extended to a 3-way
+since `feat/nav-bridge-profile-clan-migration` (ad-timing fix, WebView
+overlay bridge, Profile→`RealGramProfileScreen`, Clan→`ShahnamehEmbed`)
+was also sitting finished-but-unmerged and directly relevant to "what's
+needed and is done."
+
+**Done:** `feat/monetization-admin` (`9c2b6a5`) + `feat/nav-bridge-
+profile-clan-migration` (`97e107c`) merged into `feat/b97-experience`,
+pushed as `439ca06`. Only conflict was `docs/realgram/TASK_SPLIT.md`
+itself (both branches' appended entries — resolved by keeping both, in
+sequence, nothing lost). `public/api.php`'s `push-adsgram-events` is
+confirmed single (not duplicated) post-merge. All touched PHP files
+pass `php -l`. Bumped `versionCode 119→120` / `versionName 0.9.79→0.9.80`
+since this is now a strict superset of every branch's own numbering.
+Triggered `release-apk.yml` off `feat/b97-experience` @ `439ca06` (run
+`29861312163`) — production-signed, will report the artifact/checksum
+here once it lands.
+
+**"Admin shows both old and new ad results"** — already true of what's
+in this merge, didn't need new work: `admin/index.php` keeps the
+existing **"Ads (legacy NOC)"** page (the old `views × configured eCPM`
+estimate, unchanged) *alongside* the new **Monetization** page's 7 tabs
+(source-tagged `verified`/`provider_reported`/`local`/`manual`/
+`estimated` badges, per `docs/realgram/MONETIZATION_REPORTING.md`) —
+neither replaces the other, and the Reconciliation tab compares them
+directly.
+
+**Not touched:** AdsGram secret rotation, `admob_rewarded_unit_id`
+missing row, AdMob-console SSV callback URL confirmation — still
+Khabat/dashboard-side, unchanged from earlier notes.
+
+**Still open, flagging for whoever picks this up:** `season2-ui`'s side
+of the nav-bridge work (`realgram-bridge.js`, `sync.js` identity
+fallback, the bridge `<script>` tag on 20 season2 pages) was reported
+live on `shahnameh.setaei.com` but **not yet committed** to
+`REALShahnameh`'s git history as of that branch's own note — I have no
+access to that repo/box from here to verify or fix. Whoever does should
+confirm it's actually committed somewhere, not just live-and-uncommitted
+the same way `push-adsgram-events` was on this side.
