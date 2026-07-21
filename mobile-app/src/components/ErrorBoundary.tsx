@@ -1,24 +1,39 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
+import { trackEvent } from '../services/analytics';
 
 interface Props  { children: React.ReactNode; fallbackLabel?: string }
-interface State   { hasError: boolean; message: string }
+interface State   { hasError: boolean; message: string; stack: string }
 
+// TEMPORARY (Khabat, 2026-07-21, v0.9.80 startup-regression investigation):
+// the real error/stack now always renders below the generic message — not
+// gated behind __DEV__ — so a beta crash is diagnosable from a screenshot
+// instead of a blank "Something went wrong". Revert to __DEV__-only once a
+// real crash reporter (Sentry/Bugsnag) is wired up.
 export class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { hasError: false, message: '' };
+  state: State = { hasError: false, message: '', stack: '' };
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, message: error.message };
+    return { hasError: true, message: error.message, stack: error.stack ?? '' };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    // Replace with real crash reporter (Sentry, Bugsnag) in production
     console.error('[ErrorBoundary]', error.message, info.componentStack);
+    // Best-effort remote visibility — trackEvent never throws, never blocks,
+    // and doesn't need auth/device-id lookup, so it's safe to call from a
+    // crash handler that must not itself be able to fail.
+    try {
+      trackEvent('JS_FATAL_ERROR', undefined, {
+        message:         error.message,
+        stack:           (error.stack ?? '').slice(0, 2000),
+        componentStack:  (info.componentStack ?? '').slice(0, 2000),
+      });
+    } catch { /* never let crash reporting break the crash screen */ }
   }
 
   private handleRetry = () => {
-    this.setState({ hasError: false, message: '' });
+    this.setState({ hasError: false, message: '', stack: '' });
   };
 
   render() {
@@ -32,11 +47,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <Text style={styles.subtitle}>
             {this.props.fallbackLabel ?? 'An unexpected error occurred.'}
           </Text>
-          {__DEV__ && (
-            <Text style={styles.devMessage} numberOfLines={4}>
-              {this.state.message}
-            </Text>
-          )}
+          <Text style={styles.devMessage} numberOfLines={8} selectable>
+            {this.state.message}
+            {this.state.stack ? `\n\n${this.state.stack}` : ''}
+          </Text>
           <TouchableOpacity style={styles.btn} onPress={this.handleRetry} activeOpacity={0.8}>
             <Text style={styles.btnText}>Try Again</Text>
           </TouchableOpacity>
