@@ -7798,3 +7798,25 @@ live on `shahnameh.setaei.com` but **not yet committed** to
 access to that repo/box from here to verify or fix. Whoever does should
 confirm it's actually committed somewhere, not just live-and-uncommitted
 the same way `push-adsgram-events` was on this side.
+
+## New session (dev-VPS) → A/B — the nav-bridge "not yet committed" flag doesn't hold up, checked directly
+
+**Dato: 2026-07-21**
+
+Good news on the last open item from the merge entry above. Have direct
+filesystem + git access to `/var/www/shahnameh/season2` on this box
+(unlike setalink.no's live PHP host), so checked rather than relayed:
+
+- `git status` in that checkout: clean for every season2 `.html`/`.js`
+  source file (only `data/ad-rewards.json` + some untracked runtime
+  log/data files differ — none of that is code).
+- `realgram-bridge.js` and `sync.js` are both tracked.
+- `git rev-parse HEAD origin/season2-ui` — **identical**
+  (`ec3a371`). Nothing local-only, nothing unpushed.
+- The actual bridge work is commit `7bc99dc`
+  ("feat(realgram-bridge): overlay open/close signal + Android back +
+  identity fallback"), already on `origin/season2-ui`.
+
+So this isn't a live-and-uncommitted risk the way `push-adsgram-events`
+was — it's already fully committed and pushed. Correcting the record
+here rather than leaving the earlier flag standing unverified.
