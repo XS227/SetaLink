@@ -15,6 +15,9 @@ require_once __DIR__ . '/../lib/payments.php';
 require_once __DIR__ . '/../lib/messaging.php';
 require_once __DIR__ . '/../lib/real_economy.php';
 require_once __DIR__ . '/../lib/ads_perf.php';
+require_once __DIR__ . '/../lib/ad_monetization.php';
+require_once __DIR__ . '/../lib/admob_sync.php';
+require_once __DIR__ . '/../lib/adsgram_publisher_sync.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -1703,6 +1706,72 @@ PS1;
         api_ok(['site_url' => $u]);
     }
 
+    // ── Monetization / Ads mutations ────────────────────────────────────────
+    // Every one of these is audit-logged (am_log) per spec §18 — config
+    // changes, syncs, and imports must all be traceable to an admin + timestamp.
+
+    if ($action === 'monetization-config-save') {
+        $db = open_analytics_db();
+        am_init_tables($db);
+        $patch = is_array($parsed['config'] ?? null) ? $parsed['config'] : [];
+        $saved = am_save_config($db, $patch);
+
+        $fxCurrency = trim((string)($parsed['fx_currency'] ?? ''));
+        if ($fxCurrency !== '' && isset($parsed['fx_rate'])) {
+            am_set_fx_rate($db, $fxCurrency, (float)$parsed['fx_rate'], 'manual');
+            $saved[] = 'fx_rate:' . strtoupper($fxCurrency);
+        }
+
+        if (isset($parsed['adsgram_api_token'])) {
+            $token = trim((string)$parsed['adsgram_api_token']);
+            $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('adsgram_api_token',?,datetime('now'))")
+                ->execute([$token]);
+            $saved[] = 'adsgram_api_token';
+        }
+
+        am_log($db, $auth_user, 'monetization_config_save', ['fields' => $saved]);
+        api_ok(['saved' => $saved]);
+    }
+
+    if ($action === 'monetization-adsgram-csv-import') {
+        $db = open_analytics_db();
+        $csv = (string)($parsed['csv'] ?? '');
+        $filename = substr(trim((string)($parsed['filename'] ?? 'upload.csv')), 0, 200);
+        if ($csv === '') api_err('csv required');
+        if (strlen($csv) > 2_000_000) api_err('csv too large (max 2MB)');
+        try {
+            $res = am_csv_import_adsgram($db, $csv, $filename, $auth_user);
+            api_ok($res);
+        } catch (\InvalidArgumentException $e) {
+            api_err('CSV import failed: ' . $e->getMessage());
+        }
+    }
+
+    if ($action === 'monetization-admob-sync-now') {
+        $db = open_analytics_db();
+        $days = max(1, min(90, (int)($parsed['days'] ?? 30)));
+        $res = admob_sync($db, $days);
+        am_log($db, $auth_user, 'monetization_admob_sync_now', $res);
+        if (!$res['ok']) api_err('AdMob sync failed: ' . $res['error']);
+        api_ok($res);
+    }
+
+    if ($action === 'monetization-admob-disconnect') {
+        $db = open_analytics_db();
+        $ok = admob_disconnect();
+        am_log($db, $auth_user, 'monetization_admob_disconnect', ['ok' => $ok]);
+        api_ok(['disconnected' => $ok]);
+    }
+
+    if ($action === 'monetization-adsgram-sync-now') {
+        $db = open_analytics_db();
+        $days = max(1, min(90, (int)($parsed['days'] ?? 30)));
+        $res = adsgram_publisher_sync($db, $days);
+        am_log($db, $auth_user, 'monetization_adsgram_sync_now', $res);
+        if (!$res['ok']) api_err('AdsGram sync failed: ' . $res['error']);
+        api_ok($res);
+    }
+
     $allowed = ['add','remove','disable','enable','reset-traffic','change-package','regen-link'];
     if (!in_array($action, $allowed, true)) api_err('unknown action');
     if (!preg_match(USERNAME_RE, $name))    api_err('invalid username');
@@ -1718,6 +1787,18 @@ PS1;
         api_err(substr($tail, -400));
     }
     api_ok(['message' => "{$action}: {$name}"]);
+}
+
+// Shared date-window resolver for the monetization-* actions (from/to takes
+// priority over days; same convention as the existing ads-perf-comparison action).
+function mon_window(): array {
+    $from = trim((string)($_GET['from'] ?? ''));
+    $to   = trim((string)($_GET['to']   ?? ''));
+    if ($from && $to && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+        return [$from, $to];
+    }
+    $days = max(1, min(365, (int)($_GET['days'] ?? 30)));
+    return [gmdate('Y-m-d', strtotime("-{$days} days")), gmdate('Y-m-d')];
 }
 
 // ── Admin GET ─────────────────────────────────────────────────────────────
@@ -4658,6 +4739,158 @@ switch ($action) {
             'tl_limit'  => $tl_page_size,
         ]);
         break;
+    }
+
+    // ── Monetization / Ads (RealGram Admin overhaul) ───────────────────────
+    // See docs/realgram/MONETIZATION_REPORTING.md for the full source-of-truth
+    // explanation. Every number below carries a source_type/status_label —
+    // never presented as verified unless it actually came from a provider API
+    // or a signed provider callback.
+
+    case 'monetization-overview': {
+        $db = open_analytics_db();
+        [$from, $to] = mon_window();
+        $admob   = am_provider_summary($db, 'admob', $from, $to);
+        $adsgram = am_provider_summary($db, 'adsgram', $from, $to);
+        $rewardCost = am_reward_cost($db, $from, $to);
+        $admobCfg   = admob_sync_status($db);
+        $adsgramCfg = adsgram_sync_status($db);
+        $cfg = am_config($db);
+
+        $rewardsGranted = (int)$db->query(
+            "SELECT COUNT(*) FROM ad_events WHERE reward_granted=1 AND date(created_at) BETWEEN " . $db->quote($from) . " AND " . $db->quote($to)
+        )->fetchColumn();
+        $rewardsFailed = (int)$db->query(
+            "SELECT COUNT(*) FROM ad_events WHERE reward_granted=0 AND validation_status IN ('rejected','review') AND date(created_at) BETWEEN " . $db->quote($from) . " AND " . $db->quote($to)
+        )->fetchColumn();
+
+        api_ok([
+            'window'   => ['from' => $from, 'to' => $to],
+            'admob'    => $admob,
+            'adsgram'  => $adsgram,
+            'reward_cost' => $rewardCost,
+            'rewards_granted_count' => $rewardsGranted,
+            'rewards_failed_count'  => $rewardsFailed,
+            'base_currency' => $cfg['mon_base_currency'],
+            'admob_status'   => $admobCfg,
+            'adsgram_status' => $adsgramCfg,
+            'alerts' => am_alerts($db, $admobCfg['connected'], $adsgramCfg['configured']),
+        ]);
+        break;
+    }
+
+    case 'monetization-admob': {
+        $db = open_analytics_db();
+        [$from, $to] = mon_window();
+        $arCfg = ar_config($db);
+        api_ok([
+            'window'  => ['from' => $from, 'to' => $to],
+            'summary' => am_provider_summary($db, 'admob', $from, $to),
+            'ad_units' => am_ad_unit_breakdown($db, 'admob', $from, $to),
+            'sync_status' => admob_sync_status($db),
+            'app_config' => [
+                'admob_app_id'           => $arCfg['admob_app_id'],
+                'admob_rewarded_unit_id' => $arCfg['admob_rewarded_unit_id'],
+                'admob_ssv_enabled'      => (bool)$arCfg['admob_ssv_enabled'],
+            ],
+        ]);
+        break;
+    }
+
+    case 'monetization-adsgram': {
+        $db = open_analytics_db();
+        [$from, $to] = mon_window();
+        $blockIds = $db->query(
+            "SELECT DISTINCT ad_unit_id FROM ad_daily_metrics WHERE provider='adsgram' AND ad_unit_id <> '' ORDER BY ad_unit_id"
+        )->fetchAll(PDO::FETCH_COLUMN);
+        api_ok([
+            'window'  => ['from' => $from, 'to' => $to],
+            'summary' => am_provider_summary($db, 'adsgram', $from, $to),
+            'ad_units' => am_ad_unit_breakdown($db, 'adsgram', $from, $to),
+            'sync_status' => adsgram_sync_status($db),
+            'known_block_ids' => $blockIds,
+        ]);
+        break;
+    }
+
+    case 'monetization-reward-events': {
+        $db = open_analytics_db();
+        $filters = [];
+        foreach (['provider', 'validation_status', 'app', 'user_id', 'reward_type', 'platform', 'ad_unit_id', 'from', 'to'] as $k) {
+            if (isset($_GET[$k]) && $_GET[$k] !== '') $filters[$k] = (string)$_GET[$k];
+        }
+        $filters['limit']  = (int)($_GET['limit']  ?? 50);
+        $filters['offset'] = (int)($_GET['offset'] ?? 0);
+        api_ok(am_reward_events($db, $filters));
+        break;
+    }
+
+    case 'monetization-reconciliation': {
+        $db = open_analytics_db();
+        [$from, $to] = mon_window();
+        api_ok([
+            'window'  => ['from' => $from, 'to' => $to],
+            'admob'   => am_reconciliation($db, 'admob', $from, $to),
+            'adsgram' => am_reconciliation($db, 'adsgram', $from, $to),
+        ]);
+        break;
+    }
+
+    case 'monetization-config': {
+        $db = open_analytics_db();
+        $cfg = am_config($db);
+        $arCfg = ar_config($db);
+        api_ok([
+            'config' => $cfg,
+            'admob' => [
+                'sync_status'    => admob_sync_status($db),
+                'app_id'         => $arCfg['admob_app_id'],
+                'rewarded_unit_id' => $arCfg['admob_rewarded_unit_id'],
+                'ssv_enabled'    => (bool)$arCfg['admob_ssv_enabled'],
+                'oauth_start_url' => '/admin/admob_oauth_start.php',
+            ],
+            'adsgram' => [
+                'sync_status' => adsgram_sync_status($db),
+                'token_configured' => adsgram_publisher_configured($db),
+            ],
+        ]);
+        break;
+    }
+
+    case 'monetization-logs': {
+        $db = open_analytics_db();
+        am_init_tables($db);
+        $limit = max(1, min(500, (int)($_GET['limit'] ?? 100)));
+        api_ok([
+            'admin_log' => $db->query("SELECT * FROM monetization_admin_log ORDER BY id DESC LIMIT $limit")->fetchAll(PDO::FETCH_ASSOC),
+            'csv_imports' => $db->query("SELECT * FROM ad_csv_imports ORDER BY id DESC LIMIT $limit")->fetchAll(PDO::FETCH_ASSOC),
+        ]);
+        break;
+    }
+
+    case 'monetization-csv-export': {
+        $db = open_analytics_db();
+        $what = (string)($_GET['what'] ?? 'reward-events');
+        [$from, $to] = mon_window();
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="monetization-' . preg_replace('/[^a-z-]/', '', $what) . '-' . $from . '_' . $to . '.csv"');
+        $out = fopen('php://output', 'w');
+        if ($what === 'daily-metrics') {
+            fputcsv($out, ['date','provider','app','platform','ad_unit_id','requests','matched_requests','impressions','clicks','completions','rewards_granted','rewards_failed','revenue','currency','source_type']);
+            $rows = $db->prepare("SELECT * FROM ad_daily_metrics WHERE date BETWEEN ? AND ? ORDER BY date, provider");
+            $rows->execute([$from, $to]);
+            foreach ($rows as $r) {
+                fputcsv($out, [$r['date'],$r['provider'],$r['app'],$r['platform'],$r['ad_unit_id'],$r['requests'],$r['matched_requests'],$r['impressions'],$r['clicks'],$r['completions'],$r['rewards_granted'],$r['rewards_failed'],$r['revenue'],$r['currency'],$r['source_type']]);
+            }
+        } else {
+            $res = am_reward_events($db, ['from' => $from, 'to' => $to, 'limit' => 5000]);
+            fputcsv($out, ['created_at','provider','app','platform','placement','ad_unit_id','user_id','internal_account_id','provider_transaction_id','reward_type','reward_amount','reward_granted','validation_status','source_type','error_message']);
+            foreach ($res['rows'] as $r) {
+                fputcsv($out, [$r['created_at'],$r['provider'],$r['app'],$r['platform'],$r['placement'],$r['ad_unit_id'],$r['user_id'],$r['internal_account_id'],$r['provider_transaction_id'],$r['reward_type'],$r['reward_amount'],$r['reward_granted'],$r['validation_status'],$r['source_type'],$r['error_message']]);
+            }
+        }
+        fclose($out);
+        exit;
     }
 
     default: api_err('unknown action');
