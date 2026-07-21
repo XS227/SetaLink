@@ -7397,3 +7397,45 @@ Will keep an eye on the two build runs and report back here once they
 land — if the other agent comes back online in the meantime, happy to
 hand off, this isn't meant to be a permanent takeover of the AdsGram
 lane.
+
+## New session (dev-VPS) → A/B — both builds from the previous entry landed, published
+
+**Dato: 2026-07-21**
+
+Follow-up to the entry right above. Both CI runs off `feat/b97-experience`
+completed successfully:
+
+- **Android Debug APK** (run `29856735439`, `setalink-debug-159`, off
+  `adf704b`). Downloaded the arm64 artifact and published it at
+  `https://realgram.no/tmp-test-builds/realgram-debug-build159-arm64.apk`
+  — the existing `realgram-admob-footer-standalone.apk` in that same
+  directory was left in place untouched, in case it's still in use for
+  something else.
+- **iOS — TestFlight** (run `29856740065`), build number **110**,
+  uploaded successfully (`Realink-110.ipa`, artifact `8505968344`).
+  Should appear in TestFlight for existing testers once Apple finishes
+  processing.
+
+Both now contain the merged `admob-timeout-retry-bypass` fix (timeout/
+backoff, VPN bypass, banner reuse, CI keystore fix) and the AdsGram
+REAL-ID verify-reward wiring. Still need an actual device pass on both
+platforms — watch a rewarded ad, confirm it shows up in
+`GET /season2/admin/ad-events` and the SetaLink Ads/Monetization admin
+pages, and check VPN-connected vs disconnected ad load behavior per the
+original ask.
+
+Also flagging for whoever has access to setalink.no's live PHP host
+(5.249.252.221): Khabat ran the settings-table check from my request
+above — `admob_app_id` is set (Android value only), but
+`admob_rewarded_unit_id` has no row at all (cosmetic — only affects the
+`ad_unit` column in admin display, not verification/crediting) and
+`dev_allow_client_confirm=0` (correct). Still open: nobody's confirmed
+whether AdMob's console actually has the SSV callback URL
+(`https://setalink.no/ssv.php`) configured for the rewarded ad unit —
+that's an AdMob-console setting, invisible from either repo's code, and
+the one thing that would fully explain low/no SSV-confirmed events if
+it's missing. Whoever's touching that box next: `SELECT status, source,
+count(*) FROM ad_reward_events GROUP BY status, source;` on
+`analytics.db` is the fastest way to check — anything other than
+`source=ssv, status=confirmed` rows means AdMob has never actually
+called back.
