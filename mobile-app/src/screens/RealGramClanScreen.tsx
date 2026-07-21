@@ -1,88 +1,71 @@
 /**
- * RealGramClanScreen — native RealGram Clan screen, replacing the
- * ShahnamehEmbed(guild.html) WebView the Clan tab used until now (Khabat,
- * 2026-07-22: "remove the remaining Shahnameh menu and create a native
- * RealGram Clan experience"). Fed by the same contract §9
- * realgram-profile-summary call Profile/Wallet already use — no second
- * backend round-trip.
+ * RealGramClanScreen — the Clan tab, redesigned around RealGram's own
+ * community mechanics rather than a 1:1 Shahnameh guild migration (Khabat,
+ * 2026-07-22: "designed around RealGram community features — members,
+ * referrals, shared rewards, Starlink progress, data contributions,
+ * rankings — rather than being a direct Shahnameh migration").
  *
- * Scope honestly: contract §9's `clan` field covers identity/headline
- * numbers (name, photo, motto, member count, role, total REAL earned) —
- * enough for a real native clan card, not a full roster/chat/leaderboard.
- * A member list, applications, and clan wars need their own backend
- * contract (the real, actively-maintained clan system lives in
- * shahnameh-backend's Clan/ClanApplication/ClanInvite models /
- * /api/season2/clan/* routes) — flagged to Agent B as the next contract to
- * build, not guessed at here with fake data.
+ * v0.9.86 replaced the ShahnamehEmbed(guild.html) WebView with a native
+ * screen that only showed contract §9's `clan` field (Shahnameh guild
+ * identity) — still guild-shaped, just native. This pass reframes the
+ * screen around what's actually RealGram's own: the referral network the
+ * user built (ReferralEarningsDonut — already a complete, shipped
+ * component, just never placed here), Starlink access progress
+ * (starlinkStore — built for the Home hero card but never wired anywhere,
+ * genuinely dormant until this screen), and the data quota that network
+ * earns back. The Shahnameh guild (if the user has one) is kept as one
+ * secondary card, honestly labeled as the in-game clan — real data, just
+ * not the screen's identity anymore.
+ *
+ * "Rankings" — no leaderboard endpoint exists anywhere in the backend yet
+ * (checked before claiming otherwise). What's real and already available:
+ * ReferralEarningsDonut's own invitee list, which the panel query already
+ * returns sorted by usage (`ORDER BY used DESC`) — surfaced here as "Top
+ * contributors in your network," a true ranking, not a fabricated global
+ * one.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
+import { StarlinkCard } from '../components/StarlinkCard';
 import { useAuthStore } from '../stores/authStore';
+import { useStarlinkStore } from '../stores/starlinkStore';
 import { getProfileSummary, ProfileClan } from '../services/realGramProfileService';
 
-function StatCell({ value, label }: { value: string | number; label: string }) {
-  return (
-    <View style={styles.statCell}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
+const ONE_GB = 1073741824;
+
+interface Props {
+  onOpenStarlink: () => void;
+  onInvite:       () => void;
 }
 
-export function RealGramClanScreen() {
+export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
+  const token    = useAuthStore((s) => s.token);
+  const quotaTotal = useAuthStore((s) => s.user?.quotaBytesTotal ?? 0);
   const insets   = useSafeAreaInsets();
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
-  const [clan, setClan]       = useState<ProfileClan | null | undefined>(undefined);
+  const [clan, setClan] = useState<ProfileClan | null>(null);
 
-  const load = useCallback(() => {
+  useEffect(() => {
     if (!deviceId) return;
-    setLoading(true);
-    setError('');
-    getProfileSummary(deviceId)
-      .then((p) => setClan(p.clan))
-      .catch(() => setError("We couldn't load your clan right now. This is usually temporary."))
-      .finally(() => setLoading(false));
+    getProfileSummary(deviceId).then((p) => setClan(p.clan)).catch(() => {});
   }, [deviceId]);
 
-  useEffect(() => { load(); }, [load]);
-
-  if (loading) {
-    return (
-      <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
-        <ActivityIndicator size="large" color={Colors.gold[400]} />
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View style={[styles.screen, styles.centered, { paddingTop: insets.top, gap: Spacing[4] }]}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={load} activeOpacity={0.85}>
-          <Text style={styles.retryBtnText}>Try again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
-  if (!clan) {
-    return (
-      <View style={[styles.screen, styles.centered, { paddingTop: insets.top, gap: Spacing[3], paddingHorizontal: Spacing[6] }]}>
-        <Text style={styles.emptyIcon}>🛡️</Text>
-        <Text style={styles.emptyTitle}>Not in a clan yet</Text>
-        <Text style={styles.emptySub}>Join or found a clan in the Game tab to see it here.</Text>
-      </View>
-    );
-  }
+  // StarlinkCard was built for the Home hero card (b97 addendum #2) but was
+  // never actually wired anywhere — its own store's `refresh()` was never
+  // called from any screen, so it would render nothing forever. Calling it
+  // here is what actually turns this dormant feature on.
+  useEffect(() => {
+    if (!token) return;
+    useStarlinkStore.getState().refresh(token).catch(() => {});
+  }, [token]);
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -91,38 +74,54 @@ export function RealGramClanScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.heroRow}>
-          {clan.clan_photo ? (
-            <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
-          ) : (
-            <View style={[styles.clanPhoto, styles.clanPhotoFallback]}>
-              <Text style={styles.clanPhotoFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
-            </View>
-          )}
-          <View style={{ flex: 1 }}>
-            <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
-            {!!clan.role && (
-              <View style={styles.roleBadge}>
-                <Text style={styles.roleBadgeText}>{clan.role === 'leader' ? '👑 Leader' : clan.role}</Text>
-              </View>
-            )}
-          </View>
-        </View>
+        <Text style={styles.pageTitle}>Community</Text>
+        <Text style={styles.pageSub}>Your RealGram network, rewards, and access.</Text>
 
-        {!!clan.motto && (
+        {/* Members / referrals / shared rewards + "top contributors" ranking —
+            a complete, already-shipped component, just never placed here. */}
+        <ReferralEarningsDonut deviceId={deviceId} onInvite={onInvite} />
+
+        {/* Starlink progress — dormant feature, wired live for the first time. */}
+        <StarlinkCard
+          onOpen={onOpenStarlink}
+          onInvite={onInvite}
+          onConnect={onOpenStarlink}
+        />
+
+        {/* Data contribution — the quota this network has earned back. */}
+        <GlassCard style={styles.card}>
+          <Text style={styles.cardLabel}>Your data plan</Text>
+          <Text style={styles.dataValue}>{(quotaTotal / ONE_GB).toFixed(1)} GB</Text>
+          <Text style={styles.dataSub}>Total quota, including what your network has earned you</Text>
+        </GlassCard>
+
+        {/* Shahnameh in-game clan — secondary, honestly labeled, real data
+            when it exists; a light nudge when it doesn't (never a dead end). */}
+        {clan ? (
           <GlassCard style={styles.card}>
-            <Text style={styles.cardLabel}>Motto</Text>
-            <Text style={styles.motto}>"{clan.motto}"</Text>
+            <Text style={styles.cardLabel}>Your Shahnameh clan</Text>
+            <View style={styles.clanRow}>
+              {clan.clan_photo ? (
+                <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
+              ) : (
+                <View style={[styles.clanPhoto, styles.clanPhotoFallback]}>
+                  <Text style={styles.clanPhotoFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
+                <Text style={styles.clanMeta}>
+                  {clan.member_count} members{clan.role ? ` · ${clan.role === 'leader' ? '👑 Leader' : clan.role}` : ''}
+                </Text>
+              </View>
+            </View>
+          </GlassCard>
+        ) : (
+          <GlassCard style={styles.card}>
+            <Text style={styles.cardLabel}>Shahnameh clan</Text>
+            <Text style={styles.dataSub}>Not in a clan yet — join or found one in the Game tab.</Text>
           </GlassCard>
         )}
-
-        <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-          <Text style={styles.cardLabel}>Clan stats</Text>
-          <View style={styles.statsGrid}>
-            <StatCell value={clan.member_count} label="Members" />
-            <StatCell value={clan.total_real_earned.toLocaleString()} label="REAL earned" />
-          </View>
-        </GlassCard>
 
         <View style={{ height: Spacing[8] }} />
       </ScrollView>
@@ -131,33 +130,23 @@ export function RealGramClanScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen:      { flex: 1, backgroundColor: Colors.bg.void },
-  centered:    { justifyContent: 'center', alignItems: 'center', gap: Spacing[3] },
-  scroll:      { flex: 1 },
-  content:     { paddingHorizontal: Spacing[4], paddingTop: Spacing[6], gap: Spacing[4] },
+  screen:  { flex: 1, backgroundColor: Colors.bg.void },
+  scroll:  { flex: 1 },
+  content: { paddingHorizontal: Spacing[4], paddingTop: Spacing[4], gap: Spacing[4] },
 
-  errorText:    { fontSize: 13, color: '#FF6B6B', textAlign: 'center', paddingHorizontal: Spacing[6], fontFamily: Typography.family.body },
-  retryBtn:     { backgroundColor: Colors.gold[400], borderRadius: Radius.xl, paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },
-  retryBtnText: { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.bg.void },
+  pageTitle: { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
+  pageSub:   { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: -Spacing[2] },
 
-  emptyIcon:  { fontSize: 40 },
-  emptyTitle: { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  emptySub:   { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, textAlign: 'center' },
+  card:      { padding: Spacing[4], gap: Spacing[2] },
+  cardLabel: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  heroRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  clanPhoto:    { width: 64, height: 64, borderRadius: 16, borderWidth: 2, borderColor: Colors.gold[400] },
+  dataValue: { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  dataSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  clanRow:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  clanPhoto: { width: 48, height: 48, borderRadius: 12 },
   clanPhotoFallback: { backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
-  clanPhotoFallbackText: { fontSize: 24, fontFamily: Typography.family.heading, color: Colors.gold[400] },
-  clanName:     { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  roleBadge:    { alignSelf: 'flex-start', backgroundColor: 'rgba(212,175,55,0.15)', borderRadius: Radius.md, paddingHorizontal: Spacing[2], paddingVertical: 2, marginTop: 4 },
-  roleBadgeText:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.gold[400] },
-
-  card:       { gap: Spacing[2] },
-  cardLabel:  { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  motto:      { fontSize: Typography.size.md, fontFamily: Typography.family.body, color: Colors.text.primary, fontStyle: 'italic' },
-
-  statsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing[4] },
-  statCell:   { minWidth: 100, alignItems: 'flex-start' },
-  statValue:  { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  statLabel:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  clanPhotoFallbackText: { fontSize: 18, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  clanName:  { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  clanMeta:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
 });

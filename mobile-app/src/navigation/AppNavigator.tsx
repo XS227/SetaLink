@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Alert, Platform } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Alert, Platform, Share } from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
@@ -33,6 +33,7 @@ import { SmartAIScreen }     from '../screens/SmartAIScreen';
 import { ActivityScreen }    from '../screens/ActivityScreen';
 import { RealGramProfileScreen } from '../screens/RealGramProfileScreen';
 import { RealGramClanScreen }    from '../screens/RealGramClanScreen';
+import { StarlinkScreen }        from '../screens/StarlinkScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
@@ -407,16 +408,25 @@ function WalletAdapter({ navigation, route }: ScreenAdapterProps) {
   return <WalletScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'wallet'} onNavigate={makeOnNavigate(navigation)} />;
 }
 
-function ClanAdapter() {
-  // Native RealGram Clan screen (Khabat, 2026-07-22: "remove the remaining
-  // Shahnameh menu and create a native RealGram Clan experience") — was
-  // ShahnamehEmbed(guild.html) until now. Fed by contract §9's `clan` field
-  // (name/photo/motto/member count/role/REAL earned), same call Profile/
-  // Wallet already make. A full member roster/applications/clan-wars view
-  // still needs its own backend contract from the real clan system
-  // (Clan/ClanApplication/ClanInvite models, /api/season2/clan/* routes) —
-  // not guessed at here with fake data, flagged as the next ask.
-  return <RealGramClanScreen />;
+function ClanAdapter({ navigation }: ScreenAdapterProps) {
+  // Native RealGram Community/Clan screen (Khabat, 2026-07-22: "designed
+  // around RealGram community features — members, referrals, shared
+  // rewards, Starlink progress, data contributions, rankings — rather than
+  // a direct Shahnameh migration"). Was ShahnamehEmbed(guild.html) until
+  // v0.9.86; that swap alone was still a 1:1 guild-data reskin, so this
+  // pass reframes it around RealGram's own community mechanics (referral
+  // network, Starlink) instead, with the Shahnameh guild (if the user has
+  // one) folded in as one secondary card, not the whole screen.
+  const { t } = useT();
+  return (
+    <RealGramClanScreen
+      onOpenStarlink={() => navigation.navigate('Starlink')}
+      onInvite={() => {
+        const code = (useAuthStore.getState().user?.referralCode || '').toUpperCase();
+        Share.share({ message: t('pr.shareMessage').replace(/\{code\}/g, code) }).catch(() => {});
+      }}
+    />
+  );
 }
 
 function ProfileAdapter({ navigation }: ScreenAdapterProps) {
@@ -650,6 +660,12 @@ function NotificationRouteHandler() {
 // ── Root navigator ────────────────────────────────────────────────────────────
 
 export function AppNavigator() {
+  // Read here, in AppNavigator's own render — not inside the Starlink
+  // Stack.Screen's children function below, which is a plain closure, not
+  // guaranteed the same hook-safe treatment as a real component (see
+  // MainTabs' tabBar fix, v0.9.82: a hook called inside a similar
+  // render-prop closure crashed every cold start).
+  const { t } = useT();
   return (
     <NavigationContainer>
       <DeepLinkHandler />
@@ -697,6 +713,22 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <DiagnosticsScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Starlink"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <StarlinkScreen
+              onBack={() => navigation.goBack()}
+              onInvite={() => {
+                const code = (useAuthStore.getState().user?.referralCode || '').toUpperCase();
+                Share.share({ message: t('pr.shareMessage').replace(/\{code\}/g, code) }).catch(() => {});
+              }}
+              onConnect={() => navigation.navigate('Main', { screen: 'Servers' } as never)}
+              onUpgrade={() => navigation.navigate('Upgrade')}
+            />
           )}
         </Stack.Screen>
         <Stack.Screen
