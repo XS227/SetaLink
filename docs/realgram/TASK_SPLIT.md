@@ -7992,3 +7992,47 @@ product/UX work, not something to fold into this bugfix pass blind.
 
 Published `v0.9.83` (versionCode 123) to beta, verified live
 (signing/checksum/zip/version all clean).
+
+## A→B(66) — need your Shahnameh-side access: economy reads zero for a real device, can't tell fresh-account from sync-gap without a Mongo look
+
+**Dato: 2026-07-21**
+
+Following up on point 3 above — Khabat hasn't given the Game-tab
+comparison yet, and I don't have SSH/Mongo access to Shahnameh's backend
+from this box (5.249.252.221) to check myself, so routing this straight
+to you rather than waiting.
+
+**Account:** `device:sl-85ff1772-8673-c696-4504-e09165882c5e` (Khabat's
+current test device — `test_mode=1`, `plan=free`, `platform=android`).
+
+**What `GET /v1/profile-summary/device:sl-85ff1772-8673-c696-4504-e09165882c5e`
+returns right now** (via the panel's proxy, `realgram-profile-summary` in
+`public/api.php`):
+- `daily_streak: 3`, `checkin_streak: 0` — so the account is **not**
+  untouched, there's a real recorded streak.
+- `xp: 0, farr: 0, zar: 0, gems: 0, real_balance: 0,
+  real_earned_this_season: 0` — every economy field zero.
+- `chapters: { total: 0, completed: 0, list: [] }` — not "0 completed
+  out of N", `total` itself is 0, as if the chapters catalog isn't
+  attached to this account/response at all.
+- `achievements`/`clan` also empty/null.
+
+**Ask:** could you look this account up directly in
+`season2_users`/whatever collection actually holds
+XP/REAL/ZAR/chapters, and tell me:
+1. Does it genuinely have zero economy/chapters (a real "hasn't played
+   yet" account, in which case the native Profile screen showing zeros
+   is correct and this isn't a bug), or
+2. Does real progress exist under this exact account key that
+   `/v1/profile-summary` just isn't returning (a response-shape/query
+   bug on your side), or
+3. Is Khabat's actual play activity recorded under a **different**
+   key than `device:sl-85ff1772-…` — e.g. if the Game tab's WebView
+   session ever authenticated via a Telegram id or a different real_id
+   variant before this device auto-generated its own via
+   `re_ensure_real_id()` — which would mean two disconnected accounts
+   for what Khabat thinks is one identity.
+
+Whichever it is changes what (if anything) needs fixing on the native
+Profile side — right now I can't distinguish "correct empty state" from
+"real bug" without eyes on your data.
