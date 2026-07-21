@@ -7,12 +7,13 @@
  * "10% RealGram / 90% Shahnameh" cinematic gold accent rather than the
  * VPN ProfileScreen's emerald one — this is Shahnameh's data, not the VPN's.
  *
- * Not wired into BottomNav yet — where this replaces/joins the existing
- * 'profile' tab is Khabat's call (ShahnamehEmbed.tsx's "planned Profile-tab
- * swap" note, 2026-07-19: "de skal bli ett i appen"). Mount this directly
- * wherever that decision lands; it's a complete, self-contained screen with
- * its own loading/error/retry states so it doesn't need anything from a
- * parent besides deviceId and a back handler.
+ * Wired into the Profile tab (AppNavigator.tsx's ProfileAdapter) 2026-07-21,
+ * replacing the old VPN-flavored ProfileScreen there per Khabat's ask —
+ * "de skal bli ett i appen" (ShahnamehEmbed.tsx, 2026-07-19). Also carries
+ * a Data (VPN quota) card and a Recent activity feed sourced from
+ * sessionStore, neither of which contract §9 covers — those are the
+ * VPN-side halves of "one unified profile," pulled from the same stores
+ * HomeScreen/ActivityScreen already read rather than a second backend call.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -23,12 +24,44 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { useAuthStore } from '../stores/authStore';
+import { useIdentityStore } from '../stores/identityStore';
+import { useSessionStore, SessionRecord } from '../stores/sessionStore';
+import { formatBytes, formatDuration } from '../utils/formatters';
 import {
   getProfileSummary, ProfileSummary,
 } from '../services/realGramProfileService';
 
 interface Props {
   onBack?: () => void;
+  // Only real, reachable sign-out path in the app (the old VPN ProfileScreen
+  // this replaces in the Profile tab owned it exclusively) — kept here so
+  // swapping the tab's screen doesn't silently strand users signed in with
+  // no way out.
+  onSignOut?: () => void;
+}
+
+// Same relative-time convention as ActivityScreen's own session list.
+function timeAgo(ts: number): string {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function ActivityRow({ session }: { session: SessionRecord }) {
+  return (
+    <View style={styles.activityRow}>
+      <Text style={styles.activityFlag}>{session.serverFlag || '🌐'}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.activityServer} numberOfLines={1}>{session.serverName}</Text>
+        <Text style={styles.activityMeta}>
+          {formatDuration(session.duration)} · {formatBytes(session.sentBytes + session.recvBytes)}
+        </Text>
+      </View>
+      <Text style={styles.activityTime}>{timeAgo(session.endedAt || session.startedAt)}</Text>
+    </View>
+  );
 }
 
 function StatCell({ value, label }: { value: string | number; label: string }) {
@@ -40,8 +73,28 @@ function StatCell({ value, label }: { value: string | number; label: string }) {
   );
 }
 
-export function RealGramProfileScreen({ onBack }: Props) {
-  const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
+export function RealGramProfileScreen({ onBack, onSignOut }: Props) {
+  const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
+  // Data balance lives on the VPN side (entitlement/quota), not the Shahnameh
+  // backend contract §9 covers — pulled straight from the same authStore
+  // fields HomeScreen already reads, so this stays in sync with Connect/
+  // Disconnect without a second network call.
+  const quotaTotal      = useAuthStore((s) => s.user?.quotaBytesTotal ?? 0);
+  const quotaUsed       = useAuthStore((s) => s.user?.quotaBytesUsed ?? 0);
+  const plan            = useAuthStore((s) => s.user?.plan ?? 'free');
+  // Local-first identity layer (A-11/B-20) — RealGram's own @handle/avatar/
+  // persona pick, separate from the server-driven ProfileSummary below.
+  // "Avatar/persona" was explicitly asked for in the unified-profile spec;
+  // shown here rather than duplicated server-side since it's already the
+  // single source of truth the rest of the app (RealGramLinkWebView, etc.)
+  // reads from.
+  const avatarEmoji     = useIdentityStore((s) => s.avatarEmoji);
+  const avatarColor     = useIdentityStore((s) => s.avatarColor);
+  const persona         = useIdentityStore((s) => s.persona);
+  const recentSessions  = useSessionStore((s) => s.sessions)
+    .slice()
+    .sort((a, b) => (b.endedAt || b.startedAt) - (a.endedAt || a.startedAt))
+    .slice(0, 5);
   const insets   = useSafeAreaInsets();
 
   const [loading, setLoading]   = useState(true);
@@ -100,13 +153,16 @@ export function RealGramProfileScreen({ onBack }: Props) {
           {identity.profile_pic ? (
             <Image source={{ uri: identity.profile_pic }} style={styles.avatar} />
           ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={styles.avatarFallbackText}>{displayName.slice(0, 1).toUpperCase()}</Text>
+            <View style={[styles.avatar, styles.avatarFallback, { backgroundColor: avatarColor || Colors.bg.elevated }]}>
+              <Text style={styles.avatarFallbackText}>{avatarEmoji || displayName.slice(0, 1).toUpperCase()}</Text>
             </View>
           )}
           <View style={{ flex: 1 }}>
             <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
-            <Text style={styles.levelText}>Level {economy.level} · {profile.id_type === 'real' ? 'RealGram' : 'Telegram'}</Text>
+            <Text style={styles.levelText}>
+              Level {economy.level} · {profile.id_type === 'real' ? 'RealGram' : 'Telegram'}
+              {persona ? ` · ${persona === 'king' ? 'King' : 'Queen'}` : ''}
+            </Text>
           </View>
         </View>
 
@@ -121,6 +177,24 @@ export function RealGramProfileScreen({ onBack }: Props) {
             <StatCell value={economy.xp.toLocaleString()}           label="XP" />
             <StatCell value={economy.real_earned_this_season.toLocaleString()} label="Earned (season)" />
           </View>
+        </GlassCard>
+
+        {/* Data balance (VPN quota — separate domain from Shahnameh's economy above) */}
+        <GlassCard style={styles.card}>
+          <View style={styles.cardHeaderRow}>
+            <Text style={styles.cardLabel}>Data</Text>
+            <Text style={styles.chapterCount}>{plan === 'free' ? 'Free plan' : plan}</Text>
+          </View>
+          {quotaTotal > 0 ? (
+            <>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.min(100, (quotaUsed / quotaTotal) * 100)}%` as any }]} />
+              </View>
+              <Text style={styles.emptyText}>{formatBytes(quotaUsed)} of {formatBytes(quotaTotal)} used</Text>
+            </>
+          ) : (
+            <Text style={styles.emptyText}>Unlimited</Text>
+          )}
         </GlassCard>
 
         {/* Streaks */}
@@ -188,6 +262,25 @@ export function RealGramProfileScreen({ onBack }: Props) {
           )}
         </GlassCard>
 
+        {/* Recent activity — reuses ActivityScreen's own local session log,
+            no extra network call. */}
+        <GlassCard style={styles.card}>
+          <Text style={styles.cardLabel}>Recent activity</Text>
+          {recentSessions.length > 0 ? (
+            <View style={styles.activityList}>
+              {recentSessions.map((s) => <ActivityRow key={s.id} session={s} />)}
+            </View>
+          ) : (
+            <Text style={styles.emptyText}>No sessions yet</Text>
+          )}
+        </GlassCard>
+
+        {!!onSignOut && (
+          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={onSignOut}>
+            <Text style={styles.logoutText}>Sign out</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={{ height: Spacing[8] }} />
       </ScrollView>
     </View>
@@ -244,4 +337,14 @@ const styles = StyleSheet.create({
   clanName:     { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.text.primary },
   clanMeta:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   emptyText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  activityList: { gap: Spacing[3] },
+  activityRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  activityFlag: { fontSize: 20 },
+  activityServer: { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  activityMeta: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  activityTime: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  logoutBtn:    { borderWidth: 1, borderColor: 'rgba(255,68,68,0.3)', borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', backgroundColor: 'rgba(255,68,68,0.06)' },
+  logoutText:   { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#FF4444', letterSpacing: 0.3 },
 });
