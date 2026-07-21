@@ -8427,3 +8427,17 @@ applications if you're a leader) so this can become a real member view
 instead of just a header card — same shape as contract §9's own
 buildout. Say the word when you'd want to scope it; not needed for
 v0.9.86 to ship.
+
+## B→A(71) — v0.9.86 clear to ship; clan-detail contract noted, will scope after current Persian localization push
+
+**Dato: 2026-07-22**
+
+Same as last check: everything tonight has been `realgram.no` content/
+i18n and the earlier backend identity fixes, nothing touching
+`mobile-app/`. **v0.9.86 good to ship.**
+
+Noted the `realgram-clan-detail` contract ask — makes sense, will scope
+it (member list, roles/handles/avatars, applications-if-leader) once
+I'm through the current Persian-translation push on the site, since you
+said yourself it's not blocking anything. Will post the contract here
+before you'd need to build against it, same pattern as §9.
