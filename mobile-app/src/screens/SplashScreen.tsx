@@ -13,6 +13,7 @@ import React, { useEffect, useRef } from 'react';
 import {
   View, Text, Animated, StyleSheet, Dimensions,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { Colors, Typography, Animation } from '../design/tokens';
 import { APP_VERSION } from '../utils/version';
 
@@ -126,30 +127,29 @@ export function SplashScreen({ onFinish }: Props) {
           {/* Glow halo */}
           <Animated.View style={[styles.logoGlow, { opacity: glowOpacity }]} />
 
-          {/* Lion/sun emblem — gold sun body with rays */}
-          <View style={styles.sunContainer}>
-            {/* 8 rays at 45° increments */}
-            {[0, 45, 90, 135, 180, 225, 270, 315].map((deg) => (
-              <View
-                key={deg}
-                style={[styles.ray, { transform: [{ rotate: `${deg}deg` }] }]}
-              />
-            ))}
-            {/* Outer mane ring */}
+          {/* RealGram mark — bubble + spark (brand/realgram.svg), gold to match
+              the app's existing REAL-token identity (ic_launcher.png) rather
+              than introducing BRAND.md's separate proposed purple accent. */}
+          <View style={styles.logoMarkContainer}>
             <View style={styles.maneRing} />
-            {/* Sun body */}
-            <View style={styles.sunBody}>
-              <View style={styles.sTop} />
-              <View style={styles.sMid} />
-              <View style={styles.sBot} />
-            </View>
+            <Svg width={52} height={52} viewBox="0 0 24 24" fill="none">
+              <Path
+                d="M7.9 20A9 9 0 1 0 4 16.1L2.5 21.5z"
+                stroke={Colors.gold[300]}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <Path d="M12 8.5v6" stroke={Colors.gold[300]} strokeWidth={2} strokeLinecap="round" />
+              <Path d="M9 11.5h6" stroke={Colors.gold[300]} strokeWidth={2} strokeLinecap="round" />
+            </Svg>
           </View>
         </Animated.View>
 
         {/* Wordmark */}
         <Animated.View style={{ opacity: wordOpacity }}>
           <Text style={styles.wordmark}>
-            <Text style={styles.wordmarkAccent}>R</Text>ealink
+            <Text style={styles.wordmarkAccent}>Real</Text>Gram
           </Text>
 
         </Animated.View>
@@ -211,19 +211,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 48,
   },
-  sunContainer: {
+  logoMarkContainer: {
     width: 100,
     height: 100,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  ray: {
-    position: 'absolute',
-    width: 6,
-    height: 100,
-    borderRadius: 3,
-    backgroundColor: Colors.gold[400],
-    opacity: 0.55,
   },
   maneRing: {
     position: 'absolute',
@@ -231,37 +223,6 @@ const styles = StyleSheet.create({
     height: 68,
     borderRadius: 34,
     backgroundColor: Colors.gold[500],
-  },
-  sunBody: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: Colors.gold[300],
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 5,
-  },
-  sTop: {
-    width: 22,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#1A1400',
-    alignSelf: 'flex-start',
-    marginLeft: 9,
-  },
-  sMid: {
-    width: 22,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#1A1400',
-  },
-  sBot: {
-    width: 22,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: '#1A1400',
-    alignSelf: 'flex-end',
-    marginRight: 9,
   },
   wordmark: {
     fontSize: Typography.size['3xl'],

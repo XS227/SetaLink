@@ -127,6 +127,14 @@ function MainTabs() {
   // Country comes from the backend entitlement (geo-detected server-side);
   // used for staged per-country rollouts (e.g. Iran-first releases).
   const userCountry         = useAuthStore((s) => s.user?.country) || undefined;
+  // Hidden outright (not just padded) while a season2 modal/bottom-sheet/quiz/
+  // chapter-overlay/full-screen menu is open in the Game or Clan tab — see
+  // stores/overlayStore.ts + ShahnamehEmbed.tsx. Read here, in MainTabs' own
+  // render, and passed down as a plain closed-over value — NOT called inside
+  // the tabBar prop below, which @react-navigation/bottom-tabs invokes outside
+  // React's render dispatcher (confirmed in production, v0.9.80/v0.9.81:
+  // "Invalid hook call" crash on every cold start once MainTabs first mounts).
+  const overlayOpen         = useOverlayStore((s) => s.isOpen);
 
   const [isLocked, setIsLocked] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
@@ -253,14 +261,8 @@ function MainTabs() {
         tabBar={(props) => {
           const routeName = props.state.routes[props.state.index].name as string;
           const activeTab = SCREEN_TO_TAB[routeName] ?? 'home';
-          // Hidden outright (not just padded) while a season2 modal/bottom-
-          // sheet/quiz/chapter-overlay/full-screen menu is open in the Game
-          // or Clan tab — see stores/overlayStore.ts + ShahnamehEmbed.tsx.
-          // eslint-disable-next-line react-hooks/rules-of-hooks -- tabBar is
-          // invoked as a render-prop component by @react-navigation/bottom-
-          // tabs on every relevant render, same call-order guarantee as any
-          // other component here.
-          const overlayOpen = useOverlayStore((s) => s.isOpen);
+          // overlayOpen is read from MainTabs' own render above — no hook
+          // call here, this closure just reads a captured value.
           if (overlayOpen) return null;
           return (
             <BottomNav

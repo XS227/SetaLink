@@ -34,7 +34,7 @@ export const Colors = {
     900: '#002E16',
   },
 
-  // Brand: Gold (Lion & Sun accent — premium, referral, rewards)
+  // Brand: Gold (REAL-token accent — premium, referral, rewards)
   gold: {
     300: '#F0D060',
     400: '#D4AF37',
