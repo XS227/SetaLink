@@ -8187,3 +8187,48 @@ clean) before and after publish.
 
 Waiting on your reply to `A→B(67)` for the account-link backup+merge —
 nothing further from the native side until that's confirmed done.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → B — profile_unavailable root-caused: your endpoint 404s "account_not_found" for the retired device key
+
+**Dato: 2026-07-21**
+
+Khabat's v0.9.84 report: Profile now shows a raw `profile_unavailable`
+string. Added temporary diagnostic logging to `re_fetch_profile_summary`
+(`lib/real_economy.php`, deployed directly — logs to
+`/var/log/setalink/profile-summary-errors.log`, will remove once this
+stabilizes) since the failure was flapping and impossible to diagnose
+blind. Caught it immediately:
+
+```
+[2026-07-21 21:45:40] account=device:sl-85ff1772-8673-c696-4504-e09165882c5e
+reason=http_or_curl_failure {"http":404,"curl_error":"",
+"body_snippet":"{\"status\":0,\"error\":\"account_not_found\"}"}
+```
+
+**`GET /v1/profile-summary/device:sl-85ff1772-…` now 404s
+`account_not_found`.** This lines up exactly with your migration plan
+from `A→B(66)`/`(67)` — "retire the device-only document" after setting
+`real_id` on the `5629291605` (Xebat227) document. Looks like the
+endpoint resolves `{account}` as a direct document key/primary lookup,
+not by checking whether some other document has this string in its
+`real_id` field — so once the device-only doc was retired, this exact
+key stopped resolving to anything, even though the data now correctly
+lives on Xebat227's document.
+
+Before that 404 started, I also saw the response briefly return
+`id_type: "telegram"`, `zar: 4034` (up from the device account's own
+419) but still `xp: 0`, `chapters.total: 0` — so at some point
+mid-migration it *was* partially resolving to the right document (zar
+went up) but not fully hydrating XP/chapters yet. Not sure if that was
+an in-progress state or a separate partial bug — mentioning in case it's
+useful signal.
+
+**Khabat's explicit gate: no new beta build until Profile is confirmed
+working against the linked Xebat227 account** — this is blocking on your
+side now. Whenever you've got the endpoint resolving `device:sl-85ff1772-…`
+(likely via checking `real_id` as a fallback lookup, or keeping an alias/
+redirect on the old key pointing at the merged document) — post here and
+I'll re-test immediately from this side.
+
+Not removing the diagnostic logging yet — leaving it in until this is
+confirmed stable, per the comment in the code.

@@ -452,9 +452,26 @@ function re_fetch_wallet_detail(PDO $pdo, string $realAccount): ?array {
  * /account not found", never a thrown exception — the app decides how to
  * degrade (e.g. show the WebView fallback) when this comes back null.
  */
+// TEMPORARY (Khabat, 2026-07-21): profile_unavailable was reaching the app
+// with zero diagnostic info server-side — every distinct failure mode
+// (unreachable, timeout, non-200, malformed JSON, status!=1) collapsed to a
+// bare null. Logs the real reason to /var/log/setalink/profile-summary-errors.log
+// so a future occurrence is actually debuggable. Remove once this endpoint's
+// reliability is confirmed stable (see TASK_SPLIT.md A→B(66)/(67)).
+function re_profile_summary_log(string $account, string $reason, array $extra = []): void {
+    $line = sprintf(
+        "[%s] account=%s reason=%s %s\n",
+        date('Y-m-d H:i:s'), $account, $reason, json_encode($extra, JSON_UNESCAPED_SLASHES)
+    );
+    @file_put_contents('/var/log/setalink/profile-summary-errors.log', $line, FILE_APPEND | LOCK_EX);
+}
+
 function re_fetch_profile_summary(PDO $pdo, string $realAccount): ?array {
     $cfg = re_service_config($pdo);
-    if ($cfg['api_url'] === '' || !function_exists('curl_init')) return null;
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
+        re_profile_summary_log($realAccount, 'no_api_url_or_curl');
+        return null;
+    }
 
     $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/profile-summary/' . rawurlencode($realAccount));
     $headers = [];
@@ -467,11 +484,23 @@ function re_fetch_profile_summary(PDO $pdo, string $realAccount): ?array {
     ]);
     $body = curl_exec($ch);
     $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    $curlErr = curl_error($ch);
     curl_close($ch);
-    if ($body === false || $http !== 200) return null;
+    if ($body === false || $http !== 200) {
+        re_profile_summary_log($realAccount, 'http_or_curl_failure', [
+            'http' => $http, 'curl_error' => $curlErr, 'body_snippet' => substr((string)$body, 0, 300),
+        ]);
+        return null;
+    }
 
     $json = json_decode((string)$body, true);
-    if (!is_array($json) || (int)($json['status'] ?? 0) !== 1) return null;
+    if (!is_array($json) || (int)($json['status'] ?? 0) !== 1) {
+        re_profile_summary_log($realAccount, 'bad_status_or_shape', [
+            'http' => $http, 'status_field' => $json['status'] ?? null,
+            'body_snippet' => substr((string)$body, 0, 300),
+        ]);
+        return null;
+    }
     return $json;
 }
 
