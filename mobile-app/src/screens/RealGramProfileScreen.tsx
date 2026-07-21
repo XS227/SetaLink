@@ -84,10 +84,10 @@ function ActivityRow({ session }: { session: SessionRecord }) {
   );
 }
 
-function StatCell({ value, label }: { value: string | number; label: string }) {
+function StatCell({ value, label, icon }: { value: string | number; label: string; icon?: string }) {
   return (
     <View style={styles.statCell}>
-      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statValue}>{icon ? `${icon} ` : ''}{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -229,12 +229,12 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
           <Text style={styles.cardLabel}>Economy</Text>
           <View style={styles.statsGrid}>
-            <StatCell value={economy.real_balance.toLocaleString()} label="REAL" />
-            <StatCell value={economy.zar.toLocaleString()}          label="ZAR" />
-            <StatCell value={economy.gems}                          label="Gems" />
-            <StatCell value={economy.farr}                          label="FARR" />
-            <StatCell value={economy.xp.toLocaleString()}           label="XP" />
-            <StatCell value={economy.real_earned_this_season.toLocaleString()} label="Earned (season)" />
+            <StatCell value={economy.real_balance.toLocaleString()} label="REAL" icon="💎" />
+            <StatCell value={economy.zar.toLocaleString()}          label="ZAR"  icon="🪙" />
+            <StatCell value={economy.gems}                          label="Gems" icon="💠" />
+            <StatCell value={economy.farr}                          label="FARR" icon="🔥" />
+            <StatCell value={economy.xp.toLocaleString()}           label="XP"   icon="⭐" />
+            <StatCell value={economy.real_earned_this_season.toLocaleString()} label="Earned (season)" icon="📈" />
           </View>
         </GlassCard>
 

@@ -8,7 +8,7 @@
  * (verified: only Tonkeeper exists, as a payment deep-link, not a wallet
  * balance source) — so this always renders "Coming soon", never a number.
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -17,6 +17,7 @@ import { TopBar } from '../components/TopBar';
 import { RealWalletCard } from '../components/RealWalletCard';
 import { useAuthStore } from '../stores/authStore';
 import { useT } from '../i18n';
+import { getProfileSummary, ProfileEconomy } from '../services/realGramProfileService';
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
@@ -26,10 +27,26 @@ interface Props {
 export function WalletScreen({ onNavigate, activeTab }: Props) {
   const { t } = useT();
   const user  = useAuthStore((s) => s.user);
+  const deviceId = user?.deviceId ?? '';
 
   const totalGb = (user?.quotaBytesTotal ?? 0) / 1073741824;
   const usedGb  = (user?.quotaBytesUsed  ?? 0) / 1073741824;
   const freeGb  = Math.max(0, totalGb - usedGb);
+
+  // Full economy (XP/Gems/FARR) — same source Profile reads (contract §9),
+  // so this stays in sync with it automatically. REAL/ZAR stay on
+  // RealWalletCard below (it already owns that data + the redeem flow) —
+  // this just fills in the fields Khabat asked for that nothing on this
+  // screen showed yet.
+  const [economy, setEconomy] = useState<ProfileEconomy | null>(null);
+  useEffect(() => {
+    if (!deviceId) return;
+    let cancelled = false;
+    getProfileSummary(deviceId)
+      .then((p) => { if (!cancelled) setEconomy(p.economy); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [deviceId]);
 
   return (
     <View style={styles.screen}>
@@ -39,7 +56,27 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
           <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </View>
 
-        <RealWalletCard deviceId={user?.deviceId ?? ''} />
+        <RealWalletCard deviceId={deviceId} />
+
+        {economy && (
+          <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+            <Text style={styles.cardTitle}>Economy</Text>
+            <View style={styles.quotaRow}>
+              <View style={styles.quotaCell}>
+                <Text style={styles.quotaValue}>{economy.xp.toLocaleString()}</Text>
+                <Text style={styles.quotaLabel}>XP</Text>
+              </View>
+              <View style={styles.quotaCell}>
+                <Text style={styles.quotaValue}>{economy.gems.toLocaleString()}</Text>
+                <Text style={styles.quotaLabel}>Gems</Text>
+              </View>
+              <View style={styles.quotaCell}>
+                <Text style={styles.quotaValue}>{economy.farr.toLocaleString()}</Text>
+                <Text style={styles.quotaLabel}>FARR</Text>
+              </View>
+            </View>
+          </GlassCard>
+        )}
 
         <GlassCard style={styles.card}>
           <Text style={styles.cardTitle}>{t('pr.totalQuota')}</Text>

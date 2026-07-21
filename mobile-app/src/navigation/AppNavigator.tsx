@@ -32,6 +32,7 @@ import { ServersScreen }     from '../screens/ServersScreen';
 import { SmartAIScreen }     from '../screens/SmartAIScreen';
 import { ActivityScreen }    from '../screens/ActivityScreen';
 import { RealGramProfileScreen } from '../screens/RealGramProfileScreen';
+import { RealGramClanScreen }    from '../screens/RealGramClanScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
@@ -44,7 +45,6 @@ import { PremiumScreen }            from '../screens/PremiumScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
 import { TransferScreen }          from '../screens/TransferScreen';
 import { WalletScreen }            from '../screens/WalletScreen';
-import { ShahnamehEmbed }          from '../components/ShahnamehEmbed';
 
 import { runBootSequence }       from '../services/bootService';
 import { claimPendingReferral }  from '../services/deepLinkService';
@@ -408,15 +408,15 @@ function WalletAdapter({ navigation, route }: ScreenAdapterProps) {
 }
 
 function ClanAdapter() {
-  // Real, backend-backed clan/guild system (Clan/ClanApplication/ClanInvite
-  // models, /api/season2/clan/* routes) — the old native ClanScreen was
-  // never more than a client-side re-skin of referral count (its own file
-  // header said as much: "a real clan backend... is explicitly Not started
-  // in the roadmap"), which was already stale — guild.js/guild.html are the
-  // real, actively-maintained thing. Reuses the same hardened embed as the
-  // Game tab (identity gate, load-timeout/retry, overlay bridge) rather
-  // than a second bespoke WebView.
-  return <ShahnamehEmbed path="/guild.html" debugLabel="clan" />;
+  // Native RealGram Clan screen (Khabat, 2026-07-22: "remove the remaining
+  // Shahnameh menu and create a native RealGram Clan experience") — was
+  // ShahnamehEmbed(guild.html) until now. Fed by contract §9's `clan` field
+  // (name/photo/motto/member count/role/REAL earned), same call Profile/
+  // Wallet already make. A full member roster/applications/clan-wars view
+  // still needs its own backend contract from the real clan system
+  // (Clan/ClanApplication/ClanInvite models, /api/season2/clan/* routes) —
+  // not guessed at here with fake data, flagged as the next ask.
+  return <RealGramClanScreen />;
 }
 
 function ProfileAdapter({ navigation }: ScreenAdapterProps) {

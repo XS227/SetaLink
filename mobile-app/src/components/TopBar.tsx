@@ -35,12 +35,19 @@ export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={[styles.avatarChip, { borderColor: avatarColor, backgroundColor: avatarColor + '22' }]}
+        style={[styles.avatarChip, { borderColor: avatarColor, backgroundColor: avatarColor + '33' }]}
         onPress={() => onNavigate('profile')}
         hitSlop={10}
-        accessibilityLabel="Profile"
+        accessibilityLabel="Profile and Settings"
       >
         <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
+        {/* Small always-visible gear cue — Settings only lives inside Profile
+            now (Khabat, 2026-07-22: "improve visibility of the top-right
+            Settings/Profile icon"), so this chip needs to read as "profile +
+            settings", not just an avatar. */}
+        <View style={styles.gearBadge}>
+          <Text style={styles.gearBadgeText}>⚙</Text>
+        </View>
       </TouchableOpacity>
     </View>
   );
@@ -53,6 +60,10 @@ const styles = StyleSheet.create({
   badge:      { position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, borderRadius: 7,
                 backgroundColor: '#FF6B6B', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
   badgeText:  { color: '#fff', fontSize: 8, fontFamily: Typography.family.heading },
-  avatarChip: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
-  avatarEmoji:{ fontSize: 16 },
+  avatarChip: { width: 42, height: 42, borderRadius: 21, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  avatarEmoji:{ fontSize: 18 },
+  gearBadge:  { position: 'absolute', bottom: -2, right: -2, width: 18, height: 18, borderRadius: 9,
+                backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center',
+                borderWidth: 1.5, borderColor: Colors.bg.base },
+  gearBadgeText: { fontSize: 10, color: Colors.bg.void },
 });
