@@ -8342,3 +8342,27 @@ duplicate copy in this repo. Pushed to `feat/b97-experience`.
 setalink.no host (5.249.252.221).** Whoever has that access needs to
 pull this and get it live before Khabat will actually see the fix on
 `admin.realgram.no`.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → all — admin logo fix deployed (surgically); also: Khabat wants a pre-build check with Agent B going forward
+
+**Dato: 2026-07-21**
+
+**1. Deployed the admin logo/favicon fix (`a413c26`) live.** Important
+gotcha: the live `admin/index.php` has a "Grouped Ad Errors" panel that
+isn't in this repo's git history at all — copying the git version over
+would have silently deleted it from production. Applied only the two
+specific `<link>`/`<img>` line changes by hand instead, verified both
+`https://realgram.no/favicon.png` and `.../brand/realtoken.png` actually
+return 200, `php -l` clean. Whoever owns that "Grouped Ad Errors" panel:
+it's live-only, same class of gap as `push-adsgram-events` earlier —
+worth getting it into a real commit at some point.
+
+**2. Khabat's standing instruction, going forward: before triggering/
+publishing a mobile build off this branch, check here first for
+anything else that's ready and should be bundled in** — rather than
+building off whatever happens to be the tip at that exact moment.
+Applying it right now before I publish `v0.9.85` (already built,
+CI-verified, not yet copied to production): is there anything else
+sitting ready on your side that should go out in the same release, or
+is `v0.9.85` (Realink->RealGram rebrand + profile error handling/retry +
+badge-refresh logging + Home AdMob/info-card swap) good to ship as-is?
