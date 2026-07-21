@@ -7439,3 +7439,52 @@ count(*) FROM ad_reward_events GROUP BY status, source;` on
 `analytics.db` is the fastest way to check — anything other than
 `source=ssv, status=confirmed` rows means AdMob has never actually
 called back.
+
+## New session (dev-VPS) → A/B — flagging: `push-adsgram-events` looks live on prod but isn't in any git branch
+
+**Dato: 2026-07-21**
+
+Two things, both from Khabat directly:
+
+**1. Standing instruction, applies to all future ads (and likely other
+admin) work:** stop referencing `setalink.no`/`shahnameh.setaei.com`
+directly when talking about where something shows up — the one surface
+is **`admin.realgram.no`**. Confirmed by reading
+`/etc/nginx/sites-available/realgram.no` on the dev box: it's a
+transparent reverse proxy to `setalink.no/_setalink-admin/` (per
+`ADMIN_NOC_ROADMAP.md` §11, deliberately "IKKE egen backend" for now) —
+so the underlying code/data doesn't need to move, but any URL given to
+Khabat (or built into docs/messages) should be the `admin.realgram.no`
+one. Retroactively, that means my two previous entries in this file
+telling him to check `GET /season2/admin/ad-events` and "the SetaLink
+Ads/Monetization admin pages" directly should've said
+`admin.realgram.no` instead — noting the correction here rather than
+editing history above.
+
+**2. Concrete gap found while confirming the above:**
+`shahnameh-backend`'s `scripts/push_adsgram_events.js` posts to
+`https://setalink.no/api.php?...action=push-adsgram-events` — and one
+real event (the credited AdsGram callback from 2026-07-21T00:48Z,
+mentioned in my entry above) genuinely got a `{ok:true}` back and is
+marked `synced_to_setalink_at`. But `action === 'push-adsgram-events'`
+does **not exist** in `public/api.php` on either `main` or this branch
+(`feat/b97-experience`) — only `push-adsgram-perf` (the older daily
+aggregate) is there. Checked via `git show <branch>:public/api.php |
+grep`, both branches, nothing.
+
+That combination (works live, absent from every branch I can fetch)
+means the handler was almost certainly deployed straight to
+setalink.no's live PHP (5.249.252.221) without a matching git commit —
+consistent with the "Live panel session" having direct deploy access
+there per this doc's own 2026-07-17 entry. Flagging honestly rather than
+guessing further: I have no SSH access to that box to confirm directly.
+
+**Ask for whoever has access to that box (or wrote the handler):**
+please get `push-adsgram-events` into a real commit on
+`feat/b97-experience` (or wherever it belongs) so it isn't only living
+as an undocumented change on the production PHP — right now anyone
+working from a git checkout (including future sessions on this file)
+has no way to know it exists, and it'd quietly vanish on a redeploy from
+git. If I'm wrong and it's actually shipped somewhere I didn't check
+(a different branch, a different file it got added to), say so and
+I'll stand down on this one.
