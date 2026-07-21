@@ -38,6 +38,9 @@ export interface ChatMessage {
   expireSecs?: number;
   /** UTC 'YYYY-MM-DD HH:MM:SS' burn moment, set once the recipient reads it. */
   expiresAt?: string | null;
+  /** DM-only (kind:'dm') — reaction counts by emoji + this device's own pick. */
+  reactions?: Record<string, number>;
+  myReaction?: string | null;
 }
 
 export interface Conversation {
@@ -57,6 +60,7 @@ function dmToChat(m: DirectMessage): ChatMessage {
     key: `dm-${m.id}`, id: m.id, kind: 'dm', direction: m.direction,
     body: m.body, createdAt: m.createdAt, read: m.read,
     expireSecs: m.expireSecs, expiresAt: m.expiresAt,
+    reactions: m.reactions, myReaction: m.myReaction,
   };
 }
 

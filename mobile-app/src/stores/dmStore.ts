@@ -25,6 +25,7 @@ interface DMState {
   markRead:    (deviceId: string, messageId: number) => void;
   deleteMessage: (deviceId: string, messageId: number) => void;
   deleteThread:  (deviceId: string, peer: string) => void;
+  react:         (deviceId: string, messageId: number, emoji: string) => Promise<void>;
 }
 
 const MAX_STORED = 200;
@@ -117,6 +118,20 @@ export const useDMStore = create<DMState>()(
           const { deleteThread } = require('../services/entitlementService');
           deleteThread(deviceId, peer).catch(() => {});
         } catch {}
+      },
+
+      react: async (deviceId, messageId, emoji) => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reactToMessage } = require('../services/entitlementService');
+        try {
+          const { counts, mine } = await reactToMessage(deviceId, messageId, emoji);
+          set(s => ({
+            messages: s.messages.map(m =>
+              m.id === messageId ? { ...m, reactions: counts, myReaction: mine } : m),
+          }));
+        } catch (e) {
+          Logger.warn('DMStore', `react failed: ${e}`);
+        }
       },
     }),
     {

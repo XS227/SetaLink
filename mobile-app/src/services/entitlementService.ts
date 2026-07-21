@@ -290,10 +290,19 @@ export interface DirectMessage {
   expireSecs:  number;
   /** UTC 'YYYY-MM-DD HH:MM:SS' when the message burns — set once it is read. */
   expiresAt:   string | null;
+  /** Reaction counts by emoji, e.g. { '👍': 2 } — empty object when none.
+   *  Optional: older test fixtures / pre-2026-07-22 cached data won't have it. */
+  reactions?:  Record<string, number>;
+  /** This device's own reaction, if any (null = hasn't reacted, undefined =
+   *  unknown/older data). */
+  myReaction?: string | null;
 }
 
 /** Max characters per direct message — mirrors MSG_MAX_LEN server-side. */
 export const DM_MAX_LEN = 2000;
+
+/** Fixed reaction set — mirrors MSG_REACTIONS server-side (lib/messaging.php). */
+export const DM_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'] as const;
 
 /** Send a direct message addressed by RealGram ID (user_id / device_id / referral code).
  *  `expireSecs` > 0 makes it a disappearing message: the server hard-deletes it
@@ -315,6 +324,7 @@ export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
       id: number; direction: 'in' | 'out'; peer_user_id: string;
       peer_device: string; body: string; read: boolean; created_at: string;
       expire_secs?: number; expires_at?: string | null;
+      reactions?: Record<string, number>; my_reaction?: string | null;
     }>;
   };
   return (data.messages ?? []).map(m => ({
@@ -327,7 +337,33 @@ export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
     createdAt:  m.created_at,
     expireSecs: m.expire_secs ?? 0,
     expiresAt:  m.expires_at ?? null,
+    reactions:  m.reactions ?? {},
+    myReaction: m.my_reaction ?? null,
   }));
+}
+
+/** React to a message with one of DM_REACTIONS. Tapping the same emoji again
+ *  toggles it off. Returns the message's full reaction summary. */
+export async function reactToMessage(
+  deviceId: string, messageId: number, emoji: string,
+): Promise<{ counts: Record<string, number>; mine: string | null }> {
+  const data = await mobilePost('react-message', { device_id: deviceId, message_id: messageId, emoji }) as {
+    counts?: Record<string, number>; mine?: string | null;
+  };
+  return { counts: data.counts ?? {}, mine: data.mine ?? null };
+}
+
+/** Fire-and-forget: tell the server this device is typing to `peer` right
+ *  now. Safe to call on every keystroke — cheap upsert, no explicit "stopped
+ *  typing" call needed (server-side TTL handles that). */
+export async function setTyping(deviceId: string, peer: string): Promise<void> {
+  await mobilePost('set-typing', { device_id: deviceId, peer });
+}
+
+/** Poll: is `peer` currently typing to this device? */
+export async function getTyping(deviceId: string, peer: string): Promise<boolean> {
+  const data = await mobileGet('get-typing', { device_id: deviceId, peer }) as { typing?: boolean };
+  return !!data.typing;
 }
 
 /** Mark a received direct message as read. */

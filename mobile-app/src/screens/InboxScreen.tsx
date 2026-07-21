@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
   Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
@@ -12,6 +12,8 @@ import { useToastStore } from '../stores/toastStore';
 import { DM_MAX_LEN } from '../services/entitlementService';
 import { buildConversations, type Conversation, type ChatMessage } from '../utils/unifiedThreads';
 import { useT } from '../i18n';
+import { DM_REACTIONS } from '../services/entitlementService';
+import { setTyping as apiSetTyping, getTyping as apiGetTyping } from '../services/entitlementService';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
@@ -75,6 +77,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const dmMarkRead    = useDMStore((s) => s.markRead);
   const dmDeleteMsg   = useDMStore((s) => s.deleteMessage);
   const dmDeleteThread= useDMStore((s) => s.deleteThread);
+  const dmReact       = useDMStore((s) => s.react);
   const sending       = useDMStore((s) => s.sending);
 
   // Admin announcements (folded into the official thread)
@@ -89,6 +92,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [threadDraft, setThreadDraft] = useState('');
   const [burnSecs, setBurnSecs]   = useState(0);   // composer disappearing-timer
   const [nowMs, setNowMs]         = useState(Date.now());
+  const [reactingTo, setReactingTo] = useState<number | null>(null);
+  const [peerTyping, setPeerTyping] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Tick once a second while the open thread contains disappearing messages,
   // so burn countdowns run and expired bubbles vanish without waiting for the
@@ -120,7 +127,45 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     () => buildConversations(dms, announcements, supportName, myId),
     [dms, announcements, supportName, myId],
   );
+
+  // Message search (2026-07-22) — entirely client-side: every message the
+  // conversation list already has locally (title + full message bodies), no
+  // new backend call. A conversation matches if its title matches, or any
+  // message in it does.
+  const filteredConversations = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return conversations;
+    return conversations.filter((c) =>
+      c.title.toLowerCase().includes(q) ||
+      c.messages.some((m) => m.body.toLowerCase().includes(q)));
+  }, [conversations, searchQuery]);
+
   const openConvo = openKey ? conversations.find(c => c.key === openKey) ?? null : null;
+  const openPeer  = !openConvo?.support ? (openConvo?.peerUserId || openConvo?.peerDevice || '') : '';
+
+  // Typing indicator (2026-07-22) — poll while a DM thread is open (not
+  // Support, which isn't a live peer). Cheap GET, same cadence as the
+  // burn-countdown tick would be, but only while it's actually useful.
+  useEffect(() => {
+    if (!deviceId || !openPeer) { setPeerTyping(false); return; }
+    let cancelled = false;
+    const poll = () => apiGetTyping(deviceId, openPeer).then((v) => { if (!cancelled) setPeerTyping(v); }).catch(() => {});
+    poll();
+    const id = setInterval(poll, 2500);
+    return () => { cancelled = true; clearInterval(id); setPeerTyping(false); };
+  }, [deviceId, openPeer]);
+
+  // Tell the peer we're typing — fire-and-forget, debounced to once per 2.5s
+  // rather than every keystroke (the server treats it as a cheap upsert, but
+  // no reason to hammer it on every character).
+  const lastTypingPingRef = useRef(0);
+  const pingTyping = () => {
+    if (!deviceId || !openPeer) return;
+    const now = Date.now();
+    if (now - lastTypingPingRef.current < 2500) return;
+    lastTypingPingRef.current = now;
+    apiSetTyping(deviceId, openPeer).catch(() => {});
+  };
 
   // Mark a conversation's unread incoming messages read. The Support thread
   // mixes DM + announcement messages, so ack each via its own store path.
@@ -222,20 +267,40 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
           <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{t('pr.inbox')}</Text>
+        <TouchableOpacity
+          style={styles.searchBtn}
+          activeOpacity={0.7}
+          onPress={() => { setSearchOpen((v) => !v); if (searchOpen) setSearchQuery(''); }}
+        >
+          <Text style={styles.searchBtnText}>{searchOpen ? '✕' : '🔍'}</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.newBtn} activeOpacity={0.8} onPress={() => setCompose(true)}>
           <Text style={styles.newBtnText}>＋</Text>
         </TouchableOpacity>
       </View>
 
+      {searchOpen && (
+        <View style={styles.searchBar}>
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={t('dm.searchPlaceholder')}
+            placeholderTextColor={Colors.text.muted}
+            autoFocus
+          />
+        </View>
+      )}
+
       {/* Unified conversation list */}
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {conversations.length === 0 ? (
+        {filteredConversations.length === 0 ? (
           <GlassCard style={styles.emptyCard}>
             <Text style={styles.emptyIcon}>💬</Text>
-            <Text style={styles.emptyText}>{t('dm.empty')}</Text>
+            <Text style={styles.emptyText}>{searchQuery ? t('dm.noSearchResults') : t('dm.empty')}</Text>
           </GlassCard>
         ) : (
-          conversations.map((c) => {
+          filteredConversations.map((c) => {
             const preview = !c.latest
               ? t('dm.supportIntro')
               : c.latest.direction === 'out'
@@ -300,6 +365,9 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     )}
                   </View>
                   {openConvo.support && <Text style={styles.threadSubtitle}>{t('dm.supportTag')}</Text>}
+                  {!openConvo.support && peerTyping && (
+                    <Text style={styles.threadSubtitle}>{t('dm.typing')}</Text>
+                  )}
                 </View>
                 {!openConvo.support && (
                   <TouchableOpacity testID="convo-delete" style={styles.threadDeleteBtn} activeOpacity={0.7} onPress={() => confirmDeleteThread(openConvo)}>
@@ -319,39 +387,73 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 {openConvo.messages.filter(m => !isBurned(m)).map((m) => {
                   const out = m.direction === 'out';
                   const burning = (m.expireSecs ?? 0) > 0;
+                  const canReact = m.kind === 'dm';
+                  const reactionEntries = Object.entries(m.reactions ?? {}).filter(([, n]) => n > 0);
                   return (
-                    <TouchableOpacity
-                      key={m.key}
-                      activeOpacity={0.9}
-                      onLongPress={() => confirmDeleteMessage(openConvo, m)}
-                      style={[styles.bubbleRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}
-                    >
-                      <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, burning && styles.bubbleBurn]}>
-                        {!!m.title && <Text style={styles.bubbleTitle}>{m.title}</Text>}
-                        <Text style={[styles.bubbleText, out && styles.bubbleTextOut]}>{m.body}</Text>
-                        {(() => {
-                          const url = extractUrl(m.body);
-                          if (!url) return null;
-                          return (
+                    <View key={m.key}>
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => canReact && setReactingTo(reactingTo === m.id ? null : m.id)}
+                        onLongPress={() => confirmDeleteMessage(openConvo, m)}
+                        style={[styles.bubbleRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}
+                      >
+                        <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, burning && styles.bubbleBurn]}>
+                          {!!m.title && <Text style={styles.bubbleTitle}>{m.title}</Text>}
+                          <Text style={[styles.bubbleText, out && styles.bubbleTextOut]}>{m.body}</Text>
+                          {(() => {
+                            const url = extractUrl(m.body);
+                            if (!url) return null;
+                            return (
+                              <TouchableOpacity
+                                style={styles.bubbleLinkBtn}
+                                activeOpacity={0.75}
+                                onPress={() => Linking.openURL(url).catch(() => {})}
+                              >
+                                <Text style={styles.bubbleLinkText}>🔗 {t('dm.openLink')}</Text>
+                              </TouchableOpacity>
+                            );
+                          })()}
+                          {burning && (
+                            <Text style={styles.burnNote}>
+                              🔥 {m.expiresAt
+                                ? t('dm.burnLeft').replace('{t}', burnRemaining(m.expiresAt, nowMs))
+                                : t('dm.burnPending').replace('{t}', burnLabel(m.expireSecs ?? 0))}
+                            </Text>
+                          )}
+                          <Text style={[styles.bubbleTime, out && styles.bubbleTimeOut]}>{m.createdAt.slice(11, 16)}</Text>
+                        </View>
+                      </TouchableOpacity>
+
+                      {reactionEntries.length > 0 && (
+                        <View style={[styles.reactionBadgeRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}>
+                          {reactionEntries.map(([emoji, count]) => (
                             <TouchableOpacity
-                              style={styles.bubbleLinkBtn}
-                              activeOpacity={0.75}
-                              onPress={() => Linking.openURL(url).catch(() => {})}
+                              key={emoji}
+                              style={[styles.reactionBadge, m.myReaction === emoji && styles.reactionBadgeMine]}
+                              onPress={() => dmReact(deviceId, m.id, emoji)}
+                              activeOpacity={0.7}
                             >
-                              <Text style={styles.bubbleLinkText}>🔗 {t('dm.openLink')}</Text>
+                              <Text style={styles.reactionBadgeText}>{emoji} {count}</Text>
                             </TouchableOpacity>
-                          );
-                        })()}
-                        {burning && (
-                          <Text style={styles.burnNote}>
-                            🔥 {m.expiresAt
-                              ? t('dm.burnLeft').replace('{t}', burnRemaining(m.expiresAt, nowMs))
-                              : t('dm.burnPending').replace('{t}', burnLabel(m.expireSecs ?? 0))}
-                          </Text>
-                        )}
-                        <Text style={[styles.bubbleTime, out && styles.bubbleTimeOut]}>{m.createdAt.slice(11, 16)}</Text>
-                      </View>
-                    </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+
+                      {canReact && reactingTo === m.id && (
+                        <View style={[styles.reactionPickerRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}>
+                          {DM_REACTIONS.map((emoji) => (
+                            <TouchableOpacity
+                              key={emoji}
+                              style={styles.reactionPickerBtn}
+                              onPress={() => { dmReact(deviceId, m.id, emoji); setReactingTo(null); }}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.reactionPickerEmoji}>{emoji}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
                   );
                 })}
               </ScrollView>
@@ -372,7 +474,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   testID="convo-input"
                   style={styles.threadInput}
                   value={threadDraft}
-                  onChangeText={(v) => setThreadDraft(v.slice(0, DM_MAX_LEN))}
+                  onChangeText={(v) => { setThreadDraft(v.slice(0, DM_MAX_LEN)); pingTyping(); }}
                   placeholder={t('dm.messagePlaceholder')}
                   placeholderTextColor={Colors.text.muted}
                   multiline
@@ -456,6 +558,10 @@ const styles = StyleSheet.create({
   title:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
   newBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
   newBtnText:    { fontSize: 22, color: '#021b10', marginTop: -2, fontWeight: '700' },
+  searchBtn:     { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
+  searchBtnText: { fontSize: 16 },
+  searchBar:     { paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2] },
+  searchInput:   { backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, borderRadius: Radius.lg, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], color: Colors.text.primary, fontSize: Typography.size.sm, fontFamily: Typography.family.body },
 
   scroll:        { flex: 1 },
   content:       { paddingHorizontal: Layout.screenPadding, gap: Spacing[3], paddingTop: Spacing[1] },
@@ -508,6 +614,15 @@ const styles = StyleSheet.create({
   bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400] },
   bubbleTime:    { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end', marginTop: 2 },
   bubbleTimeOut: { color: 'rgba(2,27,16,0.6)' },
+
+  reactionBadgeRow: { flexDirection: 'row', gap: 4, marginTop: -6, marginBottom: 6, paddingHorizontal: 4 },
+  reactionBadge:    { flexDirection: 'row', backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
+  reactionBadgeMine:{ borderColor: Colors.emerald[400] },
+  reactionBadgeText:{ fontSize: 11, color: Colors.text.secondary },
+
+  reactionPickerRow: { flexDirection: 'row', gap: 6, marginTop: -4, marginBottom: 8, paddingHorizontal: 4, backgroundColor: Colors.bg.surface, borderRadius: 20, borderWidth: 1, borderColor: Colors.border.default, alignSelf: 'flex-start', paddingVertical: 4 },
+  reactionPickerBtn: { paddingHorizontal: 4 },
+  reactionPickerEmoji: { fontSize: 20 },
   bubbleBurn:    { borderWidth: 1, borderColor: 'rgba(255,140,60,0.5)' },
   burnNote:      { fontSize: 10, fontFamily: Typography.family.mono, color: '#FF8C3C', marginTop: 3 },
   burnChip:      { height: 46, minWidth: 46, paddingHorizontal: 6, borderRadius: 23, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center', justifyContent: 'center' },
