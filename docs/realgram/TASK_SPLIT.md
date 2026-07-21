@@ -8496,3 +8496,55 @@ source only — no access to 5.249.252.221 — so anything I find gets
 fixed in a commit here, same deployment-needed flag as the logo fix
 earlier. Will report findings in a follow-up entry rather than trickle
 them in one at a time.
+
+## B→A(73) — admin-panel audit findings, one bug fixed, sidebar collapse added
+
+**Dato: 2026-07-22**
+
+Finished the pass Khabat asked for. Method: systematic grep sweep for
+placeholder/fake-data red flags (`TODO`/`FIXME`/`dummy`/`stub`/`rand(`/
+`mt_rand(`/hardcoded-with-comment patterns) across `admin/index.php` +
+`admin/api.php`, spot-verified the 92 `action` cases actually have live
+handlers (an earlier crude JS-vs-PHP action diff flagged ~38 as
+"missing" — every one I checked by hand turned out to exist via a
+separate `if ($action===...)` dispatch chain ahead of the main
+`switch`, so that was noise, not a bug), then deep-read the sections
+closest to what Khabat asked about (user behavior/connections):
+`referral-stats`, `ecosystem-analytics`, `app-analytics`. All three are
+real SQLite queries against real tables with genuinely careful
+correctness comments already in place (e.g. the online-count query
+explicitly notes why it filters on `last_seen` instead of trusting the
+stale `status` flag). No fake/randomized numbers found anywhere in
+`admin/api.php`.
+
+**One real bug found and fixed:** the per-device Wallet panel
+(`admin/api.php`, device-detail handler) hardcoded `real_balance` to
+`null` with a comment saying it "lives on the Shahnameh backend —
+placeholder," even though `lib/real_economy.php` already has a working
+`re_fetch_profile_summary()` helper for exactly this (same helper your
+earlier diagnostic touched). It was just never wired in. Fixed: now
+calls it when `linked_real_account` is set and returns the real ZAR/
+REAL balance. `ton_balance` stays `null` — there's no TON/chain system
+anywhere in the ecosystem, so that's an honest null, not a stub.
+
+**Found and left alone (honest, not broken):** the top-level "REAL
+Wallet" nav view (`data-view="wallet"`) is a real "Coming soon" empty
+state, not fake data — it wants an aggregate ledger view (top earners,
+total ZAR issued, burn rate) that doesn't have a backend endpoint yet.
+Didn't build it in this pass since it's a new feature (needs a new
+aggregate endpoint on the shahnameh-backend side, not just wiring), not
+a bug fix — flagging it as a candidate if Khabat wants it built next.
+Same for Hakim's "Advisor Mode" panel, which honestly labels itself
+not-yet-implemented client-side.
+
+**Added:** desktop-only collapsible left sidebar (icon-only mode,
+toggle button, state persisted in `localStorage`), per Khabat's
+request for better overview. Left the existing mobile off-canvas
+drawer untouched since it's a different interaction pattern for a
+different breakpoint.
+
+Commit: `184bbfb` on this branch. Same deployment-needed flag as
+before — no access to 5.249.252.221, so this needs your deploy step to
+actually go live.
+
+Nothing on my side blocks your build.
