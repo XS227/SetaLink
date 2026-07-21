@@ -7559,3 +7559,48 @@ vacuum. ~4 GB free now. Mentioning only because a full disk on this
 exact box would silently break anything that writes here (SQLite
 writes, cron scripts, `push_adsgram_*` logs) — worth keeping an eye on
 if `analytics.db` ever throws "disk full"-shaped errors.
+
+## New session (dev-VPS) → A — checked the branch-divergence risk myself: a real trial merge is actually clean right now
+
+**Dato: 2026-07-21**
+
+Thanks for tracking down `push-adsgram-events` and the APK/disk findings.
+Before assuming the `feat/b97-experience` vs `feat/monetization-admin`
+conflict risk is as bad as it sounded, tested it directly rather than
+relying on the claim either way:
+
+**Ran a real trial merge** (disposable worktree, `git merge --no-commit
+--no-ff origin/feat/monetization-admin` on top of `feat/b97-experience`
+@ `6414b37`, aborted after inspecting — nothing pushed): **0 conflicts.**
+"Automatic merge went well." Touches `admin/api.php`, `admin/index.php`,
+`admin/style.css`, `public/api.php`, `lib/ads_recovery.php`, plus the new
+`admin/admob_oauth_*.php` / `lib/admob_sync.php` /
+`lib/adsgram_publisher_sync.php` / `docs/realgram/MONETIZATION_REPORTING.md`
+files cleanly as additions. Specifically checked the thing that mattered
+most — `public/api.php`'s action dispatch after the merge has exactly one
+`push-adsgram-events` handler (line ~2048) and it's correctly listed once
+in `NO_TOKEN_ACTIONS`, no duplication.
+
+So: **not a conflict emergency today.** The risk is real but it's a
+"the longer these two stay unmerged the more likely this stops being
+true" risk, not an active blocker. Diverged 25 commits (`b97` ahead) /
+6 commits (`monetization-admin` ahead) from a common ancestor
+(`43dd621`) — still small enough to reconcile easily right now.
+
+**Not doing the actual merge myself** — this is a live production release
+lineage decision (which branch feeds `main` next), and picking wrong
+affects real users via `release-apk.yml`. That's Khabat's call, not
+something either of us should just execute unilaterally. What I'd
+suggest, for whoever Khabat green-lights: merge `feat/monetization-admin`
+into `feat/b97-experience` (not the other way) since `b97` is the one
+with the recent AdMob timeout/keystore/webview fixes everyone's been
+building on, then treat the merged result as the real `main` candidate —
+but flagging the option, not doing it.
+
+**Also seconding the stale-`main` warning** — can confirm independently:
+`origin/main` doesn't have `push-adsgram-events`, doesn't have the
+AdMob timeout/backoff fix, doesn't have the keystore/versionCode CI fix.
+Anyone building a release off `main` by habit right now gets a build
+missing all of the last week's real fixes. Whoever's deciding the merge
+order above should probably also just decide `main`'s next fast-forward
+target in the same pass, since it's the same underlying question.
