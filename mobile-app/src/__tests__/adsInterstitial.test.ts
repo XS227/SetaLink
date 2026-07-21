@@ -58,7 +58,7 @@ describe('interstitial ads on connect', () => {
   let load: jest.Mock;
   let setVpnState: (s: string) => void;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.resetModules();   // fresh adsService module state per test
     jest.useFakeTimers();  // the load-timeout guard schedules a real setTimeout otherwise
     const adMock = (jest.requireMock('react-native-google-mobile-ads') as any).__mock;
@@ -71,6 +71,11 @@ describe('interstitial ads on connect', () => {
     setVpnState('idle');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     ads = require('../services/adsService');
+    // preloadInterstitial() now gates on MobileAds.initialize() having
+    // resolved (Khabat, 2026-07-20) — pre-warm it here, same as HomeScreen/
+    // WatchAdCard do at boot, so tests exercise the steady state rather than
+    // the one-time init race.
+    await ads.initAds();
   });
 
   afterEach(() => {
@@ -139,7 +144,7 @@ describe('tunnel-gated preload (Iran fix — Khabat, 2026-07-18)', () => {
   let setVpnState: (s: string) => void;
   let trackEvent: jest.Mock;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.resetModules();
     jest.useFakeTimers();
     const adMock = (jest.requireMock('react-native-google-mobile-ads') as any).__mock;
@@ -151,6 +156,7 @@ describe('tunnel-gated preload (Iran fix — Khabat, 2026-07-18)', () => {
     trackEvent.mockClear();
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     ads = require('../services/adsService');
+    await ads.initAds();
   });
 
   afterEach(() => { jest.useRealTimers(); });
@@ -171,18 +177,22 @@ describe('tunnel-gated preload (Iran fix — Khabat, 2026-07-18)', () => {
   });
 
   it('a stuck load times out, logs AD_LOAD_ERROR(code=timeout), and can then retry', () => {
+    // Connected: the load timeout is the longer, VPN-aware 20s ceiling
+    // (Khabat, 2026-07-20: raise from 8s — extra RTT through the tunnel was
+    // tripping the old timeout on perfectly healthy loads).
     setVpnState('connected');
     ads.showInterstitialAfterConnect();
     expect(load).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(8_000);
+    jest.advanceTimersByTime(20_000);
 
     expect(trackEvent).toHaveBeenCalledWith(
       'AD_LOAD_ERROR', undefined,
-      expect.objectContaining({ slot: 'interstitial', code: 'timeout' }),
+      expect.objectContaining({ slot: 'interstitial', code: 'timeout', vpn_connected: true }),
     );
-    // Bounded retry (backed off) should fire a second load attempt.
-    jest.advanceTimersByTime(1_200);
+    // Bounded, backed-off retry (5s/15s/30s) should fire a second load attempt
+    // after the first step of the schedule.
+    jest.advanceTimersByTime(5_000);
     expect(load).toHaveBeenCalledTimes(2);
   });
 

@@ -36,7 +36,8 @@ import { WebView, WebViewNavigation } from 'react-native-webview';
 import type {
   WebViewNavigationEvent, WebViewErrorEvent, WebViewHttpErrorEvent, ShouldStartLoadRequest,
 } from 'react-native-webview/lib/WebViewTypes';
-import { Colors, Layout, Radius, Spacing, Typography } from '../design/tokens';
+import { Colors, Radius, Spacing, Typography } from '../design/tokens';
+import { BottomNav } from './BottomNav';
 import { useT } from '../i18n';
 import { useIdentityStore } from '../stores/identityStore';
 import { useAuthStore } from '../stores/authStore';
@@ -61,6 +62,17 @@ import { buildQueryString } from '../utils/queryString';
 // here since BASE_GAME_URL now lives in this shared component instead).
 const BASE_GAME_URL = 'https://shahnameh.setaei.com/season2';
 const PANEL_API     = 'https://setalink.no/api.php';
+
+// Shared by the initial before-content-loaded injection AND the live-update
+// effect below (ShahnamehWebView) so both paths set the exact same variable
+// the exact same way — season2's CSS reads this to reserve space for
+// RealGram's native bottom tab bar (Khabat's "RealGram bottom nav dekker
+// spillinnhold" report, 2026-07-19; chapter/guild retest still broken,
+// 2026-07-20 — root cause was `injectedJavaScriptBeforeContentLoaded` only
+// ever firing once per page load, never updated afterward).
+function bottomNavHeightScript(px: number): string {
+  return `document.documentElement.style.setProperty('--realgram-bottom-nav-height', '${px}px'); true;`;
+}
 
 // ── Debug bus (2026-07-19, Khabat: "vi trenger konkret runtime-bevis fra
 // enheten, ikke flere antakelser") ──────────────────────────────────────
@@ -447,6 +459,24 @@ function ShahnamehWebView({
   const [pageVisuallyReady, setPageVisuallyReady] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // BottomNav.CONTENT_HEIGHT is the single source of truth for the nav's own
+  // height (see BottomNav.tsx) — insets.bottom is reactive (rotation,
+  // foldables) so this is recomputed on every render, not read once.
+  const bottomNavHeightPx = BottomNav.CONTENT_HEIGHT + insets.bottom;
+
+  // injectedJavaScriptBeforeContentLoaded (below, in the WebView JSX) only
+  // ever fires once per page load — it does NOT re-run if insets.bottom
+  // changes while the page is already loaded (rotation, etc.), so without
+  // this the CSS variable can go stale or, if the before-load script never
+  // fired for this particular navigation, never get set at all (confirmed
+  // 2026-07-20: chapter.html retest still showed the footer overlap despite
+  // the server-side CSS fix being live). injectJavaScript() pushes an
+  // update into the already-loaded page; harmless no-op if the WebView
+  // hasn't painted anything yet (the before-load script covers that case).
+  useEffect(() => {
+    webRef.current?.injectJavaScript(bottomNavHeightScript(bottomNavHeightPx));
+  }, [bottomNavHeightPx]);
+
   const clearLoadTimeout = useCallback(() => {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
   }, []);
@@ -672,16 +702,13 @@ function ShahnamehWebView({
           // room for it — there's no native safe-area for a sibling native
           // view like our tab bar, only for the OS chrome (Khabat's
           // "RealGram bottom nav dekker spillinnhold" report, 2026-07-19).
-          // Fixed 2026-07-19 (build 116 retest: some bottom buttons still
-          // unreachable): this was Layout.bottomNavHeight alone (80, the
-          // nav's own fixed content height) — BottomNav.tsx also adds
-          // insets.bottom (the device's home-indicator/gesture-nav safe
-          // area) as extra bottom padding, so the nav's real on-screen
-          // height is taller than 80 on any device with a non-zero bottom
-          // inset. The injected value undercounted it on exactly those
-          // devices — now includes insets.bottom too.
+          // This only covers the initial paint of each page load — the
+          // useEffect above (keyed on bottomNavHeightPx) handles updates
+          // to an already-loaded page, and BottomNav.CONTENT_HEIGHT (not a
+          // separately hand-maintained constant) is the single source of
+          // truth for the nav's own height.
           injectedJavaScriptBeforeContentLoaded={`
-            document.documentElement.style.setProperty('--realgram-bottom-nav-height', '${Layout.bottomNavHeight + insets.bottom}px');
+            ${bottomNavHeightScript(bottomNavHeightPx)}
             const meta = document.createElement('meta');
             meta.name = 'viewport';
             meta.content = 'width=device-width, initial-scale=1, maximum-scale=1';

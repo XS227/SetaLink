@@ -3267,6 +3267,74 @@ switch ($action) {
         ]);
         break;
 
+    case 'ad-errors-grouped':
+        // Grouped AD_LOAD_ERROR view (Khabat, 2026-07-20: "do not spam admin
+        // with identical errors — aggregate by slot, error code and user, show
+        // a failure count"). Same window convention as banner-ads-stats.
+        // One row per (slot, code, device_id) with a count + first/last seen,
+        // instead of a raw list where one flaky device can bury everything
+        // else under repeated identical rows.
+        $db = open_analytics_db();
+        $from_raw = trim($_GET['from'] ?? '');
+        $to_raw   = trim($_GET['to']   ?? '');
+        if ($from_raw && $to_raw
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from_raw)
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to_raw)) {
+            // as-is
+        } else {
+            $days_raw = (int)($_GET['days'] ?? 7);
+            $days     = max(1, min(90, $days_raw));
+            $from_raw = gmdate('Y-m-d', strtotime("-{$days} days"));
+            $to_raw   = gmdate('Y-m-d');
+        }
+        $fromDt = $from_raw . ' 00:00:00';
+        $toDt   = gmdate('Y-m-d', strtotime($to_raw) + 86400) . ' 00:00:00'; // exclusive
+
+        $groups = [];
+        try {
+            $st = $db->prepare("
+                SELECT
+                    device_id,
+                    json_extract(props,'\$.slot')          AS slot,
+                    json_extract(props,'\$.code')           AS code,
+                    json_extract(props,'\$.domain')         AS domain,
+                    COUNT(*)                                AS cnt,
+                    MIN(created_at)                         AS first_seen,
+                    MAX(created_at)                         AS last_seen,
+                    MAX(json_extract(props,'\$.message'))   AS sample_message,
+                    -- last-known VPN state among this group's events, not yet sent
+                    -- by every client build — NULL until the app update ships.
+                    MAX(CASE WHEN json_extract(props,'\$.vpn_connected') IN (1,'true')
+                             THEN 1 ELSE 0 END)              AS vpn_connected_seen
+                FROM app_events
+                WHERE event = 'AD_LOAD_ERROR'
+                  AND created_at >= ? AND created_at < ?
+                GROUP BY device_id, slot, code
+                ORDER BY cnt DESC
+                LIMIT 200
+            ");
+            $st->execute([$fromDt, $toDt]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $groups[] = [
+                    'device_id'      => $row['device_id'],
+                    'slot'           => $row['slot'] ?? '',
+                    'code'           => $row['code'] ?? '',
+                    'domain'         => $row['domain'] ?? '',
+                    'count'          => (int)$row['cnt'],
+                    'first_seen'     => $row['first_seen'],
+                    'last_seen'      => $row['last_seen'],
+                    'sample_message' => (string)($row['sample_message'] ?? ''),
+                    'vpn_connected'  => (bool)$row['vpn_connected_seen'],
+                ];
+            }
+        } catch (\Exception $e) { /* app_events doesn't exist yet — empty below */ }
+
+        api_ok([
+            'window' => ['from' => $from_raw, 'to' => $to_raw],
+            'groups' => $groups,
+        ]);
+        break;
+
     case 'payments-metrics':
         // Premium payments overview: packages, REAL vs USDT revenue/GB, discount
         // cost/value, and intent lists (pending/confirmed/failed).
@@ -3618,6 +3686,11 @@ switch ($action) {
                                                   'AD_INTERSTITIAL_CLICK','AD_LOAD_ERROR')
                                  ORDER BY id DESC LIMIT 30");
             $ae->execute([$did]);
+            // Collapse consecutive identical (kind+slot+code) rows into one with
+            // a count — a device stuck retrying the same failure shouldn't bury
+            // its other 29 events under 29 copies of the same line (Khabat,
+            // 2026-07-20: don't spam admin with identical errors).
+            $prevKey = null;
             foreach ($ae->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 $props = json_decode((string)($row['props'] ?? ''), true) ?: [];
                 $kind = [
@@ -3631,11 +3704,28 @@ switch ($action) {
                 ][$row['event']] ?? (
                     ($props['code'] ?? '') === 'googleMobileAds/no-fill' ? 'no_fill' : 'error'
                 );
+                $code = (string)($props['code'] ?? '');
+                $key  = $kind . '|' . ($props['slot'] ?? '') . '|' . $code;
+                if ($prevKey === $key && ($kind === 'error' || $kind === 'no_fill')) {
+                    // Same failure as the row we just appended — bump its count
+                    // and extend its time range instead of adding a new row.
+                    $last = &$adEvents[count($adEvents) - 1];
+                    $last['count']      = ($last['count'] ?? 1) + 1;
+                    $last['first_seen'] = $row['created_at'];   // rows are DESC — this is earlier
+                    unset($last);
+                    continue;
+                }
+                $prevKey = $key;
                 $adEvents[] = [
-                    'created_at' => $row['created_at'],
-                    'slot'       => $props['slot'] ?? '',
-                    'kind'       => $kind,
-                    'detail'     => $kind === 'error' ? (string)($props['message'] ?? '') : '',
+                    'created_at'    => $row['created_at'],
+                    'first_seen'    => $row['created_at'],
+                    'count'         => 1,
+                    'slot'          => $props['slot'] ?? '',
+                    'kind'          => $kind,
+                    'code'          => $code,
+                    'domain'        => (string)($props['domain'] ?? ''),
+                    'vpn_connected' => array_key_exists('vpn_connected', $props) ? (bool)$props['vpn_connected'] : null,
+                    'detail'        => ($kind === 'error' || $kind === 'no_fill') ? (string)($props['message'] ?? '') : '',
                 ];
             }
         } catch (\Exception $e) { /* app_events doesn't exist yet — no events */ }

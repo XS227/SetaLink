@@ -5,6 +5,24 @@
     "error": "/var/log/xray/error.log"
   },
   "stats": {},
+  "dns": {
+    "servers": [
+      {
+        "address": "8.8.8.8",
+        "domains": [
+          "domain:googleads.g.doubleclick.net",
+          "domain:doubleclick.net",
+          "domain:googlesyndication.com",
+          "domain:admob.com",
+          "domain:app-measurement.com",
+          "domain:googleapis.com",
+          "domain:gstatic.com"
+        ]
+      },
+      "1.1.1.1",
+      "localhost"
+    ]
+  },
   "api": {
     "tag": "api",
     "services": [
@@ -349,6 +367,27 @@
           "inbound-recovery"
         ],
         "outboundTag": "block"
+      },
+      {
+        "type": "field",
+        "inboundTag": [
+          "inbound-ws",
+          "inbound-xhttp",
+          "inbound-httpup",
+          "inbound-reality",
+          "inbound-reality-ms",
+          "inbound-reality-apple"
+        ],
+        "domain": [
+          "domain:googleads.g.doubleclick.net",
+          "domain:doubleclick.net",
+          "domain:googlesyndication.com",
+          "domain:admob.com",
+          "domain:app-measurement.com",
+          "domain:googleapis.com",
+          "domain:gstatic.com"
+        ],
+        "outboundTag": "direct"
       },
       {
         "type": "field",
