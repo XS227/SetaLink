@@ -431,6 +431,7 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
         useAuthStore.getState().logout();
         navigation.replace('Auth');
       }}
+      onSettings={() => navigation.navigate('Settings')}
     />
   );
 }

@@ -38,6 +38,10 @@ interface Props {
   // swapping the tab's screen doesn't silently strand users signed in with
   // no way out.
   onSignOut?: () => void;
+  // Settings became unreachable app-wide once this screen replaced the old
+  // ProfileScreen (which owned the only gear-icon entry point) — restored
+  // here, same corner it lived in before (Khabat, 2026-07-21).
+  onSettings?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -73,7 +77,7 @@ function StatCell({ value, label }: { value: string | number; label: string }) {
   );
 }
 
-export function RealGramProfileScreen({ onBack, onSignOut }: Props) {
+export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) {
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
   // Data balance lives on the VPN side (entitlement/quota), not the Shahnameh
   // backend contract §9 covers — pulled straight from the same authStore
@@ -91,6 +95,8 @@ export function RealGramProfileScreen({ onBack, onSignOut }: Props) {
   const avatarEmoji     = useIdentityStore((s) => s.avatarEmoji);
   const avatarColor     = useIdentityStore((s) => s.avatarColor);
   const persona         = useIdentityStore((s) => s.persona);
+  const localHandle     = useIdentityStore((s) => s.handle);
+  const localDisplayName = useIdentityStore((s) => s.displayName);
   const recentSessions  = useSessionStore((s) => s.sessions)
     .slice()
     .sort((a, b) => (b.endedAt || b.startedAt) - (a.endedAt || a.startedAt))
@@ -133,7 +139,16 @@ export function RealGramProfileScreen({ onBack, onSignOut }: Props) {
   }
 
   const { identity, economy, streaks, achievements, chapters, clan } = profile;
-  const displayName = identity.handle || identity.username || identity.first_name || profile.account;
+  // A brand-new/device-only account (no Telegram link yet) has no server-side
+  // identity fields — Shahnameh's contract §9 response is empty, not wrong.
+  // The user picked a real identity locally during onboarding (identityStore,
+  // A-11/B-20) well before this screen existed; prefer that over falling back
+  // to `profile.account` ("device:sl-xxxx…"), which is an internal account
+  // key, never meant to be shown as a name (Khabat, 2026-07-21).
+  const displayName =
+    identity.handle || identity.username || identity.first_name
+    || (localHandle ? `@${localHandle}` : '') || localDisplayName
+    || 'RealGram Player';
   const chapterPct  = chapters.total > 0 ? chapters.completed / chapters.total : 0;
 
   return (
@@ -141,6 +156,11 @@ export function RealGramProfileScreen({ onBack, onSignOut }: Props) {
       {!!onBack && (
         <TouchableOpacity onPress={onBack} style={styles.floatingBack} hitSlop={12} activeOpacity={0.75}>
           <Text style={styles.backIcon}>‹</Text>
+        </TouchableOpacity>
+      )}
+      {!!onSettings && (
+        <TouchableOpacity onPress={onSettings} style={styles.floatingSettings} hitSlop={12} activeOpacity={0.75}>
+          <Text style={styles.settingsIcon}>⚙️</Text>
         </TouchableOpacity>
       )}
       <ScrollView
@@ -300,6 +320,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
   },
   backIcon:     { fontSize: 22, color: Colors.text.secondary, marginTop: -2 },
+  floatingSettings: {
+    position: 'absolute', top: Spacing[3], right: Spacing[4], zIndex: 10,
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(10,10,14,0.55)', borderRadius: 18,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
+  },
+  settingsIcon: { fontSize: 18, color: Colors.text.secondary },
 
   errorText:    { fontSize: 13, color: '#FF6B6B', textAlign: 'center', paddingHorizontal: Spacing[6], fontFamily: Typography.family.body },
   retryBtn:     { backgroundColor: Colors.gold[400], borderRadius: Radius.xl, paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },
