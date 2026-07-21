@@ -59,7 +59,6 @@ import { getAdapter }            from '../services/vpnBridge';
 import { useAuthStore }          from '../stores/authStore';
 import { useSettingsStore }      from '../stores/settingsStore';
 import { useVpnStore }           from '../stores/vpnStore';
-import { useOverlayStore }       from '../stores/overlayStore';
 import { useServerStore }        from '../stores/serverStore';
 import { useAppBoot }            from '../hooks/useAppBoot';
 import { useDeepLinks }          from '../hooks/useDeepLinks';
@@ -127,15 +126,6 @@ function MainTabs() {
   // Country comes from the backend entitlement (geo-detected server-side);
   // used for staged per-country rollouts (e.g. Iran-first releases).
   const userCountry         = useAuthStore((s) => s.user?.country) || undefined;
-  // Hidden outright (not just padded) while a season2 modal/bottom-sheet/quiz/
-  // chapter-overlay/full-screen menu is open in the Game or Clan tab — see
-  // stores/overlayStore.ts + ShahnamehEmbed.tsx. Read here, in MainTabs' own
-  // render, and passed down as a plain closed-over value — NOT called inside
-  // the tabBar prop below, which @react-navigation/bottom-tabs invokes outside
-  // React's render dispatcher (confirmed in production, v0.9.80/v0.9.81:
-  // "Invalid hook call" crash on every cold start once MainTabs first mounts).
-  const overlayOpen         = useOverlayStore((s) => s.isOpen);
-
   const [isLocked, setIsLocked] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
@@ -261,9 +251,14 @@ function MainTabs() {
         tabBar={(props) => {
           const routeName = props.state.routes[props.state.index].name as string;
           const activeTab = SCREEN_TO_TAB[routeName] ?? 'home';
-          // overlayOpen is read from MainTabs' own render above — no hook
-          // call here, this closure just reads a captured value.
-          if (overlayOpen) return null;
+          // NEVER hide this — Khabat, 2026-07-22: hiding it while a season2
+          // overlay was open (previously gated on `overlayOpen`) trapped him
+          // inside Shahnameh with literally no way back to Profile/Clan/
+          // Freedom/Wallet, forcing a force-close. RealGram navigation must
+          // stay reachable at all times; season2's own bottom-nav-height CSS
+          // var (see ShahnamehEmbed.tsx) already reserves space so this bar
+          // doesn't cover the page's content, which was the original reason
+          // for hiding it.
           return (
             <BottomNav
               active={activeTab}

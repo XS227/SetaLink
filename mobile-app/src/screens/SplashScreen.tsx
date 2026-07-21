@@ -11,13 +11,17 @@
 
 import React, { useEffect, useRef } from 'react';
 import {
-  View, Text, Animated, StyleSheet, Dimensions,
+  View, Text, Animated, StyleSheet, Dimensions, Image,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { Colors, Typography, Animation } from '../design/tokens';
 import { APP_VERSION } from '../utils/version';
 
 const { width, height } = Dimensions.get('window');
+
+// The approved REAL-token mark (same asset as the app's own launcher icon
+// and ServerRow.tsx's REALINK_LOGO) — Khabat, 2026-07-22: the splash's
+// previous hand-drawn RealGram chat-bubble mark was not the approved logo.
+const REAL_LOGO_MARK = require('../assets/logo_mark.png');
 
 interface Props {
   onFinish: () => void;
@@ -127,22 +131,10 @@ export function SplashScreen({ onFinish }: Props) {
           {/* Glow halo */}
           <Animated.View style={[styles.logoGlow, { opacity: glowOpacity }]} />
 
-          {/* RealGram mark — bubble + spark (brand/realgram.svg), gold to match
-              the app's existing REAL-token identity (ic_launcher.png) rather
-              than introducing BRAND.md's separate proposed purple accent. */}
+          {/* Approved REAL-token mark — same asset as the launcher icon and
+              ServerRow.tsx, not a hand-drawn approximation. */}
           <View style={styles.logoMarkContainer}>
-            <View style={styles.maneRing} />
-            <Svg width={52} height={52} viewBox="0 0 24 24" fill="none">
-              <Path
-                d="M7.9 20A9 9 0 1 0 4 16.1L2.5 21.5z"
-                stroke={Colors.gold[300]}
-                strokeWidth={2}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <Path d="M12 8.5v6" stroke={Colors.gold[300]} strokeWidth={2} strokeLinecap="round" />
-              <Path d="M9 11.5h6" stroke={Colors.gold[300]} strokeWidth={2} strokeLinecap="round" />
-            </Svg>
+            <Image source={REAL_LOGO_MARK} style={styles.logoMarkImage} resizeMode="contain" />
           </View>
         </Animated.View>
 
@@ -217,12 +209,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  maneRing: {
-    position: 'absolute',
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: Colors.gold[500],
+  logoMarkImage: {
+    width: 84,
+    height: 84,
   },
   wordmark: {
     fontSize: Typography.size['3xl'],
