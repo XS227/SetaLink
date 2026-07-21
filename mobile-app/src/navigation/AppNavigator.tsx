@@ -31,7 +31,7 @@ import { HomeScreen }        from '../screens/HomeScreen';
 import { ServersScreen }     from '../screens/ServersScreen';
 import { SmartAIScreen }     from '../screens/SmartAIScreen';
 import { ActivityScreen }    from '../screens/ActivityScreen';
-import { ProfileScreen }     from '../screens/ProfileScreen';
+import { RealGramProfileScreen } from '../screens/RealGramProfileScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
@@ -44,7 +44,7 @@ import { PremiumScreen }            from '../screens/PremiumScreen';
 import { InboxScreen }             from '../screens/InboxScreen';
 import { TransferScreen }          from '../screens/TransferScreen';
 import { WalletScreen }            from '../screens/WalletScreen';
-import { ClanScreen }              from '../screens/ClanScreen';
+import { ShahnamehEmbed }          from '../components/ShahnamehEmbed';
 
 import { runBootSequence }       from '../services/bootService';
 import { claimPendingReferral }  from '../services/deepLinkService';
@@ -59,6 +59,7 @@ import { getAdapter }            from '../services/vpnBridge';
 import { useAuthStore }          from '../stores/authStore';
 import { useSettingsStore }      from '../stores/settingsStore';
 import { useVpnStore }           from '../stores/vpnStore';
+import { useOverlayStore }       from '../stores/overlayStore';
 import { useServerStore }        from '../stores/serverStore';
 import { useAppBoot }            from '../hooks/useAppBoot';
 import { useDeepLinks }          from '../hooks/useDeepLinks';
@@ -252,6 +253,15 @@ function MainTabs() {
         tabBar={(props) => {
           const routeName = props.state.routes[props.state.index].name as string;
           const activeTab = SCREEN_TO_TAB[routeName] ?? 'home';
+          // Hidden outright (not just padded) while a season2 modal/bottom-
+          // sheet/quiz/chapter-overlay/full-screen menu is open in the Game
+          // or Clan tab — see stores/overlayStore.ts + ShahnamehEmbed.tsx.
+          // eslint-disable-next-line react-hooks/rules-of-hooks -- tabBar is
+          // invoked as a render-prop component by @react-navigation/bottom-
+          // tabs on every relevant render, same call-order guarantee as any
+          // other component here.
+          const overlayOpen = useOverlayStore((s) => s.isOpen);
+          if (overlayOpen) return null;
           return (
             <BottomNav
               active={activeTab}
@@ -400,15 +410,21 @@ function WalletAdapter({ navigation, route }: ScreenAdapterProps) {
   return <WalletScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'wallet'} onNavigate={makeOnNavigate(navigation)} />;
 }
 
-function ClanAdapter({ navigation, route }: ScreenAdapterProps) {
-  return <ClanScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'clan'} onNavigate={makeOnNavigate(navigation)} />;
+function ClanAdapter() {
+  // Real, backend-backed clan/guild system (Clan/ClanApplication/ClanInvite
+  // models, /api/season2/clan/* routes) — the old native ClanScreen was
+  // never more than a client-side re-skin of referral count (its own file
+  // header said as much: "a real clan backend... is explicitly Not started
+  // in the roadmap"), which was already stale — guild.js/guild.html are the
+  // real, actively-maintained thing. Reuses the same hardened embed as the
+  // Game tab (identity gate, load-timeout/retry, overlay bridge) rather
+  // than a second bespoke WebView.
+  return <ShahnamehEmbed path="/guild.html" debugLabel="clan" />;
 }
 
-function ProfileAdapter({ navigation, route }: ScreenAdapterProps) {
+function ProfileAdapter({ navigation }: ScreenAdapterProps) {
   return (
-    <ProfileScreen
-      activeTab={SCREEN_TO_TAB[route.name] ?? 'profile'}
-      onNavigate={makeOnNavigate(navigation)}
+    <RealGramProfileScreen
       onSignOut={() => {
         useAuthStore.getState().logout();
         navigation.replace('Auth');

@@ -424,3 +424,68 @@ export function notifyVpnDisconnected(): void {
   _interLoading = false;
   _pendingShowUntil = 0;
 }
+
+/**
+ * Runs `proceed` right after the user dismisses an interstitial — or, if no
+ * ad becomes ready within `timeoutMs`, runs it immediately without one.
+ *
+ * Replaces the old Connect/Disconnect ad flow (Khabat, 2026-07-21): tapping
+ * Connect used to fire-and-forget `connect()` immediately and show an ad
+ * only if one happened to already be loaded (almost never, on a first
+ * connect — preloading only starts once the tunnel is already up); tapping
+ * Disconnect tore the tunnel down FIRST and showed an ad after, best-effort.
+ * The real, reported symptom: a load kicked off at connect-time that missed
+ * its narrow window kept loading in the background, then got shown by the
+ * unrelated foreground-open-ad trigger (useAppBoot.ts's `_showOpenAdIfDue`)
+ * whenever the user next returned to the app — a full-screen ad ambushing
+ * them minutes later, completely divorced from the action that started it.
+ *
+ * This makes the gate itself resolve quickly and predictably every time —
+ * shown within `timeoutMs` or not shown at all for this action — instead of
+ * leaving a straggler for something else to surface later. Never blocks
+ * `proceed` longer than `timeoutMs`, so a market where AdMob doesn't fill
+ * can never trap the user mid-connect or mid-disconnect.
+ */
+export function gateActionWithAd(proceed: () => void, timeoutMs = 6_000): void {
+  let settled = false;
+  let pollTimer: ReturnType<typeof setInterval> | null = null;
+  let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const finish = () => {
+    if (settled) return;
+    settled = true;
+    if (pollTimer) clearInterval(pollTimer);
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+    proceed();
+  };
+
+  const tryShowNow = (): boolean => {
+    if (!(_interReady && _interstitial) || interstitialIsStale()) return false;
+    try {
+      // In addition to preloadInterstitial()'s own CLOSED listener (which
+      // just reloads the next one) — this one gates `proceed` on the same
+      // event, so the action runs the moment the user actually dismisses
+      // the ad, not before.
+      _interstitial.addAdEventListener(AdEventType.CLOSED, finish);
+      _interstitial.show();
+      _interReady = false;
+      return true;
+    } catch {
+      dropInterstitial();
+      return false;
+    }
+  };
+
+  if (tryShowNow()) return;
+
+  if (!isAdsInitialized()) {
+    initAds().then(() => { if (!settled) preloadInterstitial(); }).catch(() => {});
+  } else {
+    preloadInterstitial();
+  }
+  deadlineTimer = setTimeout(finish, timeoutMs);
+  pollTimer = setInterval(() => {
+    if (settled) return;
+    if (tryShowNow()) { if (deadlineTimer) clearTimeout(deadlineTimer); if (pollTimer) clearInterval(pollTimer); }
+  }, 250);
+}

@@ -20,7 +20,7 @@ import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { useT }                from '../i18n';
-import { initAds, preloadInterstitial, showInterstitialOnConnect, showInterstitialAfterConnect, notifyVpnDisconnected } from '../services/adsService';
+import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
 
 import Svg, { Path } from 'react-native-svg';
 
@@ -95,33 +95,56 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     initAds().then(preloadInterstitial).catch(() => {});
   }, [userShowsAds, isConnected]);
 
-  const adShownAtTapRef       = useRef(false);
+  // Ad showing itself now happens entirely at the Connect/Disconnect tap
+  // (handlePower below, via gateActionWithAd) — this effect only resets
+  // in-flight ad-load state when the tunnel drops, so a load kicked off for
+  // one connect attempt can't linger and get shown later, out of context,
+  // by an unrelated trigger (the exact bug being fixed here).
   const wasConnectedForAdsRef = useRef(false);
   useEffect(() => {
-    if (isConnected && !wasConnectedForAdsRef.current) {
-      if (userShowsAds && !adShownAtTapRef.current) showInterstitialAfterConnect();
-      adShownAtTapRef.current = false;
-    }
     if (!isConnected && wasConnectedForAdsRef.current) {
       notifyVpnDisconnected();
     }
     wasConnectedForAdsRef.current = isConnected;
-  }, [isConnected, userShowsAds]);
+  }, [isConnected]);
+
+  // Guards against a double-tap re-triggering a second ad gate while one is
+  // still waiting on a load or on the user dismissing the ad — the button
+  // stays in its "connected"/"disconnected" state throughout that brief
+  // window (the actual connect()/disconnect() call is deliberately deferred
+  // until the gate resolves), so isBusy alone wouldn't catch a rapid second
+  // tap here.
+  const adGateBusyRef = useRef(false);
 
   const handlePower = useCallback(() => {
-    if (isBusy) return;
+    if (isBusy || adGateBusyRef.current) return;
     if (isConnected) {
-      disconnect();
-      // Best-effort — only when already loaded, never delays the disconnect.
-      if (userShowsAds) showInterstitialOnConnect();
+      if (userShowsAds) {
+        // Khabat, 2026-07-21: show the ad FIRST, then actually disconnect —
+        // previously this tore the tunnel down immediately and showed an ad
+        // after, best-effort.
+        adGateBusyRef.current = true;
+        gateActionWithAd(() => { adGateBusyRef.current = false; disconnect(); });
+      } else {
+        disconnect();
+      }
       return;
     }
     if (user && user.plan === 'free' && user.quotaBytesUsed >= user.quotaBytesTotal) {
       (onNavigate as (t: string) => void)('upgrade');
       return;
     }
+    // Tunnel bring-up starts immediately, same as before (must never be
+    // delayed by an ad network call — some markets block AdMob outright).
+    // The ad is gated separately, in parallel, so it appears right away
+    // instead of however long the old fire-and-forget load happened to take
+    // — by the time the user dismisses it, the tunnel is very likely already
+    // up and ready to browse.
     connect();
-    adShownAtTapRef.current = userShowsAds ? showInterstitialOnConnect() : false;
+    if (userShowsAds) {
+      adGateBusyRef.current = true;
+      gateActionWithAd(() => { adGateBusyRef.current = false; });
+    }
   }, [isBusy, isConnected, user, userShowsAds, connect, disconnect, onNavigate]);
 
   // Starlink referral progress

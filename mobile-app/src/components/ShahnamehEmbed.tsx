@@ -29,9 +29,10 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, BackHandler, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { WebView, WebViewNavigation } from 'react-native-webview';
 import type {
   WebViewNavigationEvent, WebViewErrorEvent, WebViewHttpErrorEvent, ShouldStartLoadRequest,
@@ -41,6 +42,7 @@ import { BottomNav } from './BottomNav';
 import { useT } from '../i18n';
 import { useIdentityStore } from '../stores/identityStore';
 import { useAuthStore } from '../stores/authStore';
+import { useOverlayStore } from '../stores/overlayStore';
 import { getSsoToken, checkAndCacheRealId } from '../services/ssoService';
 import { linkRealAccount } from '../services/realWalletService';
 import { parseDeepLink } from '../services/deepLinkService';
@@ -477,6 +479,42 @@ function ShahnamehWebView({
     webRef.current?.injectJavaScript(bottomNavHeightScript(bottomNavHeightPx));
   }, [bottomNavHeightPx]);
 
+  // ── Overlay bridge (2026-07-21) ────────────────────────────────────────
+  // season2/realgram-bridge.js posts {source:'season2bridge', type:'overlay-
+  // open'|'overlay-closed'} whenever any modal/bottom-sheet/quiz/chapter
+  // overlay/full-screen menu shows or hides — see that file for the
+  // DOM-observation approach (overlay implementations aren't unified across
+  // season2's pages, so it watches for known overlay-root selectors rather
+  // than requiring every call site to notify explicitly).
+  const isFocused = useIsFocused();
+
+  // Reset on blur/unmount — this tab may not be the one on screen anymore
+  // (Tab.Navigator keeps screens mounted across tab switches, no
+  // unmountOnBlur), so a stale "overlay open" from a backgrounded tab must
+  // never leave the OTHER tab's nav hidden.
+  useEffect(() => {
+    if (!isFocused) useOverlayStore.getState().setOpen(false);
+  }, [isFocused]);
+  useEffect(() => () => useOverlayStore.getState().setOpen(false), []);
+
+  // Android hardware back: while this screen is focused AND season2 reports
+  // an overlay open, forward the press into the page (closes the topmost
+  // overlay) instead of the default behavior (leaving the tab / app-exit
+  // confirmation). Matches Khabat's ask: "close the web modal first, not
+  // the whole game."
+  useEffect(() => {
+    if (Platform.OS !== 'android') return undefined;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!isFocused) return false;
+      if (!useOverlayStore.getState().isOpen) return false;
+      webRef.current?.injectJavaScript(
+        'window.RealGramBridge && window.RealGramBridge.handleNativeBack(); true;'
+      );
+      return true;
+    });
+    return () => sub.remove();
+  }, [isFocused]);
+
   const clearLoadTimeout = useCallback(() => {
     if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
   }, []);
@@ -678,6 +716,11 @@ function ShahnamehWebView({
           onMessage={(e: { nativeEvent: { data: string } }): void => {
             try {
               const msg = JSON.parse(e.nativeEvent.data) as Record<string, unknown>;
+              if (msg.source === 'season2bridge') {
+                if (msg.type === 'overlay-open')   useOverlayStore.getState().setOpen(true);
+                if (msg.type === 'overlay-closed') useOverlayStore.getState().setOpen(false);
+                return;
+              }
               if (msg.source !== 'season2debug') return;
               const step = String(msg.step || (msg.error ? `error:${msg.error}` : 'page-message'));
               console.log(`[REALDBG:7/7][${debugLabel}] page postMessage (season2debug)`, msg);
