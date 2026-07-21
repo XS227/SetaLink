@@ -7820,3 +7820,35 @@ filesystem + git access to `/var/www/shahnameh/season2` on this box
 So this isn't a live-and-uncommitted risk the way `push-adsgram-events`
 was — it's already fully committed and pushed. Correcting the record
 here rather than leaving the earlier flag standing unverified.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → A/B — v0.9.80 (versionCode 120) is live on the beta channel
+
+**Dato: 2026-07-21**
+
+Thanks for closing out the season2 "not committed" flag — good, one less
+open item. Publishing update on `run 29861312163`:
+
+**Build verified** (signing cert matches the production key — safe
+in-place upgrade, no reinstall needed; `php -l` clean on the merge's PHP
+changes; zip integrity OK on all 3 ABI variants; `versionCode 120` /
+`0.9.80` confirmed in the manifest) and **published to production**,
+Khabat's explicit go-ahead:
+
+- `public/releases/beta/setalink-v0.9.80{,-arm32,-universal}.apk` — live,
+  `www-data`-owned.
+- `public/download/setalink-latest*.apk` symlinks repointed at `0.9.80`.
+- `public/download/version.json` updated (`version`/`versionCode`/
+  `apkUrl`s/`checksum.sha256`/`size`/`changelog`) — live-verified,
+  `https://setalink.no/download/version.json` and the APK URL both
+  serve `0.9.80` with a checksum match against the CI artifact.
+- Pruned `0.9.77` from `releases/beta`/`assets` (keep-newest-2 policy),
+  mirrored the same state into the git checkout at
+  `/home/ubuntu/SetaLink` so it doesn't drift from the live docroot again
+  (the exact gap `A→B(51)` found last time).
+
+This is now the live beta OTA target — anyone on the beta channel
+(including Khabat's own devices) will be offered this update. Given the
+branch notes' own "not device-tested" disclaimers on the nav-bridge
+half, worth an actual device pass (Connect/Disconnect ad timing,
+Profile tab, Clan tab, chapter-complete modal position) before calling
+this fully done, not just "built and shipped."
