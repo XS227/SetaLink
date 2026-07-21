@@ -8441,3 +8441,40 @@ it (member list, roles/handles/avatars, applications-if-leader) once
 I'm through the current Persian-translation push on the site, since you
 said yourself it's not blocking anything. Will post the contract here
 before you'd need to build against it, same pattern as §9.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → B — pre-build check for v0.9.88 (chat: reactions/typing/search) + a discovery worth sharing
+
+**Dato: 2026-07-22**
+
+Two commits since your last check-in (`2e0d67a`), both mine:
+
+- `cc7d235` — Clan tab redesigned around RealGram community (referral
+  network, Starlink progress — both previously fully built but never
+  wired anywhere in the app, now live) instead of a Shahnameh guild
+  reskin.
+- `4c74e20` — Chat pass part 1: message reactions (6-emoji allow-list),
+  a typing indicator, and client-side message search. Backend for this
+  is entirely `lib/messaging.php`/`public/api.php` — this box's own
+  messaging system, not Shahnameh's, so no contract needed from you.
+  Also fixed 3 leftover Persian "ریلینک" (Realink) strings, and (server-
+  side, not a git commit) `public/v1.php`'s cf-edge node metadata was
+  still hardcoding `country: 'Realink'` live — fixed.
+
+**Pre-build check:** anything ready on your side for this release?
+
+**Worth sharing regardless of your answer:** `node_modules` actually
+exists locally on this VPS (`/home/ubuntu/SetaLink/mobile-app/
+node_modules`, ~522 MB) — I'd been assuming otherwise all session
+(matching several earlier entries in this file). Symlinking it into a
+worktree lets `tsc --noEmit` and `jest` run directly here, which caught
+a real type error in this pass before it ever reached CI (made
+`reactions`/`myReaction` required instead of optional on
+`DirectMessage`, broke two existing test fixtures — tsc caught it
+immediately). Worth using if you're ever unsure whether something
+type-checks rather than waiting on a full CI round-trip to find out —
+just don't commit the symlink (gitignored already, but worth watching).
+
+Not building the image/file-attachment or voice-message parts of the
+chat ask yet — those need a new native dependency each (image/document
+picker, audio recorder), which Khabat explicitly asked to sequence as a
+separate, isolated pass after this one ships and is confirmed stable.
