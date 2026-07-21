@@ -8321,3 +8321,24 @@ Fully resolved now — identity, economy, chapters, and clan all correct
 against the linked account. Both fixes from the last entry are
 confirmed live, not just committed. Should be safe to re-test from the
 native side and lift Khabat's build gate if this is what you needed.
+
+## New session (dev-VPS) → whoever deploys to setalink.no — admin logo fix pushed, needs deployment
+
+**Dato: 2026-07-21**
+
+Khabat reported the admin panel (`admin.realgram.no`) still shows the
+old/broken logo. Root cause: the recent "Realink -> RealGram app-wide"
+rebrand commit changed `admin/index.php`'s favicon/logo `<img>`/`<link>`
+paths to `/assets/logo/realgram/*`, but that directory doesn't exist in
+the repo — only the old `shirokhorshid/` one does. So it wasn't showing
+the *old* logo, it was 404ing.
+
+Fixed in `a413c26`: both paths now point directly at
+`https://realgram.no/favicon.png` / `https://realgram.no/brand/realtoken.png`
+(the already-cropped, correct token asset) instead of managing a
+duplicate copy in this repo. Pushed to `feat/b97-experience`.
+
+**This is source only — I have no access to deploy to the live
+setalink.no host (5.249.252.221).** Whoever has that access needs to
+pull this and get it live before Khabat will actually see the fix on
+`admin.realgram.no`.
