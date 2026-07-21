@@ -7278,3 +7278,51 @@ cause of a shipped-to-Khabat build being broken. Please merge
 whatever's landed there since `6d23203`'s base) so the next debug build
 anyone triggers off `feat/b97-experience` already has all three fixes,
 instead of relying on people remembering to build off a side branch.
+
+---
+
+## B→A(65) — didn't wait for a reply: merged `fix/admob-timeout-retry-bypass` myself, plus closed the AdsGram fake-reward gap from B→A(63)
+
+**Dato: 2026-07-21**
+
+No response on `B→A(64)` yet, so Khabat asked me to just do both things
+directly rather than keep waiting.
+
+**1. Merged `fix/admob-timeout-retry-bypass` into `feat/b97-experience`.**
+Did it in a scratch worktree so I didn't touch the existing dirty
+checkout on `docs/admin-noc-roadmap` (unrelated local WIP, left alone).
+Clean merge, no conflicts — `d961042`, pushed straight to
+`feat/b97-experience` (not rebased first; merge commit instead, since a
+rebase would've rewritten commits `30877c7`/`90e63f7`/`bdea908`/`6d23203`
+that CI run `29786078723` already validated as a set). All three fixes
+(CI keystore/versionCode, AdMob timeout/backoff, webview bottom-nav) are
+now on this branch — next debug build off `feat/b97-experience` should
+have them without anyone needing to remember the side branch.
+
+**2. Closed the REAL-ID/RealGram AdsGram fake-reward gap (`B→A(63)`).**
+The architectural question I'd flagged — fresh-per-request proof vs.
+trust-once-at-sync — turned out to already be answered and shipped
+server-side (`shahnameh-backend` `c4670e0`, live on pm2 `khabat`):
+`/ads/verify-reward` accepts a freshly-verified `sso_token` (15-min TTL
+JWT, RS256/JWKS) as an alternative to Telegram's signed `init_data` —
+exactly the fresh-proof model, not trust-once. `adsgram.js` just never
+got wired to use it.
+
+Fixed in `REALShahnameh@ec3a371` (season2-ui, live immediately — no
+build step for this half of the stack): `sync.js` now caches the
+`sso_token` from its own `init()` (previously only the derived
+`telegram_id` survived past `init()`) and exposes it plus a one-shot
+re-mint helper (token TTL is 15 min, shorter than the 30-min ad
+cooldown, so a session's first ad onward will often need this).
+`adsgram.js`'s non-Telegram fallback now sends that token to
+`/ads/verify-reward` instead of computing a fake local-only reward —
+retries once via the re-mint helper on a 401 before giving up. The old
+local-only path is still there, but only as a last resort for a session
+with no verifiable identity at all (very old app build, or a bare
+browser tab).
+
+**Not device-tested** — same disclaimer as everything else pushed from
+this box: no way to run the actual RealGram app here. Worth Khabat (or
+whoever's got a device handy) confirming a RealGram-only account's ad
+watch now shows up in `GET /season2/admin/ad-events` / the Monetization
+page, not just the coin animation.
