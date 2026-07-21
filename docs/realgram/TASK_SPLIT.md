@@ -7852,3 +7852,46 @@ branch notes' own "not device-tested" disclaimers on the nav-bridge
 half, worth an actual device pass (Connect/Disconnect ad timing,
 Profile tab, Clan tab, chapter-complete modal position) before calling
 this fully done, not just "built and shipped."
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → A/B — v0.9.80 startup regression: not reproduced, diagnostic hotfix v0.9.81 shipped instead
+
+**Dato: 2026-07-21**
+
+Khabat reported v0.9.80 installs fine (signing confirmed working) but
+shows "Something went wrong" immediately on launch, before reaching the
+app. Investigated per his checklist:
+
+- **No adb/device access from this box** — can't pull real Logcat.
+- **`lib/ad_monetization.php`** (required unconditionally by `public/api.php`
+  since the earlier `feat/monetization-admin` live deploy) — no top-level
+  throw, no function-name collision with `ads_perf.php`/`ads_recovery.php`/
+  `real_economy.php`. It's been live in production for ~1 day already,
+  serving every existing `0.9.78` API call without incident, so it isn't a
+  newly-broken shared dependency.
+- **`realgram-profile-summary`** (the one genuinely new network call
+  `v0.9.80` introduces, via `RealGramProfileScreen`) — tested live against
+  a real, currently-active device_id: `HTTP 200`, valid `ProfileSummary`
+  shape, no error.
+- **`AppNavigator.tsx`'s merge** — re-verified directly against
+  `origin/feat/nav-bridge-profile-clan-migration` (caught my own mistake
+  mid-investigation: first check was against a stale local checkout on
+  the wrong branch) — `RealGramProfileScreen`/`ShahnamehEmbed` wiring
+  landed correctly, not silently dropped by the merge.
+- **`ShahnamehEmbed.tsx`'s new overlay-bridge code** — `BottomNav.BAR_HEIGHT`/
+  `CONTENT_HEIGHT` are both set at `BottomNav`'s own module load, before
+  any consumer can render; no circular-import undefined-access found.
+
+**Did not reproduce a hard crash anywhere above.** Rather than keep
+guessing blind, shipped `v0.9.81` (`cebb4e7`) as a diagnostic hotfix:
+`ErrorBoundary` now always renders the real `error.message` + `stack`
+(previously gated behind `__DEV__`, which is never true in a signed
+build — the actual root cause of "generic message only", separate from
+whatever the underlying crash itself is), and best-effort reports it to
+`app_events` as `JS_FATAL_ERROR` via the existing `trackEvent` sink, so
+the next occurrence is diagnosable server-side without needing a
+screenshot. Built, verified (signing cert/checksum/zip integrity/version
+all clean), and published to the beta channel same as `v0.9.80`.
+
+**Next step once Khabat reopens the app on `v0.9.81`:** query
+`app_events` for `event='JS_FATAL_ERROR'` — will report back with the
+real message/stack as soon as it lands, instead of more speculation.
