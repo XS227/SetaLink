@@ -7895,3 +7895,55 @@ all clean), and published to the beta channel same as `v0.9.80`.
 **Next step once Khabat reopens the app on `v0.9.81`:** query
 `app_events` for `event='JS_FATAL_ERROR'` — will report back with the
 real message/stack as soon as it lands, instead of more speculation.
+
+## New session (prod VPS, 5.249.252.221 / setalink.no) → A/B — v0.9.80/81 startup crash root-caused + fixed, v0.9.82 live (forceUpdate)
+
+**Dato: 2026-07-21**
+
+Khabat's v0.9.81 diagnostic build worked exactly as intended: the real
+error surfaced immediately — `Invalid hook call. Hooks can only be
+called inside of the body of a function component.` — pulled the full
+stack from `app_events` (`JS_FATAL_ERROR`), confirmed against source.
+
+**Root cause:** `AppNavigator.tsx`'s `MainTabs()` passed `tabBar={(props)
+=> { ... const overlayOpen = useOverlayStore(...); ... }}` to
+`Tab.Navigator` — a hook called inside a plain arrow function passed as
+a prop value, not a named function component.
+`@react-navigation/bottom-tabs` doesn't invoke that render-prop within
+React's active render dispatcher, so the hook call inside it throws
+immediately, every time. This is the exact line the
+`nav-bridge-profile-clan-migration` branch added its own
+`eslint-disable-next-line react-hooks/rules-of-hooks` comment on,
+reasoning it'd be fine ("same call-order guarantee as any other
+component here") — that reasoning was wrong, now proven wrong by the
+crash itself rather than just corrected on inspection. 100% reproducible:
+onboarding completes -> transition to `MainTabs` -> crash, every time.
+
+**Fix (`c5635b2`):** read `useOverlayStore((s) => s.isOpen)` once in
+`MainTabs`' own render (already calling several other hooks
+successfully), store as `overlayOpen`, `tabBar`'s closure just reads
+that captured value — zero hook calls inside the closure. Audited the
+rest of the checklist Khabat gave: no other hook-in-prop-value pattern
+anywhere in `mobile-app/src`, no Adapter/Screen invoked as a plain
+function instead of JSX, exactly one `react`/`react-native` in
+`package-lock.json` (no duplicate install), and 18.3.1/0.75.4 is the
+officially matched pairing.
+
+**Branding, same message's second ask:** replaced the Lion-and-Sun
+emblem — splash screen's hand-drawn sun/rays + "Realink" wordmark, and
+the VPN notification's status-bar icon
+(`drawable-*dpi/ic_stat_vpn.png`) — with the RealGram mark
+(`brand/realgram.svg`'s bubble+spark, via the already-linked
+`react-native-svg`), gold to match the existing REAL-token app icon
+rather than `BRAND.md`'s separate proposed purple. Notification icon
+regenerated at all 5 densities via `rsvg-convert` from a white-silhouette
+version (Android status-bar icon convention) — confirmed the resource
+name survived aapt2's release-mode file renaming by grepping
+`resources.arsc` in the built APK for `ic_stat_vpn` (exactly one match).
+
+**Published `v0.9.82` (versionCode 122) to the beta channel, with
+`forceUpdate: true`** — v0.9.80/81 are actively broken for anyone on
+them (100% startup crash), so forcing off those builds rather than
+waiting for an optional-update prompt nobody still on a crashing app can
+see anyway. Build verified (signing cert/checksum/zip integrity/version
+all clean) before publish, live-verified after.
