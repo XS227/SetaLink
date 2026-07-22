@@ -156,9 +156,17 @@ Manual trigger: Configuration tab → "Sync now" (calls
 1. `app.adsgram.ai` → Settings → generate a publisher API token.
 2. RealGram Admin → Monetization → Configuration → AdsGram → paste the token,
    Save. (Stored in `settings.adsgram_api_token` — masked in every API
-   response, only a `configured: true/false` boolean is ever returned.)
-3. "Sync now", or cron `lib/adsgram_publisher_sync.php`'s
-   `adsgram_publisher_sync()` on your own schedule.
+   response, only a `configured: true/false` boolean is ever returned. This
+   is DB storage rather than a file like `/etc/setalink/admob-oauth-client.json`
+   because there's no OAuth client-secret pairing here, just a bearer token —
+   same "never in git, never returned by any API response" posture as AdMob,
+   different medium since there's nothing else to pair it with.)
+3. Daily cron: `0 5 * * * php /var/www/setalink/scripts/sync-adsgram-daily.php`
+   (retries with backoff; exits 0 even when not-yet-configured, so it's safe
+   to install before step 1–2 are done — mirrors `sync-admob-daily.php`).
+
+Manual trigger: Configuration tab → "Sync now" (calls
+`monetization-adsgram-sync-now`).
 
 If the response shape doesn't match `adsgram_pick()`'s guesses (nobody has
 tested against a real token yet), `adsgram_last_error` in `settings` will say
