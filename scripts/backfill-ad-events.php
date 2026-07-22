@@ -31,6 +31,8 @@ $stats = am_backfill($pdo, $dryRun);
 echo "  admob_reward events processed: {$stats['admob_reward']}\n";
 echo "  adsgram_daily rows processed:  {$stats['adsgram_daily']}\n";
 echo "  banner events processed:       {$stats['banner']}\n";
+echo "  interstitial impression events: " . ($stats['interstitial_events'] ?? 0) . "\n";
+echo "  interstitial days rolled up:    " . ($stats['interstitial'] ?? 0) . "\n";
 echo "  skipped as duplicates:         {$stats['skipped_dupe']}\n";
 
 if (!$dryRun) {

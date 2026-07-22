@@ -722,17 +722,32 @@ function icon(string $name): string {
       <div id="adsConfigBanner" class="panel" style="margin-bottom:.75rem;display:none">
         <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="adsConfigBannerText"></div>
       </div>
+      <!-- This whole "ads" NOC view is the legacy, pre-2026-07-22 dashboard: ad
+           counts are real (ad_reward_events/ledger), but revenue is a local
+           eCPM x count GUESS (ads-metrics' est_revenue_usd), never AdMob's own
+           reported figure. It used to say "(AdMob)"/"Revenue" with no
+           qualifier, which reads as confirmed provider data — that mismatch
+           between this view and AdMob's real console is exactly what caused
+           Khabat's 2026-07-22 reconciliation report. Real, source-labeled
+           AdMob API numbers live in the Monetization tab; this view is kept
+           for the recovery-quota/GB-margin ops numbers that tab doesn't have. -->
+      <div class="panel" style="margin-bottom:.75rem;border-color:var(--warn,#e0a030)">
+        <div class="panel-body" style="font-size:.82rem;display:flex;gap:.5rem;align-items:center">
+          <span class="badge badge-warn">estimate</span>
+          <span>Revenue below is an internal eCPM×count guess, not AdMob-confirmed. For real, source-labeled AdMob numbers (with last-sync time), see <a href="#" onclick="navigate('monetization');return false" style="color:var(--gold)">Monetization</a>.</span>
+        </div>
+      </div>
       <div class="two-col" style="margin-bottom:.75rem">
         <div class="panel">
-          <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Rewarded Ads (AdMob, 30d) <span class="panel-sub">recovery engine</span></span></div>
+          <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Rewarded Ads (internal estimate, 30d) <span class="panel-sub">recovery engine</span></span></div>
           <div class="panel-body"><div style="position:relative;height:240px"><canvas id="chAds"></canvas></div></div>
         </div>
         <div class="panel">
           <div class="panel-header"><span class="panel-title"><?= icon('download') ?> Recovery Quota</span></div>
           <div class="panel-body">
             <div class="stat-grid" style="grid-template-columns:1fr 1fr">
-              <div class="stat-card"><div class="stat-label">Today (AdMob)</div><div class="stat-value" id="adsToday">—</div><div class="stat-sub" id="adsWeek">— this week</div></div>
-              <div class="stat-card"><div class="stat-label">Revenue 30d</div><div class="stat-value" id="adsRev30">—</div><div class="stat-sub" id="adsRevAll">— all time</div></div>
+              <div class="stat-card"><div class="stat-label">Ads watched today</div><div class="stat-value" id="adsToday">—</div><div class="stat-sub" id="adsWeek">— this week</div></div>
+              <div class="stat-card"><div class="stat-label">Est. revenue 30d <span style="opacity:.6;font-weight:400">(eCPM guess)</span></div><div class="stat-value" id="adsRev30">—</div><div class="stat-sub" id="adsRevAll">— all time</div></div>
               <div class="stat-card"><div class="stat-label">GB Granted</div><div class="stat-value" id="adsGbGranted">—</div><div class="stat-sub">ledger</div></div>
               <div class="stat-card"><div class="stat-label">Users Saved</div><div class="stat-value" id="adsSaved">—</div><div class="stat-sub">zero-data</div></div>
               <div class="stat-card"><div class="stat-label">Recovery GB</div><div class="stat-value" id="adsRecGb">—</div><div class="stat-sub">reserve used</div></div>
@@ -843,8 +858,8 @@ function icon(string $name): string {
           <div class="panel-header"><span class="panel-title">Per ad unit <span class="panel-sub">Android + iOS, broken out separately</span></span>
             <button class="btn btn-small" id="monAdmobCsv" type="button">Export CSV</button></div>
           <div class="tbl-wrap"><table class="data-table" style="width:100%">
-            <thead><tr><th>Ad unit</th><th>Platform</th><th>Requests</th><th>Matched</th><th>Match rate</th><th>Impressions</th><th>Clicks</th><th>eCPM</th><th>Revenue</th><th>Rewarded</th><th>Source</th></tr></thead>
-            <tbody id="monAdmobUnits"><tr><td colspan="11" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            <thead><tr><th>Ad unit</th><th>Platform</th><th>Requests</th><th>Matched</th><th>Match rate</th><th>Shown</th><th>Impressions</th><th>Clicks</th><th>eCPM</th><th>Revenue</th><th>Rewarded</th><th>Source</th></tr></thead>
+            <tbody id="monAdmobUnits"><tr><td colspan="12" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table></div>
         </div>
       </div>
@@ -3179,7 +3194,8 @@ views.monetization = {
       stats.innerHTML = [
         ['AdMob revenue', this.revenueLine(d.admob)],
         ['AdsGram revenue', this.revenueLine(d.adsgram)],
-        ['Total impressions', this.fmtNum((d.admob.impressions||0) + (d.adsgram.impressions||0))],
+        ['Ads shown locally', this.fmtNum((d.admob.shown||0) + (d.adsgram.shown||0)) + ' <span style="opacity:.6;font-weight:400;font-size:.75rem">(on-device, not provider-confirmed)</span>'],
+        ['AdMob-confirmed impressions', this.fmtNum((d.admob.impressions||0) + (d.adsgram.impressions||0))],
         ['Total ad requests', this.fmtNum((d.admob.requests||0) + (d.adsgram.requests||0))],
         ['Rewards granted', this.fmtNum(d.rewards_granted_count)],
         ['Rewards failed', this.fmtNum(d.rewards_failed_count)],
@@ -3219,7 +3235,8 @@ views.monetization = {
         <span style="opacity:.7">last sync: ${esc(s.last_sync || 'never')}</span>
         ${!s.connected ? `<a class="btn btn-small" href="/admin/admob_oauth_start.php" target="_blank">Connect AdMob</a>` : `<button class="btn btn-small" id="monAdmobSyncNow" type="button">Sync now</button><button class="btn btn-small btn-ghost" id="monAdmobDisconnect" type="button">Disconnect</button>`}
         ${warn.length ? '<span style="color:var(--warn)">' + esc(warn.join(' · ')) + '</span>' : ''}
-      </div>`;
+      </div>
+      ${!s.connected ? `<div style="margin-top:.5rem;font-size:.78rem;color:var(--warn)">⚠ Every number below is local device telemetry, not AdMob-confirmed — connect AdMob for verified provider data.</div>` : ''}`;
       $('monAdmobSyncNow')?.addEventListener('click', async () => {
         try { const r = await api.post({ action: 'monetization-admob-sync-now', days: 30 }); toast('AdMob sync: ' + r.rows_written + ' rows', 'ok'); this.loadAdmob(); }
         catch (e) { toast('AdMob sync failed: ' + e.message, 'error'); }
@@ -3237,7 +3254,8 @@ views.monetization = {
         ['Requests', this.fmtNum(sum.requests)],
         ['Matched requests', this.fmtNum(sum.matched_requests)],
         ['Match rate', this.fmtPct(sum.requests ? sum.matched_requests / sum.requests : null)],
-        ['Impressions', this.fmtNum(sum.impressions)],
+        ['Shown locally', this.fmtNum(sum.shown)],
+        ['Impressions (AdMob-confirmed)', this.fmtNum(sum.impressions)],
         ['Clicks', this.fmtNum(sum.clicks)],
         ['Rewarded completions', this.fmtNum(sum.completions)],
         ['Rewards granted', this.fmtNum(sum.rewards_granted)],
@@ -3250,8 +3268,8 @@ views.monetization = {
         const platform = u.platform || '<span style="opacity:.6">unknown</span>';
         const iosWarn = u.platform === 'ios' && u.requests > 0 && u.impressions === 0
           ? ' <span class="badge badge-warn" title="requests but zero impressions">must be evaluated</span>' : '';
-        return `<tr><td style="font-family:var(--mono);font-size:.75rem">${esc(u.ad_unit_id)}</td><td>${platform}${iosWarn}</td><td>${this.fmtNum(u.requests)}</td><td>${this.fmtNum(u.matched_requests)}</td><td>${this.fmtPct(u.match_rate)}</td><td>${this.fmtNum(u.impressions)}</td><td>${this.fmtNum(u.clicks)}</td><td>${u.ecpm == null ? '—' : this.fmtUsd(u.ecpm, 4)}</td><td>${this.fmtUsd(u.revenue, 4)}</td><td>${this.fmtNum(u.rewards_granted)}</td><td>${this.statusBadge(u.status_label)}</td></tr>`;
-      }).join('') : '<tr><td colspan="11" class="tbl-empty">No AdMob data in this window.</td></tr>';
+        return `<tr><td style="font-family:var(--mono);font-size:.75rem">${esc(u.ad_unit_id)}</td><td>${platform}${iosWarn}</td><td>${this.fmtNum(u.requests)}</td><td>${this.fmtNum(u.matched_requests)}</td><td>${this.fmtPct(u.match_rate)}</td><td>${this.fmtNum(u.shown)}</td><td>${this.fmtNum(u.impressions)}</td><td>${this.fmtNum(u.clicks)}</td><td>${u.ecpm == null ? '—' : this.fmtUsd(u.ecpm, 4)}</td><td>${this.fmtUsd(u.revenue, 4)}</td><td>${this.fmtNum(u.rewards_granted)}</td><td>${this.statusBadge(u.status_label)}</td></tr>`;
+      }).join('') : '<tr><td colspan="12" class="tbl-empty">No AdMob data in this window.</td></tr>';
     }
   },
 

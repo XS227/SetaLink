@@ -121,6 +121,7 @@ function am_init_tables(PDO $pdo): void {
         ad_unit_id        TEXT    NOT NULL DEFAULT '',
         requests          INTEGER NOT NULL DEFAULT 0,
         matched_requests  INTEGER NOT NULL DEFAULT 0,
+        shown             INTEGER NOT NULL DEFAULT 0,
         impressions       INTEGER NOT NULL DEFAULT 0,
         clicks            INTEGER NOT NULL DEFAULT 0,
         completions       INTEGER NOT NULL DEFAULT 0,
@@ -132,6 +133,14 @@ function am_init_tables(PDO $pdo): void {
         last_synced_at    TEXT,
         PRIMARY KEY (date, provider, app, platform, ad_unit_id)
     )");
+    // `shown` (2026-07-22, spec item #2 in Khabat's reconciliation ask): a
+    // creative DISPLAYING on-device (AD_*_SHOWN/OPENED) is not the same fact as
+    // the provider CONFIRMING a paid impression (PAID/IMPRESSIONS) — conflating
+    // them into one "impressions" column is exactly the mislabeling that made
+    // the legacy `ads` NOC view's numbers unreconcilable with AdMob's own
+    // console. Added via ALTER for installs where this table predates the
+    // column; CREATE TABLE IF NOT EXISTS above is a no-op on those.
+    try { $pdo->exec("ALTER TABLE ad_daily_metrics ADD COLUMN shown INTEGER NOT NULL DEFAULT 0"); } catch (\Exception $e) { /* already exists */ }
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_addm_provider_date ON ad_daily_metrics(provider, date)");
 
     // Manual AdsGram/other CSV imports — one row per import run, for the Logs tab + audit trail.
@@ -366,20 +375,20 @@ function am_daily_metric_upsert(PDO $pdo, array $m): array {
 
     $pdo->prepare(
         "INSERT INTO ad_daily_metrics
-            (date, provider, app, platform, ad_unit_id, requests, matched_requests, impressions,
+            (date, provider, app, platform, ad_unit_id, requests, matched_requests, shown, impressions,
              clicks, completions, rewards_granted, rewards_failed, revenue, currency, source_type, last_synced_at)
-         VALUES (:date,:provider,:app,:platform,:ad_unit_id,:requests,:matched,:impr,:clicks,:completions,
+         VALUES (:date,:provider,:app,:platform,:ad_unit_id,:requests,:matched,:shown,:impr,:clicks,:completions,
                  :rg,:rf,:revenue,:currency,:source_type,datetime('now'))
          ON CONFLICT(date, provider, app, platform, ad_unit_id) DO UPDATE SET
              requests=excluded.requests, matched_requests=excluded.matched_requests,
-             impressions=excluded.impressions, clicks=excluded.clicks, completions=excluded.completions,
+             shown=excluded.shown, impressions=excluded.impressions, clicks=excluded.clicks, completions=excluded.completions,
              rewards_granted=excluded.rewards_granted, rewards_failed=excluded.rewards_failed,
              revenue=excluded.revenue, currency=excluded.currency, source_type=excluded.source_type,
              last_synced_at=datetime('now')"
     )->execute([
         ':date' => $date, ':provider' => $provider, ':app' => $app, ':platform' => $platform, ':ad_unit_id' => $adUnit,
         ':requests' => (int)($m['requests'] ?? 0), ':matched' => (int)($m['matched_requests'] ?? 0),
-        ':impr' => (int)($m['impressions'] ?? 0), ':clicks' => (int)($m['clicks'] ?? 0),
+        ':shown' => (int)($m['shown'] ?? 0), ':impr' => (int)($m['impressions'] ?? 0), ':clicks' => (int)($m['clicks'] ?? 0),
         ':completions' => (int)($m['completions'] ?? 0), ':rg' => (int)($m['rewards_granted'] ?? 0),
         ':rf' => (int)($m['rewards_failed'] ?? 0), ':revenue' => (float)($m['revenue'] ?? 0),
         ':currency' => (string)($m['currency'] ?? ''), ':source_type' => $newSourceType,
@@ -640,6 +649,66 @@ function am_backfill(PDO $pdo, bool $dryRun = false): array {
         if (!$dryRun) am_daily_metric_upsert($pdo, $m);
     }
 
+    // 4) Interstitial paid impressions, individually (app_events, real onPaid
+    //    values) — needed so a specific device+timestamp is drillable via the
+    //    Reward Events table/CSV export, the same way banner impressions
+    //    already are (step 3). Only IMPRESSION (PAID) gets a per-event row;
+    //    SHOWN/CLICK don't carry revenue and only need the daily rollup below.
+    $rows = $pdo->query(
+        "SELECT id, device_id, props, created_at FROM app_events WHERE event='AD_INTERSTITIAL_IMPRESSION'"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rows as $r) {
+        $props = json_decode((string)$r['props'], true) ?: [];
+        $e = [
+            'provider' => 'admob', 'event_type' => 'interstitial_impression',
+            'placement' => 'interstitial',
+            'provider_event_id' => 'admob-interstitial:' . $r['id'],
+            'user_id' => (string)$r['device_id'],
+            'provider_revenue' => isset($props['value']) ? (float)$props['value'] : null,
+            'currency' => (string)($props['currency'] ?? 'USD'),
+            'reward_type' => 'none', 'validation_status' => 'unverified',
+            'source_type' => 'LOCAL_SDK_EVENT',
+            'created_at' => (string)($r['created_at'] ?? ''),
+        ];
+        if ($dryRun) { $stats['interstitial_events'] = ($stats['interstitial_events'] ?? 0) + 1; continue; }
+        $res = am_event_insert($pdo, $e);
+        if ($res['duplicate']) $stats['skipped_dupe']++; else $stats['interstitial_events'] = ($stats['interstitial_events'] ?? 0) + 1;
+    }
+
+    // 4b) Interstitial daily rollup (app_events: AD_INTERSTITIAL_SHOWN/IMPRESSION/CLICK)
+    //    — was completely absent from this table before 2026-07-22, so the
+    //    Connect-tap interstitial (the ad shown on every connection) never
+    //    contributed to Overview/Reconciliation at all. SHOWN (OPENED — the
+    //    creative displayed on-device) and IMPRESSION (PAID — the provider
+    //    actually counted/paid for it) are kept in SEPARATE columns on
+    //    purpose (spec item #2 in Khabat's 2026-07-22 reconciliation ask):
+    //    a shown ad is not the same fact as a provider-confirmed impression,
+    //    and collapsing them into one number is exactly what made the legacy
+    //    `ads` NOC view's revenue unreconcilable with AdMob's own console.
+    $interDaily = $pdo->query(
+        "SELECT date(created_at) AS d,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_SHOWN'      THEN 1 ELSE 0 END) AS shown,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_IMPRESSION' THEN 1 ELSE 0 END) AS impressions,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_CLICK'      THEN 1 ELSE 0 END) AS clicks,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_IMPRESSION'
+                         THEN CAST(json_extract(props,'\$.value') AS REAL) ELSE 0 END) AS revenue
+         FROM app_events
+         WHERE event IN ('AD_INTERSTITIAL_SHOWN','AD_INTERSTITIAL_IMPRESSION','AD_INTERSTITIAL_CLICK')
+         GROUP BY d"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($interDaily as $r) {
+        if (!$r['d']) continue;
+        $m = [
+            'date' => $r['d'], 'provider' => 'admob', 'ad_unit_id' => 'interstitial',
+            'shown' => (int)$r['shown'], 'impressions' => (int)$r['impressions'],
+            'clicks' => (int)$r['clicks'], 'revenue' => (float)$r['revenue'], 'currency' => 'USD',
+            'source_type' => 'LOCAL_SDK_EVENT',
+        ];
+        if ($dryRun) { $stats['interstitial'] = ($stats['interstitial'] ?? 0) + 1; continue; }
+        am_daily_metric_upsert($pdo, $m);
+        $stats['interstitial'] = ($stats['interstitial'] ?? 0) + 1;
+    }
+
     return $stats;
 }
 
@@ -670,7 +739,7 @@ function am_provider_summary(PDO $pdo, string $provider, string $from, string $t
     $st = $pdo->prepare(
         "SELECT source_type, currency,
                 SUM(requests) AS requests, SUM(matched_requests) AS matched_requests,
-                SUM(impressions) AS impressions, SUM(clicks) AS clicks,
+                SUM(shown) AS shown, SUM(impressions) AS impressions, SUM(clicks) AS clicks,
                 SUM(completions) AS completions, SUM(rewards_granted) AS rewards_granted,
                 SUM(rewards_failed) AS rewards_failed, SUM(revenue) AS revenue,
                 MAX(last_synced_at) AS last_synced_at
@@ -681,7 +750,7 @@ function am_provider_summary(PDO $pdo, string $provider, string $from, string $t
     $st->execute([$provider, $from, $to]);
     $groups = $st->fetchAll(PDO::FETCH_ASSOC);
 
-    $totals = ['requests' => 0, 'matched_requests' => 0, 'impressions' => 0, 'clicks' => 0,
+    $totals = ['requests' => 0, 'matched_requests' => 0, 'shown' => 0, 'impressions' => 0, 'clicks' => 0,
                'completions' => 0, 'rewards_granted' => 0, 'rewards_failed' => 0];
     $best = null;
     foreach ($groups as &$g) {
@@ -701,7 +770,7 @@ function am_ad_unit_breakdown(PDO $pdo, string $provider, string $from, string $
     $st = $pdo->prepare(
         "SELECT ad_unit_id, platform,
                 SUM(requests) AS requests, SUM(matched_requests) AS matched_requests,
-                SUM(impressions) AS impressions, SUM(clicks) AS clicks,
+                SUM(shown) AS shown, SUM(impressions) AS impressions, SUM(clicks) AS clicks,
                 SUM(completions) AS completions, SUM(rewards_granted) AS rewards_granted,
                 SUM(revenue) AS revenue, currency, MAX(source_type) AS source_type,
                 MAX(last_synced_at) AS last_event_at
@@ -713,6 +782,7 @@ function am_ad_unit_breakdown(PDO $pdo, string $provider, string $from, string $
     $rows = $st->fetchAll(PDO::FETCH_ASSOC);
     foreach ($rows as &$r) {
         $r['requests'] = (int)$r['requests']; $r['matched_requests'] = (int)$r['matched_requests'];
+        $r['shown'] = (int)$r['shown'];
         $r['impressions'] = (int)$r['impressions']; $r['clicks'] = (int)$r['clicks'];
         $r['completions'] = (int)$r['completions']; $r['rewards_granted'] = (int)$r['rewards_granted'];
         $r['revenue'] = (float)$r['revenue'];

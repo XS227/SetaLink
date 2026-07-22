@@ -313,14 +313,18 @@ export function preloadInterstitial(): void {
       trackEvent('AD_INTERSTITIAL_SHOWN', currentDeviceId(), { slot: 'interstitial' });
     });
     ad.addAdEventListener(AdEventType.PAID, (e: any) => {
-      if (token !== _loadToken) return;
-      // Revenue-counted impression — the real fill signal, mirrors banner's onPaid.
+      // No token guard here on purpose: PAID/CLICKED are pure telemetry, they
+      // never touch _interReady/_interLoading/_loadTimer. PAID in particular
+      // routinely arrives AFTER CLOSED — by then CLOSED's own preloadInterstitial()
+      // has already bumped _loadToken for the next slot, so gating on the old
+      // token silently dropped a real, correctly-scoped revenue event for the ad
+      // that was actually shown. Root cause of "AdMob shows 0 impressions despite
+      // the app showing an ad" (Khabat, 2026-07-22 reconciliation report).
       trackEvent('AD_INTERSTITIAL_IMPRESSION', currentDeviceId(), {
         slot: 'interstitial', value: e?.value, currency: e?.currency,
       });
     });
     ad.addAdEventListener(AdEventType.CLICKED, () => {
-      if (token !== _loadToken) return;
       trackEvent('AD_INTERSTITIAL_CLICK', currentDeviceId(), { slot: 'interstitial' });
     });
     ad.addAdEventListener(AdEventType.ERROR, (e: any) => {

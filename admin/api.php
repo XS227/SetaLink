@@ -4890,11 +4890,11 @@ switch ($action) {
         header('Content-Disposition: attachment; filename="monetization-' . preg_replace('/[^a-z-]/', '', $what) . '-' . $from . '_' . $to . '.csv"');
         $out = fopen('php://output', 'w');
         if ($what === 'daily-metrics') {
-            fputcsv($out, ['date','provider','app','platform','ad_unit_id','requests','matched_requests','impressions','clicks','completions','rewards_granted','rewards_failed','revenue','currency','source_type']);
+            fputcsv($out, ['date','provider','app','platform','ad_unit_id','requests','matched_requests','shown','impressions','clicks','completions','rewards_granted','rewards_failed','revenue','currency','source_type']);
             $rows = $db->prepare("SELECT * FROM ad_daily_metrics WHERE date BETWEEN ? AND ? ORDER BY date, provider");
             $rows->execute([$from, $to]);
             foreach ($rows as $r) {
-                fputcsv($out, [$r['date'],$r['provider'],$r['app'],$r['platform'],$r['ad_unit_id'],$r['requests'],$r['matched_requests'],$r['impressions'],$r['clicks'],$r['completions'],$r['rewards_granted'],$r['rewards_failed'],$r['revenue'],$r['currency'],$r['source_type']]);
+                fputcsv($out, [$r['date'],$r['provider'],$r['app'],$r['platform'],$r['ad_unit_id'],$r['requests'],$r['matched_requests'],$r['shown'],$r['impressions'],$r['clicks'],$r['completions'],$r['rewards_granted'],$r['rewards_failed'],$r['revenue'],$r['currency'],$r['source_type']]);
             }
         } else {
             $res = am_reward_events($db, ['from' => $from, 'to' => $to, 'limit' => 5000]);

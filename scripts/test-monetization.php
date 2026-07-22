@@ -187,5 +187,31 @@ check('first backfill inserts the one AdMob reward event', $first['admob_reward'
 check('second backfill run finds it as a duplicate, does not double-insert', $second['skipped_dupe'], 1);
 check('total ad_events rows stays at 1 after two runs', (int)$db->query("SELECT COUNT(*) FROM ad_events")->fetchColumn(), 1);
 
+echo "\n== Interstitial backfill — 'shown' and 'impressions' stay separate (2026-07-22) ==\n";
+$db = fresh_db();
+$db->exec("CREATE TABLE ad_reward_events (device_id TEXT, nonce TEXT, ad_unit TEXT, status TEXT, ssv_verified INTEGER, reward_bytes INTEGER, risk_flags TEXT, confirmed_at TEXT)");
+$db->exec("CREATE TABLE ad_perf_daily (date TEXT, platform TEXT, rewarded_views INTEGER, revenue_usd REAL)");
+$db->exec("CREATE TABLE app_events (id INTEGER PRIMARY KEY AUTOINCREMENT, device_id TEXT, event TEXT, props TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))");
+$ins = $db->prepare("INSERT INTO app_events (device_id, event, props, created_at) VALUES (?,?,?,?)");
+// 3 ads displayed on-device, but only 1 provider-confirmed (PAID) impression and 1 click.
+$ins->execute(['d1', 'AD_INTERSTITIAL_SHOWN', '{}', '2026-07-22 10:00:00']);
+$ins->execute(['d2', 'AD_INTERSTITIAL_SHOWN', '{}', '2026-07-22 11:00:00']);
+$ins->execute(['d3', 'AD_INTERSTITIAL_SHOWN', '{}', '2026-07-22 12:00:00']);
+$ins->execute(['d1', 'AD_INTERSTITIAL_IMPRESSION', json_encode(['value' => 0.015, 'currency' => 'USD']), '2026-07-22 10:00:05']);
+$ins->execute(['d2', 'AD_INTERSTITIAL_CLICK', '{}', '2026-07-22 11:00:03']);
+am_backfill($db, false);
+$row = $db->query("SELECT * FROM ad_daily_metrics WHERE ad_unit_id='interstitial'")->fetch(PDO::FETCH_ASSOC);
+check('shown counts every displayed ad, not just paid ones', (int)$row['shown'], 3);
+check('impressions counts only provider-confirmed (PAID) events', (int)$row['impressions'], 1);
+check('revenue comes only from the PAID event, not from SHOWN', (float)$row['revenue'], 0.015);
+$row2 = $db->query("SELECT * FROM ad_daily_metrics WHERE ad_unit_id='interstitial'")->fetch(PDO::FETCH_ASSOC);
+am_backfill($db, false); // re-run
+$row3 = $db->query("SELECT * FROM ad_daily_metrics WHERE ad_unit_id='interstitial'")->fetch(PDO::FETCH_ASSOC);
+check('re-running the backfill does not double-count shown/impressions', $row3['shown'] . ':' . $row3['impressions'], $row2['shown'] . ':' . $row2['impressions']);
+$drill = am_reward_events($db, ['user_id' => 'd1']);
+check_true('a specific device+timestamp is drillable via am_reward_events (spec item #4)',
+    count($drill['rows']) === 1 && $drill['rows'][0]['event_type'] === 'interstitial_impression'
+    && $drill['rows'][0]['created_at'] === '2026-07-22 10:00:05');
+
 echo "\n" . ($fail === 0 ? "ALL $pass TESTS PASSED\n" : "$fail FAILED, $pass PASSED\n");
 exit($fail === 0 ? 0 : 1);
