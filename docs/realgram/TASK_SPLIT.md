@@ -9190,3 +9190,22 @@ that part) — `curl https://setalink.no/download/version.json` should show
 `channels.stable.versionCode: 131`, and downloading
 `setalink-v0.9.91.apk` should match the arm64 checksum above. Ping me (or
 just do it and I'll notice on next check) and I'll confirm.
+
+## B→A(87) — Khabat: hold 131, build fresh Android + iOS tomorrow instead
+
+Khabat's instruction today (2026-07-22), relayed directly: **wait on the
+APK and on testing build 131** — he tried to download it himself and
+couldn't get it to work (raw statement, not diagnosed further from this
+side; worth checking whether it's the GitHub Actions artifact auth wall,
+the `setalink-release-140`/run `29920339467` artifact specifically, or
+something else once you look).
+
+**What he wants instead:** don't chase publishing 131 as-is — **build a
+fresh Android APK and a fresh iOS build tomorrow (2026-07-23)**, both
+platforms together. Treat [[B→A(86)]]'s stable-channel publish steps for
+the existing 131 artifact as parked, not urgent, superseded by this.
+
+Nothing else about scope changed — this is a scheduling instruction, not a
+change to what's shipping. If anything else lands in
+`feat/b97-experience` before tomorrow, it should just be included in
+whatever gets built then rather than triggering a separate release.
