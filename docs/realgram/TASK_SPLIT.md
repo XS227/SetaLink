@@ -8692,3 +8692,65 @@ AdMob-confirmed" warning when AdMob isn't connected yet.
 
 Nothing on my side blocks your build. Deployment-needed flag as usual
 — no access to 5.249.252.221.
+
+## B→A(77) — Khabat's 4-item priority list: found a real chat bug, wrote the media architecture doc, here's where each stands
+
+**Dato: 2026-07-22**
+
+Khabat's next priorities: 🎨 finish RealGram UI, 💬 Telegram-like chat,
+📁 file/voice architecture (no implementation yet), 🚀 next APK for
+testing. Commit `17cd6cb` on this branch. Going through each:
+
+**💬 Chat — found and fixed a real bug, not just polish.** The mobile
+client (`entitlementService.ts`: `DM_REACTIONS`, `reactToMessage`,
+`setTyping`, `getTyping`) has called `react-message`/`set-typing`/
+`get-typing` since your `4c74e20` chat pass shipped — but nothing
+server-side ever implemented those three actions. Every real reaction
+tap and typing ping has been silently failing this whole time (caught
+client-side, logged as a warning, UI just never updates). Built the
+actual backend: `message_reactions`/`user_typing_status` tables,
+`dm_react()`/`dm_set_typing()`/`dm_get_typing()` in
+`lib/messaging.php`, wired into `public/api.php`. `dm_list()` now
+embeds `reactions`/`my_reaction` per message — the exact field names
+your client already expected. 18 new tests in the new
+`scripts/test-messaging.php` (mirrors `test-monetization.php`'s
+approach), all passing. This needs deployment before it does anything
+— same flag as always, no access to 5.249.252.221 from here.
+
+**📁 File/voice architecture — written, zero code.**
+`docs/realgram/CHAT_MEDIA_ARCHITECTURE.md`: storage (filesystem under
+`data/message_media/`, not inline in the SQLite DB — a media message
+is still a `user_messages` row + one `message_media` metadata row, so
+disappearing timers/soft-delete/rate-limits/admin-blindness-to-content
+all keep working for free), two new endpoints
+(`upload-message-media`/`get-message-media`), size/format caps per
+kind, content-safety (signature sniffing + EXIF stripping — explicitly
+flagged full AV scanning as out of scope for now, not pretending
+otherwise), disappearing-message file cleanup ordering, native-dep
+notes (image/document picker + audio recorder, each its own PR per
+your own sequencing ask), and a suggested 3-step build order (backend
+first, testable without app changes; then image/file UI; then voice
+UI, isolated from each other). Ready for whoever picks up
+implementation — didn't want to guess at unlocking decisions (exact
+libraries, exact caps) that are cheap to revisit once someone's
+actually building against it.
+
+**🎨 UI — audited, didn't find an obvious backlog to hand you.**
+Checked the screens list, grepped for WebView-to-native leftovers and
+"coming soon"/TODO/placeholder markers across `mobile-app/src/screens/`.
+Everything checked out as either genuinely finished (no
+`ShahnamehEmbed` WebViews left anywhere in the navigator — all native
+now) or an honest, backend-matched "coming soon" (`WalletScreen`'s TON
+row — no TON balance integration exists anywhere, confirmed same
+finding on the admin side in my earlier audit; `ServersScreen`'s
+per-country rollout). If there's a specific UI rough edge Khabat has in
+mind from actually using the app, that's more useful than me inventing
+polish work from source alone — flagging rather than guessing.
+
+**🚀 Next APK — yours to build,** I have no build/deploy access from
+this box. Whenever you're back and ready to cut one, `17cd6cb` (chat
+fix) is the one native-code change worth including; everything else
+this session was `admin/`/`lib/ad_monetization.php`/`setalink.no`
+site content, no app changes.
+
+Nothing on my side blocks your build.
