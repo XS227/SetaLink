@@ -22,6 +22,18 @@ const MSG_MAX_PER_DAY    = 300;    // per sender device, rolling 24h
 const MSG_LIST_LIMIT     = 200;    // max messages returned by list
 const MSG_MAX_EXPIRE_SECS = 7 * 86400; // cap for disappearing-message timers (7d)
 
+// One emoji per (message, device) — tapping the same one again clears it,
+// a different one replaces it. Mirrors mobile-app's DM_REACTIONS constant
+// (entitlementService.ts, which already documents itself as mirroring this
+// exact constant) — keep the two lists in sync.
+const MSG_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+// "Is typing" TTL: comfortably longer than the client's 2.5s ping interval
+// (InboxScreen.tsx debounces set-typing to once per 2.5s) so a normal typing
+// burst never flickers false between two pings, but short enough that
+// stopping typing goes stale quickly without an explicit "stopped" call.
+const MSG_TYPING_TTL_SECS = 6;
+
 // ── Schema ───────────────────────────────────────────────────────────────────
 
 function dm_init_tables(PDO $pdo): void {
@@ -71,6 +83,30 @@ function dm_init_tables(PDO $pdo): void {
         message_id      INTEGER NOT NULL,
         reason          TEXT NOT NULL DEFAULT '',
         created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+    )");
+
+    // One row per (message, reacting device) — the PK itself enforces "one
+    // reaction per device per message" so toggle/replace is a plain
+    // upsert-or-delete, never a dedupe query.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS message_reactions (
+        message_id INTEGER NOT NULL,
+        device_id  TEXT    NOT NULL,
+        emoji      TEXT    NOT NULL,
+        created_at TEXT    NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (message_id, device_id)
+    )");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_mr_message ON message_reactions(message_id)");
+
+    // Typing status: one row per (device, peer) pair, upserted on every
+    // set-typing ping and read as "typing" only while updated_at is within
+    // MSG_TYPING_TTL_SECS — no explicit "stopped typing" call, it just goes
+    // stale. Directional (a->b and b->a are separate rows) since either side
+    // can type independently.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_typing_status (
+        device_id  TEXT NOT NULL,
+        peer       TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (device_id, peer)
     )");
 }
 
@@ -253,11 +289,16 @@ function dm_list(PDO $pdo, string $deviceId, int $limit = MSG_LIST_LIMIT): array
     $st->bindValue(3, $deviceId);
     $st->bindValue(4, $limit, PDO::PARAM_INT);
     $st->execute();
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    $reactionsByMsg = dm_reactions_for($pdo, array_column($rows, 'id'), $deviceId);
+
     $out = [];
-    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+    foreach ($rows as $r) {
         $incoming = $r['recipient_device'] === $deviceId;
+        $id = (int)$r['id'];
+        $rx = $reactionsByMsg[$id] ?? ['counts' => [], 'mine' => null];
         $out[] = [
-            'id'           => (int)$r['id'],
+            'id'           => $id,
             'direction'    => $incoming ? 'in' : 'out',
             'peer_user_id' => $incoming ? ($r['sender_user_id']    ?: '') : ($r['recipient_user_id'] ?: ''),
             'peer_device'  => $incoming ?  $r['sender_device']            :  $r['recipient_device'],
@@ -266,9 +307,93 @@ function dm_list(PDO $pdo, string $deviceId, int $limit = MSG_LIST_LIMIT): array
             'created_at'   => $r['created_at'],
             'expire_secs'  => (int)($r['expire_secs'] ?? 0),
             'expires_at'   => $r['expires_at'] ?? null,
+            'reactions'    => $rx['counts'],
+            'my_reaction'  => $rx['mine'],
         ];
     }
     return $out;
+}
+
+/**
+ * Reaction summary for a batch of message ids, keyed by message_id:
+ * ['counts' => ['👍'=>2,...], 'mine' => <this device's emoji or null>].
+ * One query for the whole page (dm_list callers), not one per message.
+ */
+function dm_reactions_for(PDO $pdo, array $messageIds, string $deviceId): array {
+    $messageIds = array_values(array_unique(array_map('intval', $messageIds)));
+    if (!$messageIds) return [];
+    dm_init_tables($pdo);
+    $ph = implode(',', array_fill(0, count($messageIds), '?'));
+    $st = $pdo->prepare("SELECT message_id, device_id, emoji FROM message_reactions WHERE message_id IN ($ph)");
+    $st->execute($messageIds);
+    $out = [];
+    foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $r) {
+        $mid = (int)$r['message_id'];
+        if (!isset($out[$mid])) $out[$mid] = ['counts' => [], 'mine' => null];
+        $emoji = (string)$r['emoji'];
+        $out[$mid]['counts'][$emoji] = ($out[$mid]['counts'][$emoji] ?? 0) + 1;
+        if ($r['device_id'] === $deviceId) $out[$mid]['mine'] = $emoji;
+    }
+    return $out;
+}
+
+/**
+ * Toggle a reaction: tapping the same emoji again clears it, a different one
+ * replaces it (one reaction per device per message — enforced by the table's
+ * own primary key, not just this function). Only a participant (sender or
+ * recipient) of the message may react to it. Returns the message's full,
+ * fresh reaction summary — same shape dm_list() embeds, so the client never
+ * has to guess whether its optimistic update matches the server.
+ * Throws \RuntimeException with a client-safe message on any rejection.
+ */
+function dm_react(PDO $pdo, string $deviceId, int $messageId, string $emoji): array {
+    dm_init_tables($pdo);
+    if (!in_array($emoji, MSG_REACTIONS, true)) throw new \RuntimeException('invalid reaction');
+
+    $chk = $pdo->prepare("SELECT 1 FROM user_messages WHERE id=? AND (sender_device=? OR recipient_device=?)");
+    $chk->execute([$messageId, $deviceId, $deviceId]);
+    if (!$chk->fetchColumn()) throw new \RuntimeException('message not found');
+
+    $cur = $pdo->prepare("SELECT emoji FROM message_reactions WHERE message_id=? AND device_id=?");
+    $cur->execute([$messageId, $deviceId]);
+    $existing = $cur->fetchColumn();
+
+    if ($existing === $emoji) {
+        // Same emoji tapped again → clear.
+        $pdo->prepare("DELETE FROM message_reactions WHERE message_id=? AND device_id=?")
+            ->execute([$messageId, $deviceId]);
+    } else {
+        // No reaction yet, or a different one → set/replace (PK makes this
+        // idempotent regardless of which case it is).
+        $pdo->prepare(
+            "INSERT INTO message_reactions (message_id, device_id, emoji) VALUES (?,?,?)
+             ON CONFLICT(message_id, device_id) DO UPDATE SET emoji=excluded.emoji, created_at=datetime('now')"
+        )->execute([$messageId, $deviceId, $emoji]);
+    }
+
+    $rx = dm_reactions_for($pdo, [$messageId], $deviceId)[$messageId] ?? ['counts' => [], 'mine' => null];
+    return $rx;
+}
+
+/** Fire-and-forget upsert: this device is typing to $peer, right now. */
+function dm_set_typing(PDO $pdo, string $deviceId, string $peer): void {
+    dm_init_tables($pdo);
+    $pdo->prepare(
+        "INSERT INTO user_typing_status (device_id, peer, updated_at) VALUES (?,?,datetime('now'))
+         ON CONFLICT(device_id, peer) DO UPDATE SET updated_at=datetime('now')"
+    )->execute([$deviceId, $peer]);
+}
+
+/** True if $peer pinged set-typing (addressed to $deviceId) within the TTL.
+ *  Directional: checks the row keyed (device_id=$peer, peer=$deviceId) —
+ *  i.e. "is the OTHER party currently typing TO me". */
+function dm_get_typing(PDO $pdo, string $deviceId, string $peer): bool {
+    dm_init_tables($pdo);
+    $st = $pdo->prepare(
+        "SELECT 1 FROM user_typing_status
+         WHERE device_id=? AND peer=? AND updated_at >= datetime('now', '-" . MSG_TYPING_TTL_SECS . " seconds')");
+    $st->execute([$peer, $deviceId]);
+    return (bool)$st->fetchColumn();
 }
 
 /** Hard-delete disappearing messages whose post-read timer has run out. This

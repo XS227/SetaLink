@@ -937,6 +937,16 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'get-typing') {
+        // Polled every 2.5s while a DM thread is open (InboxScreen.tsx) — TTL-based,
+        // no explicit "stopped typing" call (see MSG_TYPING_TTL_SECS).
+        $deviceId = trim($_GET['device_id'] ?? '');
+        $peer     = trim($_GET['peer'] ?? '');
+        if (!$deviceId || $peer === '') err('missing params');
+        $pdo = db();
+        ok(['typing' => dm_get_typing($pdo, $deviceId, $peer)]);
+    }
+
     if ($action === 'realgram-link-gate') {
         // Web linking page loaded inside an in-app WebView for the RealGram path
         // (GameScreen's RealIdGate -> RealGramLinkWebView, source: {uri}). This
@@ -1783,6 +1793,37 @@ if ($method === 'POST') {
         if (!$deviceId || $peer === '') err('missing params');
         $pdo = db();
         ok(['deleted' => dm_delete_thread($pdo, $deviceId, $peer)]);
+    }
+
+    if ($action === 'react-message') {
+        // Toggle a reaction (2026-07-22): the mobile client (entitlementService.ts,
+        // DM_REACTIONS) has called this since the chat pass shipped, but nothing
+        // server-side implemented it until now — every real tap was silently
+        // failing (caught, logged, UI just never updated). See lib/messaging.php's
+        // dm_react() for the toggle/replace/validation rules.
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $messageId = (int)($_POST['message_id'] ?? 0);
+        $emoji     = trim($_POST['emoji'] ?? '');
+        if (!$deviceId || $messageId <= 0 || $emoji === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = dm_react($pdo, $deviceId, $messageId, $emoji);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
+    if ($action === 'set-typing') {
+        // Fire-and-forget, debounced client-side to once per 2.5s (InboxScreen.tsx).
+        // Same gap as react-message above: client has called this since the chat
+        // pass shipped, nothing server-side existed to receive it.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $peer     = trim($_POST['peer'] ?? '');
+        if (!$deviceId || $peer === '') err('missing params');
+        $pdo = db();
+        dm_set_typing($pdo, $deviceId, $peer);
+        ok(['ok' => true]);
     }
 
     if ($action === 'link-real-account') {
