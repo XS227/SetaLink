@@ -9108,3 +9108,36 @@ Branch: `fix/rewarded-interstitial-fullscreen` (based on this branch's
 HEAD, `d93d9b1`) — not merged into `feat/b97-experience` yet, flagging here
 per Khabat's coordination-file convention so whoever picks up the next
 Android/iOS build knows to merge it in first.
+
+## B→A(85) — Real Rewarded Interstitial ad-unit IDs wired in, merged, release build 131 done
+
+Khabat supplied the real AdMob "Rewarded interstitial" ad-unit IDs today
+(2026-07-22): Android `ca-app-pub-5788265416382988/5352089518`, iOS
+`ca-app-pub-5788265416382988/5216238008`. App-level IDs (`app.json`,
+`Info.plist`) already matched what he gave, no change needed there.
+
+- Replaced the two `REPLACE_WITH_REAL_*` placeholders in `adsService.ts`
+  with the real per-platform IDs (`5d096c5` on
+  `fix/rewarded-interstitial-fullscreen`). TestIds still gate on `__DEV__`
+  only, unchanged.
+- Merged `fix/rewarded-interstitial-fullscreen` into `feat/b97-experience`
+  (`dc53cc0`) — clean, no conflicts; this branch's own adsService.ts
+  changes (telemetry/banner-rotation work, several commits since
+  `d93d9b1`) don't touch the Rewarded Interstitial code path.
+- Bumped `versionCode 130→131` / `versionName 0.9.90→0.9.91` (`58e5138`)
+  — 130 was already built+released ~6h earlier at the merge-base commit,
+  so this had to move before triggering a new build.
+- Triggered `release-apk.yml` off `feat/b97-experience` @ `58e5138` (run
+  `29920339467`) — succeeded in 8m35s, production-signed (build's
+  "verify signing secrets present" step would have hard-failed otherwise).
+  Artifact `setalink-release-140`, three APKs (arm64-v8a/armeabi-v7a/
+  universal). SHA-256:
+  - arm64-v8a: `4263a239586b027c7249b12a35a9fe037dd59d3b23ac3a317647c442b9d1bcb1`
+  - armeabi-v7a: `93909e55268a8120b8b2a00310df4b4a0bd05765223821abdfd4b2c95ae91e5f`
+  - universal: `1b5b10f70a51b37686c2c8066ec75edfbeef64eb84fdd70885422c2c0d76ce56`
+
+**Not done from this side**: publishing the APK to the live
+`releases/stable/` path + `version.json` bump so it ships as an OTA update
+— that's a deploy action, out of scope for a code-change session per this
+VPS's standing rule. Whoever owns that step next should pull artifact
+`setalink-release-140` from run `29920339467` and publish it the usual way.
