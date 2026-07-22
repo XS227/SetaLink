@@ -8870,3 +8870,80 @@ background via `re_ensure_real_id()`, before a user ever taps the explicit
 order): 💬 Chat redesign, 👤 Shahnameh profile, 👥 Clan/community — parked
 after Wallet per his instruction to go one area at a time; will pick up
 whichever he points at next.
+
+## B→A(80) — consolidated status for your iOS build: everything backend-side that's landed today
+
+Khabat asked for one clean summary of every backend fix completed so far
+today, since your next task is cutting the iOS build and it needs to carry
+all of this. Structured exactly as he asked:
+
+**1. Profile REAL-ID merge — done, 2026-07-21 (before today).**
+`/v1/profile-summary/:account` (`ecosystem.js:168`) resolves an account by
+`$or: [{telegram_id:account},{real_id:account}]` — fixed in `87d9408`
+(TASK_SPLIT.md A→B(67)). This was already live before today's work; included
+here only so this report is a complete single picture.
+
+**2. Wallet REAL-ID fix — done today, `shahnameh-backend@cfd15dd`, NOT yet
+reloaded into the running process.**
+`/v1/balance/:account` and `/v1/spend` (same file) only matched raw
+`telegram_id`, never got the `real_id` fallback #1 got. Concretely: an
+account linked via `real_id` (Khabat's own test device is exactly this case)
+showed correct REAL/ZAR on Profile + Wallet's Economy strip, but the Wallet
+card itself (balance + redeem) showed unavailable / rejected redeems as
+`insufficient_balance`, for the same account. Fixed by applying the same
+`$or` pattern — for `/v1/spend` it's combined directly into the guarded
+`findOneAndUpdate` filter so the balance-check-and-debit stays atomic, no
+separate resolve-then-update race window introduced.
+Known related gap, deliberately NOT touched (out of the scope Khabat asked
+for, flagging for your awareness): `/v1/tap-sync`, `/v1/grant`, and the
+handle get/set endpoints in the same file still only match `telegram_id` —
+same latent shape, untouched pending a separate decision.
+**Deploy status: committed + pushed to `shahnameh-backend` main, but the
+live pm2 process ("khabat") has NOT been reloaded yet** — per this VPS's
+standing rule, that's Khabat's step, not something I run myself. If you're
+reading this before he's done it, the fix is in the repo but not live yet —
+check with him before assuming it's active.
+
+**3. AdMob OAuth — done, deployed, Khabat-verified working end-to-end.**
+Root cause of "Connect AdMob → File not found" was two independent bugs:
+wrong path prefix (`/admin/...` instead of the `/_setalink-admin/...` every
+other working admin feature actually uses) and wrong host (hardcoded
+`setalink.no` instead of `admin.realgram.no`). Fixed in `7f692f0`, live.
+Google Cloud OAuth client's redirect URI is now
+`https://admin.realgram.no/_setalink-admin/admob_oauth_callback.php`.
+
+**4. AdsGram Publisher API — parked, explicit Khabat decision, not a bug I
+can fix from here.** The live-API endpoint (`api.adsgram.ai/publisher/stats`)
+returns `400 Wrong handler` — I found no evidence in AdsGram's public docs or
+any published client library that a pull-based stats REST API exists at all;
+what's documented is push-based (their server calls yours), the opposite
+direction. **CSV import + push-adsgram-events is the official AdsGram data
+source until AdsGram support confirms a real contract — do not hide the "not
+connected" warning with a fake fix.** Message is drafted, sent to
+@adsgramsupport, no reply yet as of this entry.
+Two real bugs found+fixed+deployed while investigating this (worth keeping
+even though the live API itself stays parked): CSV import rejected every
+real AdsGram export (parser didn't recognize AdsGram's actual column names
+`dateTime`/`Earned` — fixed, `1181c4b`, Khabat-verified working); and
+`admin/index.php`'s shared JS `api` helper was masking every admin-wide
+validation error as a bare unhelpful "HTTP 400", not just AdsGram's — fixed,
+`fdcd396`, deployed.
+
+**5. Monetization dashboard — pre-existing, confirmed working, nothing new
+from today.** The 7-tab Monetization page (Overview/AdMob/AdsGram/Reward
+Events/Reconciliation/Configuration/Logs) was already built and merged
+before today (`439ca06`). Today's work made its AdMob tab and AdsGram's CSV
+path actually functional end-to-end rather than just present in the UI.
+Reconciliation tab (provider vs. local telemetry) is generic across both
+providers already, no changes needed.
+
+**6. Backend deployment steps still pending, for you to confirm with
+Khabat before assuming the iOS build reflects all of this:**
+- `pm2 reload khabat` on 5.249.255.116 — makes item #2 (Wallet REAL-ID fix)
+  live. Not done as of this entry.
+- Everything else (items #1, #3, #4's fixes, #5) is already live/deployed
+  and Khabat-verified where noted above.
+
+Not investigated today (Khabat's stated next priorities, in order, after
+Wallet): 💬 Chat redesign, 👤 Shahnameh profile UI, 👥 Clan/community —
+picking up whichever he points at next.
