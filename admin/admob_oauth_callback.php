@@ -22,7 +22,7 @@ function admob_cb_page(string $title, string $body): never {
     echo '<!doctype html><html><head><meta charset="utf-8"><title>' . htmlspecialchars($title)
        . '</title></head><body style="font:14px system-ui;background:#0b0f1a;color:#e6ebff;padding:2rem">'
        . '<h2>' . htmlspecialchars($title) . '</h2><p>' . $body . '</p>'
-       . '<p><a href="/admin/#monetization" style="color:#7aa2f7">&larr; Back to RealGram Admin</a></p>'
+       . '<p><a href="/_setalink-admin/#monetization" style="color:#7aa2f7">&larr; Back to RealGram Admin</a></p>'
        . '</body></html>';
     exit;
 }

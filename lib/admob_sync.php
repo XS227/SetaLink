@@ -12,7 +12,10 @@
  * SETUP (one-time, done by the account owner — see docs/realgram/MONETIZATION_REPORTING.md):
  *   1. Google Cloud Console → a project with the AdMob API enabled.
  *   2. Create an OAuth 2.0 Client ID (type: Web application), with an
- *      Authorized redirect URI of https://setalink.no/admin/admob_oauth_callback.php
+ *      Authorized redirect URI of https://admin.realgram.no/_setalink-admin/admob_oauth_callback.php
+ *      (admin.realgram.no is the single public admin surface; it reverse-proxies
+ *      transparently to this same setalink.no codebase, so the path below is
+ *      unchanged, only the host is admin.realgram.no now, not setalink.no.)
  *   3. Put {"client_id":"...","client_secret":"..."} in ADMOB_CLIENT_CONFIG_PATH
  *      (root-only file, never committed — same posture as setalink.env).
  *   4. In RealGram Admin → Monetization → Configuration, click "Connect AdMob"
@@ -32,7 +35,7 @@ require_once __DIR__ . '/ad_monetization.php'; // am_init_tables/am_daily_metric
 const ADMOB_CLIENT_CONFIG_PATH = '/etc/setalink/admob-oauth-client.json';
 const ADMOB_TOKEN_PATH         = '/var/www/setalink/data/admob-oauth.json';
 const ADMOB_SCOPE              = 'https://www.googleapis.com/auth/admob.readonly';
-const ADMOB_REDIRECT_PATH      = '/admin/admob_oauth_callback.php';
+const ADMOB_REDIRECT_PATH      = '/_setalink-admin/admob_oauth_callback.php';
 const ADMOB_API_BASE           = 'https://admob.googleapis.com/v1';
 
 function admob_http(string $method, string $url, array $headers = [], ?string $body = null, int $timeout = 30): array {
@@ -77,10 +80,12 @@ function admob_connected(): bool {
     return !empty($t['refresh_token']);
 }
 
-/** Redirect URI, derived from the current request unless overridden. Kept stable
- *  and explicit since it must exactly match the OAuth client's registered URI. */
+/** Redirect URI. Hardcoded (not derived from the request Host header) since it
+ *  must exactly match the OAuth client's registered URI — admin.realgram.no is
+ *  the single public admin surface (reverse-proxies to this codebase), so this
+ *  is the host Khabat's browser and Google's redirect both actually use. */
 function admob_redirect_uri(): string {
-    return 'https://setalink.no' . ADMOB_REDIRECT_PATH;
+    return 'https://admin.realgram.no' . ADMOB_REDIRECT_PATH;
 }
 
 /** Build the Google consent-screen URL. $state should be a CSRF-bound nonce the

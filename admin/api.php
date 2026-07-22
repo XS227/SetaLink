@@ -4861,7 +4861,7 @@ switch ($action) {
                 'app_id'         => $arCfg['admob_app_id'],
                 'rewarded_unit_id' => $arCfg['admob_rewarded_unit_id'],
                 'ssv_enabled'    => (bool)$arCfg['admob_ssv_enabled'],
-                'oauth_start_url' => '/admin/admob_oauth_start.php',
+                'oauth_start_url' => '/_setalink-admin/admob_oauth_start.php',
             ],
             'adsgram' => [
                 'sync_status' => adsgram_sync_status($db),

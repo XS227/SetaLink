@@ -127,9 +127,15 @@ GA4/GSC, `admin/ga4_sync.php`) — a human must complete an OAuth consent once.
 
 1. Google Cloud Console → a project with the **AdMob API** enabled.
 2. Create an **OAuth 2.0 Client ID** (type: Web application), redirect URI
-   `https://setalink.no/admin/admob_oauth_callback.php`.
-3. On the server, create `/etc/setalink/admob-oauth-client.json` (root-only,
-   0600), containing:
+   `https://admin.realgram.no/_setalink-admin/admob_oauth_callback.php`
+   (admin.realgram.no is the single public admin surface Khabat uses — it
+   reverse-proxies transparently to this codebase, so `/_setalink-admin/` is
+   the real live path, matching `admin/index.php`'s own `API` JS constant;
+   the old `/admin/...` path used before this fix 404s on the live server).
+3. On the server, create `/etc/setalink/admob-oauth-client.json` (root:www-data,
+   0640 — **not** 0600 root:root as this doc previously said: PHP-FPM runs as
+   `www-data` and needs group-read, confirmed against the working
+   `admin.env` file's permissions), containing:
    ```json
    {"client_id": "...", "client_secret": "..."}
    ```
@@ -184,7 +190,7 @@ never modified or deleted; the backfill only adds rows to the new tables.
 
 | Path | Contents | Owner |
 |---|---|---|
-| `/etc/setalink/admob-oauth-client.json` | AdMob OAuth `client_id`+`client_secret` | root, 0600 |
+| `/etc/setalink/admob-oauth-client.json` | AdMob OAuth `client_id`+`client_secret` | root:www-data, 0640 |
 | `/var/www/setalink/data/admob-oauth.json` | AdMob refresh token (post-consent) | www-data, 0640 |
 | `settings.adsgram_api_token` (DB) | AdsGram publisher API token | masked in all API responses |
 | `settings.mon_*` (DB) | Base currency, reward valuation, FX rates | non-secret, shown in Configuration |

@@ -3233,7 +3233,7 @@ views.monetization = {
       statusEl.innerHTML = `<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;font-size:.82rem">
         <span class="badge ${s.connected ? 'badge-ok' : 'badge-warn'}">${s.connected ? 'connected' : 'not configured'}</span>
         <span style="opacity:.7">last sync: ${esc(s.last_sync || 'never')}</span>
-        ${!s.connected ? `<a class="btn btn-small" href="/admin/admob_oauth_start.php" target="_blank">Connect AdMob</a>` : `<button class="btn btn-small" id="monAdmobSyncNow" type="button">Sync now</button><button class="btn btn-small btn-ghost" id="monAdmobDisconnect" type="button">Disconnect</button>`}
+        ${!s.connected ? `<a class="btn btn-small" href="/_setalink-admin/admob_oauth_start.php" target="_blank">Connect AdMob</a>` : `<button class="btn btn-small" id="monAdmobSyncNow" type="button">Sync now</button><button class="btn btn-small btn-ghost" id="monAdmobDisconnect" type="button">Disconnect</button>`}
         ${warn.length ? '<span style="color:var(--warn)">' + esc(warn.join(' · ')) + '</span>' : ''}
       </div>
       ${!s.connected ? `<div style="margin-top:.5rem;font-size:.78rem;color:var(--warn)">⚠ Every number below is local device telemetry, not AdMob-confirmed — connect AdMob for verified provider data.</div>` : ''}`;
@@ -3367,7 +3367,7 @@ views.monetization = {
           <div>Rewarded unit ID: <span style="font-family:var(--mono)">${esc(am.rewarded_unit_id || '—')}</span></div>
           <div>SSV enabled: ${am.ssv_enabled ? '<span class="badge badge-ok">yes</span>' : '<span class="badge badge-warn">no</span>'}</div>
         </div>
-        <div style="margin-top:.6rem"><a class="btn btn-small" href="${esc(am.oauth_start_url || '/admin/admob_oauth_start.php')}" target="_blank">Connect / Reconnect AdMob</a></div>`;
+        <div style="margin-top:.6rem"><a class="btn btn-small" href="${esc(am.oauth_start_url || '/_setalink-admin/admob_oauth_start.php')}" target="_blank">Connect / Reconnect AdMob</a></div>`;
     }
     const agEl = $('monCfgAdsgram');
     if (agEl) {
