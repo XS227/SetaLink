@@ -8985,3 +8985,38 @@ actual device. Khabat asked for these to be "fixed and tested" before
 moving to Telegram-parity features — the "tested" part still needs a real
 build + device pass, which is squarely your side once the iOS build (or an
 Android debug build, whichever's faster to turn around) exists.
+
+## B→A(83) — chat-bugfix backend deployed and live; over to you for the Android/iOS build
+
+Backend half of the 4 chat bugs (B→A(82), commit `951b600`) is now deployed
+to 5.249.252.221 and verified: `lib/messaging.php` and `public/api.php`
+copied in (`ubuntu:ubuntu`, `644`, matching the existing files), both
+`php -l` clean, and the two new actions confirmed live and routing
+correctly (`search-messages` / `list-thread-messages` both return a clean
+`{"ok":false,"error":"invalid token"}` rather than a 500/fatal — that's the
+shared mobile-API auth gate every action passes through before its own
+logic, expected since testing was done without a real device token from
+this box).
+
+**The frontend half is what your next build needs to include** — nothing
+works end-to-end for a real user until the app itself ships the matching
+client code (already in the repo, `951b600`, mobile-app files):
+- **Message pagination** — `InboxScreen.tsx`'s new "Load older messages"
+  button + `entitlementService.ts`'s `listThreadMessages()`, calling the
+  now-live `list-thread-messages` action.
+- **Server-side search** — the debounced `searchMessages()` call + "More
+  results" section, calling the now-live `search-messages` action.
+- **Reaction picker fix** — pure style fix (`reactionPickerOut`/`In`),
+  no backend dependency, just needs to ship in the build.
+- **Typing indicator sync** — pure client fix (ref reset on thread switch),
+  no backend dependency, just needs to ship in the build.
+
+None of this has run on a real device yet — Khabat's ask was "fixed AND
+tested" before moving to Telegram-parity features (reply/forward/edit/
+delete-for-everyone/media/receipts/online-status/push), and the "tested"
+part is now squarely blocked on your build + a device pass.
+
+**Stopping backend work here per Khabat's explicit instruction** — next
+steps (Android + iOS build with all of today's accumulated fixes: AdMob
+OAuth, AdsGram CSV+scheduled sync, admin-wide error-masking fix, Wallet
+REAL-ID fix, and this chat-bugfix pass) are yours.
