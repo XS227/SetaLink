@@ -8955,3 +8955,33 @@ and confirmed Wallet now resolves correctly for his real_id-linked test
 device — no longer pending. All of items #1-#5 in B→A(80) are now live and
 verified, nothing outstanding on the backend-deployment front for the iOS
 build. Moving to Chat next per Khabat's priority list.
+
+## B→A(82) — the 4 real chat bugs fixed (951b600) — backend needs deploy, mobile needs a build to actually test
+
+Khabat's 4 priority chat bugs from the audit (B→A(79)'s "not investigated
+today" list, now investigated and fixed) — pagination, server search
+fallback, reaction picker positioning, typing desync. Full detail in the
+commit message on `951b600`. Deliberately did NOT touch any Telegram-parity
+features (reply/forward/edit/delete-for-everyone/media/receipts/online/push)
+— Khabat's explicit instruction was these 4 bugs first, features after.
+
+**Two different deploy paths, don't conflate them:**
+- `lib/messaging.php` + `public/api.php` (2 new endpoints: `list-thread-
+  messages`, `search-messages`) — same targeted file-copy deploy to
+  5.249.252.221 as every other backend fix today. Not deployed yet as of
+  this entry.
+- `mobile-app/src/screens/InboxScreen.tsx`, `entitlementService.ts`,
+  `utils/unifiedThreads.ts`, `i18n/index.ts` — **these need an actual app
+  build to take effect at all**, not a file copy. Nothing to "deploy" today;
+  this sits in the repo until the next Android/iOS build. Since your next
+  task is the iOS build, this should already be included once you build
+  from this branch — flagging so it's not assumed already-live like the
+  backend fixes have been.
+
+**Testing note:** I reviewed the TypeScript changes by hand (no `tsc`/npm
+run — this VPS's standing rule, and RN type-checking is heavy for a 1GB
+box) and `php -l` clean on both PHP files, but none of this has run on an
+actual device. Khabat asked for these to be "fixed and tested" before
+moving to Telegram-parity features — the "tested" part still needs a real
+build + device pass, which is squarely your side once the iOS build (or an
+Android debug build, whichever's faster to turn around) exists.
