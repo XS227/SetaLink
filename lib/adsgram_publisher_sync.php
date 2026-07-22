@@ -79,7 +79,11 @@ function adsgram_publisher_sync(PDO $pdo, int $days = 30): array {
     $written = 0;
     foreach ($rows as $row) {
         if (!is_array($row)) continue;
-        $date = (string)adsgram_pick($row, ['date', 'day', 'stat_date'], '');
+        // 'dateTime'/'Earned' added 2026-07-22: confirmed real AdsGram field
+        // names from Khabat's dashboard CSV export (see am_csv_import_adsgram
+        // below) -- same provider, so the JSON API likely shares this naming
+        // once the correct endpoint is found (see docs/realgram/TASK_SPLIT.md).
+        $date = (string)adsgram_pick($row, ['date', 'day', 'stat_date', 'dateTime', 'datetime'], '');
         if (!preg_match('/^\d{4}-\d{2}-\d{2}/', $date)) continue;
         $date = substr($date, 0, 10);
         $blockId = (string)adsgram_pick($row, ['blockId', 'block_id', 'unitId', 'unit_id'], '');
@@ -90,7 +94,7 @@ function adsgram_publisher_sync(PDO $pdo, int $days = 30): array {
             'impressions' => (int)adsgram_pick($row, ['impressions', 'views'], 0),
             'clicks'      => (int)adsgram_pick($row, ['clicks'], 0),
             'completions' => (int)adsgram_pick($row, ['completions', 'completed', 'rewardedViews'], 0),
-            'revenue'     => (float)adsgram_pick($row, ['revenue', 'earnings', 'income'], 0),
+            'revenue'     => (float)adsgram_pick($row, ['revenue', 'earnings', 'income', 'Earned', 'earned'], 0),
             'currency'    => (string)adsgram_pick($row, ['currency'], 'USDT'),
             'source_type' => 'PROVIDER_API',
         ]);
@@ -138,12 +142,15 @@ function am_csv_import_adsgram(PDO $pdo, string $csv, string $filename, string $
         foreach ($names as $n) { $i = array_search($n, $header, true); if ($i !== false) return $i; }
         return null;
     };
-    $iDate    = $col(['date', 'day']);
+    // 'datetime' and 'earned' confirmed 2026-07-22 from Khabat's real AdsGram
+    // dashboard CSV export (header: dateTime,Impressions,Clicks,CPM,CPC,CTR,
+    // Fill Rate,Earned) -- neither was in the original defensive guess list.
+    $iDate    = $col(['date', 'day', 'datetime']);
     $iUnit    = $col(['block_id', 'blockid', 'unit_id', 'unitid', 'block', 'unit']);
     $iImpr    = $col(['impressions', 'views']);
     $iClicks  = $col(['clicks']);
     $iComp    = $col(['completions', 'completed', 'rewarded_views', 'rewardedviews']);
-    $iRevenue = $col(['revenue', 'earnings', 'income']);
+    $iRevenue = $col(['revenue', 'earnings', 'income', 'earned']);
     $iCurrency= $col(['currency']);
     if ($iDate === null || $iRevenue === null) {
         throw new \InvalidArgumentException('CSV missing required "date" and/or "revenue" column');
