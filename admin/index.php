@@ -58,7 +58,7 @@ function icon(string $name): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>RealGram Admin</title>
-  <link rel="icon" href="/assets/logo/realgram/favicon.ico">
+  <link rel="icon" type="image/png" href="https://realgram.no/favicon.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -71,7 +71,7 @@ function icon(string $name): string {
 <!-- ── Sidebar ──────────────────────────────────────────────────────── -->
 <aside class="sidebar" id="sidebar">
   <div class="sidebar-logo">
-    <img src="/assets/logo/realgram/logo-mark-connected-32.png" alt="RealGram">
+    <img src="https://realgram.no/brand/realtoken.png" alt="RealGram" style="width:32px;height:32px;border-radius:50%;object-fit:cover">
     <div>
       <div class="sidebar-logo-text">RealGram</div>
       <div class="sidebar-logo-sub">Admin Panel</div>
@@ -4899,6 +4899,12 @@ views.devices = {
             : r.registration_source==='testflight'
               ? '<span class="badge badge-info" style="font-size:.58rem;margin-left:.1rem">🧪 TF</span>'
               : '';
+          // Starlink access badge — mirrors v1_starlink_unlock()'s policy
+          // (premium / test_mode / >=11 verified invites), so admins can see
+          // at a glance who the Starlink gate actually lets through.
+          const starlinkBadge = r.starlink_access
+            ? `<span class="badge badge-accent" style="font-size:.58rem;margin-left:.1rem" title="Starlink node access: ${esc(r.starlink_reason||'')}">🛰️ Starlink</span>`
+            : '';
           // First Seen / Last Seen combined cell
           const daysAgo = r.days_inactive != null
             ? (r.days_inactive < 1 ? 'today' : `${r.days_inactive}d ago`)
@@ -4910,7 +4916,7 @@ views.devices = {
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
               <div style="display:flex;gap:.25rem;align-items:center;margin:.18rem 0;flex-wrap:wrap">
-                ${platformBadge(r.platform)}${srcBadge}
+                ${platformBadge(r.platform)}${srcBadge}${starlinkBadge}
                 ${r.app_version?`<span class="badge badge-muted" style="font-family:var(--mono);font-size:.62rem" title="App version">${esc(r.app_version)}</span>`:''}
               </div>
               <div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)" title="Device fingerprint">FP: ${esc(r.device_id_short||'')}</div>
@@ -5133,6 +5139,9 @@ window.devDetail = async function(did) {
       kv('Quota', isIos
         ? `${gb(dev.quota_bytes_total)} (${esc(dev.plan)}) <span style="color:var(--muted-2);font-size:.7rem">· traffic not tracked on iOS proxy</span>`
         : `${dev.quota_bytes_used>0?gb(dev.quota_bytes_used):'0 B'} / ${gb(dev.quota_bytes_total)} (${esc(dev.plan)})`),
+      kv('Starlink access', dev.starlink_access
+        ? `<span style="color:var(--ok)">🛰️ unlocked</span> <span style="color:var(--muted-2);font-size:.7rem">(${esc(dev.starlink_reason||'')})</span>`
+        : `<span style="color:var(--muted-2)">locked</span> <span style="color:var(--muted-2);font-size:.7rem">(${dev.invites_verified||0}/11 invites, test_mode=${dev.test_mode?1:0}, plan=${esc(dev.plan||'free')})</span>`),
       kv('Referral code', esc(dev.referral_code)),
       kv('First seen', esc(dev.created_at)),
       kv('Last seen', `${esc(dev.last_seen)} (${fmtRelative(dev.last_seen)})`),

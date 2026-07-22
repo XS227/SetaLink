@@ -85,12 +85,34 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
     let earned = false;
     let settled = false;
     const subs: Array<() => void> = [];
+    // PAID is tracked separately from `subs` — it must survive past CLOSED.
+    // Google's own SDK can deliver the revenue-level PAID callback slightly
+    // after CLOSED (it's a distinct signal from the impression itself, see
+    // https://developers.google.com/admob/android/impression-level-ad-revenue).
+    // Unsubscribing everything the instant CLOSED fires (the old behavior for
+    // every other listener here) would silently drop a late PAID event — this
+    // is exactly the "removed too early" failure mode. Give it a grace window.
+    let paidSub: (() => void) | null = null;
+    const PAID_GRACE_MS = 4000;
     const cleanup = () => { subs.forEach((u) => { try { u(); } catch {} }); };
-    const finish = (fn: () => void) => { if (settled) return; settled = true; clearTimeout(timer); cleanup(); fn(); };
+    const cleanupPaid = () => { if (paidSub) { try { paidSub(); } catch {} paidSub = null; } };
+    const finish = (fn: () => void) => {
+      if (settled) return; settled = true; clearTimeout(timer); cleanup(); fn();
+      setTimeout(cleanupPaid, PAID_GRACE_MS);
+    };
     const timer = setTimeout(() => finish(() => reject(new Error('ad timeout'))), timeoutMs);
 
     subs.push(ad.addAdEventListener(RewardedAdEventType.LOADED, () => {
+      // Creative fetched into memory — distinct from "shown" (OPENED below),
+      // which needs the ad.show() call to actually succeed. Was previously
+      // untracked, same gap as interstitial's LOADED (see preloadInterstitial).
+      trackEvent('AD_REWARDED_LOADED', deviceId, { slot: 'rewarded' });
       try { ad.show(); } catch (e) { finish(() => reject(e as Error)); }
+    }));
+    subs.push(ad.addAdEventListener(AdEventType.OPENED, () => {
+      // Full-screen and actually visible to the user — was previously
+      // untracked entirely for rewarded (unlike interstitial's AD_INTERSTITIAL_SHOWN).
+      trackEvent('AD_REWARDED_SHOWN', deviceId, { slot: 'rewarded' });
     }));
     subs.push(ad.addAdEventListener(RewardedAdEventType.EARNED_REWARD, () => { earned = true; }));
     subs.push(ad.addAdEventListener(AdEventType.CLOSED, () => finish(() => resolve({ earned }))));
@@ -99,6 +121,17 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
       err.code = e?.code || '';
       finish(() => reject(err));
     }));
+    // Was never attached at all before this — rewarded ads had zero paid-event
+    // telemetry, unlike banner (TrackedBannerAd's onPaid) and interstitial
+    // (preloadInterstitial's PAID listener below). That made "does onPaid ever
+    // fire for us" impossible to answer for the one format that actually grants
+    // a reward. Never used to gate/estimate revenue — diagnostic only.
+    paidSub = ad.addAdEventListener(AdEventType.PAID, (e: any) => {
+      trackEvent('AD_PAID_EVENT_RECEIVED', deviceId, {
+        placement: 'rewarded_video', format: 'rewarded',
+        value: e?.value, currency: e?.currency, precision: e?.precision,
+      });
+    });
 
     ad.load();
   });
@@ -215,6 +248,10 @@ export function preloadInterstitial(): void {
     ad.addAdEventListener(AdEventType.LOADED, () => {
       if (token !== _loadToken) return;   // stale — a fresher attempt has since started
       clearLoadTimer();
+      // Creative fetched into memory — distinct from AD_INTERSTITIAL_SHOWN
+      // (OPENED, below), which needs a later, separate ad.show() to succeed.
+      // Previously untracked; "loads/fills" had no signal apart from SHOWN.
+      trackEvent('AD_INTERSTITIAL_LOADED', currentDeviceId(), { slot: 'interstitial' });
       _interReady = true; _interLoading = false;
       _interLoadedAt = Date.now();
       _interLoadedViaVpn = vpnConnectedNow();
@@ -239,15 +276,25 @@ export function preloadInterstitial(): void {
       if (token !== _loadToken) return;
       trackEvent('AD_INTERSTITIAL_SHOWN', currentDeviceId(), { slot: 'interstitial' });
     });
+    // PAID/CLICKED are NOT gated by `token !== _loadToken` (unlike LOADED/ERROR
+    // above). That guard exists to stop a superseded *load attempt* from
+    // corrupting the current one's state — but PAID/CLICKED describe something
+    // that already happened to THIS specific, already-shown `ad` instance, not
+    // "the current preload." CLOSED's handler calls preloadInterstitial() (which
+    // bumps _loadToken) synchronously, and Google's PAID callback can arrive
+    // after CLOSED — so the old `token !== _loadToken` check here was silently
+    // discarding exactly the late-arriving PAID event this was meant to catch.
     ad.addAdEventListener(AdEventType.PAID, (e: any) => {
-      if (token !== _loadToken) return;
       // Revenue-counted impression — the real fill signal, mirrors banner's onPaid.
       trackEvent('AD_INTERSTITIAL_IMPRESSION', currentDeviceId(), {
         slot: 'interstitial', value: e?.value, currency: e?.currency,
       });
+      trackEvent('AD_PAID_EVENT_RECEIVED', currentDeviceId(), {
+        placement: 'interstitial', format: 'interstitial',
+        value: e?.value, currency: e?.currency, precision: e?.precision,
+      });
     });
     ad.addAdEventListener(AdEventType.CLICKED, () => {
-      if (token !== _loadToken) return;
       trackEvent('AD_INTERSTITIAL_CLICK', currentDeviceId(), { slot: 'interstitial' });
     });
     ad.addAdEventListener(AdEventType.ERROR, (e: any) => {
