@@ -185,14 +185,9 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
 // for that one attempt — never further back to a static interstitial.
 //
 // Dedicated Rewarded Interstitial ad units (one per app; shown on Connect).
-// TODO(Khabat): create these in the AdMob console (ad unit format "Rewarded
-// interstitial") and paste the real IDs in below before a release build —
-// until then this uses TestIds in dev, and in prod every load simply errors
-// and falls through to the plain Rewarded unit above (REWARDED_UNIT_ID),
-// which already exists and is verified live. Either way, never a static image ad.
 const REWARDED_INTERSTITIAL_UNIT_PROD = Platform.OS === 'ios'
-  ? 'ca-app-pub-5788265416382988/REPLACE_WITH_REAL_IOS_REWARDED_INTERSTITIAL_UNIT_ID'
-  : 'ca-app-pub-5788265416382988/REPLACE_WITH_REAL_ANDROID_REWARDED_INTERSTITIAL_UNIT_ID';
+  ? 'ca-app-pub-5788265416382988/5216238008'
+  : 'ca-app-pub-5788265416382988/5352089518';
 
 export const REWARDED_INTERSTITIAL_UNIT_ID =
   (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.REWARDED_INTERSTITIAL : REWARDED_INTERSTITIAL_UNIT_PROD;
