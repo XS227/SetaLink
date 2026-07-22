@@ -8789,3 +8789,84 @@ box, same standing flag as always):
   value above.
 - Then click "Connect AdMob" for real — that's the one step that can't be
   scripted from here.
+
+## B→A(79) — status report for your iOS build: AdMob done, AdsGram parked, one real Wallet bug found+not-yet-fixed
+
+Khabat asked me to write up everything from today so you have it all when you're back and cutting the iOS build. Summary, deployed vs. open:
+
+**✅ AdMob OAuth — deployed, verified working end-to-end.** Root cause of
+"Connect AdMob → File not found" was two bugs, not one: (1) the OAuth
+start/callback links + `ADMOB_REDIRECT_PATH` hardcoded `/admin/...`, but
+every other working admin feature uses `/_setalink-admin/...` (see
+`admin/index.php`'s own `const API`) — this had been broken since
+`feat/monetization-admin` was first written, not a regression; (2)
+`admob_redirect_uri()` hardcoded `setalink.no` instead of
+`admin.realgram.no`. Fixed in `7f692f0`. Google Cloud redirect URI is now
+`https://admin.realgram.no/_setalink-admin/admob_oauth_callback.php`. Khabat
+confirmed "fully connected and verified" on the live box.
+
+**⏸️ AdsGram Publisher API — parked, not a bug I can fix from here.**
+`https://api.adsgram.ai/publisher/stats` (the endpoint baked into
+`lib/adsgram_publisher_sync.php` since it was first written) returns
+`400 Wrong handler`. I searched AdsGram's public docs + any published client
+library — found no evidence a pull-based stats REST API exists at all; what's
+documented is a client SDK (showing ads) and a *push*-based tracking/
+conversion API (their server calls yours), the opposite direction from what
+this code assumes. **Khabat's explicit decision (2026-07-22): CSV import +
+push-adsgram-events is the official AdsGram data source until AdsGram support
+confirms a real Publisher Stats API contract — do not fake/hide the "not
+connected" warning banner.** Message is drafted and Khabat has it ready to
+send to @adsgramsupport; no reply yet as of this entry.
+ - Fixed while investigating: CSV import was rejecting every real AdsGram
+   export with "missing required date/revenue column" — the parser only
+   recognized `date`/`day` and `revenue`/`earnings`/`income`, but AdsGram's
+   real dashboard export header is `dateTime,Impressions,Clicks,CPM,CPC,CTR,
+   Fill Rate,Earned`. Added `datetime`/`earned` as recognized aliases (both
+   CSV and the still-blocked live-API parser, in case the JSON API shares the
+   naming once the endpoint is known). Fixed in `1181c4b`, deployed,
+   Khabat confirmed the import works now.
+ - Also found+fixed while debugging the CSV 400: `admin/index.php`'s shared
+   `api.get`/`api.post` JS helper threw a bare `"HTTP "+status` on ANY
+   non-2xx response, before ever reading the response body — even though
+   `api_err()` always returns a real JSON `{ok:false,error:"..."}`. This
+   masked every validation error anywhere in the admin, not just AdsGram's.
+   Fixed in `fdcd396`, deployed. If you've been seeing unhelpfully generic
+   "HTTP 400" toasts anywhere else in the admin, they should now show the
+   real reason.
+ - Added the missing scheduled sync (`scripts/sync-adsgram-daily.php`,
+   mirrors `sync-admob-daily.php`) and its cron entry — harmless to leave
+   running even while the API endpoint is unresolved (exits 0 if
+   not-configured/failing, doesn't spam).
+
+**🔴 Wallet — real bug found, NOT fixed yet, needs a decision before you build.**
+Audited REAL/ZAR/FARR/Gems/XP end-to-end. All five are genuine live
+server data, no stubs. But: `RealWalletCard` (the actual balance+redeem
+card) sources REAL/ZAR from `/v1/balance/:account` and `/v1/spend`
+(`ecosystem.js`), which only match `Season2User.findOne({telegram_id:
+account})` — **no `real_id` fallback**. The Profile tab and the Wallet
+screen's own "Economy" strip (XP/Gems/FARR/REAL/ZAR) both go through
+`/v1/profile-summary/:account`, which *did* get a `real_id` fallback fix on
+2026-07-21 (`87d9408`, `$or: [{telegram_id:account},{real_id:account}]`).
+Net effect: for any account linked via a `real_id` string rather than a raw
+Telegram ID (Khabat's own test device is exactly this case — documented
+lines ~8040-8318 above) — Profile tab and the Wallet Economy strip show the
+correct REAL/ZAR balance, but the Wallet card itself (where you'd actually
+redeem) can show unavailable/"—", or reject a redeem as insufficient
+balance, for the same account. Straightforward fix (same `$or` pattern,
+applied to `/v1/balance` + `/v1/spend` in `ecosystem.js`) but I haven't
+touched it — Khabat wants to decide priority before I do. Flagging so it
+doesn't ship silently-broken in an iOS build cut before this lands.
+
+Smaller Wallet findings, not blocking: no ZAR→REAL conversion UI (backend
+endpoint `/season2/user/zar-swap` exists, nothing proxies/calls it from the
+app yet — matches known "not started" p2p/conversion roadmap item); the
+Wallet screen's Economy section fails silently on error (no spinner, no
+retry, just vanishes) unlike the Profile tab's proper retry+error UI;
+opening the Profile tab can invisibly "link" the Wallet card in the
+background via `re_ensure_real_id()`, before a user ever taps the explicit
+"Link account" button.
+
+**Not investigated by me today** (Khabat's stated next priorities, in
+order): 💬 Chat redesign, 👤 Shahnameh profile, 👥 Clan/community — parked
+after Wallet per his instruction to go one area at a time; will pick up
+whichever he points at next.
