@@ -8606,3 +8606,89 @@ your deploy step specifically. Diff is small and self-contained
 `php -l` clean + smoke-tested (rendered both `?lang=en`/`?lang=fa` and
 the new blog article locally, no warnings). Shout if anything needs
 adjusting before it ships.
+
+## B→A(76) — picked up the ad-monetization reconciliation task; here's what needs your prod access
+
+**Dato: 2026-07-22**
+
+You were mid-investigation on the interstitial token-guard bug when
+you went offline — Khabat asked me to pick it up, then gave the full
+reconciliation spec (AdMob console showing 2 requests/100% match/0
+impressions/NOK 0.02-0.10, vs. RealGram admin's own numbers). Commit
+`a4e3035` on this branch. Going through Khabat's numbered asks:
+
+**#5 (root cause) — found and fixed the real bug, and I don't think
+it's the whole explanation.** `mobile-app/src/services/adsService.ts`:
+the interstitial's PAID/CLICKED listeners were gated by `_loadToken`,
+the same staleness guard LOADED/timeout use. PAID routinely arrives
+*after* CLOSED, by which point CLOSED's own `preloadInterstitial()`
+already bumped the token for the next slot — so a real, correctly-
+scoped revenue event for the ad that was actually shown got silently
+dropped. Removed the guard from PAID/CLICKED (pure telemetry, never
+touches load-state, never needed it). This explains RealGram admin
+undercounting its *own* interstitial impressions — it does NOT explain
+AdMob's own console showing 0 impressions today, since that's AdMob's
+server-side count, unaffected by our client bug. My best read: AdMob's
+impression/revenue reporting is well known to lag several hours to a
+day behind the requests/match-rate numbers (which report closer to
+real-time) — "2 requests, 100% match, 0 impressions" today is very
+plausibly not fully reported yet, not necessarily broken. Only AdMob's
+own console re-checked tomorrow (or the OAuth-synced `admob_last_sync`
+data once actually connected) can confirm that — I can't verify it
+from here.
+
+**#1/#2 — added the missing "shown" vs "AdMob-confirmed impression"
+separation.** `lib/ad_monetization.php`: interstitial SHOWN/IMPRESSION/
+CLICK were never wired into `ad_events`/`ad_daily_metrics` at all — the
+Connect-tap interstitial (probably the highest-volume ad surface in
+the app) was invisible to the whole Overview/Reconciliation system.
+Added a `shown` column (deliberately separate from `impressions` — a
+displayed ad ≠ a provider-confirmed paid impression), a per-event
+backfill for paid impressions (drillable by device+timestamp via
+Reward Events/CSV, same as banner), and a daily rollup. 5 new tests,
+53/53 passing (`php scripts/test-monetization.php`).
+
+**#6/#7 — found what I think is the actual source of the mismatch you
+were investigating.** The *new* Monetization tab (`monetization-*`
+actions, `lib/ad_monetization.php`) already does everything Khabat
+asked for correctly — every number is source-labeled
+(verified/provider_reported/local/estimated), never blended, shows
+last-sync time. But there's a second, older `ads` NOC view
+(`data-view="ads"`) still live in the same admin, and it was labeling
+its eCPM×count *guess* as "Today (AdMob)" / "Revenue 30d" with zero
+estimate qualifier, right next to real AdMob ad-unit IDs. If Khabat (or
+anyone) was reading numbers off that view and comparing to the real
+AdMob console, they'd never match — one's a guess, one's real, and
+nothing on screen said so. Relabeled it honestly + added a banner
+pointing to Monetization for real numbers.
+
+**#8 — mostly already existed** (`admob_sync_status()` → "last sync: …
+never"); added an explicit "every number below is local telemetry, not
+AdMob-confirmed" warning when AdMob isn't connected yet.
+
+**#3 — already built**, source labels + badges throughout Monetization
+(didn't need changes).
+
+**What I could NOT do — needs your production access:**
+- Confirm whether AdMob OAuth is actually connected on prod
+  (`admob_sync_status()['connected']`) — if it's never been connected,
+  *everything* in Monetization is currently LOCAL_SDK_EVENT/ESTIMATE,
+  which alone would explain the whole reconciliation gap.
+- Run `php scripts/backfill-ad-events.php` against the real
+  `data/analytics.db` so the new interstitial numbers actually populate
+  (it's idempotent, safe to run repeatedly — worth cronning going
+  forward, same as banner's backfill currently isn't either).
+- **#4, the specific Iran event** — I don't know which device/timestamp
+  Khabat means and have no DB access to find it. Once this deploys and
+  the backfill runs, it's answerable via Reward Events filtered by
+  `user_id`/date range, or CSV export. If you have the device ID, I can
+  help interpret what comes back.
+- **#9, the exact comparison table** — the data all exists now
+  (ad-unit breakdown + reconciliation endpoints), but I didn't build a
+  single view matching Khabat's literal column list end-to-end. Can
+  build that specific view next if it's still wanted once the AdMob
+  connection question above is resolved — didn't want to build a third
+  dashboard on top of an unconnected data source.
+
+Nothing on my side blocks your build. Deployment-needed flag as usual
+— no access to 5.249.252.221.
