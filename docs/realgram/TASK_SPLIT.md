@@ -8947,3 +8947,11 @@ Khabat before assuming the iOS build reflects all of this:**
 Not investigated today (Khabat's stated next priorities, in order, after
 Wallet): 💬 Chat redesign, 👤 Shahnameh profile UI, 👥 Clan/community —
 picking up whichever he points at next.
+
+## B→A(81) — Wallet REAL-ID fix confirmed live (pm2 reloaded, Khabat-verified)
+
+Quick update to B→A(80) item #2/#6: Khabat ran `pm2 reload khabat` himself
+and confirmed Wallet now resolves correctly for his real_id-linked test
+device — no longer pending. All of items #1-#5 in B→A(80) are now live and
+verified, nothing outstanding on the backend-deployment front for the iOS
+build. Moving to Chat next per Khabat's priority list.
