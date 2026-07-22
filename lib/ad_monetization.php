@@ -675,8 +675,8 @@ function am_backfill(PDO $pdo, bool $dryRun = false): array {
         if ($res['duplicate']) $stats['skipped_dupe']++; else $stats['interstitial_events'] = ($stats['interstitial_events'] ?? 0) + 1;
     }
 
-    // 4b) Interstitial daily rollup (app_events: AD_INTERSTITIAL_SHOWN/IMPRESSION/CLICK)
-    //    — was completely absent from this table before 2026-07-22, so the
+    // 4b) Interstitial daily rollup (app_events: AD_INTERSTITIAL_SHOWN/IMPRESSION/CLICK/
+    //    EARNED_REWARD) — was completely absent from this table before 2026-07-22, so the
     //    Connect-tap interstitial (the ad shown on every connection) never
     //    contributed to Overview/Reconciliation at all. SHOWN (OPENED — the
     //    creative displayed on-device) and IMPRESSION (PAID — the provider
@@ -685,15 +685,19 @@ function am_backfill(PDO $pdo, bool $dryRun = false): array {
     //    a shown ad is not the same fact as a provider-confirmed impression,
     //    and collapsing them into one number is exactly what made the legacy
     //    `ads` NOC view's revenue unreconcilable with AdMob's own console.
+    //    EARNED_REWARD added same day the Connect-tap ad switched to Rewarded
+    //    Interstitial/Rewarded (previously a plain, non-rewarded interstitial —
+    //    this column was always 0 for 'interstitial' before that change).
     $interDaily = $pdo->query(
         "SELECT date(created_at) AS d,
-                SUM(CASE WHEN event='AD_INTERSTITIAL_SHOWN'      THEN 1 ELSE 0 END) AS shown,
-                SUM(CASE WHEN event='AD_INTERSTITIAL_IMPRESSION' THEN 1 ELSE 0 END) AS impressions,
-                SUM(CASE WHEN event='AD_INTERSTITIAL_CLICK'      THEN 1 ELSE 0 END) AS clicks,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_SHOWN'         THEN 1 ELSE 0 END) AS shown,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_IMPRESSION'    THEN 1 ELSE 0 END) AS impressions,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_CLICK'         THEN 1 ELSE 0 END) AS clicks,
+                SUM(CASE WHEN event='AD_INTERSTITIAL_EARNED_REWARD' THEN 1 ELSE 0 END) AS rewards_granted,
                 SUM(CASE WHEN event='AD_INTERSTITIAL_IMPRESSION'
                          THEN CAST(json_extract(props,'\$.value') AS REAL) ELSE 0 END) AS revenue
          FROM app_events
-         WHERE event IN ('AD_INTERSTITIAL_SHOWN','AD_INTERSTITIAL_IMPRESSION','AD_INTERSTITIAL_CLICK')
+         WHERE event IN ('AD_INTERSTITIAL_SHOWN','AD_INTERSTITIAL_IMPRESSION','AD_INTERSTITIAL_CLICK','AD_INTERSTITIAL_EARNED_REWARD')
          GROUP BY d"
     )->fetchAll(PDO::FETCH_ASSOC);
     foreach ($interDaily as $r) {
@@ -701,7 +705,8 @@ function am_backfill(PDO $pdo, bool $dryRun = false): array {
         $m = [
             'date' => $r['d'], 'provider' => 'admob', 'ad_unit_id' => 'interstitial',
             'shown' => (int)$r['shown'], 'impressions' => (int)$r['impressions'],
-            'clicks' => (int)$r['clicks'], 'revenue' => (float)$r['revenue'], 'currency' => 'USD',
+            'clicks' => (int)$r['clicks'], 'rewards_granted' => (int)$r['rewards_granted'],
+            'revenue' => (float)$r['revenue'], 'currency' => 'USD',
             'source_type' => 'LOCAL_SDK_EVENT',
         ];
         if ($dryRun) { $stats['interstitial'] = ($stats['interstitial'] ?? 0) + 1; continue; }

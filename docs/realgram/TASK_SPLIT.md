@@ -9020,3 +9020,91 @@ part is now squarely blocked on your build + a device pass.
 steps (Android + iOS build with all of today's accumulated fixes: AdMob
 OAuth, AdsGram CSV+scheduled sync, admin-wide error-masking fix, Wallet
 REAL-ID fix, and this chat-bugfix pass) are yours.
+
+## B→A(84) — Connect-tap ad switched from plain Interstitial to Rewarded Interstitial (video-only, real reward), branch `fix/rewarded-interstitial-fullscreen`
+
+Khabat's explicit ask (2026-07-22): every full-screen ad in RealGram must be
+a rewarded VIDEO ad, never a static image interstitial — Rewarded
+Interstitial as the standard format, plain Rewarded as fallback, reward
+gated strictly on `onUserEarnedReward`, shown/impression/paid/reward all
+logged so admin's numbers stay correct, no static-image fallback ever.
+
+**`mobile-app/src/services/adsService.ts` — full rewrite of the Connect-tap
+ad path** (`showRewardedForData`/WatchAdCard untouched, already video-only):
+- `preloadInterstitial()` now tries `RewardedInterstitialAd` first
+  (`REWARDED_INTERSTITIAL_UNIT_ID` — **placeholder ad unit IDs, TODO(Khabat):
+  create these in the AdMob console, format "Rewarded interstitial", and
+  paste the real iOS/Android IDs in** — until then every load errors and
+  falls through to the fallback below, never a static ad).
+- On a Rewarded Interstitial load error/timeout, falls through ONCE to
+  plain Rewarded (`REWARDED_UNIT_ID`, already live) for that cycle — never
+  further back to a static interstitial. Both formats share one loader
+  (`_startFullscreenLoad`) since they expose an identical event surface.
+- Reward only counts on `RewardedAdEventType.EARNED_REWARD` — crediting
+  itself is unchanged, still server-authoritative via AdMob SSV
+  (`serverSideVerificationOptions.userId = deviceId`, same as
+  `showRewardedForData`), now also required at preload time for the
+  Connect-tap ad (`preloadInterstitial()` bails + retries if no deviceId is
+  available yet, since SSV needs one at request time).
+- Telemetry: `AD_INTERSTITIAL_SHOWN`/`IMPRESSION`/`CLICK` kept (existing
+  admin wiring, see `a4e3035`, still applies unchanged), each now tagged
+  `format: 'rewarded_interstitial' | 'rewarded_video'`. New:
+  `AD_INTERSTITIAL_EARNED_REWARD` on EARNED_REWARD.
+- New `_afterFullscreenClose()`: after every full-screen ad closes — earned
+  or not — shows a brief toast (`ads.continuing` if not earned; reuses
+  `pr.adRewarded`/`pr.adPending` if earned, after the same poll-
+  `syncEntitlement` pattern `WatchAdCard` already uses) so the user always
+  sees *something* instead of a silent cut back into the app. Lives inside
+  `adsService.ts` itself (lazy `require`s, same pattern as `currentDeviceId()`)
+  so `HomeScreen.tsx`/`useAppBoot.ts` call sites needed zero changes.
+- Reward-farming check: connect/disconnect now both show a real rewarded ad,
+  so I checked whether repeated Connect/Disconnect taps could farm bonus
+  data — `lib/ads_recovery.php`'s existing per-device caps
+  (`ad_daily_cap = 4 videos/day`, `ad_daily_reward_cap_bytes = 1GB/day`,
+  enforced in `ar_confirm_reward`) already apply uniformly regardless of
+  which screen triggered the SSV call, so this inherits the existing
+  anti-abuse limit for free with no backend change needed.
+
+**`lib/ad_monetization.php`** — `am_backfill()`'s interstitial daily rollup
+(step 4b, added in `a4e3035`) now also aggregates
+`AD_INTERSTITIAL_EARNED_REWARD` into `rewards_granted` (was always 0 for
+`ad_unit_id='interstitial'` before, since the old plain interstitial was
+never reward-eligible) — `php -l` clean, no new migration needed (the
+`shown` column ALTER from `a4e3035` already handles new-column-on-old-DB).
+
+**`mobile-app/src/i18n/index.ts`** — added `ads.continuing` in all 4
+supported languages (en/fa/zh/ru); reused existing `pr.adRewarded`/
+`pr.adPending` for the earned case rather than adding duplicate strings.
+
+**`mobile-app/src/__tests__/adsInterstitial.test.ts`** — rewritten for the
+new dual-format loader: mocks now provide `RewardedInterstitialAd` +
+`RewardedAd` (both resolving to a shared mock instance so existing
+listener-driven assertions still work), plus `authStore`/`entitlementService`/
+`toastStore`/`i18n` mocks (needed since preload now requires a deviceId).
+Added two new tests confirming the no-static-image-ad fallback (error path
+and timeout path both fall through to plain Rewarded, never to a static
+interstitial) and one confirming `EARNED_REWARD` — not `OPENED`/`CLOSED` —
+is what gates the reward telemetry. Also fixed a latent bug in the
+telemetry describe block's `beforeEach` (wasn't awaiting `initAds()`, so
+`preloadInterstitial()` was racing the async SDK-init cold-start path
+instead of exercising steady state — same fix already applied to the other
+two describe blocks).
+
+**What I could NOT do from this box** (no RN toolchain / no build per this
+VPS's standing 1GB-RAM rule): run `tsc`/jest to confirm the rewrite
+type-checks and the test suite actually passes — reviewed by hand instead,
+same standing limitation as every other agent session working from here.
+`php -l` on `lib/ad_monetization.php` passed.
+
+**Needs before a release build**: real Rewarded Interstitial ad unit IDs
+from Khabat (AdMob console → new ad unit, format "Rewarded interstitial",
+one per platform) pasted into `REWARDED_INTERSTITIAL_UNIT_PROD` in
+`adsService.ts` — until then the app works correctly and shows real
+rewarded-video ads throughout (via the built-in fallback to the existing,
+already-live plain Rewarded unit), just without the Rewarded Interstitial
+format specifically.
+
+Branch: `fix/rewarded-interstitial-fullscreen` (based on this branch's
+HEAD, `d93d9b1`) — not merged into `feat/b97-experience` yet, flagging here
+per Khabat's coordination-file convention so whoever picks up the next
+Android/iOS build knows to merge it in first.
