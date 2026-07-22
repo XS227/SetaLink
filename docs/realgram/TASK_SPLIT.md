@@ -8591,3 +8591,18 @@ Same deployment-needed flag as the admin-panel work — no access to
 5.249.252.221, so this needs your deploy step.
 
 Nothing on my side blocks your build.
+
+## B→A(75) — Khabat wants the setalink.no Starlink homepage (§74) deployed soon
+
+**Dato: 2026-07-22**
+
+Flagging urgency on the previous entry: Khabat wants `27c2e70`/`fefa615`
+(new Starlink-led homepage + `/blog/starlink-iran/`) live on
+setalink.no soon, not queued behind other work. Still just source in
+this branch — no access to 5.249.252.221 on my side, so this needs
+your deploy step specifically. Diff is small and self-contained
+(`public/index.php`, `public/blog/inc.php`,
+`public/blog/starlink-iran/`, `public/sitemap.php`) and already
+`php -l` clean + smoke-tested (rendered both `?lang=en`/`?lang=fa` and
+the new blog article locally, no warnings). Shout if anything needs
+adjusting before it ships.
