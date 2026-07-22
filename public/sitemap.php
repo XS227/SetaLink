@@ -21,6 +21,7 @@ $urls = [
   ['loc' => '/blog/filtershekan-whatsapp/',              'priority' => '0.7', 'changefreq' => 'monthly'],
   ['loc' => '/blog/filtershekan-carrier-guide/',         'priority' => '0.7', 'changefreq' => 'monthly'],
   ['loc' => '/blog/filtershekan-irancell-disconnect/',   'priority' => '0.7', 'changefreq' => 'monthly'],
+  ['loc' => '/blog/starlink-iran/',                      'priority' => '0.8', 'changefreq' => 'weekly'],
 ];
 
 // hreflang alternates for the homepage — the 4 UI locales served by ?lang=.

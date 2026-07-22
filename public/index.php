@@ -145,6 +145,38 @@ $faqs_i18n = [
   ],
 ];
 $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
+
+// Starlink section (2026-07-22, Khabat's directive: lead the front page with
+// this). Status as actually documented in docs/STARLINK_WINDOWS_HANDOFF.md:
+// one gateway node, invite-only/testing_state=testing — so "early access",
+// not a general-availability tier. The speed/stability line is written as an
+// attributed tester quote, not a blanket claim we can't back up ourselves —
+// Khabat relayed it directly from the Iran tester's own words.
+$starlink_i18n = [
+  'en' => [
+    'eyebrow' => 'NEW · STARLINK-POWERED',
+    'title'   => 'Starlink just joined the network — and RealGram is where it lives',
+    'sub'     => "We've connected Realink to Starlink: a path that talks straight to satellites instead of Iran's domestic ISPs, so local blocking and throttling simply doesn't apply to it.",
+    'quote'   => '“Faster and steadier than every other app I\'ve tried in Iran.”',
+    'quote_by'=> '— our first Iran tester, on it for the past week',
+    'c1_h' => 'Why satellite changes the equation', 'c1_p' => "Starlink talks directly to a satellite, so it skips the domestic network layer entirely — the exact layer where most blocking, throttling and DPI happen inside Iran.",
+    'c2_h' => 'Where it stands today', 'c2_p' => 'One gateway node, invite-based access — the first Starlink-connected VPN gateway built for Iran. Still early, and we\'re expanding seats as it keeps holding up.',
+    'c3_h' => 'Part of something bigger', 'c3_p' => 'Realink\'s connection layer is becoming RealGram\'s Freedom module — one account across VPN, Shahnameh, wallet and messages.',
+    'cta1' => 'Open RealGram', 'cta2' => 'Request early access',
+  ],
+  'fa' => [
+    'eyebrow' => 'جدید · مبتنی بر استارلینک',
+    'title'   => 'استارلینک به شبکه ری‌لینک پیوست — حالا بخشی از رئال‌گرام',
+    'sub'     => 'شبکه ری‌لینک را به استارلینک وصل کرده‌ایم: مسیری که مستقیم با ماهواره در ارتباط است، نه زیرساخت اپراتورهای داخلی ایران — یعنی مسدودسازی و محدودسازی داخلی روی آن اثر ندارد.',
+    'quote'   => '«نسبت به هر اپ دیگه‌ای که تو ایران امتحان کردم، سریع‌تر و پایدارتره.»',
+    'quote_by'=> '— اولین تستر ایرانی ما، طی یک هفته اخیر',
+    'c1_h' => 'چرا استارلینک در ایران فرق می‌کند', 'c1_p' => 'چون سیگنال مستقیم با ماهواره رد و بدل می‌شود، از زیرساخت اپراتورهای داخلی (ایرانسل، همراه‌اول، مخابرات) عبور نمی‌کند — یعنی مسدودسازی و DPI داخل کشور روی این مسیر اثر ندارد.',
+    'c2_h' => 'الان کجا هستیم', 'c2_p' => 'یک گره فعال و دسترسی دعوت‌محور — اولین گیت‌وی وی‌پی‌ان مبتنی بر استارلینک برای ایران. هنوز مرحله اولیه است و به‌مرور که پایداری‌اش تأیید شود، ظرفیتش را گسترش می‌دهیم.',
+    'c3_h' => 'بخشی از یک اکوسیستم بزرگ‌تر', 'c3_p' => 'لایه اتصال ری‌لینک دارد به ماژول «Freedom» در رئال‌گرام تبدیل می‌شود — همان حساب، همان پاداش‌ها، در وی‌پی‌ان، شاهنامه، کیف‌پول و پیام‌رسان.',
+    'cta1' => 'رئال‌گرام را باز کن', 'cta2' => 'درخواست دسترسی زودهنگام',
+  ],
+];
+$STL = $starlink_i18n[$lang] ?? $starlink_i18n['en'];
 ?><!DOCTYPE html>
 <html lang="<?= $lang ?>" dir="<?= $dir ?>">
 <head>
@@ -152,7 +184,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><?= htmlspecialchars($m_title, ENT_QUOTES) ?></title>
   <meta name="description" content="<?= htmlspecialchars($m_desc, ENT_QUOTES) ?>">
-  <meta name="keywords" content="فیلترشکن, فیلترشکن رایگان, فیلترشکن قوی, فیلترشکن پرسرعت, بهترین فیلترشکن, دانلود فیلترشکن, فیلترشکن اندروید, فیلترشکن آیفون, فیلترشکن جدید, فیلترشکن بدون قطعی, فیلتر شکن, وی پی ان, وی‌پی‌ان رایگان, V2Ray ایران, VLESS Reality, عبور از فیلترینگ, ضد فیلتر, VPN Iran, free VPN Iran, anti-censorship VPN, bypass DPI, 翻墙, 科学上网, VPN обход блокировок">
+  <meta name="keywords" content="فیلترشکن, فیلترشکن رایگان, فیلترشکن قوی, فیلترشکن پرسرعت, بهترین فیلترشکن, دانلود فیلترشکن, فیلترشکن اندروید, فیلترشکن آیفون, فیلترشکن جدید, فیلترشکن بدون قطعی, فیلتر شکن, وی پی ان, وی‌پی‌ان رایگان, V2Ray ایران, VLESS Reality, عبور از فیلترینگ, ضد فیلتر, VPN Iran, free VPN Iran, anti-censorship VPN, bypass DPI, استارلینک ایران, استفاده از استارلینک در ایران, وی‌پی‌ان استارلینک, Starlink Iran, Starlink VPN, 翻墙, 科学上网, VPN обход блокировок">
   <meta name="robots" content="index,follow,max-image-preview:large">
   <meta name="author" content="SetAI">
   <link rel="canonical" href="<?= $canonical ?>">
@@ -202,7 +234,8 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
         "url": "https://setalink.no",
         "logo": "<?= $og_img ?>",
         "parentOrganization": {"@type": "Organization", "name": "SetAI", "url": "https://setai.no"},
-        "sameAs": ["https://t.me/SetaLink3","https://github.com/XS227/SetaLink","https://setai.no","https://shahnameh.setaei.com","https://trustai.no","https://numerologist.setai.no"]
+        "memberOf": {"@type": "Organization", "name": "RealGram", "url": "https://realgram.no"},
+        "sameAs": ["https://realgram.no","https://t.me/SetaLink3","https://github.com/XS227/SetaLink","https://setai.no","https://shahnameh.setaei.com","https://trustai.no","https://numerologist.setai.no"]
       },
       {
         "@type": "SoftwareApplication",
@@ -269,6 +302,9 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
         <button class="lang-opt" data-lang="ru" role="menuitem"><span>Русский</span></button>
       </div>
     </div>
+    <a href="https://realgram.no" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;color:var(--text-2);font-size:.85rem;font-weight:600;text-decoration:none;margin-inline-end:.5rem">
+      <?= $lang === 'fa' ? 'بخشی از رئال‌گرام ↗' : 'Part of RealGram ↗' ?>
+    </a>
     <a href="<?= htmlspecialchars($dl_link) ?>" class="btn-nav-dl">
       <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M8 12l-4-4h2.5V4h3v4H12L8 12z"/><rect x="2" y="13" width="12" height="1.5" rx=".75"/></svg>
       <span data-t="nav.dl">Download APK</span>
@@ -364,6 +400,49 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
       <div class="hero-stat-num">5 GB</div>
       <div class="hero-stat-label" data-t="stat.free">Free on install</div>
     </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ══ STARLINK ════════════════════════════════════════════════ -->
+<section class="section" id="starlink">
+  <div class="section-label"><?= htmlspecialchars($STL['eyebrow']) ?></div>
+  <h2 class="section-title"><?= htmlspecialchars($STL['title']) ?></h2>
+  <p class="section-sub" style="max-width:680px"><?= htmlspecialchars($STL['sub']) ?></p>
+
+  <blockquote style="max-width:680px;margin:0 0 40px;padding:1.1rem 1.4rem;background:rgba(0,232,122,.06);border-<?= $dir==='rtl'?'right':'left' ?>:3px solid var(--green);border-radius:8px">
+    <p style="font-size:1.1rem;font-weight:600;font-style:italic;margin:0 0 .4rem;color:#fff"><?= htmlspecialchars($STL['quote']) ?></p>
+    <p style="font-size:.82rem;color:var(--text-2);margin:0"><?= htmlspecialchars($STL['quote_by']) ?></p>
+  </blockquote>
+
+  <div class="bento-grid">
+    <div class="bento-cell">
+      <div class="bento-icon blue">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <h4><?= htmlspecialchars($STL['c1_h']) ?></h4>
+      <p><?= htmlspecialchars($STL['c1_p']) ?></p>
+    </div>
+    <div class="bento-cell">
+      <div class="bento-icon green">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l7.5 3.5v5.5c0 4.8-3.2 8.1-7.5 9.5-4.3-1.4-7.5-4.7-7.5-9.5V6z"/><path d="M9 12l2 2 4-4.4"/></svg>
+      </div>
+      <h4><?= htmlspecialchars($STL['c2_h']) ?></h4>
+      <p><?= htmlspecialchars($STL['c2_p']) ?></p>
+    </div>
+    <div class="bento-cell">
+      <div class="bento-icon gold">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      </div>
+      <h4><?= htmlspecialchars($STL['c3_h']) ?></h4>
+      <p><?= htmlspecialchars($STL['c3_p']) ?></p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:40px">
+    <a href="https://realgram.no" target="_blank" rel="noopener" class="btn btn-primary"><?= htmlspecialchars($STL['cta1']) ?></a>
+    <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" class="btn btn-secondary"><?= htmlspecialchars($STL['cta2']) ?></a>
   </div>
 </section>
 
@@ -640,6 +719,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
       <span class="brand-seta">Rea</span><span class="brand-link">link</span>
     </div>
     <nav class="footer-links">
+      <a href="https://realgram.no" target="_blank" rel="noopener" style="color:var(--green);font-weight:700"><?= $lang === 'fa' ? 'رئال‌گرام' : 'RealGram' ?></a>
       <a href="/faq.php" data-t="footer.faq">Full FAQ</a>
       <a href="https://t.me/SetaLink3" target="_blank" rel="noopener" data-t="footer.tg">Telegram</a>
       <a href="https://github.com/XS227/SetaLink" target="_blank" rel="noopener" data-t="footer.gh">GitHub</a>
@@ -658,6 +738,7 @@ $faqs = $faqs_i18n[$lang] ?? $faqs_i18n['en'];
     </nav>
     <p class="footer-copy">
       &copy; <?= date('Y') ?> Realink VPN · <span data-t="footer.platforms">Android &amp; iOS</span> ·
+      part of <a href="https://realgram.no" target="_blank" rel="noopener" style="color:var(--green);font-weight:600">RealGram</a> ·
       <span data-t="footer.by">a project by</span>
       <a href="https://setai.no" target="_blank" rel="external" style="color:var(--gold);font-weight:600">SetAI</a>
     </p>
