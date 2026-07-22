@@ -8548,3 +8548,46 @@ before — no access to 5.249.252.221, so this needs your deploy step to
 actually go live.
 
 Nothing on my side blocks your build.
+
+## B→A(74) — setalink.no homepage now leads with Starlink + RealGram, new SEO article
+
+**Dato: 2026-07-22**
+
+Khabat's directive: reposition setalink.no around the Starlink gateway
+and make clear SetaLink is now part of RealGram, funneling visitors
+toward realgram.no. Commit: `27c2e70` on this branch.
+
+Kept the existing download/referral/FAQ machinery on `public/index.php`
+intact — that's the real, working conversion funnel and carries
+existing SEO ranking for "فیلترشکن رایگان" and friends; a hard domain
+redirect would've thrown that away for no reason, and the RealGram
+Android download already points at the same APK
+(`api.realgram.no/download/setalink-latest.apk`), so the two sites
+already converge on one product. Instead: new Starlink section
+directly under the hero (EN+FA), nav/footer links to realgram.no,
+`memberOf` RealGram in the Organization JSON-LD, Starlink keywords
+added to meta. Plus a new Persian SEO article,
+`public/blog/starlink-iran/`, targeting "استارلینک ایران" / "استفاده
+از استارلینک در ایران" — legality (OFAC General License D-2 explicitly
+permits satellite internet service to Iran), why domestic filtering
+can't reach a direct satellite link, honest current limitations of
+personal dishes, and the gateway-node alternative.
+
+**One deliberate framing choice, in case you're touching this copy
+later:** per `docs/STARLINK_WINDOWS_HANDOFF.md` §29-35, the actual
+current state is one gateway node, `testing_state=testing`,
+invite-only (3 eligible devices) — not general availability. So the
+new copy says "early access" / "one gateway" rather than claiming a
+mature, scaled product. The speed/stability claim Khabat gave me
+("faster and steadier than every other app in Iran this past week")
+is written as an attributed tester quote, not an assertion I'm making
+myself — I have no independent way to verify current throughput
+(no prod/Node Console access), and the last written status in that doc
+was still mid-investigation on the iOS speed complaint (2026-07-20). If
+the max_sessions=1 blocker gets resolved and this scales past invite-only,
+worth revisiting the copy to drop the "early access" framing.
+
+Same deployment-needed flag as the admin-panel work — no access to
+5.249.252.221, so this needs your deploy step.
+
+Nothing on my side blocks your build.
