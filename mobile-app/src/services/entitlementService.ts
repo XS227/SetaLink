@@ -317,17 +317,15 @@ export async function sendMessage(
   return data as { message_id: number; recipient_user_id: string; created_at: string };
 }
 
-/** Fetch this device's direct-message thread (inbox + sent), newest first. */
-export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
-  const data = await mobileGet('list-messages', { device_id: deviceId }) as {
-    messages?: Array<{
-      id: number; direction: 'in' | 'out'; peer_user_id: string;
-      peer_device: string; body: string; read: boolean; created_at: string;
-      expire_secs?: number; expires_at?: string | null;
-      reactions?: Record<string, number>; my_reaction?: string | null;
-    }>;
-  };
-  return (data.messages ?? []).map(m => ({
+type RawDirectMessage = {
+  id: number; direction: 'in' | 'out'; peer_user_id: string;
+  peer_device: string; body: string; read: boolean; created_at: string;
+  expire_secs?: number; expires_at?: string | null;
+  reactions?: Record<string, number>; my_reaction?: string | null;
+};
+
+function mapDirectMessage(m: RawDirectMessage): DirectMessage {
+  return {
     id:         m.id,
     direction:  m.direction,
     peerUserId: m.peer_user_id,
@@ -339,6 +337,47 @@ export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
     expiresAt:  m.expires_at ?? null,
     reactions:  m.reactions ?? {},
     myReaction: m.my_reaction ?? null,
+  };
+}
+
+/** Fetch this device's direct-message thread (inbox + sent), newest first. */
+export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
+  const data = await mobileGet('list-messages', { device_id: deviceId }) as { messages?: RawDirectMessage[] };
+  return (data.messages ?? []).map(mapDirectMessage);
+}
+
+/** "Load older" pagination for one open thread (2026-07-22, chat audit bug #1)
+ *  -- listMessages() above is capped at 200 combined across every thread, so
+ *  older messages can silently disappear once that's crossed. This fetches
+ *  further back in a single peer's thread on demand, newest-first (prepend
+ *  to the already-loaded thread). `peer` is peerUserId or peerDevice, either
+ *  works (mirrors sendMessage's recipient param). */
+export async function listThreadMessages(
+  deviceId: string, peer: string, beforeId: number, limit = 50,
+): Promise<DirectMessage[]> {
+  const data = await mobileGet('list-thread-messages', {
+    device_id: deviceId, peer, before_id: String(beforeId), limit: String(limit),
+  }) as { messages?: RawDirectMessage[] };
+  return (data.messages ?? []).map(mapDirectMessage);
+}
+
+/** Server-side search fallback (2026-07-22, chat audit bug #2) -- the
+ *  in-app search only covers listMessages()'s locally-cached window; this
+ *  searches this device's full recent message history server-side for
+ *  anything the local cache doesn't have. Lighter shape than DirectMessage
+ *  (no reactions/read/expire — those aren't shown in search results). */
+export async function searchMessages(deviceId: string, query: string): Promise<Array<{
+  id: number; direction: 'in' | 'out'; peerUserId: string; peerDevice: string;
+  body: string; createdAt: string;
+}>> {
+  const q = query.trim();
+  if (!q) return [];
+  const data = await mobileGet('search-messages', { device_id: deviceId, q }) as {
+    results?: Array<{ id: number; direction: 'in' | 'out'; peer_user_id: string; peer_device: string; body: string; created_at: string }>;
+  };
+  return (data.results ?? []).map(r => ({
+    id: r.id, direction: r.direction, peerUserId: r.peer_user_id,
+    peerDevice: r.peer_device, body: r.body, createdAt: r.created_at,
   }));
 }
 

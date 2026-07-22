@@ -10,10 +10,12 @@ import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
 import { useToastStore } from '../stores/toastStore';
 import { DM_MAX_LEN } from '../services/entitlementService';
-import { buildConversations, type Conversation, type ChatMessage } from '../utils/unifiedThreads';
+import { buildConversations, dmToChat, type Conversation, type ChatMessage } from '../utils/unifiedThreads';
 import { useT } from '../i18n';
 import { DM_REACTIONS } from '../services/entitlementService';
 import { setTyping as apiSetTyping, getTyping as apiGetTyping } from '../services/entitlementService';
+import { listThreadMessages, searchMessages } from '../services/entitlementService';
+import { Logger } from '../utils/logger';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
@@ -140,8 +142,95 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
       c.messages.some((m) => m.body.toLowerCase().includes(q)));
   }, [conversations, searchQuery]);
 
+  // Server-side search fallback (2026-07-22, chat audit bug #2) — the filter
+  // above only ever sees the locally-cached 200-message window, so anything
+  // older is silently unsearchable. Debounced (400ms) so it doesn't fire a
+  // request per keystroke; results are merged in below as a distinct section
+  // rather than replacing the instant local results, since local stays
+  // faster for anything already cached.
+  const [serverSearchResults, setServerSearchResults] = useState<Awaited<ReturnType<typeof searchMessages>>>([]);
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || !deviceId) { setServerSearchResults([]); return; }
+    let cancelled = false;
+    const id = setTimeout(() => {
+      searchMessages(deviceId, q).then((r) => { if (!cancelled) setServerSearchResults(r); }).catch(() => {});
+    }, 400);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [searchQuery, deviceId]);
+
+  // Server hits not already covered by a locally-cached conversation — these
+  // are specifically the "beyond the 200-window" matches bug #2 was about.
+  const extraServerResults = useMemo(() => {
+    if (!serverSearchResults.length) return [];
+    const localIds = new Set<number>();
+    conversations.forEach((c) => c.messages.forEach((m) => { if (m.kind === 'dm') localIds.add(m.id); }));
+    return serverSearchResults.filter((r) => !localIds.has(r.id));
+  }, [serverSearchResults, conversations]);
+
+  const openSearchResult = (r: (typeof extraServerResults)[number]) => {
+    // The overwhelming common case: this peer has *some* recent message too,
+    // so a real Conversation already exists locally — open it (its own
+    // "load older" button, bug #1's fix, reaches the rest of the history).
+    const existing = conversations.find((c) => !c.support && (
+      (!!r.peerUserId && c.peerUserId === r.peerUserId) || (!!r.peerDevice && c.peerDevice === r.peerDevice)
+    ));
+    if (existing) { setSearchOpen(false); setSearchQuery(''); openConvoView(existing); return; }
+    // Rare edge case: literally every message from this peer is older than
+    // the 200-window, so there's no local conversation entry point at all.
+    // Not building a full ad-hoc-thread UI for this narrow case (out of
+    // today's scope) — tell the user plainly rather than a silent dead end.
+    useToastStore.getState().show(t('dm.searchResultNoThread'), 'info');
+  };
+
   const openConvo = openKey ? conversations.find(c => c.key === openKey) ?? null : null;
   const openPeer  = !openConvo?.support ? (openConvo?.peerUserId || openConvo?.peerDevice || '') : '';
+
+  // "Load older messages" pagination (2026-07-22, chat audit bug #1) — the
+  // store's own `messages` (dms) is a combined-all-threads 200 cap, so a
+  // thread's full history can silently be missing beyond that window. These
+  // hold whatever's been fetched *beyond* that window for the currently open
+  // thread only; reset whenever the open thread changes. Kept out of the
+  // persisted dmStore on purpose — this is scoped to "the thread you have
+  // open right now", not something that needs to survive an app restart.
+  const [olderMessages, setOlderMessages] = useState<ChatMessage[]>([]);
+  const [loadingOlder, setLoadingOlder]   = useState(false);
+  const [noMoreOlder, setNoMoreOlder]     = useState(false);
+  useEffect(() => {
+    setOlderMessages([]);
+    setLoadingOlder(false);
+    setNoMoreOlder(false);
+  }, [openKey]);
+
+  // Older-loaded + store-cached messages, oldest first — what the thread
+  // actually renders. Safe across dmRefresh polls: olderMessages only ever
+  // holds ids strictly below anything the 200-window has ever contained for
+  // this thread, so a refresh replacing `dms` can't invalidate it.
+  const threadMessages = useMemo(
+    () => [...olderMessages, ...(openConvo?.messages ?? [])],
+    [olderMessages, openConvo],
+  );
+
+  const loadOlderMessages = async () => {
+    if (!openConvo || openConvo.support || loadingOlder || noMoreOlder || !openPeer) return;
+    const oldestDm = threadMessages.find(m => m.kind === 'dm');
+    if (!oldestDm) return;
+    setLoadingOlder(true);
+    try {
+      const older = await listThreadMessages(deviceId, openPeer, oldestDm.id, 50);
+      if (older.length === 0) { setNoMoreOlder(true); return; }
+      // Server returns newest-first (same contract as list-messages);
+      // ChatMessage[]/Conversation.messages is oldest-first, so reverse
+      // before prepending.
+      const chats = older.map(dmToChat).reverse();
+      setOlderMessages(prev => [...chats, ...prev]);
+      if (older.length < 50) setNoMoreOlder(true);
+    } catch (e) {
+      Logger.warn('InboxScreen', `loadOlderMessages failed: ${e}`);
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
 
   // Typing indicator (2026-07-22) — poll while a DM thread is open (not
   // Support, which isn't a live peer). Cheap GET, same cadence as the
@@ -159,6 +248,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   // rather than every keystroke (the server treats it as a cheap upsert, but
   // no reason to hammer it on every character).
   const lastTypingPingRef = useRef(0);
+  // Bug fix 2026-07-22 (chat audit #4): this ref was shared across every
+  // thread with no reset, so switching to a new peer within 2.5s of typing
+  // in the last one silently suppressed the first ping to the new peer --
+  // they wouldn't see "typing..." for up to 2.5s longer than they should.
+  useEffect(() => { lastTypingPingRef.current = 0; }, [openPeer]);
   const pingTyping = () => {
     if (!deviceId || !openPeer) return;
     const now = Date.now();
@@ -340,6 +434,32 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
           })
         )}
 
+        {/* Server-side search fallback results (2026-07-22, chat audit bug
+            #2) — matches found on the server that aren't in any locally
+            cached conversation above (i.e. older than the 200-window). */}
+        {extraServerResults.length > 0 && (
+          <>
+            <Text style={styles.moreResultsLabel}>{t('dm.moreResults')}</Text>
+            {extraServerResults.map((r) => (
+              <TouchableOpacity
+                key={`search-${r.id}`}
+                style={styles.item}
+                activeOpacity={0.8}
+                onPress={() => openSearchResult(r)}
+              >
+                <Avatar support={false} label={r.peerUserId || r.peerDevice} />
+                <View style={styles.itemMain}>
+                  <View style={styles.itemHeader}>
+                    <Text style={styles.itemTitle} numberOfLines={1}>{r.peerUserId || r.peerDevice}</Text>
+                    <Text style={styles.itemDate}>{r.createdAt.slice(5, 16)}</Text>
+                  </View>
+                  <Text style={styles.itemBody} numberOfLines={1}>{r.body}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </>
+        )}
+
         <View style={{ height: Spacing[8] }} />
       </ScrollView>
 
@@ -384,7 +504,25 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     <Text style={styles.introText}>{t('dm.supportIntro')}</Text>
                   </View>
                 )}
-                {openConvo.messages.filter(m => !isBurned(m)).map((m) => {
+                {/* "Load older messages" (2026-07-22, chat audit bug #1) — a
+                    button rather than silent infinite-scroll-on-drag: this is
+                    a ScrollView, not a FlatList, so there's no onEndReached to
+                    hook, and a visible button also makes it obvious to the
+                    user that older history exists and is one tap away, rather
+                    than messages just quietly appearing. */}
+                {!openConvo.support && !noMoreOlder && threadMessages.some(m => m.kind === 'dm') && (
+                  <TouchableOpacity
+                    style={styles.loadOlderBtn}
+                    activeOpacity={0.7}
+                    onPress={loadOlderMessages}
+                    disabled={loadingOlder}
+                  >
+                    {loadingOlder
+                      ? <ActivityIndicator size="small" color={Colors.text.secondary} />
+                      : <Text style={styles.loadOlderText}>{t('dm.loadOlder')}</Text>}
+                  </TouchableOpacity>
+                )}
+                {threadMessages.filter(m => !isBurned(m)).map((m) => {
                   const out = m.direction === 'out';
                   const burning = (m.expireSecs ?? 0) > 0;
                   const canReact = m.kind === 'dm';
@@ -440,7 +578,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                       )}
 
                       {canReact && reactingTo === m.id && (
-                        <View style={[styles.reactionPickerRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}>
+                        <View style={[styles.reactionPickerRow, out ? styles.reactionPickerOut : styles.reactionPickerIn]}>
                           {DM_REACTIONS.map((emoji) => (
                             <TouchableOpacity
                               key={emoji}
@@ -620,7 +758,15 @@ const styles = StyleSheet.create({
   reactionBadgeMine:{ borderColor: Colors.emerald[400] },
   reactionBadgeText:{ fontSize: 11, color: Colors.text.secondary },
 
-  reactionPickerRow: { flexDirection: 'row', gap: 6, marginTop: -4, marginBottom: 8, paddingHorizontal: 4, backgroundColor: Colors.bg.surface, borderRadius: 20, borderWidth: 1, borderColor: Colors.border.default, alignSelf: 'flex-start', paddingVertical: 4 },
+  // No alignSelf here (bug fix 2026-07-22, chat audit #3): it used to be
+  // hardcoded 'flex-start', which pins the picker to the left edge even for
+  // your own (right-aligned) sent messages -- justifyContent from
+  // bubbleRowOut/In has no effect on a shrink-to-fit row's own position, only
+  // on its children. reactionPickerOut/In below (mirroring bubbleRowOut/In's
+  // naming) set the real per-direction alignSelf instead.
+  reactionPickerRow: { flexDirection: 'row', gap: 6, marginTop: -4, marginBottom: 8, paddingHorizontal: 4, backgroundColor: Colors.bg.surface, borderRadius: 20, borderWidth: 1, borderColor: Colors.border.default, paddingVertical: 4 },
+  reactionPickerOut: { alignSelf: 'flex-end' },
+  reactionPickerIn:  { alignSelf: 'flex-start' },
   reactionPickerBtn: { paddingHorizontal: 4 },
   reactionPickerEmoji: { fontSize: 20 },
   bubbleBurn:    { borderWidth: 1, borderColor: 'rgba(255,140,60,0.5)' },
@@ -634,6 +780,9 @@ const styles = StyleSheet.create({
   threadSendText:{ fontSize: 20, color: '#021b10', fontWeight: '700' },
   introNote:     { backgroundColor: 'rgba(0,232,122,0.06)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
   introText:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary, textAlign: 'center', lineHeight: 18 },
+  loadOlderBtn:  { alignSelf: 'center', paddingHorizontal: Spacing[3], paddingVertical: Spacing[2], borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, marginBottom: Spacing[2] },
+  loadOlderText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary },
+  moreResultsLabel: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: Spacing[3], marginBottom: Spacing[1], paddingHorizontal: Spacing[1], textTransform: 'uppercase', letterSpacing: 0.5 },
 
   modalRoot:     { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
   modalCard:     { backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Layout.screenPadding, paddingBottom: Spacing[8], gap: Spacing[2] },

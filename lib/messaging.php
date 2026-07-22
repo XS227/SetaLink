@@ -273,6 +273,27 @@ function dm_send(PDO $pdo, string $senderDevice, string $recipientParam, string 
  * `direction` is 'in' (received) or 'out' (sent). Unread = incoming with
  * status='sent'. Peer is identified only by SetaLink user_id / device_id.
  */
+/** Shared row->API-shape mapping for dm_list()/dm_thread_before() so the two
+ *  can never silently drift apart on what a "message" looks like. */
+function dm_row_to_message(array $r, string $deviceId, array $reactionsByMsg): array {
+    $incoming = $r['recipient_device'] === $deviceId;
+    $id = (int)$r['id'];
+    $rx = $reactionsByMsg[$id] ?? ['counts' => [], 'mine' => null];
+    return [
+        'id'           => $id,
+        'direction'    => $incoming ? 'in' : 'out',
+        'peer_user_id' => $incoming ? ($r['sender_user_id']    ?: '') : ($r['recipient_user_id'] ?: ''),
+        'peer_device'  => $incoming ?  $r['sender_device']            :  $r['recipient_device'],
+        'body'         => dm_decrypt((string)$r['body_enc']),
+        'read'         => $r['status'] === 'read' || !$incoming,
+        'created_at'   => $r['created_at'],
+        'expire_secs'  => (int)($r['expire_secs'] ?? 0),
+        'expires_at'   => $r['expires_at'] ?? null,
+        'reactions'    => $rx['counts'],
+        'my_reaction'  => $rx['mine'],
+    ];
+}
+
 function dm_list(PDO $pdo, string $deviceId, int $limit = MSG_LIST_LIMIT): array {
     dm_init_tables($pdo);
     dm_purge_expired($pdo);
@@ -293,23 +314,97 @@ function dm_list(PDO $pdo, string $deviceId, int $limit = MSG_LIST_LIMIT): array
     $reactionsByMsg = dm_reactions_for($pdo, array_column($rows, 'id'), $deviceId);
 
     $out = [];
+    foreach ($rows as $r) $out[] = dm_row_to_message($r, $deviceId, $reactionsByMsg);
+    return $out;
+}
+
+/**
+ * Older messages in ONE thread (peer), for "load older" pagination --
+ * dm_list() is a combined-all-peers window capped at MSG_LIST_LIMIT (200),
+ * so once a device's total message count crosses that, older messages
+ * silently vanish from every screen (found 2026-07-22, Khabat's chat audit).
+ * This lets the client fetch further back in a single open thread on demand,
+ * independent of that global cap. $peerParam accepts the same device_id /
+ * user_id / referral_code forms dm_send()'s recipient does (resolved via
+ * qe_resolve_device -- falls back to the raw param if resolution fails, so
+ * history with a since-deleted account is still reachable). Newest-first,
+ * same contract as dm_list(), caller prepends to its already-loaded thread.
+ */
+function dm_thread_before(PDO $pdo, string $deviceId, string $peerParam, int $beforeId, int $limit = 50): array {
+    dm_init_tables($pdo);
+    $limit = max(1, min(100, $limit));
+    $peer = qe_resolve_device($pdo, $peerParam);
+    $peerDevice = $peer ? $peer['device_id'] : $peerParam;
+    $st = $pdo->prepare(
+        "SELECT id, sender_device, sender_user_id, recipient_device, recipient_user_id,
+                body_enc, status, created_at, read_at, expire_secs, expires_at
+         FROM user_messages
+         WHERE ((sender_device=? AND recipient_device=?) OR (sender_device=? AND recipient_device=?))
+           AND id < ?
+           AND id NOT IN (SELECT message_id FROM user_message_deletes WHERE device_id=?)
+         ORDER BY id DESC LIMIT ?");
+    $st->bindValue(1, $deviceId);
+    $st->bindValue(2, $peerDevice);
+    $st->bindValue(3, $peerDevice);
+    $st->bindValue(4, $deviceId);
+    $st->bindValue(5, $beforeId, PDO::PARAM_INT);
+    $st->bindValue(6, $deviceId);
+    $st->bindValue(7, $limit, PDO::PARAM_INT);
+    $st->execute();
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+    $reactionsByMsg = dm_reactions_for($pdo, array_column($rows, 'id'), $deviceId);
+
+    $out = [];
+    foreach ($rows as $r) $out[] = dm_row_to_message($r, $deviceId, $reactionsByMsg);
+    return $out;
+}
+
+/**
+ * Server-side search fallback (2026-07-22, Khabat's chat audit) -- the
+ * client's own search only covers dm_list()'s locally-cached 200-message
+ * window, so anything older is silently unsearchable with no indication to
+ * the user. Scans up to $scanLimit of this device's own most-recent messages
+ * (bounded -- this box has 1GB RAM, an unbounded full-history decrypt+scan
+ * isn't safe), decrypts and substring-matches server-side (bodies are
+ * encrypted at rest, so this can't be a SQL WHERE body LIKE). stripos(), not
+ * mbstring (host PHP lacks it, see dm_strlen's own comment) -- correct for
+ * exact substring matches even in UTF-8, only loses case-folding for
+ * non-Latin scripts, which don't have case anyway.
+ */
+function dm_search(PDO $pdo, string $deviceId, string $query, int $scanLimit = 1000, int $resultLimit = 50): array {
+    dm_init_tables($pdo);
+    $query = trim($query);
+    if ($query === '') return [];
+    $scanLimit   = max(1, min(2000, $scanLimit));
+    $resultLimit = max(1, min(100, $resultLimit));
+    $st = $pdo->prepare(
+        "SELECT id, sender_device, sender_user_id, recipient_device, recipient_user_id,
+                body_enc, status, created_at, read_at, expire_secs, expires_at
+         FROM user_messages
+         WHERE (sender_device=? OR recipient_device=?)
+           AND id NOT IN (SELECT message_id FROM user_message_deletes WHERE device_id=?)
+         ORDER BY id DESC LIMIT ?");
+    $st->bindValue(1, $deviceId);
+    $st->bindValue(2, $deviceId);
+    $st->bindValue(3, $deviceId);
+    $st->bindValue(4, $scanLimit, PDO::PARAM_INT);
+    $st->execute();
+    $rows = $st->fetchAll(PDO::FETCH_ASSOC);
+
+    $out = [];
     foreach ($rows as $r) {
+        $body = dm_decrypt((string)$r['body_enc']);
+        if ($body === '' || stripos($body, $query) === false) continue;
         $incoming = $r['recipient_device'] === $deviceId;
-        $id = (int)$r['id'];
-        $rx = $reactionsByMsg[$id] ?? ['counts' => [], 'mine' => null];
         $out[] = [
-            'id'           => $id,
+            'id'           => (int)$r['id'],
             'direction'    => $incoming ? 'in' : 'out',
             'peer_user_id' => $incoming ? ($r['sender_user_id']    ?: '') : ($r['recipient_user_id'] ?: ''),
             'peer_device'  => $incoming ?  $r['sender_device']            :  $r['recipient_device'],
-            'body'         => dm_decrypt((string)$r['body_enc']),
-            'read'         => $r['status'] === 'read' || !$incoming,
+            'body'         => $body,
             'created_at'   => $r['created_at'],
-            'expire_secs'  => (int)($r['expire_secs'] ?? 0),
-            'expires_at'   => $r['expires_at'] ?? null,
-            'reactions'    => $rx['counts'],
-            'my_reaction'  => $rx['mine'],
         ];
+        if (count($out) >= $resultLimit) break;
     }
     return $out;
 }

@@ -937,6 +937,33 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'list-thread-messages') {
+        // "Load older" pagination for one open thread (2026-07-22, chat audit
+        // bug #1) -- list-messages above is a combined-all-peers 200 cap;
+        // this fetches further back in a single peer's thread on demand.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        $peer     = trim($_GET['peer']      ?? '');
+        $beforeId = (int)($_GET['before_id'] ?? 0);
+        $limit    = (int)($_GET['limit'] ?? 50);
+        if (!$deviceId || $peer === '' || $beforeId <= 0) err('missing params');
+        $pdo = db();
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        ok(['messages' => dm_thread_before($pdo, $deviceId, $peer, $beforeId, $limit)]);
+    }
+
+    if ($action === 'search-messages') {
+        // Server-side search fallback (2026-07-22, chat audit bug #2) -- the
+        // client's own search only covers its locally-cached 200-message
+        // window; this searches this device's full recent history server-side.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        $q        = trim($_GET['q'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        if ($q === '') ok(['results' => []]);
+        $pdo = db();
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        ok(['results' => dm_search($pdo, $deviceId, $q)]);
+    }
+
     if ($action === 'get-typing') {
         // Polled every 2.5s while a DM thread is open (InboxScreen.tsx) — TTL-based,
         // no explicit "stopped typing" call (see MSG_TYPING_TTL_SECS).

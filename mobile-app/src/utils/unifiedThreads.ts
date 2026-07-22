@@ -55,7 +55,11 @@ export interface Conversation {
   messages:   ChatMessage[];     // ascending (oldest → newest)
 }
 
-function dmToChat(m: DirectMessage): ChatMessage {
+// Exported for InboxScreen's "load older messages" pagination (2026-07-22,
+// chat audit bug #1), which needs to turn a page of raw DirectMessages
+// fetched on demand into the same ChatMessage shape the rest of the thread
+// already renders, without duplicating this mapping a second time.
+export function dmToChat(m: DirectMessage): ChatMessage {
   return {
     key: `dm-${m.id}`, id: m.id, kind: 'dm', direction: m.direction,
     body: m.body, createdAt: m.createdAt, read: m.read,
