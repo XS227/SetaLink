@@ -2377,12 +2377,16 @@ function probeBadge(r) {
 
 // ── API client ───────────────────────────────────────────────────────
 const api = {
+  // api_err() (admin/api.php) always sets a 4xx status *and* a real JSON body
+  // {ok:false,error:"..."} -- read the body first and only fall back to a bare
+  // "HTTP <status>" when the response genuinely isn't JSON (e.g. a raw nginx
+  // 502/504 page or a PHP fatal), so real validation messages aren't masked.
   get: async (action, params={}) => {
     const qs = new URLSearchParams({action, ...params});
     const r  = await fetch(`${API}?${qs}`, {credentials:'include'});
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error||'API error');
+    let d;
+    try { d = await r.json(); } catch (e) { throw new Error('HTTP '+r.status); }
+    if (!d.ok) throw new Error(d.error||'HTTP '+r.status);
     return d.data;
   },
   post: async body => {
@@ -2390,9 +2394,9 @@ const api = {
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({_csrf:CSRF, ...body})
     });
-    if (!r.ok) throw new Error('HTTP '+r.status);
-    const d = await r.json();
-    if (!d.ok) throw new Error(d.error||'API error');
+    let d;
+    try { d = await r.json(); } catch (e) { throw new Error('HTTP '+r.status); }
+    if (!d.ok) throw new Error(d.error||'HTTP '+r.status);
     return d.data;
   }
 };
