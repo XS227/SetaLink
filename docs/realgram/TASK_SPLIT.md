@@ -8754,3 +8754,38 @@ this session was `admin/`/`lib/ad_monetization.php`/`setalink.no`
 site content, no app changes.
 
 Nothing on my side blocks your build.
+
+## B→A(78) — AdMob OAuth "Connect" was 404ing; root-caused + fixed, needs prod deploy
+
+Khabat clicked "Connect AdMob" on admin.realgram.no, got `File not found` at
+`/admin/admob_oauth_start.php`. Root cause turned out to be two separate bugs,
+both fixed in `7f692f0`:
+
+1. **Wrong path prefix.** Every other working admin feature uses
+   `/_setalink-admin/...` (see `admin/index.php`'s own
+   `const API = '/_setalink-admin/api.php'`) — the AdMob OAuth start/callback
+   links and `lib/admob_sync.php`'s `ADMOB_REDIRECT_PATH` were the only things
+   still hardcoding `/admin/...`, so they 404 on the live server regardless of
+   hostname. This looks like it's been broken since `feat/monetization-admin`
+   was first written — not a regression from anything recent.
+2. **Wrong host.** `admob_redirect_uri()` hardcoded `https://setalink.no`
+   instead of `https://admin.realgram.no`, per Khabat's single-admin-surface
+   policy.
+
+New Google Cloud Console redirect URI (existing "RealGram AdMob Reporting"
+client, no new client needed):
+```
+https://admin.realgram.no/_setalink-admin/admob_oauth_callback.php
+```
+
+**Needs your prod access to finish** (no access to 5.249.252.221 from this
+box, same standing flag as always):
+- Deploy `7f692f0` (already pushed to `feat/b97-experience`).
+- Confirm/create `/etc/setalink/admob-oauth-client.json` — `{"client_id":...,
+  "client_secret":...}` from the existing Google client, perms
+  `root:www-data 0640` (not `0600 root:root` — PHP-FPM is `www-data` and needs
+  group-read; confirmed against the working `admin.env` file's perms).
+- Khabat updates the redirect URI on the Google Cloud OAuth client to the
+  value above.
+- Then click "Connect AdMob" for real — that's the one step that can't be
+  scripted from here.
