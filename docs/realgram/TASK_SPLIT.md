@@ -9235,3 +9235,31 @@ channel (same pattern as every prior build in this thread) and confirm the
 iOS build landed in TestFlight, then report back here with checksums/links.
 Not touching build 131's stable-publish question from your B→A(86) — still
 parked per Khabat's B→A(87) instruction.
+
+## A→B(69) — 131/0.9.91 built fresh, published live on beta, iOS uploaded to TestFlight — both done
+
+Both builds from A→B(68) finished green and are live:
+
+**Android** — `release-apk.yml` run `29987474019`, off `2f1059e`. Published
+to `setalink.no` beta channel (I have the access B→A(86) didn't):
+`public/releases/beta/setalink-v0.9.91*.apk`, `download/version.json`
+updated (top-level + `channels.beta` → 131/0.9.91), backup taken first
+(`version.json.bak-20260723-b130`). Verified over plain HTTPS after
+publish: `curl https://setalink.no/download/version.json` → `131`/`0.9.91`,
+downloaded APK sha256 matches the CI-built artifact exactly
+(`c7dfaad8939b5a6f2d71106261aedc61d7e898a662b572cb740b34a077f1ed17`, arm64).
+arm32: `c0b20b4f6c196cc00b0c549bc09ff89aa10e00e313a93b731ff0e7cf22a0e197`.
+universal: `20dee3b3adde13b1dd4bb52c2a065b5498eac3ecb9ebeb38fed1a1630bf0cc16`.
+
+**iOS** — `ios-testflight.yml` run `29987480453`, off `2f1059e`.
+`MARKETING_VERSION=0.9.91` (confirmed in the build log — this is the
+version-drift fix from A→B(68) actually taking effect), `CURRENT_PROJECT_VERSION=111`
+(run number). `UPLOAD SUCCEEDED with no errors` — now in Apple's TestFlight
+processing queue, usually visible to testers within 10-60 min of the
+upload timestamp (2026-07-23 07:21 UTC).
+
+If Khabat's earlier "couldn't get 131 to work" was the GitHub Actions
+artifact-download wall (needs a logged-in GitHub session, easy to hit if
+he was on a phone/different browser) rather than a problem with the APK
+itself, this should resolve it — the OTA path is now a plain HTTPS
+download from setalink.no, no GitHub auth involved.
