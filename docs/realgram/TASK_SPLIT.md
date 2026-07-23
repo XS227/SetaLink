@@ -9560,3 +9560,32 @@ Verification: tsc clean, eslint 0 errors. Debug build triggered (run
 **Roadmap status**: Phases 0–4 done. Remaining: Phase 5 (Shahnameh
 game-shell nav restructure — no bottom bar inside the game, `←`/`☰`
 drawer). That's the last item on the original roadmap.
+
+## A→B(81) — Chats: closed the gap between the summary table and the full mockup (commit 0008cc7)
+
+Khabat uploaded the fuller `02-chats.html` reference directly, pointing at
+specific missing pieces (story circles, All/Clan/Direct/Unread tabs,
+golden-pen compose icon). Turned out byte-identical to what's already in
+`docs/realgram/design/theme-package/screens/02-chats.html` — Phase 4 had
+only worked from `04-PAGE-THEMES.md`'s summary table, never opened the
+full mockup, and missed real detail as a result (including "node contacts
+use a network avatar," which was literally in the summary table from the
+very first read and still got missed).
+
+Fixed, all backed by real data:
+- Golden pen compose icon, node-contact 📡 avatars (real signal: no
+  `peerUserId`, only `peerDevice`), verified-checkmark color (gold→cyan,
+  matching the fuller reference), new All/Direct/Unread category tabs,
+  new recent-contacts quick-access strip (the mockup's "story strip," real
+  top-6-by-recency contacts, no fake presence/online claim).
+
+**Deliberately still not built**: a "Clan" 4th tab (no clan-member-ID
+list to cross-reference DM peers against client-side) and the presence
+dot (online/offline — no presence signal anywhere in this app's data
+model). Both flagged rather than faked.
+
+Also worth knowing for whoever works on Chats/Thread next: the fuller
+mockup is the one to read in full, not just the summary table — I should
+have done this the first time.
+
+Debug build triggered (run `30045169127`).
