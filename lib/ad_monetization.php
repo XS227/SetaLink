@@ -695,6 +695,50 @@ function am_provider_summary(PDO $pdo, string $provider, string $from, string $t
     return ['breakdown' => $groups, 'primary' => $best] + $totals;
 }
 
+/**
+ * Live, today-so-far counters computed directly from ad_events (raw,
+ * per-event) — no dependency on ad_daily_metrics, which for AdsGram is only
+ * ever written by Shahnameh's once-daily push-adsgram-perf cron (06:00 UTC)
+ * or a manual backfill. am_provider_summary() above is the historical/
+ * reporting source of truth and stays exactly as-is; this exists
+ * specifically so a reward credited minutes ago shows up during beta
+ * testing instead of only after the next daily rollup (Khabat, 2026-07-21:
+ * "do not rely only on a daily sync job... expose live counters for
+ * testing"). Confirmed the gap is real, not hypothetical: push-adsgram-
+ * events (am_ingest_adsgram_event, 2026-07-20) inserts into ad_events only —
+ * it never calls am_daily_metric_upsert, so am_provider_summary()'s
+ * ad_daily_metrics-only query cannot see same-day AdsGram activity at all
+ * until the next daily cron run, even though the raw event already landed.
+ */
+function am_live_event_summary(PDO $pdo, string $provider, ?string $date = null): array {
+    am_init_tables($pdo);
+    $date = $date ?? gmdate('Y-m-d');
+
+    $st = $pdo->prepare(
+        "SELECT COUNT(*)                                                      AS events,
+                SUM(CASE WHEN reward_granted=1 THEN 1 ELSE 0 END)             AS rewards_granted,
+                SUM(CASE WHEN validation_status='rejected' THEN 1 ELSE 0 END) AS rewards_rejected,
+                SUM(CASE WHEN validation_status='review'   THEN 1 ELSE 0 END) AS rewards_review,
+                COUNT(DISTINCT user_id)                                       AS unique_users,
+                MAX(created_at)                                               AS last_event_at
+         FROM ad_events
+         WHERE provider = ? AND event_type = 'reward' AND date(created_at) = ?"
+    );
+    $st->execute([$provider, $date]);
+    $row = $st->fetch(PDO::FETCH_ASSOC) ?: [];
+
+    return [
+        'date'             => $date,
+        'events'           => (int)($row['events'] ?? 0),
+        'rewards_granted'  => (int)($row['rewards_granted'] ?? 0),
+        'rewards_rejected' => (int)($row['rewards_rejected'] ?? 0),
+        'rewards_review'   => (int)($row['rewards_review'] ?? 0),
+        'unique_users'     => (int)($row['unique_users'] ?? 0),
+        'last_event_at'    => $row['last_event_at'] ?? null,
+        'source'           => 'ad_events (raw, real-time)',
+    ];
+}
+
 /** Ad-unit-level breakdown within one provider (spec §3/§4's "bryt ned per annonseenhet"). */
 function am_ad_unit_breakdown(PDO $pdo, string $provider, string $from, string $to): array {
     am_init_tables($pdo);
