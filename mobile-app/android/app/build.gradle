@@ -15,6 +15,15 @@ react {
     hermesCommand  = "$rootDir/../node_modules/react-native/sdks/hermesc/linux64-bin/hermesc"
     codegenDir     = file("$rootDir/../node_modules/@react-native/codegen")
     autolinkLibrariesWithApp()
+
+    // RNGP's default (debuggableVariants = ['debug']) skips bundling JS into
+    // the debug variant entirely, on the assumption a debug APK always runs
+    // attached to a Metro dev server. android-debug.yml builds debug APKs
+    // for standalone install (Khabat previewing on his own phone, no dev
+    // machine involved) — without this, that APK red-screens on launch with
+    // "Unable to load script" the instant it can't reach Metro. Empty list =
+    // no variant is treated as metro-only; debug gets its JS bundled too.
+    debuggableVariants = []
 }
 
 android {
