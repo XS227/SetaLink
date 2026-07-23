@@ -90,7 +90,7 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.quotaLabel}>{t('pr.usedTraffic')}</Text>
             </View>
             <View style={styles.quotaCell}>
-              <Text style={[styles.quotaValue, { color: Colors.emerald[400] }]}>{freeGb.toFixed(1)}</Text>
+              <Text style={[styles.quotaValue, { color: Colors.status.connected }]}>{freeGb.toFixed(1)}</Text>
               <Text style={styles.quotaLabel}>GB</Text>
             </View>
           </View>
