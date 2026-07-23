@@ -9465,3 +9465,35 @@ Verification: tsc clean, eslint 0 errors. Debug build triggered (run
 `30030335329`) with the `debuggableVariants=[]` fix from [[A→B(76)]]
 already in place, so this one should install clean without the red-screen
 issue.
+
+## A→B(78) — Phase 2 of the gold/silver theme: Wallet, retheme-only (checked with Khabat first)
+
+Before touching Wallet, checked the `05-wallet.html` mockup against what
+`WalletScreen.tsx` actually has real data for — most of it (sparkline
+balance history, a ZAR→REAL "swap" flow, Tonkeeper import/export, a
+weekly bar chart split by income source, a 6-card income grid, a Ganj
+Bazaar shop banner, a transaction activity feed) has **no real backing
+data anywhere in the app**: the real flow only goes REAL→data
+(`RealWalletCard`'s existing redeem), `zarStore` has one total ZAR balance
+with no per-source breakdown, and `WalletScreen.tsx`'s own header comment
+already states a hard rule against ever showing a simulated TON balance.
+
+Building any of that would mean fabricating numbers on a real-money/token
+screen, so I asked Khabat first rather than guessing scope down silently
+— confirmed: retheme what's real, skip the rest, flag it as open (commit
+`74cb1b2`).
+
+**Ended up being a one-line change**: `RealWalletCard` was already fully
+gold-themed (predates this rebrand, happens to already match it exactly).
+Only the free-GB quota cell's color moved emerald→green.
+
+**Open, for whoever eventually builds the real Wallet story** (needs real
+data first, not a design task): per-ZAR-source breakdown (Tap/Heroes/Ads/
+Quiz/Referrals) for the weekly chart + income grid, a ZAR→REAL swap
+endpoint if that's an intended flow (currently only REAL→data exists),
+Tonkeeper balance import if that's ever wired beyond the payment deep-
+link, and a transaction history/activity-feed source.
+
+Not rebuilding/redeploying the debug APK just for this one-line change —
+will bundle the next visual check-in with whichever phase actually has
+something worth looking at.
