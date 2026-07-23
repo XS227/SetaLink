@@ -26,6 +26,14 @@ import { Logger } from '../utils/logger';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
+// "Clan" tab deliberately excluded — no real clan-member-ID list exists
+// client-side to cross-reference DM peers against yet.
+const CATEGORY_TABS = [
+  ['all',    'dm.categoryAll']    as const,
+  ['direct', 'dm.categoryDirect'] as const,
+  ['unread', 'dm.categoryUnread'] as const,
+];
+
 // Disappearing-message timer steps the composer chip cycles through (seconds
 // after the recipient reads; 0 = permanent). Wickr-style, kept playful.
 const BURN_STEPS = [0, 30, 60, 300, 3600, 86400] as const;
@@ -122,6 +130,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [peerTyping, setPeerTyping] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Category tabs (theme pkg 02-chats.html: "All/Clan/Direct/Unread tabs").
+  // "Clan" isn't here — there's no real clan-member-ID list to cross-
+  // reference DM peers against yet, so a "Clan" tab would just be an empty
+  // shelf or a guess. All/Direct/Unread are 100% real distinctions the
+  // data already supports.
+  const [category, setCategory] = useState<'all' | 'direct' | 'unread'>('all');
 
   // Tick once a second while the open thread contains disappearing messages,
   // so burn countdowns run and expired bubbles vanish without waiting for the
@@ -154,17 +168,35 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     [dms, announcements, supportName, myId],
   );
 
+  // Quick-access contact strip (theme pkg's "online story-strip") — real
+  // recent contacts, not fake stories/presence. conversations is already
+  // recency-sorted (unifiedThreads.ts); take the first few real peers.
+  // Deliberately NOT claiming anyone is "online" — there's no presence
+  // signal anywhere in this app, so no presence ring/dot here, unlike the
+  // mockup's .presence.on/.off (flagged as a real backend gap, not built).
+  const recentContacts = useMemo(
+    () => conversations.filter((c) => !c.support).slice(0, 6),
+    [conversations],
+  );
+
+  // Category tab, applied before search.
+  const categorized = useMemo(() => {
+    if (category === 'direct') return conversations.filter((c) => !c.support);
+    if (category === 'unread') return conversations.filter((c) => c.unread > 0);
+    return conversations;
+  }, [conversations, category]);
+
   // Message search (2026-07-22) — entirely client-side: every message the
   // conversation list already has locally (title + full message bodies), no
   // new backend call. A conversation matches if its title matches, or any
   // message in it does.
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter((c) =>
+    if (!q) return categorized;
+    return categorized.filter((c) =>
       c.title.toLowerCase().includes(q) ||
       c.messages.some((m) => m.body.toLowerCase().includes(q)));
-  }, [conversations, searchQuery]);
+  }, [categorized, searchQuery]);
 
   // Server-side search fallback (2026-07-22, chat audit bug #2) — the filter
   // above only ever sees the locally-cached 200-message window, so anything
@@ -365,10 +397,22 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     }
   };
 
-  const Avatar = ({ support, label, size = 44 }: { support: boolean; label: string; size?: number }) => (
+  // Node contacts (raw device IDs, e.g. "SL-227-…") get the 📡 network
+  // avatar instead of a face-initial — theme pkg's own rule since the
+  // very first read of 04-PAGE-THEMES.md, missed in the Phase 4 pass
+  // (that pass only worked from the summary table, not the fuller
+  // 02-chats.html reference Khabat later uploaded directly). Real signal,
+  // not a guess: a conversation is "node-shaped" exactly when it has no
+  // real username at all — buildConversations() falls back to the raw
+  // peerDevice string as the title only in that case.
+  const Avatar = ({ support, label, isNode, size = 44 }: { support: boolean; label: string; isNode?: boolean; size?: number }) => (
     support ? (
       <View style={[styles.avatar, styles.avatarOfficial, { width: size, height: size, borderRadius: size / 2 }]}>
         <Image source={REALINK_LOGO} style={{ width: size * 0.6, height: size * 0.6, resizeMode: 'contain' }} />
+      </View>
+    ) : isNode ? (
+      <View style={[styles.avatar, styles.avatarNode, { width: size, height: size, borderRadius: size / 2 }]}>
+        <Text style={{ fontSize: size * 0.4 }}>📡</Text>
       </View>
     ) : (
       <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
@@ -395,7 +439,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
         </TouchableOpacity>
         <Animated.View style={fabStyle}>
           <TouchableOpacity style={styles.newBtn} activeOpacity={0.8} onPress={() => setCompose(true)}>
-            <Text style={styles.newBtnText}>＋</Text>
+            <Text style={styles.newBtnText}>✎</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -410,6 +454,51 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
             placeholderTextColor={Colors.text.muted}
             autoFocus
           />
+        </View>
+      )}
+
+      {!searchOpen && recentContacts.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.contactStrip}
+          contentContainerStyle={styles.contactStripContent}
+        >
+          {recentContacts.map((c) => (
+            <TouchableOpacity
+              key={c.key}
+              style={styles.contactChip}
+              activeOpacity={0.75}
+              onPress={() => openConvoView(c)}
+            >
+              <View style={styles.contactRing}>
+                <Avatar
+                  support={false}
+                  label={c.title}
+                  isNode={!c.peerUserId && !!c.peerDevice}
+                  size={48}
+                />
+              </View>
+              <Text style={styles.contactName} numberOfLines={1}>{c.title}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {!searchOpen && (
+        <View style={styles.categoryTabs}>
+          {CATEGORY_TABS.map(([cat, labelKey]) => (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.categoryTab, category === cat && styles.categoryTabActive]}
+              onPress={() => setCategory(cat)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.categoryTabText, category === cat && styles.categoryTabTextActive]}>
+                {t(labelKey)}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
 
@@ -438,7 +527,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 onPress={() => openConvoView(c)}
                 onLongPress={() => confirmDeleteThread(c)}
               >
-                <Avatar support={c.support} label={c.title} />
+                <Avatar support={c.support} label={c.title} isNode={!c.support && !c.peerUserId && !!c.peerDevice} />
                 <View style={styles.itemMain}>
                   <View style={styles.itemHeader}>
                     <Text style={[styles.itemTitle, c.unread > 0 && styles.itemTitleUnread]} numberOfLines={1}>
@@ -474,7 +563,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 activeOpacity={0.8}
                 onPress={() => openSearchResult(r)}
               >
-                <Avatar support={false} label={r.peerUserId || r.peerDevice} />
+                <Avatar support={false} label={r.peerUserId || r.peerDevice} isNode={!r.peerUserId && !!r.peerDevice} />
                 <View style={styles.itemMain}>
                   <View style={styles.itemHeader}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{r.peerUserId || r.peerDevice}</Text>
@@ -507,7 +596,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
                   <Text style={styles.backIcon}>‹</Text>
                 </TouchableOpacity>
-                <Avatar support={openConvo.support} label={openConvo.title} size={34} />
+                <Avatar
+                  support={openConvo.support}
+                  label={openConvo.title}
+                  isNode={!openConvo.support && !openConvo.peerUserId && !!openConvo.peerDevice}
+                  size={34}
+                />
                 <View style={styles.threadPeerWrap}>
                   <View style={styles.threadPeerRow}>
                     <Text style={styles.threadPeer} numberOfLines={1}>{openConvo.title}</Text>
@@ -727,6 +821,20 @@ const styles = StyleSheet.create({
   searchBar:     { paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2] },
   searchInput:   { backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, borderRadius: Radius.lg, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], color: Colors.text.primary, fontSize: Typography.size.sm, fontFamily: Typography.family.body },
 
+  // Recent-contacts quick-access strip.
+  contactStrip:       { flexGrow: 0 },
+  contactStripContent:{ paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2], gap: Spacing[3] },
+  contactChip:        { alignItems: 'center', width: 58, gap: 5 },
+  contactRing:         { width: 54, height: 54, borderRadius: 27, borderWidth: 2, borderColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  contactName:         { fontSize: 10, fontFamily: Typography.family.body, color: Colors.text.muted, maxWidth: 58 },
+
+  // Category tabs.
+  categoryTabs:        { flexDirection: 'row', gap: Spacing[2], paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2] },
+  categoryTab:         { paddingHorizontal: Spacing[4], paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface },
+  categoryTabActive:   { backgroundColor: 'rgba(255,182,39,0.12)', borderColor: Colors.border.goldGlow },
+  categoryTabText:     { fontSize: 12, fontFamily: Typography.family.label, color: Colors.text.muted },
+  categoryTabTextActive:{ color: Colors.gold[400], fontWeight: '700' },
+
   scroll:        { flex: 1 },
   content:       { paddingHorizontal: Layout.screenPadding, gap: Spacing[3], paddingTop: Spacing[1] },
   emptyCard:     { alignItems: 'center', gap: Spacing[3], paddingVertical: Spacing[8] },
@@ -745,9 +853,13 @@ const styles = StyleSheet.create({
 
   avatar:        { backgroundColor: Colors.bg.base, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   avatarOfficial:{ backgroundColor: 'rgba(255,182,39,0.10)', borderColor: 'rgba(255,182,39,0.4)' },
+  avatarNode:    { backgroundColor: 'rgba(51,211,255,0.16)', borderColor: 'rgba(123,92,250,0.35)' },
   avatarText:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.gold[400] },
-  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
-  verifiedText:  { fontSize: 10, color: '#241605', fontWeight: '700' },
+  // Cyan, not gold — the fuller Chats reference (Khabat's later upload)
+  // specifically colors the verified checkmark cyan, distinct from the
+  // official avatar's own gold accent.
+  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.cyan[400], alignItems: 'center', justifyContent: 'center' },
+  verifiedText:  { fontSize: 10, color: '#001824', fontWeight: '700' },
 
   threadPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
