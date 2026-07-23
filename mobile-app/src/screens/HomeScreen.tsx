@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
+import { RealCoin }        from '../components/RealCoin';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
 import { HomeBanner }      from '../components/HomeBanner';
@@ -22,22 +23,11 @@ import { useVpnStats }         from '../hooks/useVpnStats';
 import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
 
-import Svg, { Path } from 'react-native-svg';
-
 const STARLINK_INVITE_TARGET = 11;
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
   activeTab:  NavTab;
-}
-
-function PowerIcon({ color }: { color: string }) {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 2v10" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-      <Path d="M18.4 6.6a9 9 0 1 1-12.77.04" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-    </Svg>
-  );
 }
 
 export function HomeScreen({ onNavigate, activeTab }: Props) {
@@ -158,10 +148,20 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const activeServer = selectedServer;
   const isStarlinkActive = isConnected && activeServer?.nodeType === 'STARLINK';
 
-  // Power button color
-  const powerColor = isBusy
-    ? '#E8B84B'
-    : isConnected ? Colors.emerald[400] : '#FF6B6B';
+  // Status-dot / status-text color — kept as the theme pkg's dedicated
+  // "connected status" green (Colors.status.connected), distinct from the
+  // coin's own gold/silver fill below (see tokens.ts §Colors.green comment).
+  const powerColor = isBusy ? '#E8B84B' : isConnected ? Colors.status.connected : Colors.status.disconnected;
+
+  // Phase 0 (gold/silver theme foundation): RealCoin's real gesture model
+  // is tap=forge Zar / hold-3s=toggle-connection, but there's no Zar
+  // economy wired up yet (that's the Wallet-phase work, out of scope here)
+  // — so for now BOTH the tap and the completed hold just do exactly what
+  // the old plain power button did (handlePower), preserving today's
+  // single-tap connect/disconnect with zero behavior regression. Once the
+  // Wallet phase lands, onForge should credit real Zar and this shared
+  // wiring should be revisited.
+  const handleCoinForge = useCallback(() => { handlePower(); }, [handlePower]);
 
   const contentAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -265,8 +265,17 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           {/* Divider */}
           <View style={styles.vpnDivider} />
 
-          {/* Connect row */}
-          <View style={styles.connectRow}>
+          {/* Coin — RealCoin replaces the old plain power button (theme
+              pkg, A->B(74)). See handleCoinForge above for the Phase-0
+              gesture-wiring note. */}
+          <View style={styles.coinSection}>
+            <RealCoin
+              connected={isConnected}
+              size={132}
+              disabled={isBusy}
+              onForge={handleCoinForge}
+              onToggleConnection={handleCoinForge}
+            />
             <View style={styles.connectStatus}>
               <View style={[styles.statusDot, { backgroundColor: powerColor }]} />
               <Text style={styles.statusText}>
@@ -276,21 +285,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
                     ? t('home.connecting')
                     : t('home.disconnected')}
               </Text>
-              {error && !isConnected && !isBusy && (
-                <Text style={styles.errorHint} numberOfLines={1}>{t('home.tapToRetry')}</Text>
-              )}
             </View>
-
-            <TouchableOpacity
-              style={[styles.powerBtn, { borderColor: powerColor + '66' },
-                      isConnected && { backgroundColor: powerColor + '18' }]}
-              onPress={handlePower}
-              disabled={isBusy}
-              activeOpacity={0.75}
-              accessibilityLabel={isConnected ? 'Disconnect VPN' : 'Connect VPN'}
-            >
-              <PowerIcon color={powerColor} />
-            </TouchableOpacity>
+            {error && !isConnected && !isBusy && (
+              <Text style={styles.errorHint} numberOfLines={1}>{t('home.tapToRetry')}</Text>
+            )}
           </View>
 
           {/* GoldBeatBurst celebrates connect transition */}
@@ -310,7 +308,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.metricLabel}>{t('home.speed')}</Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, isConnected && { color: Colors.emerald[400] }]}>
+            <Text style={[styles.metricValue, isConnected && styles.metricValueActive]}>
               {isConnected ? '98' : '—'}
             </Text>
             <Text style={styles.metricUnit}>%</Text>
@@ -351,7 +349,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           >
             <Text style={styles.shortcutRealgramIcon}>💬</Text>
             <View style={styles.shortcutText}>
-              <Text style={[styles.shortcutTitle, { color: Colors.emerald[400] }]}>RealGram</Text>
+              <Text style={[styles.shortcutTitle, styles.shortcutTitleViolet]}>RealGram</Text>
               <Text style={styles.shortcutSub}>{t('home.community')}</Text>
             </View>
           </TouchableOpacity>
@@ -373,7 +371,7 @@ const styles = StyleSheet.create({
   screen:         { flex: 1, backgroundColor: Colors.bg.void },
   ambientGlow:    {
     position: 'absolute', top: 0, left: 0, right: 0, height: 300,
-    backgroundColor: Colors.emerald[900], opacity: 0.08,
+    backgroundColor: Colors.gold[900], opacity: 0.1,
   },
   scroll:         { flex: 1 },
   content:        { paddingHorizontal: Spacing[5], paddingTop: Spacing[3], gap: Spacing[4] },
@@ -409,7 +407,9 @@ const styles = StyleSheet.create({
   starlinkCountTarget: { fontSize: 16, color: Colors.gold[600] },
   progressTrack:  { height: 5, flexDirection: 'row', borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(212,140,20,0.12)' },
   progressFill:   { backgroundColor: Colors.gold[500], borderRadius: 3 },
-  progressFillDone: { backgroundColor: Colors.emerald[400] },
+  // Cyan, not gold — "Cyan = Starlink/network" is its own dedicated brand
+  // color in the theme pkg, distinct from gold's currency/coin role.
+  progressFillDone: { backgroundColor: Colors.cyan[400] },
   starlinkHint:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
 
   // VPN card
@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.default,
     overflow: 'hidden',
   },
-  vpnCardActive: { borderColor: Colors.border.glow },
+  vpnCardActive: { borderColor: Colors.border.goldGlow },
   serverRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], padding: Spacing[4] },
   serverFlag:   { fontSize: 26 },
   serverInfo:   { flex: 1, gap: 2 },
@@ -428,22 +428,23 @@ const styles = StyleSheet.create({
   serverCity:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
   pingBadge:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pingDot:      { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.text.muted },
-  pingDotActive:{ backgroundColor: Colors.emerald[400] },
+  pingDotActive:{ backgroundColor: Colors.status.connected },
   pingText:     { fontSize: 11, color: Colors.text.secondary, fontFamily: Typography.family.mono },
   chevron:      { fontSize: 20, color: Colors.text.muted },
   vpnDivider:   { height: 1, backgroundColor: Colors.border.subtle, marginHorizontal: Spacing[4] },
-  connectRow:   { flexDirection: 'row', alignItems: 'center', padding: Spacing[4], gap: Spacing[3] },
-  connectStatus:{ flex: 1, gap: 2 },
-  statusDot:    { width: 7, height: 7, borderRadius: 4, position: 'absolute', left: -14, top: 5 },
-  statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingLeft: 0 },
-  errorHint:    { fontSize: 11, color: '#FF6B6B', fontFamily: Typography.family.body },
-  powerBtn:     { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  // Coin section — replaces the old inline connectRow/powerBtn.
+  coinSection:  { alignItems: 'center', paddingVertical: Spacing[5], gap: Spacing[3] },
+  connectStatus:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot:    { width: 7, height: 7, borderRadius: 4 },
+  statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  errorHint:    { fontSize: 11, color: Colors.red[400], fontFamily: Typography.family.body },
 
   // Metrics
   metricsRow:   { flexDirection: 'row', gap: Spacing[3] },
   metricCard:   { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, padding: Spacing[3], alignItems: 'center', borderWidth: 1, borderColor: Colors.border.subtle, gap: 1 },
   metricCardCenter: { borderColor: Colors.border.default },
-  metricValue:  { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
+  metricValue:      { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
+  metricValueActive:{ color: Colors.status.connected },
   metricUnit:   { fontSize: 10, color: Colors.text.muted, fontFamily: Typography.family.mono, marginTop: -2 },
   metricLabel:  { fontSize: 10, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 },
 
@@ -455,15 +456,20 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl, padding: Spacing[4],
     borderWidth: 1, borderColor: 'rgba(212,175,55,0.2)',
   },
+  // Violet, not gold — this chip isn't currency, so it keeps a distinct
+  // brand accent instead of competing with the REAL chip's gold tint
+  // (was emerald; theme pkg's "combo/energy/XP/epic" violet fits a
+  // social/community shortcut better than reusing gold for everything).
   shortcutRealgram: {
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
-    backgroundColor: 'rgba(0,232,122,0.06)',
+    backgroundColor: 'rgba(123,92,250,0.08)',
     borderRadius: Radius.xl, padding: Spacing[4],
-    borderWidth: 1, borderColor: 'rgba(0,232,122,0.18)',
+    borderWidth: 1, borderColor: 'rgba(123,92,250,0.22)',
   },
   shortcutIcon:        { width: 36, height: 36, borderRadius: 18 },
   shortcutRealgramIcon:{ fontSize: 28 },
   shortcutText:        { flex: 1, gap: 1 },
   shortcutTitle:       { fontSize: 13, fontFamily: Typography.family.heading, color: Colors.gold[300] },
+  shortcutTitleViolet: { color: Colors.violet[400] },
   shortcutSub:         { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
 });
