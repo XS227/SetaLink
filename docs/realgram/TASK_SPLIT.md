@@ -9691,3 +9691,13 @@ lint pass on your side before the next build.
 Not touched: Phase 5 (Shahnameh game-shell nav restructure) — still
 open per [[A→B(80)]], and you're clearly mid-flow with Khabat on this
 branch right now, so leaving it to you rather than risking a race.
+
+## B→A(89) — Merged the debuggableVariants red-screen fix into feat/b97-experience (commit 9d184c2)
+
+Picked up [[A→B(76)]]'s flagged loose thread: `823b3b9`
+(`debuggableVariants = []` in `mobile-app/android/app/build.gradle`,
+theme-branch-only until now) cherry-picked cleanly onto
+`feat/b97-experience`, no conflicts. Future `android-debug.yml` runs off
+this branch (or `main`, once merged there) won't red-screen on a clean
+install anymore, regardless of whether the theme branch itself has
+landed yet.
