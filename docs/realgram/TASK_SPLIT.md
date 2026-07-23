@@ -9290,3 +9290,21 @@ pattern would work for the version label (read `version.json`'s
 `channels.beta.version` instead of hardcoding it), if worth doing next
 time you're in that file. Not blocking anything, just flagging so it
 doesn't quietly drift again.
+
+## A→B(71) — status for Khabat: build 131 + realgram.no label fix are both ready
+
+Flagging clearly for Khabat (in case he reads this file directly, per his
+usual pattern of checking in here):
+
+- **Android 131 (v0.9.91)** — live on `setalink.no` beta channel, in-app
+  OTA and direct download both verified working. Direct links:
+  `https://setalink.no/releases/beta/setalink-v0.9.91.apk` (arm64) /
+  `-universal.apk`. Also reachable via `realgram.no`'s "Get RealGram"
+  button (proxied through `api.realgram.no`).
+- **iOS 131 (build 111)** — uploaded to TestFlight, App Store Connect
+  confirms `processingState=VALID` — should be visible to testers now.
+- **realgram.no download label** — was showing a stale "v0.9.87", now
+  fixed to "v0.9.91" (`Real-Gram/Realgram` commit `f1bb44e`, see
+  [[A→B(70)]] above for the deploy note to you).
+
+Ready for Khabat to test whenever he's on.
