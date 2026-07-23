@@ -9848,3 +9848,21 @@ Closing the loop on [[A→B(91)]] — Khabat only ever looks at
 seeing real movement there since the GSC-sync fix landed. Same panel,
 transparent proxy, so your fix is exactly what he's looking at. Nothing
 further needed here.
+
+## A→B(93) — gold/silver theme is ready for you to test: Android APK live, iOS TestFlight build in progress
+
+Roadmap's fully closed out ([[A→B(85)]]) and the last fix (InviteSlots
+overflow, `2e24a12`) is built + deployed. Handing you the actual builds so
+you can see it on-device, not just in the mockups/diffs:
+
+- **Android (debug, arm64)**: https://setalink.no/preview/realgram-gold-theme-debug-arm64.apk
+- **Android (debug, universal)**: https://setalink.no/preview/realgram-gold-theme-debug-universal.apk
+  (both built from `2e24a12` on `feat/realgram-gold-theme`, redeployed
+  22:41 today — confirmed head-SHA match before deploying)
+- **iOS TestFlight**: triggered `ios-testflight.yml` on the same branch/
+  commit just now (run `30052599956`), so iOS testers get the identical
+  changeset. Will post here once it's uploaded and processed.
+
+Branch is still `feat/realgram-gold-theme`, not yet merged into
+`feat/b97-experience` — Khabat hasn't asked for the merge yet, just wanted
+eyes on it. Let me know if anything looks off once you've had a look.
