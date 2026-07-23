@@ -134,36 +134,18 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
 }
 
 /**
- * The mockup's discrete "slot" metaphor (`04-freedom.html` §.invite-slot/
- * .invite-line) — numbered circles joined by connector lines, not a plain
- * bar — so "1 of N friends invited" reads as distinct steps. A connector
- * lights up once the slot to its left is filled; there's no partial-invite
- * concept (you either invited someone or not), so each segment is a binary
- * on/off, not a fractional fill.
- *
- * The mockup's own example used target=3; this app's real
- * STARLINK_INVITE_TARGET is 11 — 11 fixed-width circles in one
- * unwrapped row would overflow the card on any phone. Fixed-width
- * connectors (not flex:1) + flexWrap so it degrades to a clean 2-row
- * grid instead, rather than assuming the mockup's small example size.
+ * Small dots, not the mockup's numbered-box slot metaphor — Khabat found the
+ * 11 numbered circles (the mockup's own example used target=3, we render at
+ * the app's real STARLINK_INVITE_TARGET=11) too heavy/"support-ticket"-
+ * looking on Home. Plain filled/unfilled dots read as a lightweight
+ * progress glance instead, closer to the hero card's star backdrop.
  */
 function InviteSlots({ count, target }: { count: number; target: number }) {
   const slots = Array.from({ length: target }, (_, i) => i < count);
   return (
     <View style={styles.slotRow}>
       {slots.map((filled, i) => (
-        <React.Fragment key={i}>
-          <View style={[styles.slot, filled && styles.slotFilled]}>
-            <Text style={[styles.slotText, filled && styles.slotTextFilled]}>
-              {filled ? '✓' : i + 1}
-            </Text>
-          </View>
-          {i < slots.length - 1 && (
-            <View style={styles.slotLine}>
-              {filled && <View style={styles.slotLineFill} />}
-            </View>
-          )}
-        </React.Fragment>
+        <View key={i} style={[styles.dot, filled && styles.dotFilled]} />
       ))}
     </View>
   );
@@ -216,20 +198,13 @@ const styles = StyleSheet.create({
   sub:  { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 6, maxWidth: 240, lineHeight: 17 },
 
   track:      { marginTop: 14 },
-  // Fixed-width connectors + flexWrap (not flex:1 in an unwrapped row) —
-  // STARLINK_INVITE_TARGET is 11 in this app, not the mockup's example
-  // size of 3; this has to hold up for both.
-  slotRow:    { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', rowGap: 8 },
-  slot: {
-    width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 2, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.15)',
+  slotRow:    { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
+  dot: {
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
-  slotFilled: { borderStyle: 'solid', borderColor: Colors.gold[400], backgroundColor: Colors.gold[300] },
-  slotText: { fontSize: 11, fontFamily: Typography.family.mono, color: Colors.text.muted },
-  slotTextFilled: { color: '#241605', fontFamily: Typography.family.heading },
-  slotLine: { width: 12, height: 2, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.08)' },
-  slotLineFill: { height: '100%', width: '100%', backgroundColor: Colors.gold[400] },
-  trackLabel: { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 7 },
+  dotFilled: { backgroundColor: Colors.gold[400] },
+  trackLabel: { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 9 },
 
   cta: {
     marginTop: 14, alignSelf: 'flex-start',
