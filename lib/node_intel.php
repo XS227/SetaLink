@@ -641,9 +641,6 @@ function ni_agent_insights(PDO $pdo, int $days = 7): array
     $since = gmdate('Y-m-d H:i:s', strtotime("-{$days} days"));
 
     // Check total event count first — return early if no data
-    $cnt = (int)$pdo->prepare("SELECT COUNT(*) FROM connect_telemetry WHERE created_at >= ?")->execute([$since])
-        ?: 0;
-    // Use a proper query for count
     $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM connect_telemetry WHERE created_at >= ?");
     $cntStmt->execute([$since]);
     $cnt = (int)$cntStmt->fetchColumn();
