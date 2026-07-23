@@ -2,6 +2,9 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import ReanimatedView, {
+  useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing as REasing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
@@ -17,14 +20,48 @@ import { useServerStore }      from '../stores/serverStore';
 import { useIdentityStore }    from '../stores/identityStore';
 import { useDMStore }          from '../stores/dmStore';
 import { useInboxStore }       from '../stores/inboxStore';
+import { useZarStore }         from '../stores/zarStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
+import { initZarSync, recordZarTap } from '../services/zarSyncService';
 
 const STARLINK_INVITE_TARGET = 11;
+
+function formatZar(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+}
+
+/** Hours elapsed since UTC midnight (matches zarStore's dayKey convention) —
+ * floored at a few minutes so a fresh day doesn't divide by ~0. */
+function hoursElapsedToday(): number {
+  const now = new Date();
+  const startOfDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.max(1 / 12, (now.getTime() - startOfDay) / 3_600_000);
+}
+
+// Small colored dots orbiting the coin, purely decorative (theme pkg's
+// `.orbit-dot` × 3 in 01-home.html) — ambient motion, not a data display.
+const ORBIT_DOTS = [
+  { duration: 9000,  radius: 78, color: Colors.gold[100] },
+  { duration: 13000, radius: 78, color: Colors.violet[400], reverse: true },
+  { duration: 16000, radius: 78, color: Colors.gold[400] },
+];
+
+function OrbitDot({ duration, radius, color, reverse }: { duration: number; radius: number; color: string; reverse?: boolean }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withRepeat(withTiming(1, { duration, easing: REasing.linear }), -1, false);
+  }, [t, duration]);
+  const style = useAnimatedStyle(() => {
+    const a = (reverse ? -1 : 1) * t.value * Math.PI * 2;
+    return { transform: [{ translateX: Math.cos(a) * radius }, { translateY: Math.sin(a) * radius }] };
+  });
+  return <ReanimatedView.View style={[{ position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: color }, style]} />;
+}
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
@@ -45,6 +82,19 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const avatarEmoji  = useIdentityStore((s) => s.avatarEmoji);
   const avatarColor  = useIdentityStore((s) => s.avatarColor);
   const servers      = useServerStore((s) => s.servers);
+
+  // Real tap-to-earn ZAR (zarStore + zarSyncService — contract §8, shipped
+  // 2026-07-19) was already fully built and wired into GameScreen, but
+  // never into the Home coin it was actually designed for (recordZarTap's
+  // own source param is literally 'game_hub' already). initZarSync is
+  // idempotent (resets its interval, doesn't double-fire) so calling it
+  // here alongside GameScreen's own call is safe.
+  const zarBalance    = useZarStore((s) => s.balance);
+  const zarEarnedToday = useZarStore((s) => s.earnedToday);
+  const deviceIdForZar = user?.deviceId ?? '';
+  useEffect(() => {
+    if (deviceIdForZar) initZarSync(deviceIdForZar);
+  }, [deviceIdForZar]);
 
   const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
   const unreadDm       = useDMStore((s) => s.messages.filter((m) => m.direction === 'in' && !m.read).length);
@@ -154,15 +204,29 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   // coin's own gold/silver fill below (see tokens.ts §Colors.green comment).
   const powerColor = isBusy ? '#E8B84B' : isConnected ? Colors.status.connected : Colors.status.disconnected;
 
-  // Phase 0 (gold/silver theme foundation): RealCoin's real gesture model
-  // is tap=forge Zar / hold-3s=toggle-connection, but there's no Zar
-  // economy wired up yet (that's the Wallet-phase work, out of scope here)
-  // — so for now BOTH the tap and the completed hold just do exactly what
-  // the old plain power button did (handlePower), preserving today's
-  // single-tap connect/disconnect with zero behavior regression. Once the
-  // Wallet phase lands, onForge should credit real Zar and this shared
-  // wiring should be revisited.
-  const handleCoinForge = useCallback(() => { handlePower(); }, [handlePower]);
+  // Real tap-to-earn, replacing the Phase-0 placeholder wiring (which sent
+  // both tap and hold to handlePower, since zarStore wasn't hooked up to
+  // this screen yet). Tap = forge real Zar (zarStore.tap(), server-synced
+  // via zarSyncService) — gated on isConnected, matching the store's own
+  // documented rule ("while the VPN is connected, each tap ... earns
+  // ZAR"). Hold-3s stays exactly handlePower, now on its own callback
+  // instead of sharing one with tap.
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const [floatText, setFloatText] = useState('');
+  const spawnFloat = useCallback((gain: number) => {
+    setFloatText(`+${gain}`);
+    floatAnim.setValue(0);
+    Animated.timing(floatAnim, { toValue: 1, duration: 900, useNativeDriver: true }).start();
+  }, [floatAnim]);
+
+  const handleCoinForge = useCallback(() => {
+    if (!isConnected) return;
+    const result = useZarStore.getState().tap();
+    recordZarTap();
+    if (result.earned > 0) spawnFloat(result.earned);
+  }, [isConnected, spawnFloat]);
+
+  const handleCoinHold = useCallback(() => { handlePower(); }, [handlePower]);
 
   const contentAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -203,6 +267,25 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             >
               <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
             </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        {/* ── Balance pills — real zarStore data, not fabricated. Zar/hr is
+             a genuine derived stat (earnedToday / hours elapsed today),
+             not a synced server rate — approximate but honest. ── */}
+        <Animated.View style={[styles.pillRow, fadeStyle]}>
+          <View style={styles.pill}>
+            <Text style={styles.pillLabel}>{t('home.balance')}</Text>
+            <View style={styles.pillValueRow}>
+              <View style={styles.pillDot} />
+              <Text style={styles.pillValue}>{formatZar(zarBalance)}</Text>
+            </View>
+          </View>
+          <View style={styles.pill}>
+            <Text style={styles.pillLabel}>{t('home.zarPerHour')}</Text>
+            <Text style={[styles.pillValue, { color: Colors.status.connected }]}>
+              +{isConnected ? formatZar(Math.round(zarEarnedToday / hoursElapsedToday())) : 0}
+            </Text>
           </View>
         </Animated.View>
 
@@ -268,16 +351,35 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           <View style={styles.vpnDivider} />
 
           {/* Coin — RealCoin replaces the old plain power button (theme
-              pkg, A->B(74)). See handleCoinForge above for the Phase-0
-              gesture-wiring note. */}
+              pkg, A->B(74)). Tap now forges real Zar (zarStore, gated on
+              isConnected); hold-3s toggles the connection — see
+              handleCoinForge/handleCoinHold above. */}
           <View style={styles.coinSection}>
-            <RealCoin
-              connected={isConnected}
-              size={132}
-              disabled={isBusy}
-              onForge={handleCoinForge}
-              onToggleConnection={handleCoinForge}
-            />
+            <Text style={styles.anvilTitle}>◦ {t('home.anvilTitle')}</Text>
+            <View style={styles.coinStage}>
+              {ORBIT_DOTS.map((d, i) => <OrbitDot key={i} {...d} />)}
+              <RealCoin
+                connected={isConnected}
+                size={132}
+                disabled={isBusy}
+                onForge={handleCoinForge}
+                onToggleConnection={handleCoinHold}
+              />
+              {!!floatText && (
+                <Animated.Text
+                  style={[
+                    styles.floatNum,
+                    {
+                      opacity: floatAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                      transform: [{ translateY: floatAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -60] }) }],
+                    },
+                  ]}
+                >
+                  {floatText}
+                </Animated.Text>
+              )}
+            </View>
+            <Text style={styles.anvilHint}>{t('home.holdToDisconnect')}</Text>
             <View style={styles.connectStatus}>
               <View style={[styles.statusDot, { backgroundColor: powerColor }]} />
               <Text style={styles.statusText}>
@@ -389,6 +491,14 @@ const styles = StyleSheet.create({
   avatarChip:     { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   avatarEmoji:    { fontSize: 16 },
 
+  // Balance pills
+  pillRow:      { flexDirection: 'row', gap: Spacing[2] },
+  pill:         { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
+  pillLabel:    { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 1, textTransform: 'uppercase' },
+  pillValueRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  pillDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.gold[400] },
+  pillValue:    { fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.text.primary, marginTop: 2 },
+
   // Starlink banner
   starlinkBanner: {
     backgroundColor: Colors.bg.surface,
@@ -436,6 +546,10 @@ const styles = StyleSheet.create({
   vpnDivider:   { height: 1, backgroundColor: Colors.border.subtle, marginHorizontal: Spacing[4] },
   // Coin section — replaces the old inline connectRow/powerBtn.
   coinSection:  { alignItems: 'center', paddingVertical: Spacing[5], gap: Spacing[3] },
+  anvilTitle:   { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 2, textTransform: 'uppercase' },
+  anvilHint:    { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, opacity: 0.75, marginTop: -4 },
+  coinStage:    { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
+  floatNum:     { position: 'absolute', top: '38%', fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.gold[100] },
   connectStatus:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot:    { width: 7, height: 7, borderRadius: 4 },
   statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary },
