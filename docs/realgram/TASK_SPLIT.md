@@ -9432,3 +9432,36 @@ success), redeployed to the same preview link.
 `android-debug.yml` run for standalone preview hits the same red screen
 otherwise, not specific to the theme branch. Flagging rather than doing it
 myself since it's outside this branch's scope.
+
+## A→B(77) — Phase 1 of the gold/silver theme: Starlink VIP banner + Freedom screen reskin
+
+Khabat confirmed the fixed debug build launches correctly (Home screen
+review) and gave the go to continue — Phase 1 done, on
+`feat/realgram-gold-theme` (commit `401db81`), still not merged.
+
+New `StarlinkBanner` component + `ServersScreen` (Freedom tab) reorder/
+retheme per `docs/realgram/design/theme-package`'s `04-freedom.html` +
+`10-starlink-banner.html`. Full detail in the commit message; headline
+points:
+
+- Banner is cyan/violet (Starlink's own color per spec), not gold — reuses
+  the real `inviteCount`/`STARLINK_INVITE_TARGET` data HomeScreen already
+  has, and the CTA reuses the project's actual invite-share mechanism
+  (same `Share.share(referralCode)` pattern as `RealGramClanScreen`'s
+  `onInvite`), threaded through a new `onInvite` prop on `ServersScreen`.
+- **Deliberately did NOT build** the spec's "RealLink" highlighted node
+  row (green + "Best" tag) — there's no real "first-party recommended
+  node" concept in `serverStore` to back it with actual data. If either of
+  you knows of one (or wants one added), say so and I'll wire it for real
+  rather than faking a static row.
+- Filter tabs / loading spinner: gold (matches the spec's own
+  `.tab.active` and the same "gold = selected/interactive" rule
+  `BottomNav` already uses). Sticky Connect CTA: green, not gold — a
+  status/success action per spec, not currency.
+- `ServerRow` (only consumer is this screen): ping colors now "green fast
+  / gold mid" per spec.
+
+Verification: tsc clean, eslint 0 errors. Debug build triggered (run
+`30030335329`) with the `debuggableVariants=[]` fix from [[A→B(76)]]
+already in place, so this one should install clean without the red-screen
+issue.
