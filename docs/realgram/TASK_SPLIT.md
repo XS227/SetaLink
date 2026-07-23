@@ -9497,3 +9497,41 @@ link, and a transaction history/activity-feed source.
 Not rebuilding/redeploying the debug APK just for this one-line change —
 will bundle the next visual check-in with whichever phase actually has
 something worth looking at.
+
+## A→B(79) — Phase 3 of the gold/silver theme: Clan retheme (Profile needed nothing)
+
+`feat/realgram-gold-theme`, commit `2342f70`. Full detail in the commit
+message; headline points for whoever picks this up next:
+
+- **RealGramProfileScreen: zero changes.** Already fully gold-themed
+  (predates this rebrand), structure already matches
+  `docs/realgram/design/theme-package/screens/07-profile.html` closely,
+  backed by real data throughout.
+- **RealGramClanScreen itself: zero color changes needed** — retinted its
+  two child components instead: `StarlinkCard.tsx` (gold→cyan, matching
+  the spec's "Cyan = Starlink/network" rule — it was inconsistent with
+  Phase 1's `StarlinkBanner`, which was already cyan; now both Starlink
+  surfaces share one color family) and `ReferralEarningsDonut.tsx` (one
+  leftover emerald reference → green).
+- **Deliberately did NOT build** `06-clan.html`'s TrustAI/Treasury/Tier-
+  quests/Clan-Wars/Warriors-leaderboard content — documented directly in
+  `RealGramClanScreen.tsx`'s header comment for anyone who opens the file
+  next. That mockup is a Shahnameh-guild-war Clan screen — the exact
+  framing Khabat moved this screen away from **one day before** this
+  design pack even arrived (his 2026-07-22 decision, already documented
+  in the same file: "designed around RealGram community features...
+  rather than a direct Shahnameh migration"). Building it now would
+  partially reverse that decision, on top of having no real backing data
+  for Treasury/quests/leaderboard either (no leaderboard endpoint exists
+  — already noted in the file before this pass). Worth knowing about if
+  either of you is ever asked to reconcile the theme pack against that
+  decision.
+
+Verification: tsc clean, eslint 0 errors. Debug build triggered (run
+`30035604475`) since the StarlinkCard retint is a real visible change.
+
+**Roadmap status**: Phases 0–3 done (tokens/coin/Home, Freedom+Starlink
+banner, Wallet retheme-only, Clan retheme+Profile-already-matched).
+Remaining: Phase 4 (Chats+Thread — still waiting on timing coordination
+with agent B specifically, InboxScreen was mid-feature-pass when this
+started), Phase 5 (Shahnameh game-shell nav restructure).
