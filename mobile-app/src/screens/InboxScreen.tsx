@@ -625,7 +625,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   disabled={sending || !threadDraft.trim()}
                   onPress={sendInThread}
                 >
-                  {sending ? <ActivityIndicator color="#021b10" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
+                  {sending ? <ActivityIndicator color="#241605" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
                 </TouchableOpacity>
               </View>
             </View>
@@ -677,7 +677,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 onPress={submit}
               >
                 {sending
-                  ? <ActivityIndicator color="#021b10" size="small" />
+                  ? <ActivityIndicator color="#241605" size="small" />
                   : <Text style={styles.sendText}>{t('dm.send')}</Text>}
               </TouchableOpacity>
             </View>
@@ -694,8 +694,8 @@ const styles = StyleSheet.create({
   backBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   backIcon:      { fontSize: 26, color: Colors.text.secondary, marginTop: -2 },
   title:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  newBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  newBtnText:    { fontSize: 22, color: '#021b10', marginTop: -2, fontWeight: '700' },
+  newBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  newBtnText:    { fontSize: 22, color: '#241605', marginTop: -2, fontWeight: '700' },
   searchBtn:     { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   searchBtnText: { fontSize: 16 },
   searchBar:     { paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2] },
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
 
   // Conversation row (avatar + text)
   item:          { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], borderRadius: Radius.lg, padding: Spacing[3], backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle },
-  itemUnread:    { borderColor: 'rgba(0,232,122,0.25)', backgroundColor: 'rgba(0,232,122,0.05)' },
+  itemUnread:    { borderColor: 'rgba(255,182,39,0.25)', backgroundColor: 'rgba(255,182,39,0.05)' },
   itemMain:      { flex: 1, gap: 4 },
   itemHeader:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
   itemTitle:     { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.secondary },
@@ -718,14 +718,14 @@ const styles = StyleSheet.create({
   itemBody:      { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 20 },
 
   avatar:        { backgroundColor: Colors.bg.base, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
-  avatarOfficial:{ backgroundColor: 'rgba(0,232,122,0.10)', borderColor: 'rgba(0,232,122,0.4)' },
-  avatarText:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
-  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  verifiedText:  { fontSize: 10, color: '#021b10', fontWeight: '700' },
+  avatarOfficial:{ backgroundColor: 'rgba(255,182,39,0.10)', borderColor: 'rgba(255,182,39,0.4)' },
+  avatarText:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  verifiedText:  { fontSize: 10, color: '#241605', fontWeight: '700' },
 
   threadPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  unreadBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#021b10', fontWeight: '700' },
+  unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  unreadBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#241605', fontWeight: '700' },
 
   // Chat thread modal
   threadRoot:    { flex: 1, backgroundColor: Colors.bg.base },
@@ -734,7 +734,7 @@ const styles = StyleSheet.create({
   threadPeerWrap:{ flex: 1 },
   threadPeerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   threadPeer:    { flexShrink: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+  threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.gold[400] },
   threadDeleteBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   threadDeleteIcon: { fontSize: 16 },
   threadScroll:  { flex: 1 },
@@ -744,18 +744,18 @@ const styles = StyleSheet.create({
   bubbleRowIn:   { justifyContent: 'flex-start' },
   bubble:        { maxWidth: '82%', borderRadius: Radius.lg, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
   bubbleIn:      { backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle, borderTopLeftRadius: 4 },
-  bubbleOut:     { backgroundColor: Colors.emerald[400], borderTopRightRadius: 4 },
-  bubbleTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.emerald[400], marginBottom: 3 },
+  bubbleOut:     { backgroundColor: Colors.gold[400], borderTopRightRadius: 4 },
+  bubbleTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.gold[400], marginBottom: 3 },
   bubbleText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.primary, lineHeight: 20 },
-  bubbleTextOut: { color: '#021b10' },
+  bubbleTextOut: { color: '#241605' },
   bubbleLinkBtn: { marginTop: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: Radius.sm, paddingHorizontal: Spacing[2], paddingVertical: 4 },
-  bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400] },
+  bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.gold[400] },
   bubbleTime:    { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end', marginTop: 2 },
   bubbleTimeOut: { color: 'rgba(2,27,16,0.6)' },
 
   reactionBadgeRow: { flexDirection: 'row', gap: 4, marginTop: -6, marginBottom: 6, paddingHorizontal: 4 },
   reactionBadge:    { flexDirection: 'row', backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
-  reactionBadgeMine:{ borderColor: Colors.emerald[400] },
+  reactionBadgeMine:{ borderColor: Colors.gold[400] },
   reactionBadgeText:{ fontSize: 11, color: Colors.text.secondary },
 
   // No alignSelf here (bug fix 2026-07-22, chat audit #3): it used to be
@@ -776,9 +776,9 @@ const styles = StyleSheet.create({
   burnChipText:  { fontSize: 13, color: '#FF8C3C', fontFamily: Typography.family.mono },
   threadInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing[2], paddingHorizontal: Layout.screenPadding, paddingVertical: Spacing[3], paddingBottom: Spacing[6], borderTopWidth: 1, borderTopColor: Colors.border.subtle },
   threadInput:   { flex: 1, maxHeight: 110, borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
-  threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  threadSendText:{ fontSize: 20, color: '#021b10', fontWeight: '700' },
-  introNote:     { backgroundColor: 'rgba(0,232,122,0.06)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
+  threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  threadSendText:{ fontSize: 20, color: '#241605', fontWeight: '700' },
+  introNote:     { backgroundColor: 'rgba(255,182,39,0.06)', borderWidth: 1, borderColor: 'rgba(255,182,39,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
   introText:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary, textAlign: 'center', lineHeight: 18 },
   loadOlderBtn:  { alignSelf: 'center', paddingHorizontal: Spacing[3], paddingVertical: Spacing[2], borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, marginBottom: Spacing[2] },
   loadOlderText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary },
@@ -795,7 +795,7 @@ const styles = StyleSheet.create({
   modalActions:  { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   cancelBtn:     { flex: 1, paddingVertical: 14, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center' },
   cancelText:    { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: Colors.text.secondary },
-  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
+  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { opacity: 0.6 },
-  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#021b10', fontWeight: '700' },
+  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#241605', fontWeight: '700' },
 });
