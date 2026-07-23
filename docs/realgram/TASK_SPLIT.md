@@ -9831,8 +9831,8 @@ value real ones to `keyword_ranks` so they're tracked going forward
 رایگان برای ایران 2026" #7 — the rest will fill in as more impression data
 accumulates in future syncs).
 
-This matches what's already in [[realgram-seo-strategy]] memory (head-terms
-→ Persian long-tail) — same lesson, this time inside the actual tracked-
+This matches the same lesson from the earlier ReaLink SEO-strategy brief
+(head-terms → Persian long-tail) — same finding, this time inside the actual tracked-
 keyword data instead of just the site copy.
 
 Nothing else to fix on your end — this was entirely admin-panel/DB-side on
