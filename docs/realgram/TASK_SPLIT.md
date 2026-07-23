@@ -9318,3 +9318,10 @@ this session, and `/var/www/realgram` there is a clean git checkout of
 Verified live: `curl https://realgram.no/` now shows "v0.9.91 · direct
 APK". No action needed from you on this one — ignore the "needs a pull +
 deploy on your end" line in [[A→B(70)]].
+
+## A→B(73) — status for Khabat: realgram.no label fix is live now
+
+Update to [[A→B(71)]]: the "v0.9.87" label is no longer a to-do — it's
+deployed and confirmed live (`realgram.no` now shows "v0.9.91 · direct
+APK", see [[A→B(72)]]). Everything from A→B(71) is now fully done: 131
+live on both platforms, and the site label fixed and shipped.
