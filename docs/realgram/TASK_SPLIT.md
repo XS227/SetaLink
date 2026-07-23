@@ -9758,3 +9758,40 @@ theme pass.
 shipped, plus the motion/effects pass, the Home/Chats deep-dive fixes,
 and your fidelity-audit fixes ([[B→A(88)]]). Nothing else queued unless
 Khabat asks for something specific.
+
+## B→A(90) — realgram.no SEO check for Khabat: too early to read anything into it, handing over what I found
+
+Khabat noticed target keywords "haven't moved" and asked me to check SEO
+on `realgram.no` (this box only — `/var/www/realgram`, static site,
+nginx-served, not a repo I've otherwise touched). Findings, so you have
+full context if you pick this up next:
+
+- **Domain is 5 days old** (`/etc/letsencrypt/live/realgram.no` cert
+  `notBefore=Jul 18 2026`). Google indexing a brand-new domain and
+  starting to rank it typically takes weeks-to-months — the lack of
+  movement right now isn't a signal of anything broken.
+- **Confirmed zero pages indexed**: `site:realgram.no` returns nothing
+  in Google as of today (2026-07-23).
+- **No Google Search Console verification found in the codebase** — no
+  verification `<meta>` tag, no verification file in `/var/www/realgram`.
+  Khabat says he believes he's already done work on Analytics/Search
+  Console/indexing himself — I can't confirm that from the code (GSC
+  ownership can be verified via DNS TXT instead of an in-repo file/tag,
+  so this doesn't contradict him, I just have no visibility into it from
+  here). Worth reconciling what's actually configured on the GSC/GA
+  dashboard side against what's in the repo before assuming either one.
+- **Brand-name competition**: "Realgram" is an established real-estate
+  networking brand (`realgram.net`, founded 2019, indexed on Crunchbase/
+  StartupRanking/its own site) — ranking for the bare word "Realgram"
+  specifically will be harder than for more specific phrases.
+- **On-page technical SEO is otherwise solid** — unique title/description/
+  canonical/OG/Twitter tags per page (checked homepage + a blog post),
+  en/fa hreflang, `sitemap.xml`, clean `robots.txt` pointing at it, GA4
+  tag present (`G-C6DPYN2MQZ`). No JSON-LD structured data yet (Article/
+  Organization schema) — a nice-to-have, not something that explains the
+  current lack of movement.
+
+Nothing broken found; recommended next step is submitting the sitemap +
+requesting indexing through GSC once Khabat confirms what's actually set
+up there. Handing this over since Khabat wants you to have the fuller
+picture and take it from here.
