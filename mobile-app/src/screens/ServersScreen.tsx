@@ -9,6 +9,7 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { AdBanner } from '../components/AdBanner';
 import { TopBar } from '../components/TopBar';
+import { StarlinkBanner } from '../components/StarlinkBanner';
 
 import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
@@ -16,12 +17,15 @@ import { useAIStore }   from '../stores/aiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useT, tagLabelKey } from '../i18n';
 
+const STARLINK_INVITE_TARGET = 11; // mirrors HomeScreen's constant (not shared — same value, two screens)
+
 interface Props {
   onNavigate: (tab: NavTab) => void;
   activeTab:  NavTab;
+  onInvite:   () => void;
 }
 
-export function ServersScreen({ onNavigate, activeTab }: Props) {
+export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
   const { t } = useT();
   const {
     selectedId, filter, query, selectServer, setFilter,
@@ -31,6 +35,9 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
   const { connectionState, connect, switchServer } = useVpnStore();
   const { activeMode }  = useAIStore();
   const userPlan        = useAuthStore((s) => s.user?.plan ?? 'free');
+  const inviteCount     = useAuthStore((s) => s.user?.inviteCount ?? 0);
+  const hasStarlink     = inviteCount >= STARLINK_INVITE_TARGET
+    || servers.some((s) => s.nodeType === 'STARLINK');
   // Per-device ad-testing override (devices.test_mode) — same rule as HomeScreen's
   // userShowsAds: a premium tester can be flagged server-side to see ads without
   // touching her actual plan/quota.
@@ -101,7 +108,7 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
           <Text style={styles.title}>{t('sv.title')}</Text>
           <View style={styles.headerRight}>
             {isLoading && (
-              <ActivityIndicator size="small" color={Colors.emerald[400]} style={{ marginRight: Spacing[1] }} />
+              <ActivityIndicator size="small" color={Colors.gold[400]} style={{ marginRight: Spacing[1] }} />
             )}
             <TouchableOpacity
               style={styles.activityBtn}
@@ -144,6 +151,16 @@ export function ServersScreen({ onNavigate, activeTab }: Props) {
 
         {/* AI Picks carousel removed — the list below is the single source of
             truth; users just scroll to pick an available server. */}
+
+        {/* Starlink VIP reward — order matters per the theme pkg: this sits
+            above the server list, ad card stays interleaved in the list
+            below (B-19's existing placement). */}
+        <StarlinkBanner
+          unlocked={hasStarlink}
+          inviteCount={inviteCount}
+          inviteTarget={STARLINK_INVITE_TARGET}
+          onInvite={onInvite}
+        />
 
         {/* Active servers */}
         <View style={styles.section}>
@@ -240,9 +257,11 @@ const styles = StyleSheet.create({
   tabScroll:        { marginHorizontal: -Layout.screenPadding },
   tabContent:       { paddingHorizontal: Layout.screenPadding, gap: Spacing[2] },
   filterTab:        { paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface },
-  filterTabActive:  { backgroundColor: 'rgba(0,232,122,0.1)', borderColor: Colors.border.glow },
+  // Gold — matches theme pkg's `.tab.active` (04-freedom.html), the app's
+  // general "selected/interactive" accent (BottomNav's active tab, same rule).
+  filterTabActive:  { backgroundColor: 'rgba(255,182,39,0.12)', borderColor: Colors.border.goldGlow },
   filterLabel:      { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted },
-  filterLabelActive:{ color: Colors.emerald[400] },
+  filterLabelActive:{ color: Colors.gold[400] },
 
   section:       { gap: Spacing[3] },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
@@ -275,8 +294,11 @@ const styles = StyleSheet.create({
   comingSoonBadgeText: { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 0.8 },
 
   stickyFooter:       { position: 'absolute', bottom: Layout.bottomNavHeight + 8, left: Layout.screenPadding, right: Layout.screenPadding },
-  connectCta:         { backgroundColor: Colors.emerald[400], borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', shadowColor: Colors.emerald[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
-  connectCtaActive:   { backgroundColor: Colors.emerald[600] ?? Colors.emerald[400], opacity: 0.85 },
+  // Green, not gold — per theme pkg's `.connect-bar` (04-freedom.html):
+  // this is a status/success action (connecting), the same semantic as
+  // Colors.status.connected elsewhere, distinct from gold's currency role.
+  connectCta:         { backgroundColor: Colors.green[400], borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', shadowColor: Colors.green[400], shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.5, shadowRadius: 16, elevation: 10 },
+  connectCtaActive:   { opacity: 0.85 },
   connectCtaDisabled: { opacity: 0.45 },
   connectCtaText:     { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.inverse, letterSpacing: Typography.tracking.wide },
 });

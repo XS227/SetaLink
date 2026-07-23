@@ -41,19 +41,22 @@ interface Props {
   onDelete?: (server: Server) => void;
 }
 
+// "ping colour: green fast / gold mid" (theme pkg 04-freedom.html) —
+// green = Colors.status.connected (the theme's dedicated status color),
+// gold for the middle tier, red for slow/disconnected.
 function PingDot({ ping }: { ping: number }) {
   const color =
     ping === 0   ? Colors.text.muted :
-    ping < 60    ? Colors.emerald[400] :
-    ping < 120   ? '#FFB800' :
+    ping < 60    ? Colors.status.connected :
+    ping < 120   ? Colors.gold[400] :
     Colors.status.disconnected;
   return <View style={[styles.pingDot, { backgroundColor: color }]} />;
 }
 
 function LoadBar({ load }: { load: number }) {
   const color =
-    load < 40  ? Colors.emerald[400] :
-    load < 70  ? '#FFB800' :
+    load < 40  ? Colors.status.connected :
+    load < 70  ? Colors.gold[400] :
     Colors.status.disconnected;
   return (
     <View style={styles.loadTrack}>
@@ -137,17 +140,17 @@ export const ServerRow = React.memo(ServerRowComponent, (prev, next) =>
 );
 
 const TAG_STYLES: Record<string, object> = {
-  Recommended: { backgroundColor: 'rgba(0,232,122,0.12)', borderColor: Colors.border.glow },
+  Recommended: { backgroundColor: 'rgba(51,255,178,0.12)', borderColor: 'rgba(51,255,178,0.4)' },
   Fastest:     { backgroundColor: 'rgba(51,153,255,0.12)', borderColor: 'rgba(51,153,255,0.3)' },
-  Stealth:     { backgroundColor: 'rgba(120,80,255,0.12)', borderColor: 'rgba(120,80,255,0.3)' },
-  Streaming:   { backgroundColor: 'rgba(255,184,0,0.12)', borderColor: 'rgba(255,184,0,0.3)' },
+  Stealth:     { backgroundColor: 'rgba(123,92,250,0.12)', borderColor: 'rgba(123,92,250,0.3)' },
+  Streaming:   { backgroundColor: 'rgba(255,182,39,0.12)', borderColor: 'rgba(255,182,39,0.3)' },
 };
 
 const TAG_TEXT: Record<string, object> = {
-  Recommended: { color: Colors.emerald[400] },
+  Recommended: { color: Colors.status.connected },
   Fastest:     { color: Colors.blue[400] },
-  Stealth:     { color: '#9B77FF' },
-  Streaming:   { color: '#FFB800' },
+  Stealth:     { color: Colors.violet[400] },
+  Streaming:   { color: Colors.gold[400] },
 };
 
 const styles = StyleSheet.create({
@@ -164,8 +167,8 @@ const styles = StyleSheet.create({
     gap: Spacing[3],
   },
   selectedRow: {
-    borderColor: Colors.border.active,
-    backgroundColor: 'rgba(0,232,122,0.05)',
+    borderColor: 'rgba(51,255,178,0.5)',
+    backgroundColor: 'rgba(51,255,178,0.05)',
   },
   left: {
     flexDirection: 'row',
@@ -184,7 +187,7 @@ const styles = StyleSheet.create({
     color: Colors.text.primary,
     flexShrink: 1,
   },
-  selectedText: { color: Colors.emerald[400] },
+  selectedText: { color: Colors.status.connected },
   city: {
     fontSize: Typography.size.xs,
     fontFamily: Typography.family.body,
@@ -192,17 +195,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   importedBadge: {
-    backgroundColor: 'rgba(120,80,255,0.12)',
+    backgroundColor: 'rgba(123,92,250,0.12)',
     borderRadius: Radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(120,80,255,0.3)',
+    borderColor: 'rgba(123,92,250,0.3)',
     paddingHorizontal: 5,
     paddingVertical: 1,
   },
   importedBadgeText: {
     fontSize: 8,
     fontFamily: Typography.family.label,
-    color: '#9B77FF',
+    color: Colors.violet[400],
     letterSpacing: 0.4,
   },
   right: { alignItems: 'flex-end', gap: 4 },
@@ -256,7 +259,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.emerald[400],
+    backgroundColor: Colors.status.connected,
     position: 'absolute',
     right: 14,
     top: '50%',
