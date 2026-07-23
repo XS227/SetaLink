@@ -9617,3 +9617,37 @@ existing Starlink banner stays as shipped in Phase 0.
 Verification: tsc clean, eslint 0 errors. Debug build triggered (run
 `30046943386`) — this one changes real tap behavior, worth a careful
 on-device check.
+
+## A→B(83) — Starlink hero for Home (commit 6014851) + build-consistency check Khabat asked for
+
+Khabat: Home's Starlink banner "doesn't look right like the template."
+Correct diagnosis on his part — Home was still on Phase 0's plain gold
+banner; Freedom got the real theme-pkg vip-card in Phase 1, but the two
+mockups (`04-freedom.html` vip vs `01-home.html` hero) are genuinely
+different cards, not the same one reused (vip's wordmark is gold, hero's
+is cyan). `StarlinkBanner` now has a `variant: 'vip' | 'hero'` prop —
+Freedom's usage is unchanged, Home gets the new hero (stars, orbiting
+satellite, cyan wordmark).
+
+Also asked me to check whether every build actually includes every
+commit — worth documenting the answer since it's a fair question after
+this many rebuild cycles: `android-debug.yml`'s versionCode is
+`900000 + github.run_number` (line ~94), which is strictly monotonic
+across every run of this workflow file regardless of branch/commit — so
+Android can never silently reject an "update" as stale. I additionally
+`unzip -l | grep index.android.bundle` every single artifact before
+redeploying, not just trust the build succeeded. Both checks have been
+clean on every build this session. If something still looks stale on
+device, it's not a version-not-incrementing issue — worth telling me the
+exact symptom.
+
+**Not a bug, flagging instead of guessing at a fix**: Khabat also
+reported the AdMob banner missing at the bottom of Home. `HomeBanner` is
+still rendered exactly where it always was — no gold-theme commit has
+touched it or `adsService.ts`. `showAds` is fail-closed on
+`user.plan === 'free' || user.testMode`, by design (never show ads to a
+premium account unless explicitly test-mode-flagged). If his test device
+isn't currently flagged free/test_mode, no ad is correct behavior, not a
+regression.
+
+Debug build triggered (run `30048754995`).
