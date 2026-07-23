@@ -1,9 +1,10 @@
 import React, { useEffect } from 'react';
-import { AccessibilityInfo, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { AccessibilityInfo, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing, cancelAnimation, useAnimatedStyle, useSharedValue, withRepeat, withTiming,
 } from 'react-native-reanimated';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
+import { GoldButton } from './GoldButton';
 import { useT } from '../i18n';
 
 /**
@@ -51,12 +52,7 @@ export function StarlinkBanner({ unlocked, inviteCount, inviteTarget, onInvite }
   });
 
   return (
-    <TouchableOpacity
-      style={styles.card}
-      activeOpacity={unlocked ? 1 : 0.85}
-      onPress={unlocked ? undefined : onInvite}
-      disabled={unlocked}
-    >
+    <View style={styles.card}>
       <View style={styles.corner}><Text style={styles.cornerText}>VIP</Text></View>
       <Animated.Text style={[styles.sat, satStyle]}>🛰️</Animated.Text>
 
@@ -83,11 +79,11 @@ export function StarlinkBanner({ unlocked, inviteCount, inviteTarget, onInvite }
       )}
 
       {!unlocked && (
-        <View style={styles.cta}>
-          <Text style={styles.ctaText}>👥 {t('pr.inviteFriends')}</Text>
-        </View>
+        <GoldButton style={styles.cta} textStyle={styles.ctaText} onPress={onInvite}>
+          {`👥 ${t('pr.inviteFriends')}`}
+        </GoldButton>
       )}
-    </TouchableOpacity>
+    </View>
   );
 }
 
@@ -129,8 +125,7 @@ const styles = StyleSheet.create({
 
   cta: {
     marginTop: 14, alignSelf: 'flex-start',
-    backgroundColor: Colors.gold[400], borderRadius: Radius.lg,
-    paddingHorizontal: 18, paddingVertical: 11,
+    paddingHorizontal: 18,
   },
-  ctaText: { fontSize: 13.5, fontFamily: Typography.family.heading, color: '#241605' },
+  ctaText: { fontSize: 13.5, fontFamily: Typography.family.heading },
 });

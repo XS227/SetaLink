@@ -44,6 +44,8 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { StarlinkCard } from '../components/StarlinkCard';
+import { BottomNav } from '../components/BottomNav';
+import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useStarlinkStore } from '../stores/starlinkStore';
 import { getProfileSummary, ProfileClan } from '../services/realGramProfileService';
@@ -79,6 +81,7 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <EmberField count={8} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -133,7 +136,11 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
           </GlassCard>
         )}
 
-        <View style={{ height: Spacing[8] }} />
+        {/* This screen has no self-rendered <BottomNav> — the Tab.Navigator's
+            floating tabBar overlay (AppNavigator.tsx) supplies it instead, so
+            without this the last card sits behind it and the page reads as
+            "won't scroll all the way" (Khabat, 2026-07-23 bug report). */}
+        <View style={{ height: BottomNav.CONTENT_HEIGHT + insets.bottom + Spacing[4] }} />
       </ScrollView>
     </View>
   );

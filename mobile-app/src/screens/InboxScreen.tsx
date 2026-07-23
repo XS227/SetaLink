@@ -3,8 +3,15 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
   Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming,
+} from 'react-native-reanimated';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { BottomNav } from '../components/BottomNav';
+import { EmberField } from '../components/EmberField';
+import { GoldButton } from '../components/GoldButton';
 import { useAuthStore }  from '../stores/authStore';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
@@ -68,6 +75,23 @@ interface Props {
  */
 export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const { t } = useT();
+  const insets      = useSafeAreaInsets();
+
+  // FAB "breathe" (theme pkg 02-chats.html: ".rg-btn--gold ... .rg-breathe").
+  const fabBreathe = useSharedValue(0);
+  useEffect(() => {
+    fabBreathe.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1, true,
+    );
+  }, [fabBreathe]);
+  const fabStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + fabBreathe.value * 0.06 }],
+  }));
+
   const user        = useAuthStore((s) => s.user);
   const deviceId    = user?.deviceId ?? '';
   const myId        = user?.userId ?? '';
@@ -355,6 +379,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
 
   return (
     <View style={styles.screen}>
+      <EmberField count={6} />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={onBack}>
@@ -368,9 +393,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
         >
           <Text style={styles.searchBtnText}>{searchOpen ? '✕' : '🔍'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.newBtn} activeOpacity={0.8} onPress={() => setCompose(true)}>
-          <Text style={styles.newBtnText}>＋</Text>
-        </TouchableOpacity>
+        <Animated.View style={fabStyle}>
+          <TouchableOpacity style={styles.newBtn} activeOpacity={0.8} onPress={() => setCompose(true)}>
+            <Text style={styles.newBtnText}>＋</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       {searchOpen && (
@@ -460,7 +487,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
           </>
         )}
 
-        <View style={{ height: Spacing[8] }} />
+        {/* This screen has no self-rendered <BottomNav> — the Tab.Navigator's
+            floating tabBar overlay (AppNavigator.tsx) supplies it instead, so
+            without this the last row sits behind it (same bug reported on
+            RealGramClanScreen, 2026-07-23 — same fix applied here). */}
+        <View style={{ height: BottomNav.CONTENT_HEIGHT + insets.bottom + Spacing[4] }} />
       </ScrollView>
 
       {/* Chat thread modal — Telegram-style conversation for DMs + official */}
@@ -670,16 +701,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
               <TouchableOpacity style={styles.cancelBtn} activeOpacity={0.8} onPress={() => setCompose(false)}>
                 <Text style={styles.cancelText}>{t('dm.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                activeOpacity={0.85}
-                disabled={sending}
-                onPress={submit}
-              >
+              <GoldButton style={styles.sendBtn} textStyle={styles.sendText} disabled={sending} onPress={submit}>
                 {sending
                   ? <ActivityIndicator color="#241605" size="small" />
-                  : <Text style={styles.sendText}>{t('dm.send')}</Text>}
-              </TouchableOpacity>
+                  : t('dm.send')}
+              </GoldButton>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -795,7 +821,7 @@ const styles = StyleSheet.create({
   modalActions:  { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   cancelBtn:     { flex: 1, paddingVertical: 14, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center' },
   cancelText:    { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: Colors.text.secondary },
-  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full },
   sendBtnDisabled: { opacity: 0.6 },
-  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#241605', fontWeight: '700' },
+  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, fontWeight: '700' },
 });

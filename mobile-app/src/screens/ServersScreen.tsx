@@ -10,6 +10,7 @@ import { GlassCard } from '../components/GlassCard';
 import { AdBanner } from '../components/AdBanner';
 import { TopBar } from '../components/TopBar';
 import { StarlinkBanner } from '../components/StarlinkBanner';
+import { EmberField } from '../components/EmberField';
 
 import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
@@ -97,6 +98,7 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
 
   return (
     <View style={styles.screen}>
+      <EmberField count={8} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}

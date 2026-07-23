@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
 import { RealCoin }        from '../components/RealCoin';
+import { EmberField }      from '../components/EmberField';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
 import { HomeBanner }      from '../components/HomeBanner';
@@ -172,6 +173,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {isConnected && <View style={styles.ambientGlow} pointerEvents="none" />}
+      <EmberField />
 
       <ScrollView
         style={styles.scroll}
