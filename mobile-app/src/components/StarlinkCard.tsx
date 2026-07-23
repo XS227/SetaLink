@@ -65,7 +65,7 @@ export function StarlinkCard({ onOpen, onInvite, onConnect }: Props) {
 
   const borderColor = unlockGlow.interpolate({
     inputRange:  [0, 1],
-    outputRange: ['rgba(212,175,55,0.35)', 'rgba(240,208,96,0.95)'],
+    outputRange: ['rgba(51,211,255,0.35)', 'rgba(127,227,255,0.95)'],
   });
 
   return (
@@ -132,16 +132,16 @@ export function StarlinkCard({ onOpen, onInvite, onConnect }: Props) {
   );
 }
 
-const GOLD = Colors.gold[400];
+const STARLINK_CYAN = Colors.cyan[400];
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: 'rgba(20,16,4,0.92)',
+    backgroundColor: 'rgba(6,10,20,0.92)',
     borderRadius:    Radius.xl,
     borderWidth:     1,
     padding:         Spacing[4],
     gap:             Spacing[2],
-    shadowColor:     GOLD,
+    shadowColor:     STARLINK_CYAN,
     shadowOffset:    { width: 0, height: 0 },
     shadowOpacity:   0.35,
     shadowRadius:    14,
@@ -152,27 +152,27 @@ const styles = StyleSheet.create({
   rtlText:    { textAlign: 'right', writingDirection: 'rtl' },
   satellite:  { fontSize: 30 },
   titleBlock: { flex: 1 },
-  title:      { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.gold[300], letterSpacing: 2 },
+  title:      { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.cyan[300], letterSpacing: 2 },
   poweredBy:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary, letterSpacing: 1, textTransform: 'uppercase', marginTop: 1 },
-  readyBadge: { backgroundColor: 'rgba(212,175,55,0.15)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(212,175,55,0.5)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
-  readyBadgeText: { fontSize: 9, fontFamily: Typography.family.label, color: Colors.gold[300], letterSpacing: 1, textTransform: 'uppercase' },
+  readyBadge: { backgroundColor: 'rgba(51,211,255,0.15)', borderRadius: Radius.full, borderWidth: 1, borderColor: 'rgba(51,211,255,0.5)', paddingHorizontal: Spacing[3], paddingVertical: 3 },
+  readyBadgeText: { fontSize: 9, fontFamily: Typography.family.label, color: Colors.cyan[300], letterSpacing: 1, textTransform: 'uppercase' },
   tagline:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, marginTop: Spacing[1] },
   unlockHint: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  progressTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(212,175,55,0.15)', overflow: 'hidden', marginTop: Spacing[1] },
-  progressFill:  { height: '100%', borderRadius: 3, backgroundColor: GOLD },
+  progressTrack: { height: 6, borderRadius: 3, backgroundColor: 'rgba(51,211,255,0.15)', overflow: 'hidden', marginTop: Spacing[1] },
+  progressFill:  { height: '100%', borderRadius: 3, backgroundColor: STARLINK_CYAN },
   progressRow:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  progressText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.gold[300] },
+  progressText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.cyan[300] },
   progressCount: { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary },
   cta: {
     marginTop:       Spacing[2],
     borderRadius:    Radius.lg,
     paddingVertical: Spacing[3],
     alignItems:      'center',
-    backgroundColor: 'rgba(212,175,55,0.16)',
+    backgroundColor: 'rgba(51,211,255,0.16)',
     borderWidth:     1,
-    borderColor:     'rgba(212,175,55,0.55)',
+    borderColor:     'rgba(51,211,255,0.55)',
   },
-  ctaConnect:     { backgroundColor: GOLD, borderColor: GOLD },
+  ctaConnect:     { backgroundColor: STARLINK_CYAN, borderColor: STARLINK_CYAN },
   ctaText:        { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 0.5 },
   ctaConnectText: { color: Colors.text.inverse },
   maintenanceBox:  { marginTop: Spacing[2], borderRadius: Radius.lg, borderWidth: 1, borderColor: 'rgba(255,184,0,0.3)', backgroundColor: 'rgba(255,184,0,0.07)', padding: Spacing[3] },

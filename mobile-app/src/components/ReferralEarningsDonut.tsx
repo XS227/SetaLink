@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   legendRow:  { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot:        { width: 8, height: 8, borderRadius: 4 },
   legendName: { flex: 1, color: Colors.text.secondary, fontSize: 12 },
-  legendVal:  { color: Colors.emerald[400], fontSize: 12, fontFamily: Typography.family.heading },
+  legendVal:  { color: Colors.status.connected, fontSize: 12, fontFamily: Typography.family.heading },
   empty:      { color: Colors.text.muted, fontSize: 12, lineHeight: 17 },
   inviteBtn:  { marginTop: Spacing[3], alignItems: 'center', paddingVertical: 10, borderRadius: Radius.md, backgroundColor: Colors.gold[400] },
   inviteBtnText: { color: '#1A1405', fontSize: 14, fontFamily: Typography.family.heading },

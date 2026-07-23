@@ -23,6 +23,16 @@
  * returns sorted by usage (`ORDER BY used DESC`) — surfaced here as "Top
  * contributors in your network," a true ranking, not a fabricated global
  * one.
+ *
+ * Gold/silver theme pass (2026-07-23): retinted the child components this
+ * screen renders (ReferralEarningsDonut, StarlinkCard — StarlinkCard also
+ * moved gold->cyan to match "Cyan = Starlink/network"). Did NOT build the
+ * theme pkg's `06-clan.html` mockup (TrustAI/Treasury/Tier-quests/Clan-Wars/
+ * Warriors-leaderboard) — that mockup is a Shahnameh-guild-war Clan screen,
+ * which is the exact framing this screen was deliberately redesigned away
+ * from one day earlier (2026-07-22, see above). Building it now would
+ * partially reverse that decision, on top of having no real backing data for
+ * Treasury/quests/leaderboard either. Flagged, not built.
  */
 
 import React, { useEffect, useState } from 'react';
