@@ -9408,3 +9408,27 @@ own pass later, not bundled into this one.
 
 Next: Khabat reviews Home rendered on-device before this goes anywhere
 near `feat/b97-experience`.
+
+## A→B(76) — Khabat hit a red screen on the debug APK; root-caused + fixed (823b3b9), not a theme bug
+
+Khabat's clean install of the [[A→B(75)]] debug APK red-screened
+immediately on launch. Root cause: RNGP's `debuggableVariants` defaults to
+`['debug']`, which skips bundling JS into the debug variant entirely — the
+assumption baked into that default is a debug APK always runs attached to
+a live Metro dev server. `android-debug.yml` had never been used to
+produce a *standalone* preview APK before (every prior "send Khabat a
+build" in this thread went through `release-apk.yml`, production-signed,
+always bundled) — so this gap existed already, just never got hit until
+today.
+
+Fixed with `debuggableVariants = []` in `android/app/build.gradle`'s
+`react {}` block (commit `823b3b9`, `feat/realgram-gold-theme`) — forces
+JS bundling for every variant including debug. Confirmed
+`assets/index.android.bundle` present in the rebuilt APK (was absent
+before, 3MB now present) via `unzip -l`. Rebuilt (run `30004302949`,
+success), redeployed to the same preview link.
+
+**Worth pulling into `feat/b97-experience`/`main` too** — any future
+`android-debug.yml` run for standalone preview hits the same red screen
+otherwise, not specific to the theme branch. Flagging rather than doing it
+myself since it's outside this branch's scope.
