@@ -10,6 +10,7 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
 import { RealCoin }        from '../components/RealCoin';
 import { EmberField }      from '../components/EmberField';
+import { StarlinkBanner }  from '../components/StarlinkBanner';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
 import { HomeBanner }      from '../components/HomeBanner';
@@ -188,10 +189,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     }
   }, [isBusy, isConnected, user, userShowsAds, connect, disconnect, onNavigate]);
 
-  // Starlink referral progress
+  // Starlink referral progress (invite left/pct now computed inside
+  // StarlinkBanner itself from these two raw values).
   const inviteCount  = user?.inviteCount ?? 0;
-  const inviteLeft   = Math.max(0, STARLINK_INVITE_TARGET - inviteCount);
-  const invitePct    = Math.min(1, inviteCount / STARLINK_INVITE_TARGET);
   const starlinkNode = servers.find((s) => s.nodeType === 'STARLINK');
   const hasStarlink  = inviteCount >= STARLINK_INVITE_TARGET || !!starlinkNode;
 
@@ -289,33 +289,20 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </View>
         </Animated.View>
 
-        {/* ── Starlink banner ── */}
+        {/* ── Starlink hero — theme pkg's 01-home.html §hero (stars +
+             orbiting satellite + cyan wordmark), same tap target as the
+             plain banner it replaces (whole card -> Freedom tab, where the
+             real invite/connect flow lives via Freedom's own vip-variant
+             StarlinkBanner). ── */}
         <Animated.View style={fadeStyle}>
-          <TouchableOpacity
-            style={[styles.starlinkBanner, hasStarlink && styles.starlinkBannerActive]}
-            onPress={() => onNavigate('servers')}
-            activeOpacity={0.82}
-          >
-            <View style={styles.starlinkTop}>
-              <View>
-                <Text style={styles.starlinkLabel}>STARLINK</Text>
-                <Text style={styles.starlinkTitle}>{hasStarlink ? t('home.starlinkUnlocked') : t('home.starlinkAccess')}</Text>
-              </View>
-              <View style={styles.starlinkCounter}>
-                <Text style={styles.starlinkCountNum}>{inviteCount}</Text>
-                <Text style={styles.starlinkCountSep}>/</Text>
-                <Text style={styles.starlinkCountTarget}>{STARLINK_INVITE_TARGET}</Text>
-              </View>
-            </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { flex: invitePct }, hasStarlink && styles.progressFillDone]} />
-              <View style={{ flex: Math.max(0, 1 - invitePct) }} />
-            </View>
-            {!hasStarlink && (
-              <Text style={styles.starlinkHint}>
-                {t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
-              </Text>
-            )}
+          <TouchableOpacity onPress={() => onNavigate('servers')} activeOpacity={0.9}>
+            <StarlinkBanner
+              variant="hero"
+              unlocked={hasStarlink}
+              inviteCount={inviteCount}
+              inviteTarget={STARLINK_INVITE_TARGET}
+              onInvite={() => onNavigate('servers')}
+            />
           </TouchableOpacity>
         </Animated.View>
 
@@ -498,31 +485,6 @@ const styles = StyleSheet.create({
   pillValueRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
   pillDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.gold[400] },
   pillValue:    { fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.text.primary, marginTop: 2 },
-
-  // Starlink banner
-  starlinkBanner: {
-    backgroundColor: Colors.bg.surface,
-    borderRadius: Radius.xl,
-    padding: Spacing[4],
-    borderWidth: 1,
-    borderColor: 'rgba(212,140,20,0.25)',
-    gap: Spacing[2],
-    overflow: 'hidden',
-  },
-  starlinkBannerActive: { borderColor: 'rgba(212,140,20,0.6)' },
-  starlinkTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  starlinkLabel:  { fontSize: 10, fontFamily: Typography.family.heading, color: Colors.gold[600], letterSpacing: 2, textTransform: 'uppercase' },
-  starlinkTitle:  { fontSize: 17, fontFamily: Typography.family.heading, color: Colors.gold[300], marginTop: 2 },
-  starlinkCounter:{ flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  starlinkCountNum: { fontSize: 28, fontFamily: Typography.family.heading, color: Colors.gold[300] },
-  starlinkCountSep: { fontSize: 16, color: Colors.gold[600] },
-  starlinkCountTarget: { fontSize: 16, color: Colors.gold[600] },
-  progressTrack:  { height: 5, flexDirection: 'row', borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(212,140,20,0.12)' },
-  progressFill:   { backgroundColor: Colors.gold[500], borderRadius: 3 },
-  // Cyan, not gold — "Cyan = Starlink/network" is its own dedicated brand
-  // color in the theme pkg, distinct from gold's currency/coin role.
-  progressFillDone: { backgroundColor: Colors.cyan[400] },
-  starlinkHint:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
 
   // VPN card
   vpnCard: {
