@@ -2095,16 +2095,44 @@ function icon(string $name): string {
     </div>
 
     <!-- ============================================================ -->
-    <!-- VIEW: WALLET (placeholder)                                   -->
+    <!-- VIEW: WALLET — REAL/ZAR economy, live from the shahnameh-    -->
+    <!-- backend's /v1/economy-summary (admin/api.php?action=wallet-  -->
+    <!-- economy-summary). No local cache — see that case's comment.  -->
     <!-- ============================================================ -->
     <div data-view="wallet" hidden>
-      <div class="panel">
-        <div class="panel-header"><span class="panel-title">💎 REAL Wallet</span></div>
+      <div id="walletUnavailable" class="panel" style="display:none">
         <div class="panel-body" style="padding:2rem;text-align:center;color:var(--text-muted)">
           <div style="font-size:2rem;margin-bottom:.75rem">💎</div>
-          <div style="font-weight:600;margin-bottom:.5rem">REAL Economy</div>
-          <div style="font-size:.85rem">ZAR balances · REAL token · wallet transactions · top earners · burn rate</div>
-          <div style="margin-top:1.5rem;font-size:.8rem;opacity:.6">Coming soon — requires zar_store ledger API + REAL wallet contract</div>
+          <div style="font-weight:600;margin-bottom:.5rem">REAL Economy unavailable</div>
+          <div style="font-size:.85rem" id="walletUnavailableReason">—</div>
+        </div>
+      </div>
+
+      <div id="walletContent">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">ZAR in circulation</div><div class="stat-value" id="wZarCirculating">—</div><div class="stat-sub">all accounts, current</div></div>
+          <div class="stat-card"><div class="stat-label">REAL in circulation</div><div class="stat-value" id="wRealCirculating">—</div><div class="stat-sub">all accounts, current</div></div>
+          <div class="stat-card"><div class="stat-label">REAL granted (all-time)</div><div class="stat-value" id="wRealGranted">—</div><div class="stat-sub">redemptions + referral grants</div></div>
+          <div class="stat-card"><div class="stat-label">REAL spent / burned</div><div class="stat-value" id="wRealSpent">—</div><div class="stat-sub" id="wRealSpent7dSub">last 7d: —</div></div>
+        </div>
+
+        <div class="two-col" style="margin-top:.7rem">
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">🏆 Top Earners <span class="panel-sub">by REAL balance</span></span></div>
+            <div class="panel-body" style="overflow-x:auto">
+              <table class="tbl"><thead><tr><th>Account</th><th>REAL</th><th>ZAR</th></tr></thead>
+                <tbody id="wTopEarnersTbl"><tr><td colspan="3" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><span class="panel-title">📜 Recent Transactions <span class="panel-sub">grant / spend, last 20</span></span></div>
+            <div class="panel-body" style="overflow-x:auto">
+              <table class="tbl"><thead><tr><th>Account</th><th>Kind</th><th>Amount</th><th>Status</th><th>When</th></tr></thead>
+                <tbody id="wRecentTxTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -4761,6 +4789,50 @@ views.tapstream = {
       this.rows('tapScreenTbl', d.by_screen, 2, x=>`<tr><td>${esc(x.screen)}</td><td>${x.taps}</td></tr>`);
       this.rows('tapElementTbl', d.by_element, 3, x=>`<tr><td>${esc(x.screen)}</td><td>${esc(x.element)}</td><td>${x.taps}</td></tr>`);
     } catch(e) { toast('Tap stream: '+e.message,'error'); }
+  },
+};
+
+// ── VIEW: WALLET ─────────────────────────────────────────────────────
+// REAL/ZAR economy aggregate. Reads admin/api.php?action=wallet-economy-
+// summary, a live proxy to the shahnameh-backend's /v1/economy-summary
+// (no local cache, unlike ga4-summary — see that case's PHP comment).
+views.wallet = {
+  init() { this.load(); },
+  num(n) { return (Number(n) || 0).toLocaleString(); },
+  rows(tbody, list, cols, cells) {
+    const el = $(tbody); if (!el) return;
+    el.innerHTML = (list && list.length)
+      ? list.map(cells).join('')
+      : `<tr><td colspan="${cols}" class="tbl-empty">No data</td></tr>`;
+  },
+  async load() {
+    try {
+      const d = await api.get('wallet-economy-summary');
+      const unavail = $('walletUnavailable'), content = $('walletContent');
+      if (!d.available) {
+        unavail.style.display = '';
+        content.style.display = 'none';
+        $('walletUnavailableReason').textContent = d.reason || 'unknown reason';
+        return;
+      }
+      unavail.style.display = 'none';
+      content.style.display = '';
+
+      $('wZarCirculating').textContent  = this.num(d.zar?.total_circulating);
+      $('wRealCirculating').textContent = this.num(d.real?.total_circulating);
+      $('wRealGranted').textContent     = this.num(d.real?.total_granted);
+      $('wRealSpent').textContent       = this.num(d.real?.total_spent);
+      $('wRealSpent7dSub').textContent  = `last 7d: ${this.num(d.real?.spent_7d)}`;
+
+      this.rows('wTopEarnersTbl', d.top_earners, 3, x =>
+        `<tr><td class="mono">${esc(x.account)}</td><td>${this.num(x.real_balance)}</td><td>${this.num(x.zar)}</td></tr>`);
+      this.rows('wRecentTxTbl', d.recent_transactions, 5, x => {
+        const badge = x.status==='completed' ? 'badge-success' : x.status==='failed' ? 'badge-danger' : 'badge-warn';
+        const when = (x.created_at||'').replace('T',' ').replace('Z','').slice(0,19);
+        return `<tr><td class="mono">${esc(x.account)}</td><td>${esc(x.kind)}</td><td>${this.num(x.amount)}</td>` +
+               `<td><span class="badge ${badge}">${esc(x.status)}</span></td><td style="font-size:.72rem">${esc(when)}</td></tr>`;
+      });
+    } catch(e) { toast('Wallet: '+e.message,'error'); }
   },
 };
 

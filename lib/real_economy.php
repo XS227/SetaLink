@@ -785,6 +785,36 @@ function re_referral_grant(PDO $pdo, string $deviceId, float $realAmount, string
 }
 
 /**
+ * Aggregate REAL/ZAR economy view for the admin panel's "REAL Wallet" page
+ * (previously a "Coming soon" placeholder, docs/realgram/TASK_SPLIT.md
+ * B→A(73)/(94)/(95)). Same fail-open posture as the other proxy functions
+ * here: null means unconfigured/unreachable/malformed, never a thrown
+ * exception — the admin page renders its own empty state on null.
+ */
+function re_fetch_economy_summary(PDO $pdo): ?array {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) return null;
+
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/economy-summary');
+    $headers = [];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false || $http !== 200) return null;
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json) || (int)($json['status'] ?? 0) !== 1) return null;
+    return $json;
+}
+
+/**
  * Admin approval of a pending referral grant: retry the REAL grant against the
  * ecosystem backend and credit on success. Returns 'credited', 'pending'
  * (backend still unreachable), 'rejected', or null (row isn't a pending grant).

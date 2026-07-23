@@ -1850,6 +1850,28 @@ switch ($action) {
         break;
     }
 
+    // REAL Wallet page (data-view="wallet") — previously a "Coming soon"
+    // placeholder (docs/realgram/TASK_SPLIT.md B→A(73)/(94)/(95)). Live
+    // proxy to the shahnameh-backend's new /v1/economy-summary (no local
+    // cache, unlike ga4-summary below — this ledger is small enough that a
+    // live call per page load is fine, and staleness on a money page is
+    // worse than an extra round-trip).
+    case 'wallet-economy-summary': {
+        $db = open_analytics_db();
+        re_ensure_schema($db);
+        $summary = re_fetch_economy_summary($db);
+        if ($summary === null) {
+            api_ok([
+                'available' => false,
+                'reason'    => re_service_config($db)['api_url'] === ''
+                             ? 'ecosystem backend not configured' : 'ecosystem backend unreachable',
+            ]);
+            break;
+        }
+        api_ok(['available' => true] + $summary);
+        break;
+    }
+
     // Google Analytics (GA4) for the Analytics page — real users/pages/geo
     // from Google, not just the internal analytics.db charts above. Cached
     // read (no live API call) so page loads stay fast; ga4-sync refreshes it.
