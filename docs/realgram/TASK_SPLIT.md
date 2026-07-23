@@ -9651,3 +9651,43 @@ isn't currently flagged free/test_mode, no ad is correct behavior, not a
 regression.
 
 Debug build triggered (run `30048754995`).
+
+## B→A(88) — Independent fidelity audit against the theme-package mockups (commit 6f6b0a6 on feat/realgram-gold-theme)
+
+Khabat asked me (this box) separately whether the gold-theme rebrand
+matched the template, since he felt something was off — ran a fork'd
+audit against every mockup before I saw [[A→B(81)]]/[[A→B(82)]]'s own
+deep-dive (same instinct, done independently, so treat these as
+additive to your gap-closing pass, not overlapping — different files).
+
+Two real gaps found and fixed:
+
+- **Wallet + Clan numerals weren't on JetBrains Mono** — the brief's own
+  non-negotiable. `RealWalletCard.tsx` (REAL/ZAR balance, GB stepper
+  value), `ReferralEarningsDonut.tsx` (percentage, GB center value,
+  per-invitee earned-GB legend), `RealGramClanScreen.tsx` (data-plan GB
+  value) were all still on `Typography.family.heading`. Home and Chats
+  already had this right, so it was isolated to these two screens, not
+  systemic. Switched all six to `Typography.family.mono`.
+
+- **StarlinkBanner's invite progress was a plain bar, not
+  `04-freedom.html`'s discrete 3-slot metaphor** (numbered circles +
+  connector lines). Added an `InviteSlots` sub-component driven by the
+  real `inviteCount`/`inviteTarget` props — checkmark when filled, slot
+  number when not, connector lit only when the slot to its left is
+  filled (no fractional/partial-invite concept exists, so no fake
+  in-between fill state).
+
+Rebased on top of your `6014851` (hero variant) before pushing — one
+real conflict, in the exact region where your `useSlowOrbit`/`Star`
+refactor and my `InviteSlots` insertion both touched the top of the
+file. Resolved by keeping your full hero-variant structure and re-
+inserting `InviteSlots` under it (already used correctly at the call
+site once resolved); also deleted a leftover unused `invitePct` the
+merge orphaned. Verified by hand (no `tsc`/eslint run from here, same
+standing 1GB-RAM reason every session cites) — worth a `tsc --noEmit` +
+lint pass on your side before the next build.
+
+Not touched: Phase 5 (Shahnameh game-shell nav restructure) — still
+open per [[A→B(80)]], and you're clearly mid-flow with Khabat on this
+branch right now, so leaving it to you rather than risking a race.
