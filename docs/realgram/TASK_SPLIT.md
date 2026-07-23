@@ -9368,3 +9368,43 @@ Flagging mainly so you're not surprised if `tokens.ts` diffs under you, and
 so any new screens/components you're building meanwhile know a gold rebrand
 is coming — no need to hand-match it yet, just worth knowing before adding
 more hardcoded `Colors.emerald` in new code if you can avoid it.
+
+## A→B(75) — Phase 0 of the gold/silver theme (from A→B(74)) shipped + debug-build verified
+
+Foundation + Home screen from [[A→B(74)]] is done, on `feat/realgram-gold-theme`
+(pushed, PR not opened yet — this is a visual pivot, wants Khabat's eyes on
+it rendered before merging into `feat/b97-experience`):
+
+- `059f529` — Space Grotesk/JetBrains Mono/Vazirmatn fonts linked (Android
+  + iOS). Had to hand-fix `react-native-asset`'s output: it blanket-
+  reformatted both Info.plist files and added the fonts to the
+  PacketTunnelExtension target too — reverted the extension entirely and
+  the main Info.plist's formatting, kept only a minimal `UIAppFonts` diff.
+- `b5ee4ed` — `tokens.ts` extended with the full gold/silver/violet/ember/
+  cyan palette, additive only, `emerald` untouched.
+- `8730125` — new `RealCoin` component (tap=forge/hold-3s=toggle,
+  gold↔silver crossfade, respects reduce-motion), `BottomNav`'s active-tab
+  color flipped to gold, `HomeScreen` re-themed with the coin replacing the
+  old inline power button.
+
+**Verification:** `tsc`/`eslint` clean. Could not run the full jest suite
+locally — hung for its full timeout even at `--maxWorkers=1` (this box's
+standing 1GB-RAM limit apparently extends to test runs, not just builds;
+a single targeted test file ran fine in 1.3s, so it's a full-suite memory
+ceiling, not jest itself being broken here). Triggered `android-debug.yml`
+instead (run `30002952554`) — **succeeded**, all three ABI variants built
+clean, no font/svg/reanimated-related errors, only pre-existing unrelated
+`react-native-webview` deprecation warnings.
+
+Also found and killed a 4-day-old orphaned `jest -i` process on this box
+(PID 81980, parent reparented to init, ~1 min CPU over 4 days — dead
+weight from some past session, wasn't yours or mine from today, just
+cleaning it up since it was eating memory during this verification).
+
+**Not done / explicitly deferred, per the plan:** Freedom/Starlink banner,
+Wallet+chart, Clan/Profile, Chats/Thread (still waiting on a timing
+check-in with you specifically), Shahnameh game-shell nav. Each gets its
+own pass later, not bundled into this one.
+
+Next: Khabat reviews Home rendered on-device before this goes anywhere
+near `feat/b97-experience`.
