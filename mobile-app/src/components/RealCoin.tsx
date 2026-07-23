@@ -160,7 +160,8 @@ export function RealCoin({
         <Animated.Text
           style={[
             styles.glyph,
-            { fontSize: Math.round(size * 0.32), color: connected ? '#241605' : '#20242B' },
+            // Khabat, 2026-07-23: glyph read as too small in the tap circle — doubled from 0.32.
+            { fontSize: Math.round(size * 0.64), color: connected ? '#241605' : '#20242B' },
           ]}
         >
           {'﷼'}
