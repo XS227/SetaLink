@@ -16,8 +16,12 @@ export const Colors = {
   border: {
     subtle:  'rgba(255, 255, 255, 0.05)',
     default: 'rgba(255, 255, 255, 0.08)',
+    // Emerald-based — still used by every screen not yet on the gold theme.
     glow:    'rgba(0, 232, 122, 0.25)',
     active:  'rgba(0, 232, 122, 0.5)',
+    // Gold-based — use on gold-themed screens (theme pkg's `line.default`).
+    goldGlow:   'rgba(255, 196, 120, 0.14)',
+    goldActive: 'rgba(255, 182, 39, 0.5)',
   },
 
   // Brand: Emerald Green
@@ -34,12 +38,70 @@ export const Colors = {
     900: '#002E16',
   },
 
-  // Brand: Gold (REAL-token accent — premium, referral, rewards)
+  // Brand: Gold — RealGram's new hero color (theme pkg 2026-07-23).
+  // The one rule: GOLD = owned / connected / just tapped / just converted.
+  // SILVER (below) = locked / disconnected / not yet earned. Ramp anchored
+  // so 400/600/100 land exactly on the spec's mid/lo/hi values — every
+  // existing `Colors.gold[xxx]` call site (21 files, previously scoped to
+  // "premium accent") shifts to these values automatically; that's the
+  // intended first wave of the rebrand, not a bug.
   gold: {
-    300: '#F0D060',
-    400: '#D4AF37',
-    500: '#C9982A',
-    600: '#B8860B',
+    50:  '#FFFBF0',
+    100: '#FFF3C4',  // hi
+    200: '#FFE49A',
+    300: '#FFD670',
+    400: '#FFB627',  // mid / primary — matches theme pkg tokens.json color.gold.1
+    500: '#E09A1C',
+    600: '#B8790F',  // lo — matches theme pkg tokens.json color.gold.0
+    700: '#8A5A00',  // coinGold gradient's dark stop (real-coin.js)
+    800: '#5C3C00',
+    900: '#2E1E00',
+  },
+
+  // Brand: Silver — the other half of the gold/silver mechanic.
+  // locked / disconnected / pre-conversion.
+  silver: {
+    100: '#E8ECF1',  // hi
+    300: '#B7C0CC',  // mid / primary
+    500: '#8991A0',
+    600: '#5B6472',  // lo
+  },
+
+  // Combo / energy / XP / epic rarity.
+  violet: {
+    400: '#7B5CFA',
+    600: '#5B4FE0',
+  },
+
+  // Forge heat / streak / progress warmth.
+  ember: {
+    400: '#FF8A3D',
+  },
+
+  // Starlink / data / network / rare rarity — distinct from `blue`.
+  cyan: {
+    300: '#7FE3FF',
+    400: '#33D3FF',
+  },
+
+  // Success / connected-status / REAL-positive / active-VPN — kept as its
+  // own semantic color per the theme spec (gold is the *brand* hero, this
+  // green is a status indicator, e.g. a small "connected" dot/pill).
+  green: {
+    400: '#33FFB2',
+  },
+
+  // Disconnect warning / spend / rival / mythic rarity.
+  red: {
+    400: '#FF5A5A',
+  },
+
+  rarity: {
+    common:    '#AEB6C6',
+    rare:      '#7FE3FF',
+    epic:      '#C9BFFF',
+    legendary: '#FFB627',
+    mythic:    '#FF9E9E',
   },
 
   // Brand: Electric Blue (secondary)
@@ -52,9 +114,9 @@ export const Colors = {
 
   // Semantic
   status: {
-    connected:    '#00E87A',
+    connected:    '#33FFB2',  // was emerald #00E87A — now the theme pkg's status green
     connecting:   '#FFB800',
-    disconnected: '#FF4444',
+    disconnected: '#FF5A5A',  // matches RealCoin's hold-to-disconnect ring exactly
     idle:         '#556680',
   },
 
@@ -76,6 +138,21 @@ export const Colors = {
     glass:      ['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.02)'],
     danger:     ['#FF6B6B', '#CC0000'],
     premium:    ['#FFB800', '#FF8C00'],
+
+    // Gold/silver theme (theme pkg tokens.json `gradient`). coinGold/
+    // coinSilver are 3-stop radial gradients (RealCoin's fill) — use with
+    // react-native-svg's <RadialGradient>, not <LinearGradient>.
+    coinGold:   ['#FFF3C4', '#FFB627', '#8A5A00'],
+    coinSilver: ['#E8ECF1', '#B7C0CC', '#4B525D'],
+    goldButton: ['#FFF3C4', '#FFB627'],
+    starlink:   ['#33D3FF', '#7FE3FF'],
+    energy:     ['#5B4FE0', '#7B5CFA', '#FFB627', '#FF8A3D'],
+    // Carved-stone card effect (theme pkg §5): layer these as two thin
+    // LinearGradient overlays inside a card — RN has no inset box-shadow,
+    // so the "top highlight / bottom depth" look is faked with overlays
+    // rather than a shadow token. Pair with `Shadow.goldGlow` for the drop.
+    carvedTop:    ['rgba(255,255,255,0.06)', 'transparent'],
+    carvedBottom: ['transparent', 'rgba(0,0,0,0.35)'],
   },
 };
 
@@ -85,8 +162,22 @@ export const Typography = {
     display: 'Inter-Thin',      // large hero text
     heading: 'Inter-SemiBold',
     body:    'Inter-Regular',
+    // `Inter-*` above were never actually linked as real font files (the
+    // app has always silently fallen back to the OS default) — left as-is,
+    // zero risk, until each screen gets its own gold-theme reskin pass.
+    // `mono` is the one exception: JetBrainsMono-Regular IS now a real
+    // linked font (theme pkg, 2026-07-23) under this exact name, so every
+    // existing `Typography.family.mono` call site upgrades for free.
     mono:    'JetBrainsMono-Regular',
     label:   'Inter-Medium',
+
+    // Gold theme (net-new, opt-in — use explicitly on reskinned screens,
+    // don't repoint `display`/`heading` above yet).
+    displayGold: 'SpaceGrotesk-Regular',
+    displayGoldBold: 'SpaceGrotesk-Bold',
+    // Persian/RTL text and the RealCoin glyph (U+FDFC ﷼) — genuinely new,
+    // nothing referenced this key before.
+    persian: 'Vazirmatn-Regular',
   },
 
   // Scale (sp units)
@@ -177,6 +268,21 @@ export const Shadow = {
     shadowOpacity: 0.2,
     shadowRadius:  8,
     elevation:     4,
+  },
+  // Gold theme glows (theme pkg `shadow.goldGlow`/`starlinkGlow`).
+  goldGlow: {
+    shadowColor:   '#FFB627',
+    shadowOffset:  { width: 0, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius:  24,
+    elevation:     12,
+  },
+  starlinkGlow: {
+    shadowColor:   '#33D3FF',
+    shadowOffset:  { width: 0, height: 0 },
+    shadowOpacity: 0.18,
+    shadowRadius:  28,
+    elevation:     10,
   },
 };
 
