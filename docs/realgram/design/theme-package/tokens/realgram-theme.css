@@ -1,0 +1,289 @@
+/* ============================================================
+   RealGram Theme — drop-in CSS custom properties
+   Generated from tokens.json. Import once at app root.
+   ============================================================ */
+:root{
+  /* backgrounds */
+  --rg-bg-0:#05060A;
+  --rg-bg-1:#0B0E17;
+  --rg-card:#0F1422;
+  --rg-elevated:#12172A;
+  --rg-line:rgba(255,196,120,.14);
+  --rg-line-subtle:rgba(255,255,255,.06);
+
+  /* gold = owned / connected / currency */
+  --rg-gold-0:#B8790F;
+  --rg-gold-1:#FFB627;
+  --rg-gold-2:#FFF3C4;
+
+  /* silver = locked / disconnected / pre-conversion */
+  --rg-silver-0:#5B6472;
+  --rg-silver-1:#B7C0CC;
+  --rg-silver-2:#E8ECF1;
+
+  /* accents */
+  --rg-violet-1:#7B5CFA;
+  --rg-violet-2:#5B4FE0;
+  --rg-ember:#FF8A3D;
+  --rg-cyan-1:#33D3FF;
+  --rg-cyan-2:#7FE3FF;
+  --rg-green:#33FFB2;
+  --rg-red:#FF5A5A;
+
+  /* text */
+  --rg-ink:#EAEFF5;
+  --rg-ink-dim:#8A93A6;
+  --rg-ink-faint:#5B6274;
+
+  /* rarity */
+  --rg-rarity-common:#AEB6C6;
+  --rg-rarity-rare:#7FE3FF;
+  --rg-rarity-epic:#C9BFFF;
+  --rg-rarity-legendary:#FFB627;
+  --rg-rarity-mythic:#FF9E9E;
+
+  /* type */
+  --rg-font-display:'Space Grotesk',sans-serif;
+  --rg-font-mono:'JetBrains Mono',monospace;
+  --rg-font-fa:'Vazirmatn','Noto Sans Arabic',sans-serif;
+
+  /* radius */
+  --rg-r-chip:12px;
+  --rg-r-card:16px;
+  --rg-r-card-lg:22px;
+  --rg-r-hero:26px;
+
+  /* shadow */
+  --rg-shadow-inset:inset 0 1px 0 rgba(255,255,255,.06);
+  --rg-shadow-carved:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -20px 40px rgba(0,0,0,.35), 0 12px 30px rgba(0,0,0,.4);
+  --rg-glow-gold:0 0 0 6px rgba(255,182,39,.12);
+  --rg-glow-starlink:0 0 34px rgba(51,211,255,.08);
+
+  /* gradients */
+  --rg-coin-gold:radial-gradient(circle at 35% 30%, #FFF3C4, #FFB627 55%, #8A5A00 100%);
+  --rg-coin-silver:radial-gradient(circle at 35% 30%, #E8ECF1, #B7C0CC 55%, #4B525D 100%);
+  --rg-grad-energy:linear-gradient(90deg,#5B4FE0,#7B5CFA,#FFB627,#FF8A3D);
+  --rg-grad-gold-btn:linear-gradient(90deg,#FFF3C4,#FFB627);
+  --rg-grad-starlink:linear-gradient(90deg,#33D3FF,#7FE3FF);
+  --rg-app-bg:
+    radial-gradient(70% 40% at 50% 30%, rgba(255,138,61,.10), transparent 65%),
+    radial-gradient(60% 30% at 80% 0%, rgba(123,92,250,.14), transparent 60%),
+    radial-gradient(50% 25% at 10% 4%, rgba(51,211,255,.08), transparent 60%),
+    linear-gradient(180deg, #090C15 0%, #05060A 40%, #030308 100%);
+}
+
+/* ---- shared primitives ---- */
+.rg-app        { background:var(--rg-app-bg); color:var(--rg-ink); font-family:var(--rg-font-display); }
+.rg-card       { background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 30%), var(--rg-card);
+                 border:1px solid var(--rg-line); border-radius:var(--rg-r-card); box-shadow:var(--rg-shadow-inset); }
+.rg-card--carved { box-shadow:var(--rg-shadow-carved); }
+.rg-btn-gold   { background:var(--rg-grad-gold-btn); color:#241605; font-weight:700; border:none; border-radius:var(--rg-r-card); }
+.rg-num        { font-family:var(--rg-font-mono); font-weight:700; }
+.rg-fa         { font-family:var(--rg-font-fa); }
+
+/* ---- the coin state pair ---- */
+.rg-coin        { border-radius:50%; }
+.rg-coin--gold   { background:var(--rg-coin-gold);   border:3px solid var(--rg-gold-1);   box-shadow:var(--rg-glow-gold); }
+.rg-coin--silver { background:var(--rg-coin-silver); border:3px solid var(--rg-silver-1); box-shadow:0 0 0 6px rgba(183,192,204,.10); }
+
+/* ---- reveal-in animation ---- */
+@keyframes rg-fadeInUp { from{opacity:0; transform:translateY(14px) scale(.98);} to{opacity:1; transform:translateY(0) scale(1);} }
+.rg-reveal { animation:rg-fadeInUp .55s cubic-bezier(.2,.8,.2,1) both; }
+
+@keyframes rg-breathe { 0%,100%{transform:scale(1); opacity:.7;} 50%{transform:scale(1.08); opacity:1;} }
+.rg-breathe { animation:rg-breathe 3.2s ease-in-out infinite; }
+
+/* ============================================================
+   PAGE-LEVEL COMPONENTS
+   Every screen is composed from these. Claude Code: apply these
+   classes rather than writing new one-off styles per page.
+   ============================================================ */
+
+/* ---- app shell ---------------------------------------------------- */
+.rg-screen      { position:relative; display:flex; flex-direction:column; min-height:100dvh;
+                  background:var(--rg-app-bg); color:var(--rg-ink); overflow-x:hidden; }
+.rg-screen__atmos { position:absolute; inset:0; pointer-events:none; z-index:0; overflow:hidden; }
+.rg-screen__body  { position:relative; z-index:1; flex:1; }
+
+/* faint mountain silhouette for hero screens (Home, Clan, Profile) */
+.rg-mountains{
+  position:absolute; top:0; left:0; width:100%; height:180px; opacity:.45; pointer-events:none;
+  background:linear-gradient(180deg, rgba(20,26,44,.5), transparent);
+  clip-path:polygon(0% 100%,0% 55%,12% 40%,24% 58%,38% 30%,52% 52%,66% 22%,80% 48%,92% 34%,100% 50%,100% 100%);
+}
+/* rising forge embers */
+.rg-ember{ position:absolute; bottom:-10px; width:3px; height:3px; border-radius:50%;
+  background:var(--rg-ember); box-shadow:0 0 6px var(--rg-ember); opacity:0;
+  animation:rg-rise linear infinite; }
+@keyframes rg-rise{ 0%{transform:translateY(0);opacity:0} 10%{opacity:.9} 90%{opacity:.4}
+  100%{transform:translateY(-800px) translateX(var(--drift,0)); opacity:0} }
+@media (prefers-reduced-motion: reduce){ .rg-ember{ display:none; } }
+
+/* ---- top bar / balance pills (Home) -------------------------------- */
+.rg-topbar { display:flex; gap:8px; align-items:center; padding:16px; }
+.rg-pill   { flex:1; padding:9px 12px; border-radius:var(--rg-r-card);
+             background:linear-gradient(180deg,rgba(255,255,255,.05),transparent 40%), var(--rg-card);
+             border:1px solid var(--rg-line); box-shadow:var(--rg-shadow-inset); }
+.rg-pill__label{ font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--rg-ink-faint); }
+.rg-pill__value{ font-family:var(--rg-font-mono); font-weight:700; font-size:15px; margin-top:2px; }
+
+/* ---- section heading ---------------------------------------------- */
+.rg-section{ padding:16px 20px 8px; font-size:11px; letter-spacing:.14em;
+             text-transform:uppercase; color:var(--rg-ink-faint);
+             display:flex; justify-content:space-between; align-items:center; }
+.rg-section a{ color:var(--rg-gold-1); font-size:10.5px; text-transform:none; letter-spacing:0; }
+
+/* ---- icon chip row (Combo / Streak / Boost / Energy) ---------------- */
+.rg-chiprow{ display:flex; gap:8px; padding:0 16px; }
+.rg-chip{ flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:10px 6px; border-radius:15px; border:1px solid var(--rg-line);
+  background:linear-gradient(180deg,rgba(255,255,255,.05),transparent 40%), var(--rg-card);
+  box-shadow:var(--rg-shadow-inset); }
+.rg-chip__icon { font-size:16px; }
+.rg-chip__value{ font-family:var(--rg-font-mono); font-weight:700; font-size:12px; }
+.rg-chip__label{ font-size:8px; letter-spacing:.06em; text-transform:uppercase; color:var(--rg-ink-faint); }
+.rg-chip--combo  .rg-chip__value{ color:var(--rg-violet-1); }
+.rg-chip--streak .rg-chip__value{ color:var(--rg-gold-1); }
+.rg-chip--boost  .rg-chip__value{ color:var(--rg-ember); }
+.rg-chip--energy .rg-chip__value{ color:var(--rg-cyan-2); }
+
+/* ---- progress bars ------------------------------------------------- */
+.rg-track{ height:8px; border-radius:6px; background:rgba(255,255,255,.06); overflow:hidden; }
+.rg-track__fill{ height:100%; border-radius:6px; width:0;
+  transition:width 1.2s cubic-bezier(.2,.8,.2,1); }
+.rg-track__fill--energy   { background:var(--rg-grad-energy); box-shadow:0 0 10px rgba(255,138,61,.5); }
+.rg-track__fill--chronicle{ background:var(--rg-grad-energy); }
+.rg-track__fill--data     { background:var(--rg-grad-starlink); }
+.rg-track__fill--treasury { background:linear-gradient(90deg,var(--rg-violet-2),var(--rg-violet-1),var(--rg-gold-1)); }
+
+/* ---- buttons ------------------------------------------------------- */
+.rg-btn{ display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  padding:11px 18px; border-radius:var(--rg-r-card); font-weight:700; font-size:13px; border:none; }
+.rg-btn--gold    { background:var(--rg-grad-gold-btn); color:#241605; }
+.rg-btn--starlink{ background:var(--rg-grad-starlink); color:#001824; }
+.rg-btn--ghost   { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); color:var(--rg-ink); }
+.rg-btn--success { background:rgba(51,255,178,.16); border:1px solid rgba(51,255,178,.5); color:var(--rg-green); }
+/* light sweep on primary CTAs */
+.rg-btn--shine{ position:relative; overflow:hidden; }
+.rg-btn--shine::after{ content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+  background:linear-gradient(115deg,transparent,rgba(255,255,255,.55),transparent);
+  animation:rg-shine 3.2s ease-in-out infinite; }
+@keyframes rg-shine{ 0%{left:-60%} 60%,100%{left:130%} }
+@media (prefers-reduced-motion: reduce){ .rg-btn--shine::after{ animation:none; opacity:0; } }
+
+/* ---- Starlink surface (Freedom + Home hero) ------------------------ */
+.rg-starlink{
+  position:relative; overflow:hidden; border-radius:var(--rg-r-hero); padding:20px 18px;
+  background:
+    radial-gradient(160% 120% at 90% -30%, rgba(123,92,250,.26), transparent 55%),
+    radial-gradient(120% 100% at 10% -10%, rgba(51,211,255,.20), transparent 55%),
+    linear-gradient(180deg,#060A16 0%,#0A1424 55%,#0E1B30 100%);
+  border:1px solid rgba(127,227,255,.22); box-shadow:var(--rg-glow-starlink);
+}
+.rg-starlink__word{ font-size:34px; font-weight:800; letter-spacing:.04em; line-height:1;
+  background:linear-gradient(90deg,#EAF8FF,var(--rg-cyan-2) 60%,var(--rg-cyan-1));
+  -webkit-background-clip:text; background-clip:text; color:transparent; }
+.rg-starlink__badge{ display:inline-flex; align-items:center; gap:6px; padding:5px 10px;
+  border-radius:999px; font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--rg-cyan-2); background:rgba(51,211,255,.12); border:1px solid rgba(51,211,255,.4); }
+.rg-beat{ width:6px; height:6px; border-radius:50%; background:var(--rg-cyan-2);
+  box-shadow:0 0 8px var(--rg-cyan-2); animation:rg-beat 1.8s ease-in-out infinite; }
+@keyframes rg-beat{ 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.5);opacity:.5} }
+/* slow ambient orbit — never speed this up */
+.rg-orbit{ animation:rg-orbit 26s linear infinite; }
+@keyframes rg-orbit{ 0%{top:2%;left:50%} 25%{top:48%;left:92%} 50%{top:94%;left:50%} 75%{top:48%;left:6%} 100%{top:2%;left:50%} }
+
+/* ---- VIP / locked reward (Starlink in Freedom) --------------------- */
+.rg-vip{ position:relative; border:1px solid rgba(255,182,39,.30);
+  box-shadow:0 0 40px rgba(255,182,39,.06), var(--rg-shadow-inset); }
+.rg-vip__corner{ position:absolute; top:14px; right:-34px; transform:rotate(40deg); z-index:3;
+  background:var(--rg-grad-gold-btn); color:#241605; font-size:10px; font-weight:800;
+  letter-spacing:.1em; padding:4px 42px; }
+.rg-slot{ width:34px; height:34px; border-radius:50%; display:flex; align-items:center;
+  justify-content:center; font-size:14px; border:2px dashed rgba(255,255,255,.15); color:var(--rg-ink-faint); }
+.rg-slot--filled{ border:2px solid var(--rg-gold-1); background:var(--rg-grad-gold-btn);
+  color:#241605; font-weight:700; }
+
+/* ---- list rows (nodes, chats, activity, leaderboard) --------------- */
+.rg-row{ display:flex; align-items:center; gap:12px; padding:11px 10px; border-radius:var(--rg-r-card); }
+.rg-row:active{ background:rgba(255,255,255,.04); }
+.rg-row__icon{ width:40px; height:40px; border-radius:12px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center; font-size:16px; }
+.rg-row__mid { flex:1; min-width:0; }
+.rg-row__title{ font-size:13px; font-weight:600; }
+.rg-row__sub  { font-size:10.5px; color:var(--rg-ink-faint); margin-top:1px; }
+.rg-row__value{ font-family:var(--rg-font-mono); font-weight:700; font-size:12px; flex-shrink:0; }
+.rg-row__value--pos{ color:var(--rg-green); }
+.rg-row__value--neg{ color:var(--rg-red); }
+.rg-row__value--neu{ color:var(--rg-gold-1); }
+.rg-divider{ height:1px; background:rgba(255,255,255,.05); margin:1px 20px; }
+
+/* node avatar for anonymous SL-227-… contacts */
+.rg-avatar--node{ background:linear-gradient(135deg,rgba(51,211,255,.35),rgba(123,92,250,.35));
+  color:var(--rg-cyan-2); }
+.rg-presence{ position:absolute; bottom:0; right:0; width:12px; height:12px; border-radius:50%;
+  border:2.5px solid var(--rg-bg-0); }
+.rg-presence--on { background:var(--rg-green); }
+.rg-presence--off{ background:var(--rg-ink-faint); }
+
+/* ---- chat bubbles --------------------------------------------------- */
+.rg-bubble{ position:relative; max-width:76%; padding:9px 13px 8px; font-size:13.5px; line-height:1.45; }
+.rg-bubble--in { background:var(--rg-card); border:1px solid rgba(255,255,255,.05);
+  border-radius:4px 16px 16px 16px; color:#DCE2ED; direction:rtl; unicode-bidi:plaintext; text-align:right; }
+.rg-bubble--out{ background:var(--rg-grad-gold-btn); color:#241605; font-weight:500;
+  border-radius:16px 4px 16px 16px; }
+.rg-bubble__time{ font-size:9.5px; margin-top:3px; display:flex; gap:3px; justify-content:flex-end; }
+.rg-check--read{ color:#2D6BFF; }
+
+/* ---- ads ------------------------------------------------------------ */
+/* AdMob 320x50 banner slot — sits BETWEEN sections, never mid-flow */
+.rg-ad-banner{ height:52px; margin:2px 16px 12px; border-radius:12px;
+  background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.14);
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--rg-ink-faint); }
+/* native ad card — same rhythm as list rows, dashed border + Ad tag */
+.rg-ad-native{ margin:0 16px 14px; border-radius:18px; padding:13px 15px;
+  display:flex; align-items:center; gap:12px;
+  background:rgba(255,255,255,.025); border:1px dashed rgba(255,255,255,.14); }
+.rg-ad-tag{ font-size:8.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--rg-ink-faint); border:1px solid rgba(255,255,255,.14); padding:2px 6px; border-radius:6px; }
+/* rewarded ad = an ECONOMY action, styled in success green, not neutral */
+.rg-ad-rewarded{ margin:0 16px 14px; border-radius:18px; padding:14px 16px;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:linear-gradient(120deg,rgba(123,92,250,.14),rgba(51,255,178,.05));
+  border:1px solid rgba(123,92,250,.35); }
+
+/* ---- rarity (Discovery Album, Mythic Lineage) ----------------------- */
+.rg-rarity--common   { color:var(--rg-rarity-common); }
+.rg-rarity--rare     { color:var(--rg-rarity-rare); }
+.rg-rarity--epic     { color:var(--rg-rarity-epic); }
+.rg-rarity--legendary{ color:var(--rg-rarity-legendary); }
+.rg-rarity--mythic   { color:var(--rg-rarity-mythic); }
+
+/* ---- bottom nav (RealGram shell ONLY — never inside the game) ------- */
+.rg-nav{ position:sticky; bottom:0; z-index:2; display:flex; justify-content:space-around;
+  align-items:center; padding:11px 8px calc(11px + env(safe-area-inset-bottom));
+  background:rgba(11,14,23,.92); border-top:1px solid var(--rg-line); backdrop-filter:blur(10px); }
+.rg-nav__item{ display:flex; flex-direction:column; align-items:center; gap:4px;
+  font-size:9.5px; color:var(--rg-ink-dim); }
+.rg-nav__item--active{ color:var(--rg-green); }
+
+/* ---- game shell (Shahnameh): back + burger, NO bottom nav ---------- */
+.rg-gameheader{ display:flex; align-items:center; justify-content:space-between;
+  padding:16px 14px 12px; background:rgba(9,12,21,.6); backdrop-filter:blur(8px); }
+.rg-gameheader__btn{ width:38px; height:38px; border-radius:50%; display:flex;
+  align-items:center; justify-content:center; background:var(--rg-card);
+  border:1px solid var(--rg-line); color:var(--rg-ink-dim); }
+.rg-gameheader__burger{ background:var(--rg-grad-gold-btn); color:#241605; border:none; }
+.rg-drawer{ position:fixed; top:0; right:0; bottom:0; width:280px; z-index:60; overflow-y:auto;
+  padding:18px 16px; background:linear-gradient(180deg,#12172A,#0A0D16);
+  border-left:1px solid rgba(255,196,120,.18); box-shadow:-20px 0 50px rgba(0,0,0,.5); }
+.rg-drawer__scrim{ position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.55); backdrop-filter:blur(2px); }
+.rg-drawer__section{ font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--rg-ink-faint); margin:16px 0 8px; }
+.rg-drawer__item{ display:flex; align-items:center; gap:11px; padding:10px 8px;
+  border-radius:12px; font-size:13px; }
+.rg-drawer__item--active{ background:rgba(255,182,39,.1); color:var(--rg-gold-2); }
+.rg-drawer__exit{ margin-top:16px; display:flex; align-items:center; gap:11px; padding:11px 8px;
+  border-radius:12px; font-size:13px; color:#FFB4B4;
+  background:rgba(255,90,90,.08); border:1px solid rgba(255,90,90,.25); }

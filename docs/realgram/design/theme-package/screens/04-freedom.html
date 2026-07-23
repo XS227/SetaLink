@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — Freedom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A; --bg-1:#0B0E17; --card:#0F1422; --card-line:rgba(255,196,120,.14);
+    --gold-0:#B8790F; --gold-1:#FFB627; --gold-2:#FFF3C4;
+    --silver-1:#B7C0CC; --silver-2:#E8ECF1;
+    --violet:#7B5CFA; --violet-2:#5B4FE0; --ember:#FF8A3D;
+    --cyan:#33D3FF; --cyan-2:#7FE3FF; --green:#33FFB2; --red:#FF5A5A;
+    --ink:#EAEFF5; --ink-dim:#8A93A6; --ink-faint:#5B6274;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #141a2c 0%, transparent 55%), var(--bg-0);
+    color:var(--ink); display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .phone{
+    width:390px; max-width:100vw; height:844px; max-height:100vh;
+    position:relative; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; scrollbar-width:none;
+    background:
+      radial-gradient(60% 30% at 85% -5%, rgba(123,92,250,.10), transparent 60%),
+      radial-gradient(50% 22% at 10% 0%, rgba(51,211,255,.07), transparent 60%),
+      linear-gradient(180deg, #090C15 0%, #05060A 40%, #030308 100%);
+  }
+  .phone::-webkit-scrollbar{ display:none; }
+  .embers{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; opacity:.4; }
+  .ember-p{ position:absolute; bottom:-10px; width:2px; height:2px; border-radius:50%; background:var(--ember); box-shadow:0 0 5px var(--ember); animation:rise linear infinite; opacity:0; }
+  @keyframes rise{ 0%{ transform:translateY(0); opacity:0;} 10%{opacity:.7;} 90%{opacity:.3;} 100%{ transform:translateY(-800px) translateX(var(--drift)); opacity:0; } }
+  .reveal{ animation:fadeInUp .55s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadeInUp{ from{ opacity:0; transform:translateY(12px);} to{ opacity:1; transform:translateY(0);} }
+
+  /* ===== Header ===== */
+  .header{ position:relative; z-index:1; padding:16px 16px 10px; }
+  .header-top{ display:flex; align-items:center; justify-content:space-between; }
+  .h-title{ font-size:26px; font-weight:800; letter-spacing:-.01em; }
+  .h-meta{ display:flex; gap:8px; align-items:center; }
+  .meta-pill{ font-size:11px; color:var(--ink-dim); background:var(--card); border:1px solid var(--card-line); padding:6px 11px; border-radius:14px; }
+  .h-avatar{ width:34px; height:34px; border-radius:50%; background:linear-gradient(135deg,var(--gold-2),var(--gold-1)); display:flex; align-items:center; justify-content:center; font-size:14px; }
+
+  .tabs{ display:flex; gap:6px; padding:14px 16px 4px; overflow-x:auto; position:relative; z-index:1; }
+  .tabs::-webkit-scrollbar{ display:none; }
+  .tab{ font-size:12px; padding:7px 14px; border-radius:20px; color:var(--ink-dim); border:1px solid var(--card-line); background:var(--card); white-space:nowrap; flex-shrink:0; }
+  .tab.active{ color:#0B0E17; background:linear-gradient(90deg,var(--gold-2),var(--gold-1)); border-color:transparent; font-weight:700; }
+
+  /* ===== Starlink VIP card ===== */
+  .vip{
+    position:relative; margin:14px 16px 12px; border-radius:26px; overflow:hidden;
+    padding:20px 18px 18px; min-height:210px;
+    background:
+      radial-gradient(160% 120% at 90% -30%, rgba(123,92,250,.22), transparent 55%),
+      radial-gradient(120% 100% at 10% -10%, rgba(51,211,255,.16), transparent 55%),
+      linear-gradient(180deg, #070A14 0%, #0A1220 55%, #0D1728 100%);
+    border:1px solid rgba(255,182,39,.30);
+    box-shadow:0 0 40px rgba(255,182,39,.06), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .vip-corner{
+    position:absolute; top:14px; right:-34px; transform:rotate(40deg);
+    background:linear-gradient(90deg,var(--gold-2),var(--gold-1)); color:#241605;
+    font-size:10px; font-weight:800; letter-spacing:.1em; padding:4px 42px; z-index:3;
+  }
+  .vip-stars{ position:absolute; inset:0; }
+  .vip-star{ position:absolute; width:2px; height:2px; border-radius:50%; background:#fff; animation:twinkle 3.6s ease-in-out infinite; }
+  @keyframes twinkle{ 0%,100%{opacity:.12;} 50%{opacity:.75;} }
+  .vip-orbit-wrap{ position:absolute; top:8px; left:8px; width:130px; height:70px; opacity:.7; }
+  .vip-orbit-ellipse{ position:absolute; inset:0; border:1px dashed rgba(255,196,120,.25); border-radius:50%; transform:rotate(10deg); }
+  .vip-sat{ position:absolute; font-size:15px; filter:grayscale(.4) drop-shadow(0 0 6px rgba(255,196,120,.5)); animation:vorbit 26s linear infinite; }
+  @keyframes vorbit{ 0%{top:2%;left:50%;} 25%{top:46%;left:88%;} 50%{top:90%;left:50%;} 75%{top:46%;left:12%;} 100%{top:2%;left:50%;} }
+
+  .vip-content{ position:relative; z-index:2; }
+  .vip-badge{
+    display:inline-flex; align-items:center; gap:6px; font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--gold-2); background:rgba(255,182,39,.12); border:1px solid rgba(255,182,39,.4);
+    padding:5px 10px; border-radius:20px; margin-bottom:12px;
+  }
+  .lock-ic{ font-size:11px; }
+  .vip-word{
+    font-size:32px; font-weight:800; letter-spacing:.03em; line-height:1;
+    background:linear-gradient(90deg, #EDEFF5, var(--gold-2) 55%, var(--gold-1));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .vip-sub{ font-size:12px; color:var(--ink-dim); margin-top:8px; max-width:240px; line-height:1.5; }
+
+  .invite-track{ margin-top:16px; }
+  .invite-row{ display:flex; align-items:center; gap:8px; }
+  .invite-slot{
+    width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:14px; border:2px dashed rgba(255,255,255,.15); color:var(--ink-faint);
+  }
+  .invite-slot.filled{
+    border:2px solid var(--gold-1); background:linear-gradient(135deg,var(--gold-2),var(--gold-1));
+    color:#241605; font-weight:700;
+  }
+  .invite-line{ flex:1; height:2px; background:rgba(255,255,255,.08); border-radius:2px; overflow:hidden; }
+  .invite-line-fill{ height:100%; width:33%; background:linear-gradient(90deg,var(--gold-1),var(--gold-2)); }
+  .invite-label{ font-size:10.5px; color:var(--ink-dim); margin-top:8px; }
+  .invite-label b{ color:var(--gold-1); }
+
+  .vip-cta{
+    margin-top:14px; display:flex; align-items:center; justify-content:center; gap:8px;
+    background:linear-gradient(90deg,var(--gold-2),var(--gold-1));
+    color:#241605; font-weight:700; font-size:13.5px;
+    padding:12px 18px; border-radius:16px; position:relative; overflow:hidden;
+  }
+  .vip-cta::after{
+    content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(115deg, transparent, rgba(255,255,255,.55), transparent);
+    animation:shine 3s ease-in-out infinite;
+  }
+  @keyframes shine{ 0%{ left:-60%;} 60%,100%{ left:130%;} }
+
+  /* ===== RealLink primary node ===== */
+  .reallink{
+    position:relative; margin:0 16px 12px; border-radius:22px; padding:16px 16px 14px;
+    background:linear-gradient(180deg, rgba(51,255,178,.08), rgba(51,255,178,.02)), var(--card);
+    border:1px solid rgba(51,255,178,.30);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+    display:flex; align-items:center; gap:12px;
+  }
+  .rl-icon{
+    width:46px; height:46px; border-radius:14px; flex-shrink:0;
+    background:radial-gradient(circle at 35% 30%, var(--gold-2), var(--gold-1));
+    display:flex; align-items:center; justify-content:center; font-size:19px; color:#241605; font-weight:700;
+    box-shadow:0 0 0 4px rgba(51,255,178,.10);
+  }
+  .rl-mid{ flex:1; min-width:0; }
+  .rl-top{ display:flex; align-items:center; gap:7px; }
+  .rl-name{ font-size:14.5px; font-weight:700; }
+  .rl-best{ font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--green); background:rgba(51,255,178,.12); border:1px solid rgba(51,255,178,.4); padding:2px 7px; border-radius:8px; }
+  .rl-sub{ font-size:11.5px; color:var(--ink-dim); margin-top:3px; }
+  .rl-ping{ font-size:11px; color:var(--green); font-family:'JetBrains Mono',monospace; display:flex; align-items:center; gap:4px; margin-top:4px; }
+  .rl-ping .dot{ width:6px;height:6px;border-radius:50%; background:var(--green); box-shadow:0 0 6px var(--green); }
+  .rl-btn{ background:rgba(51,255,178,.14); border:1px solid rgba(51,255,178,.5); color:var(--green); font-size:11.5px; font-weight:700; padding:9px 15px; border-radius:14px; white-space:nowrap; flex-shrink:0; }
+
+  /* ===== Native ad card ===== */
+  .ad-native{
+    margin:0 16px 14px; border-radius:20px; padding:14px 15px;
+    display:flex; align-items:center; gap:12px;
+    background:rgba(255,255,255,.025); border:1px dashed rgba(255,255,255,.14);
+  }
+  .ad-icon{ width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,#2a3145,#161b28); display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+  .ad-mid{ flex:1; min-width:0; }
+  .ad-top{ display:flex; align-items:center; gap:7px; }
+  .ad-title{ font-size:13px; font-weight:600; }
+  .ad-tag{ font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); border:1px solid rgba(255,255,255,.14); padding:2px 6px; border-radius:6px; }
+  .ad-sub{ font-size:11px; color:var(--ink-dim); margin-top:2px; }
+  .ad-btn{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); color:var(--ink); font-size:11px; font-weight:600; padding:8px 13px; border-radius:12px; white-space:nowrap; flex-shrink:0; }
+
+  /* ===== Section label ===== */
+  .section-lbl{ padding:2px 20px 8px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); }
+
+  /* ===== Node list ===== */
+  .node-list{ padding:0 8px 100px; position:relative; z-index:1; }
+  .node-row{ display:flex; align-items:center; gap:12px; padding:11px 10px; border-radius:16px; }
+  .node-row:active{ background:rgba(255,255,255,.03); }
+  .flag{ width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:19px; background:rgba(255,255,255,.04); flex-shrink:0; }
+  .node-mid{ flex:1; min-width:0; }
+  .node-top{ display:flex; align-items:center; gap:7px; }
+  .node-name{ font-size:13.5px; font-weight:600; }
+  .node-badge{ font-size:8.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--violet); border:1px solid rgba(123,92,250,.4); background:rgba(123,92,250,.08); padding:2px 6px; border-radius:6px; }
+  .node-sub{ font-size:11px; color:var(--ink-faint); margin-top:2px; }
+  .node-ping{ font-size:11px; font-family:'JetBrains Mono',monospace; display:flex; align-items:center; gap:5px; flex-shrink:0; }
+  .node-ping .dot{ width:6px;height:6px;border-radius:50%; }
+  .node-ping.fast{ color:var(--green); } .node-ping.fast .dot{ background:var(--green); box-shadow:0 0 5px var(--green); }
+  .node-ping.mid{ color:var(--gold-1); } .node-ping.mid .dot{ background:var(--gold-1); box-shadow:0 0 5px var(--gold-1); }
+
+  /* ===== Bottom connect bar ===== */
+  .connect-bar{
+    position:absolute; left:16px; right:16px; bottom:16px; z-index:3;
+    background:linear-gradient(90deg,var(--green),#26D9A3);
+    color:#052018; font-weight:700; font-size:14px; text-align:center;
+    padding:15px; border-radius:20px; box-shadow:0 12px 30px rgba(51,255,178,.25);
+  }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="embers" id="embers"></div>
+
+  <div class="header">
+    <div class="header-top">
+      <div class="h-title">Freedom</div>
+      <div class="h-meta">
+        <div class="meta-pill">6 locations</div>
+        <div class="h-avatar">👑</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active">All</div>
+    <div class="tab">Recommended</div>
+    <div class="tab">Fastest</div>
+    <div class="tab">Stealth</div>
+    <div class="tab">Streaming</div>
+  </div>
+
+  <!-- STARLINK — VIP reward -->
+  <div class="vip reveal" style="animation-delay:.05s;">
+    <div class="vip-corner">VIP</div>
+    <div class="vip-stars" id="vipStars"></div>
+    <div class="vip-orbit-wrap">
+      <div class="vip-orbit-ellipse"></div>
+      <div class="vip-sat">🛰️</div>
+    </div>
+    <div class="vip-content">
+      <div class="vip-badge"><span class="lock-ic">🔒</span> Reward · Invite to unlock</div>
+      <div class="vip-word">STARLINK</div>
+      <div class="vip-sub">Satellitt-node med prioritert ruting og ubegrenset data. Ingen tårn, ingen kø.</div>
+
+      <div class="invite-track">
+        <div class="invite-row">
+          <div class="invite-slot filled">✓</div>
+          <div class="invite-line"><div class="invite-line-fill"></div></div>
+          <div class="invite-slot">2</div>
+          <div class="invite-line" style="flex:0 0 20px;"></div>
+          <div class="invite-slot">3</div>
+        </div>
+        <div class="invite-label">Inviter <b>2 venner til</b> for å låse opp Starlink</div>
+      </div>
+
+      <div class="vip-cta">👥 Invite Friends</div>
+    </div>
+  </div>
+
+  <!-- RealLink — first-party node -->
+  <div class="reallink reveal" style="animation-delay:.10s;">
+    <div class="rl-icon">﷼</div>
+    <div class="rl-mid">
+      <div class="rl-top"><div class="rl-name">RealLink</div><div class="rl-best">Best</div></div>
+      <div class="rl-sub">RealGram Secure Edge · Stealth</div>
+      <div class="rl-ping"><span class="dot"></span> 5ms · WebSocket</div>
+    </div>
+    <div class="rl-btn">Connect</div>
+  </div>
+
+  <!-- Native ad, styled to match the list -->
+  <div class="ad-native reveal" style="animation-delay:.14s;">
+    <div class="ad-icon">🎮</div>
+    <div class="ad-mid">
+      <div class="ad-top"><div class="ad-title">Forge Legends</div><div class="ad-tag">Ad</div></div>
+      <div class="ad-sub">Bygg din egen hær — spill nå</div>
+    </div>
+    <div class="ad-btn">Install</div>
+  </div>
+
+  <div class="section-lbl">Other nodes</div>
+  <div class="node-list">
+    <div class="node-row reveal" style="animation-delay:.18s;">
+      <div class="flag">🇩🇰</div>
+      <div class="node-mid">
+        <div class="node-top"><div class="node-name">Denmark</div><div class="node-badge">Custom</div></div>
+        <div class="node-sub">Copenhagen · Reality</div>
+      </div>
+      <div class="node-ping fast"><span class="dot"></span>6ms</div>
+    </div>
+    <div class="node-row reveal" style="animation-delay:.21s;">
+      <div class="flag">🇫🇮</div>
+      <div class="node-mid">
+        <div class="node-top"><div class="node-name">Finland</div><div class="node-badge">Custom</div></div>
+        <div class="node-sub">Hetzner · Helsinki :443</div>
+      </div>
+      <div class="node-ping mid"><span class="dot"></span>58ms</div>
+    </div>
+    <div class="node-row reveal" style="animation-delay:.24s;">
+      <div class="flag">🇫🇮</div>
+      <div class="node-mid">
+        <div class="node-top"><div class="node-name">Finland</div><div class="node-badge">Custom</div></div>
+        <div class="node-sub">Helsinki · Reality</div>
+      </div>
+      <div class="node-ping fast"><span class="dot"></span>21ms</div>
+    </div>
+    <div class="node-row reveal" style="animation-delay:.27s;">
+      <div class="flag">🇩🇪</div>
+      <div class="node-mid">
+        <div class="node-top"><div class="node-name">Germany</div><div class="node-badge">Custom</div></div>
+        <div class="node-sub">Nürnberg · Reality</div>
+      </div>
+      <div class="node-ping fast"><span class="dot"></span>21ms</div>
+    </div>
+  </div>
+
+  <div class="connect-bar">Connect to RealLink</div>
+</div>
+
+<script>
+const embersHost = document.getElementById('embers');
+for(let i=0;i<10;i++){
+  const e = document.createElement('div');
+  e.className = 'ember-p';
+  e.style.left = (Math.random()*100) + '%';
+  e.style.animationDuration = (7 + Math.random()*8) + 's';
+  e.style.animationDelay = (Math.random()*10) + 's';
+  e.style.setProperty('--drift', (Math.random()*30-15) + 'px');
+  embersHost.appendChild(e);
+}
+const vipStars = document.getElementById('vipStars');
+for(let i=0;i<12;i++){
+  const s = document.createElement('div');
+  s.className = 'vip-star';
+  s.style.left = Math.random()*100 + '%';
+  s.style.top = Math.random()*80 + '%';
+  s.style.animationDelay = (Math.random()*3) + 's';
+  vipStars.appendChild(s);
+}
+</script>
+</body>
+</html>
