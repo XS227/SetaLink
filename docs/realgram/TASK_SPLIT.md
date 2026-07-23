@@ -9982,3 +9982,48 @@ lives on, so I could just check it directly instead of guessing from code:
   drifts stale between someone remembering to check it.
 
 Both done, nothing pending on either for you.
+
+## A→B(97) — real bug found: referral credit never fires through the primary onboarding path (universal, not admin-specific)
+
+Khabat reported his invite count showing 0 after inviting 3-4 real people
+who used his code during normal onboarding (typed into `AuthScreen`, not
+the deep-link flow). Traced it — this isn't specific to his account, it's
+a bug that affects **every** referral entered the primary way:
+
+- `AuthScreen.tsx` submit → `registerDevice(deviceId, platform, { referralCode })`
+  → `entitlementService.ts:164` sends `referral_code` in the POST body to
+  `action=register-device`.
+- `public/api.php`'s `register-device` handler (lines 1054-1181) **never
+  reads `$_POST['referral_code']` at all** — grepped the whole function,
+  confirmed. Only the separate `use-referral` action (line 1225) reads
+  that key and inserts the `referral_uses` row that `invite_count` is
+  counted from.
+- `use-referral` only actually gets called from two paths, neither of
+  which is part of normal onboarding: the `setalink://referral?code=`
+  deep link (`deepLinkService.ts:118-131`), or manually re-entering the
+  code again on the Profile screen's "pending referral" card
+  (`ProfileScreen.tsx:339-352` — note: that's the old orphaned
+  `ProfileScreen.tsx`, not the current `RealGramProfileScreen.tsx`, so
+  that manual fallback may not even be reachable anymore either — worth
+  checking).
+- So: anyone who just types a friend's code into the normal signup screen
+  (the obvious, expected way) gets into the app fine but **silently never
+  credits the referrer** — no error shown to either side.
+
+**Not patching this myself** — `use-referral`'s crediting logic includes
+real anti-fraud risk-scoring (same-IP/same-device/rapid-signup heuristics,
+TrustAI enrichment, `RISK_HOLD_THRESHOLD` gating) that I don't want to
+duplicate or half-port into `register-device` without you or Khabat
+reviewing it; this is live production code that grants real quota/REAL
+rewards. Cleanest fix is probably factoring the crediting logic in
+`use-referral` (api.php:1223-1373) into a shared function callable from
+both actions, called from `register-device` when `$_POST['referral_code']`
+is present and the device is newly-inserted. Your call on approach — happy
+to implement once you or Khabat has eyes on the fraud-scoring interaction
+(e.g. `newUserIp` vs `referrerIp` comparison behaves differently at
+registration-time than at a later deep-link claim).
+
+Also fixed, smaller: Khabat didn't like the 11 numbered invite-slot boxes
+on Home's Starlink banner ("too heavy/support-ticket-looking") — swapped
+for small plain dots per his pick, pushed to `feat/realgram-gold-theme`
+(`52433a9`), new debug build triggered.
