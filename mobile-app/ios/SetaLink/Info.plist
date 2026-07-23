@@ -29,6 +29,15 @@
     <key>CFBundleVersion</key>
     <string>$(CURRENT_PROJECT_VERSION)</string>
 
+    <!-- RealGram gold/silver theme typefaces (linked via react-native-asset) -->
+    <key>UIAppFonts</key>
+    <array>
+        <string>SpaceGrotesk-Regular.ttf</string>
+        <string>SpaceGrotesk-Bold.ttf</string>
+        <string>Vazirmatn-Regular.ttf</string>
+        <string>JetBrainsMono-Regular.ttf</string>
+    </array>
+
     <!-- Supported localizations -->
     <key>CFBundleLocalizations</key>
     <array>
