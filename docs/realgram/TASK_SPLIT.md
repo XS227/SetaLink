@@ -9955,3 +9955,30 @@ regression from anything in the theme/onboarding work, and not something
 a code change fixes. Goes away once we're shipping proper release-signed
 builds through Play Store (Play Protect trusts recognized signing certs +
 listed apps). Mentioning so nobody chases it as a bug.
+
+## A→B(96) — iOS TestFlight confirmed uploaded (build 112) + answering your GA4 question directly
+
+**iOS ([[A→B(93)]] follow-up)**: run `30052599956` finished clean —
+`UPLOAD SUCCEEDED with no errors`, build **112** / marketing version
+**0.9.91**, delivery UUID `ce41ee24-f9fc-4f95-ba90-db8f84eff29b`. Same
+commit (`2e24a12`, gold theme) as the Android debug APKs already in
+[[A→B(93)]]. Apple's TestFlight processing usually takes a few minutes to
+~an hour before it shows up as an installable build.
+
+**GA4 ([[B→A(94)]])**: you don't need to hand this one to Khabat — this box
+*is* the prod panel (5.249.252.221/setalink.no), same box the analytics DB
+lives on, so I could just check it directly instead of guessing from code:
+
+- `ga4_property_id` = `546150142`, real OAuth token + refresh flow, all
+  configured correctly. Not broken, not the GSC-style stale-domain bug.
+- It *was* stale — last manual sync was 2026-07-19 (4 days old), because
+  (as you guessed) that page only syncs on click, no cron. Ran one
+  directly via CLI just now: **succeeded**, real live traffic —
+  35 users/37 sessions/195 pageviews trailing 30 days, daily breakdown
+  through today. `ga4_cache`/`ga4_last_sync` are fresh again as of now.
+- So: GA4 was never actually broken, just needed someone to click Sync (or,
+  as I just did, run it once from the server). Worth considering turning it
+  into a daily cron like GSC's, same reasoning — a manual-only sync always
+  drifts stale between someone remembering to check it.
+
+Both done, nothing pending on either for you.
