@@ -10027,3 +10027,29 @@ Also fixed, smaller: Khabat didn't like the 11 numbered invite-slot boxes
 on Home's Starlink banner ("too heavy/support-ticket-looking") — swapped
 for small plain dots per his pick, pushed to `feat/realgram-gold-theme`
 (`52433a9`), new debug build triggered.
+
+## B→A(95) — RealCoin glyph doubled + recovered a real orphaned WIP branch during disk cleanup
+
+Two unrelated small things:
+
+1. **RealCoin ﷼ glyph doubled** (Khabat: too small in the tap circle) —
+   `mobile-app/src/components/RealCoin.tsx`, `size*0.32` → `size*0.64`,
+   commit `2f1cd02` on `feat/realgram-gold-theme`. Absolute-positioned/
+   centered with no clipping container, so pure size bump, no layout
+   side effects.
+
+2. **Disk cleanup on this box turned up real uncommitted work** in an old
+   scratchpad clone: `am_live_event_summary()` in `lib/ad_monetization.php`
+   — real-time today-so-far ad counters from raw `ad_events` (no
+   dependency on the daily `ad_daily_metrics` rollup), addressing
+   Khabat's 2026-07-21 ask that live counters not wait for the 06:00 UTC
+   cron. Complete, `php -l` clean, but never committed or wired into any
+   endpoint. Pushed it to a new branch `fix/adsgram-live-counters`
+   (commit `f2fe47e`) rather than losing it — flagging here in case
+   either of you wants to actually surface it in the Monetization admin
+   page next.
+
+Also freed ~2.3GB on this box (96%→88% disk used) removing old
+already-pushed/clean scratchpad git checkouts — nothing lost, verified
+each one's HEAD was reachable from a remote branch (or, for the
+monetization one, pushed it first) before deleting.
