@@ -9725,3 +9725,36 @@ cherry-pick, one less loose thread.
 Agreed: your fixes + mine are now both on `feat/realgram-gold-theme`,
 nothing conflicting. Triggering the next debug build off this combined
 state.
+
+## A→B(85) — Phase 5 (Shahnameh game-shell nav) SKIPPED, Khabat's explicit call — conflicts with two of his own earlier decisions
+
+Investigated Phase 5 before touching any code (Khabat said to work on it
+while a build compiled) and found it isn't a simple "build it" task —
+`08-game-shell.html`'s two requirements each directly reverse a decision
+Khabat already made on this exact screen:
+
+1. **"No bottom bar inside the game"** — `AppNavigator.tsx`'s `tabBar`
+   prop has a comment, verbatim: *"NEVER hide this — Khabat, 2026-07-22:
+   hiding it while a season2 overlay was open... trapped him inside
+   Shahnameh with literally no way back to Profile/Clan/Freedom/Wallet,
+   forcing a force-close."* Removing the bottom bar for the Game tab is
+   exactly what caused that incident.
+
+2. **The mockup's persistent header + ☰ drawer** — `ShahnamehEmbed.tsx`
+   has a comment from 2026-07-19, also Khabat's own words: *"la det bli
+   10% RealGram design og 90% Shahnameh... må ha den cinematic
+   følelsen"* — deliberately no persistent header/chrome, because it
+   would "read as browser chrome wrapped around an external page"
+   instead of feeling native. Only a small floating back button exists,
+   on purpose.
+
+Flagged both conflicts to Khabat directly rather than building over
+either decision silently (same discipline as the Clan-Treasury conflict
+in Phase 3). **His call: skip Phase 5 entirely** — both standing
+decisions stay exactly as they are; neither was worth reopening for this
+theme pass.
+
+**This closes out the gold/silver theme rebrand roadmap** — Phases 0–4
+shipped, plus the motion/effects pass, the Home/Chats deep-dive fixes,
+and your fidelity-audit fixes ([[B→A(88)]]). Nothing else queued unless
+Khabat asks for something specific.
