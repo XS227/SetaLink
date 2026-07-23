@@ -61,7 +61,6 @@ function Star({ left, top, delay }: { left: number; top: number; delay: number }
 export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteTarget, onInvite }: Props) {
   const { t } = useT();
   const inviteLeft = Math.max(0, inviteTarget - inviteCount);
-  const invitePct  = Math.min(1, inviteCount / inviteTarget);
   const isHero = variant === 'hero';
 
   const orbit = useSlowOrbit(isHero ? 22000 : 26000);
@@ -107,10 +106,7 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
 
       {!unlocked && (
         <View style={styles.track}>
-          <View style={styles.trackWrap}>
-            <View style={[styles.trackFill, { flex: invitePct }]} />
-            <View style={{ flex: Math.max(0, 1 - invitePct) }} />
-          </View>
+          <InviteSlots count={inviteCount} target={inviteTarget} />
           <Text style={styles.trackLabel}>
             {t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
           </Text>
@@ -133,6 +129,36 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
           </Text>
         </View>
       )}
+    </View>
+  );
+}
+
+/**
+ * The mockup's discrete "slot" metaphor (`04-freedom.html` §.invite-slot/
+ * .invite-line) — numbered circles joined by connector lines, not a plain
+ * bar — so "1 of 3 friends invited" reads as distinct steps. A connector
+ * lights up once the slot to its left is filled; there's no partial-invite
+ * concept (you either invited someone or not), so each segment is a binary
+ * on/off, not a fractional fill.
+ */
+function InviteSlots({ count, target }: { count: number; target: number }) {
+  const slots = Array.from({ length: target }, (_, i) => i < count);
+  return (
+    <View style={styles.slotRow}>
+      {slots.map((filled, i) => (
+        <React.Fragment key={i}>
+          <View style={[styles.slot, filled && styles.slotFilled]}>
+            <Text style={[styles.slotText, filled && styles.slotTextFilled]}>
+              {filled ? '✓' : i + 1}
+            </Text>
+          </View>
+          {i < slots.length - 1 && (
+            <View style={styles.slotLine}>
+              {filled && <View style={styles.slotLineFill} />}
+            </View>
+          )}
+        </React.Fragment>
+      ))}
     </View>
   );
 }
@@ -184,8 +210,16 @@ const styles = StyleSheet.create({
   sub:  { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 6, maxWidth: 240, lineHeight: 17 },
 
   track:      { marginTop: 14 },
-  trackWrap:  { height: 4, flexDirection: 'row', borderRadius: 2, overflow: 'hidden', backgroundColor: 'rgba(255,182,39,0.14)' },
-  trackFill:  { backgroundColor: Colors.gold[400], borderRadius: 2 },
+  slotRow:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  slot: {
+    width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderStyle: 'dashed', borderColor: 'rgba(255,255,255,0.15)',
+  },
+  slotFilled: { borderStyle: 'solid', borderColor: Colors.gold[400], backgroundColor: Colors.gold[300] },
+  slotText: { fontSize: 14, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  slotTextFilled: { color: '#241605', fontFamily: Typography.family.heading },
+  slotLine: { flex: 1, height: 2, borderRadius: 2, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.08)' },
+  slotLineFill: { height: '100%', width: '100%', backgroundColor: Colors.gold[400] },
   trackLabel: { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 7 },
 
   cta: {

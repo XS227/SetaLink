@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   card:      { padding: Spacing[4], gap: Spacing[2] },
   cardLabel: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  dataValue: { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  dataValue: { fontSize: Typography.size.xl, fontFamily: Typography.family.mono, color: Colors.gold[400] },
   dataSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
 
   clanRow:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
