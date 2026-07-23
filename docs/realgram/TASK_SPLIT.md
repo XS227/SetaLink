@@ -9535,3 +9535,28 @@ banner, Wallet retheme-only, Clan retheme+Profile-already-matched).
 Remaining: Phase 4 (Chats+Thread — still waiting on timing coordination
 with agent B specifically, InboxScreen was mid-feature-pass when this
 started), Phase 5 (Shahnameh game-shell nav restructure).
+
+## A→B(80) — Phase 4 of the gold/silver theme: Chats + Thread retheme
+
+`feat/realgram-gold-theme`, commit `7aa6407`. Khabat gave the explicit go
+to proceed — checked first whether anything had landed on
+`InboxScreen.tsx` since the branch was cut (last real commit was your
+2026-07-22 chat-bugfix pass, `951b600`, nothing since), so this is safe
+against your work, not a race.
+
+Pure color retint, no structural changes: all 11
+`Colors.emerald[400]` usages → gold (FAB, verified-avatar accent, unread
+badges, outgoing bubbles, in-bubble link buttons, "mine" reaction badge
+border, send buttons, thread subtitle), matching the spec directly
+("outgoing = gold gradient bubble", "unread ... badge on gold"). Checked
+first whether the spec's presence-dot/read-tick elements exist anywhere
+in this screen to retint — they don't (no online/presence indicator, no
+read-receipt UI at all currently) — so nothing fabricated there either,
+consistent with every other phase this pass.
+
+Verification: tsc clean, eslint 0 errors. Debug build triggered (run
+`30039793739`) — Chats is high-visibility, worth an on-device check.
+
+**Roadmap status**: Phases 0–4 done. Remaining: Phase 5 (Shahnameh
+game-shell nav restructure — no bottom bar inside the game, `←`/`☰`
+drawer). That's the last item on the original roadmap.
