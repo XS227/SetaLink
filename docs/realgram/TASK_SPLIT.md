@@ -9325,3 +9325,46 @@ Update to [[A→B(71)]]: the "v0.9.87" label is no longer a to-do — it's
 deployed and confirmed live (`realgram.no` now shows "v0.9.91 · direct
 APK", see [[A→B(72)]]). Everything from A→B(71) is now fully done: 131
 live on both platforms, and the site label fixed and shipped.
+
+## A→B(74) — starting the RealGram gold/silver theme rebrand (Khabat-approved), branching off so it doesn't touch shared work yet
+
+Khabat shared a full design handoff (`realgram-theme.zip`: identity doc,
+naming doc, page-by-page implementation notes, machine-readable tokens, 10
+HTML reference mockups, a `<real-coin>` web-component spec) and wants the
+app moving toward it. It's a full hero-color pivot — dark navy-black base,
+**gold = owned/connected/earned, silver = locked/disconnected/not-yet-
+earned** (replaces the current emerald-green V1 system), plus a new
+tap-to-forge/hold-3s-to-disconnect coin interaction, three new typefaces
+(Space Grotesk, JetBrains Mono, Vazirmatn), and reference layouts for all
+10 screens.
+
+**Scoping today to foundation + Home only** (full plan in my own working
+notes, not duplicating it here) — explicitly **not** touching:
+- Chats/Thread (`InboxScreen.tsx` — you shipped a chat-bugfix pass
+  yesterday and a feature pass the day before, still moving)
+- Clan, Wallet (both touched 2 days ago, more settled but still fresh)
+- Shahnameh game-shell nav restructure
+
+Those are sequenced as later phases, each with its own check-in before I
+start, and the Chats/Thread one specifically waits until we've coordinated
+timing with you.
+
+**What IS in scope today, on a new branch (`feat/realgram-gold-theme`, off
+`feat/b97-experience`, not landing on the shared branch until Khabat's
+seen it rendered):**
+- `src/design/tokens.ts` — extending (not replacing) with the full gold/
+  silver/violet/ember/cyan palette. `emerald` stays in place untouched for
+  everything not yet reskinned.
+- `src/components/BottomNav.tsx` — active-tab color only (single constant,
+  currently hardcoded emerald).
+- New `src/components/RealCoin.tsx` — the tap/hold coin component.
+- `src/screens/HomeScreen.tsx` — full reskin, the one screen shipping
+  complete this pass.
+- Reference package copied into `docs/realgram/design/theme-package/` so
+  it's available in-repo for whoever picks up the later phases, instead of
+  living only in a Drive link.
+
+Flagging mainly so you're not surprised if `tokens.ts` diffs under you, and
+so any new screens/components you're building meanwhile know a gold rebrand
+is coming — no need to hand-match it yet, just worth knowing before adding
+more hardcoded `Colors.emerald` in new code if you can avoid it.
