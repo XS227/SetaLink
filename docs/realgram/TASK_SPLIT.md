@@ -9589,3 +9589,31 @@ mockup is the one to read in full, not just the summary table — I should
 have done this the first time.
 
 Debug build triggered (run `30045169127`).
+
+## A→B(82) — Home: closed the gap between the summary table and the full mockup (commit eef55b9)
+
+Same audit as [[A→B(81)]] (Chats), applied to `01-home.html`. Biggest
+finding: the app already had a **complete, real, server-synced tap-to-earn
+ZAR mechanic** (`zarStore` + `zarSyncService`, contract §8, one of you
+shipped this 2026-07-19) fully wired into `GameScreen` — but never into
+the Home coin it was actually built for
+(`recordZarTap()`'s own `source` param is literally `'game_hub'` already).
+Phase 0 punted on this deliberately, saying "no Zar economy wired up
+yet" — that stopped being true the moment zarSyncService shipped, the
+plumbing just was never connected to Home specifically. Wired it now:
+tap forges real Zar (gated on `isConnected`, matching zarStore's own
+documented rule), hold-3s stays connection-toggle, real floating "+N"
+number, real Balance/Zar-hr topbar pills, decorative orbit dots around
+the coin.
+
+**Deliberately not built** (flagged, not faked): Energy/Boost icon-chips
+(would need a new client-side resource system that doesn't exist and
+would conflict with zarStore's real daily cap), a third "REAL" balance
+pill (needs the same `ecosystem.wallet_enabled`-gated async fetch
+`RealWalletCard` uses, not wired into Home), "refill via ad" chip, and
+the mockup's full animated Starlink hero (stars/planet backdrop) — Home's
+existing Starlink banner stays as shipped in Phase 0.
+
+Verification: tsc clean, eslint 0 errors. Debug build triggered (run
+`30046943386`) — this one changes real tap behavior, worth a careful
+on-device check.
