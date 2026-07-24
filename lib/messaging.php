@@ -12,8 +12,10 @@
  *     with a server-side key in data/.message_key. NOT end-to-end: the server
  *     can decrypt to deliver. The admin stats path never selects the body.
  *   - Rate limited per sender device (per-minute + per-day) to curb spam.
- *   - user_blocks / user_reports tables exist now but are reserved for the
- *     block/report feature shipped later; structure-only so the schema is ready.
+ *   - user_blocks / user_reports: block/report shipped 2026-07-24
+ *     (dm_block/dm_unblock/dm_list_blocked/dm_report below). dm_is_blocked()
+ *     was already wired into dm_send()'s reject path since the MVP shipped —
+ *     only the write side (actually blocking someone) was missing.
  */
 
 const MSG_MAX_LEN        = 2000;   // max characters per message body
@@ -69,8 +71,7 @@ function dm_init_tables(PDO $pdo): void {
         PRIMARY KEY (message_id, device_id)
     )");
 
-    // Reserved for the abuse/report/block feature (shipped later) — structure
-    // only, nothing in the MVP writes to these yet.
+    // Block/report — see dm_block()/dm_report() below (shipped 2026-07-24).
     $pdo->exec("CREATE TABLE IF NOT EXISTS user_blocks (
         blocker_device TEXT NOT NULL,
         blocked_device TEXT NOT NULL,
@@ -206,6 +207,70 @@ function dm_is_blocked(PDO $pdo, string $a, string $b): bool {
             OR (blocker_device=? AND blocked_device=?) LIMIT 1");
     $st->execute([$a, $b, $b, $a]);
     return (bool)$st->fetchColumn();
+}
+
+/**
+ * Block a peer (by SetaLink ID — device_id | user_id | referral_code, same
+ * addressing as dm_send's recipient param). One-directional row, but
+ * dm_is_blocked() checks both directions, so a block silences the thread for
+ * both sides immediately — the blocked party's next send just fails with
+ * "recipient unavailable" via dm_send's existing check, same as any other
+ * blocked-recipient case, no separate error surface needed for it.
+ */
+function dm_block(PDO $pdo, string $blockerDevice, string $peerParam): array {
+    dm_init_tables($pdo);
+    $peer = qe_resolve_device($pdo, $peerParam);
+    if (!$peer) throw new \RuntimeException('user not found');
+    if ($peer['device_id'] === $blockerDevice) throw new \RuntimeException('cannot block yourself');
+    $pdo->prepare(
+        "INSERT OR IGNORE INTO user_blocks (blocker_device, blocked_device) VALUES (?, ?)"
+    )->execute([$blockerDevice, $peer['device_id']]);
+    return ['blocked_device' => $peer['device_id'], 'blocked_user_id' => (string)($peer['user_id'] ?? '')];
+}
+
+function dm_unblock(PDO $pdo, string $blockerDevice, string $peerParam): bool {
+    dm_init_tables($pdo);
+    $peer = qe_resolve_device($pdo, $peerParam);
+    if (!$peer) throw new \RuntimeException('user not found');
+    $st = $pdo->prepare("DELETE FROM user_blocks WHERE blocker_device=? AND blocked_device=?");
+    $st->execute([$blockerDevice, $peer['device_id']]);
+    return $st->rowCount() > 0;
+}
+
+/** This device's own block list — device_id + display id, newest first. */
+function dm_list_blocked(PDO $pdo, string $deviceId): array {
+    dm_init_tables($pdo);
+    $st = $pdo->prepare(
+        "SELECT b.blocked_device, b.created_at, d.user_id
+         FROM user_blocks b LEFT JOIN devices d ON d.device_id = b.blocked_device
+         WHERE b.blocker_device = ? ORDER BY b.created_at DESC");
+    $st->execute([$deviceId]);
+    return array_map(fn($r) => [
+        'device_id' => $r['blocked_device'],
+        'user_id'   => (string)($r['user_id'] ?? ''),
+        'blocked_at' => $r['created_at'],
+    ], $st->fetchAll(PDO::FETCH_ASSOC));
+}
+
+/**
+ * Report a specific message for abuse. Fixed reason set (mirrors the block/
+ * report reasons any client picker should offer) rather than free text, so
+ * admin triage doesn't need to read message bodies to act — matches this
+ * file's existing "admin stats never select body_enc" privacy rule.
+ */
+const MSG_REPORT_REASONS = ['spam', 'harassment', 'scam', 'illegal', 'other'];
+
+function dm_report(PDO $pdo, string $reporterDevice, int $messageId, string $reason): array {
+    dm_init_tables($pdo);
+    if (!in_array($reason, MSG_REPORT_REASONS, true)) $reason = 'other';
+    $st = $pdo->prepare(
+        "SELECT id FROM user_messages WHERE id=? AND (sender_device=? OR recipient_device=?)");
+    $st->execute([$messageId, $reporterDevice, $reporterDevice]);
+    if (!$st->fetchColumn()) throw new \RuntimeException('message not found');
+    $pdo->prepare(
+        "INSERT INTO user_reports (reporter_device, message_id, reason) VALUES (?, ?, ?)"
+    )->execute([$reporterDevice, $messageId, $reason]);
+    return ['reported' => true];
 }
 
 /**

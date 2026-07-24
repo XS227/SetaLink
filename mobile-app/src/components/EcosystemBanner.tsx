@@ -152,11 +152,16 @@ export function EcosystemBanner({ seed = 0, pin, onOpenGame, style }: Props) {
         <Text style={styles.title} numberOfLines={1}>{promo.title}</Text>
         <Text style={styles.sub} numberOfLines={1}>{promo.sub}</Text>
       </View>
-      <View style={styles.dots}>
-        {promos.map((p, i) => (
-          <View key={p.id} style={[styles.dot, i === idx && styles.dotActive]} />
-        ))}
-      </View>
+      {/* A pinned banner never rotates, so the dots (a rotation indicator)
+          would just be misleading decoration implying more content — first
+          real pinned usage is Home's Shahnameh banner (2026-07-24). */}
+      {pinnedIdx < 0 && (
+        <View style={styles.dots}>
+          {promos.map((p, i) => (
+            <View key={p.id} style={[styles.dot, i === idx && styles.dotActive]} />
+          ))}
+        </View>
+      )}
     </TouchableOpacity>
   );
 }

@@ -405,6 +405,38 @@ export async function getTyping(deviceId: string, peer: string): Promise<boolean
   return !!data.typing;
 }
 
+/** Fixed reason set — mirrors MSG_REPORT_REASONS server-side (lib/messaging.php). */
+export const DM_REPORT_REASONS = ['spam', 'harassment', 'scam', 'illegal', 'other'] as const;
+export type DMReportReason = typeof DM_REPORT_REASONS[number];
+
+/** Block a peer (device_id / user_id / referral_code) — silences the thread
+ *  both directions server-side (dm_send rejects either party messaging the
+ *  other once blocked). Does not delete existing history. */
+export async function blockUser(deviceId: string, peer: string): Promise<void> {
+  await mobilePost('block-user', { device_id: deviceId, peer });
+}
+
+export async function unblockUser(deviceId: string, peer: string): Promise<void> {
+  await mobilePost('unblock-user', { device_id: deviceId, peer });
+}
+
+export async function listBlockedUsers(deviceId: string): Promise<Array<{
+  deviceId: string; userId: string; blockedAt: string;
+}>> {
+  const data = await mobileGet('list-blocked', { device_id: deviceId }) as {
+    blocked?: Array<{ device_id: string; user_id: string; blocked_at: string }>;
+  };
+  return (data.blocked ?? []).map(b => ({ deviceId: b.device_id, userId: b.user_id, blockedAt: b.blocked_at }));
+}
+
+/** Report a specific message for abuse. Does not block — the UI offers
+ *  "report and block" as a combined action by calling both. */
+export async function reportMessage(
+  deviceId: string, messageId: number, reason: DMReportReason,
+): Promise<void> {
+  await mobilePost('report-message', { device_id: deviceId, message_id: messageId, reason });
+}
+
 /** Mark a received direct message as read. */
 export async function markMessageRead(deviceId: string, messageId: number): Promise<void> {
   await mobilePost('mark-message-read', { device_id: deviceId, message_id: messageId });

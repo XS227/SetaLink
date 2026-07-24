@@ -77,7 +77,7 @@ const EN = {
 
   // Ecosystem banner (Shahnameh + 3real)
   'bn.shahTitle': 'Play Shahnameh — earn REAL',
-  'bn.shahSub':   'Battle as a Persian warrior on Telegram',
+  'bn.shahSub':   'Battle as a Persian warrior, earn REAL',
   'bn.realTitle': 'Trade REAL on 3real',
   'bn.realSub':   'Our REAL exchange — 3real.no',
 
@@ -816,7 +816,7 @@ const FA: typeof EN = {
 
   // Ecosystem banner (Shahnameh + 3real)
   'bn.shahTitle': 'شاهنامه را بازی کن — REAL کسب کن',
-  'bn.shahSub':   'به‌عنوان پهلوان ایرانی در تلگرام نبرد کن',
+  'bn.shahSub':   'به‌عنوان پهلوان ایرانی نبرد کن و REAL کسب کن',
   'bn.realTitle': 'معامله REAL در 3real',
   'bn.realSub':   'صرافی REAL ما — 3real.no',
 
@@ -1547,7 +1547,7 @@ const ZH: typeof EN = {
   'nav.game': '游戏',
 
   'bn.shahTitle': '玩《列王纪》——赚取 REAL',
-  'bn.shahSub': '在 Telegram 上扮演波斯勇士战斗',
+  'bn.shahSub': '扮演波斯勇士战斗，赚取 REAL',
   'bn.realTitle': '在 3real 交易 REAL',
   'bn.realSub': '我们的 REAL 交易所——3real.no',
 
@@ -2251,7 +2251,7 @@ const RU: typeof EN = {
   'nav.game': 'Игра',
 
   'bn.shahTitle': 'Играйте в Шахнаме — зарабатывайте REAL',
-  'bn.shahSub': 'Сражайтесь как персидский воин в Telegram',
+  'bn.shahSub': 'Сражайтесь как персидский воин, зарабатывайте REAL',
   'bn.realTitle': 'Торгуйте REAL на 3real',
   'bn.realSub': 'Наша биржа REAL — 3real.no',
 

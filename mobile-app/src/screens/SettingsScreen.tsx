@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Linking, Platform,
 } from 'react-native';
@@ -7,7 +7,9 @@ import { GlassCard } from '../components/GlassCard';
 import { EcosystemFooter } from '../components/EcosystemFooter';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useServerStore }   from '../stores/serverStore';
+import { useAuthStore }     from '../stores/authStore';
 import { BiometricService } from '../services/biometricService';
+import { listBlockedUsers, unblockUser } from '../services/entitlementService';
 import { useT, SUPPORTED_LANGUAGES } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { checkForUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
@@ -62,6 +64,12 @@ const rowStyles = StyleSheet.create({
   toggleOff:     { backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.default },
   toggleDisabled:{ backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.subtle, opacity: 0.4 },
   thumb:         { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff' },
+});
+
+const blockedRowStyles = StyleSheet.create({
+  row:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[2], paddingLeft: Spacing[3] },
+  name:    { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, marginRight: Spacing[3] },
+  unblock: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.emerald[400] },
 });
 
 interface SelectRowProps {
@@ -137,9 +145,27 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
     toggleAutoConnect, toggleBiometricLock, setBiometricLock,
   } = useSettingsStore();
   const { clearImportedServers, loadBootstrapIfEmpty } = useServerStore();
+  const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'uptodate' | 'available'>('idle');
   const [latestVersion, setLatestVersion] = useState('');
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+
+  // Block list (2026-07-24) — loaded once on mount; unblocking updates this
+  // local copy directly rather than re-fetching, same "optimistic, server is
+  // still the source of truth on next real load" pattern the rest of this
+  // screen doesn't need but a list like this benefits from.
+  const [blocked, setBlocked] = useState<Array<{ deviceId: string; userId: string; blockedAt: string }>>([]);
+  const [blockedExpanded, setBlockedExpanded] = useState(false);
+  useEffect(() => {
+    if (!deviceId) return;
+    listBlockedUsers(deviceId).then(setBlocked).catch(() => {});
+  }, [deviceId]);
+
+  const handleUnblock = (peerDeviceId: string) => {
+    unblockUser(deviceId, peerDeviceId)
+      .then(() => setBlocked((prev) => prev.filter((b) => b.deviceId !== peerDeviceId)))
+      .catch((e: any) => Alert.alert('', String(e?.message ?? 'Could not unblock')));
+  };
 
   // Uses the central checker: respects the selected channel, versionCode
   // gating, and — critically — resolves the APK for THIS device's ABI so
@@ -300,6 +326,32 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
             value={biometricLock}
             onChange={handleBiometricToggle}
           />
+        </Section>
+
+        <Section label="Privacy">
+          <TouchableOpacity
+            style={rowStyles.row}
+            activeOpacity={0.75}
+            onPress={() => setBlockedExpanded((v) => !v)}
+          >
+            <View style={rowStyles.left}>
+              <Text style={rowStyles.label}>Blocked users</Text>
+              <Text style={rowStyles.desc}>
+                {blocked.length === 0 ? 'No one blocked' : `${blocked.length} blocked`}
+              </Text>
+            </View>
+            <Text style={{ color: Colors.text.muted, fontSize: Typography.size.base }}>
+              {blockedExpanded ? '▾' : '▸'}
+            </Text>
+          </TouchableOpacity>
+          {blockedExpanded && blocked.map((b) => (
+            <View key={b.deviceId} style={blockedRowStyles.row}>
+              <Text style={blockedRowStyles.name} numberOfLines={1}>{b.userId || b.deviceId}</Text>
+              <TouchableOpacity onPress={() => handleUnblock(b.deviceId)} activeOpacity={0.75}>
+                <Text style={blockedRowStyles.unblock}>Unblock</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
         </Section>
 
         <Section label={t('st.diagnostics')}>

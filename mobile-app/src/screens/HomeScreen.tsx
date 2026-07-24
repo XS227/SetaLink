@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
 import { BottomNav, NavTab } from '../components/BottomNav';
-import { REAL_TOKEN_IMAGE } from '../components/EcosystemBanner';
+import { EcosystemBanner } from '../components/EcosystemBanner';
 import { HomeBanner }      from '../components/HomeBanner';
 
 import { useVpnStore }         from '../stores/vpnStore';
@@ -329,43 +329,14 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </View>
         </Animated.View>
 
-        {/* ── Shortcuts ── */}
-        <Animated.View style={[styles.shortcutsRow, fadeStyle]}>
-          <TouchableOpacity
-            style={styles.shortcutRewards}
-            onPress={() => {
-              // TEMP DEBUG (2026-07-19, remove once REAL->Shahnameh is
-              // confirmed fixed on a real device — Khabat's build-109 report).
-              console.log('[REALDBG:1/7] REAL button PRESSED (Home shortcut) — calling onNavigate("game")');
-              onNavigate('game');
-              console.log('[REALDBG:7/7] onNavigate("game") call returned (does not confirm the tab actually gained focus — bottom-tab navigation is fire-and-forget from here)');
-            }}
-            activeOpacity={0.82}
-          >
-            <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.shortcutIcon} />
-            <View style={styles.shortcutText}>
-              <Text style={styles.shortcutTitle}>REAL</Text>
-              <Text style={styles.shortcutSub}>{t('home.rewards')}</Text>
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.shortcutRealgram}
-            onPress={() => {
-              // TEMP DEBUG (2026-07-19, remove once REAL->Shahnameh is
-              // confirmed fixed on a real device — Khabat's build-109 report).
-              console.log('[REALDBG:1/7] RealGram button PRESSED (Home shortcut) — calling onNavigate("game")');
-              onNavigate('game');
-              console.log('[REALDBG:7/7] onNavigate("game") call returned (does not confirm the tab actually gained focus — bottom-tab navigation is fire-and-forget from here)');
-            }}
-            activeOpacity={0.82}
-          >
-            <Text style={styles.shortcutRealgramIcon}>💬</Text>
-            <View style={styles.shortcutText}>
-              <Text style={[styles.shortcutTitle, { color: Colors.emerald[400] }]}>RealGram</Text>
-              <Text style={styles.shortcutSub}>{t('home.community')}</Text>
-            </View>
-          </TouchableOpacity>
+        {/* ── Shahnameh banner — Khabat, 2026-07-24: the old REAL/RealGram
+             shortcut boxes both navigated to the same 'game' tab (verified
+             while reading this code — functionally duplicate destinations),
+             so replaced with one banner. Pinned (no rotation) and opens the
+             game in-app via onOpenGame, same component PremiumScreen already
+             uses unpinned for the rotating REAL/Shahnameh promo. ── */}
+        <Animated.View style={fadeStyle}>
+          <EcosystemBanner pin="shahnameh" onOpenGame={() => onNavigate('game')} />
         </Animated.View>
 
         {/* ── Ad banner — rotates AdMob banner ⇄ ecosystem promo (Khabat, 2026-07-18:
@@ -462,24 +433,4 @@ const styles = StyleSheet.create({
   metricValue:  { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
   metricUnit:   { fontSize: 10, color: Colors.text.muted, fontFamily: Typography.family.mono, marginTop: -2 },
   metricLabel:  { fontSize: 10, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 },
-
-  // Shortcuts
-  shortcutsRow: { flexDirection: 'row', gap: Spacing[3] },
-  shortcutRewards: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
-    backgroundColor: 'rgba(212,175,55,0.08)',
-    borderRadius: Radius.xl, padding: Spacing[4],
-    borderWidth: 1, borderColor: 'rgba(212,175,55,0.2)',
-  },
-  shortcutRealgram: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing[3],
-    backgroundColor: 'rgba(0,232,122,0.06)',
-    borderRadius: Radius.xl, padding: Spacing[4],
-    borderWidth: 1, borderColor: 'rgba(0,232,122,0.18)',
-  },
-  shortcutIcon:        { width: 36, height: 36, borderRadius: 18 },
-  shortcutRealgramIcon:{ fontSize: 28 },
-  shortcutText:        { flex: 1, gap: 1 },
-  shortcutTitle:       { fontSize: 13, fontFamily: Typography.family.heading, color: Colors.gold[300] },
-  shortcutSub:         { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
 });

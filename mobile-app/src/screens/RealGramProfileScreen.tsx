@@ -19,7 +19,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import {
-  ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -27,6 +27,8 @@ import { GlassCard } from '../components/GlassCard';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
 import { useSessionStore, SessionRecord } from '../stores/sessionStore';
+import { useSettingsStore } from '../stores/settingsStore';
+import { BiometricService } from '../services/biometricService';
 import { formatBytes, formatDuration } from '../utils/formatters';
 import {
   getProfileSummary, ProfileSummary,
@@ -114,6 +116,7 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
   const persona         = useIdentityStore((s) => s.persona);
   const localHandle     = useIdentityStore((s) => s.handle);
   const localDisplayName = useIdentityStore((s) => s.displayName);
+  const biometricLock   = useSettingsStore((s) => s.biometricLock);
   const recentSessions  = useSessionStore((s) => s.sessions)
     .slice()
     .sort((a, b) => (b.endedAt || b.startedAt) - (a.endedAt || a.startedAt))
@@ -176,6 +179,32 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
     if (isFocused) load({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
+
+  // Khabat, 2026-07-24: "they must not be allowed to sign out before
+  // they've set up fingerprint or passcode lock." Two-part gate: (1) App
+  // Lock (settingsStore's biometricLock — already accepts device PIN/
+  // pattern as a fallback, not biometric-hardware-only, see SettingsScreen's
+  // v0.9.36 #3 note) has to have been turned on at least once, and (2) even
+  // once it's on, signing out itself requires a fresh successful biometric/
+  // passcode confirmation — so a stolen-but-unlocked phone can't be signed
+  // out of to strand the real owner either.
+  const handleSignOutPress = useCallback(() => {
+    if (!onSignOut) return;
+    if (!biometricLock) {
+      Alert.alert(
+        'App Lock required',
+        'Set up fingerprint or passcode lock in Settings before you can sign out — this keeps your account safe if the device is lost.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Go to Settings', onPress: () => onSettings?.() },
+        ],
+      );
+      return;
+    }
+    BiometricService.authenticate('Sign out', 'Confirm it’s you before signing out')
+      .then((ok) => { if (ok) onSignOut(); })
+      .catch(() => {});
+  }, [onSignOut, onSettings, biometricLock]);
 
   if (loading) {
     return (
@@ -354,8 +383,9 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
         </GlassCard>
 
         {!!onSignOut && (
-          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={onSignOut}>
+          <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={handleSignOutPress}>
             <Text style={styles.logoutText}>Sign out</Text>
+            {!biometricLock && <Text style={styles.logoutLockHint}>Set up App Lock in Settings first</Text>}
           </TouchableOpacity>
         )}
 
@@ -432,4 +462,5 @@ const styles = StyleSheet.create({
 
   logoutBtn:    { borderWidth: 1, borderColor: 'rgba(255,68,68,0.3)', borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', backgroundColor: 'rgba(255,68,68,0.06)' },
   logoutText:   { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#FF4444', letterSpacing: 0.3 },
+  logoutLockHint: { fontSize: 11, color: Colors.text.muted, marginTop: 4 },
 });

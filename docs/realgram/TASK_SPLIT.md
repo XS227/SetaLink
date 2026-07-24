@@ -10319,3 +10319,162 @@ anyone writes code. And per the branch-state note up top: before that
 build gets triggered, worth settling whether it should come from
 `feat/b97-experience`, `feat/realgram-gold-theme`, or a merge of both —
 otherwise Khabat tests the same already-fixed things again next round.
+
+## A→B(99) — Khabat: "don't postpone, I want everything in place." Built the rest, plus a new bug and DB-backed findings on 2 open items
+
+Khabat's response to A→B(98): fix everything, no more deferring decisions
+to him. Went back through every open item — built what's buildable from
+this box, and used DB access on this box (turns out I have it — analytics.db
+at `/var/www/setalink/data/`, corrected below) to actually resolve two of
+the "needs input" items with evidence instead of leaving them as questions.
+
+### Built this pass (`feat/b97-experience`)
+
+1. **Sign-out gated on App Lock, both ways Khabat could've meant** —
+   `RealGramProfileScreen.tsx`: if `biometricLock` (settingsStore) was never
+   turned on, sign-out is blocked outright with a prompt to go set it up in
+   Settings (`onSettings()`); if it IS on, sign-out now requires a fresh
+   `BiometricService.authenticate()` pass first. Didn't have to build a
+   separate "passcode" system — `biometricLock`'s existing status check
+   already accepts the device PIN/pattern as a fallback (SettingsScreen's
+   own v0.9.36 #3 note), so "fingerprint or passcode" was already one
+   feature, just never gating sign-out.
+
+2. **Block + report, full stack.** Bigger find first: `lib/messaging.php`
+   already had `user_blocks`/`user_reports` tables AND a working
+   `dm_is_blocked()` check wired into `dm_send()`'s reject path since the
+   messaging MVP — comment literally said "reserved for the abuse/report/
+   block feature shipped later; structure only, nothing writes to these
+   yet." Only the write side was missing. Added: `dm_block`/`dm_unblock`/
+   `dm_list_blocked`/`dm_report` (`lib/messaging.php`) + 4 new `public/
+   api.php` actions (`block-user`/`unblock-user`/`list-blocked`/
+   `report-message`) + client (`entitlementService.ts`) + UI: a 🚫 button
+   in `InboxScreen.tsx`'s thread header (peer DMs only, not Support), and
+   long-pressing an incoming message now offers Report (reason: spam/
+   harassment/other) ahead of Delete, own messages skip straight to
+   Delete. Unblocking lives in a new "Privacy" section in
+   `SettingsScreen.tsx` — expandable "Blocked users" list, per-row Unblock.
+   `php -l` clean on both PHP files, `tsc`/eslint clean, `inboxScreen.test.tsx`
+   still 5/5.
+
+3. **Home banner swap, done** — turned out `components/EcosystemBanner.tsx`
+   already had exactly what I needed: a `pin="shahnameh"` mode +
+   `onOpenGame` callback (opens in-app instead of the Telegram fallback
+   link), just never used pinned anywhere yet. Swapped Home's two REAL/
+   RealGram boxes for `<EcosystemBanner pin="shahnameh"
+   onOpenGame={() => onNavigate('game')} />` — same visual system already
+   used elsewhere (PremiumScreen), no new design surface invented. Small
+   fix to the shared component while using `pin` for the first time: it
+   was still rendering the rotation-dots indicator even when pinned
+   (implies content that never rotates) — hid dots when `pin` is set.
+   Also tightened `bn.shahSub` copy in all 4 locales — it said "on
+   Telegram," wrong once Home opens it in-app. Removed the two now-dead
+   `shortcutRewards`/`shortcutRealgram` styles and their debug
+   `console.log`s (build-109 REAL→Shahnameh nav bug, long since fixed
+   elsewhere). `tsc`/eslint clean, `ecosystemBanner.test.tsx` still passing.
+
+### New bug found: connect/disconnect interstitial never shows — this needs your AdMob dashboard, not a code fix
+
+Khabat's new report this round: no ad at all on connect or disconnect,
+worked before. Pulled `AD_LOAD_ERROR` events from `app_events` on this
+box's analytics.db (I do have read access to this DB — correcting A→B(98)
+above, which said I didn't; that "no DB access" limit is real for
+Shahnameh's separate database, not this one):
+
+- Every single `rewarded_interstitial` load attempt today (24/24, both
+  test devices) fails with `googleMobileAds/no-fill — "Ad unit doesn't
+  match format"`. That's a deterministic AdMob config error, not ordinary
+  no-fill — it means unit `ca-app-pub-5788265416382988/5352089518`
+  (Android) is not currently configured as a Rewarded Interstitial format
+  in the AdMob console (wrong format, or the ID's been repurposed/edited).
+  The `_fallbackOrRetry` path then tries plain `rewarded_video` as
+  fallback (`REWARDED_UNIT_ID`) — that one's ALSO 100% no-fill today
+  (26/26), so `gateActionWithAd`'s 6s timeout always expires with nothing
+  ready and just runs `proceed()` silently — exactly "no ad shown."
+- This isn't a longstanding issue — zero `"match format"` errors exist in
+  `app_events` before today, and `AD_INTERSTITIAL_SHOWN` fired 15 times as
+  recently as yesterday (last one 2026-07-23 14:52:06). Something changed
+  today, and the code hasn't (`adsService.ts`'s unit IDs are unchanged
+  since the 07-22 commit that set them).
+- **Not something I can fix from code** — the unit ID itself needs
+  checking in Google's AdMob console (Khabat's login, not reachable from
+  here): confirm `.../5352089518` (Android) and `.../5216238008` (iOS) are
+  still typed "Rewarded Interstitial," not accidentally recreated/edited
+  into a different ad format.
+- Separately, smaller: `home_banner` also had 9 `AD_LOAD_ERROR`s today
+  with zero successes (vs. `freedom_banner`'s 3 successes same window) —
+  but these are ordinary `no-fill`/lack-of-inventory errors, not the
+  format-mismatch kind, and the device's `test_mode=1`/`plan=free` is
+  confirmed correctly set (ruling out the plan-state explanation from
+  [[realgram-gold-theme]]'s memory). Reads as plain demand-side inventory
+  variance for that specific unit today, not a bug — not chasing further.
+
+### Revised, with real DB evidence: node-selection + device-recognition (items 7/8 from A→B(98))
+
+Went back into `devices`/`app_events` instead of leaving this as a
+hypothesis. Found the device that was actually active during Khabat's
+test window (`sl-607f6a82-…`, model SM-S918B — matches his known test
+phone — `app_version 0.9.91`, `last_seen` this session): **it's a
+different `device_id` AND different `user_id`** from his long-standing
+test device (`sl-85ff1772-…` / `SL-227-62DAC5F0`) — a genuinely new,
+never-seen-before account row (`created_at 2026-07-23 12:04:09`,
+5GB starter quota, 0 invites, no linked REAL account). That's the "device
+not recognized" symptom confirmed directly, not inferred.
+
+Traced why a stable-by-design device ID (SHA-256 of `Settings.Secure.
+ANDROID_ID`, `XrayModule.kt:411`) would still change on the same physical
+phone: ANDROID_ID is scoped per (signing cert, device) on Android 8+, so
+a debug APK signed with a *different* keystore than the last one
+legitimately gets a new ANDROID_ID → new device_id, even with zero app
+code changes. Checked the build pipelines for exactly this:
+`.github/workflows/android-debug.yml` (the one that actually produces the
+debug APKs sent to Khabat, per [[realgram-gold-theme]]'s build log) had
+this exact bug and was fixed **2026-07-20** (`30877c7`, cached
+keystore) — so builds from that workflow should be stable since then.
+`mobile-app/.github/workflows/ci.yml` also runs `assembleDebug` with no
+keystore caching at all, which WOULD reset identity every run — but it
+uploads no APK artifact whatsoever (pure build-validation job, checked
+the whole file), so it can't be what anyone actually installs.
+
+So the CI-side fix should already cover this, and I can't find a live
+code path left that resets identity — which leaves either a local/manual
+build (someone running `./gradlew assembleDebug` outside CI, own separate
+debug keystore) or something I genuinely can't see from here. **One
+question back to Khabat/whoever built this round's APK would resolve it
+fast: did this test APK come from the usual `setalink.no/preview/…` CI
+link, or a different build?** If CI, the 07-20 fix should mean this
+shouldn't be recurring — worth flagging as a real regression if so.
+
+Node selection (Finland/Germany do nothing) is downstream of this same
+finding, not a separate bug: `serverStore.ts`'s `importedCreds` only ever
+bundles the stealth node client-side; every other node's credentials come
+from `fetchServers(token)`, which a brand-new unrecognized device may
+never have successfully completed yet in this session. No separate fix
+needed here beyond the identity question above.
+
+### Genuinely blocked on access, not on a decision — flagging directly since "don't postpone" is right but I hit a real wall
+
+**ZAR/hour-from-owned-cards and ZAR→REAL conversion both need Shahnameh
+backend changes** — that repo isn't checked out anywhere on this box and
+I have no SSH path to wherever it lives (checked; same as this file's
+recurring "no access to your DB" notes, but for your repo, not a
+database). This isn't me deferring a decision, it's a codebase I
+literally cannot reach from here. Two ways to unblock, Khabat/B's call:
+(a) point me at how to reach it (repo URL + access, or SSH to the box it's
+on), or (b) B picks these two up directly — the contracts are simple
+enough to spec here regardless:
+- **ZAR/hour**: one field, `zar_per_hour_from_cards` (or similar), derived
+  server-side from whatever Shahnameh already tracks per owned/upgraded
+  card's yield rate, exposed on `getProfileSummary`'s `economy` object
+  (which the app already fetches) or a lightweight dedicated endpoint if
+  that's cheaper to compute on demand. I can wire the Home display the
+  moment either exists — that part's a few lines in `HomeScreen.tsx`.
+- **ZAR→REAL**: needs a reverse of whatever `/user/zar-swap` already does
+  (`zarStore.ts`'s header comment references it) — rate, min amount, and
+  whether it shares the existing swap endpoint or needs its own are real
+  economy decisions for Khabat, but that's a 2-minute call once someone
+  who can reach the Shahnameh repo is looking at it with me, not a
+  blocker on my end.
+
+Not treating either as "postponed" — they're specced and ready, just
+genuinely outside what this box can build alone.

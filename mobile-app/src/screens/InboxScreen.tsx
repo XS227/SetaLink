@@ -16,6 +16,7 @@ import { useT } from '../i18n';
 import { DM_REACTIONS } from '../services/entitlementService';
 import { setTyping as apiSetTyping, getTyping as apiGetTyping } from '../services/entitlementService';
 import { listThreadMessages, searchMessages } from '../services/entitlementService';
+import { blockUser, reportMessage, type DMReportReason } from '../services/entitlementService';
 import { Logger } from '../utils/logger';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
@@ -312,6 +313,58 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     ]);
   };
 
+  // Khabat, 2026-07-24: report an abusive message. Own messages (m.direction
+  // === 'out') skip straight to delete — reporting your own message makes no
+  // sense — real incoming DMs get a Report option ahead of Delete. Support
+  // thread is excluded entirely (confirmDeleteMessage's own guard already
+  // blocks it; kept consistent here for the same reason — nothing to report
+  // on an official channel).
+  const handleMessageLongPress = (c: Conversation, m: ChatMessage) => {
+    if (c.support || m.kind === 'ann') return;
+    if (m.direction === 'out') { confirmDeleteMessage(c, m); return; }
+    Alert.alert('', undefined, [
+      { text: 'Report', style: 'destructive', onPress: () => confirmReportMessage(c, m) },
+      { text: t('dm.deleteMessage'), style: 'destructive', onPress: () => confirmDeleteMessage(c, m) },
+      { text: t('dm.cancel'), style: 'cancel' },
+    ]);
+  };
+
+  const confirmReportMessage = (c: Conversation, m: ChatMessage) => {
+    Alert.alert('Report message', 'Why are you reporting this?', [
+      { text: 'Spam', onPress: () => submitReport(m.id, 'spam') },
+      { text: 'Harassment/abuse', onPress: () => submitReport(m.id, 'harassment') },
+      { text: 'Other', onPress: () => submitReport(m.id, 'other') },
+      { text: t('dm.cancel'), style: 'cancel' },
+    ]);
+  };
+
+  const submitReport = (messageId: number, reason: DMReportReason) => {
+    reportMessage(deviceId, messageId, reason)
+      .then(() => Alert.alert('', 'Reported — thanks, we’ll take a look.'))
+      .catch((e: any) => Alert.alert('', String(e?.message ?? 'Could not send report')));
+  };
+
+  const confirmBlockUser = (c: Conversation) => {
+    if (c.support) return;    // can't block the official support account
+    const peer = c.peerUserId || c.peerDevice || '';
+    if (!peer) return;
+    Alert.alert(
+      `Block ${c.title}?`,
+      'They won’t be able to message you, and you won’t be able to message them. You can unblock later from Settings.',
+      [
+        { text: t('dm.cancel'), style: 'cancel' },
+        {
+          text: 'Block', style: 'destructive',
+          onPress: () => {
+            blockUser(deviceId, peer)
+              .then(() => { setOpenKey(null); })
+              .catch((e: any) => Alert.alert('', String(e?.message ?? 'Could not block')));
+          },
+        },
+      ],
+    );
+  };
+
   useEffect(() => {
     if (!deviceId) return;
     dmRefresh(deviceId).catch(() => {});
@@ -491,6 +544,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   )}
                 </View>
                 {!openConvo.support && (
+                  <TouchableOpacity testID="convo-block" style={styles.threadDeleteBtn} activeOpacity={0.7} onPress={() => confirmBlockUser(openConvo)}>
+                    <Text style={styles.threadDeleteIcon}>🚫</Text>
+                  </TouchableOpacity>
+                )}
+                {!openConvo.support && (
                   <TouchableOpacity testID="convo-delete" style={styles.threadDeleteBtn} activeOpacity={0.7} onPress={() => confirmDeleteThread(openConvo)}>
                     <Text style={styles.threadDeleteIcon}>🗑</Text>
                   </TouchableOpacity>
@@ -545,7 +603,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                       <TouchableOpacity
                         activeOpacity={0.9}
                         onPress={() => canReact && setReactingTo(reactingTo === m.id ? null : m.id)}
-                        onLongPress={() => confirmDeleteMessage(openConvo, m)}
+                        onLongPress={() => handleMessageLongPress(openConvo, m)}
                         style={[styles.bubbleRow, out ? styles.bubbleRowOut : styles.bubbleRowIn]}
                       >
                         <View style={[styles.bubble, out ? styles.bubbleOut : styles.bubbleIn, burning && styles.bubbleBurn]}>

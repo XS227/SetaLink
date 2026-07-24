@@ -1853,6 +1853,61 @@ if ($method === 'POST') {
         ok(['ok' => true]);
     }
 
+    if ($action === 'block-user') {
+        // 2026-07-24: Khabat — users need to be able to block someone they
+        // don't want contact with anymore. dm_is_blocked() has rejected
+        // blocked-pair sends since the MVP shipped; this is the missing
+        // write side. Peer addressed the same way as send-message's
+        // recipient (device_id | user_id | referral_code).
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $peer     = trim($_POST['peer'] ?? '');
+        if (!$deviceId || $peer === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = dm_block($pdo, $deviceId, $peer);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
+    if ($action === 'unblock-user') {
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $peer     = trim($_POST['peer'] ?? '');
+        if (!$deviceId || $peer === '') err('missing params');
+        $pdo = db();
+        try {
+            $unblocked = dm_unblock($pdo, $deviceId, $peer);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok(['unblocked' => $unblocked]);
+    }
+
+    if ($action === 'list-blocked') {
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing params');
+        $pdo = db();
+        ok(['blocked' => dm_list_blocked($pdo, $deviceId)]);
+    }
+
+    if ($action === 'report-message') {
+        // Fixed reason set (MSG_REPORT_REASONS) rather than free text — see
+        // dm_report()'s own comment for why. Reporting does NOT auto-block;
+        // client fires both calls if the user picked "report and block".
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $messageId = (int)($_POST['message_id'] ?? 0);
+        $reason    = trim($_POST['reason'] ?? '');
+        if (!$deviceId || $messageId <= 0) err('missing params');
+        $pdo = db();
+        try {
+            $result = dm_report($pdo, $deviceId, $messageId, $reason);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
     if ($action === 'link-real-account') {
         // A2: bind this device to a REAL account. Proof minted by Telegram bot
         // (B-3) or RealGram web gate — both yield the same canonical Telegram
