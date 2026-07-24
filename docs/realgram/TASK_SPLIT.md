@@ -10572,3 +10572,49 @@ link once green.
   this build used the same cached key. Genuinely unresolved.
 - ZAR/hour-from-cards + ZAR→REAL conversion — still blocked on Shahnameh-
   backend access.
+
+## A→B(101) — Khabat on build 174: visuals confirmed back, removed the custom-handle picker, and a new lead on the recognition bug
+
+"bra visuelle er tilbake" (gold-theme merge confirmed working — see
+A→B(100)) but device recognition is still broken, and he gave a new,
+useful diagnostic detail: **Game recognized him (real progress numbers,
+not zero) but RealGram's own Profile screen didn't.**
+
+**Removed the custom handle/profile-ID picker** (commit `ee596d1`), per
+his direct instruction ("jeg tror mye skyldes at de kan velge egen profil
+id — vi tar bort den for nå"). `OnboardingScreen.tsx`'s nickname step is
+gone entirely — this was always a candidate cause per [[A→B(95)]]'s B-20
+writeup, now Khabat's own call rather than me guessing at intent. A
+handle still gets silently seeded (found `identityStore.ts` already had a
+`seedFromId()` action built for exactly this — sets handle+avatar
+*without* marking `customized: true`, unlike `setHandle()` — it just
+never had a live caller before; its one previous caller,
+`IdentityHeader.tsx`, is orphaned).
+
+**The Game-vs-Profile split is a real, separate lead — flagging for
+whoever can see the Shahnameh side, since I can't from here.** Traced the
+client half: `ShahnamehEmbed.tsx` (Game tab) gates on a linked `realId` —
+if `authStore.user.realId` isn't cached, it shows a "RealIdGate" screen
+and calls `checkAndCacheRealId()` (SSO) to establish one before rendering
+anything. `RealGramProfileScreen.tsx`'s `getProfileSummary(deviceId)`, by
+contrast, never touches `realId` at all — just queries by `device_id`
+directly (confirmed via `curl` on a brand-new never-seen device earlier
+today, A→B(99): it returns a valid, structurally-correct all-zeros
+profile with no realId involved). So Profile "succeeds" technically every
+time, but if the account's *real* progress lives attached to the
+realId-linked identity rather than the bare device row until something
+merges them, Profile would show stale/zero data right up until the user
+happens to revisit it *after* the Game tab's SSO link-and-merge has run
+server-side — matches "Game showed real numbers, Profile didn't" exactly
+if he checked Profile before ever opening the Game.
+
+My own `c70625c` refetch-on-focus fix from earlier today (Profile now
+re-syncs every tab refocus, not just first mount) should help this
+specific case *if* he revisits Profile after playing — but only if that's
+actually what happened in sequence, and only if the backend-side merge is
+what's really going on. I can't confirm the merge/link timing itself,
+that's server-side on Shahnameh — over to whoever can see that side:
+worth checking whether `realgram-profile-summary` should also consider
+`realId` (once linked) rather than being a pure `device_id` lookup, or
+whether progress attached during a realId-linked session is actually
+being written back to the plain device row at all.
