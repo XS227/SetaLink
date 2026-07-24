@@ -10478,3 +10478,19 @@ enough to spec here regardless:
 
 Not treating either as "postponed" — they're specced and ready, just
 genuinely outside what this box can build alone.
+
+**Deploy update, same session:** Khabat asked for the block/report backend
+to go live now — deployed `lib/messaging.php` + `public/api.php` to
+`/var/www/setalink` (backed up the pre-deploy copies to
+`~/setalink-backups/pre-deploy-20260724/` first; both files diffed clean
+against git before copying, no undocumented drift to worry about
+clobbering). Caught a real bug in the process: `list-blocked` reads
+`$_GET` but I'd placed it in the POST-actions branch — `api.php` dispatches
+`$method === 'GET'`/`'POST'` as two separate blocks, each with its own
+`err('unknown action')` fallback, so it 404'd until moved (commit
+`410e875`). Verified all 4 new actions live via curl post-fix — correct
+business-logic responses, not "unknown action." `block-user`/
+`report-message` correctly return `"user not found"`/`"message not
+found"` against nonexistent test IDs (didn't touch real account
+relationships to test further — the lookup/validation path being hit
+correctly is enough signal without risking real user state).
