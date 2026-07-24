@@ -937,6 +937,13 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'list-blocked') {
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing params');
+        $pdo = db();
+        ok(['blocked' => dm_list_blocked($pdo, $deviceId)]);
+    }
+
     if ($action === 'list-thread-messages') {
         // "Load older" pagination for one open thread (2026-07-22, chat audit
         // bug #1) -- list-messages above is a combined-all-peers 200 cap;
@@ -1882,13 +1889,6 @@ if ($method === 'POST') {
             err($e->getMessage());
         }
         ok(['unblocked' => $unblocked]);
-    }
-
-    if ($action === 'list-blocked') {
-        $deviceId = trim($_GET['device_id'] ?? '');
-        if (!$deviceId) err('missing params');
-        $pdo = db();
-        ok(['blocked' => dm_list_blocked($pdo, $deviceId)]);
     }
 
     if ($action === 'report-message') {
