@@ -10494,3 +10494,81 @@ business-logic responses, not "unknown action." `block-user`/
 found"` against nonexistent test IDs (didn't touch real account
 relationships to test further — the lookup/validation path being hit
 correctly is enough signal without risking real user state).
+
+## A→B(100) — Merged feat/realgram-gold-theme into feat/b97-experience (finally)
+
+Khabat tested the A→B(99) build and hit exactly what the branch-state note
+in A→B(98) warned about: "Profile unavailable," Clan tab still not
+scrollable, and Chats "looks like an older version of the app — design
+we've been working on is gone again." All three trace to
+`feat/realgram-gold-theme`'s work never having made it into
+`feat/b97-experience` — RealCoin, the Chat motion pass, and a real Clan-
+scroll bug fix all only existed on the other branch. Stopped patching
+symptoms and merged for real (commit `2a99b01`).
+
+**Conflicts** (2 files, everything else auto-merged clean):
+- `HomeScreen.tsx` — kept gold-theme's `RealCoin` (supersedes my plain-
+  button 3s-hold patch, same fix, more complete) and kept MY
+  `EcosystemBanner` Shahnameh-banner swap (gold-theme still had the old
+  duplicate REAL/RealGram boxes — confirmed this one genuinely wasn't on
+  either branch until now). Dropped my now-dead starlinkBanner/
+  connectRow/powerBtn/shortcut* styles.
+- `InboxScreen.tsx` — combined import sets only (my `AdBanner` + gold-
+  theme's `BottomNav`/`EmberField`/`GoldButton`); block/report UI and
+  gold-theme's motion pass/category tabs/scroll fix touched different
+  regions, merged without conflict.
+- `i18n/index.ts` — de-duped `home.holdToConnect`/`holdToDisconnect`
+  across all 4 locales (both branches added overlapping keys
+  independently); kept gold-theme's copy (what the JSX actually reads
+  now) + my own `home.holdToRetry` (unique).
+
+**Two real bugs found verifying the merge**, both from a gap gold-theme's
+own session flagged but couldn't close itself ("Full jest suite could NOT
+run locally — hung for its full timeout," per [[realgram-gold-theme]]):
+- `GoldButton` had a closed `Props` interface with **no
+  `accessibilityLabel` passthrough at all** — a real accessibility
+  regression on every button it replaced (Wallet's Link/Redeem,
+  StarlinkBanner's Invite, Inbox's Send). Added the prop, wired it
+  through the two `RealWalletCard` usages a test actually exercises;
+  StarlinkBanner/Inbox's Send button still don't pass one — flagging, not
+  fixing now, out of scope for this merge.
+- `realWalletCard.test.tsx` + `inboxScreen.test.tsx` broke on RN's own
+  jest preset mocking `AccessibilityInfo.isReduceMotionEnabled` as a bare
+  `jest.fn()` with no resolution — `GoldButton`/`EmberField` (both gold-
+  theme, both now rendered in these screens) call it directly in a mount
+  effect. Mocked it `resolve(false)` in both files, same pattern already
+  in `ssoGame.test.tsx`.
+
+Also carried forward my `c70625c` fix from just before the merge — a real
+race in yesterday's Profile refetch-on-focus (silent refetch could fire
+before the initial load ever succeeded, wiping a real error message and
+landing on the bare "Profile unavailable" fallback with no diagnostic).
+Not gold-theme-related, but very possibly what Khabat actually hit — the
+device testing this round got a brand-new `device_id` again (third
+distinct one now, `sl-93c3583f-…`, created the exact moment he opened the
+build) despite the profile-summary endpoint itself returning a valid
+empty profile fine for it (`curl`-verified) — so "Profile unavailable"
+was NOT a backend-can't-find-this-device issue like I'd guessed in
+A→B(99). Much more likely explanation now: this exact race.
+
+**Verification**: `tsc` clean, eslint 0 new errors (one pre-existing
+error, unrelated — `WelcomeScreen.tsx`'s `useReferral` trips
+`react-hooks/rules-of-hooks` purely on its name, identical on both
+branches beforehand, not a regression, not fixing as part of this).
+Full jest 391/401 — back to exactly the same 4 pre-existing failures as
+either branch alone. Clan-scroll fix and block/report backend both
+confirmed intact post-merge (`grep`-verified `BottomNav.CONTENT_HEIGHT`
+in all 3 affected screens, block/report actions still in `api.php`).
+
+Rebuild triggered on the merged branch, redeploying to the same preview
+link once green.
+
+### Still open from A→B(99), unaffected by this merge
+
+- Interstitial ad 100% failing (AdMob console check, not code).
+- Device recognition — still resetting per-build (third distinct
+  `device_id` this session), still not root-caused to a specific
+  mechanism; the CI keystore-caching fix (07-20) doesn't explain it since
+  this build used the same cached key. Genuinely unresolved.
+- ZAR/hour-from-cards + ZAR→REAL conversion — still blocked on Shahnameh-
+  backend access.
