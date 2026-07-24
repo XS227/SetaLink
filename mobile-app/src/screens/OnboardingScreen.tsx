@@ -1,14 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  Dimensions, ScrollView, Animated, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet,
+  Dimensions, ScrollView, Animated,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { useT, TKey } from '../i18n';
 import { useIdentityStore } from '../stores/identityStore';
 import { getStableDeviceId } from '../services/deviceIdentityService';
-import { checkHandleAvailable, reserveHandle } from '../services/handleService';
-import { normalizeHandle, validateHandle, suggestHandle } from '../utils/handle';
+import { reserveHandle } from '../services/handleService';
+import { suggestHandle } from '../utils/handle';
 
 const { width: W } = Dimensions.get('window');
 
@@ -17,13 +17,20 @@ interface Props {
 }
 
 // B-20: 6 vision slides ("the first VPN game" pitch) + a King/Queen persona
-// pick + a nickname/handle claim, replacing the old 3 tech-feature slides.
-// Persona and nickname stay editable later from EditIdentitySheet — nothing
-// here is a one-time-only choice.
+// pick, replacing the old 3 tech-feature slides. Persona stays editable
+// later — not a one-time-only choice.
+//
+// 2026-07-24 (Khabat): dropped the nickname/handle-picking step — letting
+// users choose their own profile ID was making onboarding look like it
+// "didn't recognize" a returning device (same underlying issue as B-20's
+// original re-prompt bug, A→B(95)). A handle still gets claimed — just
+// silently, auto-suggested from the device id, no user-facing picker
+// anywhere right now (the only other entry point, EditIdentitySheet, is
+// already orphaned — its one caller was the old ProfileScreen.tsx, removed
+// 2026-07-24 in the branding cleanup).
 type VisionStep = { kind: 'vision'; icon: string; titleKey: TKey; subKey: TKey; accent: string };
 type PersonaStep = { kind: 'persona' };
-type NicknameStep = { kind: 'nickname' };
-type Step = VisionStep | PersonaStep | NicknameStep;
+type Step = VisionStep | PersonaStep;
 
 const VISION: VisionStep[] = [
   { kind: 'vision', icon: '🛡',  titleKey: 'ob.s1.title', subKey: 'ob.s1.sub', accent: Colors.emerald[400] },
@@ -34,9 +41,7 @@ const VISION: VisionStep[] = [
   { kind: 'vision', icon: '🌐',  titleKey: 'ob.s6.title', subKey: 'ob.s6.sub', accent: Colors.gold[400] },
 ];
 
-const STEPS: Step[] = [...VISION, { kind: 'persona' }, { kind: 'nickname' }];
-
-type AvailState = 'idle' | 'checking' | 'free' | 'taken' | 'local';
+const STEPS: Step[] = [...VISION, { kind: 'persona' }];
 
 export function OnboardingScreen({ onFinish }: Props) {
   const { t, isRTL } = useT();
@@ -44,55 +49,35 @@ export function OnboardingScreen({ onFinish }: Props) {
   const scrollRef           = useRef<ScrollView>(null);
   const buttonScale         = useRef(new Animated.Value(1)).current;
 
-  const persona    = useIdentityStore((s) => s.persona);
-  const setPersona = useIdentityStore((s) => s.setPersona);
-  const setHandle  = useIdentityStore((s) => s.setHandle);
+  const persona       = useIdentityStore((s) => s.persona);
+  const setPersona    = useIdentityStore((s) => s.setPersona);
+  const seedFromId    = useIdentityStore((s) => s.seedFromId);
+  const setHandleState = useIdentityStore((s) => s.setHandleState);
+  const hasHandle     = useIdentityStore((s) => !!s.handle);
 
-  const [deviceId, setDeviceId]     = useState('');
-  const [handleText, setHandleText] = useState('');
-  const [avail, setAvail]           = useState<AvailState>('idle');
-  const [claiming, setClaiming]     = useState(false);
-  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Resolve the (locally-stable) device id early so the nickname step has a
-  // suggested handle and something to claim against — this runs before
-  // backend registration (Onboarding precedes Auth in the boot sequence).
+  // Silent handle claim — no UI, no user input. seedFromId is the store's
+  // own idempotent seeding action (already existed, just never had a live
+  // caller — its one previous caller, IdentityHeader.tsx, is orphaned,
+  // see comment above STEPS) — it sets handle+avatar without marking
+  // `customized`, unlike setHandle(), which is important: `customized`
+  // gates other identity logic (e.g. whether the handle should ever be
+  // treated as user-picked) and a silent auto-seed must never look like
+  // an explicit user choice.
   useEffect(() => {
+    if (hasHandle) return;
     getStableDeviceId()
-      .then((id) => { setDeviceId(id); setHandleText((h) => h || suggestHandle(id)); })
+      .then(async (id) => {
+        seedFromId(id);
+        try {
+          const r = await reserveHandle(suggestHandle(id), id);
+          setHandleState(r.source === 'backend' && r.available ? 'reserved' : 'local');
+        } catch {
+          // seedFromId above already set a local-state handle — fine as is.
+        }
+      })
       .catch(() => {});
-  }, []);
-
-  const normalized = normalizeHandle(handleText);
-  const errorKey   = validateHandle(normalized);
-
-  useEffect(() => {
-    if (debounce.current) clearTimeout(debounce.current);
-    if (errorKey || !normalized) { setAvail('idle'); return; }
-    setAvail('checking');
-    debounce.current = setTimeout(async () => {
-      const r = await checkHandleAvailable(normalized);
-      setAvail(r.source === 'local' ? 'local' : (r.available ? 'free' : 'taken'));
-    }, 450);
-    return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [normalized, errorKey]);
-
-  const availLabel = useMemo(() => {
-    if (!normalized) return '';
-    if (errorKey) return t(errorKey);
-    switch (avail) {
-      case 'checking': return t('id.checking');
-      case 'free':     return t('id.free');
-      case 'taken':    return t('id.taken');
-      case 'local':    return t('id.freeLocal');
-      default:         return '';
-    }
-  }, [normalized, errorKey, avail, t]);
-
-  const availColor =
-    errorKey || avail === 'taken' ? '#FF6B6B'
-    : avail === 'free'            ? Colors.emerald[400]
-    : Colors.text.secondary;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasHandle]);
 
   const goTo = (i: number) => {
     scrollRef.current?.scrollTo({ x: i * W, animated: true });
@@ -111,19 +96,10 @@ export function OnboardingScreen({ onFinish }: Props) {
   const step   = STEPS[index]!;
   const accent = step.kind === 'vision' ? step.accent : Colors.gold[400];
 
-  const handleNext = useCallback(async () => {
+  const handleNext = useCallback(() => {
     if (!isLast) { goTo(index + 1); return; }
-    // Nickname step, "Get Started" — best-effort claim, never blocks finishing.
-    if (normalized && !errorKey && avail !== 'taken' && !claiming) {
-      setClaiming(true);
-      try {
-        const r = await reserveHandle(normalized, deviceId);
-        setHandle(normalized, r.source === 'backend' && r.available ? 'reserved' : 'local');
-      } catch { /* local-first — never block onboarding on the network */ }
-      setClaiming(false);
-    }
     onFinish();
-  }, [isLast, index, normalized, errorKey, avail, claiming, deviceId, setHandle, onFinish]);
+  }, [isLast, index, onFinish]);
 
   return (
     <View style={styles.screen}>
@@ -179,30 +155,6 @@ export function OnboardingScreen({ onFinish }: Props) {
               </>
             )}
 
-            {s.kind === 'nickname' && (
-              <>
-                <Text style={styles.personaEmojiHero}>🪪</Text>
-                <Text style={[styles.slideTitle, { color: Colors.text.primary }, isRTL && styles.rtl]}>
-                  {t('ob.nickname.title')}
-                </Text>
-                <Text style={[styles.slideSubtitle, isRTL && styles.rtl]}>{t('ob.nickname.sub')}</Text>
-                <View style={styles.handleField}>
-                  <Text style={styles.at}>@</Text>
-                  <TextInput
-                    style={styles.handleInput}
-                    value={handleText}
-                    onChangeText={setHandleText}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    placeholder={t('id.handlePlaceholder')}
-                    placeholderTextColor={Colors.text.muted}
-                    maxLength={20}
-                  />
-                  {avail === 'checking' && <ActivityIndicator size="small" color={Colors.text.secondary} />}
-                </View>
-                {!!availLabel && <Text style={[styles.availText, { color: availColor }]}>{availLabel}</Text>}
-              </>
-            )}
           </View>
         ))}
       </ScrollView>
@@ -228,11 +180,8 @@ export function OnboardingScreen({ onFinish }: Props) {
             onPressIn={pressIn}
             onPressOut={pressOut}
             activeOpacity={1}
-            disabled={claiming}
           >
-            {claiming
-              ? <ActivityIndicator color={Colors.text.inverse} />
-              : <Text style={styles.ctaText}>{isLast ? t('ob.getStarted') : t('ob.next')}</Text>}
+            <Text style={styles.ctaText}>{isLast ? t('ob.getStarted') : t('ob.next')}</Text>
           </TouchableOpacity>
         </Animated.View>
 
@@ -305,11 +254,6 @@ const styles = StyleSheet.create({
   personaChoiceActive: { borderColor: Colors.gold[400], backgroundColor: Colors.gold[400] + '1A' },
   personaChoiceEmoji: { fontSize: 34 },
   personaChoiceLabel: { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
-
-  handleField:  { flexDirection: 'row', alignItems: 'center', width: '100%', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3] },
-  at:           { fontSize: Typography.size.md, color: Colors.text.secondary },
-  handleInput:  { flex: 1, color: Colors.text.primary, fontSize: Typography.size.md, paddingVertical: Spacing[3], paddingHorizontal: 4 },
-  availText:    { fontSize: Typography.size.xs },
 
   footer: {
     paddingHorizontal: Layout.screenPadding,
