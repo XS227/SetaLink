@@ -14,7 +14,7 @@ import { useT, SUPPORTED_LANGUAGES } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { checkForUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
-const GITHUB_URL      = 'https://github.com/XS227/SetaLink';
+const GITHUB_URL      = 'https://github.com/XS227/RealGram';
 const WEBSITE_URL     = 'https://realgram.no';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -428,7 +428,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
         <Section label={t('st.about')}>
           <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(GITHUB_URL)} activeOpacity={0.7}>
             <Text style={selStyles.label}>GitHub</Text>
-            <Text style={selStyles.value}>github.com/XS227/SetaLink</Text>
+            <Text style={selStyles.value}>github.com/XS227/RealGram</Text>
           </TouchableOpacity>
           <Divider />
           <TouchableOpacity style={selStyles.row} onPress={() => Linking.openURL(WEBSITE_URL)} activeOpacity={0.7}>
