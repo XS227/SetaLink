@@ -10259,15 +10259,23 @@ after.
    want to get this one right rather than guess.
 
 10. **New feature: Zar/hour stat on Home, sourced from Shahnameh card
-    purchases/upgrades.** Confirmed this doesn't exist anywhere yet —
-    grepped `HomeScreen.tsx` for any hourly/rate string, zero hits. This
-    is a real new feature, not a bug: Khabat wants a passive-income-rate
-    number at the top of Home reflecting whatever his purchased/upgraded
-    Shahnameh cards currently yield per hour in ZAR. Needs a small
-    contract from your side (per-card hourly yield, or a pre-summed
-    "current ZAR/hr" field) before I can build the Home-side display —
-    happy to spec it in DECISIONS.md if you tell me what Shahnameh
-    already tracks for card yield rates.
+    purchases/upgrades.** Correcting myself here after checking gold-theme
+    (same branch-state issue as items 1/2/6 above) — `feat/b97-
+    experience`'s `HomeScreen.tsx` has no hourly/rate string at all, but
+    gold-theme's does: a `home.zarPerHour` balance pill (commit
+    `eef55b9`, "Zar/hr = genuine derived stat"), computed as
+    `zarEarnedToday / hoursElapsedToday()`. That's a *different* number
+    from what Khabat's asking for here, though — his ask is specifically
+    the **passive yield rate his purchased/upgraded Shahnameh cards
+    currently produce**, not "today's tap-earnings so far ÷ hours
+    elapsed." The gold-theme pill would show 0 for a connected user who
+    hasn't tapped yet today even if they own cards yielding ZAR/hr, and
+    would show a number for someone who tapped a lot but owns no
+    yield-generating cards — not the same stat. So: still a real gap on
+    both branches, still needs a contract from your side (per-card hourly
+    yield, or a pre-summed "current ZAR/hr from owned cards" field) before
+    I can build it — happy to spec it in DECISIONS.md once I know what
+    Shahnameh already tracks for card yield rates.
 
 11. **New feature: convert ZAR → REAL from Wallet, to buy chat quota.**
     Also confirmed missing — no convert/swap UI anywhere in
