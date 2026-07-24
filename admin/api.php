@@ -3323,7 +3323,7 @@ switch ($action) {
         $fromDt = $from_raw . ' 00:00:00';
         $toDt   = gmdate('Y-m-d', strtotime($to_raw) + 86400) . ' 00:00:00'; // exclusive
 
-        $slots = ['home_banner' => [], 'freedom_banner' => []];
+        $slots = ['home_banner' => [], 'freedom_banner' => [], 'inbox_banner' => []];
         try {
             $st = $db->prepare("
                 SELECT
@@ -3340,7 +3340,7 @@ switch ($action) {
                 FROM app_events
                 WHERE event IN ('AD_BANNER_REQUEST','AD_BANNER_LOADED','AD_BANNER_IMPRESSION',
                                  'AD_BANNER_CLICK','AD_LOAD_ERROR')
-                  AND json_extract(props,'\$.slot') IN ('home_banner','freedom_banner')
+                  AND json_extract(props,'\$.slot') IN ('home_banner','freedom_banner','inbox_banner')
                   AND created_at >= ? AND created_at < ?
                 GROUP BY slot
             ");
@@ -3367,6 +3367,7 @@ switch ($action) {
             'window'         => ['from' => $from_raw, 'to' => $to_raw],
             'home_banner'    => $slots['home_banner']    ?: $zero,
             'freedom_banner' => $slots['freedom_banner'] ?: $zero,
+            'inbox_banner'   => $slots['inbox_banner']   ?: $zero,
         ]);
         break;
 

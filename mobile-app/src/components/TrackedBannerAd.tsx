@@ -30,7 +30,7 @@ import {
 import { trackEvent } from '../services/analytics';
 import { useAuthStore } from '../stores/authStore';
 
-export type BannerSlot = 'home_banner' | 'freedom_banner';
+export type BannerSlot = 'home_banner' | 'freedom_banner' | 'inbox_banner';
 
 type Props = {
   slot: BannerSlot;

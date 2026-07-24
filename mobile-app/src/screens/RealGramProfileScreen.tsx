@@ -17,6 +17,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import {
   ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -118,6 +119,7 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
     .sort((a, b) => (b.endedAt || b.startedAt) - (a.endedAt || a.startedAt))
     .slice(0, 5);
   const insets   = useSafeAreaInsets();
+  const isFocused = useIsFocused();
 
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
@@ -129,9 +131,9 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
   // Manual "Try again" below still works after auto-retry gives up.
   const autoRetriesRef = useRef(0);
 
-  const load = useCallback(() => {
+  const load = useCallback((opts?: { silent?: boolean }) => {
     if (!deviceId) return;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError('');
     getProfileSummary(deviceId)
       .then((p) => {
@@ -143,10 +145,13 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
         const code = e instanceof Error ? e.message : 'unknown_error';
         if (autoRetriesRef.current < 2) {
           autoRetriesRef.current += 1;
-          setTimeout(load, autoRetriesRef.current * 1200);
+          setTimeout(() => load(opts), autoRetriesRef.current * 1200);
           return; // stay in loading state through the retry
         }
-        setError(friendlyProfileError(code));
+        // A silent background refresh failing shouldn't blow away an
+        // already-displayed profile into an error screen — leave the
+        // stale numbers up and just try again next time this tab refocuses.
+        if (!opts?.silent) setError(friendlyProfileError(code));
         setLoading(false);
       });
   }, [deviceId]);
@@ -157,6 +162,20 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Re-sync on every refocus (Khabat, 2026-07-24: ZAR/REAL/XP earned inside
+  // the Shahnameh WebView on the Game tab weren't showing up here — this
+  // screen only ever fetched getProfileSummary once, on first mount, and
+  // React Navigation keeps tab screens mounted between switches, so that
+  // first snapshot was the only one that ever ran for the lifetime of the
+  // app session). Silent (no spinner) so tabbing back in doesn't flash a
+  // loading state over numbers that are usually still correct.
+  const mountedRef = useRef(false);
+  useEffect(() => {
+    if (!mountedRef.current) { mountedRef.current = true; return; }
+    if (isFocused) load({ silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused]);
 
   if (loading) {
     return (

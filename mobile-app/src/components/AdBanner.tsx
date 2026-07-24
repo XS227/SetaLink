@@ -17,9 +17,9 @@
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Colors, Radius, Spacing } from '../design/tokens';
-import { TrackedBannerAd } from './TrackedBannerAd';
+import { TrackedBannerAd, BannerSlot } from './TrackedBannerAd';
 
-export function AdBanner({ show, style }: { show: boolean; style?: object }) {
+export function AdBanner({ show, style, slot = 'freedom_banner' }: { show: boolean; style?: object; slot?: BannerSlot }) {
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -31,7 +31,7 @@ export function AdBanner({ show, style }: { show: boolean; style?: object }) {
       pointerEvents={loaded ? 'auto' : 'none'}
     >
       <TrackedBannerAd
-        slot="freedom_banner"
+        slot={slot}
         onAdLoaded={() => setLoaded(true)}
         onAdFailedToLoad={() => setFailed(true)}
       />

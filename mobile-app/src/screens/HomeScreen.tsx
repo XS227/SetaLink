@@ -116,6 +116,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   // tap here.
   const adGateBusyRef = useRef(false);
 
+  // Khabat, 2026-07-24: rapid repeat-tapping the power button while connected
+  // was toggling the tunnel off almost immediately (single tap = instant
+  // disconnect, no confirmation). Both directions now require a deliberate
+  // 3s hold — handlePower only fires from onLongPress below, never onPress.
+  const HOLD_MS = 3000;
+
   const handlePower = useCallback(() => {
     if (isBusy || adGateBusyRef.current) return;
     if (isConnected) {
@@ -276,18 +282,23 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
                     ? t('home.connecting')
                     : t('home.disconnected')}
               </Text>
-              {error && !isConnected && !isBusy && (
-                <Text style={styles.errorHint} numberOfLines={1}>{t('home.tapToRetry')}</Text>
+              {error && !isConnected && !isBusy ? (
+                <Text style={styles.errorHint} numberOfLines={1}>{t('home.holdToRetry')}</Text>
+              ) : !isBusy && (
+                <Text style={styles.holdHint} numberOfLines={1}>
+                  {isConnected ? t('home.holdToDisconnect') : t('home.holdToConnect')}
+                </Text>
               )}
             </View>
 
             <TouchableOpacity
               style={[styles.powerBtn, { borderColor: powerColor + '66' },
                       isConnected && { backgroundColor: powerColor + '18' }]}
-              onPress={handlePower}
+              onLongPress={handlePower}
+              delayLongPress={HOLD_MS}
               disabled={isBusy}
               activeOpacity={0.75}
-              accessibilityLabel={isConnected ? 'Disconnect VPN' : 'Connect VPN'}
+              accessibilityLabel={isConnected ? 'Hold to disconnect VPN' : 'Hold to connect VPN'}
             >
               <PowerIcon color={powerColor} />
             </TouchableOpacity>
@@ -390,24 +401,28 @@ const styles = StyleSheet.create({
   avatarEmoji:    { fontSize: 16 },
 
   // Starlink banner
+  // Khabat, 2026-07-24: "takes too much vertical space" — trimmed padding/
+  // gap/type scale ~20% (was padding Spacing[4]/gap Spacing[2], title 17,
+  // count 28) rather than a fixed height, so it still grows correctly for
+  // longer translated strings.
   starlinkBanner: {
     backgroundColor: Colors.bg.surface,
     borderRadius: Radius.xl,
-    padding: Spacing[4],
+    padding: Spacing[3],
     borderWidth: 1,
     borderColor: 'rgba(212,140,20,0.25)',
-    gap: Spacing[2],
+    gap: Spacing[1],
     overflow: 'hidden',
   },
   starlinkBannerActive: { borderColor: 'rgba(212,140,20,0.6)' },
   starlinkTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   starlinkLabel:  { fontSize: 10, fontFamily: Typography.family.heading, color: Colors.gold[600], letterSpacing: 2, textTransform: 'uppercase' },
-  starlinkTitle:  { fontSize: 17, fontFamily: Typography.family.heading, color: Colors.gold[300], marginTop: 2 },
+  starlinkTitle:  { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.gold[300], marginTop: 2 },
   starlinkCounter:{ flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  starlinkCountNum: { fontSize: 28, fontFamily: Typography.family.heading, color: Colors.gold[300] },
-  starlinkCountSep: { fontSize: 16, color: Colors.gold[600] },
-  starlinkCountTarget: { fontSize: 16, color: Colors.gold[600] },
-  progressTrack:  { height: 5, flexDirection: 'row', borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(212,140,20,0.12)' },
+  starlinkCountNum: { fontSize: 23, fontFamily: Typography.family.heading, color: Colors.gold[300] },
+  starlinkCountSep: { fontSize: 14, color: Colors.gold[600] },
+  starlinkCountTarget: { fontSize: 14, color: Colors.gold[600] },
+  progressTrack:  { height: 4, flexDirection: 'row', borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(212,140,20,0.12)' },
   progressFill:   { backgroundColor: Colors.gold[500], borderRadius: 3 },
   progressFillDone: { backgroundColor: Colors.emerald[400] },
   starlinkHint:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
@@ -437,6 +452,7 @@ const styles = StyleSheet.create({
   statusDot:    { width: 7, height: 7, borderRadius: 4, position: 'absolute', left: -14, top: 5 },
   statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingLeft: 0 },
   errorHint:    { fontSize: 11, color: '#FF6B6B', fontFamily: Typography.family.body },
+  holdHint:     { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
   powerBtn:     { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
 
   // Metrics

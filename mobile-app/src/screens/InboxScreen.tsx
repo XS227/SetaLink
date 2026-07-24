@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { AdBanner } from '../components/AdBanner';
 import { useAuthStore }  from '../stores/authStore';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
@@ -496,6 +497,18 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 )}
               </View>
 
+              {/* Ad banner — Khabat, 2026-07-24: AdMob showed on Freedom/Home
+                  but not here; support threads are the one Inbox surface it's
+                  safe to place an ad on (never inside a real person-to-person
+                  DM thread). */}
+              {openConvo.support && (
+                <AdBanner
+                  show={user?.plan === 'free' || !!user?.testMode}
+                  slot="inbox_banner"
+                  style={styles.threadAdBanner}
+                />
+              )}
+
               {/* Conversation */}
               <ScrollView style={styles.threadScroll} contentContainerStyle={styles.threadScrollContent}>
                 {/* Support thread opens with a pinned intro note (localized). */}
@@ -737,6 +750,7 @@ const styles = StyleSheet.create({
   threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
   threadDeleteBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   threadDeleteIcon: { fontSize: 16 },
+  threadAdBanner: { marginHorizontal: Layout.screenPadding, marginTop: Spacing[2] },
   threadScroll:  { flex: 1 },
   threadScrollContent: { padding: Layout.screenPadding, gap: Spacing[2] },
   bubbleRow:     { flexDirection: 'row' },

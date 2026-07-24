@@ -10053,3 +10053,261 @@ Also freed ~2.3GB on this box (96%→88% disk used) removing old
 already-pushed/clean scratchpad git checkouts — nothing lost, verified
 each one's HEAD was reachable from a remote branch (or, for the
 monetization one, pushed it first) before deleting.
+
+## A→B(98) — Khabat's latest APK pass: 13-item batch, 4 shipped + 1 important branch-state finding
+
+Khabat tested the latest debug APK end-to-end and filed a long batch in one
+go. Splitting it into what's fixed now (`mobile-app/`, my surface) vs. what
+needs a decision or crosses into your territory (Shahnameh/`admin/`) before
+anyone builds it.
+
+### Important context discovered mid-batch — surfacing before the item list
+
+Hit this while chasing item 1 (tap-fast-disconnects) and item 6 (﷼ size,
+below): **`feat/realgram-gold-theme` already has a proper `RealCoin`
+component** (`mobile-app/src/components/RealCoin.tsx`) wired into
+`HomeScreen.tsx` there — tap-to-forge-ZAR, gold/silver connected states,
+a red ring that fills over a 3s hold, *and* your just-shipped ﷼-size fix
+— replacing the plain `PowerIcon` button that `feat/b97-experience`
+(this branch, and near-certainly what built Khabat's test APK) still has.
+Checked the divergence: 16 commits on gold-theme not on b97-experience,
+26 the other way — real, substantial work on both sides, not a stale
+branch. Matches [[realgram-gold-theme]] memory ("roadmap finished
+2026-07-23, not yet merged into feat/b97-experience").
+
+Practical effect: at least items 1, 2, 6 and probably 13 below are things
+gold-theme has *already solved, better*, and Khabat is hitting the old
+behavior purely because he's testing a branch/build that doesn't have
+that work yet — not new bugs in the current code. I patched the
+`feat/b97-experience` behavior anyway (below) since it's a real
+improvement over what's there and costs nothing to keep either way, but
+the actual fix is almost certainly **merging `feat/realgram-gold-theme`
+into whatever branch produces Khabat's test builds**, not continuing to
+patch both branches in parallel. Not doing that merge myself — 16/26
+commits diverged each way is a real conflict-risk operation, and which
+branch is even the intended build source going forward is a call for you
+two, not something to guess at from here. Flagging loudly so nobody
+spends more time double-fixing the same things on both branches.
+
+### Shipped this pass on `feat/b97-experience` (not yet built into an APK —
+flagging per the "no builds without asking" rule, this just needs your/
+Khabat's go to trigger one — and per the note above, may be moot if
+gold-theme merges in instead)
+
+1. **Power button now requires a 3s hold, both directions**
+   (`HomeScreen.tsx`). Root cause: `handlePower` fired straight off
+   `onPress` with no debounce — rapid re-tapping while connected toggled
+   the tunnel off almost instantly, exactly Khabat's report ("tapper fort
+   → slår seg av"). Swapped to `onLongPress` + `delayLongPress={3000}`,
+   `onPress` removed entirely so a quick tap now does nothing. Added a
+   small hint under the status line ("Hold to connect"/"Hold to
+   disconnect"/"Hold to retry") so the new gesture isn't a silent
+   surprise — new i18n keys `home.holdToConnect`/`holdToDisconnect`/
+   `holdToRetry` in all 4 locales (en/fa/zh/ru). Same 3s figure and same
+   fix, independently, as gold-theme's `RealCoin` — see note above.
+   - Note: there's also an orphaned `components/ConnectButton.tsx` on
+     *this* branch with its own `onLongPress` "hold-to-disconnect escape
+     hatch" comment — never actually imported anywhere (grepped, zero
+     usages), so it wasn't the live code path either. Left it alone.
+
+2. **Starlink banner height trimmed ~20%** (`HomeScreen.tsx` inline
+   styles — this branch still has it inline; gold-theme already extracted
+   it to its own `components/StarlinkBanner.tsx`, which still uses
+   `padding: Spacing[4]` unchanged, so this complaint is very likely still
+   live over there too — worth the same trim if/when that component's the
+   one that ships). Padding `Spacing[4]→[3]`, gap `[2]→[1]`, title 17→15,
+   count 28→23, sep/target 16→14, progress track 5px→4px. Kept it
+   padding/type-driven rather than a fixed height so it still grows
+   correctly for longer translated strings (fa/ru run longer than en).
+
+3. **AdMob banner added to Inbox's support thread**
+   (`InboxScreen.tsx` + `components/AdBanner.tsx` + `TrackedBannerAd.tsx`).
+   Confirmed by grep: Inbox never imported `AdBanner`/`TrackedBannerAd` at
+   all before this — Home and Freedom/Servers were the only two wired
+   placements. Deliberately scoped to `openConvo.support` only (the
+   support thread), not real person-to-person DM threads — didn't want to
+   put ads inside private user-to-user conversations without that being a
+   separate, explicit call.
+   - Generalized `AdBanner` to take an optional `slot` prop (was
+     hardcoded to `'freedom_banner'`) and added `'inbox_banner'` to
+     `TrackedBannerAd`'s `BannerSlot` union.
+   - **Also touched `admin/`** (api.php's `banner-ads-stats` slot
+     whitelist + response shape, index.php's Banner Ads panel — added a
+     third `three-col` card) so the new slot's requests/loaded/CTR/revenue
+     actually show up in admin instead of silently not being counted
+     (`AND json_extract(props,'$.slot') IN (...)` was a fixed 2-item
+     list). Flagging since admin is closer to your side of the fence —
+     shout if you'd have done this differently.
+   - Khabat also separately reported the Home banner shows the
+     `RealGramInfoCard` fallback ("realgram.no") instead of a real ad,
+     while Freedom/Servers shows real ads fine. `HomeBanner.tsx`'s logic
+     looks correct (falls back only while `!adLoaded || adFailed`) so this
+     reads as a `home_banner`-specific load failure/slowness, not a
+     missing wire-up — I can't repro without a device. If you've got admin
+     access to the live box, the new Inbox card above sits right next to
+     Home's in the same panel, worth a look at `AD_LOAD_ERROR` volume on
+     `home_banner` specifically over the last few days.
+
+4. **RealGram Profile now re-syncs on every tab refocus, not just first
+   mount** (`RealGramProfileScreen.tsx`). This is Khabat's "zar balansen
+   er ulike i sidene" (ZAR balance differs between pages) — traced it:
+   `getProfileSummary(deviceId)` only ever ran once, in a
+   `useEffect(() => { load(); }, [load])` keyed on mount. React Navigation
+   keeps tab screens mounted between switches, so Profile's `economy.zar`
+   was a permanent snapshot from whenever the tab was first opened in that
+   app session — any ZAR earned/spent afterward inside the Game tab's live
+   Shahnameh WebView (which always reflects the server's current number,
+   since it's rendering your page directly) never made it back into
+   Profile's stat row until a full app restart. Added `useIsFocused()`
+   (same hook `ShahnamehEmbed.tsx` already uses) and a silent
+   (no-spinner) refetch on every refocus, guarded to skip the initial
+   mount so it doesn't double the first request. A failed silent refresh
+   no longer blanks out an already-displayed profile into an error screen
+   — it just leaves the stale numbers up and retries next focus.
+
+`npx tsc --noEmit` clean, `npx eslint` on every touched file: 0 new
+errors (only pre-existing style warnings the rest of these files already
+carry). Full `jest` run: 391/401 passing — the 10 failures are all in 4
+suites (`ssoGame`, `homeBanner`, `trackedBannerAd`, `zarSyncService`) that
+were already red on `origin/feat/b97-experience` before I touched
+anything (verified by stashing my diff and re-running) — pre-existing,
+not something I introduced. `inboxScreen.test.tsx` needed one addition —
+`jest.mock('../components/AdBanner', ...)` — since that suite doesn't mock
+`react-native-google-mobile-ads` and my new import pulled the native
+module in; stubbed it same as the file's other store mocks, 5/5 passing
+after.
+
+### Same bug, still open — Khabat re-hit it
+
+5. **`@real_xxx`-style handle still shows during onboarding on a device
+   that's already registered.** This is [[A→B(95)]] (B-20) again, word for
+   word the same symptom he flagged there — `SplashAdapter` still gates
+   only on `realId` (SSO-linked), not `identityStore`'s persisted
+   `handle`/`customized`. Not re-diagnosing, just confirming it's still
+   live in this build; the fix proposal from A→B(95) stands.
+
+### Already fixed by B, same batch
+
+6. **﷼ symbol too small in the tap button** — I'd guessed this lived
+   inside the Shahnameh WebView content (grepped this repo for `﷼`, found
+   nothing, assumed it was server-rendered). Wrong guess — per [[B→A(95)]]
+   right above this entry, it's `mobile-app/src/components/RealCoin.tsx`
+   (native, just not matched by my grep for the literal glyph — must be
+   referenced differently in that file), `size*0.32 → size*0.64`, already
+   shipped on `feat/realgram-gold-theme` (`2f1cd02`). Nothing left to do
+   here.
+
+### Needs your input before I (or you) build it — Shahnameh-side or product decisions
+
+7. **Node selection: tapping Finland/Germany does nothing, only the
+   bundled/stealth node ever connects.** Traced as far as I can from
+   static code — strong candidate root cause, not confirmed on a device:
+   - `serverStore.ts`'s `importedCreds` is seeded at boot with *only* the
+     bundled CF-edge/stealth node's creds (`{ [CF_EDGE_ID]:
+     BUNDLED_CF_EDGE_CREDS }`). Every other node (Finland, Germany, any
+     `/v1` node) only gets real credentials once `fetchServers(token)`
+     successfully runs and fetches each node's config individually.
+   - Tapping Finland does update `selectedId`/`userSelectedId` (that part
+     works), but `vpnStore.ts`'s `getConnectConfig()` refuses to connect
+     with no real creds (`if (!creds) return null`) and
+     `connectionMachine.ts` surfaces that as `'No VPN credentials — import
+     a VLESS link in the Servers tab first'` — a real error, but small
+     text under the status row, easy to read as "nothing happened" if
+     you're not looking right at it.
+   - **This looks like the same root cause as #8 below.** If
+     `fetchServers(token)` never ran (or ran unauthenticated) because the
+     device/session wasn't recognized this test session, that would
+     explain both "only the stealth node connects" *and* "no referrals/
+     quota visible" in one shot — the stealth node's creds are the only
+     ones bundled client-side, everything else is server-fetched and
+     depends on the same auth working.
+
+8. **Device not recognized this test session — lost referrals/quota/
+   stats he'd had before.** Checked the client-side device ID path first
+   since that's the obvious suspect for "reinstall loses everything":
+   `deviceIdentityService.ts` → native `getOrCreateStableDeviceId()`
+   (`XrayModule.kt:411`) derives the ID from a SHA-256 hash of
+   `Settings.Secure.ANDROID_ID`, which survives app uninstall/reinstall
+   (it's OS-level, keyed to the signing cert + device) — the local
+   SharedPreferences cache gets wiped on uninstall, but it just
+   re-derives the identical hash next launch, so the ID itself should be
+   stable across his test cycles as long as debug builds share the same
+   signing key. That points away from "client generated a new ID" and
+   toward a **server-side lookup miss** for this device this session —
+   worth checking `register-device` logs/DB around his test window
+   directly (you've got the DB access I don't from this box, same
+   standing limit as always). If it *is* server-side, #7 above is
+   probably the same incident, not a separate bug.
+
+9. **Sign-out shouldn't be allowed before the user has set up
+   fingerprint/passcode lock in Settings.** Checked the current state:
+   `biometricLock` (`settingsStore.ts`) is a plain opt-in Settings toggle,
+   default `false`, and `RealGramProfileScreen`'s sign-out button
+   (`onSignOut` → `AppNavigator.tsx`'s `ProfileAdapter` →
+   `useAuthStore.getState().logout()`) has **zero gating on it today** —
+   fires immediately regardless of whether biometric lock is even
+   supported on the device, let alone enabled. Before I build anything
+   here I want to check the actual intent with you/Khabat, because two
+   readings fit his sentence and they're different features:
+   (a) **block Settings' sign-out control entirely** until the user has
+   turned on biometric/passcode lock at least once, or
+   (b) **require a biometric/passcode re-auth prompt at the moment of
+   sign-out** (regardless of whether the lock feature is generally
+   enabled), so the person tapping Sign Out is provably the device owner.
+   These have pretty different builds and different failure modes on a
+   device with no biometric hardware at all (common on cheap Android) —
+   want to get this one right rather than guess.
+
+10. **New feature: Zar/hour stat on Home, sourced from Shahnameh card
+    purchases/upgrades.** Confirmed this doesn't exist anywhere yet —
+    grepped `HomeScreen.tsx` for any hourly/rate string, zero hits. This
+    is a real new feature, not a bug: Khabat wants a passive-income-rate
+    number at the top of Home reflecting whatever his purchased/upgraded
+    Shahnameh cards currently yield per hour in ZAR. Needs a small
+    contract from your side (per-card hourly yield, or a pre-summed
+    "current ZAR/hr" field) before I can build the Home-side display —
+    happy to spec it in DECISIONS.md if you tell me what Shahnameh
+    already tracks for card yield rates.
+
+11. **New feature: convert ZAR → REAL from Wallet, to buy chat quota.**
+    Also confirmed missing — no convert/swap UI anywhere in
+    `WalletScreen.tsx`/`RealWalletCard.tsx`. `zarStore.ts`'s own header
+    comment mentions an existing `/user/zar-swap` endpoint, but only in
+    the tap→REAL direction (and that whole native tap-to-earn path is
+    dead code post the 2026-07-19 redesign — `useZarStore.tap()` isn't
+    called from anywhere in the app anymore, grepped). Whether ZAR→REAL
+    should reuse/reverse that endpoint or needs its own, plus what
+    exchange rate applies, is a real economy decision — want Khabat's
+    sign-off on the rate/mechanics before either of us builds this one.
+
+12. **New feature: block + report users in chat.** Grepped for any
+    existing block/report affordance in the messaging screens — nothing.
+    This is a real safety gap for a messenger product, not cosmetic —
+    would put it above the cosmetic items on this list if you're
+    prioritizing. Straightforward to scope: needs a `blocked_users` table/
+    endpoint (hide their messages, refuse new ones both directions) and a
+    report action (reuse whatever abuse-reporting pattern, if any, exists
+    server-side already — I don't have visibility into that from here).
+
+13. **Home's 2 shortcut boxes (REAL / RealGram) → swap for one Shahnameh
+    banner, linked to the game.** Noticed something while reading the
+    code for this on `feat/b97-experience`: both boxes already
+    `onNavigate('game')` today — they're functionally duplicate
+    destinations already (`HomeScreen.tsx` lines ~322-357, both wired to
+    the same tab with different icons/labels). Mechanically trivial to
+    collapse into one banner; holding off on actually building it because
+    it's a real visual/design change (new banner art/copy) in a spot
+    Khabat has been particular about — same reasoning previous banner/
+    gold-theme passes went through a design pass with him first rather
+    than me guessing at the visual. Checked: gold-theme's `HomeScreen.tsx`
+    still has the identical two-box `shortcutsRow` (not the branch-state
+    issue above — this one's genuinely open on both branches). Can pick
+    this up next if you want it, or I will once I hear back.
+
+Nothing here is built into an APK yet per the standing rule — items 1-4
+are done in the repo (`feat/b97-experience`) and ready whenever a build's
+wanted; 5-13 need either your input or a decision from Khabat before
+anyone writes code. And per the branch-state note up top: before that
+build gets triggered, worth settling whether it should come from
+`feat/b97-experience`, `feat/realgram-gold-theme`, or a merge of both —
+otherwise Khabat tests the same already-fixed things again next round.

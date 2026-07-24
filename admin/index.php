@@ -757,11 +757,11 @@ function icon(string $name): string {
         </div>
       </div>
 
-      <!-- ── Banner Ads (Home / Freedom placements) ─────────────────── -->
+      <!-- ── Banner Ads (Home / Freedom / Inbox placements) ─────────────────── -->
       <div class="panel" style="margin-top:.75rem;margin-bottom:.75rem">
-        <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Banner Ads <span class="panel-sub">AdMob — Home &amp; Freedom placements, same period as above</span></span></div>
+        <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Banner Ads <span class="panel-sub">AdMob — Home, Freedom &amp; Inbox placements, same period as above</span></span></div>
         <div class="panel-body">
-          <div class="two-col">
+          <div class="three-col">
             <div>
               <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">HOME BANNER</div>
               <table class="tbl" style="width:100%"><tbody id="bannerAdsHome"></tbody></table>
@@ -769,6 +769,10 @@ function icon(string $name): string {
             <div>
               <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">FREEDOM BANNER</div>
               <table class="tbl" style="width:100%"><tbody id="bannerAdsFreedom"></tbody></table>
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">INBOX BANNER (support thread)</div>
+              <table class="tbl" style="width:100%"><tbody id="bannerAdsInbox"></tbody></table>
             </div>
           </div>
         </div>
@@ -3102,6 +3106,7 @@ views.ads = {
     };
     renderSlot('bannerAdsHome',    d.home_banner    || {});
     renderSlot('bannerAdsFreedom', d.freedom_banner || {});
+    renderSlot('bannerAdsInbox',   d.inbox_banner   || {});
   },
 
   // ── Grouped Ad Errors (Khabat, 2026-07-20) ────────────────────────────

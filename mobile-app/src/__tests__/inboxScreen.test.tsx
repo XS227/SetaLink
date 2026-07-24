@@ -16,6 +16,13 @@ jest.mock('../stores/toastStore', () => ({
   useToastStore: { getState: () => ({ show: () => {} }) },
 }));
 
+// AdBanner pulls in react-native-google-mobile-ads (native module, not
+// registered under jest) — irrelevant to this file's actual assertions
+// (thread-open/read-marking behavior), so stub it out same as the other
+// store/service mocks above rather than dragging the ad SDK into every
+// Inbox test.
+jest.mock('../components/AdBanner', () => ({ AdBanner: () => null }));
+
 const mockAnnMarkRead = jest.fn();
 let mockAnnouncements: any[] = [];
 jest.mock('../stores/inboxStore', () => ({
