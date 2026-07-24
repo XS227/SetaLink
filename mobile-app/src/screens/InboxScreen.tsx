@@ -3,9 +3,16 @@ import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
   Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming,
+} from 'react-native-reanimated';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { AdBanner } from '../components/AdBanner';
+import { BottomNav } from '../components/BottomNav';
+import { EmberField } from '../components/EmberField';
+import { GoldButton } from '../components/GoldButton';
 import { useAuthStore }  from '../stores/authStore';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
@@ -20,6 +27,14 @@ import { blockUser, reportMessage, type DMReportReason } from '../services/entit
 import { Logger } from '../utils/logger';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
+
+// "Clan" tab deliberately excluded — no real clan-member-ID list exists
+// client-side to cross-reference DM peers against yet.
+const CATEGORY_TABS = [
+  ['all',    'dm.categoryAll']    as const,
+  ['direct', 'dm.categoryDirect'] as const,
+  ['unread', 'dm.categoryUnread'] as const,
+];
 
 // Disappearing-message timer steps the composer chip cycles through (seconds
 // after the recipient reads; 0 = permanent). Wickr-style, kept playful.
@@ -70,6 +85,23 @@ interface Props {
  */
 export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const { t } = useT();
+  const insets      = useSafeAreaInsets();
+
+  // FAB "breathe" (theme pkg 02-chats.html: ".rg-btn--gold ... .rg-breathe").
+  const fabBreathe = useSharedValue(0);
+  useEffect(() => {
+    fabBreathe.value = withRepeat(
+      withSequence(
+        withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0, { duration: 1600, easing: Easing.inOut(Easing.ease) }),
+      ),
+      -1, true,
+    );
+  }, [fabBreathe]);
+  const fabStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + fabBreathe.value * 0.06 }],
+  }));
+
   const user        = useAuthStore((s) => s.user);
   const deviceId    = user?.deviceId ?? '';
   const myId        = user?.userId ?? '';
@@ -100,6 +132,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [peerTyping, setPeerTyping] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Category tabs (theme pkg 02-chats.html: "All/Clan/Direct/Unread tabs").
+  // "Clan" isn't here — there's no real clan-member-ID list to cross-
+  // reference DM peers against yet, so a "Clan" tab would just be an empty
+  // shelf or a guess. All/Direct/Unread are 100% real distinctions the
+  // data already supports.
+  const [category, setCategory] = useState<'all' | 'direct' | 'unread'>('all');
 
   // Tick once a second while the open thread contains disappearing messages,
   // so burn countdowns run and expired bubbles vanish without waiting for the
@@ -132,17 +170,35 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     [dms, announcements, supportName, myId],
   );
 
+  // Quick-access contact strip (theme pkg's "online story-strip") — real
+  // recent contacts, not fake stories/presence. conversations is already
+  // recency-sorted (unifiedThreads.ts); take the first few real peers.
+  // Deliberately NOT claiming anyone is "online" — there's no presence
+  // signal anywhere in this app, so no presence ring/dot here, unlike the
+  // mockup's .presence.on/.off (flagged as a real backend gap, not built).
+  const recentContacts = useMemo(
+    () => conversations.filter((c) => !c.support).slice(0, 6),
+    [conversations],
+  );
+
+  // Category tab, applied before search.
+  const categorized = useMemo(() => {
+    if (category === 'direct') return conversations.filter((c) => !c.support);
+    if (category === 'unread') return conversations.filter((c) => c.unread > 0);
+    return conversations;
+  }, [conversations, category]);
+
   // Message search (2026-07-22) — entirely client-side: every message the
   // conversation list already has locally (title + full message bodies), no
   // new backend call. A conversation matches if its title matches, or any
   // message in it does.
   const filteredConversations = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return conversations;
-    return conversations.filter((c) =>
+    if (!q) return categorized;
+    return categorized.filter((c) =>
       c.title.toLowerCase().includes(q) ||
       c.messages.some((m) => m.body.toLowerCase().includes(q)));
-  }, [conversations, searchQuery]);
+  }, [categorized, searchQuery]);
 
   // Server-side search fallback (2026-07-22, chat audit bug #2) — the filter
   // above only ever sees the locally-cached 200-message window, so anything
@@ -395,10 +451,22 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     }
   };
 
-  const Avatar = ({ support, label, size = 44 }: { support: boolean; label: string; size?: number }) => (
+  // Node contacts (raw device IDs, e.g. "SL-227-…") get the 📡 network
+  // avatar instead of a face-initial — theme pkg's own rule since the
+  // very first read of 04-PAGE-THEMES.md, missed in the Phase 4 pass
+  // (that pass only worked from the summary table, not the fuller
+  // 02-chats.html reference Khabat later uploaded directly). Real signal,
+  // not a guess: a conversation is "node-shaped" exactly when it has no
+  // real username at all — buildConversations() falls back to the raw
+  // peerDevice string as the title only in that case.
+  const Avatar = ({ support, label, isNode, size = 44 }: { support: boolean; label: string; isNode?: boolean; size?: number }) => (
     support ? (
       <View style={[styles.avatar, styles.avatarOfficial, { width: size, height: size, borderRadius: size / 2 }]}>
         <Image source={REALINK_LOGO} style={{ width: size * 0.6, height: size * 0.6, resizeMode: 'contain' }} />
+      </View>
+    ) : isNode ? (
+      <View style={[styles.avatar, styles.avatarNode, { width: size, height: size, borderRadius: size / 2 }]}>
+        <Text style={{ fontSize: size * 0.4 }}>📡</Text>
       </View>
     ) : (
       <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
@@ -409,6 +477,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
 
   return (
     <View style={styles.screen}>
+      <EmberField count={6} />
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={onBack}>
@@ -422,9 +491,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
         >
           <Text style={styles.searchBtnText}>{searchOpen ? '✕' : '🔍'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.newBtn} activeOpacity={0.8} onPress={() => setCompose(true)}>
-          <Text style={styles.newBtnText}>＋</Text>
-        </TouchableOpacity>
+        <Animated.View style={fabStyle}>
+          <TouchableOpacity style={styles.newBtn} activeOpacity={0.8} onPress={() => setCompose(true)}>
+            <Text style={styles.newBtnText}>✎</Text>
+          </TouchableOpacity>
+        </Animated.View>
       </View>
 
       {searchOpen && (
@@ -437,6 +508,51 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
             placeholderTextColor={Colors.text.muted}
             autoFocus
           />
+        </View>
+      )}
+
+      {!searchOpen && recentContacts.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.contactStrip}
+          contentContainerStyle={styles.contactStripContent}
+        >
+          {recentContacts.map((c) => (
+            <TouchableOpacity
+              key={c.key}
+              style={styles.contactChip}
+              activeOpacity={0.75}
+              onPress={() => openConvoView(c)}
+            >
+              <View style={styles.contactRing}>
+                <Avatar
+                  support={false}
+                  label={c.title}
+                  isNode={!c.peerUserId && !!c.peerDevice}
+                  size={48}
+                />
+              </View>
+              <Text style={styles.contactName} numberOfLines={1}>{c.title}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {!searchOpen && (
+        <View style={styles.categoryTabs}>
+          {CATEGORY_TABS.map(([cat, labelKey]) => (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.categoryTab, category === cat && styles.categoryTabActive]}
+              onPress={() => setCategory(cat)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.categoryTabText, category === cat && styles.categoryTabTextActive]}>
+                {t(labelKey)}
+              </Text>
+            </TouchableOpacity>
+          ))}
         </View>
       )}
 
@@ -465,7 +581,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 onPress={() => openConvoView(c)}
                 onLongPress={() => confirmDeleteThread(c)}
               >
-                <Avatar support={c.support} label={c.title} />
+                <Avatar support={c.support} label={c.title} isNode={!c.support && !c.peerUserId && !!c.peerDevice} />
                 <View style={styles.itemMain}>
                   <View style={styles.itemHeader}>
                     <Text style={[styles.itemTitle, c.unread > 0 && styles.itemTitleUnread]} numberOfLines={1}>
@@ -501,7 +617,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 activeOpacity={0.8}
                 onPress={() => openSearchResult(r)}
               >
-                <Avatar support={false} label={r.peerUserId || r.peerDevice} />
+                <Avatar support={false} label={r.peerUserId || r.peerDevice} isNode={!r.peerUserId && !!r.peerDevice} />
                 <View style={styles.itemMain}>
                   <View style={styles.itemHeader}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{r.peerUserId || r.peerDevice}</Text>
@@ -514,7 +630,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
           </>
         )}
 
-        <View style={{ height: Spacing[8] }} />
+        {/* This screen has no self-rendered <BottomNav> — the Tab.Navigator's
+            floating tabBar overlay (AppNavigator.tsx) supplies it instead, so
+            without this the last row sits behind it (same bug reported on
+            RealGramClanScreen, 2026-07-23 — same fix applied here). */}
+        <View style={{ height: BottomNav.CONTENT_HEIGHT + insets.bottom + Spacing[4] }} />
       </ScrollView>
 
       {/* Chat thread modal — Telegram-style conversation for DMs + official */}
@@ -530,7 +650,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
                   <Text style={styles.backIcon}>‹</Text>
                 </TouchableOpacity>
-                <Avatar support={openConvo.support} label={openConvo.title} size={34} />
+                <Avatar
+                  support={openConvo.support}
+                  label={openConvo.title}
+                  isNode={!openConvo.support && !openConvo.peerUserId && !!openConvo.peerDevice}
+                  size={34}
+                />
                 <View style={styles.threadPeerWrap}>
                   <View style={styles.threadPeerRow}>
                     <Text style={styles.threadPeer} numberOfLines={1}>{openConvo.title}</Text>
@@ -696,7 +821,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   disabled={sending || !threadDraft.trim()}
                   onPress={sendInThread}
                 >
-                  {sending ? <ActivityIndicator color="#021b10" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
+                  {sending ? <ActivityIndicator color="#241605" size="small" /> : <Text style={styles.threadSendText}>➤</Text>}
                 </TouchableOpacity>
               </View>
             </View>
@@ -741,16 +866,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
               <TouchableOpacity style={styles.cancelBtn} activeOpacity={0.8} onPress={() => setCompose(false)}>
                 <Text style={styles.cancelText}>{t('dm.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.sendBtn, sending && styles.sendBtnDisabled]}
-                activeOpacity={0.85}
-                disabled={sending}
-                onPress={submit}
-              >
+              <GoldButton style={styles.sendBtn} textStyle={styles.sendText} disabled={sending} onPress={submit}>
                 {sending
-                  ? <ActivityIndicator color="#021b10" size="small" />
-                  : <Text style={styles.sendText}>{t('dm.send')}</Text>}
-              </TouchableOpacity>
+                  ? <ActivityIndicator color="#241605" size="small" />
+                  : t('dm.send')}
+              </GoldButton>
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -765,12 +885,26 @@ const styles = StyleSheet.create({
   backBtn:       { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   backIcon:      { fontSize: 26, color: Colors.text.secondary, marginTop: -2 },
   title:         { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  newBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  newBtnText:    { fontSize: 22, color: '#021b10', marginTop: -2, fontWeight: '700' },
+  newBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  newBtnText:    { fontSize: 22, color: '#241605', marginTop: -2, fontWeight: '700' },
   searchBtn:     { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   searchBtnText: { fontSize: 16 },
   searchBar:     { paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2] },
   searchInput:   { backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, borderRadius: Radius.lg, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], color: Colors.text.primary, fontSize: Typography.size.sm, fontFamily: Typography.family.body },
+
+  // Recent-contacts quick-access strip.
+  contactStrip:       { flexGrow: 0 },
+  contactStripContent:{ paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2], gap: Spacing[3] },
+  contactChip:        { alignItems: 'center', width: 58, gap: 5 },
+  contactRing:         { width: 54, height: 54, borderRadius: 27, borderWidth: 2, borderColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  contactName:         { fontSize: 10, fontFamily: Typography.family.body, color: Colors.text.muted, maxWidth: 58 },
+
+  // Category tabs.
+  categoryTabs:        { flexDirection: 'row', gap: Spacing[2], paddingHorizontal: Layout.screenPadding, paddingBottom: Spacing[2] },
+  categoryTab:         { paddingHorizontal: Spacing[4], paddingVertical: 7, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface },
+  categoryTabActive:   { backgroundColor: 'rgba(255,182,39,0.12)', borderColor: Colors.border.goldGlow },
+  categoryTabText:     { fontSize: 12, fontFamily: Typography.family.label, color: Colors.text.muted },
+  categoryTabTextActive:{ color: Colors.gold[400], fontWeight: '700' },
 
   scroll:        { flex: 1 },
   content:       { paddingHorizontal: Layout.screenPadding, gap: Spacing[3], paddingTop: Spacing[1] },
@@ -780,7 +914,7 @@ const styles = StyleSheet.create({
 
   // Conversation row (avatar + text)
   item:          { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], borderRadius: Radius.lg, padding: Spacing[3], backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle },
-  itemUnread:    { borderColor: 'rgba(0,232,122,0.25)', backgroundColor: 'rgba(0,232,122,0.05)' },
+  itemUnread:    { borderColor: 'rgba(255,182,39,0.25)', backgroundColor: 'rgba(255,182,39,0.05)' },
   itemMain:      { flex: 1, gap: 4 },
   itemHeader:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
   itemTitle:     { flex: 1, fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.secondary },
@@ -789,14 +923,18 @@ const styles = StyleSheet.create({
   itemBody:      { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.secondary, lineHeight: 20 },
 
   avatar:        { backgroundColor: Colors.bg.base, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
-  avatarOfficial:{ backgroundColor: 'rgba(0,232,122,0.10)', borderColor: 'rgba(0,232,122,0.4)' },
-  avatarText:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.emerald[400] },
-  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  verifiedText:  { fontSize: 10, color: '#021b10', fontWeight: '700' },
+  avatarOfficial:{ backgroundColor: 'rgba(255,182,39,0.10)', borderColor: 'rgba(255,182,39,0.4)' },
+  avatarNode:    { backgroundColor: 'rgba(51,211,255,0.16)', borderColor: 'rgba(123,92,250,0.35)' },
+  avatarText:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  // Cyan, not gold — the fuller Chats reference (Khabat's later upload)
+  // specifically colors the verified checkmark cyan, distinct from the
+  // official avatar's own gold accent.
+  verifiedBadge: { width: 16, height: 16, borderRadius: 8, backgroundColor: Colors.cyan[400], alignItems: 'center', justifyContent: 'center' },
+  verifiedText:  { fontSize: 10, color: '#001824', fontWeight: '700' },
 
   threadPreviewRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  unreadBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#021b10', fontWeight: '700' },
+  unreadBadge:   { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  unreadBadgeText: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#241605', fontWeight: '700' },
 
   // Chat thread modal
   threadRoot:    { flex: 1, backgroundColor: Colors.bg.base },
@@ -805,7 +943,7 @@ const styles = StyleSheet.create({
   threadPeerWrap:{ flex: 1 },
   threadPeerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   threadPeer:    { flexShrink: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400] },
+  threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.gold[400] },
   threadDeleteBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   threadDeleteIcon: { fontSize: 16 },
   threadAdBanner: { marginHorizontal: Layout.screenPadding, marginTop: Spacing[2] },
@@ -816,18 +954,18 @@ const styles = StyleSheet.create({
   bubbleRowIn:   { justifyContent: 'flex-start' },
   bubble:        { maxWidth: '82%', borderRadius: Radius.lg, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
   bubbleIn:      { backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle, borderTopLeftRadius: 4 },
-  bubbleOut:     { backgroundColor: Colors.emerald[400], borderTopRightRadius: 4 },
-  bubbleTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.emerald[400], marginBottom: 3 },
+  bubbleOut:     { backgroundColor: Colors.gold[400], borderTopRightRadius: 4 },
+  bubbleTitle:   { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.gold[400], marginBottom: 3 },
   bubbleText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.primary, lineHeight: 20 },
-  bubbleTextOut: { color: '#021b10' },
+  bubbleTextOut: { color: '#241605' },
   bubbleLinkBtn: { marginTop: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: Radius.sm, paddingHorizontal: Spacing[2], paddingVertical: 4 },
-  bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.emerald[400] },
+  bubbleLinkText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.gold[400] },
   bubbleTime:    { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, alignSelf: 'flex-end', marginTop: 2 },
   bubbleTimeOut: { color: 'rgba(2,27,16,0.6)' },
 
   reactionBadgeRow: { flexDirection: 'row', gap: 4, marginTop: -6, marginBottom: 6, paddingHorizontal: 4 },
   reactionBadge:    { flexDirection: 'row', backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle, borderRadius: 10, paddingHorizontal: 7, paddingVertical: 2 },
-  reactionBadgeMine:{ borderColor: Colors.emerald[400] },
+  reactionBadgeMine:{ borderColor: Colors.gold[400] },
   reactionBadgeText:{ fontSize: 11, color: Colors.text.secondary },
 
   // No alignSelf here (bug fix 2026-07-22, chat audit #3): it used to be
@@ -848,9 +986,9 @@ const styles = StyleSheet.create({
   burnChipText:  { fontSize: 13, color: '#FF8C3C', fontFamily: Typography.family.mono },
   threadInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: Spacing[2], paddingHorizontal: Layout.screenPadding, paddingVertical: Spacing[3], paddingBottom: Spacing[6], borderTopWidth: 1, borderTopColor: Colors.border.subtle },
   threadInput:   { flex: 1, maxHeight: 110, borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
-  threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
-  threadSendText:{ fontSize: 20, color: '#021b10', fontWeight: '700' },
-  introNote:     { backgroundColor: 'rgba(0,232,122,0.06)', borderWidth: 1, borderColor: 'rgba(0,232,122,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
+  threadSendBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center' },
+  threadSendText:{ fontSize: 20, color: '#241605', fontWeight: '700' },
+  introNote:     { backgroundColor: 'rgba(255,182,39,0.06)', borderWidth: 1, borderColor: 'rgba(255,182,39,0.2)', borderRadius: Radius.lg, padding: Spacing[3], marginBottom: Spacing[2] },
   introText:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary, textAlign: 'center', lineHeight: 18 },
   loadOlderBtn:  { alignSelf: 'center', paddingHorizontal: Spacing[3], paddingVertical: Spacing[2], borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, marginBottom: Spacing[2] },
   loadOlderText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.secondary },
@@ -867,7 +1005,7 @@ const styles = StyleSheet.create({
   modalActions:  { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   cancelBtn:     { flex: 1, paddingVertical: 14, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface, alignItems: 'center' },
   cancelText:    { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: Colors.text.secondary },
-  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full, backgroundColor: Colors.emerald[400], alignItems: 'center', justifyContent: 'center' },
+  sendBtn:       { flex: 1, paddingVertical: 14, borderRadius: Radius.full },
   sendBtnDisabled: { opacity: 0.6 },
-  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#021b10', fontWeight: '700' },
+  sendText:      { fontSize: Typography.size.base, fontFamily: Typography.family.label, fontWeight: '700' },
 });

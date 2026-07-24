@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — Profile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A; --bg-1:#0B0E17; --card:#0F1422; --card-line:rgba(255,196,120,.14);
+    --gold-0:#B8790F; --gold-1:#FFB627; --gold-2:#FFF3C4;
+    --violet:#7B5CFA; --violet-2:#5B4FE0; --ember:#FF8A3D;
+    --cyan:#33D3FF; --cyan-2:#7FE3FF; --green:#33FFB2; --red:#FF5A5A;
+    --ink:#EAEFF5; --ink-dim:#8A93A6; --ink-faint:#5B6274;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #141a2c 0%, transparent 55%), var(--bg-0);
+    color:var(--ink); display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .phone{
+    width:390px; max-width:100vw; height:844px; max-height:100vh;
+    position:relative; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; scrollbar-width:none;
+    background:
+      radial-gradient(60% 28% at 85% -5%, rgba(123,92,250,.10), transparent 60%),
+      radial-gradient(50% 22% at 10% 0%, rgba(255,182,39,.06), transparent 60%),
+      linear-gradient(180deg, #090C15 0%, #05060A 40%, #030308 100%);
+  }
+  .phone::-webkit-scrollbar{ display:none; }
+  .mountains{
+    position:absolute; top:0; left:0; width:100%; height:200px;
+    background:linear-gradient(180deg, rgba(20,26,44,.5), transparent);
+    clip-path:polygon(0% 100%, 0% 55%, 12% 40%, 24% 58%, 38% 30%, 52% 52%, 66% 22%, 80% 48%, 92% 34%, 100% 50%, 100% 100%);
+    opacity:.4; pointer-events:none; z-index:0;
+  }
+  .embers{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; opacity:.4; }
+  .ember-p{ position:absolute; bottom:-10px; width:2px; height:2px; border-radius:50%; background:var(--ember); box-shadow:0 0 5px var(--ember); animation:rise linear infinite; opacity:0; }
+  @keyframes rise{ 0%{ transform:translateY(0); opacity:0;} 10%{opacity:.6;} 90%{opacity:.25;} 100%{ transform:translateY(-800px) translateX(var(--drift)); opacity:0; } }
+  .reveal{ animation:fadeInUp .55s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadeInUp{ from{ opacity:0; transform:translateY(12px);} to{ opacity:1; transform:translateY(0);} }
+
+  /* ===== Top bar ===== */
+  .topbar{ position:relative; z-index:1; display:flex; justify-content:flex-end; gap:8px; padding:14px 16px 0; }
+  .icon-btn{ width:36px; height:36px; border-radius:50%; background:var(--card); border:1px solid var(--card-line); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--ink-dim); }
+
+  /* ===== Profile hero ===== */
+  .profile-hero{ position:relative; z-index:1; text-align:center; padding:6px 16px 8px; }
+  .portrait-wrap{ position:relative; width:96px; height:96px; margin:0 auto 10px; }
+  .portrait{
+    width:96px; height:96px; border-radius:50%;
+    background:radial-gradient(circle at 35% 25%, #C9A876, #5B4326 70%);
+    display:flex; align-items:center; justify-content:center; font-size:38px;
+    border:3px solid var(--gold-1);
+    box-shadow:0 0 0 7px rgba(255,182,39,.10), 0 10px 26px rgba(255,138,61,.18);
+  }
+  .p-crown{ position:absolute; top:-10px; left:50%; transform:translateX(-50%); font-size:22px; filter:drop-shadow(0 2px 4px rgba(0,0,0,.5)); }
+  .p-name{ font-size:21px; font-weight:800; margin-top:2px; }
+  .p-meta{ font-size:12px; color:var(--ink-dim); margin-top:3px; }
+  .p-meta b{ color:var(--gold-1); }
+  .p-id{ font-size:10.5px; color:var(--ink-faint); font-family:'JetBrains Mono',monospace; margin-top:4px; }
+  .p-actions{ display:flex; gap:8px; justify-content:center; margin-top:14px; }
+  .p-btn{ font-size:11.5px; font-weight:700; padding:9px 16px; border-radius:14px; }
+  .p-btn.primary{ background:linear-gradient(90deg,var(--gold-2),var(--gold-1)); color:#241605; }
+  .p-btn.ghost{ background:var(--card); border:1px solid var(--card-line); color:var(--ink); }
+
+  .section-lbl{ padding:16px 20px 8px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); display:flex; justify-content:space-between; align-items:center; }
+  .section-lbl a{ color:var(--gold-1); font-size:10.5px; text-transform:none; letter-spacing:0; }
+
+  /* ===== Economy grid ===== */
+  .econ-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; padding:0 16px 6px; }
+  .econ-cell{
+    background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 40%), var(--card);
+    border:1px solid var(--card-line); border-radius:14px; padding:11px 8px; text-align:center;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .econ-ic{ font-size:15px; }
+  .econ-val{ font-size:13px; font-weight:800; font-family:'JetBrains Mono',monospace; margin-top:4px; }
+  .econ-lbl{ font-size:8px; color:var(--ink-faint); letter-spacing:.08em; text-transform:uppercase; margin-top:2px; }
+
+  /* ===== Data plan ===== */
+  .data-card{ margin:8px 16px 8px; background:var(--card); border:1px solid var(--card-line); border-radius:18px; padding:14px 16px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .data-top{ display:flex; justify-content:space-between; align-items:center; }
+  .data-lbl{ font-size:11.5px; font-weight:600; }
+  .data-plan{ font-size:10.5px; color:var(--gold-1); background:rgba(255,182,39,.1); border:1px solid rgba(255,182,39,.35); padding:3px 9px; border-radius:10px; }
+  .data-track{ height:7px; border-radius:5px; background:rgba(255,255,255,.06); margin-top:10px; overflow:hidden; }
+  .data-fill{ height:100%; width:0%; border-radius:5px; background:linear-gradient(90deg,var(--cyan),var(--cyan-2)); transition:width 1.2s cubic-bezier(.2,.8,.2,1); }
+  .data-sub{ font-size:10.5px; color:var(--ink-faint); margin-top:8px; }
+
+  /* ===== Streak + achievement row ===== */
+  .mini-row{ display:flex; gap:8px; padding:0 16px 8px; }
+  .mini-cell{ flex:1; background:var(--card); border:1px solid var(--card-line); border-radius:14px; padding:11px; text-align:center; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .mini-val{ font-size:14px; font-weight:800; font-family:'JetBrains Mono',monospace; }
+  .mini-val.fire{ color:var(--ember); } .mini-val.chk{ color:var(--green); }
+  .mini-lbl{ font-size:8.5px; color:var(--ink-faint); letter-spacing:.06em; text-transform:uppercase; margin-top:3px; }
+
+  .ach-row{ display:flex; gap:8px; padding:0 16px 6px; }
+  .ach-cell{ flex:1; background:var(--card); border:1px solid var(--card-line); border-radius:14px; padding:11px; text-align:center; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .ach-val{ font-size:15px; font-weight:800; font-family:'JetBrains Mono',monospace; color:var(--violet); }
+  .ach-lbl{ font-size:8.5px; color:var(--ink-faint); letter-spacing:.06em; text-transform:uppercase; margin-top:3px; }
+
+  /* ===== Chronicle progress ===== */
+  .chron-card{ margin:8px 16px 12px; background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 30%), var(--card); border:1px solid var(--card-line); border-radius:20px; padding:16px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .chron-top{ display:flex; justify-content:space-between; align-items:baseline; }
+  .chron-lbl{ font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); }
+  .chron-pct{ font-size:15px; font-weight:800; color:var(--gold-1); font-family:'JetBrains Mono',monospace; }
+  .chron-sub{ font-size:11px; color:var(--ink-faint); margin-top:3px; }
+  .chron-track{ height:8px; border-radius:6px; background:rgba(255,255,255,.06); margin-top:10px; overflow:hidden; }
+  .chron-fill{ height:100%; width:0%; border-radius:6px; background:linear-gradient(90deg,var(--violet-2),var(--violet),var(--gold-1),var(--ember)); transition:width 1.3s cubic-bezier(.2,.8,.2,1); }
+  .chron-list{ margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+  .chron-item{ display:flex; align-items:center; gap:8px; font-size:11.5px; }
+  .chron-check{ width:18px; height:18px; border-radius:50%; background:rgba(51,255,178,.14); border:1px solid rgba(51,255,178,.5); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:10px; flex-shrink:0; }
+  .chron-item .name{ color:var(--ink-dim); }
+  .chron-continue{ margin-top:12px; text-align:center; padding:12px; border-radius:14px; font-size:12.5px; font-weight:700; background:linear-gradient(90deg,var(--violet-2),var(--violet)); color:#fff; }
+
+  /* ===== Clan quick card ===== */
+  .clan-quick{ margin:0 16px 90px; display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--card-line); border-radius:18px; padding:13px 15px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .cq-emblem{ width:42px; height:42px; border-radius:12px; background:radial-gradient(circle at 35% 30%, var(--gold-2), var(--gold-1)); display:flex; align-items:center; justify-content:center; font-size:19px; flex-shrink:0; }
+  .cq-mid{ flex:1; min-width:0; }
+  .cq-name{ font-size:13px; font-weight:700; }
+  .cq-sub{ font-size:10.5px; color:var(--ink-faint); margin-top:2px; }
+  .cq-arrow{ font-size:14px; color:var(--ink-faint); }
+
+  .navbar{
+    position:absolute; left:0; right:0; bottom:0; z-index:2; display:flex; justify-content:space-around; align-items:center;
+    padding:11px 8px calc(11px + env(safe-area-inset-bottom));
+    background:rgba(11,14,23,.92); border-top:1px solid var(--card-line); backdrop-filter:blur(10px);
+  }
+  .nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:9.5px; color:var(--ink-dim); }
+  .nav-item .ic{ font-size:18px; }
+  .nav-item.active{ color:var(--green); }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="mountains"></div>
+  <div class="embers" id="embers"></div>
+
+  <div class="topbar"><div class="icon-btn">⚙</div></div>
+
+  <div class="profile-hero reveal" style="animation-delay:.02s;">
+    <div class="portrait-wrap">
+      <div class="p-crown">👑</div>
+      <div class="portrait">🧔</div>
+    </div>
+    <div class="p-name">Xebat227</div>
+    <div class="p-meta">Level 30 · <b>King</b> · RealGram</div>
+    <div class="p-id">#5629291605</div>
+    <div class="p-actions">
+      <div class="p-btn primary">Rediger profil</div>
+      <div class="p-btn ghost">Del ⤴</div>
+    </div>
+  </div>
+
+  <div class="section-lbl reveal" style="animation-delay:.06s;">Economy</div>
+  <div class="econ-grid reveal" style="animation-delay:.08s;">
+    <div class="econ-cell"><div class="econ-ic">💎</div><div class="econ-val">9.2K</div><div class="econ-lbl">Real</div></div>
+    <div class="econ-cell"><div class="econ-ic">﷼</div><div class="econ-val">23.0K</div><div class="econ-lbl">Zar</div></div>
+    <div class="econ-cell"><div class="econ-ic">💠</div><div class="econ-val">192</div><div class="econ-lbl">Gems</div></div>
+    <div class="econ-cell"><div class="econ-ic">✨</div><div class="econ-val">26</div><div class="econ-lbl">Farr</div></div>
+    <div class="econ-cell"><div class="econ-ic">⭐</div><div class="econ-val">30.7K</div><div class="econ-lbl">XP</div></div>
+    <div class="econ-cell"><div class="econ-ic">📈</div><div class="econ-val">6,582</div><div class="econ-lbl">Season</div></div>
+  </div>
+
+  <div class="data-card reveal" style="animation-delay:.12s;">
+    <div class="data-top"><div class="data-lbl">Data plan</div><div class="data-plan">Free plan</div></div>
+    <div class="data-track"><div class="data-fill" data-w="8"></div></div>
+    <div class="data-sub">82 GB av 1.0 TB brukt</div>
+  </div>
+
+  <div class="mini-row reveal" style="animation-delay:.14s;">
+    <div class="mini-cell"><div class="mini-val fire">🔥 4</div><div class="mini-lbl">Daily streak</div></div>
+    <div class="mini-cell"><div class="mini-val chk">✓ 5</div><div class="mini-lbl">Check-in streak</div></div>
+  </div>
+  <div class="ach-row reveal" style="animation-delay:.16s;">
+    <div class="ach-cell"><div class="ach-val">12</div><div class="ach-lbl">Verified invites</div></div>
+    <div class="ach-cell"><div class="ach-val">3</div><div class="ach-lbl">Milestones</div></div>
+    <div class="ach-cell"><div class="ach-val">6</div><div class="ach-lbl">Tasks done</div></div>
+  </div>
+
+  <div class="chron-card reveal" style="animation-delay:.20s;">
+    <div class="chron-top"><div class="chron-lbl">Shahnameh Chronicle</div><div class="chron-pct">82%</div></div>
+    <div class="chron-sub">41 av 50 kapitler fullført</div>
+    <div class="chron-track"><div class="chron-fill" data-w="82"></div></div>
+    <div class="chron-list">
+      <div class="chron-item"><div class="chron-check">✓</div><div class="name">Zal</div></div>
+      <div class="chron-item"><div class="chron-check">✓</div><div class="name">Akvan</div></div>
+      <div class="chron-item"><div class="chron-check">✓</div><div class="name">Nushzad</div></div>
+    </div>
+    <div class="chron-continue">Fortsett kapittel 42 · Khosrow Parviz ›</div>
+  </div>
+
+  <div class="section-lbl reveal" style="animation-delay:.24s;">Din klan</div>
+  <div class="clan-quick reveal" style="animation-delay:.26s;">
+    <div class="cq-emblem">🦅</div>
+    <div class="cq-mid">
+      <div class="cq-name">FALCON</div>
+      <div class="cq-sub">Tier II · 👑 Leader · 34 warriors</div>
+    </div>
+    <div class="cq-arrow">›</div>
+  </div>
+
+  <div class="navbar">
+    <div class="nav-item"><div class="ic">⬡</div>Home</div>
+    <div class="nav-item"><div class="ic">💬</div>Chats</div>
+    <div class="nav-item"><div class="ic">🌐</div>Freedom</div>
+    <div class="nav-item"><div class="ic">💎</div>Wallet</div>
+    <div class="nav-item"><div class="ic">👥</div>Clan</div>
+    <div class="nav-item active"><div class="ic">👤</div>Profile</div>
+  </div>
+</div>
+
+<script>
+const embersHost = document.getElementById('embers');
+for(let i=0;i<10;i++){
+  const e = document.createElement('div');
+  e.className = 'ember-p';
+  e.style.left = (Math.random()*100) + '%';
+  e.style.animationDuration = (7 + Math.random()*8) + 's';
+  e.style.animationDelay = (Math.random()*10) + 's';
+  e.style.setProperty('--drift', (Math.random()*30-15) + 'px');
+  embersHost.appendChild(e);
+}
+setTimeout(()=>{
+  document.querySelectorAll('.data-fill, .chron-fill').forEach(el=>{
+    el.style.width = el.getAttribute('data-w') + '%';
+  });
+}, 300);
+</script>
+</body>
+</html>

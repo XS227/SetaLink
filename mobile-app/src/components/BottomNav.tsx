@@ -103,9 +103,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 2,
   },
+  // Active-tab color: gold (theme pkg 2026-07-23) — was emerald. This is
+  // the app's single active-nav choke point, on purpose (see A->B(74)).
   icon:        { fontSize: 19, color: Colors.text.muted },
-  iconActive:  { color: Colors.emerald[400] },
+  iconActive:  { color: Colors.gold[400] },
   label:       { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.4, textTransform: 'uppercase' },
-  labelActive: { color: Colors.emerald[400] },
-  dot:         { width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.emerald[400], position: 'absolute', bottom: -4 },
+  labelActive: { color: Colors.gold[400] },
+  dot:         { width: 3, height: 3, borderRadius: 2, backgroundColor: Colors.gold[400], position: 'absolute', bottom: -4 },
 });

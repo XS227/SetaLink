@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — Ganj (Wallet)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A; --bg-1:#0B0E17; --card:#0F1422; --card-line:rgba(255,196,120,.14);
+    --gold-0:#B8790F; --gold-1:#FFB627; --gold-2:#FFF3C4;
+    --violet:#7B5CFA; --violet-2:#5B4FE0; --ember:#FF8A3D;
+    --cyan:#33D3FF; --cyan-2:#7FE3FF; --green:#33FFB2; --red:#FF5A5A;
+    --ink:#EAEFF5; --ink-dim:#8A93A6; --ink-faint:#5B6274;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #141a2c 0%, transparent 55%), var(--bg-0);
+    color:var(--ink); display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .phone{
+    width:390px; max-width:100vw; height:844px; max-height:100vh;
+    position:relative; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; scrollbar-width:none;
+    background:
+      radial-gradient(60% 28% at 85% -5%, rgba(123,92,250,.10), transparent 60%),
+      radial-gradient(50% 22% at 10% 0%, rgba(255,182,39,.06), transparent 60%),
+      linear-gradient(180deg, #090C15 0%, #05060A 40%, #030308 100%);
+  }
+  .phone::-webkit-scrollbar{ display:none; }
+  .embers{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; opacity:.35; }
+  .ember-p{ position:absolute; bottom:-10px; width:2px; height:2px; border-radius:50%; background:var(--ember); box-shadow:0 0 5px var(--ember); animation:rise linear infinite; opacity:0; }
+  @keyframes rise{ 0%{ transform:translateY(0); opacity:0;} 10%{opacity:.6;} 90%{opacity:.25;} 100%{ transform:translateY(-800px) translateX(var(--drift)); opacity:0; } }
+  .reveal{ animation:fadeInUp .55s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadeInUp{ from{ opacity:0; transform:translateY(12px);} to{ opacity:1; transform:translateY(0);} }
+
+  .header{ position:relative; z-index:1; display:flex; align-items:center; justify-content:space-between; padding:16px 16px 6px; }
+  .h-title{ font-family:'Vazirmatn',sans-serif; font-size:22px; font-weight:700; display:flex; align-items:center; gap:8px; }
+  .h-title .en{ font-family:'Space Grotesk',sans-serif; font-weight:800; color:var(--ink-dim); font-size:14px; }
+  .h-actions{ display:flex; gap:8px; }
+  .icon-btn{ width:36px; height:36px; border-radius:50%; background:var(--card); border:1px solid var(--card-line); display:flex; align-items:center; justify-content:center; font-size:14px; color:var(--ink-dim); }
+
+  /* ===== Balance hero w/ sparkline ===== */
+  .balance-hero{
+    position:relative; margin:10px 16px 12px; border-radius:26px; padding:20px 20px 16px; overflow:hidden;
+    background:
+      radial-gradient(120% 100% at 100% -20%, rgba(255,182,39,.16), transparent 55%),
+      radial-gradient(100% 80% at 0% 110%, rgba(123,92,250,.12), transparent 55%),
+      linear-gradient(180deg, #12172A 0%, #0B0E17 100%);
+    border:1px solid rgba(255,196,120,.24);
+    box-shadow:0 0 34px rgba(255,182,39,.06), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .bh-top{ display:flex; align-items:center; justify-content:space-between; }
+  .bh-label{ font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); }
+  .price-chip{ font-size:10.5px; color:var(--green); background:rgba(51,255,178,.1); border:1px solid rgba(51,255,178,.35); padding:4px 9px; border-radius:12px; display:flex; align-items:center; gap:4px; }
+  .price-chip .live-dot{ width:5px;height:5px;border-radius:50%; background:var(--green); box-shadow:0 0 5px var(--green); }
+
+  .bh-body{ display:flex; align-items:flex-end; justify-content:space-between; margin-top:10px; gap:10px; }
+  .bh-amount{ display:flex; align-items:center; gap:10px; }
+  .bh-coin{ width:36px; height:36px; border-radius:50%; background:radial-gradient(circle at 35% 30%, var(--gold-2), var(--gold-1)); display:flex; align-items:center; justify-content:center; font-family:'Vazirmatn',sans-serif; font-size:16px; color:#241605; font-weight:700; flex-shrink:0; }
+  .bh-num{ font-size:32px; font-weight:800; font-family:'JetBrains Mono',monospace; letter-spacing:-.01em; }
+  .bh-sub{ font-size:11.5px; color:var(--ink-dim); margin-top:3px; font-family:'JetBrains Mono',monospace; }
+  .spark{ flex-shrink:0; }
+
+  .bh-actions{ display:flex; gap:8px; margin-top:16px; }
+  .bh-btn{ flex:1; text-align:center; font-size:12px; font-weight:700; padding:11px; border-radius:14px; }
+  .bh-btn.primary{ background:linear-gradient(90deg,var(--gold-2),var(--gold-1)); color:#241605; }
+  .bh-btn.ghost{ background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); color:var(--ink); }
+
+  .meter-row{ display:flex; gap:8px; margin:0 16px 18px; }
+  .meter-cell{ flex:1; background:var(--card); border:1px solid var(--card-line); border-radius:16px; padding:11px 10px; text-align:center; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .meter-val{ font-size:14px; font-weight:700; font-family:'JetBrains Mono',monospace; color:var(--gold-1); }
+  .meter-val.cyan{ color:var(--cyan-2); }
+  .meter-lbl{ font-size:8.5px; color:var(--ink-faint); letter-spacing:.08em; text-transform:uppercase; margin-top:3px; }
+
+  .flow-lbl{ padding:2px 20px 4px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); }
+  .flow-q{ padding:0 20px 10px; font-size:15px; font-weight:700; color:var(--ink); }
+  .flow-q span{ color:var(--gold-1); }
+
+  /* ===== Convert card w/ flow diagram ===== */
+  .convert-card{
+    margin:0 16px 8px; border-radius:22px; padding:16px;
+    background:var(--card); border:1px solid var(--card-line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .cv-rate{ text-align:center; font-size:11px; color:var(--ink-faint); margin-bottom:12px; }
+  .cv-row{ display:flex; align-items:center; gap:10px; }
+  .cv-box{ flex:1; background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:11px 13px; }
+  .cv-box .cv-lbl{ font-size:9px; color:var(--ink-faint); letter-spacing:.08em; text-transform:uppercase; }
+  .cv-box .cv-amt{ font-size:15px; font-weight:700; font-family:'JetBrains Mono',monospace; margin-top:3px; }
+  .cv-arrow{ font-size:16px; color:var(--gold-1); flex-shrink:0; }
+  .cv-swap-btn{
+    margin-top:12px; text-align:center; padding:12px; border-radius:14px; font-size:13px; font-weight:700;
+    background:linear-gradient(90deg,var(--gold-2),var(--gold-1)); color:#241605;
+  }
+
+  .actions-row{ display:flex; gap:9px; margin:12px 16px 18px; }
+  .action-btn{ flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:12px 6px; background:var(--card); border:1px solid var(--card-line); border-radius:16px; }
+  .action-btn .ic{ font-size:17px; }
+  .action-btn .lbl{ font-size:9.5px; color:var(--ink-dim); font-weight:600; text-align:center; line-height:1.3; }
+
+  /* ===== Native ad ===== */
+  .ad-native{
+    margin:0 16px 18px; border-radius:18px; padding:13px 15px; display:flex; align-items:center; gap:12px;
+    background:rgba(255,255,255,.025); border:1px dashed rgba(255,255,255,.14);
+  }
+  .ad-icon{ width:40px; height:40px; border-radius:11px; background:linear-gradient(135deg,#2a3145,#161b28); display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+  .ad-mid{ flex:1; min-width:0; }
+  .ad-top{ display:flex; align-items:center; gap:7px; }
+  .ad-title{ font-size:12.5px; font-weight:600; }
+  .ad-tag{ font-size:8.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-faint); border:1px solid rgba(255,255,255,.14); padding:2px 6px; border-radius:6px; }
+  .ad-sub{ font-size:10.5px; color:var(--ink-dim); margin-top:2px; }
+  .ad-btn{ background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.14); color:var(--ink); font-size:10.5px; font-weight:600; padding:7px 12px; border-radius:11px; white-space:nowrap; flex-shrink:0; }
+
+  .section-lbl{ padding:2px 20px 9px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); display:flex; justify-content:space-between; align-items:center; }
+  .section-lbl a{ color:var(--gold-1); font-size:10.5px; text-transform:none; letter-spacing:0; }
+
+  /* ===== Weekly earnings bar chart ===== */
+  .chart-card{ margin:0 16px 16px; background:var(--card); border:1px solid var(--card-line); border-radius:20px; padding:16px 16px 12px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .chart-top{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .chart-title{ font-size:12.5px; font-weight:700; }
+  .chart-total{ font-size:11px; color:var(--green); font-family:'JetBrains Mono',monospace; }
+  .bars{ display:flex; align-items:flex-end; justify-content:space-between; height:96px; gap:8px; }
+  .bar-col{ flex:1; display:flex; flex-direction:column; align-items:center; height:100%; justify-content:flex-end; gap:6px; }
+  .bar-track{ width:100%; height:100%; display:flex; align-items:flex-end; }
+  .bar-fill{ width:100%; border-radius:6px 6px 3px 3px; height:0%; transition:height 1.1s cubic-bezier(.2,.8,.2,1); }
+  .bar-lbl{ font-size:8.5px; color:var(--ink-faint); }
+
+  /* ===== Income sources grid ===== */
+  .income-grid{ display:grid; grid-template-columns:1fr 1fr; gap:9px; padding:0 16px 8px; }
+  .income-card{
+    min-height:96px; display:flex; flex-direction:column; justify-content:space-between;
+    background:linear-gradient(180deg, rgba(255,255,255,.04), transparent 40%), var(--card);
+    border:1px solid var(--card-line); border-radius:16px; padding:12px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .income-ic{ width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .income-title{ font-size:11px; font-weight:600; margin-top:8px; }
+  .income-val{ font-size:14px; font-weight:800; font-family:'JetBrains Mono',monospace; margin-top:2px; }
+  .income-sub{ font-size:9px; color:var(--ink-faint); margin-top:1px; }
+
+  /* ===== Earn more quick links ===== */
+  .earnmore{ display:flex; gap:8px; padding:12px 16px 18px; overflow-x:auto; }
+  .earnmore::-webkit-scrollbar{ display:none; }
+  .em-pill{ flex-shrink:0; display:flex; align-items:center; gap:7px; background:var(--card); border:1px solid var(--card-line); border-radius:20px; padding:9px 14px; font-size:11.5px; font-weight:600; white-space:nowrap; }
+  .em-pill .ic{ font-size:13px; }
+
+  .shop-banner{
+    margin:0 16px 18px; border-radius:20px; padding:15px 16px; display:flex; align-items:center; gap:12px;
+    background:linear-gradient(120deg, rgba(123,92,250,.16), rgba(255,182,39,.06));
+    border:1px solid rgba(123,92,250,.35);
+  }
+  .shop-ic{ font-size:24px; }
+  .shop-mid{ flex:1; }
+  .shop-title{ font-size:13px; font-weight:700; }
+  .shop-sub{ font-size:11px; color:var(--ink-dim); margin-top:2px; }
+  .shop-btn{ background:rgba(123,92,250,.18); border:1px solid rgba(123,92,250,.5); color:#C9BFFF; font-size:11px; font-weight:700; padding:8px 13px; border-radius:12px; white-space:nowrap; }
+
+  .activity-list{ padding:0 8px 100px; }
+  .a-row{ display:flex; align-items:center; gap:12px; padding:10px; border-radius:14px; }
+  .a-ic{ width:36px; height:36px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; }
+  .a-mid{ flex:1; min-width:0; }
+  .a-title{ font-size:12px; font-weight:600; }
+  .a-sub{ font-size:10px; color:var(--ink-faint); margin-top:1px; }
+  .a-amt{ font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; flex-shrink:0; }
+  .a-amt.pos{ color:var(--green); }
+  .a-amt.neg{ color:var(--red); }
+  .a-amt.neu{ color:var(--gold-1); }
+  .a-divider{ height:1px; background:rgba(255,255,255,.04); margin:1px 20px; }
+
+  .navbar{
+    position:absolute; left:0; right:0; bottom:0; z-index:2; display:flex; justify-content:space-around; align-items:center;
+    padding:11px 8px calc(11px + env(safe-area-inset-bottom));
+    background:rgba(11,14,23,.92); border-top:1px solid var(--card-line); backdrop-filter:blur(10px);
+  }
+  .nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:9.5px; color:var(--ink-dim); }
+  .nav-item .ic{ font-size:18px; }
+  .nav-item.active{ color:var(--green); }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="embers" id="embers"></div>
+
+  <div class="header">
+    <div class="h-title">گنج <span class="en">· GANJ</span></div>
+    <div class="h-actions">
+      <div class="icon-btn">🕘</div>
+      <div class="icon-btn">⚙</div>
+    </div>
+  </div>
+
+  <!-- 1. BALANCE -->
+  <div class="balance-hero reveal" style="animation-delay:.04s;">
+    <div class="bh-top">
+      <div class="bh-label">Total Balance</div>
+      <div class="price-chip"><span class="live-dot"></span> +0.4% today</div>
+    </div>
+    <div class="bh-body">
+      <div class="bh-amount">
+        <div class="bh-coin">﷼</div>
+        <div>
+          <div class="bh-num" id="bhNum">0</div>
+          <div class="bh-sub">≈ 22,981 ZAR</div>
+        </div>
+      </div>
+      <svg class="spark" width="96" height="40" viewBox="0 0 96 40">
+        <polyline id="sparkLine" points="0,32 16,30 32,24 48,26 64,16 80,10 96,4" fill="none" stroke="url(#g1)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+        <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="0"><stop offset="0%" stop-color="#7B5CFA"/><stop offset="100%" stop-color="#FFB627"/></linearGradient></defs>
+      </svg>
+    </div>
+    <div class="bh-actions">
+      <div class="bh-btn primary">↗ Send</div>
+      <div class="bh-btn ghost">↙ Receive</div>
+    </div>
+  </div>
+
+  <div class="meter-row reveal" style="animation-delay:.08s;">
+    <div class="meter-cell"><div class="meter-val">60.4</div><div class="meter-lbl">Zar / min</div></div>
+    <div class="meter-cell"><div class="meter-val">3.6K</div><div class="meter-lbl">Zar / hr</div></div>
+    <div class="meter-cell"><div class="meter-val cyan">43m</div><div class="meter-lbl">Next payout</div></div>
+  </div>
+
+  <!-- 2. WHERE DID REAL COME FROM -->
+  <div class="flow-lbl reveal" style="animation-delay:.10s;">Steg 1</div>
+  <div class="flow-q reveal" style="animation-delay:.10s;">Hvor kom <span>REAL</span>-en fra?</div>
+  <div class="convert-card reveal" style="animation-delay:.12s;">
+    <div class="cv-rate">Konvertert fra ZAR · 500 ZAR = 1 REAL</div>
+    <div class="cv-row">
+      <div class="cv-box">
+        <div class="cv-lbl">Du sender</div>
+        <div class="cv-amt">22,981 <span style="color:var(--ink-faint); font-size:11px;">ZAR</span></div>
+      </div>
+      <div class="cv-arrow">→</div>
+      <div class="cv-box">
+        <div class="cv-lbl">Du mottar</div>
+        <div class="cv-amt" style="color:var(--green);">45.9 <span style="color:var(--ink-faint); font-size:11px;">REAL</span></div>
+      </div>
+    </div>
+    <div class="cv-swap-btn">Swap Zar → Real</div>
+  </div>
+
+  <div class="actions-row reveal" style="animation-delay:.14s;">
+    <div class="action-btn"><div class="ic">🔗</div><div class="lbl">Connect<br>Tonkeeper</div></div>
+    <div class="action-btn"><div class="ic">⬇</div><div class="lbl">Import<br>REAL</div></div>
+    <div class="action-btn"><div class="ic">⬆</div><div class="lbl">Export<br>REAL</div></div>
+  </div>
+
+  <div class="ad-native reveal" style="animation-delay:.16s;">
+    <div class="ad-icon">🎮</div>
+    <div class="ad-mid">
+      <div class="ad-top"><div class="ad-title">Forge Legends</div><div class="ad-tag">Ad</div></div>
+      <div class="ad-sub">Bygg din egen hær — spill nå</div>
+    </div>
+    <div class="ad-btn">Install</div>
+  </div>
+
+  <!-- 3. WHERE DID ZAR COME FROM -->
+  <div class="flow-lbl reveal" style="animation-delay:.18s;">Steg 2</div>
+  <div class="flow-q reveal" style="animation-delay:.18s;">Hvor kom <span>ZAR</span>-en fra?</div>
+
+  <div class="chart-card reveal" style="animation-delay:.20s;">
+    <div class="chart-top"><div class="chart-title">Denne uken, per kilde</div><div class="chart-total">↑ 18.4K Zar</div></div>
+    <div class="bars" id="bars">
+      <div class="bar-col"><div class="bar-track"><div class="bar-fill" data-h="55" style="background:linear-gradient(180deg,var(--gold-2),var(--gold-1));"></div></div><div class="bar-lbl">Tap</div></div>
+      <div class="bar-col"><div class="bar-track"><div class="bar-fill" data-h="80" style="background:linear-gradient(180deg,#B7A8FF,var(--violet));"></div></div><div class="bar-lbl">Heroes</div></div>
+      <div class="bar-col"><div class="bar-track"><div class="bar-fill" data-h="35" style="background:linear-gradient(180deg,#8CFFD9,var(--green));"></div></div><div class="bar-lbl">Ads</div></div>
+      <div class="bar-col"><div class="bar-track"><div class="bar-fill" data-h="42" style="background:linear-gradient(180deg,var(--cyan-2),var(--cyan));"></div></div><div class="bar-lbl">Quiz</div></div>
+      <div class="bar-col"><div class="bar-track"><div class="bar-fill" data-h="24" style="background:linear-gradient(180deg,#FFC38C,var(--ember));"></div></div><div class="bar-lbl">Ref.</div></div>
+    </div>
+  </div>
+
+  <div class="income-grid reveal" style="animation-delay:.22s;">
+    <div class="income-card">
+      <div class="income-ic" style="background:rgba(255,182,39,.14); color:var(--gold-1);">👆</div>
+      <div><div class="income-title">Tap</div><div class="income-val">8.4K</div><div class="income-sub">Zar i dag</div></div>
+    </div>
+    <div class="income-card">
+      <div class="income-ic" style="background:rgba(123,92,250,.14); color:var(--violet);">⚔️</div>
+      <div><div class="income-title">Heroes</div><div class="income-val">3.6K/hr</div><div class="income-sub">58 deployed</div></div>
+    </div>
+    <div class="income-card">
+      <div class="income-ic" style="background:rgba(51,255,178,.14); color:var(--green);">📺</div>
+      <div><div class="income-title">Watch &amp; Earn</div><div class="income-val">140</div><div class="income-sub">REAL i dag</div></div>
+    </div>
+    <div class="income-card">
+      <div class="income-ic" style="background:rgba(51,211,255,.14); color:var(--cyan-2);">📜</div>
+      <div><div class="income-title">Quiz</div><div class="income-val">960</div><div class="income-sub">XP siste quiz</div></div>
+    </div>
+    <div class="income-card">
+      <div class="income-ic" style="background:rgba(255,138,61,.14); color:var(--ember);">🔥</div>
+      <div><div class="income-title">Streak</div><div class="income-val">+15%</div><div class="income-sub">3 dager · Zar</div></div>
+    </div>
+    <div class="income-card">
+      <div class="income-ic" style="background:rgba(255,182,39,.14); color:var(--gold-1);">👥</div>
+      <div><div class="income-title">Referrals</div><div class="income-val">10%</div><div class="income-sub">av nettverk, for alltid</div></div>
+    </div>
+  </div>
+
+  <div class="earnmore reveal" style="animation-delay:.24s;">
+    <div class="em-pill"><span class="ic">⚡</span> Tap nå</div>
+    <div class="em-pill"><span class="ic">👥</span> Inviter venner</div>
+    <div class="em-pill"><span class="ic">📜</span> Ta en quiz</div>
+    <div class="em-pill"><span class="ic">📺</span> Se annonse</div>
+  </div>
+
+  <!-- 4. WHERE CAN I SPEND -->
+  <div class="flow-lbl reveal" style="animation-delay:.26s;">Steg 3</div>
+  <div class="flow-q reveal" style="animation-delay:.26s;">Hvor kan du <span>bruke</span> dem?</div>
+  <div class="shop-banner reveal" style="animation-delay:.28s;">
+    <div class="shop-ic">🛍️</div>
+    <div class="shop-mid">
+      <div class="shop-title">Ganj Bazaar</div>
+      <div class="shop-sub">Bruk REAL på skins, chests og boosts</div>
+    </div>
+    <div class="shop-btn">Handle →</div>
+  </div>
+
+  <div class="section-lbl reveal" style="animation-delay:.30s;">Recent activity</div>
+  <div class="activity-list">
+    <div class="a-row reveal" style="animation-delay:.32s;">
+      <div class="a-ic" style="background:rgba(51,255,178,.12); color:var(--green);">📺</div>
+      <div class="a-mid"><div class="a-title">Watch &amp; Earn</div><div class="a-sub">I dag · 12:04</div></div>
+      <div class="a-amt pos">+50 REAL</div>
+    </div>
+    <div class="a-divider"></div>
+    <div class="a-row reveal" style="animation-delay:.34s;">
+      <div class="a-ic" style="background:rgba(255,182,39,.12); color:var(--gold-1);">🔁</div>
+      <div class="a-mid"><div class="a-title">Swap Zar → Real</div><div class="a-sub">I dag · 09:41</div></div>
+      <div class="a-amt neu">−500K → +1.0K REAL</div>
+    </div>
+    <div class="a-divider"></div>
+    <div class="a-row reveal" style="animation-delay:.36s;">
+      <div class="a-ic" style="background:rgba(123,92,250,.12); color:var(--violet);">👥</div>
+      <div class="a-mid"><div class="a-title">Referral bonus</div><div class="a-sub">I går · SL-227-91572537</div></div>
+      <div class="a-amt pos">+0.11 GB</div>
+    </div>
+    <div class="a-divider"></div>
+    <div class="a-row reveal" style="animation-delay:.38s;">
+      <div class="a-ic" style="background:rgba(255,90,90,.12); color:var(--red);">🛍️</div>
+      <div class="a-mid"><div class="a-title">Ganj Bazaar · Skin</div><div class="a-sub">Mandag · Kongelig kappe</div></div>
+      <div class="a-amt neg">−2,500 REAL</div>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <div class="nav-item"><div class="ic">⬡</div>Home</div>
+    <div class="nav-item"><div class="ic">💬</div>Chats</div>
+    <div class="nav-item"><div class="ic">🌐</div>Freedom</div>
+    <div class="nav-item active"><div class="ic">💎</div>Wallet</div>
+    <div class="nav-item"><div class="ic">👥</div>Clan</div>
+    <div class="nav-item"><div class="ic">👤</div>Profile</div>
+  </div>
+</div>
+
+<script>
+const embersHost = document.getElementById('embers');
+for(let i=0;i<10;i++){
+  const e = document.createElement('div');
+  e.className = 'ember-p';
+  e.style.left = (Math.random()*100) + '%';
+  e.style.animationDuration = (7 + Math.random()*8) + 's';
+  e.style.animationDelay = (Math.random()*10) + 's';
+  e.style.setProperty('--drift', (Math.random()*30-15) + 'px');
+  embersHost.appendChild(e);
+}
+
+// count-up balance
+const bhNum = document.getElementById('bhNum');
+let cur = 0; const target = 12700;
+const step = Math.ceil(target/40);
+const countUp = setInterval(()=>{
+  cur = Math.min(target, cur+step);
+  bhNum.textContent = cur.toLocaleString('en-US');
+  if(cur>=target) clearInterval(countUp);
+}, 25);
+
+// sparkline draw-in
+setTimeout(()=>{ document.getElementById('sparkLine').style.transition='stroke-dashoffset 1.2s ease'; document.getElementById('sparkLine').style.strokeDashoffset='0'; }, 200);
+
+// bar chart grow-in
+setTimeout(()=>{
+  document.querySelectorAll('.bar-fill').forEach(b=>{ b.style.height = b.getAttribute('data-h') + '%'; });
+}, 300);
+</script>
+</body>
+</html>

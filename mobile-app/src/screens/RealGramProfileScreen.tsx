@@ -24,6 +24,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { BottomNav } from '../components/BottomNav';
+import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
 import { useSessionStore, SessionRecord } from '../stores/sessionStore';
@@ -250,6 +252,7 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <EmberField count={8} />
       {!!onBack && (
         <TouchableOpacity onPress={onBack} style={styles.floatingBack} hitSlop={12} activeOpacity={0.75}>
           <Text style={styles.backIcon}>‹</Text>
@@ -399,7 +402,11 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
           </TouchableOpacity>
         )}
 
-        <View style={{ height: Spacing[8] }} />
+        {/* This screen has no self-rendered <BottomNav> — the Tab.Navigator's
+            floating tabBar overlay (AppNavigator.tsx) supplies it instead, so
+            without this the last card sits behind it (same bug reported on
+            RealGramClanScreen, 2026-07-23 — same fix applied here). */}
+        <View style={{ height: BottomNav.CONTENT_HEIGHT + insets.bottom + Spacing[4] }} />
       </ScrollView>
     </View>
   );

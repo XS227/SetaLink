@@ -20,6 +20,10 @@
 		CE000013CE000013CE000013 /* LibXray.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000012CE000012CE000012 /* LibXray.xcframework */; };
 		CE000018CE000018CE000018 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000017CE000017CE000017 /* libresolv.tbd */; };
 		CE000020CE000020CE000020 /* HevSocks5Tunnel.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = CE000019CE000019CE000019 /* HevSocks5Tunnel.xcframework */; };
+		32DDA0D875C9402499CD3EBF /* SpaceGrotesk-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 51E0984B77D44032A51BFFAA /* SpaceGrotesk-Regular.ttf */; };
+		1C6326EA59E349AC94FA5984 /* SpaceGrotesk-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E35C0A0C589B465380E275E4 /* SpaceGrotesk-Bold.ttf */; };
+		9B0A6E700C5B48FFA95F70E9 /* Vazirmatn-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = B2BEAB0B852F4188BBFE31F0 /* Vazirmatn-Regular.ttf */; };
+		6FB66C899DD44237A219CF41 /* JetBrainsMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = C2E7E368734C4F56B90E51EA /* JetBrainsMono-Regular.ttf */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -41,6 +45,10 @@
 		CE000012CE000012CE000012 /* LibXray.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = LibXray.xcframework; path = LibXray.xcframework; sourceTree = SOURCE_ROOT; };
 		CE000017CE000017CE000017 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 		CE000019CE000019CE000019 /* HevSocks5Tunnel.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = HevSocks5Tunnel.xcframework; path = HevSocks5Tunnel.xcframework; sourceTree = SOURCE_ROOT; };
+		51E0984B77D44032A51BFFAA /* SpaceGrotesk-Regular.ttf */ = {isa = PBXFileReference; name = "SpaceGrotesk-Regular.ttf"; path = "../assets/fonts/SpaceGrotesk-Regular.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		E35C0A0C589B465380E275E4 /* SpaceGrotesk-Bold.ttf */ = {isa = PBXFileReference; name = "SpaceGrotesk-Bold.ttf"; path = "../assets/fonts/SpaceGrotesk-Bold.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		B2BEAB0B852F4188BBFE31F0 /* Vazirmatn-Regular.ttf */ = {isa = PBXFileReference; name = "Vazirmatn-Regular.ttf"; path = "../assets/fonts/Vazirmatn-Regular.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
+		C2E7E368734C4F56B90E51EA /* JetBrainsMono-Regular.ttf */ = {isa = PBXFileReference; name = "JetBrainsMono-Regular.ttf"; path = "../assets/fonts/JetBrainsMono-Regular.ttf"; sourceTree = "<group>"; fileEncoding = undefined; lastKnownFileType = unknown; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -96,6 +104,7 @@
 				CE000012CE000012CE000012 /* LibXray.xcframework */,
 				CE000019CE000019CE000019 /* HevSocks5Tunnel.xcframework */,
 				83CBB9F71A601CBA00E9B192 /* Products */,
+				457A8119D1EA40E1929BF0A9 /* Resources */,
 			);
 			sourceTree = "<group>";
 		};
@@ -134,6 +143,18 @@
 			);
 			name = PacketTunnelExtension;
 			sourceTree = "<group>";
+		};
+		457A8119D1EA40E1929BF0A9 /* Resources */ = {
+			isa = "PBXGroup";
+			children = (
+				51E0984B77D44032A51BFFAA /* SpaceGrotesk-Regular.ttf */,
+				E35C0A0C589B465380E275E4 /* SpaceGrotesk-Bold.ttf */,
+				B2BEAB0B852F4188BBFE31F0 /* Vazirmatn-Regular.ttf */,
+				C2E7E368734C4F56B90E51EA /* JetBrainsMono-Regular.ttf */,
+			);
+			name = Resources;
+			sourceTree = "<group>";
+			path = "";
 		};
 /* End PBXGroup section */
 
@@ -239,6 +260,10 @@
 			buildActionMask = 2147483647;
 			files = (
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				32DDA0D875C9402499CD3EBF /* SpaceGrotesk-Regular.ttf in Resources */,
+				1C6326EA59E349AC94FA5984 /* SpaceGrotesk-Bold.ttf in Resources */,
+				9B0A6E700C5B48FFA95F70E9 /* Vazirmatn-Regular.ttf in Resources */,
+				6FB66C899DD44237A219CF41 /* JetBrainsMono-Regular.ttf in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -652,7 +677,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = 83CBB9F71A601CBA00E9B190 /* Project object */;
 }

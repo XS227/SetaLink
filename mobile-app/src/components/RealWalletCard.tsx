@@ -15,6 +15,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { GlassCard } from './GlassCard';
+import { GoldButton } from './GoldButton';
 import { REAL_TOKEN_IMAGE } from './EcosystemBanner';
 import { useT } from '../i18n';
 import { useToastStore } from '../stores/toastStore';
@@ -144,13 +145,13 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
       {!linked ? (
         <>
           <Text style={styles.hint}>{t('wallet.notLinked')}</Text>
-          <TouchableOpacity
+          <GoldButton
             style={styles.linkBtn}
+            textStyle={styles.linkBtnText}
             onPress={() => Linking.openURL(LINK_URL_BASE + encodeURIComponent(deviceId)).catch(() => {})}
-            accessibilityLabel={t('wallet.linkBtn')}
           >
-            <Text style={styles.linkBtnText}>{t('wallet.linkBtn')}</Text>
-          </TouchableOpacity>
+            {t('wallet.linkBtn')}
+          </GoldButton>
         </>
       ) : (
         <>
@@ -176,14 +177,14 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
               <Text style={styles.stepBtnText}>+</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={[styles.redeemBtn, busy && styles.stepBtnDim]}
+          <GoldButton
+            style={styles.redeemBtn}
+            textStyle={styles.redeemBtnText}
             disabled={busy}
             onPress={redeem}
-            accessibilityLabel={t('wallet.redeem')}
           >
-            <Text style={styles.redeemBtnText}>{busy ? '…' : t('wallet.redeem')}</Text>
-          </TouchableOpacity>
+            {busy ? '…' : t('wallet.redeem')}
+          </GoldButton>
         </>
       )}
     </GlassCard>
@@ -196,23 +197,22 @@ const styles = StyleSheet.create({
   coin:         { width: 26, height: 26, borderRadius: 13 },
   title:        { flex: 1, color: Colors.text.primary, fontSize: 15, fontFamily: Typography.family.heading },
   balances:     { alignItems: 'flex-end' },
-  balance:      { color: Colors.gold[400], fontSize: 14, fontFamily: Typography.family.heading },
-  zarBalance:   { color: Colors.text.secondary, fontSize: 11.5, fontFamily: Typography.family.body, marginTop: 1 },
+  balance:      { color: Colors.gold[400], fontSize: 14, fontFamily: Typography.family.mono },
+  zarBalance:   { color: Colors.text.secondary, fontSize: 11.5, fontFamily: Typography.family.mono, marginTop: 1 },
   conversionHint:{ color: Colors.text.secondary, fontSize: 11, fontFamily: Typography.family.body,
                   marginTop: Spacing[2], opacity: 0.8 },
   hint:         { color: Colors.text.secondary, fontSize: 12.5, marginTop: Spacing[3], lineHeight: 18 },
   linkBtn:      { marginTop: Spacing[3], alignSelf: 'flex-start', paddingHorizontal: Spacing[4],
-                  paddingVertical: 8, borderRadius: Radius.md, backgroundColor: Colors.gold[400] },
-  linkBtnText:  { color: '#1A1405', fontSize: 13, fontFamily: Typography.family.heading },
+                  paddingVertical: 8, borderRadius: Radius.md },
+  linkBtnText:  { fontSize: 13, fontFamily: Typography.family.heading },
   stepperRow:   { flexDirection: 'row', alignItems: 'center', marginTop: Spacing[4], gap: Spacing[4] },
   stepBtn:      { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center',
                   borderWidth: 1, borderColor: Colors.gold[400] },
   stepBtnDim:   { opacity: 0.35 },
   stepBtnText:  { color: Colors.gold[400], fontSize: 20, fontFamily: Typography.family.heading },
   stepValueWrap:{ flex: 1, alignItems: 'center' },
-  stepValue:    { color: Colors.text.primary, fontSize: 18, fontFamily: Typography.family.heading },
+  stepValue:    { color: Colors.text.primary, fontSize: 18, fontFamily: Typography.family.mono },
   stepCost:     { color: Colors.text.secondary, fontSize: 12, marginTop: 2 },
-  redeemBtn:    { marginTop: Spacing[4], alignItems: 'center', paddingVertical: 10,
-                  borderRadius: Radius.md, backgroundColor: Colors.gold[400] },
-  redeemBtnText:{ color: '#1A1405', fontSize: 14, fontFamily: Typography.family.heading },
+  redeemBtn:    { marginTop: Spacing[4], paddingVertical: 10, borderRadius: Radius.md },
+  redeemBtnText:{ fontSize: 14, fontFamily: Typography.family.heading },
 });

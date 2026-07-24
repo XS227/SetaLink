@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — Chats</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@500;700&family=Noto+Sans+Arabic:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A; --bg-1:#0B0E17; --card:#0F1422; --card-line:rgba(255,196,120,.14);
+    --gold-0:#B8790F; --gold-1:#FFB627; --gold-2:#FFF3C4;
+    --silver-0:#5B6472; --silver-1:#B7C0CC; --silver-2:#E8ECF1;
+    --violet:#7B5CFA; --violet-2:#5B4FE0; --ember:#FF8A3D;
+    --cyan:#33D3FF; --cyan-2:#7FE3FF; --green:#33FFB2; --red:#FF5A5A;
+    --ink:#EAEFF5; --ink-dim:#828B9C; --ink-faint:#5B6274;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #141a2c 0%, transparent 55%), var(--bg-0);
+    color:var(--ink); display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .phone{
+    width:390px; max-width:100vw; height:844px; max-height:100vh;
+    position:relative; display:flex; flex-direction:column;
+    overflow:hidden;
+    background:
+      radial-gradient(60% 30% at 85% -5%, rgba(123,92,250,.10), transparent 60%),
+      radial-gradient(50% 22% at 10% 0%, rgba(51,211,255,.06), transparent 60%),
+      linear-gradient(180deg, #090C15 0%, #05060A 40%, #030308 100%);
+  }
+  .embers{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; opacity:.5; }
+  .ember-p{
+    position:absolute; bottom:-10px; width:2px; height:2px; border-radius:50%;
+    background:var(--ember); box-shadow:0 0 5px var(--ember);
+    animation:rise linear infinite; opacity:0;
+  }
+  @keyframes rise{ 0%{ transform:translateY(0); opacity:0;} 10%{opacity:.7;} 90%{opacity:.3;} 100%{ transform:translateY(-780px) translateX(var(--drift)); opacity:0; } }
+
+  .reveal{ animation:fadeInUp .5s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadeInUp{ from{ opacity:0; transform:translateY(10px);} to{ opacity:1; transform:translateY(0);} }
+
+  /* ===== Header ===== */
+  .header{ position:relative; z-index:1; padding:16px 16px 10px; }
+  .header-top{ display:flex; align-items:center; justify-content:space-between; }
+  .h-title{ font-size:26px; font-weight:800; letter-spacing:-.01em; }
+  .h-actions{ display:flex; gap:8px; }
+  .icon-btn{
+    width:38px; height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-line);
+    display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--ink-dim);
+  }
+  .icon-btn.gold{ color:var(--gold-1); border-color:rgba(255,182,39,.35); background:rgba(255,182,39,.08); }
+
+  .search{
+    margin-top:12px; display:flex; align-items:center; gap:8px;
+    background:var(--card); border:1px solid var(--card-line); border-radius:16px;
+    padding:10px 14px; color:var(--ink-faint); font-size:13px;
+  }
+  .search span.ic{ font-size:14px; opacity:.8; }
+
+  /* ===== Online strip ===== */
+  .online-strip{ display:flex; gap:14px; padding:14px 16px 4px; overflow-x:auto; position:relative; z-index:1; }
+  .online-strip::-webkit-scrollbar{ display:none; }
+  .op{ display:flex; flex-direction:column; align-items:center; gap:6px; flex-shrink:0; width:56px; }
+  .op-ring{
+    width:52px; height:52px; border-radius:50%; padding:2px;
+    background:conic-gradient(var(--gold-1), var(--ember), var(--violet), var(--gold-1));
+    display:flex; align-items:center; justify-content:center;
+  }
+  .op-ring.plain{ background:rgba(255,255,255,.12); }
+  .op-avatar{
+    width:100%; height:100%; border-radius:50%; background:var(--bg-1);
+    display:flex; align-items:center; justify-content:center; font-size:17px;
+    border:2px solid var(--bg-0);
+  }
+  .op-name{ font-size:9.5px; color:var(--ink-dim); text-align:center; max-width:56px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .op-you .op-avatar{ font-size:16px; }
+  .op-plus{ font-size:18px; color:var(--gold-1); }
+
+  /* ===== Segment tabs ===== */
+  .tabs{ display:flex; gap:6px; padding:14px 16px 6px; position:relative; z-index:1; }
+  .tab{ font-size:12px; padding:7px 14px; border-radius:20px; color:var(--ink-dim); border:1px solid var(--card-line); background:var(--card); }
+  .tab.active{ color:#0B0E17; background:linear-gradient(90deg,var(--gold-2),var(--gold-1)); border-color:transparent; font-weight:700; }
+
+  /* ===== Chat list ===== */
+  .list{ flex:1; overflow-y:auto; padding:6px 8px 90px; position:relative; z-index:1; }
+  .list::-webkit-scrollbar{ display:none; }
+
+  .chat-row{
+    display:flex; align-items:center; gap:12px; padding:11px 10px; border-radius:16px;
+    position:relative;
+  }
+  .chat-row:active{ background:rgba(255,255,255,.04); }
+
+  .avatar-wrap{ position:relative; flex-shrink:0; }
+  .avatar{
+    width:50px; height:50px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:19px; font-weight:700; color:#0B0E17;
+    border:2px solid rgba(255,255,255,.06);
+  }
+  .avatar.clan{ background:linear-gradient(135deg,var(--gold-2),var(--gold-1)); font-size:18px; }
+  .avatar.hero{ background:linear-gradient(135deg,#B7C0CC,#5B6472); color:#fff; }
+  .avatar.node{ background:linear-gradient(135deg, rgba(51,211,255,.35), rgba(123,92,250,.35)); color:var(--cyan-2); font-family:'JetBrains Mono',monospace; font-size:11px; }
+  .avatar.node .ic{ font-size:16px; }
+  .avatar.official{ background:linear-gradient(135deg,#3a4356,#151a26); color:var(--gold-1); }
+  .presence{
+    position:absolute; bottom:0; right:0; width:13px; height:13px; border-radius:50%;
+    border:2.5px solid var(--bg-0);
+  }
+  .presence.on{ background:var(--green); }
+  .presence.off{ background:var(--ink-faint); }
+
+  .chat-mid{ flex:1; min-width:0; }
+  .chat-top-row{ display:flex; align-items:center; gap:6px; }
+  .chat-name{ font-size:14.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .chat-name.unread{ color:var(--ink); }
+  .chat-name.read{ color:#C7CEDB; font-weight:500; }
+  .verified{ font-size:11px; color:var(--cyan-2); flex-shrink:0; }
+  .pin{ font-size:10px; color:var(--gold-1); flex-shrink:0; }
+
+  .chat-preview{ font-size:12.5px; color:var(--ink-faint); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; direction:rtl; text-align:left; unicode-bidi:plaintext; }
+  .chat-preview.unread{ color:#AEB6C6; }
+  .chat-preview.typing{ color:var(--green); direction:ltr; }
+
+  .chat-side{ display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; }
+  .chat-time{ font-size:10.5px; color:var(--ink-faint); font-family:'JetBrains Mono',monospace; }
+  .chat-time.unread{ color:var(--gold-1); }
+  .badge{
+    min-width:19px; height:19px; padding:0 5px; border-radius:10px;
+    background:var(--gold-1); color:#241605; font-size:10.5px; font-weight:800;
+    display:flex; align-items:center; justify-content:center; font-family:'JetBrains Mono',monospace;
+  }
+  .mute-ic{ font-size:12px; color:var(--ink-faint); }
+
+  .divider{ height:1px; background:rgba(255,255,255,.05); margin:2px 18px; }
+
+  /* ===== FAB ===== */
+  .fab{
+    position:absolute; right:18px; bottom:92px; z-index:3;
+    width:56px; height:56px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--gold-2), var(--gold-1) 60%, var(--gold-0) 100%);
+    display:flex; align-items:center; justify-content:center;
+    font-size:22px; color:#241605;
+    box-shadow:0 0 0 6px rgba(255,182,39,.12), 0 10px 24px rgba(255,138,61,.35);
+    animation:fabPulse 3.4s ease-in-out infinite;
+  }
+  @keyframes fabPulse{ 0%,100%{ box-shadow:0 0 0 6px rgba(255,182,39,.12), 0 10px 24px rgba(255,138,61,.35);} 50%{ box-shadow:0 0 0 10px rgba(255,182,39,.06), 0 10px 30px rgba(255,138,61,.5);} }
+
+  /* ===== Navbar ===== */
+  .navbar{
+    position:relative; z-index:2; display:flex; justify-content:space-around; align-items:center;
+    padding:11px 8px calc(11px + env(safe-area-inset-bottom));
+    background:rgba(11,14,23,.92); border-top:1px solid var(--card-line); backdrop-filter:blur(10px);
+  }
+  .nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:9.5px; color:var(--ink-dim); }
+  .nav-item .ic{ font-size:18px; }
+  .nav-item.active{ color:var(--green); }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="embers" id="embers"></div>
+
+  <div class="header">
+    <div class="header-top">
+      <div class="h-title">Chats</div>
+      <div class="h-actions">
+        <div class="icon-btn">🔍</div>
+        <div class="icon-btn gold">✎</div>
+      </div>
+    </div>
+    <div class="search"><span class="ic">🔍</span> Search chats or node ID…</div>
+  </div>
+
+  <div class="online-strip">
+    <div class="op op-you">
+      <div class="op-ring plain"><div class="op-avatar">➕</div></div>
+      <div class="op-name">Your story</div>
+    </div>
+    <div class="op">
+      <div class="op-ring"><div class="op-avatar">🦅</div></div>
+      <div class="op-name">FALCON</div>
+    </div>
+    <div class="op">
+      <div class="op-ring"><div class="op-avatar">👑</div></div>
+      <div class="op-name">Nour</div>
+    </div>
+    <div class="op">
+      <div class="op-ring"><div class="op-avatar" style="font-size:12px;">SL·88</div></div>
+      <div class="op-name">SL-227</div>
+    </div>
+    <div class="op">
+      <div class="op-ring"><div class="op-avatar">🛡️</div></div>
+      <div class="op-name">Veteran</div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active">All</div>
+    <div class="tab">Clan</div>
+    <div class="tab">Direct</div>
+    <div class="tab">Unread</div>
+  </div>
+
+  <div class="list" id="list">
+
+    <div class="chat-row reveal" style="animation-delay:.02s;">
+      <div class="avatar-wrap">
+        <div class="avatar clan">🦅</div>
+        <div class="presence on"></div>
+      </div>
+      <div class="chat-mid">
+        <div class="chat-top-row">
+          <span class="pin">📌</span>
+          <span class="chat-name unread">FALCON · Clan</span>
+        </div>
+        <div class="chat-preview unread" style="direction:ltr;">👑 Leader: Nytt Chronicle-kapittel er ute!</div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-time unread">12:04</div>
+        <div class="badge">3</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="chat-row reveal" style="animation-delay:.06s;">
+      <div class="avatar-wrap">
+        <div class="avatar hero">👑</div>
+        <div class="presence on"></div>
+      </div>
+      <div class="chat-mid">
+        <div class="chat-top-row"><span class="chat-name unread">Nour · King</span></div>
+        <div class="chat-preview unread" style="direction:ltr;">🔥 Slo streaken din — 5 dager nå!</div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-time unread">11:47</div>
+        <div class="badge">1</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="chat-row reveal" style="animation-delay:.10s;">
+      <div class="avatar-wrap">
+        <div class="avatar node"><span class="ic">📡</span></div>
+        <div class="presence on"></div>
+      </div>
+      <div class="chat-mid">
+        <div class="chat-top-row"><span class="chat-name unread">SL-227-91572537</span></div>
+        <div class="chat-preview typing">Skriver …</div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-time unread">10:58</div>
+        <div class="badge">2</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="chat-row reveal" style="animation-delay:.14s;">
+      <div class="avatar-wrap">
+        <div class="avatar official">Ⓡ</div>
+      </div>
+      <div class="chat-mid">
+        <div class="chat-top-row"><span class="verified">✔</span><span class="chat-name read">RealGram Community</span></div>
+        <div class="chat-preview" style="direction:ltr;">Nytt kapittel låst opp: Khosrow Parviz</div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-time">09:30</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="chat-row reveal" style="animation-delay:.18s;">
+      <div class="avatar-wrap">
+        <div class="avatar node"><span class="ic">📡</span></div>
+        <div class="presence off"></div>
+      </div>
+      <div class="chat-mid">
+        <div class="chat-top-row"><span class="chat-name read">SL-227-6888F163</span></div>
+        <div class="chat-preview">چ کنم چشمم زیباییتون میبینه میدرخشه دیگه 😂</div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-time">20:42</div>
+        <div class="mute-ic">🔕</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="chat-row reveal" style="animation-delay:.22s;">
+      <div class="avatar-wrap">
+        <div class="avatar hero" style="background:linear-gradient(135deg,#7B5CFA,#5B4FE0);">🛡️</div>
+        <div class="presence off"></div>
+      </div>
+      <div class="chat-mid">
+        <div class="chat-top-row"><span class="chat-name read">Xebat227 · Veteran</span></div>
+        <div class="chat-preview" style="direction:ltr;">Takk for hjelpen med guild-questen 🙏</div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-time">I går</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="chat-row reveal" style="animation-delay:.26s;">
+      <div class="avatar-wrap">
+        <div class="avatar node"><span class="ic">📡</span></div>
+      </div>
+      <div class="chat-mid">
+        <div class="chat-top-row"><span class="chat-name read">SL-227-561F10F6</span></div>
+        <div class="chat-preview" style="direction:ltr;">این چیه 🙏</div>
+      </div>
+      <div class="chat-side">
+        <div class="chat-time">Mandag</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="fab">✎</div>
+
+  <div class="navbar">
+    <div class="nav-item"><div class="ic">⬡</div>Home</div>
+    <div class="nav-item active"><div class="ic">💬</div>Chats</div>
+    <div class="nav-item"><div class="ic">🌐</div>Freedom</div>
+    <div class="nav-item"><div class="ic">💎</div>Wallet</div>
+    <div class="nav-item"><div class="ic">👥</div>Clan</div>
+    <div class="nav-item"><div class="ic">👤</div>Profile</div>
+  </div>
+</div>
+
+<script>
+const embersHost = document.getElementById('embers');
+for(let i=0;i<10;i++){
+  const e = document.createElement('div');
+  e.className = 'ember-p';
+  e.style.left = (Math.random()*100) + '%';
+  e.style.animationDuration = (7 + Math.random()*8) + 's';
+  e.style.animationDelay = (Math.random()*10) + 's';
+  e.style.setProperty('--drift', (Math.random()*30-15) + 'px');
+  embersHost.appendChild(e);
+}
+</script>
+</body>
+</html>

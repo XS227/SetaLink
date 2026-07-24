@@ -380,7 +380,17 @@ function HomeAdapter({ navigation, route }: ScreenAdapterProps) {
 }
 
 function ServersAdapter({ navigation, route }: ScreenAdapterProps) {
-  return <ServersScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'servers'} onNavigate={makeOnNavigate(navigation)} />;
+  const { t } = useT();
+  return (
+    <ServersScreen
+      activeTab={SCREEN_TO_TAB[route.name] ?? 'servers'}
+      onNavigate={makeOnNavigate(navigation)}
+      onInvite={() => {
+        const code = (useAuthStore.getState().user?.referralCode || '').toUpperCase();
+        Share.share({ message: t('pr.shareMessage').replace(/\{code\}/g, code) }).catch(() => {});
+      }}
+    />
+  );
 }
 
 function AIAdapter({ navigation, route }: ScreenAdapterProps) {

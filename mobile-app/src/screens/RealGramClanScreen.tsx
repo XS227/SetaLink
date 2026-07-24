@@ -23,6 +23,16 @@
  * returns sorted by usage (`ORDER BY used DESC`) — surfaced here as "Top
  * contributors in your network," a true ranking, not a fabricated global
  * one.
+ *
+ * Gold/silver theme pass (2026-07-23): retinted the child components this
+ * screen renders (ReferralEarningsDonut, StarlinkCard — StarlinkCard also
+ * moved gold->cyan to match "Cyan = Starlink/network"). Did NOT build the
+ * theme pkg's `06-clan.html` mockup (TrustAI/Treasury/Tier-quests/Clan-Wars/
+ * Warriors-leaderboard) — that mockup is a Shahnameh-guild-war Clan screen,
+ * which is the exact framing this screen was deliberately redesigned away
+ * from one day earlier (2026-07-22, see above). Building it now would
+ * partially reverse that decision, on top of having no real backing data for
+ * Treasury/quests/leaderboard either. Flagged, not built.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -34,6 +44,8 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { StarlinkCard } from '../components/StarlinkCard';
+import { BottomNav } from '../components/BottomNav';
+import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useStarlinkStore } from '../stores/starlinkStore';
 import { getProfileSummary, ProfileClan } from '../services/realGramProfileService';
@@ -69,6 +81,7 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <EmberField count={8} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
@@ -123,7 +136,11 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
           </GlassCard>
         )}
 
-        <View style={{ height: Spacing[8] }} />
+        {/* This screen has no self-rendered <BottomNav> — the Tab.Navigator's
+            floating tabBar overlay (AppNavigator.tsx) supplies it instead, so
+            without this the last card sits behind it and the page reads as
+            "won't scroll all the way" (Khabat, 2026-07-23 bug report). */}
+        <View style={{ height: BottomNav.CONTENT_HEIGHT + insets.bottom + Spacing[4] }} />
       </ScrollView>
     </View>
   );
@@ -140,7 +157,7 @@ const styles = StyleSheet.create({
   card:      { padding: Spacing[4], gap: Spacing[2] },
   cardLabel: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  dataValue: { fontSize: Typography.size.xl, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  dataValue: { fontSize: Typography.size.xl, fontFamily: Typography.family.mono, color: Colors.gold[400] },
   dataSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
 
   clanRow:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },

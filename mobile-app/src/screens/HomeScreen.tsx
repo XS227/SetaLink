@@ -2,9 +2,15 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
+import ReanimatedView, {
+  useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing as REasing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
+import { RealCoin }        from '../components/RealCoin';
+import { EmberField }      from '../components/EmberField';
+import { StarlinkBanner }  from '../components/StarlinkBanner';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { EcosystemBanner } from '../components/EcosystemBanner';
 import { HomeBanner }      from '../components/HomeBanner';
@@ -15,29 +21,52 @@ import { useServerStore }      from '../stores/serverStore';
 import { useIdentityStore }    from '../stores/identityStore';
 import { useDMStore }          from '../stores/dmStore';
 import { useInboxStore }       from '../stores/inboxStore';
+import { useZarStore }         from '../stores/zarStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
 import { useVpnStats }         from '../hooks/useVpnStats';
 import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
-
-import Svg, { Path } from 'react-native-svg';
+import { initZarSync, recordZarTap } from '../services/zarSyncService';
 
 const STARLINK_INVITE_TARGET = 11;
+
+function formatZar(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+}
+
+/** Hours elapsed since UTC midnight (matches zarStore's dayKey convention) —
+ * floored at a few minutes so a fresh day doesn't divide by ~0. */
+function hoursElapsedToday(): number {
+  const now = new Date();
+  const startOfDay = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.max(1 / 12, (now.getTime() - startOfDay) / 3_600_000);
+}
+
+// Small colored dots orbiting the coin, purely decorative (theme pkg's
+// `.orbit-dot` × 3 in 01-home.html) — ambient motion, not a data display.
+const ORBIT_DOTS = [
+  { duration: 9000,  radius: 78, color: Colors.gold[100] },
+  { duration: 13000, radius: 78, color: Colors.violet[400], reverse: true },
+  { duration: 16000, radius: 78, color: Colors.gold[400] },
+];
+
+function OrbitDot({ duration, radius, color, reverse }: { duration: number; radius: number; color: string; reverse?: boolean }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = withRepeat(withTiming(1, { duration, easing: REasing.linear }), -1, false);
+  }, [t, duration]);
+  const style = useAnimatedStyle(() => {
+    const a = (reverse ? -1 : 1) * t.value * Math.PI * 2;
+    return { transform: [{ translateX: Math.cos(a) * radius }, { translateY: Math.sin(a) * radius }] };
+  });
+  return <ReanimatedView.View style={[{ position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: color }, style]} />;
+}
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
   activeTab:  NavTab;
-}
-
-function PowerIcon({ color }: { color: string }) {
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M12 2v10" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-      <Path d="M18.4 6.6a9 9 0 1 1-12.77.04" stroke={color} strokeWidth={2.5} strokeLinecap="round" />
-    </Svg>
-  );
 }
 
 export function HomeScreen({ onNavigate, activeTab }: Props) {
@@ -54,6 +83,19 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const avatarEmoji  = useIdentityStore((s) => s.avatarEmoji);
   const avatarColor  = useIdentityStore((s) => s.avatarColor);
   const servers      = useServerStore((s) => s.servers);
+
+  // Real tap-to-earn ZAR (zarStore + zarSyncService — contract §8, shipped
+  // 2026-07-19) was already fully built and wired into GameScreen, but
+  // never into the Home coin it was actually designed for (recordZarTap's
+  // own source param is literally 'game_hub' already). initZarSync is
+  // idempotent (resets its interval, doesn't double-fire) so calling it
+  // here alongside GameScreen's own call is safe.
+  const zarBalance    = useZarStore((s) => s.balance);
+  const zarEarnedToday = useZarStore((s) => s.earnedToday);
+  const deviceIdForZar = user?.deviceId ?? '';
+  useEffect(() => {
+    if (deviceIdForZar) initZarSync(deviceIdForZar);
+  }, [deviceIdForZar]);
 
   const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
   const unreadDm       = useDMStore((s) => s.messages.filter((m) => m.direction === 'in' && !m.read).length);
@@ -118,10 +160,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   // Khabat, 2026-07-24: rapid repeat-tapping the power button while connected
   // was toggling the tunnel off almost immediately (single tap = instant
-  // disconnect, no confirmation). Both directions now require a deliberate
-  // 3s hold — handlePower only fires from onLongPress below, never onPress.
-  const HOLD_MS = 3000;
-
+  // disconnect, no confirmation). RealCoin's own 3s hold gesture (see
+  // handleCoinHold below) already enforces this — handlePower itself has no
+  // separate tap path, only ever fires from a completed hold.
   const handlePower = useCallback(() => {
     if (isBusy || adGateBusyRef.current) return;
     if (isConnected) {
@@ -153,10 +194,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     }
   }, [isBusy, isConnected, user, userShowsAds, connect, disconnect, onNavigate]);
 
-  // Starlink referral progress
+  // Starlink referral progress (invite left/pct now computed inside
+  // StarlinkBanner itself from these two raw values).
   const inviteCount  = user?.inviteCount ?? 0;
-  const inviteLeft   = Math.max(0, STARLINK_INVITE_TARGET - inviteCount);
-  const invitePct    = Math.min(1, inviteCount / STARLINK_INVITE_TARGET);
   const starlinkNode = servers.find((s) => s.nodeType === 'STARLINK');
   const hasStarlink  = inviteCount >= STARLINK_INVITE_TARGET || !!starlinkNode;
 
@@ -164,10 +204,34 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const activeServer = selectedServer;
   const isStarlinkActive = isConnected && activeServer?.nodeType === 'STARLINK';
 
-  // Power button color
-  const powerColor = isBusy
-    ? '#E8B84B'
-    : isConnected ? Colors.emerald[400] : '#FF6B6B';
+  // Status-dot / status-text color — kept as the theme pkg's dedicated
+  // "connected status" green (Colors.status.connected), distinct from the
+  // coin's own gold/silver fill below (see tokens.ts §Colors.green comment).
+  const powerColor = isBusy ? '#E8B84B' : isConnected ? Colors.status.connected : Colors.status.disconnected;
+
+  // Real tap-to-earn, replacing the Phase-0 placeholder wiring (which sent
+  // both tap and hold to handlePower, since zarStore wasn't hooked up to
+  // this screen yet). Tap = forge real Zar (zarStore.tap(), server-synced
+  // via zarSyncService) — gated on isConnected, matching the store's own
+  // documented rule ("while the VPN is connected, each tap ... earns
+  // ZAR"). Hold-3s stays exactly handlePower, now on its own callback
+  // instead of sharing one with tap.
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const [floatText, setFloatText] = useState('');
+  const spawnFloat = useCallback((gain: number) => {
+    setFloatText(`+${gain}`);
+    floatAnim.setValue(0);
+    Animated.timing(floatAnim, { toValue: 1, duration: 900, useNativeDriver: true }).start();
+  }, [floatAnim]);
+
+  const handleCoinForge = useCallback(() => {
+    if (!isConnected) return;
+    const result = useZarStore.getState().tap();
+    recordZarTap();
+    if (result.earned > 0) spawnFloat(result.earned);
+  }, [isConnected, spawnFloat]);
+
+  const handleCoinHold = useCallback(() => { handlePower(); }, [handlePower]);
 
   const contentAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -178,6 +242,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       {isConnected && <View style={styles.ambientGlow} pointerEvents="none" />}
+      <EmberField />
 
       <ScrollView
         style={styles.scroll}
@@ -210,33 +275,39 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </View>
         </Animated.View>
 
-        {/* ── Starlink banner ── */}
+        {/* ── Balance pills — real zarStore data, not fabricated. Zar/hr is
+             a genuine derived stat (earnedToday / hours elapsed today),
+             not a synced server rate — approximate but honest. ── */}
+        <Animated.View style={[styles.pillRow, fadeStyle]}>
+          <View style={styles.pill}>
+            <Text style={styles.pillLabel}>{t('home.balance')}</Text>
+            <View style={styles.pillValueRow}>
+              <View style={styles.pillDot} />
+              <Text style={styles.pillValue}>{formatZar(zarBalance)}</Text>
+            </View>
+          </View>
+          <View style={styles.pill}>
+            <Text style={styles.pillLabel}>{t('home.zarPerHour')}</Text>
+            <Text style={[styles.pillValue, { color: Colors.status.connected }]}>
+              +{isConnected ? formatZar(Math.round(zarEarnedToday / hoursElapsedToday())) : 0}
+            </Text>
+          </View>
+        </Animated.View>
+
+        {/* ── Starlink hero — theme pkg's 01-home.html §hero (stars +
+             orbiting satellite + cyan wordmark), same tap target as the
+             plain banner it replaces (whole card -> Freedom tab, where the
+             real invite/connect flow lives via Freedom's own vip-variant
+             StarlinkBanner). ── */}
         <Animated.View style={fadeStyle}>
-          <TouchableOpacity
-            style={[styles.starlinkBanner, hasStarlink && styles.starlinkBannerActive]}
-            onPress={() => onNavigate('servers')}
-            activeOpacity={0.82}
-          >
-            <View style={styles.starlinkTop}>
-              <View>
-                <Text style={styles.starlinkLabel}>STARLINK</Text>
-                <Text style={styles.starlinkTitle}>{hasStarlink ? t('home.starlinkUnlocked') : t('home.starlinkAccess')}</Text>
-              </View>
-              <View style={styles.starlinkCounter}>
-                <Text style={styles.starlinkCountNum}>{inviteCount}</Text>
-                <Text style={styles.starlinkCountSep}>/</Text>
-                <Text style={styles.starlinkCountTarget}>{STARLINK_INVITE_TARGET}</Text>
-              </View>
-            </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { flex: invitePct }, hasStarlink && styles.progressFillDone]} />
-              <View style={{ flex: Math.max(0, 1 - invitePct) }} />
-            </View>
-            {!hasStarlink && (
-              <Text style={styles.starlinkHint}>
-                {t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
-              </Text>
-            )}
+          <TouchableOpacity onPress={() => onNavigate('servers')} activeOpacity={0.9}>
+            <StarlinkBanner
+              variant="hero"
+              unlocked={hasStarlink}
+              inviteCount={inviteCount}
+              inviteTarget={STARLINK_INVITE_TARGET}
+              onInvite={() => onNavigate('servers')}
+            />
           </TouchableOpacity>
         </Animated.View>
 
@@ -271,8 +342,36 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           {/* Divider */}
           <View style={styles.vpnDivider} />
 
-          {/* Connect row */}
-          <View style={styles.connectRow}>
+          {/* Coin — RealCoin replaces the old plain power button (theme
+              pkg, A->B(74)). Tap now forges real Zar (zarStore, gated on
+              isConnected); hold-3s toggles the connection — see
+              handleCoinForge/handleCoinHold above. */}
+          <View style={styles.coinSection}>
+            <Text style={styles.anvilTitle}>◦ {t('home.anvilTitle')}</Text>
+            <View style={styles.coinStage}>
+              {ORBIT_DOTS.map((d, i) => <OrbitDot key={i} {...d} />)}
+              <RealCoin
+                connected={isConnected}
+                size={132}
+                disabled={isBusy}
+                onForge={handleCoinForge}
+                onToggleConnection={handleCoinHold}
+              />
+              {!!floatText && (
+                <Animated.Text
+                  style={[
+                    styles.floatNum,
+                    {
+                      opacity: floatAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                      transform: [{ translateY: floatAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -60] }) }],
+                    },
+                  ]}
+                >
+                  {floatText}
+                </Animated.Text>
+              )}
+            </View>
+            <Text style={styles.anvilHint}>{t('home.holdToDisconnect')}</Text>
             <View style={styles.connectStatus}>
               <View style={[styles.statusDot, { backgroundColor: powerColor }]} />
               <Text style={styles.statusText}>
@@ -282,26 +381,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
                     ? t('home.connecting')
                     : t('home.disconnected')}
               </Text>
-              {error && !isConnected && !isBusy ? (
-                <Text style={styles.errorHint} numberOfLines={1}>{t('home.holdToRetry')}</Text>
-              ) : !isBusy && (
-                <Text style={styles.holdHint} numberOfLines={1}>
-                  {isConnected ? t('home.holdToDisconnect') : t('home.holdToConnect')}
-                </Text>
-              )}
             </View>
-
-            <TouchableOpacity
-              style={[styles.powerBtn, { borderColor: powerColor + '66' },
-                      isConnected && { backgroundColor: powerColor + '18' }]}
-              onLongPress={handlePower}
-              delayLongPress={HOLD_MS}
-              disabled={isBusy}
-              activeOpacity={0.75}
-              accessibilityLabel={isConnected ? 'Hold to disconnect VPN' : 'Hold to connect VPN'}
-            >
-              <PowerIcon color={powerColor} />
-            </TouchableOpacity>
+            {error && !isConnected && !isBusy && (
+              <Text style={styles.errorHint} numberOfLines={1}>{t('home.holdToRetry')}</Text>
+            )}
           </View>
 
           {/* GoldBeatBurst celebrates connect transition */}
@@ -321,7 +404,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.metricLabel}>{t('home.speed')}</Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, isConnected && { color: Colors.emerald[400] }]}>
+            <Text style={[styles.metricValue, isConnected && styles.metricValueActive]}>
               {isConnected ? '98' : '—'}
             </Text>
             <Text style={styles.metricUnit}>%</Text>
@@ -355,7 +438,7 @@ const styles = StyleSheet.create({
   screen:         { flex: 1, backgroundColor: Colors.bg.void },
   ambientGlow:    {
     position: 'absolute', top: 0, left: 0, right: 0, height: 300,
-    backgroundColor: Colors.emerald[900], opacity: 0.08,
+    backgroundColor: Colors.gold[900], opacity: 0.1,
   },
   scroll:         { flex: 1 },
   content:        { paddingHorizontal: Spacing[5], paddingTop: Spacing[3], gap: Spacing[4] },
@@ -371,32 +454,13 @@ const styles = StyleSheet.create({
   avatarChip:     { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   avatarEmoji:    { fontSize: 16 },
 
-  // Starlink banner
-  // Khabat, 2026-07-24: "takes too much vertical space" — trimmed padding/
-  // gap/type scale ~20% (was padding Spacing[4]/gap Spacing[2], title 17,
-  // count 28) rather than a fixed height, so it still grows correctly for
-  // longer translated strings.
-  starlinkBanner: {
-    backgroundColor: Colors.bg.surface,
-    borderRadius: Radius.xl,
-    padding: Spacing[3],
-    borderWidth: 1,
-    borderColor: 'rgba(212,140,20,0.25)',
-    gap: Spacing[1],
-    overflow: 'hidden',
-  },
-  starlinkBannerActive: { borderColor: 'rgba(212,140,20,0.6)' },
-  starlinkTop:    { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
-  starlinkLabel:  { fontSize: 10, fontFamily: Typography.family.heading, color: Colors.gold[600], letterSpacing: 2, textTransform: 'uppercase' },
-  starlinkTitle:  { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.gold[300], marginTop: 2 },
-  starlinkCounter:{ flexDirection: 'row', alignItems: 'baseline', gap: 2 },
-  starlinkCountNum: { fontSize: 23, fontFamily: Typography.family.heading, color: Colors.gold[300] },
-  starlinkCountSep: { fontSize: 14, color: Colors.gold[600] },
-  starlinkCountTarget: { fontSize: 14, color: Colors.gold[600] },
-  progressTrack:  { height: 4, flexDirection: 'row', borderRadius: 3, overflow: 'hidden', backgroundColor: 'rgba(212,140,20,0.12)' },
-  progressFill:   { backgroundColor: Colors.gold[500], borderRadius: 3 },
-  progressFillDone: { backgroundColor: Colors.emerald[400] },
-  starlinkHint:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
+  // Balance pills
+  pillRow:      { flexDirection: 'row', gap: Spacing[2] },
+  pill:         { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
+  pillLabel:    { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 1, textTransform: 'uppercase' },
+  pillValueRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
+  pillDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.gold[400] },
+  pillValue:    { fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.text.primary, marginTop: 2 },
 
   // VPN card
   vpnCard: {
@@ -406,7 +470,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.border.default,
     overflow: 'hidden',
   },
-  vpnCardActive: { borderColor: Colors.border.glow },
+  vpnCardActive: { borderColor: Colors.border.goldGlow },
   serverRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], padding: Spacing[4] },
   serverFlag:   { fontSize: 26 },
   serverInfo:   { flex: 1, gap: 2 },
@@ -414,23 +478,27 @@ const styles = StyleSheet.create({
   serverCity:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
   pingBadge:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pingDot:      { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.text.muted },
-  pingDotActive:{ backgroundColor: Colors.emerald[400] },
+  pingDotActive:{ backgroundColor: Colors.status.connected },
   pingText:     { fontSize: 11, color: Colors.text.secondary, fontFamily: Typography.family.mono },
   chevron:      { fontSize: 20, color: Colors.text.muted },
   vpnDivider:   { height: 1, backgroundColor: Colors.border.subtle, marginHorizontal: Spacing[4] },
-  connectRow:   { flexDirection: 'row', alignItems: 'center', padding: Spacing[4], gap: Spacing[3] },
-  connectStatus:{ flex: 1, gap: 2 },
-  statusDot:    { width: 7, height: 7, borderRadius: 4, position: 'absolute', left: -14, top: 5 },
-  statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingLeft: 0 },
-  errorHint:    { fontSize: 11, color: '#FF6B6B', fontFamily: Typography.family.body },
-  holdHint:     { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
-  powerBtn:     { width: 44, height: 44, borderRadius: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  // Coin section — replaces the old inline connectRow/powerBtn.
+  coinSection:  { alignItems: 'center', paddingVertical: Spacing[5], gap: Spacing[3] },
+  anvilTitle:   { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 2, textTransform: 'uppercase' },
+  anvilHint:    { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, opacity: 0.75, marginTop: -4 },
+  coinStage:    { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
+  floatNum:     { position: 'absolute', top: '38%', fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.gold[100] },
+  connectStatus:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
+  statusDot:    { width: 7, height: 7, borderRadius: 4 },
+  statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  errorHint:    { fontSize: 11, color: Colors.red[400], fontFamily: Typography.family.body },
 
   // Metrics
   metricsRow:   { flexDirection: 'row', gap: Spacing[3] },
   metricCard:   { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, padding: Spacing[3], alignItems: 'center', borderWidth: 1, borderColor: Colors.border.subtle, gap: 1 },
   metricCardCenter: { borderColor: Colors.border.default },
-  metricValue:  { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
+  metricValue:      { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
+  metricValueActive:{ color: Colors.status.connected },
   metricUnit:   { fontSize: 10, color: Colors.text.muted, fontFamily: Typography.family.mono, marginTop: -2 },
   metricLabel:  { fontSize: 10, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 },
 });

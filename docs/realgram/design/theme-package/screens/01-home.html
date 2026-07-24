@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — Home</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A; --bg-1:#0B0E17; --card:#0F1422; --card-line:rgba(255,196,120,.14);
+    --gold-0:#B8790F; --gold-1:#FFB627; --gold-2:#FFF3C4;
+    --silver-0:#5B6472; --silver-1:#B7C0CC; --silver-2:#E8ECF1;
+    --violet:#7B5CFA; --violet-2:#5B4FE0; --ember:#FF8A3D;
+    --cyan:#33D3FF; --cyan-2:#7FE3FF; --green:#33FFB2; --red:#FF5A5A;
+    --ink:#EAEFF5; --ink-dim:#828B9C;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #141a2c 0%, transparent 55%), var(--bg-0);
+    color:var(--ink); display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .phone{
+    width:390px; max-width:100vw; height:844px; max-height:100vh;
+    position:relative; display:flex; flex-direction:column;
+    overflow-y:auto; overflow-x:hidden; scrollbar-width:none;
+    background:
+      radial-gradient(70% 40% at 50% 30%, rgba(255,138,61,.10), transparent 65%),
+      radial-gradient(60% 30% at 80% 0%, rgba(123,92,250,.14), transparent 60%),
+      radial-gradient(50% 25% at 10% 4%, rgba(51,211,255,.08), transparent 60%),
+      linear-gradient(180deg, #090C15 0%, #05060A 40%, #030308 100%);
+  }
+  .phone::-webkit-scrollbar{display:none;}
+
+  .mountains{
+    position:absolute; top:0; left:0; width:100%; height:180px;
+    background:linear-gradient(180deg, rgba(20,26,44,.5), transparent);
+    clip-path:polygon(0% 100%, 0% 55%, 12% 40%, 24% 58%, 38% 30%, 52% 52%, 66% 22%, 80% 48%, 92% 34%, 100% 50%, 100% 100%);
+    opacity:.55; pointer-events:none; z-index:0;
+  }
+  .embers{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
+  .ember-p{
+    position:absolute; bottom:-10px; width:3px; height:3px; border-radius:50%;
+    background:var(--ember); box-shadow:0 0 6px var(--ember);
+    animation:rise linear infinite; opacity:0;
+  }
+  @keyframes rise{
+    0%{ transform:translateY(0) translateX(0); opacity:0; }
+    10%{ opacity:.9; } 90%{ opacity:.4; }
+    100%{ transform:translateY(-760px) translateX(var(--drift)); opacity:0; }
+  }
+
+  .reveal{ animation:fadeInUp .6s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadeInUp{ from{ opacity:0; transform:translateY(14px) scale(.98);} to{ opacity:1; transform:translateY(0) scale(1);} }
+
+  .topbar{ display:flex; gap:8px; align-items:center; padding:16px 16px 8px; }
+  .pill{
+    flex:1; background:linear-gradient(180deg, rgba(255,255,255,.05), transparent 40%), var(--card);
+    border:1px solid var(--card-line); border-radius:16px; padding:8px 12px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .pill .lbl{ font-size:9px; letter-spacing:.14em; color:var(--ink-dim); text-transform:uppercase; }
+  .pill .val{ font-size:15px; font-weight:700; font-family:'JetBrains Mono',monospace; margin-top:2px; display:flex; align-items:center; gap:5px;}
+  .dot-y{ width:9px;height:9px;border-radius:50%; background:radial-gradient(circle at 30% 30%, var(--gold-2), var(--gold-1)); flex-shrink:0;}
+  .menu-btn{
+    width:38px;height:38px; border-radius:50%; background:var(--card); border:1px solid var(--card-line);
+    display:flex; align-items:center; justify-content:center; font-size:15px; color:var(--ink-dim); flex-shrink:0;
+  }
+
+  .status-pill{ margin:0 16px 10px; display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--ink-dim); }
+  .status-dot{ width:8px;height:8px;border-radius:50%; }
+  .status-dot.on{ background:var(--green); box-shadow:0 0 8px var(--green); }
+  .status-dot.off{ background:var(--silver-1); }
+
+  /* ===== Starlink hero (compact, wordmark-led) ===== */
+  .hero{
+    position:relative; margin:2px 16px 12px;
+    border-radius:24px; overflow:hidden;
+    padding:18px 18px 16px;
+    min-height:180px;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    background:
+      radial-gradient(160% 120% at 90% -30%, rgba(123,92,250,.26), transparent 55%),
+      radial-gradient(120% 100% at 10% -10%, rgba(51,211,255,.20), transparent 55%),
+      linear-gradient(180deg, #060A16 0%, #0A1424 55%, #0E1B30 100%);
+    border:1px solid rgba(127,227,255,.22);
+    box-shadow:0 0 34px rgba(51,211,255,.08), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .stars{ position:absolute; inset:0; }
+  .star{ position:absolute; width:2px; height:2px; border-radius:50%; background:#fff; animation:twinkle 3.6s ease-in-out infinite; }
+  @keyframes twinkle{ 0%,100%{opacity:.15;} 50%{opacity:.85;} }
+
+  .orbit-wrap{ position:absolute; top:10px; right:10px; width:150px; height:84px; }
+  .orbit-ellipse{ position:absolute; inset:0; border:1px dashed rgba(127,227,255,.28); border-radius:50%; transform:rotate(-12deg); }
+  .sat{ position:absolute; font-size:16px; filter:drop-shadow(0 0 8px rgba(127,227,255,.85)); animation:orbit 28s linear infinite; }
+  @keyframes orbit{
+    0%{   top:2%;  left:50%; } 25%{ top:48%; left:92%; }
+    50%{  top:94%; left:50%; } 75%{  top:48%; left:6%;  }
+    100%{ top:2%;  left:50%; }
+  }
+
+  .planet{
+    position:absolute; left:-60px; right:-60px; bottom:-160px; height:220px; border-radius:50%;
+    background:radial-gradient(circle at 35% 20%, #16233B, #060A16 70%);
+    border-top:1px solid rgba(127,227,255,.22);
+    animation:planetBreathe 14s ease-in-out infinite alternate;
+    transform-origin:50% 100%;
+  }
+  @keyframes planetBreathe{
+    from{ transform:translateY(0) rotate(0deg); }
+    to{   transform:translateY(-5px) rotate(0.6deg); }
+  }
+  .grid-line{ position:absolute; left:0; right:0; height:1px; background:rgba(127,227,255,.09); animation:gridPulse 9s ease-in-out infinite; }
+  @keyframes gridPulse{ 0%,100%{ opacity:.5; } 50%{ opacity:1; } }
+
+  .hero-content{ position:relative; z-index:2; }
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--cyan-2); background:rgba(51,211,255,.12); border:1px solid rgba(51,211,255,.4);
+    padding:5px 10px; border-radius:20px; margin-bottom:9px;
+  }
+  .beat{ width:6px;height:6px;border-radius:50%; background:var(--cyan-2); box-shadow:0 0 8px var(--cyan-2); animation:pulseBeat 1.8s ease-in-out infinite; }
+  @keyframes pulseBeat{ 0%,100%{ transform:scale(1); opacity:1;} 50%{ transform:scale(1.5); opacity:.5;} }
+
+  .hero-word{
+    font-size:36px; font-weight:800; letter-spacing:.04em;
+    background:linear-gradient(90deg, #EAF8FF, var(--cyan-2) 60%, var(--cyan));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    line-height:1;
+  }
+  .hero-sub{ font-size:12px; color:var(--ink-dim); margin-top:7px; max-width:250px; line-height:1.5; }
+
+  .hero-cta{
+    margin-top:13px; display:inline-flex; align-items:center; gap:8px;
+    background:linear-gradient(90deg,#33D3FF,#7FE3FF);
+    color:#001824; font-weight:700; font-size:13px;
+    padding:11px 18px; border-radius:16px;
+    position:relative; overflow:hidden; width:fit-content;
+  }
+  .hero-cta::after{
+    content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(115deg, transparent, rgba(255,255,255,.55), transparent);
+    animation:shine 3.4s ease-in-out infinite;
+  }
+  @keyframes shine{ 0%{ left:-60%;} 60%,100%{ left:130%;} }
+
+  /* ===== Anvil card ===== */
+  .anvil-card{
+    margin:0 16px;
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.04), transparent 30%),
+      radial-gradient(120% 80% at 50% 0%, rgba(255,138,61,.05), transparent 60%),
+      var(--card);
+    border:1px solid var(--card-line); border-radius:26px; padding:20px 18px 16px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06), inset 0 -20px 40px rgba(0,0,0,.35), 0 12px 30px rgba(0,0,0,.4);
+  }
+  .anvil-title{ text-align:center; font-size:12px; letter-spacing:.2em; color:var(--ink-dim); text-transform:uppercase; }
+  .anvil-hint{ text-align:center; font-size:10.5px; color:var(--ink-dim); opacity:.75; margin-top:4px; margin-bottom:14px; }
+
+  .stage{ position:relative; height:200px; display:flex; align-items:center; justify-content:center; gap:16px; }
+  .orbit{ position:absolute; width:210px; height:210px; border-radius:50%; border:1px dashed rgba(255,255,255,.06); }
+  .orbit-dot{ position:absolute; width:7px; height:7px; border-radius:50%; animation:spin linear infinite; }
+  @keyframes spin{ from{ transform:rotate(0deg) translateX(100px) rotate(0deg);} to{ transform:rotate(360deg) translateX(100px) rotate(-360deg);} }
+
+  .glow{ position:absolute; width:240px;height:240px;border-radius:50%; filter:blur(10px); transition:background 400ms ease, opacity 400ms ease; pointer-events:none; }
+  .glow-inner{ position:absolute; width:170px;height:170px;border-radius:50%; background:radial-gradient(circle, rgba(255,182,39,.5), transparent 70%); filter:blur(3px); pointer-events:none; animation:breathe 3.2s ease-in-out infinite; }
+  @keyframes breathe{ 0%,100%{ transform:scale(1); opacity:.7; } 50%{ transform:scale(1.08); opacity:1; } }
+
+  .hold-ring{ position:absolute; width:148px;height:148px; transform:rotate(-90deg); pointer-events:none; }
+  .hold-ring circle{ fill:none; stroke-width:4; stroke:var(--red); stroke-linecap:round; stroke-dasharray:414; stroke-dashoffset:414; }
+
+  .coin{
+    position:relative; width:140px; height:140px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; cursor:pointer; user-select:none;
+    border:3px solid var(--gold-1);
+    box-shadow:0 0 0 6px rgba(255,182,39,.12), inset 0 2px 10px rgba(255,255,255,.12);
+    transition:transform .08s ease, border-color 400ms ease, box-shadow 400ms ease;
+  }
+  .coin:active{ transform:scale(.95); }
+  .coin-face{ width:100%; height:100%; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#0B0E17; transition:background 400ms ease; }
+  .coin-glyph{ font-family:'Vazirmatn',sans-serif; font-size:48px; font-weight:700; transition:color 400ms ease, text-shadow 400ms ease; }
+
+  .energy-vert{
+    position:relative; width:14px; height:150px; border-radius:8px;
+    background:rgba(255,255,255,.06); overflow:hidden; flex-shrink:0;
+    border:1px solid rgba(255,255,255,.08);
+  }
+  .energy-vert-fill{
+    position:absolute; bottom:0; left:0; width:100%;
+    background:linear-gradient(0deg, var(--violet-2), var(--violet), var(--gold-1), var(--ember));
+    box-shadow:0 0 10px rgba(255,138,61,.5);
+    transition:height 200ms linear;
+  }
+  .energy-vert-ic{ position:absolute; top:-20px; left:50%; transform:translateX(-50%); font-size:12px; }
+
+  /* ===== 4 compact icon chips ===== */
+  .icon-chip-row{ display:flex; gap:7px; margin:14px 16px; }
+  .icon-chip{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+    background:linear-gradient(180deg, rgba(255,255,255,.05), transparent 40%), var(--card);
+    border:1px solid var(--card-line); border-radius:15px; padding:9px 4px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .icon-chip .ic{ font-size:16px; }
+  .icon-chip .val{ font-size:11.5px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .icon-chip .lbl{ font-size:8px; color:var(--ink-dim); letter-spacing:.06em; text-transform:uppercase; }
+  .icon-chip.combo .val{ color:var(--violet); }
+  .icon-chip.streak .val{ color:var(--gold-1); }
+  .icon-chip.boost .val{ color:var(--ember); }
+  .icon-chip.energy .val{ color:var(--cyan-2); }
+
+  .refill-ad{
+    margin:0 16px 12px; border-radius:18px; padding:13px 15px;
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    background:linear-gradient(120deg, rgba(123,92,250,.14), rgba(51,255,178,.05));
+    border:1px solid rgba(123,92,250,.35);
+  }
+  .refill-left{ display:flex; align-items:center; gap:10px; }
+  .refill-icon{ font-size:20px; }
+  .refill-title{ font-size:12.5px; font-weight:600; }
+  .refill-sub{ font-size:10.5px; color:var(--ink-dim); margin-top:2px; }
+  .refill-btn{ background:rgba(51,255,178,.16); border:1px solid rgba(51,255,178,.5); color:var(--green); font-size:11px; font-weight:700; padding:8px 13px; border-radius:14px; white-space:nowrap; }
+
+  .ad-banner{
+    height:48px; margin:2px 16px 10px; border-radius:12px;
+    background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.14);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-size:9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim);
+  }
+  .ad-banner b{ color:var(--ink); font-size:10.5px; letter-spacing:.04em; text-transform:none; }
+
+  .zar-toast{
+    position:absolute; top:8px; left:50%; transform:translate(-50%,-140%);
+    background:rgba(255,182,39,.14); border:1px solid rgba(255,182,39,.5);
+    color:var(--gold-2); font-size:11.5px; padding:7px 14px; border-radius:30px;
+    transition:transform .3s ease; white-space:nowrap; z-index:5;
+  }
+  .zar-toast.show{ transform:translate(-50%,0); }
+  .zar-toast.off{ background:rgba(183,192,204,.14); border-color:rgba(183,192,204,.5); color:var(--silver-2); }
+
+  .float{
+    position:absolute; font-family:'JetBrains Mono',monospace; font-weight:700; font-size:14px;
+    color:var(--gold-2); pointer-events:none; animation:floatUp .9s ease-out forwards; z-index:3;
+  }
+  @keyframes floatUp{ 0%{opacity:1; transform:translate(-50%,0);} 100%{opacity:0; transform:translate(-50%,-60px);} }
+
+  .navbar{
+    margin-top:auto; display:flex; justify-content:space-around; align-items:center;
+    padding:11px 8px calc(11px + env(safe-area-inset-bottom));
+    background:rgba(11,14,23,.9); border-top:1px solid var(--card-line); backdrop-filter:blur(10px);
+  }
+  .nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:9.5px; color:var(--ink-dim); }
+  .nav-item .ic{ font-size:18px; }
+  .nav-item.active{ color:var(--green); }
+</style>
+</head>
+<body>
+<div class="phone" id="phone">
+  <div class="mountains"></div>
+  <div class="embers" id="embers"></div>
+  <div class="zar-toast" id="toast">🟡 Koblet til RealGram</div>
+
+  <div class="topbar" style="position:relative; z-index:1;">
+    <div class="pill">
+      <div class="lbl">Balance</div>
+      <div class="val"><span class="dot-y"></span><span id="zarNum">23.0K</span></div>
+    </div>
+    <div class="pill">
+      <div class="lbl">Zar / hr</div>
+      <div class="val" style="color:var(--green)">+0</div>
+    </div>
+    <div class="pill">
+      <div class="lbl">Real</div>
+      <div class="val" style="color:var(--gold-1)">9.2K</div>
+    </div>
+    <div class="menu-btn">☰</div>
+  </div>
+
+  <div class="status-pill reveal" style="position:relative; z-index:1; animation-delay:.05s;">
+    <span class="status-dot on" id="statusDot"></span>
+    <span id="statusText">Connected · 5ms · RealGram</span>
+  </div>
+
+  <div class="hero reveal" style="position:relative; z-index:1; animation-delay:.1s;">
+    <div class="stars" id="stars"></div>
+    <div class="orbit-wrap">
+      <div class="orbit-ellipse"></div>
+      <div class="sat">🛰️</div>
+    </div>
+    <div class="planet">
+      <div class="grid-line" style="top:20px; animation-delay:0s;"></div>
+      <div class="grid-line" style="top:50px; animation-delay:1.5s;"></div>
+      <div class="grid-line" style="top:80px; animation-delay:3s;"></div>
+    </div>
+    <div class="hero-content">
+      <div class="badge"><span class="beat"></span> Node · Live</div>
+      <div class="hero-word">STARLINK</div>
+      <div class="hero-sub">Koble deg til STARLINK direkte gjennom RealGram.</div>
+      <div class="hero-cta">🛰️ Connect via Starlink</div>
+    </div>
+  </div>
+
+  <div class="anvil-card reveal" style="position:relative; z-index:1; animation-delay:.16s;">
+    <div class="anvil-title">◦ The Anvil — Strike to Forge Zar</div>
+    <div class="anvil-hint">Hold 3s to disconnect</div>
+
+    <div class="stage">
+      <div class="orbit"></div>
+      <div class="glow" id="glow"></div>
+      <div class="glow-inner"></div>
+
+      <div class="orbit-dot" id="d1" style="animation-duration:9s; background:var(--gold-2);"></div>
+      <div class="orbit-dot" id="d2" style="animation-duration:13s; animation-delay:-4s; background:var(--violet); width:5px; height:5px;"></div>
+      <div class="orbit-dot" id="d3" style="animation-duration:16s; animation-delay:-9s; background:var(--gold-1); width:6px; height:6px;"></div>
+
+      <svg class="hold-ring" viewBox="0 0 148 148">
+        <circle id="holdCircle" cx="74" cy="74" r="65"></circle>
+      </svg>
+
+      <div class="coin" id="coin">
+        <div class="coin-face" id="coinFace">
+          <div class="coin-glyph" id="glyph">﷼</div>
+        </div>
+      </div>
+
+      <div class="energy-vert">
+        <div class="energy-vert-ic">⚡</div>
+        <div class="energy-vert-fill" id="energyFill" style="height:100%;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="icon-chip-row reveal" style="position:relative; z-index:1; animation-delay:.22s;">
+    <div class="icon-chip energy">
+      <div class="ic">⚡</div>
+      <div class="val" id="energyVal">2.0K</div>
+      <div class="lbl">Energy</div>
+    </div>
+    <div class="icon-chip combo">
+      <div class="ic">✕</div>
+      <div class="val" id="comboVal">1.0</div>
+      <div class="lbl">Combo</div>
+    </div>
+    <div class="icon-chip streak">
+      <div class="ic">🔥</div>
+      <div class="val">4</div>
+      <div class="lbl">Streak</div>
+    </div>
+    <div class="icon-chip boost" id="boostChip">
+      <div class="ic">⚡</div>
+      <div class="val">×3</div>
+      <div class="lbl">Boost</div>
+    </div>
+  </div>
+
+  <div class="refill-ad reveal" style="position:relative; z-index:1; animation-delay:.28s;">
+    <div class="refill-left">
+      <div class="refill-icon">📺</div>
+      <div>
+        <div class="refill-title">Refill via annonse</div>
+        <div class="refill-sub">Se en kort annonse → energien fylles helt opp</div>
+      </div>
+    </div>
+    <div class="refill-btn">Watch Ad</div>
+  </div>
+
+  <div class="ad-banner reveal" style="position:relative; z-index:1; animation-delay:.34s;">Ad · <b>AdMob banner · 320×50</b></div>
+
+  <div class="navbar" style="position:relative; z-index:1;">
+    <div class="nav-item active"><div class="ic">⬡</div>Home</div>
+    <div class="nav-item"><div class="ic">💬</div>Chats</div>
+    <div class="nav-item"><div class="ic">🌐</div>Freedom</div>
+    <div class="nav-item"><div class="ic">💎</div>Wallet</div>
+    <div class="nav-item"><div class="ic">👥</div>Clan</div>
+    <div class="nav-item"><div class="ic">👤</div>Profile</div>
+  </div>
+</div>
+
+<script>
+const coinFace = document.getElementById('coinFace');
+const glyph = document.getElementById('glyph');
+const coin = document.getElementById('coin');
+const glow = document.getElementById('glow');
+const zarNum = document.getElementById('zarNum');
+const comboVal = document.getElementById('comboVal');
+const energyVal = document.getElementById('energyVal');
+const energyFill = document.getElementById('energyFill');
+const holdCircle = document.getElementById('holdCircle');
+const toast = document.getElementById('toast');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const stage = document.querySelector('.stage');
+
+let zar = 23000;
+let energy = 2000, maxEnergy = 2000;
+let combo = 1.0;
+let connected = true;
+let holdTimer = null, holdStart = null;
+const HOLD_MS = 3000;
+const CIRC = 2 * Math.PI * 65;
+
+const GOLD_RING = '#FFB627';
+const SILVER_RING = '#B7C0CC';
+
+function fmtEnergy(n){ return (n/1000).toFixed(1) + 'K'; }
+
+function applyConnectionVisual(){
+  if(connected){
+    coin.style.borderColor = GOLD_RING;
+    coin.style.boxShadow = '0 0 0 6px rgba(255,182,39,.12), inset 0 2px 10px rgba(255,255,255,.12)';
+    coinFace.style.background = 'radial-gradient(circle at 35% 30%, #FFF3C4, #FFB627 55%, #8A5A00 100%)';
+    glyph.style.color = '#241605';
+    glyph.style.textShadow = '0 1px 0 rgba(255,255,255,.4)';
+    glow.style.background = 'radial-gradient(circle, rgba(255,182,39,.4), transparent 70%)';
+    glow.style.opacity = .8;
+    statusDot.classList.remove('off'); statusDot.classList.add('on');
+    statusText.textContent = 'Connected · 5ms · RealGram';
+  } else {
+    coin.style.borderColor = SILVER_RING;
+    coin.style.boxShadow = '0 0 0 6px rgba(183,192,204,.10), inset 0 2px 10px rgba(255,255,255,.08)';
+    coinFace.style.background = 'radial-gradient(circle at 35% 30%, #E8ECF1, #B7C0CC 55%, #4b525d 100%)';
+    glyph.style.color = '#20242b';
+    glyph.style.textShadow = '0 1px 0 rgba(255,255,255,.25)';
+    glow.style.background = 'radial-gradient(circle, rgba(183,192,204,.25), transparent 70%)';
+    glow.style.opacity = .4;
+    statusDot.classList.remove('on'); statusDot.classList.add('off');
+    statusText.textContent = 'Disconnected · Tap Freedom to reconnect';
+  }
+}
+
+function spawnFloat(gain){
+  const f = document.createElement('div');
+  f.className = 'float';
+  f.textContent = '+' + gain;
+  f.style.left = '38%'; f.style.top = '44%';
+  stage.appendChild(f);
+  setTimeout(()=> f.remove(), 900);
+}
+
+function tap(){
+  if(energy < 1) return;
+  const gain = Math.round(6 * combo);
+  zar += gain;
+  energy = Math.max(0, energy - 1);
+  combo = Math.min(5, combo + 0.15);
+  zarNum.textContent = (zar/1000).toFixed(1) + 'K';
+  comboVal.textContent = combo.toFixed(1);
+  energyVal.textContent = fmtEnergy(energy);
+  energyFill.style.height = (energy/maxEnergy*100) + '%';
+  spawnFloat(gain);
+}
+
+setInterval(()=>{
+  if(!holdTimer){ combo = Math.max(1, combo - 0.05); comboVal.textContent = combo.toFixed(1); }
+  if(energy < maxEnergy){ energy += 1; energyVal.textContent = fmtEnergy(energy); energyFill.style.height = (energy/maxEnergy*100) + '%'; }
+}, 300);
+
+function startHold(){
+  holdStart = Date.now();
+  holdTimer = setInterval(()=>{
+    const pct = Math.min(1, (Date.now()-holdStart)/HOLD_MS);
+    holdCircle.style.strokeDashoffset = CIRC * (1-pct);
+    if(pct >= 1){ clearHold(); toggleConnection(); }
+  }, 16);
+}
+function clearHold(){
+  clearInterval(holdTimer); holdTimer = null;
+  holdCircle.style.transition = 'stroke-dashoffset .25s ease';
+  holdCircle.style.strokeDashoffset = CIRC;
+  setTimeout(()=> holdCircle.style.transition = '', 260);
+}
+function toggleConnection(){
+  connected = !connected;
+  applyConnectionVisual();
+  toast.textContent = connected ? '🟡 Koblet til RealGram' : '⚪ Koblet fra VPN';
+  toast.classList.toggle('off', !connected);
+  toast.classList.add('show');
+  setTimeout(()=> toast.classList.remove('show'), 1800);
+}
+
+coin.addEventListener('pointerdown', startHold);
+coin.addEventListener('pointerup', ()=>{
+  const heldFor = holdStart ? Date.now()-holdStart : 0;
+  clearHold();
+  if(heldFor < HOLD_MS - 30) tap();
+});
+coin.addEventListener('pointerleave', clearHold);
+
+applyConnectionVisual();
+
+const embersHost = document.getElementById('embers');
+for(let i=0;i<14;i++){
+  const e = document.createElement('div');
+  e.className = 'ember-p';
+  e.style.left = (Math.random()*100) + '%';
+  e.style.animationDuration = (6 + Math.random()*7) + 's';
+  e.style.animationDelay = (Math.random()*10) + 's';
+  e.style.setProperty('--drift', (Math.random()*40-20) + 'px');
+  embersHost.appendChild(e);
+}
+
+const starsHost = document.getElementById('stars');
+for(let i=0;i<18;i++){
+  const s = document.createElement('div');
+  s.className = 'star';
+  s.style.left = Math.random()*100 + '%';
+  s.style.top = Math.random()*75 + '%';
+  s.style.animationDelay = (Math.random()*3) + 's';
+  starsHost.appendChild(s);
+}
+</script>
+</body>
+</html>

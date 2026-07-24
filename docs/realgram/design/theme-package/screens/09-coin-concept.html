@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — The Living Coin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A;
+    --bg-1:#0B0E17;
+    --silver-0:#7C8794;
+    --silver-1:#D7DEE6;
+    --gold-0:#B8790F;
+    --gold-1:#FFB627;
+    --gold-2:#FFF3C4;
+    --violet:#7B5CFA;
+    --green:#33FFB2;
+    --red:#FF4D4D;
+    --ink:#EAEFF5;
+    --ink-dim:#8B93A3;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:
+      radial-gradient(120% 90% at 50% -10%, #14192b 0%, transparent 60%),
+      linear-gradient(180deg,var(--bg-1),var(--bg-0));
+    color:var(--ink);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    min-height:100vh;
+    overflow:hidden;
+  }
+  .phone{
+    width:380px;
+    max-width:100vw;
+    height:100vh;
+    max-height:820px;
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    padding:28px 22px 18px;
+  }
+  .eyebrow{
+    text-align:center;
+    letter-spacing:.22em;
+    font-size:11px;
+    color:var(--ink-dim);
+    text-transform:uppercase;
+    margin-bottom:2px;
+  }
+  .streak{
+    text-align:center;
+    font-size:13px;
+    color:var(--gold-1);
+    margin-bottom:18px;
+  }
+
+  .stage{
+    position:relative;
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+
+  .rays{
+    position:absolute;
+    width:340px;height:340px;
+    pointer-events:none;
+    transition:opacity .4s ease;
+  }
+  .ray{
+    position:absolute;
+    left:50%;top:50%;
+    width:2px;
+    height:34px;
+    background:linear-gradient(180deg, var(--gold-2), transparent);
+    transform-origin:0 -136px;
+    border-radius:2px;
+    opacity:0;
+    transition:opacity .5s ease;
+  }
+
+  .glow{
+    position:absolute;
+    width:280px;height:280px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(255,182,39,0.35), transparent 70%);
+    filter:blur(6px);
+    transform:scale(0.8);
+    opacity:.3;
+    transition:opacity .3s ease, transform .3s ease;
+    pointer-events:none;
+  }
+
+  .hold-ring{
+    position:absolute;
+    width:216px;height:216px;
+    transform:rotate(-90deg);
+    pointer-events:none;
+  }
+  .hold-ring circle{
+    fill:none;
+    stroke-width:4;
+    stroke:var(--red);
+    stroke-linecap:round;
+    stroke-dasharray:594;
+    stroke-dashoffset:594;
+  }
+
+  .coin{
+    position:relative;
+    width:190px;
+    height:190px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    user-select:none;
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow:
+      0 0 0 8px rgba(255,255,255,0.02),
+      inset 0 2px 12px rgba(255,255,255,.15),
+      inset 0 -12px 24px rgba(0,0,0,.35);
+    transition:transform .08s ease;
+  }
+  .coin:active{ transform:scale(.94); }
+  .coin-face{
+    width:100%;height:100%;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 35% 30%, var(--silver-1), var(--silver-0) 60%, #4b525d 100%);
+    transition:background 120ms linear;
+  }
+  .coin-glyph{
+    font-family:'Vazirmatn',sans-serif;
+    font-size:64px;
+    font-weight:700;
+    color:#0B0E17;
+    text-shadow:0 1px 0 rgba(255,255,255,.35);
+  }
+
+  .zar{
+    margin-top:26px;
+    text-align:center;
+  }
+  .zar-num{
+    font-family:'JetBrains Mono',monospace;
+    font-size:38px;
+    font-weight:700;
+    letter-spacing:-.02em;
+  }
+  .zar-label{
+    font-size:11px;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    color:var(--ink-dim);
+    margin-top:2px;
+  }
+  .combo{
+    margin-top:10px;
+    display:inline-flex;
+    gap:6px;
+    align-items:center;
+    font-size:13px;
+    color:var(--violet);
+    font-weight:600;
+  }
+
+  .float{
+    position:absolute;
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700;
+    font-size:15px;
+    color:var(--gold-2);
+    pointer-events:none;
+    animation:floatUp .9s ease-out forwards;
+  }
+  @keyframes floatUp{
+    0%{ opacity:1; transform:translate(-50%,0) scale(1); }
+    100%{ opacity:0; transform:translate(-50%,-70px) scale(1.1); }
+  }
+
+  .spark{
+    position:absolute;
+    width:5px;height:5px;
+    border-radius:50%;
+    background:var(--gold-2);
+    pointer-events:none;
+    animation:sparkOut .6s ease-out forwards;
+  }
+  @keyframes sparkOut{
+    0%{ opacity:1; transform:translate(0,0) scale(1); }
+    100%{ opacity:0; transform:translate(var(--dx),var(--dy)) scale(.2); }
+  }
+
+  .wallet{
+    background:linear-gradient(180deg, rgba(255,182,39,.09), rgba(255,182,39,.02));
+    border:1px solid rgba(255,182,39,.35);
+    border-radius:20px;
+    padding:16px 18px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .wallet-name{
+    display:flex; flex-direction:column; gap:3px;
+  }
+  .wallet-name b{
+    font-family:'Vazirmatn',sans-serif;
+    font-size:16px;
+    color:var(--gold-1);
+  }
+  .wallet-name span{
+    font-size:11px;
+    color:var(--ink-dim);
+  }
+  .wallet-amt{
+    font-family:'JetBrains Mono',monospace;
+    font-size:15px;
+    color:var(--ink);
+  }
+
+  .toast{
+    position:absolute;
+    top:14px; left:50%;
+    transform:translate(-50%,-140%);
+    background:rgba(255,77,77,.14);
+    border:1px solid rgba(255,77,77,.5);
+    color:#ffb0b0;
+    font-size:12px;
+    padding:8px 14px;
+    border-radius:30px;
+    transition:transform .3s ease;
+    white-space:nowrap;
+  }
+  .toast.show{ transform:translate(-50%,0); }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="toast" id="toast">🔴 Koblet fra VPN</div>
+  <div class="eyebrow">THE ANVIL — GANJ ØKONOMI</div>
+  <div class="streak">🔥 4 dagers combo-streak</div>
+
+  <div class="stage">
+    <div class="rays" id="rays"></div>
+    <div class="glow" id="glow"></div>
+    <svg class="hold-ring" viewBox="0 0 216 216">
+      <circle id="holdCircle" cx="108" cy="108" r="94"></circle>
+    </svg>
+    <div class="coin" id="coin">
+      <div class="coin-face" id="coinFace">
+        <div class="coin-glyph">﷼</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="zar">
+    <div class="zar-num" id="zarNum">23,000</div>
+    <div class="zar-label">Zar forget</div>
+    <div class="combo" id="comboLabel">✕ 1.0 combo</div>
+  </div>
+
+  <div style="height:22px"></div>
+
+  <div class="wallet">
+    <div class="wallet-name">
+      <b>گنج · Ganj</b>
+      <span>Din skatt · REAL &amp; Zar</span>
+    </div>
+    <div class="wallet-amt">9,200 REAL</div>
+  </div>
+</div>
+
+<script>
+const coin = document.getElementById('coin');
+const coinFace = document.getElementById('coinFace');
+const glow = document.getElementById('glow');
+const raysEl = document.getElementById('rays');
+const zarNum = document.getElementById('zarNum');
+const comboLabel = document.getElementById('comboLabel');
+const holdCircle = document.getElementById('holdCircle');
+const toast = document.getElementById('toast');
+const stage = document.querySelector('.stage');
+
+let zar = 23000;
+let heat = 0;       // 0..1 silver -> gold
+let combo = 1.0;     // 1.0..5.0
+let holdTimer = null;
+let holdStart = null;
+const HOLD_MS = 3000;
+const CIRC = 2 * Math.PI * 94;
+
+// build ray elements once (max 12)
+const RAY_COUNT = 12;
+for(let i=0;i<RAY_COUNT;i++){
+  const r = document.createElement('div');
+  r.className = 'ray';
+  r.style.transform = `rotate(${(360/RAY_COUNT)*i}deg)`;
+  raysEl.appendChild(r);
+}
+const rayEls = raysEl.querySelectorAll('.ray');
+
+function render(){
+  const s0 = mix('#7C8794','#B8790F', heat);
+  const s1 = mix('#D7DEE6','#FFB627', heat);
+  const s2 = mix('#4b525d','#7a4a02', heat);
+  coinFace.style.background = `radial-gradient(circle at 35% 30%, ${s1}, ${s0} 60%, ${s2} 100%)`;
+  glow.style.opacity = 0.25 + heat*0.65;
+  glow.style.transform = `scale(${0.8 + heat*0.5})`;
+
+  const activeRays = Math.round((combo-1)/4 * RAY_COUNT);
+  rayEls.forEach((r,i)=> r.style.opacity = i < activeRays ? (0.4+heat*0.6) : 0);
+
+  comboLabel.textContent = `✕ ${combo.toFixed(1)} combo`;
+  comboLabel.style.color = heat > .6 ? '#FFF3C4' : '#7B5CFA';
+}
+
+function mix(hexA, hexB, t){
+  const a = hexToRgb(hexA), b = hexToRgb(hexB);
+  const r = Math.round(a[0]+(b[0]-a[0])*t);
+  const g = Math.round(a[1]+(b[1]-a[1])*t);
+  const bl = Math.round(a[2]+(b[2]-a[2])*t);
+  return `rgb(${r},${g},${bl})`;
+}
+function hexToRgb(h){
+  h = h.replace('#','');
+  return [parseInt(h.substring(0,2),16),parseInt(h.substring(2,4),16),parseInt(h.substring(4,6),16)];
+}
+
+function spawnFloat(gain){
+  const f = document.createElement('div');
+  f.className = 'float';
+  f.textContent = '+' + gain;
+  f.style.left = '50%';
+  f.style.top = '46%';
+  stage.appendChild(f);
+  setTimeout(()=> f.remove(), 900);
+}
+function spawnSparks(){
+  for(let i=0;i<6;i++){
+    const s = document.createElement('div');
+    s.className = 'spark';
+    const angle = Math.random()*Math.PI*2;
+    const dist = 40 + Math.random()*40;
+    s.style.setProperty('--dx', Math.cos(angle)*dist + 'px');
+    s.style.setProperty('--dy', Math.sin(angle)*dist + 'px');
+    s.style.left = '50%';
+    s.style.top = '50%';
+    stage.appendChild(s);
+    setTimeout(()=> s.remove(), 600);
+  }
+}
+
+function tap(){
+  const gain = Math.round(8 * combo);
+  zar += gain;
+  zarNum.textContent = zar.toLocaleString('en-US');
+  combo = Math.min(5, combo + 0.2);
+  heat = Math.min(1, heat + 0.14);
+  spawnFloat(gain);
+  spawnSparks();
+  render();
+}
+
+// idle decay
+setInterval(()=>{
+  if(!holdTimer){
+    combo = Math.max(1, combo - 0.06);
+    heat = Math.max(0, heat - 0.05);
+    render();
+  }
+}, 220);
+
+function startHold(){
+  holdStart = Date.now();
+  holdTimer = setInterval(()=>{
+    const elapsed = Date.now() - holdStart;
+    const pct = Math.min(1, elapsed / HOLD_MS);
+    holdCircle.style.strokeDashoffset = CIRC * (1-pct);
+    if(pct >= 1){
+      clearHold();
+      disconnect();
+    }
+  }, 16);
+}
+function clearHold(){
+  clearInterval(holdTimer);
+  holdTimer = null;
+  holdCircle.style.transition = 'stroke-dashoffset .25s ease';
+  holdCircle.style.strokeDashoffset = CIRC;
+  setTimeout(()=> holdCircle.style.transition='', 260);
+}
+function disconnect(){
+  toast.classList.add('show');
+  heat = 0; combo = 1.0;
+  render();
+  setTimeout(()=> toast.classList.remove('show'), 1800);
+}
+
+let didHold = false;
+coin.addEventListener('pointerdown', ()=>{ didHold=false; startHold(); });
+coin.addEventListener('pointerup', ()=>{
+  const heldFor = holdStart ? Date.now()-holdStart : 0;
+  clearHold();
+  if(heldFor < HOLD_MS - 30) tap();
+});
+coin.addEventListener('pointerleave', clearHold);
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — Clan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A; --bg-1:#0B0E17; --card:#0F1422; --card-line:rgba(255,196,120,.14);
+    --gold-0:#B8790F; --gold-1:#FFB627; --gold-2:#FFF3C4;
+    --violet:#7B5CFA; --violet-2:#5B4FE0; --ember:#FF8A3D;
+    --cyan:#33D3FF; --cyan-2:#7FE3FF; --green:#33FFB2; --red:#FF5A5A;
+    --ink:#EAEFF5; --ink-dim:#8A93A6; --ink-faint:#5B6274;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #141a2c 0%, transparent 55%), var(--bg-0);
+    color:var(--ink); display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .phone{
+    width:390px; max-width:100vw; height:844px; max-height:100vh;
+    position:relative; display:flex; flex-direction:column; overflow-y:auto; overflow-x:hidden; scrollbar-width:none;
+    background:
+      radial-gradient(60% 28% at 85% -5%, rgba(123,92,250,.10), transparent 60%),
+      radial-gradient(50% 22% at 10% 0%, rgba(255,182,39,.06), transparent 60%),
+      linear-gradient(180deg, #090C15 0%, #05060A 40%, #030308 100%);
+  }
+  .phone::-webkit-scrollbar{ display:none; }
+  .mountains{
+    position:absolute; top:0; left:0; width:100%; height:150px;
+    background:linear-gradient(180deg, rgba(20,26,44,.5), transparent);
+    clip-path:polygon(0% 100%, 0% 55%, 12% 40%, 24% 58%, 38% 30%, 52% 52%, 66% 22%, 80% 48%, 92% 34%, 100% 50%, 100% 100%);
+    opacity:.4; pointer-events:none; z-index:0;
+  }
+  .embers{ position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0; opacity:.4; }
+  .ember-p{ position:absolute; bottom:-10px; width:2px; height:2px; border-radius:50%; background:var(--ember); box-shadow:0 0 5px var(--ember); animation:rise linear infinite; opacity:0; }
+  @keyframes rise{ 0%{ transform:translateY(0); opacity:0;} 10%{opacity:.6;} 90%{opacity:.25;} 100%{ transform:translateY(-800px) translateX(var(--drift)); opacity:0; } }
+  .reveal{ animation:fadeInUp .55s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes fadeInUp{ from{ opacity:0; transform:translateY(12px);} to{ opacity:1; transform:translateY(0);} }
+
+  /* ===== Clan header ===== */
+  .clan-header{ position:relative; z-index:1; padding:18px 16px 14px; text-align:center; }
+  .ch-emblem{
+    width:78px; height:78px; margin:0 auto 10px; border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--gold-2), var(--gold-1) 60%, var(--gold-0) 100%);
+    display:flex; align-items:center; justify-content:center; font-size:34px;
+    border:3px solid rgba(255,196,120,.35);
+    box-shadow:0 0 0 8px rgba(255,182,39,.08), 0 10px 26px rgba(255,138,61,.2);
+  }
+  .ch-name{ font-size:24px; font-weight:800; letter-spacing:.04em; }
+  .ch-tag{ font-size:11.5px; color:var(--ink-dim); margin-top:4px; }
+  .ch-tag b{ color:var(--gold-1); }
+  .ch-stats{ display:flex; justify-content:center; gap:18px; margin-top:12px; }
+  .ch-stat{ text-align:center; }
+  .ch-stat .v{ font-size:15px; font-weight:700; font-family:'JetBrains Mono',monospace; }
+  .ch-stat .l{ font-size:9px; color:var(--ink-faint); letter-spacing:.08em; text-transform:uppercase; margin-top:2px; }
+
+  .section-lbl{ padding:16px 20px 8px; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-faint); }
+
+  /* ===== TrustAI referral card ===== */
+  .trust-card{
+    margin:0 16px 10px; border-radius:24px; padding:18px;
+    background:
+      radial-gradient(120% 100% at 100% -20%, rgba(255,182,39,.14), transparent 55%),
+      var(--card);
+    border:1px solid rgba(255,196,120,.26);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .trust-top{ display:flex; align-items:center; gap:12px; }
+  .trust-badge{
+    width:46px; height:46px; border-radius:14px; flex-shrink:0;
+    background:linear-gradient(135deg,var(--gold-2),var(--gold-1)); color:#241605;
+    display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:800;
+  }
+  .trust-title{ font-size:14.5px; font-weight:700; }
+  .trust-sub{ font-size:11px; color:var(--ink-dim); margin-top:2px; }
+  .trust-note{
+    margin-top:12px; display:flex; gap:8px; align-items:flex-start;
+    background:rgba(51,255,178,.06); border:1px solid rgba(51,255,178,.25);
+    border-radius:14px; padding:10px 12px; font-size:11px; color:#B9F5DE; line-height:1.5;
+  }
+  .trust-note .ic{ color:var(--green); flex-shrink:0; margin-top:1px; }
+  .trust-list{ margin-top:12px; display:flex; flex-direction:column; gap:8px; }
+  .trust-row{ display:flex; align-items:center; gap:10px; font-size:11.5px; }
+  .trust-row .dot{ width:6px;height:6px;border-radius:50%; background:var(--green); flex-shrink:0; }
+  .trust-row .name{ flex:1; color:var(--ink-dim); font-family:'JetBrains Mono',monospace; }
+  .trust-row .val{ color:var(--green); font-weight:700; }
+
+  /* ===== Treasury ===== */
+  .treasury-card{
+    margin:0 16px 10px; border-radius:24px; padding:18px;
+    background:var(--card); border:1px solid var(--card-line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .tr-top{ display:flex; justify-content:space-between; align-items:baseline; }
+  .tr-label{ font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-dim); }
+  .tr-goal{ font-size:10.5px; color:var(--ink-faint); }
+  .tr-amount{ font-size:26px; font-weight:800; font-family:'JetBrains Mono',monospace; margin-top:4px; color:var(--gold-1); }
+  .tr-track{ height:9px; border-radius:6px; background:rgba(255,255,255,.06); margin-top:10px; overflow:hidden; }
+  .tr-fill{ height:100%; width:0%; border-radius:6px; background:linear-gradient(90deg,var(--violet-2),var(--violet),var(--gold-1)); transition:width 1.2s cubic-bezier(.2,.8,.2,1); }
+  .tr-btn{ margin-top:12px; text-align:center; padding:11px; border-radius:14px; font-size:12.5px; font-weight:700; background:rgba(255,182,39,.12); border:1px solid rgba(255,182,39,.4); color:var(--gold-2); }
+
+  /* ===== Quests ===== */
+  .quest-hint{ padding:0 20px 10px; font-size:11px; color:var(--ink-dim); }
+  .quest-hint b{ color:var(--gold-1); }
+  .quest-list{ padding:0 16px; display:flex; flex-direction:column; gap:9px; margin-bottom:16px; }
+  .quest-card{ background:var(--card); border:1px solid var(--card-line); border-radius:16px; padding:13px 14px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+  .q-top{ display:flex; align-items:center; gap:10px; }
+  .q-ic{ width:30px; height:30px; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+  .q-mid{ flex:1; min-width:0; }
+  .q-title{ font-size:12.5px; font-weight:600; }
+  .q-prog-txt{ font-size:10.5px; color:var(--ink-faint); font-family:'JetBrains Mono',monospace; }
+  .q-track{ height:6px; border-radius:4px; background:rgba(255,255,255,.06); margin-top:9px; overflow:hidden; }
+  .q-fill{ height:100%; border-radius:4px; width:0%; transition:width 1.2s cubic-bezier(.2,.8,.2,1); }
+
+  /* ===== Clan Wars teaser ===== */
+  .wars-card{
+    position:relative; margin:0 16px 16px; border-radius:24px; overflow:hidden; padding:20px 18px;
+    background:
+      radial-gradient(140% 100% at 100% -20%, rgba(255,90,90,.14), transparent 55%),
+      radial-gradient(100% 80% at 0% 120%, rgba(123,92,250,.14), transparent 55%),
+      linear-gradient(180deg, #150A0E 0%, #0B0E17 100%);
+    border:1px solid rgba(255,90,90,.28);
+  }
+  .wars-badge{ display:inline-flex; align-items:center; gap:6px; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:#FFB4B4; background:rgba(255,90,90,.12); border:1px solid rgba(255,90,90,.4); padding:5px 10px; border-radius:20px; margin-bottom:10px; }
+  .wars-title{ font-size:20px; font-weight:800; letter-spacing:.02em; }
+  .wars-sub{ font-size:11.5px; color:var(--ink-dim); margin-top:6px; line-height:1.5; max-width:250px; }
+  .wars-lock{ position:absolute; top:16px; right:16px; font-size:20px; opacity:.6; }
+
+  /* ===== Warriors leaderboard ===== */
+  .lb-list{ padding:0 8px 100px; }
+  .lb-row{ display:flex; align-items:center; gap:11px; padding:10px; border-radius:14px; }
+  .lb-rank{ width:20px; text-align:center; font-size:11px; font-weight:700; color:var(--ink-faint); font-family:'JetBrains Mono',monospace; flex-shrink:0; }
+  .lb-avatar{ width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; position:relative; }
+  .lb-crown{ position:absolute; top:-8px; left:50%; transform:translateX(-50%); font-size:12px; }
+  .lb-mid{ flex:1; min-width:0; }
+  .lb-name{ font-size:12.5px; font-weight:600; }
+  .lb-sub{ font-size:10px; color:var(--ink-faint); margin-top:1px; }
+  .lb-val{ font-size:11.5px; font-weight:700; color:var(--gold-1); font-family:'JetBrains Mono',monospace; flex-shrink:0; }
+
+  .navbar{
+    position:absolute; left:0; right:0; bottom:0; z-index:2; display:flex; justify-content:space-around; align-items:center;
+    padding:11px 8px calc(11px + env(safe-area-inset-bottom));
+    background:rgba(11,14,23,.92); border-top:1px solid var(--card-line); backdrop-filter:blur(10px);
+  }
+  .nav-item{ display:flex; flex-direction:column; align-items:center; gap:4px; font-size:9.5px; color:var(--ink-dim); }
+  .nav-item .ic{ font-size:18px; }
+  .nav-item.active{ color:var(--green); }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="mountains"></div>
+  <div class="embers" id="embers"></div>
+
+  <div class="clan-header reveal" style="animation-delay:.02s;">
+    <div class="ch-emblem">🦅</div>
+    <div class="ch-name">FALCON</div>
+    <div class="ch-tag">Shahnameh Clan · Tier II <b>Champions of Pars</b></div>
+    <div class="ch-stats">
+      <div class="ch-stat"><div class="v">34/50</div><div class="l">Warriors</div></div>
+      <div class="ch-stat"><div class="v">👑 Xebat227</div><div class="l">Leader</div></div>
+      <div class="ch-stat"><div class="v">#12</div><div class="l">Rangering</div></div>
+    </div>
+  </div>
+
+  <div class="section-lbl reveal" style="animation-delay:.06s;">TrustAI · Warrior Earnings</div>
+  <div class="trust-card reveal" style="animation-delay:.08s;">
+    <div class="trust-top">
+      <div class="trust-badge">10%</div>
+      <div>
+        <div class="trust-title">Du tjener for alltid</div>
+        <div class="trust-sub">10% av dataen hver du inviterer bruker — evig.</div>
+      </div>
+    </div>
+    <div class="trust-note">
+      <span class="ic">🛡️</span>
+      <span>Dette kommer <b style="color:#fff;">fra RealGram</b>, ikke fra vennen din. De beholder 100% av sin egen kvote — du får en ekstra 10% på toppen, betalt av oss.</span>
+    </div>
+    <div class="trust-list">
+      <div class="trust-row"><span class="dot"></span><span class="name">SL-227-561F10F6</span><span class="val">+0.10 GB</span></div>
+      <div class="trust-row"><span class="dot" style="background:var(--ink-faint);"></span><span class="name">SL-227-91572537</span><span class="val" style="color:var(--ink-faint);">+0.00 GB</span></div>
+    </div>
+  </div>
+
+  <div class="section-lbl reveal" style="animation-delay:.10s;">Felles kasse</div>
+  <div class="treasury-card reveal" style="animation-delay:.12s;">
+    <div class="tr-top"><div class="tr-label">Clan Treasury</div><div class="tr-goal">Mål: 1,000,000 REAL</div></div>
+    <div class="tr-amount">620,000 <span style="font-size:13px; color:var(--ink-faint);">REAL</span></div>
+    <div class="tr-track"><div class="tr-fill" data-w="62"></div></div>
+    <div class="tr-btn">Bidra til kassa</div>
+  </div>
+
+  <div class="section-lbl reveal" style="animation-delay:.14s;">Neste nivå: Tier III</div>
+  <div class="quest-hint reveal" style="animation-delay:.14s;">Fullfør <b>én</b> av disse for å avansere klanen</div>
+  <div class="quest-list">
+    <div class="quest-card reveal" style="animation-delay:.16s;">
+      <div class="q-top">
+        <div class="q-ic" style="background:rgba(51,211,255,.14); color:var(--cyan-2);">👥</div>
+        <div class="q-mid"><div class="q-title">Nå 50 warriors</div><div class="q-prog-txt">34 / 50</div></div>
+      </div>
+      <div class="q-track"><div class="q-fill" data-w="68" style="background:linear-gradient(90deg,var(--cyan),var(--cyan-2));"></div></div>
+    </div>
+    <div class="quest-card reveal" style="animation-delay:.19s;">
+      <div class="q-top">
+        <div class="q-ic" style="background:rgba(255,182,39,.14); color:var(--gold-1);">💰</div>
+        <div class="q-mid"><div class="q-title">1M REAL i felles kasse</div><div class="q-prog-txt">620K / 1M</div></div>
+      </div>
+      <div class="q-track"><div class="q-fill" data-w="62" style="background:linear-gradient(90deg,var(--gold-0),var(--gold-1));"></div></div>
+    </div>
+    <div class="quest-card reveal" style="animation-delay:.22s;">
+      <div class="q-top">
+        <div class="q-ic" style="background:rgba(123,92,250,.14); color:var(--violet);">📜</div>
+        <div class="q-mid"><div class="q-title">10% forbi kapittel 30</div><div class="q-prog-txt">4 / 34 warriors</div></div>
+      </div>
+      <div class="q-track"><div class="q-fill" data-w="35" style="background:linear-gradient(90deg,var(--violet-2),var(--violet));"></div></div>
+    </div>
+    <div class="quest-card reveal" style="animation-delay:.25s;">
+      <div class="q-top">
+        <div class="q-ic" style="background:rgba(51,255,178,.14); color:var(--green);">🛡️</div>
+        <div class="q-mid"><div class="q-title">10 Veteran-kort vist</div><div class="q-prog-txt">6 / 10</div></div>
+      </div>
+      <div class="q-track"><div class="q-fill" data-w="60" style="background:linear-gradient(90deg,#8CFFD9,var(--green));"></div></div>
+    </div>
+  </div>
+
+  <div class="wars-card reveal" style="animation-delay:.28s;">
+    <div class="wars-lock">🔒</div>
+    <div class="wars-badge">⚔️ Coming soon</div>
+    <div class="wars-title">Iran vs Turan</div>
+    <div class="wars-sub">Klankriger vender tilbake fra Shahnameh selv. Snart kjemper FALCON om ære, gull og territorium mot rivaliserende klaner.</div>
+  </div>
+
+  <div class="section-lbl reveal" style="animation-delay:.30s;">Warriors</div>
+  <div class="lb-list">
+    <div class="lb-row reveal" style="animation-delay:.32s;">
+      <div class="lb-rank">1</div>
+      <div class="lb-avatar" style="background:linear-gradient(135deg,var(--gold-2),var(--gold-1)); color:#241605;"><span class="lb-crown">👑</span>👤</div>
+      <div class="lb-mid"><div class="lb-name">Xebat227</div><div class="lb-sub">Lvl 30 · Ch. 44</div></div>
+      <div class="lb-val">210K</div>
+    </div>
+    <div class="lb-row reveal" style="animation-delay:.34s;">
+      <div class="lb-rank">2</div>
+      <div class="lb-avatar" style="background:linear-gradient(135deg,#B7C0CC,#5B6472);">🛡️</div>
+      <div class="lb-mid"><div class="lb-name">Nour · Veteran</div><div class="lb-sub">Lvl 27 · Ch. 38</div></div>
+      <div class="lb-val">148K</div>
+    </div>
+    <div class="lb-row reveal" style="animation-delay:.36s;">
+      <div class="lb-rank">3</div>
+      <div class="lb-avatar" style="background:linear-gradient(135deg,rgba(51,211,255,.4),rgba(123,92,250,.4)); color:var(--cyan-2); font-family:'JetBrains Mono',monospace; font-size:10px;">SL·88</div>
+      <div class="lb-mid"><div class="lb-name">SL-227-91572537</div><div class="lb-sub">Lvl 19 · Ch. 22</div></div>
+      <div class="lb-val">96K</div>
+    </div>
+    <div class="lb-row reveal" style="animation-delay:.38s;">
+      <div class="lb-rank">4</div>
+      <div class="lb-avatar" style="background:linear-gradient(135deg,#7B5CFA,#5B4FE0);">🗡️</div>
+      <div class="lb-mid"><div class="lb-name">Rostam_9</div><div class="lb-sub">Lvl 15 · Ch. 17</div></div>
+      <div class="lb-val">54K</div>
+    </div>
+  </div>
+
+  <div class="navbar">
+    <div class="nav-item"><div class="ic">⬡</div>Home</div>
+    <div class="nav-item"><div class="ic">💬</div>Chats</div>
+    <div class="nav-item"><div class="ic">🌐</div>Freedom</div>
+    <div class="nav-item"><div class="ic">💎</div>Wallet</div>
+    <div class="nav-item active"><div class="ic">👥</div>Clan</div>
+    <div class="nav-item"><div class="ic">👤</div>Profile</div>
+  </div>
+</div>
+
+<script>
+const embersHost = document.getElementById('embers');
+for(let i=0;i<10;i++){
+  const e = document.createElement('div');
+  e.className = 'ember-p';
+  e.style.left = (Math.random()*100) + '%';
+  e.style.animationDuration = (7 + Math.random()*8) + 's';
+  e.style.animationDelay = (Math.random()*10) + 's';
+  e.style.setProperty('--drift', (Math.random()*30-15) + 'px');
+  embersHost.appendChild(e);
+}
+setTimeout(()=>{
+  document.querySelectorAll('.tr-fill, .q-fill').forEach(el=>{
+    el.style.width = el.getAttribute('data-w') + '%';
+  });
+}, 300);
+</script>
+</body>
+</html>

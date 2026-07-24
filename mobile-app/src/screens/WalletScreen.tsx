@@ -15,6 +15,7 @@ import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { TopBar } from '../components/TopBar';
 import { RealWalletCard } from '../components/RealWalletCard';
+import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useT } from '../i18n';
 import { getProfileSummary, ProfileEconomy } from '../services/realGramProfileService';
@@ -50,6 +51,7 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
 
   return (
     <View style={styles.screen}>
+      <EmberField count={8} />
       <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <Text style={styles.title}>{t('nav.wallet')}</Text>
@@ -90,7 +92,7 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.quotaLabel}>{t('pr.usedTraffic')}</Text>
             </View>
             <View style={styles.quotaCell}>
-              <Text style={[styles.quotaValue, { color: Colors.emerald[400] }]}>{freeGb.toFixed(1)}</Text>
+              <Text style={[styles.quotaValue, { color: Colors.status.connected }]}>{freeGb.toFixed(1)}</Text>
               <Text style={styles.quotaLabel}>GB</Text>
             </View>
           </View>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RealGram — Starlink Banner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Vazirmatn:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-0:#05060A;
+    --card:#0F1422;
+    --gold-1:#FFB627;
+    --gold-2:#FFF3C4;
+    --cyan:#33D3FF;
+    --cyan-2:#7FE3FF;
+    --violet:#7B5CFA;
+    --ink:#EAEFF5;
+    --ink-dim:#8B94A6;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;}
+  body{
+    font-family:'Space Grotesk',sans-serif;
+    background:radial-gradient(120% 60% at 50% -10%, #141a2c 0%, transparent 55%), var(--bg-0);
+    color:var(--ink);
+    min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; gap:34px;
+    padding:40px 16px 60px;
+  }
+  .frame{ width:390px; max-width:100%; }
+  .section-lbl{
+    font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-dim);
+    margin:0 2px 10px;
+  }
+
+  /* ============ HERO BANNER ============ */
+  .hero{
+    position:relative;
+    border-radius:26px;
+    overflow:hidden;
+    padding:22px 20px 20px;
+    min-height:270px;
+    display:flex; flex-direction:column; justify-content:flex-end;
+    background:
+      radial-gradient(160% 120% at 90% -30%, rgba(123,92,250,.28), transparent 55%),
+      radial-gradient(120% 100% at 10% -10%, rgba(51,211,255,.22), transparent 55%),
+      linear-gradient(180deg, #060A16 0%, #0A1424 55%, #0E1B30 100%);
+    border:1px solid rgba(127,227,255,.22);
+    box-shadow:0 0 40px rgba(51,211,255,.10), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+
+  .stars{ position:absolute; inset:0; }
+  .star{
+    position:absolute; width:2px; height:2px; border-radius:50%; background:#fff;
+    animation:twinkle 3.4s ease-in-out infinite;
+  }
+  @keyframes twinkle{ 0%,100%{opacity:.15;} 50%{opacity:.9;} }
+
+  .orbit-wrap{ position:absolute; top:14px; right:14px; width:190px; height:110px; }
+  .orbit-ellipse{
+    position:absolute; inset:0; border:1px dashed rgba(127,227,255,.35); border-radius:50%;
+    transform:rotate(-12deg);
+  }
+  .sat{
+    position:absolute; font-size:20px;
+    filter:drop-shadow(0 0 8px rgba(127,227,255,.9));
+    animation:orbit 7s linear infinite;
+  }
+  @keyframes orbit{
+    0%{   top:2%;  left:50%; }
+    25%{  top:50%; left:92%; }
+    50%{  top:96%; left:50%; }
+    75%{  top:50%; left:6%;  }
+    100%{ top:2%;  left:50%; }
+  }
+  .beam{
+    position:absolute; left:50%; top:50%; width:1px; height:70px;
+    background:linear-gradient(180deg, rgba(127,227,255,.7), transparent);
+    transform-origin:top center;
+  }
+
+  .planet{
+    position:absolute; left:-60px; right:-60px; bottom:-140px; height:220px;
+    border-radius:50%;
+    background:radial-gradient(circle at 35% 20%, #16233B, #060A16 70%);
+    border-top:1px solid rgba(127,227,255,.25);
+    box-shadow:0 -20px 60px rgba(51,211,255,.08);
+  }
+  .grid-line{
+    position:absolute; left:0; right:0; height:1px; background:rgba(127,227,255,.10);
+  }
+
+  .hero-content{ position:relative; z-index:2; }
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:10.5px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--cyan-2); background:rgba(51,211,255,.12); border:1px solid rgba(51,211,255,.4);
+    padding:5px 10px; border-radius:20px; margin-bottom:12px;
+  }
+  .beat{ width:6px;height:6px;border-radius:50%; background:var(--cyan-2); box-shadow:0 0 8px var(--cyan-2); animation:pulseBeat 1.4s ease-in-out infinite; }
+  @keyframes pulseBeat{ 0%,100%{ transform:scale(1); opacity:1;} 50%{ transform:scale(1.6); opacity:.5;} }
+
+  .hero-title{ font-size:25px; font-weight:700; line-height:1.22; max-width:250px; }
+  .hero-title em{ font-style:normal; color:var(--cyan-2); }
+  .hero-sub{ font-size:12.5px; color:var(--ink-dim); margin-top:8px; max-width:260px; line-height:1.5; }
+
+  .stat-chips{ display:flex; gap:8px; margin-top:14px; }
+  .chip{
+    font-size:11px; color:var(--ink); background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.10); padding:6px 10px; border-radius:12px;
+    display:flex; align-items:center; gap:5px;
+  }
+  .chip b{ color:var(--cyan-2); font-family:'JetBrains Mono',monospace; }
+
+  .hero-cta{
+    margin-top:16px;
+    display:inline-flex; align-items:center; gap:8px;
+    background:linear-gradient(90deg,#33D3FF,#7FE3FF);
+    color:#001824; font-weight:700; font-size:13.5px;
+    padding:12px 20px; border-radius:16px;
+    position:relative; overflow:hidden; width:fit-content;
+  }
+  .hero-cta::after{
+    content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background:linear-gradient(115deg, transparent, rgba(255,255,255,.6), transparent);
+    animation:shine 2.6s ease-in-out infinite;
+  }
+  @keyframes shine{ 0%{ left:-60%;} 60%,100%{ left:130%;} }
+
+  .real-mark{
+    position:absolute; bottom:14px; right:16px; z-index:2;
+    display:flex; align-items:center; gap:5px;
+    font-size:10px; color:var(--ink-dim);
+  }
+  .real-mark .coin{
+    width:16px;height:16px;border-radius:50%;
+    background:radial-gradient(circle at 35% 30%, var(--gold-2), var(--gold-1));
+    display:flex; align-items:center; justify-content:center;
+    font-size:9px; color:#241605; font-family:'Vazirmatn',sans-serif; font-weight:700;
+  }
+
+  /* ============ COMPACT VARIANT ============ */
+  .compact{
+    position:relative; overflow:hidden;
+    border-radius:18px; padding:14px 16px;
+    display:flex; align-items:center; gap:12px;
+    background:
+      radial-gradient(120% 140% at 100% -30%, rgba(51,211,255,.20), transparent 55%),
+      linear-gradient(135deg, #071022, #0B1830 60%, #142A4A);
+    border:1px solid rgba(51,211,255,.25);
+  }
+  .compact-icon{
+    width:44px; height:44px; border-radius:14px; flex-shrink:0;
+    background:rgba(51,211,255,.12); border:1px solid rgba(51,211,255,.4);
+    display:flex; align-items:center; justify-content:center; font-size:20px;
+  }
+  .compact-mid{ flex:1; }
+  .compact-mid .t{ font-size:13.5px; font-weight:700; }
+  .compact-mid .s{ font-size:11px; color:var(--ink-dim); margin-top:2px; }
+  .compact-btn{
+    background:rgba(51,211,255,.16); border:1px solid rgba(51,211,255,.5);
+    color:var(--cyan-2); font-size:11.5px; font-weight:700;
+    padding:9px 13px; border-radius:12px; white-space:nowrap;
+  }
+  .compact-status{
+    position:absolute; top:10px; right:12px;
+    font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--cyan-2);
+    display:flex; align-items:center; gap:4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+  <div class="section-lbl">Hero-banner · Home-forside</div>
+  <div class="hero">
+    <div class="stars" id="stars"></div>
+
+    <div class="orbit-wrap">
+      <div class="orbit-ellipse"></div>
+      <div class="sat">🛰️<div class="beam"></div></div>
+    </div>
+
+    <div class="planet">
+      <div class="grid-line" style="top:20px;"></div>
+      <div class="grid-line" style="top:50px;"></div>
+      <div class="grid-line" style="top:80px;"></div>
+    </div>
+
+    <div class="real-mark"><div class="coin">﷼</div> RealGram</div>
+
+    <div class="hero-content">
+      <div class="badge"><span class="beat"></span> Starlink Node · Live</div>
+      <div class="hero-title">Internett fra <em>verdensrommet.</em><br>Ingen tårn nødvendig.</div>
+      <div class="hero-sub">Koble deg til satellitt-nettet direkte gjennom RealGram — stabilt selv der bakkenettet svikter.</div>
+      <div class="stat-chips">
+        <div class="chip">🛰️ <b>11 400</b> noder live</div>
+        <div class="chip">⚡ <b>5ms</b> ping</div>
+      </div>
+      <div class="hero-cta">🛰️ Connect via Starlink</div>
+    </div>
+  </div>
+</div>
+
+<div class="frame">
+  <div class="section-lbl">Kompakt variant · Clan / Wallet-skjermer</div>
+  <div class="compact">
+    <div class="compact-status"><span style="width:6px;height:6px;border-radius:50%;background:#33D3FF;box-shadow:0 0 6px #33D3FF;"></span>READY</div>
+    <div class="compact-icon">🛰️</div>
+    <div class="compact-mid">
+      <div class="t">Starlink Access</div>
+      <div class="s">Internett uten bakkenett — koble til nå</div>
+    </div>
+    <div class="compact-btn">Connect</div>
+  </div>
+</div>
+
+<script>
+const starsHost = document.getElementById('stars');
+for(let i=0;i<28;i++){
+  const s = document.createElement('div');
+  s.className = 'star';
+  s.style.left = Math.random()*100 + '%';
+  s.style.top = Math.random()*70 + '%';
+  s.style.animationDelay = (Math.random()*3) + 's';
+  starsHost.appendChild(s);
+}
+</script>
+</body>
+</html>
