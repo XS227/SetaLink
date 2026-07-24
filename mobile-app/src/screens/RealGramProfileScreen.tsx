@@ -173,10 +173,20 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
   // first snapshot was the only one that ever ran for the lifetime of the
   // app session). Silent (no spinner) so tabbing back in doesn't flash a
   // loading state over numbers that are usually still correct.
+  // Bug found 2026-07-24 (Khabat: "Profile unavailable" on a build that
+  // should work): `load()` unconditionally clears `error` at its top,
+  // silent or not. If this effect's silent refetch fired while the
+  // INITIAL (non-silent) load was still in flight or had already failed
+  // — e.g. a transient isFocused blip during the tab's mount/transition —
+  // it could wipe a real error message and then itself fail silently
+  // (silent failures never call setError), landing on the bare
+  // "Profile unavailable" fallback with no real diagnostic. Gating on
+  // `profile` already being set means this effect can never fire before
+  // the first load has genuinely succeeded at least once.
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }
-    if (isFocused) load({ silent: true });
+    if (isFocused && profile) load({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
 
