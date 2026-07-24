@@ -21,9 +21,10 @@ interface Props {
   style?: StyleProp<ViewStyle>;
   textStyle?: StyleProp<TextStyle>;
   children: React.ReactNode;
+  accessibilityLabel?: string;
 }
 
-export function GoldButton({ onPress, disabled, style, textStyle, children }: Props) {
+export function GoldButton({ onPress, disabled, style, textStyle, children, accessibilityLabel }: Props) {
   const [size, setSize] = React.useState({ width: 0, height: 0 });
   const shine = useSharedValue(-0.6);
   const [reduceMotion, setReduceMotion] = React.useState(false);
@@ -54,6 +55,7 @@ export function GoldButton({ onPress, disabled, style, textStyle, children }: Pr
       disabled={disabled}
       style={[styles.wrap, disabled && styles.disabled, style]}
       onLayout={(e) => setSize(e.nativeEvent.layout)}
+      accessibilityLabel={accessibilityLabel}
     >
       <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFillObject}>
         <Defs>

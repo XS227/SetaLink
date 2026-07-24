@@ -149,6 +149,7 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
             style={styles.linkBtn}
             textStyle={styles.linkBtnText}
             onPress={() => Linking.openURL(LINK_URL_BASE + encodeURIComponent(deviceId)).catch(() => {})}
+            accessibilityLabel={t('wallet.linkBtn')}
           >
             {t('wallet.linkBtn')}
           </GoldButton>
@@ -182,6 +183,7 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
             textStyle={styles.redeemBtnText}
             disabled={busy}
             onPress={redeem}
+            accessibilityLabel={t('wallet.redeem')}
           >
             {busy ? '…' : t('wallet.redeem')}
           </GoldButton>

@@ -1,6 +1,13 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
-import { Linking } from 'react-native';
+import { AccessibilityInfo, Linking } from 'react-native';
+
+// RN's own jest preset mocks AccessibilityInfo.isReduceMotionEnabled as a
+// bare jest.fn() with no default resolution (node_modules/react-native/jest/
+// setup.js) — gold-theme's GoldButton (now used by RealWalletCard's Link/
+// Redeem buttons) calls it directly in a mount effect, which throws
+// "Cannot read properties of undefined (reading 'then')" without this.
+(AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockResolvedValue(false);
 
 // Remote config gates the whole card — swap it per test. getRemoteConfig is
 // the async fetch the card now also awaits on mount (2026-07-19 fix: it must

@@ -1,5 +1,12 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
+import { AccessibilityInfo } from 'react-native';
+
+// RN's own jest preset mocks AccessibilityInfo.isReduceMotionEnabled as a
+// bare jest.fn() with no default resolution — gold-theme's EmberField
+// (ambient background, now used here) calls it directly in a mount effect,
+// same gap as realWalletCard.test.tsx's GoldButton fix.
+(AccessibilityInfo.isReduceMotionEnabled as jest.Mock).mockResolvedValue(false);
 
 // BUG-1 / v0.9.35 #2 regression: tapping a conversation opens the chat THREAD
 // (showing the message body, marking it read), NOT the compose modal.
@@ -7,6 +14,13 @@ import renderer, { act } from 'react-test-renderer';
 const mockDmMarkRead = jest.fn();
 
 jest.mock('../i18n', () => ({ useT: () => ({ t: (k: string) => k }) }));
+
+// Gold-theme's scroll-clearance fix (BottomNav.CONTENT_HEIGHT + insets.bottom)
+// added a real useSafeAreaInsets() call here — no SafeAreaProvider exists in
+// this test tree, same pattern already used in ssoGame.test.tsx.
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
+}));
 
 jest.mock('../stores/authStore', () => ({
   useAuthStore: (sel: any) => sel({ user: { deviceId: 'dev-me', userId: 'SL-ME-0001' } }),
