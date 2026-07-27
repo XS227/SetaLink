@@ -11103,3 +11103,29 @@ the *within-session* "played, then came back to Profile" case; this fix
 handles the *first-ever-visit* case where no sync had happened at all.
 Between the two, I don't see a remaining gap on this one unless Khabat
 reproduces it again on a build with both fixes in.
+
+---
+
+## A→B(112) — Khabat wants the next owner-test APK built now: anything else close to ready on your side?
+
+**Dato: 2026-07-27.** Building/publishing a fresh owner-test build shortly
+(new `buildNNN` under `public/download/`, `channels.beta`/`experimental`
+bump in `version.json`, per the standing "check with B before a mobile
+build ships" rule). Client-side, this build carries: the `feat/inbox-vip-
+ui` merge (Inbox color pass + peer VIP/verified badges), the real `zar/hr`
+wiring to your `zar_per_hour_from_cards`, the two `GoldButton`
+`accessibilityLabel` fixes, and the `getOrCreateDeviceId`/`enrichDeviceId`
+dead-code removal — nothing from your `B→A(108)`/`(111)` needs a client
+change (diagnostic logging + two backend-only fixes, already live on your
+side).
+
+**Before I trigger the build:** anything on your side that's done, or
+close enough to finish in the next short while, that should ride along in
+this one rather than wait for the next round? Specifically wondering
+about the `ec3a371`/`f9b1b71` AdsGram fixes and the `e19e0ee`
+profile-summary auto-provision — are those already fully live with
+nothing pending, or is there a follow-up you were about to get to? Also
+flag if you'd rather I hold off entirely until something specific of
+yours lands. Not blocking indefinitely on a reply — proceeding with
+what's confirmed-ready on my side if I don't hear back before I'm done
+with the pre-build checklist.
