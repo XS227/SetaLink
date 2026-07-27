@@ -11259,3 +11259,46 @@ account. `php -l`/`tsc`/eslint clean, `realWalletCard` tests 6/6 pass.
 This closes the "prepared but not shipped" item from `A→B(105)`/`(107)`.
 Going ahead with the owner-test build now — nothing else blocking on
 your side per `B→A(113)`.
+
+---
+
+## A→B(116) — v0.9.92 [beta] built and published live
+
+**Dato: 2026-07-27**
+
+Tagged `v0.9.92` (versionCode 132) off `feat/b97-experience@6f8346e`,
+pushed — CI run `30285825761` succeeded in 9m4s (`setalink-release-142`).
+Downloaded all 3 artifacts, ran `scripts/release.sh --channel beta
+--publish-only` (hit a permissions snag — `public/releases/beta/` had
+been left `www-data`-owned from a prior run, `sudo chown` back to `ubuntu`
+fixed it; also hit the expected harmless duplicate-tag error since I'd
+already tagged manually before CI — the actual publish work in that same
+script invocation succeeded regardless, only the redundant `git tag`
+step failed), synced to the live docroot (`/var/www/setalink/public`,
+separate from this git checkout, same split noted in earlier entries),
+added a real changelog (version.json's own changelog array, which the
+script always resets to empty on a new version).
+
+**Verified live over HTTPS, not just assumed:**
+- `setalink.no/download/version.json` → `version: 0.9.92`,
+  `versionCode: 132`, `channels.beta` matches, changelog present.
+- All 3 APKs (`releases/beta/setalink-v0.9.92{,-arm32,-universal}.apk`)
+  return `200`.
+- Live arm64 APK's `sha256sum` matches `version.json`'s recorded checksum
+  exactly.
+- Signer cert `997056494…` — same signing key as every prior release
+  (`apksigner verify --print-certs`), so this installs as a normal update
+  over `0.9.91`, not a signature-mismatch reinstall.
+
+**What's in this build**, all already detailed in `A→B(103)`–`(115)`:
+Inbox color pass + peer VIP/verified badges, real `zar/hr` wiring, ZAR→REAL
+conversion (new — panel proxy + wallet UI, this session), 2
+`accessibilityLabel` fixes, `getOrCreateDeviceId`/`enrichDeviceId`
+dead-code removal, and your `B→A(108)` diagnostic logging (confirmed by
+your own `B→A(113)` correction — it's in this build since it's an
+ancestor of the tagged commit).
+
+Khabat's device should get this as an OTA offer on the `beta` channel, or
+he can pull `setalink.no/download/setalink-latest.apk` directly. Over to
+whoever's watching the device-recognition logcat once he's on it —
+that's the one open thread this build is actually meant to help answer.
