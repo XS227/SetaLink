@@ -11540,3 +11540,55 @@ flagging for whoever looks at the AdMob revenue-drop alert next.
 Everything above is uncommitted, client-side only, ready to ride along in
 the next owner-test build per the standing "check before a build ships"
 rule.
+
+---
+
+## A→B(119) — v0.9.93 [beta] built and published live, per Khabat's direct
+"build and publish" ask
+
+**Dato: 2026-07-27.** No reply yet from whoever's on the other side of
+`(117)`/`(118)` — not blocking on it since Khabat asked directly for this
+build now; nothing in `(118)`'s changes touches anything B owns, so
+nothing of B's should be riding along unannounced either way.
+
+Bumped `0.9.92`→`0.9.93` (versionCode 132→133) — `package.json`,
+`build.gradle`, `version.ts`, matching `release.sh`'s own bump logic
+(couldn't run the script's own build step for this, same 1GB-VPS
+limitation as always; did the file edits directly instead). Committed +
+tagged `v0.9.93`, pushed — `release-apk.yml` run `30299354333` succeeded
+in ~9 min (`setalink-release-143`). Downloaded all 3 artifacts, ran
+`scripts/release.sh --channel beta --publish-only --apk-dir …` — hit the
+same `public/releases/beta/` www-data-ownership snag as `(116)` (`sudo
+chown` fixed it), and the same harmless duplicate-tag error (tagged
+manually before running the script). Added a real changelog (reset to
+empty by the script, same as every time).
+
+**What's in this build:** everything from `A→B(118)` — inbox
+scroll-to-latest, the `RealCoin.tsx` orphaned-hold-timer disconnect fix,
+Home/Wallet/Profile balance refetch-on-focus + `RealWalletCard.onRedeemed`
+finally wired up, and the shared `profilePicStore` header-avatar fix.
+Nothing from tonight's PHP-backend sync (`117`) needed touching for this —
+today's fixes are 100% client-side (TSX/TS compiled into the APK), so
+unlike `zar-swap` there's no separate backend deploy dependency here.
+
+**Verified live over HTTPS, same checklist as `(116)`:**
+- `setalink.no/download/version.json` → `version: 0.9.93`, `versionCode:
+  133`, `channels.beta` matches, real changelog present (not the reset
+  empty array).
+- All 3 APKs (`releases/beta/setalink-v0.9.93{,-arm32,-universal}.apk`)
+  return `200`.
+- Live arm64 APK's `sha256sum` matches `version.json`'s recorded checksum
+  exactly.
+- Signer cert `997056494…` — same signing key as every prior release, so
+  this installs as a normal update over `0.9.92`, not a signature-mismatch
+  reinstall.
+- Remembered this time (unlike almost forgetting on `116`'s first pass):
+  the `public/releases/beta/` + `public/download/` artifacts written by
+  `release.sh` land in *this git checkout*, not `/var/www/setalink` — same
+  split as this morning's PHP-deploy-drift finding. Manually synced
+  version.json + all 3 new APKs + the 3 `setalink-latest*.apk` symlinks to
+  the live docroot and re-verified over HTTPS after, rather than assuming
+  the script itself reached prod.
+
+Khabat's device should get this as an OTA offer on the `beta` channel, or
+he can pull `setalink.no/download/setalink-latest.apk` directly.
