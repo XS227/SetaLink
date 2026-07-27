@@ -278,6 +278,25 @@ export async function checkAdminMessages(deviceId: string): Promise<void> {
 
 // ── User-to-user direct messages (v0.9.33) ────────────────────────────────────
 
+/**
+ * Peer VIP/verified/premium status (2026-07-20) — comes back embedded on
+ * every DirectMessage via list-messages' batched `peers` map (see
+ * lib/quota_economy.php's qe_badge_info_for_devices()), never a separate
+ * per-user fetch. isVip/vipTier are earned via the referral milestone
+ * ladder ('vip' at 21 invites, 'elite' at 55); verified/premiumUntil track
+ * a confirmed paying plan — the two are independent and can both be true.
+ */
+export interface PeerBadge {
+  isVip:        boolean;
+  vipTier:      'vip' | 'elite' | null;
+  verified:     boolean;
+  premiumUntil: string | null;
+}
+
+export const DEFAULT_PEER_BADGE: PeerBadge = {
+  isVip: false, vipTier: null, verified: false, premiumUntil: null,
+};
+
 export interface DirectMessage {
   id:          number;
   direction:   'in' | 'out';
@@ -296,6 +315,11 @@ export interface DirectMessage {
   /** This device's own reaction, if any (null = hasn't reacted, undefined =
    *  unknown/older data). */
   myReaction?: string | null;
+  /** The OTHER party's badge status — same value on every message from/to
+   *  them, carried per-message purely so callers never need a second
+   *  lookup keyed by peerDevice. Only `list-messages` returns a `peers` map
+   *  server-side; threads/search paths fall back to DEFAULT_PEER_BADGE. */
+  peerBadge:   PeerBadge;
 }
 
 /** Max characters per direct message — mirrors MSG_MAX_LEN server-side. */
@@ -324,7 +348,12 @@ type RawDirectMessage = {
   reactions?: Record<string, number>; my_reaction?: string | null;
 };
 
-function mapDirectMessage(m: RawDirectMessage): DirectMessage {
+/** device_id -> badge, one entry per distinct peer — see
+ *  qe_badge_info_for_devices() server-side. Only `list-messages` returns
+ *  this map today; other endpoints pass `undefined` and get the default. */
+type PeerBadgeMap = Record<string, PeerBadge>;
+
+function mapDirectMessage(m: RawDirectMessage, peers?: PeerBadgeMap): DirectMessage {
   return {
     id:         m.id,
     direction:  m.direction,
@@ -337,13 +366,18 @@ function mapDirectMessage(m: RawDirectMessage): DirectMessage {
     expiresAt:  m.expires_at ?? null,
     reactions:  m.reactions ?? {},
     myReaction: m.my_reaction ?? null,
+    peerBadge:  peers?.[m.peer_device] ?? DEFAULT_PEER_BADGE,
   };
 }
 
 /** Fetch this device's direct-message thread (inbox + sent), newest first. */
 export async function listMessages(deviceId: string): Promise<DirectMessage[]> {
-  const data = await mobileGet('list-messages', { device_id: deviceId }) as { messages?: RawDirectMessage[] };
-  return (data.messages ?? []).map(mapDirectMessage);
+  const data = await mobileGet('list-messages', { device_id: deviceId }) as {
+    messages?: RawDirectMessage[];
+    peers?: PeerBadgeMap;
+  };
+  const peers = data.peers ?? {};
+  return (data.messages ?? []).map(m => mapDirectMessage(m, peers));
 }
 
 /** "Load older" pagination for one open thread (2026-07-22, chat audit bug #1)
@@ -358,7 +392,7 @@ export async function listThreadMessages(
   const data = await mobileGet('list-thread-messages', {
     device_id: deviceId, peer, before_id: String(beforeId), limit: String(limit),
   }) as { messages?: RawDirectMessage[] };
-  return (data.messages ?? []).map(mapDirectMessage);
+  return (data.messages ?? []).map(m => mapDirectMessage(m));
 }
 
 /** Server-side search fallback (2026-07-22, chat audit bug #2) -- the

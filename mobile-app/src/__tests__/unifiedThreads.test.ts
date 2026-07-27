@@ -1,10 +1,10 @@
 import { buildConversations, buildSupportConversation, totalUnread, SUPPORT_KEY, SUPPORT_USER_ID } from '../utils/unifiedThreads';
-import type { DirectMessage } from '../services/entitlementService';
+import { DEFAULT_PEER_BADGE, type DirectMessage } from '../services/entitlementService';
 import type { InboxMessage } from '../stores/inboxStore';
 
 const dm = (o: Partial<DirectMessage>): DirectMessage => ({
   id: 1, direction: 'in', peerUserId: 'SL-A', peerDevice: 'dev-a', body: 'hi', read: false,
-  createdAt: '2026-06-15T10:00:00', expireSecs: 0, expiresAt: null, ...o,
+  createdAt: '2026-06-15T10:00:00', expireSecs: 0, expiresAt: null, peerBadge: DEFAULT_PEER_BADGE, ...o,
 });
 const ann = (o: Partial<InboxMessage>): InboxMessage => ({
   id: 1, title: 'Title', body: 'body', createdAt: '2026-06-15T10:00:00', read: false, ...o,

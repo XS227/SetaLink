@@ -13,6 +13,8 @@ import { AdBanner } from '../components/AdBanner';
 import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
 import { GoldButton } from '../components/GoldButton';
+import { VipBadge } from '../components/VipBadge';
+import { isVipUser } from '../utils/vip';
 import { useAuthStore }  from '../stores/authStore';
 import { useInboxStore } from '../stores/inboxStore';
 import { useDMStore }    from '../stores/dmStore';
@@ -105,6 +107,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const user        = useAuthStore((s) => s.user);
   const deviceId    = user?.deviceId ?? '';
   const myId        = user?.userId ?? '';
+  const isVip       = isVipUser(user?.inviteCount ?? 0, user?.milestones ?? null);
 
   // Direct messages
   const dms           = useDMStore((s) => s.messages);
@@ -587,9 +590,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     <Text style={[styles.itemTitle, c.unread > 0 && styles.itemTitleUnread]} numberOfLines={1}>
                       {c.title}
                     </Text>
-                    {c.support && (
+                    {(c.support || c.peerBadge.verified) && (
                       <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
                     )}
+                    {c.peerBadge.isVip && <VipBadge compact />}
                     {!!c.latest && <Text style={styles.itemDate}>{c.latest.createdAt.slice(5, 16)}</Text>}
                   </View>
                   <View style={styles.threadPreviewRow}>
@@ -659,9 +663,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 <View style={styles.threadPeerWrap}>
                   <View style={styles.threadPeerRow}>
                     <Text style={styles.threadPeer} numberOfLines={1}>{openConvo.title}</Text>
-                    {openConvo.support && (
+                    {(openConvo.support || openConvo.peerBadge.verified) && (
                       <View style={styles.verifiedBadge}><Text style={styles.verifiedText}>✓</Text></View>
                     )}
+                    {openConvo.peerBadge.isVip && <VipBadge compact />}
                   </View>
                   {openConvo.support && <Text style={styles.threadSubtitle}>{t('dm.supportTag')}</Text>}
                   {!openConvo.support && peerTyping && (
@@ -837,7 +842,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
         >
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t('dm.composeTitle')}</Text>
-            {!!myId && <Text style={styles.modalYourId}>{t('dm.yourId')}: {myId}</Text>}
+            {!!myId && (
+              <View style={styles.yourIdRow}>
+                <Text style={styles.modalYourId}>{t('dm.yourId')}: {myId}</Text>
+                {isVip && <VipBadge compact />}
+              </View>
+            )}
 
             <Text style={styles.fieldLabel}>{t('dm.recipientLabel')}</Text>
             <TextInput
@@ -997,7 +1007,8 @@ const styles = StyleSheet.create({
   modalRoot:     { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.55)' },
   modalCard:     { backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius.xl, borderTopRightRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Layout.screenPadding, paddingBottom: Spacing[8], gap: Spacing[2] },
   modalTitle:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, marginBottom: 2 },
-  modalYourId:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted, marginBottom: Spacing[2] },
+  yourIdRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: Spacing[2] },
+  modalYourId:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
   fieldLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.muted, marginTop: Spacing[2] },
   input:         { borderRadius: Radius.lg, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Platform.OS === 'ios' ? 12 : 8, color: Colors.text.primary, fontFamily: Typography.family.body, fontSize: Typography.size.base },
   inputMultiline: { minHeight: 110, textAlignVertical: 'top', marginTop: Spacing[2] },

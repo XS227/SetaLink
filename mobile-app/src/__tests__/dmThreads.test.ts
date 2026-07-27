@@ -1,10 +1,10 @@
 import { groupDmsByPeer } from '../utils/dmThreads';
-import type { DirectMessage } from '../services/entitlementService';
+import { DEFAULT_PEER_BADGE, type DirectMessage } from '../services/entitlementService';
 
 const m = (over: Partial<DirectMessage>): DirectMessage => ({
   id: 1, direction: 'in', peerUserId: 'SL-A', peerDevice: 'dev-a',
   body: 'x', read: false, createdAt: '2026-06-15T10:00:00',
-  expireSecs: 0, expiresAt: null, ...over,
+  expireSecs: 0, expiresAt: null, peerBadge: DEFAULT_PEER_BADGE, ...over,
 });
 
 describe('groupDmsByPeer', () => {
