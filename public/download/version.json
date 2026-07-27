@@ -1,25 +1,20 @@
 {
-  "version": "0.9.92",
-  "versionCode": 132,
+  "version": "0.9.93",
+  "versionCode": 133,
   "releaseDate": "2026-07-27",
   "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.92.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.93.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.92-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.92-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.93-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.93-universal.apk",
   "checksum": {
-    "sha256": "2751c4cde4cb6037bdc556fa7cfa34fb5664f3da039e74083f61f8d075a3ed56",
+    "sha256": "4b52416497eaaf1a02f26238cdcc5df505850846b68b703daeddc03e65c50a7a",
     "algorithm": "sha256"
   },
-  "size": 57398976,
-  "changelog": [
-    "Inbox: new color pass + VIP/verified badges on your own profile and peers",
-    "Home: zar/hour now shows your real hero income, not an estimate",
-    "Wallet: convert ZAR to REAL directly in the app",
-    "Accessibility fixes on 2 buttons (Inbox send, Starlink invite)"
-  ],
+  "size": 57400080,
+  "changelog": [],
   "channels": {
     "stable": {
       "version": "0.9.67",
@@ -36,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.92",
-      "versionCode": 132,
-      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.92.apk",
-      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.92-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.92-universal.apk"
+      "version": "0.9.93",
+      "versionCode": 133,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.93.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.93-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.93-universal.apk"
     }
   },
   "rollout": {
