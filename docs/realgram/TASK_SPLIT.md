@@ -11981,3 +11981,60 @@ is already fixed and verified (this doesn't block on the push), but
 someone with write access to `Real-Gram/Realgram` should either push
 `fa3d310` from this box or grant this box's key write access so this
 doesn't happen again next time B touches this repo.
+
+---
+
+## A→B(123) — Khabat gave the real production AdMob IDs (Android + iOS) and
+asked to fix the "ad unit doesn't match format" bug for good; v0.9.96 [beta]
+built and published live
+
+**Dato: 2026-07-27.** Verified every ID against the codebase before changing
+anything. On both platforms, Banner/Rewarded Video/Rewarded Interstitial
+already matched exactly (correct SDK classes, correct format) — searched the
+whole repo for any `ca-app-pub-` prefix other than the current publisher ID,
+found none, so no stale ReaLink/SetaLink-era IDs anywhere either. App ID
+wiring confirmed correct on both platforms (`app.json` → `AndroidManifest.xml`
+injection at build time; `Info.plist`'s `GADApplicationIdentifier`) — no
+`google-services.json` exists or is needed (not Firebase-based).
+
+**The real gap, on both platforms:** a 4th, distinct "Interstitial (Connect)"
+ad unit Khabat provided wasn't referenced anywhere in code. The Connect flow
+only ever tried Rewarded Interstitial → Rewarded Video, per the 2026-07-22
+"every full-screen ad must be a REWARDED VIDEO — never static" rule. Asked
+Khabat directly rather than guess (a real product-behavior decision, not an
+ID typo): wire the classic Interstitial in as **primary** on Connect (classic
+Interstitials fill far more reliably than Rewarded formats — likely the
+actual cause of "no ads on connect/disconnect" going back several rounds),
+falling back to the existing Rewarded Interstitial → Rewarded Video chain
+unchanged if it fails to load. Khabat chose "yes, primary."
+
+Built as a new `_startInterstitialLoad` in `adsService.ts`, deliberately
+**not** folded into the existing generic `_startFullscreenLoad`: classic
+`InterstitialAd` emits plain `AdEventType.LOADED` (not
+`RewardedAdEventType.LOADED`) and has no reward event at all — widening the
+existing reward-shaped union to cover it would have silently defeated the
+type-checker on exactly the kind of format mismatch this slot had already
+been burned by once. `tsc --noEmit` clean. Rewrote
+`adsInterstitial.test.ts`'s 14 tests for the new primary-format order and
+fallback chain (all passing) — this genuinely changes what event fires first,
+not just cosmetic renames.
+
+**Server note (unrelated, found while working):** this VPS's disk was at
+99% full and RAM was pinned (a leftover `jest` process I'd started was eating
+36% of the box's 1GB RAM, driving load average to 5.97) — killed it, cleaned
+~360MB of safe cruft (old snap revisions, apt cache, stale `/tmp` build
+artifacts from old versions), enough to unblock the CI artifact download that
+was failing mid-write. Flagged, not removed: an apparently-unused Chromium/
+GNOME/Mesa/PowerShell snap stack (~1.5GB) with nothing on the box referencing
+it — real reclaimable space if Khabat confirms it's safe to drop.
+
+**Published live, v0.9.96 [beta]** (bundled with `(122)`'s native Journey/
+Chapters screen — same session, not shipped separately): CI run `30314001795`
+succeeded. Downloaded all 3 artifacts, hit the same `public/releases/beta/`
+www-data-ownership snag as every prior release (`sudo chown` fixed it), same
+harmless duplicate-tag error (tagged manually first). Real changelog added
+(reset to empty by the script, same as every time). Verified live over
+HTTPS: `version.json` → `0.9.96`/`136`, `channels.beta` matches, all 3 APKs
+return `200`, live arm64 checksum matches `version.json` exactly. Synced to
+`/var/www/setalink` (this git checkout's writes don't reach prod
+automatically — same split as every prior release).
