@@ -59,20 +59,25 @@ check('1 GiB device → referral = 0',            $s['referral_quota'],     0);
 check('starter-only → transferable = 0',        $s['transferable_quota'], 0);
 check('ledger sum == total (1 GiB)',            ledger_sum($db, 'starter1'), 1 * $GiB);
 
-mk_device($db, 'mix', 3 * $GiB);
+// Total must exceed QE_STARTER_BYTES (5 GiB) for referral/adjustment to be
+// reconstructed at all -- below that the whole total is starter (see the
+// 'starter1' case above), by design.
+mk_device($db, 'mix', 8 * $GiB);
 $db->prepare("INSERT INTO referral_uses (referrer_device_id,new_device_id,bonus_bytes,status) VALUES ('mix','x',?,'credited')")
    ->execute([1 * $GiB]);
 $s = qe_summary($db, 'mix');
-check('3 GiB w/ 1 GiB referral → starter 1 GiB',  $s['starter_quota'],  1 * $GiB);
+check('8 GiB w/ 1 GiB referral → starter 5 GiB',  $s['starter_quota'],  5 * $GiB);
 check('referral reconstructed = 1 GiB',           $s['referral_quota'], 1 * $GiB);
-check('remainder → adjustment = 1 GiB',           $s['adjustment_quota'], 1 * $GiB);
-check('ledger sum == total (3 GiB)',              ledger_sum($db, 'mix'), 3 * $GiB);
-check('transferable = total - starter (2 GiB)',   $s['transferable_quota'], 2 * $GiB);
+check('remainder → adjustment = 2 GiB',           $s['adjustment_quota'], 2 * $GiB);
+check('ledger sum == total (8 GiB)',              ledger_sum($db, 'mix'), 8 * $GiB);
+check('transferable = total - starter (3 GiB)',   $s['transferable_quota'], 3 * $GiB);
 
-// Used data reduces transferable.
-mk_device($db, 'used', 3 * $GiB, (int)(2.5 * $GiB));
+// Used data reduces transferable (again, total > 5 GiB starter so there's
+// real transferable headroom to cap: 8 GiB total, 3 GiB transferable before
+// use, 0.5 GiB remaining after 7.5 GiB used).
+mk_device($db, 'used', 8 * $GiB, (int)(7.5 * $GiB));
 $s = qe_summary($db, 'used');
-check('used 2.5 GiB → remaining 0.5 GiB',         $s['remaining_quota'], (int)(0.5 * $GiB));
+check('used 7.5 GiB → remaining 0.5 GiB',         $s['remaining_quota'], (int)(0.5 * $GiB));
 check('transferable capped by remaining (0.5 GiB)', $s['transferable_quota'], (int)(0.5 * $GiB));
 
 // ── Ledger add keeps invariant ───────────────────────────────────────────────
@@ -88,13 +93,13 @@ check('purchased_quota reflects purchase',  $s['purchased_quota'], 5 * $GiB);
 // ── Transfers ────────────────────────────────────────────────────────────────
 echo "Transfers:\n";
 $db = fresh_db();
-mk_device($db, 'alice', 3 * $GiB);                       // 1 GiB starter + 2 GiB transferable (adjustment)
+mk_device($db, 'alice', 6 * $GiB);                       // 5 GiB starter + 1 GiB transferable (adjustment)
 mk_device($db, 'bob',   1 * $GiB, 0, ['user_id' => 'SL-227-BOB']);
 qe_summary($db, 'alice'); qe_summary($db, 'bob');         // backfill both
 
 $res = qe_transfer($db, 'alice', 'SL-227-BOB', 500 * 1024 * 1024, 'test');
 check('transfer resolves receiver by user_id', $res['receiver_device'], 'bob');
-check('alice total after sending 500 MB',  dev_total($db, 'alice'), 3 * $GiB - 500 * 1024 * 1024);
+check('alice total after sending 500 MB',  dev_total($db, 'alice'), 6 * $GiB - 500 * 1024 * 1024);
 check('bob total after receiving 500 MB',  dev_total($db, 'bob'),   1 * $GiB + 500 * 1024 * 1024);
 check('alice ledger sum still == total',   ledger_sum($db, 'alice'), dev_total($db, 'alice'));
 check('bob ledger sum still == total',     ledger_sum($db, 'bob'),   dev_total($db, 'bob'));
