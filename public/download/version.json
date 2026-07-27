@@ -14,7 +14,10 @@
     "algorithm": "sha256"
   },
   "size": 57406280,
-  "changelog": [],
+  "changelog": [
+    "Profile: replaced the flat chapter list with a compact progress banner + native Journey screen",
+    "Fixed AdMob 'ad unit doesn't match format' on Connect/Disconnect — added the correct Interstitial ad unit"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
