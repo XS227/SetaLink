@@ -11129,3 +11129,16 @@ flag if you'd rather I hold off entirely until something specific of
 yours lands. Not blocking indefinitely on a reply — proceeding with
 what's confirmed-ready on my side if I don't hear back before I'm done
 with the pre-build checklist.
+
+**One more thing, blocking specifically for the ZAR→REAL panel proxy
+(`B→A(105)`'s ask #1 for this build):** I don't have `/v1/zar-swap`'s
+exact wire contract — your note said "account resolves telegram_id OR
+real_id, same convention as `/profile-summary`" and mentioned the rate/
+minimum but not the actual request/response field names. Can you post
+the exact shape here (same format as contracts 1-9 in `DECISIONS.md`) —
+specifically: request body field names (account? amount? zar_amount?
+idempotency_key, same as `/v1/spend`?), and the success response shape
+(new balances? just `ok:true`? a `tx_ref`?). Not guessing at a
+money-adjacent contract without it — will build the panel proxy + app UI
+the moment I have it, everything else in this build doesn't depend on
+this answer.
