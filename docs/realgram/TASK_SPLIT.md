@@ -10618,3 +10618,83 @@ worth checking whether `realgram-profile-summary` should also consider
 `realId` (once linked) rather than being a pure `device_id` lookup, or
 whether progress attached during a realId-linked session is actually
 being written back to the plain device row at all.
+
+---
+
+## A→B(102) — merged the week-old `feat/inbox-vip-ui` branch that never landed
+
+**Dato: 2026-07-27**
+
+Khabat asked me to keep working unfinished RealGram tasks. Went looking
+for real work sitting idle rather than guessing at new scope, and found
+one: `feat/inbox-vip-ui` (Inbox color pass + VIP/verified peer badges,
+`df7769b`/`b90868b`) was pushed 2026-07-20, flagged in `B→A(62)` as one of
+two feature branches not yet on `main` for the release candidate, and then
+never came up again across a week of gold-theme/APK-batch work. Confirmed
+none of its functionality (`VipBadge.tsx`, `utils/vip.ts`, peer badges)
+had been reimplemented elsewhere — genuinely just forgotten, not
+superseded — so merged it into `feat/b97-experience` (`a744e80`).
+
+**Conflicts, and how I resolved them:**
+- **Styling** (`InboxScreen.tsx`, ~7 hunks): the branch's own
+  `ACCENT`/`ACCENT_ON`/`VERIFIED` color-alias system predates and
+  conflicted with the later gold-theme pass (`GoldButton`, literal
+  `Colors.gold[400]`, and — per a comment already in `HEAD` — an explicit
+  Khabat call to make the verified checkmark **cyan**, not blue). Kept
+  `HEAD`'s styling throughout, deleted the now-orphaned
+  `ACCENT`/`ACCENT_ON`/`VERIFIED` consts and their now-unused `Shadow`
+  import. Only carried over the branch's actual *functionality*.
+- **`entitlementService.ts`**: both sides extended `DirectMessage`/
+  `mapDirectMessage()` independently — `HEAD` added `reactions`/
+  `myReaction` (2026-07-22), this branch added `peerBadge`. Merged so
+  `DirectMessage` carries both; `mapDirectMessage()` now takes an optional
+  `peers` map so `listMessages()` (which gets a real `peers` map from the
+  server) attaches real badges, while `listThreadMessages()`/
+  `searchMessages()` — both added to `HEAD` *after* this branch forked —
+  fall back to `DEFAULT_PEER_BADGE` since their endpoints don't return
+  peer data. Flagging that gap here rather than silently narrowing it:
+  `list-thread-messages` could grow the same `peers` map later if a
+  badge needs to show correctly on paginated older messages, not just the
+  initial load.
+- **`ProfileScreen.tsx`** (modify/delete): the branch wired `isVip` into
+  it, but `HEAD` deleted this file entirely (`c5e4c6e`, 2026-07-24) —
+  `RealGramProfileScreen.tsx` replaced it on 2026-07-21, one day *after*
+  this branch's last commit. Kept it deleted; didn't try to port the
+  wiring forward since the new profile screen uses a different
+  (achievements-based) data model with no `IdentityHeader` at all — not
+  a like-for-like port, a real feature decision for whoever owns Profile
+  next if peer/self VIP display there is still wanted.
+
+**Verified, not just merged-and-hoped:**
+- `tsc --noEmit`: clean (fixed 3 real type errors post-merge: two test
+  fixtures missing the new required `peerBadge` field, one
+  `listThreadMessages` accidentally passing its `.map()` index as
+  `mapDirectMessage`'s `peers` arg).
+- `eslint`: 0 new errors — the 2 that show are the same pre-existing
+  `WelcomeScreen.tsx`/`useReferral` false-positive from the gold-theme
+  merge (`A→B(100)`), confirmed unchanged.
+- Full jest: 381/391, 4 failing suites (`ssoGame`, `homeBanner`,
+  `trackedBannerAd`, `zarSyncService`) — none touch anything this merge
+  changed; `inboxScreen`/`unifiedThreads`/`dmThreads`/`directMessages`
+  all pass. Total dropped from the `401` in `A→B(100)`'s report to `391`
+  — that's the custom-handle-picker removal (`ee596d1`) deleting its own
+  onboarding tests two commits later, not this merge (checked: same 10
+  tests fail before and after).
+- `lib/quota_economy.php`'s `qe_badge_info_for_devices()`: the 19 tests
+  the branch wrote for it never actually ran — `scripts/test-quota-
+  economy.php` fatal-errors partway through its **pre-existing**
+  `Transfers:` section (`RuntimeException` at `quota_economy.php:462`,
+  the same crash already flagged unfixed in `A→B(57)`/confirmed again in
+  `A→B(100)`) before reaching the peer-badge section appended at the end
+  of the file. Extracted just that section into a standalone script
+  against the real `qe_badge_info_for_devices()` to actually verify it
+  rather than assume it: **19/19 pass**. Not fixing the `Transfers:`
+  crash as part of this — still out of scope, still flagged, now twice.
+- `php -l` clean on all three touched PHP files.
+
+Pushed to `feat/b97-experience`. Still open, unrelated to this merge:
+AdMob interstitial (AdMob dashboard, not code), device recognition
+(flagged to Shahnameh side in `A→B(101)`), ZAR/hour + ZAR→REAL (blocked
+on Shahnameh access), and now also the pre-existing `Transfers:` crash in
+`scripts/test-quota-economy.php` — three sessions old, still nobody's
+picked it up.
