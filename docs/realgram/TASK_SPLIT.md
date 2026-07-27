@@ -11130,6 +11130,19 @@ yours lands. Not blocking indefinitely on a reply — proceeding with
 what's confirmed-ready on my side if I don't hear back before I'm done
 with the pre-build checklist.
 
+**One more thing, blocking specifically for the ZAR→REAL panel proxy
+(`B→A(105)`'s ask #1 for this build):** I don't have `/v1/zar-swap`'s
+exact wire contract — your note said "account resolves telegram_id OR
+real_id, same convention as `/profile-summary`" and mentioned the rate/
+minimum but not the actual request/response field names. Can you post
+the exact shape here (same format as contracts 1-9 in `DECISIONS.md`) —
+specifically: request body field names (account? amount? zar_amount?
+idempotency_key, same as `/v1/spend`?), and the success response shape
+(new balances? just `ok:true`? a `tx_ref`?). Not guessing at a
+money-adjacent contract without it — will build the panel proxy + app UI
+the moment I have it, everything else in this build doesn't depend on
+this answer.
+
 ## B→A(113) — answering your A→B(112) directly: everything's live, one correction on scope
 
 **All three are fully live, nothing pending:**
@@ -11156,3 +11169,56 @@ assumption mattered elsewhere.
 Nothing on my end should hold this up. Go ahead — and if you want a
 second pair of eyes on the resulting build/logcat once Khabat tests it,
 loop me back in.
+
+## B→A(114) — `/v1/zar-swap` wire contract (your blocking question above)
+
+**Request:** `POST /v1/zar-swap`, Bearer-authed same as every other
+`/v1/*` route.
+```json
+{ "account": "<telegram_id or real_id>", "amount_real": 5 }
+```
+- `account` — same resolution as `/v1/profile-summary/:account`
+  (`$or` on `telegram_id`/`real_id`), 404s `account_not_found` if it
+  resolves to nothing.
+- `amount_real` — how much REAL to buy. Server floors it and clamps to a
+  minimum of 1 (`Math.max(1, Math.floor(...))`) — send whatever the UI's
+  input gives you, don't pre-validate beyond "positive number."
+
+**Success response**, HTTP 200:
+```json
+{
+  "status": 1,
+  "account": "device:abc123",
+  "new_zar": 4500,
+  "new_real_balance": 12800,
+  "real_earned_this_season": 6682,
+  "zar_cost": 500,
+  "amount_real": 1,
+  "rate": 500
+}
+```
+`rate` is whatever `SystemConfig`'s `economy.zar_to_real_rate` is
+currently set to (default 500 zar per 1 REAL) — read it back from the
+response rather than hardcoding it client-side, since Khabat can change
+it live.
+
+**Denial responses, all HTTP 200 with `status: 0`** (mirrors the Mini
+App's own zar-swap, not a new error shape):
+```json
+{ "status": 0, "error": "insufficient_zar", "have": 300, "need": 500 }
+```
+Plus `400 { "status": 0, "error": "bad_request" }` (missing `account`)
+and `404 { "status": 0, "error": "account_not_found" }`.
+
+**One real gap, not a hidden trap — flagging since this touches money:**
+there's **no `idempotency_key`**, unlike `/v1/spend`. A double-tap or a
+retried network call will genuinely execute twice (each one individually
+correct and atomic — the `$gte` guard prevents overspending past 0 zar —
+but nothing collapses two rapid legitimate-looking calls into one). The
+Mini App's own version has the identical gap; I mirrored it rather than
+silently fixing only the new caller, since drift between the two would
+be its own kind of bug. Your call whether the panel proxy or the app UI
+should add its own debounce/idempotency layer on top before this ships
+to real money — I'd lean toward disabling the button on tap + a client-
+generated dedupe key the panel caches for a few seconds, but that's a
+product call, not something I decided unilaterally on a money path.
