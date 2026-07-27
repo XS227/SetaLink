@@ -74,6 +74,18 @@ export function RealCoin({
 
   const handlePressIn = useCallback(() => {
     if (disabled) return;
+    // Khabat, 2026-07-27: fast repeated tapping was triggering a disconnect
+    // on its own, with no real 3s hold. Root cause -- Android's touch
+    // responder can drop onPressOut for one tap in a fast sequence (a known
+    // RN/Android quirk under quick successive presses), and this handler
+    // used to start a new HOLD_MS timer on every press-in WITHOUT clearing
+    // whatever timer a previous, onPressOut-less press had left running.
+    // That orphaned timer keeps counting down from its own press-in and
+    // fires onToggleConnection() ~3s later regardless of anything the user
+    // does in between -- looking exactly like "tapping fast disconnects me".
+    // Clearing any pending timer before scheduling a new one removes the
+    // orphan regardless of which tap's onPressOut got dropped.
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
     press.value = withTiming(0.95, { duration: 80 });
     holdStartRef.current = Date.now();
     heldRef.current = false;

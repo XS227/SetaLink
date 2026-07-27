@@ -28,6 +28,7 @@ import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
+import { useProfilePicStore } from '../stores/profilePicStore';
 import { useSessionStore, SessionRecord } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { BiometricService } from '../services/biometricService';
@@ -35,6 +36,7 @@ import { formatBytes, formatDuration } from '../utils/formatters';
 import {
   getProfileSummary, ProfileSummary,
 } from '../services/realGramProfileService';
+import { syncEntitlement } from '../services/entitlementService';
 
 // Never surface a raw backend error code — Khabat, 2026-07-21: Profile
 // showed the literal string "profile_unavailable". Map known codes to
@@ -100,6 +102,7 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
 
 export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) {
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
+  const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   // Data balance lives on the VPN side (entitlement/quota), not the Shahnameh
   // backend contract §9 covers — pulled straight from the same authStore
   // fields HomeScreen already reads, so this stays in sync with Connect/
@@ -145,6 +148,10 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
         autoRetriesRef.current = 0;
         setProfile(p);
         setLoading(false);
+        // Khabat, 2026-07-27: header avatar (Home + TopBar) never showed the
+        // real photo — feed it into the shared store here since this screen
+        // is the one place that already has it (identity.profile_pic).
+        useProfilePicStore.getState().setUrl(p.identity?.profile_pic ?? '');
       })
       .catch((e: unknown) => {
         const code = e instanceof Error ? e.message : 'unknown_error';
@@ -188,7 +195,13 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
   const mountedRef = useRef(false);
   useEffect(() => {
     if (!mountedRef.current) { mountedRef.current = true; return; }
-    if (isFocused && profile) load({ silent: true });
+    if (!isFocused || !profile) return;
+    load({ silent: true });
+    // Data (VPN quota)/plan above reads straight from authStore, not from
+    // getProfileSummary — refresh it too on the same refocus, same fix as
+    // HomeScreen's (Khabat, 2026-07-27: quota shown here also went stale
+    // after a Wallet-tab REAL->GB conversion, same root cause as Home's).
+    if (deviceId) syncEntitlement(deviceId).then(updateFromEntitlement).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isFocused]);
 

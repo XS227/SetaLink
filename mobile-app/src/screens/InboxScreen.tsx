@@ -272,6 +272,28 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
     [olderMessages, openConvo],
   );
 
+  // Scroll the open thread to its latest message (Khabat, 2026-07-27: thread
+  // opened mid-conversation instead of landing on the newest message). This
+  // is a plain ScrollView (not a FlatList), so there's no built-in "stick to
+  // bottom" -- it renders at scroll offset 0 (the oldest message) by default.
+  // Keyed on the LAST message's key, not threadMessages.length: loadOlderMessages
+  // prepends older history to the front, which changes the array length/first
+  // entry but never the last one, so that case intentionally does not
+  // re-trigger a jump-to-bottom and blow away the user's reading position.
+  const threadScrollRef = useRef<ScrollView>(null);
+  const lastScrollKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!openKey) { lastScrollKeyRef.current = null; return; }
+    const tailKey = threadMessages[threadMessages.length - 1]?.key ?? '';
+    const scrollKey = `${openKey}:${tailKey}`;
+    if (scrollKey === lastScrollKeyRef.current) return;
+    const isNewThread = lastScrollKeyRef.current?.split(':')[0] !== openKey;
+    lastScrollKeyRef.current = scrollKey;
+    requestAnimationFrame(() => {
+      threadScrollRef.current?.scrollToEnd({ animated: !isNewThread });
+    });
+  }, [openKey, threadMessages]);
+
   const loadOlderMessages = async () => {
     if (!openConvo || openConvo.support || loadingOlder || noMoreOlder || !openPeer) return;
     const oldestDm = threadMessages.find(m => m.kind === 'dm');
@@ -698,7 +720,11 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
               )}
 
               {/* Conversation */}
-              <ScrollView style={styles.threadScroll} contentContainerStyle={styles.threadScrollContent}>
+              <ScrollView
+                ref={threadScrollRef}
+                style={styles.threadScroll}
+                contentContainerStyle={styles.threadScrollContent}
+              >
                 {/* Support thread opens with a pinned intro note (localized). */}
                 {openConvo.support && (
                   <View style={styles.introNote}>

@@ -8,8 +8,9 @@
  * (verified: only Tonkeeper exists, as a payment deep-link, not a wallet
  * balance source) — so this always renders "Coming soon", never a number.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
@@ -19,6 +20,7 @@ import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useT } from '../i18n';
 import { getProfileSummary, ProfileEconomy } from '../services/realGramProfileService';
+import { syncEntitlement } from '../services/entitlementService';
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
@@ -28,7 +30,9 @@ interface Props {
 export function WalletScreen({ onNavigate, activeTab }: Props) {
   const { t } = useT();
   const user  = useAuthStore((s) => s.user);
+  const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   const deviceId = user?.deviceId ?? '';
+  const isFocused = useIsFocused();
 
   const totalGb = (user?.quotaBytesTotal ?? 0) / 1073741824;
   const usedGb  = (user?.quotaBytesUsed  ?? 0) / 1073741824;
@@ -40,14 +44,31 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
   // this just fills in the fields Khabat asked for that nothing on this
   // screen showed yet.
   const [economy, setEconomy] = useState<ProfileEconomy | null>(null);
-  useEffect(() => {
+  const loadEconomy = useCallback(() => {
     if (!deviceId) return;
-    let cancelled = false;
-    getProfileSummary(deviceId)
-      .then((p) => { if (!cancelled) setEconomy(p.economy); })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    getProfileSummary(deviceId).then((p) => setEconomy(p.economy)).catch(() => {});
   }, [deviceId]);
+  useEffect(() => { loadEconomy(); }, [loadEconomy]);
+
+  // Khabat, 2026-07-27: this screen's own numbers (Data/quota above, Economy
+  // card) never refreshed after actually doing the thing that changes them —
+  // RealWalletCard already calls onRedeemed after a successful REAL->GB
+  // redeem or ZAR->REAL swap specifically so its owner can refresh, but
+  // nothing here was wired to it. Also refresh silently on every refocus
+  // (same fix as Home/Profile) in case the balance changed while elsewhere
+  // in the app (e.g. an AdMob GB reward on Home).
+  const handleRedeemed = useCallback(() => {
+    loadEconomy();
+    if (deviceId) syncEntitlement(deviceId).then(updateFromEntitlement).catch(() => {});
+  }, [loadEconomy, deviceId, updateFromEntitlement]);
+
+  const walletMountedRef = useRef(false);
+  useEffect(() => {
+    if (!walletMountedRef.current) { walletMountedRef.current = true; return; }
+    if (!isFocused) return;
+    handleRedeemed();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFocused]);
 
   return (
     <View style={styles.screen}>
@@ -58,7 +79,7 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
           <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </View>
 
-        <RealWalletCard deviceId={deviceId} />
+        <RealWalletCard deviceId={deviceId} onRedeemed={handleRedeemed} />
 
         {economy && (
           <GlassCard style={styles.card} glowColor={Colors.gold[400]}>

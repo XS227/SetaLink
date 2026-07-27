@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import ReanimatedView, {
   useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing as REasing,
 } from 'react-native-reanimated';
+import { useIsFocused } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldBeatBurst }   from '../components/GoldBeatBurst';
@@ -22,6 +23,7 @@ import { useIdentityStore }    from '../stores/identityStore';
 import { useDMStore }          from '../stores/dmStore';
 import { useInboxStore }       from '../stores/inboxStore';
 import { useZarStore }         from '../stores/zarStore';
+import { useProfilePicStore }  from '../stores/profilePicStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
@@ -30,6 +32,7 @@ import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
 import { initZarSync, recordZarTap } from '../services/zarSyncService';
 import { getProfileSummary } from '../services/realGramProfileService';
+import { syncEntitlement } from '../services/entitlementService';
 
 const STARLINK_INVITE_TARGET = 11;
 
@@ -81,9 +84,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   } = useVpnStore();
 
   const user         = useAuthStore((s) => s.user);
+  const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   const avatarEmoji  = useIdentityStore((s) => s.avatarEmoji);
   const avatarColor  = useIdentityStore((s) => s.avatarColor);
+  const profilePicUrl = useProfilePicStore((s) => s.url);
   const servers      = useServerStore((s) => s.servers);
+  const isFocused    = useIsFocused();
 
   // Real tap-to-earn ZAR (zarStore + zarSyncService — contract §8, shipped
   // 2026-07-19) was already fully built and wired into GameScreen, but
@@ -102,15 +108,37 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   // number the Game tab's Shahnameh profile shows, can't drift from it.
   // Best-effort, silent: falls back to the tap-derived estimate below if
   // this hasn't loaded yet or the call fails (e.g. no linked account yet).
+  // Also the one place Home picks up the real profile photo (profilePicStore)
+  // for its header avatar chip below.
   const [zarPerHourFromCards, setZarPerHourFromCards] = useState<number | null>(null);
+  const loadProfileExtras = useCallback((deviceId: string) => {
+    return getProfileSummary(deviceId)
+      .then((p) => {
+        setZarPerHourFromCards(p.economy.zar_per_hour_from_cards);
+        useProfilePicStore.getState().setUrl(p.identity?.profile_pic ?? '');
+      })
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     if (!deviceIdForZar) return;
-    let cancelled = false;
-    getProfileSummary(deviceIdForZar)
-      .then((p) => { if (!cancelled) setZarPerHourFromCards(p.economy.zar_per_hour_from_cards); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [deviceIdForZar]);
+    loadProfileExtras(deviceIdForZar);
+  }, [deviceIdForZar, loadProfileExtras]);
+
+  // Khabat, 2026-07-27: quota/balance shown on Home went stale after a
+  // REAL->GB or ZAR->REAL conversion made on the Wallet tab — this screen
+  // only ever synced entitlement/profile data once, on first mount, and
+  // React Navigation keeps tab screens mounted between switches (same class
+  // of bug RealGramProfileScreen's own B->A(111) refocus fix addressed for
+  // its own numbers). Re-sync silently every time Home refocuses instead.
+  // Skips the very first focus (the mount effects above already cover it)
+  // so this never races the initial load.
+  const homeMountedRef = useRef(false);
+  useEffect(() => {
+    if (!homeMountedRef.current) { homeMountedRef.current = true; return; }
+    if (!isFocused || !deviceIdForZar) return;
+    syncEntitlement(deviceIdForZar).then(updateFromEntitlement).catch(() => {});
+    loadProfileExtras(deviceIdForZar);
+  }, [isFocused, deviceIdForZar, updateFromEntitlement, loadProfileExtras]);
 
   const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
   const unreadDm       = useDMStore((s) => s.messages.filter((m) => m.direction === 'in' && !m.read).length);
@@ -285,7 +313,11 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               onPress={() => onNavigate('profile' as NavTab)}
               hitSlop={10}
             >
-              <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
+              {profilePicUrl ? (
+                <Image source={{ uri: profilePicUrl }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
+              )}
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -469,8 +501,9 @@ const styles = StyleSheet.create({
   headerBtnIcon:  { fontSize: 17, color: Colors.text.secondary },
   badge:          { position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, borderRadius: 7, backgroundColor: '#FF6B6B', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
   badgeText:      { color: '#fff', fontSize: 8, fontFamily: Typography.family.heading },
-  avatarChip:     { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  avatarChip:     { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarEmoji:    { fontSize: 16 },
+  avatarImage:    { width: '100%', height: '100%', borderRadius: 18 },
 
   // Balance pills
   pillRow:      { flexDirection: 'row', gap: Spacing[2] },

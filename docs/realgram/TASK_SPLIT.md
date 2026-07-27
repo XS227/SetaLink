@@ -11302,3 +11302,241 @@ Khabat's device should get this as an OTA offer on the `beta` channel, or
 he can pull `setalink.no/download/setalink-latest.apk` directly. Over to
 whoever's watching the device-recognition logcat once he's on it —
 that's the one open thread this build is actually meant to help answer.
+
+---
+
+## A→B(117) — Khabat's live v0.9.92 test on `sl-85ff1772-…` (NO/OneCall):
+**one CRITICAL finding (prod PHP is 3-8 days stale) + a feedback batch**
+
+**Dato: 2026-07-27.** Khabat installed/connected fine, then reported ~13
+issues from real usage. Investigated with DB queries against the live
+`analytics.db` and file comparisons against this checkout before writing
+anything down — not just relaying his words. Device confirmed:
+`sl-85ff1772-8673-c696-4504-e09165882c5e`, NO/OneCall, `app_version
+0.9.92` (today's build), `linked_real_account
+device:sl-85ff1772-8673-c696-4504-e09165882c5e`.
+
+### 🔴 Root cause, most likely explains several items below
+
+**`/var/www/setalink`'s live PHP is NOT synced to this checkout — and has
+been drifting for over a week.** `scripts/release.sh` only ever handles
+the APK/`version.json`/download docroot; nothing deploys `public/*.php`,
+`admin/*.php`, or `lib/*.php` to the live docroot. Verified by direct
+file diff, live mtime vs. last commit touching each file:
+
+| file | last commit | live mtime | gap |
+|---|---|---|---|
+| `public/api.php` | `2b2679c` 07-27 16:35 | 07-24 10:25 | **missing `zar-swap` action entirely + the `feat/inbox-vip-ui` peer-badge join** |
+| `public/index.php` | `27c2e70` 07-22 00:12 | 07-18 08:53 | 4 days |
+| `admin/api.php` | `c68752c` 07-24 01:53 | 07-22 03:21 | 2 days |
+| `admin/index.php` | `c68752c` 07-24 01:53 | 07-22 04:17 | 2 days |
+| `lib/real_economy.php` | `2b2679c` 07-27 16:35 | 07-21 21:45 | 6 days |
+| `lib/quota_economy.php` | `b90868b` 07-20 04:20 | 07-12 19:13 | 8 days |
+| `lib/ad_monetization.php` | differs | differs | not yet quantified |
+| `lib/node_intel.php` | differs | differs | not yet quantified |
+
+This means every "shipped, live the instant it was pushed" claim in this
+doc that assumed nginx serves `public/`/`admin/` straight from a synced
+tree (unlike the static `season2/adsgram.js` case, which genuinely is
+served directly with no build step) has been **wrong** for backend PHP
+specifically, going back over a week. I did **not** copy the files over —
+that's a live prod change touching wallet/quota/ad-credit logic for every
+current user, so it needs a go/no-ago from Khabat first, even though
+restoring intended state is clearly the right call. Flagging here so
+whoever picks this up checks with him before syncing, and treats
+"confirmed live" claims for anything in `public/`, `admin/`, or `lib/`
+made between roughly 07-18 and today with suspicion until re-verified
+post-sync.
+
+### Confirmed root causes (DB-verified, not guesses)
+
+1. **ZAR→REAL "unknown error"** — direct consequence of the above: live
+   `public/api.php` has no `zar-swap` action at all (git HEAD added it in
+   `2b2679c`, only 2 hours before Khabat's test). His tap hit the
+   fallback "unknown action" branch. Not a bug in the swap logic itself —
+   the feature was simply never deployed. Fix = sync, not code.
+
+2. **"REAL→GB deducts REAL but doesn't give quota"** — checked
+   `real_redemptions` + `quota_transactions` for his device: both of
+   today's conversions (17:45:20 → +1GB, 18:12:19/18:12:25 → +1GB+2GB)
+   show `status='credited'` and a matching ledger row, and
+   `devices.quota_bytes_total` genuinely increased each time (this action
+   *is* deployed live — no drift here). His pre-existing total was
+   already ~1035GB, so +1-2GB is invisible if the UI shows a rounded
+   number, but the real story is likely the same bug as the next item:
+   **the app isn't re-fetching balance/quota after the action completes**,
+   so he just doesn't see it change on screen even though the server did
+   its job correctly. Confirms his separate "home balance not in sync
+   with profile/wallet" report is probably one client-side refresh bug,
+   not three.
+
+3. **Connections / AdMob / nodes, last hour** (his direct ask) — from
+   `vpn_sessions`/`connect_telemetry`/`ad_events`: 3 connect events in the
+   last hour — `primary` @ 17:29 (35 min session, ended 18:04), then two
+   short `starlink-no-01` connects @ 18:04 (15s) and 18:07 (21s). AdMob
+   rewarded-video: **confirmed/verified** reward (+250MB) at 17:31 (while
+   on `primary`) and again at 18:04 (right after switching to
+   `starlink-no-01`), then **two rejected** (0 bytes) reward attempts at
+   18:07:24 and 18:07:36 — 12 seconds apart, right in the middle of the
+   21s `starlink-no-01` session. That timing lines up with rapid
+   re-tapping more than with "ads only work on Starlink" — the first
+   Starlink reward *did* go through clean. Not enough here yet to confirm
+   or rule out his node-specific ads theory; the `admin_message_acks`/
+   `starlink_admin_log` 50%/60% AdMob revenue-drop alert Khabat saw is a
+   real 7d-vs-7d comparison off `ad_daily_metrics`/`ad_perf_daily`, not a
+   client bug — worth a separate look at whether the drop correlates with
+   the same prod-PHP drift (e.g. `ad_monetization.php` being stale could
+   plausibly affect reward/revenue recording, unverified).
+
+### Not yet investigated — logging for whoever picks this up next
+
+- Inbox opens mid-thread instead of scrolled to the latest message.
+- Push notifications arriving for older/already-seen messages, and
+  "X unread messages" not matching actual unread count (`inboxStore.ts`/
+  `dmStore.ts` both build this string off `fresh.length`/`n` — worth
+  checking whether "fresh" is being computed against the right
+  already-notified set, `services/dmNotifications.ts` owns that filter).
+- Tap-to-disconnect fires on fast repeated taps instead of requiring the
+  3s hold the UI itself promises (`home.holdToDisconnect` string).
+  `ConnectButton.tsx` sets `delayLongPress={600}` (600ms, not 3000ms —
+  copy/behavior mismatch on its own) and its `onPress` doubles as the
+  tap-to-earn-ZAR action per its own comment ("Hold-to-disconnect escape
+  hatch while taps are earning ZAR") — but it isn't imported anywhere in
+  the app right now (`grep` found zero usages outside its own file), so
+  the actual live tap/connect surface Khabat is hitting is a different
+  component I haven't located yet. Needs someone to find where the real
+  Home tap-to-earn + connect toggle lives before this can be root-caused.
+- Profile picture not rendering in the top-right avatar icon or inside
+  Inbox; the inbox/message icon in the top bar not updating its
+  unread-count badge live.
+- Shahnameh Mini App experience: **product decision from Khabat, not a
+  bug** — for now, drop the plan to route Shahnameh through Telegram
+  entirely; everything Shahnameh-related should live inside the RealGram
+  app only, no external Telegram surface. Flagging since this affects
+  scope on anything Mini-App/Telegram-deep-link related that's in flight.
+
+Not blocking on a reply to keep working other threads, but the prod-PHP
+sync question is the one thing I'd want a real answer on before anyone
+assumes a "live" claim in this doc from the last week is actually true.
+
+**Update, same session — Khabat said go ahead, sync is done.** Backed up
+every stale live file first (`.bak-20260727-1836-predeploy` /
+`-1836-predeploy` suffix, next to each original, nothing deleted), then
+copied this checkout's `feat/b97-experience` HEAD over the live docroot
+for all 16 files that differed: the 8 already listed above, plus
+`admin/style.css`, `public/sitemap.php`, `public/v1.php`,
+`public/blog/inc.php` + 3 blog article `index.php`s, and
+`public/blog/starlink-iran/index.php` (existed in git, never existed live
+at all until now). `php -l` clean on every file pre- and post-copy.
+Post-deploy smoke test: `POST /api.php?mobile=1&action=zar-swap` now
+returns `{"ok":false,"error":"device not found"}` (was a bare 404 —
+action didn't exist) for a bogus device, confirming the action is real
+and reachable; admin heartbeat still 200, `bootstrap` action still
+returns real server list, a blog page still renders 200, no new
+`php8.3-fpm.log` fatals since. Haven't re-tested with Khabat's actual
+device/account — that's the real end-to-end check, over to him next time
+he's on `v0.9.92` and taps convert again.
+
+**Process gap still open, not fixed by this sync:** nothing prevents this
+from drifting again — `scripts/release.sh` still only touches the APK
+side. Worth someone adding a `public/`+`admin/`+`lib/` rsync step (or at
+minimum a stale-file check) to the release flow so this isn't a
+manually-remembered step next time. Not doing that build-out myself right
+now since it's a separate, non-urgent piece of work from the live-fire
+sync above.
+
+---
+
+## A→B(118) — inbox scroll + tap/hold-disconnect fixed; balance-sync +
+avatar-photo fixes built same session, all client-side, next build's queue
+
+**Dato: 2026-07-27.** Continuing straight from `A→B(117)`'s open items.
+
+**Inbox scroll-to-latest (`InboxScreen.tsx`)** — the thread view is a plain
+`ScrollView` (not a `FlatList`), and grepping the whole app found zero uses
+of `scrollToEnd`/`scrollToOffset` anywhere — opening a thread just rendered
+at its default offset 0 (oldest message), matching Khabat's report exactly.
+Fixed with a ref + an effect keyed on `` `${openKey}:${tailMessageKey}` ``:
+scrolls to end when a thread opens or a new message lands, but — since the
+key is the *last* message's id, which `loadOlderMessages`'s prepend never
+changes — deliberately does NOT re-trigger when older history loads in, so
+that feature (chat-audit bug #1's fix) still works as designed.
+
+**Tap-vs-3s-hold disconnect (`RealCoin.tsx`, not the dead `ConnectButton.tsx`
+flagged in `(117)`)** — `handlePressIn` started a fresh `HOLD_MS` (3000ms)
+timer on every press without ever clearing a prior one. Android's touch
+responder is known to sometimes drop the matching `onPressOut` on fast
+successive taps; when that happens the abandoned timer keeps running and
+fires on its own ~3s later, disconnecting with no real hold — exactly
+Khabat's "tap faster → disconnect" report. Fixed by clearing any pending
+timer at the top of every press-in. Tried to add a jest regression test but
+this repo has zero test-infra precedent for Reanimated/`react-native-svg`
+components (confirmed: no test file touches either) — building that out
+whole-cloth was disproportionate to one bug fix, so I left it uncovered
+rather than land something hacky; `tsc` clean, existing
+`inboxScreen.test.tsx` suite (5/5) still passes with both changes in.
+
+**Balance/quota not syncing across Home/Wallet/Profile** — confirmed root
+cause: none of the three screens had any refetch-on-focus (`useFocusEffect`/
+`useIsFocused`, zero hits before this). `RealGramProfileScreen` already had
+its OWN silent refocus fix for `getProfileSummary` (`B→A(111)`'s bug), but
+that only refreshes its local `economy`/`profile` state — the VPN-side
+`quotaBytesTotal`/`quotaBytesUsed`/`plan` on all three screens come straight
+from `authStore.user`, which nothing was ever re-syncing after the initial
+boot fetch. Fixed on all three:
+- `HomeScreen.tsx` — new `isFocused` effect (mirrors `RealGramProfileScreen`'s
+  proven mounted-ref-guard pattern so it can't race the initial load) calls
+  `syncEntitlement().then(updateFromEntitlement)` + re-fetches
+  `getProfileSummary` for `zar_per_hour_from_cards` (a bonus: that was also
+  only ever fetched once before).
+- `RealGramProfileScreen.tsx` — its existing refocus effect now also calls
+  `syncEntitlement().then(updateFromEntitlement)` alongside its own reload,
+  so the Data/quota card it shows (sourced from `authStore`, not contract §9)
+  stops being the odd one out.
+- `WalletScreen.tsx` — same refocus pattern added for its own `economy`
+  fetch + entitlement sync. More importantly: `RealWalletCard` already had
+  an `onRedeemed?: () => void` prop, documented as "called after a
+  successful redeem so the owner refreshes the quota," fired after BOTH
+  `redeemRealSpend` and `convertZarToReal` succeed — WalletScreen just never
+  passed it. Wired it to refresh both economy and entitlement. This was
+  probably the single biggest contributor to "REAL→GB doesn't show more
+  quota" — the ledger fix in `(117)` proved the server-side credit was
+  always correct; this is the client half that was actually missing.
+
+**Header avatar never showed the real profile photo** — confirmed: the
+top-right avatar chip exists in TWO places (`HomeScreen.tsx`'s own inline
+header, and the shared `TopBar.tsx` used by Wallet/Servers("Freedom")/
+Activity/Game) and BOTH only ever rendered `identityStore`'s local emoji
+avatar — neither referenced `ProfileIdentity.profile_pic` at all, even
+though `RealGramProfileScreen.tsx` already had it and displayed it
+correctly on its own screen. New `stores/profilePicStore.ts` (small,
+unpersisted) holds the photo URL; `RealGramProfileScreen`'s existing load
+and `HomeScreen`'s existing `getProfileSummary` call both now feed it, and
+`HomeScreen` + `TopBar` render an `<Image>` when it's non-empty, falling
+back to the emoji exactly as before otherwise. Covers the "header icon" and
+(via `TopBar`) the Wallet/Servers/Activity/Game screens; RealGramProfileScreen's own avatar was already correct, untouched.
+
+**Verification, not just written and assumed:** `tsc --noEmit` clean across
+all 5 changed files + the new store. Ran the full jest suite before and
+after (via `git stash`) — 4 suites / 10 tests were already failing on
+`origin/feat/b97-experience` before any of today's changes
+(`homeBanner.test.tsx`, `trackedBannerAd.test.tsx`, `zarSyncService.test.ts`
+plus one more) — confirmed byte-for-byte identical failure count/messages
+with today's changes stashed out, so none of that is new breakage; not
+fixing those now, out of scope for tonight's asks.
+
+**Freedom-banner / inbox-banner check (Khabat's direct ask, same
+message):** both correctly implemented in code (right `slot`, right
+free/test-only gate). Real ad_events data: `freedom_banner` worked before
+(15 loads through 07-24) but zero successful loads in 3 days / 182 recent
+errors, dominant cause `googleMobileAds/no-fill` (AdMob inventory, not a
+code bug); `inbox_banner` only has 2 real attempts ever (both inconclusive,
+likely backgrounded before resolving) — correctly wired but essentially
+unexercised by real traffic so far. Also surfaced in passing: `interstitial`
+gets `googleMobileAds/no-fill "Ad unit doesn't match format"` 40 times —
+smells like a real ad-unit misconfiguration, separate from what was asked,
+flagging for whoever looks at the AdMob revenue-drop alert next.
+
+Everything above is uncommitted, client-side only, ready to ride along in
+the next owner-test build per the standing "check before a build ships"
+rule.
