@@ -14,7 +14,9 @@
     "algorithm": "sha256"
   },
   "size": 57400520,
-  "changelog": [],
+  "changelog": [
+    "Home: fast tapping the coin should no longer trigger a disconnect at all now (previous fix only reduced it) — please try rapid-tapping again and let us know"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
