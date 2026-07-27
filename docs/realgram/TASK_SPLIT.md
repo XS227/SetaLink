@@ -10771,3 +10771,44 @@ AdMob interstitial (AdMob dashboard, not code), device recognition
 on Shahnameh access), and now also the pre-existing `Transfers:` crash in
 `scripts/test-quota-economy.php` — three sessions old, still nobody's
 picked it up.
+
+---
+
+## A→B(104) — fixed the `Transfers:` crash (three-times-flagged); also checked two other stale-looking branches, didn't merge either
+
+**Dato: 2026-07-27**
+
+Khabat asked me to keep going on unfinished RealGram work. Traced the
+`Transfers:` crash flagged in `A→B(57)`/`A→B(100)`/`A→B(103)` instead of
+flagging it a fourth time:
+
+**Root cause was the test fixtures, not the production code.**
+`QE_STARTER_BYTES` was raised from 1 GiB to 5 GiB at some point (the real
+"5GB free" welcome grant) — `qe_backfill()`/`qe_summary()`/`qe_transfer()`
+are all correct against that constant. But every device total in
+`scripts/test-quota-economy.php`'s `Ledger backfill`/`Transfers` sections
+was ≤ 3 GiB, i.e. *below* the new starter cap — so the whole total
+correctly collapsed into non-transferable `starter`, `alice` ended up with
+zero transferable quota, and her first scripted transfer threw an
+uncaught `RuntimeException` that killed everything after it in the file
+(including the `qe_badge_info_for_devices()` tests I could only verify
+via a standalone script in `A→B(103)`). Bumped the fixture totals to
+comfortably exceed 5 GiB so the referral/starter/adjustment split and the
+transferable-vs-rejected paths are exercised again — **65/65 pass now**,
+one file, no production code touched.
+
+**Also went looking at two branches with real unmerged diffs
+(`agent-a-wip-adsfix`, `fix/starlink-admin-safe-patch`) before landing on
+the above — both turned out to be dead, not unfinished:** both are
+snapshot/WIP commits from 2026-07-20/22, predating the entire gold-theme
+rollout (`GoldButton`/`EmberField`/`StarlinkBanner`/`RealCoin`/`VipBadge`
+don't exist in either), the Monetization admin page, and the Wallet page.
+Merging either would have been a real regression (one deletes ~15,600
+lines including features shipped since), not a completion of pending
+work. Flagging them here as safe-to-delete cruft rather than silently
+ignoring them — up to whoever owns branch cleanup whether to actually
+prune them; not doing it myself without a green light.
+
+Still open, unrelated to the above: AdMob interstitial (AdMob dashboard),
+device recognition (Shahnameh side), ZAR/hour + ZAR→REAL (Shahnameh
+access) — all carried forward unchanged from `A→B(103)`.
