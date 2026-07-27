@@ -29,6 +29,7 @@ import { useVpnStats }         from '../hooks/useVpnStats';
 import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
 import { initZarSync, recordZarTap } from '../services/zarSyncService';
+import { getProfileSummary } from '../services/realGramProfileService';
 
 const STARLINK_INVITE_TARGET = 11;
 
@@ -95,6 +96,20 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const deviceIdForZar = user?.deviceId ?? '';
   useEffect(() => {
     if (deviceIdForZar) initZarSync(deviceIdForZar);
+  }, [deviceIdForZar]);
+
+  // Real zar/hr from owned+upgraded heroes (2026-07-27, B->A(105)) — same
+  // number the Game tab's Shahnameh profile shows, can't drift from it.
+  // Best-effort, silent: falls back to the tap-derived estimate below if
+  // this hasn't loaded yet or the call fails (e.g. no linked account yet).
+  const [zarPerHourFromCards, setZarPerHourFromCards] = useState<number | null>(null);
+  useEffect(() => {
+    if (!deviceIdForZar) return;
+    let cancelled = false;
+    getProfileSummary(deviceIdForZar)
+      .then((p) => { if (!cancelled) setZarPerHourFromCards(p.economy.zar_per_hour_from_cards); })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, [deviceIdForZar]);
 
   const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
@@ -275,9 +290,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           </View>
         </Animated.View>
 
-        {/* ── Balance pills — real zarStore data, not fabricated. Zar/hr is
-             a genuine derived stat (earnedToday / hours elapsed today),
-             not a synced server rate — approximate but honest. ── */}
+        {/* ── Balance pills — real zarStore data, not fabricated. Zar/hr
+             prefers the server's real hero-income rate (economy.
+             zar_per_hour_from_cards) once loaded — same number the Game
+             tab shows, can't drift from it. Falls back to the older
+             tap-derived estimate (earnedToday / hours elapsed today,
+             connection-gated) until that first loads or if it never does. ── */}
         <Animated.View style={[styles.pillRow, fadeStyle]}>
           <View style={styles.pill}>
             <Text style={styles.pillLabel}>{t('home.balance')}</Text>
@@ -289,7 +307,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           <View style={styles.pill}>
             <Text style={styles.pillLabel}>{t('home.zarPerHour')}</Text>
             <Text style={[styles.pillValue, { color: Colors.status.connected }]}>
-              +{isConnected ? formatZar(Math.round(zarEarnedToday / hoursElapsedToday())) : 0}
+              +{formatZar(zarPerHourFromCards ?? (isConnected ? Math.round(zarEarnedToday / hoursElapsedToday()) : 0))}
             </Text>
           </View>
         </Animated.View>

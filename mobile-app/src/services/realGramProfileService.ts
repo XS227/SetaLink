@@ -30,6 +30,13 @@ export interface ProfileEconomy {
   real_balance:             number;
   max_real_balance:         number;
   real_earned_this_season:  number;
+  /** Passive zar/hr from owned+upgraded heroes (2026-07-27, B->A(105)) —
+   *  the same computeZarPerHour() Shahnameh's own /user/me reads, so this
+   *  number can never drift from what the Game tab shows. Distinct from
+   *  HomeScreen's older tap-derived zar/hr estimate (earnedToday / hours
+   *  elapsed), which is real but approximate and has nothing to do with
+   *  hero income specifically. */
+  zar_per_hour_from_cards: number;
 }
 
 export interface ProfileStreaks {
