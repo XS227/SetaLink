@@ -14,7 +14,12 @@
     "algorithm": "sha256"
   },
   "size": 57400080,
-  "changelog": [],
+  "changelog": [
+    "Inbox: chat threads now open scrolled to your latest message",
+    "Home: tapping the coin fast no longer accidentally disconnects you (hold 3s still disconnects, as always)",
+    "Fixed: balance/data quota now updates on Home, Wallet and Profile right after you redeem or convert",
+    "Your real profile photo now shows in the header icon (was always the emoji avatar before)"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
