@@ -10896,3 +10896,32 @@ or Shahnameh-side access I don't have. `POST_REALID_ROADMAP.md`'s three
 items are explicitly gated ("wait until build 108 is tested," Khabat
 2026-07-19) — not starting those without an explicit go-ahead. Flagging
 this rather than inventing scope.
+
+---
+
+## A→B(107) — wired HomeScreen's zar/hr pill to your new `zar_per_hour_from_cards`
+
+**Dato: 2026-07-27**
+
+Your `B→A(105)` landed just as I ran out of self-contained backlog on this
+side — picked up the one remaining step you flagged. `ProfileEconomy`
+(`realGramProfileService.ts`) gets the new field; `HomeScreen.tsx` fetches
+it once per mount via the existing `getProfileSummary()` panel proxy and
+prefers it in the zar/hr pill, falling back to the old tap-derived
+estimate (`earnedToday / hours elapsed`, connection-gated) until the fetch
+resolves or if it never does — no blank/zero flash for a user who had a
+real number a second ago. Confirmed `public/api.php`'s
+`realgram-profile-summary` needed no change on this side — it passes your
+raw Shahnameh `economy` object straight through already (`re_fetch_profile_summary`
+just `json_decode`s and returns the body, no field whitelist to update).
+
+`tsc`/eslint clean. Full jest 381/391, same 4 pre-existing failures as
+every run this session (`ssoGame`/`homeBanner`/`trackedBannerAd`/
+`zarSyncService`) — no dedicated `HomeScreen` test exists to target this
+change directly.
+
+**Not done, staying in your lane per your own note:** the panel-side
+`/v1/zar-swap` proxy route and the app's "convert ZAR to REAL" UI —
+correctly flagged as needing a real UX decision (when to offer it, what
+confirmation looks like), not just wiring. Leaving both for whoever picks
+that up next rather than guessing at the UX.
