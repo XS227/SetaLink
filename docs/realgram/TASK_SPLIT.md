@@ -10925,3 +10925,68 @@ change directly.
 correctly flagged as needing a real UX decision (when to offer it, what
 confirmation looks like), not just wiring. Leaving both for whoever picks
 that up next rather than guessing at the UX.
+
+## B→A(108) — device recognition: ruled out the keystore theory with real evidence, added logging instead of guessing further
+
+**Dato: 2026-07-27.** Khabat asked me to pick this one up too.
+
+**The keystore/CI-cache theory (carried in "Still open" since `A→B(100)`)
+is now disproven, not just "should be fine."** Pulled the actual job log
+for run `30101383438` (the CI build behind `A→B(101)` — the exact round
+that still showed a fresh `device_id`) via `gh api .../actions/jobs/.../logs`:
+
+```
+Cache hit for: android-debug-keystore-v1
+Cache restored from key: android-debug-keystore-v1
+...
+Cache hit occurred on the primary key android-debug-keystore-v1, not saving cache.
+```
+
+The signing key was genuinely unchanged for that build. Since `ANDROID_ID`
+only resets on a signing-key change (or factory reset), it should have been
+stable too — so the CI/keystore explanation doesn't hold for this specific
+recurrence, whatever caused it before 07-20.
+
+**What I found instead, reading `XrayModule.kt` +
+`deviceIdentityService.ts` closely:**
+- `getOrCreateStableDeviceId` (native, Kotlin) has two branches producing
+  the *same-shaped* ID either way: a deterministic SHA-256-of-`ANDROID_ID`
+  hash, or — only if `ANDROID_ID` comes back empty/≤4 chars — a genuinely
+  random `UUID.randomUUID()`. There was no way to tell after the fact which
+  branch fired for a given `device_id`, since both look like
+  `sl-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`. If `ANDROID_ID` is ever empty
+  at first-launch time on Khabat's specific device/Android version (a real,
+  documented edge case on some OEM/profile configs, not something I can
+  reproduce from this box), every fresh install would silently get a
+  random, non-stable ID with zero signal that it happened.
+- **Separately, a real but currently-inactive bug**: `deviceIdentityService.
+  ts`'s `getOrCreateDeviceId()` (the synchronous "legacy" path, line 81) can
+  read empty MMKV storage and immediately mint+persist its own random UUID
+  *without ever calling the native, ANDROID_ID-derived path* — and if that
+  fires before the async `getStableDeviceId()` resolves, the async path's
+  own MMKV-seed-into-Keychain step (line 39-40) would push that random value
+  into native storage too, permanently overwriting the intended stable one.
+  Checked every call site: `getOrCreateDeviceId(` is imported in
+  `AppNavigator.tsx` but **never actually invoked anywhere** — so this can't
+  be today's cause, but it's a live landmine if anyone wires it up later.
+  Flagging, not deleting — wasn't confident enough it's *fully* dead
+  (exported from a shared service file) to remove without your say-so.
+
+**What I did (diagnostic only, zero behavior change — same posture as the
+07-17 AdsGram investigation):** added `android.util.Log` lines in
+`getOrCreateStableDeviceId` at each branch (`cache-hit` /
+`derived-from-android-id` / `random-fallback`, tag `SetaLinkDeviceId`),
+plus logging `androidId.length` so a real device that hits the empty-
+`ANDROID_ID` case is visible without guessing. Not deployed — needs a CI
+rebuild same as always.
+
+**What I need from you/Khabat, since I can't test this on real hardware:**
+1. One concrete question that would likely resolve this fast on its own:
+   **does Khabat uninstall the app before installing each new test build,
+   or install over the previous one?** An uninstall wipes both MMKV and the
+   native SharedPreferences, so if `ANDROID_ID` is ever unavailable at that
+   moment, every fresh-install round would mint a new random ID regardless
+   of anything CI-side.
+2. Once this diagnostic commit is in a build Khabat tests, grab `adb logcat
+   -s SetaLinkDeviceId` (or the CI/device log equivalent you already use)
+   around first launch — that will show definitively which branch fired.

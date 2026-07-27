@@ -407,23 +407,42 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
     // Returns a stable device ID persisted in SharedPreferences.
     // Generated once from the Android hardware ID (SHA-256 → UUID-like string).
     // Falls back to a random UUID. Never regenerates once stored.
+    //
+    // DIAGNOSTIC LOGGING (2026-07-27, B->A(107) device-recognition follow-up):
+    // ruled out the keystore/CI-cache theory with a real CI log ("Cache hit
+    // for: android-debug-keystore-v1" on the exact run behind the build that
+    // still showed a fresh device_id) -- the signing key was NOT the cause
+    // this time. The two remaining branches below are indistinguishable from
+    // the resulting ID alone (both produce the same "sl-xxxxxxxx-xxxx-..."
+    // shape), so there was previously no way to tell, after the fact, whether
+    // a given device_id came from the intended deterministic ANDROID_ID hash
+    // or the random-UUID fallback. Logging (not behavior) added so the next
+    // test round's logcat settles which one actually fired -- do not remove
+    // until that's confirmed; this makes zero functional change on its own.
     @ReactMethod
     fun getOrCreateStableDeviceId(promise: Promise) {
         try {
             val prefs = reactContext.getSharedPreferences("setalink_device", Context.MODE_PRIVATE)
             val existing = prefs.getString("stable_device_id", null)
-            if (!existing.isNullOrBlank()) { promise.resolve(existing); return }
+            if (!existing.isNullOrBlank()) {
+                android.util.Log.i("SetaLinkDeviceId", "cache-hit (sharedprefs already had a value)")
+                promise.resolve(existing)
+                return
+            }
 
             val androidId = android.provider.Settings.Secure.getString(
                 reactContext.contentResolver,
                 android.provider.Settings.Secure.ANDROID_ID,
             ) ?: ""
+            android.util.Log.i("SetaLinkDeviceId", "no cached id -- androidId.length=${androidId.length}")
 
             val deviceId = if (androidId.length > 4) {
+                android.util.Log.i("SetaLinkDeviceId", "branch=derived-from-android-id")
                 val sha  = java.security.MessageDigest.getInstance("SHA-256")
                 val hash = sha.digest(androidId.toByteArray()).joinToString("") { "%02x".format(it) }
                 "sl-${hash.substring(0,8)}-${hash.substring(8,12)}-${hash.substring(12,16)}-${hash.substring(16,20)}-${hash.substring(20,32)}"
             } else {
+                android.util.Log.w("SetaLinkDeviceId", "branch=random-fallback -- ANDROID_ID was empty/too short, this device_id will NOT be stable across reinstalls")
                 "sl-${java.util.UUID.randomUUID()}"
             }
             prefs.edit().putString("stable_device_id", deviceId).apply()
