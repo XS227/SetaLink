@@ -98,6 +98,23 @@ function re_ensure_schema(PDO $pdo): void {
         persona      TEXT NOT NULL DEFAULT '',
         updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
     )");
+    // ZAR→REAL conversion ledger (2026-07-27, contract per B->A(114)).
+    // client_ref is the idempotency key — Shahnameh's /v1/zar-swap has none of
+    // its own (a real, flagged gap: a double-tap or retried network call would
+    // otherwise genuinely execute twice), so the panel proxy owns dedup here,
+    // same UNIQUE-column pattern as real_redemptions.tx_ref above.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS zar_swaps (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        device_id     TEXT NOT NULL,
+        real_account  TEXT NOT NULL DEFAULT '',
+        amount_real   REAL NOT NULL DEFAULT 0,
+        client_ref    TEXT NOT NULL UNIQUE,
+        status        TEXT NOT NULL DEFAULT 'pending',
+        response_json TEXT NOT NULL DEFAULT '',
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+    )");
+    $pdo->exec("CREATE INDEX IF NOT EXISTS idx_zar_swaps_device
+                ON zar_swaps(device_id, created_at)");
 }
 
 // ── Ecosystem profile (cross-app shared identity) ─────────���───────────────────
@@ -552,6 +569,85 @@ function re_spend(PDO $pdo, string $realAccount, float $realAmount, string $idem
         return ['ok' => false, 'error' => substr($json['error'], 0, 64)];
     }
     return ['ok' => false, 'error' => 'unavailable'];
+}
+
+// ── ZAR→REAL conversion (2026-07-27, contract per B→A(114)) ────────────────────
+// The ecosystem-API twin of Shahnameh's existing Mini App /user/zar-swap — same
+// SystemConfig-driven rate/minimum, same account resolution as profile-summary.
+// Idempotency is NOT built into the Shahnameh endpoint itself (a real, flagged
+// gap on their side) — re_zar_swap_claim()/_store() below own that here, same
+// UNIQUE-client_ref pattern as re_record()'s tx_ref.
+
+/**
+ * Call /v1/zar-swap. Deliberately does NOT own idempotency — see
+ * re_zar_swap_claim() for that. Returns:
+ *   ['ok'=>true, ...full response fields (new_zar, new_real_balance, rate, …)]
+ *   ['ok'=>false, 'error'=>string]        structured denial (e.g. insufficient_zar)
+ *   ['ok'=>false, 'error'=>'unavailable'] service missing/unreachable/malformed
+ */
+function re_zar_swap(PDO $pdo, string $realAccount, float $amountReal): array {
+    $cfg = re_service_config($pdo);
+    if ($cfg['api_url'] === '' || !function_exists('curl_init')) {
+        return ['ok' => false, 'error' => 'unavailable'];
+    }
+    $ch = curl_init(rtrim($cfg['api_url'], '/') . '/v1/zar-swap');
+    $headers = ['Content-Type: application/json'];
+    if ($cfg['api_key'] !== '') $headers[] = 'Authorization: Bearer ' . $cfg['api_key'];
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => json_encode(['account' => $realAccount, 'amount_real' => $amountReal]),
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => RE_VERIFY_TIMEOUT_SECS,
+        CURLOPT_CONNECTTIMEOUT => RE_VERIFY_TIMEOUT_SECS,
+    ]);
+    $body = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+    curl_close($ch);
+    if ($body === false) return ['ok' => false, 'error' => 'unavailable'];
+
+    $json = json_decode((string)$body, true);
+    if (!is_array($json)) return ['ok' => false, 'error' => 'unavailable'];
+    if ($http === 200 && (int)($json['status'] ?? 0) === 1) {
+        return ['ok' => true] + $json;
+    }
+    if (!empty($json['error']) && is_string($json['error'])) {
+        return ['ok' => false, 'error' => substr($json['error'], 0, 64)];
+    }
+    return ['ok' => false, 'error' => 'unavailable'];
+}
+
+/** Claim a client_ref before calling Shahnameh. Returns the new row id, or
+ *  null if this client_ref was already claimed (caller should look it up
+ *  instead of calling Shahnameh again). */
+function re_zar_swap_claim(PDO $pdo, string $deviceId, string $realAccount,
+                           float $amountReal, string $clientRef): ?int {
+    $st = $pdo->prepare(
+        "INSERT OR IGNORE INTO zar_swaps (device_id, real_account, amount_real, client_ref)
+         VALUES (?,?,?,?)"
+    );
+    $st->execute([$deviceId, $realAccount, $amountReal, $clientRef]);
+    return $st->rowCount() > 0 ? (int)$pdo->lastInsertId() : null;
+}
+
+/** Record the outcome of a claimed swap (status + full response, for idempotent replay). */
+function re_zar_swap_store(PDO $pdo, int $id, string $status, array $response): void {
+    $pdo->prepare("UPDATE zar_swaps SET status=?, response_json=? WHERE id=?")
+        ->execute([$status, json_encode($response), $id]);
+}
+
+/** Look up a previously-claimed client_ref (duplicate request). Returns
+ *  ['status'=>string, 'response'=>array] or null if the ref is unknown. */
+function re_zar_swap_lookup(PDO $pdo, string $clientRef): ?array {
+    $st = $pdo->prepare("SELECT id, status, response_json FROM zar_swaps WHERE client_ref=?");
+    $st->execute([$clientRef]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$row) return null;
+    return [
+        'id'       => (int)$row['id'],
+        'status'   => $row['status'],
+        'response' => $row['response_json'] !== '' ? (json_decode($row['response_json'], true) ?: []) : [],
+    ];
 }
 
 // ── Ecosystem SSO (contract 6) ───────────────────────────────────────────────

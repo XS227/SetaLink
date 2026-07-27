@@ -40,6 +40,16 @@ export interface RedeemResult {
   duplicate?:   boolean;
 }
 
+export interface ZarSwapResult {
+  new_zar:                 number;
+  new_real_balance:        number;
+  real_earned_this_season: number;
+  zar_cost:                number;
+  amount_real:              number;
+  rate:                     number;
+  duplicate?:               boolean;
+}
+
 async function call(action: string, method: 'GET' | 'POST',
                     params: Record<string, string>): Promise<unknown> {
   const ctrl = new AbortController();
@@ -77,6 +87,25 @@ export async function redeemRealSpend(
     real_amount: String(realAmount),
     client_ref:  clientRef,
   }) as RedeemResult;
+}
+
+/**
+ * Convert ZAR to REAL (contract per docs/realgram/TASK_SPLIT.md B->A(114)).
+ * Retry-safe like redeemRealSpend: the panel keys the conversion on
+ * client_ref, so resubmitting after a timeout replays the stored outcome
+ * instead of converting twice — required here since Shahnameh's own
+ * /v1/zar-swap has no idempotency of its own (flagged in B->A(114)).
+ * Callers MUST generate a fresh client_ref per attempt and reuse the SAME
+ * one if retrying the same attempt (same convention as redeemRealSpend).
+ */
+export async function convertZarToReal(
+  deviceId: string, amountReal: number, clientRef: string,
+): Promise<ZarSwapResult> {
+  return await call('zar-swap', 'POST', {
+    device_id:   deviceId,
+    amount_real: String(amountReal),
+    client_ref:  clientRef,
+  }) as ZarSwapResult;
 }
 
 export async function linkRealAccount(

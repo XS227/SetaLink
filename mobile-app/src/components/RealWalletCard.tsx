@@ -21,7 +21,7 @@ import { useT } from '../i18n';
 import { useToastStore } from '../stores/toastStore';
 import { getCachedConfig, getRemoteConfig } from '../services/remoteConfigService';
 import {
-  getRealWallet, redeemRealSpend, RealWalletInfo,
+  getRealWallet, redeemRealSpend, convertZarToReal, RealWalletInfo,
 } from '../services/realWalletService';
 
 const ONE_GB = 1073741824;
@@ -51,6 +51,8 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
   const [wallet, setWallet]   = useState<RealWalletInfo | null>(null);
   const [gb, setGb]           = useState(1);
   const [busy, setBusy]       = useState(false);
+  const [swapReal, setSwapReal] = useState(1);
+  const [swapBusy, setSwapBusy] = useState(false);
 
   useEffect(() => {
     console.log('[REALDBG][wallet] mount', {
@@ -93,6 +95,16 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
     return Math.max(1, cap);
   }, [rates, wallet]);
 
+  // ZAR→REAL conversion (contract per docs/realgram/TASK_SPLIT.md B->A(114)).
+  // 1-REAL minimum per the server contract; capped by what wallet.zar can
+  // actually afford at the current published rate.
+  const swapCost = wallet?.conversion_rate ? swapReal * wallet.conversion_rate : 0;
+  const maxSwapReal = useMemo(() => {
+    if (!wallet?.conversion_rate || !wallet.zar) return 1;
+    return Math.max(1, Math.floor(wallet.zar / wallet.conversion_rate));
+  }, [wallet]);
+  const canSwap = !!wallet?.zar && !!wallet?.conversion_rate && wallet.zar >= wallet.conversion_rate;
+
   if (!enabled || !wallet) {
     console.log('[REALDBG][wallet] render: null (hidden)', { enabled, hasWallet: !!wallet });
     return null;
@@ -116,6 +128,26 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
       showToast(msg === 'wallet service unavailable' ? t('wallet.unavailable') : msg || t('wallet.unavailable'), 'error');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const convertZar = async () => {
+    if (swapBusy) return;
+    setSwapBusy(true);
+    try {
+      // Same client_ref idempotency convention as redeem() above — required
+      // here, not just defensive, since /v1/zar-swap has no dedup of its own
+      // (B->A(114)): a retried tap must reuse the same ref, not mint a new one.
+      const ref = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      const res = await convertZarToReal(deviceId, swapReal, ref);
+      setWallet({ ...wallet, zar: res.new_zar, balance: res.new_real_balance });
+      showToast(t('wallet.zarSwapSuccess'), 'success');
+      onRedeemed?.();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      showToast(msg === 'wallet service unavailable' ? t('wallet.unavailable') : msg || t('wallet.unavailable'), 'error');
+    } finally {
+      setSwapBusy(false);
     }
   };
 
@@ -187,6 +219,42 @@ export function RealWalletCard({ deviceId, onRedeemed, style }: Props) {
           >
             {busy ? '…' : t('wallet.redeem')}
           </GoldButton>
+
+          {canSwap && (
+            <>
+              <View style={styles.stepperRow}>
+                <TouchableOpacity
+                  style={[styles.stepBtn, swapReal <= 1 && styles.stepBtnDim]}
+                  disabled={swapReal <= 1}
+                  onPress={() => setSwapReal(swapReal - 1)}
+                  accessibilityLabel="minus"
+                >
+                  <Text style={styles.stepBtnText}>−</Text>
+                </TouchableOpacity>
+                <View style={styles.stepValueWrap}>
+                  <Text style={styles.stepValue}>{t('wallet.cost').replace('{r}', String(swapReal))}</Text>
+                  <Text style={styles.stepCost}>{t('wallet.zarSwapPrice').replace('{z}', String(swapCost))}</Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.stepBtn, swapReal >= maxSwapReal && styles.stepBtnDim]}
+                  disabled={swapReal >= maxSwapReal}
+                  onPress={() => setSwapReal(swapReal + 1)}
+                  accessibilityLabel="plus"
+                >
+                  <Text style={styles.stepBtnText}>+</Text>
+                </TouchableOpacity>
+              </View>
+              <GoldButton
+                style={styles.redeemBtn}
+                textStyle={styles.redeemBtnText}
+                disabled={swapBusy}
+                onPress={convertZar}
+                accessibilityLabel={t('wallet.zarSwapAction')}
+              >
+                {swapBusy ? '…' : t('wallet.zarSwapAction')}
+              </GoldButton>
+            </>
+          )}
         </>
       )}
     </GlassCard>

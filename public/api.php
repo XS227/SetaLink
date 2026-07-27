@@ -2059,6 +2059,51 @@ if ($method === 'POST') {
             'balance'     => $spend['balance_after']]);
     }
 
+    if ($action === 'zar-swap') {
+        // ZAR→REAL conversion (2026-07-27, B->A(105)/(114)). Panel proxy for
+        // Shahnameh's /v1/zar-swap — the app never holds real_api_key, same
+        // posture as every other /v1/* proxy here. client_ref is REQUIRED
+        // (unlike the optional idempotency on some other actions): the
+        // Shahnameh endpoint itself has no dedup of its own (flagged in
+        // B->A(114)), so a double-tap or retried request without one would
+        // genuinely spend zar twice. The app must generate a fresh one per
+        // conversion attempt and reuse the SAME one on retry.
+        $deviceId   = trim($_POST['device_id'] ?? '');
+        $amountReal = (float)($_POST['amount_real'] ?? 0);
+        $clientRef  = trim($_POST['client_ref'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        if ($amountReal <= 0) err('invalid amount_real');
+        if ($clientRef === '' || strlen($clientRef) > 64) err('missing or invalid client_ref');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+
+        $account = re_linked_account($pdo, $deviceId);
+        if ($account === '') $account = re_ensure_real_id($pdo, $deviceId);
+
+        $existing = re_zar_swap_lookup($pdo, $clientRef);
+        if ($existing !== null && $existing['status'] !== 'pending') {
+            // Idempotent replay: same client_ref as a completed attempt —
+            // return the stored outcome instead of calling Shahnameh again
+            // (never re-executes a claimed swap, same "claimed once" posture
+            // as redeem-real-spend's tx_ref lookup above).
+            if ($existing['status'] === 'ok') ok($existing['response'] + ['duplicate' => true]);
+            $err = $existing['response']['error'] ?? 'unavailable';
+            err($err === 'unavailable' ? 'wallet service unavailable' : $err);
+        }
+
+        $id = $existing === null ? re_zar_swap_claim($pdo, $deviceId, $account, $amountReal, $clientRef) : $existing['id'];
+        if ($id === null) err('duplicate request'); // lost the claim race to a concurrent identical request
+
+        $result = re_zar_swap($pdo, $account, $amountReal);
+        if (!$result['ok']) {
+            re_zar_swap_store($pdo, $id, 'failed', $result);
+            err($result['error'] === 'unavailable' ? 'wallet service unavailable' : $result['error']);
+        }
+        re_zar_swap_store($pdo, $id, 'ok', $result);
+        ok($result);
+    }
+
     if ($action === 'tap-sync') {
         // Contract §8 (2026-07-19, docs/realgram/REALGRAM_UNIFIED_PLATFORM.md
         // §B): server-authoritative ZAR for the tap-to-earn button.
