@@ -13,7 +13,7 @@
 import { Platform } from 'react-native';
 import mobileAds, {
   RewardedAd, RewardedAdEventType, AdEventType, TestIds, MaxAdContentRating,
-  RewardedInterstitialAd,
+  RewardedInterstitialAd, InterstitialAd,
 } from 'react-native-google-mobile-ads';
 import { trackEvent } from './analytics';
 import { tr } from '../i18n';
@@ -184,6 +184,14 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
 // one). If it fails to load, fall back to plain Rewarded (also always video)
 // for that one attempt — never further back to a static interstitial.
 //
+// Revised, Khabat, 2026-07-27: a classic Interstitial (INTERSTITIAL_UNIT_ID —
+// a real production unit on both Android and iOS) is now tried FIRST, ahead
+// of Rewarded Interstitial, in exchange for the much higher fill rate that
+// format gets — see _startInterstitialLoad. The chain
+// below (Rewarded Interstitial -> Rewarded Video) is unchanged as the
+// fallback once that fails, so this only changes what's tried first, not
+// the "always video, eventually" floor the 2026-07-22 decision established.
+//
 // Dedicated Rewarded Interstitial ad units (one per app; shown on Connect).
 const REWARDED_INTERSTITIAL_UNIT_PROD = Platform.OS === 'ios'
   ? 'ca-app-pub-5788265416382988/5216238008'
@@ -191,6 +199,27 @@ const REWARDED_INTERSTITIAL_UNIT_PROD = Platform.OS === 'ios'
 
 export const REWARDED_INTERSTITIAL_UNIT_ID =
   (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.REWARDED_INTERSTITIAL : REWARDED_INTERSTITIAL_UNIT_PROD;
+
+// Dedicated classic Interstitial ad unit for the Connect placement — one per
+// app (Khabat, 2026-07-27: provided as a 4th, distinct production ID per
+// platform specifically for Connect, alongside confirming Banner/Rewarded/
+// Rewarded Interstitial above were already correct on both). Tried FIRST on
+// Connect: a classic Interstitial typically fills far more reliably than
+// either Rewarded format, which is very possibly why Connect ads have been
+// unreliable. This deliberately reverses the 2026-07-22 "every full-screen
+// ad must be a REWARDED VIDEO" rule for this one slot, by Khabat's explicit
+// choice — falls back to Rewarded Interstitial -> Rewarded Video (unchanged
+// chain below) if it fails to load, so a dead market still degrades the
+// same way it always has. Typed as nullable (not just per-platform ternary)
+// so a future platform/unit gap fails safe into the Rewarded-first chain
+// instead of crashing on a missing ID, same posture as every other *_UNIT_ID
+// above.
+const INTERSTITIAL_UNIT_PROD = Platform.OS === 'ios'
+  ? 'ca-app-pub-5788265416382988/1585189182'
+  : 'ca-app-pub-5788265416382988/2914618117';
+
+export const INTERSTITIAL_UNIT_ID: string | null =
+  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.INTERSTITIAL : INTERSTITIAL_UNIT_PROD;
 
 // Banner ad units (one per app; rotated with the ecosystem banner on Home).
 // Banner is out of scope for the "no static image ads" rule — it's a small
@@ -203,8 +232,15 @@ const BANNER_UNIT_PROD = Platform.OS === 'ios'
 export const BANNER_UNIT_ID =
   (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.BANNER : BANNER_UNIT_PROD;
 
-type FullscreenAdKind = 'rewarded_interstitial' | 'rewarded_video';
-type FullscreenAd = RewardedInterstitialAd | RewardedAd;
+type FullscreenAdKind = 'interstitial' | 'rewarded_interstitial' | 'rewarded_video';
+// Split so the reward-capable pair (which share RewardedAdEventType.LOADED /
+// EARNED_REWARD) can still be handled generically in _startFullscreenLoad
+// without InterstitialAd — which only ever emits plain AdEventType.LOADED
+// and has no reward event at all — widening that union and silently
+// breaking the type-check that would otherwise have caught exactly this
+// kind of format mismatch.
+type RewardedFullscreenAd = RewardedInterstitialAd | RewardedAd;
+type FullscreenAd = RewardedFullscreenAd | InterstitialAd;
 
 let _interstitial: FullscreenAd | null = null;
 let _interKind: FullscreenAdKind | null = null;
@@ -308,9 +344,10 @@ function scheduleAmbientRetry(): void {
 
 /** Preload one full-screen ad so it is ready by the next Connect tap. Idempotent
  *  (single-flight per slot via `_interLoading`/`_interReady`); self-reloads
- *  after each show/error. Never throws. Always tries Rewarded Interstitial
- *  first; a load failure falls through to plain Rewarded once (see
- *  `_startFullscreenLoad`) — never to a static interstitial. */
+ *  after each show/error. Never throws. Tries the classic Interstitial first
+ *  where a unit exists (INTERSTITIAL_UNIT_ID), then Rewarded Interstitial,
+ *  then plain Rewarded once each (see `_startInterstitialLoad` /
+ *  `_startFullscreenLoad`) — never further back than that. */
 export function preloadInterstitial(): void {
   if (_interReady || _interLoading) return;   // never start a second concurrent load
   if (!isAdsInitialized()) { initAds().then(preloadInterstitial); return; }
@@ -323,7 +360,104 @@ export function preloadInterstitial(): void {
     scheduleAmbientRetry();
     return;
   }
-  _startFullscreenLoad('rewarded_interstitial', deviceId);
+  if (INTERSTITIAL_UNIT_ID) {
+    _startInterstitialLoad(deviceId);
+  } else {
+    _startFullscreenLoad('rewarded_interstitial', deviceId);
+  }
+}
+
+/** Loads the classic Interstitial ad for the Connect placement (primary when
+ *  INTERSTITIAL_UNIT_ID is set — Android in production, both platforms in
+ *  __DEV__/FORCE_TEST_REWARDED). Deliberately separate from
+ *  _startFullscreenLoad: InterstitialAd emits plain AdEventType.LOADED (not
+ *  RewardedAdEventType.LOADED) and has no EARNED_REWARD event at all, so
+ *  reusing that generic reward-shaped loader here would mean either a
+ *  LOADED listener that can never fire, or widening its union until the
+ *  type-checker can no longer catch a reward/non-reward event mismatch —
+ *  exactly the class of bug ("ad unit doesn't match format") this slot has
+ *  already been burned by once. A load failure falls through to Rewarded
+ *  Interstitial via _fallbackOrRetry, same chain as before this slot
+ *  existed. */
+function _startInterstitialLoad(deviceId: string): void {
+  const token = ++_loadToken;
+  const timeoutMs = currentInterstitialTimeout();
+  const unitId = INTERSTITIAL_UNIT_ID as string; // only called when non-null (see preloadInterstitial)
+  try {
+    _interLoading = true;
+    _interKind = 'interstitial';
+    const ad = InterstitialAd.createForAdRequest(unitId, {
+      requestNonPersonalizedAdsOnly: true,
+    });
+
+    _loadTimer = setTimeout(() => {
+      if (token !== _loadToken) return;
+      trackEvent('AD_LOAD_ERROR', deviceId, {
+        slot: 'interstitial', format: 'interstitial', domain: 'googleMobileAds', code: 'timeout',
+        message: `load exceeded ${timeoutMs}ms — likely blocked/degraded network`,
+        vpn_connected: vpnConnectedNow(), platform: Platform.OS,
+      });
+      _interLoading = false;
+      _loadTimer = null;
+      _fallbackOrRetry('interstitial', deviceId);
+    }, timeoutMs);
+
+    ad.addAdEventListener(AdEventType.LOADED, () => {
+      if (token !== _loadToken) return;   // stale — a fresher attempt has since started
+      clearLoadTimer();
+      trackEvent('AD_INTERSTITIAL_LOADED', deviceId, { slot: 'interstitial', format: 'interstitial' });
+      _interReady = true; _interLoading = false; _interEarned = false;
+      _interLoadedAt = Date.now();
+      _interLoadedViaVpn = vpnConnectedNow();
+      _pendingRetryIdx = 0;
+      _ambientRetryIdx = 0;
+      _ambientCooldownUntil = 0;
+      if (_pendingShowUntil && Date.now() <= _pendingShowUntil && vpnConnectedNow()) {
+        _pendingShowUntil = 0;
+        try { ad.show(); _interReady = false; } catch { dropInterstitial(); }
+      }
+    });
+    ad.addAdEventListener(AdEventType.OPENED, () => {
+      if (token !== _loadToken) return;
+      trackEvent('AD_INTERSTITIAL_SHOWN', deviceId, { slot: 'interstitial', format: 'interstitial' });
+    });
+    // No EARNED_REWARD listener — classic Interstitial has no reward event;
+    // _interEarned stays false, so _afterFullscreenClose correctly shows the
+    // plain "continuing" toast instead of a reward-credited one.
+    ad.addAdEventListener(AdEventType.CLOSED, () => {
+      if (token !== _loadToken) return;
+      dropInterstitial();
+      _afterFullscreenClose(deviceId, false);
+      preloadInterstitial();   // get the next one ready
+    });
+    ad.addAdEventListener(AdEventType.PAID, (e: any) => {
+      trackEvent('AD_INTERSTITIAL_IMPRESSION', deviceId, {
+        slot: 'interstitial', format: 'interstitial', value: e?.value, currency: e?.currency,
+      });
+      trackEvent('AD_PAID_EVENT_RECEIVED', deviceId, {
+        placement: 'interstitial', format: 'interstitial',
+        value: e?.value, currency: e?.currency, precision: e?.precision,
+      });
+    });
+    ad.addAdEventListener(AdEventType.CLICKED, () => {
+      trackEvent('AD_INTERSTITIAL_CLICK', deviceId, { slot: 'interstitial', format: 'interstitial' });
+    });
+    ad.addAdEventListener(AdEventType.ERROR, (e: any) => {
+      if (token !== _loadToken) return;
+      trackEvent('AD_LOAD_ERROR', deviceId, {
+        slot: 'interstitial', format: 'interstitial', domain: e?.namespace || 'googleMobileAds',
+        code: e?.code || '', message: e?.message || '',
+        vpn_connected: vpnConnectedNow(), platform: Platform.OS,
+      });
+      _interLoading = false;
+      dropInterstitial();
+      _fallbackOrRetry('interstitial', deviceId);
+    });
+    _interstitial = ad;
+    ad.load();
+  } catch {
+    _interLoading = false;
+  }
 }
 
 /** Loads one full-screen ad of the given kind. Shared by the primary Rewarded
@@ -342,7 +476,7 @@ function _startFullscreenLoad(kind: FullscreenAdKind, deviceId: string): void {
       serverSideVerificationOptions: { userId: deviceId },
       requestNonPersonalizedAdsOnly: true,
     };
-    const ad: FullscreenAd = kind === 'rewarded_interstitial'
+    const ad: RewardedFullscreenAd = kind === 'rewarded_interstitial'
       ? RewardedInterstitialAd.createForAdRequest(unitId, requestOptions)
       : RewardedAd.createForAdRequest(unitId, requestOptions);
 
@@ -450,6 +584,10 @@ function _startFullscreenLoad(kind: FullscreenAdKind, deviceId: string): void {
  *  image ad. A plain-Rewarded (fallback or ambient) failure goes through the
  *  normal backed-off retry schedule instead of falling further. */
 function _fallbackOrRetry(failedKind: FullscreenAdKind, deviceId: string): void {
+  if (failedKind === 'interstitial') {
+    _startFullscreenLoad('rewarded_interstitial', deviceId);
+    return;
+  }
   if (failedKind === 'rewarded_interstitial') {
     _startFullscreenLoad('rewarded_video', deviceId);
     return;
@@ -628,7 +766,12 @@ export function gateActionWithAd(proceed: () => void, timeoutMs = 6_000): void {
       // just reloads the next one) — this one gates `proceed` on the same
       // event, so the action runs the moment the user actually dismisses
       // the ad, not before.
-      _interstitial.addAdEventListener(AdEventType.CLOSED, finish);
+      // Cast needed only because TS can't resolve a call through a union of
+      // differently-generic addAdEventListener signatures (InterstitialAd's
+      // is narrower than the Rewarded pair's) — AdEventType.CLOSED is valid
+      // on all three classes' actual (identical, MobileAd-inherited) runtime
+      // implementation, so this is a type-system limitation, not a real gap.
+      (_interstitial as InterstitialAd).addAdEventListener(AdEventType.CLOSED, finish);
       _interstitial.show();
       _interReady = false;
       return true;

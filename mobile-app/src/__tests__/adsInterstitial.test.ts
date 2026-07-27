@@ -3,10 +3,17 @@
 // connecting.
 //
 // Khabat, 2026-07-22: every full-screen ad on Connect must be a REWARDED VIDEO,
-// never a static image interstitial. Rewarded Interstitial is tried first; a
-// load failure falls through to plain Rewarded (also always video) once — never
-// further back to a static interstitial. Reward crediting gates strictly on
-// AdMob's EARNED_REWARD callback, never on OPENED/CLOSED alone.
+// never a static image interstitial. Rewarded Interstitial was tried first; a
+// load failure fell through to plain Rewarded (also always video) once — never
+// further back to a static interstitial.
+//
+// Khabat, 2026-07-27: revised — a classic Interstitial (dedicated production ad
+// unit for Connect) is now tried FIRST, ahead of Rewarded Interstitial, in
+// exchange for a much higher fill rate. Rewarded Interstitial -> Rewarded Video
+// remains the unchanged fallback chain once the classic Interstitial fails.
+// Reward crediting still gates strictly on AdMob's EARNED_REWARD callback,
+// never on OPENED/CLOSED alone (classic Interstitial has no reward event at
+// all, so it never claims a reward).
 //
 // Iran flash fix: an ad whose creative was fetched THROUGH the tunnel cannot
 // stream once the tunnel is down (Google is blocked on the direct network) —
@@ -22,8 +29,9 @@ jest.mock('react-native-google-mobile-ads', () => {
     load,
     show,
   };
+  const iCreate  = jest.fn(() => inst);
   const riCreate = jest.fn(() => inst);
-  const rCreate = jest.fn(() => inst);
+  const rCreate  = jest.fn(() => inst);
   return {
     __esModule: true,
     default: () => ({
@@ -32,6 +40,7 @@ jest.mock('react-native-google-mobile-ads', () => {
     }),
     RewardedAd: { createForAdRequest: rCreate },
     RewardedInterstitialAd: { createForAdRequest: riCreate },
+    InterstitialAd: { createForAdRequest: iCreate },
     RewardedAdEventType: { LOADED: 'rewarded_loaded', EARNED_REWARD: 'earned' },
     AdEventType: {
       LOADED: 'loaded', CLOSED: 'closed', ERROR: 'error',
@@ -39,7 +48,7 @@ jest.mock('react-native-google-mobile-ads', () => {
     },
     TestIds: { REWARDED: 'test-rewarded', REWARDED_INTERSTITIAL: 'test-rewarded-interstitial', INTERSTITIAL: 'test-interstitial' },
     MaxAdContentRating: { PG: 'PG' },
-    __mock: { listeners, show, load, riCreate, rCreate },
+    __mock: { listeners, show, load, iCreate, riCreate, rCreate },
   };
 });
 
@@ -91,12 +100,12 @@ jest.mock('../i18n', () => ({
 
 type AdsModule = typeof import('../services/adsService');
 
-describe('full-screen ads on connect (Rewarded Interstitial)', () => {
+describe('full-screen ads on connect (classic Interstitial primary)', () => {
   let ads: AdsModule;
   let listeners: Record<string, (payload?: any) => void>;
   let show: jest.Mock;
   let load: jest.Mock;
-  let riCreate: jest.Mock;
+  let iCreate: jest.Mock;
   let setVpnState: (s: string) => void;
 
   beforeEach(async () => {
@@ -106,10 +115,11 @@ describe('full-screen ads on connect (Rewarded Interstitial)', () => {
     listeners = adMock.listeners;
     show = adMock.show;
     load = adMock.load;
-    riCreate = adMock.riCreate;
+    iCreate = adMock.iCreate;
     show.mockClear();
     load.mockClear();
-    riCreate.mockClear();
+    iCreate.mockClear();
+    adMock.riCreate.mockClear();
     adMock.rCreate.mockClear();
     setVpnState = (jest.requireMock('../stores/vpnStore') as any).__setConnectionState;
     setVpnState('idle');
@@ -133,13 +143,13 @@ describe('full-screen ads on connect (Rewarded Interstitial)', () => {
     expect(shown).toBe(false);
     expect(show).not.toHaveBeenCalled();
     expect(load).toHaveBeenCalled();          // preloaded for next time
-    expect(riCreate).toHaveBeenCalledTimes(1); // Rewarded Interstitial tried first
+    expect(iCreate).toHaveBeenCalledTimes(1);  // classic Interstitial tried first
   });
 
-  it('shows exactly once when a Rewarded Interstitial has finished loading', () => {
+  it('shows exactly once when a classic Interstitial has finished loading', () => {
     ads.preloadInterstitial();
     // Simulate AdMob signalling the preload finished (on the direct network).
-    listeners['rewarded_loaded']?.();
+    listeners['loaded']?.();
 
     expect(ads.showInterstitialOnConnect()).toBe(true);
     expect(show).toHaveBeenCalledTimes(1);
@@ -152,7 +162,7 @@ describe('full-screen ads on connect (Rewarded Interstitial)', () => {
   it('drops a tunnel-loaded ad when tapping Connect with the tunnel down (no blank flash)', () => {
     setVpnState('connected');
     ads.preloadInterstitial();
-    listeners['rewarded_loaded']?.();      // creative fetched through the tunnel
+    listeners['loaded']?.();      // creative fetched through the tunnel
 
     setVpnState('idle');          // user disconnected; next Connect tap
     expect(ads.showInterstitialOnConnect()).toBe(false);
@@ -165,12 +175,12 @@ describe('full-screen ads on connect (Rewarded Interstitial)', () => {
     expect(ads.showInterstitialAfterConnect()).toBe(false);  // nothing ready yet
     expect(load).toHaveBeenCalled();
 
-    listeners['rewarded_loaded']?.();      // preload arrives through the tunnel
+    listeners['loaded']?.();      // preload arrives through the tunnel
     expect(show).toHaveBeenCalledTimes(1);
 
     // Window consumed: the next loaded ad does not auto-show.
     listeners['closed']?.();      // triggers self-reload
-    listeners['rewarded_loaded']?.();
+    listeners['loaded']?.();
     expect(show).toHaveBeenCalledTimes(1);
   });
 
@@ -178,15 +188,16 @@ describe('full-screen ads on connect (Rewarded Interstitial)', () => {
     setVpnState('connected');
     ads.showInterstitialAfterConnect();
     setVpnState('idle');          // user dropped the tunnel before the ad loaded
-    listeners['rewarded_loaded']?.();
+    listeners['loaded']?.();
     expect(show).not.toHaveBeenCalled();
   });
 });
 
-describe('no static image fallback (Khabat, 2026-07-22)', () => {
+describe('fallback chain: Interstitial -> Rewarded Interstitial -> Rewarded Video (Khabat, 2026-07-22 & 2026-07-27)', () => {
   let ads: AdsModule;
   let listeners: Record<string, (payload?: any) => void>;
   let load: jest.Mock;
+  let iCreate: jest.Mock;
   let riCreate: jest.Mock;
   let rCreate: jest.Mock;
 
@@ -196,9 +207,11 @@ describe('no static image fallback (Khabat, 2026-07-22)', () => {
     const adMock = (jest.requireMock('react-native-google-mobile-ads') as any).__mock;
     listeners = adMock.listeners;
     load = adMock.load;
+    iCreate = adMock.iCreate;
     riCreate = adMock.riCreate;
     rCreate = adMock.rCreate;
     load.mockClear();
+    iCreate.mockClear();
     riCreate.mockClear();
     rCreate.mockClear();
     (jest.requireMock('../stores/vpnStore') as any).__setConnectionState('idle');
@@ -209,25 +222,42 @@ describe('no static image fallback (Khabat, 2026-07-22)', () => {
 
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
-  it('falls back to plain Rewarded (video) when Rewarded Interstitial errors — never a static interstitial', () => {
+  it('falls back to Rewarded Interstitial when the classic Interstitial errors, then to plain Rewarded if that also fails', () => {
     ads.preloadInterstitial();
-    expect(riCreate).toHaveBeenCalledTimes(1);
+    expect(iCreate).toHaveBeenCalledTimes(1);
+    expect(riCreate).not.toHaveBeenCalled();
     expect(rCreate).not.toHaveBeenCalled();
 
-    listeners['error']?.({ code: 'no-fill' });   // Rewarded Interstitial has no fill
+    listeners['error']?.({ code: 'no-fill' });   // classic Interstitial has no fill
 
-    expect(rCreate).toHaveBeenCalledTimes(1);    // fell back to plain Rewarded, not a static ad
+    expect(riCreate).toHaveBeenCalledTimes(1);   // fell back to Rewarded Interstitial
     expect(load).toHaveBeenCalledTimes(2);
+
+    listeners['error']?.({ code: 'no-fill' });   // Rewarded Interstitial also has no fill
+
+    expect(rCreate).toHaveBeenCalledTimes(1);    // fell back to plain Rewarded — never a static ad again this cycle
+    expect(load).toHaveBeenCalledTimes(3);
   });
 
-  it('falls back to plain Rewarded when Rewarded Interstitial load times out', () => {
+  it('falls back to Rewarded Interstitial when the classic Interstitial load times out', () => {
     ads.preloadInterstitial();
-    expect(riCreate).toHaveBeenCalledTimes(1);
+    expect(iCreate).toHaveBeenCalledTimes(1);
 
     jest.advanceTimersByTime(15_000);   // direct-network load timeout
 
-    expect(rCreate).toHaveBeenCalledTimes(1);
+    expect(riCreate).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to plain Rewarded when Rewarded Interstitial (post-classic-Interstitial-fallback) load times out', () => {
+    ads.preloadInterstitial();
+    listeners['error']?.({ code: 'no-fill' });   // classic Interstitial fails -> Rewarded Interstitial starts
+    expect(riCreate).toHaveBeenCalledTimes(1);
+
+    jest.advanceTimersByTime(15_000);
+
+    expect(rCreate).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -281,10 +311,10 @@ describe('tunnel-gated preload (Iran fix — Khabat, 2026-07-18)', () => {
 
     expect(trackEvent).toHaveBeenCalledWith(
       'AD_LOAD_ERROR', 'test-device',
-      expect.objectContaining({ slot: 'interstitial', format: 'rewarded_interstitial', code: 'timeout', vpn_connected: true }),
+      expect.objectContaining({ slot: 'interstitial', format: 'interstitial', code: 'timeout', vpn_connected: true }),
     );
-    // Timing out immediately falls through to the plain-Rewarded fallback
-    // (Khabat, 2026-07-22: never a static interstitial) — that's the "retry".
+    // Timing out immediately falls through to the Rewarded Interstitial
+    // fallback (Khabat, 2026-07-22/2026-07-27 chain) — that's the "retry".
     expect(load).toHaveBeenCalledTimes(2);
   });
 
@@ -340,38 +370,35 @@ describe('full-screen ad telemetry (Khabat, 2026-07-19 — saw an ad on Connect,
 
   it('a successful show/impression/click each log their own event, tagged with format', () => {
     ads.preloadInterstitial();
-    listeners['rewarded_loaded']?.();
+    listeners['loaded']?.();
 
     listeners['opened']?.();
     expect(trackEvent).toHaveBeenCalledWith(
-      'AD_INTERSTITIAL_SHOWN', 'test-device', { slot: 'interstitial', format: 'rewarded_interstitial' },
+      'AD_INTERSTITIAL_SHOWN', 'test-device', { slot: 'interstitial', format: 'interstitial' },
     );
 
     listeners['paid']?.({ value: 0.012, currency: 'USD' });
     expect(trackEvent).toHaveBeenCalledWith(
       'AD_INTERSTITIAL_IMPRESSION', 'test-device',
-      { slot: 'interstitial', format: 'rewarded_interstitial', value: 0.012, currency: 'USD' },
+      { slot: 'interstitial', format: 'interstitial', value: 0.012, currency: 'USD' },
     );
 
     listeners['clicked']?.();
     expect(trackEvent).toHaveBeenCalledWith(
-      'AD_INTERSTITIAL_CLICK', 'test-device', { slot: 'interstitial', format: 'rewarded_interstitial' },
+      'AD_INTERSTITIAL_CLICK', 'test-device', { slot: 'interstitial', format: 'interstitial' },
     );
   });
 
-  it('EARNED_REWARD logs AD_INTERSTITIAL_EARNED_REWARD — reward only counts once Google confirms', () => {
+  it('classic Interstitial never earns a reward — closing it goes through the "continuing" path, not a reward credit', () => {
     ads.preloadInterstitial();
-    listeners['rewarded_loaded']?.();
+    listeners['loaded']?.();
     listeners['opened']?.();
 
-    // Dismissing without the earned callback must NOT log a reward.
+    // Classic Interstitial has no EARNED_REWARD event at all — closing it
+    // must never log a reward.
+    listeners['closed']?.();
     expect(trackEvent).not.toHaveBeenCalledWith(
       'AD_INTERSTITIAL_EARNED_REWARD', expect.anything(), expect.anything(),
-    );
-
-    listeners['earned']?.();
-    expect(trackEvent).toHaveBeenCalledWith(
-      'AD_INTERSTITIAL_EARNED_REWARD', 'test-device', { slot: 'interstitial', format: 'rewarded_interstitial' },
     );
   });
 });
