@@ -1,7 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, Pressable, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { AccessibilityInfo, StyleSheet } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
-  Easing, cancelAnimation, useAnimatedProps, useAnimatedStyle,
+  Easing, cancelAnimation, runOnJS, useAnimatedProps, useAnimatedStyle,
   useSharedValue, withRepeat, withSequence, withSpring, withTiming,
 } from 'react-native-reanimated';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
@@ -63,51 +64,54 @@ export function RealCoin({
     return () => cancelAnimation(breathe);
   }, [reduceMotion, breathe]);
 
-  const holdStartRef = useRef(0);
-  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const heldRef = useRef(false);
+  const handleForge = useCallback(() => {
+    onForge?.(Math.round(6 * combo));
+  }, [combo, onForge]);
 
-  const clearHold = useCallback(() => {
-    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
-    ringOffset.value = withTiming(circumference, { duration: 250 });
-  }, [ringOffset, circumference]);
+  const handleToggle = useCallback(() => {
+    onToggleConnection?.();
+  }, [onToggleConnection]);
 
-  const handlePressIn = useCallback(() => {
-    if (disabled) return;
-    // Khabat, 2026-07-27: fast repeated tapping was triggering a disconnect
-    // on its own, with no real 3s hold. Root cause -- Android's touch
-    // responder can drop onPressOut for one tap in a fast sequence (a known
-    // RN/Android quirk under quick successive presses), and this handler
-    // used to start a new HOLD_MS timer on every press-in WITHOUT clearing
-    // whatever timer a previous, onPressOut-less press had left running.
-    // That orphaned timer keeps counting down from its own press-in and
-    // fires onToggleConnection() ~3s later regardless of anything the user
-    // does in between -- looking exactly like "tapping fast disconnects me".
-    // Clearing any pending timer before scheduling a new one removes the
-    // orphan regardless of which tap's onPressOut got dropped.
-    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
-    press.value = withTiming(0.95, { duration: 80 });
-    holdStartRef.current = Date.now();
-    heldRef.current = false;
-    ringOffset.value = withTiming(0, { duration: HOLD_MS, easing: Easing.linear });
-    holdTimerRef.current = setTimeout(() => {
-      heldRef.current = true;
-      clearHold();
-      onToggleConnection?.();
-    }, HOLD_MS);
-  }, [disabled, press, ringOffset, clearHold, onToggleConnection]);
+  // Khabat, 2026-07-27: fast repeated tapping was triggering a disconnect on
+  // its own, with no real 3s hold, even after an earlier fix that cleared a
+  // stacked JS setTimeout on every press-in. Root cause of THAT fix falling
+  // short -- Android's legacy touch responder can drop the onPressOut for
+  // the *last* tap in a fast sequence, and with no further press-in behind
+  // it, nothing was left to cancel its lone hold-timer; it just fired
+  // onToggleConnection() ~3s later on its own. A JS timer paired with two
+  // independently-fireable RN callbacks can't fully close that gap, because
+  // both onPressIn/onPressOut ride the same bridge event stream that can
+  // drop events under rapid taps. react-native-gesture-handler's Tap/
+  // LongPress gestures track touch state on the native side instead, so a
+  // release that never reaches JS still correctly ends the gesture -- this
+  // replaces the hand-rolled timer with that native state machine.
+  const longPress = Gesture.LongPress()
+    .minDuration(HOLD_MS)
+    .maxDistance(50)
+    .enabled(!disabled)
+    .onBegin(() => {
+      press.value = withTiming(0.95, { duration: 80 });
+      ringOffset.value = withTiming(0, { duration: HOLD_MS, easing: Easing.linear });
+    })
+    .onStart(() => {
+      runOnJS(handleToggle)();
+    })
+    .onFinalize(() => {
+      press.value = withSpring(1, { damping: 12, stiffness: 300 });
+      ringOffset.value = withTiming(circumference, { duration: 250 });
+    });
 
-  const handlePressOut = useCallback(() => {
-    if (disabled) return;
-    press.value = withSpring(1, { damping: 12, stiffness: 300 });
-    const held = holdStartRef.current ? Date.now() - holdStartRef.current : 0;
-    clearHold();
-    if (!heldRef.current && held < HOLD_MS - 30) {
-      onForge?.(Math.round(6 * combo));
-    }
-  }, [disabled, press, clearHold, combo, onForge]);
+  const tap = Gesture.Tap()
+    .maxDuration(HOLD_MS - 30)
+    .enabled(!disabled)
+    .onStart(() => {
+      runOnJS(handleForge)();
+    });
 
-  useEffect(() => () => { if (holdTimerRef.current) clearTimeout(holdTimerRef.current); }, []);
+  // Long-press gets first refusal on every touch; if it fails to reach
+  // minDuration before release, the same touch is offered to tap -- the
+  // standard RNGH pattern for one control with both a tap and a hold action.
+  const gesture = Gesture.Exclusive(longPress, tap);
 
   const stageStyle = useAnimatedStyle(() => ({
     transform: [{ scale: press.value }],
@@ -121,15 +125,14 @@ export function RealCoin({
   const ringProps = useAnimatedProps(() => ({ strokeDashoffset: ringOffset.value }));
 
   return (
-    <Pressable
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-      disabled={disabled}
-      hitSlop={8}
-      accessibilityRole="button"
-      accessibilityLabel={connected ? 'Tap to forge Zar, hold 3 seconds to disconnect' : 'Tap to forge Zar, hold 3 seconds to connect'}
-    >
-      <Animated.View style={[{ width: size, height: size }, stageStyle]}>
+    <GestureDetector gesture={gesture}>
+      <Animated.View
+        style={[{ width: size, height: size }, stageStyle]}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityState={{ disabled }}
+        accessibilityLabel={connected ? 'Tap to forge Zar, hold 3 seconds to disconnect' : 'Tap to forge Zar, hold 3 seconds to connect'}
+      >
         <Animated.View
           pointerEvents="none"
           style={[
@@ -179,7 +182,7 @@ export function RealCoin({
           {'﷼'}
         </Animated.Text>
       </Animated.View>
-    </Pressable>
+    </GestureDetector>
   );
 }
 

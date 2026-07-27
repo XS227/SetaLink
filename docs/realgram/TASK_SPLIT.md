@@ -11592,3 +11592,242 @@ unlike `zar-swap` there's no separate backend deploy dependency here.
 
 Khabat's device should get this as an OTA offer on the `beta` channel, or
 he can pull `setalink.no/download/setalink-latest.apk` directly.
+
+---
+
+## A→B(120) — Khabat's v0.9.93 test: fast-tap disconnect confirmed still
+live despite `(118)`'s fix; node-picker + hero/inbox/banner triaged
+
+**Dato: 2026-07-27.** Khabat tested the just-published `v0.9.93` from his
+own device in Norway and reported: fast tapping still disconnects him,
+this time the server picker only offered the ReaLink node (not the
+others), ads worked well, and the hero/inbox/fixed front-page banner are
+still missing. Checked all four against `analytics.db` and the
+`feat/b97-experience` source rather than taking the report at face value.
+Device confirmed: `sl-85ff1772-8673-c696-4504-e09165882c5e`
+(`SL-227-62DAC5F0`), `app_version 0.9.93`, `last_seen 20:15:22`.
+
+### 1. Fast-tap disconnect — reproduces, and I can now explain why `(118)`'s fix wasn't enough
+
+`vpn_sessions` for his device today: a 103s session `20:09:08→20:10:51`
+then a 21s session `20:15:01→20:15:22`, both `cf-edge`/WebSocket — a
+21-second connect is the signature of exactly this bug, not a real
+disconnect action.
+
+Re-read `RealCoin.tsx` post-`(118)` fix line by line. The shipped fix
+(`clearTimeout` at the top of every `handlePressIn`) only prevents
+*multiple* orphaned hold-timers from stacking across several presses. It
+does **not** cover the case its own comment describes: if a single tap's
+`onPressOut` is the one Android drops (the "known RN/Android quirk under
+quick successive presses" the comment names), and no further press-in
+follows to trigger the clearing logic, that lone timer has nothing left
+to cancel it — it just fires `onToggleConnection()` ~3s after the user's
+last tap, exactly like a real disconnect. The fix solves timer-stacking;
+it doesn't solve the single-dropped-release case, which is the actual
+mechanism named in its own explanation.
+
+This component doubles as both the tap-to-earn-ZAR control and the
+hold-to-disconnect control (`game_hub`/`tap_coin` is by far the most
+frequent tap event in his history), so the exposure is structural, not
+incidental. The robust fix is to stop hand-rolling press-in/press-out
+timing and use `react-native-gesture-handler`'s `Gesture.LongPress()`
+(already a dependency, `~2.20.0`) composed with a tap gesture — that
+tracks touch state on the native/UI thread and correctly cancels on
+responder termination, instead of depending on a JS timer plus two
+independently-fired callbacks staying in sync. Not shipping that rewrite
+myself right now: this is the app's core connect/disconnect gesture in a
+live VPN product, this component has zero existing test coverage
+(confirmed again, same as `(118)`), and I have no device/emulator in this
+environment to rapid-tap-test it before it goes out — landing an
+unverified rewrite of exactly the gesture that's already misfiring is a
+worse risk than leaving the known-partial fix in place one more round.
+Flagging for whoever next has device access.
+
+### 2. "Only ReaLink node selectable" — plausible mechanism found, not pinned to the exact moment
+
+`node_usage`/`connect_telemetry` show he actually connected through
+**three** different nodes today (`primary` 18:02/18:44/18:47/19:31,
+`starlink-no-01` 18:04/18:07, `cf-edge` 20:09/20:15) — so the dynamic
+multi-node bootstrap was working for at least most of the session, this
+wasn't a full lockout the whole time.
+
+`serverStore.ts` does have a genuine offline/degraded fallback: if the
+`/v1` bootstrap call fails, the store collapses to a single hardcoded
+node identity (generic label, not a real country) rather than the live
+5-node list (`primary`/`fi-hel`/`de-nbg`/`dk-cph`/`cf-edge`). That would
+produce exactly "only one node, can't pick anything else" for whatever
+moment he opened the Servers screen and that call failed — but
+`connect_telemetry` has no `device_id` column, only aggregate
+node/protocol/timing fields, so I can't isolate the specific request
+behind his report the way I could for the tap-disconnect bug. Worth
+adding a device identifier to that table (or at least the bootstrap
+call's own log) so this class of report is provable next time instead of
+inferred from code reading alone.
+
+### 3. Hero / inbox / banner still missing — unlock is live, UI isn't; ads/banners split by data
+
+His device: `invite_count=4` (under the 11-invite Starlink threshold)
+but `stealth_unlocked=1`, `test_mode=1`, and he connected via
+`starlink-no-01` twice today — so the Starlink *capability* is already
+unlocked and functional for his account. The missing "hero" experience
+is a presentation gap, not an entitlement problem: matches
+[[starlink-hero-experience]]'s existing note that the app-side visual
+work is separate from (and behind) the backend unlock logic that's been
+live since mid-July.
+
+Ads: confirmed via `ad_events` — `rewarded_video` paid out cleanly 3
+times today (17:31, 18:04, 20:10, all `reward_granted=1`,
+262144000 bytes/250MB each), matching his "ads worked well" note. But
+there are **zero** `home_banner`/`freedom_banner`/`inbox_banner` rows for
+his device today at all — not a no-fill error, just never attempted. So
+"still missing the banner" is accurate and separate from the ad-serving
+system that's clearly healthy for him right now; matches `(118)`'s
+finding that `inbox_banner` has only ever had 2 attempts total across all
+devices. If "fast/fixed banner" means something other than an ad slot
+(a persistent non-ad UI element), that's not yet scoped anywhere I can
+find — worth one line back from Khabat on which banner he means before
+guessing further.
+
+Nothing shipped from this entry — investigation only, logged for the
+next session with device access (item 1) and for whoever answers item 2.
+
+---
+
+## A→B(121) — Khabat said "fix everything" from `(120)`, plus 3 new asks
+(tap telemetry coverage, AI diagnostic check, realgram.no live stats)
+
+**Dato: 2026-07-27.** One item actually fixed (code, not yet built); the
+rest were investigation asks that turned out not to need or not to allow
+a code fix. Not building/publishing from this entry — no explicit ask to
+ship yet, per the standing "don't build without asking" rule.
+
+**1. RealCoin tap/hold gesture — rewritten on `react-native-gesture-handler`,
+not shipped yet.** Replaced the hand-rolled `setTimeout`/press-in-out pair
+in `RealCoin.tsx` with `Gesture.LongPress().minDuration(3000)` +
+`Gesture.Tap()` composed via `Gesture.Exclusive()` (RNGH's documented
+pattern for one control with both a tap and a hold action; the dependency
+was already present, `~2.20.0`, and `GestureHandlerRootView` already
+wraps the app root in `App.tsx` — no new plumbing needed). This moves
+touch-state tracking off the JS bridge (where the dropped-`onPressOut`
+quirk lives) onto RNGH's own native recognizer, which is the actual fix
+for the class of bug `(118)`/`(120)` kept circling — not just another
+patch on the same timer approach. Preserved exactly: press-scale
+animation, ring-fill animation, tap-to-earn `onForge` amount/combo,
+`accessibilityLabel`/hitSlop/disabled semantics (added
+`accessibilityState={{ disabled }}`, the one thing `Pressable`'s
+`disabled` prop gave for free that a bare `GestureDetector` doesn't).
+`tsc --noEmit` clean. Full jest suite: same 4 pre-existing failing suites
+as `(118)`'s documented baseline (`ssoGame`, `homeBanner`,
+`trackedBannerAd`, `zarSyncService` — 10 tests), byte-identical failure
+count, nothing new broken. **Not verified on a real device** — no
+device/emulator in this environment to rapid-tap-test it, and this is
+the app's core connect/disconnect gesture in a live VPN product with
+zero prior test coverage here. Needs a real rapid-tap pass before it
+ships; flagging instead of building blind.
+
+**2. Node-picker fix (adding `device_id` to `connect_telemetry`) — investigated,
+deliberately NOT done.** Before touching it: `telemetry.api.ts`'s own
+header says "Privacy rules (enforced server-side too): No phone number,
+no email, no device_id, no real IP stored," and `public/v1.php` separately
+calls this table "anonymous BY DESIGN." That's a documented privacy
+commitment, not an oversight — adding a device identifier to close the
+diagnostic gap from `(120)` would reverse a deliberate decision, not fix
+one. Did not implement. If Khabat wants this traceability badly enough to
+accept the trade-off, that's his call to make explicitly, not mine to
+assume.
+
+**3. AdMob home/front-page banner — not a code bug, confirmed with real
+telemetry.** Went back to `ad_events` from `(120)` and realized that table
+is server-verified reward/postback data only (why banner rows never show
+there) — the actual client request/load/error trail for banners lives in
+`app_events` (via `trackEvent`, a different pipe than `ad_events`). Re-
+checked there: `AD_BANNER_REQUEST` fires correctly for both `home_banner`
+and `freedom_banner` on Khabat's device today, so `HomeBanner.tsx`/
+`AdBanner.tsx` → `TrackedBannerAd.tsx` is requesting exactly as designed.
+Every attempt today came back `googleMobileAds/error-code-no-fill` ("ad
+request was successful, but no ad was returned due to lack of ad
+inventory") for both banner slots — genuine AdMob demand-side no-fill,
+not a wiring bug. Separately, the same window shows `interstitial`/
+`rewarded_interstitial` failing with `"Ad unit doesn't match format"` —
+that one smells like a real AdMob-console misconfiguration (the ad unit's
+configured format not matching what the code requests), same thing
+`(118)` already flagged for whoever has AdMob dashboard access; still
+unconfirmed since it needs the console, not the codebase, to check.
+Rewarded video's unit is a different ID entirely and keeps paying out
+fine, which is why "ads work well" and "no banner" are both true at once
+for him right now.
+
+**4. Tap telemetry coverage — audited, answer is "no, not comprehensive."**
+Khabat asked whether every tap is captured for analysis. Traced
+`recordTap()`'s only call site: `zarSyncService.ts`'s `recordZarTap()`,
+which is hardcoded to log every call as `screen='game_hub',
+element='tap_coin'` — this is the coin-tap-to-earn action specifically
+(B-24, built to correlate tap responsiveness with connection
+protocol/node quality, per its own header), not general UI
+instrumentation. Nothing else in the app calls `recordTap`. Separately,
+`trackEvent()` (a different, named-event pipe) does cover a real set of
+business events well — the Premium/payments funnel, the full ad
+lifecycle, `JS_FATAL_ERROR` — but there's no generic "user tapped X on
+screen Y" logging for navigation, server selection, wallet actions,
+inbox, etc. If broad usage/UX analytics is the goal, that's new scope,
+not a gap in something that already claims to do it.
+
+**5. AI diagnostic — real system, ran it live, one finding.** `lib/
+node_intel.php`'s `ni_agent_insights()` + `ni_recommendations()` (8
+separate pattern detectors: carrier routing mismatch, infra RTT spikes,
+Telegram-on-cellular, IP reputation, build regression, network-switch
+failures, NAT type, IPv6) are real and already surfaced on the admin
+dashboard — not vaporware. Ran both directly against the live DB just
+now (7-day window): **one insight** — "iOS connects 55.4% less reliably
+than Android (44.6% vs 100%) — check iOS build or proxy settings" — and
+**zero active recommendations**, because the other 7 detectors all
+require ≥5-10 events in their specific bucket (per-carrier, per-node
+6h-vs-7d, etc.) and this week's volume doesn't clear that bar for most of
+them. Nothing sitting unreviewed; this is just what the engine currently
+has enough signal to say.
+
+**6. realgram.no front page — real bug found, can't fix it from here.**
+`https://realgram.no`'s static HTML has `"42"`/`"14"` (the "already on
+RealGram"/"exploring Shahnameh" counts) as literal hardcoded text — no
+fetch, no backend call, confirmed by reading the raw HTML directly, not
+just what a page-reader tool renders. Same page also shows a stale app
+version (`v0.9.91`, actual latest is `0.9.93`). Both are real "not
+actually live" bugs, matching Khabat's report exactly. The "Live REAL/
+USD" (Holders/Market cap/Liquidity) block, by contrast, is **not**
+broken despite first looking that way — its `app.js` genuinely
+`fetch()`es `api.dyor.io`'s public jetton endpoint client-side; confirmed
+directly that the endpoint returns real data (200, real holder
+count/mcap/liquidity numbers) AND sends the right
+`Access-Control-Allow-Origin: https://realgram.no` header for a real
+browser to accept it. My first read of the page came back with the
+fields blank because that tool doesn't execute JavaScript, so it only
+ever sees the pre-load placeholder dashes in the raw markup — a false
+alarm on that specific piece, not a bug. **Could not fix the two real
+bugs (hardcoded 42/14, stale version string) myself**: `realgram.no`
+resolves to `5.249.255.116`, a different VPS from this one
+(`5.249.252.221`), and I have no SSH/file access there. Needs either
+access provisioned for whoever's investigating, or whoever manages that
+box (same split as `numerologist.setai.no` and other externally-hosted
+ecosystem sites) to wire the counts to a real source — `setalink.no`'s
+own landing page already has a live-member-count precedent
+(`stats.php`) worth mirroring instead of re-inventing one.
+
+**Direct ask for B, per Khabat: please take `realgram.no`'s front page.**
+Two confirmed real bugs, both on `https://realgram.no` (resolves to
+`5.249.255.116` — not this VPS, `5.249.252.221`, so I have no access to
+fix them myself):
+1. The `"42"` / `"14"` counters ("already on RealGram" / "exploring
+   Shahnameh") are literal hardcoded text in the static HTML
+   (`<span class="stat-num">42</span>` etc.) — no fetch, no backend call
+   of any kind behind them.
+2. The footer/wherever shows app version `v0.9.91`, three releases stale
+   (actual latest is `0.9.93`).
+Not a bug, despite first looking like one: the "Live REAL/USD" block
+(Holders/Market cap/Liquidity) genuinely works — its `app.js` fetches
+`api.dyor.io`'s public jetton endpoint client-side, confirmed the
+endpoint returns real data and sends `Access-Control-Allow-Origin:
+https://realgram.no` for a real browser. It only *looked* broken in one
+of my own automated checks because that tool doesn't execute JavaScript
+and only saw the pre-load placeholder dashes in the raw markup.
+`setalink.no`'s own landing page already solved live member counts once
+(`stats.php`) — worth reusing that approach rather than a new one.
