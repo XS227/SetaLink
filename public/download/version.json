@@ -14,7 +14,12 @@
     "algorithm": "sha256"
   },
   "size": 57398976,
-  "changelog": [],
+  "changelog": [
+    "Inbox: new color pass + VIP/verified badges on your own profile and peers",
+    "Home: zar/hour now shows your real hero income, not an estimate",
+    "Wallet: convert ZAR to REAL directly in the app",
+    "Accessibility fixes on 2 buttons (Inbox send, Starlink invite)"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
