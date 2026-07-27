@@ -51,7 +51,7 @@ import { runBootSequence }       from '../services/bootService';
 import { claimPendingReferral }  from '../services/deepLinkService';
 import { checkForUpdate, isUpdateSnoozed, snoozeUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
 import type { UpdateCheckResult } from '../services/updateService';
-import { getStableDeviceId, getOrCreateDeviceId, enrichDeviceId, getDeviceFingerprint, saveStableDeviceId } from '../services/deviceIdentityService';
+import { getStableDeviceId, getDeviceFingerprint, saveStableDeviceId } from '../services/deviceIdentityService';
 import { registerDevice } from '../services/entitlementService';
 import { useInboxStore }  from '../stores/inboxStore';
 import { useDMStore }     from '../stores/dmStore';

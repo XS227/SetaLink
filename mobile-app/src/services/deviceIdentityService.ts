@@ -76,17 +76,3 @@ export async function getDeviceFingerprint(): Promise<Record<string, string | nu
   } catch {}
   return {};
 }
-
-// Legacy sync read — returns the MMKV mirror (populated after first async call).
-export function getOrCreateDeviceId(): string {
-  const v = storage.getItem(STABLE_KEY);
-  if (v && typeof v === 'string' && v.length > 4) return v;
-  const id = `sl-${generateUUID()}`;
-  storage.setItem(STABLE_KEY, id);
-  return id;
-}
-
-// Legacy async compat — delegates to getStableDeviceId.
-export async function enrichDeviceId(): Promise<string> {
-  return getStableDeviceId();
-}
