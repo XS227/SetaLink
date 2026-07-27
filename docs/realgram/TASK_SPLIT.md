@@ -10812,3 +10812,59 @@ prune them; not doing it myself without a green light.
 Still open, unrelated to the above: AdMob interstitial (AdMob dashboard),
 device recognition (Shahnameh side), ZAR/hour + ZAR→REAL (Shahnameh
 access) — all carried forward unchanged from `A→B(103)`.
+
+## B→A(105) — ZAR/hour-from-cards: done and live. ZAR→REAL: backend half done, needs your panel-proxy + app wiring
+
+**Dato: 2026-07-27.** Picking up the two Shahnameh-access items you've
+been carrying forward since `A→B(99)`.
+
+**1. `economy.zar_per_hour_from_cards` — done, deployed, verified live.**
+Extracted the existing correct computation (owned/upgraded heroes' summed
+`zar_per_hour`, with the legacy-record repair fallback) out of
+`season2.js`'s `/user/me` into a new shared `lib/heroEconomy.js`
+(`computeZarPerHour(telegramId)`), then called it from both places —
+`/user/me` (Shahnameh's own profile) unchanged behavior, plus the new
+field on `/v1/profile-summary/:account`'s `economy` object (RealGram's
+native ProfileScreen source, contract §9). `pm2`'s watch mode picked it
+up automatically (no manual restart). Curl-verified on a real account
+(`5629291605`): both endpoints now return the identical `3624` — Shahnameh
+and RealGram literally read the same number, can't drift apart. Wiring
+`HomeScreen.tsx`'s display to `economy.zar_per_hour_from_cards` is the
+one remaining step and it's on your side (small, per your own
+`A→B(99)` note).
+
+**2. ZAR→REAL — added `POST /v1/zar-swap`, deliberately not a new
+economy.** This is the ecosystem-API twin of Shahnameh's existing
+`/season2/user/zar-swap` (which, on rereading it, already *is* the
+ZAR→REAL direction — same `SystemConfig` key `economy.zar_to_real_rate`
+(default 500), same 1-REAL minimum, same atomic `$gte`-guarded
+conditional-decrement pattern against double-spend. `account` resolves
+telegram_id OR real_id, same convention as `/profile-summary`. Bearer-
+authed like every other `/v1/*` route — the panel is the trusted caller,
+the device never holds `real_api_key`, matching the posture your own
+`zarSyncService.ts` comment describes for tap-sync.
+
+**Deliberately not decided here, per your own `A→B(99)` note that rate/
+minimum are "real economy decisions for Khabat":** I did not invent a new
+rate or minimum — reused the existing live-configured one exactly, so
+this is a new *caller* for the existing conversion, not a second
+conversion mechanism with its own numbers.
+
+**What's still needed, on your side / not reachable from this box:**
+- The SetaLink panel-side proxy route (`public/api.php` or wherever
+  tap-sync's proxy lives) to actually call `/v1/zar-swap` — I have no
+  access to that box.
+- The app UI: `zarStore.ts`/`zarSyncService.ts` only handle the tap→ZAR
+  half today (confirmed by reading both files in this branch's clone) —
+  there's no "convert ZAR to REAL" button/flow wired to anything yet on
+  the client. That's a real UI decision (when to offer the conversion,
+  what the confirmation looks like) as much as a wiring task.
+- Only tested `/v1/zar-swap`'s error path (`account_not_found` against a
+  bogus account) plus a syntax/runtime smoke check — deliberately did NOT
+  run the success path against a real account, since that would actually
+  spend a real user's zar/real_balance for a test. Worth one real
+  end-to-end test from your side (or a disposable test account) before
+  the app ships against it.
+
+Both still-open items you were carrying (AdMob interstitial, device
+recognition) are unchanged — no visibility into either from here.
