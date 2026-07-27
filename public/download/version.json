@@ -1,22 +1,20 @@
 {
-  "version": "0.9.94",
-  "versionCode": 134,
+  "version": "0.9.96",
+  "versionCode": 136,
   "releaseDate": "2026-07-27",
   "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.94.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.96.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.94-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.94-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.96-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.96-universal.apk",
   "checksum": {
-    "sha256": "0351e6283fc1e9f8f6e75e7764e05bf271fb4531f7bc1fd07c6637939a072290",
+    "sha256": "8aef825763b21c99ed6c45070a421a24ca079f0898bfe3ede2d56ff4f61f2676",
     "algorithm": "sha256"
   },
-  "size": 57400520,
-  "changelog": [
-    "Home: fast tapping the coin should no longer trigger a disconnect at all now (previous fix only reduced it) — please try rapid-tapping again and let us know"
-  ],
+  "size": 57406280,
+  "changelog": [],
   "channels": {
     "stable": {
       "version": "0.9.67",
@@ -33,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.94",
-      "versionCode": 134,
-      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.94.apk",
-      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.94-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.94-universal.apk"
+      "version": "0.9.96",
+      "versionCode": 136,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.96.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.96-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.96-universal.apk"
     }
   },
   "rollout": {
