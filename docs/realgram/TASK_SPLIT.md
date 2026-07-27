@@ -11831,3 +11831,81 @@ of my own automated checks because that tool doesn't execute JavaScript
 and only saw the pre-load placeholder dashes in the raw markup.
 `setalink.no`'s own landing page already solved live member counts once
 (`stats.php`) — worth reusing that approach rather than a new one.
+
+---
+
+## A→B(122) — Khabat's v0.9.93 APK retest: no ads anywhere (banner/inbox/
+connect-disconnect), tap gesture confirmed fixed, and Profile's Chapters
+card called out as "41/42 bare tekst"
+
+**Dato: 2026-07-27.** One item is a duplicate of an already-diagnosed
+issue (no new code), one is a positive confirmation of unshipped work
+from `(121)`, and one is new native UI, built. Not built/published — no
+explicit ask to ship yet, per the standing rule.
+
+**1. No ads on this test (banner, inbox, connect/disconnect) — same root
+cause `(121)` already found, nothing new to fix in code.** `(121)`#3
+already traced banner no-fill to genuine AdMob demand-side no-fill
+(`googleMobileAds/error-code-no-fill`) and interstitial/rewarded-
+interstitial failures to `"Ad unit doesn't match format"` — an AdMob-
+console misconfiguration, not a wiring bug, that needs AdMob dashboard
+access to fix (same thing `(118)` already flagged). This retest — banner
+absent everywhere including inbox, and nothing at connect/disconnect
+either — is consistent with that same demand/config problem being
+device- and session-dependent no-fill, not a new symptom. No code change
+made; still blocked on whoever has the AdMob console.
+
+**2. RealCoin tap/hold gesture — Khabat confirms it's fixed on this
+build.** `(121)`#1 rewrote the gesture on `react-native-gesture-handler`
+but flagged it "not verified on a real device." This retest is that
+verification — closing the loop on the `(118)`/`(120)` dropped-tap class
+of bug. No further action.
+
+**3. Profile's Chapters card — replaced the flat "41/42 bare tekst" slug
+dump with a compact progress banner + native Journey list, built.**
+Khabat's ask, precisely: keep Profile short (a "Continue your journey"
+banner, not a wall of text), and make the destination page "look as nice
+as Shahnameh's chapter [journey] page" — but explicitly as RealGram's own
+page, not the embedded Shahnameh WebView itself ("ikke siden som er i
+shahnameh... egen realgram side"). Same reframing `RealGramClanScreen`
+already did for guild.html (2026-07-22): mirror the source page's
+information as a native screen instead of embedding it.
+
+Confirmed live by reading `season2/learn.html` + `season2/learn.js`
+directly: the real chronicle is 50 chapters (`totalChapters`), each with
+title/summary/reward copy served from a public, non-identity-gated
+`season2/data/chapters.json` — same file `learn.js` itself reads as its
+fallback. Built:
+- `chapterCatalogService.ts` — fetches/caches that same public JSON
+  (6h TTL, MMKV-backed, same pattern as `remoteConfigService.ts`). Static
+  story content, so no panel proxy needed — same trust level
+  `ShahnamehEmbed` already extends to `season2` URLs directly.
+- `RealGramChaptersScreen.tsx` — the new native Journey list: a progress
+  card (X of Y complete, %, bar — same shape as `learn.html`'s
+  `.journey-progress`) plus one card per chapter (title, summary, a
+  done/active/locked status chip, reward line), merging the catalog with
+  contract §9's real per-user `chapters.list` (done state only — active/
+  locked derived as "first not-done chapter in order"). Gold theme
+  tokens throughout, consistent with the rest of the gold-theme rebrand.
+- `RealGramProfileScreen.tsx`'s Chapters card is now the compact banner
+  (progress bar + "Continue your journey" → the new screen), the old
+  per-chapter slug loop is gone.
+- Tapping an unlocked chapter in the new list still opens the real
+  Shahnameh WebView (`ChapterDetailScreen` → `ShahnamehEmbed`, now
+  extended with an optional `params`/`onBack` prop to target one slug's
+  `chapter.html` and let a *stack* screen's back arrow actually pop,
+  unlike the Game tab's no-op one) — actually reading/quizzing a chapter
+  is real interactive gameplay content, not something worth
+  reimplementing natively; only the ugly list was the complaint.
+- Wired into `AppNavigator.tsx`/`navigation/types.ts` as two new stack
+  routes (`Chapters`, `ChapterDetail`).
+
+`tsc --noEmit` clean. Full jest suite: same 4 pre-existing failing
+suites/10 failing tests as `(121)`'s documented baseline (`ssoGame`,
+`homeBanner`, `trackedBannerAd`, `zarSyncService`), nothing new broken.
+**Not verified on a real device** — no device/emulator here, and this
+touches a shared component (`ShahnamehEmbed`) three other screens
+(`GameScreen`, `RealIdGate`'s link flow, and now this) depend on; the new
+`params`/`onBack` props are additive and default to prior behavior when
+omitted, but a real-device pass (Profile → banner → list → tap a chapter
+→ back arrow actually leaves) is worth doing before this ships.

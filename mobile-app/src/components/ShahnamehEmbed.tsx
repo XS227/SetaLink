@@ -439,8 +439,8 @@ const WEBVIEW_LOAD_TIMEOUT_MS = 10_000; // lowered from 20s per Khabat/A->B(30)'
 // hang anywhere in that chain was indistinguishable from "still loading".
 // All of that is instrumented below.
 function ShahnamehWebView({
-  path, deviceId, realId, onBack, debugLabel,
-}: { path: string; deviceId: string; realId: string; onBack: () => void; debugLabel: string }) {
+  path, deviceId, realId, onBack, debugLabel, params,
+}: { path: string; deviceId: string; realId: string; onBack: () => void; debugLabel: string; params?: Record<string, string> }) {
   const { t }   = useT();
   const insets  = useSafeAreaInsets();
   const webRef  = useRef<React.ElementRef<typeof WebView>>(null);
@@ -550,6 +550,7 @@ function ShahnamehWebView({
         device_id: deviceId,
         real_id: realId || undefined,
         sso: (r.status === 'ok' && r.token) ? r.token : undefined,
+        ...params,
       });
       const finalUrl = `${base}?${qs}`;
       console.log(`[REALDBG:7/7][${debugLabel}] WebView opening`, { url: finalUrl, hasSsoParam: finalUrl.includes('sso='), hasRealIdParam: finalUrl.includes('real_id=') });
@@ -566,6 +567,7 @@ function ShahnamehWebView({
         src: 'realink',
         device_id: deviceId,
         real_id: realId || undefined,
+        ...params,
       });
       const finalUrl = `${BASE_GAME_URL}${path}?${qs}`;
       console.log(`[REALDBG:7/7][${debugLabel}] WebView opening (fallback path, no sso token)`, { url: finalUrl });
@@ -780,7 +782,7 @@ function ShahnamehWebView({
  * across different tabs in the same app session — the label disambiguates
  * their logs, e.g. "game" vs "profile").
  */
-export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel: string }) {
+export function ShahnamehEmbed({ path, debugLabel, params, onBack }: { path: string; debugLabel: string; params?: Record<string, string>; onBack?: () => void }) {
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const realId   = useAuthStore((s) => s.user?.realId   ?? '');
   const insets   = useSafeAreaInsets();
@@ -902,8 +904,9 @@ export function ShahnamehEmbed({ path, debugLabel }: { path: string; debugLabel:
         path={path}
         deviceId={deviceId}
         realId={realId}
-        onBack={() => {}}
+        onBack={onBack ?? (() => {})}
         debugLabel={debugLabel}
+        params={params}
       />
     </View>
   );

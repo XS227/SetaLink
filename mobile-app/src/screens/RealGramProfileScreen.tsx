@@ -65,6 +65,11 @@ interface Props {
   // ProfileScreen (which owned the only gear-icon entry point) — restored
   // here, same corner it lived in before (Khabat, 2026-07-21).
   onSettings?: () => void;
+  // Opens the native Journey/Chapters list (RealGramChaptersScreen) —
+  // replaces the old inline "41/42 bare tekst" chapter dump here (Khabat,
+  // 2026-07-27 build test) with a compact progress banner that hands off
+  // to a dedicated screen.
+  onOpenChapters?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -100,7 +105,7 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
   );
 }
 
-export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) {
+export function RealGramProfileScreen({ onBack, onSignOut, onSettings, onOpenChapters }: Props) {
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   // Data balance lives on the VPN side (entitlement/quota), not the Shahnameh
@@ -349,29 +354,28 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings }: Props) 
           </View>
         </GlassCard>
 
-        {/* Chapters */}
-        <GlassCard style={styles.card}>
-          <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardLabel}>Chapters</Text>
-            <Text style={styles.chapterCount}>{chapters.completed}/{chapters.total}</Text>
-          </View>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${chapterPct * 100}%` as any }]} />
-          </View>
-          {chapters.list.length > 0 && (
-            <View style={styles.chapterList}>
-              {chapters.list.map((c) => (
-                <View key={c.slug} style={styles.chapterRow}>
-                  <Text style={[styles.chapterDot, c.done && styles.chapterDotDone]}>
-                    {c.done ? '✓' : '·'}
-                  </Text>
-                  <Text style={[styles.chapterSlug, c.done && styles.chapterSlugDone]}>{c.slug}</Text>
-                  {c.done && !c.rewards_done && <Text style={styles.chapterPendingTag}>reward pending</Text>}
-                </View>
-              ))}
+        {/* Chapters — compact progress + CTA into the native Journey list
+            (RealGramChaptersScreen), replacing the old flat slug dump. */}
+        <TouchableOpacity
+          disabled={!onOpenChapters}
+          onPress={onOpenChapters}
+          activeOpacity={0.85}
+          accessibilityLabel="Continue your journey"
+        >
+          <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+            <View style={styles.cardHeaderRow}>
+              <Text style={styles.cardLabel}>Chapters</Text>
+              <Text style={styles.chapterCount}>{chapters.completed}/{chapters.total}</Text>
             </View>
-          )}
-        </GlassCard>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${chapterPct * 100}%` as any }]} />
+            </View>
+            <View style={styles.journeyBanner}>
+              <Text style={styles.journeyBannerText}>Continue your journey</Text>
+              <Text style={styles.journeyBannerArrow}>›</Text>
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
 
         {/* Clan */}
         <GlassCard style={styles.card}>
@@ -469,13 +473,9 @@ const styles = StyleSheet.create({
   chapterCount: { fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.gold[400] },
   progressTrack:{ height: 6, borderRadius: 3, backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 3, backgroundColor: Colors.gold[400] },
-  chapterList:  { gap: Spacing[2] },
-  chapterRow:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  chapterDot:   { fontSize: 14, color: Colors.text.muted, width: 16, textAlign: 'center' },
-  chapterDotDone: { color: Colors.gold[400] },
-  chapterSlug:  { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, textTransform: 'capitalize' },
-  chapterSlugDone: { color: Colors.text.primary },
-  chapterPendingTag: { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: '#FFB800' },
+  journeyBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing[1] },
+  journeyBannerText: { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  journeyBannerArrow: { fontSize: 18, color: Colors.gold[400] },
 
   clanRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   clanPhoto:    { width: 48, height: 48, borderRadius: 24 },

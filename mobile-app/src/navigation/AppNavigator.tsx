@@ -33,6 +33,8 @@ import { SmartAIScreen }     from '../screens/SmartAIScreen';
 import { ActivityScreen }    from '../screens/ActivityScreen';
 import { RealGramProfileScreen } from '../screens/RealGramProfileScreen';
 import { RealGramClanScreen }    from '../screens/RealGramClanScreen';
+import { RealGramChaptersScreen } from '../screens/RealGramChaptersScreen';
+import { ChapterDetailScreen }   from '../screens/ChapterDetailScreen';
 import { StarlinkScreen }        from '../screens/StarlinkScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
@@ -447,6 +449,7 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
         navigation.replace('Auth');
       }}
       onSettings={() => navigation.navigate('Settings')}
+      onOpenChapters={() => navigation.navigate('Chapters')}
     />
   );
 }
@@ -768,6 +771,28 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <TransferScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Chapters"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramChaptersScreen
+              onBack={() => navigation.goBack()}
+              onOpenChapter={(slug) => navigation.navigate('ChapterDetail', { slug })}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="ChapterDetail"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation, route }) => (
+            <ChapterDetailScreen
+              slug={(route.params as { slug: string }).slug}
+              onBack={() => navigation.goBack()}
+            />
           )}
         </Stack.Screen>
       </Stack.Navigator>
