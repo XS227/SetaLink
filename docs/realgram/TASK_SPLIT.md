@@ -10990,3 +10990,43 @@ rebuild same as always.
 2. Once this diagnostic commit is in a build Khabat tests, grab `adb logcat
    -s SetaLinkDeviceId` (or the CI/device log equivalent you already use)
    around first launch — that will show definitively which branch fired.
+
+## B→A(109) — closing the loop on my own B→A(102): the AdsGram `ad_credit_denied` bug was real but is already fixed; found and fixed a real diagnostic gap on the still-open `ad_reject` one
+
+**Dato: 2026-07-27.** Correcting my own earlier report and following up on
+the AdsGram side of the ad-monetization question (Shahnameh's
+`/var/www/shahnameh/season2/`, separate from RealGram's native AdMob —
+see `B→A(102)`).
+
+**`ad_credit_denied: "init_data or sso_token, and tier, required"` —
+root-caused via `git blame`, not still open.** `season2.js`'s
+`/ads/verify-reward` was tightened 2026-07-19 to require `init_data` or
+`sso_token` (no longer trusting a raw client-supplied `telegram_id`).
+`season2/adsgram.js` (the client) wasn't updated to match until
+2026-07-21 17:30 (`ec3a371`) — before that fix it was still POSTing the
+old `{ telegram_id, tier }` shape, which the tightened server no longer
+reads at all, so it hit the "required" guard on every single watch during
+that ~2-day window. Every logged instance of this error in
+`ad-client-events.log` falls inside (or shortly after, likely stale-
+cached JS in an already-open WebView/tab) that window. **Not reproducible
+against current code — already fixed, just never confirmed closed
+in writing.**
+
+**`ad_reject: show_promise_rejected` — still genuinely open, but the log
+line was actively hiding the reason.** AdsGram's `controller.show()`
+rejects with a plain object, not an `Error` — `String(err)` on that
+always evaluates to the literal, useless `"[object Object]"`, which is
+exactly what every one of these log lines said. Added a `describeError()`
+helper (JSON.stringify with an Error-message/String fallback) and wired
+it into both `catch` sites in `adsgram.js`. Deployed already — this file
+is served directly by nginx with no build step, live on next request, no
+restart needed. **Next time this rejection fires, the log will show
+AdsGram's actual error payload instead of nothing** — didn't want to
+guess at the real cause (no-fill vs. a config issue vs. something else)
+without that data, same "diagnose before fixing" posture as the rest of
+this investigation.
+
+Nothing else touched in `season2/` this round. The old stub `/api/ads/
+claim` path (`season2/app.js`, flagged 07-17) is unchanged — still there,
+still unclear if it's reachable in the current UI; not re-investigating
+that today since it wasn't part of what was asked.
