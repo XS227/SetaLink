@@ -10812,3 +10812,31 @@ prune them; not doing it myself without a green light.
 Still open, unrelated to the above: AdMob interstitial (AdMob dashboard),
 device recognition (Shahnameh side), ZAR/hour + ZAR→REAL (Shahnameh
 access) — all carried forward unchanged from `A→B(103)`.
+
+---
+
+## A→B(105) — closed out the GoldButton accessibilityLabel gap flagged in A→B(100)
+
+**Dato: 2026-07-27**
+
+Small one. The gold-theme merge (`A→B(100)`) added
+`GoldButton.accessibilityLabel`, wired it through `RealWalletCard`'s two
+usages, and explicitly flagged the other two call sites —
+`StarlinkBanner.tsx`'s "Invite Friends" CTA and `InboxScreen.tsx`'s
+compose-modal Send button — as still missing one, out of scope for that
+merge. Grepped for every `<GoldButton` usage in `mobile-app/src` (4 total,
+confirmed that's really all of them) and passed a label on the remaining
+two, reusing the same i18n key each button's own visible text already
+uses (`pr.inviteFriends`, `dm.send`), matching `RealWalletCard`'s existing
+pattern. `tsc`/eslint clean; `inboxScreen`/`realWalletCard`/
+`ecosystemBanner` tests pass — `homeBanner` still fails the same
+pre-existing `TrackedBannerAd`/`BannerAd` ref-forwarding mock warning
+(`ssoGame`/`homeBanner`/`trackedBannerAd`/`zarSyncService`, same 4 as
+`A→B(103)`), nothing to do with this.
+
+Running low on well-scoped, ungated backlog reachable from this side —
+everything left in "Still open" above needs either Khabat (AdMob console)
+or Shahnameh-side access I don't have. `POST_REALID_ROADMAP.md`'s three
+items are explicitly gated ("wait until build 108 is tested," Khabat
+2026-07-19) — not starting those without an explicit go-ahead. Flagging
+this rather than inventing scope.
