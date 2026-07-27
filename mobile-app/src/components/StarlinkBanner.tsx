@@ -114,7 +114,7 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
       )}
 
       {!unlocked && !isHero && (
-        <GoldButton style={styles.cta} textStyle={styles.ctaText} onPress={onInvite}>
+        <GoldButton style={styles.cta} textStyle={styles.ctaText} onPress={onInvite} accessibilityLabel={t('pr.inviteFriends')}>
           {`👥 ${t('pr.inviteFriends')}`}
         </GoldButton>
       )}

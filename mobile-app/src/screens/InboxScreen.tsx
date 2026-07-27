@@ -876,7 +876,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
               <TouchableOpacity style={styles.cancelBtn} activeOpacity={0.8} onPress={() => setCompose(false)}>
                 <Text style={styles.cancelText}>{t('dm.cancel')}</Text>
               </TouchableOpacity>
-              <GoldButton style={styles.sendBtn} textStyle={styles.sendText} disabled={sending} onPress={submit}>
+              <GoldButton style={styles.sendBtn} textStyle={styles.sendText} disabled={sending} onPress={submit} accessibilityLabel={t('dm.send')}>
                 {sending
                   ? <ActivityIndicator color="#241605" size="small" />
                   : t('dm.send')}
