@@ -408,30 +408,42 @@ function v1_cfedge_node(): array {
 // threshold, copied from an unrelated stealth-unlock check, instead of the
 // real, product-corrected 11 — see v1_starlink_unlock below).
 //
-// Design (that branch's own comment, verified independently against this
-// box's actual state): the client dials the SAME address/port/Reality key
-// as the primary node — only the VLESS uuid differs, so a server-side Xray
-// routing rule (matched on that uuid) can send this session's egress over a
-// WireGuard tunnel to the Starlink gateway instead of the normal direct
-// outbound. That's the CORRECT target shape for 'creds' below (primary's
-// creds with the uuid swapped) — but checked the live Xray config directly:
-// that uuid is registered on NO inbound, there is no WireGuard outbound, and
-// no routing rule references it. The gateway itself heartbeats fine (real
-// health/telemetry above), but nothing on this box would currently route
-// traffic sent with that uuid — it would just fail the Reality handshake.
-// 'creds' stays null (honest 503 in /servers/{id}/config below) until that
-// Xray-side wiring is actually done; the real shape is documented here so
-// flipping it on later is a one-line change, not a rediscovery.
+// Design (that branch's own comment): the client dials the SAME
+// address/port/Reality key as the primary node — only the VLESS uuid
+// differs, so a server-side Xray routing rule (matched on that uuid) sends
+// this session's egress over the WireGuard tunnel to the Starlink gateway
+// instead of the normal direct outbound.
+//
+// 2026-07-28 re-check found the "nothing is wired" claim this comment used
+// to make was stale: `wg show test0` on fi-hel (=bootstrap_address, i.e.
+// this IS the primary node's box) shows a live handshake + real traffic,
+// `curl --interface 192.168.137.2 https://ifconfig.me` returns the Starlink
+// WAN IP, and fi-hel's actual /usr/local/etc/xray/config.json already has
+// $n['vless_uuid'] (e5e6b692…) registered as a client on inbound-reality
+// AND a `"user": [that uuid] -> starlink-exit` routing rule. The Xray-side
+// wiring was done back on 2026-07-16/17 ([[starlink-exit-node-phase1]]);
+// this function just never started handing out the matching creds. Only
+// the primary Reality profile (cloudflare SNI, port 8443) has this uuid
+// registered — the multi-SNI altProfiles (microsoft/apple inbounds) do NOT,
+// so altProfiles must stay empty here or those connections would fail the
+// Reality handshake.
 function v1_starlink_nodes(PDO $pdo): array {
     st_init_tables($pdo);
     $out = [];
+    $primaryCreds = v1_primary_node($pdo)['creds'];
     foreach (st_all($pdo) as $n) {
         if ((int)$n['enabled'] !== 1) continue;
+        $creds = null;
+        if ($n['vless_uuid'] !== '') {
+            $creds = $primaryCreds;
+            $creds['uuid'] = $n['vless_uuid'];
+            $creds['altProfiles'] = [];
+        }
         $out[$n['node_id']] = [
             'id'    => $n['node_id'],
             'test'  => true,   // policy-gated via v1_starlink_unlock() below, not node_allowlist
             'meta'  => st_meta($n),
-            'creds' => null,   // see comment above — real shape: primary creds + uuid => $n['vless_uuid']
+            'creds' => $creds,
             '_row'  => $n,
         ];
     }
