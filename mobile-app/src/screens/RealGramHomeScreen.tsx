@@ -9,14 +9,25 @@
  * server-backed (economy from contract §9, active chapter from the same
  * status-derivation RealGramChaptersScreen already uses).
  *
- * Daily Quests and Hero Spotlight deliberately NOT built: read `home.js`
- * directly — quest state (`quest_read`/`quest_quiz`/`quest_tap`) comes from
- * `RealSync.ready()`'s resolved user object, which `/api/season2/user/me`
- * does not actually populate (checked live, all three fields absent) —
- * home.js itself falls back to localStorage the same way heroes.js does for
- * ownership (A->B(135)) and chapter.js does for scene progress (B's `124`).
- * No reliable native read source exists yet for either section, so they're
- * left out rather than faked — same principle as Heroes buy.
+ * Daily Quests — read side now built (B's follow-up after `(137)`): the
+ * `/v1/profile-summary` contract this screen already calls didn't expose
+ * quest_read/quest_quiz/quest_tap, but the data itself is real and
+ * server-tracked (Season2User schema, already returned by
+ * `/season2/user/sync`) — added the missing fields to profile-summary's
+ * response instead of duplicating a call. Deliberately READ-ONLY, no claim
+ * button: `home.js`'s own "+200 XP" bonus grants XP purely client-side
+ * (`RealPlayer.addResource`) then calls `/user/sync-balance` to persist
+ * it, but that endpoint explicitly rejects a client-supplied `xp` field
+ * ("server-authoritative only" — anti-cheat guard) — the bonus is never
+ * actually saved server-side. Real bug in the live game, not reproduced
+ * here; worth fixing at the source (a proper server-computed grant) before
+ * any client, native or web, claims to award it.
+ *
+ * Hero Spotlight — technically unblocked now too (Heroes ownership is real
+ * as of this session's buy/upgrade work), just not built this round —
+ * would need this screen to also resolve the telegram_id bridge and fetch
+ * owned heroes, which it doesn't do today. Natural next slice, not a hard
+ * blocker like it was before.
  *
  * Deliberately does NOT replace the Game tab's WebView landing page
  * (GameScreen still embeds season2 "/" as-is) — new, separate entry point
@@ -35,6 +46,10 @@ import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
 import { getProfileSummary, ProfileSummary } from '../services/realGramProfileService';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
+
+// Mirrors home.js's own TAP_GOAL (season2/home.js) -- quest_tap is a raw
+// daily tap counter server-side, "done" is reaching this threshold.
+const DAILY_TAP_GOAL = 200;
 
 interface Props {
   onBack: () => void;
@@ -157,6 +172,26 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           </View>
         </GlassCard>
 
+        {/* Daily Quests — read-only progress, no claim action here on
+            purpose: home.js's own "+200 XP" bonus button grants XP purely
+            client-side (window.RealPlayer.addResource) then calls
+            /user/sync-balance to persist it, but that endpoint explicitly
+            rejects a client-supplied xp field ("server-authoritative
+            only") -- the bonus is never actually saved server-side, a
+            real bug in the live game, not something worth reproducing
+            natively. quest_read/quest_quiz/quest_tap themselves ARE real
+            and now readable (this session's profile-summary fix). */}
+        <View style={styles.sectionHeadRow}>
+          <Text style={styles.sectionTitle}>Daily quests</Text>
+        </View>
+        <GlassCard style={styles.card}>
+          <View style={styles.questRow}>
+            <QuestPip label="Read" done={profile.quests.read} />
+            <QuestPip label="Quiz" done={profile.quests.quiz} />
+            <QuestPip label="Tap" done={profile.quests.tap >= DAILY_TAP_GOAL} />
+          </View>
+        </GlassCard>
+
         <View style={styles.quickRow}>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenHeroes} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>⚔</Text>
@@ -176,6 +211,17 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           </TouchableOpacity>
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function QuestPip({ label, done }: { label: string; done: boolean }) {
+  return (
+    <View style={styles.questPip}>
+      <View style={[styles.questDot, done && styles.questDotDone]}>
+        {done && <Text style={styles.questCheck}>✓</Text>}
+      </View>
+      <Text style={[styles.questLabel, done && styles.questLabelDone]}>{label}</Text>
     </View>
   );
 }
@@ -226,6 +272,17 @@ const styles = StyleSheet.create({
   progressSub: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginBottom: Spacing[1] },
   progressTrack: { height: 6, borderRadius: 3, backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
   progressFill:  { height: '100%', borderRadius: 3, backgroundColor: Colors.gold[400] },
+
+  questRow: { flexDirection: 'row', gap: Spacing[4] },
+  questPip: { flex: 1, alignItems: 'center', gap: Spacing[1] },
+  questDot: {
+    width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.bg.void, borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
+  },
+  questDotDone: { backgroundColor: Colors.gold[400], borderColor: Colors.gold[400] },
+  questCheck: { fontSize: 13, color: Colors.bg.void, fontFamily: Typography.family.heading },
+  questLabel: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
+  questLabelDone: { color: Colors.text.primary },
 
   quickRow:   { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   quickCard:  { flex: 1, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', gap: Spacing[1] },
