@@ -9,14 +9,24 @@
  * server-backed (economy from contract §9, active chapter from the same
  * status-derivation RealGramChaptersScreen already uses).
  *
- * Daily Quests and Hero Spotlight deliberately NOT built: read `home.js`
- * directly — quest state (`quest_read`/`quest_quiz`/`quest_tap`) comes from
- * `RealSync.ready()`'s resolved user object, which `/api/season2/user/me`
- * does not actually populate (checked live, all three fields absent) —
- * home.js itself falls back to localStorage the same way heroes.js does for
- * ownership (A->B(135)) and chapter.js does for scene progress (B's `124`).
- * No reliable native read source exists yet for either section, so they're
- * left out rather than faked — same principle as Heroes buy.
+ * Daily Quests — read side now built (B's follow-up after `(137)`): the
+ * `/v1/profile-summary` contract this screen already calls didn't expose
+ * quest_read/quest_quiz/quest_tap, but the data itself is real and
+ * server-tracked (Season2User schema, already returned by
+ * `/season2/user/sync`) — added the missing fields to profile-summary's
+ * response instead of duplicating a call. Deliberately READ-ONLY, no claim
+ * button: `home.js`'s own "+200 XP" bonus grants XP purely client-side
+ * (`RealPlayer.addResource`) then calls `/user/sync-balance` to persist
+ * it, but that endpoint explicitly rejects a client-supplied `xp` field
+ * ("server-authoritative only" — anti-cheat guard) — the bonus is never
+ * actually saved server-side. Real bug in the live game, not reproduced
+ * here; worth fixing at the source (a proper server-computed grant) before
+ * any client, native or web, claims to award it.
+ *
+ * Hero Spotlight — built now: resolves the telegram_id bridge (same
+ * pattern as Clan/Earn/Heroes) and shows the lowest-level owned hero
+ * ("upgrade priority", matching index.html's own framing). Empty state
+ * when nothing's owned yet, pointing at the roster.
  *
  * Deliberately does NOT replace the Game tab's WebView landing page
  * (GameScreen still embeds season2 "/" as-is) — new, separate entry point
@@ -25,7 +35,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -33,8 +43,14 @@ import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
+import { getSsoToken } from '../services/ssoService';
 import { getProfileSummary, ProfileSummary } from '../services/realGramProfileService';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
+import { getHeroCatalog, getOwnedHeroes, HeroCatalogEntry, OwnedHero } from '../services/heroCatalogService';
+
+// Mirrors home.js's own TAP_GOAL (season2/home.js) -- quest_tap is a raw
+// daily tap counter server-side, "done" is reaching this threshold.
+const DAILY_TAP_GOAL = 200;
 
 interface Props {
   onBack: () => void;
@@ -52,18 +68,30 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
 
   const [profile, setProfile]   = useState<ProfileSummary | null>(null);
   const [chapters, setChapters] = useState<ChapterCatalogEntry[]>([]);
+  const [heroCatalog, setHeroCatalog] = useState<HeroCatalogEntry[]>([]);
+  const [ownedHeroes, setOwnedHeroes] = useState<Map<string, OwnedHero>>(new Map());
   const [error, setError]       = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      deviceId ? getProfileSummary(deviceId) : Promise.reject(new Error('no device id')),
-      getChapterCatalog(),
-    ]).then(([p, c]) => {
-      if (cancelled) return;
-      setProfile(p);
-      setChapters(c);
-    }).catch(() => { if (!cancelled) setError("Couldn't load your dashboard right now."); });
+    (async () => {
+      try {
+        const sso = deviceId ? await getSsoToken(deviceId, true) : null;
+        const [p, c, h, owned] = await Promise.all([
+          deviceId ? getProfileSummary(deviceId) : Promise.reject(new Error('no device id')),
+          getChapterCatalog(),
+          getHeroCatalog(),
+          getOwnedHeroes(sso?.telegram_id ?? ''),
+        ]);
+        if (cancelled) return;
+        setProfile(p);
+        setChapters(c);
+        setHeroCatalog(h);
+        setOwnedHeroes(owned);
+      } catch {
+        if (!cancelled) setError("Couldn't load your dashboard right now.");
+      }
+    })();
     return () => { cancelled = true; };
   }, [deviceId]);
 
@@ -94,6 +122,15 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
   const doneSlugs = new Set(profile.chapters.list.filter((c) => c.done).map((c) => c.slug));
   const activeChapter = chapters.find((c) => !doneSlugs.has(c.slug)) ?? null;
   const chapterPct = chapters.length > 0 ? profile.chapters.completed / chapters.length : 0;
+
+  // "Upgrade priority" — the lowest-level owned hero, matching index.html's
+  // own Hero Spotlight framing.
+  let spotlightHero: (HeroCatalogEntry & { owned: OwnedHero }) | null = null;
+  for (const h of heroCatalog) {
+    const o = ownedHeroes.get(h.slug);
+    if (!o) continue;
+    if (!spotlightHero || o.level < spotlightHero.owned.level) spotlightHero = { ...h, owned: o };
+  }
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -157,6 +194,60 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           </View>
         </GlassCard>
 
+        {/* Daily Quests — read-only progress, no claim action here on
+            purpose: home.js's own "+200 XP" bonus button grants XP purely
+            client-side (window.RealPlayer.addResource) then calls
+            /user/sync-balance to persist it, but that endpoint explicitly
+            rejects a client-supplied xp field ("server-authoritative
+            only") -- the bonus is never actually saved server-side, a
+            real bug in the live game, not something worth reproducing
+            natively. quest_read/quest_quiz/quest_tap themselves ARE real
+            and now readable (this session's profile-summary fix). */}
+        <View style={styles.sectionHeadRow}>
+          <Text style={styles.sectionTitle}>Daily quests</Text>
+        </View>
+        <GlassCard style={styles.card}>
+          <View style={styles.questRow}>
+            <QuestPip label="Read" done={profile.quests.read} />
+            <QuestPip label="Quiz" done={profile.quests.quiz} />
+            <QuestPip label="Tap" done={profile.quests.tap >= DAILY_TAP_GOAL} />
+          </View>
+        </GlassCard>
+
+        {/* Hero Spotlight */}
+        <View style={styles.sectionHeadRow}>
+          <Text style={styles.sectionTitle}>Hero spotlight</Text>
+          <TouchableOpacity onPress={onOpenHeroes}>
+            <Text style={styles.sectionMore}>Collection ›</Text>
+          </TouchableOpacity>
+        </View>
+        {spotlightHero ? (
+          <TouchableOpacity onPress={onOpenHeroes} activeOpacity={0.85}>
+            <GlassCard style={styles.card}>
+              <View style={styles.spotlightRow}>
+                {spotlightHero.image_url ? (
+                  <Image source={{ uri: spotlightHero.image_url }} style={styles.spotlightImage} />
+                ) : (
+                  <View style={[styles.spotlightImage, styles.spotlightImageFallback]}>
+                    <Text style={styles.spotlightFallbackText}>{spotlightHero.name.slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.journeyTitle}>{spotlightHero.name}</Text>
+                  <Text style={styles.progressSub}>Level {spotlightHero.owned.level} · {spotlightHero.owned.zar_per_hour} ZAR/hr</Text>
+                </View>
+                <Text style={styles.cardCta}>Upgrade ›</Text>
+              </View>
+            </GlassCard>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity onPress={onOpenHeroes} activeOpacity={0.85}>
+            <GlassCard style={styles.card}>
+              <Text style={styles.progressSub}>No heroes owned yet — buy your first from the roster.</Text>
+            </GlassCard>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.quickRow}>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenHeroes} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>⚔</Text>
@@ -176,6 +267,17 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           </TouchableOpacity>
         </View>
       </ScrollView>
+    </View>
+  );
+}
+
+function QuestPip({ label, done }: { label: string; done: boolean }) {
+  return (
+    <View style={styles.questPip}>
+      <View style={[styles.questDot, done && styles.questDotDone]}>
+        {done && <Text style={styles.questCheck}>✓</Text>}
+      </View>
+      <Text style={[styles.questLabel, done && styles.questLabelDone]}>{label}</Text>
     </View>
   );
 }
@@ -226,6 +328,22 @@ const styles = StyleSheet.create({
   progressSub: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginBottom: Spacing[1] },
   progressTrack: { height: 6, borderRadius: 3, backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
   progressFill:  { height: '100%', borderRadius: 3, backgroundColor: Colors.gold[400] },
+
+  questRow: { flexDirection: 'row', gap: Spacing[4] },
+  questPip: { flex: 1, alignItems: 'center', gap: Spacing[1] },
+  questDot: {
+    width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.bg.void, borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
+  },
+  questDotDone: { backgroundColor: Colors.gold[400], borderColor: Colors.gold[400] },
+  questCheck: { fontSize: 13, color: Colors.bg.void, fontFamily: Typography.family.heading },
+  questLabel: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body },
+  questLabelDone: { color: Colors.text.primary },
+
+  spotlightRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  spotlightImage: { width: 44, height: 44, borderRadius: 12 },
+  spotlightImageFallback: { backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
+  spotlightFallbackText: { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary },
 
   quickRow:   { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   quickCard:  { flex: 1, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', gap: Spacing[1] },
