@@ -78,6 +78,7 @@ interface Props {
   onOpenClans?: () => void;
   onOpenSocial?: () => void;
   onOpenShahnamehHome?: () => void;
+  onOpenEarn?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -115,7 +116,7 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
 
 export function RealGramProfileScreen({
   onBack, onSignOut, onSettings, onOpenChapters, onOpenHeroes,
-  onOpenClans, onOpenSocial, onOpenShahnamehHome,
+  onOpenClans, onOpenSocial, onOpenShahnamehHome, onOpenEarn,
 }: Props) {
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
@@ -452,6 +453,23 @@ export function RealGramProfileScreen({
           <GlassCard style={styles.card}>
             <View style={styles.journeyBanner}>
               <Text style={styles.cardLabel}>Dashboard</Text>
+              <Text style={styles.journeyBannerArrow}>›</Text>
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
+        {/* Earn — native, real (A->B(125) roadmap item: Earn). Daily
+            check-in, social/partner tasks, referral milestones — all real
+            actions against /api/season2/earn/*, not a placeholder list. */}
+        <TouchableOpacity
+          disabled={!onOpenEarn}
+          onPress={onOpenEarn}
+          activeOpacity={0.85}
+          accessibilityLabel="Open earn"
+        >
+          <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+            <View style={styles.journeyBanner}>
+              <Text style={styles.cardLabel}>Earn</Text>
               <Text style={styles.journeyBannerArrow}>›</Text>
             </View>
           </GlassCard>

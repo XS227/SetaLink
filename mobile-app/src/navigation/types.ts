@@ -23,6 +23,7 @@ export type RootStackParamList = {
   ClanBrowse:    undefined;
   Social:        undefined;
   ShahnamehHome: undefined;
+  Earn:          undefined;
 };
 
 export type MainTabParamList = {

@@ -39,6 +39,7 @@ import { RealGramHeroesScreen }  from '../screens/RealGramHeroesScreen';
 import { RealGramClanBrowseScreen } from '../screens/RealGramClanBrowseScreen';
 import { RealGramSocialScreen }  from '../screens/RealGramSocialScreen';
 import { RealGramHomeScreen }    from '../screens/RealGramHomeScreen';
+import { RealGramEarnScreen }    from '../screens/RealGramEarnScreen';
 import { StarlinkScreen }        from '../screens/StarlinkScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
@@ -458,6 +459,7 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
       onOpenClans={() => navigation.navigate('ClanBrowse')}
       onOpenSocial={() => navigation.navigate('Social')}
       onOpenShahnamehHome={() => navigation.navigate('ShahnamehHome')}
+      onOpenEarn={() => navigation.navigate('Earn')}
     />
   );
 }
@@ -839,6 +841,14 @@ export function AppNavigator() {
               onOpenClans={() => navigation.navigate('ClanBrowse')}
               onOpenSocial={() => navigation.navigate('Social')}
             />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Earn"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramEarnScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
       </Stack.Navigator>
