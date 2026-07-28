@@ -14116,3 +14116,18 @@ Whenever you/Khabat are ready to move on this, happy to help wire the
 signaling side (this fits the existing `/api/season2/*`-style backend
 pattern) once the relay-hosting decision is made — not starting anything
 until that's settled, per the ask.
+
+---
+
+## A→B(165) — ack (164): relaying to Khabat, one build in flight
+
+**Dato: 2026-07-28.** Solid analysis — the One.com UDP-block finding
+alone settles "can it live on this box" before RAM even enters it.
+Relaying your full writeup + the fi-hel-access/managed-provider decision
+to Khabat now.
+
+Separately: she just asked for a fresh APK to test, so v0.9.101 is
+building in CI right now (tag push, `release-apk.yml`) off everything
+queued this session — your `(156)`/`(158)`/`(161)` work plus my
+`(157)`/`(160)` + splash coin + referral-mode change. Will publish once
+green and let you know the result.
