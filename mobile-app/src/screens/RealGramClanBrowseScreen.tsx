@@ -31,6 +31,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { getSsoToken } from '../services/ssoService';
@@ -43,27 +44,34 @@ interface Props {
   onBack: () => void;
 }
 
-const APPLY_ERROR_COPY: Record<string, string> = {
-  already_in_clan:       'You are already in a clan.',
-  cannot_apply_own_clan: 'That is your own clan.',
-  clan_full:              'That clan is full.',
-  clan_not_found:         'Clan not found.',
-  network_error:          "Couldn't reach the server — try again.",
-};
+function applyErrorCopy(code: string, t: (key: string) => string): string {
+  switch (code) {
+    case 'already_in_clan':       return t('clanbrowse.errAlreadyInClan');
+    case 'cannot_apply_own_clan': return t('clanbrowse.errCannotApplyOwn');
+    case 'clan_full':             return t('clanbrowse.errClanFull');
+    case 'clan_not_found':        return t('clanbrowse.errClanNotFound');
+    case 'network_error':         return t('clanbrowse.errNetwork');
+    default:                      return '';
+  }
+}
 
-const CREATE_ERROR_COPY: Record<string, string> = {
-  already_in_clan:      'You are already in a clan.',
-  name_too_short:        'Name is too short (min 3 characters).',
-  name_too_long:          'Name is too long (max 30 characters).',
-  name_invalid_chars:    'Name contains characters that aren’t allowed.',
-  name_taken:             'That name is already taken.',
-  insufficient_balance:  'Not enough REAL to found a clan.',
-  user_not_found:         'Could not identify your account — try again.',
-  network_error:          "Couldn't reach the server — try again.",
-};
+function createErrorCopy(code: string, t: (key: string) => string): string {
+  switch (code) {
+    case 'already_in_clan':       return t('clanbrowse.errAlreadyInClan');
+    case 'name_too_short':        return t('clanbrowse.errNameTooShort');
+    case 'name_too_long':         return t('clanbrowse.errNameTooLong');
+    case 'name_invalid_chars':    return t('clanbrowse.errNameInvalidChars');
+    case 'name_taken':            return t('clanbrowse.errNameTaken');
+    case 'insufficient_balance':  return t('clanbrowse.errInsufficientBalance');
+    case 'user_not_found':        return t('clanbrowse.errUserNotFound');
+    case 'network_error':         return t('clanbrowse.errNetwork');
+    default:                      return '';
+  }
+}
 
 export function RealGramClanBrowseScreen({ onBack }: Props) {
   const insets   = useSafeAreaInsets();
+  const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const showToast = useToastStore((s) => s.show);
 
@@ -80,41 +88,41 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
       const tid = deviceId ? (await getSsoToken(deviceId, true)).telegram_id : '';
       setTelegramId(tid);
       const [directory, mine] = await Promise.all([getClanDirectory(tid), getMyClan(tid)]);
-      if (directory.length === 0) { setError("Couldn't load the clan directory right now."); return; }
+      if (directory.length === 0) { setError(t('clanbrowse.loadError')); return; }
       setClans(directory);
       setMyClan(mine);
     } catch {
-      setError("Couldn't load the clan directory right now.");
+      setError(t('clanbrowse.loadError'));
     }
-  }, [deviceId]);
+  }, [deviceId, t]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleApply = useCallback(async (clan: ClanListing) => {
-    if (!telegramId) { showToast("Couldn't identify your account — try again shortly.", 'error'); return; }
+    if (!telegramId) { showToast(t('clanbrowse.identifyError'), 'error'); return; }
     setPendingId(clan.clan_id);
     const result = await applyToClan(telegramId, clan.clan_id);
     setPendingId(null);
     if (result.ok) {
-      showToast(`Application sent to ${clan.clan_name}!`, 'success');
+      showToast(t('clanbrowse.applicationSent').replace('{name}', clan.clan_name), 'success');
       setClans((prev) => prev?.map((c) => (c.clan_id === clan.clan_id ? { ...c, user_status: 'pending' } : c)) ?? prev);
     } else {
-      showToast(APPLY_ERROR_COPY[result.error] ?? 'Could not apply. Try again.', 'error');
+      showToast(applyErrorCopy(result.error, t) || t('clanbrowse.errApplyGeneric'), 'error');
     }
-  }, [telegramId, showToast]);
+  }, [telegramId, showToast, t]);
 
   const handleCreated = useCallback(() => {
     setCreateOpen(false);
-    showToast('Clan founded!', 'success');
+    showToast(t('clanbrowse.founded'), 'success');
     load(); // refresh directory + myClan so the new clan shows up immediately
-  }, [showToast, load]);
+  }, [showToast, load, t]);
 
   if (error) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity onPress={onBack} style={styles.backBtnFallback} activeOpacity={0.8}>
-          <Text style={styles.backBtnFallbackText}>Back</Text>
+          <Text style={styles.backBtnFallbackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -129,7 +137,7 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
         hitSlop={12}
         activeOpacity={0.75}
       >
-        <Text style={styles.backIcon}>‹</Text>
+        <Text style={styles.backIcon}>{isRTL ? '›' : '‹'}</Text>
       </TouchableOpacity>
       {!clans ? (
         <View style={styles.centered}>
@@ -145,21 +153,21 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
             <View>
               <View style={styles.titleRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.pageTitle}>Clans</Text>
-                  <Text style={styles.pageSub}>Warrior guilds from across the chronicle.</Text>
+                  <Text style={styles.pageTitle}>{t('clanbrowse.title')}</Text>
+                  <Text style={styles.pageSub}>{t('clanbrowse.subtitle')}</Text>
                 </View>
                 {/* Khabat, 2026-07-28: "cta knapp for å bygge ny clan" —
                     hidden once already in one, since /clan/create rejects
                     that server-side anyway (already_in_clan). */}
                 {!myClan && (
                   <TouchableOpacity onPress={() => setCreateOpen(true)} style={styles.createCta} activeOpacity={0.85}>
-                    <Text style={styles.createCtaText}>+ Found</Text>
+                    <Text style={styles.createCtaText}>{t('clanbrowse.foundCta')}</Text>
                   </TouchableOpacity>
                 )}
               </View>
               {myClan ? (
                 <GlassCard style={styles.myClanCard} glowColor={Colors.gold[400]}>
-                  <Text style={styles.cardLabel}>Your clan</Text>
+                  <Text style={styles.cardLabel}>{t('clanbrowse.yourClan')}</Text>
                   <View style={styles.clanRow}>
                     {myClan.clan_photo ? (
                       <Image source={{ uri: myClan.clan_photo }} style={styles.clanPhoto} />
@@ -170,13 +178,15 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.clanName} numberOfLines={1}>{myClan.clan_name}</Text>
-                      <Text style={styles.clanMeta}>{myClan.member_count} members · {myClan.treasury.toLocaleString()} REAL treasury</Text>
+                      <Text style={styles.clanMeta}>
+                        {t('clanbrowse.myClanMeta').replace('{count}', String(myClan.member_count)).replace('{treasury}', myClan.treasury.toLocaleString())}
+                      </Text>
                     </View>
                   </View>
                 </GlassCard>
               ) : (
                 <GlassCard style={styles.noteCard}>
-                  <Text style={styles.noteText}>You're not in a clan yet — tap one below to see it, or found your own.</Text>
+                  <Text style={styles.noteText}>{t('clanbrowse.notInClanTapBelow')}</Text>
                 </GlassCard>
               )}
             </View>
@@ -207,7 +217,7 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
                   />
                 </ScrollView>
                 <TouchableOpacity onPress={() => setSelectedId(null)} style={styles.sheetCloseBtn} activeOpacity={0.85}>
-                  <Text style={styles.sheetCloseBtnText}>Close</Text>
+                  <Text style={styles.sheetCloseBtnText}>{t('clanbrowse.close')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -229,6 +239,7 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
 
 /** Compact row — photo, name, motto, member count. Tap opens ClanDetail. */
 function ClanCard({ clan, onPress }: { clan: ClanListing; onPress: () => void }) {
+  const { t } = useT();
   return (
     <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
       <GlassCard style={styles.clanCard}>
@@ -243,7 +254,9 @@ function ClanCard({ clan, onPress }: { clan: ClanListing; onPress: () => void })
           <View style={{ flex: 1 }}>
             <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
             {!!clan.motto && <Text style={styles.clanMotto} numberOfLines={1}>"{clan.motto}"</Text>}
-            <Text style={styles.clanMeta}>{clan.member_count} members · led by {clan.leader_name || 'unknown'}</Text>
+            <Text style={styles.clanMeta}>
+              {t('clanbrowse.membersLedBy').replace('{count}', String(clan.member_count)).replace('{leader}', clan.leader_name || t('clanbrowse.unknownLeader'))}
+            </Text>
           </View>
           {clan.user_status !== 'none' && <Text style={styles.statusTag}>{clan.user_status}</Text>}
         </View>
@@ -257,6 +270,7 @@ function ClanCard({ clan, onPress }: { clan: ClanListing; onPress: () => void })
 function ClanDetail({
   clan, hasClan, pending, onApply,
 }: { clan: ClanListing; hasClan: boolean; pending: boolean; onApply: () => void }) {
+  const { t } = useT();
   const canApply = !hasClan && clan.user_status === 'none';
   return (
     <View style={{ gap: Spacing[3] }}>
@@ -272,12 +286,12 @@ function ClanDetail({
       <Text style={styles.detailName}>{clan.clan_name}</Text>
       {!!clan.motto && <Text style={styles.detailMotto}>"{clan.motto}"</Text>}
       <View style={styles.metaRow}>
-        <Text style={styles.clanMeta}>👑 Led by {clan.leader_name || 'unknown'}</Text>
+        <Text style={styles.clanMeta}>{t('clanbrowse.ledBy').replace('{leader}', clan.leader_name || t('clanbrowse.unknownLeader'))}</Text>
       </View>
       <View style={styles.metaRow}>
-        <Text style={styles.clanMeta}>{clan.member_count} members</Text>
+        <Text style={styles.clanMeta}>{t('clanbrowse.membersShort').replace('{count}', String(clan.member_count))}</Text>
         <Text style={styles.clanMeta}>·</Text>
-        <Text style={styles.clanMeta}>{clan.total_real_earned.toLocaleString()} REAL earned</Text>
+        <Text style={styles.clanMeta}>{t('clanbrowse.realEarned').replace('{amount}', clan.total_real_earned.toLocaleString())}</Text>
       </View>
       {canApply ? (
         <TouchableOpacity
@@ -288,11 +302,11 @@ function ClanDetail({
         >
           {pending
             ? <ActivityIndicator size="small" color={Colors.bg.void} />
-            : <Text style={styles.actionBtnText}>Apply to join</Text>}
+            : <Text style={styles.actionBtnText}>{t('clanbrowse.applyToJoin')}</Text>}
         </TouchableOpacity>
       ) : clan.user_status !== 'none' ? (
         <View style={[styles.actionBtn, styles.actionBtnDisabled]}>
-          <Text style={styles.actionBtnText}>{clan.user_status === 'member' ? 'You are a member' : clan.user_status}</Text>
+          <Text style={styles.actionBtnText}>{clan.user_status === 'member' ? t('clanbrowse.youAreMember') : clan.user_status}</Text>
         </View>
       ) : null}
     </View>
@@ -305,6 +319,7 @@ function ClanDetail({
 function CreateClanForm({
   telegramId, onCreated, onCancel,
 }: { telegramId: string; onCreated: () => void; onCancel: () => void }) {
+  const { t } = useT();
   const showToast = useToastStore((s) => s.show);
   const [name, setName] = useState('');
   const [motto, setMotto] = useState('');
@@ -327,25 +342,25 @@ function CreateClanForm({
   const canSubmit = !submitting && !localError && nameAvailable === true;
 
   const handleSubmit = useCallback(async () => {
-    if (!telegramId) { showToast("Couldn't identify your account — try again shortly.", 'error'); return; }
+    if (!telegramId) { showToast(t('clanbrowse.identifyError'), 'error'); return; }
     setSubmitting(true);
     const result = await createClan(telegramId, name, motto);
     setSubmitting(false);
     if (result.ok) {
       onCreated();
     } else {
-      showToast(CREATE_ERROR_COPY[result.error] ?? 'Could not found a clan. Try again.', 'error');
+      showToast(createErrorCopy(result.error, t) || t('clanbrowse.errCreateGeneric'), 'error');
     }
-  }, [telegramId, name, motto, showToast, onCreated]);
+  }, [telegramId, name, motto, showToast, onCreated, t]);
 
   return (
     <View style={{ gap: Spacing[3] }}>
-      <Text style={styles.detailName}>Found a clan</Text>
-      <Text style={styles.clanMeta}>Costs {CLAN_CREATE_COST.toLocaleString()} REAL. Choose a name other warriors will follow.</Text>
+      <Text style={styles.detailName}>{t('clanbrowse.foundClan')}</Text>
+      <Text style={styles.clanMeta}>{t('clanbrowse.foundClanCost').replace('{cost}', CLAN_CREATE_COST.toLocaleString())}</Text>
       <TextInput
         value={name}
         onChangeText={setName}
-        placeholder="Clan name"
+        placeholder={t('clanbrowse.namePlaceholder')}
         placeholderTextColor={Colors.text.muted}
         style={styles.formInput}
         maxLength={30}
@@ -353,18 +368,18 @@ function CreateClanForm({
       />
       {!!name.trim() && (
         <Text style={styles.formHint}>
-          {localError === 'too_short' ? 'At least 3 characters.'
-            : localError === 'invalid_chars' ? 'Some characters aren’t allowed.'
-            : checking ? 'Checking availability…'
-            : nameAvailable === true ? '✓ Available'
-            : nameAvailable === false ? 'Already taken.'
+          {localError === 'too_short' ? t('clanbrowse.hintTooShort')
+            : localError === 'invalid_chars' ? t('clanbrowse.hintInvalidChars')
+            : checking ? t('clanbrowse.hintChecking')
+            : nameAvailable === true ? t('clanbrowse.hintAvailable')
+            : nameAvailable === false ? t('clanbrowse.hintTaken')
             : ''}
         </Text>
       )}
       <TextInput
         value={motto}
         onChangeText={setMotto}
-        placeholder="Motto (optional)"
+        placeholder={t('clanbrowse.mottoPlaceholder')}
         placeholderTextColor={Colors.text.muted}
         style={styles.formInput}
         maxLength={80}
@@ -377,10 +392,10 @@ function CreateClanForm({
       >
         {submitting
           ? <ActivityIndicator size="small" color={Colors.bg.void} />
-          : <Text style={styles.actionBtnText}>Found clan — {CLAN_CREATE_COST.toLocaleString()} REAL</Text>}
+          : <Text style={styles.actionBtnText}>{t('clanbrowse.foundClanAction').replace('{cost}', CLAN_CREATE_COST.toLocaleString())}</Text>}
       </TouchableOpacity>
       <TouchableOpacity onPress={onCancel} style={styles.sheetCloseBtn} activeOpacity={0.85}>
-        <Text style={styles.sheetCloseBtnText}>Cancel</Text>
+        <Text style={styles.sheetCloseBtnText}>{t('common.cancel')}</Text>
       </TouchableOpacity>
     </View>
   );

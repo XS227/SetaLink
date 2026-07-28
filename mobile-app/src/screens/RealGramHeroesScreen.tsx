@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { getSsoToken } from '../services/ssoService';
@@ -38,17 +39,21 @@ function rarityColor(rarity: string): string {
   return Colors.rarity[normalized] ?? Colors.rarity.common;
 }
 
-const BUY_ERROR_COPY: Record<string, string> = {
-  already_owned:        'You already own this.',
-  prereq_not_met:        "You don't meet the requirement yet.",
-  insufficient_balance:  'Not enough REAL.',
-  unknown_hero:           'Something went wrong — try again.',
-  not_owned:              "You don't own this yet.",
-  network_error:          "Couldn't reach the server — try again.",
-};
+function buyErrorCopy(code: string, t: (key: string) => string): string {
+  switch (code) {
+    case 'already_owned':       return t('heroes.errAlreadyOwned');
+    case 'prereq_not_met':      return t('heroes.errPrereqNotMet');
+    case 'insufficient_balance':return t('heroes.errInsufficientBalance');
+    case 'unknown_hero':        return t('heroes.errUnknownHero');
+    case 'not_owned':           return t('heroes.errNotOwned');
+    case 'network_error':       return t('heroes.errNetwork');
+    default:                    return '';
+  }
+}
 
 export function RealGramHeroesScreen({ onBack }: Props) {
   const insets    = useSafeAreaInsets();
+  const { t } = useT();
   const deviceId  = useAuthStore((s) => s.user?.deviceId ?? '');
   const showToast = useToastStore((s) => s.show);
 
@@ -69,28 +74,28 @@ export function RealGramHeroesScreen({ onBack }: Props) {
       const tid = deviceId ? (await getSsoToken(deviceId, true)).telegram_id : '';
       setTelegramId(tid);
       const [catalog, mine] = await Promise.all([getHeroCatalog(), getOwnedHeroes(tid)]);
-      if (catalog.length === 0) { setError("Couldn't load the hero roster right now."); return; }
+      if (catalog.length === 0) { setError(t('heroes.loadError')); return; }
       setHeroes(catalog);
       setOwned(mine);
     } catch {
-      setError("Couldn't load the hero roster right now.");
+      setError(t('heroes.loadError'));
     }
-  }, [deviceId]);
+  }, [deviceId, t]);
 
   useEffect(() => { load(); }, [load]);
 
   const handleBuy = useCallback(async (hero: HeroCatalogEntry) => {
-    if (!telegramId) { showToast("Couldn't identify your account — try again shortly.", 'error'); return; }
+    if (!telegramId) { showToast(t('heroes.identifyError'), 'error'); return; }
     setPendingSlug(hero.slug);
     const result = await buyHero(telegramId, hero.slug);
     setPendingSlug(null);
     if (result.ok) {
-      showToast(`${hero.name} acquired!`, 'success');
+      showToast(t('heroes.acquired').replace('{name}', hero.name), 'success');
       setOwned((prev) => new Map(prev).set(hero.slug, { hero_id: hero.slug, level: result.data.level, zar_per_hour: result.data.zar_per_hour }));
     } else {
-      showToast(BUY_ERROR_COPY[result.error] ?? 'Could not buy. Try again.', 'error');
+      showToast(buyErrorCopy(result.error, t) || t('heroes.errBuyGeneric'), 'error');
     }
-  }, [telegramId, showToast]);
+  }, [telegramId, showToast, t]);
 
   const handleUpgrade = useCallback(async (hero: HeroCatalogEntry) => {
     if (!telegramId) return;
@@ -98,19 +103,19 @@ export function RealGramHeroesScreen({ onBack }: Props) {
     const result = await upgradeHero(telegramId, hero.slug);
     setPendingSlug(null);
     if (result.ok) {
-      showToast(`${hero.name} upgraded to level ${result.data.level}!`, 'success');
+      showToast(t('heroes.upgraded').replace('{name}', hero.name).replace('{level}', String(result.data.level)), 'success');
       setOwned((prev) => new Map(prev).set(hero.slug, { hero_id: hero.slug, level: result.data.level, zar_per_hour: result.data.zar_per_hour }));
     } else {
-      showToast(BUY_ERROR_COPY[result.error] ?? 'Could not upgrade. Try again.', 'error');
+      showToast(buyErrorCopy(result.error, t) || t('heroes.errUpgradeGeneric'), 'error');
     }
-  }, [telegramId, showToast]);
+  }, [telegramId, showToast, t]);
 
   if (error) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity onPress={onBack} style={styles.backBtnFallback} activeOpacity={0.8}>
-          <Text style={styles.backBtnFallbackText}>Back</Text>
+          <Text style={styles.backBtnFallbackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -141,8 +146,8 @@ export function RealGramHeroesScreen({ onBack }: Props) {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View>
-              <Text style={styles.pageTitle}>Heroes</Text>
-              <Text style={styles.pageSub}>Legendary figures, artifacts, and creatures — own them for passive ZAR income.</Text>
+              <Text style={styles.pageTitle}>{t('heroes.title')}</Text>
+              <Text style={styles.pageSub}>{t('heroes.subtitle')}</Text>
             </View>
           }
           renderItem={({ item }) => {
@@ -196,7 +201,7 @@ export function RealGramHeroesScreen({ onBack }: Props) {
                   />
                 </ScrollView>
                 <TouchableOpacity onPress={() => setSelectedSlug(null)} style={styles.sheetCloseBtn} activeOpacity={0.85}>
-                  <Text style={styles.sheetCloseBtnText}>Close</Text>
+                  <Text style={styles.sheetCloseBtnText}>{t('heroes.close')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -214,13 +219,14 @@ function HeroGridCard({
 }: {
   hero: HeroCatalogEntry; owned?: OwnedHero; prereqMet: boolean; onPress: () => void;
 }) {
+  const { t } = useT();
   const color = rarityColor(hero.rarity);
   const locked = !owned && !prereqMet;
   const statusLine = owned
-    ? `Lv. ${owned.level}`
+    ? t('heroes.levelShort').replace('{level}', String(owned.level))
     : prereqMet
-      ? `${hero.cost} REAL`
-      : '🔒 Locked';
+      ? t('heroes.priceReal').replace('{cost}', String(hero.cost))
+      : `🔒 ${t('heroes.locked')}`;
   return (
     <TouchableOpacity style={styles.gridCardTouch} onPress={onPress} activeOpacity={0.85}>
       <GlassCard style={styles.gridCard} glowColor={owned ? color : undefined} noPadding>
@@ -250,6 +256,7 @@ function HeroDetail({
   hero: HeroCatalogEntry; owned?: OwnedHero; prereqMet: boolean; pending: boolean;
   onBuy: () => void; onUpgrade: () => void;
 }) {
+  const { t } = useT();
   const color = rarityColor(hero.rarity);
   return (
     <View style={{ gap: Spacing[3] }}>
@@ -268,8 +275,8 @@ function HeroDetail({
       </View>
       {!!hero.description && <Text style={styles.heroDescription}>{hero.description}</Text>}
       <View style={styles.metaRow}>
-        <Text style={styles.zarText}>🪙 {owned ? owned.zar_per_hour : hero.zar_per_hour} ZAR/hr</Text>
-        {owned && <Text style={styles.levelText}>Lv. {owned.level}</Text>}
+        <Text style={styles.zarText}>🪙 {t('heroes.zarPerHour').replace('{rate}', String(owned ? owned.zar_per_hour : hero.zar_per_hour))}</Text>
+        {owned && <Text style={styles.levelText}>{t('heroes.levelShort').replace('{level}', String(owned.level))}</Text>}
       </View>
       {!owned && !prereqMet && !!hero.unlock_requirement && (
         <Text style={styles.unlockText}>🔒 {hero.unlock_requirement}</Text>
@@ -282,7 +289,11 @@ function HeroDetail({
       >
         {pending
           ? <ActivityIndicator size="small" color={Colors.bg.void} />
-          : <Text style={styles.actionBtnText}>{owned ? `Upgrade — ${hero.cost * owned.level} REAL` : `Buy — ${hero.cost} REAL`}</Text>}
+          : <Text style={styles.actionBtnText}>
+              {owned
+                ? t('heroes.upgradeAction').replace('{cost}', String(hero.cost * owned.level))
+                : t('heroes.buyAction').replace('{cost}', String(hero.cost))}
+            </Text>}
       </TouchableOpacity>
     </View>
   );

@@ -57,6 +57,7 @@ import { InvitedFriendsList } from '../components/InvitedFriendsList';
 import { StarlinkCard } from '../components/StarlinkCard';
 import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useStarlinkStore } from '../stores/starlinkStore';
 import { getProfileSummary, ProfileClan } from '../services/realGramProfileService';
@@ -70,6 +71,7 @@ interface Props {
 }
 
 export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Props) {
+  const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const token    = useAuthStore((s) => s.token);
   const quotaTotal = useAuthStore((s) => s.user?.quotaBytesTotal ?? 0);
@@ -100,8 +102,8 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Pr
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.pageTitle}>Community</Text>
-        <Text style={styles.pageSub}>Your RealGram network, rewards, and access.</Text>
+        <Text style={styles.pageTitle}>{t('clan.title')}</Text>
+        <Text style={styles.pageSub}>{t('clan.subtitle')}</Text>
 
         {/* Members / referrals / shared rewards + "top contributors" ranking —
             a complete, already-shipped component, just never placed here. */}
@@ -129,9 +131,9 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Pr
 
         {/* Data contribution — the quota this network has earned back. */}
         <GlassCard style={styles.card}>
-          <Text style={styles.cardLabel}>Your data plan</Text>
+          <Text style={styles.cardLabel}>{t('clan.dataPlan')}</Text>
           <Text style={styles.dataValue}>{(quotaTotal / ONE_GB).toFixed(1)} GB</Text>
-          <Text style={styles.dataSub}>Total quota, including what your network has earned you</Text>
+          <Text style={styles.dataSub}>{t('clan.dataPlanSub')}</Text>
         </GlassCard>
 
         {/* Shahnameh in-game clan — secondary, honestly labeled, real data
@@ -142,8 +144,8 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Pr
           {clan ? (
             <GlassCard style={styles.card}>
               <View style={styles.cardLabelRow}>
-                <Text style={styles.cardLabel}>Your Shahnameh clan</Text>
-                <Text style={styles.chevron}>›</Text>
+                <Text style={styles.cardLabel}>{t('clan.shahnamehClan')}</Text>
+                <Text style={styles.chevron}>{isRTL ? '‹' : '›'}</Text>
               </View>
               <View style={styles.clanRow}>
                 {clan.clan_photo ? (
@@ -156,7 +158,8 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Pr
                 <View style={{ flex: 1 }}>
                   <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
                   <Text style={styles.clanMeta}>
-                    {clan.member_count} members{clan.role ? ` · ${clan.role === 'leader' ? '👑 Leader' : clan.role}` : ''}
+                    {t('clan.membersCount').replace('{count}', String(clan.member_count))}
+                    {clan.role ? ` · ${clan.role === 'leader' ? t('clan.roleLeader') : clan.role}` : ''}
                   </Text>
                 </View>
               </View>
@@ -164,10 +167,10 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Pr
           ) : (
             <GlassCard style={styles.card}>
               <View style={styles.cardLabelRow}>
-                <Text style={styles.cardLabel}>Shahnameh clan</Text>
-                <Text style={styles.chevron}>›</Text>
+                <Text style={styles.cardLabel}>{t('clan.shahnamehClanEmptyLabel')}</Text>
+                <Text style={styles.chevron}>{isRTL ? '‹' : '›'}</Text>
               </View>
-              <Text style={styles.dataSub}>Not in a clan yet — browse clans or found your own.</Text>
+              <Text style={styles.dataSub}>{t('clan.notInClanYet')}</Text>
             </GlassCard>
           )}
         </TouchableOpacity>

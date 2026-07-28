@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { getSsoToken } from '../services/ssoService';
@@ -39,6 +40,7 @@ function todayStr(): string {
 
 export function RealGramEarnScreen({ onBack }: Props) {
   const insets   = useSafeAreaInsets();
+  const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const showToast = useToastStore((s) => s.show);
 
@@ -65,19 +67,19 @@ export function RealGramEarnScreen({ onBack }: Props) {
       setClaimedMilestones(new Set(profile.achievements.milestones_claimed));
       setReferralCount(profile.achievements.verified_referral_count ?? 0);
     } catch {
-      setError("Couldn't load your rewards right now.");
+      setError(t('earn.loadError'));
     } finally {
       setLoading(false);
     }
-  }, [deviceId]);
+  }, [deviceId, t]);
 
   useEffect(() => { load(); }, [load]);
 
   const requireTelegramId = useCallback((): boolean => {
     if (telegramId) return true;
-    showToast("Couldn't identify your account — try again shortly.", 'error');
+    showToast(t('earn.identifyError'), 'error');
     return false;
-  }, [telegramId, showToast]);
+  }, [telegramId, showToast, t]);
 
   const handleCheckin = useCallback(async () => {
     if (!requireTelegramId() || checkedInToday) return;
@@ -87,14 +89,14 @@ export function RealGramEarnScreen({ onBack }: Props) {
     if (result.ok) {
       setStreak(result.streak);
       setCheckedInToday(true);
-      showToast(`+${result.reward_real} REAL claimed!`, 'success');
+      showToast(t('earn.claimedReward').replace('{amount}', String(result.reward_real)), 'success');
     } else if (result.error === 'already_claimed') {
       setCheckedInToday(true);
-      showToast('Already claimed today!', 'info');
+      showToast(t('earn.alreadyClaimedToday'), 'info');
     } else {
-      showToast('Could not claim. Try again.', 'error');
+      showToast(t('earn.claimGeneric'), 'error');
     }
-  }, [telegramId, checkedInToday, requireTelegramId, showToast]);
+  }, [telegramId, checkedInToday, requireTelegramId, showToast, t]);
 
   const handleTask = useCallback(async (task: EarnTask) => {
     Linking.openURL(task.url).catch(() => {});
@@ -104,11 +106,11 @@ export function RealGramEarnScreen({ onBack }: Props) {
     setBusyKey(null);
     if (result.ok || result.error === 'already_completed') {
       setCompletedTasks((prev) => new Set(prev).add(task.id));
-      showToast(result.ok ? `+${task.reward_real} REAL claimed!` : 'Already claimed — check your wallet.', 'success');
+      showToast(result.ok ? t('earn.claimedReward').replace('{amount}', String(task.reward_real)) : t('earn.alreadyClaimedCheckWallet'), 'success');
     } else {
-      showToast('Could not verify. Try again in a moment.', 'error');
+      showToast(t('earn.verifyGeneric'), 'error');
     }
-  }, [telegramId, requireTelegramId, showToast]);
+  }, [telegramId, requireTelegramId, showToast, t]);
 
   const handleMilestone = useCallback(async (m: typeof MILESTONES[number]) => {
     if (!requireTelegramId()) return;
@@ -117,23 +119,23 @@ export function RealGramEarnScreen({ onBack }: Props) {
     setBusyKey(null);
     if (result.ok) {
       setClaimedMilestones((prev) => new Set(prev).add(m.threshold));
-      showToast(`+${m.real} REAL claimed!`, 'success');
+      showToast(t('earn.claimedReward').replace('{amount}', String(m.real)), 'success');
     } else if (result.error === 'already_claimed') {
       setClaimedMilestones((prev) => new Set(prev).add(m.threshold));
-      showToast('Already claimed!', 'info');
+      showToast(t('earn.alreadyClaimed'), 'info');
     } else if (result.error === 'not_reached') {
-      showToast('Not reached yet.', 'info');
+      showToast(t('earn.notReachedYet'), 'info');
     } else {
-      showToast('Could not claim. Try again.', 'error');
+      showToast(t('earn.claimGeneric'), 'error');
     }
-  }, [telegramId, requireTelegramId, showToast]);
+  }, [telegramId, requireTelegramId, showToast, t]);
 
   if (error) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity onPress={onBack} style={styles.backBtnFallback} activeOpacity={0.8}>
-          <Text style={styles.backBtnFallbackText}>Back</Text>
+          <Text style={styles.backBtnFallbackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -151,7 +153,7 @@ export function RealGramEarnScreen({ onBack }: Props) {
         hitSlop={12}
         activeOpacity={0.75}
       >
-        <Text style={styles.backIcon}>‹</Text>
+        <Text style={styles.backIcon}>{isRTL ? '›' : '‹'}</Text>
       </TouchableOpacity>
       {loading ? (
         <View style={styles.centered}>
@@ -162,14 +164,14 @@ export function RealGramEarnScreen({ onBack }: Props) {
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing[6] }]}
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.pageTitle}>Earn</Text>
-          <Text style={styles.pageSub}>Daily rewards, social tasks, and referral milestones.</Text>
+          <Text style={styles.pageTitle}>{t('earn.title')}</Text>
+          <Text style={styles.pageSub}>{t('earn.subtitle')}</Text>
 
           {/* Check-in */}
           <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
             <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardLabel}>Daily check-in</Text>
-              <Text style={styles.streakText}>{streak} day streak</Text>
+              <Text style={styles.cardLabel}>{t('earn.dailyCheckin')}</Text>
+              <Text style={styles.streakText}>{t('earn.dayStreak').replace('{n}', String(streak))}</Text>
             </View>
             <View style={styles.checkinStrip}>
               {CHECKIN_REWARDS.map((r, i) => {
@@ -192,26 +194,26 @@ export function RealGramEarnScreen({ onBack }: Props) {
               {busyKey === 'checkin'
                 ? <ActivityIndicator size="small" color={Colors.bg.void} />
                 : <Text style={styles.claimBtnText}>
-                    {checkedInToday ? 'Claimed today' : `Claim +${nextReward.real} REAL`}
+                    {checkedInToday ? t('earn.claimedToday') : t('earn.claimAmount').replace('{amount}', String(nextReward.real))}
                   </Text>}
             </TouchableOpacity>
           </GlassCard>
 
           {/* Social tasks */}
-          <Text style={styles.sectionTitle}>Social tasks</Text>
+          <Text style={styles.sectionTitle}>{t('earn.socialTasks')}</Text>
           {SOCIAL_TASKS.map((task) => (
             <TaskRow key={task.id} task={task} done={completedTasks.has(task.id)} busy={busyKey === task.id} onPress={() => handleTask(task)} />
           ))}
 
           {/* Partners */}
-          <Text style={styles.sectionTitle}>Partners</Text>
+          <Text style={styles.sectionTitle}>{t('earn.partners')}</Text>
           {PARTNER_TASKS.map((task) => (
             <TaskRow key={task.id} task={task} done={completedTasks.has(task.id)} busy={busyKey === task.id} onPress={() => handleTask(task)} />
           ))}
 
           {/* Milestones */}
-          <Text style={styles.sectionTitle}>Referral milestones</Text>
-          <Text style={styles.milestoneSub}>{referralCount} verified invites so far</Text>
+          <Text style={styles.sectionTitle}>{t('earn.referralMilestones')}</Text>
+          <Text style={styles.milestoneSub}>{t('earn.verifiedInvitesSoFar').replace('{count}', String(referralCount))}</Text>
           {MILESTONES.map((m) => {
             const claimed = claimedMilestones.has(m.threshold);
             const reached = referralCount >= m.threshold;
@@ -233,7 +235,7 @@ export function RealGramEarnScreen({ onBack }: Props) {
                     >
                       {busyKey === `ms-${m.threshold}`
                         ? <ActivityIndicator size="small" color={Colors.bg.void} />
-                        : <Text style={styles.taskBtnText}>{reached ? 'Claim' : `${referralCount}/${m.threshold}`}</Text>}
+                        : <Text style={styles.taskBtnText}>{reached ? t('earn.claim') : `${referralCount}/${m.threshold}`}</Text>}
                     </TouchableOpacity>
                   )}
                 </View>
@@ -249,6 +251,7 @@ export function RealGramEarnScreen({ onBack }: Props) {
 function TaskRow({
   task, done, busy, onPress,
 }: { task: EarnTask; done: boolean; busy: boolean; onPress: () => void }) {
+  const { t } = useT();
   return (
     <GlassCard style={styles.taskCard}>
       <View style={styles.taskRow}>
@@ -263,7 +266,7 @@ function TaskRow({
           <TouchableOpacity onPress={onPress} disabled={busy} style={styles.taskBtn} activeOpacity={0.85}>
             {busy
               ? <ActivityIndicator size="small" color={Colors.bg.void} />
-              : <Text style={styles.taskBtnText}>Open</Text>}
+              : <Text style={styles.taskBtnText}>{t('earn.open')}</Text>}
           </TouchableOpacity>
         )}
       </View>

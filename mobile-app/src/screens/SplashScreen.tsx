@@ -22,6 +22,7 @@ import {
 } from 'react-native';
 import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { Colors, Typography, Animation } from '../design/tokens';
+import { useT } from '../i18n';
 import { APP_VERSION } from '../utils/version';
 
 const { width, height } = Dimensions.get('window');
@@ -33,6 +34,7 @@ interface Props {
 }
 
 export function SplashScreen({ onFinish }: Props) {
+  const { t } = useT();
   const logoScale   = useRef(new Animated.Value(0.4)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
   const glowOpacity = useRef(new Animated.Value(0)).current;
@@ -201,7 +203,7 @@ export function SplashScreen({ onFinish }: Props) {
 
         {/* Tagline */}
         <Animated.Text style={[styles.tagline, { opacity: tagOpacity }]}>
-          Intelligent Connectivity
+          {t('splash.tagline')}
         </Animated.Text>
       </View>
 

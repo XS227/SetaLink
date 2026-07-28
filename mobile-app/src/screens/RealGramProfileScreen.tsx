@@ -26,6 +26,7 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
 import { useProfilePicStore } from '../stores/profilePicStore';
@@ -42,15 +43,15 @@ import { syncEntitlement } from '../services/entitlementService';
 // showed the literal string "profile_unavailable". Map known codes to
 // something a user can actually act on; anything unrecognized still gets
 // a plain, non-technical message rather than the raw string.
-function friendlyProfileError(code: string): string {
+function friendlyProfileError(code: string, t: (key: string) => string): string {
   switch (code) {
     case 'profile_unavailable':
     case 'account_not_found':
-      return "We couldn't load your profile right now. This is usually temporary.";
+      return t('rgprofile.errUnavailable');
     case 'missing_device_id':
-      return 'Something went wrong identifying this device.';
+      return t('rgprofile.errDeviceId');
     default:
-      return "We couldn't load your profile right now. This is usually temporary.";
+      return t('rgprofile.errUnavailable');
   }
 }
 
@@ -119,6 +120,7 @@ export function RealGramProfileScreen({
   onBack, onSignOut, onSettings, onOpenChapters, onOpenHeroes,
   onOpenClans, onOpenSocial, onOpenShahnamehHome, onOpenEarn, onOpenLiveTv,
 }: Props) {
+  const { t, isRTL } = useT();
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   // Data balance lives on the VPN side (entitlement/quota), not the Shahnameh
@@ -181,10 +183,10 @@ export function RealGramProfileScreen({
         // A silent background refresh failing shouldn't blow away an
         // already-displayed profile into an error screen — leave the
         // stale numbers up and just try again next time this tab refocuses.
-        if (!opts?.silent) setError(friendlyProfileError(code));
+        if (!opts?.silent) setError(friendlyProfileError(code, t));
         setLoading(false);
       });
-  }, [deviceId]);
+  }, [deviceId, t]);
 
   const handleManualRetry = useCallback(() => {
     autoRetriesRef.current = 0;
@@ -235,19 +237,19 @@ export function RealGramProfileScreen({
     if (!onSignOut) return;
     if (!biometricLock) {
       Alert.alert(
-        'App Lock required',
-        'Set up fingerprint or passcode lock in Settings before you can sign out — this keeps your account safe if the device is lost.',
+        t('rgprofile.appLockRequired'),
+        t('rgprofile.appLockRequiredMsg'),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Go to Settings', onPress: () => onSettings?.() },
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('rgprofile.goToSettings'), onPress: () => onSettings?.() },
         ],
       );
       return;
     }
-    BiometricService.authenticate('Sign out', 'Confirm it’s you before signing out')
+    BiometricService.authenticate(t('rgprofile.signOut'), t('rgprofile.confirmSignOut'))
       .then((ok) => { if (ok) onSignOut(); })
       .catch(() => {});
-  }, [onSignOut, onSettings, biometricLock]);
+  }, [onSignOut, onSettings, biometricLock, t]);
 
   if (loading) {
     return (
@@ -260,9 +262,9 @@ export function RealGramProfileScreen({
   if (error || !profile) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top, gap: Spacing[4] }]}>
-        <Text style={styles.errorText}>{error || 'Profile unavailable'}</Text>
+        <Text style={styles.errorText}>{error || t('rgprofile.unavailable')}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={handleManualRetry} activeOpacity={0.85}>
-          <Text style={styles.retryBtnText}>Try again</Text>
+          <Text style={styles.retryBtnText}>{t('rgprofile.tryAgain')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -278,7 +280,7 @@ export function RealGramProfileScreen({
   const displayName =
     identity.handle || identity.username || identity.first_name
     || (localHandle ? `@${localHandle}` : '') || localDisplayName
-    || 'RealGram Player';
+    || t('rgprofile.defaultName');
   const chapterPct  = chapters.total > 0 ? chapters.completed / chapters.total : 0;
 
   return (
@@ -321,59 +323,63 @@ export function RealGramProfileScreen({
           <View style={{ flex: 1 }}>
             <Text style={styles.displayName} numberOfLines={1}>{displayName}</Text>
             <Text style={styles.levelText}>
-              Level {economy.level} · {profile.id_type === 'real' ? 'RealGram' : 'Telegram'}
-              {persona ? ` · ${persona === 'king' ? 'King' : 'Queen'}` : ''}
+              {t('rgprofile.levelLine')
+                .replace('{level}', String(economy.level))
+                .replace('{idType}', profile.id_type === 'real' ? t('rgprofile.idTypeReal') : t('rgprofile.idTypeTelegram'))}
+              {persona ? ` · ${persona === 'king' ? t('rgprofile.personaKing') : t('rgprofile.personaQueen')}` : ''}
             </Text>
           </View>
         </View>
 
         {/* Economy */}
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-          <Text style={styles.cardLabel}>Economy</Text>
+          <Text style={styles.cardLabel}>{t('rgprofile.economy')}</Text>
           <View style={styles.statsGrid}>
-            <StatCell value={economy.real_balance.toLocaleString()} label="REAL" icon="💎" />
-            <StatCell value={economy.zar.toLocaleString()}          label="ZAR"  icon="🪙" />
-            <StatCell value={economy.gems}                          label="Gems" icon="💠" />
-            <StatCell value={economy.farr}                          label="FARR" icon="🔥" />
-            <StatCell value={economy.xp.toLocaleString()}           label="XP"   icon="⭐" />
-            <StatCell value={economy.real_earned_this_season.toLocaleString()} label="Earned (season)" icon="📈" />
+            <StatCell value={economy.real_balance.toLocaleString()} label={t('rghome.statReal')} icon="💎" />
+            <StatCell value={economy.zar.toLocaleString()}          label={t('rghome.statZar')}  icon="🪙" />
+            <StatCell value={economy.gems}                          label={t('rghome.statGems')} icon="💠" />
+            <StatCell value={economy.farr}                          label={t('rgprofile.statFarr')} icon="🔥" />
+            <StatCell value={economy.xp.toLocaleString()}           label={t('rghome.statXp')}   icon="⭐" />
+            <StatCell value={economy.real_earned_this_season.toLocaleString()} label={t('rgprofile.statEarnedSeason')} icon="📈" />
           </View>
         </GlassCard>
 
         {/* Data balance (VPN quota — separate domain from Shahnameh's economy above) */}
         <GlassCard style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardLabel}>Data</Text>
-            <Text style={styles.chapterCount}>{plan === 'free' ? 'Free plan' : plan}</Text>
+            <Text style={styles.cardLabel}>{t('rgprofile.data')}</Text>
+            <Text style={styles.chapterCount}>{plan === 'free' ? t('rgprofile.freePlan') : plan}</Text>
           </View>
           {quotaTotal > 0 ? (
             <>
               <View style={styles.progressTrack}>
                 <View style={[styles.progressFill, { width: `${Math.min(100, (quotaUsed / quotaTotal) * 100)}%` as any }]} />
               </View>
-              <Text style={styles.emptyText}>{formatBytes(quotaUsed)} of {formatBytes(quotaTotal)} used</Text>
+              <Text style={styles.emptyText}>
+                {t('rgprofile.quotaUsed').replace('{used}', formatBytes(quotaUsed)).replace('{total}', formatBytes(quotaTotal))}
+              </Text>
             </>
           ) : (
-            <Text style={styles.emptyText}>Unlimited</Text>
+            <Text style={styles.emptyText}>{t('rgprofile.unlimited')}</Text>
           )}
         </GlassCard>
 
         {/* Streaks */}
         <GlassCard style={styles.card}>
-          <Text style={styles.cardLabel}>Streaks</Text>
+          <Text style={styles.cardLabel}>{t('rgprofile.streaks')}</Text>
           <View style={styles.statsGrid}>
-            <StatCell value={streaks.daily_streak}   label="Daily streak" />
-            <StatCell value={streaks.checkin_streak} label="Check-in streak" />
+            <StatCell value={streaks.daily_streak}   label={t('rgprofile.dailyStreak')} />
+            <StatCell value={streaks.checkin_streak} label={t('rgprofile.checkinStreak')} />
           </View>
         </GlassCard>
 
         {/* Achievements */}
         <GlassCard style={styles.card}>
-          <Text style={styles.cardLabel}>Achievements</Text>
+          <Text style={styles.cardLabel}>{t('rgprofile.achievements')}</Text>
           <View style={styles.statsGrid}>
-            <StatCell value={achievements.verified_referral_count} label="Verified invites" />
-            <StatCell value={achievements.milestones_claimed.length} label="Milestones" />
-            <StatCell value={achievements.completed_tasks.length}    label="Tasks done" />
+            <StatCell value={achievements.verified_referral_count} label={t('rgprofile.verifiedInvites')} />
+            <StatCell value={achievements.milestones_claimed.length} label={t('rgprofile.milestones')} />
+            <StatCell value={achievements.completed_tasks.length}    label={t('rgprofile.tasksDone')} />
           </View>
         </GlassCard>
 
@@ -383,19 +389,19 @@ export function RealGramProfileScreen({
           disabled={!onOpenChapters}
           onPress={onOpenChapters}
           activeOpacity={0.85}
-          accessibilityLabel="Continue your journey"
+          accessibilityLabel={t('rgprofile.continueJourney')}
         >
           <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
             <View style={styles.cardHeaderRow}>
-              <Text style={styles.cardLabel}>Chapters</Text>
+              <Text style={styles.cardLabel}>{t('rgprofile.chapters')}</Text>
               <Text style={styles.chapterCount}>{chapters.completed}/{chapters.total}</Text>
             </View>
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${chapterPct * 100}%` as any }]} />
             </View>
             <View style={styles.journeyBanner}>
-              <Text style={styles.journeyBannerText}>Continue your journey</Text>
-              <Text style={styles.journeyBannerArrow}>›</Text>
+              <Text style={styles.journeyBannerText}>{t('rgprofile.continueJourney')}</Text>
+              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
             </View>
           </GlassCard>
         </TouchableOpacity>
@@ -406,12 +412,12 @@ export function RealGramProfileScreen({
           disabled={!onOpenHeroes}
           onPress={onOpenHeroes}
           activeOpacity={0.85}
-          accessibilityLabel="Browse heroes"
+          accessibilityLabel={t('rgprofile.browseHeroes')}
         >
           <GlassCard style={styles.card}>
             <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>Heroes</Text>
-              <Text style={styles.journeyBannerArrow}>›</Text>
+              <Text style={styles.cardLabel}>{t('rgprofile.heroes')}</Text>
+              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
             </View>
           </GlassCard>
         </TouchableOpacity>
@@ -423,22 +429,22 @@ export function RealGramProfileScreen({
             disabled={!onOpenClans}
             onPress={onOpenClans}
             activeOpacity={0.85}
-            accessibilityLabel="Browse clans"
+            accessibilityLabel={t('rgprofile.browseClans')}
             style={{ flex: 1 }}
           >
             <GlassCard style={styles.quickLinkCard}>
-              <Text style={styles.cardLabel}>Clans</Text>
+              <Text style={styles.cardLabel}>{t('rgprofile.clans')}</Text>
             </GlassCard>
           </TouchableOpacity>
           <TouchableOpacity
             disabled={!onOpenSocial}
             onPress={onOpenSocial}
             activeOpacity={0.85}
-            accessibilityLabel="Open social"
+            accessibilityLabel={t('rgprofile.openSocial')}
             style={{ flex: 1 }}
           >
             <GlassCard style={styles.quickLinkCard}>
-              <Text style={styles.cardLabel}>Social</Text>
+              <Text style={styles.cardLabel}>{t('rgprofile.social')}</Text>
             </GlassCard>
           </TouchableOpacity>
         </View>
@@ -449,12 +455,12 @@ export function RealGramProfileScreen({
           disabled={!onOpenShahnamehHome}
           onPress={onOpenShahnamehHome}
           activeOpacity={0.85}
-          accessibilityLabel="Open dashboard"
+          accessibilityLabel={t('rgprofile.openDashboard')}
         >
           <GlassCard style={styles.card}>
             <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>Dashboard</Text>
-              <Text style={styles.journeyBannerArrow}>›</Text>
+              <Text style={styles.cardLabel}>{t('rgprofile.dashboard')}</Text>
+              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
             </View>
           </GlassCard>
         </TouchableOpacity>
@@ -466,12 +472,12 @@ export function RealGramProfileScreen({
           disabled={!onOpenEarn}
           onPress={onOpenEarn}
           activeOpacity={0.85}
-          accessibilityLabel="Open earn"
+          accessibilityLabel={t('rgprofile.openEarn')}
         >
           <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
             <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>Earn</Text>
-              <Text style={styles.journeyBannerArrow}>›</Text>
+              <Text style={styles.cardLabel}>{t('rgprofile.earn')}</Text>
+              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
             </View>
           </GlassCard>
         </TouchableOpacity>
@@ -481,19 +487,19 @@ export function RealGramProfileScreen({
           disabled={!onOpenLiveTv}
           onPress={onOpenLiveTv}
           activeOpacity={0.85}
-          accessibilityLabel="Open live tv"
+          accessibilityLabel={t('rgprofile.openLiveTv')}
         >
           <GlassCard style={styles.card}>
             <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>📺 Live TV</Text>
-              <Text style={styles.journeyBannerArrow}>›</Text>
+              <Text style={styles.cardLabel}>{t('rgprofile.liveTv')}</Text>
+              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
             </View>
           </GlassCard>
         </TouchableOpacity>
 
         {/* Clan */}
         <GlassCard style={styles.card}>
-          <Text style={styles.cardLabel}>Clan</Text>
+          <Text style={styles.cardLabel}>{t('rgprofile.clan')}</Text>
           {clan ? (
             <View style={styles.clanRow}>
               {clan.clan_photo ? (
@@ -505,31 +511,33 @@ export function RealGramProfileScreen({
               )}
               <View style={{ flex: 1 }}>
                 <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
-                <Text style={styles.clanMeta}>{clan.member_count} members · {clan.role}</Text>
+                <Text style={styles.clanMeta}>
+                  {t('rgprofile.clanMembersRole').replace('{count}', String(clan.member_count)).replace('{role}', clan.role)}
+                </Text>
               </View>
             </View>
           ) : (
-            <Text style={styles.emptyText}>Not in a clan yet</Text>
+            <Text style={styles.emptyText}>{t('rgprofile.notInClan')}</Text>
           )}
         </GlassCard>
 
         {/* Recent activity — reuses ActivityScreen's own local session log,
             no extra network call. */}
         <GlassCard style={styles.card}>
-          <Text style={styles.cardLabel}>Recent activity</Text>
+          <Text style={styles.cardLabel}>{t('rgprofile.recentActivity')}</Text>
           {recentSessions.length > 0 ? (
             <View style={styles.activityList}>
               {recentSessions.map((s) => <ActivityRow key={s.id} session={s} />)}
             </View>
           ) : (
-            <Text style={styles.emptyText}>No sessions yet</Text>
+            <Text style={styles.emptyText}>{t('rgprofile.noSessions')}</Text>
           )}
         </GlassCard>
 
         {!!onSignOut && (
           <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={handleSignOutPress}>
-            <Text style={styles.logoutText}>Sign out</Text>
-            {!biometricLock && <Text style={styles.logoutLockHint}>Set up App Lock in Settings first</Text>}
+            <Text style={styles.logoutText}>{t('rgprofile.signOut')}</Text>
+            {!biometricLock && <Text style={styles.logoutLockHint}>{t('rgprofile.setUpAppLockFirst')}</Text>}
           </TouchableOpacity>
         )}
 

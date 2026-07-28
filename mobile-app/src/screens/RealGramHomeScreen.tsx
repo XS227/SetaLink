@@ -41,6 +41,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
 import { getSsoToken } from '../services/ssoService';
@@ -64,6 +65,7 @@ interface Props {
 
 export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial, onOpenEarn, onOpenLiveTv }: Props) {
   const insets   = useSafeAreaInsets();
+  const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const localDisplayName = useIdentityStore((s) => s.displayName);
 
@@ -90,7 +92,7 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
         setHeroCatalog(h);
         setOwnedHeroes(owned);
       } catch {
-        if (!cancelled) setError("Couldn't load your dashboard right now.");
+        if (!cancelled) setError(t('rghome.loadError'));
       }
     })();
     return () => { cancelled = true; };
@@ -101,7 +103,7 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity onPress={onBack} style={styles.backBtnFallback} activeOpacity={0.8}>
-          <Text style={styles.backBtnFallbackText}>Back</Text>
+          <Text style={styles.backBtnFallbackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -116,7 +118,7 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
   }
 
   const { identity, economy } = profile;
-  const displayName = identity.handle || identity.username || identity.first_name || localDisplayName || 'Warrior';
+  const displayName = identity.handle || identity.username || identity.first_name || localDisplayName || t('rghome.defaultName');
 
   // Same status-derivation as RealGramChaptersScreen: first not-done chapter
   // in order is "active" — the one Continue Journey should point at.
@@ -148,48 +150,50 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing[6] }]}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.greeting}>Welcome back, {displayName}</Text>
-        <Text style={styles.pageSub}>Level {economy.level}</Text>
+        <Text style={styles.greeting}>{t('rghome.greeting').replace('{name}', displayName)}</Text>
+        <Text style={styles.pageSub}>{t('rghome.level').replace('{level}', String(economy.level))}</Text>
 
         {/* Treasury — mirrors index.html's resource HUD */}
         <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Treasury</Text>
+          <Text style={styles.sectionTitle}>{t('rghome.treasury')}</Text>
         </View>
         <View style={styles.statsRow}>
-          <StatPill icon="💎" value={economy.real_balance.toLocaleString()} label="REAL" />
-          <StatPill icon="🪙" value={economy.zar.toLocaleString()} label="ZAR" />
-          <StatPill icon="⭐" value={economy.xp.toLocaleString()} label="XP" />
-          <StatPill icon="💠" value={String(economy.gems)} label="Gems" />
+          <StatPill icon="💎" value={economy.real_balance.toLocaleString()} label={t('rghome.statReal')} />
+          <StatPill icon="🪙" value={economy.zar.toLocaleString()} label={t('rghome.statZar')} />
+          <StatPill icon="⭐" value={economy.xp.toLocaleString()} label={t('rghome.statXp')} />
+          <StatPill icon="💠" value={String(economy.gems)} label={t('rghome.statGems')} />
         </View>
 
         {/* Continue Journey */}
         <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Continue journey</Text>
+          <Text style={styles.sectionTitle}>{t('rghome.continueJourney')}</Text>
           <TouchableOpacity onPress={onOpenChapters}>
-            <Text style={styles.sectionMore}>All chapters ›</Text>
+            <Text style={styles.sectionMore}>{t('rghome.allChapters')} {isRTL ? '‹' : '›'}</Text>
           </TouchableOpacity>
         </View>
         {activeChapter ? (
           <TouchableOpacity onPress={onOpenChapters} activeOpacity={0.85}>
             <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-              <Text style={styles.journeyLabel}>Chapter {activeChapter.order} · Active</Text>
+              <Text style={styles.journeyLabel}>{t('rghome.chapterActive').replace('{order}', String(activeChapter.order))}</Text>
               <Text style={styles.journeyTitle}>{activeChapter.title}</Text>
-              <Text style={styles.cardCta}>Continue ›</Text>
+              <Text style={styles.cardCta}>{t('rghome.continue')} {isRTL ? '‹' : '›'}</Text>
             </GlassCard>
           </TouchableOpacity>
         ) : (
           <GlassCard style={styles.card}>
-            <Text style={styles.journeyTitle}>Chronicle complete!</Text>
+            <Text style={styles.journeyTitle}>{t('rghome.chronicleComplete')}</Text>
           </GlassCard>
         )}
 
         {/* Chronicle progress */}
         <GlassCard style={styles.card}>
           <View style={styles.cardHeaderRow}>
-            <Text style={styles.cardLabel}>Chronicle progress</Text>
+            <Text style={styles.cardLabel}>{t('rghome.chronicleProgress')}</Text>
             <Text style={styles.cardValue}>{Math.round(chapterPct * 100)}%</Text>
           </View>
-          <Text style={styles.progressSub}>{profile.chapters.completed} of {chapters.length} chapters</Text>
+          <Text style={styles.progressSub}>
+            {t('rghome.chaptersProgress').replace('{completed}', String(profile.chapters.completed)).replace('{total}', String(chapters.length))}
+          </Text>
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${chapterPct * 100}%` as any }]} />
           </View>
@@ -205,21 +209,21 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
             natively. quest_read/quest_quiz/quest_tap themselves ARE real
             and now readable (this session's profile-summary fix). */}
         <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Daily quests</Text>
+          <Text style={styles.sectionTitle}>{t('rghome.dailyQuests')}</Text>
         </View>
         <GlassCard style={styles.card}>
           <View style={styles.questRow}>
-            <QuestPip label="Read" done={profile.quests.read} />
-            <QuestPip label="Quiz" done={profile.quests.quiz} />
-            <QuestPip label="Tap" done={profile.quests.tap >= DAILY_TAP_GOAL} />
+            <QuestPip label={t('rghome.questRead')} done={profile.quests.read} />
+            <QuestPip label={t('rghome.questQuiz')} done={profile.quests.quiz} />
+            <QuestPip label={t('rghome.questTap')} done={profile.quests.tap >= DAILY_TAP_GOAL} />
           </View>
         </GlassCard>
 
         {/* Hero Spotlight */}
         <View style={styles.sectionHeadRow}>
-          <Text style={styles.sectionTitle}>Hero spotlight</Text>
+          <Text style={styles.sectionTitle}>{t('rghome.heroSpotlight')}</Text>
           <TouchableOpacity onPress={onOpenHeroes}>
-            <Text style={styles.sectionMore}>Collection ›</Text>
+            <Text style={styles.sectionMore}>{t('rghome.collection')} {isRTL ? '‹' : '›'}</Text>
           </TouchableOpacity>
         </View>
         {spotlightHero ? (
@@ -235,16 +239,18 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
                 )}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.journeyTitle}>{spotlightHero.name}</Text>
-                  <Text style={styles.progressSub}>Level {spotlightHero.owned.level} · {spotlightHero.owned.zar_per_hour} ZAR/hr</Text>
+                  <Text style={styles.progressSub}>
+                    {t('rghome.heroLevelRate').replace('{level}', String(spotlightHero.owned.level)).replace('{rate}', String(spotlightHero.owned.zar_per_hour))}
+                  </Text>
                 </View>
-                <Text style={styles.cardCta}>Upgrade ›</Text>
+                <Text style={styles.cardCta}>{t('rghome.upgrade')} {isRTL ? '‹' : '›'}</Text>
               </View>
             </GlassCard>
           </TouchableOpacity>
         ) : (
           <TouchableOpacity onPress={onOpenHeroes} activeOpacity={0.85}>
             <GlassCard style={styles.card}>
-              <Text style={styles.progressSub}>No heroes owned yet — buy your first from the roster.</Text>
+              <Text style={styles.progressSub}>{t('rghome.noHeroes')}</Text>
             </GlassCard>
           </TouchableOpacity>
         )}
@@ -254,8 +260,8 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
             <View style={styles.liveTvRow}>
               <Text style={styles.liveTvIcon}>📺</Text>
               <View style={{ flex: 1 }}>
-                <Text style={styles.cardLabel}>Live TV</Text>
-                <Text style={styles.cardCta}>Watch live channels ›</Text>
+                <Text style={styles.cardLabel}>{t('rghome.liveTv')}</Text>
+                <Text style={styles.cardCta}>{t('rghome.watchLive')} {isRTL ? '‹' : '›'}</Text>
               </View>
             </View>
           </GlassCard>
@@ -264,19 +270,19 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
         <View style={styles.quickRow}>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenHeroes} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>⚔</Text>
-            <Text style={styles.quickLabel}>Heroes</Text>
+            <Text style={styles.quickLabel}>{t('rghome.navHeroes')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenClans} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>🛡️</Text>
-            <Text style={styles.quickLabel}>Clans</Text>
+            <Text style={styles.quickLabel}>{t('rghome.navClans')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenSocial} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>👥</Text>
-            <Text style={styles.quickLabel}>Social</Text>
+            <Text style={styles.quickLabel}>{t('rghome.navSocial')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenEarn} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>💰</Text>
-            <Text style={styles.quickLabel}>Earn</Text>
+            <Text style={styles.quickLabel}>{t('rghome.navEarn')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

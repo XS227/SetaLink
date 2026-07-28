@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { useT } from '../i18n';
 import { useDiagnosticsStore } from '../stores/diagnosticsStore';
 import { useVpnStore }         from '../stores/vpnStore';
 import { resolveNodeIdentity } from '../stores/serverStore';
@@ -73,8 +74,9 @@ const metStyles = StyleSheet.create({
 // ── HealthRow ─────────────────────────────────────────────────────────────────
 
 function HealthRow({ label, status, detail }: { label: string; status: 'ok' | 'warn' | 'fail'; detail: string }) {
+  const { t } = useT();
   const color = status === 'ok' ? Colors.emerald[400] : status === 'warn' ? '#FFB800' : Colors.status.disconnected;
-  const text  = status === 'ok' ? 'Healthy' : status === 'warn' ? 'Degraded' : 'Failed';
+  const text  = status === 'ok' ? t('diag.healthy') : status === 'warn' ? t('diag.degraded') : t('diag.failed');
   return (
     <View style={hStyles.row}>
       <PulsingDot color={color} />
@@ -103,6 +105,7 @@ const hStyles = StyleSheet.create({
 interface DiagnosticsProps { onBack?: () => void }
 
 export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
+  const { t } = useT();
   const { snapshot, isRunning, elapsedSecs, liveStats, startMonitor, stopMonitor } =
     useDiagnosticsStore();
   const { connectionState, selectedServer, connectionLog, traceTestResult, traceTestRunning, runTraceTest } = useVpnStore();
@@ -115,7 +118,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
   const handleRealInternetTest = async () => {
     if (connectionState !== 'connected') {
-      Alert.alert('Not Connected', 'Connect to the VPN first, then run the real internet test.');
+      Alert.alert(t('diag.notConnectedTitle'), t('diag.connectFirstInternetTest'));
       return;
     }
     await runTraceTest();
@@ -123,7 +126,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
   const handleSelfTest = async () => {
     if (connectionState !== 'connected') {
-      Alert.alert('Not Connected', 'Connect to the VPN first, then run the self test.');
+      Alert.alert(t('diag.notConnectedTitle'), t('diag.connectFirstSelfTest'));
       return;
     }
     setSelfTestRunning(true);
@@ -131,7 +134,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
       const results = await getAdapter().runSelfTest?.() ?? [];
       setSelfTestResults(results);
     } catch (e) {
-      setSelfTestResults([{ test: 'error', label: 'Self Test', ok: false, detail: String(e) }]);
+      setSelfTestResults([{ test: 'error', label: t('diag.selfTestErrorLabel'), ok: false, detail: String(e) }]);
     } finally {
       setSelfTestRunning(false);
     }
@@ -206,10 +209,10 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
   const handleExport = async () => {
     const report = await buildReport();
-    Alert.alert('Export Diagnostic Report', 'Share the report or copy it to the clipboard.', [
-      { text: 'Copy', onPress: () => { Clipboard.setString(report); Alert.alert('Copied', 'Diagnostic report copied to clipboard.'); } },
-      { text: 'Share', onPress: () => { Share.share({ message: report, title: 'RealGram Diagnostic Report' }).catch(() => {}); } },
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('diag.exportTitle'), t('diag.exportMsg'), [
+      { text: t('diag.copy'), onPress: () => { Clipboard.setString(report); Alert.alert(t('diag.copiedTitle'), t('diag.copiedMsg')); } },
+      { text: t('diag.share'), onPress: () => { Share.share({ message: report, title: 'RealGram Diagnostic Report' }).catch(() => {}); } },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -235,13 +238,13 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
   const isScanning    = isRunning && visibleCount < allChecks.length;
 
   const pingQuality = (ping: number) =>
-    ping < 40 ? 'Excellent' : ping < 80 ? 'Good' : ping < 120 ? 'Fair' : 'Poor';
+    ping < 40 ? t('diag.pingExcellent') : ping < 80 ? t('diag.pingGood') : ping < 120 ? t('diag.pingFair') : t('diag.pingPoor');
 
   const lossLabel = (loss: number) =>
-    loss === 0 ? 'No loss detected' : loss < 0.5 ? 'Minimal' : 'Elevated';
+    loss === 0 ? t('diag.lossNone') : loss < 0.5 ? t('diag.lossMinimal') : t('diag.lossElevated');
 
   const jitterLabel = (j: number) =>
-    j < 3 ? 'Very stable' : j < 6 ? 'Stable' : 'Unstable';
+    j < 3 ? t('diag.jitterVeryStable') : j < 6 ? t('diag.jitterStable') : t('diag.jitterUnstable');
 
   return (
     <View style={styles.screen}>
@@ -259,14 +262,14 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
               </TouchableOpacity>
             )}
             <View>
-              <Text style={styles.title}>Diagnostics</Text>
-              <Text style={styles.sub}>Live connection analysis</Text>
+              <Text style={styles.title}>{t('diag.title')}</Text>
+              <Text style={styles.sub}>{t('diag.subtitle')}</Text>
             </View>
           </View>
           <View style={styles.liveBadge}>
             <PulsingDot color={isScanning ? '#FFB800' : Colors.emerald[400]} />
             <Text style={styles.liveText}>
-              {isScanning ? `SCANNING…` : isRunning ? `LIVE · ${formatElapsed(elapsedSecs)}` : 'IDLE'}
+              {isScanning ? t('diag.scanning') : isRunning ? t('diag.live').replace('{elapsed}', formatElapsed(elapsedSecs)) : t('diag.idle')}
             </Text>
           </View>
         </View>
@@ -274,44 +277,44 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         {/* Metric grid */}
         <View style={styles.metricGrid}>
           <MetricCard
-            label="Latency"
+            label={t('diag.latency')}
             value={displayPing ? String(displayPing) : '—'}
             unit="ms"
             sub={displayPing ? pingQuality(displayPing) : undefined}
             color={displayPing && displayPing < 60 ? Colors.emerald[400] : undefined}
           />
           <MetricCard
-            label="Packet Loss"
+            label={t('diag.packetLoss')}
             value={snapshot ? String(snapshot.packetLoss) : '—'}
             unit="%"
             sub={snapshot ? lossLabel(snapshot.packetLoss) : undefined}
             color={snapshot && snapshot.packetLoss === 0 ? Colors.emerald[400] : undefined}
           />
           <MetricCard
-            label="Jitter"
+            label={t('diag.jitter')}
             value={snapshot ? String(snapshot.jitter) : '—'}
             unit="ms"
             sub={snapshot ? jitterLabel(snapshot.jitter) : undefined}
           />
           <MetricCard
-            label="Uptime"
+            label={t('diag.uptime')}
             value={formatElapsed(elapsedSecs)}
-            sub="This session"
+            sub={t('diag.thisSession')}
           />
         </View>
 
         {/* Network info */}
         <GlassCard>
-          <Text style={styles.cardLabel}>Network</Text>
+          <Text style={styles.cardLabel}>{t('diag.network')}</Text>
           {[
-            { key: 'Local IP',   val: networkInfo?.localIp  ?? 'Detecting…' },
+            { key: t('diag.localIp'),   val: networkInfo?.localIp  ?? t('diag.detecting') },
             // Exit IP must come from a VPN-verified trace test, not networkInfo.publicIp
             // (which is fetched over the direct network and shows the real device IP).
-            { key: 'Exit IP',    val: connectionState === 'connected'
-                ? (traceTestResult?.routedIp ?? 'Run internet test ↓')
-                : 'N/A — tunnel not connected' },
-            { key: 'VPN Server', val: selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : '—' },
-            { key: 'Protocol',   val: selectedServer ? selectedServer.protocol : '—' },
+            { key: t('diag.exitIp'),    val: connectionState === 'connected'
+                ? (traceTestResult?.routedIp ?? t('diag.runInternetTestHint'))
+                : t('diag.tunnelNotConnected') },
+            { key: t('diag.vpnServer'), val: selectedServer ? `${selectedServer.city}, ${selectedServer.country}` : '—' },
+            { key: t('diag.protocol'),  val: selectedServer ? selectedServer.protocol : '—' },
           ].map((item) => (
             <View key={item.key} style={styles.infoRow}>
               <Text style={styles.infoKey}>{item.key}</Text>
@@ -322,7 +325,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
         {/* Protocol & route info */}
         <GlassCard glowColor={Colors.emerald[400]}>
-          <Text style={styles.cardLabel}>Active Connection</Text>
+          <Text style={styles.cardLabel}>{t('diag.activeConnection')}</Text>
           {conn ? [
             { key: 'Protocol',    val: conn.protocol },
             { key: 'Transport',   val: conn.transport },
@@ -337,7 +340,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
               <Text style={styles.infoVal}>{item.val}</Text>
             </View>
           )) : (
-            <Text style={styles.infoKey}>Connecting…</Text>
+            <Text style={styles.infoKey}>{t('diag.connecting')}</Text>
           )}
         </GlassCard>
 
@@ -345,10 +348,10 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         {Platform.OS !== 'ios' && (
           <GlassCard>
             <View style={styles.healthHeader}>
-              <Text style={styles.cardLabel}>Health Checks</Text>
+              <Text style={styles.cardLabel}>{t('diag.healthChecks')}</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <View style={{ backgroundColor: 'rgba(255,200,0,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
-                  <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>SIMULATED</Text>
+                  <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>{t('diag.simulated')}</Text>
                 </View>
                 {isScanning && (
                   <View style={styles.scanningBadge}>
@@ -364,7 +367,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             ))}
             {isScanning && (
               <View style={styles.scanningRow}>
-                <Text style={styles.scanningRowText}>Running checks…</Text>
+                <Text style={styles.scanningRowText}>{t('diag.runningChecks')}</Text>
               </View>
             )}
             <View style={{ height: 1 }} />
@@ -373,7 +376,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
         {/* Low-level tunnel layer */}
         <GlassCard>
-          <Text style={styles.cardLabel}>Tunnel Layer</Text>
+          <Text style={styles.cardLabel}>{t('diag.tunnelLayer')}</Text>
           {(() => {
             // iOS and Android write completely different connection log formats.
             // iOS: raw tunnel extension log lines like "[2026-...] STATE: xray started"
@@ -443,14 +446,14 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
           <View style={{ height: Spacing[2] }} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
             <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={{ fontSize: Typography.size.xs, fontFamily: 'monospace', color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 }}>Upload</Text>
+              <Text style={{ fontSize: Typography.size.xs, fontFamily: 'monospace', color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 }}>{t('diag.upload')}</Text>
               <Text style={{ fontSize: Typography.size.lg, fontFamily: 'monospace', color: Colors.emerald[400] }}>
                 {liveStats?.uploadMbps ? `${liveStats.uploadMbps}` : '0'} <Text style={{ fontSize: Typography.size.xs, color: Colors.text.muted }}>MB/s</Text>
               </Text>
             </View>
             <View style={{ width: 1, backgroundColor: Colors.border.subtle }} />
             <View style={{ flex: 1, alignItems: 'center' }}>
-              <Text style={{ fontSize: Typography.size.xs, fontFamily: 'monospace', color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 }}>Download</Text>
+              <Text style={{ fontSize: Typography.size.xs, fontFamily: 'monospace', color: Colors.text.muted, textTransform: 'uppercase', letterSpacing: 1 }}>{t('diag.download')}</Text>
               <Text style={{ fontSize: Typography.size.lg, fontFamily: 'monospace', color: Colors.blue[400] }}>
                 {liveStats?.downloadMbps ? `${liveStats.downloadMbps}` : '0'} <Text style={{ fontSize: Typography.size.xs, color: Colors.text.muted }}>MB/s</Text>
               </Text>
@@ -461,9 +464,9 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         {/* Route trace — simulated until real traceroute is wired */}
         <View>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-            <Text style={styles.sectionTitle}>Route Trace</Text>
+            <Text style={styles.sectionTitle}>{t('diag.routeTrace')}</Text>
             <View style={{ backgroundColor: 'rgba(255,200,0,0.15)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 2 }}>
-              <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>SIMULATED</Text>
+              <Text style={{ fontSize: 9, color: '#FFB800', fontFamily: 'monospace' }}>{t('diag.simulated')}</Text>
             </View>
           </View>
           <GlassCard noPadding>
@@ -493,7 +496,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
 
         {/* Throughput */}
         <GlassCard>
-          <Text style={styles.cardLabel}>Real-time Throughput</Text>
+          <Text style={styles.cardLabel}>{t('diag.realtimeThroughput')}</Text>
           <View style={styles.throughputRow}>
             {[
               { icon: '↑', color: Colors.emerald[400], value: displayUploadMbps   ? `${displayUploadMbps} MB/s`   : '—', pct: displayUploadMbps   / 10 },
@@ -514,19 +517,19 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         {autoConnect.profiles.length > 0 && (
           <GlassCard>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
-              <Text style={styles.cardLabel}>Connection Probe Log</Text>
+              <Text style={styles.cardLabel}>{t('diag.connectionProbeLog')}</Text>
               <View style={{ flexDirection: 'row', gap: Spacing[2] }}>
                 {autoConnect.winningConfig && (
                   <View style={{ backgroundColor: 'rgba(0,232,122,0.12)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
-                    <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>WINNER</Text>
+                    <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>{t('diag.winner')}</Text>
                   </View>
                 )}
-                <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted }}>{autoConnect.profiles.length} routes</Text>
+                <Text style={{ fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted }}>{t('diag.routesCount').replace('{n}', String(autoConnect.profiles.length))}</Text>
               </View>
             </View>
             {autoConnect.winningConfig && (
               <View style={{ backgroundColor: 'rgba(0,232,122,0.06)', borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.glow, padding: Spacing[3], marginBottom: Spacing[3] }}>
-                <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400], marginBottom: 4 }}>SELECTED ROUTE</Text>
+                <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.emerald[400], marginBottom: 4 }}>{t('diag.selectedRoute')}</Text>
                 <Text style={{ fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.text.primary }}>{autoConnect.winningConfig.label}</Text>
               </View>
             )}
@@ -568,15 +571,15 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             activeOpacity={0.7}
           >
             <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted }}>
-              {showTechLog ? '▲ Hide raw log' : '▾ Show raw log'}
+              {showTechLog ? t('diag.hideRawLog') : t('diag.showRawLog')}
             </Text>
           </TouchableOpacity>
         )}
         {showTechLog && connectionLog.length > 0 && (
           <GlassCard style={{ gap: 2 }}>
-            <Text style={styles.cardLabel}>Raw Connection Log</Text>
+            <Text style={styles.cardLabel}>{t('diag.rawConnectionLog')}</Text>
             <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.text.muted, marginBottom: 4, lineHeight: 13 }}>
-              {'✗ lines are intermediate steps — if the final Tunnel Layer shows OK, the overall connection succeeded.'}
+              {t('diag.rawLogHint')}
             </Text>
             {connectionLog.map((line, i) => (
               <Text key={i} style={[
@@ -591,13 +594,13 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         {/* Real Internet Test */}
         <GlassCard>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
-            <Text style={styles.cardLabel}>Real Internet Test</Text>
+            <Text style={styles.cardLabel}>{t('diag.realInternetTest')}</Text>
             <View style={{ backgroundColor: 'rgba(0,232,122,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
               <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>1.1.1.1 TRACE</Text>
             </View>
           </View>
           <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginBottom: Spacing[3] }}>
-            Verifies traffic actually routes through the VPN tunnel. Tests DNS, TCP 443, HTTPS, and Cloudflare trace response.
+            {t('diag.realInternetTestDesc')}
           </Text>
           {traceTestResult && (
             <View style={{
@@ -610,21 +613,21 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
               gap: 4,
             }}>
               <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: traceTestResult.ok ? Colors.emerald[400] : Colors.status.disconnected }}>
-                {traceTestResult.ok ? '✓ INTERNET ROUTED THROUGH VPN' : '✗ INTERNET NOT ROUTED THROUGH VPN'}
+                {traceTestResult.ok ? t('diag.internetRouted') : t('diag.internetNotRouted')}
               </Text>
               {traceTestResult.routedIp && (
                 <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.secondary }}>
-                  Exit IP: {traceTestResult.routedIp}
+                  {t('diag.exitIpLine').replace('{ip}', traceTestResult.routedIp)}
                 </Text>
               )}
               {traceTestResult.statusCode != null && (
                 <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted }}>
-                  HTTP {traceTestResult.statusCode} · {traceTestResult.bytesIn ?? 0}B received
+                  {t('diag.httpStatusLine').replace('{code}', String(traceTestResult.statusCode)).replace('{bytes}', String(traceTestResult.bytesIn ?? 0))}
                 </Text>
               )}
               {traceTestResult.error && (
                 <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.status.disconnected }}>
-                  Error: {traceTestResult.error}
+                  {t('diag.errorLine').replace('{error}', traceTestResult.error)}
                 </Text>
               )}
             </View>
@@ -636,7 +639,7 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             disabled={traceTestRunning}
           >
             <Text style={[styles.exportText, traceTestRunning && { color: Colors.text.muted }]}>
-              {traceTestRunning ? 'Testing…' : 'Run Real Internet Test'}
+              {traceTestRunning ? t('diag.testing') : t('diag.runRealInternetTest')}
             </Text>
           </TouchableOpacity>
         </GlassCard>
@@ -644,13 +647,13 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
         {/* Self Test */}
         <GlassCard>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing[3] }}>
-            <Text style={styles.cardLabel}>Tunnel Self Test</Text>
+            <Text style={styles.cardLabel}>{t('diag.tunnelSelfTest')}</Text>
             <View style={{ backgroundColor: 'rgba(0,232,122,0.08)', borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.glow, paddingHorizontal: Spacing[2], paddingVertical: 2 }}>
-              <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>4 CHECKS</Text>
+              <Text style={{ fontSize: 9, fontFamily: Typography.family.mono, color: Colors.emerald[400] }}>{t('diag.checksCount').replace('{n}', '4')}</Text>
             </View>
           </View>
           <Text style={{ fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginBottom: Spacing[3] }}>
-            Tests DNS, HTTPS, tunnel route verification, and exit IP — all through the active tunnel.
+            {t('diag.selfTestDesc')}
           </Text>
           {selfTestResults && selfTestResults.map((r, i) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: Spacing[2], gap: Spacing[2] }}>
@@ -674,14 +677,14 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
             disabled={selfTestRunning}
           >
             <Text style={[styles.exportText, selfTestRunning && { color: Colors.text.muted }]}>
-              {selfTestRunning ? 'Testing…' : 'Run Self Test'}
+              {selfTestRunning ? t('diag.testing') : t('diag.runSelfTest')}
             </Text>
           </TouchableOpacity>
         </GlassCard>
 
         {/* Export */}
         <TouchableOpacity style={styles.exportBtn} activeOpacity={0.8} onPress={handleExport}>
-          <Text style={styles.exportText}>Export Diagnostic Report</Text>
+          <Text style={styles.exportText}>{t('diag.exportDiagnosticReport')}</Text>
         </TouchableOpacity>
 
         <View style={{ height: Spacing[12] }} />

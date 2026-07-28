@@ -29,6 +29,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { getProfileSummary } from '../services/realGramProfileService';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
@@ -46,6 +47,7 @@ interface Props {
 
 export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
   const insets   = useSafeAreaInsets();
+  const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
 
   const [rows, setRows]       = useState<Row[] | null>(null);
@@ -62,7 +64,7 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
         ]);
         if (cancelled) return;
         if (catalog.length === 0) {
-          setError("Couldn't load the chapter list right now.");
+          setError(t('chapters.loadError'));
           return;
         }
         const doneSlugs = new Set((profile?.chapters.list ?? []).filter((c) => c.done).map((c) => c.slug));
@@ -77,23 +79,25 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
         setRows(merged);
         setCompleted(doneSlugs.size);
       } catch {
-        if (!cancelled) setError("Couldn't load the chapter list right now.");
+        if (!cancelled) setError(t('chapters.loadError'));
       }
     })();
     return () => { cancelled = true; };
-  }, [deviceId]);
+  }, [deviceId, t]);
 
   const pct = rows && rows.length > 0 ? Math.round((completed / rows.length) * 100) : 0;
 
   const header = useMemo(() => (
     <View>
-      <Text style={styles.pageTitle}>Shahnameh Journey</Text>
-      <Text style={styles.pageSub}>Read · Quiz · Reward · Unlock the next age.</Text>
+      <Text style={styles.pageTitle}>{t('chapters.journeyTitle')}</Text>
+      <Text style={styles.pageSub}>{t('chapters.journeySubtitle')}</Text>
       <GlassCard style={styles.progressCard} glowColor={Colors.gold[400]}>
         <View style={styles.progressRow}>
           <View>
-            <Text style={styles.progressLabel}>Chronicle progress</Text>
-            <Text style={styles.progressValue}>{completed} of {rows?.length ?? 0} chapters complete</Text>
+            <Text style={styles.progressLabel}>{t('rghome.chronicleProgress')}</Text>
+            <Text style={styles.progressValue}>
+              {t('chapters.progressComplete').replace('{completed}', String(completed)).replace('{total}', String(rows?.length ?? 0))}
+            </Text>
           </View>
           <Text style={styles.progressPct}>{pct}%</Text>
         </View>
@@ -102,14 +106,14 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
         </View>
       </GlassCard>
     </View>
-  ), [completed, rows, pct]);
+  ), [completed, rows, pct, t]);
 
   if (error) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity onPress={onBack} style={styles.backBtnFallback} activeOpacity={0.8}>
-          <Text style={styles.backBtnFallbackText}>Back</Text>
+          <Text style={styles.backBtnFallbackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -119,7 +123,7 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <EmberField count={6} />
       <TouchableOpacity onPress={onBack} style={styles.floatingBack} hitSlop={12} activeOpacity={0.75}>
-        <Text style={styles.backIcon}>‹</Text>
+        <Text style={styles.backIcon}>{isRTL ? '›' : '‹'}</Text>
       </TouchableOpacity>
       {!rows ? (
         <View style={styles.centered}>
@@ -140,9 +144,10 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
 }
 
 function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: string) => void }) {
+  const { t } = useT();
   const disabled = row.status === 'locked';
   const chipStyle  = row.status === 'done' ? styles.chipDone : row.status === 'active' ? styles.chipActive : styles.chipLocked;
-  const chipLabel  = row.status === 'done' ? 'Completed' : row.status === 'active' ? 'Active chapter' : 'Locked';
+  const chipLabel  = row.status === 'done' ? t('chapters.statusDone') : row.status === 'active' ? t('chapters.statusActive') : t('chapters.statusLocked');
   const nodeStyle  = row.status === 'done' ? styles.nodeDone : row.status === 'active' ? styles.nodeActive : styles.nodeLocked;
 
   return (
@@ -168,7 +173,8 @@ function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: s
               </View>
               {(row.reward_xp > 0 || row.reward_real > 0) && (
                 <Text style={styles.rewardText} numberOfLines={1}>
-                  ⭐ {row.reward_xp} XP{row.reward_real > 0 ? ` · 💎 ${row.reward_real} REAL` : ''}
+                  ⭐ {t('chapters.rewardXp').replace('{xp}', String(row.reward_xp))}
+                  {row.reward_real > 0 ? ` · 💎 ${t('chapters.rewardReal').replace('{real}', String(row.reward_real))}` : ''}
                 </Text>
               )}
             </View>

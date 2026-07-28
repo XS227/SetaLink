@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { useT } from '../i18n';
 import {
   getLeaderboard, getActivityFeed, getTournament,
   LeaderboardRow, ActivityEvent, TournamentInfo,
@@ -23,14 +24,21 @@ interface Props {
   onBack: () => void;
 }
 
-function formatCountdown(seconds: number): string {
-  if (seconds <= 0) return 'Ended';
+// Relative "just now / Xm ago" formatting (timeAgo below) deliberately
+// stays English everywhere in the app — see RealGramProfileScreen.tsx's
+// identical copy, which notes this mirrors a shared, tested utility
+// (utils/formatters.ts's formatRelativeTime) that isn't i18n-aware; making
+// ONE local copy translatable without fixing the shared one would just be
+// inconsistent. formatCountdown is local to this screen only, so it's
+// translated below (t passed in, since this runs outside a component).
+function formatCountdown(seconds: number, t: (key: string) => string): string {
+  if (seconds <= 0) return t('social.countdownEnded');
   const d = Math.floor(seconds / 86400);
   const h = Math.floor((seconds % 86400) / 3600);
   const m = Math.floor((seconds % 3600) / 60);
-  if (d > 0) return `${d}d ${h}h left`;
-  if (h > 0) return `${h}h ${m}m left`;
-  return `${m}m left`;
+  if (d > 0) return t('social.countdownDaysHours').replace('{d}', String(d)).replace('{h}', String(h));
+  if (h > 0) return t('social.countdownHoursMinutes').replace('{h}', String(h)).replace('{m}', String(m));
+  return t('social.countdownMinutes').replace('{m}', String(m));
 }
 
 function timeAgo(ts: number): string {
@@ -43,6 +51,7 @@ function timeAgo(ts: number): string {
 
 export function RealGramSocialScreen({ onBack }: Props) {
   const insets = useSafeAreaInsets();
+  const { t, isRTL } = useT();
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[] | null>(null);
   const [activity, setActivity]       = useState<ActivityEvent[]>([]);
   const [tournament, setTournament]   = useState<TournamentInfo | null>(null);
@@ -53,21 +62,21 @@ export function RealGramSocialScreen({ onBack }: Props) {
     Promise.all([getLeaderboard(), getActivityFeed(), getTournament()])
       .then(([lb, act, tour]) => {
         if (cancelled) return;
-        if (lb.length === 0) { setError("Couldn't load the leaderboard right now."); return; }
+        if (lb.length === 0) { setError(t('social.loadError')); return; }
         setLeaderboard(lb);
         setActivity(act);
         setTournament(tour);
       })
-      .catch(() => { if (!cancelled) setError("Couldn't load the leaderboard right now."); });
+      .catch(() => { if (!cancelled) setError(t('social.loadError')); });
     return () => { cancelled = true; };
-  }, []);
+  }, [t]);
 
   if (error) {
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity onPress={onBack} style={styles.backBtnFallback} activeOpacity={0.8}>
-          <Text style={styles.backBtnFallbackText}>Back</Text>
+          <Text style={styles.backBtnFallbackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -82,7 +91,7 @@ export function RealGramSocialScreen({ onBack }: Props) {
         hitSlop={12}
         activeOpacity={0.75}
       >
-        <Text style={styles.backIcon}>‹</Text>
+        <Text style={styles.backIcon}>{isRTL ? '›' : '‹'}</Text>
       </TouchableOpacity>
       {!leaderboard ? (
         <View style={styles.centered}>
@@ -96,13 +105,13 @@ export function RealGramSocialScreen({ onBack }: Props) {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View>
-              <Text style={styles.pageTitle}>Social</Text>
-              <Text style={styles.pageSub}>Where the whole chronicle stands.</Text>
+              <Text style={styles.pageTitle}>{t('social.title')}</Text>
+              <Text style={styles.pageSub}>{t('social.subtitle')}</Text>
               {!!tournament && (
                 <GlassCard style={styles.tournamentCard} glowColor={Colors.gold[400]}>
                   <View style={styles.cardHeaderRow}>
-                    <Text style={styles.cardLabel}>Tournament</Text>
-                    <Text style={styles.countdown}>{formatCountdown(tournament.ends_in_seconds)}</Text>
+                    <Text style={styles.cardLabel}>{t('social.tournament')}</Text>
+                    <Text style={styles.countdown}>{formatCountdown(tournament.ends_in_seconds, t)}</Text>
                   </View>
                   {tournament.leaderboard.slice(0, 3).map((row, i) => (
                     <View key={i} style={styles.tourRow}>
@@ -113,14 +122,14 @@ export function RealGramSocialScreen({ onBack }: Props) {
                   ))}
                 </GlassCard>
               )}
-              <Text style={styles.sectionTitle}>Leaderboard</Text>
+              <Text style={styles.sectionTitle}>{t('social.leaderboard')}</Text>
             </View>
           }
           renderItem={({ item, index }) => <LeaderboardCard row={item} rank={index + 1} />}
           ListFooterComponent={
             activity.length > 0 ? (
               <View>
-                <Text style={styles.sectionTitle}>Activity</Text>
+                <Text style={styles.sectionTitle}>{t('social.activity')}</Text>
                 <GlassCard style={styles.activityCard}>
                   {activity.slice(0, 12).map((e, i) => (
                     <View key={i} style={styles.activityRow}>
@@ -142,6 +151,7 @@ export function RealGramSocialScreen({ onBack }: Props) {
 }
 
 function LeaderboardCard({ row, rank }: { row: LeaderboardRow; rank: number }) {
+  const { t } = useT();
   return (
     <GlassCard style={[styles.rowCard, row.is_me && styles.rowCardMe]}>
       <View style={styles.rowContent}>
@@ -154,8 +164,8 @@ function LeaderboardCard({ row, rank }: { row: LeaderboardRow; rank: number }) {
           </View>
         )}
         <View style={{ flex: 1 }}>
-          <Text style={styles.rowName} numberOfLines={1}>{row.first_name || 'Warrior'}</Text>
-          <Text style={styles.rowMeta}>Level {row.level} · {row.xp.toLocaleString()} XP</Text>
+          <Text style={styles.rowName} numberOfLines={1}>{row.first_name || t('social.defaultWarriorName')}</Text>
+          <Text style={styles.rowMeta}>{t('social.levelXp').replace('{level}', String(row.level)).replace('{xp}', row.xp.toLocaleString())}</Text>
         </View>
         <Text style={styles.rowBalance}>{row.real_balance.toLocaleString()}</Text>
       </View>

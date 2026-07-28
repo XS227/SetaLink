@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { useReferral } from '../services/entitlementService';
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export function WelcomeScreen({ onStart }: Props) {
+  const { t } = useT();
   const user          = useAuthStore((s) => s.user);
   const addBonusBytes = useAuthStore((s) => s.addBonusBytes);
   const showToast     = useToastStore((s) => s.show);
@@ -76,9 +78,9 @@ export function WelcomeScreen({ onStart }: Props) {
       addBonusBytes(result.bonus_bytes);
       setRedeemed(true);
       const mbBonus = Math.round(result.bonus_bytes / (1024 * 1024));
-      showToast(`+${mbBonus} MB bonus added!`, 'success', 3000);
+      showToast(t('welcome.bonusAdded').replace('{mb}', String(mbBonus)), 'success', 3000);
     } catch (e: any) {
-      showToast(e?.message ?? 'Invalid or already used code', 'error', 3000);
+      showToast(e?.message ?? t('welcome.invalidCode'), 'error', 3000);
     } finally {
       setApplying(false);
     }
@@ -86,13 +88,13 @@ export function WelcomeScreen({ onStart }: Props) {
 
   const handleCopy = () => {
     Clipboard.setString(referralCode);
-    showToast('Referral code copied', 'success', 2000);
+    showToast(t('welcome.codeCopied'), 'success', 2000);
   };
 
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Join RealGram with my code: ${referralCode}\nhttps://setalink.no/?ref=${referralCode}`,
+        message: t('welcome.shareMessage').replace(/\{code\}/g, referralCode),
       });
     } catch { /* share dismissed */ }
   };
@@ -113,9 +115,9 @@ export function WelcomeScreen({ onStart }: Props) {
         <View style={styles.heroSection}>
           <View style={styles.logoOrb} />
           <Text style={styles.appName}>RealGram</Text>
-          <Text style={styles.heroTitle}>You're all set.</Text>
+          <Text style={styles.heroTitle}>{t('welcome.heroTitle')}</Text>
           <Text style={styles.heroSub}>
-            Your free account is ready. No registration, no email required.
+            {t('welcome.heroSub')}
           </Text>
         </View>
 
@@ -126,59 +128,59 @@ export function WelcomeScreen({ onStart }: Props) {
             style={[styles.shimmer, { transform: [{ translateX: shimmerTranslate }, { rotate: '18deg' }] }]}
           />
           <View style={styles.giftChip}>
-            <Text style={styles.giftChipText}>🎁 WELCOME GIFT</Text>
+            <Text style={styles.giftChipText}>{t('welcome.giftChip')}</Text>
           </View>
-          <Text style={styles.packageLabel}>STARTER PACKAGE</Text>
+          <Text style={styles.packageLabel}>{t('welcome.packageLabel')}</Text>
           <View style={styles.packageRow}>
             <View style={styles.packageItem}>
               <Text style={[styles.packageValue, styles.packageValueGold]}>{quotaGb} GB</Text>
-              <Text style={styles.packageMeta}>Free traffic</Text>
+              <Text style={styles.packageMeta}>{t('welcome.freeTraffic')}</Text>
             </View>
             <View style={styles.packageDivider} />
             <View style={styles.packageItem}>
               <Text style={styles.packageValue}>1</Text>
-              <Text style={styles.packageMeta}>Device</Text>
+              <Text style={styles.packageMeta}>{t('welcome.device')}</Text>
             </View>
             <View style={styles.packageDivider} />
             <View style={styles.packageItem}>
               <Text style={styles.packageValue}>∞</Text>
-              <Text style={styles.packageMeta}>Speed</Text>
+              <Text style={styles.packageMeta}>{t('welcome.speed')}</Text>
             </View>
           </View>
           <View style={styles.freeNote}>
             <View style={styles.freeDot} />
-            <Text style={styles.freeNoteText}>No credit card · No expiry</Text>
+            <Text style={styles.freeNoteText}>{t('welcome.noCreditCard')}</Text>
           </View>
         </GlassCard>
 
         {/* Referral */}
         <GlassCard glowColor={Colors.blue[400]} style={styles.referralCard}>
-          <Text style={styles.referralTitle}>Invite friends — earn more traffic</Text>
+          <Text style={styles.referralTitle}>{t('welcome.referralTitle')}</Text>
           <Text style={styles.referralDesc}>
-            Each friend you invite gets 1 GB free — and so do you.
+            {t('welcome.referralDesc')}
           </Text>
           <View style={styles.codeRow}>
             <Text style={styles.codeText}>{referralCode}</Text>
             <TouchableOpacity style={styles.copyBtn} onPress={handleCopy} activeOpacity={0.75}>
-              <Text style={styles.copyBtnText}>Copy</Text>
+              <Text style={styles.copyBtnText}>{t('welcome.copy')}</Text>
             </TouchableOpacity>
           </View>
           <TouchableOpacity style={styles.shareBtn} onPress={handleShare} activeOpacity={0.8}>
-            <Text style={styles.shareBtnText}>Share invite link</Text>
+            <Text style={styles.shareBtnText}>{t('welcome.shareInviteLink')}</Text>
           </TouchableOpacity>
         </GlassCard>
 
         {/* Redeem a friend's referral code */}
         {!redeemed ? (
           <GlassCard style={styles.redeemCard}>
-            <Text style={styles.redeemTitle}>Have a friend's code?</Text>
-            <Text style={styles.redeemDesc}>Enter their referral code — you both get 1 GB free.</Text>
+            <Text style={styles.redeemTitle}>{t('welcome.haveCode')}</Text>
+            <Text style={styles.redeemDesc}>{t('welcome.haveCodeDesc')}</Text>
             <View style={styles.redeemRow}>
               <TextInput
                 style={styles.redeemInput}
                 value={redeemCode}
                 onChangeText={(v) => setRedeemCode(v.toUpperCase())}
-                placeholder="Enter code"
+                placeholder={t('welcome.enterCode')}
                 placeholderTextColor={Colors.text.muted}
                 autoCapitalize="characters"
                 autoCorrect={false}
@@ -191,23 +193,23 @@ export function WelcomeScreen({ onStart }: Props) {
                 disabled={applying || !redeemCode.trim()}
                 activeOpacity={0.75}
               >
-                <Text style={styles.redeemBtnText}>{applying ? '…' : 'Apply'}</Text>
+                <Text style={styles.redeemBtnText}>{applying ? '…' : t('welcome.apply')}</Text>
               </TouchableOpacity>
             </View>
           </GlassCard>
         ) : (
           <View style={styles.redeemSuccess}>
-            <Text style={styles.redeemSuccessText}>Referral applied — bonus added to your account.</Text>
+            <Text style={styles.redeemSuccessText}>{t('welcome.redeemedSuccess')}</Text>
           </View>
         )}
 
         {/* Get started */}
         <TouchableOpacity style={styles.startBtn} onPress={onStart} activeOpacity={0.85}>
-          <Text style={styles.startBtnText}>Get Started</Text>
+          <Text style={styles.startBtnText}>{t('welcome.getStarted')}</Text>
         </TouchableOpacity>
 
         <Text style={styles.footnote}>
-          Your data is never logged. Traffic routes through your chosen server only.
+          {t('welcome.footnote')}
         </Text>
 
       </Animated.View>

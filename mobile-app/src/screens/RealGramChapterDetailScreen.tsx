@@ -27,6 +27,7 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
 import { ShahnamehEmbed } from '../components/ShahnamehEmbed';
+import { useT } from '../i18n';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
 import { getChapterLore, ChapterLore, ChapterScene } from '../services/chapterLoreService';
 import { getReadSceneIds, markSceneRead, isSceneUnlocked } from '../services/chapterProgressStore';
@@ -38,6 +39,7 @@ interface Props {
 
 export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
   const insets = useSafeAreaInsets();
+  const { t, isRTL } = useT();
   const [catalogEntry, setCatalogEntry] = useState<ChapterCatalogEntry | null>(null);
   const [lore, setLore]           = useState<ChapterLore | null>(null);
   const [readIds, setReadIds]     = useState<Set<string>>(() => getReadSceneIds(slug));
@@ -50,15 +52,15 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
     Promise.all([getChapterCatalog(), getChapterLore(slug)]).then(([catalog, loreResult]) => {
       if (cancelled) return;
       const entry = catalog.find((c) => c.slug === slug) ?? null;
-      if (!entry && !loreResult) { setError("Couldn't load this chapter right now."); setLoaded(true); return; }
+      if (!entry && !loreResult) { setError(t('chapterdetail.loadError')); setLoaded(true); return; }
       setCatalogEntry(entry);
       setLore(loreResult);
       setLoaded(true);
     }).catch(() => {
-      if (!cancelled) { setError("Couldn't load this chapter right now."); setLoaded(true); }
+      if (!cancelled) { setError(t('chapterdetail.loadError')); setLoaded(true); }
     });
     return () => { cancelled = true; };
-  }, [slug]);
+  }, [slug, t]);
 
   const handleSceneRead = useCallback((sceneId: string) => {
     setReadIds(markSceneRead(slug, sceneId));
@@ -80,7 +82,7 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity onPress={onBack} style={styles.backBtnFallback} activeOpacity={0.8}>
-          <Text style={styles.backBtnFallbackText}>Back</Text>
+          <Text style={styles.backBtnFallbackText}>{t('common.back')}</Text>
         </TouchableOpacity>
       </View>
     );
@@ -97,7 +99,7 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
         hitSlop={12}
         activeOpacity={0.75}
       >
-        <Text style={styles.backIcon}>‹</Text>
+        <Text style={styles.backIcon}>{isRTL ? '›' : '‹'}</Text>
       </TouchableOpacity>
 
       {!loaded ? (
@@ -122,12 +124,12 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
 
               {!!lore?.lore_summary && (
                 <GlassCard style={styles.loreCard}>
-                  <Text style={styles.loreLabel}>The Chronicle</Text>
+                  <Text style={styles.loreLabel}>{t('chapterdetail.chronicleLabel')}</Text>
                   <Text style={styles.loreText}>{lore.lore_summary}</Text>
                 </GlassCard>
               )}
 
-              {scenes.length > 0 && <Text style={styles.sectionLabel}>Scenes</Text>}
+              {scenes.length > 0 && <Text style={styles.sectionLabel}>{t('chapterdetail.scenes')}</Text>}
             </View>
           }
           renderItem={({ item }) => (
@@ -141,8 +143,8 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
           ListFooterComponent={
             <TouchableOpacity onPress={() => setShowFullEmbed(true)} activeOpacity={0.85}>
               <GlassCard style={styles.continueCard} glowColor={Colors.gold[400]}>
-                <Text style={styles.continueTitle}>Continue to Quiz &amp; Battle</Text>
-                <Text style={styles.continueSub}>Test what you've learned and face this chapter's challenge.</Text>
+                <Text style={styles.continueTitle}>{t('chapterdetail.continueQuiz')}</Text>
+                <Text style={styles.continueSub}>{t('chapterdetail.continueQuizSub')}</Text>
               </GlassCard>
             </TouchableOpacity>
           }
@@ -155,6 +157,7 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
 function SceneCard({ scene, unlocked, read, onRead }: {
   scene: ChapterScene; unlocked: boolean; read: boolean; onRead: () => void;
 }) {
+  const { t } = useT();
   const [expanded, setExpanded] = useState(false);
 
   const handlePress = () => {
@@ -177,7 +180,7 @@ function SceneCard({ scene, unlocked, read, onRead }: {
           <Text style={styles.sceneAtmosphere} numberOfLines={expanded ? undefined : 1}>{scene.atmosphere}</Text>
         )}
         {!unlocked ? (
-          <Text style={styles.lockedText}>Read the previous scene to unlock.</Text>
+          <Text style={styles.lockedText}>{t('chapterdetail.readPreviousToUnlock')}</Text>
         ) : expanded ? (
           <>
             {!!scene.image && (
