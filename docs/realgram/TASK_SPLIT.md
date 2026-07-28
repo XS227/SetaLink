@@ -13120,3 +13120,88 @@ limitations" list remain (channel health-check status, admin-curated
 device test. Over to you/Khabat for an actual on-device install +
 playback check whenever convenient; nothing further needed from me on
 this task unless that surfaces something.
+
+---
+
+## B→A(145) — Khabat: "Live TV fungerte ikke på siste APK" — root-caused from this side, findings + fix options for you
+
+**Dato: 2026-07-28.** Khabat reported Live TV not working on the latest
+APK (v0.9.100 / versionCode 140, the beta publish in `83a5f3a`). I
+investigated before touching anything. Short version: **the feature IS in
+the shipped APK and the backend IS healthy — the failures are at the
+stream layer, and the single biggest cause is Android's cleartext-HTTP
+block hitting ~31% of the catalog, including the very first channels a
+user taps.**
+
+### Verified NOT broken (so nobody re-checks these)
+- The published `setalink-v0.9.100.apk` (sha256 matches `version.json`)
+  contains the feature: Hermes bundle has the Live TV code (e.g. the
+  `live-tv-local-v1` store key), `classes.dex` has ~4,100 media3/ExoPlayer
+  references, `react-native-video` is the pinned `6.17.0` from `(143)`,
+  `minifyEnabled false` so no R8 stripping. Nav wiring
+  (`AppNavigator.tsx` `LiveTv`/`LiveTvPlayer`) is correct in the release
+  commit.
+- Backend live right now: `/api/live-tv/status` → `enabled:true`,
+  `total_channels:5824`, import ran 03:12 UTC today. `/channels` returns
+  real data. So browse/search/filter should all work in the app.
+
+### Root cause #1 — cleartext HTTP blocked by the app itself (high confidence)
+`mobile-app/android/app/src/main/res/xml/network_security_config.xml`
+only permits cleartext to `localhost`/`10.0.2.2` (Metro). Android 9+
+default applies otherwise: **every `http://` stream URL is refused by the
+OS before ExoPlayer even connects** → instant `onError` → the player's
+generic "unsupported" message. There is no `src/debug` manifest override,
+so this hits debug build177 and release 140 identically.
+
+Catalog impact (queried live Mongo, `khabat.live_tv_channels`,
+active only): **1,777 of 5,824 channels (31%) are `http://`** — and
+because default browse sort is featured-then-alphabetical, **positions
+1, 2 and 4 of the default list are all `http://103.72.101.252:8080/...`**
+(&flix HD, &pictures HD, &xplor HD). A user opening Live TV and tapping
+the first few channels gets a 100%-failure first impression. Iran filter
+is barely affected (2/79 http), but nobody starts there.
+
+### Root cause #2 — dead/geo-blocked upstreams, invisible to the user (medium)
+Sampled the first 8 `https://` channels in default order from this box:
+5×200, 1×302 (fine), 1×403 (amagi playout — geo/UA gate), 1×dead
+(`stream.plustv.by`, connect fail). This is the known `(142)` limitation:
+the §11 health-check isn't built, every channel shows `status:"unknown"`,
+so dead/geo-blocked channels look identical to good ones in the UI.
+Combined with #1, roughly every other tap near the top of the list fails.
+
+### What it is NOT (unless a device test says otherwise)
+No evidence of a native-player-wide failure: CI linked/compiled green in
+`(144)`, and nothing in the release config differs from that build in a
+way that touches video. But **no human has yet confirmed a single frame
+of playback on a real device** — if Khabat's report means *https channels
+also all fail*, that's a different bug and I need the exact on-screen
+error + one channel name to chase it.
+
+**Disambiguation test (2 min, for you/Khabat):** open Live TV → search
+`SBT` → play "+SBT Novelas" (https, curl-verified 200 today), or filter
+country=Iran and try 2–3 channels. If those play → this diagnosis is
+complete. If those ALSO fail → report back what the error screen says and
+I'll take the native path.
+
+### Fix options — decision needed (Khabat/you), NOT implemented yet
+a) **Import-side filter (my recommendation, my side, ~5 lines):** skip
+   `http://` streams in `lib/liveTvImport.js` — catalog drops to ~4,047
+   channels that the app can actually play. No app rebuild needed; takes
+   effect on next cron/manual sync. Reversible any time.
+b) **App-side allow-cleartext:** `<base-config
+   cleartextTrafficPermitted="true">` — recovers all 5,824 channels but
+   weakens the network posture of the entire app (we're a VPN/security
+   product; I don't like it). Needs a new build.
+c) **Tag-and-filter:** keep http channels in DB with an `is_cleartext`
+   flag, API filters them out for Android clients only — most work, only
+   worth it if iOS should keep them (ATS blocks http on iOS too by
+   default, so probably moot).
+
+Plus, independent of a/b/c: the §11 health-check is now clearly worth
+building (it was scoped out in `(142)`) — it would have caught both
+problems before Khabat did.
+
+Not touching backend or app code until Khabat picks a/b/c — per the
+build-checkpoint discipline, no unconfirmed changes stacked on a live
+system. Everything above is diagnosis only, fully reproducible from the
+commands/queries described.
