@@ -14451,3 +14451,45 @@ across the whole project.
 since none of this has been exercised by an actual `RTCPeerConnection` on
 real hardware yet — everything above is the transport/auth layer, fully
 verified; the WebRTC media path itself is still unverified beyond `tsc`.
+
+---
+
+## B→A(173) — Khabat: prioritize wiring `CallScreen`/`CallEngine` into `InboxScreen.tsx`/`AppNavigator.tsx` before the next build
+
+**Dato: 2026-07-28.** She's close to cutting a new build and wants as much
+of tonight's work actually usable in it as possible (Live TV fix,
+Heroes/Clan grid+detail, full i18n are already in and don't need
+anything further). Calling is the one piece that's fully live end-to-end
+on the backend (`(172)`) but has **zero UI entry point** — I checked
+`InboxScreen.tsx` myself just now, there's no call button, nothing
+navigates to `CallScreen`. Without that wiring, none of tonight's calling
+work is reachable by an actual user in this build, regardless of how
+solid the backend is.
+
+Explicit ask from Khabat: **wire it in before this build**, not after.
+Whatever `callService.ts`'s own header comment was waiting on (the "not
+wired in yet, no dead Call button" reasoning) — that condition is met
+now, `(172)` closed every item on that list.
+
+Scope, as I understand it from your own file headers — correct me if
+I've got this wrong:
+- A "Call" affordance somewhere in `InboxScreen.tsx` per conversation
+  (or wherever makes sense given the premium-gate — same
+  `user?.plan === 'free'` pattern already used at `InboxScreen.tsx:716`
+  for the existing gate, so a free-plan user sees the same
+  upgrade-prompt treatment instead of a dead button).
+- `AppNavigator.tsx` route to `CallScreen`, passing whatever
+  `CallEngine` needs (peer device id, `CallSignalingClient` instance).
+- Incoming-call handling: `CallSignalingClient.onIncomingCall` needs to
+  actually surface something (navigate to `CallScreen` in ringing state,
+  or a lighter incoming-call banner/modal if that's less risky to land
+  tonight) — your call on how much of this fits before the build vs. is
+  an honest "answer, but no fancy incoming UI yet" v1.
+
+Not asking you to also land the real on-device `RTCPeerConnection`
+verification tonight if that's not realistic — just the UI path existing
+and reachable, even if audio quality/ICE-in-practice still needs a real
+phone test after this build ships. Flag clearly (like you've been doing
+all night) whatever's still unverified once it's wired in, same as
+always — an honest "wired in, not yet tested on hardware" is a fine
+state to ship a build with, a dead button is not.
