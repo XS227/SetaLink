@@ -15,6 +15,15 @@
 // never on OPENED/CLOSED alone (classic Interstitial has no reward event at
 // all, so it never claims a reward).
 //
+// Khabat, 2026-07-28: the "Rewarded Interstitial" unit was confirmed via
+// AdMob's own adUnits.list API to actually be plain INTERSTITIAL format —
+// every RewardedInterstitialAd request against it failed with "Ad unit
+// doesn't match format". Fixed in code rather than recreating the AdMob
+// unit: it's now loaded as a second classic Interstitial (same InterstitialAd
+// class as the primary unit), so the chain is Interstitial -> fallback
+// Interstitial -> Rewarded Video. Neither Interstitial slot ever earns a
+// reward; only the final Rewarded Video step does.
+//
 // Iran flash fix: an ad whose creative was fetched THROUGH the tunnel cannot
 // stream once the tunnel is down (Google is blocked on the direct network) —
 // showing it renders a blank flash. Such ads are dropped at tap time, and
@@ -29,8 +38,10 @@ jest.mock('react-native-google-mobile-ads', () => {
     load,
     show,
   };
+  // Primary and fallback Interstitial units both go through InterstitialAd
+  // (see 2026-07-28 note above) — iCreate is called once per attempt,
+  // regardless of which of the two unit IDs is behind it.
   const iCreate  = jest.fn(() => inst);
-  const riCreate = jest.fn(() => inst);
   const rCreate  = jest.fn(() => inst);
   return {
     __esModule: true,
@@ -39,16 +50,15 @@ jest.mock('react-native-google-mobile-ads', () => {
       initialize: jest.fn().mockResolvedValue(undefined),
     }),
     RewardedAd: { createForAdRequest: rCreate },
-    RewardedInterstitialAd: { createForAdRequest: riCreate },
     InterstitialAd: { createForAdRequest: iCreate },
     RewardedAdEventType: { LOADED: 'rewarded_loaded', EARNED_REWARD: 'earned' },
     AdEventType: {
       LOADED: 'loaded', CLOSED: 'closed', ERROR: 'error',
       OPENED: 'opened', PAID: 'paid', CLICKED: 'clicked',
     },
-    TestIds: { REWARDED: 'test-rewarded', REWARDED_INTERSTITIAL: 'test-rewarded-interstitial', INTERSTITIAL: 'test-interstitial' },
+    TestIds: { REWARDED: 'test-rewarded', INTERSTITIAL: 'test-interstitial' },
     MaxAdContentRating: { PG: 'PG' },
-    __mock: { listeners, show, load, iCreate, riCreate, rCreate },
+    __mock: { listeners, show, load, iCreate, rCreate },
   };
 });
 
@@ -119,7 +129,6 @@ describe('full-screen ads on connect (classic Interstitial primary)', () => {
     show.mockClear();
     load.mockClear();
     iCreate.mockClear();
-    adMock.riCreate.mockClear();
     adMock.rCreate.mockClear();
     setVpnState = (jest.requireMock('../stores/vpnStore') as any).__setConnectionState;
     setVpnState('idle');
@@ -193,12 +202,11 @@ describe('full-screen ads on connect (classic Interstitial primary)', () => {
   });
 });
 
-describe('fallback chain: Interstitial -> Rewarded Interstitial -> Rewarded Video (Khabat, 2026-07-22 & 2026-07-27)', () => {
+describe('fallback chain: Interstitial -> fallback Interstitial -> Rewarded Video (Khabat, 2026-07-22, 2026-07-27 & 2026-07-28)', () => {
   let ads: AdsModule;
   let listeners: Record<string, (payload?: any) => void>;
   let load: jest.Mock;
   let iCreate: jest.Mock;
-  let riCreate: jest.Mock;
   let rCreate: jest.Mock;
 
   beforeEach(async () => {
@@ -208,11 +216,9 @@ describe('fallback chain: Interstitial -> Rewarded Interstitial -> Rewarded Vide
     listeners = adMock.listeners;
     load = adMock.load;
     iCreate = adMock.iCreate;
-    riCreate = adMock.riCreate;
     rCreate = adMock.rCreate;
     load.mockClear();
     iCreate.mockClear();
-    riCreate.mockClear();
     rCreate.mockClear();
     (jest.requireMock('../stores/vpnStore') as any).__setConnectionState('idle');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -222,37 +228,36 @@ describe('fallback chain: Interstitial -> Rewarded Interstitial -> Rewarded Vide
 
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
-  it('falls back to Rewarded Interstitial when the classic Interstitial errors, then to plain Rewarded if that also fails', () => {
+  it('falls back to the fallback Interstitial when the primary errors, then to plain Rewarded if that also fails', () => {
     ads.preloadInterstitial();
     expect(iCreate).toHaveBeenCalledTimes(1);
-    expect(riCreate).not.toHaveBeenCalled();
     expect(rCreate).not.toHaveBeenCalled();
 
-    listeners['error']?.({ code: 'no-fill' });   // classic Interstitial has no fill
+    listeners['error']?.({ code: 'no-fill' });   // primary Interstitial has no fill
 
-    expect(riCreate).toHaveBeenCalledTimes(1);   // fell back to Rewarded Interstitial
+    expect(iCreate).toHaveBeenCalledTimes(2);    // fell back to the second Interstitial unit
     expect(load).toHaveBeenCalledTimes(2);
 
-    listeners['error']?.({ code: 'no-fill' });   // Rewarded Interstitial also has no fill
+    listeners['error']?.({ code: 'no-fill' });   // fallback Interstitial also has no fill
 
     expect(rCreate).toHaveBeenCalledTimes(1);    // fell back to plain Rewarded — never a static ad again this cycle
     expect(load).toHaveBeenCalledTimes(3);
   });
 
-  it('falls back to Rewarded Interstitial when the classic Interstitial load times out', () => {
+  it('falls back to the fallback Interstitial when the primary load times out', () => {
     ads.preloadInterstitial();
     expect(iCreate).toHaveBeenCalledTimes(1);
 
     jest.advanceTimersByTime(15_000);   // direct-network load timeout
 
-    expect(riCreate).toHaveBeenCalledTimes(1);
+    expect(iCreate).toHaveBeenCalledTimes(2);
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it('falls back to plain Rewarded when Rewarded Interstitial (post-classic-Interstitial-fallback) load times out', () => {
+  it('falls back to plain Rewarded when the fallback Interstitial (post-primary-fallback) load times out', () => {
     ads.preloadInterstitial();
-    listeners['error']?.({ code: 'no-fill' });   // classic Interstitial fails -> Rewarded Interstitial starts
-    expect(riCreate).toHaveBeenCalledTimes(1);
+    listeners['error']?.({ code: 'no-fill' });   // primary Interstitial fails -> fallback Interstitial starts
+    expect(iCreate).toHaveBeenCalledTimes(2);
 
     jest.advanceTimersByTime(15_000);
 
