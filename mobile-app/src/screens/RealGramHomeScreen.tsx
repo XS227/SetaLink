@@ -59,9 +59,10 @@ interface Props {
   onOpenClans:    () => void;
   onOpenSocial:   () => void;
   onOpenEarn:     () => void;
+  onOpenLiveTv:   () => void;
 }
 
-export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial, onOpenEarn }: Props) {
+export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial, onOpenEarn, onOpenLiveTv }: Props) {
   const insets   = useSafeAreaInsets();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const localDisplayName = useIdentityStore((s) => s.displayName);
@@ -248,6 +249,18 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           </TouchableOpacity>
         )}
 
+        <TouchableOpacity onPress={onOpenLiveTv} activeOpacity={0.85}>
+          <GlassCard style={styles.card}>
+            <View style={styles.liveTvRow}>
+              <Text style={styles.liveTvIcon}>📺</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardLabel}>Live TV</Text>
+                <Text style={styles.cardCta}>Watch live channels ›</Text>
+              </View>
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
         <View style={styles.quickRow}>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenHeroes} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>⚔</Text>
@@ -345,6 +358,8 @@ const styles = StyleSheet.create({
   spotlightImageFallback: { backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
   spotlightFallbackText: { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary },
 
+  liveTvRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  liveTvIcon: { fontSize: 28 },
   quickRow:   { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   quickCard:  { flex: 1, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', gap: Spacing[1] },
   quickIcon:  { fontSize: 22 },

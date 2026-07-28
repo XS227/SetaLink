@@ -79,6 +79,7 @@ interface Props {
   onOpenSocial?: () => void;
   onOpenShahnamehHome?: () => void;
   onOpenEarn?: () => void;
+  onOpenLiveTv?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -116,7 +117,7 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
 
 export function RealGramProfileScreen({
   onBack, onSignOut, onSettings, onOpenChapters, onOpenHeroes,
-  onOpenClans, onOpenSocial, onOpenShahnamehHome, onOpenEarn,
+  onOpenClans, onOpenSocial, onOpenShahnamehHome, onOpenEarn, onOpenLiveTv,
 }: Props) {
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
@@ -470,6 +471,21 @@ export function RealGramProfileScreen({
           <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
             <View style={styles.journeyBanner}>
               <Text style={styles.cardLabel}>Earn</Text>
+              <Text style={styles.journeyBannerArrow}>›</Text>
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
+        {/* Live TV — Khabat's iptv-org integration spec (2026-07-28). */}
+        <TouchableOpacity
+          disabled={!onOpenLiveTv}
+          onPress={onOpenLiveTv}
+          activeOpacity={0.85}
+          accessibilityLabel="Open live tv"
+        >
+          <GlassCard style={styles.card}>
+            <View style={styles.journeyBanner}>
+              <Text style={styles.cardLabel}>📺 Live TV</Text>
               <Text style={styles.journeyBannerArrow}>›</Text>
             </View>
           </GlassCard>
