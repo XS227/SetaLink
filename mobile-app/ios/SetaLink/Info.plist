@@ -66,6 +66,10 @@
     <key>NSFaceIDUsageDescription</key>
     <string>RealGram uses Face ID to protect your account.</string>
 
+    <!-- Microphone (audio calling, react-native-webrtc) -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>RealGram needs microphone access so you can make and receive audio calls with friends.</string>
+
     <!-- ATT prompt — required by AdMob 14+ on iOS 14+; app rejected without this -->
     <key>NSUserTrackingUsageDescription</key>
     <string>RealGram shows ads to keep the service free. Your data is never sold or shared.</string>
@@ -140,6 +144,14 @@
 
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
+
+    <!-- Keep an active audio call alive if the app is backgrounded
+         (react-native-webrtc) -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+        <string>voip</string>
+    </array>
 
     <!-- Allow local networking in debug; disable arbitrary loads -->
     <key>NSAppTransportSecurity</key>

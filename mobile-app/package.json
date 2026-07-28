@@ -30,6 +30,7 @@
     "react-native-screens": "~3.35.0",
     "react-native-svg": "^15.7.1",
     "react-native-video": "6.17.0",
+    "react-native-webrtc": "^124.0.8",
     "react-native-webview": "^13.12.5",
     "zustand": "^5.0.1"
   },

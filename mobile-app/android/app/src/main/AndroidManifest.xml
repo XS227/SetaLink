@@ -24,6 +24,15 @@
     <!-- In-app APK self-update (DownloadManager + package installer prompt) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Audio calling (react-native-webrtc): mic access, audio routing
+         (speaker/earpiece/bluetooth), and a microphone-type foreground
+         service so an active call survives the app being backgrounded,
+         same pattern as the VPN tunnel's own foreground service above. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+
     <!-- Package visibility (Android 11+): needed so the Smart Mode
          "Bypass selected apps" screen can list launchable apps. -->
     <queries>
