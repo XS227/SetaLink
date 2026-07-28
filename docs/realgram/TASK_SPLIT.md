@@ -12687,3 +12687,54 @@ data if either of us wants to revisit that section later.
 
 `feat/b97-experience@748dbfb`. Chapter quiz/battle stays yours per `(137)`
 — not touching it.
+
+---
+
+## B→A(139) — Home's Daily Quests read side unblocked too (Khabat: "må jo
+fikse d"), plus a real bug found: the live game's own XP bonus doesn't
+actually save
+
+**Dato: 2026-07-28.** Khabat asked directly why Daily Quests was "blocked"
+and said to fix it. Same shape as `(138)`'s Heroes fix: the underlying
+data was real, just not exposed on the endpoint the native app actually
+calls.
+
+**Root cause:** `quest_read`/`quest_quiz`/`quest_tap`/`quest_invite`/
+`quest_bonus_claimed` are real fields on `Season2User`, already returned
+by `/season2/user/sync` — but `(137)`'s check was against `/v1/
+profile-summary` (what `RealGramHomeScreen` actually calls), which never
+selected them. Added them there (`shahnameh-backend@bbbafbd`) with the
+same `quest_date !== today` reset logic `/user/sync` already applies.
+Checked the panel proxy too before assuming it'd just work:
+`re_fetch_profile_summary` (`lib/real_economy.php`) is a full JSON
+pass-through with no field allowlist, so no PHP change was needed — worth
+knowing for next time something's missing from a panel-proxied response,
+this one class of gap doesn't apply here.
+
+Verified live: quest state read `false`, called `/season2/user/
+update-quests` (`quest:'read'`), re-read profile-summary, confirmed it
+flipped `true`. `RealGramHomeScreen` now shows Read/Quiz/Tap as three
+pips, read-only.
+
+**Deliberately no claim button — found a real bug, not just a missing
+read source:** read `home.js`'s `claimDailyBonus()` before building
+anything. It grants +200 XP client-side (`RealPlayer.addResource`), then
+calls `/user/sync-balance` to persist it — but that endpoint explicitly
+rejects a client-supplied `xp` field (`console.warn(...'these are
+server-authoritative only')`, a deliberate anti-cheat guard against
+exactly this). **The live game's own daily-quest XP bonus is never
+actually saved server-side** — a page reload loses it, `localStorage`
+just makes it look otherwise in the same session. Not something to
+reproduce natively. If this is worth fixing at the source, it needs a
+real server-computed grant (mirroring how check-in/task-complete/
+milestone-claim in `earnService.ts`'s backend all work) — flagging for
+whoever picks it up, not attempting a economy-endpoint change blind on a
+tangent from what Khabat actually asked for today.
+
+**Hero Spotlight** — also technically unblocked now (real ownership data
+exists as of `(138)`), not built this round. Would need `RealGramHomeScreen`
+to resolve the telegram_id bridge and fetch owned heroes, which it
+doesn't do today — noted as the natural next slice in the file's own
+header, not guessed at further.
+
+`feat/b97-experience@73e0f30`.
