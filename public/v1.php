@@ -399,34 +399,43 @@ function v1_cfedge_node(): array {
     ];
 }
 
-// Starlink node — 'test' => true so it's gated by the SAME node_allowlist
-// mechanism as Helsinki above (v1_device_allowed), not a parallel one. The
-// A->B(126) unlock-status fix already self-grants a qualifying device into
-// node_allowlist for this exact node_id, so "unlocked" and "shows up in the
-// server list" now share one source of truth instead of drifting apart —
-// that was the actual bug Khabat hit (unlock-status said unlocked, but this
-// function never existed, so the node could never appear in /servers at all,
-// for anyone, regardless of allowlist state).
+// Starlink exit node(s) — ported 2026-07-28 from `feat/starlink-node-phase1`
+// (commits 9f2ce12/a2cc330, 2026-07-17), which built and tested this
+// properly but was never merged into this branch — that unmerged state was
+// the actual root cause of every Starlink gap found this session (A->B(126)/
+// (127)), not a from-scratch build. Porting the real implementation rather
+// than keeping my own rougher first pass (which used a made-up 3-invite
+// threshold, copied from an unrelated stealth-unlock check, instead of the
+// real, product-corrected 11 — see v1_starlink_unlock below).
 //
-// 'creds' => null on purpose: lib/starlink.php's own header describes the
-// intended mechanism (a server-side Xray routing rule, keyed to this node's
-// dedicated vless_uuid, redirecting a normal VLESS session's egress over a
-// WireGuard tunnel to the gateway) — checked the live Xray config directly,
-// that routing rule and the WireGuard peer do not exist on this box. The
-// gateway itself heartbeats fine (health/telemetry below are real), but
-// there is currently no way to hand out creds that would actually route
-// traffic through it. Returning primary's creds under a Starlink label would
-// silently test the WRONG thing; the /servers/{id}/config handler below
-// turns this null into an honest 503 instead.
-function v1_starlink_node(PDO $pdo): ?array {
-    $row = $pdo->query("SELECT * FROM starlink_nodes WHERE enabled=1 ORDER BY node_id LIMIT 1")->fetch();
-    if (!$row) return null;
-    return [
-        'id'    => $row['node_id'],
-        'test'  => true,
-        'meta'  => st_meta($row),
-        'creds' => null,
-    ];
+// Design (that branch's own comment, verified independently against this
+// box's actual state): the client dials the SAME address/port/Reality key
+// as the primary node — only the VLESS uuid differs, so a server-side Xray
+// routing rule (matched on that uuid) can send this session's egress over a
+// WireGuard tunnel to the Starlink gateway instead of the normal direct
+// outbound. That's the CORRECT target shape for 'creds' below (primary's
+// creds with the uuid swapped) — but checked the live Xray config directly:
+// that uuid is registered on NO inbound, there is no WireGuard outbound, and
+// no routing rule references it. The gateway itself heartbeats fine (real
+// health/telemetry above), but nothing on this box would currently route
+// traffic sent with that uuid — it would just fail the Reality handshake.
+// 'creds' stays null (honest 503 in /servers/{id}/config below) until that
+// Xray-side wiring is actually done; the real shape is documented here so
+// flipping it on later is a one-line change, not a rediscovery.
+function v1_starlink_nodes(PDO $pdo): array {
+    st_init_tables($pdo);
+    $out = [];
+    foreach (st_all($pdo) as $n) {
+        if ((int)$n['enabled'] !== 1) continue;
+        $out[$n['node_id']] = [
+            'id'    => $n['node_id'],
+            'test'  => true,   // policy-gated via v1_starlink_unlock() below, not node_allowlist
+            'meta'  => st_meta($n),
+            'creds' => null,   // see comment above — real shape: primary creds + uuid => $n['vless_uuid']
+            '_row'  => $n,
+        ];
+    }
+    return $out;
 }
 
 function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
@@ -436,9 +445,50 @@ function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $d = v1_proisp_node();
     $c = v1_cfedge_node();
     $out = [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d, $c['id'] => $c];
-    $s = v1_starlink_node($pdo);
-    if ($s) $out[$s['id']] = $s;
+    foreach (v1_starlink_nodes($pdo) as $id => $n) { $out[$id] = $n; }
     return $out;
+}
+
+// Starlink nodes use a PUSH heartbeat model (no cron probe reaches them
+// behind CGNAT) — health is read straight from starlink_nodes, fails CLOSED
+// (unlike v1_node_down's fail-open default) because a silent/dead Starlink
+// node must never keep receiving new sessions.
+function v1_starlink_down(array $starlinkNode): bool {
+    $row = $starlinkNode['_row'] ?? null;
+    if (!$row) return true;
+    return !st_routable($row);
+}
+
+// Starlink unlock policy (Khabat 2026-07-16, product-corrected 2026-07-17):
+// premium OR test_mode OR >= V1_STARLINK_INVITES_REQUIRED verified ACTIVE
+// invites. "Verified active invite" reuses the same definition used
+// elsewhere in this file — one economy, one number.
+define('V1_STARLINK_INVITES_REQUIRED', 11);
+function v1_starlink_unlock(PDO $pdo, ?string $deviceId): array {
+    $res = ['unlocked' => false, 'reason' => null,
+            'invitesVerified' => 0, 'invitesRequired' => V1_STARLINK_INVITES_REQUIRED];
+    if ($deviceId === null || $deviceId === '') return $res;
+    try {
+        $q = $pdo->prepare("SELECT plan, COALESCE(test_mode,0) AS test_mode FROM devices WHERE device_id = ?");
+        $q->execute([$deviceId]);
+        $dev = $q->fetch(PDO::FETCH_ASSOC);
+        $ic = $pdo->prepare(
+            "SELECT COUNT(*) FROM referral_uses ru
+             JOIN devices d ON d.device_id = ru.new_device_id
+             WHERE ru.referrer_device_id = ?
+               AND ru.status IN ('credited','approved')
+               AND (d.internet_ok = 1 OR d.last_seen >= datetime('now','-7 days'))");
+        $ic->execute([$deviceId]);
+        $res['invitesVerified'] = (int)$ic->fetchColumn();
+        if ($dev && $dev['plan'] === 'premium') {
+            $res['unlocked'] = true; $res['reason'] = 'premium';
+        } elseif ($dev && (int)$dev['test_mode'] === 1) {
+            $res['unlocked'] = true; $res['reason'] = 'test_mode';
+        } elseif ($res['invitesVerified'] >= V1_STARLINK_INVITES_REQUIRED) {
+            $res['unlocked'] = true; $res['reason'] = 'invites';
+        }
+    } catch (\Throwable $e) {}
+    return $res;
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
@@ -464,11 +514,19 @@ function v1_node_down(string $id): bool {
     return $age >= 0 && $age <= 900;
 }
 
-function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId): bool {
+function v1_device_allowed(PDO $pdo, ?string $deviceId, string $nodeId, ?array $node = null): bool {
     if ($deviceId === null || $deviceId === '') return false;
     $st = $pdo->prepare("SELECT 1 FROM node_allowlist WHERE device_id = ? AND node_id = ?");
     $st->execute([$deviceId, $nodeId]);
-    return (bool)$st->fetchColumn();
+    if ($st->fetchColumn()) return true;
+    // Starlink nodes: policy gate (premium/test_mode/invites) instead of a
+    // manually-maintained allowlist row — re-derived live on every call so
+    // it can never go stale the way a one-time allowlist insert could.
+    // Every other test node (Helsinki) stays strictly node_allowlist-gated.
+    if ($node !== null && isset($node['_row'])) {
+        if (v1_starlink_unlock($pdo, $deviceId)['unlocked']) return true;
+    }
+    return false;
 }
 
 function v1_record_usage(PDO $pdo, ?string $deviceId, string $nodeId): void {
@@ -734,92 +792,50 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
 // mirror the existing stealth-server pattern above (plan==='premium' /
 // devices.test_mode / >=3 active credited referrals) for consistency rather
 // than inventing a separate threshold with no spec to match against.
+// Starlink unlock/progress for the Home card (product correction 2026-07-17,
+// ported from feat/starlink-node-phase1 2026-07-28 — see v1_starlink_unlock/
+// v1_starlink_nodes above): the card must exist for EVERY user — unlocked
+// users see node state, locked users see invite progress toward
+// V1_STARLINK_INVITES_REQUIRED. node=null only when no Starlink node is
+// enabled at all.
 if ($rel === '/starlink/unlock-status' && $method === 'GET') {
-    st_init_tables($pdo);
-
-    $unlocked        = false;
-    $reason          = null;
-    $invitesVerified = 0;
-    $invitesRequired = 3;
-    $hasConnected    = false;
-
-    // Single node today; first enabled row if/when more exist.
-    $node = $pdo->query("SELECT * FROM starlink_nodes WHERE enabled=1 ORDER BY node_id LIMIT 1")->fetch();
-
-    if ($deviceId !== null && $deviceId !== '') {
-        $dst = $pdo->prepare("SELECT plan, test_mode FROM devices WHERE device_id=?");
-        $dst->execute([$deviceId]);
-        $devRow = $dst->fetch();
-
-        if ($devRow) {
-            if ((string)($devRow['plan'] ?? '') === 'premium') {
-                $unlocked = true; $reason = 'premium';
-            } elseif ((int)($devRow['test_mode'] ?? 0) === 1) {
-                $unlocked = true; $reason = 'test_mode';
-            } else {
-                $ic = $pdo->prepare("
-                    SELECT COUNT(*) FROM referral_uses ru
-                    JOIN devices d ON d.device_id = ru.new_device_id
-                    WHERE ru.referrer_device_id=?
-                      AND ru.status IN ('credited','approved')
-                      AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))
-                ");
-                $ic->execute([$deviceId]);
-                $invitesVerified = (int)$ic->fetchColumn();
-                if ($invitesVerified >= $invitesRequired) { $unlocked = true; $reason = 'invites'; }
-            }
-        }
-
-        // Self-granting, same convention as stealth_unlocked's auto-flip above:
-        // a qualifying device is added to node_allowlist here rather than
-        // requiring a second manual step — node_allowlist is the table that
-        // actually gates routability (lib/starlink.php's own header comment),
-        // so "shows unlocked" and "can actually connect" never drift apart.
-        if ($unlocked && $node) {
-            $pdo->prepare("INSERT OR IGNORE INTO node_allowlist (device_id, node_id, added_at) VALUES (?, ?, datetime('now'))")
-                ->execute([$deviceId, $node['node_id']]);
-        }
-
-        if ($node) {
-            $hc = $pdo->prepare("SELECT 1 FROM node_usage WHERE device_id=? AND node_id=?");
-            $hc->execute([$deviceId, $node['node_id']]);
-            $hasConnected = (bool)$hc->fetchColumn();
-        }
-    }
-
+    $unlock = v1_starlink_unlock($pdo, $deviceId);
     $nodeOut = null;
-    if ($node) {
-        $health = st_health_state($node);
+    $hasConnected = false;
+    foreach ($nodes as $id => $n) {
+        if (!isset($n['_row'])) continue;
+        $row  = $n['_row'];
+        $down = v1_starlink_down($n);
+        $hbAge = !empty($row['last_heartbeat_at'])
+            ? max(0, time() - strtotime((string)$row['last_heartbeat_at'])) : null;
         $nodeOut = [
-            'id'          => $node['node_id'],
-            'available'   => st_routable($node),
-            'status'      => $health === 'MAINTENANCE' ? 'maintenance' : ($health === 'OFFLINE' ? 'offline' : 'online'),
-            'statusNote'  => $health !== 'ONLINE' ? 'auto_returns_when_healthy' : null,
-            'maxSessions' => (int)($node['max_sessions'] ?? 0),
-            'country'     => $node['country'] ?? 'Norway',
-            'health'      => $health,
+            'id'          => $id,
+            'available'   => !$down,
+            'status'      => $down
+                ? (((int)($row['maintenance_mode'] ?? 0) === 1) ? 'maintenance' : 'offline')
+                : 'online',
+            'statusNote'  => $down ? 'auto_returns_when_healthy' : null,
+            'maxSessions' => (int)($row['max_sessions'] ?? 0),
+            'country'     => $row['country'] ?? 'Norway',
+            'health'      => st_health_state($row),
             'telemetry'   => [
-                'latencyMs'            => $node['latency_ms'] !== null ? (int)$node['latency_ms'] : null,
-                'packetLossPct'        => $node['packet_loss_pct'] !== null ? (float)$node['packet_loss_pct'] : null,
-                'uptimeSecs'           => $node['uptime_secs'] !== null ? (int)$node['uptime_secs'] : null,
-                'downloadKbps'         => $node['measured_download_kbps'] !== null ? (int)$node['measured_download_kbps'] : null,
-                'uploadKbps'           => $node['measured_upload_kbps'] !== null ? (int)$node['measured_upload_kbps'] : null,
-                'sessions'             => (int)($node['current_sessions'] ?? 0),
-                'lastHeartbeatAgeSecs' => $node['last_heartbeat_at'] ? (time() - strtotime($node['last_heartbeat_at'])) : null,
+                'latencyMs'            => $row['latency_ms'] !== null ? (int)$row['latency_ms'] : null,
+                'packetLossPct'        => $row['packet_loss_pct'] !== null ? (float)$row['packet_loss_pct'] : null,
+                'uptimeSecs'           => $row['uptime_secs'] !== null ? (int)$row['uptime_secs'] : null,
+                'downloadKbps'         => $row['measured_download_kbps'] !== null ? (int)$row['measured_download_kbps'] : null,
+                'uploadKbps'           => $row['measured_upload_kbps'] !== null ? (int)$row['measured_upload_kbps'] : null,
+                'sessions'             => (int)($row['current_sessions'] ?? 0),
+                'lastHeartbeatAgeSecs' => $hbAge,
             ],
         ];
+        if ($deviceId !== null && $deviceId !== '') {
+            $uq = $pdo->prepare("SELECT 1 FROM node_usage WHERE device_id=? AND node_id=?");
+            $uq->execute([$deviceId, $id]);
+            $hasConnected = (bool)$uq->fetchColumn();
+        }
+        break;
     }
-
-    v1_send([
-        'unlock' => [
-            'unlocked'        => $unlocked,
-            'reason'          => $reason,
-            'invitesVerified' => $invitesVerified,
-            'invitesRequired' => $invitesRequired,
-        ],
-        'node'         => $nodeOut,
-        'hasConnected' => $hasConnected,
-    ]);
+    v1_send(['unlock' => $unlock, 'node' => $nodeOut, 'hasConnected' => $hasConnected]);
 }
 
 if ($rel === '/servers') {
@@ -839,13 +855,28 @@ if ($rel === '/servers') {
     } catch (\Throwable $_) {}
     $out = [];
     foreach ($nodes as $id => $n) {
-        if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) continue; // hide test nodes
-        // Auto-hide a non-primary node that is freshly DOWN, so users aren't
-        // routed to a dead box. Primary is never hidden (last-resort default).
-        if ($id !== 'primary' && v1_node_down($id)) continue;
+        if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) continue; // hide test nodes
+        // Starlink (product correction 2026-07-17): an ELIGIBLE device must
+        // still SEE a down/maintenance Starlink node — greyed out with
+        // available:false, not erased. Nothing can connect to it anyway: the
+        // /servers/{id}/config route keeps refusing while it's down (or,
+        // right now, always — see v1_starlink_nodes()'s creds comment).
+        $starlinkUnavailable = false;
+        if (isset($n['_row'])) {
+            if (v1_starlink_down($n)) $starlinkUnavailable = true;
+        } elseif ($id !== 'primary' && v1_node_down($id)) continue;    // other nodes: cron-probe health, hard-hide
         // Geo-hide nodes that are unreachable from the caller's country.
         if (v1_node_geo_hidden($pdo, $id)) continue;
         $meta = $n['meta'];
+        if (isset($n['_row'])) {
+            $row = $n['_row'];
+            $meta['available']   = !$starlinkUnavailable;
+            $meta['status']      = $starlinkUnavailable
+                ? (((int)($row['maintenance_mode'] ?? 0) === 1) ? 'maintenance' : 'offline')
+                : 'online';
+            $meta['maxSessions'] = (int)($row['max_sessions'] ?? 0);
+            if ($starlinkUnavailable) $meta['statusNote'] = 'auto_returns_when_healthy';
+        }
         // Annotate live ping from the latest health probe when available.
         $rtt = $health[$id]['rtt_ms'] ?? null;
         if (is_int($rtt)) $meta['ping'] = $rtt;
@@ -866,7 +897,7 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     $id = $m[1];
     if (!isset($nodes[$id])) v1_send(['message' => 'unknown server'], 404);
     $n = $nodes[$id];
-    if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id)) {
+    if ($n['test'] && !v1_device_allowed($pdo, $deviceId, $id, $n)) {
         v1_send(['message' => 'device not authorized for this node'], 403);
     }
     // Defense in depth: never hand out creds for a node geo-hidden from this
@@ -876,12 +907,15 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     }
     // Refuse to hand out creds for a node that is freshly down (clients fall back
     // to primary / saved bootstrap). Primary is exempt — it's the last resort.
-    if ($id !== 'primary' && v1_node_down($id)) {
+    if (isset($n['_row']) && v1_starlink_down($n)) {
+        v1_send(['message' => 'node temporarily unavailable'], 503);
+    } elseif ($id !== 'primary' && v1_node_down($id)) {
         v1_send(['message' => 'node temporarily unavailable'], 503);
     }
-    // Starlink: visible/allowlisted (above) does not mean routable yet — see
-    // v1_starlink_node()'s comment. Honest failure instead of silently
-    // handing out another node's creds under this one's label.
+    // Starlink: visible/eligible (above) does not mean routable yet — see
+    // v1_starlink_nodes()'s comment (no Xray-side wiring for its uuid on
+    // this box yet). Honest failure instead of silently handing out
+    // another node's creds under this one's label.
     if ($n['creds'] === null) {
         v1_send(['message' => 'node temporarily unavailable'], 503);
     }
