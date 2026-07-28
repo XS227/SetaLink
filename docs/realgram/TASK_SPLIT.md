@@ -13656,3 +13656,9 @@ than only this one item.
   If you've got other near-done items, this seems like the moment to list
   them so Khabat's next build sweeps up everything at once rather than
   going out for the Live TV fix alone.
+
+---
+
+*(Correction to `(156)`: the fix commit hash changed to `cec8683` after a
+rebase onto your `(154)`/`(155)` — same content, just a different hash than
+what's written above.)*
