@@ -102,6 +102,7 @@ export class CallEngine {
   private remoteStream: MediaStream | null = null;
   private unsubs: Array<() => void> = [];
   private remoteStreamListeners: Array<(stream: MediaStream) => void> = [];
+  private stateListeners: Array<(state: CallState) => void> = [];
 
   private localVideoEnabled = false;
 
@@ -123,6 +124,27 @@ export class CallEngine {
      *  caller in this codebase passes `video: false` today. */
     private readonly video: boolean = false,
   ) {}
+
+  /** Every internal state transition (both the constructor callback and
+   *  CallScreen's own subscription, see onStateChangeUpdate) goes through
+   *  here — one path, not two independently-maintained ones. */
+  private emitStateChange(state: CallState): void {
+    this.onStateChange(state);
+    this.stateListeners.forEach((cb) => cb(state));
+  }
+
+  /** Lets CallScreen (which receives an already-constructed CallEngine)
+   *  react to state transitions the engine itself drives — e.g. the
+   *  underlying RTCPeerConnection reaching 'connected'/'failed' — the same
+   *  problem onRemoteStreamUpdate solves for the remote stream, and for
+   *  the same reason: the constructor's own onStateChange callback is
+   *  whoever built the engine's business, not necessarily CallScreen's. */
+  onStateChangeUpdate(cb: (state: CallState) => void): () => void {
+    this.stateListeners.push(cb);
+    return () => {
+      this.stateListeners = this.stateListeners.filter((l) => l !== cb);
+    };
+  }
 
   private async ensurePeerConnection(iceServers: RTCIceServerLike[]): Promise<RTCPeerConnection> {
     if (this.pc) return this.pc;
@@ -154,8 +176,8 @@ export class CallEngine {
     });
     pcAny.addEventListener('connectionstatechange', () => {
       const s = pcAny.connectionState;
-      if (s === 'connected') this.onStateChange('active');
-      if (s === 'failed' || s === 'closed' || s === 'disconnected') this.onStateChange('ended');
+      if (s === 'connected') this.emitStateChange('active');
+      if (s === 'failed' || s === 'closed' || s === 'disconnected') this.emitStateChange('ended');
     });
 
     this.pc = pc;
@@ -177,7 +199,7 @@ export class CallEngine {
 
   /** Caller side: capture mic(+camera), create+send an SDP offer. */
   async startOutgoing(): Promise<void> {
-    this.onStateChange('dialing');
+    this.emitStateChange('dialing');
     const { callId } = await this.signaling.placeCall(this.peerDeviceId);
     this.callId = callId;
 
@@ -196,7 +218,7 @@ export class CallEngine {
   /** Callee side: capture mic(+camera), wait for the offer already known
    *  to the caller, answer it. Call this once the user taps "Accept". */
   async acceptIncoming(offer: RTCSessionDescriptionInitLike): Promise<void> {
-    this.onStateChange('connecting');
+    this.emitStateChange('connecting');
     const iceServers = await this.signaling.getIceServers(this.callId);
     const pc = await this.ensurePeerConnection(iceServers);
     const stream = await this.captureLocalMedia();
@@ -212,18 +234,18 @@ export class CallEngine {
 
   async rejectIncoming(): Promise<void> {
     await this.signaling.reject(this.callId);
-    this.onStateChange('ended');
+    this.emitStateChange('ended');
   }
 
   private listenForAnswerAndCandidates(): void {
     this.unsubs.push(
       this.signaling.onAnswer(async (callId, sdp) => {
         if (callId !== this.callId || !this.pc) return;
-        this.onStateChange('connecting');
+        this.emitStateChange('connecting');
         await this.pc.setRemoteDescription(new RTCSessionDescription(sdp as any));
       }),
       this.signaling.onReject((callId) => {
-        if (callId === this.callId) this.onStateChange('ended');
+        if (callId === this.callId) this.emitStateChange('ended');
       }),
     );
     this.listenForCandidates();
@@ -236,7 +258,7 @@ export class CallEngine {
         await this.pc.addIceCandidate(new RTCIceCandidate(candidate as any));
       }),
       this.signaling.onHangUp((callId) => {
-        if (callId === this.callId) this.onStateChange('ended');
+        if (callId === this.callId) this.emitStateChange('ended');
       }),
     );
   }
@@ -313,6 +335,7 @@ export class CallEngine {
     this.unsubs.forEach((u) => u());
     this.unsubs = [];
     this.remoteStreamListeners = [];
+    this.stateListeners = [];
     this.localStream?.getTracks().forEach((t: any) => t.stop());
     this.localStream = null;
     this.remoteStream = null;

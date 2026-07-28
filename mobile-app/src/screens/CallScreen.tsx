@@ -32,6 +32,14 @@ interface Props {
    *  callee (ringing until accepted). */
   outgoing: boolean;
   onEnded: () => void;
+  /** Incoming calls only: called when the user taps Accept. Answering
+   *  needs more than this screen can do alone -- joining the relay room
+   *  as callee (which mints a voucher over HTTP) and waiting for the
+   *  caller's SDP offer to arrive before engine.acceptIncoming(offer) can
+   *  even be called. Left to whoever wires this screen in (has the
+   *  signaling client + the pending offer), not duplicated here. Reject
+   *  the returned promise to fall back to the ended state. */
+  onAccept?: () => Promise<void>;
 }
 
 function formatDuration(totalSecs: number): string {
@@ -40,7 +48,7 @@ function formatDuration(totalSecs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function CallScreen({ engine, peerLabel, outgoing, onEnded }: Props) {
+export function CallScreen({ engine, peerLabel, outgoing, onEnded, onAccept }: Props) {
   const { t } = useT();
   const insets = useSafeAreaInsets();
   const [state, setState] = useState<CallState>(outgoing ? 'dialing' : 'ringing');
@@ -57,10 +65,16 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded }: Props) {
     if (outgoing) {
       engine.startOutgoing().catch(() => setState('ended'));
     }
-    const unsub = engine.onRemoteStreamUpdate((stream) => setRemoteStreamUrl(stream.toURL()));
+    const unsubStream = engine.onRemoteStreamUpdate((stream) => setRemoteStreamUrl(stream.toURL()));
+    // Real connection-state transitions the engine itself drives (ICE
+    // reaching 'connected', or failing/closing unexpectedly) — separate
+    // from this screen's own explicit accept/reject/hangUp calls, which
+    // already setState directly.
+    const unsubState = engine.onStateChangeUpdate((s) => setState(s));
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      unsub();
+      unsubStream();
+      unsubState();
       engine.teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -87,13 +101,8 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded }: Props) {
   };
 
   const handleAccept = () => {
-    // Real offer/SDP arrives via the signaling client's onOffer callback
-    // in a real wiring — the caller of this screen is responsible for
-    // holding that offer and calling engine.acceptIncoming(offer) before
-    // rendering this screen in "ringing" mode with an accept handler that
-    // resolves it. Left as the integration point for whoever wires this
-    // screen in, since it depends on the real signaling implementation.
     setState('connecting');
+    onAccept?.().catch(() => setState('ended'));
   };
 
   const handleReject = () => {

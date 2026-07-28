@@ -37,6 +37,32 @@ jest.mock('../stores/toastStore', () => ({
 // Inbox test.
 jest.mock('../components/AdBanner', () => ({ AdBanner: () => null }));
 
+// InboxScreen now imports callService.ts (the "Call" button, Khabat
+// 2026-07-28), which imports react-native-webrtc -- a native module that
+// throws at import time outside a real app (`WebRTCModule === null`).
+// Stubbed the same way as AdBanner's ad SDK above: this file's assertions
+// are about thread-open/read-marking, not calling, and the calling
+// useEffect below is inert anyway (canCall is true for this mocked user,
+// but RealCallSignalingClient.connect() only ever tries a real
+// `new WebSocket(...)` -- also unavailable here, so mock that constructor
+// too rather than let it throw).
+jest.mock('react-native-webrtc', () => ({
+  RTCPeerConnection: class { addEventListener() {} close() {} },
+  RTCIceCandidate: class {},
+  RTCSessionDescription: class {},
+  MediaStream: class {},
+  mediaDevices: { getUserMedia: jest.fn().mockResolvedValue({ getTracks: () => [], getAudioTracks: () => [], getVideoTracks: () => [] }) },
+}));
+(globalThis as any).WebSocket = class {
+  onopen: (() => void) | null = null;
+  onmessage: ((e: any) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  readyState = 0;
+  close() {}
+  send() {}
+};
+
 const mockAnnMarkRead = jest.fn();
 let mockAnnouncements: any[] = [];
 jest.mock('../stores/inboxStore', () => ({

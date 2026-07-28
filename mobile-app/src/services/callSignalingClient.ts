@@ -73,6 +73,16 @@ export class RealCallSignalingClient implements CallSignalingClient {
     incomingCall: [], offer: [], answer: [], iceCandidate: [], reject: [], hangUp: [],
   };
 
+  // The relay only forwards call:signal to a peer that has already
+  // joined the room (server.js: "if (peerWs) send(...)" -- no queuing on
+  // its side). The caller joins right after placeCall(); the callee only
+  // joins once the user taps Accept, which can be seconds into ringing --
+  // so an offer sent immediately after createOffer() would silently be
+  // dropped. Queue outgoing signals per callId until call:peer_joined
+  // confirms the other side is actually in the room.
+  private peerJoined = new Set<string>();
+  private pendingSignals = new Map<string, Array<Record<string, unknown>>>();
+
   constructor(private readonly deviceId: string) {}
 
   /** Call once (e.g. Inbox screen mount). Safe to call again — a no-op if
@@ -146,10 +156,23 @@ export class RealCallSignalingClient implements CallSignalingClient {
       case 'call:peer_left':
       case 'call:ended':
         this.listeners.hangUp.forEach((cb) => cb(msg.call_id));
+        this.peerJoined.delete(msg.call_id);
+        this.pendingSignals.delete(msg.call_id);
+        break;
+      case 'call:peer_joined':
+        this.peerJoined.add(msg.call_id);
+        this.flushPendingSignals(msg.call_id);
         break;
       default:
         break;
     }
+  }
+
+  private flushPendingSignals(callId: string): void {
+    const queued = this.pendingSignals.get(callId);
+    if (!queued) return;
+    this.pendingSignals.delete(callId);
+    queued.forEach((payload) => this.wsSend({ type: 'call:signal', call_id: callId, payload }));
   }
 
   private async ensureConnected(): Promise<void> {
@@ -162,7 +185,16 @@ export class RealCallSignalingClient implements CallSignalingClient {
   }
 
   private sendSignal(callId: string, payload: Record<string, unknown>): void {
-    this.wsSend({ type: 'call:signal', call_id: callId, payload });
+    // ICE candidates trickle in continuously, including after the peer has
+    // already joined -- only the very first offer/answer needs the queue;
+    // once peerJoined is set for this call, everything sends immediately.
+    if (this.peerJoined.has(callId)) {
+      this.wsSend({ type: 'call:signal', call_id: callId, payload });
+      return;
+    }
+    const queue = this.pendingSignals.get(callId) ?? [];
+    queue.push(payload);
+    this.pendingSignals.set(callId, queue);
   }
 
   // ── CallSignalingClient ────────────────────────────────────────────────
