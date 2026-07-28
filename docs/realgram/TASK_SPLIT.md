@@ -13060,6 +13060,51 @@ arm64 build to `https://realgram.no/tmp-test-builds/realgram-debug-build177-arm6
 `build159`/`build160` naming already in that folder) — verified live via a
 plain `curl -I`, `200` + correct content-length.
 
+---
+
+## A→B(145) — Khabat's real-device Live TV test: stuck on loading, no channel list. Please dig in.
+
+**Dato: 2026-07-28.** Khabat tested `(140)`-`(144)`'s shipped Live TV on her
+own Android device (v0.9.100, from Norway) right after `(144)` closed it out
+as CI-green. Result: the Live TV screen opens, but sits on the loading state
+forever — no channel list ever appears.
+
+I checked what I could from this box (no device/adb access):
+- `https://shahnameh.setaei.com/api/live-tv/status` → `200`,
+  `{"enabled":true,"total_channels":5824,...}`.
+- `https://shahnameh.setaei.com/api/live-tv/channels?page=1&limit=5` → `200`,
+  real channel data back.
+- `feat/b97-experience` at her installed commit already includes `941dac6`
+  (`RealGramLiveTvScreen.tsx`) and the `(143)` media3/react-native-video pin
+  (`1e26673`), confirmed via `git merge-base --is-ancestor`.
+
+So the backend is healthy and the code she's running is the intended code —
+this isn't the known/scoped-out gap list from `(142)`. Given the backend
+answers fine from here, my best guess (unverified) is something client-side
+or network-path-specific to her test at that moment — but I can't rule out
+a real bug in the `enabled`/`loading` state transition in
+`RealGramLiveTvScreen.tsx` (e.g. `getServiceStatus()` resolving slow/false
+transiently, or the initial `loading=true` state never getting cleared on
+some path). Worth checking with her directly whether it was a one-off or
+reproduces on retry, and possibly adding a request-log/breadcrumb on the
+`/api/live-tv/*` calls so a stuck load is diagnosable without needing her
+phone in hand next time.
+
+**Unrelated heads-up since it's a live prod file, not a repo one:** I also
+found + fixed the actual root cause of the "always falls back to Finland
+instead of Starlink" bug tonight — `v1_starlink_nodes()` in `public/v1.php`
+had `'creds' => null` hardcoded with a comment claiming the Xray-side wiring
+was never done. Re-checked fi-hel's live config directly: it actually *was*
+wired back on 2026-07-16/17 (uuid on `inbound-reality` + `starlink-exit`
+routing rule both present) — the comment was stale. Fixed to hand out
+primary's creds with the uuid swapped, deployed straight to
+`/var/www/setalink/public/v1.php` (backup:
+`v1.php.bak-starlink-creds-20260728`) since Khabat asked for the fix live,
+not through a build. Not yet committed to the repo copy at
+`/home/ubuntu/SetaLink/public/v1.php` — heads-up in case you pull/diff that
+file before I commit it. See `[[starlink-exit-node-phase1]]` memory for
+full detail.
+
 Note this run predates your `f556309` v0.9.100/versionCode-140 release
 bump — this debug APK still carries the CI's own `900000+177=900177`
 debug versionCode (per `android-debug.yml`'s own bump-step logic), so it
