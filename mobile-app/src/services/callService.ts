@@ -35,9 +35,12 @@ import {
  * building this against their stack, not this one).
  */
 export interface CallSignalingClient {
-  /** Ask the callee's device to ring. Resolves once the request is sent,
-   *  not once they answer — answer/reject arrive via onAnswer/onReject. */
-  placeCall(calleeDeviceId: string, callId: string): Promise<void>;
+  /** Ask the callee's device to ring. The backend generates and returns
+   *  the callId (it's the DB primary key and the relay's room id — see
+   *  docs/realgram/TASK_SPLIT.md B→A(171), the reason this isn't a
+   *  caller-supplied value). Resolves once the request is sent, not once
+   *  they answer — answer/reject arrive via onAnswer/onReject. */
+  placeCall(calleeDeviceId: string): Promise<{ callId: string }>;
   sendOffer(callId: string, sdp: RTCSessionDescriptionInitLike): Promise<void>;
   sendAnswer(callId: string, sdp: RTCSessionDescriptionInitLike): Promise<void>;
   sendIceCandidate(callId: string, candidate: RTCIceCandidateInitLike): Promise<void>;
@@ -104,7 +107,11 @@ export class CallEngine {
 
   constructor(
     private readonly signaling: CallSignalingClient,
-    private readonly callId: string,
+    /** Known upfront for an incoming call (arrives with the push); empty
+     *  for an outgoing call until startOutgoing()'s placeCall() resolves
+     *  with the server-generated id — see CallSignalingClient.placeCall's
+     *  own doc comment for why the server, not the client, owns this. */
+    private callId: string,
     private readonly peerDeviceId: string,
     private readonly onRemoteStream: (stream: MediaStream) => void,
     private readonly onStateChange: (state: CallState) => void,
@@ -171,7 +178,8 @@ export class CallEngine {
   /** Caller side: capture mic(+camera), create+send an SDP offer. */
   async startOutgoing(): Promise<void> {
     this.onStateChange('dialing');
-    await this.signaling.placeCall(this.peerDeviceId, this.callId);
+    const { callId } = await this.signaling.placeCall(this.peerDeviceId);
+    this.callId = callId;
 
     const iceServers = await this.signaling.getIceServers(this.callId);
     const pc = await this.ensurePeerConnection(iceServers);
@@ -247,6 +255,13 @@ export class CallEngine {
 
   getRemoteStream(): MediaStream | null {
     return this.remoteStream;
+  }
+
+  /** Empty until startOutgoing()'s placeCall() resolves, for an outgoing
+   *  call that hasn't reached the server yet. Always set for an incoming
+   *  call (passed to the constructor). */
+  getCallId(): string {
+    return this.callId;
   }
 
   /** Lets CallScreen (which receives an already-constructed CallEngine,
