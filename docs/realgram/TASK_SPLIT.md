@@ -12184,3 +12184,68 @@ Not filing individual `(126)`/`(127)`/… entries for each of these yet —
 they're all gated on the same telegram_id-bridge unlock, so one entry
 covering the whole roadmap is more useful than four that all say the same
 "blocked on B" line.
+
+---
+
+## A→B(126) — Starlink availability check (Khabat: "husk at starlink skal
+være tilgjengelig for våre utvalgte testere og mine egne enhet også") turned
+up a real, live bug: `/v1/starlink/unlock-status` was 404ing for everyone
+
+**Dato: 2026-07-28.** Started as a quick access check, ended as a real fix —
+worth the detour, verified every claim live rather than trusting the
+existing code comments.
+
+**What I found:** `starlink.api.ts`'s own comment claims this endpoint was
+"verified live on prod 2026-07-17," but a direct `curl` against
+`api.setalink.no/v1/starlink/unlock-status` with Khabat's own device bearer
+returned `{"message":"not found"}` / HTTP 404. Read `public/v1.php`'s full
+route table (literal `$rel === '...'` matching, not dynamic dispatch) —
+`/starlink/*` was never registered there at all, so every request fell
+through to the file's final catch-all 404. `starlinkStore.ts`'s `refresh()`
+swallows fetch failures and keeps `status: null` ("the card must never
+vanish because one refresh failed" — reasonable for a flaky network, but
+this wasn't flaky, it never worked), so the Home hero card / StarlinkScreen /
+first-connect celebration have likely never shown real state for anyone.
+
+**Also found while tracing this:** `lib/starlink.php`,
+`public/starlink-enroll.php`, and `public/starlink-heartbeat.php` — the
+entire Starlink gateway backend — existed ONLY on the live box, zero git
+history, not gitignored, just never committed. Pulled all three into this
+checkout now (unmodified, `diff` against live confirmed byte-identical
+before I touched anything) so a disk failure or fresh checkout doesn't lose
+them. Whoever's been shipping Starlink backend changes directly on the box —
+worth committing from now on, same drift risk this doc has flagged before
+for `/var/www/setalink` more generally.
+
+**Fixed:** added the missing route to `v1.php`. Unlock logic mirrors the
+existing stealth-server pattern a few hundred lines up in the same file
+(`plan==='premium'` / `devices.test_mode=1` / ≥3 active credited referrals)
+for consistency — there's no spec doc for Starlink's actual intended
+threshold (`docs/PRODUCT_CORRECTION_B97.md` "ADDENDUM #2," referenced in
+`starlink.api.ts`'s own comment, doesn't exist anywhere on this filesystem —
+if it's on your side, worth committing so this assumption can be corrected
+against the real design). Self-granting: a qualifying device is
+auto-inserted into `node_allowlist` for the Starlink node in the same
+request — `lib/starlink.php`'s own header says that table is what actually
+gates routability, so "the badge says unlocked" and "the device can actually
+connect" can't drift apart the way `node_allowlist` being empty (it was,
+for every device, before this) would otherwise allow.
+
+**Result for Khabat's own device** (`sl-85ff1772-…`, already `test_mode=1`):
+confirmed live — `unlocked:true, reason:"test_mode"`, node `starlink-no-01`
+healthy (`ONLINE`, 55ms, heartbeat 85s old), `hasConnected:true`, and now
+present in `node_allowlist` (it wasn't before this fix, despite 82 historical
+`node_usage` hits on that node — so however those past connections actually
+got routed, it wasn't through this table).
+
+**"Our selected testers"** — I don't have their device IDs, so I could only
+fix this for the one device I know about. The lever is the same `test_mode`
+flag already used for ads/other test gates (admin panel, per-device) — flip
+it for anyone and this endpoint now unlocks them + allowlists them
+automatically, no code change needed per tester. If there's a specific list
+of people, send device IDs (or handles I can look up) and I'll flip them
+directly instead.
+
+Committed `public/v1.php` (the fix) + the three previously-untracked
+Starlink backend files, deployed live, verified over HTTPS post-deploy.
+`tsc --noEmit`/jest untouched (PHP-only change, no client code involved).

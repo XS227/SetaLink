@@ -39,6 +39,8 @@ require_once __DIR__ . '/../lib/ads_recovery.php';
 require_once __DIR__ . '/../lib/payments.php';
 // Node intelligence — connect telemetry.
 require_once __DIR__ . '/../lib/node_intel.php';
+// Starlink exit-node registry, health policy, and unlock-status.
+require_once __DIR__ . '/../lib/starlink.php';
 
 /** Read a POST field from form-encoded body or a JSON body. */
 function v1_body(string $key, string $default = ''): string {
@@ -690,6 +692,101 @@ if ($rel === '/telemetry/connect' && $method === 'POST') {
         }
     } catch (\Throwable $_) { /* swallow — telemetry must never break the user flow */ }
     v1_send(['ok' => true]);
+}
+
+// Powers every Starlink surface client-side (Home hero card, StarlinkScreen,
+// first-connect celebration — see mobile-app/src/services/api/starlink.api.ts).
+// Was referenced by that client since the b97 addendum but never actually
+// routed here — every call 404'd (confirmed live, 2026-07-28). Unlock reasons
+// mirror the existing stealth-server pattern above (plan==='premium' /
+// devices.test_mode / >=3 active credited referrals) for consistency rather
+// than inventing a separate threshold with no spec to match against.
+if ($rel === '/starlink/unlock-status' && $method === 'GET') {
+    st_init_tables($pdo);
+
+    $unlocked        = false;
+    $reason          = null;
+    $invitesVerified = 0;
+    $invitesRequired = 3;
+    $hasConnected    = false;
+
+    // Single node today; first enabled row if/when more exist.
+    $node = $pdo->query("SELECT * FROM starlink_nodes WHERE enabled=1 ORDER BY node_id LIMIT 1")->fetch();
+
+    if ($deviceId !== null && $deviceId !== '') {
+        $dst = $pdo->prepare("SELECT plan, test_mode FROM devices WHERE device_id=?");
+        $dst->execute([$deviceId]);
+        $devRow = $dst->fetch();
+
+        if ($devRow) {
+            if ((string)($devRow['plan'] ?? '') === 'premium') {
+                $unlocked = true; $reason = 'premium';
+            } elseif ((int)($devRow['test_mode'] ?? 0) === 1) {
+                $unlocked = true; $reason = 'test_mode';
+            } else {
+                $ic = $pdo->prepare("
+                    SELECT COUNT(*) FROM referral_uses ru
+                    JOIN devices d ON d.device_id = ru.new_device_id
+                    WHERE ru.referrer_device_id=?
+                      AND ru.status IN ('credited','approved')
+                      AND (d.internet_ok=1 OR d.last_seen >= datetime('now','-7 days'))
+                ");
+                $ic->execute([$deviceId]);
+                $invitesVerified = (int)$ic->fetchColumn();
+                if ($invitesVerified >= $invitesRequired) { $unlocked = true; $reason = 'invites'; }
+            }
+        }
+
+        // Self-granting, same convention as stealth_unlocked's auto-flip above:
+        // a qualifying device is added to node_allowlist here rather than
+        // requiring a second manual step — node_allowlist is the table that
+        // actually gates routability (lib/starlink.php's own header comment),
+        // so "shows unlocked" and "can actually connect" never drift apart.
+        if ($unlocked && $node) {
+            $pdo->prepare("INSERT OR IGNORE INTO node_allowlist (device_id, node_id, added_at) VALUES (?, ?, datetime('now'))")
+                ->execute([$deviceId, $node['node_id']]);
+        }
+
+        if ($node) {
+            $hc = $pdo->prepare("SELECT 1 FROM node_usage WHERE device_id=? AND node_id=?");
+            $hc->execute([$deviceId, $node['node_id']]);
+            $hasConnected = (bool)$hc->fetchColumn();
+        }
+    }
+
+    $nodeOut = null;
+    if ($node) {
+        $health = st_health_state($node);
+        $nodeOut = [
+            'id'          => $node['node_id'],
+            'available'   => st_routable($node),
+            'status'      => $health === 'MAINTENANCE' ? 'maintenance' : ($health === 'OFFLINE' ? 'offline' : 'online'),
+            'statusNote'  => $health !== 'ONLINE' ? 'auto_returns_when_healthy' : null,
+            'maxSessions' => (int)($node['max_sessions'] ?? 0),
+            'country'     => $node['country'] ?? 'Norway',
+            'health'      => $health,
+            'telemetry'   => [
+                'latencyMs'            => $node['latency_ms'] !== null ? (int)$node['latency_ms'] : null,
+                'packetLossPct'        => $node['packet_loss_pct'] !== null ? (float)$node['packet_loss_pct'] : null,
+                'uptimeSecs'           => $node['uptime_secs'] !== null ? (int)$node['uptime_secs'] : null,
+                'downloadKbps'         => $node['measured_download_kbps'] !== null ? (int)$node['measured_download_kbps'] : null,
+                'uploadKbps'           => $node['measured_upload_kbps'] !== null ? (int)$node['measured_upload_kbps'] : null,
+                'sessions'             => (int)($node['current_sessions'] ?? 0),
+                'lastHeartbeatAgeSecs' => $node['last_heartbeat_at'] ? (time() - strtotime($node['last_heartbeat_at'])) : null,
+            ],
+        ];
+    }
+
+    v1_send([
+        'unlock' => [
+            'unlocked'        => $unlocked,
+            'reason'          => $reason,
+            'invitesVerified' => $invitesVerified,
+            'invitesRequired' => $invitesRequired,
+        ],
+        'node'         => $nodeOut,
+        'hasConnected' => $hasConnected,
+    ]);
 }
 
 if ($rel === '/servers') {
