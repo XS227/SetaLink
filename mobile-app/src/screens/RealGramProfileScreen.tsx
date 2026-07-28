@@ -160,6 +160,14 @@ export function RealGramProfileScreen({
   const autoRetriesRef = useRef(0);
 
   const load = useCallback((opts?: { silent?: boolean }) => {
+    // Khabat, 2026-07-28: Profile stuck on the loading spinner forever on a
+    // real device test — root cause: this early return never called
+    // setLoading(false), so if authStore.user.deviceId is ever empty when
+    // this fires (auth not hydrated yet, or the still-open device-
+    // recognition issue, see docs/realgram/TASK_SPLIT.md), the spinner had
+    // no way out. A companion useEffect below now bails to the existing
+    // (already-translated, previously unused) missing_device_id error
+    // after a few seconds instead of spinning indefinitely.
     if (!deviceId) return;
     if (!opts?.silent) setLoading(true);
     setError('');
@@ -194,6 +202,19 @@ export function RealGramProfileScreen({
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Bail out of an indefinite spinner if deviceId never resolves. Cleared
+  // (never fires) the moment deviceId becomes truthy, since `load` above
+  // already handles that case once it does — this only covers the "never
+  // does" case.
+  useEffect(() => {
+    if (deviceId) return;
+    const tid = setTimeout(() => {
+      setLoading(false);
+      setError(friendlyProfileError('missing_device_id', t));
+    }, 8000);
+    return () => clearTimeout(tid);
+  }, [deviceId, t]);
 
   // Re-sync on every refocus (Khabat, 2026-07-24: ZAR/REAL/XP earned inside
   // the Shahnameh WebView on the Game tab weren't showing up here — this
