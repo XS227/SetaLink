@@ -782,6 +782,39 @@ if ($method === 'GET') {
         ]);
     }
 
+    if ($action === 'usage-history') {
+        // Daily VPN usage for the last N days — powers a new "Data usage"
+        // bar chart on the Clan tab, alongside the referral-earnings donut
+        // (charts backlog item, [[realink-feature-backlog-khabat]]). Every
+        // day in the window is returned, zero-filled, so the chart always
+        // renders a full even axis instead of compressing around whichever
+        // days happen to have a session.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo  = db();
+        $days = min(30, max(7, (int)($_GET['days'] ?? 14)));
+
+        $st = $pdo->prepare(
+            "SELECT date(started_at) AS day, COALESCE(SUM(bytes_sent + bytes_recv), 0) AS bytes
+             FROM vpn_sessions
+             WHERE device_id = ? AND started_at >= date('now', ?)
+             GROUP BY date(started_at)"
+        );
+        $st->execute([$deviceId, "-{$days} days"]);
+        $byDay = [];
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $byDay[$row['day']] = (int)$row['bytes'];
+        }
+
+        $out = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $day = date('Y-m-d', strtotime("-{$i} days"));
+            $out[] = ['day' => $day, 'bytes' => $byDay[$day] ?? 0];
+        }
+
+        ok(['days' => $out]);
+    }
+
     if ($action === 'sso-token') {
         // Ecosystem SSO (contract 6): mint a short-lived JWT for the device's
         // linked REAL account so the in-app game (and any ecosystem WebView)

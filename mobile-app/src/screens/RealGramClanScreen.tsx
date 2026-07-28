@@ -43,6 +43,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
+import { UsageHistoryChart } from '../components/UsageHistoryChart';
 import { StarlinkCard } from '../components/StarlinkCard';
 import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
@@ -93,6 +94,10 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
         {/* Members / referrals / shared rewards + "top contributors" ranking —
             a complete, already-shipped component, just never placed here. */}
         <ReferralEarningsDonut deviceId={deviceId} onInvite={onInvite} />
+
+        {/* Daily usage trend — second chart, companion to the earnings
+            donut above (charts backlog item, [[realink-feature-backlog-khabat]]). */}
+        <UsageHistoryChart deviceId={deviceId} />
 
         {/* Starlink progress — dormant feature, wired live for the first time. */}
         <StarlinkCard
