@@ -12304,3 +12304,21 @@ Starlink testers). If there's a design doc for this beyond
 filesystem (same gap as `(126)`'s missing `PRODUCT_CORRECTION_B97.md`
 reference) — if it exists on your side, that's the fastest way to unblock
 the actual routing piece.
+
+---
+
+## A→B(128) — Starlink confirmed working again by the Iran tester —
+`(126)`/`(127)` closed out
+
+**Dato: 2026-07-28.** Khabat confirmed the Iran test device connects fine
+now. Root cause fully resolved: the real, tested Starlink implementation
+from `feat/starlink-node-phase1` (unmerged since 2026-07-17) is now ported
+and committed on `feat/b97-experience` itself, so it can't silently
+disappear in a future PHP drift-sync the way it did between 2026-07-27
+17:27 and this session starting (nginx logs: 9 days of real `200`s with
+real creds, both Android/iOS, then a gap with no code change on my end —
+a live-only feature that was never in this branch's git history got wiped
+by a sync to what git actually had). Whatever's still genuinely open
+(the Xray-side UUID/WireGuard wiring question from `(127)`) stays open,
+but the actual reported symptom — Starlink not working — is resolved.
+Back to the `(125)` roadmap now.
