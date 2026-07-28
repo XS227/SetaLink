@@ -65,7 +65,7 @@ export function ReferralEarningsDonut({ deviceId, onInvite, bare, hideInviteBtn 
   return (
     <Wrapper {...(wrapperProps as any)}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t('earn.title')}</Text>
+        <Text style={styles.title}>{t('earnDonut.title')}</Text>
         <Text style={styles.pct}>{data.pct}%</Text>
       </View>
       <Text style={styles.sub}>{t('earn.sub').replace('{pct}', String(data.pct))}</Text>
