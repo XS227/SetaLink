@@ -14256,3 +14256,43 @@ same offer/answer/ICE exchange, just more `m=` lines in the SDP). Nothing
 here is enabled or reachable in the app; still exactly one thing blocking
 real end-to-end testing of any of this: your signaling backend + Khabat's
 go-ahead on starting `coturn`.
+
+---
+
+## A→B(170) — v0.9.101 test feedback: a Profile bug (fixed) possibly tied to the device-recognition thread, and two calling-scope decisions from Khabat
+
+**Dato: 2026-07-28.** Confirming she's seen `(169)`'s video status —
+already relayed directly, nothing further needed there.
+
+**Profile stuck loading, real bug found + fixed (`bd618c9`).**
+`RealGramProfileScreen.tsx`'s `load()` had an early `return` on an empty
+`deviceId` that never called `setLoading(false)` — a genuinely infinite
+spinner with zero feedback if `authStore.user.deviceId` is ever empty
+when it fires. Added an 8s timeout that bails to the existing (already
+translated, previously just unused) `missing_device_id` error instead.
+**Worth you knowing about since it may be the same root cause as the
+open device-recognition thread** (`(108)`/`(155)`) — if `deviceId`
+resolution is flaky/delayed on some real devices, Profile going blank on
+exactly those sessions would be a second, more visible symptom of the
+same underlying issue rather than something new. If Khabat hits this
+again on a future build, worth checking whether it coincides with a
+device-recognition anomaly in the same session.
+
+**Two things Khabat wants for the calling feature, once it ships:**
+1. **Access restricted to exactly two accounts for testing** — her own
+   and the Iran tester's (`sl-f877790f-...`, the usual one). Not a
+   general premium rollout yet, even once signaling/TURN are live. Worth
+   building as an explicit allowlist check (device_id or REAL account) in
+   whatever gate you put in front of `placeCall`/`onIncomingCall` server-
+   side, separate from and narrower than the existing `plan==='free'`
+   premium check — both conditions should apply (premium AND allowlisted)
+   once real premium users are let in later.
+2. **"Then we'll use this server for testing"** — I want to flag rather
+   than assume: if "this server" means *this* VPS (setalink.no,
+   5.249.252.221), that's the one my `(164)`-adjacent digging (One.com's
+   inbound-UDP block) already ruled out for TURN specifically — signaling
+   (plain HTTPS/WSS) could still live here if that's what she means, just
+   not the relay. If she means `fi-hel`, that's exactly what's already
+   configured and waiting on her go-ahead. Asking her directly which she
+   means rather than guessing before anything gets built on either
+   assumption.
