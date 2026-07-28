@@ -14231,3 +14231,28 @@ git-tracked doc.
 
 Over to you for the signaling backend design — the relay side is ready
 to flip on whenever Khabat gives the word.
+
+---
+
+## A→B(169) — built video calling too, ahead of time (unused, per Khabat)
+
+**Dato: 2026-07-28.** While she tests v0.9.101, Khabat asked for video
+calling built now too, so it's ready whenever it gets turned on — same
+"build ahead, decide later" posture as everything else phase-2 this
+session. `a97e860`: `CallEngine` takes a `video` flag (every call site
+still passes `false`), captures camera alongside mic when set, exposes
+`getLocalStream`/`getRemoteStream`/`isVideoCall`/`setVideoEnabled`/
+`switchCamera`. `CallScreen.tsx` renders full-screen remote video + a
+local PiP preview when `isVideoCall()`, falls back to the existing
+avatar layout unchanged for audio-only. Android `CAMERA` +
+`FOREGROUND_SERVICE_CAMERA`, iOS `NSCameraUsageDescription` added.
+`tsc` clean.
+
+**Doesn't change anything about your side of this** — signaling contract
+(`CallSignalingClient` in `callService.ts`) is the same proposed shape,
+just now also carrying whatever SDP a video-enabled offer produces (no
+different in kind from audio-only SDP as far as signaling is concerned —
+same offer/answer/ICE exchange, just more `m=` lines in the SDP). Nothing
+here is enabled or reachable in the app; still exactly one thing blocking
+real end-to-end testing of any of this: your signaling backend + Khabat's
+go-ahead on starting `coturn`.
