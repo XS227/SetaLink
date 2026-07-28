@@ -12249,3 +12249,58 @@ directly instead.
 Committed `public/v1.php` (the fix) + the three previously-untracked
 Starlink backend files, deployed live, verified over HTTPS post-deploy.
 `tsc --noEmit`/jest untouched (PHP-only change, no client code involved).
+
+---
+
+## A→B(127) — Khabat: "men den dukker ikke på freedom lista dems" — second,
+separate Starlink bug found and fixed (was never merged into /v1/servers at
+all), plus a real gap in the actual routing that I did NOT fake a fix for
+
+**Dato: 2026-07-28.** `(126)`'s fix made `unlock-status` correctly return
+`unlocked:true` for both `SL-227-62DAC5F0` and `SL-227-8547F1F9` (checked —
+neither needed a `test_mode` change, both already had it/premium set). But
+Khabat reported the node still wasn't showing up on the server list. Traced
+it rather than assumed it was the same bug re-surfacing: `v1_nodes()` (the
+function that builds everything `/servers` and `/servers/{id}/config` serve)
+only ever assembled the 5 hardcoded VPS nodes — Starlink was never added to
+that merge, at all, in any code path. So even a fully-unlocked, fully-
+allowlisted device could never see it — a second, independent gap stacked on
+top of the first, not a symptom of it.
+
+**Fixed:** `v1_starlink_node()` builds a `['id','test'=>true,'meta','creds']`
+entry from the live `starlink_nodes` row (via `st_meta()`), merged into
+`v1_nodes()`'s output. Marked `test => true` so it's gated by the exact same
+`node_allowlist`/`v1_device_allowed` mechanism the Helsinki test node already
+uses — `(126)`'s self-granting insert already populates that table, so
+"unlocked" and "visible in the list" now share one source of truth instead
+of two independently-maintained gates. Verified live: appears for both
+allowlisted devices, absent for an unrelated device (sanity check).
+
+**What I deliberately did NOT fake:** `v1_starlink_node()` sets `creds =>
+null`. Before wiring anything, checked whether Starlink connections could
+actually route — read `lib/starlink.php`'s own header (a server-side Xray
+rule, keyed to the node's dedicated `vless_uuid`, is supposed to redirect a
+session's egress over WireGuard to the gateway) and checked the *live* Xray
+config on this box directly: no WireGuard outbound exists, no routing rule
+references that UUID, and the UUID isn't among the Reality inbound's
+configured clients — so handing it out as connect creds would just get the
+handshake rejected. The gateway itself is fine (heartbeat fresh, health
+`ONLINE`, real telemetry) — this is purely the VPS-side plumbing to actually
+route a client session through it, and it was never built, despite code
+comments describing it as the design. `/servers/{id}/config` now returns an
+honest `503 node temporarily unavailable` for Starlink instead of quietly
+handing out primary's creds under a Starlink label (which would let someone
+"connect," believe they're testing satellite egress, and actually be on the
+normal VPS the whole time — a worse outcome than an honest error).
+
+**Net effect right now:** both devices see Starlink in their server list
+(what was reported broken), tapping it fails cleanly with a real error
+instead of silently doing the wrong thing. Getting it actually connectable
+needs the WireGuard peer + Xray routing rule set up on this box — real
+infra work I'm not doing blind without understanding the intended topology
+(a wrong routing rule risks breaking Reality for everyone, not just
+Starlink testers). If there's a design doc for this beyond
+`lib/starlink.php`'s header comment, I couldn't find it anywhere on this
+filesystem (same gap as `(126)`'s missing `PRODUCT_CORRECTION_B97.md`
+reference) — if it exists on your side, that's the fastest way to unblock
+the actual routing piece.
