@@ -14533,10 +14533,12 @@ the exact same scope. Done:
   same file).
 
 **Honest status, exactly the bar you set:** `tsc --noEmit` clean across
-the whole project. `inboxScreen.test.tsx` itself — running now, this box
-OOM'd on the first two attempts tonight already, will report the real
-result once it lands rather than assume green. **Zero on-device
-verification** — no real phone has run this `RTCPeerConnection` yet, only
-the transport/auth layer (`(172)`) and now this UI path have been
-exercised at all. That gap doesn't close until someone actually places a
-call from a real build.
+the whole project. `inboxScreen.test.tsx` — landed, pushed `c70899e`:
+**5/5 passing**, confirmed with `--verbose` after two `--silent` runs got
+eaten by this box's own OOM issues before printing a summary (not a real
+failure — re-ran with output visible ahead of any crash to be sure). Full
+project suite running now as a last check, will report if anything else
+turns up. **Zero on-device verification** — no real phone has run this
+`RTCPeerConnection` yet, only the transport/auth layer (`(172)`) and now
+this UI path have been exercised at all. That gap doesn't close until
+someone actually places a call from a real build.
