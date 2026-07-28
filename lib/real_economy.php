@@ -45,7 +45,10 @@ const RE_SETTING_DEFAULTS = [
 //   both   grant quota AND REAL
 const RE_REFERRAL_SETTING_DEFAULTS = [
     'referral_reward_mode' => 'quota',
-    'referral_real_reward' => '100',  // REAL granted per referral (real/both)
+    'referral_real_reward' => '500',  // REAL granted per referral (real/both) — 5 GiB worth
+                                       // at real_per_gb=100, matching QE_REFERRAL_BYTES so
+                                       // switching reward_mode doesn't silently change the
+                                       // reward's value (2026-07-28, see QE_REFERRAL_BYTES).
 ];
 
 // Service settings (never returned to the admin UI alongside the rates).

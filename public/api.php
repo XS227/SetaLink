@@ -1323,7 +1323,7 @@ if ($method === 'POST') {
         $riskStatus = $riskScore >= RISK_HOLD_THRESHOLD ? 'pending' : 'credited';
         $riskFlagsJson = json_encode($riskFlags);
 
-        $bonus = 1073741824; // 1 GB
+        $bonus = QE_REFERRAL_BYTES; // 5 GiB per side, see lib/quota_economy.php
         $pdo->prepare(
             "INSERT INTO referral_uses (referral_code, used_by, referrer_device_id, new_device_id, bonus_bytes,
              referrer_ip, new_user_ip, risk_score, risk_flags, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"

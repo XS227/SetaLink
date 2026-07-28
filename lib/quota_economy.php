@@ -24,6 +24,20 @@
 
 const QE_GB              = 1073741824;            // 1 GiB
 const QE_STARTER_BYTES   = 5368709120;            // 5 GiB welcome grant (non-transferable) — matches "5 GB free" marketing
+const QE_REFERRAL_BYTES  = 5368709120;            // 5 GiB per referral (both sides) — Khabat, 2026-07-28: raised
+                                                   // from a hardcoded 1 GiB after flagging the number as
+                                                   // never actually chosen (docs/realgram/TASK_SPLIT.md /
+                                                   // [[realink-feature-backlog-khabat]]). Sized to match
+                                                   // QE_STARTER_BYTES so "invite a friend" reads as "give them
+                                                   // (and yourself) another welcome gift" — easy to explain in
+                                                   // one sentence, and at this VPS's own ~$0.02/GB egress cost
+                                                   // (see [[realink-ecosystem-phase1]]) still costs ~$0.20
+                                                   // total per successful referral, negligible against the
+                                                   // marketing value of an actual word-of-mouth install. The
+                                                   // free-plan device average is ~16.7 GiB total quota
+                                                   // (analytics.db, 2026-07-28), so 5 GiB is a meaningful
+                                                   // fraction of that rather than a token amount, without
+                                                   // being so large it dwarfs paid quota purchases.
 const QE_MIN_TRANSFER    = 104857600;             // 100 MiB minimum transfer
 const QE_DAILY_MAX_BYTES = 53687091200;           // 50 GiB/day sent per device (anti-fraud)
 const QE_DAILY_MAX_COUNT = 10;                    // 10 transfers/day per device (anti-fraud)
