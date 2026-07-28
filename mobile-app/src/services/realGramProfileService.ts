@@ -51,6 +51,14 @@ export interface ProfileAchievements {
   milestones_claimed:       number[];
 }
 
+export interface ProfileQuests {
+  read:           boolean;
+  quiz:           boolean;
+  tap:             number;
+  invite:          boolean;
+  bonus_claimed:   boolean;
+}
+
 export interface ProfileChapter {
   slug:          string;
   done:          boolean;
@@ -80,6 +88,7 @@ export interface ProfileSummary {
   economy:       ProfileEconomy;
   streaks:       ProfileStreaks;
   achievements:  ProfileAchievements;
+  quests:        ProfileQuests;
   chapters:      ProfileChapters;
   clan:          ProfileClan | null;
 }
