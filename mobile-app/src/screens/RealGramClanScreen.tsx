@@ -44,6 +44,8 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { ReferralEarningsDonut } from '../components/ReferralEarningsDonut';
 import { UsageHistoryChart } from '../components/UsageHistoryChart';
+import { NextInviteGoalCard } from '../components/NextInviteGoalCard';
+import { InvitedFriendsList } from '../components/InvitedFriendsList';
 import { StarlinkCard } from '../components/StarlinkCard';
 import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
@@ -62,6 +64,7 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const token    = useAuthStore((s) => s.token);
   const quotaTotal = useAuthStore((s) => s.user?.quotaBytesTotal ?? 0);
+  const milestones = useAuthStore((s) => s.user?.milestones ?? null);
   const insets   = useSafeAreaInsets();
 
   const [clan, setClan] = useState<ProfileClan | null>(null);
@@ -94,6 +97,15 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
         {/* Members / referrals / shared rewards + "top contributors" ranking —
             a complete, already-shipped component, just never placed here. */}
         <ReferralEarningsDonut deviceId={deviceId} onInvite={onInvite} />
+
+        {/* Escalating invite quest: reads the already-live qe_milestones()
+            ladder (3 -> 5 -> 8 -> 13 -> 21 -> 34 -> 55) off authStore, so a
+            new goal appears the moment the previous one is claimed
+            server-side — Khabat's "prøv 5 venner... prøv 8..." ask. */}
+        <NextInviteGoalCard milestones={milestones} />
+
+        {/* Full invited-friends list (donut's own legend only shows 6). */}
+        <InvitedFriendsList deviceId={deviceId} />
 
         {/* Daily usage trend — second chart, companion to the earnings
             donut above (charts backlog item, [[realink-feature-backlog-khabat]]). */}

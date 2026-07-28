@@ -37,18 +37,19 @@ const RE_SETTING_DEFAULTS = [
     'redeem_daily_cap_bytes' => '10737418240',  // 10 GB per device per day
 ];
 
-// Referral reward mode (plan item C3). Default 'quota' = the current +1 GB
-// behaviour, unchanged, so flipping this on is a deliberate admin action.
-//   quota  grant VPN quota only (today's behaviour)
+// Referral reward mode (plan item C3).
+//   quota  grant VPN quota only
 //   real   grant REAL to the party's linked account instead; NO linked
 //          account ⇒ fall back to quota so nobody goes unrewarded
-//   both   grant quota AND REAL
+//   both   grant quota AND REAL — Khabat, 2026-07-28: switched default here
+//          from 'quota' so the new Invite list UI (InvitedFriendsList.tsx)
+//          can show a real, truthful REAL-token figure per invite, not just
+//          GB. This is a genuine payout increase (both amounts, not a
+//          split) — an unlinked invitee still gets their quota as before,
+//          the REAL side is additive once/if they link an account.
 const RE_REFERRAL_SETTING_DEFAULTS = [
-    'referral_reward_mode' => 'quota',
-    'referral_real_reward' => '500',  // REAL granted per referral (real/both) — 5 GiB worth
-                                       // at real_per_gb=100, matching QE_REFERRAL_BYTES so
-                                       // switching reward_mode doesn't silently change the
-                                       // reward's value (2026-07-28, see QE_REFERRAL_BYTES).
+    'referral_reward_mode' => 'both',
+    'referral_real_reward' => '500',  // REAL granted per referral (real/both)
 ];
 
 // Service settings (never returned to the admin UI alongside the rates).
