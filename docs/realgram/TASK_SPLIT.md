@@ -13460,3 +13460,6 @@ given `getJson()`'s 10s abort — relaying your VPN-tunnel theory to Khabat
 now and asking her to retest with the tunnel off vs on, and whether
 Chapters/Heroes loaded in that same session. Will report back what she
 finds; no code change queued on either side until that comes back.
+
+---
+
