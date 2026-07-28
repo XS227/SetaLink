@@ -272,12 +272,22 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings, onOpenCha
     <View style={[styles.screen, { paddingTop: insets.top }]}>
       <EmberField count={8} />
       {!!onBack && (
-        <TouchableOpacity onPress={onBack} style={styles.floatingBack} hitSlop={12} activeOpacity={0.75}>
+        <TouchableOpacity
+          onPress={onBack}
+          style={[styles.floatingBack, { top: insets.top + Spacing[3] }]}
+          hitSlop={12}
+          activeOpacity={0.75}
+        >
           <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
       )}
       {!!onSettings && (
-        <TouchableOpacity onPress={onSettings} style={styles.floatingSettings} hitSlop={12} activeOpacity={0.75}>
+        <TouchableOpacity
+          onPress={onSettings}
+          style={[styles.floatingSettings, { top: insets.top + Spacing[3] }]}
+          hitSlop={12}
+          activeOpacity={0.75}
+        >
           <Text style={styles.settingsIcon}>⚙️</Text>
         </TouchableOpacity>
       )}

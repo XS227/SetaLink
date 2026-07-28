@@ -12038,3 +12038,74 @@ HTTPS: `version.json` → `0.9.96`/`136`, `channels.beta` matches, all 3 APKs
 return `200`, live arm64 checksum matches `version.json` exactly. Synced to
 `/var/www/setalink` (this git checkout's writes don't reach prod
 automatically — same split as every prior release).
+
+---
+
+## A→B(124) — new task for B: native per-chapter Shahnameh reading pages
+inside RealGram (Khabat, after testing v0.9.96's Journey screen: liked it,
+wants the individual chapter pages native too — "prikk lik shahnameh men i
+realgram")
+
+**Dato: 2026-07-28.** Not built by me — Khabat explicitly asked for this to
+be set up as B's task, not built in this session. Scoping it properly first
+so B isn't starting cold.
+
+**Current state (`(122)`, this build):** `RealGramChaptersScreen.tsx` is a
+native journey LIST (title/summary/status/reward per chapter, mirrors
+`learn.html`). Tapping a chapter still opens `ChapterDetailScreen` →
+`ShahnamehEmbed(path="/chapter.html", params={slug})` — i.e. the actual
+per-chapter reading/quiz experience is still the embedded Shahnameh WebView,
+not native. **That embed is what this task replaces.**
+
+**Khabat's ask, verbatim intent:** a native RealGram page per chapter,
+visually identical to Shahnameh's own `chapter.html` (hero/lore/scenes/
+quiz/rewards), not the embedded page itself — same principle already
+applied to the Journey list and to Clan (`RealGramClanScreen`, 2026-07-22).
+
+**Checked before writing this — his "the data's probably already there so
+this should be fast" instinct is correct, verified live, not assumed:**
+Three public, non-identity-gated JSON endpoints on `shahnameh.setaei.com`
+(same trust level `ShahnamehEmbed` already extends to that domain — no
+panel proxy needed for reading):
+- `season2/data/chapters.json` — already consumed by `chapterCatalogService.ts`
+  (title/summary/story/rewards/image per chapter, 50 chapters).
+- `season2/data/lore/{slug}.json` — **not yet consumed anywhere in the app.**
+  Confirmed live (`keyumars.json`, 200 OK, 52KB): `lore_summary`, `timeline`,
+  `scenes` (14 scenes for chapter 1 — each with `id/order/title_en/body_en/
+  atmosphere/image/reward/unlocks_codex/video_url` + `_fa`/`_ru` locales),
+  `characters`, `places`, `battle`, `codex`. This is the "Read the Chronicle"
+  scene list + "Ferdowsi's Desk" + "Final Encounter" content chapter.html
+  renders — all of it, publicly fetchable per-slug.
+- `season2/data/quizzes.json` — confirmed live (200 OK, ~3.1MB, all chapters'
+  questions in one file, `quizzes` array filterable by `chapter_slug` client-
+  side, per `chapter.js`'s own `_quizzes.some(q => q.chapter_slug === SLUG...)`
+  pattern).
+
+**What's NOT public — needs the existing SSO/identity pattern, not new
+plumbing:** submitting quiz answers and scene/quiz progress both go through
+authenticated endpoints (`season2/user/quiz/answer`, `season2/user/quiz/
+reset-tier`, seen in `chapter.js`) — same `real_id`/device_id/SSO-token
+shape `ShahnamehEmbed`/`realGramProfileService.ts` already use, not a new
+auth mechanism to design.
+
+**Honest scope note — this is real UI work, not just a data hookup:**
+the content being available removes the biggest anticipated blocker, but
+`chapter.html`/`chapter.css` render 6 distinct sections (hero w/ cover image,
+lore/chronicle card, scene reader with per-scene unlock state, Ferdowsi's
+Desk, Final Encounter/battle requirements, quiz w/ 3 difficulty tiers) —
+building all of that natively, styled to match, across an app with 50
+chapters, is a genuine multi-section feature, not a five-minute reskin.
+Suggest B scope it in slices (e.g. hero+lore+scenes first, since that's the
+core "reading" experience Khabat is testing; battle/quiz as a follow-up)
+rather than one big PR, but that's B's call on sequencing.
+
+**Also from this test round, fixed already (not B's):** Profile's floating
+back/settings buttons were positioned `top: Spacing[3]` inside a parent with
+`paddingTop: insets.top` — React Native's known gotcha where absolutely-
+positioned children ignore a parent's padding, so on a tall-status-bar/notch
+device the settings gear rendered up under the status bar ("nesten ut av
+screen view" — Khabat, this test round). Fixed: both buttons now take
+`insets.top + Spacing[3]` explicitly (`RealGramProfileScreen.tsx`). Worth a
+quick repo-wide grep for the same `position:'absolute', top: Spacing[n]`
+pattern elsewhere the next time anyone's touching floating-header-button
+code — didn't do a full audit here, single confirmed instance fixed.
