@@ -33,7 +33,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
-    <!-- Video calling (phase 2, not enabled yet -- Khabat, 2026-07-28:
+    <!-- Video calling (phase 2, not enabled yet — Khabat, 2026-07-28:
          build it now so it's ready once audio is live and there's real
          relay-rate data to decide on). Camera + a camera-type foreground
          service, same posture as the microphone one above. -->
