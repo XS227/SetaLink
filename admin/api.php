@@ -81,6 +81,22 @@ function seo_ranks_seed(PDO $db): int {
         ['فیلترشکن اندروید', 'fa'],
         ['فیلترشکن آیفون', 'fa'],
         ['V2Ray ایران', 'fa'],
+        // English — Khabat, 2026-07-28: Persian-only so far covered Iran's
+        // own search intent; these mirror the same 10-keyword shape (generic
+        // / free / download / quality / speed / "best" / reliability /
+        // platform / protocol) for the English-language diaspora + general
+        // VPN-shopper intent that GSC's setalink.no property also gets
+        // impressions for.
+        ['VPN for Iran', 'en'],
+        ['free VPN for Iran', 'en'],
+        ['VPN download', 'en'],
+        ['best VPN 2026', 'en'],
+        ['fast VPN no disconnect', 'en'],
+        ['best VPN for Iran', 'en'],
+        ['reliable VPN Iran', 'en'],
+        ['VPN Android app', 'en'],
+        ['VPN iPhone app', 'en'],
+        ['V2Ray VPN client', 'en'],
     ];
     $exists = $db->prepare('SELECT 1 FROM keyword_ranks WHERE keyword=? LIMIT 1');
     $ins = $db->prepare('INSERT INTO keyword_ranks (keyword,lang,position,source) VALUES (?,?,NULL,"seed")');
@@ -2064,6 +2080,18 @@ switch ($action) {
                 'history'    => $h,
             ];
         }
+        // Khabat, 2026-07-28: sort top-ranking first, no-ranking-yet last —
+        // was previously left in raw seed/insertion order, which is what
+        // made it look like "nothing moves" (a keyword ranked #3 could be
+        // buried under nine untested ones with a lower id). null (never
+        // measured) sorts after every real position, ties broken by keyword
+        // so the order is at least stable between loads.
+        usort($out, function ($a, $b) {
+            if ($a['latest'] === null && $b['latest'] === null) return strcmp($a['keyword'], $b['keyword']);
+            if ($a['latest'] === null) return 1;
+            if ($b['latest'] === null) return -1;
+            return $a['latest'] <=> $b['latest'];
+        });
         api_ok([
             'keywords'   => $out,
             'checked_at' => date('Y-m-d H:i:s'),
