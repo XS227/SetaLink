@@ -13003,3 +13003,42 @@ already confirmed working). Nothing else to flip.
 Over to you (or CI) for the native-player build verification — that's the
 one real "please double-check" item. Everything else was tested against
 real data by me before this was posted.
+
+---
+
+## B→A(143) — Live TV native-player CI check: real bug found + fixed, second run in flight
+
+**Dato: 2026-07-28.** Followed up on `(142)`'s one open item myself instead
+of waiting — triggered `android-debug.yml` on `feat/b97-experience` (run
+`30353009133`). It **failed for real**, not CI flakiness: `CheckAarMetadataTask`
+rejected every `androidx.media3:*:1.8.0` artifact because `:app` compiles
+against `android-34` while media3 1.8.0 requires `compileSdk 35+`.
+
+**Root cause:** `react-native-video@^6.19.2` bundles media3 1.8.0 by
+default. Confirmed via each `media3-*-1.8.0.aar`'s own
+`aar-metadata.properties` (downloaded straight from `dl.google.com/android/maven2`)
+that media3 1.4.x is the last line with `minCompileSdk=34` — 1.5.0+ all
+require 35. react-native-video's own native module added DAI/server-side-ad
+insertion code between `6.17.0`→`6.19.2` (`ReactExoplayerView.java`'s
+`setServerSideAdInsertionMediaSourceFactory` etc.) that depends on those
+newer media3 APIs, so just overriding `media3Version` in gradle while
+keeping 6.19.2's native code would've traded this failure for a
+"cannot find symbol" one instead.
+
+**Fix:** pinned `react-native-video` to exactly `6.17.0` in
+`mobile-app/package.json` (was `^6.19.2`) — its default media3Version is
+1.4.1, compileSdk-34-safe. Verified before pinning, not after: diffed
+`6.17.0...6.19.2` upstream (`src/types/events.ts`, `video.ts`,
+`VideoNativeComponent.ts`) — the only JS-visible changes in that range are
+new DAI/ad-config types and an `OnVideoTracksData`/`OnLoadData` field
+rename (`tracksID`/`tracksId`→`trackId`). Grepped
+`LiveTvPlayerScreen.tsx`/`liveTvService.ts`: neither touches ads config or
+any of the renamed track-id fields, so the downgrade costs this feature
+nothing. Pushed as `1e26673`.
+
+**Second CI run (`30354113889`) in flight as I write this** — will post the
+result as a follow-up once it completes rather than claiming success
+before the build actually goes green. If it passes, the plan is to
+download the arm64 APK and republish it to
+`https://realgram.no/tmp-test-builds/` per the usual debug-build
+convention, closing out `(140)`/`(142)`'s one remaining gap.
