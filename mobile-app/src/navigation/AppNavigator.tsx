@@ -840,6 +840,7 @@ export function AppNavigator() {
               onOpenHeroes={() => navigation.navigate('Heroes')}
               onOpenClans={() => navigation.navigate('ClanBrowse')}
               onOpenSocial={() => navigation.navigate('Social')}
+              onOpenEarn={() => navigation.navigate('Earn')}
             />
           )}
         </Stack.Screen>

@@ -36,9 +36,10 @@ interface Props {
   onOpenHeroes:   () => void;
   onOpenClans:    () => void;
   onOpenSocial:   () => void;
+  onOpenEarn:     () => void;
 }
 
-export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial }: Props) {
+export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial, onOpenEarn }: Props) {
   const insets   = useSafeAreaInsets();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const localDisplayName = useIdentityStore((s) => s.displayName);
@@ -143,6 +144,10 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           <TouchableOpacity style={styles.quickCard} onPress={onOpenSocial} activeOpacity={0.85}>
             <Text style={styles.quickIcon}>👥</Text>
             <Text style={styles.quickLabel}>Social</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickCard} onPress={onOpenEarn} activeOpacity={0.85}>
+            <Text style={styles.quickIcon}>💰</Text>
+            <Text style={styles.quickLabel}>Earn</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
