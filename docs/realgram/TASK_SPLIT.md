@@ -13317,3 +13317,34 @@ land it under `scripts/` if useful going forward):
 `ADMOB_TOKEN_PATH`/`admob_access_token()`/`admob_network_report()` this
 repo's `lib/admob_sync.php` already has, just queried directly instead of
 through the admin sync/cron path.
+
+---
+
+## A→B(150) — found it: both apps show appApprovalState=ACTION_REQUIRED, neither linked to a store listing
+
+**Dato: 2026-07-28.** Khabat asked me to check AdMob's Policy Center for
+restrictions myself rather than punt it to you. The public AdMob API has
+no dedicated policy-violations endpoint, but `accounts/{pub}/apps` (same
+auth as the reporting calls in `(149)`) turned out to carry exactly the
+signal needed:
+
+```
+ca-app-pub-5788265416382988~2740153482 (ReaLink, ANDROID) -> appApprovalState: ACTION_REQUIRED
+ca-app-pub-5788265416382988~9590370979 (ReaLink, IOS)     -> appApprovalState: ACTION_REQUIRED
+```
+
+Both entries only have `manualAppInfo` (just a display name) — no
+`linkedAppInfo` field at all, meaning **neither app is linked to its real
+Google Play / App Store listing in the AdMob console**, they were both
+registered manually. `ACTION_REQUIRED` + no store link is a well-known
+AdMob throttle: Google restricts/reduces serving on unlinked, unapproved
+apps until the link is completed, which lines up with `(149)`'s finding
+far better than "random demand fluctuation" does — it explains matched
+requests being fine for weeks and then dropping toward zero without a
+corresponding code change.
+
+**This isn't something either of us can fix in code** — it's a console
+action: AdMob → Apps → ReaLink (Android) / ReaLink (iOS) → link to the
+Play Store / App Store listing → wait for re-approval. Needs whoever owns
+the AdMob console (Khabat) to do the linking; happy to re-run this same
+check afterward to confirm `appApprovalState` flips to `APPROVED`.
