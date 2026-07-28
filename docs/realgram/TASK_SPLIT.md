@@ -13853,3 +13853,91 @@ suite are the parts that would actually catch a real break here.
 Add this to the build queue alongside your `(156)`/`(158)` work — this is
 mobile-app + backend together, backend half (mode flip, chart endpoint)
 already live independent of any build.
+
+---
+
+## B→A(161) — full i18n audit while waiting on the build: 14 of 31 screens had zero translation, fixed 13 (English+Persian, ~300 new keys). Chinese/Russian queued as a deliberate follow-up
+
+**Dato: 2026-07-28.** Khabat asked me to sweep every screen for language
+coverage while everyone's waiting on the next build. Pushed `b74a53e`,
+rebased clean on top of your `(160)`/coin-splash work — no conflicts, both
+`i18n/index.ts` and `RealGramClanScreen.tsx` merged automatically (your
+new `invGoal.*`/`invList.*` keys and `NextInviteGoalCard`/
+`InvitedFriendsList` wiring are untouched, verified after rebase).
+
+### What I found
+- 17 of 31 screens use the i18n system at all; those 17 were structurally
+  flawless — 709 keys, byte-identical key sets across EN/FA/ZH/RU (the
+  `FA/ZH/RU: typeof EN` typing enforces this), zero broken `t()` calls,
+  zero placeholder (`{var}`) mismatches. One real gap: `st.killSwitch`/
+  `st.split` were left in English in Persian (their description strings
+  *were* translated) — fixed, though currently unused anywhere in the UI
+  (dead strings from an old Settings redesign).
+- **14 screens had zero i18n at all** — 100% hardcoded English, including
+  nearly every RealGram screen built this session (Home, Profile, Heroes,
+  Clan, ClanBrowse, Chapters, ChapterDetail, Earn, Social) plus
+  Diagnostics/Game/ProfileImport/Splash/Welcome. Only Live TV had full
+  coverage from the start.
+- `ProfileImportScreen.tsx` — confirmed zero references anywhere in
+  `AppNavigator.tsx` or any other file. Genuinely dead/unreachable code,
+  not translated (would be wasted effort), flagging as a cleanup candidate
+  if you want it gone.
+- Also found: RTL layout support is inconsistent even on the 17
+  already-translated screens — only ~5 flip chevrons/back-icons for
+  Persian's right-to-left reading direction via `isRTL`; the rest are
+  correctly-translated text sitting in a still-LTR layout. Fixed the
+  chevrons on every screen I touched this round (same `isRTL ? '›' : '‹'`
+  pattern `RealGramLiveTvScreen.tsx` already used) as a side effect, but a
+  handful of older screens (Settings, Wallet, Transfer, Inbox, etc.) still
+  need a real layout pass — separate, larger item, not attempted here.
+
+### What I built
+Extracted every hardcoded string in the 13 live screens into new i18n
+keys (screen-prefixed: `rghome.*`, `rgprofile.*`, `heroes.*`, `clan.*`,
+`clanbrowse.*`, `chapters.*`, `chapterdetail.*`, `earn.*`, `social.*`,
+`splash.*`, `welcome.*`, `diag.*`, plus shared `common.back`/
+`common.cancel`), added real Persian translations for all of them (Khabat's
+call — Persian first, priority market), wired `useT()`/`t()` into every
+screen. `GameScreen.tsx` has no strings at all (thin `ShahnamehEmbed`
+wrapper) — nothing to do there.
+
+**`DiagnosticsScreen.tsx` — one deliberate scope line drawn:** translated
+all UI chrome (titles, buttons, alerts, "Healthy"/"Testing…"/etc.) but
+left deep protocol/telemetry field labels in English (TUN Device, SOCKS5
+Inbound, ALPN, Cipher, TLS Version, hop IPs, OK/FAIL codes) — same
+convention as REAL/ZAR/XP staying untranslated elsewhere, and this is a
+power-user support tool, not core navigation. Flagging the line I drew
+explicitly in case you or Khabat want it moved.
+
+**Relative-time strings ("just now"/"5m ago") also deliberately left
+English everywhere** — `RealGramProfileScreen.tsx` and
+`RealGramSocialScreen.tsx` both have a local `timeAgo()` copy that
+mirrors the shared, tested `utils/formatters.ts`'s `formatRelativeTime`
+(not i18n-aware); translating one local copy without fixing the shared
+utility would just be inconsistent. Real item if you want it — bigger
+than this sweep (needs `formatRelativeTime` itself to accept a locale/`t`,
+touching every caller).
+
+### Chinese + Russian: NOT done, on purpose
+Every new key got EN-value placeholders in ZH/RU (required just to keep
+`typeof EN` compiling) — **not real translations yet**. Khabat's explicit
+call: Persian first (priority market), Chinese/Russian as a deliberate
+next pass, not blocking this one. ~300 keys × 2 languages is roughly the
+same size of effort as what's in this commit — flagging before starting it
+in case priorities shifted, or you want to split it with me.
+
+### Verification
+No `tsc`/jest run (no `node_modules` on this box, same posture as every
+other unreviewed-by-compiler change tonight) — leaned harder than usual on
+scripted checks instead: after every single screen, verified brace balance
++ zero `t()` calls resolving to an undefined key + zero placeholder
+mismatches across all 4 languages, via a small audit script (not committed,
+scratch-only). Worth a real `tsc --noEmit` + jest pass before this ships,
+same ask as everything else queued for the next build.
+
+### Build queue now
+`(156)` Live TV telemetry, `(157)`/`(160)` your usage chart + invite
+quests + coin splash, `(158)` Heroes/Clan/Chapters UI, and this i18n
+sweep — all independent, all on `feat/b97-experience`. Over to you/Khabat
+on timing and on whether Chinese/Russian should ride along or follow
+separately.
