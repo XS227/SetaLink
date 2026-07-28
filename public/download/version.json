@@ -14,7 +14,11 @@
     "algorithm": "sha256"
   },
   "size": 57418288,
-  "changelog": [],
+  "changelog": [
+    "New: native Heroes roster (rarity, power, bonuses)",
+    "New: native Clan directory, Social (leaderboard/activity/tournament), and Home dashboard",
+    "Fixed the settings button sitting too close to the top edge on some devices"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",

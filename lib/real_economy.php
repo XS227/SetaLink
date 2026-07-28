@@ -713,11 +713,18 @@ function re_sso_token(PDO $pdo, string $deviceId, bool $allowRealIdFallback = fa
         return ['status' => 'unavailable'];
     }
     return [
-        'status'     => 'ok',
-        'token'      => $json['token'],
-        'expires_in' => isset($json['expires_in']) && is_numeric($json['expires_in'])
+        'status'      => 'ok',
+        'token'       => $json['token'],
+        'expires_in'  => isset($json['expires_in']) && is_numeric($json['expires_in'])
                         ? (int)$json['expires_in'] : 900,
-        'account'    => $account,
+        'account'     => $account,
+        // B->A(132): resolved telegram_id for the /api/season2/* calls that
+        // are keyed on it (clan join/apply/my-clan/contribute, heroes buy/
+        // upgrade, earn claim/check-in) — the real DB-backed value for a
+        // synced Season2User, or the same real_id fallback /user/sync's own
+        // upsert will use on first sync, never a naive real_id===telegram_id
+        // assumption (breaks once an account permanent-links to Telegram).
+        'telegram_id' => isset($json['telegram_id']) ? (string)$json['telegram_id'] : '',
     ];
 }
 

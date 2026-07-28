@@ -809,9 +809,13 @@ if ($method === 'GET') {
         $result = re_sso_token($pdo, $deviceId, $allowRealIdFallback);
         ok([
             'status'      => $result['status'],                     // ok | unlinked | unavailable
-            'token'       => $result['token']      ?? '',
-            'expires_in'  => $result['expires_in'] ?? 0,
-            'account'     => $result['account']    ?? '',
+            'token'       => $result['token']       ?? '',
+            'expires_in'  => $result['expires_in']  ?? 0,
+            'account'     => $result['account']     ?? '',
+            // B->A(132): the season2 telegram_id this account resolves to —
+            // powers every /api/season2/*?telegram_id= call the client makes
+            // directly (clan/heroes/earn actions).
+            'telegram_id' => $result['telegram_id'] ?? '',
             'game_url'    => (string)($rc['rc_game_url'] ?? 'https://shahnameh.setaei.com'),
             'sso_enabled' => (bool)(int)($rc['rc_ecosystem_sso_enabled'] ?? 1),
         ]);

@@ -94,7 +94,7 @@ jest.mock('../services/ssoService', () => ({
 import { GameScreen } from '../screens/GameScreen';
 
 const base: SsoResult = {
-  status: 'unavailable', token: '', expires_in: 0, account: '',
+  status: 'unavailable', token: '', expires_in: 0, account: '', telegram_id: '',
   game_url: 'https://shahnameh.setaei.com', sso_enabled: true,
 };
 

@@ -27,6 +27,13 @@ export interface SsoResult {
   token:       string;   // JWT (empty unless status==='ok')
   expires_in:  number;   // seconds
   account:     string;
+  // B->A(132): resolved season2 telegram_id — powers every
+  // /api/season2/*?telegram_id= call the client makes directly (clan join/
+  // apply/my-clan/contribute, heroes buy/upgrade, earn claim/check-in;
+  // browse/leaderboard/activity/events don't need it, confirmed public).
+  // Empty unless status==='ok'. Real DB-backed value for a synced
+  // Season2User, never a naive real_id===telegram_id assumption.
+  telegram_id: string;
   game_url:    string;   // ecosystem game URL (remote-config, rotatable)
   sso_enabled: boolean;
 }
