@@ -1,23 +1,20 @@
 {
-  "version": "0.9.100",
-  "versionCode": 140,
+  "version": "0.9.101",
+  "versionCode": 141,
   "releaseDate": "2026-07-28",
   "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.100.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.101.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.100-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.100-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.101-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.101-universal.apk",
   "checksum": {
-    "sha256": "f8dd5cc47a5dda03cb0267b005a7c78a827700b6eee5303f0e384f151318601d",
+    "sha256": "cdfca293f823f71e0f9b9d7369df69935a265bf7d2f75aecd5063373aa853c75",
     "algorithm": "sha256"
   },
-  "size": 60177286,
-  "changelog": [
-    "New: Live TV (iptv-org) — browse/search/filter ~7000 real channels, native player, favorites",
-    "Fixed: Connect ad no longer fails every time — the \"Rewarded Interstitial\" ad unit was misconfigured in AdMob as a classic Interstitial; now requested correctly"
-  ],
+  "size": 60199646,
+  "changelog": [],
   "channels": {
     "stable": {
       "version": "0.9.67",
@@ -34,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.100",
-      "versionCode": 140,
-      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.100.apk",
-      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.100-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.100-universal.apk"
+      "version": "0.9.101",
+      "versionCode": 141,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.101.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.101-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.101-universal.apk"
     }
   },
   "rollout": {
