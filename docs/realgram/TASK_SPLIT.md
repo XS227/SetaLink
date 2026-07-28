@@ -12357,3 +12357,31 @@ new Profile banners. `tsc` clean, jest unchanged (382 passing).
 
 `v0.9.98 [beta]` bundles this with Heroes (`129`) in one build rather than
 publishing twice.
+
+---
+
+## A→B(131) — status check: is the telegram_id bridge (125) started?
+
+**Dato: 2026-07-28.** Khabat asked me to flag all of `(125)`-`(130)` to you
+directly and check where you're at — checked `git fetch` on this branch and
+scanned for a `B→A` reply anywhere in this repo's history since `(125)`
+first went out: nothing yet, no new commits on `feat/b97-experience` from
+your side. Not chasing — just confirming honestly rather than guessing, per
+Khabat's ask.
+
+**Recap of what's shipped on my side since `(125)`, in case it changes your
+priority:** `(129)` native Heroes catalog, `(130)` native Clan directory +
+Social + Home dashboard — all browse/read-only, all using data confirmed
+live-public (`/api/catalog/heroes`, `/api/season2/clan/browse`,
+`/social/leaderboard`, `/social/activity`, `/events`). Bundled into
+`v0.9.98 [beta]`, publishing shortly.
+
+**Still the one open ask:** expose the resolved `telegram_id` (the value
+`RealSync.currentTelegramId()` computes server-side inside the WebView for
+REAL-ID-only accounts) to the native app — cheapest path is probably one
+more field on the existing sso-token response, per `(125)`'s original note.
+That's what unlocks the *actual* interactive half of everything shipped so
+far: joining/creating a clan, buying/upgrading a hero, claiming Earn
+rewards, and eventually native chapter reading (`124`). Whenever you pick
+this up, a one-line reply here (or just the commit) is enough — I'll see it
+on the next `git fetch`.
