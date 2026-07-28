@@ -1,50 +1,103 @@
 /**
- * RealGramHeroesScreen — native Heroes roster (`docs/realgram/TASK_SPLIT.md`
- * A→B(125) roadmap, build order item 3: Heroes).
+ * RealGramHeroesScreen — native Heroes roster with real ownership, buy,
+ * and upgrade (`docs/realgram/TASK_SPLIT.md` A→B(125) roadmap item 3).
  *
- * Catalog-only for now, by design, not by oversight: `/api/catalog/heroes`
- * is public (confirmed live, 11 heroes — heroCatalogService.ts), but which
- * heroes THIS user owns, their level, and buy/upgrade actions all live
- * behind heroes.js's `/api/season2/user/buy-hero` /`upgrade-hero`, which are
- * keyed on the telegram_id identity bridge A→B(125) is still blocked on. So
- * this reads as a browsable roster (rarity/power/bonus/unlock requirement),
- * not "my heroes" — the ownership layer slots in once that bridge lands,
- * without needing to rebuild this screen.
+ * Was catalog-only (browse) since the public catalog itself was wrong —
+ * 11 stale placeholder entries, only 1 slug ('rakhsh') existed anywhere in
+ * the real game (A→B(135)/B→A(136)). Backend catalog rebuilt from the
+ * real 33-hero data (heroCatalogService.ts's header has the full story);
+ * now that the data is trustworthy, ownership/buy/upgrade wire to the
+ * telegram_id bridge (B->A(132)) the same way Clan join/apply does.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
-import { getHeroCatalog, HeroCatalogEntry } from '../services/heroCatalogService';
+import { useAuthStore } from '../stores/authStore';
+import { useToastStore } from '../stores/toastStore';
+import { getSsoToken } from '../services/ssoService';
+import {
+  getHeroCatalog, getOwnedHeroes, buyHero, upgradeHero,
+  HeroCatalogEntry, OwnedHero,
+} from '../services/heroCatalogService';
 
 interface Props {
   onBack: () => void;
 }
 
+const RARITY_ALIAS: Record<string, string> = { legend: 'legendary' };
+
 function rarityColor(rarity: string): string {
-  const key = rarity.toLowerCase() as keyof typeof Colors.rarity;
-  return Colors.rarity[key] ?? Colors.rarity.common;
+  const key = rarity.toLowerCase();
+  const normalized = (RARITY_ALIAS[key] ?? key) as keyof typeof Colors.rarity;
+  return Colors.rarity[normalized] ?? Colors.rarity.common;
 }
 
-export function RealGramHeroesScreen({ onBack }: Props) {
-  const insets = useSafeAreaInsets();
-  const [heroes, setHeroes] = useState<HeroCatalogEntry[] | null>(null);
-  const [error, setError]   = useState('');
+const BUY_ERROR_COPY: Record<string, string> = {
+  already_owned:        'You already own this.',
+  prereq_not_met:        "You don't meet the requirement yet.",
+  insufficient_balance:  'Not enough REAL.',
+  unknown_hero:           'Something went wrong — try again.',
+  not_owned:              "You don't own this yet.",
+  network_error:          "Couldn't reach the server — try again.",
+};
 
-  useEffect(() => {
-    let cancelled = false;
-    getHeroCatalog().then((list) => {
-      if (cancelled) return;
-      if (list.length === 0) { setError("Couldn't load the hero roster right now."); return; }
-      setHeroes(list);
-    }).catch(() => { if (!cancelled) setError("Couldn't load the hero roster right now."); });
-    return () => { cancelled = true; };
-  }, []);
+export function RealGramHeroesScreen({ onBack }: Props) {
+  const insets    = useSafeAreaInsets();
+  const deviceId  = useAuthStore((s) => s.user?.deviceId ?? '');
+  const showToast = useToastStore((s) => s.show);
+
+  const [heroes, setHeroes]         = useState<HeroCatalogEntry[] | null>(null);
+  const [owned, setOwned]           = useState<Map<string, OwnedHero>>(new Map());
+  const [telegramId, setTelegramId] = useState('');
+  const [error, setError]           = useState('');
+  const [pendingSlug, setPendingSlug] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const tid = deviceId ? (await getSsoToken(deviceId, true)).telegram_id : '';
+      setTelegramId(tid);
+      const [catalog, mine] = await Promise.all([getHeroCatalog(), getOwnedHeroes(tid)]);
+      if (catalog.length === 0) { setError("Couldn't load the hero roster right now."); return; }
+      setHeroes(catalog);
+      setOwned(mine);
+    } catch {
+      setError("Couldn't load the hero roster right now.");
+    }
+  }, [deviceId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleBuy = useCallback(async (hero: HeroCatalogEntry) => {
+    if (!telegramId) { showToast("Couldn't identify your account — try again shortly.", 'error'); return; }
+    setPendingSlug(hero.slug);
+    const result = await buyHero(telegramId, hero.slug);
+    setPendingSlug(null);
+    if (result.ok) {
+      showToast(`${hero.name} acquired!`, 'success');
+      setOwned((prev) => new Map(prev).set(hero.slug, { hero_id: hero.slug, level: result.data.level, zar_per_hour: result.data.zar_per_hour }));
+    } else {
+      showToast(BUY_ERROR_COPY[result.error] ?? 'Could not buy. Try again.', 'error');
+    }
+  }, [telegramId, showToast]);
+
+  const handleUpgrade = useCallback(async (hero: HeroCatalogEntry) => {
+    if (!telegramId) return;
+    setPendingSlug(hero.slug);
+    const result = await upgradeHero(telegramId, hero.slug);
+    setPendingSlug(null);
+    if (result.ok) {
+      showToast(`${hero.name} upgraded to level ${result.data.level}!`, 'success');
+      setOwned((prev) => new Map(prev).set(hero.slug, { hero_id: hero.slug, level: result.data.level, zar_per_hour: result.data.zar_per_hour }));
+    } else {
+      showToast(BUY_ERROR_COPY[result.error] ?? 'Could not upgrade. Try again.', 'error');
+    }
+  }, [telegramId, showToast]);
 
   if (error) {
     return (
@@ -81,29 +134,48 @@ export function RealGramHeroesScreen({ onBack }: Props) {
           ListHeaderComponent={
             <View>
               <Text style={styles.pageTitle}>Heroes</Text>
-              <Text style={styles.pageSub}>Legendary figures from the Shahnameh, ready to fight for you.</Text>
-              <GlassCard style={styles.noteCard}>
-                <Text style={styles.noteText}>
-                  Your own collection, levels, and upgrades unlock once account linking
-                  catches up — for now, here's the full roster.
-                </Text>
-              </GlassCard>
+              <Text style={styles.pageSub}>Legendary figures, artifacts, and creatures — own them for passive ZAR income.</Text>
             </View>
           }
-          renderItem={({ item }) => <HeroCard hero={item} />}
+          renderItem={({ item }) => {
+            const ownedHero = owned.get(item.slug);
+            const prereqMet = !item.prereq || (() => {
+              const p = owned.get(item.prereq!.hero_id);
+              return !!p && p.level >= item.prereq!.level;
+            })();
+            return (
+              <HeroCard
+                hero={item}
+                owned={ownedHero}
+                prereqMet={prereqMet}
+                pending={pendingSlug === item.slug}
+                onBuy={() => handleBuy(item)}
+                onUpgrade={() => handleUpgrade(item)}
+              />
+            );
+          }}
         />
       )}
     </View>
   );
 }
 
-function HeroCard({ hero }: { hero: HeroCatalogEntry }) {
+function HeroCard({
+  hero, owned, prereqMet, pending, onBuy, onUpgrade,
+}: {
+  hero: HeroCatalogEntry; owned?: OwnedHero; prereqMet: boolean; pending: boolean;
+  onBuy: () => void; onUpgrade: () => void;
+}) {
   const color = rarityColor(hero.rarity);
-  const locked = hero.power <= 0;
+  const locked = !owned && !prereqMet;
   return (
-    <GlassCard style={styles.heroCard} glowColor={locked ? undefined : color}>
+    <GlassCard style={styles.heroCard} glowColor={owned ? color : undefined}>
       <View style={styles.heroRow}>
-        <View style={[styles.rarityDot, { backgroundColor: color }]} />
+        {hero.image_url ? (
+          <Image source={{ uri: hero.image_url }} style={styles.heroImage} />
+        ) : (
+          <View style={[styles.rarityDot, { backgroundColor: color }]} />
+        )}
         <View style={{ flex: 1 }}>
           <View style={styles.heroHeaderRow}>
             <Text style={[styles.heroName, locked && styles.textMuted]} numberOfLines={1}>{hero.name}</Text>
@@ -113,16 +185,24 @@ function HeroCard({ hero }: { hero: HeroCatalogEntry }) {
             <Text style={styles.heroDescription} numberOfLines={2}>{hero.description}</Text>
           )}
           <View style={styles.metaRow}>
-            {!locked && (
-              <Text style={styles.powerText}>⚔ {hero.power}</Text>
-            )}
-            {!!hero.bonus && <Text style={styles.bonusText} numberOfLines={1}>{hero.bonus}</Text>}
+            <Text style={styles.zarText}>🪙 {owned ? owned.zar_per_hour : hero.zar_per_hour} ZAR/hr</Text>
+            {owned && <Text style={styles.levelText}>Lv. {owned.level}</Text>}
           </View>
-          {locked && !!hero.unlock_requirement && (
+          {!owned && !prereqMet && !!hero.unlock_requirement && (
             <Text style={styles.unlockText}>🔒 {hero.unlock_requirement}</Text>
           )}
         </View>
       </View>
+      <TouchableOpacity
+        onPress={owned ? onUpgrade : onBuy}
+        disabled={pending || (!owned && !prereqMet)}
+        style={[styles.actionBtn, (pending || (!owned && !prereqMet)) && styles.actionBtnDisabled]}
+        activeOpacity={0.85}
+      >
+        {pending
+          ? <ActivityIndicator size="small" color={Colors.bg.void} />
+          : <Text style={styles.actionBtnText}>{owned ? `Upgrade — ${hero.cost * owned.level} REAL` : `Buy — ${hero.cost} REAL`}</Text>}
+      </TouchableOpacity>
     </GlassCard>
   );
 }
@@ -143,11 +223,9 @@ const styles = StyleSheet.create({
   pageTitle: { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary },
   pageSub:   { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2, marginBottom: Spacing[3] },
 
-  noteCard: { marginBottom: Spacing[4] },
-  noteText: { fontSize: 12, color: Colors.text.secondary, fontFamily: Typography.family.body, lineHeight: 18 },
-
-  heroCard: { gap: 0 },
+  heroCard: { gap: Spacing[3] },
   heroRow:  { flexDirection: 'row', gap: Spacing[3], alignItems: 'flex-start' },
+  heroImage: { width: 44, height: 44, borderRadius: 10 },
   rarityDot: { width: 10, height: 10, borderRadius: 5, marginTop: 5 },
 
   heroHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing[2] },
@@ -158,9 +236,13 @@ const styles = StyleSheet.create({
   heroDescription: { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 4, lineHeight: 17 },
 
   metaRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], marginTop: Spacing[2], flexWrap: 'wrap' },
-  powerText:  { fontSize: 12, color: Colors.gold[400], fontFamily: Typography.family.mono },
-  bonusText:  { fontSize: 11, color: Colors.text.secondary, fontFamily: Typography.family.body },
+  zarText:    { fontSize: 12, color: Colors.gold[400], fontFamily: Typography.family.mono },
+  levelText:  { fontSize: 11, color: Colors.text.secondary, fontFamily: Typography.family.body },
   unlockText: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: Spacing[2] },
+
+  actionBtn: { backgroundColor: Colors.gold[400], borderRadius: Radius.lg, paddingVertical: Spacing[2], alignItems: 'center' },
+  actionBtnDisabled: { opacity: 0.5 },
+  actionBtnText: { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.bg.void },
 
   errorText: { fontSize: 13, color: '#FF6B6B', textAlign: 'center', fontFamily: Typography.family.body, paddingHorizontal: Spacing[6] },
   backBtnFallback: { backgroundColor: Colors.gold[400], borderRadius: Radius.xl, paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },
