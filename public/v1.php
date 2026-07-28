@@ -399,13 +399,46 @@ function v1_cfedge_node(): array {
     ];
 }
 
+// Starlink node — 'test' => true so it's gated by the SAME node_allowlist
+// mechanism as Helsinki above (v1_device_allowed), not a parallel one. The
+// A->B(126) unlock-status fix already self-grants a qualifying device into
+// node_allowlist for this exact node_id, so "unlocked" and "shows up in the
+// server list" now share one source of truth instead of drifting apart —
+// that was the actual bug Khabat hit (unlock-status said unlocked, but this
+// function never existed, so the node could never appear in /servers at all,
+// for anyone, regardless of allowlist state).
+//
+// 'creds' => null on purpose: lib/starlink.php's own header describes the
+// intended mechanism (a server-side Xray routing rule, keyed to this node's
+// dedicated vless_uuid, redirecting a normal VLESS session's egress over a
+// WireGuard tunnel to the gateway) — checked the live Xray config directly,
+// that routing rule and the WireGuard peer do not exist on this box. The
+// gateway itself heartbeats fine (health/telemetry below are real), but
+// there is currently no way to hand out creds that would actually route
+// traffic through it. Returning primary's creds under a Starlink label would
+// silently test the WRONG thing; the /servers/{id}/config handler below
+// turns this null into an honest 503 instead.
+function v1_starlink_node(PDO $pdo): ?array {
+    $row = $pdo->query("SELECT * FROM starlink_nodes WHERE enabled=1 ORDER BY node_id LIMIT 1")->fetch();
+    if (!$row) return null;
+    return [
+        'id'    => $row['node_id'],
+        'test'  => true,
+        'meta'  => st_meta($row),
+        'creds' => null,
+    ];
+}
+
 function v1_nodes(PDO $pdo, ?string $deviceId = null): array {
     $p = v1_primary_node($pdo);
     $h = v1_helsinki_node($deviceId);
     $g = v1_germany_node();
     $d = v1_proisp_node();
     $c = v1_cfedge_node();
-    return [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d, $c['id'] => $c];
+    $out = [$p['id'] => $p, $h['id'] => $h, $g['id'] => $g, $d['id'] => $d, $c['id'] => $c];
+    $s = v1_starlink_node($pdo);
+    if ($s) $out[$s['id']] = $s;
+    return $out;
 }
 
 // Per-node health written by scripts/check-node-health.sh (cron). Returns the
@@ -844,6 +877,12 @@ if (preg_match('#^/servers/([^/]+)/config$#', $rel, $m)) {
     // Refuse to hand out creds for a node that is freshly down (clients fall back
     // to primary / saved bootstrap). Primary is exempt — it's the last resort.
     if ($id !== 'primary' && v1_node_down($id)) {
+        v1_send(['message' => 'node temporarily unavailable'], 503);
+    }
+    // Starlink: visible/allowlisted (above) does not mean routable yet — see
+    // v1_starlink_node()'s comment. Honest failure instead of silently
+    // handing out another node's creds under this one's label.
+    if ($n['creds'] === null) {
         v1_send(['message' => 'node temporarily unavailable'], 503);
     }
     v1_record_usage($pdo, $deviceId, $id);
