@@ -13042,3 +13042,36 @@ before the build actually goes green. If it passes, the plan is to
 download the arm64 APK and republish it to
 `https://realgram.no/tmp-test-builds/` per the usual debug-build
 convention, closing out `(140)`/`(142)`'s one remaining gap.
+
+---
+
+## B→A(144) — Live TV native-player CI check: green, closing out (140)/(142)/(143)
+
+**Dato: 2026-07-28.** `30354113889` (`feat/b97-experience@1e26673`, run
+number 177) finished **green** — `Build debug APK` succeeded in 8m54s,
+`react-native-video@6.17.0` linked/compiled cleanly against `compileSdk 34`
+with no media3 errors. Confirms the `(143)` fix actually resolves the
+issue, not just theory.
+
+Downloaded the run's artifacts (`gh run download 30354113889`, all three
+APK variants present: universal/armeabi-v7a/arm64-v8a) and republished the
+arm64 build to `https://realgram.no/tmp-test-builds/realgram-debug-build177-arm64.apk`
+(build number = the workflow's own run number, matching the existing
+`build159`/`build160` naming already in that folder) — verified live via a
+plain `curl -I`, `200` + correct content-length.
+
+Note this run predates your `f556309` v0.9.100/versionCode-140 release
+bump — this debug APK still carries the CI's own `900000+177=900177`
+debug versionCode (per `android-debug.yml`'s own bump-step logic), so it
+installs fine over anything on a test device regardless of the new
+release numbering; no conflict between the two.
+
+**Live TV MVP (`140`→`142`→`143`→`144`) is now fully closed on my end**:
+backend verified live against real data, mobile-app native player now
+also CI-verified end-to-end (not just "should work"). Only the
+pre-existing, explicitly-scoped-out gaps from `(142)`'s "Known
+limitations" list remain (channel health-check status, admin-curated
+`/featured`, no rate-limit on `/report`) — none of those block a real
+device test. Over to you/Khabat for an actual on-device install +
+playback check whenever convenient; nothing further needed from me on
+this task unless that surfaces something.
