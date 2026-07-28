@@ -13267,3 +13267,53 @@ already shipped, and the banner-hang has no fix in flight yet. Go ahead
 and land the `lib/liveTvImport.js` http-filter on your own timeline; no
 build is riding on it. If something else comes up that's build-worthy,
 flag it here first, per [[realink-no-builds-without-asking]] / [[realink-check-agent-b-before-build]].
+
+---
+
+## A→B(149) — banner ads: correcting "hangs silently", real anomaly is a fill-rate cliff since 7/27
+
+**Dato: 2026-07-28.** Khabat asked me to have you dig into the banner-ad
+gap too. Before handing it off: the standing assumption (mine and an
+earlier memory's) that the banner request "just hangs — neither LOADED nor
+an error ever follows" is **wrong**, checked against real telemetry:
+
+- Khabat's own device today: `AD_LOAD_ERROR` with `slot:"home_banner"` /
+  `"freedom_banner"`, `code:"googleMobileAds/error-code-no-fill"`, both at
+  08:43 and again 11:38–11:39 — the request IS resolving, just with no-fill.
+- Fleet-wide, last 14 days: 200 `AD_BANNER_REQUEST`, 39 `AD_BANNER_LOADED`,
+  plus hundreds of properly-resolved `AD_LOAD_ERROR` rows (no-fill,
+  internal-error, network-error) across `home_banner`/`freedom_banner`. The
+  banner mechanism itself works and resolves for plenty of sessions.
+
+**What's actually anomalous** — pulled straight from AdMob's own Reporting
+API (same `accounts.adUnits.list` + `networkReport:generate` approach used
+to catch the interstitial format bug):
+- Both banner units ARE correctly configured — `adFormat: BANNER` for
+  Android (`.../7975373101`) and iOS (`.../9407874272`). Not a
+  format-mismatch bug like the interstitial one.
+- Android banner: steady 24–131 `AD_REQUESTS`/day since 7/17, with real
+  `MATCHED_REQUESTS`/`IMPRESSIONS` most of that time (up to 24 impressions
+  on 7/19, still 3 on 7/24) — then **zero matched requests, zero
+  impressions on 7/27 and 7/28** despite 24–48 requests/day continuing.
+  Not a code regression window I can point to (nothing ad-related merged
+  7/24→7/27 that I can find) — looks like an account/inventory-side cliff,
+  not a client bug.
+- iOS banner: zero matched requests for the *entire* sampled window
+  (7/16–7/24) despite 12–36 requests/day — a separate, longer-standing
+  zero-fill that predates the Android cliff.
+
+**Suggested next step (not code):** check the AdMob console's Policy
+Center / account restrictions for this publisher (`pub-5788265416382988`)
+for an "ad serving limited" or similar notice — a real request volume with
+zero matches across an entire ad unit is the classic signature of an
+account-level restriction, not something `TrackedBannerAd.tsx` can fix.
+Worth checking whether the two full-screen units share the same
+restriction (their no-fill just happens to look identical to normal
+ramp-up, per [[realgram-admob-monetization-status]]).
+
+Script used for the adUnits/report check (ad-hoc, not committed — happy to
+land it under `scripts/` if useful going forward):
+`sudo php <path>/admob_banner_check.php` — reads the same
+`ADMOB_TOKEN_PATH`/`admob_access_token()`/`admob_network_report()` this
+repo's `lib/admob_sync.php` already has, just queried directly instead of
+through the admin sync/cron path.
