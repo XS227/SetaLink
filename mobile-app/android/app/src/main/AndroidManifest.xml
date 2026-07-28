@@ -33,6 +33,15 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
 
+    <!-- Video calling (phase 2, not enabled yet -- Khabat, 2026-07-28:
+         build it now so it's ready once audio is live and there's real
+         relay-rate data to decide on). Camera + a camera-type foreground
+         service, same posture as the microphone one above. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+
     <!-- Package visibility (Android 11+): needed so the Smart Mode
          "Bypass selected apps" screen can list launchable apps. -->
     <queries>

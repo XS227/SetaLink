@@ -1,10 +1,14 @@
 /**
- * CallScreen — full-screen audio call UI (incoming/outgoing/active).
+ * CallScreen — full-screen call UI (incoming/outgoing/active), audio and
+ * video both.
  *
- * Khabat's Earn/Inbox ask (2026-07-28): audio calling between friends,
- * premium-gated, video as a later phase. Talks to `CallEngine`
- * (`services/callService.ts`) for the actual WebRTC plumbing — this file
- * is presentation + call-state only.
+ * Khabat's Earn/Inbox ask (2026-07-28): audio calling between friends
+ * first, premium-gated; video built alongside it so it's ready to switch
+ * on later rather than built from scratch a second time (video stays
+ * unused everywhere in this codebase today — see CallEngine's `video`
+ * constructor flag). Talks to `CallEngine` (`services/callService.ts`)
+ * for the actual WebRTC plumbing — this file is presentation + call-state
+ * only.
  *
  * NOT wired into AppNavigator.tsx or InboxScreen.tsx yet: there's no
  * live signaling backend or TURN relay for it to actually connect through
@@ -16,6 +20,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RTCView } from 'react-native-webrtc';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { CallEngine, CallState } from '../services/callService';
@@ -41,15 +46,21 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded }: Props) {
   const [state, setState] = useState<CallState>(outgoing ? 'dialing' : 'ringing');
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(false);
+  const [videoOn, setVideoOn] = useState(engine.isVideoCall());
+  const [remoteStreamUrl, setRemoteStreamUrl] = useState<string | null>(null);
   const [durationSecs, setDurationSecs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isVideo = engine.isVideoCall();
+  const localStreamUrl = isVideo ? engine.getLocalStream()?.toURL() ?? null : null;
 
   useEffect(() => {
     if (outgoing) {
       engine.startOutgoing().catch(() => setState('ended'));
     }
+    const unsub = engine.onRemoteStreamUpdate((stream) => setRemoteStreamUrl(stream.toURL()));
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      unsub();
       engine.teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,15 +118,45 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded }: Props) {
     engine.setSpeakerphoneOn(next);
   };
 
+  const toggleVideo = () => {
+    const next = !videoOn;
+    setVideoOn(next);
+    engine.setVideoEnabled(next);
+  };
+
+  const showVideo = isVideo && state === 'active' && (remoteStreamUrl || localStreamUrl);
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top + Spacing[6], paddingBottom: insets.bottom + Spacing[6] }]}>
-      <View style={styles.center}>
-        <View style={styles.avatarCircle}>
-          <Text style={styles.avatarInitial}>{peerLabel.slice(0, 1).toUpperCase()}</Text>
+      {showVideo ? (
+        <>
+          {remoteStreamUrl ? (
+            <RTCView streamURL={remoteStreamUrl} style={StyleSheet.absoluteFill} objectFit="cover" />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, styles.videoWaiting]}>
+              <Text style={styles.status}>{statusLabel()}</Text>
+            </View>
+          )}
+          {localStreamUrl && videoOn && (
+            <RTCView streamURL={localStreamUrl} style={styles.localVideoPip} objectFit="cover" mirror zOrder={1} />
+          )}
+        </>
+      ) : (
+        <View style={styles.center}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarInitial}>{peerLabel.slice(0, 1).toUpperCase()}</Text>
+          </View>
+          <Text style={styles.peerName}>{peerLabel}</Text>
+          <Text style={styles.status}>{statusLabel()}</Text>
         </View>
-        <Text style={styles.peerName}>{peerLabel}</Text>
-        <Text style={styles.status}>{statusLabel()}</Text>
-      </View>
+      )}
+
+      {showVideo && (
+        <View style={styles.videoHeader}>
+          <Text style={styles.videoHeaderName}>{peerLabel}</Text>
+          {state === 'active' && <Text style={styles.status}>{formatDuration(durationSecs)}</Text>}
+        </View>
+      )}
 
       {state === 'ringing' ? (
         <View style={styles.incomingRow}>
@@ -135,16 +176,31 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded }: Props) {
           >
             <Text style={styles.smallBtnIcon}>{muted ? '🔇' : '🎤'}</Text>
           </TouchableOpacity>
+          {isVideo && (
+            <TouchableOpacity
+              style={[styles.smallBtn, !videoOn && styles.smallBtnActive]}
+              onPress={toggleVideo}
+              accessibilityLabel={videoOn ? t('call.videoOff') : t('call.videoOn')}
+            >
+              <Text style={styles.smallBtnIcon}>{videoOn ? '📹' : '📷'}</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleHangUp} accessibilityLabel={t('call.hangUp')}>
             <Text style={styles.circleBtnIcon}>✕</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.smallBtn, speakerOn && styles.smallBtnActive]}
-            onPress={toggleSpeaker}
-            accessibilityLabel={t('call.speaker')}
-          >
-            <Text style={styles.smallBtnIcon}>🔊</Text>
-          </TouchableOpacity>
+          {isVideo ? (
+            <TouchableOpacity style={styles.smallBtn} onPress={() => engine.switchCamera()} accessibilityLabel={t('call.switchCamera')}>
+              <Text style={styles.smallBtnIcon}>🔄</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[styles.smallBtn, speakerOn && styles.smallBtnActive]}
+              onPress={toggleSpeaker}
+              accessibilityLabel={t('call.speaker')}
+            >
+              <Text style={styles.smallBtnIcon}>🔊</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </View>
@@ -185,4 +241,15 @@ const styles = StyleSheet.create({
   },
   smallBtnActive: { backgroundColor: Colors.gold[400] + '22', borderColor: Colors.gold[400] },
   smallBtnIcon: { fontSize: 22 },
+  videoWaiting: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.void },
+  localVideoPip: {
+    position: 'absolute', top: 60, right: Spacing[4],
+    width: 100, height: 140, borderRadius: Radius.md,
+    borderWidth: 1, borderColor: Colors.gold[400] + '55', overflow: 'hidden',
+  },
+  videoHeader: {
+    position: 'absolute', top: 0, left: 0, right: 0,
+    alignItems: 'center', paddingTop: Spacing[6], gap: 2,
+  },
+  videoHeaderName: { fontSize: Typography.size.lg, color: '#FFFFFF', fontFamily: Typography.family.heading },
 });

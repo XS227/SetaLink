@@ -96,7 +96,11 @@ interface RTCConfigurationLike { iceServers: RTCIceServerLike[]; iceCandidatePoo
 export class CallEngine {
   private pc: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
+  private remoteStream: MediaStream | null = null;
   private unsubs: Array<() => void> = [];
+  private remoteStreamListeners: Array<(stream: MediaStream) => void> = [];
+
+  private localVideoEnabled = false;
 
   constructor(
     private readonly signaling: CallSignalingClient,
@@ -104,6 +108,13 @@ export class CallEngine {
     private readonly peerDeviceId: string,
     private readonly onRemoteStream: (stream: MediaStream) => void,
     private readonly onStateChange: (state: CallState) => void,
+    /** Phase 2, not enabled anywhere yet — Khabat, 2026-07-28: build video
+     *  now so it's ready once audio has shipped and there's real relay
+     *  volume/cost data to decide on turning it on (see
+     *  docs/realgram/TASK_SPLIT.md B→A(164)'s recommendation to revisit
+     *  video with real phase-1 data rather than guess twice). Every
+     *  caller in this codebase passes `video: false` today. */
+    private readonly video: boolean = false,
   ) {}
 
   private async ensurePeerConnection(iceServers: RTCIceServerLike[]): Promise<RTCPeerConnection> {
@@ -128,7 +139,11 @@ export class CallEngine {
     });
     pcAny.addEventListener('track', (event: any) => {
       const [stream] = event.streams;
-      if (stream) this.onRemoteStream(stream);
+      if (stream) {
+        this.remoteStream = stream;
+        this.onRemoteStream(stream);
+        this.remoteStreamListeners.forEach((cb) => cb(stream));
+      }
     });
     pcAny.addEventListener('connectionstatechange', () => {
       const s = pcAny.connectionState;
@@ -140,23 +155,27 @@ export class CallEngine {
     return pc;
   }
 
-  private async captureLocalAudio(): Promise<MediaStream> {
+  /** Requests mic (+ camera, when `video` is on) and keeps whatever it
+   *  gets as the one local stream for the lifetime of this call. */
+  private async captureLocalMedia(): Promise<MediaStream> {
     if (this.localStream) return this.localStream;
-    // Audio only, per Khabat's phase-1 scope — no video: false is implicit
-    // (mediaDevices.getUserMedia only requests what's asked for).
-    const stream = await mediaDevices.getUserMedia({ audio: true });
+    const stream = await mediaDevices.getUserMedia({
+      audio: true,
+      video: this.video ? { facingMode: 'user' } : false,
+    } as any);
     this.localStream = stream as unknown as MediaStream;
+    this.localVideoEnabled = this.video;
     return this.localStream;
   }
 
-  /** Caller side: capture mic, create+send an SDP offer. */
+  /** Caller side: capture mic(+camera), create+send an SDP offer. */
   async startOutgoing(): Promise<void> {
     this.onStateChange('dialing');
     await this.signaling.placeCall(this.peerDeviceId, this.callId);
 
     const iceServers = await this.signaling.getIceServers(this.callId);
     const pc = await this.ensurePeerConnection(iceServers);
-    const stream = await this.captureLocalAudio();
+    const stream = await this.captureLocalMedia();
     stream.getTracks().forEach((track: any) => pc.addTrack(track, stream as any));
 
     const offer = await pc.createOffer({});
@@ -166,13 +185,13 @@ export class CallEngine {
     this.listenForAnswerAndCandidates();
   }
 
-  /** Callee side: capture mic, wait for the offer already known to the
-   *  caller, answer it. Call this once the user taps "Accept". */
+  /** Callee side: capture mic(+camera), wait for the offer already known
+   *  to the caller, answer it. Call this once the user taps "Accept". */
   async acceptIncoming(offer: RTCSessionDescriptionInitLike): Promise<void> {
     this.onStateChange('connecting');
     const iceServers = await this.signaling.getIceServers(this.callId);
     const pc = await this.ensurePeerConnection(iceServers);
-    const stream = await this.captureLocalAudio();
+    const stream = await this.captureLocalMedia();
     stream.getTracks().forEach((track: any) => pc.addTrack(track, stream as any));
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer as any));
@@ -218,6 +237,47 @@ export class CallEngine {
     this.localStream?.getAudioTracks().forEach((t: any) => { t.enabled = !muted; });
   }
 
+  /** Video only — see the `video` constructor flag's own comment for why
+   *  this whole section is unused today. `getLocalStream`/`isVideoCall`
+   *  are what CallScreen would read to decide whether to render RTCView
+   *  previews at all. */
+  getLocalStream(): MediaStream | null {
+    return this.localStream;
+  }
+
+  getRemoteStream(): MediaStream | null {
+    return this.remoteStream;
+  }
+
+  /** Lets CallScreen (which receives an already-constructed CallEngine,
+   *  not one it built itself) find out when the remote video/audio
+   *  stream arrives, independent of whatever the constructor's own
+   *  onRemoteStream callback is used for by the integration that wires
+   *  this screen in. */
+  onRemoteStreamUpdate(cb: (stream: MediaStream) => void): () => void {
+    this.remoteStreamListeners.push(cb);
+    return () => {
+      this.remoteStreamListeners = this.remoteStreamListeners.filter((l) => l !== cb);
+    };
+  }
+
+  isVideoCall(): boolean {
+    return this.localVideoEnabled;
+  }
+
+  setVideoEnabled(enabled: boolean): void {
+    this.localStream?.getVideoTracks().forEach((t: any) => { t.enabled = enabled; });
+  }
+
+  /** Front/back camera toggle. `_switchCamera()` is react-native-webrtc's
+   *  own (underscore-prefixed, so not in its public .d.ts) method on a
+   *  video MediaStreamTrack — cast to `any` for the same reason as the
+   *  RTCPeerConnection event methods above. */
+  switchCamera(): void {
+    const videoTrack = this.localStream?.getVideoTracks()[0] as any;
+    videoTrack?._switchCamera?.();
+  }
+
   /** Speaker vs. earpiece routing. iOS/Android both expose this through
    *  RTCAudioSession-adjacent native APIs that react-native-webrtc wraps
    *  differently per platform — kept as a no-op stub here since the exact
@@ -237,8 +297,10 @@ export class CallEngine {
   teardown(): void {
     this.unsubs.forEach((u) => u());
     this.unsubs = [];
+    this.remoteStreamListeners = [];
     this.localStream?.getTracks().forEach((t: any) => t.stop());
     this.localStream = null;
+    this.remoteStream = null;
     this.pc?.close();
     this.pc = null;
   }

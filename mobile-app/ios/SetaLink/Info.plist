@@ -70,6 +70,10 @@
     <key>NSMicrophoneUsageDescription</key>
     <string>RealGram needs microphone access so you can make and receive audio calls with friends.</string>
 
+    <!-- Camera (video calling, phase 2 -- not enabled yet, built ahead of time) -->
+    <key>NSCameraUsageDescription</key>
+    <string>RealGram needs camera access so you can make and receive video calls with friends.</string>
+
     <!-- ATT prompt — required by AdMob 14+ on iOS 14+; app rejected without this -->
     <key>NSUserTrackingUsageDescription</key>
     <string>RealGram shows ads to keep the service free. Your data is never sold or shared.</string>
