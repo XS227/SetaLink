@@ -9,11 +9,23 @@
  * shows the caller's own clan if they have one, and lets them apply to
  * others otherwise — request shape matches `clan/apply` exactly as
  * `social.js` itself calls it.
+ *
+ * 2026-07-28 (Khabat: "clan siden også kan bygges på samme måte det var i
+ * shahnameh, når jeg velger den ene clanen... også cta knapp for å bygge ny
+ * clan" — build it the way Shahnameh had it: pick a clan to see detail,
+ * plus a CTA to found a new one): cards used to apply directly inline with
+ * no detail view — added a tap-to-detail sheet (same pattern as the Heroes
+ * grid's certificate-style modal) and a create-clan flow
+ * (`clanBrowseService.ts`'s new `createClan`/`checkClanNameAvailable`,
+ * wrapping `/season2/clan/create` + `/clan/check-name`, both already live).
+ * Khabat confirmed this ADDS to the Clan tab's 2026-07-22 RealGram-community
+ * redesign rather than reversing it — RealGramClanScreen still owns
+ * referrals/Starlink/data, this directory is reached from it, not replacing it.
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -22,7 +34,10 @@ import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
 import { getSsoToken } from '../services/ssoService';
-import { getClanDirectory, getMyClan, applyToClan, ClanListing, MyClan } from '../services/clanBrowseService';
+import {
+  getClanDirectory, getMyClan, applyToClan, createClan, checkClanNameAvailable,
+  validateClanNameLocally, CLAN_CREATE_COST, ClanListing, MyClan,
+} from '../services/clanBrowseService';
 
 interface Props {
   onBack: () => void;
@@ -36,6 +51,17 @@ const APPLY_ERROR_COPY: Record<string, string> = {
   network_error:          "Couldn't reach the server — try again.",
 };
 
+const CREATE_ERROR_COPY: Record<string, string> = {
+  already_in_clan:      'You are already in a clan.',
+  name_too_short:        'Name is too short (min 3 characters).',
+  name_too_long:          'Name is too long (max 30 characters).',
+  name_invalid_chars:    'Name contains characters that aren’t allowed.',
+  name_taken:             'That name is already taken.',
+  insufficient_balance:  'Not enough REAL to found a clan.',
+  user_not_found:         'Could not identify your account — try again.',
+  network_error:          "Couldn't reach the server — try again.",
+};
+
 export function RealGramClanBrowseScreen({ onBack }: Props) {
   const insets   = useSafeAreaInsets();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -46,6 +72,8 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
   const [telegramId, setTelegramId] = useState('');
   const [pendingId, setPendingId]   = useState<string | null>(null); // clan_id currently applying
   const [error, setError]       = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null); // detail sheet
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -74,6 +102,12 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
       showToast(APPLY_ERROR_COPY[result.error] ?? 'Could not apply. Try again.', 'error');
     }
   }, [telegramId, showToast]);
+
+  const handleCreated = useCallback(() => {
+    setCreateOpen(false);
+    showToast('Clan founded!', 'success');
+    load(); // refresh directory + myClan so the new clan shows up immediately
+  }, [showToast, load]);
 
   if (error) {
     return (
@@ -109,8 +143,20 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View>
-              <Text style={styles.pageTitle}>Clans</Text>
-              <Text style={styles.pageSub}>Warrior guilds from across the chronicle.</Text>
+              <View style={styles.titleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.pageTitle}>Clans</Text>
+                  <Text style={styles.pageSub}>Warrior guilds from across the chronicle.</Text>
+                </View>
+                {/* Khabat, 2026-07-28: "cta knapp for å bygge ny clan" —
+                    hidden once already in one, since /clan/create rejects
+                    that server-side anyway (already_in_clan). */}
+                {!myClan && (
+                  <TouchableOpacity onPress={() => setCreateOpen(true)} style={styles.createCta} activeOpacity={0.85}>
+                    <Text style={styles.createCtaText}>+ Found</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
               {myClan ? (
                 <GlassCard style={styles.myClanCard} glowColor={Colors.gold[400]}>
                   <Text style={styles.cardLabel}>Your clan</Text>
@@ -130,60 +176,213 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
                 </GlassCard>
               ) : (
                 <GlassCard style={styles.noteCard}>
-                  <Text style={styles.noteText}>You're not in a clan yet — apply to one below.</Text>
+                  <Text style={styles.noteText}>You're not in a clan yet — tap one below to see it, or found your own.</Text>
                 </GlassCard>
               )}
             </View>
           }
           renderItem={({ item }) => (
-            <ClanCard
-              clan={item}
-              hasClan={!!myClan}
-              pending={pendingId === item.clan_id}
-              onApply={() => handleApply(item)}
-            />
+            <ClanCard clan={item} onPress={() => setSelectedId(item.clan_id)} />
           )}
         />
       )}
+
+      {/* Detail sheet (Khabat: "når jeg velger den ene clanen... nok info og
+          valg") — same pattern as Heroes' grid-card → modal. Apply lives
+          here now instead of inline on the row. */}
+      <Modal visible={selectedId !== null} animationType="slide" transparent onRequestClose={() => setSelectedId(null)}>
+        {(() => {
+          const clan = clans?.find((c) => c.clan_id === selectedId);
+          if (!clan) return null;
+          return (
+            <View style={styles.sheetOverlay}>
+              <TouchableOpacity style={styles.sheetBackdrop} onPress={() => setSelectedId(null)} activeOpacity={1} />
+              <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing[5] }]}>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <ClanDetail
+                    clan={clan}
+                    hasClan={!!myClan}
+                    pending={pendingId === clan.clan_id}
+                    onApply={() => handleApply(clan)}
+                  />
+                </ScrollView>
+                <TouchableOpacity onPress={() => setSelectedId(null)} style={styles.sheetCloseBtn} activeOpacity={0.85}>
+                  <Text style={styles.sheetCloseBtnText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })()}
+      </Modal>
+
+      <Modal visible={createOpen} animationType="slide" transparent onRequestClose={() => setCreateOpen(false)}>
+        <View style={styles.sheetOverlay}>
+          <TouchableOpacity style={styles.sheetBackdrop} onPress={() => setCreateOpen(false)} activeOpacity={1} />
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing[5] }]}>
+            <CreateClanForm telegramId={telegramId} onCreated={handleCreated} onCancel={() => setCreateOpen(false)} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
-function ClanCard({
+/** Compact row — photo, name, motto, member count. Tap opens ClanDetail. */
+function ClanCard({ clan, onPress }: { clan: ClanListing; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      <GlassCard style={styles.clanCard}>
+        <View style={styles.clanRow}>
+          {clan.clan_photo ? (
+            <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
+          ) : (
+            <View style={[styles.clanPhoto, styles.avatarFallback]}>
+              <Text style={styles.avatarFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
+            {!!clan.motto && <Text style={styles.clanMotto} numberOfLines={1}>"{clan.motto}"</Text>}
+            <Text style={styles.clanMeta}>{clan.member_count} members · led by {clan.leader_name || 'unknown'}</Text>
+          </View>
+          {clan.user_status !== 'none' && <Text style={styles.statusTag}>{clan.user_status}</Text>}
+        </View>
+      </GlassCard>
+    </TouchableOpacity>
+  );
+}
+
+/** Full detail shown in the tap-to-open sheet — photo, motto, leader,
+    member count, total REAL earned, and the Apply action/status. */
+function ClanDetail({
   clan, hasClan, pending, onApply,
 }: { clan: ClanListing; hasClan: boolean; pending: boolean; onApply: () => void }) {
   const canApply = !hasClan && clan.user_status === 'none';
   return (
-    <GlassCard style={styles.clanCard}>
-      <View style={styles.clanRow}>
+    <View style={{ gap: Spacing[3] }}>
+      <View style={styles.detailPhotoWrap}>
         {clan.clan_photo ? (
-          <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
+          <Image source={{ uri: clan.clan_photo }} style={styles.detailPhoto} resizeMode="cover" />
         ) : (
-          <View style={[styles.clanPhoto, styles.avatarFallback]}>
-            <Text style={styles.avatarFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
+          <View style={[styles.detailPhoto, styles.avatarFallback]}>
+            <Text style={[styles.avatarFallbackText, { fontSize: 32 }]}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
           </View>
         )}
-        <View style={{ flex: 1 }}>
-          <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
-          {!!clan.motto && <Text style={styles.clanMotto} numberOfLines={1}>"{clan.motto}"</Text>}
-          <Text style={styles.clanMeta}>{clan.member_count} members · led by {clan.leader_name || 'unknown'}</Text>
-        </View>
-        {canApply ? (
-          <TouchableOpacity
-            onPress={onApply}
-            disabled={pending}
-            style={[styles.applyBtn, pending && styles.applyBtnDisabled]}
-            activeOpacity={0.85}
-          >
-            {pending
-              ? <ActivityIndicator size="small" color={Colors.bg.void} />
-              : <Text style={styles.applyBtnText}>Apply</Text>}
-          </TouchableOpacity>
-        ) : clan.user_status !== 'none' ? (
-          <Text style={styles.statusTag}>{clan.user_status}</Text>
-        ) : null}
       </View>
-    </GlassCard>
+      <Text style={styles.detailName}>{clan.clan_name}</Text>
+      {!!clan.motto && <Text style={styles.detailMotto}>"{clan.motto}"</Text>}
+      <View style={styles.metaRow}>
+        <Text style={styles.clanMeta}>👑 Led by {clan.leader_name || 'unknown'}</Text>
+      </View>
+      <View style={styles.metaRow}>
+        <Text style={styles.clanMeta}>{clan.member_count} members</Text>
+        <Text style={styles.clanMeta}>·</Text>
+        <Text style={styles.clanMeta}>{clan.total_real_earned.toLocaleString()} REAL earned</Text>
+      </View>
+      {canApply ? (
+        <TouchableOpacity
+          onPress={onApply}
+          disabled={pending}
+          style={[styles.actionBtn, pending && styles.actionBtnDisabled]}
+          activeOpacity={0.85}
+        >
+          {pending
+            ? <ActivityIndicator size="small" color={Colors.bg.void} />
+            : <Text style={styles.actionBtnText}>Apply to join</Text>}
+        </TouchableOpacity>
+      ) : clan.user_status !== 'none' ? (
+        <View style={[styles.actionBtn, styles.actionBtnDisabled]}>
+          <Text style={styles.actionBtnText}>{clan.user_status === 'member' ? 'You are a member' : clan.user_status}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Create-clan form — name (live availability check, debounced), motto,
+    cost, submit. Server re-validates everything; this just gives faster
+    feedback than waiting on a round trip for the common mistakes. */
+function CreateClanForm({
+  telegramId, onCreated, onCancel,
+}: { telegramId: string; onCreated: () => void; onCancel: () => void }) {
+  const showToast = useToastStore((s) => s.show);
+  const [name, setName] = useState('');
+  const [motto, setMotto] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [nameAvailable, setNameAvailable] = useState<boolean | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    const trimmed = name.trim();
+    setNameAvailable(null);
+    if (validateClanNameLocally(trimmed) !== null) return;
+    setChecking(true);
+    const timer = setTimeout(() => {
+      checkClanNameAvailable(trimmed).then((available) => setNameAvailable(available)).finally(() => setChecking(false));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [name]);
+
+  const localError = validateClanNameLocally(name);
+  const canSubmit = !submitting && !localError && nameAvailable === true;
+
+  const handleSubmit = useCallback(async () => {
+    if (!telegramId) { showToast("Couldn't identify your account — try again shortly.", 'error'); return; }
+    setSubmitting(true);
+    const result = await createClan(telegramId, name, motto);
+    setSubmitting(false);
+    if (result.ok) {
+      onCreated();
+    } else {
+      showToast(CREATE_ERROR_COPY[result.error] ?? 'Could not found a clan. Try again.', 'error');
+    }
+  }, [telegramId, name, motto, showToast, onCreated]);
+
+  return (
+    <View style={{ gap: Spacing[3] }}>
+      <Text style={styles.detailName}>Found a clan</Text>
+      <Text style={styles.clanMeta}>Costs {CLAN_CREATE_COST.toLocaleString()} REAL. Choose a name other warriors will follow.</Text>
+      <TextInput
+        value={name}
+        onChangeText={setName}
+        placeholder="Clan name"
+        placeholderTextColor={Colors.text.muted}
+        style={styles.formInput}
+        maxLength={30}
+        autoCapitalize="words"
+      />
+      {!!name.trim() && (
+        <Text style={styles.formHint}>
+          {localError === 'too_short' ? 'At least 3 characters.'
+            : localError === 'invalid_chars' ? 'Some characters aren’t allowed.'
+            : checking ? 'Checking availability…'
+            : nameAvailable === true ? '✓ Available'
+            : nameAvailable === false ? 'Already taken.'
+            : ''}
+        </Text>
+      )}
+      <TextInput
+        value={motto}
+        onChangeText={setMotto}
+        placeholder="Motto (optional)"
+        placeholderTextColor={Colors.text.muted}
+        style={styles.formInput}
+        maxLength={80}
+      />
+      <TouchableOpacity
+        onPress={handleSubmit}
+        disabled={!canSubmit}
+        style={[styles.actionBtn, !canSubmit && styles.actionBtnDisabled]}
+        activeOpacity={0.85}
+      >
+        {submitting
+          ? <ActivityIndicator size="small" color={Colors.bg.void} />
+          : <Text style={styles.actionBtnText}>Found clan — {CLAN_CREATE_COST.toLocaleString()} REAL</Text>}
+      </TouchableOpacity>
+      <TouchableOpacity onPress={onCancel} style={styles.sheetCloseBtn} activeOpacity={0.85}>
+        <Text style={styles.sheetCloseBtnText}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -200,8 +399,12 @@ const styles = StyleSheet.create({
   },
   backIcon: { fontSize: 22, color: Colors.text.primary, marginTop: -2 },
 
+  titleRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing[3] },
   pageTitle: { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary },
   pageSub:   { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2, marginBottom: Spacing[3] },
+
+  createCta:     { backgroundColor: Colors.gold[400], borderRadius: Radius.lg, paddingVertical: Spacing[2], paddingHorizontal: Spacing[3], marginTop: 2 },
+  createCtaText: { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.bg.void },
 
   cardLabel: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.label, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: Spacing[2] },
   myClanCard: { marginBottom: Spacing[4] },
@@ -217,10 +420,30 @@ const styles = StyleSheet.create({
   clanMotto: { fontSize: 12, color: Colors.gold[400], fontFamily: Typography.family.body, marginTop: 2, fontStyle: 'italic' },
   clanMeta: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2 },
 
-  applyBtn: { backgroundColor: Colors.gold[400], borderRadius: Radius.lg, paddingVertical: Spacing[2], paddingHorizontal: Spacing[3] },
-  applyBtnDisabled: { opacity: 0.6 },
-  applyBtnText: { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.bg.void },
   statusTag: { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase' },
+
+  detailPhotoWrap: { width: '100%', height: 160, borderRadius: Radius.xl, overflow: 'hidden', backgroundColor: Colors.bg.elevated },
+  detailPhoto: { width: '100%', height: '100%' },
+  detailName:  { fontSize: 20, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  detailMotto: { fontSize: 14, color: Colors.gold[400], fontFamily: Typography.family.body, fontStyle: 'italic' },
+  metaRow:     { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+
+  actionBtn: { backgroundColor: Colors.gold[400], borderRadius: Radius.lg, paddingVertical: Spacing[3], alignItems: 'center' },
+  actionBtnDisabled: { opacity: 0.5 },
+  actionBtnText: { fontSize: 13, fontFamily: Typography.family.heading, color: Colors.bg.void },
+
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
+  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.65)' },
+  sheet: { maxHeight: '85%', backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius['2xl'], borderTopRightRadius: Radius['2xl'], padding: Spacing[5] },
+  sheetCloseBtn: { marginTop: Spacing[3], alignItems: 'center', paddingVertical: Spacing[2] },
+  sheetCloseBtnText: { fontSize: 13, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  formInput: {
+    borderWidth: 1, borderColor: Colors.border.default, borderRadius: Radius.lg,
+    paddingHorizontal: Spacing[3], paddingVertical: Spacing[3], fontSize: 14,
+    fontFamily: Typography.family.body, color: Colors.text.primary, backgroundColor: Colors.bg.elevated,
+  },
+  formHint: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: -Spacing[2] },
 
   errorText: { fontSize: 13, color: '#FF6B6B', textAlign: 'center', fontFamily: Typography.family.body, paddingHorizontal: Spacing[6] },
   backBtnFallback: { backgroundColor: Colors.gold[400], borderRadius: Radius.xl, paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },

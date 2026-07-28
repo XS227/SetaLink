@@ -113,7 +113,9 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
           ListHeaderComponent={
             <View>
               {!!catalogEntry?.image_url && (
-                <Image source={{ uri: catalogEntry.image_url }} style={styles.heroImage} resizeMode="cover" />
+                <View style={styles.heroImageWrap}>
+                  <Image source={{ uri: catalogEntry.image_url }} style={styles.heroImage} resizeMode="contain" />
+                </View>
               )}
               <Text style={styles.pageTitle}>{catalogEntry?.title ?? lore?.slug}</Text>
               {!!catalogEntry?.summary && <Text style={styles.pageSub}>{catalogEntry.summary}</Text>}
@@ -179,7 +181,9 @@ function SceneCard({ scene, unlocked, read, onRead }: {
         ) : expanded ? (
           <>
             {!!scene.image && (
-              <Image source={{ uri: scene.image }} style={styles.sceneImage} resizeMode="cover" />
+              <View style={styles.sceneImageWrap}>
+                <Image source={{ uri: scene.image }} style={styles.sceneImage} resizeMode="contain" />
+              </View>
             )}
             <Text style={styles.sceneBody}>{scene.body}</Text>
           </>
@@ -204,7 +208,14 @@ const styles = StyleSheet.create({
   },
   backIcon: { fontSize: 22, color: Colors.text.primary, marginTop: -2 },
 
-  heroImage: { width: '100%', height: 160, borderRadius: Radius.xl, marginBottom: Spacing[3] },
+  // 2026-07-28 (Khabat: "bildene ser ikke fint ut og man ser ikke hele" —
+  // images don't look good, you don't see the whole thing): was
+  // resizeMode="cover" in a short fixed-height box, which crops portrait
+  // chapter artwork hard. "contain" inside a taller, tinted box shows the
+  // full image with letterboxing that blends into the card instead of
+  // hard-cropping content out.
+  heroImageWrap: { width: '100%', height: 220, borderRadius: Radius.xl, marginBottom: Spacing[3], backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
+  heroImage: { width: '100%', height: '100%' },
   pageTitle: { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary },
   pageSub:   { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2 },
 
@@ -224,7 +235,8 @@ const styles = StyleSheet.create({
   sceneAtmosphere: { fontSize: 11, color: Colors.gold[600], fontFamily: Typography.family.body, fontStyle: 'italic', marginTop: 2 },
   lockedText: { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: Spacing[2] },
   sceneBody:  { fontSize: 13, color: Colors.text.secondary, fontFamily: Typography.family.body, lineHeight: 19, marginTop: Spacing[2] },
-  sceneImage: { width: '100%', height: 140, borderRadius: Radius.lg, marginTop: Spacing[2], marginBottom: Spacing[1] },
+  sceneImageWrap: { width: '100%', height: 200, borderRadius: Radius.lg, marginTop: Spacing[2], marginBottom: Spacing[1], backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
+  sceneImage: { width: '100%', height: '100%' },
 
   continueCard:  { marginTop: Spacing[3], alignItems: 'center' },
   continueTitle: { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.gold[400] },
