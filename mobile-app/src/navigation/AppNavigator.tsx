@@ -67,6 +67,8 @@ import { useDMStore }     from '../stores/dmStore';
 import { BiometricService }      from '../services/biometricService';
 import { getAdapter }            from '../services/vpnBridge';
 import { useAuthStore }          from '../stores/authStore';
+import { useCallStore }          from '../stores/callStore';
+import { CallScreen }            from '../screens/CallScreen';
 import { useSettingsStore }      from '../stores/settingsStore';
 import { useVpnStore }           from '../stores/vpnStore';
 import { useServerStore }        from '../stores/serverStore';
@@ -684,6 +686,47 @@ function NotificationRouteHandler() {
   return null;
 }
 
+// Audio calling (Khabat, 2026-07-28: "ringe knappen skal fungere ikke bare
+// når Inbox er åpen ... sånn som IMO/WhatsApp") — mounted here, alongside
+// DeepLinkHandler/NotificationRouteHandler, so the signaling connection and
+// incoming-call ring are alive for the app's whole foreground lifetime, not
+// tied to whichever screen happens to be open. Renders CallScreen as a
+// full-screen Modal over WHATEVER screen is currently showing the moment a
+// call is incoming or placed. See callStore.ts's own header for the one
+// real limit this doesn't cover: the app must be in the foreground —
+// ringing while backgrounded/killed needs native VoIP push, not done here.
+function CallManager() {
+  const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
+  const plan     = useAuthStore((s) => s.user?.plan);
+  const testMode = useAuthStore((s) => s.user?.testMode);
+  const canCall  = plan !== 'free' || !!testMode;
+  const activeCall   = useCallStore((s) => s.activeCall);
+  const connect      = useCallStore((s) => s.connect);
+  const disconnect   = useCallStore((s) => s.disconnect);
+  const acceptCall   = useCallStore((s) => s.acceptIncomingCall);
+  const endCall      = useCallStore((s) => s.endCall);
+
+  useEffect(() => {
+    if (!deviceId || !canCall) return;
+    connect(deviceId);
+    return () => disconnect();
+  }, [deviceId, canCall, connect, disconnect]);
+
+  return (
+    <Modal visible={!!activeCall} animationType="slide" onRequestClose={() => {}}>
+      {activeCall && (
+        <CallScreen
+          engine={activeCall.engine}
+          peerLabel={activeCall.peerLabel}
+          outgoing={activeCall.outgoing}
+          onAccept={activeCall.outgoing ? undefined : acceptCall}
+          onEnded={endCall}
+        />
+      )}
+    </Modal>
+  );
+}
+
 // ── Root navigator ────────────────────────────────────────────────────────────
 
 export function AppNavigator() {
@@ -697,6 +740,7 @@ export function AppNavigator() {
     <NavigationContainer>
       <DeepLinkHandler />
       <NotificationRouteHandler />
+      <CallManager />
       <Stack.Navigator screenOptions={{ headerShown: false, animation: 'fade' }}>
         <Stack.Screen name="Splash"      component={SplashAdapter} />
         <Stack.Screen name="Language"    component={LanguageAdapter} />

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
   Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
@@ -27,9 +27,7 @@ import { setTyping as apiSetTyping, getTyping as apiGetTyping } from '../service
 import { listThreadMessages, searchMessages } from '../services/entitlementService';
 import { blockUser, reportMessage, type DMReportReason } from '../services/entitlementService';
 import { Logger } from '../utils/logger';
-import { CallEngine, RTCSessionDescriptionInitLike } from '../services/callService';
-import { RealCallSignalingClient } from '../services/callSignalingClient';
-import { CallScreen } from './CallScreen';
+import { useCallStore } from '../stores/callStore';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
 
@@ -112,75 +110,17 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const myId        = user?.userId ?? '';
   const isVip       = isVipUser(user?.inviteCount ?? 0, user?.milestones ?? null);
 
-  // Audio calling (Khabat, 2026-07-28) — premium-gated client-side (the
-  // real restriction, a two-account testing allowlist, is server-side per
-  // her (170) ask and isn't something this screen can see, so a premium-
-  // but-not-allowlisted account would still get a real error from
-  // placeCall — acceptable during this testing phase). One signaling
-  // connection for as long as Inbox stays mounted; incoming calls only
-  // ring while this screen is alive — a real, known limitation of wiring
-  // it in here rather than app-wide, not something to silently overclaim.
+  // Audio calling (Khabat, 2026-07-28: "ikke bare når Inbox er åpen") —
+  // the connection + incoming-call listening now lives in callStore.ts,
+  // owned by CallManager at the root of AppNavigator so it rings
+  // regardless of which screen is open, not just this one. This screen
+  // only starts outgoing calls; premium-gated client-side (the real
+  // restriction, a two-account testing allowlist, is server-side per her
+  // (170) ask and isn't visible to this screen, so a premium-but-not-
+  // allowlisted account would still get a real error from placeCall —
+  // acceptable during this testing phase).
   const canCall = user?.plan !== 'free' || !!user?.testMode;
-  const signalingRef = useRef<RealCallSignalingClient | null>(null);
-  const pendingOffersRef = useRef<Map<string, RTCSessionDescriptionInitLike>>(new Map());
-  const [activeCall, setActiveCall] = useState<{
-    engine: CallEngine;
-    peerLabel: string;
-    outgoing: boolean;
-  } | null>(null);
-
-  useEffect(() => {
-    if (!deviceId || !canCall) return;
-    const client = new RealCallSignalingClient(deviceId);
-    signalingRef.current = client;
-    client.connect();
-
-    const unsubOffer = client.onOffer((callId, sdp) => {
-      pendingOffersRef.current.set(callId, sdp);
-    });
-    const unsubIncoming = client.onIncomingCall((callId, callerUserId) => {
-      const engine = new CallEngine(client, callId, callerUserId, () => {}, () => {});
-      setActiveCall({ engine, peerLabel: callerUserId, outgoing: false });
-    });
-
-    return () => {
-      unsubOffer();
-      unsubIncoming();
-      client.disconnect();
-      signalingRef.current = null;
-    };
-  }, [deviceId, canCall]);
-
-  const startCall = useCallback((peerId: string, peerLabel: string) => {
-    const client = signalingRef.current;
-    if (!client || !peerId) return;
-    const engine = new CallEngine(client, '', peerId, () => {}, () => {});
-    setActiveCall({ engine, peerLabel, outgoing: true });
-  }, []);
-
-  // Callee side of accepting: join the relay room (mints this device's own
-  // voucher + marks the call accepted server-side), then wait for the
-  // caller's offer — already queued in pendingOffersRef if it arrived
-  // before the user tapped Accept, or arrives moments after joining.
-  const handleAcceptIncoming = useCallback(async () => {
-    const client = signalingRef.current;
-    if (!client || !activeCall) throw new Error('no active call');
-    const callId = activeCall.engine.getCallId();
-    await client.joinAsCallee(callId);
-
-    const offer = await new Promise<RTCSessionDescriptionInitLike>((resolve, reject) => {
-      const existing = pendingOffersRef.current.get(callId);
-      if (existing) { resolve(existing); return; }
-      const started = Date.now();
-      const interval = setInterval(() => {
-        const found = pendingOffersRef.current.get(callId);
-        if (found) { clearInterval(interval); resolve(found); return; }
-        if (Date.now() - started > 15000) { clearInterval(interval); reject(new Error('offer timed out')); }
-      }, 200);
-    });
-    pendingOffersRef.current.delete(callId);
-    await activeCall.engine.acceptIncoming(offer);
-  }, [activeCall]);
+  const startCall = useCallStore((s) => s.startOutgoingCall);
 
   // Direct messages
   const dms           = useDMStore((s) => s.messages);
@@ -994,20 +934,6 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
             </View>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Audio call overlay — Khabat, 2026-07-28. Full-screen over
-          everything else in the Inbox, same as the compose/thread modals. */}
-      <Modal visible={!!activeCall} animationType="slide" onRequestClose={() => {}}>
-        {activeCall && (
-          <CallScreen
-            engine={activeCall.engine}
-            peerLabel={activeCall.peerLabel}
-            outgoing={activeCall.outgoing}
-            onAccept={activeCall.outgoing ? undefined : handleAcceptIncoming}
-            onEnded={() => setActiveCall(null)}
-          />
-        )}
       </Modal>
     </View>
   );
