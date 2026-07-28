@@ -27,6 +27,8 @@ require_once __DIR__ . '/../lib/quota_economy.php';
 require_once __DIR__ . '/../lib/ads_recovery.php';
 // User-to-user messaging (v0.9.33).
 require_once __DIR__ . '/../lib/messaging.php';
+// Audio/video calling authorization + history (signaling relay is separate).
+require_once __DIR__ . '/../lib/calling.php';
 // TrustAI referral trust scoring (optional service, local heuristic fallback).
 require_once __DIR__ . '/../lib/trustai.php';
 // REAL token economy — account linking + server-verified redemption (A2).
@@ -1951,6 +1953,120 @@ if ($method === 'POST') {
             err($e->getMessage());
         }
         ok($result);
+    }
+
+    // ── Calling (audio only for now — see lib/calling.php's own header for
+    //    the full architecture/why). This block only does authorization +
+    //    durable history; the real-time ring/SDP/ICE relay is a separate
+    //    standalone process (calling-relay/), not deployed yet. ──────────
+
+    if ($action === 'call-presence-token') {
+        // Minted once when the Inbox screen mounts, refreshed on its own TTL
+        // while it stays open — proves device identity to the relay so it
+        // can register presence (device_id -> socket) without its own DB.
+        // enabled:false (empty relay_secret, or calling not configured yet)
+        // means the client should hide the call entry points entirely.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        ok(call_presence_token($pdo, $deviceId));
+    }
+
+    if ($action === 'call-initiate') {
+        // Premium-gated (caller side, see calling.php header's open decision
+        // #1). Body: device_id (caller), peer (callee's device_id/user_id/
+        // referral_code, same addressing as send-message's recipient),
+        // kind ('audio' only for now).
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $peer     = trim($_POST['peer'] ?? '');
+        $kind     = trim($_POST['kind'] ?? 'audio');
+        if (!$deviceId || $peer === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = call_initiate($pdo, $deviceId, $peer, $kind);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
+    if ($action === 'call-callee-voucher') {
+        // Called by the callee once their already-connected relay socket
+        // pushes a call:incoming for this call_id — mints their own
+        // call-scoped voucher (the caller's voucher can't be reused to
+        // impersonate them).
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $callId   = trim($_POST['call_id'] ?? '');
+        if (!$deviceId || $callId === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = call_callee_voucher($pdo, $deviceId, $callId);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
+    if ($action === 'call-ice-servers') {
+        // Called by either side once they've joined the relay room for this
+        // call_id, before creating/answering the SDP offer. Always includes
+        // a public STUN fallback; adds fi-hel's TURN server with short-lived
+        // REST-API credentials once calling_turn_secret is configured.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        $callId   = trim($_GET['call_id'] ?? '');
+        if (!$deviceId || $callId === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = call_ice_servers($pdo, $callId, $deviceId);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
+    if ($action === 'call-accept') {
+        // Durable state transition only — the relay separately relays the
+        // real-time call:accept event over the socket itself. Called by
+        // the callee.
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $callId   = trim($_POST['call_id'] ?? '');
+        if (!$deviceId || $callId === '') err('missing params');
+        $pdo = db();
+        call_mark_accepted($pdo, $callId, $deviceId);
+        ok(['ok' => true]);
+    }
+
+    if ($action === 'call-decline') {
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $callId   = trim($_POST['call_id'] ?? '');
+        if (!$deviceId || $callId === '') err('missing params');
+        $pdo = db();
+        call_mark_declined($pdo, $callId, $deviceId);
+        ok(['ok' => true]);
+    }
+
+    if ($action === 'call-end') {
+        // Either side can end; reason is best-effort (defaults to
+        // caller_hangup if the client sends something unrecognized).
+        $deviceId = trim($_POST['device_id'] ?? '');
+        $callId   = trim($_POST['call_id'] ?? '');
+        $reason   = trim($_POST['reason'] ?? '');
+        if (!$deviceId || $callId === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = call_mark_ended($pdo, $callId, $deviceId, $reason);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
+    if ($action === 'call-history') {
+        $deviceId = trim($_GET['device_id'] ?? '');
+        $limit    = (int)($_GET['limit'] ?? 50);
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        ok(['calls' => call_history($pdo, $deviceId, $limit)]);
     }
 
     if ($action === 'link-real-account') {

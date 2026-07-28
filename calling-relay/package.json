@@ -1,0 +1,14 @@
+{
+  "name": "realgram-calling-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stateless WebRTC signaling relay for RealGram calling. Voucher-authenticated against lib/calling.php; holds no database of its own.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test-voucher.js && node test-presence.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
