@@ -14,7 +14,13 @@
     "algorithm": "sha256"
   },
   "size": 57437360,
-  "changelog": [],
+  "changelog": [
+    "New: real Heroes buy/upgrade (real 33-hero roster, not the old test catalog)",
+    "New: real Daily Quests progress (read/quiz/tap), Hero Spotlight",
+    "New: native Clan directory + join, Social (leaderboard/activity/tournament), Earn (check-in/tasks/milestones)",
+    "New: native chapter reading (hero/lore/scenes)",
+    "Fixed the settings button sitting too close to the top edge on some devices"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
