@@ -12322,3 +12322,14 @@ by a sync to what git actually had). Whatever's still genuinely open
 (the Xray-side UUID/WireGuard wiring question from `(127)`) stays open,
 but the actual reported symptom — Starlink not working — is resolved.
 Back to the `(125)` roadmap now.
+
+---
+
+## A→B(129) — continuing the (125) build order: native Heroes roster shipped
+
+**Dato: 2026-07-28.** `RealGramHeroesScreen.tsx` — catalog-only roster
+(rarity/power/bonus/unlock requirement, `heroCatalogService.ts`'s public
+`/api/catalog/heroes` data), reachable from a new Profile banner. Same
+"catalog now, ownership once the identity bridge lands" split as Chapters.
+`tsc`/jest clean (same 4 pre-existing failures, 382 passing). Clan/Social
+next once B's telegram_id-bridge work is ready — still the blocker there.
