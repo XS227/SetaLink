@@ -18,6 +18,7 @@ require_once __DIR__ . '/../lib/ads_perf.php';
 require_once __DIR__ . '/../lib/ad_monetization.php';
 require_once __DIR__ . '/../lib/admob_sync.php';
 require_once __DIR__ . '/../lib/adsgram_publisher_sync.php';
+require_once __DIR__ . '/../lib/calling.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store');
@@ -1355,6 +1356,21 @@ PS1;
         }
         api_ok(['saved' => $saved]);
     }
+    if ($action === 'save-calling-config') {
+        // Same allowlist-of-keys pattern as save-ads-config, sourced from
+        // lib/calling.php's own CALL_SERVICE_SETTING_DEFAULTS so this stays
+        // in sync automatically if that list ever changes.
+        $allowed = array_keys(CALL_SERVICE_SETTING_DEFAULTS);
+        $db2 = open_analytics_db();
+        $st = $db2->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES(?,?,datetime('now'))");
+        $saved = [];
+        foreach ($allowed as $k) {
+            if (!array_key_exists($k, $parsed)) continue;
+            $st->execute([$k, (string)$parsed[$k]]);
+            $saved[] = $k;
+        }
+        api_ok(['saved' => $saved]);
+    }
     if ($action === 'save-payments-config') {
         // Remote-tune REAL/USDT token addresses, wallets, discount, window, indexer.
         $allowed = array_keys(pay_defaults());
@@ -1846,6 +1862,47 @@ switch ($action) {
             'totals'     => $totals[0] ?? new \stdClass(),
             'by_screen'  => $byScreen,
             'by_element' => $byElement,
+        ]);
+        break;
+    }
+
+    // Calling (audio) admin overview — config (settings table, editable
+    // here instead of needing direct DB access), live stats, and recent
+    // call history. See lib/calling.php's own header for the full
+    // architecture; this case is read-only aggregation only, no writes.
+    case 'calling-admin-overview': {
+        $db = open_analytics_db();
+        call_ensure_schema($db);
+        $cfg = call_service_config($db);
+
+        $q = function (string $sql, array $args = []) use ($db) {
+            try { $st = $db->prepare($sql); $st->execute($args); return $st->fetchAll(PDO::FETCH_ASSOC); }
+            catch (\Throwable $e) { return []; }
+        };
+        $totalToday = $q("SELECT COUNT(*) AS n FROM call_sessions WHERE started_at >= datetime('now','-1 day')");
+        $totalWeek  = $q("SELECT COUNT(*) AS n FROM call_sessions WHERE started_at >= datetime('now','-7 days')");
+        $byStatus   = $q("SELECT status, COUNT(*) AS n FROM call_sessions GROUP BY status ORDER BY n DESC");
+        $recent     = $q("SELECT * FROM call_sessions ORDER BY started_at DESC LIMIT 50");
+
+        api_ok([
+            // Raw values, not masked — this panel already sits behind the
+            // same HTTP Basic Auth + session + CSRF trust boundary as every
+            // other admin-editable secret in this file (e.g. AdMob/payment
+            // keys via save-ads-config/save-payments-config), so masking
+            // here would be security theater, not a real control.
+            'editable' => [
+                'calling_relay_secret'          => $cfg['relay_secret'],
+                'calling_turn_secret'           => $cfg['turn_secret'],
+                'calling_relay_internal_url'    => $cfg['relay_internal_url'],
+                'calling_relay_internal_secret' => $cfg['relay_internal_secret'],
+                'calling_allowlist'             => $cfg['allowlist'],
+            ],
+            'relay_configured' => $cfg['relay_secret'] !== '',
+            'turn_configured'  => $cfg['turn_secret'] !== '',
+            'calls_today'      => (int)($totalToday[0]['n'] ?? 0),
+            'calls_week'       => (int)($totalWeek[0]['n'] ?? 0),
+            'by_status'        => $byStatus,
+            'recent'           => $recent,
         ]);
         break;
     }

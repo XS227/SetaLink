@@ -143,6 +143,9 @@ function icon(string $name): string {
     <div class="nav-item<?= $page==='hakim'?' active':'' ?>" data-page="hakim">
       📖 Shahnameh AI (Hakim)
     </div>
+    <div class="nav-item<?= $page==='calling'?' active':'' ?>" data-page="calling">
+      📞 Calling
+    </div>
 
     <!-- ── 🛠 System ── -->
     <div class="nav-section">🛠 System</div>
@@ -2200,6 +2203,51 @@ function icon(string $name): string {
       </div>
     </div>
 
+    <!-- ============================================================ -->
+    <!-- VIEW: CALLING (audio) — see lib/calling.php for the backend   -->
+    <!-- ============================================================ -->
+    <div data-view="calling" hidden>
+      <div id="callingConfigBanner" class="panel" style="margin-bottom:.75rem;display:none">
+        <div class="panel-body" style="color:#f59e0b;font-size:.85rem" id="callingConfigBannerText"></div>
+      </div>
+      <div class="two-col">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Calls</span></div>
+          <div class="panel-body">
+            <div class="stat-row" style="display:flex;gap:1rem;flex-wrap:wrap">
+              <div>Today: <strong id="callingToday">—</strong></div>
+              <div>This week: <strong id="callingWeek">—</strong></div>
+            </div>
+            <div style="margin-top:.6rem;font-size:.75rem;color:var(--muted-2)" id="callingByStatus"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">Config <span class="panel-sub">relay secret · TURN (fi-hel) · internal push hook · testing allowlist</span></span></div>
+          <div class="panel-body">
+            <div id="callingConfigForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:.6rem .9rem"></div>
+            <button class="btn btn-primary" id="callingCfgSave" style="margin-top:.75rem"><?= icon('save') ?> Save Config</button>
+            <span id="callingCfgMsg" style="margin-left:.75rem;font-size:.75rem;color:var(--ok)"></span>
+            <p style="font-size:.68rem;color:var(--muted-2);margin-top:.5rem">
+              <code>calling_allowlist</code>: comma-separated device_id/user_id. Empty = no
+              restriction (general rollout). Non-empty = ONLY listed identities may place or
+              receive calls, on top of the premium-plan gate — this is the testing-phase state
+              (docs/realgram/TASK_SPLIT.md A→B(170)/(172)).
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:.75rem">
+        <div class="panel-header"><span class="panel-title">Recent Calls</span><span class="panel-sub" id="callingRecentCount"></span></div>
+        <div class="panel-body" style="overflow-x:auto">
+          <table class="data-table" style="width:100%;min-width:720px">
+            <thead><tr><th>Started</th><th>Caller</th><th>Callee</th><th>Kind</th><th>Status</th><th>Duration</th><th>End reason</th></tr></thead>
+            <tbody id="callingRecentBody"><tr><td colspan="7" class="tbl-empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /page-content -->
 </main>
 </div><!-- /layout -->
@@ -2533,6 +2581,7 @@ const pageTitles = {
   config:    ['Config',               'remote config · bootstrap server · feature flags'],
   referrals: ['Referrals',            'invite analytics · leaderboard · conversion · bonus grants'],
   hakim:     ['Shahnameh AI (Hakim)', 'bot status · requests · errors · knowledge sources · test interface'],
+  calling:   ['Calling',              'relay + TURN config · testing allowlist · call history'],
   aidiag:    ['AI Diagnostics',       'node recommendation quality · confidence scores · failure analysis'],
   profile:   ['User Profiles',        'Shahnameh identity · handle · persona · ZAR · invite tree'],
   wallet:    ['REAL Wallet',          'ZAR balances · REAL token · wallet transactions · top earners'],
@@ -6432,6 +6481,81 @@ $('hakimTestBtn')?.addEventListener('click', async () => {
     resultEl.textContent = 'Error: ' + e.message;
   }
 });
+
+// ── VIEW: CALLING ─────────────────────────────────────────────────────
+views.calling = {
+  init() { this.load(); },
+  statusBadge(status) {
+    const map = {
+      accepted: 'badge-ok', ended: 'badge-muted', ringing: 'badge-info',
+      missed: 'badge-danger', declined: 'badge-danger',
+    };
+    return `<span class="badge ${map[status] || 'badge-muted'}">${esc(status || '—')}</span>`;
+  },
+  fmtDuration(secs) {
+    secs = parseInt(secs, 10) || 0;
+    if (secs <= 0) return '—';
+    const m = Math.floor(secs / 60), s = secs % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  },
+  async load() {
+    let d;
+    try { d = await api.get('calling-admin-overview'); } catch (e) { toast('Calling: ' + e.message, 'error'); return; }
+
+    const banner = $('callingConfigBanner'), bt = $('callingConfigBannerText');
+    if (!d.relay_configured) {
+      banner.style.display = ''; bt.textContent = '⚠ Relay secret not configured — calling is fully disabled for every device.';
+    } else if (!d.turn_configured) {
+      banner.style.display = ''; bt.textContent = '⚠ TURN secret not configured — calls fall back to STUN only (may fail on restrictive/NAT-heavy networks). Read the real value off fi-hel’s /etc/turnserver.conf.';
+    } else {
+      banner.style.display = 'none';
+    }
+
+    $('callingToday').textContent = d.calls_today ?? 0;
+    $('callingWeek').textContent  = d.calls_week ?? 0;
+    const byStatus = d.by_status || [];
+    $('callingByStatus').textContent = byStatus.length
+      ? byStatus.map(r => `${r.status}: ${r.n}`).join('  ·  ')
+      : 'No calls recorded yet.';
+
+    const ed = d.editable || {}, form = $('callingConfigForm');
+    if (form) {
+      form.innerHTML = Object.keys(ed).map(k => {
+        const v = ed[k] ?? '';
+        return `<label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem"><span style="opacity:.6;font-family:monospace">${esc(k)}</span><input data-cfg="${esc(k)}" type="text" value="${String(v).replace(/"/g,'&quot;')}" style="padding:.4rem;border-radius:6px;border:1px solid #2a3550;background:#0f1626;color:#e6ecff"></label>`;
+      }).join('');
+    }
+
+    const rows = d.recent || [];
+    $('callingRecentCount').textContent = rows.length + ' shown';
+    $('callingRecentBody').innerHTML = rows.length
+      ? rows.map(r => `<tr>
+          <td style="font-size:.72rem;color:var(--muted)">${esc((r.started_at || '').replace('T', ' '))}</td>
+          <td class="mono" style="font-size:.72rem">${esc((r.caller_device || '').slice(0, 16))}</td>
+          <td class="mono" style="font-size:.72rem">${esc((r.callee_device || '').slice(0, 16))}</td>
+          <td>${esc(r.kind || '—')}</td>
+          <td>${this.statusBadge(r.status)}</td>
+          <td>${this.fmtDuration(r.duration_secs)}</td>
+          <td style="font-size:.72rem;color:var(--muted)">${esc(r.end_reason || '—')}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="7" class="tbl-empty">No calls recorded yet.</td></tr>';
+  },
+  async save() {
+    const body = { action: 'save-calling-config' };
+    document.querySelectorAll('#callingConfigForm input[data-cfg]').forEach(i => { body[i.dataset.cfg] = i.value; });
+    const msg = $('callingCfgMsg');
+    try {
+      const r = await api.post(body);
+      if (msg) msg.textContent = '✓ saved ' + (r.saved || []).length + ' keys';
+      toast('Calling config saved', 'ok');
+      this.load();
+    } catch (e) {
+      if (msg) msg.textContent = '✗ ' + e.message;
+      toast('Save failed: ' + e.message, 'error');
+    }
+  },
+};
+$('callingCfgSave')?.addEventListener('click', () => views.calling.save());
 
 // ── VIEW: REFERRALS ──────────────────────────────────────────────────
 views.referrals = {
