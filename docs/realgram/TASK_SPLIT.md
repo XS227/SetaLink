@@ -13853,3 +13853,62 @@ suite are the parts that would actually catch a real break here.
 Add this to the build queue alongside your `(156)`/`(158)` work — this is
 mobile-app + backend together, backend half (mode flip, chart endpoint)
 already live independent of any build.
+
+---
+
+## A→B(161) — new feature request from Khabat: audio/video calling in the Inbox — ANALYSIS ONLY, please, no building yet
+
+**Dato: 2026-07-28.** Khabat wants friend-to-friend calling from the
+RealGram Inbox: **audio calls first, video calls as a phase 2**, gated to
+**premium users only** for now. Her explicit condition, in her own words:
+only if it "doesn't strain the server with the traffic it creates" — she
+asked specifically for your analysis before anything gets built, not code.
+Please don't start implementing yet; this is a feasibility/cost writeup
+first.
+
+**Confirmed from this side: greenfield, nothing to build on.** Grepped
+`mobile-app/src`, `lib/`, `public/` for webrtc/voip/call-related code —
+nothing exists. Premium gating already has a reusable hook though:
+`user?.plan === 'free'` (see `InboxScreen.tsx:716` for the existing
+pattern), so that part's cheap once the calling mechanism itself exists.
+
+**Why her "traffic on the server" worry is the right instinct, not just
+caution:** real-time audio/video (WebRTC) needs three pieces, and only one
+of them is actually expensive:
+1. **Signaling** (exchanging SDP/ICE offers to set up a call) — tiny,
+   negligible traffic, this part is cheap wherever it lives.
+2. **STUN** (helping two peers discover their public IP/port so they can
+   try to connect directly) — also negligible, many free public STUN
+   servers exist.
+3. **TURN** (a relay server that proxies the actual audio/video media
+   stream when a direct peer-to-peer connection can't be established,
+   which is common behind restrictive NAT/firewalls) — **this is the
+   traffic she's worried about**, since TURN literally forwards every
+   byte of the call through server infrastructure, not just a handshake.
+
+**The reason this specific app may hit TURN often, not rarely:** most of
+ReaLink's user base is on restrictive/censored networks (Iran) and/or
+behind the app's own VPN/Starlink tunnel — both make direct P2P WebRTC
+connections *less* likely to succeed than on an open network, meaning TURN
+relay could end up being the norm for this user base rather than the
+exception most WebRTC cost estimates assume. Worth quantifying against
+this VPS's own known constraints: this box is a 1 GB RAM VPS (see
+today's own jest OOM issues) and roughly $0.02/GB egress
+([[realink-ecosystem-phase1]]) — a single 10-minute audio call is roughly
+10-30 MB if relayed (video is 10-50x that), so the real question is
+projected concurrent-call volume × relay rate, not just per-call cost.
+
+**What would actually help before any build decision:**
+1. Rough bandwidth/cost math for audio-only at a few plausible concurrent-
+   user assumptions, and separately for video (phase 2) — enough to tell
+   Khabat "safe at N users" vs "needs a real budget line."
+2. Where TURN/signaling should live — this VPS (already tight on RAM),
+   your Shahnameh box, or a separate dedicated relay (self-hosted `coturn`
+   vs. a managed TURN provider) — and rough cost/effort for each option.
+3. Whether a call feature can degrade gracefully (e.g. cap concurrent
+   calls, audio-only fallback if video would overload relay capacity)
+   rather than an all-or-nothing gate.
+
+No timeline pressure on this — she asked for analysis, and this is
+squarely infra/cost territory you're better positioned to reason about
+than me. Post your findings here whenever ready; I'll relay to Khabat.
