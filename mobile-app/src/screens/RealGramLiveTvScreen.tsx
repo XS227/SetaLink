@@ -58,6 +58,7 @@ export function RealGramLiveTvScreen({ onBack, onOpenPlayer }: Props) {
   const [loading, setLoading]   = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError]       = useState('');
+  const [failedLoad, setFailedLoad] = useState(false); // distinct from a genuine zero-match filter result — drives the retry button
 
   const [countries, setCountries]   = useState<LiveTvCountry[]>([]);
   const [languages, setLanguages]   = useState<LiveTvLanguage[]>([]);
@@ -113,10 +114,17 @@ export function RealGramLiveTvScreen({ onBack, onOpenPlayer }: Props) {
   const loadPage = useCallback(async (pageNum: number, append: boolean) => {
     if (append) setLoadingMore(true); else setLoading(true);
     setError('');
+    setFailedLoad(false);
     const result = await getChannels({ search, country, language, category, page: pageNum, limit: PAGE_SIZE });
     if (result.channels.length === 0 && pageNum === 1) {
       setChannels([]);
-      if (result.total === 0) setError(t('livetv.no_results'));
+      // 2026-07-28: distinguish "request failed" (network/parse/HTTP error,
+      // already reported to app_events by liveTvService.ts) from a real
+      // zero-match filter result — same empty list either way before this,
+      // which read as "no channels exist" even when the request itself
+      // never actually succeeded.
+      if (result.failed) { setError(t('livetv.load_failed')); setFailedLoad(true); }
+      else if (result.total === 0) setError(t('livetv.no_results'));
     } else {
       setChannels((prev) => (append ? [...prev, ...result.channels] : result.channels));
     }
@@ -209,6 +217,11 @@ export function RealGramLiveTvScreen({ onBack, onOpenPlayer }: Props) {
       ) : error ? (
         <View style={styles.centered}>
           <Text style={styles.errorText}>{error}</Text>
+          {failedLoad && (
+            <TouchableOpacity style={[styles.retryBtnLike, { marginTop: Spacing[4], paddingHorizontal: Spacing[6] }]} onPress={() => loadPage(1, false)} activeOpacity={0.85}>
+              <Text style={styles.retryBtnLikeText}>{t('livetv.retry')}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <FlatList

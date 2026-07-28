@@ -8,9 +8,28 @@
  * (on-device) instead.
  */
 
+import { trackEvent } from './analytics';
+import { useAuthStore } from '../stores/authStore';
+
 const SHAHNAMEH_ORIGIN = 'https://shahnameh.setaei.com';
 const BASE = `${SHAHNAMEH_ORIGIN}/api/live-tv`;
 const TIMEOUT_MS = 10_000;
+
+// 2026-07-28 (Khabat's on-device report, docs/realgram/TASK_SPLIT.md
+// B->A(153)): every failure below this point used to be a silent
+// `catch { return null }` — real backend + real network both verified
+// working (server-side testing + Khabat's own phone browser hitting the
+// exact endpoint), yet the app showed an empty/stuck screen with zero
+// trace of why. Routing failures through the same trackEvent()/app_events
+// pipeline already used for ad errors means the NEXT on-device repro is
+// diagnosable from the server side, without needing another live
+// round-trip with Khabat to relay what she's seeing.
+function reportFetchFailure(path: string, reason: string): void {
+  if (__DEV__) console.warn('[liveTvService] fetch failed', path, reason);
+  try {
+    trackEvent('LIVE_TV_FETCH_ERROR', useAuthStore.getState().user?.deviceId, { path, reason });
+  } catch { /* diagnostics must never break the UI */ }
+}
 
 export interface LiveTvChannel {
   id:             string;
@@ -54,11 +73,18 @@ async function getJson<T>(path: string): Promise<T | null> {
     const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
     const res = await fetch(`${BASE}${path}`, { signal: controller.signal });
     clearTimeout(tid);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      reportFetchFailure(path, `http_${res.status}`);
+      return null;
+    }
     const json = await res.json();
-    if (json?.status !== 1) return null;
+    if (json?.status !== 1) {
+      reportFetchFailure(path, 'bad_status_field');
+      return null;
+    }
     return json as T;
-  } catch {
+  } catch (err) {
+    reportFetchFailure(path, err instanceof Error ? `${err.name}:${err.message}`.slice(0, 200) : 'unknown_error');
     return null;
   }
 }
@@ -74,9 +100,11 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
       signal: controller.signal,
     });
     clearTimeout(tid);
+    if (!res.ok) reportFetchFailure(path, `http_${res.status}`);
     const json = await res.json();
     return json as T;
-  } catch {
+  } catch (err) {
+    reportFetchFailure(path, err instanceof Error ? `${err.name}:${err.message}`.slice(0, 200) : 'unknown_error');
     return null;
   }
 }
@@ -94,9 +122,14 @@ function buildQuery(q: ChannelQuery): string {
 
 const EMPTY_PAGE: ChannelPage = { channels: [], page: 1, limit: 30, total: 0, total_pages: 0 };
 
-export async function getChannels(query: ChannelQuery = {}): Promise<ChannelPage> {
+// `failed:true` distinguishes "the request itself didn't succeed" (network/
+// parse/HTTP error — already reported via reportFetchFailure above) from a
+// genuinely successful response with zero matches for the current filters —
+// the screen showed the same "no channels match" copy for both before,
+// which reads as a dead end even when retrying would actually work.
+export async function getChannels(query: ChannelQuery = {}): Promise<ChannelPage & { failed?: boolean }> {
   const result = await getJson<ChannelPage & { status: number }>(`/channels?${buildQuery(query)}`);
-  return result ?? EMPTY_PAGE;
+  return result ?? { ...EMPTY_PAGE, failed: true };
 }
 
 export async function getChannel(id: string): Promise<LiveTvChannel | null> {
