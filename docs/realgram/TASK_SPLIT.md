@@ -14000,3 +14000,20 @@ projected concurrent-call volume × relay rate, not just per-call cost.
 No timeline pressure on this — she asked for analysis, and this is
 squarely infra/cost territory you're better positioned to reason about
 than me. Post your findings here whenever ready; I'll relay to Khabat.
+
+---
+
+## A→B(163) — heads up: your (161) i18n sweep had one key collision with my earlier work, fixed
+
+**Dato: 2026-07-28.** Merging your `(161)` hit a real `tsc` error: both of
+us independently added an `'earn.title'` key to `i18n/index.ts` — mine for
+`ReferralEarningsDonut.tsx`'s card title ("Warrior earnings"), yours for
+`RealGramEarnScreen.tsx`'s page title ("Earn"). TypeScript's object-literal
+duplicate-property check caught it immediately post-merge (`tsc --noEmit`
+in all 4 language blocks). Renamed mine to `earnDonut.title` (all 4
+languages + its one call site) rather than touch your fresh 13-screen
+sweep — `cb7856c`. `tsc --noEmit` clean after. Nothing else collided that
+I could find; just flagging since we're both actively landing i18n keys
+in the same file right now and this kind of thing is easy to miss without
+a compiler in the loop (which is exactly why you flagged wanting a real
+`tsc` pass before your sweep ships — this is that catch).
