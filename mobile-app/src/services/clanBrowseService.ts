@@ -123,3 +123,57 @@ export async function applyToClan(telegramId: string, clanId: string): Promise<A
     return { ok: false, error: 'network_error' };
   }
 }
+
+// ── Create clan (2026-07-28, Khabat: "cta knapp for å bygge ny clan") ──────
+// `routes/api/season2.js`'s `/clan/create` — 50,000 REAL, name 3-30 chars,
+// no `<>{}[]\|^`$@%` (matches its own validation exactly so the client can
+// give the same feedback without waiting on a round trip for the common
+// cases; the server re-validates regardless, this is UX only).
+export const CLAN_CREATE_COST = 50_000;
+const CLAN_NAME_MIN = 3;
+const CLAN_NAME_MAX = 30;
+const CLAN_NAME_BAD_CHARS = /[<>{}[\]\\|^`$@%]/;
+
+export function validateClanNameLocally(name: string): string | null {
+  const trimmed = name.trim();
+  if (trimmed.length < CLAN_NAME_MIN) return 'too_short';
+  if (trimmed.length > CLAN_NAME_MAX) return 'too_long';
+  if (CLAN_NAME_BAD_CHARS.test(trimmed)) return 'invalid_chars';
+  return null;
+}
+
+export async function checkClanNameAvailable(name: string): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 8_000);
+    const res = await fetch(`${SHAHNAMEH_ORIGIN}/api/season2/clan/check-name?name=${encodeURIComponent(name.trim())}`, { signal: controller.signal });
+    clearTimeout(tid);
+    const json = await res.json();
+    return json?.status === 1 && json.available === true;
+  } catch {
+    return false;
+  }
+}
+
+export type CreateClanResult =
+  | { ok: true; clan_id: string }
+  | { ok: false; error: string; need?: number; have?: number };
+
+export async function createClan(telegramId: string, clanName: string, motto: string): Promise<CreateClanResult> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(`${SHAHNAMEH_ORIGIN}/api/season2/clan/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telegram_id: telegramId, clan_name: clanName.trim(), motto: motto.trim() }),
+      signal: controller.signal,
+    });
+    clearTimeout(tid);
+    const json = await res.json();
+    if (json?.status === 1 && json.clan?.clan_id) return { ok: true, clan_id: json.clan.clan_id };
+    return { ok: false, error: String(json?.error ?? 'unknown_error'), need: json?.need, have: json?.have };
+  } catch {
+    return { ok: false, error: 'network_error' };
+  }
+}

@@ -33,6 +33,14 @@
  * from one day earlier (2026-07-22, see above). Building it now would
  * partially reverse that decision, on top of having no real backing data for
  * Treasury/quests/leaderboard either. Flagged, not built.
+ *
+ * 2026-07-28 (Khabat): asked for the guild browse/select-a-clan/found-a-clan
+ * experience back, "slik vi hadde det på Shahnameh." Confirmed with her this
+ * ADDS to the 2026-07-22 redesign rather than reversing it — everything
+ * above stays, the "Your Shahnameh clan" card below is now a real link into
+ * RealGramClanBrowseScreen (already existed, reachable only from Profile
+ * before this) instead of a dead-end summary, and that browse screen itself
+ * gained a tap-to-detail sheet + a "Found a clan" CTA (see its own header).
  */
 
 import React, { useEffect, useState } from 'react';
@@ -58,9 +66,10 @@ const ONE_GB = 1073741824;
 interface Props {
   onOpenStarlink: () => void;
   onInvite:       () => void;
+  onOpenClans:    () => void;
 }
 
-export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
+export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Props) {
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const token    = useAuthStore((s) => s.token);
   const quotaTotal = useAuthStore((s) => s.user?.quotaBytesTotal ?? 0);
@@ -126,32 +135,42 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite }: Props) {
         </GlassCard>
 
         {/* Shahnameh in-game clan — secondary, honestly labeled, real data
-            when it exists; a light nudge when it doesn't (never a dead end). */}
-        {clan ? (
-          <GlassCard style={styles.card}>
-            <Text style={styles.cardLabel}>Your Shahnameh clan</Text>
-            <View style={styles.clanRow}>
-              {clan.clan_photo ? (
-                <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
-              ) : (
-                <View style={[styles.clanPhoto, styles.clanPhotoFallback]}>
-                  <Text style={styles.clanPhotoFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
-                </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
-                <Text style={styles.clanMeta}>
-                  {clan.member_count} members{clan.role ? ` · ${clan.role === 'leader' ? '👑 Leader' : clan.role}` : ''}
-                </Text>
+            when it exists; a light nudge when it doesn't (never a dead end).
+            2026-07-28 (Khabat): now a real link into RealGramClanBrowseScreen
+            (browse/select-a-clan/found-a-clan), not just a summary. */}
+        <TouchableOpacity onPress={onOpenClans} activeOpacity={0.85}>
+          {clan ? (
+            <GlassCard style={styles.card}>
+              <View style={styles.cardLabelRow}>
+                <Text style={styles.cardLabel}>Your Shahnameh clan</Text>
+                <Text style={styles.chevron}>›</Text>
               </View>
-            </View>
-          </GlassCard>
-        ) : (
-          <GlassCard style={styles.card}>
-            <Text style={styles.cardLabel}>Shahnameh clan</Text>
-            <Text style={styles.dataSub}>Not in a clan yet — join or found one in the Game tab.</Text>
-          </GlassCard>
-        )}
+              <View style={styles.clanRow}>
+                {clan.clan_photo ? (
+                  <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
+                ) : (
+                  <View style={[styles.clanPhoto, styles.clanPhotoFallback]}>
+                    <Text style={styles.clanPhotoFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
+                  <Text style={styles.clanMeta}>
+                    {clan.member_count} members{clan.role ? ` · ${clan.role === 'leader' ? '👑 Leader' : clan.role}` : ''}
+                  </Text>
+                </View>
+              </View>
+            </GlassCard>
+          ) : (
+            <GlassCard style={styles.card}>
+              <View style={styles.cardLabelRow}>
+                <Text style={styles.cardLabel}>Shahnameh clan</Text>
+                <Text style={styles.chevron}>›</Text>
+              </View>
+              <Text style={styles.dataSub}>Not in a clan yet — browse clans or found your own.</Text>
+            </GlassCard>
+          )}
+        </TouchableOpacity>
 
         {/* This screen has no self-rendered <BottomNav> — the Tab.Navigator's
             floating tabBar overlay (AppNavigator.tsx) supplies it instead, so
@@ -173,6 +192,8 @@ const styles = StyleSheet.create({
 
   card:      { padding: Spacing[4], gap: Spacing[2] },
   cardLabel: { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.secondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cardLabelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  chevron:      { fontSize: 16, color: Colors.text.muted },
 
   dataValue: { fontSize: Typography.size.xl, fontFamily: Typography.family.mono, color: Colors.gold[400] },
   dataSub:   { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },

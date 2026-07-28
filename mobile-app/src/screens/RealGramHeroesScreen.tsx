@@ -12,7 +12,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -57,6 +57,12 @@ export function RealGramHeroesScreen({ onBack }: Props) {
   const [telegramId, setTelegramId] = useState('');
   const [error, setError]           = useState('');
   const [pendingSlug, setPendingSlug] = useState<string | null>(null);
+  // 2026-07-28 (Khabat: "3 ved siden av hverandre... trykk for å få opp
+  // info og valg, slik vi hadde det på Shahnameh"): matches season2/
+  // heroes.js's own coll-card grid + certificate-modal pattern — a compact
+  // grid card that opens a detail sheet on tap, instead of every card
+  // showing its full description/buy button inline in a single column.
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -129,6 +135,8 @@ export function RealGramHeroesScreen({ onBack }: Props) {
         <FlatList
           data={heroes}
           keyExtractor={(h) => h.slug}
+          numColumns={3}
+          columnWrapperStyle={styles.gridRow}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing[6] }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={
@@ -144,55 +152,128 @@ export function RealGramHeroesScreen({ onBack }: Props) {
               return !!p && p.level >= item.prereq!.level;
             })();
             return (
-              <HeroCard
+              <HeroGridCard
                 hero={item}
                 owned={ownedHero}
                 prereqMet={prereqMet}
-                pending={pendingSlug === item.slug}
-                onBuy={() => handleBuy(item)}
-                onUpgrade={() => handleUpgrade(item)}
+                onPress={() => setSelectedSlug(item.slug)}
               />
             );
           }}
         />
       )}
+
+      {/* Detail sheet (Khabat, 2026-07-28: "nok info og valg, slik vi hadde
+          det på Shahnameh") — same purpose as season2/heroes.js's
+          certificate-of-discovery modal: full description, rate, unlock
+          state, and the buy/upgrade action, without cluttering the grid. */}
+      <Modal
+        visible={selectedSlug !== null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelectedSlug(null)}
+      >
+        {(() => {
+          const hero = heroes?.find((h) => h.slug === selectedSlug);
+          if (!hero) return null;
+          const ownedHero = owned.get(hero.slug);
+          const prereqMet = !hero.prereq || (() => {
+            const p = owned.get(hero.prereq!.hero_id);
+            return !!p && p.level >= hero.prereq!.level;
+          })();
+          return (
+            <View style={styles.sheetOverlay}>
+              <TouchableOpacity style={styles.sheetBackdrop} onPress={() => setSelectedSlug(null)} activeOpacity={1} />
+              <View style={[styles.sheet, { paddingBottom: insets.bottom + Spacing[5] }]}>
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  <HeroDetail
+                    hero={hero}
+                    owned={ownedHero}
+                    prereqMet={prereqMet}
+                    pending={pendingSlug === hero.slug}
+                    onBuy={() => handleBuy(hero)}
+                    onUpgrade={() => handleUpgrade(hero)}
+                  />
+                </ScrollView>
+                <TouchableOpacity onPress={() => setSelectedSlug(null)} style={styles.sheetCloseBtn} activeOpacity={0.85}>
+                  <Text style={styles.sheetCloseBtnText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })()}
+      </Modal>
     </View>
   );
 }
 
-function HeroCard({
+/** Compact 3-column grid card — image/rarity dot, name, one status line
+    (locked / owned level / price). Tap opens the full HeroDetail sheet. */
+function HeroGridCard({
+  hero, owned, prereqMet, onPress,
+}: {
+  hero: HeroCatalogEntry; owned?: OwnedHero; prereqMet: boolean; onPress: () => void;
+}) {
+  const color = rarityColor(hero.rarity);
+  const locked = !owned && !prereqMet;
+  const statusLine = owned
+    ? `Lv. ${owned.level}`
+    : prereqMet
+      ? `${hero.cost} REAL`
+      : '🔒 Locked';
+  return (
+    <TouchableOpacity style={styles.gridCardTouch} onPress={onPress} activeOpacity={0.85}>
+      <GlassCard style={styles.gridCard} glowColor={owned ? color : undefined} noPadding>
+        <View style={styles.gridImageWrap}>
+          {hero.image_url ? (
+            <Image source={{ uri: hero.image_url }} style={styles.gridImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.gridImage, styles.gridImageFallback]}>
+              <View style={[styles.rarityDot, { backgroundColor: color }]} />
+            </View>
+          )}
+          {locked && <View style={styles.gridLockOverlay}><Text style={styles.gridLockIcon}>🔒</Text></View>}
+        </View>
+        <Text style={[styles.gridName, locked && styles.textMuted]} numberOfLines={1}>{hero.name}</Text>
+        <Text style={[styles.gridStatus, { color: owned ? color : Colors.text.muted }]} numberOfLines={1}>{statusLine}</Text>
+      </GlassCard>
+    </TouchableOpacity>
+  );
+}
+
+/** Full detail content shown inside the modal sheet — same information the
+    old single-column card used to show inline, just moved into the tap
+    target instead of always-visible. */
+function HeroDetail({
   hero, owned, prereqMet, pending, onBuy, onUpgrade,
 }: {
   hero: HeroCatalogEntry; owned?: OwnedHero; prereqMet: boolean; pending: boolean;
   onBuy: () => void; onUpgrade: () => void;
 }) {
   const color = rarityColor(hero.rarity);
-  const locked = !owned && !prereqMet;
   return (
-    <GlassCard style={styles.heroCard} glowColor={owned ? color : undefined}>
-      <View style={styles.heroRow}>
+    <View style={{ gap: Spacing[3] }}>
+      <View style={styles.detailImageWrap}>
         {hero.image_url ? (
-          <Image source={{ uri: hero.image_url }} style={styles.heroImage} />
+          <Image source={{ uri: hero.image_url }} style={styles.detailImage} resizeMode="cover" />
         ) : (
-          <View style={[styles.rarityDot, { backgroundColor: color }]} />
+          <View style={[styles.detailImage, styles.gridImageFallback]}>
+            <View style={[styles.rarityDot, { backgroundColor: color, width: 20, height: 20, borderRadius: 10 }]} />
+          </View>
         )}
-        <View style={{ flex: 1 }}>
-          <View style={styles.heroHeaderRow}>
-            <Text style={[styles.heroName, locked && styles.textMuted]} numberOfLines={1}>{hero.name}</Text>
-            <Text style={[styles.rarityLabel, { color }]}>{hero.rarity}</Text>
-          </View>
-          {!!hero.description && (
-            <Text style={styles.heroDescription} numberOfLines={2}>{hero.description}</Text>
-          )}
-          <View style={styles.metaRow}>
-            <Text style={styles.zarText}>🪙 {owned ? owned.zar_per_hour : hero.zar_per_hour} ZAR/hr</Text>
-            {owned && <Text style={styles.levelText}>Lv. {owned.level}</Text>}
-          </View>
-          {!owned && !prereqMet && !!hero.unlock_requirement && (
-            <Text style={styles.unlockText}>🔒 {hero.unlock_requirement}</Text>
-          )}
-        </View>
       </View>
+      <View style={styles.heroHeaderRow}>
+        <Text style={styles.detailName}>{hero.name}</Text>
+        <Text style={[styles.rarityLabel, { color }]}>{hero.rarity}</Text>
+      </View>
+      {!!hero.description && <Text style={styles.heroDescription}>{hero.description}</Text>}
+      <View style={styles.metaRow}>
+        <Text style={styles.zarText}>🪙 {owned ? owned.zar_per_hour : hero.zar_per_hour} ZAR/hr</Text>
+        {owned && <Text style={styles.levelText}>Lv. {owned.level}</Text>}
+      </View>
+      {!owned && !prereqMet && !!hero.unlock_requirement && (
+        <Text style={styles.unlockText}>🔒 {hero.unlock_requirement}</Text>
+      )}
       <TouchableOpacity
         onPress={owned ? onUpgrade : onBuy}
         disabled={pending || (!owned && !prereqMet)}
@@ -203,7 +284,7 @@ function HeroCard({
           ? <ActivityIndicator size="small" color={Colors.bg.void} />
           : <Text style={styles.actionBtnText}>{owned ? `Upgrade — ${hero.cost * owned.level} REAL` : `Buy — ${hero.cost} REAL`}</Text>}
       </TouchableOpacity>
-    </GlassCard>
+    </View>
   );
 }
 
@@ -223,15 +304,32 @@ const styles = StyleSheet.create({
   pageTitle: { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary },
   pageSub:   { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2, marginBottom: Spacing[3] },
 
-  heroCard: { gap: Spacing[3] },
-  heroRow:  { flexDirection: 'row', gap: Spacing[3], alignItems: 'flex-start' },
-  heroImage: { width: 44, height: 44, borderRadius: 10 },
-  rarityDot: { width: 10, height: 10, borderRadius: 5, marginTop: 5 },
+  gridRow:  { gap: Spacing[3] },
+  gridCardTouch: { flex: 1 / 3 },
+  gridCard: { gap: 0, overflow: 'hidden' },
+  gridImageWrap: { width: '100%', aspectRatio: 1 },
+  gridImage: { width: '100%', height: '100%' },
+  gridImageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.elevated },
+  gridLockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.55)', alignItems: 'center', justifyContent: 'center' },
+  gridLockIcon: { fontSize: 18 },
+  gridName:   { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingHorizontal: Spacing[2], paddingTop: Spacing[2] },
+  gridStatus: { fontSize: 10, fontFamily: Typography.family.mono, paddingHorizontal: Spacing[2], paddingBottom: Spacing[2], paddingTop: 2 },
+
+  rarityDot: { width: 10, height: 10, borderRadius: 5 },
+
+  detailImageWrap: { width: '100%', height: 220, borderRadius: Radius.xl, overflow: 'hidden', backgroundColor: Colors.bg.elevated },
+  detailImage: { width: '100%', height: '100%' },
+  detailName:  { fontSize: 20, fontFamily: Typography.family.heading, color: Colors.text.primary, flex: 1 },
 
   heroHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing[2] },
-  heroName:      { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.text.primary, flex: 1 },
   rarityLabel:   { fontSize: 10, fontFamily: Typography.family.label, textTransform: 'uppercase', letterSpacing: 0.4 },
   textMuted:     { color: Colors.text.muted },
+
+  sheetOverlay: { flex: 1, justifyContent: 'flex-end' },
+  sheetBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.65)' },
+  sheet: { maxHeight: '82%', backgroundColor: Colors.bg.base, borderTopLeftRadius: Radius['2xl'], borderTopRightRadius: Radius['2xl'], padding: Spacing[5] },
+  sheetCloseBtn: { marginTop: Spacing[3], alignItems: 'center', paddingVertical: Spacing[2] },
+  sheetCloseBtnText: { fontSize: 13, fontFamily: Typography.family.body, color: Colors.text.muted },
 
   heroDescription: { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 4, lineHeight: 17 },
 

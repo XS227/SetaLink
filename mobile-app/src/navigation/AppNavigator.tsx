@@ -444,6 +444,7 @@ function ClanAdapter({ navigation }: ScreenAdapterProps) {
         const code = (useAuthStore.getState().user?.referralCode || '').toUpperCase();
         Share.share({ message: t('pr.shareMessage').replace(/\{code\}/g, code) }).catch(() => {});
       }}
+      onOpenClans={() => navigation.navigate('ClanBrowse')}
     />
   );
 }
