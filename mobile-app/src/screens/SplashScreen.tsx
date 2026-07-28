@@ -3,25 +3,30 @@
  *
  * Animation sequence:
  * 1. Dark void (300ms)
- * 2. Logo mark scales in with glow (600ms)
+ * 2. Coin mark scales in with glow, silver (600ms)
  * 3. Wordmark fades in below (400ms)
  * 4. Tagline types in (500ms)
- * 5. Whole screen fades out → navigate to Auth or Home
+ * 5. Coin flips silver -> gold, "ready" cue (400ms)
+ * 6. Whole screen fades out → navigate to Auth or Home
+ *
+ * Khabat, 2026-07-28: the app now shows ﷼ (same glyph as RealCoin.tsx's
+ * tap-to-earn coin) as the REAL-token mark everywhere instead of the old
+ * `logo_mark.png` image, so the splash should match — same silver/gold
+ * coin visual, not a separate static image. Silver = not ready yet, gold =
+ * ready, same rule RealCoin already uses for connected/disconnected.
  */
 
 import React, { useEffect, useRef } from 'react';
 import {
-  View, Text, Animated, StyleSheet, Dimensions, Image,
+  View, Text, Animated, StyleSheet, Dimensions,
 } from 'react-native';
+import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { Colors, Typography, Animation } from '../design/tokens';
 import { APP_VERSION } from '../utils/version';
 
 const { width, height } = Dimensions.get('window');
-
-// The approved REAL-token mark (same asset as the app's own launcher icon
-// and ServerRow.tsx's REALINK_LOGO) — Khabat, 2026-07-22: the splash's
-// previous hand-drawn RealGram chat-bubble mark was not the approved logo.
-const REAL_LOGO_MARK = require('../assets/logo_mark.png');
+const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+const COIN_SIZE = 100;
 
 interface Props {
   onFinish: () => void;
@@ -34,6 +39,7 @@ export function SplashScreen({ onFinish }: Props) {
   const wordOpacity = useRef(new Animated.Value(0)).current;
   const tagOpacity  = useRef(new Animated.Value(0)).current;
   const screenOpacity = useRef(new Animated.Value(1)).current;
+  const coinGoldOpacity = useRef(new Animated.Value(0)).current; // 0 = silver, 1 = gold
 
   // Particle positions (static — in production animate with Reanimated worklets)
   const particles = Array.from({ length: 20 }, (_, i) => ({
@@ -84,7 +90,20 @@ export function SplashScreen({ onFinish }: Props) {
         useNativeDriver: true,
       }),
 
-      Animated.delay(900),
+      Animated.delay(500),
+
+      // Coin flips gold — the "ready" cue, same silver/gold rule RealCoin
+      // uses for disconnected/connected. JS-driven (not native): this same
+      // value also drives the glyph's Text color interpolation below, and
+      // Text color + SVG opacity aren't reliably native-driver-supported —
+      // fine for a single 400ms one-time fade on an otherwise-idle screen.
+      Animated.timing(coinGoldOpacity, {
+        toValue: 1,
+        duration: 400,
+        useNativeDriver: false,
+      }),
+
+      Animated.delay(400),
 
       // Exit
       Animated.timing(screenOpacity, {
@@ -131,10 +150,44 @@ export function SplashScreen({ onFinish }: Props) {
           {/* Glow halo */}
           <Animated.View style={[styles.logoGlow, { opacity: glowOpacity }]} />
 
-          {/* Approved REAL-token mark — same asset as the launcher icon and
-              ServerRow.tsx, not a hand-drawn approximation. */}
+          {/* REAL-token coin — silver base, gold layer crossfades in as the
+              "ready" cue (coinGoldOpacity: 0 -> 1), same visual rule as the
+              tap-to-earn RealCoin.tsx (gold = ready/connected, silver =
+              not yet). Presentational only here — no gestures, this isn't
+              tappable. */}
           <View style={styles.logoMarkContainer}>
-            <Image source={REAL_LOGO_MARK} style={styles.logoMarkImage} resizeMode="contain" />
+            <Svg width={COIN_SIZE} height={COIN_SIZE} viewBox={`0 0 ${COIN_SIZE} ${COIN_SIZE}`}>
+              <Defs>
+                <RadialGradient id="splashSilver" cx="35%" cy="30%" r="75%">
+                  <Stop offset="0%"  stopColor={Colors.silver[100]} />
+                  <Stop offset="55%" stopColor={Colors.silver[300]} />
+                  <Stop offset="100%" stopColor="#4B525D" />
+                </RadialGradient>
+                <RadialGradient id="splashGold" cx="35%" cy="30%" r="75%">
+                  <Stop offset="0%"  stopColor={Colors.gold[100]} />
+                  <Stop offset="55%" stopColor={Colors.gold[400]} />
+                  <Stop offset="100%" stopColor={Colors.gold[700]} />
+                </RadialGradient>
+              </Defs>
+              <Circle cx={COIN_SIZE / 2} cy={COIN_SIZE / 2} r={COIN_SIZE / 2 - 2} fill="url(#splashSilver)" />
+              <AnimatedCircle
+                cx={COIN_SIZE / 2} cy={COIN_SIZE / 2} r={COIN_SIZE / 2 - 2}
+                fill="url(#splashGold)" opacity={coinGoldOpacity}
+              />
+            </Svg>
+            <Animated.Text
+              style={[
+                styles.coinGlyph,
+                {
+                  color: coinGoldOpacity.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['#20242B', '#241605'],
+                  }),
+                },
+              ]}
+            >
+              {'﷼'}
+            </Animated.Text>
           </View>
         </Animated.View>
 
@@ -204,14 +257,19 @@ const styles = StyleSheet.create({
     shadowRadius: 48,
   },
   logoMarkContainer: {
-    width: 100,
-    height: 100,
+    width: COIN_SIZE,
+    height: COIN_SIZE,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  logoMarkImage: {
-    width: 84,
-    height: 84,
+  coinGlyph: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    fontFamily: Typography.family.persian,
+    fontWeight: '700',
+    fontSize: Math.round(COIN_SIZE * 0.64),
   },
   wordmark: {
     fontSize: Typography.size['3xl'],
