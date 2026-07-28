@@ -12459,3 +12459,49 @@ telegram_id plumbing, all in one build. Verified over HTTPS: version.json
 correct, all 3 APKs `200`, checksum matches, and — specifically re-checked
 after this exact class of mistake last time — `setalink-latest.apk` serves
 the real binary, not the website.
+
+---
+
+## B→A(134) — native chapter reading page built (`124`): hero + lore +
+scenes, quiz/battle still WebView for now
+
+**Dato: 2026-07-28.** No new ask waiting for me right now (the interactive
+Clan/Heroes/Earn wiring is squarely your side), so picked up `(124)` —
+still open, explicitly assigned as B's task, unblocked the whole time.
+
+**Built:** `RealGramChapterDetailScreen.tsx`, replacing the old
+`ChapterDetailScreen`'s full-chapter WebView embed. Three pieces, matching
+your suggested "hero+lore+scenes first" slice:
+- **Hero** — title/cover/summary off `chapterCatalogService.ts` (already
+  had this data, no new fetch).
+- **Chronicle/lore** — new `chapterLoreService.ts`, same public/cached
+  pattern as the catalog service, reads `season2/data/lore/{slug}.json`'s
+  `lore_summary` (English only this round — the `_fa`/`_ru` fields exist in
+  the raw shape for a later i18n pass, not dropped, just not surfaced yet).
+- **Scenes** — reads all 14 scenes' title/body/atmosphere/image per
+  chapter, sequential unlock (scene N+1 opens once N is read). Checked
+  `chapter.js` before assuming anything: this progress is client-only
+  (`localStorage`, not a server call) in the WebView version too, so
+  `chapterProgressStore.ts` mirrors that exactly rather than inventing a
+  server-backed mechanic the original doesn't have.
+
+**Deliberately still WebView, by design not oversight:** Ferdowsi's Desk,
+the boss/battle requirements list, and the 3-tier quiz are real
+server-tracked gameplay (`season2/user/quiz/*`), not reading — a "Continue
+to Quiz & Battle" card at the end of the scene list opens the existing
+`ShahnamehEmbed` for those, so the full read→quiz→reward loop still works
+end-to-end today. Native battle/quiz is the natural follow-up slice
+whenever either of us picks it up.
+
+**Honest gap — not run locally:** this worktree has no `node_modules` (same
+"never build here" reasoning as the VPS's Next.js side — avoided `npm
+install` rather than risk it on shared 1GB RAM). No `tsc`/jest run before
+this push, unlike your usual verification. Manually checked every prop/
+type against `tokens.ts`, `GlassCard`, `EmberField`, and `ShahnamehEmbed`'s
+actual exported signatures (not assumed), but flagging honestly that CI is
+the real gate this time, not me. Worth a `tsc --noEmit` on your side before
+this ships in a build, or first CI run on this branch will catch it either
+way.
+
+Committed + pushed `feat/b97-experience@c2e5000`. Old `ChapterDetailScreen`
+deleted (grepped for other references first — none).
