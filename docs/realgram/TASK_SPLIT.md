@@ -12109,3 +12109,78 @@ screen view" — Khabat, this test round). Fixed: both buttons now take
 quick repo-wide grep for the same `position:'absolute', top: Spacing[n]`
 pattern elsewhere the next time anyone's touching floating-header-button
 code — didn't do a full audit here, single confirmed instance fixed.
+
+---
+
+## A→B(125) — full native-port roadmap: every remaining Shahnameh page,
+starting with Clan (Khabat: "gjør det samme for clan siden... sett dem opp
+som liste og task for deg og agent b")
+
+**Dato: 2026-07-28.** Not built yet — Khabat asked specifically for a list +
+task split this time, not immediate implementation, and Clan hits a real
+shared blocker (below) that's worth surfacing before either of us builds
+against it blind.
+
+**Inventory — every season2 page, current native-port status:**
+
+| Page | Season2 file | Native status |
+|---|---|---|
+| Journey/chapter list | `learn.html` | ✅ Done (`RealGramChaptersScreen`, this session) |
+| Chapter detail (read/quiz) | `chapter.html` | 🔜 Assigned `(124)` — data confirmed public, UI work only |
+| **Clan/Guild** | `guild.html` + `social.html`'s clan half | 🔜 **This entry — Khabat's next ask** |
+| Social (feed/leaderboard/referrals/events) | `social.html` | Same blocker as Clan — natural pairing, see below |
+| Heroes (collection/upgrade) | `heroes.html` | Not started |
+| Earn (check-in/tasks/airdrop) | `earn.html` | Partially surfaced already — Profile's Achievements card reads `verified_referral_count`/`milestones_claimed`/`completed_tasks` via contract §9, but the *action* endpoints (claim/check-in/complete-task) aren't wired anywhere native |
+| Tap (tap-to-earn) | `tap.html` | Arguably already done in spirit — `RealCoin.tsx` is RealGram's own native tap mechanic feeding the same server-synced ZAR balance, not a literal `tap.html` clone, but not a gap in the same sense as the others |
+| Home/dashboard | `index.html` | Not started — lowest priority, this is "redesign the whole Game tab," not one page |
+
+**The actual blocker for Clan/Social/Heroes/Earn — found by reading the
+live JS, not assumed:** all of `guild.js`/`social.js`/`heroes.js`/`earn.js`'s
+`/api/season2/*` calls are keyed on a plain `?telegram_id=` query param —
+genuinely simple, no bearer token or signature on these specific endpoints
+(confirmed reading `resolveMyId()` in all four files). But that `telegram_id`
+is **not the user's actual Telegram ID for REAL-ID-only accounts** — it's a
+synthetic ID `sync.js`'s `window.RealSync.currentTelegramId()` bridges
+server-side, inside the WebView, from the real_id/device_id/sso flow. The
+native app has never needed this value before (`ShahnamehEmbed` only ever
+passes `real_id`/`device_id`/`sso` *into* the WebView, never reads anything
+back out) — so there is currently no way for RealGram's native code to know
+what `telegram_id` to pass to any of these endpoints for a REAL-ID-only user
+(the large majority of RealGram installs, per every profile-linking
+discussion in this doc).
+
+**This is one shared unlock, not four separate ones.** Once the app can
+resolve "this device's bridged telegram_id" itself, `/api/season2/clan/*`,
+`/social/*`, `heroes/*`'s reads, and `earn/*`'s actions all become plain
+`fetch()` calls from React Native — no new per-page backend contract needed,
+since the endpoints already exist and already work (they're what `guild.html`
+etc. call today). That's a much cheaper unlock than it first looks, but it's
+backend/bridge work — squarely B's context (`RealSync`/`sync.js`/Shahnameh
+backend), not something to guess at from the client side.
+
+**Ask for B:** expose the resolved `telegram_id` bridge to the native app —
+cheapest path is probably one more field on the existing sso-token response
+(`checkAndCacheRealId`/`getSsoToken` already round-trips through the same
+backend that computes this bridge for `RealSync`, per `sync.js`), rather
+than a new endpoint. Whichever shape is simplest on your side — I don't have
+visibility into where the real_id↔telegram_id mapping actually lives.
+
+**Once that's unblocked, agent A's build order** (Khabat's stated priority
+first, then most-reusable-effort next): 
+1. Clan — `browse`/`my-clan`/`members`/`apply`/`contribute`, pixel-matching
+   `guild.html`. Note: this does NOT touch `RealGramClanScreen` (2026-07-22,
+   deliberately redesigned around RealGram's own community features, not a
+   guild reskin) — this would be a **new, separate page** reachable from
+   somewhere (Clan tab? a card within it? Khabat's call on entry point),
+   same "own page, not the embed" principle as Chapters.
+2. Social — heavy overlap with Clan's endpoints, worth building together.
+3. Heroes — collection/catalog is close to public already (`/api/catalog/
+   heroes`, same shape as chapters); buy/upgrade need the telegram_id bridge.
+4. Earn — read side already partly live (Profile's Achievements card);
+   wiring the action endpoints (claim/check-in) is the remaining gap.
+5. Home/dashboard — lowest priority, biggest scope, deliberately last.
+
+Not filing individual `(126)`/`(127)`/… entries for each of these yet —
+they're all gated on the same telegram_id-bridge unlock, so one entry
+covering the whole roadmap is more useful than four that all say the same
+"blocked on B" line.
