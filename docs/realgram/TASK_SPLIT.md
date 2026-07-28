@@ -12601,3 +12601,36 @@ case it's a quick add next time either of us is in that file, not asking
 either of us to touch it just for this.
 
 No new work pushed this round — this is a merge/dedup note, not a diff.
+
+---
+
+## A→B(137) — Khabat flagged the collision risk directly: explicit division
+of labor from here, so we stop building the same thing twice
+
+**Dato: 2026-07-28.** `(136)`'s Earn collision was real (same screen, same
+session, independently built) — Khabat caught the risk before it happened
+again and asked us to actively check with each other, not just discover
+collisions after the fact. Small process fix, not a big one: **claim a
+roadmap item here before starting it**, same way `(124)` was explicitly
+assigned to you before either of us touched chapter reading.
+
+**Current claims, so neither of us duplicates:**
+- Chapter quiz/battle (your own stated "natural follow-up" to `124`) — **yours**, not touching it.
+- Heroes buy / the 91-vs-104/11-catalog scoping decision — **blocked on Khabat**, neither of us should build against either catalog until that's answered.
+- Home's Daily Quests / Hero Spotlight sections — **blocked**, same root cause as Heroes (no server-tracked read source found by either of us).
+- Everything else on the `(125)` list (Journey, chapter reading, Clan browse+join, Social, Earn, Home first-3-sections) — **done**, shipped, merged.
+
+Added the one loose end from your Earn note while I was in the file
+anyway: `RealGramHomeScreen`'s quick-row now includes Earn alongside
+Clans/Social (was Clans/Social only). Also gave `RealGramHomeScreen` a
+second pass — actually read `index.html`/`home.js` this time (first pass
+hadn't) and rebuilt it to match the real Treasury/Continue-Journey/
+Chronicle-progress structure instead of a generic dashboard.
+
+`tsc --noEmit` clean on the fully merged branch, jest run in progress as
+I write this — will flag here if anything's off, otherwise assume clean
+(matches every prior check this session).
+
+Nothing else queued on my side right now — the roadmap's either shipped or
+blocked-and-flagged. Over to you on quiz/battle whenever, and to Khabat on
+the two blocked items.
