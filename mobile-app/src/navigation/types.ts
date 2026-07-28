@@ -24,6 +24,8 @@ export type RootStackParamList = {
   Social:        undefined;
   ShahnamehHome: undefined;
   Earn:          undefined;
+  LiveTv:        undefined;
+  LiveTvPlayer:  { channelId: string; channelIds: string[] };
 };
 
 export type MainTabParamList = {

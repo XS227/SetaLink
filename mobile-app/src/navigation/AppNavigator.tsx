@@ -40,6 +40,8 @@ import { RealGramClanBrowseScreen } from '../screens/RealGramClanBrowseScreen';
 import { RealGramSocialScreen }  from '../screens/RealGramSocialScreen';
 import { RealGramHomeScreen }    from '../screens/RealGramHomeScreen';
 import { RealGramEarnScreen }    from '../screens/RealGramEarnScreen';
+import { RealGramLiveTvScreen }  from '../screens/RealGramLiveTvScreen';
+import { LiveTvPlayerScreen }    from '../screens/LiveTvPlayerScreen';
 import { StarlinkScreen }        from '../screens/StarlinkScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
@@ -460,6 +462,7 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
       onOpenSocial={() => navigation.navigate('Social')}
       onOpenShahnamehHome={() => navigation.navigate('ShahnamehHome')}
       onOpenEarn={() => navigation.navigate('Earn')}
+      onOpenLiveTv={() => navigation.navigate('LiveTv')}
     />
   );
 }
@@ -841,6 +844,7 @@ export function AppNavigator() {
               onOpenClans={() => navigation.navigate('ClanBrowse')}
               onOpenSocial={() => navigation.navigate('Social')}
               onOpenEarn={() => navigation.navigate('Earn')}
+              onOpenLiveTv={() => navigation.navigate('LiveTv')}
             />
           )}
         </Stack.Screen>
@@ -851,6 +855,32 @@ export function AppNavigator() {
           {({ navigation }) => (
             <RealGramEarnScreen onBack={() => navigation.goBack()} />
           )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="LiveTv"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramLiveTvScreen
+              onBack={() => navigation.goBack()}
+              onOpenPlayer={(channelId, channelIds) => navigation.navigate('LiveTvPlayer', { channelId, channelIds })}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="LiveTvPlayer"
+          options={{ animation: 'fade', orientation: 'landscape' }}
+        >
+          {({ navigation, route }) => {
+            const params = route.params as { channelId: string; channelIds: string[] };
+            return (
+              <LiveTvPlayerScreen
+                channelId={params.channelId}
+                channelIds={params.channelIds}
+                onBack={() => navigation.goBack()}
+              />
+            );
+          }}
         </Stack.Screen>
       </Stack.Navigator>
       <Toast />
