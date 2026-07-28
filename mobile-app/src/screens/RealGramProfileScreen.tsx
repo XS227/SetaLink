@@ -72,6 +72,12 @@ interface Props {
   onOpenChapters?: () => void;
   // Opens the native Heroes roster (RealGramHeroesScreen, A->B(125) roadmap).
   onOpenHeroes?: () => void;
+  // Opens the native clan directory / social page / Shahnameh-style
+  // dashboard (A->B(125) roadmap items 1/2/6 — browse-only until account
+  // linking unlocks the per-user actions).
+  onOpenClans?: () => void;
+  onOpenSocial?: () => void;
+  onOpenShahnamehHome?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -107,7 +113,10 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
   );
 }
 
-export function RealGramProfileScreen({ onBack, onSignOut, onSettings, onOpenChapters, onOpenHeroes }: Props) {
+export function RealGramProfileScreen({
+  onBack, onSignOut, onSettings, onOpenChapters, onOpenHeroes,
+  onOpenClans, onOpenSocial, onOpenShahnamehHome,
+}: Props) {
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   // Data balance lives on the VPN side (entitlement/quota), not the Shahnameh
@@ -405,6 +414,49 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings, onOpenCha
           </GlassCard>
         </TouchableOpacity>
 
+        {/* Clans directory + Social — native, browse-only until account
+            linking unlocks per-user actions (A->B(125) roadmap items 1/2). */}
+        <View style={styles.quickLinksRow}>
+          <TouchableOpacity
+            disabled={!onOpenClans}
+            onPress={onOpenClans}
+            activeOpacity={0.85}
+            accessibilityLabel="Browse clans"
+            style={{ flex: 1 }}
+          >
+            <GlassCard style={styles.quickLinkCard}>
+              <Text style={styles.cardLabel}>Clans</Text>
+            </GlassCard>
+          </TouchableOpacity>
+          <TouchableOpacity
+            disabled={!onOpenSocial}
+            onPress={onOpenSocial}
+            activeOpacity={0.85}
+            accessibilityLabel="Open social"
+            style={{ flex: 1 }}
+          >
+            <GlassCard style={styles.quickLinkCard}>
+              <Text style={styles.cardLabel}>Social</Text>
+            </GlassCard>
+          </TouchableOpacity>
+        </View>
+
+        {/* Shahnameh dashboard — native, first pass (A->B(125) roadmap item
+            6, not yet pixel-verified against index.html). */}
+        <TouchableOpacity
+          disabled={!onOpenShahnamehHome}
+          onPress={onOpenShahnamehHome}
+          activeOpacity={0.85}
+          accessibilityLabel="Open dashboard"
+        >
+          <GlassCard style={styles.card}>
+            <View style={styles.journeyBanner}>
+              <Text style={styles.cardLabel}>Dashboard</Text>
+              <Text style={styles.journeyBannerArrow}>›</Text>
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
         {/* Clan */}
         <GlassCard style={styles.card}>
           <Text style={styles.cardLabel}>Clan</Text>
@@ -504,6 +556,8 @@ const styles = StyleSheet.create({
   journeyBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing[1] },
   journeyBannerText: { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
   journeyBannerArrow: { fontSize: 18, color: Colors.gold[400] },
+  quickLinksRow:  { flexDirection: 'row', gap: Spacing[3] },
+  quickLinkCard:  { alignItems: 'center', paddingVertical: Spacing[3] },
 
   clanRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   clanPhoto:    { width: 48, height: 48, borderRadius: 24 },

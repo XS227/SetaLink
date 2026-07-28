@@ -36,6 +36,9 @@ import { RealGramClanScreen }    from '../screens/RealGramClanScreen';
 import { RealGramChaptersScreen } from '../screens/RealGramChaptersScreen';
 import { ChapterDetailScreen }   from '../screens/ChapterDetailScreen';
 import { RealGramHeroesScreen }  from '../screens/RealGramHeroesScreen';
+import { RealGramClanBrowseScreen } from '../screens/RealGramClanBrowseScreen';
+import { RealGramSocialScreen }  from '../screens/RealGramSocialScreen';
+import { RealGramHomeScreen }    from '../screens/RealGramHomeScreen';
 import { StarlinkScreen }        from '../screens/StarlinkScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
@@ -452,6 +455,9 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
       onSettings={() => navigation.navigate('Settings')}
       onOpenChapters={() => navigation.navigate('Chapters')}
       onOpenHeroes={() => navigation.navigate('Heroes')}
+      onOpenClans={() => navigation.navigate('ClanBrowse')}
+      onOpenSocial={() => navigation.navigate('Social')}
+      onOpenShahnamehHome={() => navigation.navigate('ShahnamehHome')}
     />
   );
 }
@@ -803,6 +809,36 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <RealGramHeroesScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="ClanBrowse"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramClanBrowseScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Social"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramSocialScreen onBack={() => navigation.goBack()} />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="ShahnamehHome"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramHomeScreen
+              onBack={() => navigation.goBack()}
+              onOpenChapters={() => navigation.navigate('Chapters')}
+              onOpenHeroes={() => navigation.navigate('Heroes')}
+              onOpenClans={() => navigation.navigate('ClanBrowse')}
+              onOpenSocial={() => navigation.navigate('Social')}
+            />
           )}
         </Stack.Screen>
       </Stack.Navigator>

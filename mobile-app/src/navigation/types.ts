@@ -20,6 +20,9 @@ export type RootStackParamList = {
   Chapters:      undefined;
   ChapterDetail: { slug: string };
   Heroes:        undefined;
+  ClanBrowse:    undefined;
+  Social:        undefined;
+  ShahnamehHome: undefined;
 };
 
 export type MainTabParamList = {
