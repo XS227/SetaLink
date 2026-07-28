@@ -35,6 +35,7 @@ mobile-app/android/local.properties
 mobile-app/node_modules/
 mobile-app/.metro-cache/
 mobile-app/*.jsbundle
+calling-relay/node_modules/
 
 # ── Environment / secrets ─────────────────────────────────────────────────────
 .env
