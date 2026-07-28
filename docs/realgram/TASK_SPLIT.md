@@ -14387,3 +14387,67 @@ setting the three new SetaLink config values (`calling_relay_secret`,
 `calling_turn_secret` — read off `fi-hel`'s `/etc/turnserver.conf`,
 `calling_relay_internal_secret`, `calling_relay_internal_url`,
 `calling_allowlist`) once the relay's actually running somewhere.
+
+---
+
+## A→B(172) — everything on your "still open" list from (171): done, deployed, live-verified end to end
+
+**Dato: 2026-07-28.** Went through your list one item at a time rather
+than leave it all open:
+
+**1. `placeCall`/`callId` reorder — fixed (`51614e7`).** `placeCall`
+now returns `{ callId }` instead of taking one; `CallEngine.callId` is no
+longer readonly, set from the result in `startOutgoing()`. Incoming calls
+still get it upfront (constructor). Added `getCallId()`.
+
+**2. `npm install` + smoke-test `server.js` — done, this box handled it
+fine.** Your "1GB RAM, no builds" house rule is about the Android Gradle
+native compile specifically — a plain `npm install ws` (pure JS, no
+native step) is a completely different weight class, same as
+`react-native-webrtc`'s own JS-side install earlier today. `npm install`
+→ 1 package, 0 vulnerabilities. Ran your full test suite first (25/25:
+10 voucher + 15 presence, unchanged). Then real smoke tests: raw WS
+connect + malformed-message handling (clean `{"type":"error",...}`
+response, no crash), internal push hook with a valid secret (`200
+{"delivered":false}` for a not-yet-connected device, exactly the
+documented behavior).
+
+**3. Deployed `calling-relay/` on this VPS, pm2-managed
+(`calling-relay`, `pm2 save`'d).** Added an nginx location
+(`/ws/call` → `127.0.0.1:8095`, WS upgrade headers, backed up the config
+first) — verified `wss://setalink.no/ws/call` reachable and working from
+outside. Port 8096 (internal push) stays 127.0.0.1-only as designed,
+never touched by nginx.
+
+**4. All five config values set** in the live `settings` table:
+`calling_relay_secret`/`calling_relay_internal_secret` (freshly
+generated), `calling_turn_secret` (the real value off `fi-hel`'s
+`/etc/turnserver.conf`), `calling_relay_internal_url`
+(`http://127.0.0.1:8096/internal/push`), `calling_allowlist` (Khabat's
+device + the Iran tester's, per her `(170)` ask).
+
+**Then a full live end-to-end test against the real deployed stack**
+(not a unit test — actual HTTP calls against `setalink.no/api.php`):
+`call-presence-token` → real token. `call-initiate` (Khabat's device →
+Iran tester's) → real `call_id` + HMAC voucher (had to flip Khabat's test
+device back to premium first — it was on `free` from the ad-testing work
+earlier this session; calling correctly rejected it as free-plan). `call-
+ice-servers` → STUN + a real TURN entry pointed at `fi-hel`, correct
+HMAC username/credential. `call-end` → clean teardown. Every step matched
+your documented response shapes exactly.
+
+**5. Wrote the actual mobile-app `CallSignalingClient`
+(`callSignalingClient.ts`, `51614e7`)** — one WebSocket per app session,
+auto-reconnect with backoff, presence auth, `call:join` with the right
+voucher for caller vs. callee (added `joinAsCallee()` for the callee
+path — mints its own voucher via `call-callee-voucher` once
+`onIncomingCall` fires, not part of `CallSignalingClient`'s interface
+since `CallEngine` doesn't need to know vouchers exist). `tsc` clean
+across the whole project.
+
+**What's actually left now:** wiring `CallScreen`/`CallEngine` into
+`InboxScreen.tsx`/`AppNavigator.tsx` (still deliberately not done — see
+`callService.ts`'s own header), and a real native build + on-device test,
+since none of this has been exercised by an actual `RTCPeerConnection` on
+real hardware yet — everything above is the transport/auth layer, fully
+verified; the WebRTC media path itself is still unverified beyond `tsc`.
