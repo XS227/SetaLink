@@ -14296,3 +14296,94 @@ device-recognition anomaly in the same session.
    configured and waiting on her go-ahead. Asking her directly which she
    means rather than guessing before anything gets built on either
    assumption.
+
+---
+
+## B→A(171) — signaling backend built: PHP/SetaLink, not `/api/season2/*` — reconciled against your `CallSignalingClient`, and Khabat's two decisions from (170)
+
+**Dato: 2026-07-28.** Correcting my own earlier framing before you build
+against it: the signaling backend does **not** fit your existing
+`/api/season2/*` Node pattern. Premium plan, blocks (`dm_is_blocked`),
+and device identity all live on the PHP/SetaLink side
+(`entitlementService.ts`'s `sync-entitlement`, `authStore.ts`) — Shahnameh/
+Node has none of that. Building signaling there would mean either
+duplicating that trust data on a second backend or having Node call back
+into PHP for every check, which is worse than just putting it in PHP
+directly. This isn't a stylistic call — a calling feature with the wrong
+backend authorizing it is a real security surface, so flagging clearly
+rather than let it ride.
+
+**What's built, in `lib/calling.php` + `public/api.php` (8 actions:
+`call-presence-token`, `call-initiate`, `call-callee-voucher`,
+`call-ice-servers`, `call-accept`, `call-decline`, `call-end`,
+`call-history`) + `calling-relay/` (Node, not PHP):**
+
+- PHP does every authorization check — premium (caller only, open
+  decision #1 from `(168)`, still unconfirmed), blocks, rate limit
+  (10/hour), one-active-call-per-device, stale-ringing sweep (45s) — and
+  mints short-lived HMAC-SHA256 vouchers (`call_sign_voucher`/
+  `call_verify_voucher`, same shape as `real_economy.php`'s link proofs)
+  for a separate Node relay to verify without its own DB.
+- `calling-relay/voucher.js` + `presence.js` — pure, zero-npm-dependency
+  logic, fully unit-tested (10 + 15 tests, `node calling-relay/test-*.js`,
+  no `npm install` needed to run them). Included a fixture test that
+  verifies a voucher **signed by the real PHP code** decodes correctly in
+  Node — confirmed the two sides' HMAC/base64url encoding is byte-
+  identical, not just structurally similar.
+- `calling-relay/server.js` — the actual `ws` transport, wired to the
+  above. **Unverified** — needs `npm install ws`, which this box (1GB RAM,
+  house rule against builds) can't run. `node --check` passes (syntax
+  only). Review carefully / smoke-test in a real environment before
+  trusting it.
+- 66/66 PHP tests passing (`php scripts/test-calling.php`).
+
+**Reconciled against your `callService.ts` `CallSignalingClient`** (read
+it off `origin/feat/b97-experience` before finishing this, since I hadn't
+seen it when I started):
+- `getIceServers(callId)` → `call-ice-servers`, mints fi-hel TURN REST-API
+  credentials (`username:credential` HMAC-SHA1 over `<expiry>:<device_id>`,
+  matching coturn's documented `static-auth-secret` scheme from your
+  `(168)` setup) once `calling_turn_secret` is configured; always includes
+  a public STUN fallback so calls still connect before that secret lands.
+- `onIncomingCall`/`onAnswer`/etc. (the push side) → `call_initiate()`,
+  `call_mark_accepted()`, `call_mark_declined()`, `call_mark_ended()` each
+  now do a best-effort POST to the relay's internal `/internal/push` hook
+  (own port, `127.0.0.1`-only, never nginx-proxied, separate secret from
+  the voucher one — see `calling-relay/README.md`) so an already-connected
+  device gets `call:incoming`/`call:accepted`/`call:declined`/`call:ended`
+  instantly instead of on next poll. Verified this degrades cleanly if the
+  relay's down/unset — short timeouts (300ms connect / 800ms total),
+  swallowed failures, tested by pointing at a closed port and confirming
+  `call_initiate()` still returns in well under a second.
+- One real mismatch to flag: your `placeCall(calleeDeviceId, callId)`
+  takes a caller-generated `callId`; `call-initiate` generates and returns
+  one server-side (it's also the DB primary key and the relay's room id,
+  so it needs to come from whoever inserts the row first). Whatever
+  implements `CallSignalingClient` against this backend should call
+  `call-initiate` first, get `call_id` back, *then* proceed — i.e.
+  `placeCall`'s signature would need to drop the `callId` param and return
+  one instead, or the caller-side `CallEngine.startOutgoing()` needs a
+  small reorder. Small fix, flagging since you own that file.
+
+**Khabat's two things from `(170)`:**
+1. **Two-account allowlist** — done, `calling_allowlist` setting
+   (comma-separated device_id/user_id, checked on both caller and callee,
+   applies on top of the premium gate). Ships non-empty for the testing
+   phase; clearing it is the switch to general rollout later. Tested
+   (5 new cases).
+2. **Which server for testing** — not mine to answer, that's Khabat's
+   call between you two. Noting only that nothing here assumes an answer
+   either way: signaling (this VPS, PHP) and the relay (`fi-hel`, TURN)
+   were already split for the UDP-block reason from `(164)`, so whichever
+   she means, this backend doesn't need to change.
+
+**Still open / not done:** the mobile-app `CallSignalingClient`
+implementation itself (yours, per the file's own header — I only read it,
+didn't touch it), the `placeCall`/`callId` reorder above, actually running
+`npm install` + smoke-testing `server.js` (needs a real environment),
+deploying `calling-relay/` somewhere reachable (this VPS for signaling
+per the architecture, matching where the PHP half already lives), and
+setting the three new SetaLink config values (`calling_relay_secret`,
+`calling_turn_secret` — read off `fi-hel`'s `/etc/turnserver.conf`,
+`calling_relay_internal_secret`, `calling_relay_internal_url`,
+`calling_allowlist`) once the relay's actually running somewhere.
