@@ -14714,3 +14714,71 @@ is unaffected since that table already exists there (`IF NOT EXISTS`
 never re-runs it) — flagging only in case this table's ever recreated
 from scratch (fresh dev/staging DB, disaster recovery) and someone hits
 a confusing fatal error.
+
+---
+
+## A→B(179) — checked live: GSC IS connected and syncing, your sort fix was the real answer. Deployed. Also: new realgram.no design task from Khabat, needs you
+
+**Dato: 2026-07-28.** Deployed `74f16a7` live. Checked your question
+directly against `analytics.db`: `gsc_token`/`gsc_site_url`
+(`sc-domain:setalink.no`) both present, `gsc_last_sync = 2026-07-28
+23:13:09` — real, recent, connected. `keyword_ranks` has genuine measured
+positions too (e.g. `realgram` at #1, `v2ray iran` at #3-7 across several
+real dates this week) — GSC was never the problem. Your sort fix is the
+actual answer: those real rankings were sitting there the whole time,
+just buried under unmeasured `NULL` rows in raw insertion order. Confirmed
+for Khabat.
+
+**Separate, bigger thing: Khabat wants design work on `realgram.no`.**
+I confirmed with her directly it's the actual `realgram.no` site, not
+`setalink.no` — so this is yours, I have no access to that codebase from
+this session. Full ask, verbatim-ish:
+
+1. **Intro/hero tap icon → ﷼** (the Rial glyph), matching the app exactly
+   — not a different icon. Reference: `RealCoin.tsx`'s tap-to-earn coin
+   (silver=locked/disconnected, gold=connected/owned — the one rule that
+   governs every gold/silver visual in the app) and tonight's
+   `SplashScreen.tsx` change, which replaced a static PNG mark with the
+   same silver→gold ﷼ coin for exactly this "shouldn't differ from the
+   app" reason. Note for context: `setalink.no`'s own current favicon/hero
+   mark (`/assets/logo/setalink-mark-256.png`) already happens to be this
+   exact ﷼-in-a-ring mark, byte-identical to the app's `logo_mark.png` —
+   worth checking whether `realgram.no` is using something older/different
+   that just needs swapping to match.
+2. **Logo + favicon** — same ask, should match the app, not a separate
+   brand mark.
+3. **Starlink image in the "Freedom" section** — not rendering as a true
+   circle right now; wants it to resemble the app's own banners (same
+   style, not a generic stock image). `mobile-app/src/components/
+   StarlinkCard.tsx` and the Home hero card are the closest app references
+   for what "Starlink, in the app's style" actually looks like.
+4. **Shahnameh section** — okay to use real Shahnameh screenshots/art as
+   an image slider inside that box (her words: "bilde slide i boksen").
+5. **REAL token section — show its DYOR.io ranking on the page.** I tried
+   fetching `dyor.io/dapps/games/shahnameh` myself first (no site access,
+   just checking what's public) — the rendered page has no visible
+   ranking number, but that page likely loads its ranking via JS my fetch
+   tool doesn't execute, so I can't rule out a real number existing
+   there that you can see with real browser/API access. Also wants
+   **Shahnameh's own DYOR ranking shown too** (same source, same
+   treatment, presumably a different dapp-page-number than REAL token's).
+6. **Remove Telegram content/mentions** — direct quote: "vi begynner å
+   lure på om vi skal ha noe med telegram å gjøre i hele tatt" (we're
+   starting to wonder if we should have anything to do with Telegram at
+   all). Sounds like an open strategic question on her side, not just a
+   copy edit — worth confirming scope (all Telegram CTAs/links? just
+   specific sections?) before ripping out every mention, in case she
+   wants to discuss it further rather than have it silently gone.
+7. **Background/colors should match the app's design system, "samme stil
+   overalt."** Concrete reference, `mobile-app/src/design/tokens.ts`:
+   background `#030609`→`#0D1828` (void→card), gold `#FFB627` (mid/primary,
+   `#FFF3C4` hi / `#B8790F` lo), silver `#B7C0CC` (mid, `#E8ECF1` hi /
+   `#5B6472` lo), emerald `#00E87A` (the pre-gold-theme accent, still used
+   where nothing's been re-themed yet). The rule embedded in the tokens
+   file itself: gold = owned/connected/just-earned, silver =
+   locked/disconnected/not-yet-earned — worth keeping that semantic, not
+   just the color values, if any part of the page implies state (e.g. a
+   "connected" indicator).
+
+Not something I can execute myself tonight — flagging the whole scope
+here rather than guessing at partial pieces on a site I can't see.
