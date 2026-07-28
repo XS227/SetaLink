@@ -14536,9 +14536,59 @@ the exact same scope. Done:
 the whole project. `inboxScreen.test.tsx` — landed, pushed `c70899e`:
 **5/5 passing**, confirmed with `--verbose` after two `--silent` runs got
 eaten by this box's own OOM issues before printing a summary (not a real
-failure — re-ran with output visible ahead of any crash to be sure). Full
-project suite running now as a last check, will report if anything else
-turns up. **Zero on-device verification** — no real phone has run this
+failure — re-ran with output visible ahead of any crash to be sure).
+**Zero on-device verification** — no real phone has run this
 `RTCPeerConnection` yet, only the transport/auth layer (`(172)`) and now
 this UI path have been exercised at all. That gap doesn't close until
 someone actually places a call from a real build.
+
+---
+
+## A→B(175) — app-wide ringing (not just Inbox), a disk-full emergency, v0.9.102 building now
+
+**Dato: 2026-07-28.** Khabat came back with two more things right after
+`(174)` landed:
+
+**1. Ringing needs to work app-wide, "sånn som IMO/WhatsApp"** — not just
+while Inbox is open. Refactored (`720f916`): the signaling connection +
+`onIncomingCall` handling moved out of `InboxScreen.tsx` into a new
+`callStore.ts` (zustand, same shape as `authStore`/`dmStore`), connected
+by a new `CallManager` mounted at `AppNavigator`'s root alongside
+`DeepLinkHandler`/`NotificationRouteHandler` — alive for the app's whole
+foreground lifetime regardless of which tab/screen is showing.
+`InboxScreen` now just calls `startOutgoingCall()`; it doesn't hold any
+calling state itself anymore. Added a distinct `Vibration.vibrate()` ring
+pattern (long-short-short, repeating) so it reads differently from every
+other haptic in the app. **Real limit, disclosed not hidden:** this is
+foreground-only — actually ringing while backgrounded/killed needs native
+VoIP push (CallKit/PushKit, ConnectionService+FCM), a separate and much
+bigger native undertaking, not attempted tonight.
+
+**2. Custom ringtone sound, "tilpasset generasjon Z og app-stilen vår"**
+— flagging honestly rather than faking it: I have no way to compose or
+source an actual audio file from this session. Shipped the vibration
+pattern above as a real, working ring cue for this build; an actual
+on-brand sound asset needs either Khabat/design supplying one, or you
+picking one from wherever RealGram's other audio (if any exists) came
+from. Not blocking on it — flagged, not silently skipped.
+
+**3. Disk-full emergency, mid-session.** Khabat reported the whole box
+had gotten "alt for treig" — turned out `/` was at 100% (50MB free of
+24GB), almost certainly the real cause of tonight's repeated jest OOMs
+too, not just the known 1GB RAM tightness. Cleared npm/apt caches,
+vacuumed journal logs, and removed 9-11 old APK release versions each
+from both the git checkout and the live webroot (verified nothing still
+referenced them first — `download/build101/` turned out to still be the
+live "experimental" channel's real files, left untouched). **50MB → 4GB
+free.** `inboxScreen.test.tsx` re-ran noticeably faster afterward (~6s,
+no OOM) — strong circumstantial evidence disk pressure, not just RAM, was
+compounding tonight's slowness.
+
+**v0.9.102 building now** (tag pushed, CI run in progress) — bundles
+everything since `v0.9.101`: this app-wide ring refactor,
+`(174)`'s Inbox wiring + signal-drop fix, and the Profile stuck-loading
+fix from `(170)`. This is the first real build with
+`react-native-webrtc` actually linked natively — watching the CI run
+closely since neither of us has seen this dependency go through a real
+Android native compile yet. Will report the result, and flag immediately
+if anything about the native link fails.
