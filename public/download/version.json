@@ -14,7 +14,10 @@
     "algorithm": "sha256"
   },
   "size": 60177286,
-  "changelog": [],
+  "changelog": [
+    "New: Live TV (iptv-org) — browse/search/filter ~7000 real channels, native player, favorites",
+    "Fixed: Connect ad no longer fails every time — the \"Rewarded Interstitial\" ad unit was misconfigured in AdMob as a classic Interstitial; now requested correctly"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
