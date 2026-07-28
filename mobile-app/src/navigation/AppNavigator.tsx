@@ -34,7 +34,7 @@ import { ActivityScreen }    from '../screens/ActivityScreen';
 import { RealGramProfileScreen } from '../screens/RealGramProfileScreen';
 import { RealGramClanScreen }    from '../screens/RealGramClanScreen';
 import { RealGramChaptersScreen } from '../screens/RealGramChaptersScreen';
-import { ChapterDetailScreen }   from '../screens/ChapterDetailScreen';
+import { RealGramChapterDetailScreen } from '../screens/RealGramChapterDetailScreen';
 import { RealGramHeroesScreen }  from '../screens/RealGramHeroesScreen';
 import { RealGramClanBrowseScreen } from '../screens/RealGramClanBrowseScreen';
 import { RealGramSocialScreen }  from '../screens/RealGramSocialScreen';
@@ -797,7 +797,7 @@ export function AppNavigator() {
           options={{ animation: 'slide_from_right' }}
         >
           {({ navigation, route }) => (
-            <ChapterDetailScreen
+            <RealGramChapterDetailScreen
               slug={(route.params as { slug: string }).slug}
               onBack={() => navigation.goBack()}
             />
