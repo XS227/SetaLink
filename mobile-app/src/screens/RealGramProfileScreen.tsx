@@ -70,6 +70,8 @@ interface Props {
   // 2026-07-27 build test) with a compact progress banner that hands off
   // to a dedicated screen.
   onOpenChapters?: () => void;
+  // Opens the native Heroes roster (RealGramHeroesScreen, A->B(125) roadmap).
+  onOpenHeroes?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -105,7 +107,7 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
   );
 }
 
-export function RealGramProfileScreen({ onBack, onSignOut, onSettings, onOpenChapters }: Props) {
+export function RealGramProfileScreen({ onBack, onSignOut, onSettings, onOpenChapters, onOpenHeroes }: Props) {
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   // Data balance lives on the VPN side (entitlement/quota), not the Shahnameh
@@ -382,6 +384,22 @@ export function RealGramProfileScreen({ onBack, onSignOut, onSettings, onOpenCha
             </View>
             <View style={styles.journeyBanner}>
               <Text style={styles.journeyBannerText}>Continue your journey</Text>
+              <Text style={styles.journeyBannerArrow}>›</Text>
+            </View>
+          </GlassCard>
+        </TouchableOpacity>
+
+        {/* Heroes — native roster (A->B(125) roadmap item 3), catalog-only
+            until account linking unlocks per-user ownership. */}
+        <TouchableOpacity
+          disabled={!onOpenHeroes}
+          onPress={onOpenHeroes}
+          activeOpacity={0.85}
+          accessibilityLabel="Browse heroes"
+        >
+          <GlassCard style={styles.card}>
+            <View style={styles.journeyBanner}>
+              <Text style={styles.cardLabel}>Heroes</Text>
               <Text style={styles.journeyBannerArrow}>›</Text>
             </View>
           </GlassCard>

@@ -19,6 +19,7 @@ export type RootStackParamList = {
   Starlink:      undefined;
   Chapters:      undefined;
   ChapterDetail: { slug: string };
+  Heroes:        undefined;
 };
 
 export type MainTabParamList = {

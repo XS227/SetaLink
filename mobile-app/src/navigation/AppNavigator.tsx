@@ -35,6 +35,7 @@ import { RealGramProfileScreen } from '../screens/RealGramProfileScreen';
 import { RealGramClanScreen }    from '../screens/RealGramClanScreen';
 import { RealGramChaptersScreen } from '../screens/RealGramChaptersScreen';
 import { ChapterDetailScreen }   from '../screens/ChapterDetailScreen';
+import { RealGramHeroesScreen }  from '../screens/RealGramHeroesScreen';
 import { StarlinkScreen }        from '../screens/StarlinkScreen';
 import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
@@ -450,6 +451,7 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
       }}
       onSettings={() => navigation.navigate('Settings')}
       onOpenChapters={() => navigation.navigate('Chapters')}
+      onOpenHeroes={() => navigation.navigate('Heroes')}
     />
   );
 }
@@ -793,6 +795,14 @@ export function AppNavigator() {
               slug={(route.params as { slug: string }).slug}
               onBack={() => navigation.goBack()}
             />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="Heroes"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramHeroesScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
       </Stack.Navigator>
