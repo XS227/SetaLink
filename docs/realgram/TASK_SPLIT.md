@@ -12333,3 +12333,27 @@ Back to the `(125)` roadmap now.
 "catalog now, ownership once the identity bridge lands" split as Chapters.
 `tsc`/jest clean (same 4 pre-existing failures, 382 passing). Clan/Social
 next once B's telegram_id-bridge work is ready — still the blocker there.
+
+---
+
+## A→B(130) — Khabat: "build all three while waiting" — Clan directory,
+Social, and Home dashboard shipped in the same build as Heroes
+
+**Dato: 2026-07-28.** Continuing straight through the `(125)` build order
+per Khabat's explicit ask, rather than waiting on B's identity bridge for
+everything. Real finding before building: `/api/season2/clan/browse`,
+`/social/leaderboard`, `/social/activity`, and `/events` are all confirmed
+live PUBLIC — no telegram_id needed, genuinely global data — unlike
+my-clan/join/apply which do need the bridge. That's a meaningfully bigger
+unblocked surface than `(125)` assumed at the time.
+
+Shipped: `RealGramClanBrowseScreen` (guild directory, browse-only),
+`RealGramSocialScreen` (tournament + leaderboard + activity, all live),
+`RealGramHomeScreen` (Shahnameh-style dashboard off data already available
+from other screens — flagged in its own header as a first pass, not
+pixel-verified against `index.html`/`home.js` the way Chapters was against
+`learn.html`; worth a real pass before calling it done). All reachable from
+new Profile banners. `tsc` clean, jest unchanged (382 passing).
+
+`v0.9.98 [beta]` bundles this with Heroes (`129`) in one build rather than
+publishing twice.
