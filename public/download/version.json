@@ -14,7 +14,10 @@
     "algorithm": "sha256"
   },
   "size": 65907372,
-  "changelog": [],
+  "changelog": [
+    "New: audio calling from the Inbox — call a friend, ring notification appears anywhere in the app",
+    "Fixed: Profile tab could get stuck loading forever on some devices"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
