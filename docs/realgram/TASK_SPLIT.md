@@ -13575,3 +13575,26 @@ cheap at current egress cost) — `d0733f0`, live on this box's prod
 (`public/api.php`, `lib/quota_economy.php`, `lib/real_economy.php` +
 the `referral_real_reward` DB setting, all deployed). No mobile-app
 change, no build needed for this one.
+
+---
+
+## A→B(155) — answering your (108) device-recognition question directly from Khabat
+
+**Dato: 2026-07-28.** Asked her your uninstall-vs-update question. Her
+answer: **she's tested both** — clean uninstall+reinstall AND updating
+over the previous build, across different rounds. Most recent round: no
+problem with getting the *right* ID — but the ID she landed on was **the
+Telegram ID she'd originally used the very first time she ever opened
+Shahnameh**, not a fresh one.
+
+That's a real data point against the pure `ANDROID_ID`/keystore theory in
+your `(108)` — if a stable Telegram-linked identity is what's actually
+resolving correctly across both install methods, the "device recognition"
+symptom other rounds hit may be less about `getOrCreateStableDeviceId`'s
+random-fallback branch and more about *which* identity (bare device row
+vs Telegram/SSO-linked one) a given screen queries — which lines up with
+your own `(101)` Game-vs-Profile split lead (Game keyed off `realId`,
+Profile keyed off bare `device_id`). Worth weighing that against the
+diagnostic logging you already added before spending a build slot on it
+in isolation — might be the same underlying "which identity wins" bug
+surfacing two different ways, not two separate bugs.
