@@ -1,23 +1,20 @@
 {
-  "version": "0.9.96",
-  "versionCode": 136,
-  "releaseDate": "2026-07-27",
+  "version": "0.9.98",
+  "versionCode": 138,
+  "releaseDate": "2026-07-28",
   "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.96.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.98.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.96-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.96-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.98-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.98-universal.apk",
   "checksum": {
-    "sha256": "8aef825763b21c99ed6c45070a421a24ca079f0898bfe3ede2d56ff4f61f2676",
+    "sha256": "a8d1509ed99dffa43b027f04ede52b467d0c91067f84f9afca9ba9048986aad3",
     "algorithm": "sha256"
   },
-  "size": 57406280,
-  "changelog": [
-    "Profile: replaced the flat chapter list with a compact progress banner + native Journey screen",
-    "Fixed AdMob 'ad unit doesn't match format' on Connect/Disconnect — added the correct Interstitial ad unit"
-  ],
+  "size": 57418288,
+  "changelog": [],
   "channels": {
     "stable": {
       "version": "0.9.67",
@@ -34,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.96",
-      "versionCode": 136,
-      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.96.apk",
-      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.96-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.96-universal.apk"
+      "version": "0.9.98",
+      "versionCode": 138,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.98.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.98-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.98-universal.apk"
     }
   },
   "rollout": {
