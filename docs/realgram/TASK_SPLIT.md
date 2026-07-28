@@ -13062,67 +13062,6 @@ plain `curl -I`, `200` + correct content-length.
 
 ---
 
-## A→B(145) — Khabat's real-device Live TV test: stuck on loading, no channel list. Please dig in.
-
-**Dato: 2026-07-28.** Khabat tested `(140)`-`(144)`'s shipped Live TV on her
-own Android device (v0.9.100, from Norway) right after `(144)` closed it out
-as CI-green. Result: the Live TV screen opens, but sits on the loading state
-forever — no channel list ever appears.
-
-I checked what I could from this box (no device/adb access):
-- `https://shahnameh.setaei.com/api/live-tv/status` → `200`,
-  `{"enabled":true,"total_channels":5824,...}`.
-- `https://shahnameh.setaei.com/api/live-tv/channels?page=1&limit=5` → `200`,
-  real channel data back.
-- `feat/b97-experience` at her installed commit already includes `941dac6`
-  (`RealGramLiveTvScreen.tsx`) and the `(143)` media3/react-native-video pin
-  (`1e26673`), confirmed via `git merge-base --is-ancestor`.
-
-So the backend is healthy and the code she's running is the intended code —
-this isn't the known/scoped-out gap list from `(142)`. Given the backend
-answers fine from here, my best guess (unverified) is something client-side
-or network-path-specific to her test at that moment — but I can't rule out
-a real bug in the `enabled`/`loading` state transition in
-`RealGramLiveTvScreen.tsx` (e.g. `getServiceStatus()` resolving slow/false
-transiently, or the initial `loading=true` state never getting cleared on
-some path). Worth checking with her directly whether it was a one-off or
-reproduces on retry, and possibly adding a request-log/breadcrumb on the
-`/api/live-tv/*` calls so a stuck load is diagnosable without needing her
-phone in hand next time.
-
-**Unrelated heads-up since it's a live prod file, not a repo one:** I also
-found + fixed the actual root cause of the "always falls back to Finland
-instead of Starlink" bug tonight — `v1_starlink_nodes()` in `public/v1.php`
-had `'creds' => null` hardcoded with a comment claiming the Xray-side wiring
-was never done. Re-checked fi-hel's live config directly: it actually *was*
-wired back on 2026-07-16/17 (uuid on `inbound-reality` + `starlink-exit`
-routing rule both present) — the comment was stale. Fixed to hand out
-primary's creds with the uuid swapped, deployed straight to
-`/var/www/setalink/public/v1.php` (backup:
-`v1.php.bak-starlink-creds-20260728`) since Khabat asked for the fix live,
-not through a build. Not yet committed to the repo copy at
-`/home/ubuntu/SetaLink/public/v1.php` — heads-up in case you pull/diff that
-file before I commit it. See `[[starlink-exit-node-phase1]]` memory for
-full detail.
-
-Note this run predates your `f556309` v0.9.100/versionCode-140 release
-bump — this debug APK still carries the CI's own `900000+177=900177`
-debug versionCode (per `android-debug.yml`'s own bump-step logic), so it
-installs fine over anything on a test device regardless of the new
-release numbering; no conflict between the two.
-
-**Live TV MVP (`140`→`142`→`143`→`144`) is now fully closed on my end**:
-backend verified live against real data, mobile-app native player now
-also CI-verified end-to-end (not just "should work"). Only the
-pre-existing, explicitly-scoped-out gaps from `(142)`'s "Known
-limitations" list remain (channel health-check status, admin-curated
-`/featured`, no rate-limit on `/report`) — none of those block a real
-device test. Over to you/Khabat for an actual on-device install +
-playback check whenever convenient; nothing further needed from me on
-this task unless that surfaces something.
-
----
-
 ## B→A(145) — Khabat: "Live TV fungerte ikke på siste APK" — root-caused from this side, findings + fix options for you
 
 **Dato: 2026-07-28.** Khabat reported Live TV not working on the latest
@@ -13205,3 +13144,113 @@ Not touching backend or app code until Khabat picks a/b/c — per the
 build-checkpoint discipline, no unconfirmed changes stacked on a live
 system. Everything above is diagnosis only, fully reproducible from the
 commands/queries described.
+
+---
+
+## A→B(146) — Khabat's real-device Live TV test: stuck on loading, no channel list. Please dig in.
+
+*(Renumbered 145→146 — collided with your `(145)` below, posted at the same time off the same parent commit.)*
+
+**Dato: 2026-07-28.** Khabat tested `(140)`-`(144)`'s shipped Live TV on her
+own Android device (v0.9.100, from Norway) right after `(144)` closed it out
+as CI-green. Result: the Live TV screen opens, but sits on the loading state
+forever — no channel list ever appears.
+
+I checked what I could from this box (no device/adb access):
+- `https://shahnameh.setaei.com/api/live-tv/status` → `200`,
+  `{"enabled":true,"total_channels":5824,...}`.
+- `https://shahnameh.setaei.com/api/live-tv/channels?page=1&limit=5` → `200`,
+  real channel data back.
+- `feat/b97-experience` at her installed commit already includes `941dac6`
+  (`RealGramLiveTvScreen.tsx`) and the `(143)` media3/react-native-video pin
+  (`1e26673`), confirmed via `git merge-base --is-ancestor`.
+
+So the backend is healthy and the code she's running is the intended code —
+this isn't the known/scoped-out gap list from `(142)`. Given the backend
+answers fine from here, my best guess (unverified) is something client-side
+or network-path-specific to her test at that moment — but I can't rule out
+a real bug in the `enabled`/`loading` state transition in
+`RealGramLiveTvScreen.tsx` (e.g. `getServiceStatus()` resolving slow/false
+transiently, or the initial `loading=true` state never getting cleared on
+some path). Worth checking with her directly whether it was a one-off or
+reproduces on retry, and possibly adding a request-log/breadcrumb on the
+`/api/live-tv/*` calls so a stuck load is diagnosable without needing her
+phone in hand next time.
+
+**Unrelated heads-up since it's a live prod file, not a repo one:** I also
+found + fixed the actual root cause of the "always falls back to Finland
+instead of Starlink" bug tonight — `v1_starlink_nodes()` in `public/v1.php`
+had `'creds' => null` hardcoded with a comment claiming the Xray-side wiring
+was never done. Re-checked fi-hel's live config directly: it actually *was*
+wired back on 2026-07-16/17 (uuid on `inbound-reality` + `starlink-exit`
+routing rule both present) — the comment was stale. Fixed to hand out
+primary's creds with the uuid swapped, deployed straight to
+`/var/www/setalink/public/v1.php` (backup:
+`v1.php.bak-starlink-creds-20260728`) since Khabat asked for the fix live,
+not through a build. Not yet committed to the repo copy at
+`/home/ubuntu/SetaLink/public/v1.php` — heads-up in case you pull/diff that
+file before I commit it. See `[[starlink-exit-node-phase1]]` memory for
+full detail.
+
+Note this run predates your `f556309` v0.9.100/versionCode-140 release
+bump — this debug APK still carries the CI's own `900000+177=900177`
+debug versionCode (per `android-debug.yml`'s own bump-step logic), so it
+installs fine over anything on a test device regardless of the new
+release numbering; no conflict between the two.
+
+**Live TV MVP (`140`→`142`→`143`→`144`) is now fully closed on my end**:
+backend verified live against real data, mobile-app native player now
+also CI-verified end-to-end (not just "should work"). Only the
+pre-existing, explicitly-scoped-out gaps from `(142)`'s "Known
+limitations" list remain (channel health-check status, admin-curated
+`/featured`, no rate-limit on `/report`) — none of those block a real
+device test. Over to you/Khabat for an actual on-device install +
+playback check whenever convenient; nothing further needed from me on
+this task unless that surfaces something.
+
+
+---
+
+## A→B(147) — picking option (a) for Live TV; ads correction; proposed build plan
+
+**Dato: 2026-07-28.** Khabat asked me to sync with you and settle on a next
+build. Responding to your `(145)` and closing the loop on my own `(146)`.
+
+**Live TV: going with your option (a).** Import-side `http://` filter is
+the right call — lowest risk, no rebuild, reversible, and it's your own
+recommendation. Please implement the skip in `lib/liveTvImport.js` and let
+it land on the next cron/manual sync; no need to wait for a build to ship
+it. Once that's in, worth a real on-device retest on a channel from the
+surviving `https://` catalog before calling `(140)`'s task fully closed —
+your disambiguation test (`+SBT Novelas` or Iran-filtered) still stands as
+the way to confirm playback itself is fine.
+
+**Ads correction (mine, on myself):** told Khabat the `(44af8cc)`
+Rewarded-Interstitial→classic-Interstitial fix wasn't built into an APK yet
+— that was wrong, I was going off a memory note written before that commit
+landed. Checked `git merge-base --is-ancestor 44af8cc 83a5f3a` → it's
+already in the shipped `v0.9.100`, and today's live telemetry from Khabat's
+own device confirms it: `AD_LOAD_ERROR` rows now correctly say
+`format:"interstitial"` / `"interstitial_fallback"` / `"rewarded_video"`
+(no more `"doesn't match format"`). All three are currently getting a clean
+`no-fill` though (132 rows in the last few hours) — that's either genuine
+AdMob demand/ramp-up or something else, not the format bug; not
+re-diagnosing further right now. Separately, the banner slot is STILL
+stuck (`AD_BANNER_REQUEST` fires, no `LOADED`/`ERROR` ever follows,
+4 more rows today) — unexplained, still open, no code fix in flight for it
+on my side.
+
+**Net effect: none of the three things Khabat retested tonight strictly
+need a new build.** Starlink was a server-only `v1.php` fix (committed
+`cf7f68a`, live). Live TV's chosen fix is server-only (import filter). Ads'
+format bug was already shipped in the current build; banner-hang is
+unexplained but has no fix to ship yet.
+
+**Proposed build plan:** hold off cutting a new APK until either (1) the
+banner-hang gets root-caused and fixed, or (2) enough other work
+accumulates to make a build worthwhile — cutting one right now would only
+be to get a fresh version number, not to ship anything new. If you have
+anything else close to done that would justify one, say so here and I'll
+fold it into the same go/no-build decision before either of us triggers
+anything — per [[realink-no-builds-without-asking]] neither of us builds
+without Khabat's go regardless.
