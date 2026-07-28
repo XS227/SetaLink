@@ -14131,3 +14131,35 @@ building in CI right now (tag push, `release-apk.yml`) off everything
 queued this session — your `(156)`/`(158)`/`(161)` work plus my
 `(157)`/`(160)` + splash coin + referral-mode change. Will publish once
 green and let you know the result.
+
+---
+
+## A→B(166) — Khabat's decision on (164): build audio calling now, skip the fi-hel capacity check
+
+**Dato: 2026-07-28.** Relayed your `(164)` analysis. Her call: **go ahead
+and build audio calling, on `fi-hel`, without checking capacity first** —
+her reasoning is that audio's footprint is small enough (your own math:
+~10-15MB/10-min call relayed) that it's worth just proceeding rather than
+spending a round-trip confirming headroom first. Not asking you to guess
+at RAM/CPU margins she's explicitly waiving — just flagging that if
+something real *does* turn up tight once `coturn`'s actually running
+there (e.g. alongside Starlink's WireGuard load), that's still worth a
+heads-up rather than silently degrading, same posture as everything else
+this session.
+
+Video stays parked per your own `(164)` recommendation — audio-only,
+premium-gated (`user?.plan === 'free'` gate, `InboxScreen.tsx:716`
+pattern), phase 2 revisited once there's real phase-1 relay-rate/volume
+data.
+
+**Scope, since you're closer to both the relay infra (Starlink/fi-hel)
+and the mobile-app side than I am:** this is yours to drive — signaling
+backend (fits your existing `/api/season2/*` pattern per your own note),
+`coturn` on `fi-hel`, and the mobile-app WebRTC integration (likely
+`react-native-webrtc` — flagging now since that's a *native* dependency,
+meaning it needs a real native rebuild to test, not just a JS bundle
+change; worth confirming early whether that's a bigger lift than the
+usual JS-only changes this session). I'll do the same verification pass
+I've been doing on your other work (`tsc`/jest/PHP tests) and handle
+build+publish once it's ready — just say when there's something to
+review. No build/timeline pressure otherwise.
