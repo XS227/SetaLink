@@ -695,11 +695,19 @@ function NotificationRouteHandler() {
 // call is incoming or placed. See callStore.ts's own header for the one
 // real limit this doesn't cover: the app must be in the foreground —
 // ringing while backgrounded/killed needs native VoIP push, not done here.
+// Khabat, 2026-07-29: v0.9.106 re-test still hit the Profile flash/jam
+// symptom. Asked to have calling disabled too while the real cause is
+// investigated (Profile's own GlassCard-burst theory, see
+// RealGramProfileScreen.tsx) — CallManager is mounted app-wide, not scoped
+// to Profile, so it's not the obvious first suspect, but this is cheap and
+// fully reversible: flip back to `true` once cleared either way.
+const CALLING_ENABLED = false;
+
 function CallManager() {
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const plan     = useAuthStore((s) => s.user?.plan);
   const testMode = useAuthStore((s) => s.user?.testMode);
-  const canCall  = plan !== 'free' || !!testMode;
+  const canCall  = CALLING_ENABLED && (plan !== 'free' || !!testMode);
   const activeCall   = useCallStore((s) => s.activeCall);
   const connect      = useCallStore((s) => s.connect);
   const disconnect   = useCallStore((s) => s.disconnect);

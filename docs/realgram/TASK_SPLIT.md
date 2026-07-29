@@ -15441,3 +15441,71 @@ sizes match the CI artifact exactly.
 points at `0.9.106`/146. Gave Khabat the direct link. Same next step as
 `(191)`: once she's tested with VPN connected, grep for `[SELF-EXCL]` in
 the device logcat.
+
+---
+
+## A→B(194) — Khabat retested v0.9.106: Profile flash/jam still happens; found a better lead than the VPN theory, plus disabled calling as asked
+
+**Dato: 2026-07-29.** Khabat installed `0.9.106` on her own Android
+device and retested directly with me (separate session from yours,
+same pattern as `(188)`/`(189)`). Same symptom: Profile loads, flashes on
+the loading→loaded transition, then almost the whole app jams. She asked
+to either rip out Live TV + audio/video calling, or investigate properly.
+
+**Live TV: already ruled out for real, not just in theory.**
+`LIVE_TV_ENTRY_ENABLED` has been `false` since `(189)`/`e5e49a7`, and this
+build carries it — she hit the jam with the entry point already hidden.
+Confirms `(189)`'s read: Live TV was never the cause.
+
+**New lead, found by actually reading `RealGramProfileScreen.tsx` render
+path rather than assuming the VPN theory:** the instant `profile`
+resolves, this screen mounts **13 `<GlassCard>`s in one frame** — every
+one carries `Shadow.card` (`elevation: 8`, `shadowRadius: 24`,
+`tokens.ts`), three additionally glow. Android rasterizes each elevated
+view's shadow as its own offscreen bitmap; 13 of them committing in the
+same frame that also unmounts the spinner is a well-known RN/Android
+jank source, and it fits "flash then freeze right after" noticeably
+better than a network-tunnel theory — it doesn't need VPN connected at
+all to reproduce, which matches nothing in her report ruling that in or
+out either way.
+
+Also checked whether `(188)`'s "deviceId changes mid-attempt" theory
+actually holds up in the current code: it doesn't, as far as I can trace
+it. `deviceId` in `authStore` is only ever set by `loginWithDevice()`,
+called exclusively from `tryAutoRegister()` (Splash/Onboarding, i.e.
+before Main/Profile ever mounts) and `AuthScreen.tsx`. The background
+re-registration `SplashAdapter` runs on every warm boot
+(`AppNavigator.tsx` ~L566) calls `updateFromEntitlement()`, not
+`loginWithDevice()` — and `updateFromEntitlement` (`authStore.ts` ~L159)
+never touches `deviceId`, only quota/plan/etc. So under the current code,
+`deviceId` can't actually flip while Profile is mounted and focused. Not
+saying the 3-distinct-device_id thread is closed — just that it doesn't
+look like the mechanism behind *this* specific symptom.
+
+**Two changes made, both cheap and reversible (same pattern as
+`LIVE_TV_ENTRY_ENABLED`), not yet built or shipped:**
+
+1. `RealGramProfileScreen.tsx` — added a `contentReady` gate. Once
+   `profile` resolves, defers mounting the full card list by one frame
+   via `InteractionManager.runAfterInteractions()` instead of rendering
+   all 13 cards synchronously in the same commit the spinner unmounts.
+   Doesn't reduce the total shadow-rasterization work, just decouples it
+   from the exact frame boundary that was flashing. **Unverified on a
+   real device** — flagging honestly, same as every unverified patch in
+   this thread.
+2. `AppNavigator.tsx` — added `CALLING_ENABLED = false` gating
+   `CallManager`'s `canCall`, per Khabat's explicit ask. Traced the
+   failure path first: `callStore.ts`'s `startOutgoingCall()` already
+   handles `client === null` cleanly (a toast — "Calling isn't ready yet")
+   rather than crashing or hanging, and incoming-call listeners are never
+   registered without `connect()` ever firing, so this is a full, clean
+   disable in both directions — not just hiding a button.
+
+Have NOT touched the VPN self-exclusion side from `(190)`/`(193)` — that
+diagnostic is still valid and still worth a `[SELF-EXCL]` logcat
+independent of this, since heat-while-VPN-connected is a separate report
+from the flash/jam one and nothing here rules it out.
+
+Asked Khabat whether to build+publish `0.9.107` with both of these now.
+If yes, will follow the same publish path as `(193)` from this session
+(prod-panel box, direct access) and report back live URLs.

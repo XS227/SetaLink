@@ -19,7 +19,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import {
-  ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, Image, InteractionManager, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -170,6 +170,26 @@ export function RealGramProfileScreen({
   const autoRetriesRef = useRef(0);
   const [slowHint, setSlowHint] = useState(false);
 
+  // Khabat, 2026-07-29: v0.9.106 re-test — VPN-heat theory investigated, but
+  // "loads, flashes on transition, then almost the whole app jams" was never
+  // actually explained by it. Real candidate found by reading this file: the
+  // instant `profile` resolves, this screen mounts ~13 <GlassCard>s in one
+  // frame — every one carries Shadow.card (elevation:8, shadowRadius:24),
+  // three additionally glow. Android rasterizes each elevated view's shadow
+  // as its own offscreen bitmap; doing 13 in the same commit that also
+  // unmounts the spinner is a known RN/Android jank source and matches
+  // "flash then freeze" far better than a network theory. Deferring the
+  // heavy card list by one frame (past RN's own post-transition
+  // interactions) decouples the shadow-rasterization burst from the exact
+  // frame boundary where the spinner disappears — cheap, reversible,
+  // unverified on a real device yet.
+  const [contentReady, setContentReady] = useState(false);
+  useEffect(() => {
+    if (!profile) { setContentReady(false); return; }
+    const handle = InteractionManager.runAfterInteractions(() => setContentReady(true));
+    return () => handle.cancel();
+  }, [profile]);
+
   const load = useCallback((opts?: { silent?: boolean }) => {
     // Khabat, 2026-07-28: Profile stuck on the loading spinner forever on a
     // real device test — root cause: this early return never called
@@ -313,6 +333,14 @@ export function RealGramProfileScreen({
         <TouchableOpacity style={styles.retryBtn} onPress={handleManualRetry} activeOpacity={0.85}>
           <Text style={styles.retryBtnText}>{t('rgprofile.tryAgain')}</Text>
         </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!contentReady) {
+    return (
+      <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color={Colors.gold[400]} />
       </View>
     );
   }
