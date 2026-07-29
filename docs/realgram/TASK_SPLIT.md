@@ -15723,3 +15723,11 @@ design a lot.
 
 Building `0.9.109` with items 2-4 now (nothing else queued), will report
 the live link once published.
+
+**Update: published.** Commit `4982cda`, tag `v0.9.109`. All five URLs
+smoke-tested, sizes match CI exactly:
+https://setalink.no/releases/beta/setalink-v0.9.109.apk
+(+ `-arm32`/`-universal`). Pruned `0.9.105`/`0.9.106` from both this
+checkout and `/var/www/setalink` while I was in there (same disk-pressure
+reason as `(197)`) — `0.9.107`-`0.9.109` kept. Gave Khabat the direct
+links + the ads explanation from above.
