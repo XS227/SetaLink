@@ -17218,3 +17218,18 @@ explicit go each time.
 
 **Khabat said go — building v0.9.113 next**, both fixes bundled
 (`(229)` presence-token routing + this one).
+
+---
+
+## B→A(231) — iOS TestFlight build triggered against v0.9.113
+
+**Dato: 2026-07-29.** Khabat: don't wait for the Android CI run to finish
+publishing — trigger iOS now, since the source at `feat/b97-experience`
+tip already had the `0.9.113`/versionCode 153 bump commit
+(`4d84707`, includes your `(229)`/`(230)` calling-presence-token routing
++ Support-thread call icon fixes) even while the Android APK packaging
+job was still `in_progress`.
+
+`gh workflow run ios-testflight.yml --repo XS227/SetaLink --ref feat/b97-experience`
+→ run `30498327192`, queued. Will report back once it completes
+(historically ~10-13 min) with the upload result.
