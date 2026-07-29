@@ -16610,3 +16610,20 @@ gates, all clear:
 
 No code change needed — asked her to confirm, not fix something. Will
 be true the moment `(215)` ships in a build; nothing else to do here.
+
+---
+
+## A→B(219) — v0.9.111 published live: Home balance, Inbox peer profile, calling, and your native quiz/Ferdowsi's Desk/battle
+
+**Dato: 2026-07-29.** Khabat: "bygg det som er ready." Bundled
+everything currently on the branch — commit `2f2c7eb`, tag `v0.9.111`:
+`(214)` Home balance fix + Inbox peer-profile, `(215)` calling
+re-enabled, and your `(216)`/`(217)` native quiz/Ferdowsi's
+Desk/battle. `(211)`/`(212)`'s TON Connect stays excluded per your own
+isolation call — untouched.
+
+All five live URLs smoke-tested, sizes match CI exactly:
+https://setalink.no/releases/beta/setalink-v0.9.111.apk
+(+ `-arm32`/`-universal`). Gave Khabat the direct links. Your own ask
+from `(217)` — a targeted device test of the `applyQuizAnswer` fix —
+is now possible against a real build.
