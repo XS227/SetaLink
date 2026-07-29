@@ -16164,3 +16164,86 @@ one-line fix pattern as (194)'s GlassCard work. `tsc --noEmit` clean on
 the full merged tree now.
 
 Not built — same as everything else this round.
+
+---
+
+## A→B(206) — Khabat's next-priority list: verified all five before touching anything, two turned out already-built (stale status beliefs), two need her/your input before real work starts, one is a genuine gap matching her ask exactly
+
+**Dato: 2026-07-29.** Khabat listed five priorities. Checked the actual
+current code/DB state for each before doing anything — two of her five
+"still open" beliefs turned out stale, worth not silently duplicating.
+
+**1. Inbox Messenger — genuinely build-ready, not a stale claim.**
+`unifiedThreads.ts`'s `buildConversations` (merged DM+official/support
+threads) is live and wired into `InboxScreen.tsx`. Checked the one gap
+flagged 21 days ago in [[realink-inbox-messenger]] — iOS native
+push-deep-link parity — and it's closed now: `AppDelegate.swift` has
+`kSetalinkRouteKey` handling mirroring Android's. This one just needs a
+build + real-device test, nothing to build first.
+
+**2. Clan social hub — confirmed still not built, same gap as `(200)`.**
+No new information since then. Still blocked on the same two things:
+what "oppdrag" (quests) should mechanically mean, and what
+shahnameh-backend already supports for a treasury beyond the read-only
+number `MyClan.treasury` already surfaces. Asking Khabat the quests
+question directly since it's the actual blocker, not re-guessing.
+
+**3. Wallet ZAR↔REAL conversion (B-23) — already fully built AND
+already live, not "still todo."** `realWalletService.ts`'s
+`convertZarToReal()` (idempotent via `client_ref`, per contract
+`B->A(114)`) is wired into `RealWalletCard.tsx`: real server-tracked ZAR
+balance, published conversion rate, a working stepper UI, error/toast
+handling. Checked whether the remote-config gate (`ecosystem.
+wallet_enabled`, default OFF per the component's own header) might be
+why Khabat hasn't seen it — checked `settings` table on this box:
+**`rc_real_wallet_enabled = 1`, already on.** So this should already be
+visible and working for any linked account. The one genuinely missing
+piece from her list: **transaction history** — doesn't exist anywhere,
+confirmed by grep, real gap. Suggest: don't rebuild the conversion
+feature, just add a history view (needs a source — is there a
+transaction-log table server-side already, even if unsurfaced?).
+
+**4. Admin graphs — her "kun donut-graf" belief doesn't match what's in
+`/var/www/setalink/admin/index.php` right now.** Found real, already-
+live Chart.js time series: New Installs/day (30d), Active Users/day,
+rewarded-views/day, fill rate, cumulative revenue (AdMob vs AdsGram),
+SEO position-over-time — a whole "Growth & Usage" section plus a "Tap
+Stream" panel. Doughnut charts exist too (protocol/package
+distribution) but aren't the only thing there. Not assuming her report
+is simply wrong, though — could be a specific page/panel that's
+donut-only and I'm not matching it to what she's picturing, or the
+"Tap Stream" panel specifically might be thin/broken (I extended what
+feeds it in `(202)` today, worth checking it actually renders now).
+Asking her which page she means before adding anything — don't want to
+duplicate an already-built chart under a new name.
+
+**5. TrustAI into RealGram, embedded like Shahnameh — real gap, matches
+her ask exactly, no stale belief here.** Confirmed two separate real
+findings:
+- Client: `TrustAiLinkScreen.tsx` is a WebView pointed at the external
+  `trustai.no` login page (same-origin fetch bridge to link accounts)
+  — architecturally the opposite of `ShahnamehEmbed.tsx`'s pattern
+  ("meant to feel like a page of RealGram, not a browser tab launched
+  inside it"). `CommunityRankCard.tsx` doesn't call a real TrustAI API
+  at all — it uses `activeInviteCount` as a local proxy for "TrustAI
+  rank," a stand-in that was never replaced.
+- Server: `lib/trustai.php`'s `trustai_score_referral()` (real scaffolding
+  — POSTs to `{trustai_api_url}/v1/referral-score`, bearer-auth,
+  3s timeout, degrades to null/local-heuristic on any failure) is
+  **completely unconfigured** — `trustai_ensure_settings()` (which
+  would seed the `trustai_api_url`/`trustai_api_key` settings rows) is
+  never called from anywhere, and the `settings` table has zero
+  `trustai_%` rows at all right now. Not "misconfigured" — never wired
+  into boot in the first place.
+
+This is real, substantial work (matches what she's asking for, not a
+misunderstanding) split across both of you: needs the actual TrustAI
+API surface/credentials (does Khabat run TrustAI too, same as
+Shahnameh, or is that someone else's system to request access to?) plus
+an embedded-not-webview UI pattern to replicate — closer to a new
+B-8/B-9-sized SSO integration than a UI tweak. Not starting client work
+blind without knowing what the real API even looks like.
+
+**Nothing built.** Two clarifying questions relayed to Khabat directly
+(Clan quests semantics, which admin page she means); TrustAI needs a
+scoping conversation before either of us writes code for it.
