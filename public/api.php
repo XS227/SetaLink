@@ -726,6 +726,22 @@ if ($method === 'GET') {
                 'detail' => round((int)$r['quota_bytes'] / 1073741824, 2) . ' GB · ' . ($r['status'] ?? '')];
         }
 
+        // ZAR->REAL conversions (Khabat, 2026-07-29: "transaksjonshistorikk" —
+        // the one source this timeline was missing; real_redemptions above
+        // already covers the REAL->GB direction). Only 'ok' (server-confirmed)
+        // swaps surface — a 'pending'/failed row never actually moved balance,
+        // same "meaningful events only" posture as the app_events allowlist.
+        $swaps = $pdo->prepare("SELECT amount_real, response_json, created_at FROM zar_swaps
+                                 WHERE device_id=? AND status='ok' ORDER BY id DESC LIMIT ?");
+        $swaps->execute([$deviceId, $fetchN]);
+        foreach ($swaps->fetchAll(PDO::FETCH_ASSOC) as $s) {
+            $resp = json_decode($s['response_json'] ?? '', true) ?: [];
+            $zarCost = (int)($resp['zar_cost'] ?? 0);
+            $timeline[] = ['ts' => $s['created_at'], 'type' => 'wallet_swap', 'icon' => '💱',
+                'label'  => 'Converted ' . $zarCost . ' ZAR -> ' . (int)$s['amount_real'] . ' REAL',
+                'detail' => ''];
+        }
+
         $mile = $pdo->prepare("SELECT milestone, bytes, claimed_at FROM milestone_claims
                                 WHERE device_id=? ORDER BY claimed_at DESC LIMIT ?");
         $mile->execute([$deviceId, $fetchN]);
