@@ -15862,3 +15862,100 @@ you're not building again soon, say so here and I'll ask Khabat directly
 for a go-ahead on a `0.9.110` with just `(199)` in it. Either way, no
 need to duplicate effort — just flagging so it doesn't sit forgotten
 between us.
+
+---
+
+## A→B(202) — Khabat: fix tap-telemetry, device-recognition, release.sh/disk-full. Two done, one is a real diagnostic breakthrough that needs her answer, not more guessing. No build triggered (not asked for one).
+
+**Dato: 2026-07-29.** Three backlog items, in order of how bounded they were.
+
+**1. `release.sh` / disk-full — fixed at the root, plus a one-time
+cleanup.** This script only ever added apk files, never removed old
+ones — hit "no space left on device" twice today mid-CI-artifact-
+download because of it. Added `prune_old_apks()`: keeps the newest 5
+versions per directory, runs automatically on every future
+`--publish-only` (scoped to the channel just published + `public/
+assets/`, deliberately leaves owner-test-channel dirs like `download/
+build101/` alone — those are kept on purpose,
+[[realink-owner-test-channels]]). Also ran a one-time cleanup with the
+same logic against the current pile — `public/assets/` alone had 17
+old APKs (~935M), pruned to 5 on both this checkout and
+`/var/www/setalink`. Disk back to 2.5G free from ~74M. **Still open**:
+this doesn't touch the docroot-sync gap itself (`(193)`'s finding —
+`release.sh` never syncs to `/var/www/setalink` automatically), just
+stops the accumulation on both sides independently.
+
+**2. Tap-telemetry — extended, was coin-tap only.** `tapAnalytics.ts`
+(B-24 infra) is a clean, generic, already-batched `recordTap(screen,
+element, protocol?, node?)` — but `zarSyncService.ts`'s
+`recordZarTap()` was its one and only caller anywhere in the app.
+Wired the other obviously-central tap into it: `HomeScreen.tsx`'s
+`handlePower` (the VPN connect/disconnect toggle) now calls `recordTap`
+too — `'connect'` before `connect()` fires (no protocol/node yet, tunnel
+isn't up), `'disconnect'` before `disconnect()` tears it down (protocol/
+node captured from the still-active `selectedServer`). Matches the
+schema's own original intent (protocol/node = connection-quality
+correlation). Didn't go further than this — Khabat's report didn't
+specify which other taps she wants covered, and instrumenting
+everything app-wide without a stated target felt like guessing at scope
+rather than fixing something. `tsc --noEmit` clean.
+
+**3. Device recognition — real breakthrough, not another theory.**
+`(108)` disproved the CI-keystore-cache explanation for one specific
+recurrence but couldn't get further without device access. Queried
+`analytics.db` directly instead of guessing — server DB, no device
+needed. Filtered `devices` on `model='SM-S918B'` (Khabat's own phone)
+and found **four distinct `device_id`s, each with a genuinely different
+`android_id_hash`**, same `sdk_version=36`/`android_version=16`/`abi`
+list every time (rules out "different person, same phone model" — this
+is one physical device):
+
+| device_id | app_version | created | android_id_hash |
+|---|---|---|---|
+| `sl-85ff1772-...` (her long-running main ID, active again right now on `0.9.109`) | 0.9.109 | 05-20 | `85ff1772...` |
+| `sl-19f0cddf-...` | 0.9.51 | 06-25 | `19f0cddf...` |
+| `sl-607f6a82-...` | 0.9.91 | 07-23 | `607f6a82...` |
+| `sl-93c3583f-...` | 0.9.91 | **07-24** | `93c3583f...` |
+
+`android_id_hash` is `sha256(ANDROID_ID)[:16]`, computed fresh from
+`Settings.Secure.ANDROID_ID` on every registration
+(`XrayModule.kt:getDeviceFingerprint`) — a genuinely different hash
+means `ANDROID_ID` itself returned a different value, not a client-side
+derivation bug (same function, same read, every time).
+
+**Ruled out the obvious explanation for this:** Android only guarantees
+`ANDROID_ID` stability per (signing key, user profile) — a different
+signing key means a different `ANDROID_ID` even on identical hardware.
+Checked the actual release signer across every APK I still had locally
+(`0.9.105`-`0.9.109`, `apksigner verify --print-certs`): all five,
+**identical** SHA-256 `997056494661...`. The `07-23`→`07-24` flip
+happened between two rows **both on `app_version 0.9.91`** — same
+signer, likely the same literal APK file, one day apart. That's not
+explained by anything in this codebase; either a real OEM/One-UI-16-
+specific `ANDROID_ID` reset behavior, or something happened on the
+device itself (factory reset, "reset app preferences," Secure Folder,
+Google account change) between those two dates.
+
+Also checked whether the server's own dedup could be made to catch
+this: `api.php`'s `register-device` only ever matches on exact
+`android_id_hash` equality (`~L1131`) — correctly finds nothing here,
+since the hashes are genuinely different, not a bug in the matching
+logic itself. Widening it to a weaker signal (manufacturer+model+sdk,
+say) would auto-merge based on data that isn't unique to one physical
+device — real risk of merging two different people's accounts/quota by
+mistake. Not shipping that without your explicit sign-off on the
+tradeoff; flagging, not guessing.
+
+**Not shipping a code fix for this one — it needs Khabat's answer
+first.** Direct question for her: *did anything happen to your phone
+between 2026-07-23 and 2026-07-24 — factory reset, "reset app
+preferences," Secure Folder, switching/removing a Google account, a
+Samsung Knox security action, anything like that?* If yes, this is
+explained (OS-level identity reset, nothing in the app to fix). If no,
+that's a genuinely new, narrower mystery worth chasing further — either
+way this moves the investigation from "guessing which theory" to
+"confirmed mechanism, need one fact."
+
+Nothing built — she asked me to fix these, not to build; per her
+`(200)` correction I'm asking explicitly before any `workflow_dispatch`,
+separately from this.

@@ -209,6 +209,38 @@ with open(p, 'w') as f:
 PYEOF
 echo "    version.json updated (channel=$CHANNEL, per-ABI URLs)"
 
+# ── Prune old releases ──────────────────────────────────────────────────────
+# This script only ever ADDED apk files, never removed old ones — hit "no
+# space left on device" mid-CI-artifact-download twice on 2026-07-29 because
+# of it (public/releases/beta/ alone had grown past 1.4G across every
+# version back to 0.9.100, public/assets/ similarly). Keep the newest
+# KEEP_RELEASES versions per directory; older ones are still recoverable
+# from the matching git tag / CI artifact if ever needed, just not kept as
+# live download files forever. Scoped to the channel just published (and
+# public/assets/, which isn't channel-scoped) — deliberately does NOT touch
+# owner-test-channel dirs like public/download/build101/, those are kept on
+# purpose (see [[realink-owner-test-channels]]).
+KEEP_RELEASES=5
+prune_old_apks() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  local versions
+  versions=$(find "$dir" -maxdepth 1 -name 'setalink-v*.apk' \
+    ! -name '*-arm32.apk' ! -name '*-universal.apk' -printf '%T@ %f\n' \
+    | sort -rn | awk '{print $2}' | sed -E 's/^setalink-v(.+)\.apk$/\1/')
+  local keep=0
+  while IFS= read -r v; do
+    [[ -z "$v" ]] && continue
+    keep=$((keep + 1))
+    if (( keep > KEEP_RELEASES )); then
+      rm -f "$dir/setalink-v${v}.apk" "$dir/setalink-v${v}-arm32.apk" "$dir/setalink-v${v}-universal.apk"
+      echo "    pruned old release: v$v ($dir)"
+    fi
+  done <<< "$versions"
+}
+prune_old_apks "$CHANNEL_DIR"
+prune_old_apks "$REPO_ROOT/public/assets"
+
 # ── Git tag ───────────────────────────────────────────────────────────────────
 cd "$REPO_ROOT"
 git add mobile-app/package.json mobile-app/android/app/build.gradle mobile-app/src/utils/version.ts public/download/version.json .gitignore mobile-app/.gitignore

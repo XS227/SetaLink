@@ -31,6 +31,7 @@ import { useVpnStats }         from '../hooks/useVpnStats';
 import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
 import { initZarSync, recordZarTap } from '../services/zarSyncService';
+import { recordTap } from '../services/tapAnalytics';
 import { getProfileSummary } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
 
@@ -209,6 +210,13 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const handlePower = useCallback(() => {
     if (isBusy || adGateBusyRef.current) return;
     if (isConnected) {
+      // Tap-stream analytics (Khabat, 2026-07-29: "tap-telemetri ikke
+      // komplett, kun coin-tap") — connect/disconnect was the one other
+      // obviously-central tap missing from B-24's stream. Recorded with
+      // the server/protocol still active at the moment of the tap (before
+      // disconnect() tears it down), same connection-quality-correlation
+      // intent the schema was built for.
+      recordTap('game_hub', 'disconnect', selectedServer?.protocol, selectedServer?.id);
       if (userShowsAds) {
         // Khabat, 2026-07-21: show the ad FIRST, then actually disconnect —
         // previously this tore the tunnel down immediately and showed an ad
@@ -224,6 +232,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       (onNavigate as (t: string) => void)('upgrade');
       return;
     }
+    // No protocol/node yet — connection hasn't been established at tap
+    // time, matches tapAnalytics.ts's own documented "only set when
+    // VPN-connected at tap time" rule.
+    recordTap('game_hub', 'connect');
     // Tunnel bring-up starts immediately, same as before (must never be
     // delayed by an ad network call — some markets block AdMob outright).
     // The ad is gated separately, in parallel, so it appears right away
@@ -235,7 +247,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       adGateBusyRef.current = true;
       gateActionWithAd(() => { adGateBusyRef.current = false; });
     }
-  }, [isBusy, isConnected, user, userShowsAds, connect, disconnect, onNavigate]);
+  }, [isBusy, isConnected, user, userShowsAds, connect, disconnect, onNavigate, selectedServer]);
 
   // Starlink referral progress (invite left/pct now computed inside
   // StarlinkBanner itself from these two raw values).
