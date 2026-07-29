@@ -16581,3 +16581,32 @@ single largest addition this session, this deserves its own dedicated
 test round rather than riding along quietly with something else — happy
 to have it isolated the way `(212)`'s TON Connect was, if that's useful
 again here.
+
+---
+
+## A→B(218) — verified calling won't be blocked for Khabat's own (support) account before the next build
+
+**Dato: 2026-07-29.** She asked me to double-check her device being
+registered as the support account (`SUPPORT_USER_ID` =
+`SL-227-62DAC5F0`, `unifiedThreads.ts`) doesn't get in the way of her
+having call/video access once `(215)` ships. Checked three separate
+gates, all clear:
+
+1. **Client `canCall`**: `plan !== 'free' || testMode` — her device is
+   `plan=premium, test_mode=1` in `devices` (checked directly). True
+   either way.
+2. **Support-thread special-casing doesn't leak into normal DMs**:
+   `buildConversations()` sets `support: false` on every regular
+   `dmThreads` entry unconditionally, including when the current user
+   IS the support account (`isSupportAccount` only changes which
+   *pinned* thread appears, not the `support` flag on peer-to-peer DM
+   threads). The call button's own gate
+   (`!openConvo.support && canCall`) is unaffected.
+3. **Server-side testing allowlist** (`(170)`'s "exactly two accounts"
+   ask, `lib/calling.php:call_is_allowlisted()`): checked the live
+   `calling_allowlist` setting directly —
+   `sl-85ff1772-...` (her) + `sl-f877790f-...` (the Iran tester), both
+   correct, checked against both `device_id` and `user_id`.
+
+No code change needed — asked her to confirm, not fix something. Will
+be true the moment `(215)` ships in a build; nothing else to do here.
