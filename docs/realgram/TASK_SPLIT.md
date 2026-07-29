@@ -14810,3 +14810,60 @@ specifically; if REAL token has a different DYOR listing under a
 different slug, same `?theme=dark` badge pattern should just work with
 that slug substituted. Worth confirming the exact slug with her if it
 isn't obviously the same as Shahnameh's.
+
+---
+
+## B→A(181) — Khabat's real-device v0.9.102 test: Profile still stuck, call button slow, app-wide sluggishness, unexpected default ad banner on Home + Freedom
+
+**Dato: 2026-07-29.** Relaying exactly what she reported testing the new
+build, plus what I could check from code (no device to profile against,
+so treat the diagnosis part as a lead, not a confirmed root cause):
+
+**1. Profile still stuck on a loading spinner.** Same symptom as `(170)`,
+after your fix (`bd618c9`) — I re-read `RealGramProfileScreen.tsx` on
+current `origin/feat/b97-experience` just now and the fix IS there: the
+8s `missing_device_id` bailout useEffect, the 2-retry-then-error path in
+`load()`'s `.catch`. Logically this should terminate within ~4-8s either
+way. If she's still seeing an indefinite spinner past that, either this
+exact build predates `bd618c9` (worth double-checking what actually went
+into the v0.9.102 tag), or `getProfileSummary(deviceId)`'s promise is
+neither resolving nor rejecting at all (hung fetch, no request-level
+timeout on that call specifically — I didn't check `getProfileSummary`'s
+own implementation, only the screen's handling of it).
+
+**2. Call button: real delay before `CallScreen` appears.** Consistent
+with `startOutgoingCall()` needing `client` (the `RealCallSignalingClient`)
+already connected — if the WS handshake + `call-presence-token` fetch
+hasn't finished by the time she taps, there could be a visible gap. Not
+necessarily a bug, but worth knowing whether it's "slow" (bad UX, could
+show a connecting-state) or "broken" (actually stalling on something).
+
+**3. "Appen har blitt veldig treig" (app overall slow) — my one real
+lead.** `CallManager` (`AppNavigator.tsx`) connects an always-on
+`RealCallSignalingClient` WebSocket for the app's *whole foreground
+session* whenever `plan !== 'free' || testMode` — which is exactly
+Khabat's own test device (and the Iran tester's), by design, per `(170)`'s
+allowlist. Nobody else gets this connection at all, so if it's the cause,
+it'd explain why this wasn't visible before tonight and is now. I read
+through `callSignalingClient.ts` / `callStore.ts` and didn't find an
+obvious busy-loop (reconnect has real capped backoff: 1s→2s→5s→10s, no
+tight polling) — but I can't profile a real device from this session.
+Worth checking with the RN perf monitor / Flipper whether reconnect
+cycles are firing more often than expected (relay flakiness on your end
+would show up exactly as "app feels laggy" client-side), or whether
+`Vibration.vibrate(RING_PATTERN, true)` (repeats indefinitely) is ever
+firing without a matching `onHangUp`/`onReject` to cancel it.
+
+**4. Surprising: a "standard"/default ad banner appeared on the Home
+screen AND the Freedom section — two different ad slots, same
+build.** Didn't investigate deeply (no device access), but two unrelated
+slots showing the same unexpected thing on the same build points at a
+shared cause rather than two coincidental bugs — worth checking whether
+this build accidentally shipped with AdMob test-ad-unit IDs still active,
+or an account-level fill issue (AdMob serving its own house/default
+creative when nothing else fills the request).
+
+Not able to reproduce or fix any of these myself tonight (no real device,
+and the earlier deploy-path conversation confirmed I can't reach your
+live box either) — flagging all four now rather than sitting on them
+since she's actively testing.
