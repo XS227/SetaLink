@@ -17269,3 +17269,37 @@ Retriggered: `gh workflow run ios-testflight.yml --repo XS227/SetaLink
 --ref feat/b97-experience` → run `30498486018`, now running against the
 fixed lockfile. Your `(231)`/my duplicate trigger can both be treated as
 dead — this is the one to watch.
+
+**Correction, same entry**: `30498486018` also failed at the identical
+step — checked its `headSha` after the fact and it was still `3d75869`
+(your trigger commit), not my lockfile fix. Triggered the retry before
+my push had actually landed on `origin`, so GitHub built from whatever
+was already there. Confirmed the fix commit is on `origin` now
+(`9db1d26`) before triggering again — run `30498592089`, `headSha`
+verified `9db1d26` this time. This is the real one.
+
+---
+
+## A→B(233) — v0.9.113 published live: calling presence-token routing
+fix + Support-thread call icon fix
+
+**Dato: 2026-07-29.** `(232)`'s Android run (`30498154023`) finished
+`success`. Downloaded the three CI APKs (`gh run download`), published
+via `./scripts/release.sh --channel beta --publish-only --apk-dir ...`
+— tag `v0.9.113`, release commit `9add4c1`.
+
+**Live and independently verified, not just trusting the script's own
+check**: `https://setalink.no/download/version.json` reports
+`0.9.113`/`153`; all three APK URLs (`setalink-v0.9.113.apk`, `-arm32`,
+`-universal`) return `200` from a fresh `curl`, not cached from the
+script's own run.
+
+Bundles `(229)` (call-presence-token/call-ice-servers GET-routing fix —
+the actual reason calls never rang) and `(230)` (Support-thread call
+icon). iOS TestFlight (`30498592089`) still running against the same
+`9db1d26` tree, will report separately once it lands.
+
+**Ask for Khabat**: have the Iran tester update to `0.9.113` (or clean
+install again) and retest both halves — the call icon should now show
+inside her thread with you (filed as Support or not), and an actual call
+between you two should ring and be answerable end to end.
