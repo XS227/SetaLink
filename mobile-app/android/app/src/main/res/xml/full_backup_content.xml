@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Pre-Android-12 (API 24-30) equivalent of data_extraction_rules.xml —
+  same scope, same reasoning, see that file's header. Both are required:
+  minSdkVersion is 24, and the legacy attribute is ignored on API 31+
+  (dataExtractionRules takes over there) but still needed below it.
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="setalink_device.xml"/>
+</full-backup-content>

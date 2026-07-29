@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (API 31+) backup/transfer rules. Scoped to exactly one file:
+  the "setalink_device" SharedPreferences that XrayModule.kt's
+  getOrCreateStableDeviceId()/saveStableDeviceId() read/write — the ID
+  that ties a device to its RealGram economy/referral state server-side.
+
+  Why (Khabat, 2026-07-29): the same physical device has registered under
+  4 different device_ids since May, each with a genuinely different
+  ANDROID_ID — confirmed via analytics.db, not a client-code bug (see
+  [[realgram-device-recognition-mystery]]). allowBackup was "false", so a
+  real uninstall+reinstall (the app's own devs lending/reinstalling for a
+  test, or literally anything else that triggers a fresh install) had
+  ZERO chance of recovering the old ID even when ANDROID_ID itself would
+  otherwise have stayed stable. This makes that one specific, very common
+  scenario (uninstall -> reinstall under the same Google account) survive
+  automatically. It does NOT fix a genuine ANDROID_ID change from the OS/
+  OEM itself (different Android user profile, factory reset, etc.) —
+  nothing client-side can.
+
+  Deliberately excludes everything else — auth tokens, VPN configs, and
+  all app state live in MMKV ("setalink-v1"), which this backup never
+  touches. Restoring a stale, possibly-expired auth token into a fresh
+  install would create a broken "half-logged-in" state, worse than a
+  clean new account.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="setalink_device.xml"/>
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="setalink_device.xml"/>
+    </device-transfer>
+</data-extraction-rules>

@@ -15959,3 +15959,62 @@ way this moves the investigation from "guessing which theory" to
 Nothing built — she asked me to fix these, not to build; per her
 `(200)` correction I'm asking explicitly before any `workflow_dispatch`,
 separately from this.
+
+---
+
+## A→B(203) — Khabat's answer on (202): phone was with someone else 23rd-24th, can't rule anything out — asked to make the system robust to ANDROID_ID instability rather than depend on it. First layer shipped.
+
+**Dato: 2026-07-29.** Her exact answer: the phone was with another
+person that day, she doesn't know if the app was reinstalled, app data
+cleared, or other settings changed — so this specific date pair can't be
+used as proof either way, and she wants resilience built in instead of
+chasing the exact trigger further.
+
+**Real finding while looking at what "robust" could mean: `allowBackup`
+was `"false"` in `AndroidManifest.xml`.** That's independent of and
+compounds the `ANDROID_ID` instability from `(202)` — with it off, a
+plain uninstall+reinstall (arguably the single most likely thing to
+happen to a phone handed to someone else, or just a normal test-device
+reset) had **zero** chance of recovering the stable device ID even in
+the world where `ANDROID_ID` itself would have stayed identical. Fixed:
+
+- `allowBackup="true"`, plus `dataExtractionRules` (API 31+) and
+  `fullBackupContent` (API 24-30, `minSdk` is 24) — both new, both
+  scoped to **exactly one file**: the `setalink_device` SharedPreferences
+  `XrayModule.kt`'s `getOrCreateStableDeviceId`/`saveStableDeviceId`
+  read/write. Deliberately excludes everything else — auth tokens and
+  all real app state live in MMKV (`setalink-v1`), never touched by this
+  backup. Restoring a stale/expired auth token into a fresh install
+  would create a broken half-logged-in state, worse than a clean new
+  account.
+- This covers the "app was reinstalled under the same Google account"
+  case specifically — the single most likely real-world cause given
+  what she described. It does **not** cover a genuine OS-level
+  `ANDROID_ID` change (different Android user profile, factory reset,
+  restore under a different Google account) — nothing client-side can,
+  since Android itself is the one changing the value.
+
+**What full robustness actually needs, and the one thing I didn't build
+without asking:** the app already has a working, external, durable
+identity anchor — Telegram/SSO linking (`(155)`: linked accounts already
+reunite correctly across reinstalls, since the anchor is the Telegram
+user ID, not `ANDROID_ID`). The real gap is that **unlinked, device-only
+accounts** (this test device included — `linked_real_account` is the
+self-referencing `device:sl-xxx`, never an actual external link) have no
+durable anchor at all. Two real options, different tradeoffs, her call:
+1. **Nudge/encourage Telegram-SSO linking** for device-only accounts —
+   reuses an already-working, already-secure mechanism, no new attack
+   surface. Needs a UX decision on when/how to prompt.
+2. **A dedicated recovery-code system** (shown once, saved by the user,
+   re-enterable to reclaim an account on a new device) — works without
+   Telegram, but is new security-sensitive surface. **Explicitly did
+   NOT reuse the existing `referral_code` for this** — it's short,
+   already meant to be shared publicly for invites, so using it as a
+   recovery secret too would let anyone she's invited type her own
+   referral code in and hijack her identity. A real recovery code needs
+   to be a separate, private secret.
+
+Not building either of those without her picking a direction — this is
+account-security-shaped, not a bug fix. Auto Backup change is done,
+narrowly scoped, safe; not built/shipped yet, same as everything else
+this round.
