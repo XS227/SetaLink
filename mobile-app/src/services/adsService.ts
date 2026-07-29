@@ -766,6 +766,21 @@ export function notifyVpnDisconnected(): void {
  * `proceed` longer than `timeoutMs`, so a market where AdMob doesn't fill
  * can never trap the user mid-connect or mid-disconnect.
  */
+// Khabat, 2026-07-29: "holdte 3 sekund for å koble fra, men det tok ca 5
+// minutter" — root cause found reading this function against its own doc
+// comment above ("Never blocks proceed longer than timeoutMs"): that promise
+// only held for the *waiting-for-a-load* path (the deadlineTimer set further
+// down). The *already-loaded, shows-immediately* path (tryShowNow()
+// succeeding on the very first call, below) returned early with no deadline
+// at all — proceed() (disconnect()) then depended entirely on the ad SDK's
+// CLOSED event firing, with nothing to fall back on if it didn't (stuck
+// render, dropped event, user fumbling with the ad). A long, unpredictable
+// stall exactly matching the report. This safety net is deliberately much
+// longer than `timeoutMs` (which only governs how long to wait for a load) —
+// it must not cut off a real ad the user is still watching, just guarantee
+// disconnect() eventually fires if CLOSED never does.
+const SHOWING_AD_SAFETY_TIMEOUT_MS = 45_000;
+
 export function gateActionWithAd(proceed: () => void, timeoutMs = 6_000): void {
   let settled = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -801,7 +816,10 @@ export function gateActionWithAd(proceed: () => void, timeoutMs = 6_000): void {
     }
   };
 
-  if (tryShowNow()) return;
+  if (tryShowNow()) {
+    deadlineTimer = setTimeout(finish, SHOWING_AD_SAFETY_TIMEOUT_MS);
+    return;
+  }
 
   if (!isAdsInitialized()) {
     initAds().then(() => { if (!settled) preloadInterstitial(); }).catch(() => {});
@@ -811,6 +829,14 @@ export function gateActionWithAd(proceed: () => void, timeoutMs = 6_000): void {
   deadlineTimer = setTimeout(finish, timeoutMs);
   pollTimer = setInterval(() => {
     if (settled) return;
-    if (tryShowNow()) { if (deadlineTimer) clearTimeout(deadlineTimer); if (pollTimer) clearInterval(pollTimer); }
+    if (tryShowNow()) {
+      if (pollTimer) clearInterval(pollTimer);
+      // Swap the load-wait deadline for the same longer showing-ad safety
+      // net used above — a load finishing mid-poll and then showing is the
+      // same "ad now on screen" state, needs the same CLOSED-may-never-fire
+      // fallback instead of inheriting the short load-wait timeout.
+      if (deadlineTimer) clearTimeout(deadlineTimer);
+      deadlineTimer = setTimeout(finish, SHOWING_AD_SAFETY_TIMEOUT_MS);
+    }
   }, 250);
 }

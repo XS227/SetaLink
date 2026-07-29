@@ -50,24 +50,70 @@ function hoursElapsedToday(): number {
   return Math.max(1 / 12, (now.getTime() - startOfDay) / 3_600_000);
 }
 
-// Small colored dots orbiting the coin, purely decorative (theme pkg's
-// `.orbit-dot` × 3 in 01-home.html) — ambient motion, not a data display.
-const ORBIT_DOTS = [
-  { duration: 9000,  radius: 78, color: Colors.gold[100] },
-  { duration: 13000, radius: 78, color: Colors.violet[400], reverse: true },
-  { duration: 16000, radius: 78, color: Colors.gold[400] },
+// Small colored dots orbiting the coin — the ﷼ coin reads as the sun,
+// these as planets (+ one moon) going around it. Khabat, 2026-07-29: "det
+// er bare 3 punkter som går rundt i 2D... tenk at den sølve ﷼ blir til
+// sola og alle planetene skal gå i bane rundt sola i 3D." Real device
+// motion is unverified (no simulator here), but the technique is the
+// standard flat-2D-fakes-3D trick: squash the orbit into an ellipse
+// (`tilt`) and tie scale/opacity/z-order to how far along the depth axis
+// (sin of the orbit angle) each body currently is — near the viewer =
+// bigger/brighter/in front, far = smaller/dimmer/behind. No new
+// dependency; still plain Reanimated transforms, same technique as
+// before, not real 3D.
+const ORBIT_DOTS: OrbitBodyProps[] = [
+  { duration: 9000,  radius: 92, tilt: 0.4, size: 7, color: Colors.gold[100] },
+  { duration: 13000, radius: 92, tilt: 0.4, size: 6, color: Colors.violet[400], reverse: true, phase: 2.1 },
+  { duration: 17000, radius: 92, tilt: 0.4, size: 8, color: Colors.gold[400], phase: 4.2 },
+  // The moon: tighter orbit than the coin's own radius (66) so it visibly
+  // swings in front of / behind the coin each pass — the "moon too" ask.
+  { duration: 4200,  radius: 46, tilt: 0.55, size: 4, color: Colors.silver[100], reverse: true, phase: 1.0, isMoon: true },
 ];
 
-function OrbitDot({ duration, radius, color, reverse }: { duration: number; radius: number; color: string; reverse?: boolean }) {
+interface OrbitBodyProps {
+  duration: number;
+  radius: number;
+  /** Vertical squash of the orbit circle into an ellipse — the "viewed at
+   *  an angle" cue that reads as a tilted 3D ring instead of a flat 2D loop. */
+  tilt: number;
+  size: number;
+  color: string;
+  reverse?: boolean;
+  /** Starting angle offset (radians) so bodies don't all launch aligned. */
+  phase?: number;
+  /** Moon orbits close enough to pass in front of the coin — needs real
+   *  z-order switching, not just a dimmer/smaller far side, or it would
+   *  just look like it's always sitting on top of or under the coin. */
+  isMoon?: boolean;
+}
+
+function OrbitDot({ duration, radius, tilt, size, color, reverse, phase = 0, isMoon }: OrbitBodyProps) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = withRepeat(withTiming(1, { duration, easing: REasing.linear }), -1, false);
   }, [t, duration]);
   const style = useAnimatedStyle(() => {
-    const a = (reverse ? -1 : 1) * t.value * Math.PI * 2;
-    return { transform: [{ translateX: Math.cos(a) * radius }, { translateY: Math.sin(a) * radius }] };
+    const a = (reverse ? -1 : 1) * t.value * Math.PI * 2 + phase;
+    const depth = Math.sin(a); // -1 (far side) .. 1 (near side)
+    const scale = 0.55 + (depth + 1) / 2 * 0.7; // 0.55 far .. 1.25 near
+    return {
+      transform: [
+        { translateX: Math.cos(a) * radius },
+        { translateY: depth * radius * tilt },
+        { scale },
+      ],
+      opacity: 0.35 + (depth + 1) / 2 * 0.65,
+      zIndex: isMoon ? (depth > 0 ? 20 : -1) : Math.round(depth * 10),
+    };
   });
-  return <ReanimatedView.View style={[{ position: 'absolute', width: 6, height: 6, borderRadius: 3, backgroundColor: color }, style]} />;
+  return (
+    <ReanimatedView.View
+      style={[
+        { position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color },
+        style,
+      ]}
+    />
+  );
 }
 
 interface Props {

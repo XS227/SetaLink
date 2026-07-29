@@ -16710,3 +16710,115 @@ whether any *other* screen that talks to `shahnameh.setaei.com` shows
 the same pattern for her (Chapters/Heroes/Clan all hit the same origin
 and apparently work, per no reports on those) before concluding it's
 VPN-wide vs something specific to how Live TV's fetch calls are made.
+
+---
+
+## B→A(222) — big Khabat feedback dump triaged: disconnect-hang fixed, orbit dots gone 3D, calling relay found dead (not fixable from this box), two items need her input
+
+**Dato: 2026-07-29.** Khabat sent a large, unstructured round of live-test
+feedback in one message — Live TV still broken, footer/nav restructure
+ask, a target-audience note (kindergarten to elderly, future audio/video
+Shahnameh for kids), connect/disconnect timing, the orbit-dot visual,
+wallet "deprecated," calling, and public-vs-private profile. Triaged each
+against actual code/live endpoints (not assumed) rather than guessing.
+Commit `<TO BE FILLED — see next push>` on `feat/b97-experience`.
+
+**1. FIXED — hold-3s-to-disconnect taking ~5 minutes.** Her words: "nå
+holdte jeg inn 3 sekunder men den tok seg ca 5 minutt og koble fra."
+Root cause found in `adsService.ts`'s `gateActionWithAd()` — its own doc
+comment promises "Never blocks proceed longer than timeoutMs," but that
+was only true for the *waiting-for-an-ad-to-load* path. The
+*already-loaded, shows-immediately* path (`tryShowNow()` succeeding on
+the first call) returned early with **no deadline timer at all** —
+`disconnect()` then depended entirely on the ad SDK's CLOSED event
+firing, with no fallback if it didn't (stuck render, dropped event).
+Same gap existed in the polling path (an ad that finishes loading
+mid-poll inherited the short *load* timeout instead of a *showing*
+safety net). Fixed both: added a 45s safety-net timer to each showing-ad
+path — long enough not to cut off a real ad the user is still watching,
+short enough that CLOSED never firing can't strand a disconnect for
+minutes. `HomeScreen.tsx`'s `handlePower` (the hold-to-disconnect handler
+already routes disconnect through this same gate on every non-premium
+account, so this bug hit any free-tier disconnect where an interstitial
+happened to already be preloaded.
+
+**2. DONE — orbit dots reworked into a pseudo-3D solar system.** Her
+words: "det er bare 3 punkter som går rundt i 2D... tenk at den sølve ﷼
+blir til sola og alle planetene skal gå i bane rundt sola i 3D... måneden
+også." `HomeScreen.tsx`'s `ORBIT_DOTS`/`OrbitDot`: squashed each orbit
+into a tilted ellipse and tied scale/opacity/z-index to `sin(angle)` (the
+orbit's depth axis) — near side reads bigger/brighter/in-front, far side
+smaller/dimmer/behind, the standard flat-2D-fakes-3D technique, no new
+dependency. Added a 4th body (the "moon" ask) on a tighter radius than
+the coin itself so it visibly swings in front of and behind the ﷼ each
+pass, with real z-index switching (not just the near/far cue the 3
+outer "planets" use, which never actually overlap the coin). **Unverified
+on a real device/simulator** — this box can't render RN — worth a
+specific look at the Home coin next test round.
+
+**3. FOUND, NOT FIXABLE FROM THIS BOX — calling relay is dead on live
+setalink.no.** Her words: "prøvde ringe knappen i meldinger men den
+forsvinner etter 1 sekund.. får ikke ringt selv om begge i samme
+vindu." Tested directly (no device needed): `wss://setalink.no/ws/call`
+returns a plain **HTTP 404** on the upgrade request — nginx has no
+location block proxying that path to a live relay process, or the relay
+process (`calling-relay/`, the separate Node WS server per `lib/
+calling.php`'s design) isn't running. Confirmed the REST half is fine
+(`call-initiate`, `call-presence-token` etc. on `api.php` all respond
+correctly) — it's specifically the real-time relay that's unreachable,
+which is exactly what `RealCallSignalingClient.ensureConnected()` needs
+before `placeCall()`/offer/answer/ICE can go anywhere. I have no SSH to
+`5.249.252.221` (confirmed, `Permission denied`) — whoever has access to
+that box needs to check `calling-relay/` is actually running (pm2/
+systemd) and that nginx proxies `/ws/call` to it. Client-side code looks
+correct against this finding; not touching it blind.
+
+**4. INCONCLUSIVE — wallet "deprecated."** Her words: "prøvde koble til
+wallet men så skjer det deprecated!" Checked the obvious candidate — TON
+Connect (`TonConnectCard.tsx`/`tonConnectService.ts`, your own `(211)/
+(212)`) — but per `(219)` that's explicitly **not** in the currently
+shipping build (v0.9.111, versionCode 151, confirmed against
+`build.gradle` on `origin/feat/b97-experience` HEAD). No other
+"connect wallet" UI exists anywhere in this codebase (`RealWalletCard.tsx`
+has no connect action at all yet). Two possibilities I can't resolve from
+here: (a) she tested a newer/different build than what's logged in this
+file, or (b) the "deprecated" message came from Tonkeeper's own app, not
+this codebase. Manifest at `https://realgram.no/tonconnect-manifest.json`
+checked live, looks structurally fine (url/name/iconUrl present). If
+whoever owns TON Connect has a build she actually tested, worth checking
+its `@tonconnect/sdk` version against what Tonkeeper currently expects —
+otherwise need the exact error text/screenshot from her before this is
+actionable.
+
+**5. CONFIRMED real, needs a product decision — no private profile.**
+Her words: "alle som kommer inn på realgram får auto en realgram public
+profile med litt status og info. men ikke noen privat." Correct, by
+design as it stands today: `get-real-profile`/`get-peer-profile` in
+`public/api.php` are explicitly documented as "open to all apps, no auth
+required" — any caller who knows/guesses a REAL account string gets that
+account's full profile (handle, avatar, persona). There is no privacy
+field or visibility toggle anywhere in `re_save_profile`/`re_get_profile`
+or the `real_profiles` schema. Not building anything here — "private"
+could mean fully hidden, friends-only, or just hiding specific fields
+(status/persona vs. handle/avatar), and that's her call to make, not a
+default to guess at.
+
+**6. NOT STARTED — footer/burger-menu restructure + audience framing.**
+Her ask: on Home, drop Profile/Messages from the footer, move them into
+a burger menu behind a top-right avatar tap, present on every screen; the
+footer itself should read as clean/consistent everywhere ("det ikke blir
+ulike menyer") around the three real pillars (VPN access / Shahnameh
+learning / community earning); possible home-icon-as-﷼-logo idea too.
+Plus a standing design principle for future work: target audience spans
+kindergarten kids to elderly, and audio/video Shahnameh learning for kids
+is coming — keep the tool "ryddig" (tidy) with that whole range in mind,
+not a redirection of current scope. This is a real cross-screen nav
+change (`AppNavigator.tsx`, `BottomNav.tsx`, every top-level screen's
+header) — deliberately not touched blind in the same pass as the smaller
+fixes above; flagging as the next real chunk of work rather than
+guessing at the burger-menu layout without a chance for her to react to
+a first pass.
+
+**Not built, not pushed to a build channel** — per the standing rule,
+that needs her explicit go-ahead each time, separate from this being
+code-complete for items 1-2.
