@@ -42,6 +42,10 @@ import {
 
 interface Props {
   onBack: () => void;
+  // Opens the real clan social hub (RealGramClanHomeScreen, 2026-07-29) —
+  // "your clan" used to be a static summary card here, now hands off to
+  // the member roster / treasury-contribute / chat-link screen.
+  onOpenMyClan: () => void;
 }
 
 function applyErrorCopy(code: string, t: (key: string) => string): string {
@@ -69,7 +73,7 @@ function createErrorCopy(code: string, t: (key: string) => string): string {
   }
 }
 
-export function RealGramClanBrowseScreen({ onBack }: Props) {
+export function RealGramClanBrowseScreen({ onBack, onOpenMyClan }: Props) {
   const insets   = useSafeAreaInsets();
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -166,24 +170,31 @@ export function RealGramClanBrowseScreen({ onBack }: Props) {
                 )}
               </View>
               {myClan ? (
-                <GlassCard style={styles.myClanCard} glowColor={Colors.gold[400]}>
-                  <Text style={styles.cardLabel}>{t('clanbrowse.yourClan')}</Text>
-                  <View style={styles.clanRow}>
-                    {myClan.clan_photo ? (
-                      <Image source={{ uri: myClan.clan_photo }} style={styles.clanPhoto} />
-                    ) : (
-                      <View style={[styles.clanPhoto, styles.avatarFallback]}>
-                        <Text style={styles.avatarFallbackText}>{myClan.clan_name.slice(0, 1).toUpperCase()}</Text>
+                // 2026-07-29 (Khabat: "en social hub for medlemmer...
+                // felles økonomi, oppdrag") — used to be a static summary,
+                // now opens the real hub (RealGramClanHomeScreen): member
+                // roster, a real treasury-contribute action, chat link.
+                <TouchableOpacity onPress={onOpenMyClan} activeOpacity={0.85}>
+                  <GlassCard style={styles.myClanCard} glowColor={Colors.gold[400]}>
+                    <Text style={styles.cardLabel}>{t('clanbrowse.yourClan')}</Text>
+                    <View style={styles.clanRow}>
+                      {myClan.clan_photo ? (
+                        <Image source={{ uri: myClan.clan_photo }} style={styles.clanPhoto} />
+                      ) : (
+                        <View style={[styles.clanPhoto, styles.avatarFallback]}>
+                          <Text style={styles.avatarFallbackText}>{myClan.clan_name.slice(0, 1).toUpperCase()}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.clanName} numberOfLines={1}>{myClan.clan_name}</Text>
+                        <Text style={styles.clanMeta}>
+                          {t('clanbrowse.myClanMeta').replace('{count}', String(myClan.member_count)).replace('{treasury}', myClan.treasury.toLocaleString())}
+                        </Text>
                       </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.clanName} numberOfLines={1}>{myClan.clan_name}</Text>
-                      <Text style={styles.clanMeta}>
-                        {t('clanbrowse.myClanMeta').replace('{count}', String(myClan.member_count)).replace('{treasury}', myClan.treasury.toLocaleString())}
-                      </Text>
+                      <Text style={styles.myClanArrow}>{isRTL ? '‹' : '›'}</Text>
                     </View>
-                  </View>
-                </GlassCard>
+                  </GlassCard>
+                </TouchableOpacity>
               ) : (
                 <GlassCard style={styles.noteCard}>
                   <Text style={styles.noteText}>{t('clanbrowse.notInClanTapBelow')}</Text>
@@ -434,6 +445,7 @@ const styles = StyleSheet.create({
   clanName: { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.text.primary },
   clanMotto: { fontSize: 12, color: Colors.gold[400], fontFamily: Typography.family.body, marginTop: 2, fontStyle: 'italic' },
   clanMeta: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2 },
+  myClanArrow: { fontSize: 20, color: Colors.gold[400] },
 
   statusTag: { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.muted, textTransform: 'uppercase' },
 

@@ -34,6 +34,20 @@ export interface MyClan {
   member_count: number;
   clan_photo:   string;
   treasury:     number;
+  // Real, already computed server-side (`/clan/my-clan` sums every
+  // member's owned heroes) — the actual "shared economy" number Khabat
+  // pictured, just never surfaced client-side before 2026-07-29.
+  total_zar_per_hour: number;
+  telegram_group_link: string;
+}
+
+export interface ClanMember {
+  telegram_id: string;
+  first_name:  string;
+  profile_pic: string; // already absolutized
+  level:       number;
+  xp:          number;
+  is_leader:   boolean;
 }
 
 export type ApplyResult =
@@ -97,9 +111,97 @@ export async function getMyClan(telegramId: string): Promise<MyClan | null> {
       member_count: c.member_count ?? 0,
       clan_photo:   c.clan_photo ? (String(c.clan_photo).startsWith('http') ? c.clan_photo : `${SHAHNAMEH_ORIGIN}${c.clan_photo}`) : '',
       treasury:     c.treasury ?? 0,
+      total_zar_per_hour:  c.total_zar_per_hour ?? 0,
+      telegram_group_link: c.telegram_group_link ?? '',
     };
   } catch {
     return null;
+  }
+}
+
+/** Real clan roster — `/clan/members` already existed server-side
+ *  (atomic, real Season2User data) but was never called from the mobile
+ *  client before 2026-07-29 (Khabat: "en social hub for medlemmer... slik
+ *  det er tenkt i Shahnameh"). */
+export async function getClanMembers(telegramId: string): Promise<ClanMember[]> {
+  if (!telegramId) return [];
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 8_000);
+    const res = await fetch(
+      `${SHAHNAMEH_ORIGIN}/api/season2/clan/members?telegram_id=${encodeURIComponent(telegramId)}`,
+      { signal: controller.signal },
+    );
+    clearTimeout(tid);
+    const json = await res.json();
+    if (json?.status !== 1 || !Array.isArray(json.members)) return [];
+    return json.members.map((m: any) => ({
+      telegram_id: m.telegram_id,
+      first_name:  m.first_name ?? '',
+      profile_pic: m.profile_pic ? (String(m.profile_pic).startsWith('http') ? m.profile_pic : `${SHAHNAMEH_ORIGIN}${m.profile_pic}`) : '',
+      level:       m.level ?? 1,
+      xp:          m.xp ?? 0,
+      is_leader:   !!m.is_leader,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+export type ContributeResult =
+  | { ok: true; newBalance: number; contributed: number }
+  | { ok: false; error: string };
+
+/** Move REAL from the caller's own balance into the clan treasury — real,
+ *  atomic server-side (`/clan/contribute`, min 100 REAL per contribution).
+ *  Never existed as a UI action before; the treasury number was
+ *  display-only. */
+export async function contributeToClan(telegramId: string, amount: number): Promise<ContributeResult> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(`${SHAHNAMEH_ORIGIN}/api/season2/clan/contribute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telegram_id: telegramId, amount: Math.floor(amount) }),
+      signal: controller.signal,
+    });
+    clearTimeout(tid);
+    const json = await res.json();
+    if (json?.status === 1) return { ok: true, newBalance: json.new_balance, contributed: json.contributed };
+    return { ok: false, error: String(json?.error ?? 'unknown_error') };
+  } catch {
+    return { ok: false, error: 'network_error' };
+  }
+}
+
+export const CLAN_CONTRIBUTE_MIN = 100;
+
+export type SetTelegramLinkResult =
+  | { ok: true; link: string }
+  | { ok: false; error: string };
+
+/** Leader-only. This is the closest thing to a "clan chat/feed" the
+ *  backend actually has today (`/clan/set-telegram-link`, validated
+ *  server-side as a t.me URL) — no in-app clan messaging exists, so this
+ *  hands off to a real Telegram group instead of a native reimplementation
+ *  that would need new backend infra to actually persist messages. */
+export async function setClanTelegramLink(telegramId: string, link: string): Promise<SetTelegramLinkResult> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(`${SHAHNAMEH_ORIGIN}/api/season2/clan/set-telegram-link`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telegram_id: telegramId, telegram_group_link: link.trim() }),
+      signal: controller.signal,
+    });
+    clearTimeout(tid);
+    const json = await res.json();
+    if (json?.status === 1) return { ok: true, link: json.telegram_group_link ?? '' };
+    return { ok: false, error: String(json?.error ?? 'unknown_error') };
+  } catch {
+    return { ok: false, error: 'network_error' };
   }
 }
 

@@ -21,6 +21,7 @@ export type RootStackParamList = {
   ChapterDetail: { slug: string };
   Heroes:        { slug?: string } | undefined;
   ClanBrowse:    undefined;
+  ClanHome:      undefined;
   Social:        undefined;
   ShahnamehHome: undefined;
   Earn:          undefined;

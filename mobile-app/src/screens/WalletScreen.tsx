@@ -79,23 +79,27 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
           <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </View>
 
-        <RealWalletCard deviceId={deviceId} onRedeemed={handleRedeemed} />
+        <RealWalletCard
+          deviceId={deviceId}
+          onRedeemed={handleRedeemed}
+          onOpenHeroes={() => onNavigate('heroes' as NavTab)}
+        />
 
         {economy && (
           <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-            <Text style={styles.cardTitle}>Economy</Text>
+            <Text style={styles.cardTitle}>{t('wallet.economyTitle')}</Text>
             <View style={styles.quotaRow}>
               <View style={styles.quotaCell}>
                 <Text style={styles.quotaValue}>{economy.xp.toLocaleString()}</Text>
-                <Text style={styles.quotaLabel}>XP</Text>
+                <Text style={styles.quotaLabel}>{t('rghome.statXp')}</Text>
               </View>
               <View style={styles.quotaCell}>
                 <Text style={styles.quotaValue}>{economy.gems.toLocaleString()}</Text>
-                <Text style={styles.quotaLabel}>Gems</Text>
+                <Text style={styles.quotaLabel}>{t('rghome.statGems')}</Text>
               </View>
               <View style={styles.quotaCell}>
                 <Text style={styles.quotaValue}>{economy.farr.toLocaleString()}</Text>
-                <Text style={styles.quotaLabel}>FARR</Text>
+                <Text style={styles.quotaLabel}>{t('rgprofile.statFarr')}</Text>
               </View>
             </View>
           </GlassCard>

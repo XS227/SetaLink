@@ -37,6 +37,7 @@ import { RealGramChaptersScreen } from '../screens/RealGramChaptersScreen';
 import { RealGramChapterDetailScreen } from '../screens/RealGramChapterDetailScreen';
 import { RealGramHeroesScreen }  from '../screens/RealGramHeroesScreen';
 import { RealGramClanBrowseScreen } from '../screens/RealGramClanBrowseScreen';
+import { RealGramClanHomeScreen } from '../screens/RealGramClanHomeScreen';
 import { RealGramSocialScreen }  from '../screens/RealGramSocialScreen';
 import { RealGramHomeScreen }    from '../screens/RealGramHomeScreen';
 import { RealGramEarnScreen }    from '../screens/RealGramEarnScreen';
@@ -116,6 +117,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
     if ((tab as string) === 'dashboard')       { navigation.navigate('ShahnamehHome');  return; }
+    if ((tab as string) === 'heroes')          { navigation.navigate('Heroes');         return; }
     if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     if ((tab as string) === 'trustai-link')    { navigation.navigate('TrustAiLink');    return; }
@@ -883,7 +885,18 @@ export function AppNavigator() {
           options={{ animation: 'slide_from_right' }}
         >
           {({ navigation }) => (
-            <RealGramClanBrowseScreen onBack={() => navigation.goBack()} />
+            <RealGramClanBrowseScreen
+              onBack={() => navigation.goBack()}
+              onOpenMyClan={() => navigation.navigate('ClanHome')}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="ClanHome"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramClanHomeScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen
