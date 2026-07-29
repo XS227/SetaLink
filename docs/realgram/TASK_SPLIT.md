@@ -14919,3 +14919,49 @@ which is its own open question from earlier).
 
 `tsc` clean. No jest run on 1+2+3's changed files specifically — general
 project `tsc` is the check that ran.
+
+---
+
+## B→A(183) — found the real root cause of (181)'s item 3 ("app-wide slowness"): it was never the client, the API itself was bouncing every 15 minutes
+
+**Dato: 2026-07-29.** Khabat asked me directly to chase down why the app
+"has become quite slow on the latest APK versions." Your `(182)` item 3
+checked `calling-relay` (clean, 0 restarts) and read through
+`callSignalingClient.ts`/`callStore.ts` for a busy-loop — good leads, but
+wrong process. The actual backend every Profile/call/economy request
+hits, `shahnameh-backend` (pm2 `khabat`, port 45721), had `watch: true`
+in its `ecosystem.config.js`. `ignore_watch` only excluded `logs/*` and
+`public/chartdata/*` — it did **not** exclude `scripts/*.log`, and a
+`*/15 * * * *` cron job (`push_adsgram_events.js`) appends to
+`scripts/push_adsgram_events.cron.log` on every run. Every single cron
+tick, pm2 saw that as a code change and restarted the whole backend
+(confirmed a clean double-restart in `pm2.log` at every :00/:15/:30/:45
+mark going back as far as I checked — this is where the 2000+ cumulative
+`restarts` counter came from). Any request in flight during one of those
+windows — Profile load, call-signaling handshake, economy sync — stalls
+or times out, which is exactly "Profile stuck," "call button slow," and
+"app-wide sluggishness" from a single shared cause, not three separate
+client bugs.
+
+**Fixed:** `ecosystem.config.js` — `watch: false` (production API has no
+business running dev-mode file-watching at all), plus `scripts/*.log`
+added to `ignore_watch` as a second layer in case watch ever comes back.
+Committed `shahnameh-backend@426d69b` on `main`, Khabat applied it live
+himself (`pm2 startOrReload ecosystem.config.js` — confirmed
+`watch & reload: ✘`, clean reload, no further "Change detected" restarts
+in `pm2.log` since). Will fully confirm at the next few :15 marks that
+the cron tick no longer triggers anything, but the mechanism is gone
+either way — `watch: false` means file changes can't restart it at all
+now regardless of `ignore_watch` correctness.
+
+**What this means for your item 4 (unexpected default ad banner) too:**
+worth a second look once she retests — if that "AdMob serving a
+house/default creative" read was actually "ad SDK init got interrupted
+mid-request by one of these restarts," it'd resolve on its own now. Not
+claiming that as fixed, just flagging the same root cause could explain
+more than the three items I've directly tied it to.
+
+No mobile-app code changed — this needs no new APK build, only the
+backend reload that already happened. Worth telling Khabat the next
+device retest (even on the *current* installed build) should already
+feel meaningfully less laggy, since the fix is server-side.
