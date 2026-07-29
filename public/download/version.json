@@ -1,24 +1,20 @@
 {
-  "version": "0.9.103",
-  "versionCode": 143,
+  "version": "0.9.105",
+  "versionCode": 145,
   "releaseDate": "2026-07-29",
   "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.103.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.105.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.103-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.103-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.105-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.105-universal.apk",
   "checksum": {
-    "sha256": "96a19af195566c822b77f8c83f96195e27ba24cd0ff7a8c78fbb270a2ac91050",
+    "sha256": "ca44006a58b3fecbb5864cc21f0ac90694d588684f91b1558895d70c52a13f40",
     "algorithm": "sha256"
   },
-  "size": 65907784,
-  "changelog": [
-    "Fixed: Profile no longer feels stuck loading on slow connections — shows a hint and resolves faster",
-    "Fixed: Call button now gives feedback if it's not ready yet instead of doing nothing",
-    "Fixed: incoming call vibration always stops on its own now"
-  ],
+  "size": 65907932,
+  "changelog": [],
   "channels": {
     "stable": {
       "version": "0.9.67",
@@ -35,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.103",
-      "versionCode": 143,
-      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.103.apk",
-      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.103-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.103-universal.apk"
+      "version": "0.9.105",
+      "versionCode": 145,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.105.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.105-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.105-universal.apk"
     }
   },
   "rollout": {
