@@ -22,7 +22,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { InteractionManager, Platform } from 'react-native';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import {
   AD_RETRY_BACKOFF_MS, BANNER_UNIT_ID, initAds, isAdsInitialized, vpnConnectedNow,
@@ -44,6 +44,12 @@ const _slotLoading: Partial<Record<BannerSlot, boolean>> = {};
 
 export function TrackedBannerAd({ slot, onAdLoaded, onAdFailedToLoad }: Props) {
   const [ready, setReady] = useState(isAdsInitialized());
+  // Khabat, 2026-07-29: real device session showed the banner's automatic
+  // native ad request landing right as a screen was still transitioning in
+  // (app-wide lag + Profile flicker report) — hold the actual <BannerAd>
+  // mount (and its implicit request) until the transition/interactions
+  // settle, same fix as adsService.ts's interstitial/rewarded loaders.
+  const [interactionsDone, setInteractionsDone] = useState(false);
   const adRef = useRef<BannerAd>(null);
   const retryIdxRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -54,6 +60,11 @@ export function TrackedBannerAd({ slot, onAdLoaded, onAdFailedToLoad }: Props) {
     initAds().then(() => { if (!cancelled) setReady(true); });
     return () => { cancelled = true; };
   }, [ready]);
+
+  useEffect(() => {
+    const handle = InteractionManager.runAfterInteractions(() => setInteractionsDone(true));
+    return () => handle.cancel();
+  }, []);
 
   useEffect(() => () => {
     // Unmount: release this slot's lock and cancel any pending retry so a
@@ -68,13 +79,13 @@ export function TrackedBannerAd({ slot, onAdLoaded, onAdFailedToLoad }: Props) {
   // attempt, even one that never resolves (e.g. the app backgrounded before
   // load/fail fired) — see docs/realgram/TASK_SPLIT.md banner-ads-admin entry.
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !interactionsDone) return;
     _slotLoading[slot] = true;
     trackEvent('AD_BANNER_REQUEST', useAuthStore.getState().user?.deviceId, { slot });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slot, ready]);
+  }, [slot, ready, interactionsDone]);
 
-  if (!ready) return null;
+  if (!ready || !interactionsDone) return null;
 
   return (
     <BannerAd

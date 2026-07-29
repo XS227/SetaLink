@@ -1,6 +1,20 @@
 import React from 'react';
 import renderer, { act } from 'react-test-renderer';
 
+// TrackedBannerAd (rendered inside HomeBanner) defers its actual <BannerAd>
+// mount via InteractionManager.runAfterInteractions (Khabat, 2026-07-29 —
+// real device session showed the native ad request landing mid-transition)
+// — run it synchronously here, same convention as adsInterstitial.test.ts /
+// trackedBannerAd.test.tsx. Mocking the specific submodule path (not the
+// whole 'react-native' barrel) avoids dragging in the real TurboModule
+// registry, unavailable outside an actual device/simulator.
+jest.mock('react-native/Libraries/Interaction/InteractionManager', () => ({
+  runAfterInteractions: (cb: () => void) => {
+    cb();
+    return { then: (f: () => void) => f(), done: () => {}, cancel: () => {} };
+  },
+}));
+
 // Mock the ads SDK (BannerAd + everything adsService imports at load).
 jest.mock('react-native-google-mobile-ads', () => {
   const React = require('react');

@@ -6,6 +6,20 @@ import renderer, { act } from 'react-test-renderer';
 // A real class component (like the real BannerAd) so `.instance.load` is
 // reachable via react-test-renderer, letting the retry tests assert the
 // SAME instance is reloaded rather than a fresh one being mounted.
+// TrackedBannerAd defers its actual <BannerAd> mount (and thus its implicit
+// native ad request) via InteractionManager.runAfterInteractions (Khabat,
+// 2026-07-29 — real device session showed the request landing mid-transition)
+// — run it synchronously in tests, same convention as adsInterstitial.test.ts.
+// Mocking the specific submodule path (not the whole 'react-native' barrel)
+// avoids dragging in the real TurboModule registry, unavailable outside an
+// actual device/simulator.
+jest.mock('react-native/Libraries/Interaction/InteractionManager', () => ({
+  runAfterInteractions: (cb: () => void) => {
+    cb();
+    return { then: (f: () => void) => f(), done: () => {}, cancel: () => {} };
+  },
+}));
+
 jest.mock('react-native-google-mobile-ads', () => {
   const React = require('react');
   class BannerAdMock extends React.Component<any> {

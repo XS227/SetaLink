@@ -17,7 +17,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Alert, Platform, Share } from 'react-native';
+import { AppState, View, Text, TouchableOpacity, StyleSheet, Modal, Linking, Alert, Platform, Share, InteractionManager } from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator }   from '@react-navigation/bottom-tabs';
@@ -708,8 +708,16 @@ function CallManager() {
 
   useEffect(() => {
     if (!deviceId || !canCall) return;
-    connect(deviceId);
-    return () => disconnect();
+    // Deferred past mount-time interactions (Khabat, 2026-07-29: app-wide
+    // lag report) — opening the WS + fetching a presence token
+    // (RealCallSignalingClient.connect -> openSocket -> call-presence-token)
+    // used to fire the instant this mounts, i.e. right as Splash->Main (or
+    // any tab) is still transitioning in, competing for the same JS thread.
+    // connect() itself is idempotent (no-ops if already connected to this
+    // deviceId), so a deferred call here is safe even if the effect re-runs
+    // before the handle fires.
+    const handle = InteractionManager.runAfterInteractions(() => connect(deviceId));
+    return () => { handle.cancel(); disconnect(); };
   }, [deviceId, canCall, connect, disconnect]);
 
   return (

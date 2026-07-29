@@ -29,6 +29,21 @@
 // showing it renders a blank flash. Such ads are dropped at tap time, and
 // showInterstitialAfterConnect() shows the ad once the tunnel is up instead.
 
+// The actual ad-load work in adsService.ts is deferred via
+// InteractionManager.runAfterInteractions (Khabat, 2026-07-29: real device
+// session showed ad loads landing mid-navigation) — run it synchronously
+// here so these tests can keep asserting immediately after each action,
+// same convention as every other native-bridge mock in this file. Mocking
+// the specific submodule path (not the whole 'react-native' barrel) avoids
+// dragging in the real TurboModule registry, which isn't available outside
+// an actual device/simulator.
+jest.mock('react-native/Libraries/Interaction/InteractionManager', () => ({
+  runAfterInteractions: (cb: () => void) => {
+    cb();
+    return { then: (f: () => void) => f(), done: () => {}, cancel: () => {} };
+  },
+}));
+
 jest.mock('react-native-google-mobile-ads', () => {
   const listeners: Record<string, (payload?: any) => void> = {};
   const show = jest.fn();
@@ -234,11 +249,16 @@ describe('fallback chain: Interstitial -> fallback Interstitial -> Rewarded Vide
     expect(rCreate).not.toHaveBeenCalled();
 
     listeners['error']?.({ code: 'no-fill' });   // primary Interstitial has no fill
+    // Each fallback hop is staggered by FALLBACK_HOP_DELAY_MS (400ms, Khabat
+    // 2026-07-29 — spreads the chain's native-bridge calls instead of firing
+    // them all in the same tick) before the next format actually loads.
+    jest.advanceTimersByTime(400);
 
     expect(iCreate).toHaveBeenCalledTimes(2);    // fell back to the second Interstitial unit
     expect(load).toHaveBeenCalledTimes(2);
 
     listeners['error']?.({ code: 'no-fill' });   // fallback Interstitial also has no fill
+    jest.advanceTimersByTime(400);
 
     expect(rCreate).toHaveBeenCalledTimes(1);    // fell back to plain Rewarded — never a static ad again this cycle
     expect(load).toHaveBeenCalledTimes(3);
@@ -249,6 +269,7 @@ describe('fallback chain: Interstitial -> fallback Interstitial -> Rewarded Vide
     expect(iCreate).toHaveBeenCalledTimes(1);
 
     jest.advanceTimersByTime(15_000);   // direct-network load timeout
+    jest.advanceTimersByTime(400);      // fallback-hop stagger
 
     expect(iCreate).toHaveBeenCalledTimes(2);
     expect(load).toHaveBeenCalledTimes(2);
@@ -257,9 +278,11 @@ describe('fallback chain: Interstitial -> fallback Interstitial -> Rewarded Vide
   it('falls back to plain Rewarded when the fallback Interstitial (post-primary-fallback) load times out', () => {
     ads.preloadInterstitial();
     listeners['error']?.({ code: 'no-fill' });   // primary Interstitial fails -> fallback Interstitial starts
+    jest.advanceTimersByTime(400);
     expect(iCreate).toHaveBeenCalledTimes(2);
 
     jest.advanceTimersByTime(15_000);
+    jest.advanceTimersByTime(400);      // fallback-hop stagger
 
     expect(rCreate).toHaveBeenCalledTimes(1);
     expect(load).toHaveBeenCalledTimes(3);
@@ -318,8 +341,10 @@ describe('tunnel-gated preload (Iran fix — Khabat, 2026-07-18)', () => {
       'AD_LOAD_ERROR', 'test-device',
       expect.objectContaining({ slot: 'interstitial', format: 'interstitial', code: 'timeout', vpn_connected: true }),
     );
-    // Timing out immediately falls through to the Rewarded Interstitial
-    // fallback (Khabat, 2026-07-22/2026-07-27 chain) — that's the "retry".
+    // Timing out falls through to the fallback Interstitial (Khabat,
+    // 2026-07-22/2026-07-27 chain) after the FALLBACK_HOP_DELAY_MS stagger
+    // (Khabat, 2026-07-29) — that's the "retry".
+    jest.advanceTimersByTime(400);
     expect(load).toHaveBeenCalledTimes(2);
   });
 

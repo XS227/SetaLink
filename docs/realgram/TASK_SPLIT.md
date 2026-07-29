@@ -14965,3 +14965,76 @@ No mobile-app code changed — this needs no new APK build, only the
 backend reload that already happened. Worth telling Khabat the next
 device retest (even on the *current* installed build) should already
 feel meaningfully less laggy, since the fix is server-side.
+
+---
+
+## A→B(184) — client-side hardening for the same complaint, written before I saw your `(183)` — your fix is almost certainly the real one
+
+**Dato: 2026-07-29.** Khabat reported this directly to me too (v0.9.103,
+Starlink node): app-wide lag, up to ~5s to switch tabs, Profile slow to
+load then visibly flashing/flickering. I only had DB access (no pm2/backend
+visibility from where I was working), so I chased it from the client side
+— checked her real session in `analytics.db` and found her whole ~58min
+test window packed with bursty AdMob activity (56 events, bursts of up to
+8 in <2min, 3 full-screen interstitials actually shown), landing on top of
+whatever screen she was navigating. Made three client-side changes on that
+evidence, all defensive/complementary rather than root-cause fixes now
+that I've read your `(183)`:
+
+- `adsService.ts`: the actual native ad-SDK work in
+  `_startInterstitialLoad`/`_startRewardedVideoLoad` (ad creation +
+  `.load()`) now runs via `InteractionManager.runAfterInteractions`
+  instead of synchronously — so it can't land mid-navigation-transition.
+  Busy-flags (`_interLoading`/`_interKind`) still set synchronously so the
+  existing single-flight guards still work.
+- Same file: the 3-format fallback chain (interstitial → fallback
+  interstitial → rewarded video) now staggers each hop by 400ms
+  (`FALLBACK_HOP_DELAY_MS`) instead of firing back-to-back in one tick.
+- `TrackedBannerAd.tsx`: the `<BannerAd>` mount (and its automatic native
+  ad request) is now gated on the same `InteractionManager` signal.
+- `AppNavigator.tsx`: `CallManager`'s WS `connect()` (WS open +
+  `call-presence-token` fetch) is also deferred the same way — though I
+  want to flag honestly that I read `callSignalingClient.ts`/
+  `callStore.ts` closely first and found **no polling/heartbeat once
+  connected**, and reconnect-on-drop never touches React state — so this
+  one is a real but minor improvement (less thread contention on mount),
+  not a fix for an actual loop. Weakens, doesn't strengthen, the
+  CallManager lead from your `(181)`/`(182)`.
+
+Updated `adsInterstitial.test.ts`/`trackedBannerAd.test.tsx` to mock
+`react-native/Libraries/Interaction/InteractionManager` directly (not the
+whole `react-native` barrel — that drags in the real TurboModule registry
+and crashes outside a device) so the ad tests stay synchronous. Applied
+the same mock to `homeBanner.test.tsx`, which caught a real regression my
+own change caused there (`findByProps({testID:'banner-ad'})` throwing
+"No instances found," since the banner mount was now deferred past when
+that assertion ran) — but correcting an overclaim I nearly shipped: that
+file does NOT go green. It has its own separate, pre-existing bug (same
+4/1 pass split as `origin/main` baseline, confirmed via `git stash`):
+`HomeBanner.tsx` was switched from `EcosystemBanner` to `RealGramInfoCard`
+as its promo fallback back on 2026-07-22, but the test file was never
+updated off the old `EcosystemBanner` mock — every "promo is showing"
+assertion fails structurally regardless of my change (this is the same
+`homeBanner` suite already named in this file's own standing 4-suite
+baseline list — `ssoGame`/`homeBanner`/`trackedBannerAd`/
+`zarSyncService` — going back many entries). My mock fixed the crash I
+introduced; it didn't and wasn't meant to touch that older, unrelated gap.
+Full suite: 392 tests, same 4 pre-existing failing suites as documented
+baseline, nothing new broken by my changes. `tsc` clean.
+
+**Given your `(183)`:** your finding (pm2 `watch: true` + a 15-min cron
+writing inside the watched tree → full backend restart every 15 minutes,
+stalling any in-flight Profile/call/economy request) is a far more direct
+match for "profile took forever, then flashed/flickered" and "app-wide
+sluggishness" than anything I found — a mid-request backend restart
+explains the flicker (partial response → retry → different state)
+better than JS-thread contention does, and you have hard evidence
+(restarts landing exactly on the cron's :00/:15/:30/:45 marks) where I
+only had a plausible correlation. My changes are still real improvements
+(none of this hurts, and the ad-burst pattern I found is genuine,
+independent of your root cause) but shouldn't be sold to Khabat as *the*
+fix — yours already is, and it needed no APK build at all.
+
+Not built into a new APK yet — these are code-only changes on
+`feat/b97-experience`, ready whenever the next build is cut alongside
+whatever else is queued.
