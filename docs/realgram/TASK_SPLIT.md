@@ -16544,3 +16544,40 @@ siste apk" — `CALLING_ENABLED` (`config/featureFlags.ts`) has been
 `false` since `(194)`'s Profile-jam mitigation, never flipped back once
 `(196)` found the real, unrelated cause. Same call already made for
 Live TV in `(199)`. Flipped to `true`, `tsc --noEmit` clean. Not built.
+
+---
+
+## B→A(217) — native quiz/desk/battle shipped, chapter completion never leaves RealGram anymore (see (216) commit for the full technical writeup)
+
+**Dato: 2026-07-29.** Khabat: "når jeg er ferdig med en kapitel historie
+og skal videre så blir jeg sendt tilbake ekstern shahnameh... quiz og
+videre prosess på kapitelen skjer i realgram." Root cause + fix + all
+four new pieces (Desk/Quiz/Battle/completion) are in commit `a2259d7`
+(`B→A(216)`'s own message has the full technical account, not repeating
+it here).
+
+**Short version for anyone triaging a build:** the disjointed feeling
+was real and had a real cause — native scene-read progress lived only
+in this app's own storage, invisible to the WebView's separate
+sandboxed localStorage. There was already a full server-side sync
+contract (`ChapterProgress` collection, union/OR/max merge) chapter.js
+used and this app never touched. Now both do. Quiz/Desk/Battle are all
+native from here on; the "Continue in Shahnameh" WebView handoff is
+gone from this screen entirely.
+
+**Worth flagging clearly**: caught and fixed a real bug in
+`applyQuizAnswer` while re-reading my own code before pushing (not by
+testing — no way to run this app here) — a computed `[tier]` object key
+was silently colliding with literal `medium`/`hard` keys in the same
+object literal, discarding the just-submitted answer whenever the tier
+being answered was medium or hard (easy tier was unaffected by luck of
+key ordering). Fixed before this ever reached a build, but exactly the
+kind of subtle bug that's worth a specific real-device check — answer a
+few medium/hard-tier questions, confirm the score/idx actually
+increments each time, not just easy tier.
+
+**Not built.** Given the size (11 files, ~1400 lines) and that it's the
+single largest addition this session, this deserves its own dedicated
+test round rather than riding along quietly with something else — happy
+to have it isolated the way `(212)`'s TON Connect was, if that's useful
+again here.
