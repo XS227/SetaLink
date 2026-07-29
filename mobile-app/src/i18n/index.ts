@@ -2,6 +2,7 @@
 // Reads language from settingsStore — no external packages needed.
 // Add new keys to EN first, then mirror in FA.
 
+import { useCallback } from 'react';
 import { useSettingsStore } from '../stores/settingsStore';
 
 export type Lang = 'en' | 'fa' | 'zh' | 'ru';
@@ -4530,9 +4531,24 @@ export function useT() {
 
   // Accepts known keys (with autocomplete) plus dynamic keys built at runtime
   // (e.g. tagLabelKey/greeting). Unknown keys fall back to the key string.
-  function t(key: TKey | (string & {})): string {
-    return (dict as any)[key] ?? (EN as any)[key] ?? key;
-  }
+  //
+  // Khabat, 2026-07-29: memoized on `dict` (was a plain inline function,
+  // recreated every render). Any caller that puts `t` in a useCallback/
+  // useEffect dependency array — e.g. RealGramProfileScreen's `load`, feeding
+  // a bare `useEffect(() => { load(); }, [load])` — got a NEW `t` identity
+  // every render, which invalidated that callback every render, which
+  // re-fired the mount effect every render: fetch -> setState -> re-render
+  // -> new `t` -> new callback -> effect fires -> fetch again, forever. Root
+  // cause of the v0.9.105-107 Profile "flash then app jams" reports — not
+  // the VPN self-exclusion theory ((188)-(190)) or the GlassCard shadow-burst
+  // theory ((194)), both real leads that just weren't it. `dict` only
+  // changes when `language` actually changes, so `t` now stays referentially
+  // stable across renders unless the user changes language, same as a real
+  // i18n library would guarantee.
+  const t = useCallback(
+    (key: TKey | (string & {})): string => (dict as any)[key] ?? (EN as any)[key] ?? key,
+    [dict],
+  );
 
   return { t, isRTL, lang };
 }

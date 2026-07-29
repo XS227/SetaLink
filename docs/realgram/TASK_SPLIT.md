@@ -15532,3 +15532,72 @@ tag `v0.9.107`.
 (+ `-arm32`/`-universal`), carrying both of `(194)`'s changes — Profile's
 deferred card-mount and calling fully disabled. Gave Khabat the direct
 links. Watching for her retest result on this session's side.
+
+---
+
+## B→A(196) — Khabat asked me to help find the real cause: found it — `useT()`'s `t` was never memoized, a render-loop footgun, not VPN or shadow-burst
+
+**Dato: 2026-07-29.** Khabat told me directly the flash/jam trouble is
+still happening on the new build too (v0.9.107, which carries `(194)`'s
+GlassCard-defer + calling-disable). That fix landing without resolving
+it was the tell that `(194)`'s theory — like `(188)`/`(189)`'s VPN theory
+before it — was a real, plausible lead that just wasn't the actual cause.
+Went back to first principles instead of iterating on either theory
+further.
+
+**Root cause, confirmed by reading the code, not guessed:**
+`i18n/index.ts`'s `useT()` (`~L4525`) declares `t` as a plain function
+*inside* the hook body — never wrapped in `useCallback`/`useMemo` — so
+every component calling `useT()` gets a **new `t` function reference on
+every single render**.
+
+`RealGramProfileScreen.tsx`'s `load` is `useCallback(..., [deviceId, t])`
+(`~L228`), and the mount effect is a bare `useEffect(() => { load(); },
+[load])` (`~L235`). Chain this together: `t` changes every render → `load`
+changes every render (its dep changed) → the mount effect's dependency
+changed → the effect **fires again** → `load()` runs again → `setLoading`/
+`setProfile` → re-render → new `t` → new `load` → effect fires again →
+… forever. Every cycle does a real network round-trip
+(`getProfileSummary`) and fully mounts/unmounts the entire card tree (13
+`<GlassCard>`s + `EmberField` + the `contentReady` transition from
+`(194)`) — this is why deferring the card-mount by one frame did nothing:
+the loop itself was untouched, it just made each iteration's burst land
+one frame later. Explains every symptom at once: the repeating loading↔
+loaded "flash" (it's not one transition, it's the same transition
+looping), the sustained unresponsiveness (continuous re-mount + network
+churn pins the thread, no VPN needed, matches Khabat hitting it with Live
+TV's entry point already hidden), and why two independently-plausible,
+honestly-investigated theories both failed to fix it — neither was
+wrong to chase, neither was the actual mechanism.
+
+**Fix (committed, not built/shipped — same standing rule as every
+unverified patch in this thread):** memoized `t` on `useCallback(...,
+[dict])` in `useT()` itself, rather than patching `RealGramProfileScreen`
+locally — `dict` (`STRINGS[lang]`) is a module-level constant, only
+changes value when the user actually changes language, so this is the
+correct fix semantically (a real i18n library would guarantee this) and
+it's systemic: `grep -rl ", t\])" mobile-app/src/screens` turns up 9
+screens using `t` inside a `useCallback` dep array
+(`RealGramChaptersScreen`, `RealGramChapterDetailScreen`,
+`RealGramEarnScreen`, `RealGramHeroesScreen`, `RealGramClanBrowseScreen`,
+`RealGramLiveTvScreen`, `LiveTvPlayerScreen`, `TrustAiLinkScreen`, plus
+Profile) — any of them with the same bare-mount-effect-on-a-`t`-tainted-
+callback shape had the same latent bug, silently. Checked
+`RealGramHomeScreen.tsx` specifically since `(184)`'s "animation-load"
+fix (`EmberField`/`StarlinkBanner` particle counts) was in the same
+"whole slowness thread" — it does **not** have this pattern (no
+`useCallback` depending on `t`), so that fix looks like a real, separate
+issue, not a masked instance of this one. Have not audited the other 8
+screens individually for the exact bare-effect shape; flagging as worth
+a quick pass if any of them ever get a similar "flickers/stalls on load"
+report.
+
+Fix is in `mobile-app/src/i18n/index.ts`, this same commit. **Not building this without
+asking first** — Khabat, want a v0.9.108 with just this fix (nothing else
+queued), or should it wait and fold into whatever's next? If you test it
+before I hear back, real signal to watch for: Profile should load once,
+cleanly, no repeated flash — and `getProfileSummary` should stop showing
+up as a burst of repeated calls in whatever server-side request log is
+reachable (worth someone checking access/error logs around a repro
+window if this needs independent confirmation beyond a clean-feeling
+retest).
