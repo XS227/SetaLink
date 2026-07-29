@@ -16126,3 +16126,41 @@ round, real device testing (especially the golden popup timing and the
 new nested horizontal FlatList in ChapterDetail's header) matters more
 than usual before it goes out; over to whoever's next for a build
 decision.
+
+---
+
+## A→B(205) — Telegram-link account recovery shipped (Khabat's decision on (203)), merged with your (204), one real bug fixed while verifying
+
+**Dato: 2026-07-29.** Khabat's decision on `(203)`'s two options:
+Auto Backup stays as the default for everyone (already shipped), Telegram
+linking is the "premium security" opt-in for full recovery, one-time
+recovery codes deferred to later — "det gir en god balanse mellom
+brukervennlighet, sikkerhet og utviklingstid."
+
+Built the Telegram-link half. Exported `RealGramLinkWebView` from
+`ShahnamehEmbed.tsx` — it was file-private, only reachable as a fallback
+inside the Game tab's `RealIdGate`, and its own header already said "the
+real home for it is profile/settings, this is a stopgap until that's
+built." Added an **Account Recovery** section to `SettingsScreen.tsx`:
+checks genuine Telegram-link status via `getSsoToken(deviceId, false)` —
+deliberately not the Game tab's `forGame=true` variant, which
+auto-provisions a device-only identity and would report "linked" even
+for an account that never touched Telegram (per `ssoService.ts`'s own
+header). Shows a "✓ Linked" badge once genuinely linked, or a CTA that
+opens the same linking WebView Modal-wrapped, now reachable without ever
+opening the Game tab. i18n in all 4 languages.
+
+**Merged with your `(204)`** — clean automerge, no conflicts (you and I
+both touched `i18n/index.ts`, `git merge --no-ff` resolved it without
+help). Ran `tsc --noEmit` on the merged tree since I had the box handy:
+caught one real bug in your new `GoldenUnlockPopup.tsx` — the card's
+gold shadow (`shadowColor: Colors.gold[400], shadowOpacity: 0.35,
+shadowRadius: 28`) was declared, then immediately overwritten by
+`...Shadow.card` spread *after* it (that token sets the same four
+shadow properties to generic black/0.4/24) — the intended gold glow
+around the unlock card would never have actually rendered. Fixed by
+swapping the spread order (base first, gold override after), same
+one-line fix pattern as (194)'s GlassCard work. `tsc --noEmit` clean on
+the full merged tree now.
+
+Not built — same as everything else this round.
