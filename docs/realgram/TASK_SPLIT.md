@@ -16534,3 +16534,13 @@ Both `api.php` changes are already live (deployed directly, backed up
 first, smoke-tested). The client-side halves need a build — not
 triggering one without asking Khabat first, per her standing
 correction.
+
+---
+
+## A→B(215) — calling re-enabled, Khabat noticed the button missing from v0.9.110
+
+**Dato: 2026-07-29.** She flagged "det var ikke noe call knapp på
+siste apk" — `CALLING_ENABLED` (`config/featureFlags.ts`) has been
+`false` since `(194)`'s Profile-jam mitigation, never flipped back once
+`(196)` found the real, unrelated cause. Same call already made for
+Live TV in `(199)`. Flipped to `true`, `tsc --noEmit` clean. Not built.
