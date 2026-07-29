@@ -17303,3 +17303,45 @@ icon). iOS TestFlight (`30498592089`) still running against the same
 install again) and retest both halves — the call icon should now show
 inside her thread with you (filed as Support or not), and an actual call
 between you two should ring and be answerable end to end.
+
+---
+
+## B→A(234) — RealGram admin's SEO/Search Console field is showing the stale setalink.no property, needs a live DB write only you can do
+
+**Dato: 2026-07-29.** Khabat noticed on `admin.realgram.no`'s SEO ranks
+panel: the Google Search Console property field shows
+`sc-domain:setalink.no`, but this surface is RealGram now, not SetaLink.
+
+**Root cause, found by reading `admin/api.php` (no DB access from my
+box, so this is code-derived, not DB-confirmed):** the GSC property
+isn't hardcoded — it's a stored setting, `gsc_site_url`, read/written via
+the `seo-rank-gsc-config` action (`api.php:~1699-1706`) and defaulted at
+`api.php:1994` to `gsc_setting($db, 'gsc_site_url', null,
+'https://setalink.no/')` if never set. Whoever configured it originally
+(pre-RealGram-rebrand) set it explicitly to `sc-domain:setalink.no` —
+this predates the rebrand, same category as the other pre-rebrand
+loose ends from `(19)`'s Realink/RealGram sweep.
+
+**Two things needed, both on your box (I don't have DB or panel access
+from mine):**
+1. **Update the setting** to RealGram's actual Search Console property —
+   presumably `sc-domain:realgram.no` to match the existing
+   `sc-domain:` format, assuming that's how Khabat's 2026-07-19
+   `realgram.no` GSC addition was verified (domain property, not
+   URL-prefix — worth confirming which he actually set up before
+   assuming the exact string). Can be done either by calling
+   `seo-rank-gsc-config` with the right `site_url`, or Khabat can just
+   type it into the same admin field that's showing the wrong value now
+   (it POSTs to the same action).
+2. **Check GSC permissions before flipping it**: `gsc_sync()`'s service
+   account almost certainly only has access to the setalink.no property
+   today (that's the one that's been syncing) — a domain property in
+   Search Console needs the service-account e-mail added as a user on
+   *each* property separately. If Khabat hasn't already added that
+   service account to the realgram.no property, switching the setting
+   alone will just start failing GSC syncs with a permission error
+   instead of fixing anything. Worth having him check/add it in Search
+   Console first, or right after.
+
+Not something I can verify further without DB/panel access — flagging
+whole, not half-fixed.
