@@ -882,6 +882,7 @@ const EN = {
   // RealGramProfileScreen
   'rgprofile.errUnavailable':    "We couldn't load your profile right now. This is usually temporary.",
   'rgprofile.errDeviceId':       'Something went wrong identifying this device.',
+  'rgprofile.stillLoading':      'Still loading — this can take a bit on a slow connection.',
   'rgprofile.unavailable':       'Profile unavailable',
   'rgprofile.tryAgain':          'Try again',
   'rgprofile.appLockRequired':   'App Lock required',
@@ -2014,6 +2015,7 @@ const FA: typeof EN = {
 
   'rgprofile.errUnavailable':    'در حال حاضر امکان بارگذاری پروفایل شما نیست. معمولاً موقتی است.',
   'rgprofile.errDeviceId':       'در شناسایی این دستگاه مشکلی پیش آمد.',
+  'rgprofile.stillLoading':      'هنوز در حال بارگذاری — روی اتصال کند ممکن است کمی طول بکشد.',
   'rgprofile.unavailable':       'پروفایل در دسترس نیست',
   'rgprofile.tryAgain':          'تلاش مجدد',
   'rgprofile.appLockRequired':   'قفل برنامه لازم است',
@@ -3107,6 +3109,7 @@ const ZH: typeof EN = {
   // RealGramProfileScreen
   'rgprofile.errUnavailable':    '暂时无法加载您的个人资料，通常是临时问题。',
   'rgprofile.errDeviceId':       '识别此设备时出错。',
+  'rgprofile.stillLoading':      '仍在加载 — 网络较慢时可能需要多等一会儿。',
   'rgprofile.unavailable':       '个人资料不可用',
   'rgprofile.tryAgain':          '重试',
   'rgprofile.appLockRequired':   '需要应用锁',
@@ -4214,6 +4217,7 @@ const RU: typeof EN = {
   // RealGramProfileScreen
   'rgprofile.errUnavailable':    'Не удалось загрузить профиль. Обычно это временно.',
   'rgprofile.errDeviceId':       'Ошибка при определении устройства.',
+  'rgprofile.stillLoading':      'Всё ещё загружается — на медленном соединении это может занять время.',
   'rgprofile.unavailable':       'Профиль недоступен',
   'rgprofile.tryAgain':          'Повторить',
   'rgprofile.appLockRequired':   'Требуется блокировка приложения',

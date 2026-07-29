@@ -24,6 +24,7 @@ import { create } from 'zustand';
 import { Vibration } from 'react-native';
 import { CallEngine, RTCSessionDescriptionInitLike } from '../services/callService';
 import { RealCallSignalingClient } from '../services/callSignalingClient';
+import { useToastStore } from './toastStore';
 
 // Distinct from the single "tap" haptic used elsewhere in the app (coin
 // forge, etc.) — a repeating long-short-short pulse so an incoming call
@@ -69,6 +70,13 @@ export const useCallStore = create<CallState>((set, get) => ({
     client.onOffer((callId, sdp) => pendingOffers.set(callId, sdp));
     client.onIncomingCall((callId, callerUserId) => {
       Vibration.vibrate(RING_PATTERN, true);
+      // Safety net, not the primary stop mechanism: onHangUp/onReject below
+      // already cancel vibration on a real signal. This just guarantees it
+      // stops even if that signal is ever lost (relay hiccup, app
+      // backgrounded mid-ring) -- 50s, just past lib/calling.php's own
+      // 45s CALL_STALE_RINGING_SECS sweep, so a genuinely missed call goes
+      // quiet right around when the server itself gives up on it too.
+      setTimeout(() => Vibration.cancel(), 50_000);
       const engine = new CallEngine(client!, callId, callerUserId, () => {}, () => {});
       set({ activeCall: { engine, peerLabel: callerUserId, outgoing: false } });
     });
@@ -85,7 +93,20 @@ export const useCallStore = create<CallState>((set, get) => ({
   },
 
   startOutgoingCall: (peerId: string, peerLabel: string) => {
-    if (!client || !peerId) return;
+    if (!peerId) return;
+    // `client` is only ever null if connect() itself was never called (auth
+    // not ready yet when CallManager mounted, or calling disabled for this
+    // account) -- a real, if rare, gap: silently doing nothing on tap read
+    // as "the call button is slow" in Khabat's 2026-07-29 test, when it was
+    // actually a dead tap followed by a working one once connect() caught
+    // up. Once `client` exists, CallEngine.startOutgoing() already awaits
+    // the WebSocket handshake internally (ensureConnected()) before sending
+    // anything, so a slow-but-connecting client doesn't need special
+    // handling here -- only a genuinely absent one does.
+    if (!client) {
+      useToastStore.getState().show('Calling isn’t ready yet — try again in a moment', 'error');
+      return;
+    }
     const engine = new CallEngine(client, '', peerId, () => {}, () => {});
     set({ activeCall: { engine, peerLabel, outgoing: true } });
   },

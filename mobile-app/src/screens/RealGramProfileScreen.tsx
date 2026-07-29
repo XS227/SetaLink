@@ -152,12 +152,15 @@ export function RealGramProfileScreen({
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [profile, setProfile]   = useState<ProfileSummary | null>(null);
-  // Auto-retry twice (short backoff) before showing an error state at all —
-  // the backend call this screen depends on has been known to fail
-  // transiently (e.g. mid-migration on the server side); most users should
-  // never see a failure screen for something that resolves a second later.
-  // Manual "Try again" below still works after auto-retry gives up.
+  // Khabat, 2026-07-29: real-device test on a throttled connection reported
+  // Profile "still stuck" on v0.9.102 (after the missing_device_id fix from
+  // (170)) — the actual cause here is timing, not a hang: a bare spinner
+  // with no feedback, backed by a 10s-per-attempt fetch timeout x 2 retries
+  // (up to ~34s worst case) reads as frozen well before it resolves. Cut
+  // retries to 1 (~21s worst case) and added a "still trying" hint below so
+  // a slow-but-working connection doesn't look broken while it resolves.
   const autoRetriesRef = useRef(0);
+  const [slowHint, setSlowHint] = useState(false);
 
   const load = useCallback((opts?: { silent?: boolean }) => {
     // Khabat, 2026-07-28: Profile stuck on the loading spinner forever on a
@@ -183,7 +186,7 @@ export function RealGramProfileScreen({
       })
       .catch((e: unknown) => {
         const code = e instanceof Error ? e.message : 'unknown_error';
-        if (autoRetriesRef.current < 2) {
+        if (autoRetriesRef.current < 1) {
           autoRetriesRef.current += 1;
           setTimeout(() => load(opts), autoRetriesRef.current * 1200);
           return; // stay in loading state through the retry
@@ -202,6 +205,16 @@ export function RealGramProfileScreen({
   }, [load]);
 
   useEffect(() => { load(); }, [load]);
+
+  // "Still trying" hint — appears a few seconds into a real loading spinner
+  // so a slow-but-working connection doesn't look identical to a frozen
+  // one. Never fires for the instant, common case (profile already cached
+  // / fast network).
+  useEffect(() => {
+    if (!loading) { setSlowHint(false); return; }
+    const tid = setTimeout(() => setSlowHint(true), 6000);
+    return () => clearTimeout(tid);
+  }, [loading]);
 
   // Bail out of an indefinite spinner if deviceId never resolves. Cleared
   // (never fires) the moment deviceId becomes truthy, since `load` above
@@ -276,6 +289,11 @@ export function RealGramProfileScreen({
     return (
       <View style={[styles.screen, styles.centered, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color={Colors.gold[400]} />
+        {slowHint && (
+          <Text style={{ color: Colors.text.secondary, fontSize: 13, marginTop: Spacing[3] }}>
+            {t('rgprofile.stillLoading')}
+          </Text>
+        )}
       </View>
     );
   }
