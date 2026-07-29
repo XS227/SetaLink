@@ -25,6 +25,13 @@
  * rather than resolved here, same reasoning as chapterCatalogService: a
  * language switch should show immediately without invalidating this
  * service's TTL cache.
+ *
+ * 2026-07-29 (Khabat: "quiz og videre prosess på kapitelen skjer i
+ * realgram"): now also parses `battle` (boss/requirements) — the last
+ * lore-file section this service dropped. Mirrors chapter.js's own
+ * `reqMet()` switch (`kind: level/character/item/quiz/farr/owned_heroes`)
+ * — evaluation itself lives in ChapterBattlePanel.tsx, not here, same
+ * split as isCardUnlocked() above.
  */
 
 import { storage, syncGet } from '../storage/storage';
@@ -62,6 +69,42 @@ export interface ChapterCardRef {
   unlock_via: string | null; // e.g. "scene:siamak-rises", null = no gate (already unlocked or ungated)
 }
 
+// Battle/boss requirement kinds — mirrors chapter.js's own `reqMet()`
+// switch exactly (~L440). "desk"/"scenes_all"/quiz-tier requirements are
+// auto-injected by the WEB client, not present in the raw JSON — this
+// screen injects the native equivalents itself (see
+// ChapterBattlePanel.tsx) rather than parsing them from here.
+export type BattleRequirementKind = 'level' | 'character' | 'item' | 'quiz' | 'farr' | 'owned_heroes';
+
+export interface BattleRequirement {
+  id: string;
+  kind: BattleRequirementKind;
+  target: string; // hero_id / character slug / item id, meaning depends on kind
+  heroId?: string; // for kind: 'level'
+  level?: number;  // for kind: 'level'
+  // 'item' requirements can be auto-granted on another event (e.g. "quiz" —
+  // awarded once the easy tier is done) rather than being a real separate
+  // action — mirrors the content's own `grant_on` field.
+  grantOn?: string;
+  label: string;
+  label_fa?: string;
+  label_ru?: string;
+  hint: string;
+  hint_fa?: string;
+  hint_ru?: string;
+}
+
+export interface ChapterBattle {
+  bossSlug: string;
+  bossName: string;
+  bossName_fa?: string;
+  bossImage: string; // absolutized
+  bossMasterImage: string; // absolutized, '' if none
+  intro: string;
+  intro_fa?: string;
+  requirements: BattleRequirement[];
+}
+
 export interface ChapterLore {
   slug: string;
   lore_summary: string;
@@ -70,6 +113,7 @@ export interface ChapterLore {
   scenes: ChapterScene[];
   characters: ChapterCardRef[];
   places: ChapterCardRef[];
+  battle: ChapterBattle | null;
 }
 
 interface RawCharacterOrPlace {
@@ -84,12 +128,26 @@ interface RawScene {
   atmosphere?: string; image?: string; video_url?: string; reward?: string;
 }
 
+interface RawRequirement {
+  id: string; kind: string; target?: string; hero_id?: string; level?: number; grant_on?: string;
+  label_en?: string; label_fa?: string; label_ru?: string;
+  hint_en?: string; hint_fa?: string; hint_ru?: string;
+}
+
+interface RawBattle {
+  boss_slug?: string; boss_name_en?: string; boss_name_fa?: string;
+  boss_image?: string; boss_master_image?: string;
+  intro_en?: string; intro_fa?: string;
+  requirements?: RawRequirement[];
+}
+
 interface RawLore {
   chapter_slug: string;
   lore_summary?: { en?: string; fa?: string; ru?: string };
   scenes?: RawScene[];
   characters?: RawCharacterOrPlace[];
   places?: RawCharacterOrPlace[];
+  battle?: RawBattle;
 }
 
 function absolutize(path?: string): string {
@@ -106,6 +164,42 @@ function normalizeCardRef(raw: RawCharacterOrPlace): ChapterCardRef {
     image:      absolutize(raw.image),
     unlocked:   !!raw.unlocked,
     unlock_via: raw.unlock_via ?? null,
+  };
+}
+
+const VALID_REQ_KINDS: BattleRequirementKind[] = ['level', 'character', 'item', 'quiz', 'farr', 'owned_heroes'];
+
+function normalizeRequirement(raw: RawRequirement): BattleRequirement | null {
+  if (!(VALID_REQ_KINDS as string[]).includes(raw.kind)) return null;
+  return {
+    id: raw.id,
+    kind: raw.kind as BattleRequirementKind,
+    target: raw.target ?? '',
+    heroId: raw.hero_id,
+    level: raw.level,
+    grantOn: raw.grant_on,
+    label: raw.label_en ?? '',
+    label_fa: raw.label_fa,
+    label_ru: raw.label_ru,
+    hint: raw.hint_en ?? '',
+    hint_fa: raw.hint_fa,
+    hint_ru: raw.hint_ru,
+  };
+}
+
+function normalizeBattle(raw: RawBattle | undefined): ChapterBattle | null {
+  if (!raw || !raw.boss_slug) return null;
+  return {
+    bossSlug: raw.boss_slug,
+    bossName: raw.boss_name_en ?? '',
+    bossName_fa: raw.boss_name_fa,
+    bossImage: absolutize(raw.boss_image),
+    bossMasterImage: absolutize(raw.boss_master_image),
+    intro: raw.intro_en ?? '',
+    intro_fa: raw.intro_fa,
+    requirements: (raw.requirements ?? [])
+      .map(normalizeRequirement)
+      .filter((r): r is BattleRequirement => r !== null),
   };
 }
 
@@ -134,6 +228,7 @@ function normalize(raw: RawLore): ChapterLore {
       })),
     characters: (raw.characters ?? []).map(normalizeCardRef),
     places:     (raw.places ?? []).map(normalizeCardRef),
+    battle:     normalizeBattle(raw.battle),
   };
 }
 
@@ -169,8 +264,8 @@ export function cardsUnlockedBySceneRead(
 const _inFlight = new Map<string, Promise<ChapterLore | null>>();
 
 export async function getChapterLore(slug: string): Promise<ChapterLore | null> {
-  const cacheKey = `chapter_lore_v2_${slug}`;
-  const ttlKey   = `chapter_lore_ttl_v2_${slug}`;
+  const cacheKey = `chapter_lore_v3_${slug}`; // v3: adds battle
+  const ttlKey   = `chapter_lore_ttl_v3_${slug}`;
   const cached   = syncGet(cacheKey);
   const ttlStr   = syncGet(ttlKey);
   const expiry   = ttlStr ? parseInt(ttlStr, 10) : 0;

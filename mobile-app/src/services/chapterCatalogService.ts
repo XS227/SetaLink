@@ -22,15 +22,35 @@
  * render time (not baked in here, so a language switch doesn't need a
  * refetch/cache-bust). No `_zh` exists at the source — Chinese falls back
  * to English, same convention as useT()'s own fallback.
+ *
+ * 2026-07-29 (Khabat: "quiz og videre prosess på kapitelen skjer i
+ * realgram"): also carries `ferdowsi_chronicle` now (age/year/historical
+ * context/personal challenge/lore impact) — Ferdowsi's Desk's content,
+ * dropped entirely before. Same per-field localization pattern as
+ * title/summary above.
  */
 
 import { storage, syncGet } from '../storage/storage';
 
 const SHAHNAMEH_ORIGIN = 'https://shahnameh.setaei.com';
 const CATALOG_URL       = `${SHAHNAMEH_ORIGIN}/season2/data/chapters.json`;
-const CACHE_KEY     = 'chapter_catalog_v1';
-const CACHE_TTL_KEY = 'chapter_catalog_ttl_v1';
+const CACHE_KEY     = 'chapter_catalog_v2'; // v2: adds ferdowsi_chronicle
+const CACHE_TTL_KEY = 'chapter_catalog_ttl_v2';
 const CACHE_TTL_MS  = 6 * 3600 * 1_000; // static story content — safe to cache for hours
+
+export interface FerdowsiChronicle {
+  age: number;
+  year: string;
+  historicalContext: string;
+  historicalContext_fa?: string;
+  historicalContext_ru?: string;
+  personalChallenge: string;
+  personalChallenge_fa?: string;
+  personalChallenge_ru?: string;
+  loreImpact: string;
+  loreImpact_fa?: string;
+  loreImpact_ru?: string;
+}
 
 export interface ChapterCatalogEntry {
   slug:          string;
@@ -44,6 +64,14 @@ export interface ChapterCatalogEntry {
   image_url:     string; // already absolutized against SHAHNAMEH_ORIGIN, '' if none
   reward_xp:     number;
   reward_real:   number;
+  ferdowsi_chronicle: FerdowsiChronicle | null;
+}
+
+interface RawChronicle {
+  age?: number; year?: string;
+  historical_context?: string; historical_context_fa?: string; historical_context_ru?: string;
+  personal_challenge?: string; personal_challenge_fa?: string; personal_challenge_ru?: string;
+  lore_impact?: string; lore_impact_fa?: string; lore_impact_ru?: string;
 }
 
 interface RawCatalog {
@@ -59,7 +87,25 @@ interface RawCatalog {
     summary_ru?: string;
     image_url?: string;
     rewards?: { xp?: number; real?: number };
+    ferdowsi_chronicle?: RawChronicle;
   }>;
+}
+
+function normalizeChronicle(raw: RawChronicle | undefined): FerdowsiChronicle | null {
+  if (!raw || !raw.historical_context) return null;
+  return {
+    age: raw.age ?? 0,
+    year: raw.year ?? '',
+    historicalContext: raw.historical_context ?? '',
+    historicalContext_fa: raw.historical_context_fa,
+    historicalContext_ru: raw.historical_context_ru,
+    personalChallenge: raw.personal_challenge ?? '',
+    personalChallenge_fa: raw.personal_challenge_fa,
+    personalChallenge_ru: raw.personal_challenge_ru,
+    loreImpact: raw.lore_impact ?? '',
+    loreImpact_fa: raw.lore_impact_fa,
+    loreImpact_ru: raw.lore_impact_ru,
+  };
 }
 
 function normalize(raw: RawCatalog): ChapterCatalogEntry[] {
@@ -76,6 +122,7 @@ function normalize(raw: RawCatalog): ChapterCatalogEntry[] {
       image_url:   c.image_url ? (c.image_url.startsWith('http') ? c.image_url : `${SHAHNAMEH_ORIGIN}${c.image_url}`) : '',
       reward_xp:   c.rewards?.xp ?? 0,
       reward_real: c.rewards?.real ?? 0,
+      ferdowsi_chronicle: normalizeChronicle(c.ferdowsi_chronicle),
     }))
     .sort((a, b) => a.order - b.order);
 }

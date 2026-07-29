@@ -1,24 +1,28 @@
 /**
  * RealGramChapterDetailScreen — native chapter reading page
  * (`docs/realgram/TASK_SPLIT.md` A→B(124), Khabat: "prikk lik shahnameh
- * men i realgram"). Replaces the old ChapterDetailScreen's full-chapter
- * WebView embed with a native hero + lore/chronicle + scene reader —
- * the "core reading experience" slice Agent A suggested building first.
+ * men i realgram"). Native hero + lore/chronicle + scene reader.
  *
- * Deliberately NOT in scope here (follow-up, per the agreed (124)/(125)
- * slicing): Ferdowsi's Desk, the boss/battle requirements list, and the
- * 3-tier quiz — all still genuinely interactive, server-tracked gameplay
- * (season2/user/quiz/*), not just reading. Those stay in the WebView for
- * now via the "Continue in Shahnameh" card at the end of the scene list,
- * so the full loop (read → quiz → reward) still works end-to-end while
- * quiz/battle get their own native pass later.
+ * 2026-07-29 (Khabat: "når jeg er ferdig med en kapitel historie og skal
+ * videre så blir jeg sendt tilbake ekstern shahnameh. bygg videre der så
+ * quiz og videre prosess på kapitelen skjer i realgram"): this is the
+ * follow-up A→B(124) explicitly deferred — Ferdowsi's Desk, the boss/
+ * battle requirements, and the 3-tier quiz are now all native
+ * (FerdowsiDeskCard/ChapterQuizPanel/ChapterBattlePanel). The WebView
+ * handoff ("Continue in Shahnameh") is gone entirely — completing a
+ * chapter never leaves this screen anymore.
  *
- * Scene unlock state is a local reading gate (mirrors chapter.js's own
- * localStorage-only progress, not server state) — see
- * chapterProgressStore.ts.
+ * Root cause of the "disjointed" feeling this fixes: scene-read progress
+ * used to live ONLY in this app's own MMKV storage — invisible to the
+ * WebView, which has its own, completely separate sandboxed localStorage.
+ * Progress now syncs through the same `ChapterProgress` server record
+ * chapter.js itself reads/writes (chapterProgressSyncService.ts), with the
+ * same union/OR/max merge contract as season2/sync.js's own
+ * `_mergeChapter` — native and WebView (if ever opened) now genuinely
+ * share one source of truth.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -26,22 +30,34 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
-import { ShahnamehEmbed } from '../components/ShahnamehEmbed';
 import { GoldenUnlockPopup } from '../components/GoldenUnlockPopup';
+import { FerdowsiDeskCard } from '../components/FerdowsiDeskCard';
+import { ChapterQuizPanel } from '../components/ChapterQuizPanel';
+import { ChapterBattlePanel } from '../components/ChapterBattlePanel';
 import { useT } from '../i18n';
 import { localizedField } from '../utils/localizedField';
+import { useAuthStore } from '../stores/authStore';
+import { useToastStore } from '../stores/toastStore';
+import { getSsoToken } from '../services/ssoService';
+import { getProfileSummary } from '../services/realGramProfileService';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
 import {
   getChapterLore, ChapterLore, ChapterScene, ChapterCardRef,
   isCardUnlocked, cardsUnlockedBySceneRead,
 } from '../services/chapterLoreService';
-import { getReadSceneIds, markSceneRead, isSceneUnlocked } from '../services/chapterProgressStore';
+import {
+  getLocalSnapshot, saveLocalSnapshot, mergeSnapshot, markSceneRead, markDeskRead, markChapterDone,
+  isSceneUnlocked, emptySnapshot, ChapterProgressSnapshot,
+} from '../services/chapterProgressStore';
+import { fetchServerChapterProgress, pushChapterProgress } from '../services/chapterProgressSyncService';
+import { getChapterQuiz, QuizQuestion } from '../services/chapterQuizService';
+import { getHeroCatalog, getOwnedHeroes, HeroCatalogEntry, OwnedHero, reconcileChapterRewards } from '../services/heroCatalogService';
 
 interface Props {
   slug: string;
   onBack: () => void;
-  // Deep-links into RealGramHeroesScreen at a specific card — used both by
-  // the "Cards from this chapter" section and GoldenUnlockPopup's CTA
+  // Deep-links into RealGramHeroesScreen at a specific card — used by the
+  // "Cards from this chapter" section and GoldenUnlockPopup's CTA
   // (2026-07-29, "knytt kortene til historiene").
   onOpenHeroes: (cardSlug: string) => void;
 }
@@ -49,42 +65,114 @@ interface Props {
 export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Props) {
   const insets = useSafeAreaInsets();
   const { t, lang, isRTL } = useT();
+  const deviceId  = useAuthStore((s) => s.user?.deviceId ?? '');
+  const showToast = useToastStore((s) => s.show);
+
   const [catalogEntry, setCatalogEntry] = useState<ChapterCatalogEntry | null>(null);
   const [lore, setLore]           = useState<ChapterLore | null>(null);
-  const [readIds, setReadIds]     = useState<Set<string>>(() => getReadSceneIds(slug));
+  const [progress, setProgress]   = useState<ChapterProgressSnapshot>(emptySnapshot());
+  const [telegramId, setTelegramId] = useState('');
+  const [heroCatalog, setHeroCatalog] = useState<HeroCatalogEntry[]>([]);
+  const [ownedHeroes, setOwnedHeroes] = useState<Map<string, OwnedHero>>(new Map());
+  const [farr, setFarr]           = useState(0);
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [error, setError]         = useState('');
   const [loaded, setLoaded]       = useState(false);
-  const [showFullEmbed, setShowFullEmbed] = useState(false);
-  // Golden "card unlocked" popup queue — a single scene can gate more than
-  // one card (rare in the source data, but handle it rather than drop it).
+  const [completing, setCompleting] = useState(false);
+  // Golden "card unlocked" / chapter-complete-reward popup queue.
   const [unlockQueue, setUnlockQueue] = useState<ChapterCardRef[]>([]);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getChapterCatalog(), getChapterLore(slug)]).then(([catalog, loreResult]) => {
-      if (cancelled) return;
-      const entry = catalog.find((c) => c.slug === slug) ?? null;
-      if (!entry && !loreResult) { setError(t('chapterdetail.loadError')); setLoaded(true); return; }
-      setCatalogEntry(entry);
-      setLore(loreResult);
-      setLoaded(true);
-    }).catch(() => {
-      if (!cancelled) { setError(t('chapterdetail.loadError')); setLoaded(true); }
-    });
+    (async () => {
+      try {
+        const tid = deviceId ? (await getSsoToken(deviceId, true)).telegram_id : '';
+        if (cancelled) return;
+        setTelegramId(tid);
+
+        const [catalog, loreResult, serverProgress, profile, catalogHeroes, owned, quiz] = await Promise.all([
+          getChapterCatalog(),
+          getChapterLore(slug),
+          tid ? fetchServerChapterProgress(tid) : Promise.resolve(null),
+          deviceId ? getProfileSummary(deviceId).catch(() => null) : Promise.resolve(null),
+          getHeroCatalog(),
+          tid ? getOwnedHeroes(tid) : Promise.resolve(new Map<string, OwnedHero>()),
+          getChapterQuiz(slug),
+        ]);
+        if (cancelled) return;
+
+        const entry = catalog.find((c) => c.slug === slug) ?? null;
+        if (!entry && !loreResult) { setError(t('chapterdetail.loadError')); setLoaded(true); return; }
+        setCatalogEntry(entry);
+        setLore(loreResult);
+        setHeroCatalog(catalogHeroes);
+        setOwnedHeroes(owned);
+        setFarr(profile?.economy.farr ?? 0);
+        setQuizQuestions(quiz);
+
+        // Merge local + server progress — same union/OR/max contract as
+        // sync.js's own _mergeChapter, so neither side can lose progress.
+        const local  = getLocalSnapshot(slug);
+        const server = serverProgress?.[slug] ?? null;
+        const merged = server ? mergeSnapshot(local, server) : local;
+        saveLocalSnapshot(slug, merged);
+        setProgress(merged);
+        if (tid && JSON.stringify(server) !== JSON.stringify(merged)) {
+          pushChapterProgress(tid, slug, merged).catch(() => {});
+        }
+
+        setLoaded(true);
+      } catch {
+        if (!cancelled) { setError(t('chapterdetail.loadError')); setLoaded(true); }
+      }
+    })();
     return () => { cancelled = true; };
-  }, [slug, t]);
+  }, [slug, deviceId, t]);
 
   const handleSceneRead = useCallback((sceneId: string) => {
-    // Khabat, 2026-07-29: "når en er ferdig med det han skal på hver
-    // kapitel så kommer en golden popup opp at kort x er nå tilgjengelig
-    // for mining/oppgradering" — check BEFORE updating readIds, so a card
-    // already unlocked by an earlier scene doesn't re-trigger the popup.
+    // Khabat, 2026-07-29: check BEFORE updating progress, so a card already
+    // unlocked by an earlier scene doesn't re-trigger the golden popup.
     if (lore) {
-      const newlyUnlocked = cardsUnlockedBySceneRead(lore, sceneId, readIds);
+      const newlyUnlocked = cardsUnlockedBySceneRead(lore, sceneId, new Set(progress.scenes));
       if (newlyUnlocked.length > 0) setUnlockQueue((q) => [...q, ...newlyUnlocked]);
     }
-    setReadIds(markSceneRead(slug, sceneId));
-  }, [slug, lore, readIds]);
+    const next = markSceneRead(slug, sceneId);
+    setProgress(next);
+    if (telegramId) pushChapterProgress(telegramId, slug, next).catch(() => {});
+  }, [slug, lore, progress.scenes, telegramId]);
+
+  const handleDeskRead = useCallback(() => {
+    const next = markDeskRead(slug);
+    setProgress(next);
+    if (telegramId) pushChapterProgress(telegramId, slug, next).catch(() => {});
+  }, [slug, telegramId]);
+
+  const handleQuizProgressChange = useCallback((next: ChapterProgressSnapshot) => {
+    setProgress(next);
+    if (telegramId) pushChapterProgress(telegramId, slug, next).catch(() => {});
+  }, [slug, telegramId]);
+
+  const handleBattleComplete = useCallback(async () => {
+    if (completing || !telegramId) return;
+    setCompleting(true);
+    const next = markChapterDone(slug);
+    setProgress(next);
+    await pushChapterProgress(telegramId, slug, next);
+    // Server independently re-validates the chapter is actually done via
+    // the same ChapterProgress record — this isn't a client-trusted grant.
+    const granted = await reconcileChapterRewards(telegramId);
+    setCompleting(false);
+    const heroId = granted[0];
+    const hero = heroId ? heroCatalog.find((h) => h.slug === heroId) : null;
+    if (hero) {
+      setUnlockQueue((q) => [...q, {
+        slug: hero.slug, name: hero.name, image: hero.image_url,
+        unlocked: true, unlock_via: null,
+      }]);
+    } else {
+      showToast(t('chapterdetail.battleComplete'), 'success');
+    }
+  }, [completing, telegramId, slug, heroCatalog, t, showToast]);
 
   const dismissUnlockPopup = useCallback(() => {
     setUnlockQueue((q) => q.slice(1));
@@ -94,17 +182,6 @@ export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Prop
     setUnlockQueue((q) => q.slice(1));
     onOpenHeroes(cardSlug);
   }, [onOpenHeroes]);
-
-  if (showFullEmbed) {
-    return (
-      <ShahnamehEmbed
-        path="/chapter.html"
-        params={{ slug }}
-        debugLabel="chapter-quiz"
-        onBack={() => setShowFullEmbed(false)}
-      />
-    );
-  }
 
   if (error) {
     return (
@@ -122,6 +199,13 @@ export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Prop
   const summary = catalogEntry ? localizedField(catalogEntry.summary, catalogEntry.summary_fa, catalogEntry.summary_ru, lang) : '';
   const loreSummary = lore ? localizedField(lore.lore_summary, lore.lore_summary_fa, lore.lore_summary_ru, lang) : '';
   const chapterCards = lore ? [...lore.characters, ...lore.places] : [];
+  const readSceneIds = new Set(progress.scenes);
+  const unlockedCharacterSlugs = new Set(chapterCards.filter((c) => isCardUnlocked(c, readSceneIds)).map((c) => c.slug));
+  const quizTiersPublished = {
+    easy:   quizQuestions.some((q) => q.tier === 'easy'),
+    medium: quizQuestions.some((q) => q.tier === 'medium'),
+    hard:   quizQuestions.some((q) => q.tier === 'hard'),
+  };
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -162,12 +246,18 @@ export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Prop
                 </GlassCard>
               )}
 
+              {!!catalogEntry?.ferdowsi_chronicle && (
+                <View style={styles.deskWrap}>
+                  <FerdowsiDeskCard
+                    chronicle={catalogEntry.ferdowsi_chronicle}
+                    read={progress.desk_read}
+                    onMarkRead={handleDeskRead}
+                  />
+                </View>
+              )}
+
               {/* Cards from this chapter — Khabat, 2026-07-29: "knytt
-                  kortene til historiene." Same characters[]/places[] data
-                  chapter.js's own battle-requirement gating already reads
-                  (chapterLoreService.ts header has the full story); shown
-                  here as a compact strip that hands off to the real
-                  ownership/buy UI in Heroes rather than duplicating it. */}
+                  kortene til historiene." */}
               {chapterCards.length > 0 && (
                 <>
                   <Text style={styles.sectionLabel}>{t('chapterdetail.cardsFromChapter')}</Text>
@@ -180,7 +270,7 @@ export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Prop
                     renderItem={({ item }) => (
                       <ChapterCardChip
                         card={item}
-                        unlocked={isCardUnlocked(item, readIds)}
+                        unlocked={isCardUnlocked(item, readSceneIds)}
                         onPress={() => onOpenHeroes(item.slug)}
                       />
                     )}
@@ -194,18 +284,34 @@ export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Prop
           renderItem={({ item }) => (
             <SceneCard
               scene={item}
-              unlocked={isSceneUnlocked(item.order, readIds, scenes)}
-              read={readIds.has(item.id)}
+              unlocked={isSceneUnlocked(item.order, progress, scenes)}
+              read={readSceneIds.has(item.id)}
               onRead={() => handleSceneRead(item.id)}
             />
           )}
           ListFooterComponent={
-            <TouchableOpacity onPress={() => setShowFullEmbed(true)} activeOpacity={0.85}>
-              <GlassCard style={styles.continueCard} glowColor={Colors.gold[400]}>
-                <Text style={styles.continueTitle}>{t('chapterdetail.continueQuiz')}</Text>
-                <Text style={styles.continueSub}>{t('chapterdetail.continueQuizSub')}</Text>
-              </GlassCard>
-            </TouchableOpacity>
+            <View style={styles.footerWrap}>
+              <ChapterQuizPanel
+                slug={slug}
+                telegramId={telegramId}
+                progress={progress}
+                onProgressChange={handleQuizProgressChange}
+              />
+              {!!lore?.battle && (
+                <ChapterBattlePanel
+                  battle={lore.battle}
+                  progress={progress}
+                  scenes={scenes}
+                  hasDesk={!!catalogEntry?.ferdowsi_chronicle}
+                  quizTiersPublished={quizTiersPublished}
+                  ownedHeroes={ownedHeroes}
+                  farr={farr}
+                  unlockedCharacterSlugs={unlockedCharacterSlugs}
+                  completing={completing}
+                  onComplete={handleBattleComplete}
+                />
+              )}
+            </View>
           }
         />
       )}
@@ -318,6 +424,8 @@ const styles = StyleSheet.create({
   loreLabel: { fontSize: 11, fontFamily: Typography.family.label, color: Colors.gold[400], textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: Spacing[2] },
   loreText:  { fontSize: 13, color: Colors.text.secondary, fontFamily: Typography.family.body, lineHeight: 20 },
 
+  deskWrap: { marginTop: Spacing[4] },
+
   sectionLabel: { fontSize: 13, fontFamily: Typography.family.heading, color: Colors.text.primary, marginTop: Spacing[5], marginBottom: Spacing[1] },
 
   cardStrip:     { gap: Spacing[3], paddingVertical: Spacing[2] },
@@ -343,9 +451,7 @@ const styles = StyleSheet.create({
   sceneImageWrap: { width: '100%', height: 200, borderRadius: Radius.lg, marginTop: Spacing[2], marginBottom: Spacing[1], backgroundColor: Colors.bg.elevated, overflow: 'hidden' },
   sceneImage: { width: '100%', height: '100%' },
 
-  continueCard:  { marginTop: Spacing[3], alignItems: 'center' },
-  continueTitle: { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.gold[400] },
-  continueSub:   { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 4, textAlign: 'center' },
+  footerWrap: { gap: Spacing[3], marginTop: Spacing[3] },
 
   errorText: { fontSize: 13, color: '#FF6B6B', textAlign: 'center', fontFamily: Typography.family.body, paddingHorizontal: Spacing[6] },
   backBtnFallback: { backgroundColor: Colors.gold[400], borderRadius: Radius.xl, paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },

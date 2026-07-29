@@ -188,3 +188,66 @@ export async function upgradeHero(telegramId: string, heroId: string): Promise<A
     return { ok: false, error: 'network_error' };
   }
 }
+
+/**
+ * Free hero-card grant for chapter completion (2026-07-29,
+ * `docs/realgram/TASK_SPLIT.md` — native quiz/battle round). Mirrors
+ * chapter.js's own `grantChapterCard()` fetch exactly, but the server
+ * (`/user/grant-hero`) ignores any client-submitted zar_per_hour and
+ * independently re-validates the chapter is actually done via the same
+ * `ChapterProgress` collection this app now syncs to
+ * (chapterProgressSyncService.ts) — real anti-cheat, not just convention.
+ * `unknown_hero` is an expected, not-yet-added-to-the-live-economy result
+ * for most chapters past the first few (`HERO_CATALOG` only has 33 active
+ * entries; season2's own chapter-reward map names ~50 chapters' worth of
+ * heroes) — callers should degrade to a plain "chapter complete" message
+ * rather than treat this as a real error. */
+/**
+ * Sweeps every chapter the caller has completed against the server's own
+ * slug→hero_id reward map (`lib/chapterCardRewards.js`'s `SLUG_TO_HERO`,
+ * server-audited 2026-06-24 — every one of the 50 chapters resolves to a
+ * real, live `HERO_CATALOG` entry, unlike what an earlier pass through
+ * this code assumed) and grants whatever's missing. Idempotent — safe to
+ * call after every chapter completion without knowing the reward hero_id
+ * ahead of time; the ONE real advantage over grantHero() above is this
+ * function never needs this app to duplicate that 50-entry map at all.
+ * Returns the hero_ids actually granted this call (usually 0 or 1). */
+export async function reconcileChapterRewards(telegramId: string): Promise<string[]> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(`${SHAHNAMEH_ORIGIN}/api/season2/user/reconcile-chapter-rewards`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telegram_id: telegramId }),
+      signal: controller.signal,
+    });
+    clearTimeout(tid);
+    const json = await res.json();
+    if (json?.status === 1 && Array.isArray(json.granted)) return json.granted;
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export async function grantHero(telegramId: string, heroId: string): Promise<ActionResult<{ alreadyOwned: boolean; level: number; zarPerHour: number }>> {
+  try {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), 10_000);
+    const res = await fetch(`${SHAHNAMEH_ORIGIN}/api/season2/user/grant-hero`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telegram_id: telegramId, hero_id: heroId }),
+      signal: controller.signal,
+    });
+    clearTimeout(tid);
+    const json = await res.json();
+    if (json?.status === 1) {
+      return { ok: true, data: { alreadyOwned: !!json.already_owned, level: json.level ?? 1, zarPerHour: json.zar_per_hour ?? 0 } };
+    }
+    return { ok: false, error: String(json?.error ?? 'unknown_error') };
+  } catch {
+    return { ok: false, error: 'network_error' };
+  }
+}
