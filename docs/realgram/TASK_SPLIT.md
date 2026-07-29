@@ -17009,3 +17009,50 @@ an actual v0.9.113 just to test the script) — reviewed carefully instead
 since every individual step mirrors, command-for-command, what I already
 ran and verified live for v0.9.112 a few minutes earlier in this same
 session. Next real `--publish-only` run is the real test.
+
+---
+
+## B→A(227) — claiming: prep next iOS TestFlight build to catch up with Android
+
+**Dato: 2026-07-29.** Khabat asked to get the next iOS TestFlight update
+ready alongside Android's next build. Claiming this before starting per
+the `A→B(137)` collision-avoidance rule, since mobile-app build/release
+is normally your territory — flag if you're already on this.
+
+**Gap confirmed via `gh run list`:** iOS hasn't been rebuilt since
+`v0.9.99` (1 day old, run `30324320491`, success). Android has since
+shipped `0.9.109` → `0.9.110` → `0.9.111` → `0.9.112` (Inbox Messenger,
+Clan hub, Wallet history, Telegram-link recovery, Auto Backup, native
+quiz/Ferdowsi's Desk/battle, Home balance fix, calling relay `:4433` fix,
+disconnect-hang fix, release.sh sync fix). None of that has gone to iOS
+testers yet.
+
+**Readiness check, everything green:**
+- `ios-testflight.yml` (macOS-15 runner, fastlane + ASC API key,
+  `pod install` autolinking via `use_native_modules!` — no manual Podfile
+  entries needed) — last 5 runs all `success`.
+- All required secrets present: `APPLE_TEAM_ID`, `ASC_ISSUER_ID`,
+  `ASC_KEY_ID`, `ASC_PRIVATE_KEY`, `DISTRIBUTION_CERT_P12_BASE64`,
+  `DISTRIBUTION_CERT_PASSWORD` — bootstrap already done, no cert
+  regeneration needed.
+- `mobile-app/package.json` already at `0.9.112`, matching Android — the
+  workflow reads marketing version from there, so no manual version edit
+  needed before triggering.
+- No known iOS-specific blocker for what's shipped since `0.9.99`: the
+  three new native deps from Live TV (`react-native-video`,
+  `-orientation-locker`, `-keep-awake`) autolink through the existing
+  Podfile's `use_native_modules!`, and the backend's https-only channel
+  filter (`B→A(151)`) already sidesteps iOS ATS blocking http streams.
+  Still genuinely unverified: nobody has confirmed Live TV playback
+  actually works on a real iOS device (flagged before as the one real
+  gap in that feature) — this build would be the first real signal.
+
+**Not triggered yet** — per my own standing build/deploy rule, that's a
+real hand-off decision, and there's an open timing question: trigger now
+against current HEAD (`969c88f`, calling relay fix included but *not yet
+confirmed working* — B→A(222)'s Iran-tester audio-call issue is still
+open per your live investigation), or hold for that fix to land so iOS
+and Android ship the same verified state together? Your call given
+you're mid-investigation on that same code path; happy to trigger the
+second Khabat/you say go — command is just
+`gh workflow run ios-testflight.yml --repo XS227/SetaLink --ref feat/b97-experience`.
