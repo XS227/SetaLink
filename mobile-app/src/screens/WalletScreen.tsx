@@ -21,11 +21,14 @@ import { useAuthStore } from '../stores/authStore';
 import { useT } from '../i18n';
 import { getProfileSummary, ProfileEconomy } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
+import { getActivityTimeline, ActivityEvent } from '../services/activityService';
 
 interface Props {
   onNavigate: (tab: NavTab) => void;
   activeTab:  NavTab;
 }
+
+const WALLET_EVENT_TYPES = new Set(['quota', 'transfer', 'redemption', 'wallet_swap']);
 
 export function WalletScreen({ onNavigate, activeTab }: Props) {
   const { t } = useT();
@@ -50,6 +53,22 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
   }, [deviceId]);
   useEffect(() => { loadEconomy(); }, [loadEconomy]);
 
+  // Transaction history (Khabat, 2026-07-29: "bygg det som mangler" —
+  // getActivityTimeline() already existed, built for §5.10.3's unified
+  // feed, just never called from any screen). Filtered to money/quota
+  // movement specifically — VPN sessions, referrals, and milestones are
+  // real activity.timeline entries too, but not what "transaction
+  // history" means on a wallet screen.
+  const [txHistory, setTxHistory] = useState<ActivityEvent[]>([]);
+  const loadHistory = useCallback(() => {
+    if (!deviceId) return;
+    getActivityTimeline(deviceId, 20, 0)
+      .then((t) => setTxHistory(t.timeline.filter((e) => WALLET_EVENT_TYPES.has(e.type))))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deviceId]);
+  useEffect(() => { loadHistory(); }, [loadHistory]);
+
   // Khabat, 2026-07-27: this screen's own numbers (Data/quota above, Economy
   // card) never refreshed after actually doing the thing that changes them —
   // RealWalletCard already calls onRedeemed after a successful REAL->GB
@@ -59,8 +78,9 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
   // in the app (e.g. an AdMob GB reward on Home).
   const handleRedeemed = useCallback(() => {
     loadEconomy();
+    loadHistory();
     if (deviceId) syncEntitlement(deviceId).then(updateFromEntitlement).catch(() => {});
-  }, [loadEconomy, deviceId, updateFromEntitlement]);
+  }, [loadEconomy, loadHistory, deviceId, updateFromEntitlement]);
 
   const walletMountedRef = useRef(false);
   useEffect(() => {
@@ -123,6 +143,24 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
           </View>
         </GlassCard>
 
+        {txHistory.length > 0 && (
+          <GlassCard style={styles.card}>
+            <Text style={styles.cardTitle}>{t('wallet.historyTitle')}</Text>
+            <View style={styles.historyList}>
+              {txHistory.map((e, i) => (
+                <View key={`${e.ts}-${i}`} style={styles.historyRow}>
+                  <Text style={styles.historyIcon}>{e.icon}</Text>
+                  <View style={styles.historyTextWrap}>
+                    <Text style={styles.historyLabel} numberOfLines={1}>{e.label}</Text>
+                    {!!e.detail && <Text style={styles.historyDetail}>{e.detail}</Text>}
+                  </View>
+                  <Text style={styles.historyTs}>{e.ts.slice(5, 16)}</Text>
+                </View>
+              ))}
+            </View>
+          </GlassCard>
+        )}
+
         <GlassCard style={styles.card}>
           <View style={styles.tonRow}>
             <Text style={styles.cardTitle}>{t('wallet.tonTitle')}</Text>
@@ -151,4 +189,12 @@ const styles = StyleSheet.create({
   quotaLabel:  { fontSize: 11, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   tonRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   tonValue:    { fontSize: 13, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  historyList:    { gap: Spacing[3], marginTop: Spacing[3] },
+  historyRow:     { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  historyIcon:    { fontSize: 16, width: 22, textAlign: 'center' },
+  historyTextWrap:{ flex: 1 },
+  historyLabel:   { fontSize: 13, fontFamily: Typography.family.body, color: Colors.text.primary },
+  historyDetail:  { fontSize: 11, fontFamily: Typography.family.mono, color: Colors.text.muted, marginTop: 1 },
+  historyTs:      { fontSize: 10, fontFamily: Typography.family.mono, color: Colors.text.muted },
 });
