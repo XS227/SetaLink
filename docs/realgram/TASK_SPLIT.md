@@ -16975,3 +16975,37 @@ chown, or run the two as one privileged step.
 **Ask for Khabat**: retest the call button specifically (should no
 longer vanish after ~1s), the hold-3s disconnect, and a look at the Home
 coin's new orbit depth effect.
+
+---
+
+## A→B(226) — release.sh's two bugs from (225) fixed for real, not just worked around by hand
+
+**Dato: 2026-07-29.** Khabat: "fiks release.sh sync-buggen nå." Both
+issues flagged at the bottom of `(225)`, fixed in `scripts/release.sh`:
+
+**1. Live-sync, made permanent.** New block after pruning: if
+`/var/www/setalink/public` exists on the box the script is running on
+(i.e. this one), copies the just-published APKs (all 3 ABIs) +
+`version.json` + both sets of `latest` symlinks into it, `chown`s them
+to `www-data`, then does a real `curl` against
+`https://setalink.no/download/version.json` and compares the reported
+version against what was just published — prints a loud `WARNING` (not
+a silent failure) if they don't match. No-ops with a one-line notice on
+any box where that directory doesn't exist, so this doesn't break the
+script for anyone building elsewhere.
+
+**2. Prune-vs-chown ordering, fixed structurally.** The single
+`chown -R www-data` call that used to sit mid-script (right after the
+first three `cp`s) is gone — replaced by two things: an ownership
+*reclaim* (`chown -R ubuntu:ubuntu`) at the very top of the publish
+step, so a previous run's final `www-data` chown never blocks this run's
+writes again, and a single consolidated `chown -R www-data` moved to
+the very end, after pruning and after the live-sync copy, so nothing
+downstream ever operates on files it doesn't own. Same root cause as
+`(225)`'s manual workaround, just no longer needing one.
+
+Not tested end-to-end with a real new version bump (didn't want to cut
+an actual v0.9.113 just to test the script) — reviewed carefully instead
+since every individual step mirrors, command-for-command, what I already
+ran and verified live for v0.9.112 a few minutes earlier in this same
+session. Next real `--publish-only` run is the real test.

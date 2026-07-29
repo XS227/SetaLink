@@ -130,6 +130,12 @@ for f in "$APK_SRC" "$APK_SRC_ARM32" "$APK_SRC_UNIVERSAL"; do
   fi
 done
 
+# Reclaim ownership from a previous run's final www-data chown (see below)
+# so this run's cp/rm calls succeed as the ubuntu user — without this,
+# every run after the first fails here since the prior run's own chown left
+# these dirs write-only for www-data (ubuntu isn't in that group).
+sudo chown -R ubuntu:ubuntu "$RELEASES_DIR" "$REPO_ROOT/public/assets" "$DOWNLOAD_DIR" 2>/dev/null || true
+
 mkdir -p "$CHANNEL_DIR"
 cp "$APK_SRC" "$APK_DEST"
 ln -sf "$APK_NAME" "$CHANNEL_DIR/setalink-latest.apk"
@@ -144,9 +150,6 @@ echo "    APK (arm32 compat) → $CHANNEL_DIR/$APK_NAME_ARM32"
 cp "$APK_SRC_UNIVERSAL" "$CHANNEL_DIR/$APK_NAME_UNIVERSAL"
 ln -sf "$APK_NAME_UNIVERSAL" "$CHANNEL_DIR/setalink-latest-universal.apk"
 echo "    APK (universal) → $CHANNEL_DIR/$APK_NAME_UNIVERSAL"
-
-# Ensure www-data (the PHP process) can delete old APKs from admin panel.
-sudo chown -R www-data:www-data "$CHANNEL_DIR" 2>/dev/null || true
 
 # Also update assets/ compatibility path and latest symlinks
 cp "$APK_DEST" "$REPO_ROOT/public/assets/$APK_NAME"
@@ -241,6 +244,58 @@ prune_old_apks() {
 prune_old_apks "$CHANNEL_DIR"
 prune_old_apks "$REPO_ROOT/public/assets"
 
+# Ensure www-data (the PHP admin panel) can manage these paths. Must run
+# LAST, after every read/write/prune above — doing this mid-script (as an
+# earlier version did, right after the initial cp calls) meant the prune
+# step's own `rm -f` a few lines later ran as ubuntu against files this
+# same script had just re-owned to www-data one command earlier, failing
+# with "Permission denied" and aborting before ever reaching the git
+# commit/tag (hit exactly this on 2026-07-29 publishing v0.9.112).
+sudo chown -R www-data:www-data "$CHANNEL_DIR" "$REPO_ROOT/public/assets" "$DOWNLOAD_DIR" 2>/dev/null || true
+
+# ── Sync to the live serving directory ──────────────────────────────────────
+# nginx's root for setalink.no is /var/www/setalink/public — a SEPARATE tree
+# from this checkout ($REPO_ROOT) with no automatic sync between them.
+# Everything above only ever touches this checkout, so without this step a
+# "successful" release never actually goes live. Bit us twice: 2026-07-27
+# (PHP files, fixed by hand) and 2026-07-29 (this exact release flow,
+# also fixed by hand at the time — this step is that fix, made permanent).
+# Best-effort: skipped with a warning, not a hard failure, on any box that
+# isn't the setalink.no server itself.
+LIVE_ROOT="/var/www/setalink"
+if [[ -d "$LIVE_ROOT/public" ]]; then
+  echo "==> Syncing release to live serving directory ($LIVE_ROOT)..."
+  LIVE_PUBLIC="$LIVE_ROOT/public"
+  LIVE_CHANNEL_DIR="$LIVE_PUBLIC/releases/$CHANNEL"
+
+  sudo mkdir -p "$LIVE_CHANNEL_DIR" "$LIVE_PUBLIC/assets" "$LIVE_PUBLIC/download"
+
+  sudo cp "$APK_DEST" "$CHANNEL_DIR/$APK_NAME_ARM32" "$CHANNEL_DIR/$APK_NAME_UNIVERSAL" "$LIVE_CHANNEL_DIR/"
+  sudo ln -sf "$APK_NAME" "$LIVE_CHANNEL_DIR/setalink-latest.apk"
+  sudo ln -sf "$APK_NAME_ARM32" "$LIVE_CHANNEL_DIR/setalink-latest-arm32.apk"
+  sudo ln -sf "$APK_NAME_UNIVERSAL" "$LIVE_CHANNEL_DIR/setalink-latest-universal.apk"
+
+  sudo cp "$REPO_ROOT/public/assets/$APK_NAME" "$LIVE_PUBLIC/assets/$APK_NAME"
+
+  sudo cp "$VERSION_JSON" "$LIVE_PUBLIC/download/version.json"
+  sudo ln -sf "../releases/$CHANNEL/$APK_NAME" "$LIVE_PUBLIC/download/setalink-latest.apk"
+  sudo ln -sf "../releases/$CHANNEL/$APK_NAME_ARM32" "$LIVE_PUBLIC/download/setalink-latest-arm32.apk"
+  sudo ln -sf "../releases/$CHANNEL/$APK_NAME_UNIVERSAL" "$LIVE_PUBLIC/download/setalink-latest-universal.apk"
+
+  sudo chown -R www-data:www-data "$LIVE_CHANNEL_DIR" "$LIVE_PUBLIC/assets" "$LIVE_PUBLIC/download"
+
+  # Verify immediately rather than trusting the copy — this is exactly the
+  # kind of drift that went unnoticed for two days last time.
+  LIVE_VERSION=$(curl -fsS "https://setalink.no/download/version.json" 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null || echo "")
+  if [[ "$LIVE_VERSION" == "$NEW_VERSION" ]]; then
+    echo "    Synced and verified live: version.json reports $LIVE_VERSION"
+  else
+    echo "    WARNING: live version.json reports '$LIVE_VERSION', expected '$NEW_VERSION' — check $LIVE_ROOT manually" >&2
+  fi
+else
+  echo "==> Skipping live sync — $LIVE_ROOT not present on this box"
+fi
+
 # ── Git tag ───────────────────────────────────────────────────────────────────
 cd "$REPO_ROOT"
 git add mobile-app/package.json mobile-app/android/app/build.gradle mobile-app/src/utils/version.ts public/download/version.json .gitignore mobile-app/.gitignore
@@ -256,5 +311,6 @@ echo "  APK:      $APK_DEST"
 echo "  Symlink:  $CHANNEL_DIR/setalink-latest.apk → $APK_NAME"
 echo "  Download: $DOWNLOAD_DIR/setalink-latest.apk"
 echo "  version.json: $VERSION_JSON"
+[[ -d "$LIVE_ROOT/public" ]] && echo "  Live:     synced to $LIVE_ROOT (see WARNING above if verification failed)"
 echo ""
 echo "  Push when ready:  git push && git push --tags"
