@@ -10,11 +10,12 @@
  * telegram_id bridge (B->A(132)) the same way Clan join/apply does.
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Animated, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, Vibration, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from 'react-native-svg';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
@@ -68,6 +69,11 @@ export function RealGramHeroesScreen({ onBack }: Props) {
   // grid card that opens a detail sheet on tap, instead of every card
   // showing its full description/buy button inline in a single column.
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  // Khabat, 2026-07-29: "følelsen av å ha betalt ... får jeg ikke" on
+  // upgrade — a real state change with no felt weight. Bumped on every
+  // successful buy/upgrade to key <CoinBurst>, which re-triggers its
+  // animation each time even if the previous run already finished.
+  const [spendBurst, setSpendBurst] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -92,6 +98,8 @@ export function RealGramHeroesScreen({ onBack }: Props) {
     if (result.ok) {
       showToast(t('heroes.acquired').replace('{name}', hero.name), 'success');
       setOwned((prev) => new Map(prev).set(hero.slug, { hero_id: hero.slug, level: result.data.level, zar_per_hour: result.data.zar_per_hour }));
+      Vibration.vibrate(SPEND_HAPTIC);
+      setSpendBurst((n) => n + 1);
     } else {
       showToast(buyErrorCopy(result.error, t) || t('heroes.errBuyGeneric'), 'error');
     }
@@ -105,6 +113,8 @@ export function RealGramHeroesScreen({ onBack }: Props) {
     if (result.ok) {
       showToast(t('heroes.upgraded').replace('{name}', hero.name).replace('{level}', String(result.data.level)), 'success');
       setOwned((prev) => new Map(prev).set(hero.slug, { hero_id: hero.slug, level: result.data.level, zar_per_hour: result.data.zar_per_hour }));
+      Vibration.vibrate(SPEND_HAPTIC);
+      setSpendBurst((n) => n + 1);
     } else {
       showToast(buyErrorCopy(result.error, t) || t('heroes.errUpgradeGeneric'), 'error');
     }
@@ -196,6 +206,7 @@ export function RealGramHeroesScreen({ onBack }: Props) {
                     owned={ownedHero}
                     prereqMet={prereqMet}
                     pending={pendingSlug === hero.slug}
+                    spendBurst={spendBurst}
                     onBuy={() => handleBuy(hero)}
                     onUpgrade={() => handleUpgrade(hero)}
                   />
@@ -212,6 +223,85 @@ export function RealGramHeroesScreen({ onBack }: Props) {
   );
 }
 
+// Khabat, 2026-07-29: haptic for "you just spent coins" on a successful
+// buy/upgrade — distinct from every other haptic in the app (single tap
+// elsewhere, the long ring pattern in callStore.ts) so a spend reads as
+// its own, deliberate thing eyes-free. No audio asset/native sound
+// dependency exists anywhere in this app yet (checked) — a real "cha-ching"
+// SFX needs both a new native module (expo-av/react-native-sound) and an
+// actual sound file supplied by design/audio, not something to improvise
+// blind in this pass. Vibration + the CoinBurst animation below are the
+// real, working half of that ask in the meantime.
+const SPEND_HAPTIC = [0, 30, 40, 60];
+
+// Bottom scrim so a card's name/status text stays legible over any image,
+// and the card reads as a "poster" rather than a flat thumbnail — cheap
+// cinematic cue reused from GlassCard's own CarvedOverlay technique
+// (react-native-svg gradient, no new dependency).
+function ImageScrim({ width, height }: { width: number; height: number }) {
+  if (!width || !height) return null;
+  return (
+    <Svg width={width} height={height} style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <Defs>
+        <SvgLinearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0%" stopColor="#000000" stopOpacity={0} />
+          <Stop offset="60%" stopColor="#000000" stopOpacity={0} />
+          <Stop offset="100%" stopColor="#0A0A0E" stopOpacity={0.85} />
+        </SvgLinearGradient>
+      </Defs>
+      <Rect x={0} y={0} width={width} height={height} fill="url(#scrim)" />
+    </Svg>
+  );
+}
+
+// Khabat, 2026-07-29: "en kreativ måte hvor mye ZAR den skaper pr time" —
+// a glanceable yield badge on the card itself, not just buried in the
+// detail sheet. Gold pill so it reads as a value/rate indicator at a
+// glance, same visual language as the rest of the gold theme.
+function YieldBadge({ rate }: { rate: number }) {
+  return (
+    <View style={styles.yieldBadge}>
+      <Text style={styles.yieldBadgeText}>🪙 {rate}/h</Text>
+    </View>
+  );
+}
+
+// Khabat, 2026-07-29: "følelsen av å ha betalt ... får jeg ikke" — a small
+// coin that pops and rises off the action button on a successful spend,
+// same spirit as the CTA-button->shop idea, simplified to something safe
+// to ship unverified (no cross-screen coordinate math to get wrong).
+function CoinBurst({ trigger }: { trigger: number }) {
+  const translateY = useRef(new Animated.Value(0)).current;
+  const opacity     = useRef(new Animated.Value(0)).current;
+  const scale       = useRef(new Animated.Value(0.6)).current;
+
+  useEffect(() => {
+    if (trigger === 0) return;
+    translateY.setValue(0);
+    opacity.setValue(1);
+    scale.setValue(0.6);
+    Animated.parallel([
+      Animated.timing(translateY, { toValue: -56, duration: 700, useNativeDriver: true }),
+      Animated.timing(scale,      { toValue: 1.15, duration: 220, useNativeDriver: true }),
+      Animated.sequence([
+        Animated.delay(300),
+        Animated.timing(opacity, { toValue: 0, duration: 400, useNativeDriver: true }),
+      ]),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger]);
+
+  if (trigger === 0) return null;
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.coinBurst, { opacity, transform: [{ translateY }, { scale }] }]}
+    >
+      <Text style={styles.coinBurstText}>🪙</Text>
+    </Animated.View>
+  );
+}
+
 /** Compact 3-column grid card — image/rarity dot, name, one status line
     (locked / owned level / price). Tap opens the full HeroDetail sheet. */
 function HeroGridCard({
@@ -222,6 +312,7 @@ function HeroGridCard({
   const { t } = useT();
   const color = rarityColor(hero.rarity);
   const locked = !owned && !prereqMet;
+  const [imgSize, setImgSize] = useState({ width: 0, height: 0 });
   const statusLine = owned
     ? t('heroes.levelShort').replace('{level}', String(owned.level))
     : prereqMet
@@ -229,8 +320,14 @@ function HeroGridCard({
       : `🔒 ${t('heroes.locked')}`;
   return (
     <TouchableOpacity style={styles.gridCardTouch} onPress={onPress} activeOpacity={0.85}>
-      <GlassCard style={styles.gridCard} glowColor={owned ? color : undefined} noPadding>
-        <View style={styles.gridImageWrap}>
+      {/* Cinematic glassy-gold treatment (Khabat, 2026-07-29): a subtle gold
+          glow on every card, not just owned ones, so the whole roster reads
+          as valuable collectibles rather than only the ones already bought. */}
+      <GlassCard style={styles.gridCard} glowColor={owned ? color : Colors.gold[400]} noPadding>
+        <View
+          style={styles.gridImageWrap}
+          onLayout={(e) => setImgSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+        >
           {hero.image_url ? (
             <Image source={{ uri: hero.image_url }} style={styles.gridImage} resizeMode="cover" />
           ) : (
@@ -238,6 +335,8 @@ function HeroGridCard({
               <View style={[styles.rarityDot, { backgroundColor: color }]} />
             </View>
           )}
+          <ImageScrim width={imgSize.width} height={imgSize.height} />
+          <YieldBadge rate={owned ? owned.zar_per_hour : hero.zar_per_hour} />
           {locked && <View style={styles.gridLockOverlay}><Text style={styles.gridLockIcon}>🔒</Text></View>}
         </View>
         <Text style={[styles.gridName, locked && styles.textMuted]} numberOfLines={1}>{hero.name}</Text>
@@ -251,18 +350,27 @@ function HeroGridCard({
     old single-column card used to show inline, just moved into the tap
     target instead of always-visible. */
 function HeroDetail({
-  hero, owned, prereqMet, pending, onBuy, onUpgrade,
+  hero, owned, prereqMet, pending, spendBurst, onBuy, onUpgrade,
 }: {
-  hero: HeroCatalogEntry; owned?: OwnedHero; prereqMet: boolean; pending: boolean;
+  hero: HeroCatalogEntry; owned?: OwnedHero; prereqMet: boolean; pending: boolean; spendBurst: number;
   onBuy: () => void; onUpgrade: () => void;
 }) {
   const { t } = useT();
   const color = rarityColor(hero.rarity);
   return (
     <View style={{ gap: Spacing[3] }}>
+      {/* Khabat, 2026-07-29: "noen bilder er liggende og noen er stående...
+          bilde [må] ikke bli kutta" — was a fixed-height box on
+          resizeMode="cover", which crops portrait images hard. `contain`
+          guarantees the full image always shows, letterboxed on whichever
+          axis doesn't match; the gold-tinted backdrop below makes that
+          letterboxing look like a designed mat, not empty space. */}
       <View style={styles.detailImageWrap}>
         {hero.image_url ? (
-          <Image source={{ uri: hero.image_url }} style={styles.detailImage} resizeMode="cover" />
+          <>
+            <View style={styles.detailImageBackdrop} />
+            <Image source={{ uri: hero.image_url }} style={styles.detailImage} resizeMode="contain" />
+          </>
         ) : (
           <View style={[styles.detailImage, styles.gridImageFallback]}>
             <View style={[styles.rarityDot, { backgroundColor: color, width: 20, height: 20, borderRadius: 10 }]} />
@@ -281,20 +389,23 @@ function HeroDetail({
       {!owned && !prereqMet && !!hero.unlock_requirement && (
         <Text style={styles.unlockText}>🔒 {hero.unlock_requirement}</Text>
       )}
-      <TouchableOpacity
-        onPress={owned ? onUpgrade : onBuy}
-        disabled={pending || (!owned && !prereqMet)}
-        style={[styles.actionBtn, (pending || (!owned && !prereqMet)) && styles.actionBtnDisabled]}
-        activeOpacity={0.85}
-      >
-        {pending
-          ? <ActivityIndicator size="small" color={Colors.bg.void} />
-          : <Text style={styles.actionBtnText}>
-              {owned
-                ? t('heroes.upgradeAction').replace('{cost}', String(hero.cost * owned.level))
-                : t('heroes.buyAction').replace('{cost}', String(hero.cost))}
-            </Text>}
-      </TouchableOpacity>
+      <View style={styles.actionBtnWrap}>
+        <TouchableOpacity
+          onPress={owned ? onUpgrade : onBuy}
+          disabled={pending || (!owned && !prereqMet)}
+          style={[styles.actionBtn, (pending || (!owned && !prereqMet)) && styles.actionBtnDisabled]}
+          activeOpacity={0.85}
+        >
+          {pending
+            ? <ActivityIndicator size="small" color={Colors.bg.void} />
+            : <Text style={styles.actionBtnText}>
+                {owned
+                  ? t('heroes.upgradeAction').replace('{cost}', String(hero.cost * owned.level))
+                  : t('heroes.buyAction').replace('{cost}', String(hero.cost))}
+              </Text>}
+        </TouchableOpacity>
+        <CoinBurst trigger={spendBurst} />
+      </View>
     </View>
   );
 }
@@ -318,7 +429,7 @@ const styles = StyleSheet.create({
   gridRow:  { gap: Spacing[3] },
   gridCardTouch: { flex: 1 / 3 },
   gridCard: { gap: 0, overflow: 'hidden' },
-  gridImageWrap: { width: '100%', aspectRatio: 1 },
+  gridImageWrap: { width: '100%', aspectRatio: 1, overflow: 'hidden' },
   gridImage: { width: '100%', height: '100%' },
   gridImageFallback: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.elevated },
   gridLockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.55)', alignItems: 'center', justifyContent: 'center' },
@@ -326,9 +437,30 @@ const styles = StyleSheet.create({
   gridName:   { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingHorizontal: Spacing[2], paddingTop: Spacing[2] },
   gridStatus: { fontSize: 10, fontFamily: Typography.family.mono, paddingHorizontal: Spacing[2], paddingBottom: Spacing[2], paddingTop: 2 },
 
+  // Value/yield badge overlaid on each grid card's image, bottom-left —
+  // "how much ZAR this generates per hour," visible without opening the
+  // detail sheet (Khabat, 2026-07-29).
+  yieldBadge: {
+    position: 'absolute', left: Spacing[2], bottom: Spacing[2],
+    backgroundColor: 'rgba(10,8,2,0.72)', borderRadius: Radius.md,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.5)',
+    paddingHorizontal: Spacing[2], paddingVertical: 2,
+  },
+  yieldBadgeText: { fontSize: 10, fontFamily: Typography.family.mono, color: Colors.gold[300] },
+
   rarityDot: { width: 10, height: 10, borderRadius: 5 },
 
-  detailImageWrap: { width: '100%', height: 220, borderRadius: Radius.xl, overflow: 'hidden', backgroundColor: Colors.bg.elevated },
+  detailImageWrap: {
+    width: '100%', height: 240, borderRadius: Radius.xl, overflow: 'hidden',
+    backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center',
+  },
+  // Gold-tinted mat behind a `contain`-mode image — so a portrait image
+  // that doesn't fill the width still looks intentionally framed rather
+  // than sitting on empty space either side (Khabat, 2026-07-29).
+  detailImageBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(212,175,55,0.06)',
+  },
   detailImage: { width: '100%', height: '100%' },
   detailName:  { fontSize: 20, fontFamily: Typography.family.heading, color: Colors.text.primary, flex: 1 },
 
@@ -349,9 +481,12 @@ const styles = StyleSheet.create({
   levelText:  { fontSize: 11, color: Colors.text.secondary, fontFamily: Typography.family.body },
   unlockText: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: Spacing[2] },
 
+  actionBtnWrap: { position: 'relative' },
   actionBtn: { backgroundColor: Colors.gold[400], borderRadius: Radius.lg, paddingVertical: Spacing[2], alignItems: 'center' },
   actionBtnDisabled: { opacity: 0.5 },
   actionBtnText: { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.bg.void },
+  coinBurst: { position: 'absolute', alignSelf: 'center', top: -8 },
+  coinBurstText: { fontSize: 22 },
 
   errorText: { fontSize: 13, color: '#FF6B6B', textAlign: 'center', fontFamily: Typography.family.body, paddingHorizontal: Spacing[6] },
   backBtnFallback: { backgroundColor: Colors.gold[400], borderRadius: Radius.xl, paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },

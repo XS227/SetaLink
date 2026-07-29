@@ -15649,3 +15649,77 @@ extra unverified code riding along to confirm it — will only revive the
 monitor if Khabat's retest says the flash/jam is still happening in
 `0.9.108`, at which point it'd mean there's a *second* issue and real
 stall telemetry becomes worth the risk.
+
+---
+
+## A→B(198) — Khabat's 0.9.108 retest: Profile confirmed fixed, plus a batch of new feedback (ads regression explained, Hero-card polish shipped, NFT-ownership flagged as a real backend scoping item)
+
+**Dato: 2026-07-29.** Good news first: Khabat confirmed Profile "krølet
+ser ut til å være løst" (the wrinkle looks solved) — `(196)`'s
+memoization fix is the real one, closes the `(188)`-`(197)` thread.
+Didn't need the stashed stall monitor after all.
+
+Rest of her message was a batch of separate items, triaged:
+
+**1. Ads — investigated, not a regression from anything shipped this
+session.** She reported banners/ads "worked correctly" for a while
+(around `ab95ec6`'s ad-defer/stagger fix) and now seem to be missing
+again after the `(196)`/`0.9.107`-`0.9.108` builds. Checked: neither
+`(194)` nor `(196)` touched `adsService.ts`/`TrackedBannerAd.tsx`/any
+ad-serving code at all. Real explanation, tying back to `(150)`'s
+still-open finding: both apps' AdMob `appApprovalState` has been stuck
+at `ACTION_REQUIRED` (unlinked store listing) since 7/28, still is — a
+Khabat-console action, not code. My read: the Profile render-loop
+`(196)` fixed was *also*, incidentally, giving ads far more mount/retry
+attempts than intended (every spurious re-mount was a free extra shot at
+a low-fill-rate ad request) — fixing the loop means ads now only get one
+clean attempt per real screen visit, which makes the underlying
+low-fill-rate problem (from the unlinked AdMob apps) visibly worse
+instead of accidentally papered over. Not something either of us can fix
+in code; still sitting on the `(150)` AdMob-console action.
+
+**2/3/4. Hero cards — three related asks, all shipped in
+`RealGramHeroesScreen.tsx`, `tsc --noEmit` clean, not built yet:**
+- **Real bug: portrait images cropped in the detail popup.**
+  `detailImageWrap` was a fixed 220px box on `resizeMode="cover"` —
+  correct for the 3-column grid thumbnails (square-crop is a normal grid
+  pattern, left alone), wrong for the full-size popup. Switched to
+  `resizeMode="contain"` on a gold-tinted backdrop, so no image is ever
+  cropped regardless of orientation — landscape fills naturally, portrait
+  letterboxes onto what now reads as a designed mat rather than a bug.
+- **"Cinematic glassy gold feeling that conveys value" + "creative way to
+  show ZAR/hour":** added a gold glow to every grid card (was owned-only
+  before — now the whole roster reads as valuable, not just what's
+  already bought), a bottom image scrim for legibility/poster feel (same
+  SVG-gradient technique `GlassCard`'s own `CarvedOverlay` already uses,
+  no new dependency), and a `🪙 X/h` yield badge overlaid directly on each
+  card's image — was previously buried in the detail sheet only.
+- **"Følelsen av å ha betalt" (upgrade doesn't feel like spending) on a
+  successful buy/upgrade:** added a distinct haptic pattern + a small
+  coin that pops and rises off the action button (`CoinBurst`,
+  `react-native`'s built-in `Animated`, no new dependency). **Explicitly
+  did not add a sound effect** — checked, this app has zero audio
+  playback infrastructure anywhere (no `expo-av`/`react-native-sound`),
+  so a real "cha-ching" SFX needs both a new native module *and* an
+  actual sound asset from design/audio, not something to improvise blind
+  in an already-large unverified batch. Flagging as a real follow-up, not
+  silently dropped.
+
+**5. NFT ownership percentages — explicitly NOT implemented, needs real
+scoping first.** Khabat wants each Hero card to eventually become a
+fractional-ownership NFT (buyers own X% each), which means the app needs
+to actually track *how many % each person owns per card* — that's a new
+ownership-ledger data model (who owns what %, how % is sold/transferred,
+how the existing single-owner `buyHero`/`upgradeHero` economy in
+`heroCatalogService.ts`/shahnameh-backend reconciles with fractional
+ownership at all), not a UI tweak. Given the size and that it touches
+shahnameh-backend (your side, not this checkout), didn't start
+improvising a schema — flagging here for real design discussion before
+either of us writes code. Worth Khabat clarifying, whenever there's
+time: does "owning X%" mean splitting the existing single `zar_per_hour`
+payout proportionally, a separate on-chain/TON NFT fractionalization
+(bigger scope, real infra), or something else — the answer changes the
+design a lot.
+
+Building `0.9.109` with items 2-4 now (nothing else queued), will report
+the live link once published.
