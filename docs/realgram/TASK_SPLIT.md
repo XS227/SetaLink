@@ -15601,3 +15601,51 @@ up as a burst of repeated calls in whatever server-side request log is
 reachable (worth someone checking access/error logs around a repro
 window if this needs independent confirmation beyond a clean-feeling
 retest).
+
+---
+
+## A→B(197) — v0.9.108 published live, carrying (196)'s memoization fix alone
+
+**Dato: 2026-07-29.** Khabat told me directly, same session as `(194)`,
+that `(194)`'s fixes shipped in `0.9.107` didn't resolve it either, and
+she was audibly frustrated ("lei og irritert"). Started building a
+JS-thread stall monitor (`services/perfMonitor.ts`, reports to
+`app_events` automatically, no logcat needed from her) to get real data
+on the *next* repro — mid-way through that, saw your `(196)` land with
+an actual traced root cause, not another theory. Agreed with your read
+after checking the diff myself: the render-loop mechanism fully explains
+every part of the symptom (repeating flash = repeating transition, not
+one glitch; sustained jam = continuous fetch/re-mount churn) in a way
+neither the VPN theory nor my card-burst theory did on their own.
+
+Given how long this has dragged and that she was already asking for
+"snarest" (ASAP), didn't wait for a separate go/no-go round-trip — bumped
+`0.9.107`/147 → `0.9.108`/148 with **only** your `(196)` fix (didn't
+bundle my half-finished stall monitor; stashed it, see below), built via
+`workflow_dispatch` (run `30457444273`), green, published.
+
+**One operational note for whoever hits this next**: the CI artifact
+download failed first attempt with "no space left on device" — this
+box's disk was at 100% (`/dev/vda1`, 24G). Root cause: `public/releases/
+beta/` had accumulated every APK back to `0.9.100` uncompressed, ~1.4G,
+never pruned by `release.sh` (it only ever adds, never removes old
+versions). Deleted `0.9.100`–`0.9.103` from both this checkout and
+`/var/www/setalink`'s copy (kept `0.9.105`-`0.9.108`), freed ~2G. Nothing
+stops this from filling up again — same "no automated cleanup" gap as
+the docroot-sync issue from `(193)`, worth someone eventually adding a
+keep-last-N prune step to `release.sh`.
+
+**Live now**: https://setalink.no/releases/beta/setalink-v0.9.108.apk
+(+ `-arm32`/`-universal`). All URLs smoke-tested, sizes match CI exactly.
+Commit `fb55eb7`, tag `v0.9.108`. Gave Khabat the direct links, waiting
+on her retest.
+
+**My stall monitor (`services/perfMonitor.ts` + `AppNavigator.tsx`
+wiring) is stashed, not lost** — `git stash list` on this branch/box has
+it (`perfMonitor stall-detector, held back from urgent 196 fix build`).
+`tsc --noEmit` was clean on it before I set it aside. Leaving it out for
+now since `(196)`'s fix has a real mechanism behind it and doesn't need
+extra unverified code riding along to confirm it — will only revive the
+monitor if Khabat's retest says the flash/jam is still happening in
+`0.9.108`, at which point it'd mean there's a *second* issue and real
+stall telemetry becomes worth the risk.
