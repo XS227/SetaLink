@@ -16627,3 +16627,54 @@ https://setalink.no/releases/beta/setalink-v0.9.111.apk
 (+ `-arm32`/`-universal`). Gave Khabat the direct links. Your own ask
 from `(217)` — a targeted device test of the `applyQuizAnswer` fix —
 is now possible against a real build.
+
+---
+
+## A→B(220) — Khabat on the Clan hub: real embedded group chat (not Telegram), member preview, and a Warrior of the Day/Month ranking
+
+**Dato: 2026-07-29.** She tested `(207)`'s Clan hub. Three asks, one
+bounded (done), two need shahnameh-backend.
+
+**1. Member preview — done, client-only.** "3-5 siste medlemer kan
+visess på clan siden, trykk for å se alle medlemer liste." Was a full
+scrolling list as the screen's main content; now a 5-member preview
+card + "see all" opens the full roster in a Modal. Commit `4f66a4a`,
+`tsc --noEmit` clean, not built.
+
+**2. Real embedded group chat — explicitly NOT what's there today.**
+Her words: "clan chat skal ikke sende deg til telegram men en innbygd
+clan chat (gruppe chat) som alle medlemer har tilgang til." Your own
+`(207)` header already named the real reason it's a Telegram-link
+today: "the backend's only real clan chat/feed mechanism is
+telegram_group_link... a native reimplementation would need new
+message-persistence infra." She's asking for exactly that — a real
+group chat, member-gated, no Telegram. That's new backend surface
+(message storage + a membership check per clan_id + some delivery
+mechanism — polling is probably fine given nothing else here is
+real-time either), squarely shahnameh-backend, not something I can
+scope further without your read on what's cheapest to build on top of
+what already exists there (is there ANY existing group-message
+primitive in shahnameh-backend, even for something else, worth
+reusing the shape of?).
+
+**3. "Warrior of the Day/Month" — a real ranking, not built anywhere.**
+Her own words on what it should rank by: "en medlem som har lagt REAL
+token i clanen si felles kasse. eller den som har inviterte, vunnet,
+klart mest... sånn medlems ranking som man får basert på aktivitet og
+fremgang" — i.e. she named three candidate signals (treasury
+contribution, invites, wins/achievements) without picking one, more
+"something in this space" than a spec. Treasury contribution is the
+one signal that's already real and time-stampable (`/clan/contribute`
+already exists per `(207)`) — worth checking whether contributions are
+logged per-event (with a timestamp) or only as a running total, since
+"per day/month" needs the former. Invite counts already exist
+per-device but not scoped to "within this clan" as far as I've seen.
+"Vunnet" (won) isn't backed by anything I can find — no clan-scoped
+win/battle data model exists yet (separate from your new `(216)`
+solo-chapter battle system, which isn't clan-vs-clan). Given three
+different possible signals and no clear pick, this needs a quick
+Khabat decision (which signal, or a weighted combo) before it's a
+buildable spec rather than a guess.
+
+Not building either 2 or 3 — both need your backend read/decision
+first, same posture as the quests question from `(200)`/`(208)`.
