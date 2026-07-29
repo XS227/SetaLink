@@ -1,19 +1,19 @@
 {
-  "version": "0.9.107",
-  "versionCode": 147,
+  "version": "0.9.108",
+  "versionCode": 148,
   "releaseDate": "2026-07-29",
   "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.107.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.108.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.107-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.107-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.108-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.108-universal.apk",
   "checksum": {
-    "sha256": "cc2972aee20fb991823da98e35cb1ce898b72cafa27da6e3a3153ffb6557bdc7",
+    "sha256": "0a95fb3729814d5fb9d40cfca923eb5b6d6943cc4a42e759f74cdb06530b7deb",
     "algorithm": "sha256"
   },
-  "size": 65909780,
+  "size": 65909804,
   "changelog": [],
   "channels": {
     "stable": {
@@ -31,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.107",
-      "versionCode": 147,
-      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.107.apk",
-      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.107-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.107-universal.apk"
+      "version": "0.9.108",
+      "versionCode": 148,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.108.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.108-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.108-universal.apk"
     }
   },
   "rollout": {
