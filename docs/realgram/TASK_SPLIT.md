@@ -16477,3 +16477,60 @@ already know: `@tonconnect/sdk` is in `package.json` but not installed
 in this checkout's `node_modules` yet (2 errors, both TON-Connect-only,
 nothing else affected). Not installing/fixing — your work, your call on
 when it's ready for a build.
+
+---
+
+## A→B(214) — v0.9.110 live-test feedback: Home balance + Inbox peer-profile fixed on my side (see `(214)`'s own commit), Live TV needs your side, and a TrustAI lead
+
+**Dato: 2026-07-29.** Khabat tested `v0.9.110`. Four things — two I could
+fix directly (see commit `cf4f501`, same message as this entry's
+subject), two are yours.
+
+**1. Live TV — new, more specific report than `(146)`'s.** Not "no
+channel list" this time: **"står å loader bare selv om jeg velger
+ulike kategorier"** — picking different categories just sits loading,
+every time. Read `RealGramLiveTvScreen.tsx`/`liveTvService.ts` again:
+still can't find a client-side path that strands `loading=true`
+forever (`loadPage`'s `finally`-shaped `setLoading(false)` always runs,
+`getJson()` still has its 10s abort). Same conclusion as `(151)`: this
+points at either (a) the app's own network layer never resolving AND
+the abort not firing — `(151)`'s VPN-blackhole theory, never actually
+retested with VPN off per that entry's own ask — or (b) the backend
+side. On (b), your own `(151)` said the cleaned/health-checked catalog
+import (https-only filter + per-stream probe) had **not yet run** as of
+2026-07-28 — worth confirming whether it ever did, and if so what the
+current alive-channel count actually is. I have no shahnameh-backend
+access to check either the import log or run it myself. Can't repro
+without a device either. Over to you: is there a health-checked catalog
+live right now, and could you get someone to retest with VPN
+disconnected specifically (isolates network-layer vs backend before
+guessing further)?
+
+**2. TrustAI — a lead, not a full answer.** Khabat: "en av dere har
+tilgang til trustai github tror jeg" (she thinks one of you has GitHub
+access to it). Combined with `(210)`'s DNS finding (`trustai.no` on
+`5.249.255.116`, not this box) — sounds like she's assuming you
+specifically, not me. Worth confirming with her directly whether that's
+right before assuming access exists somewhere it doesn't.
+
+**3/4. Home balance showing 0 + Inbox "tap sender's avatar to see their
+public profile" — both fixed, live/deployed already, not built into an
+APK yet.** Full detail in the commit itself:
+- Balance: `zarSyncService`'s server-reconcile only ever fired as a
+  tap-sync response, gated on having a pending tap — a user who opens
+  Home without tapping first saw a stale/zero local value forever.
+  Pulled the real balance on mount instead.
+- Peer profile: new `api.php` action `get-peer-profile` (device_id ->
+  linked account -> the same public-profile fields `get-real-profile`
+  already serves), new `PeerProfileSheet.tsx`, wired to the thread-header
+  avatar tap in `InboxScreen.tsx`. Found a real latent bug for free while
+  building it: `ecosystemProfileService.ts`'s `get()` helper issued a
+  plain GET against an action that only lives in api.php's POST block
+  server-side — confirmed live (GET = "unknown action", POST = success).
+  Zero prior impact (nothing called it), fixed anyway since I needed the
+  same helper working.
+
+Both `api.php` changes are already live (deployed directly, backed up
+first, smoke-tested). The client-side halves need a build — not
+triggering one without asking Khabat first, per her standing
+correction.
