@@ -27,25 +27,37 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
 import { ShahnamehEmbed } from '../components/ShahnamehEmbed';
+import { GoldenUnlockPopup } from '../components/GoldenUnlockPopup';
 import { useT } from '../i18n';
+import { localizedField } from '../utils/localizedField';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
-import { getChapterLore, ChapterLore, ChapterScene } from '../services/chapterLoreService';
+import {
+  getChapterLore, ChapterLore, ChapterScene, ChapterCardRef,
+  isCardUnlocked, cardsUnlockedBySceneRead,
+} from '../services/chapterLoreService';
 import { getReadSceneIds, markSceneRead, isSceneUnlocked } from '../services/chapterProgressStore';
 
 interface Props {
   slug: string;
   onBack: () => void;
+  // Deep-links into RealGramHeroesScreen at a specific card — used both by
+  // the "Cards from this chapter" section and GoldenUnlockPopup's CTA
+  // (2026-07-29, "knytt kortene til historiene").
+  onOpenHeroes: (cardSlug: string) => void;
 }
 
-export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
+export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Props) {
   const insets = useSafeAreaInsets();
-  const { t, isRTL } = useT();
+  const { t, lang, isRTL } = useT();
   const [catalogEntry, setCatalogEntry] = useState<ChapterCatalogEntry | null>(null);
   const [lore, setLore]           = useState<ChapterLore | null>(null);
   const [readIds, setReadIds]     = useState<Set<string>>(() => getReadSceneIds(slug));
   const [error, setError]         = useState('');
   const [loaded, setLoaded]       = useState(false);
   const [showFullEmbed, setShowFullEmbed] = useState(false);
+  // Golden "card unlocked" popup queue — a single scene can gate more than
+  // one card (rare in the source data, but handle it rather than drop it).
+  const [unlockQueue, setUnlockQueue] = useState<ChapterCardRef[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,8 +75,25 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
   }, [slug, t]);
 
   const handleSceneRead = useCallback((sceneId: string) => {
+    // Khabat, 2026-07-29: "når en er ferdig med det han skal på hver
+    // kapitel så kommer en golden popup opp at kort x er nå tilgjengelig
+    // for mining/oppgradering" — check BEFORE updating readIds, so a card
+    // already unlocked by an earlier scene doesn't re-trigger the popup.
+    if (lore) {
+      const newlyUnlocked = cardsUnlockedBySceneRead(lore, sceneId, readIds);
+      if (newlyUnlocked.length > 0) setUnlockQueue((q) => [...q, ...newlyUnlocked]);
+    }
     setReadIds(markSceneRead(slug, sceneId));
-  }, [slug]);
+  }, [slug, lore, readIds]);
+
+  const dismissUnlockPopup = useCallback(() => {
+    setUnlockQueue((q) => q.slice(1));
+  }, []);
+
+  const handleViewUnlockedCard = useCallback((cardSlug: string) => {
+    setUnlockQueue((q) => q.slice(1));
+    onOpenHeroes(cardSlug);
+  }, [onOpenHeroes]);
 
   if (showFullEmbed) {
     return (
@@ -89,6 +118,10 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
   }
 
   const scenes = lore?.scenes ?? [];
+  const title   = catalogEntry ? localizedField(catalogEntry.title, catalogEntry.title_fa, catalogEntry.title_ru, lang) : lore?.slug;
+  const summary = catalogEntry ? localizedField(catalogEntry.summary, catalogEntry.summary_fa, catalogEntry.summary_ru, lang) : '';
+  const loreSummary = lore ? localizedField(lore.lore_summary, lore.lore_summary_fa, lore.lore_summary_ru, lang) : '';
+  const chapterCards = lore ? [...lore.characters, ...lore.places] : [];
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -119,14 +152,40 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
                   <Image source={{ uri: catalogEntry.image_url }} style={styles.heroImage} resizeMode="contain" />
                 </View>
               )}
-              <Text style={styles.pageTitle}>{catalogEntry?.title ?? lore?.slug}</Text>
-              {!!catalogEntry?.summary && <Text style={styles.pageSub}>{catalogEntry.summary}</Text>}
+              <Text style={styles.pageTitle}>{title}</Text>
+              {!!summary && <Text style={styles.pageSub}>{summary}</Text>}
 
-              {!!lore?.lore_summary && (
+              {!!loreSummary && (
                 <GlassCard style={styles.loreCard}>
                   <Text style={styles.loreLabel}>{t('chapterdetail.chronicleLabel')}</Text>
-                  <Text style={styles.loreText}>{lore.lore_summary}</Text>
+                  <Text style={styles.loreText}>{loreSummary}</Text>
                 </GlassCard>
+              )}
+
+              {/* Cards from this chapter — Khabat, 2026-07-29: "knytt
+                  kortene til historiene." Same characters[]/places[] data
+                  chapter.js's own battle-requirement gating already reads
+                  (chapterLoreService.ts header has the full story); shown
+                  here as a compact strip that hands off to the real
+                  ownership/buy UI in Heroes rather than duplicating it. */}
+              {chapterCards.length > 0 && (
+                <>
+                  <Text style={styles.sectionLabel}>{t('chapterdetail.cardsFromChapter')}</Text>
+                  <FlatList
+                    data={chapterCards}
+                    keyExtractor={(c) => c.slug}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.cardStrip}
+                    renderItem={({ item }) => (
+                      <ChapterCardChip
+                        card={item}
+                        unlocked={isCardUnlocked(item, readIds)}
+                        onPress={() => onOpenHeroes(item.slug)}
+                      />
+                    )}
+                  />
+                </>
               )}
 
               {scenes.length > 0 && <Text style={styles.sectionLabel}>{t('chapterdetail.scenes')}</Text>}
@@ -150,15 +209,48 @@ export function RealGramChapterDetailScreen({ slug, onBack }: Props) {
           }
         />
       )}
+
+      <GoldenUnlockPopup
+        card={unlockQueue[0] ?? null}
+        onViewCard={handleViewUnlockedCard}
+        onDismiss={dismissUnlockPopup}
+      />
     </View>
+  );
+}
+
+/** Compact horizontal chip for the "cards from this chapter" strip — image,
+    name, lock state. Taps hand off to the real Heroes screen (own ownership/
+    buy/upgrade UI) rather than duplicating it here. */
+function ChapterCardChip({ card, unlocked, onPress }: {
+  card: ChapterCardRef; unlocked: boolean; onPress: () => void;
+}) {
+  const { lang } = useT();
+  const name = localizedField(card.name, card.name_fa, card.name_ru, lang);
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85} style={styles.cardChipTouch}>
+      <GlassCard style={styles.cardChip} noPadding glowColor={unlocked ? Colors.gold[400] : undefined}>
+        <View style={styles.cardChipImageWrap}>
+          {card.image ? (
+            <Image source={{ uri: card.image }} style={styles.cardChipImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.cardChipImage, styles.cardChipImageFallback]} />
+          )}
+          {!unlocked && <View style={styles.cardChipLockOverlay}><Text style={styles.cardChipLockIcon}>🔒</Text></View>}
+        </View>
+        <Text style={[styles.cardChipName, !unlocked && styles.textMuted]} numberOfLines={1}>{name}</Text>
+      </GlassCard>
+    </TouchableOpacity>
   );
 }
 
 function SceneCard({ scene, unlocked, read, onRead }: {
   scene: ChapterScene; unlocked: boolean; read: boolean; onRead: () => void;
 }) {
-  const { t } = useT();
+  const { t, lang } = useT();
   const [expanded, setExpanded] = useState(false);
+  const title = localizedField(scene.title, scene.title_fa, scene.title_ru, lang);
+  const body  = localizedField(scene.body, scene.body_fa, scene.body_ru, lang);
 
   const handlePress = () => {
     if (!unlocked) return;
@@ -171,7 +263,7 @@ function SceneCard({ scene, unlocked, read, onRead }: {
       <GlassCard style={styles.sceneCard} glowColor={read ? Colors.gold[600] : undefined}>
         <View style={styles.sceneHeaderRow}>
           <Text style={[styles.sceneTitle, !unlocked && styles.textMuted]} numberOfLines={expanded ? undefined : 1}>
-            {scene.title}
+            {title}
           </Text>
           {read && <Text style={styles.readBadge}>✓</Text>}
           {!unlocked && <Text style={styles.lockBadge}>🔒</Text>}
@@ -188,10 +280,10 @@ function SceneCard({ scene, unlocked, read, onRead }: {
                 <Image source={{ uri: scene.image }} style={styles.sceneImage} resizeMode="contain" />
               </View>
             )}
-            <Text style={styles.sceneBody}>{scene.body}</Text>
+            <Text style={styles.sceneBody}>{body}</Text>
           </>
         ) : (
-          <Text style={styles.sceneBody} numberOfLines={2}>{scene.body}</Text>
+          <Text style={styles.sceneBody} numberOfLines={2}>{body}</Text>
         )}
       </GlassCard>
     </TouchableOpacity>
@@ -227,6 +319,16 @@ const styles = StyleSheet.create({
   loreText:  { fontSize: 13, color: Colors.text.secondary, fontFamily: Typography.family.body, lineHeight: 20 },
 
   sectionLabel: { fontSize: 13, fontFamily: Typography.family.heading, color: Colors.text.primary, marginTop: Spacing[5], marginBottom: Spacing[1] },
+
+  cardStrip:     { gap: Spacing[3], paddingVertical: Spacing[2] },
+  cardChipTouch: { width: 92 },
+  cardChip:      { gap: 0, overflow: 'hidden' },
+  cardChipImageWrap: { width: '100%', aspectRatio: 1, overflow: 'hidden' },
+  cardChipImage: { width: '100%', height: '100%' },
+  cardChipImageFallback: { backgroundColor: Colors.bg.elevated },
+  cardChipLockOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3,6,9,0.55)', alignItems: 'center', justifyContent: 'center' },
+  cardChipLockIcon: { fontSize: 16 },
+  cardChipName: { fontSize: 11, fontFamily: Typography.family.heading, color: Colors.text.primary, paddingHorizontal: Spacing[2], paddingVertical: Spacing[2] },
 
   sceneCard: { gap: 0 },
   sceneHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },

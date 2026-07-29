@@ -13,6 +13,15 @@
  * It's static marketing/story content, not identity-gated, same trust level
  * as ShahnamehEmbed already loading season2 URLs directly — no panel proxy
  * needed.
+ *
+ * 2026-07-29 (Khabat: "språk er ikke klar når jeg åpner chaptets, bare
+ * engelsk er tilgjengelig"): the source `chapters.json` already carries
+ * `title_fa`/`summary_fa`/`title_ru`/`summary_ru` per chapter — this used to
+ * only read the bare English fields. Now carries all variants through;
+ * RealGramChaptersScreen picks the active one via localizedField() at
+ * render time (not baked in here, so a language switch doesn't need a
+ * refetch/cache-bust). No `_zh` exists at the source — Chinese falls back
+ * to English, same convention as useT()'s own fallback.
  */
 
 import { storage, syncGet } from '../storage/storage';
@@ -27,7 +36,11 @@ export interface ChapterCatalogEntry {
   slug:          string;
   order:         number;
   title:         string;
+  title_fa?:     string;
+  title_ru?:     string;
   summary:       string;
+  summary_fa?:   string;
+  summary_ru?:   string;
   image_url:     string; // already absolutized against SHAHNAMEH_ORIGIN, '' if none
   reward_xp:     number;
   reward_real:   number;
@@ -39,7 +52,11 @@ interface RawCatalog {
     slug: string;
     order: number;
     title: string;
+    title_fa?: string;
+    title_ru?: string;
     summary: string;
+    summary_fa?: string;
+    summary_ru?: string;
     image_url?: string;
     rewards?: { xp?: number; real?: number };
   }>;
@@ -51,7 +68,11 @@ function normalize(raw: RawCatalog): ChapterCatalogEntry[] {
       slug:        c.slug,
       order:       c.order,
       title:       c.title,
+      title_fa:    c.title_fa,
+      title_ru:    c.title_ru,
       summary:     c.summary,
+      summary_fa:  c.summary_fa,
+      summary_ru:  c.summary_ru,
       image_url:   c.image_url ? (c.image_url.startsWith('http') ? c.image_url : `${SHAHNAMEH_ORIGIN}${c.image_url}`) : '',
       reward_xp:   c.rewards?.xp ?? 0,
       reward_real: c.rewards?.real ?? 0,

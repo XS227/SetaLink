@@ -949,6 +949,11 @@ const EN = {
   'heroes.errUpgradeGeneric':    'Could not upgrade. Try again.',
   'heroes.title':                'Heroes',
   'heroes.subtitle':             'Legendary figures, artifacts, and creatures — own them for passive ZAR income.',
+  'heroes.catAll':               'All',
+  'heroes.catHero':              'Heroes',
+  'heroes.catPlace':             'Places',
+  'heroes.catEnemy':             'Enemies',
+  'heroes.catSpecial':           'Specials',
   'heroes.levelShort':           'Lv. {level}',
   'heroes.priceReal':            '{cost} REAL',
   'heroes.locked':               'Locked',
@@ -1013,6 +1018,7 @@ const EN = {
 
   // RealGramChaptersScreen
   'chapters.loadError':          "Couldn't load the chapter list right now.",
+  'dashboard.collection':        'Card Collection',
   'chapters.journeyTitle':       'Shahnameh Journey',
   'chapters.journeySubtitle':    'Read · Quiz · Reward · Unlock the next age.',
   'chapters.progressComplete':   '{completed} of {total} chapters complete',
@@ -1029,6 +1035,11 @@ const EN = {
   'chapterdetail.continueQuiz':      'Continue to Quiz & Battle',
   'chapterdetail.continueQuizSub':   "Test what you've learned and face this chapter's challenge.",
   'chapterdetail.readPreviousToUnlock': 'Read the previous scene to unlock.',
+  'chapterdetail.cardUnlocked':      'Card unlocked!',
+  'chapterdetail.cardUnlockedSub':   'Now available for mining and upgrading.',
+  'chapterdetail.viewCard':          'View card',
+  'chapterdetail.dismissUnlock':     'Keep reading',
+  'chapterdetail.cardsFromChapter':  'Cards from this chapter',
 
   // RealGramEarnScreen
   'earn.loadError':              "Couldn't load your rewards right now.",
@@ -2083,6 +2094,11 @@ const FA: typeof EN = {
   'heroes.errUpgradeGeneric':    'ارتقا ممکن نشد. دوباره تلاش کنید.',
   'heroes.title':                'قهرمانان',
   'heroes.subtitle':             'شخصیت‌های افسانه‌ای، آثار باستانی و موجودات — آن‌ها را برای درآمد غیرفعال ZAR در اختیار بگیرید.',
+  'heroes.catAll':               'همه',
+  'heroes.catHero':              'قهرمانان',
+  'heroes.catPlace':             'مکان‌ها',
+  'heroes.catEnemy':             'دشمنان',
+  'heroes.catSpecial':           'ویژه',
   'heroes.levelShort':           'سطح {level}',
   'heroes.priceReal':            '{cost} REAL',
   'heroes.locked':               'قفل',
@@ -2144,6 +2160,7 @@ const FA: typeof EN = {
   'clanbrowse.foundClanAction':    'ساخت کلن — {cost} REAL',
 
   'chapters.loadError':          'در حال حاضر امکان بارگذاری فهرست فصل‌ها نیست.',
+  'dashboard.collection':        'مجموعه‌ی کارت‌ها',
   'chapters.journeyTitle':       'سفر شاهنامه',
   'chapters.journeySubtitle':    'بخوانید · آزمون بدهید · پاداش بگیرید · عصر بعدی را باز کنید.',
   'chapters.progressComplete':   '{completed} از {total} فصل تکمیل شده',
@@ -2159,6 +2176,11 @@ const FA: typeof EN = {
   'chapterdetail.continueQuiz':      'ادامه به آزمون و نبرد',
   'chapterdetail.continueQuizSub':   'آنچه یاد گرفته‌اید را بیازمایید و با چالش این فصل روبه‌رو شوید.',
   'chapterdetail.readPreviousToUnlock': 'برای باز شدن، صحنه قبلی را بخوانید.',
+  'chapterdetail.cardUnlocked':      'کارت باز شد!',
+  'chapterdetail.cardUnlockedSub':   'اکنون برای استخراج و ارتقا در دسترس است.',
+  'chapterdetail.viewCard':          'مشاهده کارت',
+  'chapterdetail.dismissUnlock':     'ادامه مطالعه',
+  'chapterdetail.cardsFromChapter':  'کارت‌های این فصل',
 
   'earn.loadError':              'در حال حاضر امکان بارگذاری پاداش‌های شما نیست.',
   'earn.identifyError':          'شناسایی حساب شما ممکن نشد — کمی بعد دوباره امتحان کنید.',
@@ -3180,6 +3202,11 @@ const ZH: typeof EN = {
   'heroes.errUpgradeGeneric':    '升级失败，请重试。',
   'heroes.title':                '英雄',
   'heroes.subtitle':             '传奇人物、神器与生物 — 拥有它们可获得被动 ZAR 收入。',
+  'heroes.catAll':               '全部',
+  'heroes.catHero':              '英雄',
+  'heroes.catPlace':             '地点',
+  'heroes.catEnemy':             '敌人',
+  'heroes.catSpecial':           '特殊',
   'heroes.levelShort':           '等级 {level}',
   'heroes.priceReal':            '{cost} REAL',
   'heroes.locked':               '未解锁',
@@ -3244,6 +3271,7 @@ const ZH: typeof EN = {
 
   // RealGramChaptersScreen
   'chapters.loadError':          '暂时无法加载章节列表。',
+  'dashboard.collection':        '卡牌收藏',
   'chapters.journeyTitle':       '《列王纪》之旅',
   'chapters.journeySubtitle':    '阅读 · 问答 · 奖励 · 解锁下一个时代。',
   'chapters.progressComplete':   '已完成 {completed}/{total} 章',
@@ -3260,6 +3288,11 @@ const ZH: typeof EN = {
   'chapterdetail.continueQuiz':      '继续进行问答与战斗',
   'chapterdetail.continueQuizSub':   '检验您所学的知识，迎接本章的挑战。',
   'chapterdetail.readPreviousToUnlock': '请先阅读上一场景以解锁。',
+  'chapterdetail.cardUnlocked':      '卡牌已解锁！',
+  'chapterdetail.cardUnlockedSub':   '现在可以开采和升级了。',
+  'chapterdetail.viewCard':          '查看卡牌',
+  'chapterdetail.dismissUnlock':     '继续阅读',
+  'chapterdetail.cardsFromChapter':  '本章卡牌',
 
   // RealGramEarnScreen
   'earn.loadError':              '暂时无法加载您的奖励。',
@@ -4290,6 +4323,11 @@ const RU: typeof EN = {
   'heroes.errUpgradeGeneric':    'Не удалось улучшить. Попробуйте снова.',
   'heroes.title':                'Герои',
   'heroes.subtitle':             'Легендарные герои, артефакты и существа — владейте ими для пассивного дохода ZAR.',
+  'heroes.catAll':               'Все',
+  'heroes.catHero':              'Герои',
+  'heroes.catPlace':             'Места',
+  'heroes.catEnemy':             'Враги',
+  'heroes.catSpecial':           'Особые',
   'heroes.levelShort':           'Ур. {level}',
   'heroes.priceReal':            '{cost} REAL',
   'heroes.locked':               'Заблокировано',
@@ -4354,6 +4392,7 @@ const RU: typeof EN = {
 
   // RealGramChaptersScreen
   'chapters.loadError':          'Не удалось загрузить список глав.',
+  'dashboard.collection':        'Коллекция карт',
   'chapters.journeyTitle':       'Путешествие по Шахнаме',
   'chapters.journeySubtitle':    'Читайте · Проходите викторины · Получайте награды · Открывайте новую эпоху.',
   'chapters.progressComplete':   'Пройдено {completed} из {total} глав',
@@ -4370,6 +4409,11 @@ const RU: typeof EN = {
   'chapterdetail.continueQuiz':      'Перейти к викторине и битве',
   'chapterdetail.continueQuizSub':   'Проверьте свои знания и примите вызов этой главы.',
   'chapterdetail.readPreviousToUnlock': 'Прочитайте предыдущую сцену, чтобы разблокировать.',
+  'chapterdetail.cardUnlocked':      'Карта разблокирована!',
+  'chapterdetail.cardUnlockedSub':   'Теперь доступна для добычи и улучшения.',
+  'chapterdetail.viewCard':          'Посмотреть карту',
+  'chapterdetail.dismissUnlock':     'Читать дальше',
+  'chapterdetail.cardsFromChapter':  'Карты этой главы',
 
   // RealGramEarnScreen
   'earn.loadError':              'Не удалось загрузить ваши награды.',

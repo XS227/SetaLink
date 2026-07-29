@@ -25,11 +25,16 @@ import { useToastStore } from '../stores/toastStore';
 import { getSsoToken } from '../services/ssoService';
 import {
   getHeroCatalog, getOwnedHeroes, buyHero, upgradeHero,
-  HeroCatalogEntry, OwnedHero,
+  HeroCatalogEntry, OwnedHero, HeroCategory,
 } from '../services/heroCatalogService';
 
 interface Props {
   onBack: () => void;
+  // Deep-link into a specific card's detail sheet on open — used by
+  // GoldenUnlockPopup's "View card" CTA (2026-07-29) so tapping it lands
+  // straight on the card that was just unlocked instead of the top of the
+  // full grid.
+  initialSlug?: string;
 }
 
 const RARITY_ALIAS: Record<string, string> = { legend: 'legendary' };
@@ -52,7 +57,7 @@ function buyErrorCopy(code: string, t: (key: string) => string): string {
   }
 }
 
-export function RealGramHeroesScreen({ onBack }: Props) {
+export function RealGramHeroesScreen({ onBack, initialSlug }: Props) {
   const insets    = useSafeAreaInsets();
   const { t } = useT();
   const deviceId  = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -68,12 +73,17 @@ export function RealGramHeroesScreen({ onBack }: Props) {
   // heroes.js's own coll-card grid + certificate-modal pattern — a compact
   // grid card that opens a detail sheet on tap, instead of every card
   // showing its full description/buy button inline in a single column.
-  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(initialSlug ?? null);
   // Khabat, 2026-07-29: "følelsen av å ha betalt ... får jeg ikke" on
   // upgrade — a real state change with no felt weight. Bumped on every
   // successful buy/upgrade to key <CoinBurst>, which re-triggers its
   // animation each time even if the previous run already finished.
   const [spendBurst, setSpendBurst] = useState(0);
+  // Khabat, 2026-07-29: "husk samme logikken mellom hero kortene, personer,
+  // steder, fiender, spesiale" — same buy/upgrade/prereq logic already
+  // applies uniformly across every category (nothing category-specific in
+  // the data model), this just adds a way to browse by it.
+  const [categoryFilter, setCategoryFilter] = useState<HeroCategory | 'all'>('all');
 
   const load = useCallback(async () => {
     try {
@@ -148,7 +158,7 @@ export function RealGramHeroesScreen({ onBack }: Props) {
         </View>
       ) : (
         <FlatList
-          data={heroes}
+          data={heroes.filter((h) => categoryFilter === 'all' || h.category === categoryFilter)}
           keyExtractor={(h) => h.slug}
           numColumns={3}
           columnWrapperStyle={styles.gridRow}
@@ -158,6 +168,7 @@ export function RealGramHeroesScreen({ onBack }: Props) {
             <View>
               <Text style={styles.pageTitle}>{t('heroes.title')}</Text>
               <Text style={styles.pageSub}>{t('heroes.subtitle')}</Text>
+              <CategoryTabs value={categoryFilter} onChange={setCategoryFilter} />
             </View>
           }
           renderItem={({ item }) => {
@@ -254,6 +265,40 @@ function ImageScrim({ width, height }: { width: number; height: number }) {
   );
 }
 
+// Khabat, 2026-07-29: "husk samme logikken mellom hero kortene, personer,
+// steder, fiender, spesiale" — filter tabs so the collection reads as four
+// distinct sets rather than one undifferentiated grid. Same buy/upgrade/
+// prereq logic applies uniformly regardless of which tab is active — this
+// only changes what's visible, not how any card behaves.
+const CATEGORY_TABS: Array<{ value: HeroCategory | 'all'; labelKey: 'heroes.catAll' | 'heroes.catHero' | 'heroes.catPlace' | 'heroes.catEnemy' | 'heroes.catSpecial' }> = [
+  { value: 'all',     labelKey: 'heroes.catAll' },
+  { value: 'hero',    labelKey: 'heroes.catHero' },
+  { value: 'place',   labelKey: 'heroes.catPlace' },
+  { value: 'enemy',   labelKey: 'heroes.catEnemy' },
+  { value: 'special', labelKey: 'heroes.catSpecial' },
+];
+
+function CategoryTabs({ value, onChange }: { value: HeroCategory | 'all'; onChange: (v: HeroCategory | 'all') => void }) {
+  const { t } = useT();
+  return (
+    <View style={styles.tabsRow}>
+      {CATEGORY_TABS.map((tab) => {
+        const active = tab.value === value;
+        return (
+          <TouchableOpacity
+            key={tab.value}
+            onPress={() => onChange(tab.value)}
+            activeOpacity={0.8}
+            style={[styles.tabChip, active && styles.tabChipActive]}
+          >
+            <Text style={[styles.tabChipText, active && styles.tabChipTextActive]}>{t(tab.labelKey)}</Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+}
+
 // Khabat, 2026-07-29: "en kreativ måte hvor mye ZAR den skaper pr time" —
 // a glanceable yield badge on the card itself, not just buried in the
 // detail sheet. Gold pill so it reads as a value/rate indicator at a
@@ -337,6 +382,14 @@ function HeroGridCard({
           )}
           <ImageScrim width={imgSize.width} height={imgSize.height} />
           <YieldBadge rate={owned ? owned.zar_per_hour : hero.zar_per_hour} />
+          {/* Khabat, 2026-07-29: "knytt kortene til historiene" — every card
+              already carries `era` (e.g. "Chapter 3"); just wasn't shown
+              anywhere in this screen before. */}
+          {!!hero.era && (
+            <View style={styles.eraBadge}>
+              <Text style={styles.eraBadgeText} numberOfLines={1}>{hero.era}</Text>
+            </View>
+          )}
           {locked && <View style={styles.gridLockOverlay}><Text style={styles.gridLockIcon}>🔒</Text></View>}
         </View>
         <Text style={[styles.gridName, locked && styles.textMuted]} numberOfLines={1}>{hero.name}</Text>
@@ -385,6 +438,7 @@ function HeroDetail({
       <View style={styles.metaRow}>
         <Text style={styles.zarText}>🪙 {t('heroes.zarPerHour').replace('{rate}', String(owned ? owned.zar_per_hour : hero.zar_per_hour))}</Text>
         {owned && <Text style={styles.levelText}>{t('heroes.levelShort').replace('{level}', String(owned.level))}</Text>}
+        {!!hero.era && <Text style={styles.levelText}>📖 {hero.era}</Text>}
       </View>
       {!owned && !prereqMet && !!hero.unlock_requirement && (
         <Text style={styles.unlockText}>🔒 {hero.unlock_requirement}</Text>
@@ -426,6 +480,12 @@ const styles = StyleSheet.create({
   pageTitle: { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary },
   pageSub:   { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2, marginBottom: Spacing[3] },
 
+  tabsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing[2], marginBottom: Spacing[4] },
+  tabChip: { paddingHorizontal: Spacing[3], paddingVertical: Spacing[2], borderRadius: Radius.full, backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.default },
+  tabChipActive: { backgroundColor: 'rgba(212,175,55,0.16)', borderColor: Colors.gold[400] },
+  tabChipText: { fontSize: 12, fontFamily: Typography.family.label, color: Colors.text.secondary },
+  tabChipTextActive: { color: Colors.gold[400] },
+
   gridRow:  { gap: Spacing[3] },
   gridCardTouch: { flex: 1 / 3 },
   gridCard: { gap: 0, overflow: 'hidden' },
@@ -447,6 +507,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing[2], paddingVertical: 2,
   },
   yieldBadgeText: { fontSize: 10, fontFamily: Typography.family.mono, color: Colors.gold[300] },
+
+  // Chapter/era chip, top-right of the card image, mirrors the yield
+  // badge's placement pattern on the opposite corner.
+  eraBadge: {
+    position: 'absolute', right: Spacing[2], top: Spacing[2],
+    backgroundColor: 'rgba(10,8,2,0.72)', borderRadius: Radius.md,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.5)',
+    paddingHorizontal: Spacing[2], paddingVertical: 2, maxWidth: '70%',
+  },
+  eraBadgeText: { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.gold[300] },
 
   rarityDot: { width: 10, height: 10, borderRadius: 5 },
 

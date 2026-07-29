@@ -31,6 +31,14 @@
  * Deliberately does NOT replace the Game tab's WebView landing page
  * (GameScreen still embeds season2 "/" as-is) — new, separate entry point
  * (Profile banner), same incremental pattern as every other roadmap screen.
+ *
+ * 2026-07-29 (Khabat: "din oppgave er å bygge videre shahnameh inn på
+ * realgram. nå begynn med dashboard"): almost built a second, competing
+ * dashboard screen from scratch before actually reading this file — it's
+ * already real and index.html-grounded, not a placeholder. Added the one
+ * thing genuinely missing: a Card Collection section (owned/total per
+ * category — hero/place/enemy/special, heroCatalogService's new `category`
+ * field), between Hero Spotlight and Live TV. Left everything else as-is.
  */
 
 import React, { useEffect, useState } from 'react';
@@ -47,11 +55,25 @@ import { useIdentityStore } from '../stores/identityStore';
 import { getSsoToken } from '../services/ssoService';
 import { getProfileSummary, ProfileSummary } from '../services/realGramProfileService';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
-import { getHeroCatalog, getOwnedHeroes, HeroCatalogEntry, OwnedHero } from '../services/heroCatalogService';
+import { getHeroCatalog, getOwnedHeroes, HeroCatalogEntry, HeroCategory, OwnedHero } from '../services/heroCatalogService';
 
 // Mirrors home.js's own TAP_GOAL (season2/home.js) -- quest_tap is a raw
 // daily tap counter server-side, "done" is reaching this threshold.
 const DAILY_TAP_GOAL = 200;
+
+// Khabat, 2026-07-29: "husk samme logikken mellom hero kortene, personer,
+// steder, fiender, spesiale" — real owned/total counts per category
+// (heroCatalogService's `category` field, added this session), not a
+// static list. Placed after Hero Spotlight rather than replacing it —
+// Spotlight is "what to upgrade next", this is "how much of the world
+// you've collected so far", different questions.
+const CATEGORY_ORDER: HeroCategory[] = ['hero', 'place', 'enemy', 'special'];
+const CATEGORY_ICON: Record<HeroCategory, string> = {
+  hero: '🛡️', place: '🏔️', enemy: '👹', special: '✨',
+};
+const CATEGORY_LABEL_KEY: Record<HeroCategory, 'heroes.catHero' | 'heroes.catPlace' | 'heroes.catEnemy' | 'heroes.catSpecial'> = {
+  hero: 'heroes.catHero', place: 'heroes.catPlace', enemy: 'heroes.catEnemy', special: 'heroes.catSpecial',
+};
 
 // Khabat, 2026-07-29: see the matching flag/note in RealGramProfileScreen.tsx
 // -- was hiding the Live TV entry point app-wide while the Profile-screen jam
@@ -140,6 +162,11 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
     if (!o) continue;
     if (!spotlightHero || o.level < spotlightHero.owned.level) spotlightHero = { ...h, owned: o };
   }
+
+  const categoryCounts = CATEGORY_ORDER.map((category) => {
+    const entries = heroCatalog.filter((h) => h.category === category);
+    return { category, owned: entries.filter((h) => ownedHeroes.has(h.slug)).length, total: entries.length };
+  });
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -261,6 +288,22 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           </TouchableOpacity>
         )}
 
+        {/* Card Collection — real owned/total per category. */}
+        <View style={styles.sectionHeadRow}>
+          <Text style={styles.sectionTitle}>{t('dashboard.collection')}</Text>
+        </View>
+        <View style={styles.collectionRow}>
+          {categoryCounts.map(({ category, owned, total }) => (
+            <TouchableOpacity key={category} onPress={onOpenHeroes} activeOpacity={0.85} style={styles.collectionCell}>
+              <GlassCard style={styles.collectionCard} glowColor={owned > 0 ? Colors.gold[400] : undefined}>
+                <Text style={styles.collectionIcon}>{CATEGORY_ICON[category]}</Text>
+                <Text style={styles.collectionCount}>{owned}/{total}</Text>
+                <Text style={styles.collectionLabel} numberOfLines={1}>{t(CATEGORY_LABEL_KEY[category])}</Text>
+              </GlassCard>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {LIVE_TV_ENTRY_ENABLED && (
           <TouchableOpacity onPress={onOpenLiveTv} activeOpacity={0.85}>
             <GlassCard style={styles.card}>
@@ -371,6 +414,13 @@ const styles = StyleSheet.create({
   spotlightImage: { width: 44, height: 44, borderRadius: 12 },
   spotlightImageFallback: { backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
   spotlightFallbackText: { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary },
+
+  collectionRow:   { flexDirection: 'row', gap: Spacing[3] },
+  collectionCell:  { flex: 1 },
+  collectionCard:  { alignItems: 'center', paddingVertical: Spacing[3], gap: Spacing[1] },
+  collectionIcon:  { fontSize: 20 },
+  collectionCount: { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  collectionLabel: { fontSize: 10, fontFamily: Typography.family.body, color: Colors.text.muted },
 
   liveTvRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   liveTvIcon: { fontSize: 28 },

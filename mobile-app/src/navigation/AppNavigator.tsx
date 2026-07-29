@@ -863,6 +863,7 @@ export function AppNavigator() {
             <RealGramChapterDetailScreen
               slug={(route.params as { slug: string }).slug}
               onBack={() => navigation.goBack()}
+              onOpenHeroes={(cardSlug) => navigation.navigate('Heroes', { slug: cardSlug })}
             />
           )}
         </Stack.Screen>
@@ -870,8 +871,11 @@ export function AppNavigator() {
           name="Heroes"
           options={{ animation: 'slide_from_right' }}
         >
-          {({ navigation }) => (
-            <RealGramHeroesScreen onBack={() => navigation.goBack()} />
+          {({ navigation, route }) => (
+            <RealGramHeroesScreen
+              onBack={() => navigation.goBack()}
+              initialSlug={(route.params as { slug?: string } | undefined)?.slug}
+            />
           )}
         </Stack.Screen>
         <Stack.Screen

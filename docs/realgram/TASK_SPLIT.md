@@ -16018,3 +16018,111 @@ Not building either of those without her picking a direction — this is
 account-security-shaped, not a bug fix. Auto Backup change is done,
 narrowly scoped, safe; not built/shipped yet, same as everything else
 this round.
+
+---
+
+## B→A(204) — Khabat's "bygg videre shahnameh inn på realgram" round: dashboard collection, chapters i18n, card categories, chapter↔card linkage, golden unlock popup
+
+**Dato: 2026-07-29.** Khabat's direct ask, largest single-session addition
+so far. Explicit "ikke stop før du er ferdig" — full pass, all pieces
+below actually implemented, not scoped-and-parked.
+
+**Grounded in real Shahnameh data before writing any UI** (per Khabat's
+own "mye er allerede bygget opp i shahnameh"), not invented:
+`season2/data/chapters.json` already carries `title_fa`/`title_ru`/
+`summary_fa`/`summary_ru` per chapter; `season2/data/lore/{slug}.json`
+already carries per-chapter `characters[]`/`places[]` with `slug`
+(matching hero-catalog slugs 1:1), localized `name_en/fa/ru`, and
+`unlock_via: "scene:X"` — the exact same field chapter.js's own
+`paintBattle()` already reads for boss-fight character-requirement
+gating (`(chapter.js ~L419)`), just never surfaced to the player as a
+moment of its own, and never read by the native client at all before
+today.
+
+**1. Chapters i18n bug fixed** ("språk er ikke klar når jeg åpner
+chaptets, bare engelsk er tilgjengelig"): `chapterCatalogService.ts` and
+`chapterLoreService.ts` only ever read the bare English fields, dropping
+the `_fa`/`_ru` variants that already existed in the source. Both now
+carry every language variant through; new `utils/localizedField.ts`
+picks the active one at **render time** (not baked into the cached fetch
+result), so a language switch shows immediately with no cache-bust
+needed. No `_zh` exists at the source for chapters/lore — falls back to
+English, same convention as `useT()` itself.
+
+**2. Card categories added** ("husk samme logikken mellom hero kortene,
+personer, steder, fiender, spesiale"): `season2/data/heroes.json` had no
+category field at all — classified all 33 entries by reading
+name+description (image-folder paths turned out unreliable, e.g.
+"mount-alborz" a mountain filed under `heroes/`) into `hero` (7,
+includes Rakhsh — a companion, not a place/enemy/artifact) / `place` (5)
+/ `enemy` (5, includes Zahhak despite the "king" framing — narratively
+the antagonist) / `special` (16 — relics/events/trophies/creatures).
+Backed up (`heroes.json.bak-pre-category-2026-07-29`), edited directly
+on this box, verified live via `curl .../api/catalog/heroes`. Open to
+correction on any individual call. `heroCatalogService.ts` carries
+`category` through (bumped cache key v2→v3 to force a clean refetch);
+`RealGramHeroesScreen.tsx` gets filter tabs (All/Heroes/Places/Enemies/
+Specials) — same buy/upgrade/prereq logic applies unchanged regardless
+of tab, this only changes what's visible. Also surfaced `era` (already
+existed, never shown) as a chapter badge on every card, both grid and
+detail sheet.
+
+**3. Chapters ↔ cards linkage** ("knytt kortene til historiene"):
+`chapterLoreService.ts` now parses `characters[]`/`places[]` +
+`unlock_via`, with `isCardUnlocked()`/`cardsUnlockedBySceneRead()`
+mirroring chapter.js's own unlock check exactly. `RealGramChapterDetail
+Screen.tsx` gets a new "Cards from this chapter" horizontal strip
+(image/name/lock state), tapping hands off to the real Heroes screen
+(now deep-linkable to a specific card via a new `initialSlug` prop / an
+extended `Heroes: {slug?} ` route param) rather than duplicating buy/
+upgrade UI a second time.
+
+**4. Golden unlock popup** ("når en er ferdig med det han skal på hver
+kapitel så kommer en golden popup opp at kort x er nå tilgjengelig for
+mining/oppgradering"): new `components/GoldenUnlockPopup.tsx` — gold-glow
+modal, card image/name, "Now available for mining and upgrading," a
+"View card" CTA (deep-links into Heroes at that card) and dismiss. Wired
+into `handleSceneRead`: checks `cardsUnlockedBySceneRead()` against the
+read-set *before* the update, so a card already unlocked by an earlier
+scene never re-fires it. Queues if a scene gates more than one card
+(rare in the data, handled rather than dropped).
+
+**5. Prereq chains** — already fully real and working end-to-end
+(shipped `(138)`, 2026-07-28: `prereq: {hero_id, level}` gating on buy,
+verified live). Nothing new needed here; confirmed the new category
+filter/era-badge UI doesn't touch that logic.
+
+**6. Dashboard** ("nå begynn med dashboard," Khabat's explicit first
+priority) — **real mistake caught before shipping**: built an entire
+second dashboard screen from scratch (journey progress, economy,
+category counts, quick links) before actually reading
+`RealGramHomeScreen.tsx` first. That file is already a real,
+`index.html`/`home.js`-grounded dashboard (Treasury HUD → Continue
+Journey → Chronicle progress → Daily Quests → Hero Spotlight →
+quick-links row) — a placeholder in name only (`ShahnamehHome` route),
+not in content. Deleted the duplicate, reverted the routing change, and
+instead added the one thing genuinely missing to the real screen: a Card
+Collection section (owned/total per category, same data category work
+above) between Hero Spotlight and Live TV. **Lesson for whoever builds
+on this next: read the target file's own header comment before assuming
+"placeholder route" means "empty/fake screen" — this ecosystem has
+enough rounds of real work that a placeholder *route* often points at a
+real, already-good screen.**
+
+**Files**: `mobile-app/src/utils/localizedField.ts` (new),
+`components/GoldenUnlockPopup.tsx` (new), `services/chapterCatalogService.ts`,
+`services/chapterLoreService.ts`, `services/heroCatalogService.ts`,
+`screens/RealGramChaptersScreen.tsx`, `screens/RealGramChapterDetailScreen.tsx`,
+`screens/RealGramHeroesScreen.tsx`, `screens/RealGramHomeScreen.tsx`,
+`navigation/AppNavigator.tsx`, `navigation/types.ts`, i18n keys in all 4
+languages. Plus the direct `season2/data/heroes.json` category edit on
+this box (live immediately, no build needed for that half).
+
+**Not verified via `tsc`/jest** — same standing gap as every change in
+this thread from this box. Manually traced every new
+prop/callback/import against existing patterns already verified
+elsewhere in the same files. **Not built/shipped** — this is a large
+round, real device testing (especially the golden popup timing and the
+new nested horizontal FlatList in ChapterDetail's header) matters more
+than usual before it goes out; over to whoever's next for a build
+decision.

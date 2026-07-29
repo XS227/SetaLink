@@ -20,8 +20,8 @@ import { storage, syncGet } from '../storage/storage';
 
 const SHAHNAMEH_ORIGIN = 'https://shahnameh.setaei.com';
 const CATALOG_URL       = `${SHAHNAMEH_ORIGIN}/api/catalog/heroes`;
-const CACHE_KEY     = 'hero_catalog_v2';
-const CACHE_TTL_KEY = 'hero_catalog_ttl_v2';
+const CACHE_KEY     = 'hero_catalog_v3'; // v3: adds category
+const CACHE_TTL_KEY = 'hero_catalog_ttl_v3';
 const CACHE_TTL_MS  = 6 * 3600 * 1_000; // static definition content — safe to cache for hours
 
 export interface HeroPrereq {
@@ -29,11 +29,22 @@ export interface HeroPrereq {
   level:   number;
 }
 
+// 2026-07-29 (Khabat: "husk samme logikken mellom hero kortene, personer,
+// steder, fiender, spesiale"): the source catalog had no category field at
+// all until now — classified all 33 entries by reading name+description
+// (image_url folder paths turned out inconsistent, e.g. a mountain filed
+// under "heroes/") and added `category` server-side in
+// season2/data/heroes.json directly. "hero" covers named protagonists AND
+// ownable companions (e.g. Rakhsh) — the data has no separate "person"
+// bucket distinct from that.
+export type HeroCategory = 'hero' | 'place' | 'enemy' | 'special';
+
 export interface HeroCatalogEntry {
   slug:                string;
   name:                string;
   rarity:              string; // 'Common' | 'Rare' | 'Epic' | 'Legend' | 'Mythic'
   era:                 string; // e.g. 'Chapter 3'
+  category:            HeroCategory | '';
   description:         string;
   image_url:           string; // already absolutized against SHAHNAMEH_ORIGIN
   cost:                number; // REAL to buy at level 1
@@ -52,11 +63,13 @@ export interface OwnedHero {
 interface RawCatalog {
   status: boolean;
   heroes: Array<{
-    slug: string; name: string; rarity?: string; era?: string; description?: string;
+    slug: string; name: string; rarity?: string; era?: string; category?: string; description?: string;
     image_url?: string; cost?: number; zar_per_hour?: number; farr_cost?: number;
     prereq?: HeroPrereq | null; unlock_requirement?: string; status?: string;
   }>;
 }
+
+const VALID_CATEGORIES: HeroCategory[] = ['hero', 'place', 'enemy', 'special'];
 
 function normalize(raw: RawCatalog): HeroCatalogEntry[] {
   return raw.heroes
@@ -66,6 +79,7 @@ function normalize(raw: RawCatalog): HeroCatalogEntry[] {
       name:               h.name,
       rarity:             h.rarity ?? '',
       era:                h.era ?? '',
+      category:           (VALID_CATEGORIES as string[]).includes(h.category ?? '') ? h.category as HeroCategory : '',
       description:        h.description ?? '',
       image_url:          h.image_url ? (h.image_url.startsWith('http') ? h.image_url : `${SHAHNAMEH_ORIGIN}${h.image_url}`) : '',
       cost:               h.cost ?? 0,
