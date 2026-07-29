@@ -120,6 +120,9 @@ describe('InboxScreen — unified messenger', () => {
     act(() => { tree = renderer.create(<InboxScreen onBack={() => {}} />); });
     const root = tree.root;
     act(() => { root.findByProps({ testID: 'convo-dev-x' }).props.onPress(); });
+    // Delete now lives behind the header's overflow menu (2026-07-29
+    // declutter — was three always-visible icons, see InboxScreen.tsx).
+    act(() => { root.findByProps({ testID: 'convo-menu' }).props.onPress(); });
     expect(root.findByProps({ testID: 'convo-delete' })).toBeTruthy();
     expect(root.findByProps({ testID: 'convo-input' })).toBeTruthy();
   });

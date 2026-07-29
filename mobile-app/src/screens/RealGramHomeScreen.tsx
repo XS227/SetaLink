@@ -54,9 +54,10 @@ import { getHeroCatalog, getOwnedHeroes, HeroCatalogEntry, OwnedHero } from '../
 const DAILY_TAP_GOAL = 200;
 
 // Khabat, 2026-07-29: see the matching flag/note in RealGramProfileScreen.tsx
-// -- hiding the Live TV entry point app-wide while the Profile-screen jam
-// report is investigated. Flip back to `true` once cleared.
-const LIVE_TV_ENTRY_ENABLED = false;
+// -- was hiding the Live TV entry point app-wide while the Profile-screen jam
+// report was investigated. Cleared by (196), root cause was unrelated to
+// Live TV. Re-enabled.
+const LIVE_TV_ENTRY_ENABLED = true;
 
 interface Props {
   onBack: () => void;

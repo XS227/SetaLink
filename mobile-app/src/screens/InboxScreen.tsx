@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, StyleSheet, Image,
-  Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking,
+  Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Alert, Linking, Dimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -28,8 +28,14 @@ import { listThreadMessages, searchMessages } from '../services/entitlementServi
 import { blockUser, reportMessage, type DMReportReason } from '../services/entitlementService';
 import { Logger } from '../utils/logger';
 import { useCallStore } from '../stores/callStore';
+import { CALLING_ENABLED } from '../config/featureFlags';
 
 const REALINK_LOGO = require('../assets/logo_mark.png');
+
+// Thread header overflow-menu fallback anchor, before/without a real
+// measurement — see TopBar.tsx's identical pattern/note. Opening the menu
+// is never gated on measureInWindow's callback actually firing.
+const THREAD_MENU_FALLBACK_POS = { top: Layout.statusBarHeight + Spacing[2] + 44, right: Layout.screenPadding };
 
 // "Clan" tab deliberately excluded — no real clan-member-ID list exists
 // client-side to cross-reference DM peers against yet.
@@ -119,7 +125,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   // (170) ask and isn't visible to this screen, so a premium-but-not-
   // allowlisted account would still get a real error from placeCall —
   // acceptable during this testing phase).
-  const canCall = user?.plan !== 'free' || !!user?.testMode;
+  // Khabat, 2026-07-29: this used to ignore CALLING_ENABLED entirely, so the
+  // call icon kept showing (and doing nothing but toast) while calling was
+  // supposedly off app-wide — see config/featureFlags.ts's own note.
+  const canCall = CALLING_ENABLED && (user?.plan !== 'free' || !!user?.testMode);
   const startCall = useCallStore((s) => s.startOutgoingCall);
 
   // Direct messages
@@ -148,6 +157,13 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [peerTyping, setPeerTyping] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  // Thread header overflow menu (Khabat, 2026-07-29: "ganske trang på toppen
+  // av tråden med slett, blokker, call, profil id" — folds Block/Delete into
+  // a single "..." menu, Telegram/WhatsApp-style, instead of three
+  // always-visible icons crowding the header next to the peer name).
+  const threadMenuBtnRef = useRef<View>(null);
+  const [threadMenuOpen, setThreadMenuOpen] = useState(false);
+  const [threadMenuPos, setThreadMenuPos] = useState(THREAD_MENU_FALLBACK_POS);
   // Category tabs (theme pkg 02-chats.html: "All/Clan/Direct/Unread tabs").
   // "Clan" isn't here — there's no real clan-member-ID list to cross-
   // reference DM peers against yet, so a "Clan" tab would just be an empty
@@ -448,7 +464,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
       [
         { text: t('dm.cancel'), style: 'cancel' },
         {
-          text: 'Block', style: 'destructive',
+          text: t('dm.blockUser'), style: 'destructive',
           onPress: () => {
             blockUser(deviceId, peer)
               .then(() => { setOpenKey(null); })
@@ -684,7 +700,14 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
         >
           {!!openConvo && (
             <View style={styles.threadCard}>
-              {/* Thread header: avatar + peer/official + delete */}
+              {/* Thread header: back + avatar + peer/official name+status only.
+                  Block/Delete live in the overflow menu below (Khabat,
+                  2026-07-29: this row used to also carry Call/Block/Delete
+                  as three always-visible icons — "ganske trang på toppen av
+                  tråden" — folded down to Telegram/WhatsApp's own pattern of
+                  name+status up front, secondary actions behind "...". Call
+                  stays a direct icon (not buried) only while it's actually
+                  usable — it's fully off right now, see CALLING_ENABLED. */}
               <View style={styles.threadHeader}>
                 <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
                   <Text style={styles.backIcon}>‹</Text>
@@ -720,16 +743,56 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   </TouchableOpacity>
                 )}
                 {!openConvo.support && (
-                  <TouchableOpacity testID="convo-block" style={styles.threadDeleteBtn} activeOpacity={0.7} onPress={() => confirmBlockUser(openConvo)}>
-                    <Text style={styles.threadDeleteIcon}>🚫</Text>
-                  </TouchableOpacity>
-                )}
-                {!openConvo.support && (
-                  <TouchableOpacity testID="convo-delete" style={styles.threadDeleteBtn} activeOpacity={0.7} onPress={() => confirmDeleteThread(openConvo)}>
-                    <Text style={styles.threadDeleteIcon}>🗑</Text>
+                  <TouchableOpacity
+                    ref={threadMenuBtnRef}
+                    testID="convo-menu"
+                    style={styles.threadDeleteBtn}
+                    activeOpacity={0.7}
+                    accessibilityLabel={t('dm.moreOptions')}
+                    onPress={() => {
+                      setThreadMenuOpen(true);
+                      setThreadMenuPos(THREAD_MENU_FALLBACK_POS);
+                      threadMenuBtnRef.current?.measureInWindow((x, y, width, height) => {
+                        const screenWidth = Dimensions.get('window').width;
+                        setThreadMenuPos({ top: y + height + 6, right: screenWidth - (x + width) });
+                      });
+                    }}
+                  >
+                    <Text style={styles.threadDeleteIcon}>⋮</Text>
                   </TouchableOpacity>
                 )}
               </View>
+
+              {!openConvo.support && (
+                <Modal visible={threadMenuOpen} transparent animationType="fade" onRequestClose={() => setThreadMenuOpen(false)}>
+                  <TouchableOpacity
+                    style={StyleSheet.absoluteFillObject}
+                    activeOpacity={1}
+                    onPress={() => setThreadMenuOpen(false)}
+                  >
+                    <View style={[styles.threadMenu, { top: threadMenuPos.top, right: threadMenuPos.right }]}>
+                      <TouchableOpacity
+                        testID="convo-block"
+                        style={styles.threadMenuRow}
+                        activeOpacity={0.7}
+                        onPress={() => { setThreadMenuOpen(false); confirmBlockUser(openConvo); }}
+                      >
+                        <Text style={styles.threadMenuIcon}>🚫</Text>
+                        <Text style={styles.threadMenuLabel}>{t('dm.blockUser')}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        testID="convo-delete"
+                        style={[styles.threadMenuRow, styles.threadMenuRowLast]}
+                        activeOpacity={0.7}
+                        onPress={() => { setThreadMenuOpen(false); confirmDeleteThread(openConvo); }}
+                      >
+                        <Text style={styles.threadMenuIcon}>🗑</Text>
+                        <Text style={[styles.threadMenuLabel, styles.threadMenuDestructive]}>{t('dm.deleteThread')}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                </Modal>
+              )}
 
               {/* Ad banner — Khabat, 2026-07-24: AdMob showed on Freedom/Home
                   but not here; support threads are the one Inbox surface it's
@@ -1006,6 +1069,20 @@ const styles = StyleSheet.create({
   threadSubtitle:{ fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.gold[400] },
   threadDeleteBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   threadDeleteIcon: { fontSize: 16 },
+
+  // Thread header overflow menu (Block/Delete) — same card/row visual
+  // language as TopBar's avatar menu, so the app's one dropdown pattern
+  // reads as one system rather than two different-looking popups.
+  threadMenu: {
+    position: 'absolute', width: 180,
+    backgroundColor: Colors.bg.surface, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.border.default, overflow: 'hidden',
+  },
+  threadMenuRow:        { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], paddingVertical: Spacing[3], paddingHorizontal: Spacing[4], borderBottomWidth: 1, borderBottomColor: Colors.border.default },
+  threadMenuRowLast:    { borderBottomWidth: 0 },
+  threadMenuIcon:       { fontSize: 15, width: 20, textAlign: 'center' },
+  threadMenuLabel:      { fontSize: 14, fontFamily: Typography.family.body, color: Colors.text.primary },
+  threadMenuDestructive:{ color: '#FF6B6B' },
   threadAdBanner: { marginHorizontal: Layout.screenPadding, marginTop: Spacing[2] },
   threadScroll:  { flex: 1 },
   threadScrollContent: { padding: Layout.screenPadding, gap: Spacing[2] },

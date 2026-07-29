@@ -76,6 +76,7 @@ import { useAppBoot }            from '../hooks/useAppBoot';
 import { useDeepLinks }          from '../hooks/useDeepLinks';
 import { ensureNotificationPermission, consumeInitialRoute, parseInboxRoute } from '../services/dmNotifications';
 import { useT }                   from '../i18n';
+import { CALLING_ENABLED }        from '../config/featureFlags';
 
 import type { RootStackParamList, MainTabParamList } from './types';
 
@@ -114,6 +115,7 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'diagnostics')    { navigation.navigate('Diagnostics');    return; }
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
+    if ((tab as string) === 'dashboard')       { navigation.navigate('ShahnamehHome');  return; }
     if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     if ((tab as string) === 'trustai-link')    { navigation.navigate('TrustAiLink');    return; }
@@ -695,14 +697,9 @@ function NotificationRouteHandler() {
 // call is incoming or placed. See callStore.ts's own header for the one
 // real limit this doesn't cover: the app must be in the foreground —
 // ringing while backgrounded/killed needs native VoIP push, not done here.
-// Khabat, 2026-07-29: v0.9.106 re-test still hit the Profile flash/jam
-// symptom. Asked to have calling disabled too while the real cause is
-// investigated (Profile's own GlassCard-burst theory, see
-// RealGramProfileScreen.tsx) — CallManager is mounted app-wide, not scoped
-// to Profile, so it's not the obvious first suspect, but this is cheap and
-// fully reversible: flip back to `true` once cleared either way.
-const CALLING_ENABLED = false;
-
+// Flag moved to config/featureFlags.ts (2026-07-29) — InboxScreen.tsx's
+// thread header needed the same value and was computing `canCall`
+// independently, so the flag here and there could silently disagree.
 function CallManager() {
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const plan     = useAuthStore((s) => s.user?.plan);

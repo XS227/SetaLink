@@ -1,76 +1,123 @@
 /**
- * TopBar — messages + avatar only.
+ * TopBar — avatar only, now the single entry point into Profile/Settings/
+ * Inbox/Dashboard via a tap-to-open menu (Khabat, 2026-07-29: "gjør om
+ * profil bilde slik at når jeg trykker på den skal den fungere som et
+ * slags burger meny").
+ *
+ * The standalone inbox envelope + unread-count badge that used to sit next
+ * to the avatar is gone (same request: "viser fortsatt at jeg har 4
+ * uleste meldinger. det er feil. ta bort ikonet" — the badge count was
+ * stale/wrong, and Inbox is reachable from the menu below now anyway, so
+ * removing it rather than chasing the staleness bug is the actual fix
+ * asked for). If unread state needs a visible cue again later, that's a
+ * real "why is inboxStore/dmStore read-state stale" investigation, not a
+ * styling change — not done here.
+ *
  * Power button moved into the VPN card on HomeScreen (B-16 declutter intent,
- * finally completed). Settings accessible via Profile tab.
+ * finally completed).
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
-import { Colors, Typography } from '../design/tokens';
-import { useInboxStore }      from '../stores/inboxStore';
-import { useDMStore }         from '../stores/dmStore';
+import React, { useRef, useState } from 'react';
+import {
+  View, Text, TouchableOpacity, Image, StyleSheet, Modal, Pressable, Dimensions,
+} from 'react-native';
+import { Colors, Layout, Radius, Shadow, Spacing, Typography } from '../design/tokens';
 import { useIdentityStore }   from '../stores/identityStore';
 import { useProfilePicStore } from '../stores/profilePicStore';
+import { useT } from '../i18n';
+
+const MENU_WIDTH = 200;
+// Fallback anchor before/without a real measurement — every host screen
+// (Wallet/SmartAI/Servers/Activity) pads its header the same way, so this
+// lands close enough even if measureInWindow's callback never resolves
+// (jest's RN mock doesn't invoke it; real devices always do and refine it).
+// Opening the menu is never gated on the native call succeeding.
+const FALLBACK_MENU_POS = { top: Layout.statusBarHeight + Spacing[2] + 48, right: Layout.screenPadding };
+
+interface MenuItem { key: string; icon: string; labelKey: 'nav.profile' | 'st.title' | 'pr.inbox' | 'rgprofile.dashboard'; tab: string }
+
+const MENU_ITEMS: MenuItem[] = [
+  { key: 'profile',   icon: '👤', labelKey: 'nav.profile',       tab: 'profile' },
+  { key: 'settings',  icon: '⚙',  labelKey: 'st.title',          tab: 'settings' },
+  { key: 'inbox',     icon: '✉',  labelKey: 'pr.inbox',          tab: 'inbox' },
+  { key: 'dashboard', icon: '🏠', labelKey: 'rgprofile.dashboard', tab: 'dashboard' },
+];
 
 export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
-  const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
-  const unreadDm       = useDMStore((s) => s.messages.filter((m) => m.direction === 'in' && !m.read).length);
-  const unread         = unreadOfficial + unreadDm;
+  const { t } = useT();
   const avatarEmoji    = useIdentityStore((s) => s.avatarEmoji);
   const avatarColor    = useIdentityStore((s) => s.avatarColor);
   const profilePicUrl  = useProfilePicStore((s) => s.url);
 
+  const avatarRef = useRef<View>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos]   = useState(FALLBACK_MENU_POS);
+
+  const openMenu = () => {
+    setMenuOpen(true);
+    setMenuPos(FALLBACK_MENU_POS);
+    avatarRef.current?.measureInWindow((x, y, width, height) => {
+      const screenWidth = Dimensions.get('window').width;
+      setMenuPos({ top: y + height + 6, right: screenWidth - (x + width) });
+    });
+  };
+
+  const handleSelect = (tab: string) => {
+    setMenuOpen(false);
+    onNavigate(tab);
+  };
+
   return (
     <View style={styles.bar}>
       <TouchableOpacity
-        style={styles.btn}
-        onPress={() => onNavigate('inbox')}
-        hitSlop={10}
-        accessibilityLabel="Inbox"
-      >
-        <Text style={styles.icon}>✉</Text>
-        {unread > 0 && (
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{unread > 9 ? '9+' : String(unread)}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
+        ref={avatarRef}
         style={[styles.avatarChip, { borderColor: avatarColor, backgroundColor: avatarColor + '33' }]}
-        onPress={() => onNavigate('profile')}
+        onPress={openMenu}
         hitSlop={10}
-        accessibilityLabel="Profile and Settings"
+        accessibilityLabel={t('nav.profile')}
       >
         {profilePicUrl ? (
           <Image source={{ uri: profilePicUrl }} style={styles.avatarImage} />
         ) : (
           <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
         )}
-        {/* Small always-visible gear cue — Settings only lives inside Profile
-            now (Khabat, 2026-07-22: "improve visibility of the top-right
-            Settings/Profile icon"), so this chip needs to read as "profile +
-            settings", not just an avatar. */}
-        <View style={styles.gearBadge}>
-          <Text style={styles.gearBadgeText}>⚙</Text>
-        </View>
       </TouchableOpacity>
+
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setMenuOpen(false)}>
+          <View style={[styles.menu, { top: menuPos.top, right: menuPos.right }]}>
+            {MENU_ITEMS.map((item, i) => (
+              <TouchableOpacity
+                key={item.key}
+                style={[styles.menuRow, i < MENU_ITEMS.length - 1 && styles.menuRowDivider]}
+                onPress={() => handleSelect(item.tab)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.menuIcon}>{item.icon}</Text>
+                <Text style={styles.menuLabel}>{t(item.labelKey)}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bar:        { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  btn:        { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  icon:       { fontSize: 17, color: Colors.text.secondary },
-  badge:      { position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, borderRadius: 7,
-                backgroundColor: '#FF6B6B', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
-  badgeText:  { color: '#fff', fontSize: 8, fontFamily: Typography.family.heading },
+  bar:        { flexDirection: 'row', alignItems: 'center' },
   avatarChip: { width: 42, height: 42, borderRadius: 21, borderWidth: 2, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
   avatarEmoji:{ fontSize: 18 },
   avatarImage:{ width: '100%', height: '100%', borderRadius: 21 },
-  gearBadge:  { position: 'absolute', bottom: -2, right: -2, width: 18, height: 18, borderRadius: 9,
-                backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center',
-                borderWidth: 1.5, borderColor: Colors.bg.base },
-  gearBadgeText: { fontSize: 10, color: Colors.bg.void },
+
+  menu: {
+    position: 'absolute', width: MENU_WIDTH,
+    backgroundColor: Colors.bg.surface, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.border.default,
+    overflow: 'hidden', ...Shadow.card,
+  },
+  menuRow:        { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], paddingVertical: Spacing[3], paddingHorizontal: Spacing[4] },
+  menuRowDivider: { borderBottomWidth: 1, borderBottomColor: Colors.border.default },
+  menuIcon:       { fontSize: 16, width: 20, textAlign: 'center', color: Colors.gold[400] },
+  menuLabel:      { fontSize: 14, fontFamily: Typography.family.body, color: Colors.text.primary },
 });

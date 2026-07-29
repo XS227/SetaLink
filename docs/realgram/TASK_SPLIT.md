@@ -15731,3 +15731,70 @@ https://setalink.no/releases/beta/setalink-v0.9.109.apk
 checkout and `/var/www/setalink` while I was in there (same disk-pressure
 reason as `(197)`) — `0.9.107`-`0.9.109` kept. Gave Khabat the direct
 links + the ads explanation from above.
+
+---
+
+## B→A(199) — Khabat's live-test UI pass on v0.9.108/109: 4 real requests, all shipped
+
+**Dato: 2026-07-29.** Khabat tested live (didn't say whether the flash/
+jam itself recurred — no VPN/Profile complaint in this round, only UI
+requests, which is a decent signal `(196)`'s fix is holding, but asking
+her directly is more reliable than inferring it from silence). Four
+concrete asks, all implemented:
+
+**1. TopBar inbox badge showed a stale "4 unread" — removed, not
+patched.** `TopBar.tsx` computed `unread` from `inboxStore`+`dmStore`
+every render but Khabat confirmed the number itself was wrong. Rather
+than chase why (separate investigation, no repro in hand), removed the
+standalone inbox icon+badge entirely — it's redundant now anyway, see
+next item. If unread state needs a visible cue again later, that's real
+store-staleness work, flagged in the file's own header comment, not done
+here.
+
+**2. Avatar → burger menu (Profile/Settings/Inbox/Dashboard).**
+`TopBar.tsx` rewritten: the avatar chip is now a menu trigger
+(`measureInWindow`-anchored `Modal` dropdown, positioned via `right`-
+inset off screen width so it never needs to know the trigger's exact
+screen — same technique reused in InboxScreen's new thread overflow menu
+below, one consistent dropdown pattern app-wide). Menu never gates open
+on the native measure call succeeding — opens immediately at a computed
+fallback position, then self-corrects — matters for the jest test
+environment (RN's mock never invokes `measureInWindow`'s callback) and
+for real-device robustness alike. 4 rows using already-translated keys
+(`nav.profile`/`st.title`/`pr.inbox`/`rgprofile.dashboard`, all 4
+languages, zero new copy to translate for those three). `'dashboard'`
+wired into `AppNavigator.tsx`'s `makeOnNavigate` → `ShahnamehHome`.
+
+**3. Live TV button was missing — correctly so until now, re-enabled.**
+`LIVE_TV_ENTRY_ENABLED` (RealGramProfileScreen.tsx + RealGramHomeScreen.tsx)
+was `false` since `(189)`, a mitigation for the flash/jam investigation
+that's now closed with a confirmed unrelated root cause `(196)`. Flipped
+both back to `true`.
+
+**4. DM thread header decluttered, Telegram/WhatsApp pattern.**
+`InboxScreen.tsx`'s open-thread header had Call/Block/Delete as three
+always-visible icons next to the peer name — collapsed Block+Delete into
+a single "⋮" overflow menu (same dropdown pattern as #2), same handlers
+(`confirmBlockUser`/`confirmDeleteThread`), zero behavior change, just
+fewer things visible at once. **Found a real, separate bug while doing
+this**: the thread header's own `canCall` was computed from
+`plan`/`testMode` only, never checking `CALLING_ENABLED` — so the call
+icon kept showing (and doing nothing but a toast) even while `(194)`
+disabled calling app-wide. Root cause: `CALLING_ENABLED` was a local
+const in `AppNavigator.tsx`'s `CallManager`, InboxScreen had no way to
+see it and silently duplicated the check instead. Fixed by extracting it
+to `config/featureFlags.ts`, imported in both places now — can't drift
+out of sync again structurally, not just by convention.
+
+Also fixed `inboxScreen.test.tsx`'s existing delete-button assertion
+(now needs to open the overflow menu first, `testID: 'convo-menu'`) and
+added one missing i18n key (`dm.blockUser` — the Block confirm alert's
+button text was hardcoded English before, now localized in all 4
+languages same as everything else in that alert).
+
+**Not verified via `tsc`/jest** — same standing gap as every change in
+this thread from this box (no `node_modules` here). Manually traced every
+new ref/callback/style against existing patterns already `tsc`-verified
+elsewhere in the same files. Not built/shipped — over to whoever's
+picking up the next build; no reason to hold this one, it's pure UI, no
+theory to re-verify first.

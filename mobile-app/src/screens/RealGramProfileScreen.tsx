@@ -39,13 +39,13 @@ import {
 } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
 
-// Khabat, 2026-07-29: real-device test on v0.9.105 — Profile loading spinner
-// resolves, then the screen "flashes" and the whole app jams (unresponsive
-// to taps). Suspected but unconfirmed cause: the Live TV card, added
-// 2026-07-28. Hiding its entry point here and in RealGramHomeScreen.tsx as
-// a mitigation while the real cause is investigated — flip back to `true`
-// once cleared.
-const LIVE_TV_ENTRY_ENABLED = false;
+// Khabat, 2026-07-29: real-device test on v0.9.105 flagged Profile
+// flash/jam; Live TV (added 2026-07-28) was a suspected-but-unconfirmed
+// cause, hidden here and in RealGramHomeScreen.tsx as a mitigation. Cleared
+// by (196): root cause was useT()'s unmemoized `t` driving a render loop,
+// unrelated to Live TV — Khabat also independently confirmed the jam still
+// hit with this entry point already hidden. Re-enabled.
+const LIVE_TV_ENTRY_ENABLED = true;
 
 // Never surface a raw backend error code — Khabat, 2026-07-21: Profile
 // showed the literal string "profile_unavailable". Map known codes to
