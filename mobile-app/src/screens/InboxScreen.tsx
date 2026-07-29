@@ -709,7 +709,18 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   tråden" — folded down to Telegram/WhatsApp's own pattern of
                   name+status up front, secondary actions behind "...". Call
                   stays a direct icon (not buried) only while it's actually
-                  usable — it's fully off right now, see CALLING_ENABLED. */}
+                  usable, see CALLING_ENABLED — and unlike Block/Delete/profile-
+                  tap, it's deliberately NOT gated on `!openConvo.support`
+                  (Khabat, 2026-07-29, after the Iran tester's call icon never
+                  showed at all: SUPPORT_USER_ID — unifiedThreads.ts — is her
+                  own account during this testing phase, so every DM with her
+                  gets folded into the pinned Support thread client-side, per
+                  buildConversations(). A canCall-eligible user should be able
+                  to ring Support the same as any other peer; startCall()
+                  already falls back to `peerUserId` when there's no
+                  `peerDevice`, and the backend resolves a user_id via
+                  qe_resolve_device() same as any other call target, so no
+                  server-side change was needed for this). */}
               <View style={styles.threadHeader}>
                 <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
                   <Text style={styles.backIcon}>‹</Text>
@@ -743,7 +754,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     <Text style={styles.threadSubtitle}>{t('dm.typing')}</Text>
                   )}
                 </View>
-                {!openConvo.support && canCall && (
+                {canCall && (
                   <TouchableOpacity
                     testID="convo-call"
                     style={styles.threadDeleteBtn}

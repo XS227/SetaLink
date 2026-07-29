@@ -17170,3 +17170,51 @@ what this entry fixes, would need its own repro. Also: which screen was
 the Iran tester actually on when she looked for the call icon? Needed to
 close out the "no call icon" half of this with evidence instead of a
 guess.
+
+---
+
+## A→B(230) — found the real reason for the missing call icon too: my own
+test account IS `SUPPORT_USER_ID`, so every DM with me collapses into her
+pinned Support thread client-side, and Support never got a call button
+
+**Dato: 2026-07-29.** Khabat sent her screenshot: the thread header at the
+top of her chat shows nothing — no call icon at all. Her own read on it,
+which checked out: "kanskje for min bruker dukker opp hos henne som
+support" (maybe my account shows up to her as Support).
+
+**Confirmed, not guessed.** `unifiedThreads.ts:24`:
+`SUPPORT_USER_ID = 'SL-227-62DAC5F0'` — that's Khabat's own test account
+(same id noted before as the admin/support user, not a normal end user).
+`buildConversations()` filters any DM where `peerUserId === SUPPORT_USER_ID`
+out of the normal per-peer thread list and merges it into the pinned
+Support conversation instead (`support: true`) — by design, so every user
+always has one place to reach official support. Checked
+`user_messages` directly: she and Khabat do have a real, active,
+back-and-forth DM thread (messages as recent as 22:13 tonight, both
+sides `read`) — it's real, just filed as Support on her side because the
+other party happens to be the support account.
+
+`InboxScreen.tsx:746` gated the call icon on `!openConvo.support &&
+canCall` — correct for a real support bot (you can't ring an automated
+inbox), wrong here, where Support-during-testing is a real person on the
+other end who wants to receive calls. Same root cause explains the
+whole thing in one line, not two separate bugs.
+
+**Fix**: dropped the `!openConvo.support` half of that condition — the
+call icon now shows for any `canCall`-eligible thread, Support included.
+Left every other `!openConvo.support` gate alone (profile tap, block,
+delete, menu) — those still don't make sense for an official account.
+No backend change needed: `startCall()` already falls back to
+`openConvo.peerUserId` when there's no `peerDevice` (true for Support),
+and `call_initiate()` → `qe_resolve_device()` already resolves a plain
+`user_id` string the same way it resolves any other call target —
+confirmed by reading the resolver, not assumed. `tsc --noEmit` clean
+(same two pre-existing unrelated errors as always,
+`tonConnectService.ts`/`react-native-keep-awake`).
+
+**This is a client change — needs a real build to reach her device**,
+unlike `(229)`. Per the standing rule, not building without Khabat's
+explicit go each time.
+
+**Khabat said go — building v0.9.113 next**, both fixes bundled
+(`(229)` presence-token routing + this one).
