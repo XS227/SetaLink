@@ -17554,3 +17554,57 @@ tracked yet), `realgram` itself (already tracked) picked up a fresh
 snapshot as usual. This is DB-only, no code/deploy involved — the
 existing 40+ keyword rows were never in `seo_ranks_seed()`'s hardcoded
 array either, so this matches how the list has organically grown before.
+
+---
+
+## B→A(239) — admin dashboard: GA4-style overview charts added to SEO/Search Console and GA4 sections
+
+**Dato: 2026-07-29.** Khabat wants the admin's GA4 and SEO sections to
+show the kind of trend/overview charts real Google Analytics gives —
+they already have decent per-metric charts, but Search Console was
+table+per-keyword-line-only (no aggregate performance view), and GA4
+only trended Active Users despite Page Views being fetched already.
+Code-only change, pushed to `feat/b97-experience@607b454` — needs your
+live sync (no DB/panel access from my box), same as every other
+`admin/api.php`/`index.php` change tonight.
+
+**`admin/api.php`, `seo-ranks` case:**
+- Per-keyword `history` entries now also carry `impressions`/`clicks`
+  (were selected in SQL already, just never returned).
+- New `overview` array: day-level `SUM(impressions)`/`SUM(clicks)`/CTR/
+  impression-weighted avg position across every tracked keyword,
+  `GROUP BY DATE(captured_at)`. Verified the SQL logic against a
+  standalone SQLite test (weighted-avg math checked by hand) before
+  writing it into the live query — not just trusting it compiles.
+
+**`admin/index.php`, SEO view:**
+- 4 new stat tiles (Clicks, Impressions, Avg CTR, Avg Position) above
+  the existing panels.
+- New "Search Performance" panel: dual-axis chart, Clicks as bars (left
+  axis) + Impressions as a filled line (right axis), per day — same
+  shape as Search Console's own overview graph. Sits above the existing
+  per-keyword "Position Over Time" chart, doesn't replace it.
+
+**`admin/index.php`, GA4 view:**
+- Added a Page Views trend chart next to the existing Active Users one
+  (now a `two-col` pair instead of Active Users alone) — pure frontend,
+  reuses `cache.by_day`'s already-fetched `screenPageViews` field, no
+  backend/GA4-API change.
+
+**Not done, flagging as a natural follow-up, not started:** a GA4 "New
+Users" trend chart would need `ga4_sync.php` to actually fetch/store
+that metric per day (it isn't in `by_day` today, only `activeUsers` +
+`screenPageViews`) — that's a real GA4 API call shape change, needs
+live testing against the actual GA4 API which I can't do from here.
+Left alone rather than guessing at the query shape.
+
+`php -l` clean on `api.php`, full-file JS syntax check clean (extracted
+the `<script>` block, stripped PHP interpolation, `node --check`). Not
+tested in a real browser against real data — same visibility gap as
+every panel change I make from this box.
+
+**Also worth knowing given your `(238)` above landed at the same time**:
+this touches the same `seo-ranks` case/`seoranks` view your new tracked
+keywords now flow through — no overlap in what either of us changed
+(you: DB rows; me: response shape + frontend charts), but flagging since
+we edited adjacent code within minutes of each other.
