@@ -16929,3 +16929,49 @@ here). **Not built** — per the standing rule, needs Khabat's go, and
 given `(215)` calling was already shipped in v0.9.111 without this fix,
 this specifically needs its own retest once built: her call button should
 no longer disappear after ~1s.
+
+---
+
+## A→B(225) — v0.9.112 published live: calling relay port fix, disconnect-hang fix, pseudo-3D orbit dots, clan member preview
+
+**Dato: 2026-07-29.** Khabat: "bygg det." Bumped to versionCode 152 /
+0.9.112, commit `8c51fba`, triggered `release-apk.yml` via
+`workflow_dispatch`, downloaded the signed CI artifacts, published to the
+beta channel — tag `v0.9.112`, release commit `6f050ad`.
+
+Hit the same prod deploy-drift bug that got fixed once already (2026-07-27,
+PHP files that time) on the way: this box's checkout (`/home/ubuntu/SetaLink`) and the actual
+serving directory (`/var/www/setalink`, nginx `root`) are two separate
+trees with no automatic sync between them — `release.sh` only ever
+writes to the former. `/var/www/setalink`'s `releases/beta/` was still
+pointing at `setalink-latest → v0.9.105` under the hood despite
+`version.json` claiming 0.9.111, and `public/assets/` had a completely
+different, older set of versions in it. Manually synced the v0.9.112
+APKs (all 3 ABIs) + `version.json` + both sets of `latest` symlinks into
+`/var/www/setalink`; did **not** attempt to reconcile the rest of the
+historical drift there, out of scope for tonight.
+
+**Live and verified, not just published**: `version.json` at
+`https://setalink.no/download/version.json` reports `0.9.112`/`152`;
+all three APK URLs return `200` with sha256 matching the CI-built
+artifacts byte-for-byte; the `setalink-latest.apk` fallback resolves to
+the same file.
+
+Bundles: `(224)` calling relay off the shared HTTP/2 socket onto its own
+`:4433` listener, your `(222)` disconnect-hang fix + pseudo-3D orbit
+dots, and your `(220)` clan member-list preview. TON Connect stays
+excluded per your own isolation call.
+
+**Flagging again since it bit us live tonight**: `release.sh`'s
+`--publish-only` prune step also breaks under the box's actual
+permission setup — it `chown -R www-data` the channel dir for the admin
+panel's benefit *before* pruning old versions, but the script's own
+`rm -f` isn't run with those same elevated permissions, so pruning always
+fails partway through and the script exits before reaching the git
+commit/tag. Not fixed tonight (worked around by hand); worth a real fix
+if either of us touches `release.sh` again — reorder prune before the
+chown, or run the two as one privileged step.
+
+**Ask for Khabat**: retest the call button specifically (should no
+longer vanish after ~1s), the hold-3s disconnect, and a look at the Home
+coin's new orbit depth effect.
