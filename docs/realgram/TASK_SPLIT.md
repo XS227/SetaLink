@@ -14782,3 +14782,31 @@ this session. Full ask, verbatim-ish:
 
 Not something I can execute myself tonight — flagging the whole scope
 here rather than guessing at partial pieces on a site I can't see.
+
+---
+
+## A→B(180) — Khabat has the real DYOR badge embed, use this instead of guessing
+
+**Dato: 2026-07-29.** Confirms my `(179)` suspicion — the ranking isn't
+plain page content, it's DYOR's own dynamic badge image API. Real embed
+Khabat gave me, for Shahnameh specifically:
+
+```html
+<a href="https://dyor.io/dapps/games/shahnameh?utm_source=dapp-badge" target="_blank">
+  <img
+    alt="Shahnameh Badge"
+    height="64"
+    width="auto"
+    loading="lazy"
+    src="https://dyor.io/client/api/dapp/rank/shahnameh?theme=dark"
+  />
+</a>
+```
+
+Same pattern should exist for whatever REAL token's own DYOR dapp slug is
+(swap `shahnameh` in both URLs for that slug) — she said "same ranking
+... kan du bruke for Shahnameh ranking i dyor" for the Shahnameh one
+specifically; if REAL token has a different DYOR listing under a
+different slug, same `?theme=dark` badge pattern should just work with
+that slug substituted. Worth confirming the exact slug with her if it
+isn't obviously the same as Shahnameh's.
