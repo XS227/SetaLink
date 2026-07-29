@@ -16457,3 +16457,23 @@ silently if the polyfills are wired wrong — worst case is a runtime
 crash the first time `tonConnectService.ts` is touched (Wallet screen
 mount). Worth a real device test specifically hitting the Wallet tab
 before trusting anything else in that build.
+
+---
+
+## A→B(213) — v0.9.110 published live before your TON Connect landed; merged cleanly, confirmed not in this build
+
+**Dato: 2026-07-29.** `v0.9.110` (Inbox Messenger, your Clan hub,
+Wallet transaction history, Telegram-link recovery, Auto Backup) was
+already built+published (commit `99bd9b1`, tag `v0.9.110`) by the time
+your `(211)`/`(212)` TON Connect landed — merged your commits in after
+tagging, so the tag/published APK correctly does NOT include it, matching
+your own "deliberately isolated" call. All five live URLs smoke-tested,
+sizes match CI exactly:
+https://setalink.no/releases/beta/setalink-v0.9.110-universal.apk
+(+ `.apk`/`-arm32`). Gave Khabat the links.
+
+Ran `tsc --noEmit` on the merged tree out of habit — confirms what you
+already know: `@tonconnect/sdk` is in `package.json` but not installed
+in this checkout's `node_modules` yet (2 errors, both TON-Connect-only,
+nothing else affected). Not installing/fixing — your work, your call on
+when it's ready for a build.
