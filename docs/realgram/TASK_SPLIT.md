@@ -17073,3 +17073,100 @@ watch loops). Will trigger
 as soon as Khabat confirms `113` is published, or the moment I see it
 land next time I'm in this repo. Flagging here mainly so you know iOS is
 intentionally on hold, not stalled/forgotten.
+
+---
+
+## A→B(229) — found + fixed the real reason calling still didn't work in
+v0.9.112: `call-presence-token`/`call-ice-servers` were GET actions
+routed into the POST-only branch, dead since the feature was first added
+
+**Dato: 2026-07-29.** Khabat, after retesting v0.9.112 (the `(224)`/`(225)`
+relay-port fix): Iran tester on a clean install of build 112 never sees
+the call icon at all; Khabat sees it, places a call, "hører ingenting og
+ikke noe skjer videre" (hears nothing, nothing happens further).
+
+**Root cause, confirmed live, not guessed:** `public/api.php` splits all
+routes into `if ($method === 'GET') { ... err('unknown action'); }`
+followed by `if ($method === 'POST') { ... }`. `call-presence-token` and
+`call-ice-servers` both read `$_GET` and `callSignalingClient.ts` calls
+both via GET (`callGet(...)`) — but both `if ($action === ...)` blocks
+were physically sitting inside the **POST** branch, below the GET
+branch's own `err('unknown action')`. A real GET request for either
+action hit that fallback before ever reaching them. This has been true
+since the calling backend was first added (`3d14bd3`) — never worked,
+not a regression from tonight's port fix. Exact same bug class as
+`410e875`'s `list-blocked` fix, just never caught for these two.
+
+Reproduced directly against live `setalink.no` before touching anything:
+`curl .../api.php?...&action=call-presence-token&device_id=...` (GET,
+matching exactly what the client sends) → `{"ok":false,"error":"unknown
+action"}`. Confirmed `call-initiate` (POST) worked fine, which is why my
+own `(224)` testing missed this — I only exercised the POST actions.
+
+**Why this exactly matches both symptoms:**
+- Presence token always failing means `RealCallSignalingClient.
+  openSocket()`'s `presence:auth` never sends (the `try/catch` around it
+  swallows the failure by design, socket just stays unauthenticated) —
+  so **no device, ever, on any build, has been registered in the relay's
+  presence registry.** `call_relay_push()` looks up the callee's
+  connection and finds nothing → the callee's app never receives
+  `call:incoming` → the caller's offer sits queued forever waiting for
+  `call:peer_joined` that never comes → exactly "hears nothing, nothing
+  happens further," until PHP's 45s `CALL_STALE_RINGING_SECS` sweep
+  later marks it `missed`/`timeout` on the next call attempt. Checked
+  `call_sessions` directly: every real row between Khabat's device and
+  the Iran tester's is `missed`/`timeout` except one `caller_hangup` with
+  `duration_secs=0` — consistent with this the whole time, not a fluke.
+- Doesn't explain the missing call icon by itself (that's `canCall`,
+  unrelated to presence) — checked her device row directly:
+  `plan=premium, test_mode=1` already, same as Khabat's, so the client-
+  side gate (`InboxScreen.tsx`/`AppNavigator.tsx`'s `canCall`) should be
+  showing it. Only other gate on that icon is `!openConvo.support` — it
+  never renders inside the support thread, only inside an actual peer DM
+  thread. My real guess: a clean install has no DM threads yet and she
+  was looking at the support conversation, not a real thread with
+  Khabat's account. **Not fixing blind** — need her to confirm which
+  screen/conversation she was on before this is closed out; flagging,
+  not guessing.
+
+**Fix**: moved both `if ($action === 'call-presence-token')` and
+`if ($action === 'call-ice-servers')` blocks from the POST branch into
+the GET branch (right before its `err('unknown action')`), verbatim, no
+other logic changes. `php -l` clean. This box is `5.249.252.221` so no
+SSH hop — applied the identical surgical edit to `/var/www/setalink/
+public/api.php` (backed up first) rather than overwriting the whole live
+file, since live has unrelated pre-existing AdsGram drift from before
+`b93e4e0` that isn't mine to silently resolve tonight.
+
+**Verified live, end-to-end, not just deployed:**
+- `call-presence-token` GET → `{"ok":true,"data":{"enabled":true,
+  "token":"..."}}` (was `unknown action`).
+- `call-ice-servers` GET with a bogus call_id → `{"ok":false,"error":
+  "call not found"}` (a real domain error now, not `unknown action`).
+- Full simulated round-trip using the two real test device_ids: opened a
+  WS as the Iran tester's device, sent `presence:auth` with a real
+  minted token → `{"type":"presence:ok"}`. Then called `call-initiate`
+  from Khabat's device against her device_id → her still-open WS
+  received `{"type":"call:incoming","call_id":"...","caller_device_id":
+  "sl-85ff1772-...","caller_user_id":"SL-227-62DAC5F0","kind":"audio"}`
+  within ~1s. This is the exact push that's been silently failing since
+  the feature shipped — now delivers.
+
+**Not yet proven**: an actual audio path between two real phones (mic
+capture, ICE/TURN negotiation, playback) — this fix only proves
+signaling/presence now works, which is the precondition for that to even
+start happening. TURN itself (`fi-hel`, `65.109.183.7:3478`) — checked
+while I was in there: `coturn` active, static-auth-secret matches DB,
+firewall has both `3478` and the `49160:49200` relay range open, so
+that's not blocked either, but only a real device-to-device call proves
+audio actually flows end to end.
+
+**Ask for Khabat**: retest the same way (her calling the Iran tester, or
+vice versa) — this should now actually ring on the other side and be
+answerable. If it rings but audio still doesn't flow once accepted,
+that's a distinct, real bug (most likely `CallScreen`/`CallEngine`'s
+`acceptIncoming` timing, or a TURN allocation issue) — separate from
+what this entry fixes, would need its own repro. Also: which screen was
+the Iran tester actually on when she looked for the call icon? Needed to
+close out the "no call icon" half of this with evidence instead of a
+guess.

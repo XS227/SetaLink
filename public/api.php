@@ -1116,6 +1116,47 @@ HTML;
         exit;
     }
 
+    // ── Calling — GET half (see lib/calling.php's own header for the full
+    //    architecture/why). Moved here 2026-07-29 from the POST branch below
+    //    (same class of bug as 410e875's list-blocked fix): both read $_GET
+    //    and the client calls them via GET, but they'd sat in the POST-only
+    //    branch since the feature was added in 3d14bd3, so a real GET
+    //    request always hit 'unknown action' first — call-presence-token
+    //    could never mint a token, so no device could ever register
+    //    presence with the relay, so no incoming-call push could ever be
+    //    delivered. The rest of the calling actions (call-initiate and
+    //    friends, all POST bodies with side effects) stay in the POST
+    //    branch below. ──────────
+
+    if ($action === 'call-presence-token') {
+        // Minted once when the Inbox screen mounts, refreshed on its own TTL
+        // while it stays open — proves device identity to the relay so it
+        // can register presence (device_id -> socket) without its own DB.
+        // enabled:false (empty relay_secret, or calling not configured yet)
+        // means the client should hide the call entry points entirely.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        ok(call_presence_token($pdo, $deviceId));
+    }
+
+    if ($action === 'call-ice-servers') {
+        // Called by either side once they've joined the relay room for this
+        // call_id, before creating/answering the SDP offer. Always includes
+        // a public STUN fallback; adds fi-hel's TURN server with short-lived
+        // REST-API credentials once calling_turn_secret is configured.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        $callId   = trim($_GET['call_id'] ?? '');
+        if (!$deviceId || $callId === '') err('missing params');
+        $pdo = db();
+        try {
+            $result = call_ice_servers($pdo, $callId, $deviceId);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok($result);
+    }
+
     err('unknown action');
 }
 
@@ -1974,19 +2015,14 @@ if ($method === 'POST') {
     // ── Calling (audio only for now — see lib/calling.php's own header for
     //    the full architecture/why). This block only does authorization +
     //    durable history; the real-time ring/SDP/ICE relay is a separate
-    //    standalone process (calling-relay/), not deployed yet. ──────────
-
-    if ($action === 'call-presence-token') {
-        // Minted once when the Inbox screen mounts, refreshed on its own TTL
-        // while it stays open — proves device identity to the relay so it
-        // can register presence (device_id -> socket) without its own DB.
-        // enabled:false (empty relay_secret, or calling not configured yet)
-        // means the client should hide the call entry points entirely.
-        $deviceId = trim($_GET['device_id'] ?? '');
-        if (!$deviceId) err('missing device_id');
-        $pdo = db();
-        ok(call_presence_token($pdo, $deviceId));
-    }
+    //    standalone process (calling-relay/), not deployed yet. call-presence-
+    //    token and call-ice-servers are GET actions — see the GET branch
+    //    above (moved 2026-07-29, same class of bug as 410e875's list-blocked
+    //    fix: they read $_GET and the client calls them via GET, but they'd
+    //    been placed in this POST-only branch since the feature was added in
+    //    3d14bd3, so a real GET request always hit 'unknown action' first —
+    //    no device could ever register presence, so no incoming-call push
+    //    could ever be delivered. ──────────
 
     if ($action === 'call-initiate') {
         // Premium-gated (caller side, see calling.php header's open decision
@@ -2017,23 +2053,6 @@ if ($method === 'POST') {
         $pdo = db();
         try {
             $result = call_callee_voucher($pdo, $deviceId, $callId);
-        } catch (\RuntimeException $e) {
-            err($e->getMessage());
-        }
-        ok($result);
-    }
-
-    if ($action === 'call-ice-servers') {
-        // Called by either side once they've joined the relay room for this
-        // call_id, before creating/answering the SDP offer. Always includes
-        // a public STUN fallback; adds fi-hel's TURN server with short-lived
-        // REST-API credentials once calling_turn_secret is configured.
-        $deviceId = trim($_GET['device_id'] ?? '');
-        $callId   = trim($_GET['call_id'] ?? '');
-        if (!$deviceId || $callId === '') err('missing params');
-        $pdo = db();
-        try {
-            $result = call_ice_servers($pdo, $callId, $deviceId);
         } catch (\RuntimeException $e) {
             err($e->getMessage());
         }
