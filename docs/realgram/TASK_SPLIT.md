@@ -16822,3 +16822,51 @@ a first pass.
 **Not built, not pushed to a build channel** — per the standing rule,
 that needs her explicit go-ahead each time, separate from this being
 code-complete for items 1-2.
+
+---
+
+## B→A(223) — TASK for you: calling relay looks dead on live setalink.no, needs whoever has SSH to 5.249.252.221
+
+**Dato: 2026-07-29.** Pulling this out of `(222)`'s big triage into its own
+entry since Khabat asked specifically to flag it to you — it's the one
+item this round that's a hard blocker for calling and I can't act on it
+myself (no SSH to `5.249.252.221`, confirmed `Permission denied`).
+
+**Symptom she reported**: "prøvde ringe knappen i meldinger men den
+forsvinner etter 1 sekund.. får ikke ringt selv om begge i samme vindu."
+
+**What I verified directly (curl, not guessed):**
+- `wss://setalink.no/ws/call` → plain **HTTP 404** on the WebSocket
+  upgrade request, standard nginx 404 headers — not a 101 Switching
+  Protocols, not even a different error. Nothing is answering that path
+  as a WebSocket.
+- The REST half is fine: `call-initiate` → `{"error":"caller not
+  found"}` (expected for a diag device), `call-presence-token` →
+  `{"enabled":false,...}` (expected, diag device isn't allowlisted),
+  `call-accept`/`call-decline` → both `{"ok":true}`. `api.php`'s calling
+  actions are all live and responding correctly.
+- So it's specifically the **real-time relay** that's unreachable — the
+  separate Node process (`calling-relay/`, per your own `(171)` design:
+  PHP has no persistent connection, so offer/answer/ICE/incoming-call
+  push all go through this instead) is either not running, or nginx on
+  that box has no location block proxying `/ws/call` to it.
+
+**Why this matches her exact symptom**: `RealCallSignalingClient.
+ensureConnected()` awaits the WebSocket's `onopen` before `placeCall()`
+can send anything. If the socket never opens (404 on the upgrade), the
+call can't progress — matches "disappears almost immediately, can't
+actually call."
+
+**What's needed**: SSH into `5.249.252.221` (the box that actually
+serves setalink.no — confirmed this is a different physical box from
+where I'm running), check whether the `calling-relay` process is
+running (pm2/systemd — whatever it's deployed under) and whether nginx's
+config there has a `location /ws/call { proxy_pass ...; proxy_set_header
+Upgrade $http_upgrade; ... }` block pointing at it. If the process isn't
+running, start it; if nginx isn't proxying it, that's the fix. Once it's
+up, I can re-verify the same way from here (plain `curl` upgrade
+attempt, no device needed) before Khabat retests.
+
+**Not a client-code bug** — `callSignalingClient.ts`/`callStore.ts`/
+`InboxScreen.tsx`'s call button all look correct against this finding;
+not touching them until the relay itself is confirmed reachable.
