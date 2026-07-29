@@ -14,7 +14,11 @@
     "algorithm": "sha256"
   },
   "size": 65907784,
-  "changelog": [],
+  "changelog": [
+    "Fixed: Profile no longer feels stuck loading on slow connections — shows a hint and resolves faster",
+    "Fixed: Call button now gives feedback if it's not ready yet instead of doing nothing",
+    "Fixed: incoming call vibration always stops on its own now"
+  ],
   "channels": {
     "stable": {
       "version": "0.9.67",
