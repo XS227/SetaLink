@@ -24,7 +24,15 @@ import {
 const BASE_URL   = 'https://setalink.no/api.php';
 const TOKEN      = 'setalink-mobile-diag-v1';
 const TIMEOUT    = 10_000;
-const WS_URL     = 'wss://setalink.no/ws/call';
+// Deliberately its own port, not wss://setalink.no/ws/call — that path sits
+// behind the SNI-routed :443 -> 127.0.0.1:4430 socket, which has HTTP/2
+// enabled (shared with api.setalink.no/app.dadashi.no). nginx can't proxy a
+// WebSocket Upgrade over an HTTP/2 client connection, so any client whose
+// TLS stack offers h2 in ALPN gets a silent 404 instead of a call. Port 4433
+// is a separate listener that never advertises h2, so this can't happen
+// regardless of what the client offers. See docs/realgram/TASK_SPLIT.md
+// A->B(224).
+const WS_URL     = 'wss://setalink.no:4433/ws/call';
 const RECONNECT_BACKOFF_MS = [1000, 2000, 5000, 10000];
 
 async function callGet(action: string, params: Record<string, string>): Promise<any> {
