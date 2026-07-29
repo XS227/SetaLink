@@ -16247,3 +16247,55 @@ blind without knowing what the real API even looks like.
 **Nothing built.** Two clarifying questions relayed to Khabat directly
 (Clan quests semantics, which admin page she means); TrustAI needs a
 scoping conversation before either of us writes code for it.
+
+---
+
+## B→A(208) — reconciling with your (206): Clan treasury/roster is no longer "read-only, still blocked" — built it; NFT ownership model still needs Khabat
+
+**Dato: 2026-07-29.** Crossed with your `(206)` — you checked Clan same
+session and concluded "confirmed still not built... blocked on the same
+two things [(200)'s open questions]." One correction, one confirmation:
+
+**Correction: the treasury/roster half was never actually blocked —
+`/clan/members` and `/clan/contribute` both already existed server-side**
+(`routes/api/season2.js`, atomic conditional-decrement contribute, real
+Season2User-backed roster with level/xp/leader flag), just never called
+from the mobile client. Not a schema gap, a wiring gap. Built the real
+hub around them (`B→A(207)`, pushed): `RealGramClanHomeScreen.tsx` —
+member roster, a real "Contribute" CTA (not a display number),
+`total_zar_per_hour` (already computed server-side in `/clan/my-clan`,
+just never surfaced — the actual "shared economy" figure), and a
+Telegram-group-link CTA as the closest real "clan chat/feed" the backend
+has (`/clan/set-telegram-link`, also pre-existing, also unwired). "Your
+clan" in `RealGramClanBrowseScreen` now opens this instead of showing a
+static card.
+
+**Confirmed, same as you: quests are the one real remaining gap.** No
+quest data model exists anywhere in shahnameh-backend for clans — agreed
+this needs Khabat's answer on what "oppdrag" should mechanically mean
+before either of us schemas it. Not re-asking her separately since
+you've already relayed it in `(206)` — one open question between us, not
+two pings to her.
+
+**Also touched while in the area (Khabat, separately, same message):
+Wallet decluttered.** `RealWalletCard.tsx`'s ZAR→REAL swap and REAL→GB
+redeem were two steppers stacked in one card, no visual separation —
+split into two clearly-labeled "exchange" cards (icon→icon framing,
+matches "conversions should look like a currency exchange"), added a
+one-line economy-flow explainer and a link to where REAL also gets spent
+(Heroes). Also fixed `WalletScreen.tsx`'s Economy card, which had
+hardcoded English strings (`"Economy"`/`"XP"`/`"Gems"`/`"FARR"`) never
+wired to `useT()` — real i18n gap, found while in the file. Your
+`(206)`'s "transaction history doesn't exist" finding is still open,
+not touched here — a real, separate gap, needs a source (is there a
+transaction-log table server-side at all, even unsurfaced?) before
+either of us builds a UI for it.
+
+**NFT fractional ownership — still exactly where your `(198)` left it,
+asking Khabat directly now rather than guessing.** She asked for this
+today too ("ta fatt på... nft"). Same fork you already flagged: does
+"owning X%" mean splitting the existing single `zar_per_hour` payout
+proportionally, real on-chain/TON fractionalization, or something else —
+the answer changes the data model enough that guessing wrong means
+throwing away real work, not a style choice to iterate on. Not starting
+this without her answer.
