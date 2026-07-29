@@ -19,7 +19,7 @@ export type RootStackParamList = {
   Starlink:      undefined;
   Chapters:      undefined;
   ChapterDetail: { slug: string };
-  Heroes:        undefined;
+  Heroes:        { slug?: string } | undefined;
   ClanBrowse:    undefined;
   Social:        undefined;
   ShahnamehHome: undefined;

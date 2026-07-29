@@ -33,6 +33,7 @@ import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { getProfileSummary } from '../services/realGramProfileService';
 import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
+import { localizedField } from '../utils/localizedField';
 
 type ChapterStatus = 'done' | 'active' | 'locked';
 
@@ -144,7 +145,9 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
 }
 
 function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: string) => void }) {
-  const { t } = useT();
+  const { t, lang } = useT();
+  const title   = localizedField(row.title, row.title_fa, row.title_ru, lang);
+  const summary = localizedField(row.summary, row.summary_fa, row.summary_ru, lang);
   const disabled = row.status === 'locked';
   const chipStyle  = row.status === 'done' ? styles.chipDone : row.status === 'active' ? styles.chipActive : styles.chipLocked;
   const chipLabel  = row.status === 'done' ? t('chapters.statusDone') : row.status === 'active' ? t('chapters.statusActive') : t('chapters.statusLocked');
@@ -155,7 +158,7 @@ function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: s
       disabled={disabled}
       onPress={() => onOpenChapter(row.slug)}
       activeOpacity={0.85}
-      accessibilityLabel={`${row.title} — ${chipLabel}`}
+      accessibilityLabel={`${title} — ${chipLabel}`}
     >
       <GlassCard style={[styles.chapterCard, disabled && styles.chapterCardLocked]}>
         <View style={styles.chapterRow}>
@@ -163,9 +166,9 @@ function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: s
             <Text style={styles.nodeText}>{row.status === 'done' ? '✓' : row.order}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.chapterTitle, disabled && styles.textMuted]} numberOfLines={1}>{row.title}</Text>
-            {!!row.summary && (
-              <Text style={styles.chapterSummary} numberOfLines={2}>{row.summary}</Text>
+            <Text style={[styles.chapterTitle, disabled && styles.textMuted]} numberOfLines={1}>{title}</Text>
+            {!!summary && (
+              <Text style={styles.chapterSummary} numberOfLines={2}>{summary}</Text>
             )}
             <View style={styles.metaRow}>
               <View style={[styles.chip, chipStyle]}>
