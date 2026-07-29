@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Linking, Platform,
+  View, Text, TouchableOpacity, ScrollView, StyleSheet, Alert, Linking, Platform, Modal,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EcosystemFooter } from '../components/EcosystemFooter';
+import { RealGramLinkWebView } from '../components/ShahnamehEmbed';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useServerStore }   from '../stores/serverStore';
 import { useAuthStore }     from '../stores/authStore';
 import { BiometricService } from '../services/biometricService';
 import { listBlockedUsers, unblockUser } from '../services/entitlementService';
+import { getSsoToken } from '../services/ssoService';
 import { useT, SUPPORTED_LANGUAGES } from '../i18n';
 import { APP_VERSION, APP_BUILD } from '../utils/version';
 import { checkForUpdate, downloadUpdate, openUpdateInBrowser } from '../services/updateService';
@@ -159,6 +161,28 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
   useEffect(() => {
     if (!deviceId) return;
     listBlockedUsers(deviceId).then(setBlocked).catch(() => {});
+  }, [deviceId]);
+
+  // Account recovery (Khabat, 2026-07-29, after the device-recognition/
+  // ANDROID_ID-instability finding): "premium sikkerhet: koble kontoen
+  // til Telegram for enkel gjenoppretting." Auto Backup (native manifest
+  // change, same session) covers a plain reinstall automatically — this
+  // covers the cases it can't (a genuine ANDROID_ID change: different
+  // Android user profile, factory reset, different Google account),
+  // since a Telegram-linked identity survives all of those.
+  //
+  // Deliberately calls getSsoToken(deviceId, false) — NOT the Game tab's
+  // forGame=true variant, which auto-provisions a device-only identity
+  // and would always report "linked" even for an account that never
+  // touched Telegram (see ssoService.ts's own header). This is the one
+  // call in the codebase that reports genuine Telegram-link status.
+  const [telegramLinked, setTelegramLinked] = useState<'checking' | 'linked' | 'unlinked'>('checking');
+  const [showLinkTelegram, setShowLinkTelegram] = useState(false);
+  useEffect(() => {
+    if (!deviceId) return;
+    getSsoToken(deviceId, false)
+      .then((r) => setTelegramLinked(r.status === 'ok' && !!r.telegram_id ? 'linked' : 'unlinked'))
+      .catch(() => setTelegramLinked('unlinked'));
   }, [deviceId]);
 
   const handleUnblock = (peerDeviceId: string) => {
@@ -326,6 +350,27 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
             value={biometricLock}
             onChange={handleBiometricToggle}
           />
+        </Section>
+
+        <Section label={t('st.accountRecovery')}>
+          <TouchableOpacity
+            style={rowStyles.row}
+            activeOpacity={telegramLinked === 'unlinked' ? 0.75 : 1}
+            disabled={telegramLinked !== 'unlinked'}
+            onPress={() => setShowLinkTelegram(true)}
+          >
+            <View style={rowStyles.left}>
+              <Text style={rowStyles.label}>{t('st.telegramLink')}</Text>
+              <Text style={rowStyles.desc}>
+                {telegramLinked === 'linked' ? t('st.telegramLinkedD') : t('st.telegramLinkD')}
+              </Text>
+            </View>
+            {telegramLinked === 'linked' ? (
+              <Text style={{ color: Colors.emerald[400], fontSize: Typography.size.sm }}>✓ {t('st.telegramLinkedBadge')}</Text>
+            ) : telegramLinked === 'unlinked' ? (
+              <Text style={selStyles.chevron}>›</Text>
+            ) : null}
+          </TouchableOpacity>
         </Section>
 
         <Section label="Privacy">
@@ -498,6 +543,14 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
 
         <View style={{ height: Spacing[12] }} />
       </ScrollView>
+
+      <Modal visible={showLinkTelegram} animationType="slide" onRequestClose={() => setShowLinkTelegram(false)}>
+        <RealGramLinkWebView
+          deviceId={deviceId}
+          onLinked={() => { setShowLinkTelegram(false); setTelegramLinked('linked'); }}
+          onClose={() => setShowLinkTelegram(false)}
+        />
+      </Modal>
     </View>
   );
 }

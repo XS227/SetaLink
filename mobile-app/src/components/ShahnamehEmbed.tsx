@@ -184,7 +184,15 @@ const debugStyles = StyleSheet.create({
 // ── RealGram in-app linking WebView ──────────────────────────────────────────
 // Opens the ecosystem link-gate page. Intercepts the setalink:// deep-link that
 // the gate redirects to after successful authentication.
-function RealGramLinkWebView({
+//
+// Exported (Khabat, 2026-07-29): this used to be reachable only as a
+// fallback inside the Game-tab's RealIdGate. Her ask after the device-
+// recognition/ANDROID_ID-instability finding — "premium sikkerhet: koble
+// kontoen til Telegram for enkel gjenoppretting" — needs this reachable as
+// its own deliberate action from Settings, not buried behind opening the
+// Game tab first. Reused as-is (same link flow, same deep-link/postMessage
+// handling), just no longer file-private.
+export function RealGramLinkWebView({
   deviceId, onLinked, onClose,
 }: { deviceId: string; onLinked: () => void; onClose: () => void }) {
   const insets = useSafeAreaInsets();
