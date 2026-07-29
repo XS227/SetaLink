@@ -51,7 +51,7 @@ function Ember({ delay, left, duration, drift }: EmberProps) {
 
 interface Props { count?: number }
 
-export function EmberField({ count = 10 }: Props) {
+export function EmberField({ count = 8 }: Props) {
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
     AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {});
