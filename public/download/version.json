@@ -1,23 +1,20 @@
 {
-  "version": "0.9.102",
-  "versionCode": 142,
-  "releaseDate": "2026-07-28",
+  "version": "0.9.103",
+  "versionCode": 143,
+  "releaseDate": "2026-07-29",
   "rolloutChannel": "beta",
   "minSupported": "0.9.7",
   "forceUpdate": false,
-  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.102.apk",
+  "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.103.apk",
   "apkUrlFallback": "https://setalink.no/download/setalink-latest.apk",
-  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.102-arm32.apk",
-  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.102-universal.apk",
+  "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.103-arm32.apk",
+  "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.103-universal.apk",
   "checksum": {
-    "sha256": "162cbac6e54114c66654bab617eea40bf2f3f7b44586d0bedeb5cb301f35b308",
+    "sha256": "96a19af195566c822b77f8c83f96195e27ba24cd0ff7a8c78fbb270a2ac91050",
     "algorithm": "sha256"
   },
-  "size": 65907372,
-  "changelog": [
-    "New: audio calling from the Inbox — call a friend, ring notification appears anywhere in the app",
-    "Fixed: Profile tab could get stuck loading forever on some devices"
-  ],
+  "size": 65907784,
+  "changelog": [],
   "channels": {
     "stable": {
       "version": "0.9.67",
@@ -34,11 +31,11 @@
       "apkUrlUniversal": "https://setalink.no/download/build101/setalink-v0.9.67-universal.apk"
     },
     "beta": {
-      "version": "0.9.102",
-      "versionCode": 142,
-      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.102.apk",
-      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.102-arm32.apk",
-      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.102-universal.apk"
+      "version": "0.9.103",
+      "versionCode": 143,
+      "apkUrl": "https://setalink.no/releases/beta/setalink-v0.9.103.apk",
+      "apkUrlArm32": "https://setalink.no/releases/beta/setalink-v0.9.103-arm32.apk",
+      "apkUrlUniversal": "https://setalink.no/releases/beta/setalink-v0.9.103-universal.apk"
     }
   },
   "rollout": {
