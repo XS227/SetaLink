@@ -1,6 +1,10 @@
 <?php
 /**
- * Ad Monetization — provider-agnostic event model (AdMob + AdsGram).
+ * Ad Monetization — provider-agnostic event model (AdMob only — AdsGram
+ * removed 2026-07-29, Khabat: "we've chosen AdMob only for now"; the
+ * `provider` column/AM_PROVIDERS list is kept generic rather than hardcoded
+ * to 'admob' so a future provider doesn't need a schema change, just a new
+ * entry here).
  *
  * Every KPI on /admin/monetization traces back to a row here with an explicit
  * source_type (AM_SOURCE_TYPES) so the UI never presents an estimate as a
@@ -12,23 +16,20 @@
  * fed by:
  *   - ar_confirm_reward()            (lib/ads_recovery.php)   AdMob SSV reward -> PROVIDER_CALLBACK
  *   - AD_BANNER_IMPRESSION app_events (public/api.php track-event) AdMob onPaid -> LOCAL_SDK_EVENT
- *   - push-adsgram-perf               (public/api.php)         AdsGram daily via Shahnameh -> PROVIDER_CALLBACK
- *   - push-adsgram-events              (public/api.php, optional, not yet sent by Shahnameh) -> PROVIDER_CALLBACK
  *   - lib/admob_sync.php              (AdMob Reporting API)    -> PROVIDER_API
- *   - lib/adsgram_publisher_sync.php  (AdsGram publisher API)  -> PROVIDER_API
  *   - CSV import                                                -> MANUAL_IMPORT
  *   - lib/ads_perf.php's eCPM-based estimate (legacy NOC page)  -> ESTIMATE
  *
  * Idempotency: unique index on (provider, provider_event_id). Callers build
  * provider_event_id from whatever the source actually guarantees is unique
- * (AdMob SSV transaction_id, AdsGram provider event id, or a synthetic key
- * like "banner:{device_id}:{app_events.id}" / "adsgram-daily:{date}:{platform}"
- * for sources that don't have a real provider id).
+ * (AdMob SSV transaction_id, or a synthetic key like
+ * "banner:{device_id}:{app_events.id}" for sources that don't have a real
+ * provider id).
  */
 
 declare(strict_types=1);
 
-const AM_PROVIDERS = ['admob', 'adsgram'];
+const AM_PROVIDERS = ['admob'];
 
 const AM_SOURCE_TYPES = [
     'PROVIDER_API', 'PROVIDER_CALLBACK', 'LOCAL_SDK_EVENT',
@@ -67,7 +68,6 @@ function am_defaults(): array {
         'mon_fx_rates_json'      => '{}',    // {"NOK":{"rate_to_base":0.091,"at":"2026-07-20T...","source":"manual"}}
         'admob_client_id'        => '',      // OAuth client id (not secret — safe to show in admin)
         'admob_reporting_account'=> '',      // AdMob publisher account id, e.g. pub-5788265416382988
-        'adsgram_publisher_configured' => 0, // computed elsewhere; placeholder so ar_config-style merge doesn't warn
     ];
 }
 
@@ -76,7 +76,7 @@ function am_defaults(): array {
 function am_init_tables(PDO $pdo): void {
     $pdo->exec("CREATE TABLE IF NOT EXISTS ad_events (
         id                       INTEGER PRIMARY KEY AUTOINCREMENT,
-        provider                 TEXT    NOT NULL,                 -- admob | adsgram
+        provider                 TEXT    NOT NULL,                 -- admob (kept generic for a future provider)
         event_type               TEXT    NOT NULL DEFAULT '',      -- request|impression|click|reward|banner_impression|banner_request|daily_summary|error
         app                      TEXT    NOT NULL DEFAULT 'realgram',
         platform                 TEXT    NOT NULL DEFAULT '',      -- android|ios|telegram
@@ -143,7 +143,7 @@ function am_init_tables(PDO $pdo): void {
     try { $pdo->exec("ALTER TABLE ad_daily_metrics ADD COLUMN shown INTEGER NOT NULL DEFAULT 0"); } catch (\Exception $e) { /* already exists */ }
     $pdo->exec("CREATE INDEX IF NOT EXISTS idx_addm_provider_date ON ad_daily_metrics(provider, date)");
 
-    // Manual AdsGram/other CSV imports — one row per import run, for the Logs tab + audit trail.
+    // Manual CSV imports — one row per import run, for the Logs tab + audit trail.
     $pdo->exec("CREATE TABLE IF NOT EXISTS ad_csv_imports (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         provider      TEXT    NOT NULL,
@@ -281,10 +281,10 @@ function am_event_insert(PDO $pdo, array $e): array {
         }
     }
 
-    // Optional: honor a real occurrence timestamp from the source (e.g. AdsGram's
-    // AdEventLog forwarder runs every 15min and forwards a backlog — using
-    // ingestion time there would skew daily rollups toward whenever the cron
-    // happened to run). Accepts ISO-8601 or 'Y-m-d H:i:s'; falls back to now.
+    // Optional: honor a real occurrence timestamp from the source (a batched
+    // forwarder that runs on a delay and sends a backlog would otherwise skew
+    // daily rollups toward whenever the batch happened to run). Accepts
+    // ISO-8601 or 'Y-m-d H:i:s'; falls back to now.
     $createdAt = 'now';
     if (!empty($e['created_at'])) {
         $ts = strtotime((string)$e['created_at']);
@@ -465,76 +465,6 @@ function am_reconciliation(PDO $pdo, string $provider, string $from, string $to)
     return $out;
 }
 
-// ── AdsGram per-event ingestion (push-adsgram-events contract) ─────────────
-
-/** status -> [reward_granted, validation_status], per Agent B's AdEventLog
- *  contract (TASK_SPLIT.md B→A(56)). "credited" is the only status a reward
- *  actually went out for; server_error is breakage worth a human look,
- *  everything else is a legitimate business-rule rejection. */
-const AM_ADSGRAM_STATUS_MAP = [
-    'credited'       => [1, 'verified'],
-    'cooldown'       => [0, 'rejected'],
-    'daily_limit'    => [0, 'rejected'],
-    'invalid_tier'   => [0, 'rejected'],
-    'unauthorized'   => [0, 'rejected'],
-    'user_not_found' => [0, 'rejected'],
-    'server_error'   => [0, 'review'],
-];
-
-/**
- * Transform + insert one event from Shahnameh's AdEventLog forwarder
- * (public/api.php's push-adsgram-events, one call per event in the batch).
- * Pulled out of the HTTP handler so it's unit-testable — see
- * scripts/test-monetization.php.
- */
-function am_ingest_adsgram_event(PDO $pdo, array $ev): array {
-    $txnId = trim((string)($ev['providerTransactionId'] ?? ''));
-    if ($txnId === '') return ['inserted' => false, 'duplicate' => false, 'rejected' => true, 'reason' => 'missing providerTransactionId'];
-
-    $status = (string)($ev['status'] ?? '');
-    [$rewardGranted, $validationStatus] = AM_ADSGRAM_STATUS_MAP[$status] ?? [0, 'unverified'];
-
-    // real/gems/farr are mutually exclusive in practice (only one nonzero per
-    // credited event) — pick whichever is nonzero for the KPI-facing
-    // reward_type/reward_amount pair; raw_payload keeps the full breakdown in
-    // case that assumption is ever wrong.
-    $rewardType = 'none'; $rewardAmount = 0.0;
-    foreach (['real', 'gems', 'farr'] as $rt) {
-        $amt = (float)($ev[$rt] ?? 0);
-        if ($amt != 0) { $rewardType = $rt; $rewardAmount = $amt; break; }
-    }
-
-    // AdsGram's own postback to Shahnameh is a genuine provider callback;
-    // Shahnameh's client-reported "verify-reward" path is validated
-    // business-side but not provider-confirmed — same distinction this repo
-    // already draws for AdMob SSV vs client-confirm (lib/ads_recovery.php).
-    $source = (string)($ev['source'] ?? '');
-    $sourceType = $source === 'server_callback' ? 'PROVIDER_CALLBACK' : 'LOCAL_SDK_EVENT';
-
-    $idType  = (string)($ev['idType'] ?? '');
-    $account = (string)($ev['account'] ?? '');
-
-    return am_event_insert($pdo, [
-        'provider'                => 'adsgram',
-        'event_type'              => 'reward',
-        'platform'                => 'telegram',
-        'placement'               => (string)($ev['tier'] ?? ''),
-        'ad_unit_id'              => (string)($ev['blockId'] ?? ''),
-        'provider_event_id'       => 'adsgram-event:' . $txnId,
-        'provider_transaction_id' => $txnId,
-        'user_id'                 => $account,
-        'internal_account_id'     => $idType === 'real' ? $account : '',
-        'reward_type'             => $rewardType,
-        'reward_amount'           => $rewardAmount,
-        'reward_granted'          => $rewardGranted,
-        'validation_status'       => $validationStatus,
-        'error_message'           => (string)($ev['reason'] ?? ''),
-        'raw_payload'             => json_encode($ev, JSON_UNESCAPED_UNICODE),
-        'created_at'              => (string)($ev['occurredAt'] ?? ''),
-        'source_type'             => $sourceType,
-    ]);
-}
-
 // ── Backfill (one-time, idempotent) from the legacy tables ─────────────────
 
 /**
@@ -544,7 +474,7 @@ function am_ingest_adsgram_event(PDO $pdo, array $ev): array {
  */
 function am_backfill(PDO $pdo, bool $dryRun = false): array {
     am_init_tables($pdo);
-    $stats = ['admob_reward' => 0, 'adsgram_daily' => 0, 'banner' => 0, 'skipped_dupe' => 0];
+    $stats = ['admob_reward' => 0, 'banner' => 0, 'skipped_dupe' => 0];
 
     // 1) AdMob rewarded events (ad_reward_events, confirmed only — this table is
     //    already the real source of truth for rewarded video).
@@ -587,20 +517,6 @@ function am_backfill(PDO $pdo, bool $dryRun = false): array {
             'rewards_failed' => (int)$r['failed'], 'source_type' => $allSsv ? 'PROVIDER_CALLBACK' : 'LOCAL_SDK_EVENT',
         ];
         if (!$dryRun) am_daily_metric_upsert($pdo, $m);
-    }
-
-    // 2) AdsGram daily pushes (ad_perf_daily) — real dates/counts, revenue/eCPM
-    //    known to be placeholder 0.0 until a publisher token exists (TASK_SPLIT A→B(19)/(20)).
-    $rows = $pdo->query("SELECT * FROM ad_perf_daily WHERE platform='adsgram'")->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($rows as $r) {
-        $m = [
-            'date' => $r['date'], 'provider' => 'adsgram', 'platform' => 'telegram',
-            'completions' => (int)$r['rewarded_views'], 'revenue' => (float)$r['revenue_usd'],
-            'currency' => 'USD', 'source_type' => 'PROVIDER_CALLBACK',
-        ];
-        if ($dryRun) { $stats['adsgram_daily']++; continue; }
-        am_daily_metric_upsert($pdo, $m);
-        $stats['adsgram_daily']++;
     }
 
     // 3) Banner impressions (app_events, real onPaid values, client-reported).
@@ -841,13 +757,12 @@ function am_reward_events(PDO $pdo, array $f): array {
 // ── Alerts (spec §14) ────────────────────────────────────────────────────
 
 /**
- * $admobConfigured/$adsgramConfigured are passed in rather than checked here
- * (admob_client_configured()/adsgram_publisher_configured() live in
- * lib/admob_sync.php / lib/adsgram_publisher_sync.php) so this base model file
- * has no dependency on its sibling integration files — the admin/api.php
- * caller, which already loads all three, supplies them.
+ * $admobConfigured is passed in rather than checked here
+ * (admob_client_configured() lives in lib/admob_sync.php) so this base model
+ * file has no dependency on its sibling integration file — the admin/api.php
+ * caller, which already loads it, supplies it.
  */
-function am_alerts(PDO $pdo, bool $admobConfigured, bool $adsgramConfigured): array {
+function am_alerts(PDO $pdo, bool $admobConfigured): array {
     am_init_tables($pdo);
     $alerts = [];
     $weekAgo = gmdate('Y-m-d', strtotime('-7 days'));
@@ -864,15 +779,14 @@ function am_alerts(PDO $pdo, bool $admobConfigured, bool $adsgramConfigured): ar
     }
 
     // Sync staleness (only meaningful once a real integration is connected).
-    foreach (['admob_last_sync' => 'AdMob', 'adsgram_last_sync' => 'AdsGram'] as $key => $label) {
-        $st = $pdo->prepare("SELECT value FROM settings WHERE key=?");
-        $st->execute([$key]);
-        $v = (string)($st->fetchColumn() ?: '');
-        if ($v === '') continue; // never synced yet — "not configured", not an alert
+    $st = $pdo->prepare("SELECT value FROM settings WHERE key='admob_last_sync'");
+    $st->execute();
+    $v = (string)($st->fetchColumn() ?: '');
+    if ($v !== '') { // never synced yet — "not configured", not an alert
         $ts = strtotime($v);
         if ($ts !== false && (time() - $ts) > 48 * 3600) {
-            $alerts[] = ['level' => 'warn', 'area' => strtolower($label), 'code' => 'sync_stale',
-                'message' => "$label har ikke synkronisert på over 48 timer (sist: $v)."];
+            $alerts[] = ['level' => 'warn', 'area' => 'admob', 'code' => 'sync_stale',
+                'message' => "AdMob har ikke synkronisert på over 48 timer (sist: $v)."];
         }
     }
 
@@ -881,10 +795,6 @@ function am_alerts(PDO $pdo, bool $admobConfigured, bool $adsgramConfigured): ar
     if (!$admobConfigured) {
         $alerts[] = ['level' => 'info', 'area' => 'admob', 'code' => 'not_configured',
             'message' => 'AdMob Reporting API er ikke konfigurert ennå — se Configuration-fanen.'];
-    }
-    if (!$adsgramConfigured) {
-        $alerts[] = ['level' => 'info', 'area' => 'adsgram', 'code' => 'not_configured',
-            'message' => 'AdsGram publisher-API-token er ikke konfigurert — CSV-import og provider-callback-data (push-adsgram-events) fungerer uavhengig av dette.'];
     }
 
     return $alerts;

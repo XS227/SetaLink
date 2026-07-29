@@ -1,8 +1,8 @@
 <?php
 // One-time (but safely re-runnable) backfill: populates ad_events/ad_daily_metrics
-// from the legacy ad_reward_events / ad_perf_daily / app_events tables, via
-// am_backfill() (lib/ad_monetization.php). Idempotent — a second run only
-// reports duplicates, never double-inserts.
+// from the legacy ad_reward_events / app_events tables, via am_backfill()
+// (lib/ad_monetization.php). Idempotent — a second run only reports
+// duplicates, never double-inserts.
 //
 // Usage:
 //   php scripts/backfill-ad-events.php --dry-run   # report counts, write nothing
@@ -29,7 +29,6 @@ $before = [
 echo ($dryRun ? "[DRY RUN] " : "") . "Backfilling from ad_reward_events / ad_perf_daily / app_events…\n";
 $stats = am_backfill($pdo, $dryRun);
 echo "  admob_reward events processed: {$stats['admob_reward']}\n";
-echo "  adsgram_daily rows processed:  {$stats['adsgram_daily']}\n";
 echo "  banner events processed:       {$stats['banner']}\n";
 echo "  interstitial impression events: " . ($stats['interstitial_events'] ?? 0) . "\n";
 echo "  interstitial days rolled up:    " . ($stats['interstitial'] ?? 0) . "\n";

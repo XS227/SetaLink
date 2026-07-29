@@ -17,7 +17,6 @@ require_once __DIR__ . '/../lib/real_economy.php';
 require_once __DIR__ . '/../lib/ads_perf.php';
 require_once __DIR__ . '/../lib/ad_monetization.php';
 require_once __DIR__ . '/../lib/admob_sync.php';
-require_once __DIR__ . '/../lib/adsgram_publisher_sync.php';
 require_once __DIR__ . '/../lib/calling.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -1754,29 +1753,8 @@ PS1;
             $saved[] = 'fx_rate:' . strtoupper($fxCurrency);
         }
 
-        if (isset($parsed['adsgram_api_token'])) {
-            $token = trim((string)$parsed['adsgram_api_token']);
-            $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('adsgram_api_token',?,datetime('now'))")
-                ->execute([$token]);
-            $saved[] = 'adsgram_api_token';
-        }
-
         am_log($db, $auth_user, 'monetization_config_save', ['fields' => $saved]);
         api_ok(['saved' => $saved]);
-    }
-
-    if ($action === 'monetization-adsgram-csv-import') {
-        $db = open_analytics_db();
-        $csv = (string)($parsed['csv'] ?? '');
-        $filename = substr(trim((string)($parsed['filename'] ?? 'upload.csv')), 0, 200);
-        if ($csv === '') api_err('csv required');
-        if (strlen($csv) > 2_000_000) api_err('csv too large (max 2MB)');
-        try {
-            $res = am_csv_import_adsgram($db, $csv, $filename, $auth_user);
-            api_ok($res);
-        } catch (\InvalidArgumentException $e) {
-            api_err('CSV import failed: ' . $e->getMessage());
-        }
     }
 
     if ($action === 'monetization-admob-sync-now') {
@@ -1793,15 +1771,6 @@ PS1;
         $ok = admob_disconnect();
         am_log($db, $auth_user, 'monetization_admob_disconnect', ['ok' => $ok]);
         api_ok(['disconnected' => $ok]);
-    }
-
-    if ($action === 'monetization-adsgram-sync-now') {
-        $db = open_analytics_db();
-        $days = max(1, min(90, (int)($parsed['days'] ?? 30)));
-        $res = adsgram_publisher_sync($db, $days);
-        am_log($db, $auth_user, 'monetization_adsgram_sync_now', $res);
-        if (!$res['ok']) api_err('AdsGram sync failed: ' . $res['error']);
-        api_ok($res);
     }
 
     $allowed = ['add','remove','disable','enable','reset-traffic','change-package','regen-link'];
@@ -3275,7 +3244,7 @@ switch ($action) {
         break;
 
     case 'ads-perf-comparison':
-        // Full Ads Performance NOC: AdsGram vs AdMob, all KPIs, alerts, Hakim.
+        // Full Ads Performance NOC: AdMob KPIs + alerts (AdMob-only since 2026-07-29).
         $db  = open_analytics_db();
         ar_init_tables($db);
         adp_init_table($db);   // also runs adp_ensure_linked_at migration
@@ -3304,14 +3273,11 @@ switch ($action) {
 
         // Full-window series
         $admob   = adp_admob_series($db, $days, $ecpm);
-        $adsgram = adp_adsgram_series($db, $days);
 
         // Sub-window totals: today + last 7d
-        $am_today = adp_totals(array_filter($admob,   fn($d, $k) => $k === gmdate('Y-m-d'), ARRAY_FILTER_USE_BOTH));
-        $ag_today = adp_totals(array_filter($adsgram, fn($d, $k) => $k === gmdate('Y-m-d'), ARRAY_FILTER_USE_BOTH));
+        $am_today = adp_totals(array_filter($admob, fn($d, $k) => $k === gmdate('Y-m-d'), ARRAY_FILTER_USE_BOTH));
         $cutoff7  = gmdate('Y-m-d', strtotime('-7 days'));
-        $am_7d    = adp_totals(array_filter($admob,   fn($d, $k) => $k >= $cutoff7, ARRAY_FILTER_USE_BOTH));
-        $ag_7d    = adp_totals(array_filter($adsgram, fn($d, $k) => $k >= $cutoff7, ARRAY_FILTER_USE_BOTH));
+        $am_7d    = adp_totals(array_filter($admob, fn($d, $k) => $k >= $cutoff7, ARRAY_FILTER_USE_BOTH));
 
         // Conversion
         $total_devices  = (int)$db->query("SELECT COUNT(*) FROM devices")->fetchColumn();
@@ -3322,29 +3288,18 @@ switch ($action) {
         $conv_7d     = (int)$db->query("SELECT COUNT(*) FROM devices WHERE real_linked_at >= datetime('now','-7 days')")->fetchColumn();
 
         // Build chart series aligned to axis
-        $am_views=$ag_views=$am_rev=$ag_rev=$am_ecpm=$ag_ecpm=
-        $am_fill=$ag_fill=$am_gb=$ag_gb=$am_arpdau=$ag_arpdau=$conv_daily=[];
+        $am_views=$am_rev=$am_ecpm=$am_fill=$am_gb=$am_arpdau=$conv_daily=[];
         foreach ($axis as $d) {
-            $am = $admob[$d]   ?? null;
-            $ag = $adsgram[$d] ?? null;
+            $am = $admob[$d] ?? null;
             $am_views[]   = $am ? $am['rewarded_views'] : 0;
-            $ag_views[]   = $ag ? $ag['rewarded_views'] : 0;
             $am_rev[]     = $am ? round($am['revenue_usd'], 4) : 0;
-            $ag_rev[]     = $ag ? round($ag['revenue_usd'], 4) : 0;
             $am_ecpm[]    = $am && $am['rewarded_views'] > 0 ? round($am['ecpm_usd'], 2) : null;
-            $ag_ecpm[]    = $ag && $ag['rewarded_views'] > 0 ? round($ag['ecpm_usd'], 2) : null;
             $am_fill[]    = null;  // not capturable from SSV events
-            $ag_fill[]    = $ag ? ($ag['fill_rate'] > 0 ? round($ag['fill_rate'], 4) : null) : null;
             $am_gb[]      = $am ? round($am['gb_granted'], 4) : 0;
-            $ag_gb[]      = $ag ? round($ag['gb_granted'], 4) : 0;
             $au_am        = $am ? (int)$am['active_users'] : 0;
             $am_arpdau[]  = $am && $au_am > 0 ? round($am['revenue_usd'] / $au_am, 4) : null;
-            $au_ag        = $ag ? (int)$ag['active_users'] : 0;
-            $ag_arpdau[]  = $ag && $au_ag > 0 ? round($ag['revenue_usd'] / $au_ag, 4) : null;
             $conv_daily[] = (int)($conv_series[$d] ?? 0);
         }
-
-        $ag_has_data = !empty($adsgram);
 
         api_ok([
             'days'       => $axis,
@@ -3360,18 +3315,6 @@ switch ($action) {
                 'gb_series'    => $am_gb,
                 'arpdau_series'=> $am_arpdau,
             ],
-            'adsgram' => [
-                'today'        => $ag_today,
-                '7d'           => $ag_7d,
-                'totals'       => adp_totals($adsgram),
-                'has_data'     => $ag_has_data,
-                'views_series' => $ag_views,
-                'rev_series'   => $ag_rev,
-                'ecpm_series'  => $ag_ecpm,
-                'fill_series'  => $ag_fill,
-                'gb_series'    => $ag_gb,
-                'arpdau_series'=> $ag_arpdau,
-            ],
             'conversion' => [
                 'total_devices'  => $total_devices,
                 'linked_devices' => $linked_devices,
@@ -3380,7 +3323,6 @@ switch ($action) {
                 'daily_series'   => $conv_daily,
             ],
             'alerts'     => adp_alerts($db, $ecpm),
-            'hakim'      => adp_hakim(adp_totals($admob), adp_totals($adsgram), $ag_has_data, $days),
             'checked_at' => date('Y-m-d H:i:s'),
         ]);
         break;
@@ -3390,7 +3332,7 @@ switch ($action) {
         // per-placement funnel (Requests -> Loaded -> Impressions -> Clicks),
         // CTR, revenue (summed from AdMob's onPaid, already in app_events via
         // TrackedBannerAd.tsx), and no-fill rate — this is the AdMob NATIVE
-        // banner data the rewarded/AdsGram-focused NOC above doesn't cover.
+        // banner data the rewarded-focused NOC above doesn't cover.
         // Same window convention as ads-perf-comparison (from/to or days).
         $db = open_analytics_db();
         $from_raw = trim($_GET['from'] ?? '');
@@ -4873,10 +4815,8 @@ switch ($action) {
         $db = open_analytics_db();
         [$from, $to] = mon_window();
         $admob   = am_provider_summary($db, 'admob', $from, $to);
-        $adsgram = am_provider_summary($db, 'adsgram', $from, $to);
         $rewardCost = am_reward_cost($db, $from, $to);
         $admobCfg   = admob_sync_status($db);
-        $adsgramCfg = adsgram_sync_status($db);
         $cfg = am_config($db);
 
         $rewardsGranted = (int)$db->query(
@@ -4889,14 +4829,12 @@ switch ($action) {
         api_ok([
             'window'   => ['from' => $from, 'to' => $to],
             'admob'    => $admob,
-            'adsgram'  => $adsgram,
             'reward_cost' => $rewardCost,
             'rewards_granted_count' => $rewardsGranted,
             'rewards_failed_count'  => $rewardsFailed,
             'base_currency' => $cfg['mon_base_currency'],
             'admob_status'   => $admobCfg,
-            'adsgram_status' => $adsgramCfg,
-            'alerts' => am_alerts($db, $admobCfg['connected'], $adsgramCfg['configured']),
+            'alerts' => am_alerts($db, $admobCfg['connected']),
         ]);
         break;
     }
@@ -4919,22 +4857,6 @@ switch ($action) {
         break;
     }
 
-    case 'monetization-adsgram': {
-        $db = open_analytics_db();
-        [$from, $to] = mon_window();
-        $blockIds = $db->query(
-            "SELECT DISTINCT ad_unit_id FROM ad_daily_metrics WHERE provider='adsgram' AND ad_unit_id <> '' ORDER BY ad_unit_id"
-        )->fetchAll(PDO::FETCH_COLUMN);
-        api_ok([
-            'window'  => ['from' => $from, 'to' => $to],
-            'summary' => am_provider_summary($db, 'adsgram', $from, $to),
-            'ad_units' => am_ad_unit_breakdown($db, 'adsgram', $from, $to),
-            'sync_status' => adsgram_sync_status($db),
-            'known_block_ids' => $blockIds,
-        ]);
-        break;
-    }
-
     case 'monetization-reward-events': {
         $db = open_analytics_db();
         $filters = [];
@@ -4953,7 +4875,6 @@ switch ($action) {
         api_ok([
             'window'  => ['from' => $from, 'to' => $to],
             'admob'   => am_reconciliation($db, 'admob', $from, $to),
-            'adsgram' => am_reconciliation($db, 'adsgram', $from, $to),
         ]);
         break;
     }
@@ -4970,10 +4891,6 @@ switch ($action) {
                 'rewarded_unit_id' => $arCfg['admob_rewarded_unit_id'],
                 'ssv_enabled'    => (bool)$arCfg['admob_ssv_enabled'],
                 'oauth_start_url' => '/_setalink-admin/admob_oauth_start.php',
-            ],
-            'adsgram' => [
-                'sync_status' => adsgram_sync_status($db),
-                'token_configured' => adsgram_publisher_configured($db),
             ],
         ]);
         break;

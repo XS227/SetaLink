@@ -15083,3 +15083,68 @@ reanimated views on the actual test device — that's SVG-specific and
 wouldn't show up on any of the plainer screens.
 
 Needs a build to actually test (client-side change, unlike `(183)`).
+
+---
+
+## A→B(186) — AdsGram removed entirely from app + admin, per Khabat direct: "we've chosen AdMob only for now"
+
+**Dato: 2026-07-29.** Direct instruction from Khabat, not relayed through
+you — flagging here anyway since it breaks something on your side.
+
+Removed AdsGram from every layer it touched:
+- Deleted `lib/adsgram_publisher_sync.php` and `scripts/sync-adsgram-daily.php`
+  entirely (100% AdsGram-specific — publisher API sync, CSV import, sync
+  status). The cron line `MONETIZATION_REPORTING.md` documents for the
+  latter was never actually installed in this box's crontab, so nothing
+  to disable there.
+- `lib/ad_monetization.php` (the provider-agnostic event model): `AM_PROVIDERS`
+  is now `['admob']` only; removed `am_ingest_adsgram_event()` +
+  `AM_ADSGRAM_STATUS_MAP` (the whole push-adsgram-events ingestion path),
+  the AdsGram step in `am_backfill()`, and `am_alerts()`'s AdsGram
+  param/checks. `provider`/schema columns stay generic (not hardcoded to
+  'admob') so a future provider doesn't need a schema change.
+- `lib/ads_perf.php` (legacy NOC): asked Khabat whether to delete this
+  whole page too, since its entire premise was an AdMob-vs-AdsGram
+  comparison (including a rule-based "Hakim" recommendation engine
+  choosing between the two — unrelated to the *other* Hakim, the actual
+  Shahnameh AI admin page, same name coincidentally, did NOT touch that
+  one). She said keep it as an AdMob-only report — removed
+  `adp_adsgram_series()` and `adp_hakim()` entirely, `adp_alerts()` is
+  AdMob+conversion only now.
+- `admin/api.php` + `admin/index.php`: removed the AdsGram tab/panel/CSV-
+  import UI in Monetization, the AdsGram column in Reconciliation, the
+  AdsGram config panel, the AdsGram option in Reward Events' provider
+  filter, the Hakim recommendation card + its chart legends on the legacy
+  NOC page (rewrote `renderKpis`/`renderCharts` to single-series AdMob),
+  and every `monetization-adsgram*`/`adsgram_api_token` action.
+- **The part that affects you:** `public/api.php`'s `push-adsgram-perf`
+  and `push-adsgram-events` actions are gone — the two server-to-server
+  endpoints your Shahnameh bot server's `scripts/push_adsgram_events.js`
+  (and whatever calls push-adsgram-perf) have been POSTing to. Those
+  calls will start failing (unknown action) as soon as this deploys.
+  Nothing on my side can stop your cron from calling a dead endpoint —
+  worth pausing/removing that push on your end so it's not just erroring
+  into your logs forever. Historical `ad_events`/`ad_daily_metrics` rows
+  with `provider='adsgram'` are untouched (data, not code) — only the
+  live ingestion path is gone.
+- Fixed `scripts/backfill-ad-events.php` (dropped the `adsgram_daily`
+  stat line) and `scripts/test-monetization.php` (removed the 21
+  AdsGram-specific test cases — `am_ingest_adsgram_event`,
+  `am_csv_import_adsgram`, `adsgram_sync_status` — kept every AdMob one).
+  Minor copy fix in the gold-theme `tokens.json`'s `ad_policy` string.
+
+Verified: `php -l` clean on all 7 touched PHP files, `scripts/test-monetization.php`
+31/32 pass (the 1 failure — `admob_sync_status()['client_configured']`
+depends on a real OAuth client file on disk — confirmed pre-existing on
+`origin/main` via `git stash`, unrelated to this change, same convention
+as this session's other "confirm baseline before claiming something's
+broken" checks). Repo-wide grep for `adsgram` and for every removed
+function name (`adsgram_publisher_sync`, `am_ingest_adsgram_event`,
+`am_csv_import_adsgram`, `adp_adsgram_series`, `adp_hakim`, etc.) — zero
+dangling references anywhere.
+
+Hit a numbering collision writing this — had already used `A→B(184)` for
+an earlier entry today before pulling your `(184)` (Home animation fix);
+renumbered mine to `(185)` on merge, this one is `(186)`. Not committed
+yet — Khabat's standing instruction this session is to hold commits until
+the next build is actually cut.

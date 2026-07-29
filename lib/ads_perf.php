@@ -1,16 +1,19 @@
 <?php
 /**
- * Ads Performance Comparison — Phase 1 (collect + compare, decide later).
+ * Ads Performance — legacy NOC (AdMob only — was a two-provider AdMob vs
+ * AdsGram comparison; AdsGram removed 2026-07-29, Khabat: "we've chosen
+ * AdMob only for now"). Superseded for verified/source-labeled reporting by
+ * the newer Monetization panel (lib/ad_monetization.php) — kept here for the
+ * recovery-quota/GB-margin ops numbers that panel doesn't have.
  *
- * Strategy:
- *   AdMob  → metrics derived in real time from the existing ad_reward_events table
- *            (every confirmed rewarded view is already logged there).
- *   AdsGram → metrics pushed daily by Agent B's Shahnameh bot server via
- *              push-adsgram-perf endpoint; stored in ad_perf_daily.
+ * AdMob metrics are derived in real time from the existing ad_reward_events
+ * table (every confirmed rewarded view is already logged there).
  *
  * KPIs tracked: active_users, rewarded_views, revenue_usd, ecpm_usd, fill_rate,
  *               gb_granted, avg_watch_time_s.
  * Conversion (Telegram→RealGram) derived from devices table at query time.
+ * `ad_perf_daily` still exists for its `platform='adsgram'` historical rows
+ * (never deleted) but nothing writes to it anymore.
  */
 
 function adp_init_table(PDO $pdo): void {
@@ -84,34 +87,6 @@ function adp_admob_series(PDO $pdo, int $days, float $ecpm): array {
             'fill_rate'        => 0.0,   // not capturable from SSV events alone
             'gb_granted'       => round((float)$r['gb_granted'], 4),
             'avg_watch_time_s' => 0.0,   // not logged
-        ];
-    }
-    return $out;
-}
-
-/**
- * Read AdsGram daily series from ad_perf_daily (pushed by Agent B).
- */
-function adp_adsgram_series(PDO $pdo, int $days): array {
-    $rows = $pdo->query(
-        "SELECT date, active_users, rewarded_views, revenue_usd, ecpm_usd,
-                fill_rate, gb_granted, avg_watch_time_s
-         FROM ad_perf_daily
-         WHERE platform='adsgram'
-           AND date >= date('now', '-{$days} days')
-         ORDER BY date"
-    )->fetchAll(PDO::FETCH_ASSOC);
-
-    $out = [];
-    foreach ($rows as $r) {
-        $out[$r['date']] = [
-            'active_users'     => (int)$r['active_users'],
-            'rewarded_views'   => (int)$r['rewarded_views'],
-            'revenue_usd'      => (float)$r['revenue_usd'],
-            'ecpm_usd'         => (float)$r['ecpm_usd'],
-            'fill_rate'        => (float)$r['fill_rate'],
-            'gb_granted'       => (float)$r['gb_granted'],
-            'avg_watch_time_s' => (float)$r['avg_watch_time_s'],
         ];
     }
     return $out;
@@ -196,22 +171,6 @@ function adp_alerts(PDO $pdo, float $ecpm): array {
     }
     $am_prev = adp_totals($am_prev_s);
 
-    // AdsGram last-7d vs prev-7d
-    $ag_cur  = adp_totals(adp_adsgram_series($pdo, 7));
-    $ag_prev_rows = $pdo->query(
-        "SELECT date, active_users, rewarded_views, revenue_usd, ecpm_usd, fill_rate, gb_granted
-         FROM ad_perf_daily WHERE platform='adsgram'
-           AND date >= date('now','-14 days') AND date < date('now','-7 days')"
-    )->fetchAll(PDO::FETCH_ASSOC);
-    $ag_prev_s = [];
-    foreach ($ag_prev_rows as $r) {
-        $ag_prev_s[$r['date']] = ['active_users'=>(int)$r['active_users'],
-          'rewarded_views'=>(int)$r['rewarded_views'],'revenue_usd'=>(float)$r['revenue_usd'],
-          'ecpm_usd'=>(float)$r['ecpm_usd'],'fill_rate'=>(float)$r['fill_rate'],
-          'gb_granted'=>(float)$r['gb_granted'],'avg_watch_time_s'=>0];
-    }
-    $ag_prev = adp_totals($ag_prev_s);
-
     $check = function(array $cur, array $prev, string $platform, string $key, string $label,
                        float $drop_thresh = 0.15, ?string $rise_label = null) use (&$alerts) {
         $c = (float)($cur[$key]  ?? 0);
@@ -233,9 +192,6 @@ function adp_alerts(PDO $pdo, float $ecpm): array {
 
     $check($am_cur, $am_prev, 'AdMob',   'revenue_usd',    'Revenue',       0.15);
     $check($am_cur, $am_prev, 'AdMob',   'rewarded_views', 'Rewarded views',0.20);
-    $check($ag_cur, $ag_prev, 'AdsGram', 'revenue_usd',    'Revenue',       0.15);
-    $check($ag_cur, $ag_prev, 'AdsGram', 'ecpm_usd',       'eCPM',          0.10);
-    $check($ag_cur, $ag_prev, 'AdsGram', 'fill_rate',      'Fill rate',     0.10);
 
     // Conversion alert
     $linked_cur  = (int)$pdo->query("SELECT COUNT(*) FROM devices WHERE real_linked_at >= datetime('now','-7 days')")->fetchColumn();
@@ -251,102 +207,4 @@ function adp_alerts(PDO $pdo, float $ecpm): array {
     }
 
     return $alerts;
-}
-
-/**
- * Hakim — rule-based AI recommendation engine (Phase 1).
- * Pure logic over KPI totals; no external API call.
- */
-function adp_hakim(array $am_t, array $ag_t, bool $ag_has_data, int $days): array {
-    if (!$ag_has_data) {
-        return [
-            'recommendation' => 'waiting',
-            'label'          => 'Venter på AdsGram-data',
-            'confidence'     => 'low',
-            'rationale'      => [
-                'AdsGram-statistikk er ikke mottatt ennå.',
-                'Agent B setter opp daglig push via push-adsgram-perf (se TASK_SPLIT B-16).',
-                'Anbefaling kan ikke gis uten sammenlignbare tall fra begge plattformer.',
-            ],
-            'kpis'   => ['AdMob har ' . ($am_t['rewarded_views'] ?? 0) . ' bekreftede visninger så langt.'],
-            'action' => 'Vent til AdsGram-data er tilgjengelig — minst 7 dager.',
-        ];
-    }
-
-    $am_arpdau = (float)($am_t['revenue_per_user'] ?? 0);
-    $ag_arpdau = (float)($ag_t['revenue_per_user'] ?? 0);
-    $am_roi    = (float)($am_t['roi'] ?? 0);
-    $ag_roi    = (float)($ag_t['roi'] ?? 0);
-    $am_fill   = $am_t['fill_rate'];
-    $ag_fill   = $ag_t['fill_rate'];
-
-    $score_am = 0; $score_ag = 0;
-    $rationale = []; $kpis = [];
-
-    if ($am_arpdau > 0 && $ag_arpdau > 0) {
-        $ratio = $am_arpdau / max($ag_arpdau, 0.00001);
-        if ($ratio > 1.20) {
-            $score_am += 2;
-            $pct = round(($ratio - 1) * 100);
-            $rationale[] = "AdMob ARPDAU er {$pct}% høyere enn AdsGram — brukerne i appen er mer lønnsomme.";
-            $kpis[] = 'ARPDAU · AdMob: $' . number_format($am_arpdau, 4) . ' / AdsGram: $' . number_format($ag_arpdau, 4);
-        } elseif ($ratio < 0.83) {
-            $score_ag += 2;
-            $pct = round((1/$ratio - 1) * 100);
-            $rationale[] = "AdsGram ARPDAU er {$pct}% høyere enn AdMob — bot-brukerne gir mer inntekt per person.";
-            $kpis[] = 'ARPDAU · AdsGram: $' . number_format($ag_arpdau, 4) . ' / AdMob: $' . number_format($am_arpdau, 4);
-        } else {
-            $rationale[] = 'ARPDAU er omtrent likt på begge plattformer — ingen klar vinner ennå.';
-            $kpis[] = 'ARPDAU · AdMob: $' . number_format($am_arpdau, 4) . ' / AdsGram: $' . number_format($ag_arpdau, 4);
-        }
-    } elseif ($am_arpdau > 0) {
-        $kpis[] = 'ARPDAU · AdMob: $' . number_format($am_arpdau, 4) . ' (AdsGram: ingen data)';
-    }
-
-    if ($am_roi > 0 && $ag_roi > 0) {
-        if ($am_roi > $ag_roi * 1.2) {
-            $score_am++;
-            $rationale[] = "AdMob ROI ({$am_roi}×) er sterkere — reklame dekker kostnadene bedre.";
-            $kpis[] = "ROI · AdMob: {$am_roi}× / AdsGram: {$ag_roi}×";
-        } elseif ($ag_roi > $am_roi * 1.2) {
-            $score_ag++;
-            $rationale[] = "AdsGram ROI ({$ag_roi}×) er sterkere — lav egress-kostnad i boten gir bedre margin.";
-            $kpis[] = "ROI · AdsGram: {$ag_roi}× / AdMob: {$am_roi}×";
-        }
-    }
-
-    if ($ag_fill !== null && $ag_fill > 0.85) {
-        $score_ag++;
-        $rationale[] = 'AdsGram fill rate er sterk (' . round($ag_fill * 100) . '%) — god annonsørdekning.';
-        $kpis[] = 'Fill rate AdsGram: ' . round($ag_fill * 100) . '%';
-    }
-    if ($am_fill !== null && $am_fill < 0.65) {
-        $score_ag++;
-        $rationale[] = 'AdMob fill rate er lav (' . round($am_fill * 100) . '%) — mulig geo/kategori-mismatch.';
-        $kpis[] = 'Fill rate AdMob: ' . round($am_fill * 100) . '%';
-    }
-
-    $confidence = $days < 7 ? 'low' : ($days >= 30 ? 'high' : 'medium');
-    $suffix     = $days < 14 ? ' — samle minst 14 dager til for høyere sikkerhet' : '';
-
-    if ($score_am > $score_ag + 1) {
-        return ['recommendation' => 'realink', 'label' => 'Flytt mer trafikk til RealGram',
-            'confidence' => $confidence,
-            'rationale'  => $rationale,
-            'kpis'       => $kpis,
-            'action'     => 'Øk AdMob-budsjett og fremhev RealGram-onboarding fra Telegram.' . $suffix];
-    }
-    if ($score_ag > $score_am + 1) {
-        return ['recommendation' => 'adsgram', 'label' => 'Behold AdsGram som primærkanal',
-            'confidence' => $confidence,
-            'rationale'  => $rationale,
-            'kpis'       => $kpis,
-            'action'     => 'Prioriter Telegram-bot og Shahnameh Mini App.' . $suffix];
-    }
-    $rationale[] = 'Ingen plattform er klart bedre i denne perioden.';
-    return ['recommendation' => 'both', 'label' => 'Kjør begge parallelt',
-        'confidence' => $confidence,
-        'rationale'  => $rationale,
-        'kpis'       => $kpis,
-        'action'     => 'Fortsett A/B-testing.' . $suffix];
 }

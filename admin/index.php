@@ -686,15 +686,6 @@ function icon(string $name): string {
         <!-- filled by JS -->
       </div>
 
-      <!-- ── Hakim AI recommendation ────────────────────────────────── -->
-      <div class="panel" id="nocHakimCard" style="margin-bottom:.9rem;border-left:3px solid #d4af37">
-        <div class="panel-header">
-          <span class="panel-title">🤖 Hakim <span class="panel-sub" id="nocHakimBadge"></span></span>
-          <span style="font-size:.72rem;opacity:.45">AI-anbefaling · kun faktiske data</span>
-        </div>
-        <div class="panel-body" id="nocHakimBody"><div class="loading"><div class="spinner"></div></div></div>
-      </div>
-
       <!-- ── Charts (2-col, 4 rows) ─────────────────────────────────── -->
       <div class="two-col" style="margin-bottom:.75rem">
         <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Daglig inntekt</span></div>
@@ -717,7 +708,7 @@ function icon(string $name): string {
       <div class="two-col" style="margin-bottom:.75rem">
         <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('gift') ?> Installasjoner fra Telegram → RealGram</span></div>
           <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocConv"></canvas></div></div></div>
-        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Kumulativ inntekt — AdMob vs AdsGram</span></div>
+        <div class="panel"><div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Kumulativ inntekt — AdMob</span></div>
           <div class="panel-body"><div style="position:relative;height:220px"><canvas id="chNocCumul"></canvas></div></div></div>
       </div>
 
@@ -821,7 +812,6 @@ function icon(string $name): string {
           <div id="monTabs" style="display:flex;gap:.35rem;flex-wrap:wrap">
             <button class="btn btn-small mtab active" data-mtab="overview" type="button">Overview</button>
             <button class="btn btn-small mtab" data-mtab="admob" type="button">AdMob</button>
-            <button class="btn btn-small mtab" data-mtab="adsgram" type="button">AdsGram</button>
             <button class="btn btn-small mtab" data-mtab="rewards" type="button">Reward Events</button>
             <button class="btn btn-small mtab" data-mtab="reconciliation" type="button">Reconciliation</button>
             <button class="btn btn-small mtab" data-mtab="config" type="button">Configuration</button>
@@ -871,37 +861,11 @@ function icon(string $name): string {
         </div>
       </div>
 
-      <!-- ── AdsGram ──────────────────────────────────────────────── -->
-      <div data-mtab-panel="adsgram" hidden>
-        <div class="panel" style="margin-bottom:.6rem">
-          <div class="panel-body" id="monAdsgramStatus"><div class="loading"><div class="spinner"></div></div></div>
-        </div>
-        <div class="stat-grid" id="monAdsgramStats"></div>
-        <div class="panel" style="margin-top:.6rem">
-          <div class="panel-header"><span class="panel-title">Per block <span class="panel-sub">Shahnameh + Path A Mini App</span></span>
-            <button class="btn btn-small" id="monAdsgramCsv" type="button">Export CSV</button></div>
-          <div class="tbl-wrap"><table class="data-table" style="width:100%">
-            <thead><tr><th>Block ID</th><th>Requests</th><th>Impressions</th><th>Clicks</th><th>Completions</th><th>Revenue</th><th>Currency</th><th>Source</th><th>Last event</th></tr></thead>
-            <tbody id="monAdsgramUnits"><tr><td colspan="9" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
-          </table></div>
-        </div>
-        <div class="panel" style="margin-top:.6rem">
-          <div class="panel-header"><span class="panel-title">Import AdsGram CSV <span class="panel-sub">manual dashboard export — tagged "manual import", never shown as live provider data</span></span></div>
-          <div class="panel-body">
-            <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-              <input type="file" id="monAdsgramCsvFile" accept=".csv,text/csv">
-              <button class="btn btn-small" id="monAdsgramCsvImport" type="button">Import</button>
-            </div>
-            <div id="monAdsgramCsvMsg" style="margin-top:.5rem;font-size:.8rem;opacity:.7">Expected columns: date, block_id, impressions, clicks, completions, revenue, currency.</div>
-          </div>
-        </div>
-      </div>
-
       <!-- ── Reward Events ────────────────────────────────────────── -->
       <div data-mtab-panel="rewards" hidden>
         <div class="panel" style="margin-bottom:.6rem">
           <div class="panel-body" style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-            <select class="select btn-sm" id="monRwProvider" style="width:130px"><option value="">All providers</option><option value="admob">AdMob</option><option value="adsgram">AdsGram</option></select>
+            <select class="select btn-sm" id="monRwProvider" style="width:130px"><option value="">All providers</option><option value="admob">AdMob</option></select>
             <select class="select btn-sm" id="monRwStatus" style="width:150px"><option value="">All statuses</option><option value="verified">Verified</option><option value="rejected">Rejected</option><option value="review">Review</option><option value="unverified">Unverified</option></select>
             <input class="input btn-sm" id="monRwUser" placeholder="user id" style="width:160px">
             <button class="btn btn-small" id="monRwFilter" type="button">Filter</button>
@@ -923,35 +887,20 @@ function icon(string $name): string {
 
       <!-- ── Reconciliation ───────────────────────────────────────── -->
       <div data-mtab-panel="reconciliation" hidden>
-        <div class="two-col">
-          <div class="panel">
-            <div class="panel-header"><span class="panel-title">AdMob</span></div>
-            <div class="tbl-wrap"><table class="data-table" style="width:100%">
-              <thead><tr><th>Ad unit</th><th>Provider impr.</th><th>Provider rewards</th><th>Local rewards</th><th>Rejected</th><th>Diff</th><th>Alerts</th></tr></thead>
-              <tbody id="monReconAdmob"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
-            </table></div>
-          </div>
-          <div class="panel">
-            <div class="panel-header"><span class="panel-title">AdsGram</span></div>
-            <div class="tbl-wrap"><table class="data-table" style="width:100%">
-              <thead><tr><th>Block</th><th>Provider impr.</th><th>Provider rewards</th><th>Local rewards</th><th>Rejected</th><th>Diff</th><th>Alerts</th></tr></thead>
-              <tbody id="monReconAdsgram"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
-            </table></div>
-          </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">AdMob</span></div>
+          <div class="tbl-wrap"><table class="data-table" style="width:100%">
+            <thead><tr><th>Ad unit</th><th>Provider impr.</th><th>Provider rewards</th><th>Local rewards</th><th>Rejected</th><th>Diff</th><th>Alerts</th></tr></thead>
+            <tbody id="monReconAdmob"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table></div>
         </div>
       </div>
 
       <!-- ── Configuration ────────────────────────────────────────── -->
       <div data-mtab-panel="config" hidden>
-        <div class="two-col">
-          <div class="panel">
-            <div class="panel-header"><span class="panel-title">AdMob <span class="panel-sub">Reporting API</span></span></div>
-            <div class="panel-body" id="monCfgAdmob"><div class="loading"><div class="spinner"></div></div></div>
-          </div>
-          <div class="panel">
-            <div class="panel-header"><span class="panel-title">AdsGram <span class="panel-sub">publisher API + callback</span></span></div>
-            <div class="panel-body" id="monCfgAdsgram"><div class="loading"><div class="spinner"></div></div></div>
-          </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">AdMob <span class="panel-sub">Reporting API</span></span></div>
+          <div class="panel-body" id="monCfgAdmob"><div class="loading"><div class="spinner"></div></div></div>
         </div>
         <div class="panel" style="margin-top:.75rem">
           <div class="panel-header"><span class="panel-title">Valuation &amp; currency <span class="panel-sub">used only for "estimated" cost/net figures — 0 = not configured</span></span>
@@ -2564,8 +2513,8 @@ let activeView='', refreshTimer=null;
 const pageTitles = {
   dashboard: ['Dashboard',            'live monitoring · auto-refresh 10s'],
   analytics: ['Growth & Usage',       'growth & usage trends · 30-day charts'],
-  ads:       ['Ads (legacy NOC)','rewarded ads · AdsGram callback · AdMob config · revenue vs cost'],
-  monetization: ['Monetization', 'AdMob vs AdsGram — separated by source · verified vs estimated vs manual'],
+  ads:       ['Ads (legacy NOC)','rewarded ads · AdMob config · revenue vs cost'],
+  monetization: ['Monetization', 'AdMob — separated by source · verified vs estimated vs manual'],
   payments:  ['Payments & Packages',  'premium packages · REAL vs USDT · intents · transaction log'],
   iran:      ['Censorship Debug',     'censorship diagnostics · Iranian ISP analysis · bypass routes'],
   intel:     ['AI Routing Intel',     'connect telemetry · learned node scores · ISP/platform breakdown'],
@@ -2998,7 +2947,6 @@ views.ads = {
 
     this.renderAlerts(d.alerts || []);
     this.renderKpis(d);
-    this.renderHakim(d.hakim || {});
     this.renderCharts(d);
   },
 
@@ -3019,12 +2967,12 @@ views.ads = {
   renderKpis(d) {
     const grid = $('nocKpiGrid');
     if (!grid) return;
-    const am = d.admob || {}, ag = d.adsgram || {};
-    const amt = am.totals || {}, agt = ag.totals || {};
-    const am_t = am.today || {}, ag_t = ag.today || {};
-    const am_7 = am['7d'] || {},  ag_7 = ag['7d'] || {};
+    const am = d.admob || {};
+    const amt = am.totals || {};
+    const am_t = am.today || {};
+    const am_7 = am['7d'] || {};
     const cv = d.conversion || {};
-    const AG_COLOR = '#f59e0b', AM_COLOR = '#22c55e', MISS = '<span style="opacity:.4">—</span>';
+    const AM_COLOR = '#22c55e', MISS = '<span style="opacity:.4">—</span>';
     const fU = (n, d=2) => n == null || n === 0 ? MISS : '$'+Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:Math.max(d,4)});
     const fP = n => n == null ? MISS : (Number(n)*100).toFixed(1)+'%';
     const fR = n => n == null || n === 0 ? MISS : Number(n).toFixed(2)+'×';
@@ -3032,57 +2980,23 @@ views.ads = {
     const fG = n => (!n || n===0) ? MISS : Number(n).toFixed(3)+' GB';
 
     const kpis = [
-      { label: 'Revenue i dag',    am: fU(am_t.revenue_usd), ag: fU(ag_t.revenue_usd) },
-      { label: 'Revenue 7 dager',  am: fU(am_7.revenue_usd), ag: fU(ag_7.revenue_usd) },
-      { label: 'Revenue (vindu)',   am: fU(amt.revenue_usd),  ag: fU(agt.revenue_usd)  },
-      { label: 'eCPM',             am: fU(amt.ecpm_usd),     ag: fU(agt.ecpm_usd)     },
-      { label: 'ARPDAU',           am: fU(amt.revenue_per_user, 4), ag: fU(agt.revenue_per_user, 4) },
-      { label: 'Fill rate',        am: fP(amt.fill_rate),    ag: fP(agt.fill_rate)    },
-      { label: 'Rewarded views',   am: fN(amt.rewarded_views), ag: fN(agt.rewarded_views) },
-      { label: 'Konvertering →',   am: `${cv.linked_devices??0}/${cv.total_devices??0}`, ag: fP(cv.rate) },
-      { label: 'GB utdelt',        am: fG(amt.gb_granted),   ag: fG(agt.gb_granted)   },
-      { label: 'ROI',              am: fR(amt.roi),          ag: fR(agt.roi)           },
+      { label: 'Revenue i dag',    v: fU(am_t.revenue_usd) },
+      { label: 'Revenue 7 dager',  v: fU(am_7.revenue_usd) },
+      { label: 'Revenue (vindu)',  v: fU(amt.revenue_usd)  },
+      { label: 'eCPM',             v: fU(amt.ecpm_usd)     },
+      { label: 'ARPDAU',           v: fU(amt.revenue_per_user, 4) },
+      { label: 'Fill rate',        v: fP(amt.fill_rate)    },
+      { label: 'Rewarded views',   v: fN(amt.rewarded_views) },
+      { label: 'Konvertering →',   v: `${cv.linked_devices??0}/${cv.total_devices??0} (${fP(cv.rate)})` },
+      { label: 'GB utdelt',        v: fG(amt.gb_granted)   },
+      { label: 'ROI',              v: fR(amt.roi)           },
     ];
 
     grid.innerHTML = kpis.map(k => `
       <div class="stat-card" style="padding:.6rem .75rem">
         <div class="stat-label" style="margin-bottom:.3rem">${k.label}</div>
-        <div style="display:flex;gap:.5rem;align-items:flex-end">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:1rem;font-weight:700;color:${AM_COLOR};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.am}</div>
-            <div style="font-size:.65rem;opacity:.5;margin-top:.1rem">AdMob</div>
-          </div>
-          <div style="flex:1;min-width:0;border-left:1px solid #1e2d4d;padding-left:.5rem">
-            <div style="font-size:1rem;font-weight:700;color:${AG_COLOR};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.ag}</div>
-            <div style="font-size:.65rem;opacity:.5;margin-top:.1rem">AdsGram</div>
-          </div>
-        </div>
+        <div style="font-size:1.1rem;font-weight:700;color:${AM_COLOR};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${k.v}</div>
       </div>`).join('');
-  },
-
-  renderHakim(h) {
-    const body = $('nocHakimBody'), badge = $('nocHakimBadge');
-    if (!body) return;
-    if (badge) {
-      const conf = { high: '● Høy sikkerhet', medium: '◐ Middels sikkerhet', low: '○ Lav sikkerhet', waiting: '' };
-      badge.textContent = conf[h.confidence] || '';
-    }
-    const recColors = { realink: '#22c55e', adsgram: '#f59e0b', both: '#60a5fa', waiting: '#8a9bbf' };
-    const c = recColors[h.recommendation] || '#8a9bbf';
-    const rationale = (h.rationale || []).map(r => `<li>${r}</li>`).join('');
-    const kpis = (h.kpis || []).map(k => `<div style="font-family:monospace;font-size:.75rem;background:#111827;padding:.2rem .5rem;border-radius:4px;margin:.15rem 0">${k}</div>`).join('');
-    body.innerHTML = `
-      <div style="display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap">
-        <div style="min-width:200px">
-          <div style="font-size:1.1rem;font-weight:700;color:${c};margin-bottom:.4rem">${h.label || '—'}</div>
-          ${h.action ? `<div style="font-size:.8rem;background:${c}18;border-radius:6px;padding:.4rem .6rem;color:${c};margin-bottom:.5rem">${h.action}</div>` : ''}
-        </div>
-        <div style="flex:1;min-width:200px">
-          <div style="font-size:.78rem;font-weight:600;opacity:.6;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.04em">Begrunnelse</div>
-          <ul style="font-size:.82rem;margin:0;padding-left:1.1rem;line-height:1.7;opacity:.85">${rationale || '<li style="opacity:.5">Ingen data ennå.</li>'}</ul>
-          ${kpis ? `<div style="margin-top:.5rem">${kpis}</div>` : ''}
-        </div>
-      </div>`;
   },
 
   renderCharts(d) {
@@ -3093,8 +3007,8 @@ views.ads = {
     this.charts = { legacy: legacyChart };
 
     const labels = (d.days || []).map(x => (x||'').slice(5));
-    const am = d.admob || {}, ag = d.adsgram || {}, cv = d.conversion || {};
-    const AM = '#22c55e', AG = '#f59e0b';
+    const am = d.admob || {}, cv = d.conversion || {};
+    const AM = '#22c55e';
     const opts = (extra = {}) => ({
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { position:'top', labels:{ color:'#8a9bbf', boxWidth:10, font:{size:10} } } },
@@ -3115,17 +3029,17 @@ views.ads = {
       this.charts[id] = new Chart(el, { type, data:{ labels, datasets }, options:{ ...opts(extraOpts) } });
     };
 
-    mk('chNocRev',    'bar',  [bar_('AdMob',   am.rev_series||[],AM),    bar_('AdsGram',  ag.rev_series||[],AG)]);
-    mk('chNocViews',  'bar',  [bar_('AdMob',   am.views_series||[],AM),  bar_('AdsGram',  ag.views_series||[],AG)]);
-    mk('chNocEcpm',   'line', [line('AdMob',   am.ecpm_series||[],AM,false), line('AdsGram',ag.ecpm_series||[],AG,false)]);
-    mk('chNocFill',   'line', [line('AdMob',   am.fill_series||[],AM,false), line('AdsGram',ag.fill_series||[],AG,false)]);
-    mk('chNocArpdau', 'line', [line('AdMob',   am.arpdau_series||[],AM,true), line('AdsGram',ag.arpdau_series||[],AG,true)]);
-    mk('chNocGb',     'bar',  [bar_('AdMob',   am.gb_series||[],AM),     bar_('AdsGram',  ag.gb_series||[],AG)]);
+    mk('chNocRev',    'bar',  [bar_('AdMob', am.rev_series||[],AM)]);
+    mk('chNocViews',  'bar',  [bar_('AdMob', am.views_series||[],AM)]);
+    mk('chNocEcpm',   'line', [line('AdMob', am.ecpm_series||[],AM,false)]);
+    mk('chNocFill',   'line', [line('AdMob', am.fill_series||[],AM,false)]);
+    mk('chNocArpdau', 'line', [line('AdMob', am.arpdau_series||[],AM,true)]);
+    mk('chNocGb',     'bar',  [bar_('AdMob', am.gb_series||[],AM)]);
     mk('chNocConv',   'bar',  [bar_('Nye koblinger', cv.daily_series||[], '#60a5fa')]);
 
     // Cumulative revenue
     const cumul = (arr) => { let s=0; return (arr||[]).map(v => (s += (v||0), Math.round(s*1000)/1000)); };
-    mk('chNocCumul', 'line', [line('AdMob kumulativ', cumul(am.rev_series),AM,true), line('AdsGram kumulativ',cumul(ag.rev_series),AG,true)]);
+    mk('chNocCumul', 'line', [line('AdMob kumulativ', cumul(am.rev_series),AM,true)]);
   },
 
   // ── Banner Ads (Home / Freedom) ──────────────────────────────────────
@@ -3201,14 +3115,12 @@ views.monetization = {
       $('monRefresh')?.addEventListener('click', () => this.loadTab(this.tab));
       $('monDays')?.addEventListener('change', () => this.loadTab(this.tab));
       $('monAdmobCsv')?.addEventListener('click', () => this.exportCsv('reward-events'));
-      $('monAdsgramCsv')?.addEventListener('click', () => this.exportCsv('daily-metrics'));
       $('monRwCsv')?.addEventListener('click', () => this.exportCsv('reward-events'));
       $('monRwFilter')?.addEventListener('click', () => { this.rwOffset = 0; this.loadRewards(); });
       $('monRwPrev')?.addEventListener('click', () => { this.rwOffset = Math.max(0, this.rwOffset - this.rwLimit); this.loadRewards(); });
       $('monRwNext')?.addEventListener('click', () => { this.rwOffset += this.rwLimit; this.loadRewards(); });
       $('monCfgSave')?.addEventListener('click', () => this.saveConfig());
       $('monFxSave')?.addEventListener('click', () => this.saveFxRate());
-      $('monAdsgramCsvImport')?.addEventListener('click', () => this.importAdsgramCsv());
     }
     this.switchTab(this.tab, true);
   },
@@ -3226,7 +3138,7 @@ views.monetization = {
     const done = () => { if (ts) ts.textContent = 'oppdatert ' + new Date().toLocaleTimeString(); };
     const map = {
       overview: () => this.loadOverview(), admob: () => this.loadAdmob(),
-      adsgram: () => this.loadAdsgram(), rewards: () => this.loadRewards(),
+      rewards: () => this.loadRewards(),
       reconciliation: () => this.loadReconciliation(), config: () => this.loadConfig(),
       logs: () => this.loadLogs(),
     };
@@ -3279,10 +3191,9 @@ views.monetization = {
       const rc = d.reward_cost || {};
       stats.innerHTML = [
         ['AdMob revenue', this.revenueLine(d.admob)],
-        ['AdsGram revenue', this.revenueLine(d.adsgram)],
-        ['Ads shown locally', this.fmtNum((d.admob.shown||0) + (d.adsgram.shown||0)) + ' <span style="opacity:.6;font-weight:400;font-size:.75rem">(on-device, not provider-confirmed)</span>'],
-        ['AdMob-confirmed impressions', this.fmtNum((d.admob.impressions||0) + (d.adsgram.impressions||0))],
-        ['Total ad requests', this.fmtNum((d.admob.requests||0) + (d.adsgram.requests||0))],
+        ['Ads shown locally', this.fmtNum(d.admob.shown||0) + ' <span style="opacity:.6;font-weight:400;font-size:.75rem">(on-device, not provider-confirmed)</span>'],
+        ['AdMob-confirmed impressions', this.fmtNum(d.admob.impressions||0)],
+        ['Total ad requests', this.fmtNum(d.admob.requests||0)],
         ['Rewards granted', this.fmtNum(d.rewards_granted_count)],
         ['Rewards failed', this.fmtNum(d.rewards_failed_count)],
         ['Estimated reward cost', rc.total_estimated_cost_usd == null ? '<span style="opacity:.6">not configured</span>' : this.fmtUsd(rc.total_estimated_cost_usd, 4)],
@@ -3359,46 +3270,6 @@ views.monetization = {
     }
   },
 
-  async loadAdsgram() {
-    let d;
-    try { d = await api.get('monetization-adsgram', this.days()); } catch (e) { toast('AdsGram: ' + e.message, 'error'); return; }
-    const s = d.sync_status || {};
-    const statusEl = $('monAdsgramStatus');
-    if (statusEl) {
-      statusEl.innerHTML = `<div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;font-size:.82rem">
-        <span class="badge ${s.configured ? 'badge-ok' : 'badge-warn'}">${s.configured ? 'publisher API configured' : 'publisher API not configured'}</span>
-        <span style="opacity:.7">last sync: ${esc(s.last_sync || 'never')}</span>
-        <span style="opacity:.7">known blocks: ${(d.known_block_ids || []).map(esc).join(', ') || '—'}</span>
-        ${s.configured ? `<button class="btn btn-small" id="monAdsgramSyncNow" type="button">Sync now</button>` : ''}
-        ${s.last_error ? '<span style="color:var(--warn)">' + esc(s.last_error) + '</span>' : ''}
-      </div>
-      <div style="margin-top:.4rem;font-size:.78rem;opacity:.6">Per-event data also arrives continuously via push-adsgram-events (Shahnameh's AdEventLog forwarder) — see Reward Events tab.</div>`;
-      $('monAdsgramSyncNow')?.addEventListener('click', async () => {
-        try { const r = await api.post({ action: 'monetization-adsgram-sync-now', days: 30 }); toast('AdsGram sync: ' + r.rows_written + ' rows', 'ok'); this.loadAdsgram(); }
-        catch (e) { toast('AdsGram sync failed: ' + e.message, 'error'); }
-      });
-    }
-    const stats = $('monAdsgramStats');
-    if (stats) {
-      const sum = d.summary || {};
-      stats.innerHTML = [
-        ['Revenue', this.revenueLine(sum)],
-        ['Impressions', this.fmtNum(sum.impressions)],
-        ['Clicks', this.fmtNum(sum.clicks)],
-        ['Completed rewarded views', this.fmtNum(sum.completions)],
-        ['Rewards granted', this.fmtNum(sum.rewards_granted)],
-        ['Rewards failed', this.fmtNum(sum.rewards_failed)],
-      ].map(([label, v]) => `<div class="stat-card"><div class="stat-label">${label}</div><div class="stat-value" style="font-size:1.05rem">${v}</div></div>`).join('');
-    }
-    const tb = $('monAdsgramUnits');
-    if (tb) {
-      const units = d.ad_units || [];
-      tb.innerHTML = units.length ? units.map(u =>
-        `<tr><td style="font-family:var(--mono)">${esc(u.ad_unit_id) || '—'}</td><td>${this.fmtNum(u.requests)}</td><td>${this.fmtNum(u.impressions)}</td><td>${this.fmtNum(u.clicks)}</td><td>${this.fmtNum(u.completions)}</td><td>${this.fmtUsd(u.revenue, 4)}</td><td>${esc(u.currency || '')}</td><td>${this.statusBadge(u.status_label)}</td><td>${esc(u.last_event_at || '')}</td></tr>`
-      ).join('') : '<tr><td colspan="9" class="tbl-empty">No AdsGram data in this window.</td></tr>';
-    }
-  },
-
   async loadRewards() {
     const params = Object.assign({ limit: this.rwLimit, offset: this.rwOffset }, this.days());
     const provider = ($('monRwProvider') || {}).value;
@@ -3433,13 +3304,12 @@ views.monetization = {
       }).join('') : `<tr><td colspan="7" class="tbl-empty">No data in this window.</td></tr>`;
     };
     render('monReconAdmob', d.admob || []);
-    render('monReconAdsgram', d.adsgram || []);
   },
 
   async loadConfig() {
     let d;
     try { d = await api.get('monetization-config'); } catch (e) { toast('Config: ' + e.message, 'error'); return; }
-    const am = d.admob || {}, ag = d.adsgram || {};
+    const am = d.admob || {};
     const admobEl = $('monCfgAdmob');
     if (admobEl) {
       const s = am.sync_status || {};
@@ -3454,25 +3324,6 @@ views.monetization = {
           <div>SSV enabled: ${am.ssv_enabled ? '<span class="badge badge-ok">yes</span>' : '<span class="badge badge-warn">no</span>'}</div>
         </div>
         <div style="margin-top:.6rem"><a class="btn btn-small" href="${esc(am.oauth_start_url || '/_setalink-admin/admob_oauth_start.php')}" target="_blank">Connect / Reconnect AdMob</a></div>`;
-    }
-    const agEl = $('monCfgAdsgram');
-    if (agEl) {
-      const s = ag.sync_status || {};
-      agEl.innerHTML = `
-        <div style="font-size:.82rem;line-height:1.9">
-          <div>Publisher API token: ${ag.token_configured ? '<span class="badge badge-ok">configured</span>' : '<span class="badge badge-warn">not configured</span>'}</div>
-          <div>Last successful sync: ${esc(s.last_sync || '—')}</div>
-          <div>Last error: ${esc(s.last_error || '—')}</div>
-          <div style="opacity:.7;margin-top:.4rem">Callback secret/block config lives in the Shahnameh backend, not this admin — see docs/realgram/MONETIZATION_REPORTING.md.</div>
-        </div>
-        <label style="font-size:.78rem;display:flex;flex-direction:column;gap:.2rem;margin-top:.6rem"><span style="opacity:.6">Publisher API token</span><input class="input btn-sm" id="monAdsgramToken" type="password" placeholder="•••• (leave blank to keep current)"></label>
-        <button class="btn btn-small" id="monAdsgramTokenSave" type="button" style="margin-top:.4rem">Save token</button>`;
-      $('monAdsgramTokenSave')?.addEventListener('click', async () => {
-        const tok = ($('monAdsgramToken') || {}).value || '';
-        if (!tok) { toast('Enter a token first', 'warning'); return; }
-        try { await api.post({ action: 'monetization-config-save', adsgram_api_token: tok }); toast('AdsGram token saved', 'ok'); this.loadConfig(); }
-        catch (e) { toast(e.message, 'error'); }
-      });
     }
     const form = $('monCfgForm');
     if (form) {
@@ -3504,22 +3355,6 @@ views.monetization = {
     if (!currency || !rate) { toast('Enter a currency and rate', 'warning'); return; }
     try { await api.post({ action: 'monetization-config-save', fx_currency: currency, fx_rate: rate }); toast('FX rate saved', 'ok'); this.loadConfig(); }
     catch (e) { toast(e.message, 'error'); }
-  },
-
-  async importAdsgramCsv() {
-    const file = ($('monAdsgramCsvFile') || {}).files?.[0];
-    const msg = $('monAdsgramCsvMsg');
-    if (!file) { toast('Choose a CSV file first', 'warning'); return; }
-    const text = await file.text();
-    try {
-      const r = await api.post({ action: 'monetization-adsgram-csv-import', csv: text, filename: file.name });
-      if (msg) msg.textContent = `Imported: ${r.accepted} accepted, ${r.rejected} rejected of ${r.total_rows} rows.`;
-      toast('CSV imported', 'ok');
-      this.loadAdsgram();
-    } catch (e) {
-      if (msg) msg.textContent = '✗ ' + e.message;
-      toast('Import failed: ' + e.message, 'error');
-    }
   },
 
   exportCsv(what) {

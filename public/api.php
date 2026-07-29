@@ -33,7 +33,7 @@ require_once __DIR__ . '/../lib/calling.php';
 require_once __DIR__ . '/../lib/trustai.php';
 // REAL token economy — account linking + server-verified redemption (A2).
 require_once __DIR__ . '/../lib/real_economy.php';
-// Ads performance comparison (AdsGram vs AdMob ingestion + query helpers).
+// Ads performance comparison (AdMob ingestion + query helpers).
 require_once __DIR__ . '/../lib/ads_perf.php';
 // Provider-agnostic ad event model (ad_events/ad_daily_metrics) — RealGram Admin monetization page.
 require_once __DIR__ . '/../lib/ad_monetization.php';
@@ -58,7 +58,7 @@ $token = ($method === 'POST')
 // the PacketTunnelExtension / VPN service, which has no access to the app's token
 // store, and they are device_id-validated + size-clamped in their handlers. The
 // token itself ships inside the app binary, so it is not a real secret anyway.
-const NO_TOKEN_ACTIONS = ['submit-tunnel-log', 'push-adsgram-perf', 'push-adsgram-events', 'ecosystem-referral-import'];
+const NO_TOKEN_ACTIONS = ['submit-tunnel-log', 'ecosystem-referral-import'];
 
 if (!in_array($action, NO_TOKEN_ACTIONS, true) && !hash_equals(MOBILE_TOKEN, $token)) {
     echo json_encode(['ok' => false, 'error' => 'invalid token']);
@@ -2316,96 +2316,6 @@ if ($method === 'POST') {
         }
 
         ok(['saved' => $safe . '_' . $ts, 'lines' => count($lines)]);
-    }
-
-    // ── push-adsgram-perf ──────────────────────────────────────────────────
-    // Server-to-server: Agent B's Shahnameh/bot server pushes daily AdsGram
-    // performance stats so the admin panel can compare them against AdMob.
-    // Auth: Authorization: Bearer <real_api_key>  (same key as /v1/* endpoints)
-    // Body (JSON): { date, active_users, rewarded_views, revenue_usd, ecpm_usd,
-    //                fill_rate, gb_granted, avg_watch_time_s }
-    if ($action === 'push-adsgram-perf') {
-        if ($method !== 'POST') { err('POST required'); }
-
-        $db  = db();
-        re_ensure_schema($db);
-        $cfg     = re_service_config($db);
-        $api_key = trim((string)($cfg['api_key'] ?? ''));
-        $auth    = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
-        if ($api_key === '' || !hash_equals('Bearer ' . $api_key, $auth)) {
-            http_response_code(401);
-            echo json_encode(['ok' => false, 'error' => 'unauthorized']);
-            exit;
-        }
-
-        $body = json_decode(file_get_contents('php://input'), true) ?: [];
-        $date = preg_replace('/[^0-9\-]/', '', (string)($body['date'] ?? date('Y-m-d')));
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) err('invalid date');
-
-        adp_init_table($db);
-        adp_upsert($db, $date, 'adsgram', $body);
-
-        // Mirror into the provider-agnostic model for /admin/monetization. This is
-        // one hop removed from AdsGram's own API (relayed through Shahnameh's daily
-        // push) — labeled PROVIDER_CALLBACK, not PROVIDER_API. See docs/realgram/
-        // MONETIZATION_REPORTING.md for the full source-of-truth explanation.
-        try {
-            am_daily_metric_upsert($db, [
-                'date' => $date, 'provider' => 'adsgram', 'platform' => 'telegram',
-                'completions' => (int)($body['rewarded_views'] ?? 0),
-                'revenue' => (float)($body['revenue_usd'] ?? 0),
-                'currency' => 'USD', 'source_type' => 'PROVIDER_CALLBACK',
-            ]);
-        } catch (\Exception $e) { /* best-effort mirror — legacy adp_upsert() above is unaffected */ }
-
-        ok(['date' => $date, 'platform' => 'adsgram']);
-    }
-
-    // ── push-adsgram-events ──────────────────────────────────────────────────
-    // Server-to-server: Shahnameh's `scripts/push_adsgram_events.js` forwards its
-    // AdEventLog (ad_event_log Mongo collection) here every 15 minutes, batches
-    // of up to 500 unsynced rows. Contract fixed by Agent B, TASK_SPLIT.md
-    // B→A(56) — this handler matches that exactly, not a speculative shape.
-    // Same auth as push-adsgram-perf. Idempotent on providerTransactionId (the
-    // Mongo _id) — a repeat send (their retry-on-anything-but-ok:true design)
-    // is a no-op here, never a double reward record. Always returns ok:true for
-    // a syntactically valid batch (per-event problems are counted, not fatal) —
-    // Shahnameh only distinguishes "whole batch ok" vs "retry everything".
-    // Body (JSON): { events: [{ providerTransactionId, account, idType,
-    //                 tier, source, status, real, gems, farr, blockId, reason,
-    //                 occurredAt }, ...] }
-    if ($action === 'push-adsgram-events') {
-        if ($method !== 'POST') { err('POST required'); }
-
-        $db  = db();
-        re_ensure_schema($db);
-        $cfg     = re_service_config($db);
-        $api_key = trim((string)($cfg['api_key'] ?? ''));
-        $auth    = trim((string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''));
-        if ($api_key === '' || !hash_equals('Bearer ' . $api_key, $auth)) {
-            http_response_code(401);
-            echo json_encode(['ok' => false, 'error' => 'unauthorized']);
-            exit;
-        }
-
-        $body   = json_decode(file_get_contents('php://input'), true) ?: [];
-        $events = is_array($body['events'] ?? null) ? $body['events'] : [];
-        if (count($events) === 0) err('missing events');
-        if (count($events) > 500) $events = array_slice($events, 0, 500); // sanity clamp
-
-        // Transform + insert logic lives in am_ingest_adsgram_event() (lib/
-        // ad_monetization.php) so it's unit-tested in isolation — see
-        // scripts/test-monetization.php.
-        $accepted = 0; $duplicates = 0; $rejected = 0;
-        foreach ($events as $ev) {
-            try {
-                $res = am_ingest_adsgram_event($db, $ev);
-                if (!empty($res['rejected'])) $rejected++;
-                elseif ($res['duplicate']) $duplicates++;
-                else $accepted++;
-            } catch (\Exception $e) { $rejected++; }
-        }
-        ok(['accepted' => $accepted, 'duplicates' => $duplicates, 'rejected' => $rejected]);
     }
 
     err('unknown action');
