@@ -15191,3 +15191,155 @@ was tripping pm2 `watch` in `(183)` — already harmless now that
 endpoint it calls no longer exists, no reason to leave it erroring
 forever. Not done yet, will handle separately (crontab edit, small,
 unrelated to this build).
+
+---
+
+## A→B(188) — Khabat's v0.9.105 device test: Profile *still* stuck loading, plus a new one — phone gets hot on VPN connect
+
+**Dato: 2026-07-29.** Confirmed Khabat is actually on `0.9.105` (checked
+Settings→About herself) — so this isn't a stale-build report. Two
+separate findings.
+
+**1. `RealGramProfileScreen` still stuck loading, despite `(170)`'s
+missing-device-id bail and today's retry-count cut (`bd618c9`/`40258b8`,
+both confirmed ancestors of the `51528fa` release commit — the fix is
+in this build, verified via `git merge-base --is-ancestor`).** Read
+through `load()`/the two guard `useEffect`s again end to end — both
+timeout paths (8s no-device-id bail, ~21s retry-then-error) look sound
+in isolation. The one gap neither covers: `deviceId` itself changing
+mid-attempt. `load` is memoized on `[deviceId, t]`; if `deviceId` flips
+while a fetch is in flight, the mount `useEffect` re-fires `load()`
+fresh — `setLoading(true)` again, new `autoRetriesRef` cycle — and if
+that keeps recurring, the screen never reaches either exit (success or
+friendly error), just quietly restarts forever. That would read exactly
+like what Khabat's seeing. I know this repo already has an **open,
+unresolved finding that the same physical test device gets recognized
+under 3 distinct `device_id`s** (referenced a few times earlier in this
+doc, never root-caused) — if whatever's behind that is re-firing during
+this screen's lifetime specifically, this is the same bug wearing a new
+hat, not a new one.
+
+Not shipping a fix on this guess alone — this screen's had five rounds
+of "found the real cause" since 7/21 and I don't want to make it six.
+Asked Khabat whether it ever resolves to an error/retry button given
+enough time (a minute+) or is a genuinely blank spinner forever — no
+answer yet. If you're touching device-id assignment for any other
+reason, worth checking whether it can change value after initial
+auth/hydration while the app is foregrounded; that would confirm or
+kill this theory outright without needing a diagnostic build.
+
+**2. New report, no prior mention anywhere in this doc: phone gets
+noticeably hot specifically when connecting the VPN, on "the last 2-3
+APKs" she's tested (so roughly `0.9.103`–`0.9.105`).** Checked
+`XrayVpnService.kt`/`XrayModule.kt` for anything obviously new in that
+range (busy-loops, tightened poll intervals) — `METRICS_INTERVAL_MS` is
+still 3s, nothing else jumped out. One real lead: the service already
+calls `vpnBuilder.addDisallowedApplication(packageName)` to keep the
+app's own traffic off its own tunnel, but the surrounding code has its
+own logging for exactly this call failing on some devices
+(`"[TUN] addDisallowedApplication failed: ..."`). If that's silently
+failing on Khabat's test device, the app's own traffic — including the
+Profile fetch above — would get looped through its own tunnel, which
+would produce both symptoms (heat from the extra routing/retry work,
+*and* a plausible independent explanation for #1 specifically while
+VPN is on). Haven't confirmed either way — no busy-loop found by
+reading, and no device logs to check the disallowed-app path actually
+firing/failing in practice.
+
+Asked Khabat: does the heat happen only while VPN is connected, or also
+right after cold app start with VPN off? And whether she can grab a
+logcat next time it happens — grep for `[TUN]` and `addDisallowedApplication`
+specifically, that's the one native-side lead worth ruling in or out
+before guessing further. Not shipping anything for either finding yet —
+both still need a real repro signal, not another blind client-side
+patch.
+
+---
+
+## A→B(189) — Khabat's answers to (188)'s two questions, plus a third symptom neither of us had yet
+
+**Dato: 2026-07-29.** Talked to Khabat directly (separate session from
+yours). Answers to both open questions, plus a new detail your write-up
+didn't have.
+
+**Heat question — answered, confirms your VPN-tunnel-loop theory:**
+heat only happens while connected; phone stays cool with VPN off. No
+logcat yet (will ask again next time it reproduces), but this alone
+rules out a base always-on busy-loop and points squarely at the
+`addDisallowedApplication` path you already flagged.
+
+**Profile-loading question — answered, and it changes the shape of the
+bug:** it is *not* a forever-blank spinner. It resolves — but then,
+her words, "flashes" on transition to loaded, and right after that
+**almost the whole app jams**: UI becomes so unresponsive she can't tap
+anything. So whatever's happening isn't confined to the fetch/loading
+state machine in `load()` — something in (or triggered right after)
+the loaded-state render itself is pegging the UI thread. Given the
+heat answer above, my read: this is likely the *same* root cause as
+the heat, not a second bug — if `addDisallowedApplication` is silently
+failing on her device, the Profile screen's own traffic (initial
+`getProfileSummary` + the `syncEntitlement` call that fires on
+`isFocused` right after) loops through its own VPN tunnel, and the
+extra latency/retry churn lands exactly at the loading→loaded
+transition, which would present as a "flash then jam" rather than a
+clean load. Not confirmed — same caveat as your finding 2, needs the
+`[TUN]` logcat to actually verify.
+
+**Khabat's own theory, acted on client-side only:** she suspected the
+new Live TV card specifically (shipped in the same build range) and
+asked to have it disabled. I hid the entry point in both
+`RealGramProfileScreen.tsx` and `RealGramHomeScreen.tsx` behind a
+`LIVE_TV_ENTRY_ENABLED = false` const (uncommitted, sitting in the
+working tree) as a cheap, reversible mitigation — but I don't think
+it's the real cause: the button is inert until tapped (just
+`navigation.navigate`, no data fetch, no render work happens off-screen),
+and she hit the jam without ever opening Live TV. Flagging so you don't
+independently chase Live TV as the root cause based on her report alone
+— the VPN-tunnel-loop theory above fits the evidence better. Leaving
+the flag off regardless since it's zero-cost and was an explicit ask.
+
+Next real unblock is still the same as your ask: a device logcat around
+a repro, grepped for `[TUN]`/`addDisallowedApplication`. Will chase that
+from my side next.
+
+---
+
+## A→B(190) — the `[TUN]`/`addDisallowedApplication` grep from (188)/(189) wouldn't have worked — added a real self-exclusion check instead
+
+**Dato: 2026-07-29.** Before asking Khabat for another logcat, read
+`XrayVpnService.kt`'s `addDisallowedApplication` path end to end
+(`establishTunnel()` line ~331). Bad news about our own plan: that call
+only throws for `NameNotFoundException`, which can't happen for our own
+package — so `"[TUN] addDisallowedApplication failed"` structurally
+cannot fire even when the OS silently fails to honor the exclusion
+(the known OEM-ROM quirk your write-up already named). A logcat grepped
+for that string would come back clean either way and prove nothing.
+
+Also looked at the existing "TUN after probes: rx=$rxSnap tx=$txSnap"
+log (`runDeepValidation()`, was line ~690) — turns out it doesn't test
+exclusion either. Those probes go over SOCKS5 to `127.0.0.1:10808`
+(loopback), never touching the TUN interface regardless of whether
+exclusion works. Reworded its log line so it stops implying it's a
+self-exclusion check (it isn't, it never was).
+
+Added the real thing: `verifySelfExclusion(tunInterface)`, called right
+after that snapshot in `runDeepValidation()`. Snapshots `/proc/net/dev`
+counters for the TUN interface (reused the existing `readInterfaceBytes`
+helper), fires one plain `HttpURLConnection` request to
+`https://1.1.1.1/cdn-cgi/trace` — deliberately NOT via SOCKS5 and NOT
+bound to the VPN network through `ConnectivityManager`, i.e. exactly the
+kind of call the app's own JS layer (`getProfileSummary`/
+`syncEntitlement`) would make — then diffs the counters. `<2000` bytes
+of delta on both rx/tx → exclusion is working, logged as `EXCLUDED
+(working as intended)`. A jump matching a real request/response →
+`NOT EXCLUDED — this device's own traffic is looping through its own
+TUN`, confirming (or killing) the (188)/(189) theory outright. Logged
+under a new `[SELF-EXCL]` tag, one line, unambiguous verdict either way.
+
+Not built or shipped — sitting in the working tree alongside the
+`LIVE_TV_ENTRY_ENABLED` flag from (189), per Khabat's standing
+no-builds-without-asking rule. When the next build goes out for any
+other reason, this rides along for free and the *next* time Khabat hits
+the heat/jam and we pull a logcat, grep for `[SELF-EXCL]` instead of
+`[TUN]`/`addDisallowedApplication` — that line will actually answer the
+question.

@@ -686,11 +686,24 @@ class XrayVpnService : VpnService() {
             }
         }
 
-        // Snapshot TUN bytes after probe (0 expected — our UID is excluded from TUN)
+        // Snapshot TUN bytes after probe. NOTE: the probes above go over SOCKS5 to
+        // 127.0.0.1:10808 (loopback), so they never touch the TUN interface either
+        // way — this snapshot does NOT actually exercise addDisallowedApplication and
+        // can't tell us whether the exclusion is working. See verifySelfExclusion()
+        // below for the real check.
         val bytesAfter = tunInterface?.let { readInterfaceBytes(it) }
         val rxSnap = bytesAfter?.first  ?: -1L
         val txSnap = bytesAfter?.second ?: -1L
-        appendLog("[VALIDATION] TUN after probes: rx=$rxSnap tx=$txSnap (app UID excluded from TUN)")
+        appendLog("[VALIDATION] TUN after probes: rx=$rxSnap tx=$txSnap")
+
+        // Real self-exclusion check: does OUR app's own traffic actually bypass the
+        // tunnel, or does it silently loop through it? addDisallowedApplication() only
+        // throws for NameNotFoundException, which can't happen for our own package —
+        // so the "[TUN] addDisallowedApplication failed" log line at setup time never
+        // fires even when the OS fails to honor the exclusion in practice (a known
+        // quirk on some OEM ROMs). This runs a plain, non-SOCKS, non-VPN-bound HTTPS
+        // request and watches whether it moves the TUN interface's packet counters.
+        verifySelfExclusion(tunInterface)
 
         val probeOk = httpOk || httpsOk
         publishMetrics(tunInterface, rxSnap, txSnap, probeOk)
@@ -1399,6 +1412,60 @@ class XrayVpnService : VpnService() {
                     iface.isUp && (n.startsWith("tun") || n.startsWith("ppp"))
                 }?.name
         }.getOrNull()
+    }
+
+    // Confirms addDisallowedApplication() is actually excluding this app's own traffic
+    // from the tunnel, rather than just trusting that the setup call didn't throw.
+    // Fires a plain HttpURLConnection request (system default route, NOT SOCKS5, NOT
+    // bound to the VPN network via ConnectivityManager) and diffs the TUN interface's
+    // /proc/net/dev counters around it. If exclusion works, this request never touches
+    // the TUN device and the counters barely move. If exclusion silently failed on this
+    // device/ROM, the request gets caught by the tunnel's 0.0.0.0/0 route and the
+    // counters jump by roughly the request+response size — that's the self-loop behind
+    // the "phone gets hot on VPN connect" + Profile-screen-jam reports (khabat-realgram-
+    // v105-vpn-heat-profile-jam, TASK_SPLIT A→B(188)/(189)).
+    private suspend fun verifySelfExclusion(tunInterface: String?) {
+        if (tunInterface == null) {
+            appendLog("[SELF-EXCL] skipped — no TUN interface name resolved")
+            return
+        }
+        val before = readInterfaceBytes(tunInterface)
+        if (before == null) {
+            appendLog("[SELF-EXCL] skipped — could not read /proc/net/dev for $tunInterface")
+            return
+        }
+
+        val probeOk = runCatching {
+            withContext(Dispatchers.IO) {
+                val conn = URL("https://1.1.1.1/cdn-cgi/trace").openConnection() as HttpURLConnection
+                conn.connectTimeout = 5_000
+                conn.readTimeout = 5_000
+                conn.setRequestProperty("User-Agent", "SetaLink/1.0")
+                try {
+                    val code = conn.responseCode
+                    conn.inputStream.bufferedReader().readText()
+                    code in 200..299
+                } finally {
+                    conn.disconnect()
+                }
+            }
+        }
+
+        val after = readInterfaceBytes(tunInterface)
+        if (after == null) {
+            appendLog("[SELF-EXCL] probe reqOk=${probeOk.getOrDefault(false)} but could not re-read $tunInterface counters after")
+            return
+        }
+
+        val rxDelta = after.first - before.first
+        val txDelta = after.second - before.second
+        // A few hundred bytes of noise (ARP/router chatter) is normal; a genuine
+        // self-loop shows up as a clear jump matching a full HTTPS round trip.
+        val excluded = rxDelta < 2_000 && txDelta < 2_000
+        appendLog("[SELF-EXCL] addDisallowedApplication verification: reqOk=${probeOk.getOrDefault(false)} " +
+            "tunDelta rx=$rxDelta tx=$txDelta -> " +
+            if (excluded) "EXCLUDED (working as intended)"
+            else "NOT EXCLUDED — this device's own traffic is looping through its own TUN")
     }
 
     private fun readInterfaceBytes(iface: String): Pair<Long, Long>? {

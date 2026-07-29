@@ -53,6 +53,11 @@ import { getHeroCatalog, getOwnedHeroes, HeroCatalogEntry, OwnedHero } from '../
 // daily tap counter server-side, "done" is reaching this threshold.
 const DAILY_TAP_GOAL = 200;
 
+// Khabat, 2026-07-29: see the matching flag/note in RealGramProfileScreen.tsx
+// -- hiding the Live TV entry point app-wide while the Profile-screen jam
+// report is investigated. Flip back to `true` once cleared.
+const LIVE_TV_ENTRY_ENABLED = false;
+
 interface Props {
   onBack: () => void;
   onOpenChapters: () => void;
@@ -255,17 +260,19 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           </TouchableOpacity>
         )}
 
-        <TouchableOpacity onPress={onOpenLiveTv} activeOpacity={0.85}>
-          <GlassCard style={styles.card}>
-            <View style={styles.liveTvRow}>
-              <Text style={styles.liveTvIcon}>📺</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardLabel}>{t('rghome.liveTv')}</Text>
-                <Text style={styles.cardCta}>{t('rghome.watchLive')} {isRTL ? '‹' : '›'}</Text>
+        {LIVE_TV_ENTRY_ENABLED && (
+          <TouchableOpacity onPress={onOpenLiveTv} activeOpacity={0.85}>
+            <GlassCard style={styles.card}>
+              <View style={styles.liveTvRow}>
+                <Text style={styles.liveTvIcon}>📺</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cardLabel}>{t('rghome.liveTv')}</Text>
+                  <Text style={styles.cardCta}>{t('rghome.watchLive')} {isRTL ? '‹' : '›'}</Text>
+                </View>
               </View>
-            </View>
-          </GlassCard>
-        </TouchableOpacity>
+            </GlassCard>
+          </TouchableOpacity>
+        )}
 
         <View style={styles.quickRow}>
           <TouchableOpacity style={styles.quickCard} onPress={onOpenHeroes} activeOpacity={0.85}>

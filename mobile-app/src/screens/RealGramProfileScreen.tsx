@@ -39,6 +39,14 @@ import {
 } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
 
+// Khabat, 2026-07-29: real-device test on v0.9.105 — Profile loading spinner
+// resolves, then the screen "flashes" and the whole app jams (unresponsive
+// to taps). Suspected but unconfirmed cause: the Live TV card, added
+// 2026-07-28. Hiding its entry point here and in RealGramHomeScreen.tsx as
+// a mitigation while the real cause is investigated — flip back to `true`
+// once cleared.
+const LIVE_TV_ENTRY_ENABLED = false;
+
 // Never surface a raw backend error code — Khabat, 2026-07-21: Profile
 // showed the literal string "profile_unavailable". Map known codes to
 // something a user can actually act on; anything unrecognized still gets
@@ -521,20 +529,23 @@ export function RealGramProfileScreen({
           </GlassCard>
         </TouchableOpacity>
 
-        {/* Live TV — Khabat's iptv-org integration spec (2026-07-28). */}
-        <TouchableOpacity
-          disabled={!onOpenLiveTv}
-          onPress={onOpenLiveTv}
-          activeOpacity={0.85}
-          accessibilityLabel={t('rgprofile.openLiveTv')}
-        >
-          <GlassCard style={styles.card}>
-            <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>{t('rgprofile.liveTv')}</Text>
-              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
-            </View>
-          </GlassCard>
-        </TouchableOpacity>
+        {/* Live TV — Khabat's iptv-org integration spec (2026-07-28), entry
+            hidden 2026-07-29 pending the app-jam investigation above. */}
+        {LIVE_TV_ENTRY_ENABLED && (
+          <TouchableOpacity
+            disabled={!onOpenLiveTv}
+            onPress={onOpenLiveTv}
+            activeOpacity={0.85}
+            accessibilityLabel={t('rgprofile.openLiveTv')}
+          >
+            <GlassCard style={styles.card}>
+              <View style={styles.journeyBanner}>
+                <Text style={styles.cardLabel}>{t('rgprofile.liveTv')}</Text>
+                <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
+              </View>
+            </GlassCard>
+          </TouchableOpacity>
+        )}
 
         {/* Clan */}
         <GlassCard style={styles.card}>
