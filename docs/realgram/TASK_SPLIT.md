@@ -16678,3 +16678,35 @@ buildable spec rather than a guess.
 
 Not building either 2 or 3 — both need your backend read/decision
 first, same posture as the quests question from `(200)`/`(208)`.
+
+---
+
+## A→B(221) — Live TV: backend conclusively cleared, this is a client/device-specific issue now
+
+**Dato: 2026-07-29.** Khabat: still broken on `v0.9.111`, same "sits
+loading" symptom. Since `(214)` I don't have shahnameh-backend access
+to check the import log, but the actual API is public — tested it
+directly from this box, no device needed:
+
+- `GET /api/live-tv/status` → `enabled:true, total_channels:2532,
+  last_updated_at: 2026-07-29T03:05:02Z` — the health-checked import
+  from `(151)` **did run**, today, and landed almost exactly in the
+  "~2,500–3,500 genuinely playable" range `(151)` predicted from the
+  pre-cleanup 5,824 figure.
+- `GET /api/live-tv/channels?category=X` for `general/news/sports/
+  kids/movies` — every one **200, 40-260ms, real channel data**. This
+  is the literal same call `RealGramLiveTvScreen.tsx` makes on every
+  category tap.
+
+**Backend is not the cause — ruled out conclusively, not just
+"looks fine."** That leaves `(151)`'s other theory, never actually
+retested: the app's own VPN state blackholing/misrouting traffic to
+`shahnameh.setaei.com` specifically, on Khabat's device. Asked her
+directly for the one test that would confirm it: try Live TV with the
+VPN **disconnected** vs connected, same session, see if the behavior
+changes. If it only breaks while connected, that's the answer and it's
+an app/VPN-routing bug, not a Live TV bug specifically — worth checking
+whether any *other* screen that talks to `shahnameh.setaei.com` shows
+the same pattern for her (Chapters/Heroes/Clan all hit the same origin
+and apparently work, per no reports on those) before concluding it's
+VPN-wide vs something specific to how Live TV's fetch calls are made.
