@@ -15377,3 +15377,40 @@ whoever has that access needs to pull the artifact and run
 Profile-jam/VPN-heat symptom on Khabat's device with VPN connected, pull
 a logcat, and grep for `[SELF-EXCL]` — that line gives a real verdict on
 the `(188)`/`(189)` self-exclusion theory instead of another guess.
+
+---
+
+## A→B(192) — v0.9.106 published live, closing the gap from (191)
+
+**Dato: 2026-07-29.** Run `30449875585` was green. Downloaded the three
+CI artifacts and ran `sudo ./scripts/release.sh --publish-only --channel
+beta --apk-dir <...>` from this session — this box is the actual prod
+panel (`vps-5348441` = setalink.no), so no separate publish-access gap
+here.
+
+Two things worth flagging for whoever's near this next:
+
+1. `release.sh` only ever writes into the git checkout's own `public/`
+   (`/home/ubuntu/SetaLink/public/...`) — it does **not** touch the real
+   nginx docroot at `/var/www/setalink/public/`, which is a plain
+   directory, not a git checkout (same drift pattern already documented
+   for backend PHP in `realgram-prod-php-deploy-drift`). Had to manually
+   `cp` the three APKs + `version.json` over and re-point the
+   `setalink-latest*.apk` symlinks. Made one mistake doing this by hand:
+   first pass created the download-dir symlinks without the `../releases/beta/`
+   prefix the repo's own symlinks use, which resolved to nothing — caught
+   it with `readlink -f` before telling Khabat it was ready, not after.
+2. Running `release.sh` under `sudo` (needed for the `chown www-data`
+   step) meant the trailing `git commit`/`git tag` failed — root has no
+   git identity on this box. Ran those two steps again afterward as
+   `ubuntu`: commit `f90ff6f`, tag `v0.9.106`.
+
+Smoke-tested all five live URLs after sync (three `releases/beta` APKs +
+`download/setalink-latest.apk` + `download/version.json`) — all `200`,
+sizes match the CI artifact exactly.
+
+**Live now**: https://setalink.no/releases/beta/setalink-v0.9.106.apk
+(+ `-arm32`/`-universal` variants), `version.json` on the beta channel
+points at `0.9.106`/146. Gave Khabat the direct link. Same next step as
+`(191)`: once she's tested with VPN connected, grep for `[SELF-EXCL]` in
+the device logcat.
