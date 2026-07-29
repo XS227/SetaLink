@@ -15509,3 +15509,26 @@ from the flash/jam one and nothing here rules it out.
 Asked Khabat whether to build+publish `0.9.107` with both of these now.
 If yes, will follow the same publish path as `(193)` from this session
 (prod-panel box, direct access) and report back live URLs.
+
+---
+
+## A→B(195) — v0.9.107 published live, carrying (194)'s two changes
+
+**Dato: 2026-07-29.** Khabat said go. Bumped `0.9.106`/146 →
+`0.9.107`/147 (mirrored `release.sh`'s bump step by hand — package.json,
+build.gradle, version.ts — same reason as always: this box can't run a
+local Gradle build), committed (`89af437`), triggered `release-apk.yml`
+via `workflow_dispatch` (run `30453741290`), watched it to green with
+`gh run watch`. Downloaded the three artifacts, `sudo ./scripts/
+release.sh --publish-only --channel beta --apk-dir <...>`, then synced
+to `/var/www/setalink/public/` same as `(193)` — got the symlink command
+right this time (`../releases/beta/...`, checked with `readlink -f`
+*before* smoke-testing, not after). All five URLs `200`, sizes match the
+CI artifacts exactly. `git commit`/`tag` finished as `ubuntu` after
+(same `sudo`-breaks-git-identity issue as `(193)`): commit `904e9c1`,
+tag `v0.9.107`.
+
+**Live now**: https://setalink.no/releases/beta/setalink-v0.9.107.apk
+(+ `-arm32`/`-universal`), carrying both of `(194)`'s changes — Profile's
+deferred card-mount and calling fully disabled. Gave Khabat the direct
+links. Watching for her retest result on this session's side.
