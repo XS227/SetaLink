@@ -14,6 +14,7 @@ import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
 import { GoldButton } from '../components/GoldButton';
 import { VipBadge } from '../components/VipBadge';
+import { PeerProfileSheet } from '../components/PeerProfileSheet';
 import { isVipUser } from '../utils/vip';
 import { useAuthStore }  from '../stores/authStore';
 import { useInboxStore } from '../stores/inboxStore';
@@ -150,6 +151,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const [recipient, setRecipient] = useState('');
   const [draft, setDraft]         = useState('');
   const [openKey, setOpenKey]     = useState<string | null>(null);
+  const [showPeerProfile, setShowPeerProfile] = useState(false);
   const [threadDraft, setThreadDraft] = useState('');
   const [burnSecs, setBurnSecs]   = useState(0);   // composer disappearing-timer
   const [nowMs, setNowMs]         = useState(Date.now());
@@ -712,12 +714,22 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
                   <Text style={styles.backIcon}>‹</Text>
                 </TouchableOpacity>
-                <Avatar
-                  support={openConvo.support}
-                  label={openConvo.title}
-                  isNode={!openConvo.support && !openConvo.peerUserId && !!openConvo.peerDevice}
-                  size={34}
-                />
+                {/* Khabat, 2026-07-29: "trykker på profilbilde til sender... se
+                    deres realgram profil" — tappable only for a real DM peer
+                    (needs a device_id to resolve); official/support threads
+                    have no public profile to show. */}
+                <TouchableOpacity
+                  disabled={openConvo.support || !openConvo.peerDevice}
+                  onPress={() => setShowPeerProfile(true)}
+                  activeOpacity={0.7}
+                >
+                  <Avatar
+                    support={openConvo.support}
+                    label={openConvo.title}
+                    isNode={!openConvo.support && !openConvo.peerUserId && !!openConvo.peerDevice}
+                    size={34}
+                  />
+                </TouchableOpacity>
                 <View style={styles.threadPeerWrap}>
                   <View style={styles.threadPeerRow}>
                     <Text style={styles.threadPeer} numberOfLines={1}>{openConvo.title}</Text>
@@ -998,6 +1010,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <PeerProfileSheet
+        visible={showPeerProfile}
+        peerDeviceId={openConvo?.peerDevice ?? ''}
+        onClose={() => setShowPeerProfile(false)}
+      />
     </View>
   );
 }

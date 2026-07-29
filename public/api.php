@@ -2155,6 +2155,31 @@ if ($method === 'POST') {
         ok($profile ?: ['account' => $account]);
     }
 
+    if ($action === 'get-peer-profile') {
+        // Khabat, 2026-07-29: "trykker på profilbilde til sender... se deres
+        // realgram profil og offentlig info" — Inbox only carries a DM peer's
+        // raw device_id/user_id, not their REAL account, so this resolves
+        // device_id -> linked_real_account -> the same public profile
+        // get-real-profile already serves (open to all apps, no auth — this
+        // isn't new exposure, just a new lookup path into it). user_id is
+        // included as a display fallback for peers who have never pushed a
+        // handle/avatar (get-real-profile's own documented "empty until
+        // saved" case) — never anything sensitive (no token, plan, quota,
+        // email, IP).
+        $peerDeviceId = trim($_GET['device_id'] ?? '');
+        if (!$peerDeviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        $dev = qe_fetch_device($pdo, $peerDeviceId);
+        if (!$dev) err('device not found');
+        $account = re_linked_account($pdo, $peerDeviceId);
+        $profile = $account !== '' ? re_get_profile($pdo, $account) : [];
+        ok(array_merge(
+            ['user_id' => $dev['user_id'] ?? ''],
+            $profile ?: ['account' => $account],
+        ));
+    }
+
     if ($action === 'redeem-real') {
         // A2: spend REAL for VPN quota. The spend is verified server-to-server
         // against the ecosystem backend, never on client claims; when that

@@ -32,6 +32,7 @@ import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
 import { initZarSync, recordZarTap } from '../services/zarSyncService';
 import { recordTap } from '../services/tapAnalytics';
+import { getRealWallet } from '../services/realWalletService';
 import { getProfileSummary } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
 
@@ -103,6 +104,24 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const deviceIdForZar = user?.deviceId ?? '';
   useEffect(() => {
     if (deviceIdForZar) initZarSync(deviceIdForZar);
+  }, [deviceIdForZar]);
+
+  // Khabat, 2026-07-29: "saldo på forsiden viser null." Real bug, not a
+  // display glitch — zarSyncService's reconcileFromServer() only ever
+  // fires as the RESPONSE to a tap-sync flush, and that flush is gated
+  // on pendingTaps > 0 (zarSyncService.ts ~L65). A user who opens Home
+  // without tapping the coin first never triggers a flush, so the
+  // locally-persisted balance (0 for a fresh store — new device, new
+  // install, or a device_id that changed, see
+  // [[realgram-device-recognition-mystery]]) is shown as-is, forever,
+  // regardless of the real server balance. Pull the real balance once on
+  // mount instead of waiting for a tap — reuses RealWalletCard's own
+  // already-live real-wallet endpoint (wallet.zar), no new backend call.
+  useEffect(() => {
+    if (!deviceIdForZar) return;
+    getRealWallet(deviceIdForZar)
+      .then((w) => { if (typeof w.zar === 'number') useZarStore.getState().reconcileFromServer(w.zar); })
+      .catch(() => {});
   }, [deviceIdForZar]);
 
   // Real zar/hr from owned+upgraded heroes (2026-07-27, B->A(105)) — same
