@@ -16,6 +16,7 @@ import { GlassCard } from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { TopBar } from '../components/TopBar';
 import { RealWalletCard } from '../components/RealWalletCard';
+import { TonConnectCard } from '../components/TonConnectCard';
 import { EmberField } from '../components/EmberField';
 import { useAuthStore } from '../stores/authStore';
 import { useT } from '../i18n';
@@ -161,12 +162,7 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
           </GlassCard>
         )}
 
-        <GlassCard style={styles.card}>
-          <View style={styles.tonRow}>
-            <Text style={styles.cardTitle}>{t('wallet.tonTitle')}</Text>
-            <Text style={styles.tonValue}>{t('wallet.tonComingSoon')}</Text>
-          </View>
-        </GlassCard>
+        <TonConnectCard />
 
         <View style={{ height: Layout.bottomNavHeight + Spacing[4] }} />
       </ScrollView>
@@ -187,9 +183,6 @@ const styles = StyleSheet.create({
   quotaCell:   { flex: 1, alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, paddingVertical: Spacing[3] },
   quotaValue:  { fontSize: 18, fontFamily: Typography.family.heading, color: Colors.text.primary },
   quotaLabel:  { fontSize: 11, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  tonRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tonValue:    { fontSize: 13, fontFamily: Typography.family.body, color: Colors.text.muted },
-
   historyList:    { gap: Spacing[3], marginTop: Spacing[3] },
   historyRow:     { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   historyIcon:    { fontSize: 16, width: 22, textAlign: 'center' },
