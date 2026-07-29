@@ -31,7 +31,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, FlatList, Image, Linking, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  ActivityIndicator, FlatList, Image, Linking, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -79,6 +79,13 @@ export function RealGramClanHomeScreen({ onBack }: Props) {
   const [linkEditOpen, setLinkEditOpen] = useState(false);
   const [linkDraft, setLinkDraft]       = useState('');
   const [savingLink, setSavingLink]     = useState(false);
+
+  // Khabat, 2026-07-29: "3-5 siste medlemer kan visess på clan siden,
+  // trykk for å se alle medlemer liste" — was a full scrolling member
+  // list as the screen's main content; now a compact preview with a
+  // "see all" action into the full roster instead.
+  const [allMembersOpen, setAllMembersOpen] = useState(false);
+  const MEMBER_PREVIEW_COUNT = 5;
 
   const load = useCallback(async () => {
     try {
@@ -162,76 +169,106 @@ export function RealGramClanHomeScreen({ onBack }: Props) {
         <Text style={styles.backIcon}>‹</Text>
       </TouchableOpacity>
 
-      <FlatList
-        data={members}
-        keyExtractor={(m) => m.telegram_id}
+      <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing[6] }]}
         showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View>
-            <View style={styles.heroRow}>
-              {clan.clan_photo ? (
-                <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
-              ) : (
-                <View style={[styles.clanPhoto, styles.clanPhotoFallback]}>
-                  <Text style={styles.clanPhotoFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
-                </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
-                {!!clan.motto && <Text style={styles.clanMotto} numberOfLines={2}>{clan.motto}</Text>}
-              </View>
+      >
+        <View style={styles.heroRow}>
+          {clan.clan_photo ? (
+            <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
+          ) : (
+            <View style={[styles.clanPhoto, styles.clanPhotoFallback]}>
+              <Text style={styles.clanPhotoFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
             </View>
-
-            {/* Treasury — real balance + a real contribute action, not a
-                display-only number. */}
-            <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-              <Text style={styles.cardLabel}>{t('clanhome.treasury')}</Text>
-              <View style={styles.treasuryRow}>
-                <Text style={styles.treasuryValue}>💎 {clan.treasury.toLocaleString()}</Text>
-                <TouchableOpacity style={styles.contributeBtn} activeOpacity={0.85} onPress={() => setContributeOpen(true)}>
-                  <Text style={styles.contributeBtnText}>{t('clanhome.contribute')}</Text>
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.economyLine}>
-                🪙 {t('clanhome.combinedIncome').replace('{rate}', clan.total_zar_per_hour.toLocaleString())}
-              </Text>
-            </GlassCard>
-
-            {/* Community link — the real "clan chat/feed" surrogate. */}
-            <GlassCard style={styles.card}>
-              <Text style={styles.cardLabel}>{t('clanhome.community')}</Text>
-              {clan.telegram_group_link ? (
-                <TouchableOpacity
-                  style={styles.linkBtn}
-                  activeOpacity={0.85}
-                  onPress={() => Linking.openURL(clan.telegram_group_link)}
-                >
-                  <Text style={styles.linkBtnText}>{t('clanhome.joinChat')}</Text>
-                </TouchableOpacity>
-              ) : isLeader ? (
-                <TouchableOpacity
-                  style={styles.linkBtn}
-                  activeOpacity={0.85}
-                  onPress={() => { setLinkDraft(''); setLinkEditOpen(true); }}
-                >
-                  <Text style={styles.linkBtnText}>{t('clanhome.setChatLink')}</Text>
-                </TouchableOpacity>
-              ) : (
-                <Text style={styles.emptyText}>{t('clanhome.noChatLink')}</Text>
-              )}
-              {clan.telegram_group_link && isLeader && (
-                <TouchableOpacity style={styles.editLinkRow} activeOpacity={0.7} onPress={() => { setLinkDraft(clan.telegram_group_link); setLinkEditOpen(true); }}>
-                  <Text style={styles.editLinkText}>{t('clanhome.editChatLink')}</Text>
-                </TouchableOpacity>
-              )}
-            </GlassCard>
-
-            <Text style={styles.sectionLabel}>{t('clanhome.members').replace('{count}', String(members.length))}</Text>
+          )}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
+            {!!clan.motto && <Text style={styles.clanMotto} numberOfLines={2}>{clan.motto}</Text>}
           </View>
-        }
-        renderItem={({ item }) => <MemberRow member={item} />}
-      />
+        </View>
+
+        {/* Treasury — real balance + a real contribute action, not a
+            display-only number. */}
+        <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+          <Text style={styles.cardLabel}>{t('clanhome.treasury')}</Text>
+          <View style={styles.treasuryRow}>
+            <Text style={styles.treasuryValue}>💎 {clan.treasury.toLocaleString()}</Text>
+            <TouchableOpacity style={styles.contributeBtn} activeOpacity={0.85} onPress={() => setContributeOpen(true)}>
+              <Text style={styles.contributeBtnText}>{t('clanhome.contribute')}</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.economyLine}>
+            🪙 {t('clanhome.combinedIncome').replace('{rate}', clan.total_zar_per_hour.toLocaleString())}
+          </Text>
+        </GlassCard>
+
+        {/* Community link — the real "clan chat/feed" surrogate, pending
+            Khabat's ask (2026-07-29) for an actual embedded group chat —
+            flagged in this file's header + TASK_SPLIT.md, not built here,
+            needs shahnameh-backend message-persistence infra. */}
+        <GlassCard style={styles.card}>
+          <Text style={styles.cardLabel}>{t('clanhome.community')}</Text>
+          {clan.telegram_group_link ? (
+            <TouchableOpacity
+              style={styles.linkBtn}
+              activeOpacity={0.85}
+              onPress={() => Linking.openURL(clan.telegram_group_link)}
+            >
+              <Text style={styles.linkBtnText}>{t('clanhome.joinChat')}</Text>
+            </TouchableOpacity>
+          ) : isLeader ? (
+            <TouchableOpacity
+              style={styles.linkBtn}
+              activeOpacity={0.85}
+              onPress={() => { setLinkDraft(''); setLinkEditOpen(true); }}
+            >
+              <Text style={styles.linkBtnText}>{t('clanhome.setChatLink')}</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.emptyText}>{t('clanhome.noChatLink')}</Text>
+          )}
+          {clan.telegram_group_link && isLeader && (
+            <TouchableOpacity style={styles.editLinkRow} activeOpacity={0.7} onPress={() => { setLinkDraft(clan.telegram_group_link); setLinkEditOpen(true); }}>
+              <Text style={styles.editLinkText}>{t('clanhome.editChatLink')}</Text>
+            </TouchableOpacity>
+          )}
+        </GlassCard>
+
+        {/* Member preview — compact, "see all" opens the full roster
+            (Khabat, 2026-07-29). */}
+        <GlassCard style={styles.card}>
+          <View style={styles.membersHeaderRow}>
+            <Text style={styles.cardLabel}>{t('clanhome.members').replace('{count}', String(members.length))}</Text>
+            {members.length > MEMBER_PREVIEW_COUNT && (
+              <TouchableOpacity onPress={() => setAllMembersOpen(true)} activeOpacity={0.7}>
+                <Text style={styles.seeAllText}>{t('clanhome.seeAll')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.membersPreviewList}>
+            {members.slice(0, MEMBER_PREVIEW_COUNT).map((m) => <MemberRow key={m.telegram_id} member={m} />)}
+          </View>
+        </GlassCard>
+      </ScrollView>
+
+      {/* Full member roster */}
+      <Modal visible={allMembersOpen} animationType="slide" onRequestClose={() => setAllMembersOpen(false)}>
+        <View style={[styles.screen, { paddingTop: insets.top }]}>
+          <View style={styles.fullListHeader}>
+            <TouchableOpacity onPress={() => setAllMembersOpen(false)} style={styles.floatingBackStatic} hitSlop={12}>
+              <Text style={styles.backIcon}>‹</Text>
+            </TouchableOpacity>
+            <Text style={styles.fullListTitle}>{t('clanhome.members').replace('{count}', String(members.length))}</Text>
+          </View>
+          <FlatList
+            data={members}
+            keyExtractor={(m) => m.telegram_id}
+            contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing[6] }]}
+            showsVerticalScrollIndicator={false}
+            renderItem={({ item }) => <MemberRow member={item} />}
+          />
+        </View>
+      </Modal>
 
       {/* Contribute sheet */}
       <Modal visible={contributeOpen} transparent animationType="fade" onRequestClose={() => setContributeOpen(false)}>
@@ -356,6 +393,17 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body },
 
   sectionLabel: { fontSize: 13, fontFamily: Typography.family.heading, color: Colors.text.primary, marginTop: Spacing[2] },
+
+  membersHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  seeAllText:       { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.gold[400] },
+  membersPreviewList: { gap: Spacing[2], marginTop: Spacing[2] },
+  fullListHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], paddingHorizontal: Spacing[4], paddingTop: Spacing[3], paddingBottom: Spacing[2] },
+  floatingBackStatic: {
+    width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(10,10,14,0.55)', borderRadius: 18,
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
+  },
+  fullListTitle: { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary },
 
   memberCard: { padding: Spacing[3] },
   memberRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
