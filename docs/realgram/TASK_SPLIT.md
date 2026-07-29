@@ -17490,3 +17490,67 @@ Gave her the service-account e-mail directly too
 key) in case she needs to re-confirm it's added as a Search Console user
 on the RealGram property, though nothing in the DB suggests that access
 is currently missing.
+
+---
+
+## A→B(238) — v0.9.114 published live (vpn.setalink.no:443 calling fix)
+— hit a real 100%-full disk mid-publish, fixed; also expanded RealGram's
+tracked SEO keyword set (Persian + English, was missing both brand terms
+and all English)
+
+**Dato: 2026-07-29.** Two separate things this entry, both Khabat asks.
+
+**1. v0.9.114 published.** Bundles `(236)`'s `vpn.setalink.no:443`
+calling-relay fix. Live and independently verified:
+`version.json` → `0.9.114`/154; all three `setalink-v0.9.114*.apk` URLs
+`200`. Tag `v0.9.114`, release commit `2c90a53` (+ a small follow-up
+`153a4d1` — `package-lock.json`'s cosmetic `version` field and the
+`latest` symlinks, missed in the first bump commit).
+
+**Hit `/dev/vda1` at 100% full (212K free) partway through** —
+`release.sh`'s own `cp` failed with `No space left on device` after
+already writing the channel-dir APKs, before reaching `public/assets/`.
+Root cause: this box has been accumulating beta-channel APK releases all
+night (6 versions × ~216MB × 4 locations — checkout + live, releases +
+assets — with `release.sh`'s own `KEEP_RELEASES=5` prune only running
+*after* the copy step that was now failing, so a full disk blocked the
+very step that would've freed space). Manually pruned `0.9.109`-`0.9.111`
+from all four locations (checkout/live × releases/assets), recoverable
+from their git tags/CI artifacts same as the script's own prune already
+assumes — freed ~1.8G, republish went through clean. Not a code bug,
+just this box's real ceiling — flagging since it'll happen again at the
+current burn rate (a fresh build almost every 20-30 min tonight) unless
+`KEEP_RELEASES` gets lower or `public/assets/`'s duplicate copies of the
+same APKs get reconsidered.
+
+**2. SEO keywords.** Khabat asked me to check Search Console access and
+set up real RealGram keywords, fa + en, Iran-focused. Access itself was
+never broken (see `(237)`) — verified live again just now: minted a real
+token, queried `sc-domain:realgram.no` directly, got real data back
+(`realgram` query, position 5.9, matches the DB history). The actual gap
+was the tracked keyword list: 43 Persian keywords already existed (solid
+carrier/app long-tail coverage — Irancell, Hamrah-e Avval, Rightel,
+Telegram/Instagram/WhatsApp/YouTube-specific `فیلترشکن` queries) but
+**zero English**, and nothing in either language actually named RealGram
+or Shahnameh — despite that being the product now (checked
+`realgram.no`'s live title/meta + blog post titles to ground these in
+real content, not guessed). Added 20 new tracked keywords directly to
+`keyword_ranks` (`source='manual'`, `position=NULL` — same pattern
+`seo_ranks_seed()` itself uses): 10 fa (`رئال‌گرام`, `دانلود رئال‌گرام`,
+`اپلیکیشن رئال‌گرام`, `جایگزین فیلترشکن معمولی`, `اپلیکیشن وی‌پی‌ان و
+بازی آموزشی`, `شاهنامه بازی`, `یادگیری شاهنامه با بازی`, `هویت دیجیتال
+REAL-ID`, `آزادی اینترنت با رئال‌گرام`, `کیف پول REAL`) + 10 en
+(`RealGram app`, `RealGram VPN`, `download RealGram`, `RealGram vs VPN
+apps`, `best VPN for Iran 2026`, `free VPN for Iran no disconnect`,
+`Shahnameh learning game`, `Shahnameh app`, `digital identity without
+big tech`, `internet freedom app Iran`). Left all 43 existing Persian
+keywords untouched — they're real, Iran-relevant, some already ranking,
+no reason to prune them.
+
+Ran a live sync right after adding these (same `gsc_sync()` the admin
+button calls) — none of the 20 new ones matched real search traffic yet
+(expected: brand-new targets, nobody's searched these exact phrases as
+tracked yet), `realgram` itself (already tracked) picked up a fresh
+snapshot as usual. This is DB-only, no code/deploy involved — the
+existing 40+ keyword rows were never in `seo_ranks_seed()`'s hardcoded
+array either, so this matches how the list has organically grown before.
