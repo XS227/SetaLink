@@ -416,9 +416,15 @@ function icon(string $name): string {
         <div class="stat-card"><div class="stat-label">Avg Session</div><div class="stat-value" id="ga4AvgSession">—</div><div class="stat-sub">duration</div></div>
       </div>
 
-      <div class="panel" style="margin-top:.7rem">
-        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Active Users <span class="panel-sub">per day</span></span></div>
-        <div class="panel-body"><div style="position:relative;height:280px"><canvas id="chGa4Users"></canvas></div></div>
+      <div class="two-col" style="margin-top:.7rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Active Users <span class="panel-sub">per day</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:260px"><canvas id="chGa4Users"></canvas></div></div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Page Views <span class="panel-sub">per day</span></span></div>
+          <div class="panel-body"><div style="position:relative;height:260px"><canvas id="chGa4Views"></canvas></div></div>
+        </div>
       </div>
 
       <div class="two-col">
@@ -619,8 +625,23 @@ function icon(string $name): string {
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Position Over Time <span class="panel-sub">lower is better</span></span></div>
+      <div class="stat-grid" id="seoOverviewTotals">
+        <div class="stat-card"><div class="stat-label">Clicks</div><div class="stat-value" id="seoClicks">—</div><div class="stat-sub" id="seoOverviewSub">—</div></div>
+        <div class="stat-card"><div class="stat-label">Impressions</div><div class="stat-value" id="seoImpressions">—</div><div class="stat-sub">from Search Console</div></div>
+        <div class="stat-card"><div class="stat-label">Avg CTR</div><div class="stat-value" id="seoCtr">—</div><div class="stat-sub">clicks / impressions</div></div>
+        <div class="stat-card"><div class="stat-label">Avg Position</div><div class="stat-value" id="seoAvgPos">—</div><div class="stat-sub">impression-weighted</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:.7rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Search Performance <span class="panel-sub">clicks &amp; impressions per day, all tracked keywords</span></span></div>
+        <div class="panel-body">
+          <div id="seoOverviewEmpty" class="panel-empty" style="display:none">No Search Console data yet — sync above once a property is connected.</div>
+          <div style="position:relative;height:280px"><canvas id="seoOverviewChart"></canvas></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('chart') ?> Position Over Time <span class="panel-sub">lower is better, per keyword</span></span></div>
         <div class="panel-body"><div style="position:relative;height:320px"><canvas id="seoChart"></canvas></div></div>
       </div>
 
@@ -2672,6 +2693,13 @@ views.analytics = {
         type: 'line',
         data: { labels, datasets: [{ label: 'Active Users', data: byDay.map(r => +r[1]||0),
           borderColor: this.PALETTE[3], backgroundColor: 'rgba(239,68,68,.15)', fill: true, tension: .3, pointRadius: 2 }] },
+        options: this._baseOpts({ plugins: { legend: { display: false } } }),
+      });
+      if (this.charts.ga4Views) { try { this.charts.ga4Views.destroy(); } catch(e){} }
+      this.charts.ga4Views = new Chart($('chGa4Views'), {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'Page Views', data: byDay.map(r => +r[2]||0),
+          borderColor: this.PALETTE[0], backgroundColor: 'rgba(91,140,255,.15)', fill: true, tension: .3, pointRadius: 2 }] },
         options: this._baseOpts({ plugins: { legend: { display: false } } }),
       });
     }
@@ -4732,18 +4760,68 @@ views.wallet = {
 // Search Console feed can populate the same table later.
 views.seoranks = {
   chart: null,
+  overviewChart: null,
   data: [],
+  overview: [],
   init() { this.load(); const d=$('seoDate'); if(d&&!d.value) d.value=new Date().toISOString().slice(0,10); },
   async load() {
     try {
       const d = await api.get('seo-ranks');
       this.data = d.keywords || [];
+      this.overview = d.overview || [];
       this.renderTable();
       this.renderChart();
+      this.renderOverview();
       this.renderInputs();
       this.renderGsc(d.gsc || {});
       $('seoKwCount').textContent = this.data.length + ' tracked · Iran intent';
     } catch(e) { toast('SEO ranks: '+e.message,'error'); }
+  },
+  // GSC-home-page-style overview: total Clicks/Impressions/CTR/Avg Position
+  // stat tiles + a per-day Clicks(bar)/Impressions(line) chart, aggregated
+  // across every tracked keyword server-side (admin/api.php's 'seo-ranks').
+  renderOverview() {
+    const rows = this.overview;
+    const sumImp = rows.reduce((s,r)=>s+(r.impressions||0),0);
+    const sumClk = rows.reduce((s,r)=>s+(r.clicks||0),0);
+    const posRows = rows.filter(r=>r.avg_position!=null);
+    const avgPos = posRows.length
+      ? (posRows.reduce((s,r)=>s+r.avg_position*(r.impressions||1),0) / posRows.reduce((s,r)=>s+(r.impressions||1),0))
+      : null;
+    $('seoClicks').textContent      = sumClk.toLocaleString();
+    $('seoImpressions').textContent = sumImp.toLocaleString();
+    $('seoCtr').textContent         = sumImp ? (sumClk/sumImp*100).toFixed(1)+'%' : '—';
+    $('seoAvgPos').textContent      = avgPos!=null ? '#'+avgPos.toFixed(1) : '—';
+    $('seoOverviewSub').textContent = rows.length ? `${rows.length} day(s) tracked` : 'no data yet';
+
+    const empty = $('seoOverviewEmpty'), canvas = $('seoOverviewChart');
+    if (this.overviewChart) { try{this.overviewChart.destroy();}catch(e){} this.overviewChart=null; }
+    if (typeof Chart==='undefined') return;
+    if (!rows.length) { empty.style.display='block'; canvas.style.display='none'; return; }
+    empty.style.display='none'; canvas.style.display='block';
+
+    this.overviewChart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: rows.map(r=>r.date),
+        datasets: [
+          { type:'bar', label:'Clicks', data: rows.map(r=>r.clicks), yAxisID:'yClicks',
+            backgroundColor:'#00e87a', borderRadius:3, order:2 },
+          { type:'line', label:'Impressions', data: rows.map(r=>r.impressions), yAxisID:'yImpr',
+            borderColor:'#3399ff', backgroundColor:'rgba(51,153,255,.15)', fill:true, tension:.3,
+            pointRadius:2, borderWidth:2, order:1 },
+        ],
+      },
+      options: {
+        responsive:true, maintainAspectRatio:false,
+        interaction:{ mode:'index', intersect:false },
+        scales:{
+          yClicks:{ position:'left', beginAtZero:true, title:{display:true,text:'Clicks'} },
+          yImpr:{ position:'right', beginAtZero:true, title:{display:true,text:'Impressions'}, grid:{drawOnChartArea:false} },
+        },
+        plugins:{ legend:{ labels:{ boxWidth:12, font:{size:10} } } },
+      },
+    });
   },
   renderGsc(g) {
     const st = $('gscStatus'), site = $('gscSite');

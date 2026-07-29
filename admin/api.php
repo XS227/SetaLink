@@ -2026,7 +2026,12 @@ switch ($action) {
         $targets = $db->query("SELECT DISTINCT keyword, lang FROM keyword_ranks ORDER BY id")->fetchAll(PDO::FETCH_ASSOC);
         $hist = [];
         foreach ($rows as $r) {
-            $hist[$r['keyword']][] = ['captured_at' => $r['captured_at'], 'position' => (float)$r['position']];
+            $hist[$r['keyword']][] = [
+                'captured_at' => $r['captured_at'],
+                'position'    => (float)$r['position'],
+                'impressions' => (int)$r['impressions'],
+                'clicks'      => (int)$r['clicks'],
+            ];
         }
         $out = [];
         foreach ($targets as $t) {
@@ -2061,8 +2066,40 @@ switch ($action) {
             if ($b['latest'] === null) return -1;
             return $a['latest'] <=> $b['latest'];
         });
+        // Site-wide daily overview (Clicks/Impressions/CTR/Avg Position) —
+        // a GSC-home-page-style rollup across every tracked keyword, not a
+        // per-keyword breakdown (that's what $out/history is for). Position
+        // is impression-weighted where possible (matches how GSC itself
+        // averages position across queries) so a handful of huge-impression
+        // days aren't drowned out by many low-impression ones.
+        $ovRows = $db->query(
+            "SELECT DATE(captured_at) AS d,
+                    SUM(impressions) AS impressions,
+                    SUM(clicks) AS clicks,
+                    SUM(position * impressions) AS pos_weighted,
+                    AVG(position) AS pos_simple
+             FROM keyword_ranks
+             WHERE position IS NOT NULL
+             GROUP BY DATE(captured_at)
+             ORDER BY d"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $overview = array_map(function ($r) {
+            $imp = (int)$r['impressions'];
+            $clk = (int)$r['clicks'];
+            $avgPos = $imp > 0
+                ? round((float)$r['pos_weighted'] / $imp, 1)
+                : ($r['pos_simple'] !== null ? round((float)$r['pos_simple'], 1) : null);
+            return [
+                'date'         => $r['d'],
+                'impressions'  => $imp,
+                'clicks'       => $clk,
+                'ctr'          => $imp > 0 ? round($clk / $imp * 100, 2) : null,
+                'avg_position' => $avgPos,
+            ];
+        }, $ovRows);
         api_ok([
             'keywords'   => $out,
+            'overview'   => $overview,
             'checked_at' => date('Y-m-d H:i:s'),
             'gsc'        => [
                 'key_present' => gsc_key_present(),
