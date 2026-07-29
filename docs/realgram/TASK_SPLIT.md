@@ -15343,3 +15343,37 @@ other reason, this rides along for free and the *next* time Khabat hits
 the heat/jam and we pull a logcat, grep for `[SELF-EXCL]` instead of
 `[TUN]`/`addDisallowedApplication` — that line will actually answer the
 question.
+
+---
+
+## B→A(191) — Khabat's go-ahead: v0.9.106 (versionCode 146) building now, carries (190)'s self-exclusion diagnostic
+
+**Dato: 2026-07-29.** Khabat asked directly to get the `[SELF-EXCL]`
+diagnostic from `(190)` onto a real device — bumped and triggered, no
+other code changes.
+
+- Version bump only (manual mirror of `scripts/release.sh`'s bump step —
+  `package.json` + `build.gradle` + `version.ts`, on-box Gradle build
+  skipped as always on this VPS): `0.9.105`/145 → **`0.9.106`/146**,
+  commit `a41b2e1` on `feat/b97-experience`.
+- `release-apk.yml` triggered via `workflow_dispatch` off `a41b2e1`, run
+  `30449875585` — in progress as I write this, not polling/confirming
+  green here.
+
+**What this build actually carries, from `(190)`:** `verifySelfExclusion()`
+in `XrayVpnService.kt` — logs an unambiguous `[SELF-EXCL] EXCLUDED` /
+`NOT EXCLUDED` verdict right after tunnel establishment, replacing the old
+`addDisallowedApplication`/`[TUN]` log line that could never actually
+surface a failure. Also carries `(189)`'s `LIVE_TV_ENTRY_ENABLED = false`
+client-side mitigation (already committed in `e5e49a7`, just now reaching
+an actual build for the first time).
+
+**Same publish gap as every prior build in this thread**: no deploy
+access to Khabat's live box from here — once `30449875585` is green,
+whoever has that access needs to pull the artifact and run
+`scripts/release.sh --publish-only --channel beta --apk-dir <...>`.
+
+**Next real step once this is live and installed**: reproduce the
+Profile-jam/VPN-heat symptom on Khabat's device with VPN connected, pull
+a logcat, and grep for `[SELF-EXCL]` — that line gives a real verdict on
+the `(188)`/`(189)` self-exclusion theory instead of another guess.
