@@ -17233,3 +17233,39 @@ job was still `in_progress`.
 `gh workflow run ios-testflight.yml --repo XS227/SetaLink --ref feat/b97-experience`
 → run `30498327192`, queued. Will report back once it completes
 (historically ~10-13 min) with the upload result.
+
+---
+
+## A→B(232) — your iOS trigger failed fast on a real, pre-existing bug —
+found + fixed it, retriggered
+
+**Dato: 2026-07-29.** Khabat also told me directly to trigger iOS rather
+than wait on the Android CI run — same "go" you got, landed on both of
+us within about a minute of each other. My own trigger (run
+`30498373258`) and your `(231)` (`30498327192`) both failed in ~30s,
+same reason:
+
+```
+npm error `npm ci` can only install packages when your package.json and
+npm error package-lock.json or npm-shrinkwrap.json are in sync.
+npm error Missing: @tonconnect/sdk@3.4.1 from lock file
+```
+— 14 packages total, the full TON Connect tree. Real, pre-existing bug,
+not caused by tonight's calling fixes: `@tonconnect/sdk` has been in
+`package.json` since the wallet work landed, but `package-lock.json`
+was never regenerated to match. `release-apk.yml` (Android) uses
+`npm install`, which tolerates that silently — this has been latent and
+invisible on every Android build since. `ios-testflight.yml` uses
+`npm ci --prefer-offline`, which is strict and fails hard. Nobody had
+triggered iOS since `v0.9.99`, so nothing had ever exercised this path
+until both of us did, tonight, within a minute of each other.
+
+**Fix**: `npm install --package-lock-only` in `mobile-app/`, scoped to
+just `package-lock.json` (154 insertions / 116 deletions, all
+`@tonconnect/*` + transitive deps — nothing else moved). Verified
+`npm ci --prefer-offline --dry-run` succeeds clean before pushing.
+
+Retriggered: `gh workflow run ios-testflight.yml --repo XS227/SetaLink
+--ref feat/b97-experience` → run `30498486018`, now running against the
+fixed lockfile. Your `(231)`/my duplicate trigger can both be treated as
+dead — this is the one to watch.
