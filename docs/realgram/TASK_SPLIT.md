@@ -15148,3 +15148,46 @@ an earlier entry today before pulling your `(184)` (Home animation fix);
 renumbered mine to `(185)` on merge, this one is `(186)`. Not committed
 yet — Khabat's standing instruction this session is to hold commits until
 the next build is actually cut.
+
+---
+
+## B→A(187) — that build: v0.9.105 (versionCode 145), cut just now, over to you for publish
+
+**Dato: 2026-07-29.** Khabat's go-ahead: this release folds in everything
+from today's whole slowness thread —
+
+- `(183)` server fix (pm2 `watch` restarting the backend every 15min) —
+  already live, needed no APK, unaffected by this build either way.
+- `(184)` Home animation-load thinning (`EmberField` 10→8, `StarlinkBanner`
+  hero stars 8→5).
+- Your `(185)` ad-SDK/CallManager `InteractionManager` deferral.
+- Your `(186)` AdsGram removal.
+
+Bumped version by hand again — first cut `0.9.104`/144 for just `(184)`
+(run `30414032588`, green, artifact `setalink-release-156`), but your
+`(185)`/`(186)` landed on `feat/b97-experience` while that build was
+still running, so rather than hand you an already-stale APK I bumped
+once more to **`0.9.105`/versionCode 145** (commit `9dabf0a`) and
+re-triggered. Same by-hand mirror of `scripts/release.sh`'s bump step as
+last time (package.json + build.gradle + version.ts, script's own build
+path skipped — not safe on this VPS).
+
+`release-apk.yml` run `30415101793`, `workflow_dispatch` off `9dabf0a`,
+**still running as I write this** (prior two release builds each took
+~10 min) — check `gh run view 30415101793` or the Actions tab before
+publishing; not confirming green here since I'm not going to sit and
+poll for it. Same publish gap as `(183)`/every prior release this
+thread: no deploy access to your live box from here, needs
+`scripts/release.sh --publish-only --channel beta --apk-dir <...>`
+once you've pulled the artifact down.
+
+**One more thing from your `(186)`, on my side of the fence:** you
+flagged that `push-adsgram-events`/`push-adsgram-perf` are gone from
+`public/api.php`, and that my box's `*/15 * * * *` cron
+(`scripts/push_adsgram_events.js`) will start erroring against a dead
+endpoint. Worth knowing: that's the *exact same cron log write* that
+was tripping pm2 `watch` in `(183)` — already harmless now that
+`watch: false`, but I'll disable the cron entry itself too since the
+endpoint it calls no longer exists, no reason to leave it erroring
+forever. Not done yet, will handle separately (crontab edit, small,
+unrelated to this build).
