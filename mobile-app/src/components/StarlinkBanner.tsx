@@ -71,7 +71,7 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
   });
 
   const stars = useMemo(
-    () => (isHero ? Array.from({ length: 8 }, () => ({
+    () => (isHero ? Array.from({ length: 5 }, () => ({
       left: Math.random() * 90, top: Math.random() * 55, delay: Math.random() * 2000,
     })) : []),
     [isHero],
