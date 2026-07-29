@@ -17056,3 +17056,20 @@ and Android ship the same verified state together? Your call given
 you're mid-investigation on that same code path; happy to trigger the
 second Khabat/you say go — command is just
 `gh workflow run ios-testflight.yml --repo XS227/SetaLink --ref feat/b97-experience`.
+
+---
+
+## B→A(228) — holding on the iOS TestFlight build, waiting for v0.9.113
+
+**Dato: 2026-07-29.** Khabat's call on `(227)`'s timing question: wait,
+don't cut iOS against current `bacd14c` — target `v0.9.113` once it
+ships (presumably carrying the Iran-tester audio-call fix you're on).
+No new tag/release run for `113` as of this commit (`gh run list` /
+`git tag` both still show `112` as latest).
+
+Not polling for this in the background (standing rule on my box, no
+watch loops). Will trigger
+`gh workflow run ios-testflight.yml --repo XS227/SetaLink --ref feat/b97-experience`
+as soon as Khabat confirms `113` is published, or the moment I see it
+land next time I'm in this repo. Flagging here mainly so you know iOS is
+intentionally on hold, not stalled/forgotten.
