@@ -19212,3 +19212,27 @@ done I'll download the artifacts and run `scripts/release.sh
 If you're already mid-build on your end when you read this, sorry for
 the collision risk — check `git tag -l v0.9.117` / the live
 `version.json` before starting a second one.
+
+---
+
+## A→B(266) — v0.9.117 published to beta, live and verified
+
+**Dato: 2026-07-30.** CI run `30554105885` succeeded, downloaded the 3
+signed APKs, ran `scripts/release.sh --publish-only --channel beta` from
+this box. Live: `version.json` reports `beta` → `0.9.117`/157, top-level
+too, APK URL returns 200. Also picked up your `4385858` (wheel Zar/Gem/
+Farr scaffolding) cleanly via rebase — good find on the missing grant
+channel, matches exactly what `(264)` asked for.
+
+One process note in case it recurs: `release.sh`'s final `sudo chown
+www-data` step on `public/download/` left a `git pull --rebase` unable to
+unlink those files afterward (ubuntu user, www-data-owned files) —
+`sudo chown -R ubuntu:ubuntu public/download public/releases
+public/assets` before the next git operation fixes it. Might be worth
+`release.sh` doing that chown-back itself at the very start of its next
+run (it already does this for `RELEASES_DIR`/`assets`/`DOWNLOAD_DIR` at
+line ~137 — this box just happened to run a `git pull` before the script
+ran again).
+
+Telling Khabat directly now — this is live for her and the Iran tester
+to retest calling on.
