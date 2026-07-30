@@ -116,20 +116,39 @@ export const useCallStore = create<CallState>((set, get) => ({
     if (!client || !activeCall) throw new Error('no active call');
     Vibration.cancel();
     const callId = activeCall.engine.getCallId();
-    await client.joinAsCallee(callId);
+    // client.joinAsCallee() below calls call-accept, which marks the
+    // call_sessions row 'accepted' server-side — from this point on the
+    // server considers both devices "on a call" (call_active_for()) until
+    // something explicitly ends it. Everything after this line used to be
+    // able to throw (offer timeout, WebRTC/mic failure in acceptIncoming())
+    // with only a local .catch(() => setState('ended')) in CallScreen —
+    // that's local-only, the server never heard about it. Found live,
+    // 2026-07-30: a call that failed this way left an 'accepted' row with
+    // no ended_at forever (the 45s stale sweep only covers 'ringing'), so
+    // every subsequent call_initiate() from either party hit "you are
+    // already on a call" / "recipient is on another call" indefinitely —
+    // exactly Khabat's "tap it, it flashes for a second, goes away" report.
+    // Wrapping so any failure here still tells the server the call is over.
+    try {
+      await client.joinAsCallee(callId);
 
-    const offer = await new Promise<RTCSessionDescriptionInitLike>((resolve, reject) => {
-      const existing = pendingOffers.get(callId);
-      if (existing) { resolve(existing); return; }
-      const started = Date.now();
-      const interval = setInterval(() => {
-        const found = pendingOffers.get(callId);
-        if (found) { clearInterval(interval); resolve(found); return; }
-        if (Date.now() - started > 15000) { clearInterval(interval); reject(new Error('offer timed out')); }
-      }, 200);
-    });
-    pendingOffers.delete(callId);
-    await activeCall.engine.acceptIncoming(offer);
+      const offer = await new Promise<RTCSessionDescriptionInitLike>((resolve, reject) => {
+        const existing = pendingOffers.get(callId);
+        if (existing) { resolve(existing); return; }
+        const started = Date.now();
+        const interval = setInterval(() => {
+          const found = pendingOffers.get(callId);
+          if (found) { clearInterval(interval); resolve(found); return; }
+          if (Date.now() - started > 15000) { clearInterval(interval); reject(new Error('offer timed out')); }
+        }, 200);
+      });
+      pendingOffers.delete(callId);
+      await activeCall.engine.acceptIncoming(offer);
+    } catch (err) {
+      pendingOffers.delete(callId);
+      await activeCall.engine.hangUp().catch(() => {});
+      throw err;
+    }
   },
 
   endCall: () => {

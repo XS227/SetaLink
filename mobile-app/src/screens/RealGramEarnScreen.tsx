@@ -32,13 +32,17 @@ import {
 
 interface Props {
   onBack: () => void;
+  /** Khabat, 2026-07-30: UI-only preview entry point for the new daily
+   *  luck wheel — see DailyLuckWheelScreen/DailyLuckWheel for what is and
+   *  isn't real yet. Not wired into any task/reward flow here. */
+  onOpenDailyLuck?: () => void;
 }
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function RealGramEarnScreen({ onBack }: Props) {
+export function RealGramEarnScreen({ onBack, onOpenDailyLuck }: Props) {
   const insets   = useSafeAreaInsets();
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -198,6 +202,19 @@ export function RealGramEarnScreen({ onBack }: Props) {
                   </Text>}
             </TouchableOpacity>
           </GlassCard>
+
+          {/* Daily luck wheel — UI preview only, see DailyLuckWheelScreen's
+              own header. Not part of the real task/reward flow above. */}
+          {onOpenDailyLuck && (
+            <TouchableOpacity activeOpacity={0.85} onPress={onOpenDailyLuck}>
+              <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+                <View style={styles.cardHeaderRow}>
+                  <Text style={styles.cardLabel}>🎰 {t('dailyluck.title')}</Text>
+                </View>
+                <Text style={styles.milestoneSub}>{t('dailyluck.subtitle')}</Text>
+              </GlassCard>
+            </TouchableOpacity>
+          )}
 
           {/* Social tasks */}
           <Text style={styles.sectionTitle}>{t('earn.socialTasks')}</Text>

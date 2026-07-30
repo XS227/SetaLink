@@ -63,6 +63,16 @@ const CALL_MAX_PER_HOUR      = 10;   // per caller device — spam/harassment gu
 const CALL_VOUCHER_TTL_SECS  = 60;   // call-scoped voucher lifetime (just long enough to connect+ring)
 const CALL_PRESENCE_TTL_SECS = 300;  // "I'm online for calls" token lifetime, app refreshes while Inbox is open
 const CALL_STALE_RINGING_SECS = 45;  // a call still 'ringing' after this long is treated as missed
+// A call still 'accepted' after this long with no ended_at is abandoned, not
+// a genuinely long conversation — belt-and-suspenders for the client-side
+// failure this is meant to survive (TASK_SPLIT.md A->B(242)): if a client
+// crashes/errors between call-accept and hangUp/call-end (found live,
+// 2026-07-30 — an offer that never arrived left exactly this), the row used
+// to stay 'accepted' forever, since only 'ringing' rows were ever swept —
+// every future call_initiate() for either party then failed permanently
+// with "you are already on a call" until someone fixed the DB by hand.
+// 3 hours is generous enough to never touch a real in-progress call.
+const CALL_STALE_ACCEPTED_SECS = 10800;
 
 const CALL_TURN_HOST = '65.109.183.7'; // fi-hel — coturn, TASK_SPLIT.md A→B(168)
 
@@ -258,6 +268,14 @@ function call_active_for(PDO $pdo, string $deviceId): ?array {
         "UPDATE call_sessions SET status='missed', ended_at=datetime('now'), end_reason='timeout'
          WHERE status='ringing' AND started_at < datetime('now', ?)"
     )->execute(['-' . CALL_STALE_RINGING_SECS . ' seconds']);
+
+    // Same idea for 'accepted' — see CALL_STALE_ACCEPTED_SECS's own comment.
+    // duration_secs left at 0 (unknown, not worth reconstructing) — status/
+    // end_reason are what call_active_for()'s callers actually check.
+    $pdo->prepare(
+        "UPDATE call_sessions SET status='ended', ended_at=datetime('now'), end_reason='abandoned'
+         WHERE status='accepted' AND started_at < datetime('now', ?)"
+    )->execute(['-' . CALL_STALE_ACCEPTED_SECS . ' seconds']);
 
     $st = $pdo->prepare(
         "SELECT * FROM call_sessions

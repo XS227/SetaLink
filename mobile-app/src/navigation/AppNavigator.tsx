@@ -41,6 +41,7 @@ import { RealGramClanHomeScreen } from '../screens/RealGramClanHomeScreen';
 import { RealGramSocialScreen }  from '../screens/RealGramSocialScreen';
 import { RealGramHomeScreen }    from '../screens/RealGramHomeScreen';
 import { RealGramEarnScreen }    from '../screens/RealGramEarnScreen';
+import { DailyLuckWheelScreen }  from '../screens/DailyLuckWheelScreen';
 import { RealGramLiveTvScreen }  from '../screens/RealGramLiveTvScreen';
 import { LiveTvPlayerScreen }    from '../screens/LiveTvPlayerScreen';
 import { StarlinkScreen }        from '../screens/StarlinkScreen';
@@ -929,7 +930,18 @@ export function AppNavigator() {
           options={{ animation: 'slide_from_right' }}
         >
           {({ navigation }) => (
-            <RealGramEarnScreen onBack={() => navigation.goBack()} />
+            <RealGramEarnScreen
+              onBack={() => navigation.goBack()}
+              onOpenDailyLuck={() => navigation.navigate('DailyLuck')}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="DailyLuck"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <DailyLuckWheelScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
         <Stack.Screen
