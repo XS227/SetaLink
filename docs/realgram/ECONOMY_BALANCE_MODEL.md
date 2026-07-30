@@ -204,12 +204,32 @@ growth from §2's finding is gone.
 ## 6. What's still genuinely open (Dr. Dadashi and §4's split are resolved, see top of doc)
 
 - **Shahnameh's own Zar/Gem/Farr economy** — genuinely zero visibility
-  from this repo (no SSH, no DB, confirmed multiple times elsewhere in
-  `TASK_SPLIT.md`, e.g. around the "migrate Shahnameh" discussion). Every
-  number in §3 for those three currencies is a placeholder gap, not a
-  proposal — whoever has access to `shahnameh-backend` needs to supply
-  real earn/sink rates before the wheel can be balanced against the rest
-  of the game's economy, not just against this repo's VPN-quota numbers.
+  from this repo, independently re-verified 2026-07-30 rather than just
+  repeating the earlier claim: read `zarSyncService.ts`, `zarStore.ts`,
+  `re_tap_sync()`/`re_zar_swap()` in `lib/real_economy.php`, and
+  `ChapterBattlePanel.tsx` directly. **Zar** is a pure passthrough — taps
+  get relayed to Shahnameh's `/v1/tap-sync`, and the Zar→REAL swap rate
+  comes back from Shahnameh's `/v1/zar-swap` response; this repo never
+  computes or stores a rate, only audit/idempotency records. **Gem**
+  doesn't appear anywhere in this repo at all, client or server — not a
+  missing rate, a missing currency. **Farr** only exists as a number
+  received from elsewhere and used to gate chapter unlocks
+  (`ChapterBattlePanel.tsx`) — never earned or spent through any code
+  here. So: not a documentation gap, an architectural one — whoever has
+  `shahnameh-backend` access needs to supply real earn/sink rates before
+  the wheel can be balanced against the rest of the game's economy.
+  **Built the config mechanism anyway**, per Khabat's ask (2026-07-30,
+  "du og a bygger opp det som trengs rundt zar gem farr"): added
+  `WHEEL_SETTING_DEFAULTS`/`re_wheel_settings()` in `lib/real_economy.php`
+  — same `settings`-table pattern as `real_per_gb` etc., all three
+  defaulted to `'0'` (not a guessed positive number — a `0` default means
+  the wheel literally can't pay these out by accident until someone sets
+  a real value). Also flagged in that same code comment: even once real
+  numbers exist, there's still no write path from this repo to actually
+  grant Zar/Gem/Farr to a user — `re_zar_swap()` only converts an
+  *existing* Zar balance, it doesn't create Zar, and Gem/Farr have no
+  endpoint here at all. Two separate blockers, not one: the rate, and the
+  grant channel.
 - **§5's referral-REAL curve** — proposed, not yet confirmed by Khabat.
 - **§7's node-operator rate and §8's founder-cut number** — both first
   drafts, same "propose, don't decide for her" rule as §5.

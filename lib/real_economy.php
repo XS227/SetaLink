@@ -37,6 +37,32 @@ const RE_SETTING_DEFAULTS = [
     'redeem_daily_cap_bytes' => '10737418240',  // 10 GB per device per day
 ];
 
+// Daily Luck Wheel — Zar/Gem/Farr prize amounts (Khabat, 2026-07-30: build
+// the config mechanism now rather than wait on real Shahnameh rates, see
+// docs/realgram/ECONOMY_BALANCE_MODEL.md §3/§6). Defaulted to '0'
+// deliberately, NOT a guessed positive number — unlike RE_SETTING_DEFAULTS
+// above, nothing here is calibrated against anything real. Shahnameh owns
+// all three currencies entirely; this repo has zero rate visibility into
+// any of them (confirmed by reading zarSyncService.ts/re_zar_swap() — Zar
+// is a pure passthrough — and finding no Gem/Farr code here at all beyond
+// Farr as a read-only unlock-gate value in ChapterBattlePanel.tsx). A '0'
+// default means the wheel simply can't pay these out until someone sets a
+// real value — safer than a placeholder number that could get mistaken for
+// a real one and shipped by accident.
+//
+// Also unresolved even once real numbers exist: THIS repo has no write path
+// to grant Zar/Gem/Farr to a user at all. re_zar_swap() only converts an
+// existing Zar balance to REAL, it doesn't create Zar; Gem and Farr have no
+// endpoint here whatsoever. Whoever wires the wheel's server side up needs
+// a Shahnameh-side grant endpoint for these three (mirroring how
+// re_tap_sync()/re_zar_swap() already proxy to Shahnameh) before this
+// setting can do anything beyond exist.
+const WHEEL_SETTING_DEFAULTS = [
+    'wheel_zar_prize'  => '0',  // PLACEHOLDER, uncalibrated — see comment above
+    'wheel_gem_prize'  => '0',  // PLACEHOLDER, uncalibrated — no grant channel exists yet either
+    'wheel_farr_prize' => '0',  // PLACEHOLDER, uncalibrated — no grant channel exists yet either
+];
+
 // Referral reward mode (plan item C3).
 //   quota  grant VPN quota only
 //   real   grant REAL to the party's linked account instead; NO linked
@@ -176,6 +202,22 @@ function re_settings(PDO $pdo): array {
         'real_per_gb'            => (float)($rows['real_per_gb'] ?? RE_SETTING_DEFAULTS['real_per_gb']),
         'redeem_min_real'        => (float)($rows['redeem_min_real'] ?? RE_SETTING_DEFAULTS['redeem_min_real']),
         'redeem_daily_cap_bytes' => (int)($rows['redeem_daily_cap_bytes'] ?? RE_SETTING_DEFAULTS['redeem_daily_cap_bytes']),
+    ];
+}
+
+/** Daily Luck Wheel's Zar/Gem/Farr prize amounts — see WHEEL_SETTING_DEFAULTS
+ *  comment. All three default to 0 (no payout) until an admin sets a real
+ *  value; there is deliberately no fallback to a nonzero guess. */
+function re_wheel_settings(PDO $pdo): array {
+    $keys = array_keys(WHEEL_SETTING_DEFAULTS);
+    $in   = implode(',', array_fill(0, count($keys), '?'));
+    $st   = $pdo->prepare("SELECT key, value FROM settings WHERE key IN ($in)");
+    $st->execute($keys);
+    $rows = $st->fetchAll(PDO::FETCH_KEY_PAIR) ?: [];
+    return [
+        'zar_prize'  => (float)($rows['wheel_zar_prize'] ?? WHEEL_SETTING_DEFAULTS['wheel_zar_prize']),
+        'gem_prize'  => (float)($rows['wheel_gem_prize'] ?? WHEEL_SETTING_DEFAULTS['wheel_gem_prize']),
+        'farr_prize' => (float)($rows['wheel_farr_prize'] ?? WHEEL_SETTING_DEFAULTS['wheel_farr_prize']),
     ];
 }
 
