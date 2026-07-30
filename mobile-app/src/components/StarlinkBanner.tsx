@@ -64,11 +64,24 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
   const inviteLeft = Math.max(0, inviteTarget - inviteCount);
   const isHero = variant === 'hero';
 
+  // Khabat, 2026-07-30 (test-120): "det ikonet går ut av boksen igjen" —
+  // this is the second time this satellite has clipped the card edge. The
+  // last fix (below) moved the anchor further from the card's edge than the
+  // orbit radius, but that math was against the card's PRE-trim height; the
+  // same session's later content trim (dropped the wordmark description +
+  // progress track, removed minHeight — see `card`'s own comment) shrank the
+  // card enough that a bottom-anchored orbit clips again regardless of
+  // anchor position. Real fix this time: stop anchoring to a card edge at
+  // all. The orbit now lives in `orbitStage`, a small fixed-size box placed
+  // as a third child of `headRow` between the STARLINK wordmark and the
+  // badge/status text ("den kan gå i orbit mellom starlinktekstene på hver
+  // side av boksen") — its radius is sized to always stay inside that box,
+  // so nothing here can clip again no matter how tall the card ends up.
   const orbit = useSlowOrbit(isHero ? 22000 : 26000);
   const satStyle = useAnimatedStyle(() => {
     const a = orbit.value * Math.PI * 2;
-    const r = isHero ? 44 : 26;
-    return { transform: [{ translateX: Math.cos(a) * r }, { translateY: Math.sin(a) * (r * 0.46) }] };
+    const r = 11;
+    return { transform: [{ translateX: Math.cos(a) * r }, { translateY: Math.sin(a) * (r * 0.5) }] };
   });
 
   const stars = useMemo(
@@ -83,20 +96,17 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
 
   return (
     <View style={[styles.card, isHero && styles.cardHero]}>
-      {isHero ? (
-        <>
-          {!reduceMotion && stars.map((s, i) => <Star key={i} {...s} />)}
-          <Animated.View style={[styles.satHero, satStyle]}><StarlinkMark size={22} /></Animated.View>
-        </>
-      ) : (
-        <>
-          <View style={styles.corner}><Text style={styles.cornerText}>VIP</Text></View>
-          <Animated.View style={[styles.sat, satStyle]}><StarlinkMark size={20} /></Animated.View>
-        </>
-      )}
+      {isHero
+        ? (!reduceMotion && stars.map((s, i) => <Star key={i} {...s} />))
+        : <View style={styles.corner}><Text style={styles.cornerText}>VIP</Text></View>}
 
       <View style={styles.headRow}>
         <Text style={[styles.word, isHero && styles.wordHero]}>STARLINK</Text>
+        <View style={styles.orbitStage}>
+          <Animated.View style={[styles.orbitDot, satStyle]}>
+            <StarlinkMark size={isHero ? 18 : 16} />
+          </Animated.View>
+        </View>
         <View style={styles.badge}>
           <Text style={styles.badgeIcon}>{unlocked ? '✓' : '🔒'}</Text>
           <Text style={styles.badgeText}>
@@ -150,19 +160,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 36, paddingVertical: 3,
   },
   cornerText: { fontSize: 10, fontFamily: Typography.family.heading, color: '#241605', letterSpacing: 1 },
-  // Khabat, 2026-07-30: "det sathelit ikonet som går rundt går skjult bak
-  // kantene noen ganger" — real bug, not a one-off: the anchor sat closer
-  // to its card edge than the orbit's own radius (vip: left:20 vs r:26 —
-  // every swing past translateX:-20 pushed the emoji to a negative left
-  // position, clipped by the card's `overflow:hidden`; hero: right:30 vs
-  // r:44, same problem on the right edge, which is why it only "sometimes"
-  // clipped — only the half of each orbit swinging edge-ward). Moved both
-  // anchors further from their edge than the orbit radius (with margin),
-  // and inward toward the CTA's side of the card per "dra den mer mot cta
-  // knappen" — cta/heroCta both render self-aligned to the left, so both
-  // anchors shifted left/down accordingly, not just away from the edge.
-  sat: { position: 'absolute', bottom: 10, right: 54, opacity: 0.7 },
-  satHero: { position: 'absolute', bottom: 8, right: 54, opacity: 0.75 },
+  // orbitStage: fixed-size, non-overflowing box the satellite orbits
+  // inside — see the JS-side comment above satStyle for why this replaced
+  // the earlier edge-anchored `sat`/`satHero` (both gone; that approach
+  // clipped a second time once the card lost its minHeight). r=11 orbit +
+  // 18px icon needs ~29px of diameter; 34 leaves a small buffer on every side.
+  orbitStage: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  orbitDot:   { opacity: 0.85 },
   star: { position: 'absolute', width: 2, height: 2, borderRadius: 1, backgroundColor: '#FFFFFF' },
 
   badge: {

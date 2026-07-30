@@ -166,6 +166,19 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
   const threadMenuBtnRef = useRef<View>(null);
   const [threadMenuOpen, setThreadMenuOpen] = useState(false);
   const [threadMenuPos, setThreadMenuPos] = useState(THREAD_MENU_FALLBACK_POS);
+  // Peer action popup (Khabat, 2026-07-30: "når jeg trykker på andre
+  // personens navn/id i chatten så kommer det en popup, der kan det også
+  // vises knapp for video og audio call + se profil") — same consolidation
+  // reasoning as the overflow menu above ("ganske trang på toppen"):
+  // 📞/📹 had just been added as two more standalone header icons this same
+  // session, which put the header right back into the crowded state that
+  // comment describes. Folded them (+ the profile shortcut) into one
+  // tap-the-name popup instead of a 3rd/4th always-visible icon; the avatar
+  // tap above still jumps straight to the full profile sheet as its own
+  // shortcut, unchanged.
+  const peerMenuAnchorRef = useRef<View>(null);
+  const [peerMenuOpen, setPeerMenuOpen] = useState(false);
+  const [peerMenuPos, setPeerMenuPos] = useState(THREAD_MENU_FALLBACK_POS);
   // Category tabs (theme pkg 02-chats.html: "All/Clan/Direct/Unread tabs").
   // "Clan" isn't here — there's no real clan-member-ID list to cross-
   // reference DM peers against yet, so a "Clan" tab would just be an empty
@@ -741,7 +754,20 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     size={34}
                   />
                 </TouchableOpacity>
-                <View style={styles.threadPeerWrap}>
+                <TouchableOpacity
+                  ref={peerMenuAnchorRef}
+                  style={styles.threadPeerWrap}
+                  disabled={openConvo.support}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    setPeerMenuOpen(true);
+                    setPeerMenuPos(THREAD_MENU_FALLBACK_POS);
+                    peerMenuAnchorRef.current?.measureInWindow((x, y, width, height) => {
+                      const screenWidth = Dimensions.get('window').width;
+                      setPeerMenuPos({ top: y + height + 6, right: screenWidth - (x + width) });
+                    });
+                  }}
+                >
                   <View style={styles.threadPeerRow}>
                     <Text style={styles.threadPeer} numberOfLines={1}>{openConvo.title}</Text>
                     {(openConvo.support || openConvo.peerBadge.verified) && (
@@ -762,18 +788,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     // of typing state.
                     <Text style={styles.threadSubtitle} numberOfLines={1}>{peerTyping ? t('dm.typing') : ' '}</Text>
                   )}
-                </View>
-                {canCall && (
-                  <TouchableOpacity
-                    testID="convo-call"
-                    style={styles.threadDeleteBtn}
-                    activeOpacity={0.7}
-                    onPress={() => startCall(openConvo.peerDevice || openConvo.peerUserId || '', openConvo.title)}
-                    accessibilityLabel={t('call.start')}
-                  >
-                    <Text style={styles.threadDeleteIcon}>📞</Text>
-                  </TouchableOpacity>
-                )}
+                </TouchableOpacity>
                 {!openConvo.support && (
                   <TouchableOpacity
                     ref={threadMenuBtnRef}
@@ -821,6 +836,52 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                         <Text style={styles.threadMenuIcon}>🗑</Text>
                         <Text style={[styles.threadMenuLabel, styles.threadMenuDestructive]}>{t('dm.deleteThread')}</Text>
                       </TouchableOpacity>
+                    </View>
+                  </TouchableOpacity>
+                </Modal>
+              )}
+
+              {!openConvo.support && (
+                <Modal visible={peerMenuOpen} transparent animationType="fade" onRequestClose={() => setPeerMenuOpen(false)}>
+                  <TouchableOpacity
+                    style={StyleSheet.absoluteFillObject}
+                    activeOpacity={1}
+                    onPress={() => setPeerMenuOpen(false)}
+                  >
+                    <View style={[styles.threadMenu, { top: peerMenuPos.top, right: peerMenuPos.right }]}>
+                      {canCall && (
+                        <TouchableOpacity
+                          testID="convo-video-call"
+                          style={styles.threadMenuRow}
+                          activeOpacity={0.7}
+                          onPress={() => { setPeerMenuOpen(false); startCall(openConvo.peerDevice || openConvo.peerUserId || '', openConvo.title, true); }}
+                        >
+                          <Text style={styles.threadMenuIcon}>📹</Text>
+                          <Text style={styles.threadMenuLabel}>{t('call.startVideo')}</Text>
+                        </TouchableOpacity>
+                      )}
+                      {canCall && (
+                        <TouchableOpacity
+                          testID="convo-call"
+                          style={styles.threadMenuRow}
+                          activeOpacity={0.7}
+                          onPress={() => { setPeerMenuOpen(false); startCall(openConvo.peerDevice || openConvo.peerUserId || '', openConvo.title); }}
+                        >
+                          <Text style={styles.threadMenuIcon}>📞</Text>
+                          <Text style={styles.threadMenuLabel}>{t('call.start')}</Text>
+                        </TouchableOpacity>
+                      )}
+                      {!!openConvo.peerDevice && (
+                        <TouchableOpacity
+                          testID="convo-see-profile"
+                          style={[styles.threadMenuRow, styles.threadMenuRowLast]}
+                          activeOpacity={0.7}
+                          onPress={() => { setPeerMenuOpen(false); setShowPeerProfile(true); }}
+                        >
+                          <Text style={styles.threadMenuIcon}>👤</Text>
+                          <Text style={styles.threadMenuLabel}>{t('inbox.seeProfile')}</Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </TouchableOpacity>
                 </Modal>

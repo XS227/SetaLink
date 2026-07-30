@@ -296,11 +296,6 @@ function call_active_for(PDO $pdo, string $deviceId): ?array {
 function call_initiate(PDO $pdo, string $callerDevice, string $calleeParam, string $kind = 'audio'): array {
     call_ensure_schema($pdo);
     $kind = $kind === 'video' ? 'video' : 'audio';
-    if ($kind === 'video') {
-        // Khabat, A→B(162)/(166): audio first, video stays parked until
-        // there's real phase-1 relay-rate/volume data to size it against.
-        throw new \RuntimeException('video calling is not available yet');
-    }
 
     $cfg = call_service_config($pdo);
     if ($cfg['relay_secret'] === '') throw new \RuntimeException('calling is not configured yet');
@@ -321,6 +316,22 @@ function call_initiate(PDO $pdo, string $callerDevice, string $calleeParam, stri
     if (dm_is_blocked($pdo, $callerDevice, $callee['device_id']))
                                                  throw new \RuntimeException('recipient unavailable');
     if (!call_is_allowlisted($cfg, $callee))    throw new \RuntimeException('recipient does not have calling enabled yet');
+
+    // Khabat, TASK_SPLIT.md A→B(279), 2026-07-30: "vi har lyst til å teste
+    // ut video call også, bare mellom meg og test brukeren, så senere kan
+    // vi bare slå den på." Was an unconditional block (A→B(162)/(166): audio
+    // first, video parked until there's real phase-1 relay-rate/volume data
+    // to size it against) — moved below the allowlist checks above and
+    // gated on the SAME testing allowlist, instead of adding a second one.
+    // Both $caller and $callee already had to pass call_is_allowlisted() to
+    // reach this line, so video now works for exactly the pair audio itself
+    // is still restricted to. If `calling_allowlist` is ever cleared (opening
+    // audio to everyone), this reverts to blocking video for everyone too,
+    // on purpose — turning video on broadly stays its own deliberate call,
+    // not a side effect of widening the audio rollout.
+    if ($kind === 'video' && !$cfg['allowlist']) {
+        throw new \RuntimeException('video calling is not available yet');
+    }
 
     if (call_active_for($pdo, $callerDevice)) throw new \RuntimeException('you are already on a call');
     if (call_active_for($pdo, $callee['device_id'])) throw new \RuntimeException('recipient is on another call');

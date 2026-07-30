@@ -17,6 +17,7 @@ import { ShahnamehHakimBanner } from '../components/ShahnamehHakimBanner';
 import { HomeBanner }      from '../components/HomeBanner';
 import { TopBar }          from '../components/TopBar';
 import { EnergyBar }       from '../components/EnergyBar';
+import { MiniLuckWheel }   from '../components/MiniLuckWheel';
 import { useTapEnergy }    from '../hooks/useTapEnergy';
 
 import { useVpnStore }         from '../stores/vpnStore';
@@ -75,16 +76,23 @@ function hoursElapsedToday(): number {
 // native gesture state machine. This keeps the same proven technique, just
 // with more bodies — the actual ask ("planetene er fint om de dukker opp
 // sånn") was about the *look*, not the render pipeline underneath it.
+//
+// Radii scaled ~0.78x on 2026-07-30 (test-120: "tap seksjonen er fortsatt
+// for høy. det er mye luft mellom sirkelen og top og bunn") together with
+// coinStage below — the outermost orbit's clearance requirement is what was
+// forcing coinStage to 256, so shrinking both in lockstep is what actually
+// tightens the visible gap around the coin, not just trimming padding
+// around an unchanged stage.
 const ORBIT_DOTS: OrbitBodyProps[] = [
-  { duration: 6000,  radius: 74,  tilt: 0.4, size: 5, color: Colors.silver[300], phase: 0.3 },
-  { duration: 9000,  radius: 84,  tilt: 0.4, size: 7, color: Colors.gold[100],   phase: 3.6 },
-  { duration: 12000, radius: 94,  tilt: 0.4, size: 6, color: Colors.violet[400], reverse: true, phase: 1.4 },
-  { duration: 16000, radius: 104, tilt: 0.4, size: 6, color: Colors.ember[400],  phase: 5.0 },
-  { duration: 20000, radius: 112, tilt: 0.4, size: 8, color: Colors.gold[400],   reverse: true, phase: 2.5 },
-  { duration: 25000, radius: 120, tilt: 0.4, size: 6, color: Colors.violet[600], phase: 4.4 },
+  { duration: 6000,  radius: 58,  tilt: 0.4, size: 5, color: Colors.silver[300], phase: 0.3 },
+  { duration: 9000,  radius: 66,  tilt: 0.4, size: 7, color: Colors.gold[100],   phase: 3.6 },
+  { duration: 12000, radius: 73,  tilt: 0.4, size: 6, color: Colors.violet[400], reverse: true, phase: 1.4 },
+  { duration: 16000, radius: 81,  tilt: 0.4, size: 6, color: Colors.ember[400],  phase: 5.0 },
+  { duration: 20000, radius: 88,  tilt: 0.4, size: 8, color: Colors.gold[400],   reverse: true, phase: 2.5 },
+  { duration: 25000, radius: 94,  tilt: 0.4, size: 6, color: Colors.violet[600], phase: 4.4 },
   // The moon: tighter orbit than the coin's own radius (66) so it visibly
   // swings in front of / behind the coin each pass — the "moon too" ask.
-  { duration: 4200,  radius: 46, tilt: 0.55, size: 4, color: Colors.silver[100], reverse: true, phase: 1.0, isMoon: true },
+  { duration: 4200,  radius: 36, tilt: 0.55, size: 4, color: Colors.silver[100], reverse: true, phase: 1.0, isMoon: true },
 ];
 
 interface OrbitBodyProps {
@@ -130,6 +138,29 @@ function OrbitDot({ duration, radius, tilt, size, color, reverse, phase = 0, isM
         style,
       ]}
     />
+  );
+}
+
+// Khabat, 2026-07-30 (test-120): "la det blinke lekent" — the Daily Luck
+// header icon points at DailyLuckWheelScreen, which is still explicitly
+// UI-preview-only (see that screen's own header comment: spins aren't
+// connected to a real reward yet). A gentle opacity pulse signals "there's
+// something here, it's not finished" without a static "soon" label
+// cluttering a header icon this small.
+function BlinkingLuckIcon() {
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.value = withRepeat(
+      withTiming(1, { duration: 900, easing: REasing.inOut(REasing.ease) }),
+      -1,
+      true,
+    );
+  }, [pulse]);
+  const style = useAnimatedStyle(() => ({ opacity: 0.45 + pulse.value * 0.55 }));
+  return (
+    <ReanimatedView.View style={style}>
+      <MiniLuckWheel size={20} />
+    </ReanimatedView.View>
   );
 }
 
@@ -418,9 +449,56 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             WalletScreen/etc. already did; inbox is reachable from the menu
             now too, so the standalone envelope+badge (badge count was
             already known-stale, see TopBar.tsx's own header comment) is
-            gone rather than kept alongside a second entry point. */}
+            gone rather than kept alongside a second entry point.
+
+            Khabat, 2026-07-30 (test-120): "på toppen så går velkommen tekst
+            inn på profil bolde på persiske versjonen" — the greeting Text
+            had `flex: 1` directly on it with no wrapping View; RN's Yoga
+            gives a flexed Text node `flexBasis: auto` (content-based), not
+            `0`, so it's sized by its own text content *before* being
+            clamped to the row's remaining space, and only then does
+            `numberOfLines` truncate — on a long RTL (Farsi) string measured
+            against a differently-shaped avatar chip that can be enough
+            slack for the truncation to land a beat late and visibly run
+            into the avatar for one frame/measurement. Wrapping it in a
+            plain View with `flex: 1, minWidth: 0` forces the row to compute
+            available space first (`minWidth: 0` overrides Yoga's implicit
+            min-content-size floor, the same fix this exact class of bug
+            needs on web flexbox) — the Text inside just fills it and
+            truncates, can't push past it regardless of script/string
+            length. Unverified on a real Farsi device (no simulator here),
+            but this is the correct general fix for the failure mode, not a
+            guess at a magic number.
+
+            Also added: TV + Daily Luck icon buttons, reusing the header's
+            own now-fixed layout slack ("der er mye luft som kan for
+            eksempel lykkejul ikonet stå") instead of the full-card entries
+            elsewhere. Both route through onNavigate (same 'livetv'/
+            'dailyluck' cases added to AppNavigator's makeOnNavigate this
+            session) rather than new props, matching how every other
+            TopBar-adjacent screen already wires secondary destinations. */}
         <Animated.View style={[styles.header, fadeStyle]}>
-          <Text style={styles.greeting} numberOfLines={1}>{t(greeting)}</Text>
+          <View style={styles.greetingWrap}>
+            <Text style={styles.greeting} numberOfLines={1}>{t(greeting)}</Text>
+          </View>
+          <View style={styles.headerIcons}>
+            <TouchableOpacity
+              onPress={() => (onNavigate as (t: string) => void)('livetv')}
+              style={styles.headerIconBtn}
+              activeOpacity={0.75}
+              accessibilityLabel={t('rghome.liveTv')}
+            >
+              <Text style={styles.headerIconGlyph}>📺</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => (onNavigate as (t: string) => void)('dailyluck')}
+              style={styles.headerIconBtn}
+              activeOpacity={0.75}
+              accessibilityLabel={t('dailyluck.title')}
+            >
+              <BlinkingLuckIcon />
+            </TouchableOpacity>
+          </View>
           <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </Animated.View>
 
@@ -597,8 +675,14 @@ const styles = StyleSheet.create({
   content:        { paddingHorizontal: Spacing[5], paddingTop: Spacing[3], gap: Spacing[4] },
 
   // Header
-  header:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[2] },
-  greeting:       { flex: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.2 },
+  header:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing[2], paddingVertical: Spacing[2] },
+  // minWidth: 0 is load-bearing, not decorative — see the RTL-overlap
+  // comment at the header's JSX above.
+  greetingWrap:   { flex: 1, minWidth: 0 },
+  greeting:       { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.2 },
+  headerIcons:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
+  headerIconBtn:  { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default },
+  headerIconGlyph:{ fontSize: 15 },
 
   // Balance pills
   pillRow:      { flexDirection: 'row', gap: Spacing[2] },
@@ -629,17 +713,21 @@ const styles = StyleSheet.create({
   chevron:      { fontSize: 20, color: Colors.text.muted },
   vpnDivider:   { height: 1, backgroundColor: Colors.border.subtle, marginHorizontal: Spacing[4] },
   // Coin section — replaces the old inline connectRow/powerBtn. Vertical
-  // padding trimmed (Khabat, 2026-07-30: "tap boksen også er for stor i
-  // høyden") — the orbit stage itself (coinStage) is unchanged since its
-  // size is load-bearing for the outer orbit ring's clearance.
-  coinSection:  { alignItems: 'center', paddingVertical: Spacing[3], gap: Spacing[2] },
+  // padding trimmed twice now (Khabat, 2026-07-30 first pass: "tap boksen
+  // også er for stor i høyden"; test-120 follow-up: still "mye luft mellom
+  // sirkelen og top og bunn") — this time the orbit stage itself
+  // (coinStage) shrunk too, alongside ORBIT_DOTS's radii above, since the
+  // stage's own size was the actual source of most of the remaining air.
+  coinSection:  { alignItems: 'center', paddingVertical: Spacing[2], gap: Spacing[2] },
   anvilTitle:   { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 2, textTransform: 'uppercase' },
   anvilHint:    { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, opacity: 0.75, marginTop: -4 },
-  // 256, not 200 — the outermost new orbit (radius 120) needs ~2*120 +
-  // dot size of clearance; 256 leaves a small buffer. Not verified against
-  // a narrow phone's actual available width (no device/simulator here) —
-  // worth a real look on the smallest screen Khabat tests on.
-  coinStage:    { width: 256, height: 256, alignItems: 'center', justifyContent: 'center' },
+  // 200, not 256 — shrunk 2026-07-30 alongside ORBIT_DOTS's radii (test-120:
+  // "mye luft mellom sirkelen og top og bunn"). Outermost orbit is now
+  // radius 94 + half the dot size (3) = 97 clearance needed; 200/2=100
+  // leaves a small buffer, same margin ratio the old 256/120 pair had. Not
+  // verified against a narrow phone's actual available width (no device/
+  // simulator here) — worth a real look on the smallest screen Khabat tests on.
+  coinStage:    { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
   floatNum:     { position: 'absolute', top: '38%', fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.gold[100] },
   connectStatus:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot:    { width: 7, height: 7, borderRadius: 4 },

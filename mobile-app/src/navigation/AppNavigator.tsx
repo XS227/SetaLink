@@ -117,6 +117,8 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
     if ((tab as string) === 'heroes')          { navigation.navigate('Heroes');         return; }
+    if ((tab as string) === 'livetv')          { navigation.navigate('LiveTv');         return; }
+    if ((tab as string) === 'dailyluck')       { navigation.navigate('DailyLuck');      return; }
     if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
     if ((tab as string) === 'trustai-link')    { navigation.navigate('TrustAiLink');    return; }
@@ -443,9 +445,6 @@ function GameAdapter({ navigation }: ScreenAdapterProps) {
       onBack={() => navigation.navigate('Home')}
       onOpenChapters={() => navigation.navigate('Chapters')}
       onOpenHeroes={() => navigation.navigate('Heroes')}
-      onOpenClans={() => navigation.navigate('ClanBrowse')}
-      onOpenSocial={() => navigation.navigate('Social')}
-      onOpenEarn={() => navigation.navigate('Earn')}
       onOpenLiveTv={() => navigation.navigate('LiveTv')}
       onNavigate={makeOnNavigate(navigation) as (tab: string) => void}
     />
@@ -495,6 +494,9 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
       }}
       onSettings={() => navigation.navigate('Settings')}
       onOpenChapters={() => navigation.navigate('Chapters')}
+      onOpenClans={() => navigation.navigate('ClanBrowse')}
+      onOpenSocial={() => navigation.navigate('Social')}
+      onOpenEarn={() => navigation.navigate('Earn')}
     />
   );
 }

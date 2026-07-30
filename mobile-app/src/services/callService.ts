@@ -19,6 +19,19 @@
  * passing test (inboxScreen.test.tsx) for a feature that can't do
  * anything yet. Wire it in once there's a real signaling implementation
  * to test against.
+ *
+ * Khabat, 2026-07-30: "vi har lyst til å teste ut video call også, bare
+ * mellom meg og test brukeren, så senere kan vi bare slå den på" — video
+ * turned on for real. This class already fully supported it (the `video`
+ * constructor flag below has captured camera + sent a video track since
+ * this file was first written); what was actually missing was `kind`
+ * ('audio'/'video') traveling through `CallSignalingClient` at all —
+ * `placeCall` had no way to ask for video, and an incoming call had no way
+ * to tell the callee which kind it was. Both now take/carry `kind`. The
+ * real gate stays server-side (`lib/calling.php`'s `call_initiate` —
+ * video only proceeds when both ends are on the same testing allowlist
+ * audio itself is still restricted to), not a client-side flag, so this
+ * can't be worked around by anyone who isn't Khabat + the test account.
  */
 
 import { Platform } from 'react-native';
@@ -41,7 +54,7 @@ export interface CallSignalingClient {
    *  docs/realgram/TASK_SPLIT.md B→A(171), the reason this isn't a
    *  caller-supplied value). Resolves once the request is sent, not once
    *  they answer — answer/reject arrive via onAnswer/onReject. */
-  placeCall(calleeDeviceId: string): Promise<{ callId: string }>;
+  placeCall(calleeDeviceId: string, kind: 'audio' | 'video'): Promise<{ callId: string }>;
   sendOffer(callId: string, sdp: RTCSessionDescriptionInitLike): Promise<void>;
   sendAnswer(callId: string, sdp: RTCSessionDescriptionInitLike): Promise<void>;
   sendIceCandidate(callId: string, candidate: RTCIceCandidateInitLike): Promise<void>;
@@ -52,7 +65,7 @@ export interface CallSignalingClient {
    *  static-auth-secret, never sent from the client. */
   getIceServers(callId: string): Promise<RTCIceServerLike[]>;
 
-  onIncomingCall(cb: (callId: string, callerDeviceId: string) => void): () => void;
+  onIncomingCall(cb: (callId: string, callerDeviceId: string, kind: 'audio' | 'video') => void): () => void;
   onOffer(cb: (callId: string, sdp: RTCSessionDescriptionInitLike) => void): () => void;
   onAnswer(cb: (callId: string, sdp: RTCSessionDescriptionInitLike) => void): () => void;
   onIceCandidate(cb: (callId: string, candidate: RTCIceCandidateInitLike) => void): () => void;
@@ -117,12 +130,12 @@ export class CallEngine {
     private readonly peerDeviceId: string,
     private readonly onRemoteStream: (stream: MediaStream) => void,
     private readonly onStateChange: (state: CallState) => void,
-    /** Phase 2, not enabled anywhere yet — Khabat, 2026-07-28: build video
-     *  now so it's ready once audio has shipped and there's real relay
-     *  volume/cost data to decide on turning it on (see
-     *  docs/realgram/TASK_SPLIT.md B→A(164)'s recommendation to revisit
-     *  video with real phase-1 data rather than guess twice). Every
-     *  caller in this codebase passes `video: false` today. */
+    /** Built in Phase 1 (Khabat, 2026-07-28) so it'd be ready once there was
+     *  real relay volume/cost data to decide on turning it on (see
+     *  docs/realgram/TASK_SPLIT.md B→A(164)). Turned on 2026-07-30, scoped
+     *  server-side to Khabat + the test account (see this file's header) —
+     *  `callStore.ts` passes this through from whatever the caller/callee
+     *  actually requested, not a hardcoded default. */
     private readonly video: boolean = false,
   ) {}
 
@@ -186,8 +199,11 @@ export class CallEngine {
   }
 
   /** Requests mic (+ camera, when `video` is on) and keeps whatever it
-   *  gets as the one local stream for the lifetime of this call. */
-  private async captureLocalMedia(): Promise<MediaStream> {
+   *  gets as the one local stream for the lifetime of this call.
+   *  `ringback` — Khabat, 2026-07-30 (sent the real audio assets): only the
+   *  caller should hear a ringback tone while the callee's phone is
+   *  ringing; acceptIncoming() never passes this. */
+  private async captureLocalMedia(ringback = false): Promise<MediaStream> {
     if (this.localStream) return this.localStream;
     // B->A(269), 2026-07-30: the "very faint audio" report on a connected
     // call — a real react-native-webrtc gotcha, not this app's bug alone.
@@ -201,7 +217,14 @@ export class CallEngine {
     // it to route in the first place. Called once here, both call
     // directions (startOutgoing/acceptIncoming) go through this single
     // chokepoint via the localStream guard just above.
-    InCallManager.start({ media: this.video ? 'video' : 'audio' });
+    // `ringback: '_BUNDLE_'` plays the real asset now bundled as
+    // ios/.../incallmanager_ringback.mp3 + android/.../res/raw/
+    // incallmanager_ringback.mp3 (InCallManager's own documented filename
+    // convention — no JS-side asset loading needed).
+    InCallManager.start({
+      media: this.video ? 'video' : 'audio',
+      ...(ringback ? { ringback: '_BUNDLE_' } : {}),
+    });
     const stream = await mediaDevices.getUserMedia({
       audio: true,
       video: this.video ? { facingMode: 'user' } : false,
@@ -214,12 +237,12 @@ export class CallEngine {
   /** Caller side: capture mic(+camera), create+send an SDP offer. */
   async startOutgoing(): Promise<void> {
     this.emitStateChange('dialing');
-    const { callId } = await this.signaling.placeCall(this.peerDeviceId);
+    const { callId } = await this.signaling.placeCall(this.peerDeviceId, this.video ? 'video' : 'audio');
     this.callId = callId;
 
     const iceServers = await this.signaling.getIceServers(this.callId);
     const pc = await this.ensurePeerConnection(iceServers);
-    const stream = await this.captureLocalMedia();
+    const stream = await this.captureLocalMedia(true);
     stream.getTracks().forEach((track: any) => pc.addTrack(track, stream as any));
 
     const offer = await pc.createOffer({});
@@ -255,11 +278,19 @@ export class CallEngine {
     this.unsubs.push(
       this.signaling.onAnswer(async (callId, sdp) => {
         if (callId !== this.callId || !this.pc) return;
+        // Ringback is only ever started on this (caller) path — stopping it
+        // unconditionally here is safe/idempotent either way (InCallManager
+        // treats stopRingback() like its own stop(): a no-op when nothing's
+        // playing), same convention teardown()'s InCallManager.stop() below
+        // already relies on.
+        InCallManager.stopRingback();
         this.emitStateChange('connecting');
         await this.pc.setRemoteDescription(new RTCSessionDescription(sdp as any));
       }),
       this.signaling.onReject((callId) => {
-        if (callId === this.callId) this.emitStateChange('ended');
+        if (callId !== this.callId) return;
+        InCallManager.stopRingback();
+        this.emitStateChange('ended');
       }),
     );
     this.listenForCandidates();
@@ -272,7 +303,9 @@ export class CallEngine {
         await this.pc.addIceCandidate(new RTCIceCandidate(candidate as any));
       }),
       this.signaling.onHangUp((callId) => {
-        if (callId === this.callId) this.emitStateChange('ended');
+        if (callId !== this.callId) return;
+        InCallManager.stopRingback();
+        this.emitStateChange('ended');
       }),
     );
   }
@@ -360,7 +393,10 @@ export class CallEngine {
     // Matches captureLocalMedia's start() — only meaningful to call if a
     // session was actually started, but InCallManager.stop() is a safe
     // no-op otherwise (mirrors how the rest of this method tears down
-    // possibly-never-initialized state without guards).
+    // possibly-never-initialized state without guards). stopRingback() is
+    // the same kind of safety net for a call that never got as far as
+    // onAnswer/onReject above (e.g. this screen unmounting mid-dial).
+    InCallManager.stopRingback();
     InCallManager.stop();
   }
 }

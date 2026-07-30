@@ -19854,3 +19854,309 @@ visible "Downloading…" state and real telemetry**, so this specific
 
 Not a code change this entry — diagnosis only, server-side data confirms
 the fix that's already in place, nothing further to build.
+
+---
+
+## A→B(279) — Khabat's v0.9.120 test feedback batch: quickRow moved to Profile, tap-section shrunk further, Farsi header overlap, stamina rebalance, Daily Luck i18n+persistence, Starlink orbit fix
+
+**Dato: 2026-07-30.** Live-test feedback on v0.9.120 (the build `(278)`
+diagnosed the "update did nothing" report on). All on `feat/b97-experience`,
+`tsc --noEmit` clean (same one pre-existing `LiveTvPlayerScreen`
+`react-native-keep-awake` types error as prior entries, untouched). Not
+built/published — standing "no builds without an explicit per-build go"
+rule, source-only until Khabat says go.
+
+**Clan/Social/Earn: moved from Home's bottom quickRow to Profile** — Khabat:
+"earn, social, clan som står fortsatt som meny nederst på siden før footer
+meny... det skal vekk og gjøres mer synlig på profil." `(277)`'s Profile/
+Dashboard nav-merge removed this exact quickRow from `RealGramProfileScreen`
+on the theory it was a straight duplicate of `RealGramHomeScreen`'s own
+quickRow — turns out the ask was to relocate it, not delete it twice.
+Removed `RealGramHomeScreen`'s quickRow entirely (Heroes stays reachable
+there via Hero Spotlight + Card Collection, unaffected) and added a
+Social/Clan/Earn quick-nav row to `RealGramProfileScreen`, placed right
+under identity so it reads as prominent rather than buried at the bottom
+the old version was. `AppNavigator.tsx`'s `ProfileAdapter` now wires
+`onOpenClans/onOpenSocial/onOpenEarn` (same `ClanBrowse`/`Social`/`Earn`
+routes `GameAdapter` used to pass to Home); `GameAdapter` no longer passes
+them.
+
+**Tap section still too tall** — Khabat: "mye luft mellom sirkelen og top
+og bunn." The last pass (`(277)`) trimmed `coinSection`'s own padding but
+left `coinStage` (256×256, sized for the outermost orbit's clearance)
+untouched — that box, not the padding around it, was the real source of the
+remaining air. Shrunk `coinStage` to 200×200 and scaled every `ORBIT_DOTS`
+radius down ~0.78x in lockstep (outermost orbit 120→94, moon 46→36) so the
+clearance math still holds with a small buffer, plus one more
+`paddingVertical` trim on `coinSection` itself.
+
+**Farsi greeting overlapping the avatar bubble** — Khabat: "på toppen så
+går velkommen tekst inn på profil bolde på persiske versjonen." The
+greeting `Text` had `flex: 1` directly on itself with no wrapping `View`;
+RN/Yoga gives a flexed Text node `flexBasis: auto` (content-sized) before
+`numberOfLines` truncation applies, which is enough slack on some string/
+script combinations for truncation to land visibly late. Wrapped it in a
+plain `View` with `flex: 1, minWidth: 0` (`minWidth: 0` overrides Yoga's
+implicit min-content floor, the same fix this bug class needs on web
+flexbox) — the Text inside just fills the box and truncates, can't push
+past it. Unverified on a real Farsi device (no simulator on this box), but
+this is the correct general fix for the failure mode, not a guessed magic
+number.
+
+**TV + Daily Luck icons added to Home's header** — Khabat: "der er mye luft
+som kan for eksempel lykkejul ikonet stå... også tv ikon kan stå på toppen
+med jul ikonet." Two small round icon buttons now sit between the greeting
+and the avatar chip, both routing through `onNavigate` (`'livetv'`/
+`'dailyluck'` — two new cases added to `AppNavigator.tsx`'s
+`makeOnNavigate`, same pattern every other secondary destination already
+uses, no new props). The Daily Luck icon (`MiniLuckWheel`, not an emoji —
+"riktig bilde") pulses opacity gently per Khabat's "la det blinke lekent",
+signaling "there's something here, not finished yet" (`DailyLuckWheelScreen`
+is still explicitly preview-only, see below).
+
+**Stamina not visibly draining** — Khabat: "stamina ser ut til å ikke bli
+mindre, jo mer jeg tapper?" Real bug, not perception: `useTapEnergy`'s
+numbers (max 2000, −1/tap, +1 regen/300ms) were copied straight from the
+theme-package mockup's own JS, which was never played at a real tap
+cadence — passive regen alone is ≈3.3/sec, already at or above any
+sustained manual tap rate, so net drain was ~zero (or net-positive at a
+slow tap cadence), and at max 2000 a single tap moves the bar 0.05%,
+invisible regardless. Rebalanced to max 100 / −3 per tap / +1 regen per
+600ms (~1.7/sec) — any realistic tap rate now nets a visible drain, a
+burst empties the pool in well under a minute, idle recovery from empty
+takes about a minute, and casual/occasional tapping never bottoms out.
+
+**Daily Luck: real prize names + a real once-per-day gate** — Khabat:
+"lykkejule må vise riktig navn og bilde også må den begynne å fungere
+100%." Two fixable-without-a-backend bugs found in `DailyLuckWheel.tsx`:
+(1) every `PRIZES.label` was a bare English string never run through
+`t()` — a fa/zh/ru user always saw "GB Quota"/"Zar"/"Gem"/"Farr" regardless
+of app language. Switched to `labelKey` + `t()`, reusing this app's
+existing ZAR/FARR/REAL brand-abbreviation convention (kept as Latin in
+every locale, matching `rghome.statZar`/`statFarr`/`statReal`) and its
+existing Gems translation (`rghome.statGems`) rather than inventing new
+wording — new `dailyluck.prize*` keys added to all 4 locales. (2)
+"already spun today" was pure component state, reset on every remount
+(navigate away and back = a free extra spin) — persisted the last-spin
+date to the app's own MMKV-backed `storage` module (same one zustand's
+persist middleware already uses), keyed on a UTC date string, same
+convention `RealGramEarnScreen`'s own checkin gate uses. **Still explicitly
+not connected to the real economy** — no Shahnameh backend repo is
+reachable from this box (Agent B's side), so the actual prize grant stays
+exactly as flagged in this file's own `(241)` daily-quest-XP note: a real
+server-authoritative endpoint is needed before this can claim to "work
+100%" end to end. Geometry double-checked by hand (segment angle math vs.
+the wheel's rotation direction) — the visual landing position and the
+announced result already agreed before this session; that part wasn't
+broken.
+
+**Starlink satellite clipping the card edge — again** — Khabat: "det ikonet
+går ut av boksen igjen... den kan gå i orbit mellom starlinktekstene på
+hver side av boksen." Second occurrence of this exact bug: `(the sat/
+satHero fix earlier this session)` anchored the orbit further from the
+card's edge than its radius, but that math was against the card's
+pre-trim height — the same session's later content trim (dropped the
+wordmark description + progress track, removed `minHeight`) shrank the
+card enough for a bottom-anchored orbit to clip again regardless of
+anchor position. Stopped anchoring to a card edge at all: the orbit now
+lives in `orbitStage`, a small fixed-size (34×34) box placed as a third
+child of `headRow`, between the STARLINK wordmark and the badge/status
+text — exactly where Khabat asked for it — with the orbit radius (11px)
+sized to always stay inside that box. Can't clip again regardless of how
+tall the card ends up, because it no longer depends on the card's height
+at all.
+
+---
+
+## A→B(280) — Video calling turned on, scoped to Khabat + the test account
+
+**Dato: 2026-07-30.** Khabat: "vi har lyst til å teste ut video call også,
+bare mellom meg og test brukeren, så senere kan vi bare slå den på." Found
+that video was already almost entirely built — `CallEngine` (callService.ts)
+has captured camera + sent a video track via its `video` constructor flag
+since it was first written, and `lib/calling.php`'s `call_sessions.kind`
+column, `call:incoming` push payload, and `call_callee_voucher()` response
+all already carried `kind` end to end. Two real gaps closed:
+
+**Client: `kind` never actually traveled through the signaling client.**
+`RealCallSignalingClient.placeCall()` hardcoded `kind: 'audio'` in its POST
+body, and `handleMessage()`'s `call:incoming` case dropped `msg.kind`
+entirely before calling `onIncomingCall`'s listeners — so even though the
+backend has supported `kind` since it was built, nothing on the client ever
+asked for or read it. `CallSignalingClient.placeCall`/`onIncomingCall`
+(callService.ts) now carry `kind`; `CallEngine.startOutgoing()` sends
+`this.video ? 'video' : 'audio'`; `callStore.ts`'s `startOutgoingCall` takes
+a `video` param and its `onIncomingCall` handler constructs the callee's
+`CallEngine` with `kind === 'video'`, so a video call now requests the
+camera on both ends before Accept is even tapped, same as audio's mic
+capture always has. `InboxScreen.tsx`'s thread header gained a second 📹
+button next to the existing 📞 one, same `canCall` gate, calling
+`startCall(peer, title, true)`.
+
+**Server: video was an unconditional block, now allowlist-gated.**
+`call_initiate()`'s `if ($kind === 'video') throw ...` fired before the
+caller/callee were even looked up. Moved it below the existing testing-phase
+allowlist checks (`call_is_allowlisted`, A→B(170) — the mechanism already
+restricting audio itself to exactly Khabat's account + the Iran tester's)
+and gated it on `!$cfg['allowlist']`: since both sides already had to pass
+that same allowlist to reach this line, video now works for precisely that
+one restricted pair, nobody else — no new allowlist invented, reusing the
+one already proven for audio's own rollout. If `calling_allowlist` is later
+cleared (opening audio to everyone), video reverts to blocked for everyone
+too, on purpose — turning video on broadly stays its own deliberate future
+call, exactly what "senere kan vi bare slå den på" describes, not an
+accidental side effect of widening audio's rollout.
+
+**Verified the live server config before assuming anything**:
+`/var/www/setalink/data/analytics.db`'s `calling_allowlist` already
+contains exactly two device IDs (Khabat's own + one other — presumably the
+Iran tester's), confirming this scoping lands exactly on the intended pair,
+not a guess.
+
+**Deployed to prod, not just committed**: this VPS *is* setalink.no's
+backend (see `[[claude-box-is-prod-panel]]`), so unlike a mobile build this
+takes effect immediately for real traffic — backed up the live
+`lib/calling.php` to
+`~/setalink-backups/pre-video-call-gate-20260730/calling.php.bak` first,
+`php -l` clean before and after, `diff`'d against this repo's copy to
+confirm zero unrelated drift before overwriting. Also ran (and extended)
+`scripts/test-calling.php`'s real backend unit suite — all 66 prior
+assertions still pass, added 4 more covering the new gate specifically
+(empty-allowlist rejection, allowlisted-pair success + `kind` persisted,
+non-allowlisted-caller-still-rejected-with-allowlist-populated) — 70/70
+green.
+
+**Mobile app side**: `tsc --noEmit` clean, `jest` shows the same 5
+pre-existing failing suites as before this session's work (all unrelated —
+`react-native-incall-manager`'s ESM import breaking Jest's transform for
+`inboxScreen.test.tsx`, plus `homeBanner`/`ssoGame`/`trackedBannerAd`/
+`zarSyncService`, none of which touch any file this or the prior entry
+changed). Not built/published — client code needs the same per-build go as
+everything else on `feat/b97-experience`; only the PHP half is actually
+live right now.
+
+**Not done / explicitly flagged:** RTCView video preview UI itself
+(local PIP + full-screen remote) already existed in `CallScreen.tsx` from
+when video was first scaffolded — untouched this session, not re-verified
+against a real device (no simulator on this box). A genuinely bad network
+video call's bandwidth/TURN relay cost is exactly the "real phase-1 data"
+this was originally parked waiting for — still unmeasured; this is a
+scoped test, not a decision that video is ready for the full premium base.
+
+---
+
+## A→B(281) — Real incoming-ringtone + ringback audio wired in (Khabat supplied the actual assets)
+
+**Dato: 2026-07-30.** Khabat sent two audio files (Drive links) — an
+incoming-call ringtone and a caller-side ringback tone — closing a gap
+`callStore.ts`/`CallScreen.tsx` had each explicitly flagged as "vibration
+only, no audio asset supplied yet."
+
+**Found the right mechanism instead of adding a new dependency**:
+`react-native-incall-manager` (already installed, already used for
+call-mode audio routing — see B->A(269)) ships its own
+`startRingtone`/`stopRingtone` and `start({ringback})`/`stopRingback()` API
+specifically for this, with a documented bundled-file convention
+(`incallmanager_ringtone.mp3`/`incallmanager_ringback.mp3` — Android in
+`res/raw/`, iOS as a plain bundled resource, filename-matched
+automatically, no JS asset loading). No new native module needed.
+
+**Assets**: downloaded both (`ffmpeg`/`ffprobe` installed on this box to
+inspect them — 2.4s WAV clips, converted to mp3 since iOS only supports
+mp3 for this). Android: copied straight into
+`android/app/src/main/res/raw/`. iOS: **the `xcodeproj` Ruby gem's own
+serializer round-trips the whole `project.pbxproj` (reordered/reformatted
+every entry, not just the new ones) — reverted that and hand-edited the
+4 exact insertion points instead** (PBXBuildFile, PBXFileReference, the
+existing font `Resources` PBXGroup, the target's PBXResourcesBuildPhase),
+mirroring the SpaceGrotesk/Vazirmatn/JetBrainsMono font entries already
+there byte-for-byte in style. Verified structurally valid by parsing the
+hand-edited file with the same gem afterward (read-only) rather than
+trusting the manual edit blind.
+
+**Wiring**: `callStore.ts`'s incoming-call handler now calls
+`InCallManager.startRingtone('_BUNDLE_', 0, 'default', -1)` alongside the
+existing `Vibration.vibrate(RING_PATTERN, true)` — `0` (not the vibrate
+pattern) for the 2nd arg on purpose, since the library fires its own
+independent `Vibration.vibrate` when given an array, which would have
+double-vibrated against this file's own call. `stopRingtone()` added at
+every existing `Vibration.cancel()` site (onHangUp/onReject/disconnect/
+acceptIncomingCall/endCall/the 50s safety-net timeout) — same idempotent-
+call convention `InCallManager.stop()` already uses elsewhere in this
+codebase. `callService.ts`'s `captureLocalMedia()` gained a `ringback`
+param, `true` only on the caller's `startOutgoing()` path (never
+`acceptIncoming()`), stopped via `InCallManager.stopRingback()` on
+`onAnswer`/`onReject`/`onHangUp` and once more in `teardown()` as a
+safety net.
+
+**Not re-litigated**: `'default'` iOS ringtone category (respects the
+silent switch) rather than `'playback'` (would ring even when muted,
+closer to a real Phone app) — no explicit ask either way from Khabat, went
+with the less-surprising default; easy one-line flip if she wants the
+louder behavior later.
+
+`tsc --noEmit` clean. `jest` run in progress as this entry is written —
+will flag here if anything regresses. Not built/published — same standing
+per-build-go rule as everything else on `feat/b97-experience`.
+
+---
+
+## A→B(282) — Tap-the-name peer action popup (Video/Audio call + See profile), consolidated out of the header
+
+**Dato: 2026-07-30.** Khabat: "når jeg trykker på andre personens navn/id i
+chatten så kommer det en popup, der kan det også vises knapp for video og
+audio call + se profil (som sender deg til personens profil)."
+
+**Real find before writing any code**: the 📞/📹 buttons `(281)`'s own
+earlier entry this same session had just added as two more standalone
+header icons put `InboxScreen.tsx`'s thread header right back into the
+exact crowded state a prior comment in this file already diagnosed and
+fixed once ("ganske trang på toppen av tråden med slett, blokker, call,
+profil id" — the reason Block/Delete were folded into the "⋮" overflow
+menu in the first place). Rather than adding a *third* always-visible icon
+next to avatar/name/⋮, removed the two standalone call buttons and folded
+Video call / Audio call / See profile into one new popup, opened by
+tapping the peer's name/status row — exactly the interaction Khabat
+described, and the same declutter reasoning already established for the
+"⋮" menu. Implemented as a second `Modal` using the identical anchored-
+position pattern the existing overflow menu already uses
+(`measureInWindow` → `{top, right}`), same `threadMenu`/`threadMenuRow`
+styles reused rather than duplicated. The avatar tap (opens the full
+profile sheet directly) is untouched — two distinct, non-conflicting entry
+points: photo = straight to profile, name = quick actions.
+
+**Checked before promising anything**: Khabat's fuller ask was "på hennes
+profil kan jeg legge til som kontakt/venn også invitere til min clan."
+Grepped this repo end to end for any existing add-contact/friend or
+invite-a-specific-peer-to-my-clan action — **neither exists anywhere**,
+client or server (`real_profiles`' schema has no friends/contacts concept
+at all; clan membership is entirely a Shahnameh-backend/Agent-B concept
+this repo doesn't touch). Confirmed the one adjacent mechanism that IS
+real (referral-code sharing, `RealGramClanScreen`'s `onInvite`) is a
+*different* thing — a referred signup never actually joins the inviter's
+clan, so repurposing it as an "invite to clan" button would have shown
+Khabat a working-looking button that lied about what it does. Left both
+off `PeerProfileSheet.tsx` rather than build that — flagging here instead
+of guessing at fake wiring, same standard this file holds every other
+entry to. Real fix needs new backend work, most likely on Agent B's
+Shahnameh side since that's where clan membership itself lives.
+
+**Also still open, not touched this entry** (already flagged to Khabat
+directly, she didn't ask for it in this batch): profile pictures not
+rendering in chat — root-caused already, not a rendering bug:
+`InboxScreen.tsx`'s local `Avatar` component has exactly three branches
+(support logo / 📡 node icon / initial-letter fallback) and never renders
+an `Image` from a real photo at all, and the identity source it reads from
+(`ecosystemProfileService`'s `real_profiles` table) has no photo column to
+give it even if it did — genuinely separate from `identity.profile_pic`
+(a different backend, Shahnameh's, already used for the user's own photo
+elsewhere in the app). Needs a real cross-backend decision, not a quick
+client patch.
+
+`tsc --noEmit` clean; full `jest` run shows the identical pre-existing
+5-failed/32-passed baseline as every other entry this session (none of the
+5 touch `InboxScreen.tsx`, `PeerProfileSheet.tsx`, or anything else changed
+here — `inboxScreen.test.tsx`'s own failure is the same
+`react-native-incall-manager` Jest-transform gap `(281)` already
+diagnosed, present before this entry's changes too). Not built/published —
+same standing per-build-go rule.

@@ -16,12 +16,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * session didn't verify exists for the VPN-side tap. This is the same
  * mechanic, kept independent, so it never claims a server-authoritative
  * number it doesn't have.
+ *
+ * Khabat, 2026-07-30 (test-120): "stamina ser ut til å ikke bli mindre, jo
+ * mer jeg tapper?" — real bug, not a perception thing: the original numbers
+ * here (max 2000, -1/tap, +1 regen every 300ms) were copied straight from
+ * the theme-package HTML mockup's own JS (`01-home.html`, verified — same
+ * three numbers there), but that mockup was never played at a real human tap
+ * cadence. Passive regen alone is +1 per 300ms ≈ 3.3/sec, which already
+ * matches or beats any sustained manual tap rate, so net drain was ~zero (or
+ * even net-positive on a slow tap cadence) for anyone tapping less than
+ * ~3.3 times/sec — and at max 2000, a single tap moves the pct bar by 0.05%,
+ * invisible either way. Rebalanced so a realistic tap burst visibly drains
+ * the bar (a real "cooldown" instead of a number that never moves): smaller
+ * pool so single-tap movement is visible, spend clearly above any plausible
+ * passive-regen rate, slower regen so idle recovery takes a real pause
+ * rather than out-regenerating the user's own thumb.
  */
 
-const MAX_ENERGY = 2000;
-const SPEND_PER_TAP = 1;
+const MAX_ENERGY = 100;
+const SPEND_PER_TAP = 3;
 const REGEN_PER_TICK = 1;
-const TICK_MS = 300;
+const TICK_MS = 600;
 
 export function useTapEnergy() {
   const [energy, setEnergy] = useState(MAX_ENERGY);

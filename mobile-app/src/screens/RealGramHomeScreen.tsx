@@ -88,9 +88,6 @@ interface Props {
   onBack: () => void;
   onOpenChapters: () => void;
   onOpenHeroes:   () => void;
-  onOpenClans:    () => void;
-  onOpenSocial:   () => void;
-  onOpenEarn:     () => void;
   onOpenLiveTv:   () => void;
   // Khabat, 2026-07-30: "burger meny funker kun på freedom siden" — this
   // screen (reached via TopBar's own 'dashboard' item) never got the
@@ -99,7 +96,7 @@ interface Props {
   onNavigate: (tab: string) => void;
 }
 
-export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial, onOpenEarn, onOpenLiveTv, onNavigate }: Props) {
+export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenLiveTv, onNavigate }: Props) {
   const insets   = useSafeAreaInsets();
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -324,8 +321,14 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
         </View>
 
         {/* Khabat, 2026-07-30: "tv banner kan vises som en tv ikon" — shrunk
-            from a full-width card banner down to a small round icon button,
-            same row treatment as the quickRow icons below it. */}
+            from a full-width card banner down to a small round icon button.
+            The Heroes/Clans/Social/Earn quickRow that used to follow this
+            (2026-07-30 test-120 feedback: "earn, social, clan står fortsatt
+            som meny nederst på siden før footer meny... skal vekk og
+            gjøres mer synlig på profil") is gone — Clans/Social/Earn moved
+            to a quick-nav row on RealGramProfileScreen instead. Heroes stays
+            reachable from this screen via Hero Spotlight + Card Collection
+            above, so it didn't need a new home. */}
         {LIVE_TV_ENTRY_ENABLED && (
           <TouchableOpacity
             onPress={onOpenLiveTv}
@@ -337,25 +340,6 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
             <Text style={styles.liveTvIconBtnLabel}>{t('rghome.liveTv')}</Text>
           </TouchableOpacity>
         )}
-
-        <View style={styles.quickRow}>
-          <TouchableOpacity style={styles.quickCard} onPress={onOpenHeroes} activeOpacity={0.85}>
-            <Text style={styles.quickIcon}>⚔</Text>
-            <Text style={styles.quickLabel}>{t('rghome.navHeroes')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickCard} onPress={onOpenClans} activeOpacity={0.85}>
-            <Text style={styles.quickIcon}>🛡️</Text>
-            <Text style={styles.quickLabel}>{t('rghome.navClans')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickCard} onPress={onOpenSocial} activeOpacity={0.85}>
-            <Text style={styles.quickIcon}>👥</Text>
-            <Text style={styles.quickLabel}>{t('rghome.navSocial')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.quickCard} onPress={onOpenEarn} activeOpacity={0.85}>
-            <Text style={styles.quickIcon}>💰</Text>
-            <Text style={styles.quickLabel}>{t('rghome.navEarn')}</Text>
-          </TouchableOpacity>
-        </View>
       </ScrollView>
     </View>
   );
@@ -436,10 +420,6 @@ const styles = StyleSheet.create({
   liveTvIconBtn:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], alignSelf: 'flex-start', backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2], marginTop: Spacing[2] },
   liveTvIconBtnGlyph: { fontSize: 16 },
   liveTvIconBtnLabel: { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.primary },
-  quickRow:   { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
-  quickCard:  { flex: 1, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', gap: Spacing[1] },
-  quickIcon:  { fontSize: 22 },
-  quickLabel: { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.primary },
 
   errorText: { fontSize: 13, color: '#FF6B6B', textAlign: 'center', fontFamily: Typography.family.body, paddingHorizontal: Spacing[6] },
   backBtnFallback: { backgroundColor: Colors.gold[400], borderRadius: Radius.xl, paddingVertical: Spacing[3], paddingHorizontal: Spacing[6] },

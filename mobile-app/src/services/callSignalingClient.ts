@@ -95,6 +95,14 @@ export class RealCallSignalingClient implements CallSignalingClient {
     incomingCall: [], offer: [], answer: [], iceCandidate: [], reject: [], hangUp: [],
   };
 
+  /** 'audio' if a `call:incoming` push ever omits `kind` (shouldn't happen —
+   *  lib/calling.php's call_initiate() always stores/pushes one — but this
+   *  client shouldn't crash or silently request camera access on a bad/old
+   *  payload). */
+  private static normalizeKind(kind: unknown): 'audio' | 'video' {
+    return kind === 'video' ? 'video' : 'audio';
+  }
+
   // The relay only forwards call:signal to a peer that has already
   // joined the room (server.js: "if (peerWs) send(...)" -- no queuing on
   // its side). The caller joins right after placeCall(); the callee only
@@ -172,7 +180,7 @@ export class RealCallSignalingClient implements CallSignalingClient {
 
     switch (msg.type) {
       case 'call:incoming':
-        this.listeners.incomingCall.forEach((cb) => cb(msg.call_id, msg.caller_user_id));
+        this.listeners.incomingCall.forEach((cb) => cb(msg.call_id, msg.caller_user_id, RealCallSignalingClient.normalizeKind(msg.kind)));
         break;
       case 'call:signal': {
         const p = msg.payload;
@@ -231,10 +239,10 @@ export class RealCallSignalingClient implements CallSignalingClient {
 
   // ── CallSignalingClient ────────────────────────────────────────────────
 
-  async placeCall(calleeDeviceId: string): Promise<{ callId: string }> {
+  async placeCall(calleeDeviceId: string, kind: 'audio' | 'video' = 'audio'): Promise<{ callId: string }> {
     await this.ensureConnected();
     const data = await callPost('call-initiate', {}, {
-      device_id: this.deviceId, peer: calleeDeviceId, kind: 'audio',
+      device_id: this.deviceId, peer: calleeDeviceId, kind,
     });
     // call-initiate is a plain HTTPS round-trip (can take seconds on a bad
     // connection) during which the WS can drop and start reconnecting —
@@ -289,7 +297,7 @@ export class RealCallSignalingClient implements CallSignalingClient {
     return data.ice_servers ?? [];
   }
 
-  onIncomingCall(cb: (callId: string, callerDeviceId: string) => void): () => void {
+  onIncomingCall(cb: (callId: string, callerDeviceId: string, kind: 'audio' | 'video') => void): () => void {
     this.listeners.incomingCall.push(cb);
     return () => { this.listeners.incomingCall = this.listeners.incomingCall.filter((c) => c !== cb); };
   }

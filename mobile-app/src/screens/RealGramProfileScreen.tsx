@@ -72,6 +72,17 @@ interface Props {
   // 2026-07-27 build test) with a compact progress banner that hands off
   // to a dedicated screen.
   onOpenChapters?: () => void;
+  // Clan/Social/Earn — re-added 2026-07-30 (test-120 feedback: "earn,
+  // social, clan som står fortsatt som meny nederst på siden [Home] før
+  // footer meny... det skal vekk og gjøres mer synlig på profil"). These
+  // three were removed from here entirely on 2026-07-30 earlier the same
+  // day (see the comment further down) when Home's quickRow looked like a
+  // straight duplicate; turns out Khabat wants them on Profile INSTEAD of
+  // Home, not gone from both — same destinations RealGramHomeScreen's
+  // quickRow used to open (ClanBrowse/Social/Earn stack routes).
+  onOpenClans?: () => void;
+  onOpenSocial?: () => void;
+  onOpenEarn?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -108,7 +119,7 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
 }
 
 export function RealGramProfileScreen({
-  onBack, onSignOut, onSettings, onOpenChapters,
+  onBack, onSignOut, onSettings, onOpenChapters, onOpenClans, onOpenSocial, onOpenEarn,
 }: Props) {
   const { t, isRTL } = useT();
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -388,6 +399,35 @@ export function RealGramProfileScreen({
           </View>
         </View>
 
+        {/* Clan/Social/Earn quick-nav — moved here from RealGramHomeScreen's
+            bottom quickRow (2026-07-30 test-120 feedback, see the Props
+            comment above), placed right under identity so it reads as
+            prominent rather than buried at the bottom the old Home version
+            was. Heroes isn't repeated here — it stays reachable from Home's
+            own Hero Spotlight/Card Collection. */}
+        {(onOpenClans || onOpenSocial || onOpenEarn) && (
+          <View style={styles.quickRow}>
+            {onOpenSocial && (
+              <TouchableOpacity style={styles.quickCard} onPress={onOpenSocial} activeOpacity={0.85}>
+                <Text style={styles.quickIcon}>👥</Text>
+                <Text style={styles.quickLabel}>{t('rghome.navSocial')}</Text>
+              </TouchableOpacity>
+            )}
+            {onOpenClans && (
+              <TouchableOpacity style={styles.quickCard} onPress={onOpenClans} activeOpacity={0.85}>
+                <Text style={styles.quickIcon}>🛡️</Text>
+                <Text style={styles.quickLabel}>{t('rghome.navClans')}</Text>
+              </TouchableOpacity>
+            )}
+            {onOpenEarn && (
+              <TouchableOpacity style={styles.quickCard} onPress={onOpenEarn} activeOpacity={0.85}>
+                <Text style={styles.quickIcon}>💰</Text>
+                <Text style={styles.quickLabel}>{t('rghome.navEarn')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* Economy */}
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
           <Text style={styles.cardLabel}>{t('rgprofile.economy')}</Text>
@@ -468,12 +508,16 @@ export function RealGramProfileScreen({
             different ways (Profile's own cards vs. Home/"Dashboard" —
             literally the same RealGramHomeScreen mounted under both the
             'game' bottom-tab and a separate 'ShahnamehHome' stack route).
-            Khabat, 2026-07-30: "profil og dashboard virker å ha nesten
-            samme itenms/info... min profil er min dashboard" — removed the
-            duplicate nav-hub role from Profile entirely (including the
-            "Dashboard" card that pointed at RealGramHomeScreen from inside
-            itself); Home remains the single hub for those 5 destinations,
-            Profile stays identity + stats + personal data only. */}
+            Khabat, 2026-07-30 (earlier build): "profil og dashboard virker
+            å ha nesten samme itenms/info... min profil er min dashboard" —
+            removed the duplicate nav-hub role from Profile entirely
+            (including the "Dashboard" card that pointed at
+            RealGramHomeScreen from inside itself).
+            Khabat, 2026-07-30 (test-120, same day): turned out the ask was
+            to relocate Clan/Social/Earn to Profile, not delete them from
+            both places — re-added above as the quickRow. Live TV and the
+            Dashboard self-link stay gone (those were genuine 1:1
+            duplicates, never asked back). */}
 
         {/* Clan */}
         <GlassCard style={styles.card}>
@@ -555,6 +599,10 @@ const styles = StyleSheet.create({
   retryBtnText: { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.bg.void },
 
   heroRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], paddingTop: Spacing[6] },
+  quickRow:     { flexDirection: 'row', gap: Spacing[3] },
+  quickCard:    { flex: 1, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', gap: Spacing[1] },
+  quickIcon:    { fontSize: 22 },
+  quickLabel:   { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.primary },
   avatar:       { width: 64, height: 64, borderRadius: 32, borderWidth: 2, borderColor: Colors.gold[400] },
   avatarFallback: { backgroundColor: Colors.bg.elevated, alignItems: 'center', justifyContent: 'center' },
   avatarFallbackText: { fontSize: 24, fontFamily: Typography.family.heading, color: Colors.gold[400] },

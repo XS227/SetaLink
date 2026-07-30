@@ -2,8 +2,9 @@
  * DailyLuckWheelScreen — UI-only preview screen for the daily luck wheel
  * (Khabat, 2026-07-30). See DailyLuckWheel.tsx's own header for exactly
  * what is and isn't real here: the wheel spins, colors, and lands on a
- * prize for review purposes only — nothing is wired to the real economy
- * yet (no server call, no persisted once-per-day, no actual grant).
+ * real (locale-correct) prize name each time, and "already spun today" is
+ * now genuinely persisted device-side — but nothing is wired to the real
+ * economy yet (no server call, no actual grant of the prize landed on).
  */
 
 import React from 'react';

@@ -245,6 +245,24 @@ check_throws('callee not on the allowlist is rejected', fn() => call_initiate($d
 $db->prepare("UPDATE settings SET value='SL-DEV-A,dev-b' WHERE key='calling_allowlist'")->execute();
 check_true('allowlist also matches on user_id, not just device_id', call_initiate($db, 'dev-a', 'dev-b') !== null);
 
+echo "\n== video calling — gated on the same testing allowlist (A→B(279)) ==\n";
+$db = fresh_db();
+mk_device($db, 'dev-a', ['plan' => 'premium']);
+mk_device($db, 'dev-b', ['plan' => 'free']);
+mk_device($db, 'dev-outsider', ['plan' => 'premium']);
+check_throws('video rejected when the allowlist is empty (open rollout, video not revisited yet)',
+    fn() => call_initiate($db, 'dev-a', 'dev-b', 'video'));
+
+$db->prepare("UPDATE settings SET value='dev-a,dev-b' WHERE key='calling_allowlist'")->execute();
+$vr = call_initiate($db, 'dev-a', 'dev-b', 'video');
+check('video call goes through for an allowlisted pair', $vr['kind'], 'video');
+$vrow = $db->query("SELECT kind FROM call_sessions WHERE call_id='{$vr['call_id']}'")->fetch();
+check('kind persisted on the session row', $vrow['kind'], 'video');
+call_mark_ended($db, $vr['call_id'], 'dev-a', 'caller_hangup');
+
+check_throws('video still rejected for a non-allowlisted caller even with the allowlist non-empty',
+    fn() => call_initiate($db, 'dev-outsider', 'dev-b', 'video'));
+
 echo "\n== call_ice_servers ==\n";
 $db = fresh_db();
 mk_device($db, 'dev-a', ['plan' => 'premium']);

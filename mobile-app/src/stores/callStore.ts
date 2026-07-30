@@ -22,6 +22,7 @@
 
 import { create } from 'zustand';
 import { Vibration } from 'react-native';
+import InCallManager from 'react-native-incall-manager';
 import { CallEngine, RTCSessionDescriptionInitLike } from '../services/callService';
 import { RealCallSignalingClient } from '../services/callSignalingClient';
 import { useToastStore } from './toastStore';
@@ -30,10 +31,10 @@ import { useToastStore } from './toastStore';
 // forge, etc.) — a repeating long-short-short pulse so an incoming call
 // reads as different from every other haptic in RealGram at a glance
 // (eyes-free), closer to how a real phone's ring cadence feels than a
-// single buzz. No custom audio ringtone shipped in this pass — that
-// needs an actual sound asset (Gen-Z-styled, on-brand) supplied by
-// design/audio, not something synthesizable here; flagged, not silently
-// skipped. Vibration alone is a real, working ring cue in the meantime.
+// single buzz. Runs alongside the real audio ringtone below now (Khabat,
+// 2026-07-30, supplied the actual asset — see InCallManager.startRingtone
+// calls below), not instead of it; kept as its own cue for a
+// silenced/vibrate-mode phone.
 const RING_PATTERN = [0, 400, 200, 400, 200, 800];
 
 let client: RealCallSignalingClient | null = null;
@@ -52,7 +53,7 @@ interface CallState {
    *  CallManager; only actually (re)connects when deviceId changes. */
   connect: (deviceId: string) => void;
   disconnect: () => void;
-  startOutgoingCall: (peerId: string, peerLabel: string) => void;
+  startOutgoingCall: (peerId: string, peerLabel: string, video?: boolean) => void;
   acceptIncomingCall: () => Promise<void>;
   endCall: () => void;
 }
@@ -68,20 +69,38 @@ export const useCallStore = create<CallState>((set, get) => ({
     client.connect();
 
     client.onOffer((callId, sdp) => pendingOffers.set(callId, sdp));
-    client.onIncomingCall((callId, callerUserId) => {
+    client.onIncomingCall((callId, callerUserId, kind) => {
       Vibration.vibrate(RING_PATTERN, true);
+      // '_BUNDLE_' plays the real asset now bundled as ios/.../
+      // incallmanager_ringtone.mp3 + android/.../res/raw/
+      // incallmanager_ringtone.mp3 (Khabat, 2026-07-30, supplied the actual
+      // file) — InCallManager's own documented filename convention, no
+      // JS-side asset loading needed. `0` (non-array) vibrate_pattern on
+      // purpose, not RING_PATTERN — the Vibration.vibrate call right above
+      // already drives the haptic; the library's own source only starts a
+      // second, independent (non-repeating) Vibration.vibrate of its own
+      // when this argument is an array, so passing a plain number keeps
+      // vibration solely driven by this file. 'default' iOS category (not
+      // 'playback') so this respects the phone's silent switch like every
+      // other sound in the app, rather than a hard override.
+      InCallManager.startRingtone('_BUNDLE_', 0, 'default', -1);
       // Safety net, not the primary stop mechanism: onHangUp/onReject below
       // already cancel vibration on a real signal. This just guarantees it
       // stops even if that signal is ever lost (relay hiccup, app
       // backgrounded mid-ring) -- 50s, just past lib/calling.php's own
       // 45s CALL_STALE_RINGING_SECS sweep, so a genuinely missed call goes
       // quiet right around when the server itself gives up on it too.
-      setTimeout(() => Vibration.cancel(), 50_000);
-      const engine = new CallEngine(client!, callId, callerUserId, () => {}, () => {});
+      setTimeout(() => { Vibration.cancel(); InCallManager.stopRingtone(); }, 50_000);
+      // `kind` comes from the caller's own call-initiate request (relayed
+      // through the call:incoming push, see callSignalingClient.ts) — the
+      // callee's CallEngine has to be constructed knowing this upfront so
+      // captureLocalMedia() requests the camera (not just the mic) before
+      // the user even taps Accept, same as the caller side already does.
+      const engine = new CallEngine(client!, callId, callerUserId, () => {}, () => {}, kind === 'video');
       set({ activeCall: { engine, peerLabel: callerUserId, outgoing: false } });
     });
-    client.onHangUp(() => Vibration.cancel());
-    client.onReject(() => Vibration.cancel());
+    client.onHangUp(() => { Vibration.cancel(); InCallManager.stopRingtone(); });
+    client.onReject(() => { Vibration.cancel(); InCallManager.stopRingtone(); });
   },
 
   disconnect: () => {
@@ -89,10 +108,11 @@ export const useCallStore = create<CallState>((set, get) => ({
     client = null;
     clientDeviceId = '';
     Vibration.cancel();
+    InCallManager.stopRingtone();
     set({ activeCall: null });
   },
 
-  startOutgoingCall: (peerId: string, peerLabel: string) => {
+  startOutgoingCall: (peerId: string, peerLabel: string, video = false) => {
     if (!peerId) return;
     // `client` is only ever null if connect() itself was never called (auth
     // not ready yet when CallManager mounted, or calling disabled for this
@@ -107,7 +127,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       useToastStore.getState().show('Calling isn’t ready yet — try again in a moment', 'error');
       return;
     }
-    const engine = new CallEngine(client, '', peerId, () => {}, () => {});
+    const engine = new CallEngine(client, '', peerId, () => {}, () => {}, video);
     set({ activeCall: { engine, peerLabel, outgoing: true } });
   },
 
@@ -115,6 +135,7 @@ export const useCallStore = create<CallState>((set, get) => ({
     const { activeCall } = get();
     if (!client || !activeCall) throw new Error('no active call');
     Vibration.cancel();
+    InCallManager.stopRingtone();
     const callId = activeCall.engine.getCallId();
     // client.joinAsCallee() below calls call-accept, which marks the
     // call_sessions row 'accepted' server-side — from this point on the
@@ -153,6 +174,7 @@ export const useCallStore = create<CallState>((set, get) => ({
 
   endCall: () => {
     Vibration.cancel();
+    InCallManager.stopRingtone();
     set({ activeCall: null });
   },
 }));

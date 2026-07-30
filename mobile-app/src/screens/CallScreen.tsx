@@ -41,14 +41,14 @@ function peerDisplay(rawLabel: string): { id: string; isRawAccountId: boolean } 
 }
 
 // Ringback cue for the caller's own 'dialing' wait — mirrors callStore.ts's
-// incoming RING_PATTERN (vibration-only there too, same reason: no audio
-// asset + native sound module linked in this codebase yet, see that file's
-// comment). A softer, steadier pulse than the incoming pattern on purpose —
-// this is "still trying," not "answer me." Khabat, 2026-07-30: dialing felt
-// completely dead with zero feedback (unlike incoming, which already had
-// the vibration ring); this closes that gap. Real audio ringback is tracked
-// separately (needs react-native-incall-manager or similar + on-device
-// verification neither of which this box can do — see TASK_SPLIT.md).
+// incoming RING_PATTERN. A softer, steadier pulse than the incoming pattern
+// on purpose — this is "still trying," not "answer me." Khabat, 2026-07-30:
+// dialing felt completely dead with zero feedback (unlike incoming, which
+// already had the vibration ring); this closed that gap. Real audio
+// ringback now plays too (callService.ts's captureLocalMedia(ringback=true),
+// via InCallManager.start({ringback: '_BUNDLE_'}) — Khabat supplied the
+// actual asset the same day) — kept alongside this vibration, not instead
+// of it, same as incoming's ringtone.
 const DIALING_PATTERN = [0, 250, 1750];
 
 interface Props {
