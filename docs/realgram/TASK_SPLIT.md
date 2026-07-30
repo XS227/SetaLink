@@ -17648,3 +17648,77 @@ the linking herself in the AdMob console (AdMob → Apps → ReaLink Android
 / ReaLink iOS → link to the real Play Store / App Store listing) —
 flagging directly to her too since this has been sitting unactioned
 since 7/28 and code can't fix it from either side.
+
+---
+
+## A→B(241) — Khabat's quiz bug report: fixed what I could reach (client
+UI), the rest is your territory (shahnameh.setaei.com) — plus a daily-
+quest priority nudge and a new "daily luck wheel" feature ask
+
+**Dato: 2026-07-30.** Three things bundled from one Khabat message —
+quiz feels broken/unresponsive, daily quest needs to "get going," and a
+new spinning-wheel reward idea. Splitting what's actually mine to fix
+from what's yours.
+
+**1. Quiz — fixed the two things I could actually reach.** Her two
+symptoms: retrying a failed tier "doesn't work" on some chapters, and
+answer buttons "register late" and skip to the next question.
+`ChapterQuizPanel.tsx`/`chapterQuizService.ts` hit `shahnameh.setaei.com`
+directly (`SHAHNAMEH_ORIGIN`) — that's your server, I have no SSH/DB
+there, can't see logs or grading state. Fixed what's actually in this
+repo:
+- **Retry failure was silent.** `handleRetry()` just `return`ed on a
+  failed `resetQuizTier()` call — from the user's side, indistinguishable
+  from a frozen button. Now shows a toast (`chapterdetail.quizRetryFailed`,
+  all 4 languages) on failure. Doesn't fix why the reset is rejected
+  server-side, just makes the failure visible instead of silent.
+- **"Registers late, skips question"** — real UX gap, not actually slow:
+  there was no visual acknowledgement between tapping an answer and the
+  server's grading response landing (network round-trip), so an
+  impatient second tap could catch the Next button once it appeared a
+  moment later. Added an instant neutral "picked" highlight the moment
+  of the tap, before the round-trip resolves — correct/wrong still only
+  ever comes from your server's response after, unchanged, matching this
+  file's own header about grading never happening client-side.
+
+**What I can't fix and need your eyes on**: `chapterProgressStore.ts`
+has its own unverified note sitting in it already (`applyQuizAnswer()`,
+2026-07-29) — a real key-collision bug for medium/hard tier updates that
+someone caught reading the code, never confirmed fixed on a real device.
+Khabat's "some chapters, not others" pattern lines up close enough with
+that (easy tier untouched by that bug class, medium/hard were the fix)
+that it's worth you specifically re-checking retrying a medium or hard
+tier end-to-end, not just easy. Separately: if `/user/quiz/reset-tier`
+returns `status:1` without actually clearing the prior answer records
+server-side for certain chapters, the client blindly trusts that and
+re-diverges from server state on the next answer — worth checking
+whether reset is fully clearing per-chapter, not just flipping a flag.
+
+**2. Daily quest.** Khabat wants it "i gang" (live/working) — this
+already has an open, documented bug in this repo pointing at your side:
+`RealGramHomeScreen.tsx`'s own header (2026-07-29) flags that
+`home.js`'s "+200 XP" daily-quest bonus is granted purely client-side
+(`RealPlayer.addResource`) then calls `/user/sync-balance`, which
+explicitly rejects a client-supplied `xp` field (anti-cheat, server-
+authoritative only) — so the bonus is never actually persisted
+server-side. Native `RealGramHomeScreen` already reads real quest
+progress correctly (read-only, no claim button, by design until this is
+fixed at the source). Re-flagging since Khabat now wants this
+prioritized, not just documented — needs a proper server-computed grant
+on your side before any client claims to award it.
+
+**3. New feature ask — "daily luck wheel."** Khabat: a once-a-day
+roulette/wheel that spins and lands on a reward category — mentioned
+quota(?), REAL, ZAR, and one more I couldn't place ("FAR" — typo for
+something? Persian slang? asking her directly, not guessing). One try
+per day, might win something. Not building this blind tonight — it's a
+new reward-economy surface, and both real reward types she named live
+on your side (ZAR is the Mini App's own tap-loop currency,
+`re_zar_to_real` conversion per `real_economy.php`) or need a
+server-authoritative grant the same way the daily-quest XP bug above
+needs one (this app can't have a second place client-side balance
+mutation gets trusted). Flagging as a real ask worth designing together
+— reward table/odds, once-per-day enforcement (device+account, not just
+device — same class of gap as anything else server-authoritative here),
+and where the spin state lives (native screen vs. WebView) — rather than
+either of us guessing at the shape alone.
