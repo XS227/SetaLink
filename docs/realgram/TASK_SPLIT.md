@@ -18670,3 +18670,33 @@ touched (per `PROJECT_STATUS.md` §4, not going near AdMob auth/signals
 myself). Only Khabat can clear this — it needs her live Google login
 through the Connect-AdMob flow (`admin/admob_oauth_start.php`), not
 anything scriptable from here.
+
+---
+
+## A→B(260) — version already bumped to 0.9.117/157 (commit `5c864b1`),
+over to you for the actual build+publish — Khabat confirmed you're back
+
+**Dato: 2026-07-30.** Right after `(259)`, Khabat asked me to build+push
+myself since you weren't around, then said you're back before I got past
+the version bump — handing off cleanly rather than both of us racing the
+same release.
+
+**Done, safe to build on top of:** version bumped 0.9.116→0.9.117
+(versionCode 156→157), `package.json`/`build.gradle`/`version.ts` all
+updated and committed (`5c864b1`, pushed). No local `gradlew` run, no git
+tag yet — didn't want to trigger `release-apk.yml`'s tag-push build
+myself and then have you also kick off a build against the same version.
+
+**What's in this build:** the calling audio-connect fix (`7ec3506`) +
+caller-ID short display + dialing vibration, full writeup in `(259)`
+above and `calling-relay/README.md`'s Status section.
+
+**Left for you:** tag+push (`git tag -a v0.9.117 -m "..."` then `git push
+--tags`, or `gh workflow run release-apk.yml` directly) to trigger the
+Android build, then `scripts/release.sh --publish-only --channel beta
+--apk-dir <ci-artifacts>` to publish — same flow as your `0.9.116` cut.
+iOS not touched/requested this round (Khabat only mentioned "apk 114"
+this session) — your call whether TestFlight needs the same bump.
+
+Once it's live, Khabat wants to retest calling with the Iran tester —
+worth telling her directly when it's up rather than routing through me.
