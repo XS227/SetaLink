@@ -19506,3 +19506,65 @@ Not fully ruling out a genuine native-side stall independent of this —
 if the *next* "did nothing" report still happens now that there's
 visible downloading state and telemetry, `OTA_DOWNLOAD_STAGE` events in
 `app_events` should show exactly which step it stopped at.
+
+---
+
+## A→B(274) — v0.9.119 live-test: TV loading confirmed fixed, missing-channel catalog gap, and a fresh "call icon jumps" repro root-caused+cleaned live
+
+**Dato: 2026-07-30.** Khabat on v0.9.119: "TV problemet er løst" (channel
+list finally loads — the `(268)`/`e6ac4a6` hard-timeout + earlier fetch
+fixes hold). Two follow-ups from the same message:
+
+**1. Missing channels (she named PMC, Iran International, NRK) — a
+catalog-source gap, not a bug.** Checked the live catalog directly:
+`GET https://shahnameh.setaei.com/api/live-tv/status` → `total_channels:
+2544` (down from 5824 pre-`(147)`'s http:// filter, as expected).
+`?search=iran` → 0 results, `?search=nrk` → 0 results, `?search=pmc` → 1
+result but it's an unrelated Telugu religious channel ("PMC Telugu"), not
+what she means. Iran International and NRK simply aren't in whatever
+source playlist(s) `liveTvImport.js` pulls from — likely licensing (both
+are broadcaster-restricted streams that rarely show up in public IPTV
+aggregator lists). Not something to fix from this box blind — flagging
+for whoever owns the import source config to look at additional/better
+M3U sources if broadening the catalog is worth prioritizing.
+
+**2. Call icon "jumps again, can't call" — real live repro, root-caused
+and manually unblocked.** `call_sessions` showed call_id `040d0cee...`
+(caller `sl-f877790f-...`, callee `sl-85ff1772-...` = Khabat) went
+`accepted` at `15:46:20` and then just... never got an `ended_at`. Since
+`call_active_for()` checks both `caller_device` and `callee_device`
+against any open `ringing`/`accepted` row, this one stuck row blocked
+*every* subsequent `call-initiate` from Khabat's own device too — nginx
+access.log shows her hammering the call button repeatedly from
+`16:45`–`16:49` today, each one hitting the same "already on a call"
+rejection, i.e. today's exact "tap it, flashes for a second, gone" repro.
+
+This is the same bug class `(244)` already patched earlier today
+(`callStore.ts`'s `acceptIncomingCall()` now calls `engine.hangUp()` on
+any failure after `joinAsCallee()`, plus `lib/calling.php`'s 3-hour
+`CALL_STALE_ACCEPTED_SECS` sweep) — confirmed both are present in the
+checked-out code, so this isn't a regression of that fix. It's a
+different path into the same stuck state: this call reached `accepted`
+cleanly (not an offer-timeout failure), so `(244)`'s catch-block fix
+never even runs — whatever ended the call after that (app backgrounded,
+network drop, force-close) never told the server, and the 3-hour sweep
+is deliberately too generous to help within a normal session (see its
+own comment — tuned to never touch a real long call).
+
+**Immediate fix (done):** manually closed the stuck row (`UPDATE
+call_sessions SET status='ended', ended_at=datetime('now'),
+end_reason='stuck_accepted_cleanup' WHERE call_id='040d0cee...'`) — same
+manual-cleanup precedent as `(244)`. Verified no other open
+`ringing`/`accepted` rows remain for her device. Calling should work
+again immediately, no build needed.
+
+**Not done, flagging instead:** `CALL_STALE_ACCEPTED_SECS` is 3 hours by
+design (protects real long calls) — that's also 3 hours of "can't call
+at all" for either party if a session dies silently without hitting a
+code path that calls hangUp. Two options if this keeps recurring: (a) use
+the calling-relay's existing 30s ping/pong (`server.js`, from the earlier
+heartbeat fix) to detect a dead participant socket and have the relay
+tell `lib/calling.php` to close the row within seconds instead of hours,
+or (b) something simpler/cheaper. Not implementing blind — this is a
+"how much do we trust it to self-heal vs. needing another manual DB fix
+next time" product call, not just a code fix.
