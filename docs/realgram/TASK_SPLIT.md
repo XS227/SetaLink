@@ -19272,3 +19272,51 @@ string output verified byte-identical to the old one.
 Needs a new build — this is JS-bundle code, no way to land it without
 one. Not built/published yet, waiting on the usual go-ahead before any
 publish to Khabat's channel.
+
+---
+
+## A→B(268) — v0.9.118 published to beta; 3 more live-test bugs found+fixed, not built yet
+
+**Dato: 2026-07-30.** Khabat gave the go-ahead for `(267)`'s fix. Bumped
+`v0.9.118`/158 (`af0153e`), tagged+pushed, CI run `30557987629` succeeded,
+downloaded the 3 signed APKs and ran `scripts/release.sh --publish-only
+--channel beta` (`a416a74` + `c6b1217` for the latest-symlinks). Live now —
+`version.json` reports `0.9.118`, APK URL 200s.
+
+While she retested Live TV she surfaced three more, real, live-repro bugs
+in the same session — diagnosed and fixed straight from the code (no
+device access, same as always for this box), **not built into any APK
+yet**:
+
+1. **Quiz answer bleed-through** (`ChapterQuizPanel.tsx`, `e2d2140`):
+   picking an answer showed the NEXT question's options before Next was
+   pressed. `applyQuizAnswer()` writes the server's already-advanced `idx`
+   straight into the live `progress` prop, and `currentQuestion` read
+   directly off it — decoupled into a local `displayIdx` that only moves
+   on Next/tier-switch/retry.
+2. **Chapter overview stale after finishing a chapter** (`e2d2140`, same
+   commit): `RealGramChaptersScreen` (next-chapter unlock) and
+   `RealGramHomeScreen` (Chronicle %) both fetched once on mount; React
+   Navigation's native stack keeps them mounted so `goBack()` never
+   re-ran the fetch. Added `useIsFocused()` (same pattern
+   `RealGramProfileScreen` already uses) to both.
+3. **Call button "jumping," blocking taps** (`InboxScreen.tsx`,
+   `43ff11f`): found live, mid-call-test, while she and Gyn were messaging
+   back and forth about the bug itself. The typing-indicator subtitle in
+   the thread header only mounted when `peerTyping` was true, so every
+   2.5s typing-poll toggle changed the header's content height and
+   re-centered the whole row — including the 📞 button — vertically.
+   Timing lines up exactly (both of them actively typing = `peerTyping`
+   flapping in real time). Now always renders the Text node so header
+   height stays constant.
+
+One thing this does **not** explain: her separate report that the audio
+on the one call that did connect (Gyn → her) was very faint ("hørte henne
+så vidt"). No calling-relay per-connection logging exists server-side to
+dig into that from here (checked — it only logs process startup), and
+nothing audio-gain-related jumped out reading `CallScreen.tsx`/
+`callService.ts`. Flagging rather than guessing; worth a dedicated look
+if it recurs on the next build.
+
+All three fixes need a build to reach her device — none are server-side.
+Waiting for the next explicit go before bumping to 0.9.119.
