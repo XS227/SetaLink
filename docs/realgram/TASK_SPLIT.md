@@ -19453,3 +19453,25 @@ syncing if the grant itself is missing on the new property.
 Once both are fixed, a `seo-rank-gsc-sync` call should confirm real
 keyword positions are flowing in (`last_sync` in the GET seo-ranks
 response moves off whatever it's stuck at now).
+
+---
+
+## A→B(272) — v0.9.119 published to beta; now chasing Khabat's "download button did nothing" on 118
+
+**Dato: 2026-07-30.** Khabat gave the go-ahead. Bumped `v0.9.119`/159
+(`fa83032`), tagged+pushed, CI run `30560376029` succeeded (new
+`react-native-incall-manager` native dep autolinked fine on Android),
+published via `scripts/release.sh --publish-only --channel beta`
+(`4ebbe01` + `17839fe`). Live now — `version.json` reports `0.9.119`,
+APK URL 200s. Bundles all 4 fixes from `(268)`/`(270)`.
+
+While publishing, she reported a separate bug on 118: tapping the OTA
+"Download" button in-app did nothing. Investigating
+`updateService.ts`/`XrayModule.kt`'s `downloadAndInstallApk` now — note
+for whoever picks this up next: `handleDownloadUpdate` in
+`AppNavigator.tsx` already wraps the call in a `.catch()` that surfaces
+failures via `Alert.alert` (a prior fix for exactly this class of bug per
+its own comment), so if it's silently doing nothing this time, the
+promise likely never settles at all rather than rejecting — same shape
+as the Live TV `/channels` bug from `(267)`. Will report back with a
+diagnosis.
