@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-140 -140 280 280" width="280" height="280">
+  <defs>
+    <linearGradient id="goldRim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fff3c4"/>
+      <stop offset="20%" stop-color="#f4c95d"/>
+      <stop offset="45%" stop-color="#c9962f"/>
+      <stop offset="55%" stop-color="#e8b64a"/>
+      <stop offset="75%" stop-color="#9c6f1e"/>
+      <stop offset="100%" stop-color="#f7d888"/>
+    </linearGradient>
+
+    <radialGradient id="goldFace" cx="38%" cy="30%" r="75%">
+      <stop offset="0%" stop-color="#fff6d8"/>
+      <stop offset="30%" stop-color="#f6cf6e"/>
+      <stop offset="60%" stop-color="#dba736"/>
+      <stop offset="100%" stop-color="#a3721c"/>
+    </radialGradient>
+
+    <radialGradient id="innerShadow" cx="50%" cy="50%" r="50%">
+      <stop offset="70%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35"/>
+    </radialGradient>
+
+    <filter id="softShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+
+    <g id="coin">
+      <circle cx="0" cy="0" r="150" fill="url(#goldRim)"/>
+      <circle cx="0" cy="0" r="132" fill="url(#goldFace)"/>
+      <circle cx="0" cy="0" r="132" fill="url(#innerShadow)"/>
+      <circle cx="0" cy="0" r="112" fill="none" stroke="#8a611b" stroke-width="2" opacity="0.4"/>
+      <circle cx="0" cy="0" r="120" fill="none" stroke="#fff3c4" stroke-width="1.5" opacity="0.4"/>
+      <text x="2" y="45" text-anchor="middle" font-family="Noto Naskh Arabic, Arial, sans-serif" font-size="150" font-weight="700" fill="#5c3e10" opacity="0.55">&#65020;</text>
+      <text x="0" y="42" text-anchor="middle" font-family="Noto Naskh Arabic, Arial, sans-serif" font-size="150" font-weight="700" fill="#3a2608">&#65020;</text>
+      <text x="-2" y="40" text-anchor="middle" font-family="Noto Naskh Arabic, Arial, sans-serif" font-size="150" font-weight="700" fill="#fff3c4" opacity="0.5">&#65020;</text>
+      <path d="M -95 -95 A 132 132 0 0 1 95 -95" fill="none" stroke="#ffffff" stroke-width="6" opacity="0.25" stroke-linecap="round"/>
+    </g>
+  </defs>
+
+  <rect x="-140" y="-140" width="280" height="280" rx="64" fill="#0f1622" stroke="#f4c95d" stroke-width="3" opacity="0.9"/>
+  <g filter="url(#softShadow)">
+    <use href="#coin" transform="scale(0.75)"/>
+  </g>
+</svg>
