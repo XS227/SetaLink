@@ -22,6 +22,7 @@
  */
 
 import { Platform } from 'react-native';
+import InCallManager from 'react-native-incall-manager';
 import {
   MediaStream, RTCIceCandidate, RTCPeerConnection, RTCSessionDescription, mediaDevices,
 } from 'react-native-webrtc';
@@ -188,6 +189,19 @@ export class CallEngine {
    *  gets as the one local stream for the lifetime of this call. */
   private async captureLocalMedia(): Promise<MediaStream> {
     if (this.localStream) return this.localStream;
+    // B->A(269), 2026-07-30: the "very faint audio" report on a connected
+    // call — a real react-native-webrtc gotcha, not this app's bug alone.
+    // WebRTC's audio track plays through whatever audio session is already
+    // active; without explicitly starting one, Android/iOS route it as a
+    // regular media stream (default/low-ish volume) instead of the boosted
+    // in-call voice routing a phone call gets. InCallManager.start() is
+    // what actually switches the audio session into call mode (also grabs
+    // audio focus + the proximity sensor) — setSpeakerphoneOn alone
+    // (below) can't fix this since there was never a call-mode session for
+    // it to route in the first place. Called once here, both call
+    // directions (startOutgoing/acceptIncoming) go through this single
+    // chokepoint via the localStream guard just above.
+    InCallManager.start({ media: this.video ? 'video' : 'audio' });
     const stream = await mediaDevices.getUserMedia({
       audio: true,
       video: this.video ? { facingMode: 'user' } : false,
@@ -315,14 +329,16 @@ export class CallEngine {
     videoTrack?._switchCamera?.();
   }
 
-  /** Speaker vs. earpiece routing. iOS/Android both expose this through
-   *  RTCAudioSession-adjacent native APIs that react-native-webrtc wraps
-   *  differently per platform — kept as a no-op stub here since the exact
-   *  call needs an on-device check to get right, not something to guess
-   *  from this box. Flag for whoever wires the CallScreen controls. */
-  setSpeakerphoneOn(_on: boolean): void {
+  /** Speaker vs. earpiece routing. B->A(269), 2026-07-30: was a no-op
+   *  stub — the button flipped CallScreen's own UI state but never
+   *  touched actual audio routing. setForceSpeakerphoneOn (rather than
+   *  setSpeakerphoneOn) is InCallManager's recommended call once an
+   *  in-call audio session is already running (captureLocalMedia's
+   *  InCallManager.start() above) — it overrides the session's routing
+   *  directly instead of just hinting a preference to it. */
+  setSpeakerphoneOn(on: boolean): void {
     if (Platform.OS === 'android' || Platform.OS === 'ios') {
-      // TODO: wire real speaker routing once on-device testing is possible.
+      InCallManager.setForceSpeakerphoneOn(on);
     }
   }
 
@@ -341,5 +357,10 @@ export class CallEngine {
     this.remoteStream = null;
     this.pc?.close();
     this.pc = null;
+    // Matches captureLocalMedia's start() — only meaningful to call if a
+    // session was actually started, but InCallManager.stop() is a safe
+    // no-op otherwise (mirrors how the rest of this method tears down
+    // possibly-never-initialized state without guards).
+    InCallManager.stop();
   }
 }
