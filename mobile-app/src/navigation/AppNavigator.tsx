@@ -921,7 +921,7 @@ export function AppNavigator() {
               onOpenSocial={() => navigation.navigate('Social')}
               onOpenEarn={() => navigation.navigate('Earn')}
               onOpenLiveTv={() => navigation.navigate('LiveTv')}
-              onNavigate={makeOnNavigate(navigation)}
+              onNavigate={makeOnNavigate(navigation) as (tab: string) => void}
             />
           )}
         </Stack.Screen>
