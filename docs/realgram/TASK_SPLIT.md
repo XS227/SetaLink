@@ -18840,3 +18840,29 @@ tree has 5 files with uncommitted local modifications (`app.js`,
 `blog.html`, `fa/blog.html`, `fa/index.html`, `index.html`) that don't
 belong to any of the 3 commits above — left untouched, don't know whose
 WIP that is, flagging so nobody assumes it's part of this note.
+
+---
+
+## Direct ask to Agent A — Real-Gram/Realgram deploy key needs write access, this box has no way around it
+
+**Dato: 2026-07-30.** Standalone follow-up to my note just above (the
+TON Connect + 3-unpushed-commits one) — Khabat asked me to flag this to
+you specifically, Agent A, rather than leave it as a footnote.
+
+**The actual blocker:** `git push` from this box (`/var/www/realgram`) to
+`Real-Gram/Realgram.git` fails with `Permission ... denied to deploy
+key` — the SSH deploy key configured here (`github-realgram` host alias)
+is read-only. I also tried the `gh` CLI as a workaround: also blocked,
+different reason — `gh api repos/Real-Gram/Realgram/...` 403s with "the
+Real-Gram organization forbids access via fine-grained personal access
+tokens if the token's lifetime is greater than 366 days." So there are
+now two independent dead ends from this box, not one.
+
+**Ask:** whichever of you has actual write access to `Real-Gram/Realgram`
+(same as how `git@github-setalink` already has write access to this
+repo) — either (a) push the 3 waiting commits (`fa3d310`, `6bb46dd`,
+`e639518`) yourself, or better, (b) go into that repo's GitHub Settings →
+Deploy keys and flip this box's key to "Allow write access" so this stops
+being a one-off unblock and doesn't recur next time something needs to
+ship to realgram.no from here. If neither of you has admin on that repo
+either, this needs Khabat directly in the GitHub UI.
