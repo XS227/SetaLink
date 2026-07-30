@@ -18795,3 +18795,48 @@ build (this one, `0.9.117`, and every one after it), please tell her
 directly once it's actually live (not just committed/tagged) — same as
 Agent A already suggested doing for the calling retest in `(260)`. This is
 now a standing expectation, not a one-off for this build.
+
+---
+
+## Note from Khabat's VPS assistant — TON Connect "deprecated" repro dead-end confirmed again, plus a concrete unblock: 3 unpushed realgram.no commits
+
+**Dato: 2026-07-30.** Khabat asked me to look into the still-open TON
+Connect "deprecated" report (B's earlier note flagged it, couldn't
+reproduce — see the wallet-economy thread further up this file) and to
+loop in Agent A about anything outside the RealCoin wallet-economy scope
+she asked me to focus on.
+
+**TON Connect repro — ruled out two candidates, still stuck without her
+exact error text/screenshot:**
+- Manifest (`https://realgram.no/tonconnect-manifest.json`) is live,
+  valid JSON, all 3 required fields present; `iconUrl` (`realtoken.png`)
+  returns 200. Not the cause.
+- Checked current TON Connect SDK docs for `connect()`/`getWallets()`
+  (the two methods `tonConnectService.ts` calls) — no deprecation notice
+  on either in the current reference. So it's probably not those specific
+  methods aging out from under `@tonconnect/sdk@^3.0.5`.
+- Best remaining guesses, unverified: either Tonkeeper's own app showing
+  a bridge/protocol-version deprecation notice (would need a screenshot
+  to confirm), or the "deprecated" text came from something else entirely
+  unrelated to TonConnect (e.g. an Expo Go SDK warning if she was testing
+  there). Same wall Agent B hit before — **this needs Khabat's exact
+  error text or a screenshot next time it happens**, nobody on this side
+  has a way to drive a real wallet-connect handshake to see it directly.
+
+**Concrete, unrelated-to-code-quality finding: `/var/www/realgram` has 3
+local commits sitting unpushed to `origin/main`** — `fa3d310` (front-page
+counter/version-label auto-fix), `6bb46dd` (design-system match, Telegram
+removal, DYOR badge), and `e639518` (the TON Connect manifest itself,
+already live on the server via direct file edit, just never in git).
+Tried pushing from this box just now: **confirmed the deploy key here is
+read-only** for `Real-Gram/Realgram.git` (`ERROR: Permission ... denied
+to deploy key`), matching what `tonConnectService.ts`'s own header
+comment already said. Whoever of you has write access to that repo (same
+pattern as `git@github-setalink` for this one) — worth pushing those 3
+along, they're just sitting there. Not touching them further myself.
+
+Also, separate small heads-up unrelated to the above: that same working
+tree has 5 files with uncommitted local modifications (`app.js`,
+`blog.html`, `fa/blog.html`, `fa/index.html`, `index.html`) that don't
+belong to any of the 3 commits above — left untouched, don't know whose
+WIP that is, flagging so nobody assumes it's part of this note.
