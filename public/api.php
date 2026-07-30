@@ -273,15 +273,23 @@ function generate_referral_code(PDO $pdo): string {
     return $code;
 }
 
-// Generates a public SL-227-XXXXXXXX user identity — stable, unique, support-friendly.
-function generate_user_id(PDO $pdo): string {
+// Generates a public SL-<rowid>-XXXXXXXX user identity — stable, unique,
+// support-friendly. `$rowid` must be the device's own `devices` table
+// rowid (see call sites) so the numeric segment actually distinguishes
+// accounts on a call/support screen — found live 2026-07-30 that this used
+// to hardcode the literal "227" (an old example ID that leaked into the
+// template instead of being substituted), so every device ever created via
+// this path got the exact same numeric segment, indistinguishable from any
+// other caller. Only affects IDs generated after this fix; existing
+// "SL-227-…" IDs are left as-is (see TASK_SPLIT.md A→B(275)).
+function generate_user_id(PDO $pdo, int $rowid): string {
     for ($i = 0; $i < 20; $i++) {
-        $uid = 'SL-227-' . strtoupper(bin2hex(random_bytes(4)));
+        $uid = 'SL-' . $rowid . '-' . strtoupper(bin2hex(random_bytes(4)));
         $st  = $pdo->prepare("SELECT 1 FROM devices WHERE user_id=?");
         $st->execute([$uid]);
         if (!$st->fetchColumn()) return $uid;
     }
-    return 'SL-227-' . strtoupper(bin2hex(random_bytes(4)));
+    return 'SL-' . $rowid . '-' . strtoupper(bin2hex(random_bytes(4)));
 }
 
 function hardcoded_bootstrap(): array {
@@ -505,7 +513,8 @@ if ($method === 'GET') {
         touch_ip_geo($pdo, $deviceId, $dev);
         // Backfill user_id on sync if missing
         if (empty($dev['user_id'])) {
-            $uid = generate_user_id($pdo);
+            $rowid = (int)$pdo->query("SELECT rowid FROM devices WHERE device_id=" . $pdo->quote($deviceId))->fetchColumn();
+            $uid = generate_user_id($pdo, $rowid);
             $pdo->prepare("UPDATE devices SET user_id=? WHERE device_id=? AND (user_id='' OR user_id IS NULL)")
                 ->execute([$uid, $deviceId]);
             $dev['user_id'] = $uid;
@@ -1209,22 +1218,29 @@ if ($method === 'POST') {
 
         if (!$dev) {
             $code = generate_referral_code($pdo);
-            $uid  = generate_user_id($pdo);
             $pdo->prepare(
                 "INSERT INTO devices
                     (device_id, user_id, referral_code, platform, app_version, language, country, country_name,
                      manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status,
                      quota_bytes_total)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', 5368709120)"
-            )->execute([$deviceId, $uid, $code, $platform, $appVersion, $language,
+                 VALUES (?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', 5368709120)"
+            )->execute([$deviceId, $code, $platform, $appVersion, $language,
                         $country, $countryName, $manufacturer, $model, $sdkVersion,
                         $androidVer, $abi, $androidIdHash, $clientIp]);
+            // user_id needs the row's own rowid as its numeric segment (see
+            // generate_user_id's comment), which only exists once the row
+            // above is actually inserted — hence generating it after, not
+            // as part of the INSERT's column list like the other fields.
+            $rowid = (int)$pdo->lastInsertId();
+            $uid = generate_user_id($pdo, $rowid);
+            $pdo->prepare("UPDATE devices SET user_id=? WHERE device_id=?")->execute([$uid, $deviceId]);
             $stmt->execute([$deviceId]);
             $dev = $stmt->fetch();
         } else {
             // Backfill user_id if missing (existing devices before this migration)
             if (empty($dev['user_id'])) {
-                $uid = generate_user_id($pdo);
+                $rowid = (int)$pdo->query("SELECT rowid FROM devices WHERE device_id=" . $pdo->quote($deviceId))->fetchColumn();
+                $uid = generate_user_id($pdo, $rowid);
                 $pdo->prepare("UPDATE devices SET user_id=? WHERE device_id=? AND (user_id='' OR user_id IS NULL)")
                     ->execute([$uid, $deviceId]);
                 $dev['user_id'] = $uid;

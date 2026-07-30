@@ -19568,3 +19568,79 @@ tell `lib/calling.php` to close the row within seconds instead of hours,
 or (b) something simpler/cheaper. Not implementing blind — this is a
 "how much do we trust it to self-heal vs. needing another manual DB fix
 next time" product call, not just a code fix.
+
+---
+
+## A→B(275) — real bug found+fixed live: `generate_user_id()` hardcoded "227" for every single user, not just Khabat's own devices
+
+**Dato: 2026-07-30.** Follow-up from `(274)`'s calling test. Khabat noticed
+the caller ID shown on her incoming-call screen is always "227," even for
+the Iran tester's device — she wants it to show the actual caller when
+someone else calls, with "227" (her own shortened ID, `(244)`'s earlier
+`peerDisplay()` work) only ever shown *to whoever she calls*.
+
+Dug into it expecting a client-side routing bug (wrong field wired to the
+call screen) — it's not that. `devices` table: `SELECT COUNT(DISTINCT
+user_id), COUNT(*) FROM devices WHERE user_id LIKE 'SL-%'` → **116/116**,
+but every single one of those 116 distinct IDs shares the exact same
+`SL-227-` prefix. Confirmed the two real, different-country test devices
+(`sl-85ff1772-…`, Khabat's own Samsung/Turkey, and `sl-f877790f-…`, the
+Iran tester's Xiaomi/Irancell) both show `227` — not a coincidence, every
+device on the platform does.
+
+Root cause: `public/api.php`'s `generate_user_id(PDO $pdo)` (the one the
+real mobile-app-facing endpoints actually call — distinct from
+`admin/api.php`'s own same-named function, which correctly takes an
+explicit `$rowid`) had `'SL-227-' . strtoupper(bin2hex(random_bytes(4)))`
+— a literal hardcoded `227`, with a comment claiming it generates a
+"stable, unique" ID. Near-certainly a copy-paste of one real example ID
+(Khabat's own) that never got parameterized. Only the random suffix was
+ever actually unique — the human-readable "which account is this"
+segment was identical for every account ever created through this path.
+
+**Fixed (`public/api.php`, not yet deployed to `feat/b97-experience` git
+history — see below):** `generate_user_id()` now takes `int $rowid` and
+uses it for real, mirroring `admin/api.php`'s already-correct pattern.
+Updated all 3 call sites:
+- `sync-entitlement`'s backfill and the other existing-device backfill
+  path: `SELECT rowid FROM devices WHERE device_id=...` (row already
+  exists at that point).
+- New-device `register-device` insert: row doesn't exist yet when the old
+  code generated the uid, so restructured — insert with `user_id=''`
+  first, then `$pdo->lastInsertId()` for the row's own rowid, generate
+  the real uid, `UPDATE` it in. `php -l` clean.
+
+**Deployed live** (`sudo cp` into `/var/www/setalink/public/api.php`,
+backed up the previous version to `/var/backups/setalink/` first, `php -l`
+verified post-copy, byte-diffed against source to confirm exact match).
+**Live-tested**: `register-device` for a throwaway `sl-testfix-…` device
+→ `user_id: "SL-238-EF52FB35"` — real, non-227 number. Deleted the test
+row after. Server-only PHP change, no app rebuild needed, live right now.
+
+**Deliberately not touched:** Khabat's own `SL-227-62DAC5F0` and the Iran
+tester's `SL-227-8547F1F9` — both stay as-is. Renumbering already-issued
+IDs risks breaking anything that already references them by that exact
+string (support docs, this very file, admin lookups) for a cosmetic fix,
+and neither of them noticed the literal ID before now — only the *shared
+number* between two different real people. This fix only changes IDs
+generated from now on. Consequence: Khabat's own live call-screen retest
+between her two devices will **still** show "227" both directions (both
+predate the fix) — a real new user calling her from a fresh install would
+now show a properly distinct number.
+
+Not pushed to git yet from this box — will push alongside this doc entry.
+
+**Separately, her video-calling question ("kan nå trygt koble til video
+også?")**: not recommending flipping it on yet. Audio itself had two live
+stuck-`accepted`-row incidents in the space of about an hour today
+(`(274)`, this session) — cause still not fully understood (see
+[[realgram-calling-audio-bug]]'s open structural-gap note), and `(270)`'s
+in-call audio session / speaker-routing fix hasn't been confirmed working
+on a real device yet either. Video is real added surface (camera
+permission, meaningfully higher bandwidth/TURN load, mobile-data cost for
+Iran-side users on limited plans) stacked on top of an audio path that
+isn't fully proven stable yet. `CallScreen.tsx` already has video-capable
+UI scaffolding per its own top-of-file comment, so this isn't a "build it
+from scratch" ask later — just not the moment to turn it on. Recommend a
+few more clean audio sessions first (no stuck rows, confirmed-working
+speaker routing) before revisiting.
