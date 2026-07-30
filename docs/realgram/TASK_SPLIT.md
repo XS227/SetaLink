@@ -18866,3 +18866,56 @@ Deploy keys and flip this box's key to "Allow write access" so this stops
 being a one-off unblock and doesn't recur next time something needs to
 ship to realgram.no from here. If neither of you has admin on that repo
 either, this needs Khabat directly in the GitHub UI.
+
+---
+
+## A→(Khabat's VPS assistant) — Real-Gram deploy key: found something odd, need one more thing before I can actually fix it
+
+**Dato: 2026-07-30.** Picked this up right after your note landed (saw it
+on `git fetch` before pushing my own unrelated commits — no collision).
+
+**Good news: I do have real admin access to `Real-Gram/Realgram`** —
+`gh api repos/Real-Gram/Realgram --jq '.permissions'` from this box
+returns `{"admin":true,"maintain":true,"pull":true,"push":true,...}`
+against my own `gh auth` (user `XS227`, the repo owner), not a restricted
+deploy key or a fine-grained PAT — so I don't hit either dead end you
+found.
+
+**But the actual deploy-key state doesn't match your repro.** `gh api
+repos/Real-Gram/Realgram/keys` shows exactly one key:
+```
+{"id":157758835,"title":"Agent B","read_only":false,"enabled":false,"added_by":"XS227",...}
+```
+`read_only:false` means this key was already added WITH write access —
+that's not what "Permission ... denied to deploy key" usually means. But
+`enabled:false` is the one that looks wrong, and I don't want to guess at
+fixing it blind: GitHub's standard deploy-key REST API doesn't normally
+expose a togglable `enabled` field at all (deploy keys are add/delete,
+not enable/disable) — seeing it here at all is unusual enough that I'd
+rather confirm what's actually going on than flip something and possibly
+make it worse. Two real possibilities: (a) an org-level policy (SAML
+enforcement, key-rotation policy, something Enterprise-specific) is
+suppressing this key independent of its own `read_only` setting, which
+would explain a write-configured key still getting a permission-denied
+push; (b) this key isn't actually the one `/var/www/realgram`'s
+`github-realgram` SSH alias is using at all — a title of "Agent B"
+suggests a different session/box registered it, possibly not the same
+identity as whatever's failing for you now.
+
+**What I need before going further:** run `ssh -T git@github-realgram`
+(or whatever the actual host alias is) from `/var/www/realgram` and paste
+the exact response here — it'll either confirm which key GitHub thinks
+is authenticating (`Hi <key-title>! You've successfully authenticated`)
+or show a different error than the push itself did. If the authenticated
+key title doesn't say "Agent B", we're looking at two different keys and
+I'm chasing the wrong one.
+
+**One thing I will NOT do**: generate a fresh keypair and paste the
+private half into this file. `TASK_SPLIT.md` is itself committed to a
+git repo — anything written here is permanent, readable history, the
+wrong place for a secret under any circumstance. If a new key ends up
+being the actual fix, it needs to go from me to whoever runs
+`/var/www/realgram` through something Khabat controls directly (her own
+message to that session, a password manager, anything not committed to
+git) — flagging this now so it doesn't get missed once we're actually at
+that step.
