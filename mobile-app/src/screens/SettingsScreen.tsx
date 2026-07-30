@@ -19,6 +19,17 @@ import type { UpdateCheckResult } from '../services/updateService';
 const GITHUB_URL      = 'https://github.com/XS227/RealGram';
 const WEBSITE_URL     = 'https://realgram.no';
 
+// Khabat, 2026-07-30: "languages er bare 4 stk så vis heller flagene" — flag
+// per SUPPORTED_LANGUAGES' nativeLabel (i18n/index.ts). Keyed by nativeLabel
+// rather than Lang code since that's what SelectRow's options/value actually
+// are; falls back to no flag for anything unmapped instead of throwing.
+const LANGUAGE_FLAGS: Record<string, string> = {
+  English: '🇬🇧',
+  'فارسی': '🇮🇷',
+  '中文':   '🇨🇳',
+  'Русский': '🇷🇺',
+};
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 interface ToggleRowProps {
@@ -79,16 +90,23 @@ interface SelectRowProps {
   value:    string;
   options:  string[];
   onChange: (v: string) => void;
+  // Optional display-only transform, e.g. prefixing a flag emoji onto a
+  // language name. Kept separate from `value`/`options` on purpose — those
+  // stay the exact strings stored in settingsStore, so an already-saved
+  // preference (e.g. a user who picked "English" before this existed)
+  // still matches an option and shows as selected.
+  renderLabel?: (opt: string) => string;
 }
 
-function SelectRow({ label, value, options, onChange }: SelectRowProps) {
+function SelectRow({ label, value, options, onChange, renderLabel }: SelectRowProps) {
   const [open, setOpen] = useState(false);
+  const display = (v: string) => (renderLabel ? renderLabel(v) : v);
   return (
     <View>
       <TouchableOpacity style={selStyles.row} onPress={() => setOpen(!open)} activeOpacity={0.75}>
         <Text style={selStyles.label}>{label}</Text>
         <View style={selStyles.valueRow}>
-          <Text style={selStyles.value}>{value}</Text>
+          <Text style={selStyles.value}>{display(value)}</Text>
           <Text style={[selStyles.chevron, open && { transform: [{ rotate: '90deg' }] }]}>›</Text>
         </View>
       </TouchableOpacity>
@@ -102,7 +120,7 @@ function SelectRow({ label, value, options, onChange }: SelectRowProps) {
               onPress={() => { onChange(opt); setOpen(false); }}
               activeOpacity={0.7}
             >
-              <Text style={[selStyles.optionText, opt === value && selStyles.optionActiveText]}>{opt}</Text>
+              <Text style={[selStyles.optionText, opt === value && selStyles.optionActiveText]}>{display(opt)}</Text>
               {opt === value && <Text style={selStyles.check}>✓</Text>}
             </TouchableOpacity>
           ))}
@@ -340,6 +358,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
             value={language}
             options={SUPPORTED_LANGUAGES.map((l) => l.nativeLabel)}
             onChange={setLanguage}
+            renderLabel={(opt) => `${LANGUAGE_FLAGS[opt] ?? ''} ${opt}`.trim()}
           />
         </Section>
 
