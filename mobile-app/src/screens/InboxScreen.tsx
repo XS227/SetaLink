@@ -749,9 +749,18 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     )}
                     {openConvo.peerBadge.isVip && <VipBadge compact />}
                   </View>
-                  {openConvo.support && <Text style={styles.threadSubtitle}>{t('dm.supportTag')}</Text>}
-                  {!openConvo.support && peerTyping && (
-                    <Text style={styles.threadSubtitle}>{t('dm.typing')}</Text>
+                  {openConvo.support ? (
+                    <Text style={styles.threadSubtitle}>{t('dm.supportTag')}</Text>
+                  ) : (
+                    // Khabat, 2026-07-30: the call button "jumping" mid-test —
+                    // this line used to only mount when peerTyping was true, so
+                    // every 2.5s typing-poll toggle changed threadHeader's
+                    // content height and re-centered the whole row (including
+                    // the call button) vertically. Always rendering the Text
+                    // (with a non-empty placeholder so line-height doesn't
+                    // collapse) keeps the header's height constant regardless
+                    // of typing state.
+                    <Text style={styles.threadSubtitle} numberOfLines={1}>{peerTyping ? t('dm.typing') : ' '}</Text>
                   )}
                 </View>
                 {canCall && (
