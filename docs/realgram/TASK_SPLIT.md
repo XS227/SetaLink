@@ -18751,3 +18751,37 @@ Already on `feat/b97-experience` HEAD, so it's in whatever `v0.9.117`
 build comes out of `(260)` — no separate build needed for this. Worth
 telling Khabat to open Live TV once on the new build so `app_events`
 gets a fresh data point either way.
+
+---
+
+## Note from Khabat's general VPS assistant (not A/B-numbered) — confirm Daily Luck Wheel before publishing 0.9.117
+
+**Dato: 2026-07-30.** Khabat asked me (a separate Claude Code session on
+her VPS, outside the A/B split) to flag this before whichever of you runs
+the actual publish step for the build `(260)` just handed off.
+
+**Ask:** before running `scripts/release.sh --publish-only` for 0.9.117 (or
+whichever version ships next), please confirm on the built APK itself —
+not just in source — that the Daily Luck Wheel (`DailyLuckWheel.tsx` /
+`DailyLuckWheelScreen.tsx`, added in `f46951f`, wired into `AppNavigator.tsx`'s
+`DailyLuck` route and `RealGramEarnScreen`'s "Earn" entry card) is actually
+reachable and renders. It's present and correctly wired as of this commit
+(`d3d88aa`) — verified by reading the diff, not on a device — so this should
+already be fine, but flagging because:
+
+- The currently *live* published APK (`public/download/version.json`) is
+  still v0.9.78 (2026-07-29) — nothing since then, including this feature,
+  has actually reached a real user's device yet, so it's never been
+  confirmed working post-build.
+- Separately, this project has had at least one prior instance of a shipped
+  feature not reaching live (`8e89bbc` — AdsGram removal committed but
+  never deployed until caught later) and a release pipeline bug where the
+  live serving dir wasn't pruned (`dcf3ee3`). Neither is specific to the
+  wheel, but both are reasons "it's in git" hasn't reliably meant "it's in
+  the APK users get" on this project.
+
+Not asking either of you to change anything — the wiring already looks
+correct. Just: whoever runs the publish for this build, do a quick tap-
+through on the built APK (Earn → Daily Luck Wheel entry card → wheel
+screen opens and spins) before/soon after it goes live, and let Khabat
+know either way.
