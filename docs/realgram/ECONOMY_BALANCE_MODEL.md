@@ -1,13 +1,36 @@
 # RealGram / REAL economy — balance model (2026-07-30 pass)
 
 > Started per Khabat's direct ask: review the economy "basert på Dr. Nasrin
-> Dadashi's vurdering" (her assessment of the Shahnameh economy strategy —
-> content not available to this session, see §6), include the Daily Luck
-> Wheel, check REAL's current market value, and recalculate the full player
-> journey (cards, taps, quota, referrals) so players never get soft-locked
-> but also never "overtjene cash." This doc is the working model — numbers
-> below are grounded in what's actually configured live (`settings` table,
-> `/var/www/setalink/data/analytics.db`) as of 2026-07-30, not guesses.
+> Dadashi's vurdering" (her assessment of the Shahnameh economy strategy).
+> **2026-07-30, later same day — dropped as a dependency on her direct
+> instruction** ("glem dadashi bregning"): nothing by that name ever
+> surfaced anywhere in this repo, and she'd rather move forward with what's
+> here than keep waiting on content neither of us has. Kept the earlier
+> §6 note for the record, no longer blocking anything below.
+
+## North star, stated directly by Khabat: liquidity first, then free internet for everyone
+
+Two decisions from the same message, in order, and they connect directly:
+**§4's revenue split is decided — liquidity first** (not "lean toward,"
+decided), and the reason that matters beyond just "REAL gets a price
+faster" is the actual end goal she named: **eventually, VPN access itself
+should be free for everyone**, funded by the REAL economy rather than
+gated by GB quotas. That only works if REAL is worth something real first
+— a token with no liquidity can't subsidize anything, it's just a number.
+Liquidity-first isn't only the safer bootstrap choice from §4's original
+crash-risk analysis, it's the actual precondition for the bigger goal.
+
+**Not pretending the full mechanism is designed** — "free internet for
+everyone" is the stated destination, not a spec. Genuine open questions
+for later, not this pass: does "free" mean the quota system goes away
+entirely once REAL/liquidity/node-operator revenue covers egress costs
+outright, or does it mean the *effort-based* paths (ads, referrals,
+`§7`'s future node-operator network) become generous enough that hitting
+a real ceiling stops mattering in practice even though the mechanism
+stays? Both get to the same place for a user; they're different builds.
+Flagging so whoever designs that phase doesn't have to guess what "free
+for everyone" was supposed to mean — ask her which shape before building
+either.
 
 ## 0. REAL token — no live market price exists yet
 
@@ -102,9 +125,19 @@ common 45%, rare 25%, epic 15%, legendary 10%, mythic 5%, tunable server-side
 once real usage data exists (same `settings`-table pattern as every other
 rate in this doc, not hardcoded).
 
-## 4. AdMob revenue split — three scenarios with consequences worked out
+## 4. AdMob revenue split — DECIDED: Scenario A, liquidity-first
 
-Khabat's response to the first draft: don't pick a percentage for her —
+**Khabat's decision, 2026-07-30: liquidity first.** Scenarios B and C
+below are kept for the record (why A was the right call, not live
+options anymore) — this section used to present three options; it's now
+one decision plus the reasoning that led there. Starting split: **70%
+liquidity / 30% airdrop** (post-server-cost margin, before §8's founder
+cut), matching the "North star" section above — REAL needs to be worth
+something real before its economy can fund anything, including the
+eventual "free internet for everyone" goal.
+
+Original framing, for context on how the three scenarios compared before
+one got picked: don't pick a percentage for her —
 model 2–3 concrete scenarios and what each actually implies for (a) how
 fast REAL gets a real market price and (b) how big the eventual airdrop
 pool ends up being. Framing first, since this matters for reading the
@@ -133,16 +166,14 @@ outside the reward flow, which carry no matching egress cost).
 | **B — Airdrop-first** | 30% liquidity / 70% airdrop | Slowest — thin liquidity means REAL's first price is fragile | Biggest of the three | **The dangerous one given §0**: REAL has *zero* liquidity today. A big airdrop hitting a thin/empty pool is the textbook setup for an immediate crash the moment recipients try to sell — could tank REAL's credibility in its first week rather than build it |
 | **C — Even split** | 50% liquidity / 50% airdrop | Middle | Middle | Safest default given REAL's current zero-liquidity starting point — genuinely no dominant strategy, but avoids both A's "airdrop feels thin" and B's "no floor to sell into" |
 
-**My read, since this was asked for, not just three neutral boxes**: given
-§0's finding that REAL is starting from *literally zero* liquidity — not
-"thin," zero — Scenario B's crash risk isn't hypothetical, it's close to
-guaranteed with any airdrop of meaningful size. I'd lean toward starting
-liquidity-weighted (closer to A, e.g. 65/35 or 70/30) for an initial
-bootstrap window, **then rebalancing toward C or even airdrop-weighted
-once there's a real trading floor and volume** — a phased split rather
-than one fixed forever, so the airdrop that eventually lands has
-something real to be worth. This is a proposal to react to, not a
-decision made on Khabat's behalf.
+**Confirms the decision above**: given §0's finding that REAL is starting
+from *literally zero* liquidity — not "thin," zero — Scenario B's crash
+risk isn't hypothetical, it's close to guaranteed with any airdrop of
+meaningful size. A stays a *starting* split, not necessarily forever —
+**rebalancing toward more airdrop-weighted once there's a real trading
+floor and volume** is still the plan, worth revisiting once REAL actually
+has price history to look at, not something to lock in permanently
+today.
 
 ## 5. Referral-REAL — diminishing curve proposal (not a hard cap)
 
@@ -170,15 +201,8 @@ extreme tail hard — matches "avtagende, ikke et hardt tak" exactly: nobody
 stops earning, the 200th referral still pays 75 REAL, but the runaway
 growth from §2's finding is gone.
 
-## 6. What's blocking a fully authoritative model — needs input, not guessed
+## 6. What's still genuinely open (Dr. Dadashi and §4's split are resolved, see top of doc)
 
-- **Dr. Nasrin Dadashi's actual assessment content** — Khabat referenced
-  this as the basis for this whole review; nothing by that name exists
-  anywhere in this repo or its docs (confirmed unrelated to anything else
-  in this project's history per her VPS assistant, 2026-07-30 — different
-  person, no other concern). Whatever her assessment actually says should
-  shape this doc, not the other way around — this is a starting model to
-  react to.
 - **Shahnameh's own Zar/Gem/Farr economy** — genuinely zero visibility
   from this repo (no SSH, no DB, confirmed multiple times elsewhere in
   `TASK_SPLIT.md`, e.g. around the "migrate Shahnameh" discussion). Every
@@ -186,10 +210,12 @@ growth from §2's finding is gone.
   proposal — whoever has access to `shahnameh-backend` needs to supply
   real earn/sink rates before the wheel can be balanced against the rest
   of the game's economy, not just against this repo's VPN-quota numbers.
-- **Final percentages for §4 and §5** — scenarios/curve proposed, Khabat
-  picks.
+- **§5's referral-REAL curve** — proposed, not yet confirmed by Khabat.
 - **§7's node-operator rate and §8's founder-cut number** — both first
-  drafts below, same "propose, don't decide for her" rule.
+  drafts, same "propose, don't decide for her" rule as §5.
+- **The "free internet for everyone" end-state shape** (see North star
+  section) — quota removed entirely vs. effort-paths generous enough to
+  not matter in practice. Ask before building either.
 
 ## 7. Future: Starlink/exit-node operator rewards (new, per Khabat's ask)
 
