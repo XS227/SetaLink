@@ -1,6 +1,6 @@
 /**
- * TopBar — avatar only, now the single entry point into Profile/Settings/
- * Inbox/Dashboard via a tap-to-open menu (Khabat, 2026-07-29: "gjør om
+ * TopBar — avatar only, the single entry point into Profile/Settings/
+ * Chats/Clan/Dashboard via a tap-to-open menu (Khabat, 2026-07-29: "gjør om
  * profil bilde slik at når jeg trykker på den skal den fungere som et
  * slags burger meny").
  *
@@ -28,18 +28,24 @@ import { useT } from '../i18n';
 
 const MENU_WIDTH = 200;
 // Fallback anchor before/without a real measurement — every host screen
-// (Wallet/SmartAI/Servers/Activity) pads its header the same way, so this
+// (Wallet/SmartAI/Servers/Activity/Inbox/Home/RealGramProfile/RealGramHome
+// via its own floating wrapper) pads its header the same way, so this
 // lands close enough even if measureInWindow's callback never resolves
 // (jest's RN mock doesn't invoke it; real devices always do and refine it).
 // Opening the menu is never gated on the native call succeeding.
 const FALLBACK_MENU_POS = { top: Layout.statusBarHeight + Spacing[2] + 48, right: Layout.screenPadding };
 
-interface MenuItem { key: string; icon: string; labelKey: 'nav.profile' | 'st.title' | 'pr.inbox' | 'rgprofile.dashboard'; tab: string }
+interface MenuItem { key: string; icon: string; labelKey: 'nav.profile' | 'st.title' | 'nav.chats' | 'nav.clan' | 'rgprofile.dashboard'; tab: string }
 
+// Khabat, 2026-07-30: Chats/Clan moved here from the footer (BottomNav.tsx's
+// own comment has the full reasoning) — same 'inbox' tab value as before for
+// Chats (still routes to the Stack-pushed 'Inbox' screen, distinct from the
+// tab-bar 'Chats' route), just relabelled to match what left the footer.
 const MENU_ITEMS: MenuItem[] = [
   { key: 'profile',   icon: '👤', labelKey: 'nav.profile',       tab: 'profile' },
   { key: 'settings',  icon: '⚙',  labelKey: 'st.title',          tab: 'settings' },
-  { key: 'inbox',     icon: '✉',  labelKey: 'pr.inbox',          tab: 'inbox' },
+  { key: 'inbox',     icon: '✉',  labelKey: 'nav.chats',         tab: 'inbox' },
+  { key: 'clan',      icon: '👥', labelKey: 'nav.clan',          tab: 'clan' },
   { key: 'dashboard', icon: '🏠', labelKey: 'rgprofile.dashboard', tab: 'dashboard' },
 ];
 

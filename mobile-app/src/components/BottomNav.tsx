@@ -8,17 +8,18 @@ export type NavTab = 'home' | 'servers' | 'ai' | 'activity' | 'profile' | 'game'
 
 type NavItem = { key: NavTab; icon: string };
 
-// §5.10.1 — approved 2026-07-18: Home · Chats · Freedom · Wallet · Clan · Profile.
-// "Freedom" reuses the existing 'servers' tab/screen (label+icon change only —
-// no new screen). 'ai'/'activity'/'game' keep their NavTab values (still used
-// elsewhere for navigation) but no longer have a footer slot.
+// Khabat, 2026-07-30: footer rebuilt around the three real pillars — VPN
+// access (Freedom/servers) · Shahnameh learning (game) · community earning
+// (wallet) — plus Home. Chats/Profile/Clan move into TopBar's burger menu
+// (avatar, top-right, every screen) instead of duplicating them here; a
+// screen that's in the menu but not the footer is still fully reachable,
+// same pattern §5.10.1 already used for 'ai'/'activity'. Supersedes
+// §5.10.1's Home·Chats·Freedom·Wallet·Clan·Profile lineup.
 const TABS: NavItem[] = [
   { key: 'home',    icon: '⬡' },
-  { key: 'chats',   icon: '💬' },
   { key: 'servers', icon: '🌐' },
+  { key: 'game',    icon: '⚔' },
   { key: 'wallet',  icon: '💎' },
-  { key: 'clan',    icon: '👥' },
-  { key: 'profile', icon: '👤' },
 ];
 
 interface Props {

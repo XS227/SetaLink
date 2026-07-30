@@ -74,7 +74,7 @@ const EN = {
   'nav.ai':       'AI',
   'nav.activity': 'Activity',
   'nav.profile':  'Profile',
-  'nav.game':     'Game',
+  'nav.game':     'Shahnameh',
 
   // Ecosystem banner (Shahnameh + 3real)
   'bn.shahTitle': 'Play Shahnameh — earn REAL',
@@ -1304,7 +1304,7 @@ const FA: typeof EN = {
   'nav.ai':       'هوش مصنوعی',
   'nav.activity': 'فعالیت',
   'nav.profile':  'پروفایل',
-  'nav.game':     'بازی',
+  'nav.game':     'شاهنامه',
 
   // Ecosystem banner (Shahnameh + 3real)
   'bn.shahTitle': 'شاهنامه را بازی کن — REAL کسب کن',
@@ -2506,7 +2506,7 @@ const ZH: typeof EN = {
   'nav.ai': 'AI',
   'nav.activity': '活动',
   'nav.profile': '我的',
-  'nav.game': '游戏',
+  'nav.game': 'Shahnameh',
 
   'bn.shahTitle': '玩《列王纪》——赚取 REAL',
   'bn.shahSub': '扮演波斯勇士战斗，赚取 REAL',
@@ -3700,7 +3700,7 @@ const RU: typeof EN = {
   'nav.ai': 'ИИ',
   'nav.activity': 'Активность',
   'nav.profile': 'Профиль',
-  'nav.game': 'Игра',
+  'nav.game': 'Shahnameh',
 
   'bn.shahTitle': 'Играйте в Шахнаме — зарабатывайте REAL',
   'bn.shahSub': 'Сражайтесь как персидский воин, зарабатывайте REAL',

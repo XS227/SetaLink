@@ -920,6 +920,7 @@ export function AppNavigator() {
               onOpenSocial={() => navigation.navigate('Social')}
               onOpenEarn={() => navigation.navigate('Earn')}
               onOpenLiveTv={() => navigation.navigate('LiveTv')}
+              onNavigate={makeOnNavigate(navigation)}
             />
           )}
         </Stack.Screen>

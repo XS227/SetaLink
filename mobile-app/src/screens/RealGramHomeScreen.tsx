@@ -49,6 +49,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { TopBar } from '../components/TopBar';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
@@ -89,9 +90,14 @@ interface Props {
   onOpenSocial:   () => void;
   onOpenEarn:     () => void;
   onOpenLiveTv:   () => void;
+  // Khabat, 2026-07-30: "burger meny funker kun på freedom siden" — this
+  // screen (reached via TopBar's own 'dashboard' item) never got the
+  // TopBar burger-menu treatment `(199)` gave every other main screen.
+  // Wired the same way every TopBar consumer already is (makeOnNavigate).
+  onNavigate: (tab: string) => void;
 }
 
-export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial, onOpenEarn, onOpenLiveTv }: Props) {
+export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpenClans, onOpenSocial, onOpenEarn, onOpenLiveTv, onNavigate }: Props) {
   const insets   = useSafeAreaInsets();
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -179,6 +185,9 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
       >
         <Text style={styles.backIcon}>‹</Text>
       </TouchableOpacity>
+      <View style={[styles.floatingMenu, { top: insets.top + Spacing[3] }]}>
+        <TopBar onNavigate={onNavigate} />
+      </View>
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing[6] }]}
         showsVerticalScrollIndicator={false}
@@ -371,6 +380,9 @@ const styles = StyleSheet.create({
     width: 36, height: 36, alignItems: 'center', justifyContent: 'center',
     backgroundColor: 'rgba(10,10,14,0.55)', borderRadius: 18,
     borderWidth: 1, borderColor: 'rgba(212,175,55,0.25)',
+  },
+  floatingMenu: {
+    position: 'absolute', right: Spacing[4], zIndex: 10,
   },
   backIcon: { fontSize: 22, color: Colors.text.primary, marginTop: -2 },
 

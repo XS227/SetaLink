@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import ReanimatedView, {
   useAnimatedStyle, useSharedValue, withRepeat, withTiming, Easing as REasing,
@@ -15,13 +15,11 @@ import { StarlinkBanner }  from '../components/StarlinkBanner';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { EcosystemBanner } from '../components/EcosystemBanner';
 import { HomeBanner }      from '../components/HomeBanner';
+import { TopBar }          from '../components/TopBar';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
 import { useServerStore }      from '../stores/serverStore';
-import { useIdentityStore }    from '../stores/identityStore';
-import { useDMStore }          from '../stores/dmStore';
-import { useInboxStore }       from '../stores/inboxStore';
 import { useZarStore }         from '../stores/zarStore';
 import { useProfilePicStore }  from '../stores/profilePicStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
@@ -133,9 +131,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   const user         = useAuthStore((s) => s.user);
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
-  const avatarEmoji  = useIdentityStore((s) => s.avatarEmoji);
-  const avatarColor  = useIdentityStore((s) => s.avatarColor);
-  const profilePicUrl = useProfilePicStore((s) => s.url);
   const servers      = useServerStore((s) => s.servers);
   const isFocused    = useIsFocused();
 
@@ -205,10 +200,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     syncEntitlement(deviceIdForZar).then(updateFromEntitlement).catch(() => {});
     loadProfileExtras(deviceIdForZar);
   }, [isFocused, deviceIdForZar, updateFromEntitlement, loadProfileExtras]);
-
-  const unreadOfficial = useInboxStore((s) => s.messages.filter((m) => !m.read).length);
-  const unreadDm       = useDMStore((s) => s.messages.filter((m) => m.direction === 'in' && !m.read).length);
-  const unreadTotal    = unreadOfficial + unreadDm;
 
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting' || connectionState === 'disconnecting';
@@ -370,33 +361,17 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
         showsVerticalScrollIndicator={false}
       >
         {/* ── Header ── */}
+        {/* Khabat, 2026-07-30: "burger meny funker kun på freedom siden" —
+            Home kept its own pre-(199) avatar (direct navigate-to-profile,
+            no menu) instead of getting the shared TopBar burger menu every
+            other main screen already has. Same swap ServersScreen/
+            WalletScreen/etc. already did; inbox is reachable from the menu
+            now too, so the standalone envelope+badge (badge count was
+            already known-stale, see TopBar.tsx's own header comment) is
+            gone rather than kept alongside a second entry point. */}
         <Animated.View style={[styles.header, fadeStyle]}>
           <Text style={styles.greeting} numberOfLines={1}>{t(greeting)}</Text>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={styles.headerBtn}
-              onPress={() => onNavigate('inbox' as NavTab)}
-              hitSlop={10}
-            >
-              <Text style={styles.headerBtnIcon}>✉</Text>
-              {unreadTotal > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{unreadTotal > 9 ? '9+' : String(unreadTotal)}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.avatarChip, { borderColor: avatarColor, backgroundColor: avatarColor + '22' }]}
-              onPress={() => onNavigate('profile' as NavTab)}
-              hitSlop={10}
-            >
-              {profilePicUrl ? (
-                <Image source={{ uri: profilePicUrl }} style={styles.avatarImage} />
-              ) : (
-                <Text style={styles.avatarEmoji}>{avatarEmoji}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
+          <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </Animated.View>
 
         {/* ── Balance pills — real zarStore data, not fabricated. Zar/hr
@@ -573,14 +548,6 @@ const styles = StyleSheet.create({
   // Header
   header:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: Spacing[2] },
   greeting:       { flex: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.2 },
-  headerRight:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  headerBtn:      { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  headerBtnIcon:  { fontSize: 17, color: Colors.text.secondary },
-  badge:          { position: 'absolute', top: 2, right: 2, minWidth: 14, height: 14, borderRadius: 7, backgroundColor: '#FF6B6B', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 2 },
-  badgeText:      { color: '#fff', fontSize: 8, fontFamily: Typography.family.heading },
-  avatarChip:     { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  avatarEmoji:    { fontSize: 16 },
-  avatarImage:    { width: '100%', height: '100%', borderRadius: 18 },
 
   // Balance pills
   pillRow:      { flexDirection: 'row', gap: Spacing[2] },
