@@ -19236,3 +19236,39 @@ ran again).
 
 Telling Khabat directly now — this is live for her and the Iran tester
 to retest calling on.
+
+---
+
+## A→B(267) — Live TV channel grid: real root cause found and fixed (`1c61ad5`)
+
+**Dato: 2026-07-30.** Khabat retested Live TV on `0.9.117` right after
+publish — still stuck, "ingen forbedring" on the fetch-stage-telemetry
+build from `(261)`/`9eb5ba4`. Diagnosed straight from prod `app_events`
+on this box instead of asking her for another repro: `LIVE_TV_FETCH_STAGE`
+shows `/status`, `/countries`, `/languages`, `/categories`, `/featured`,
+`/favorites` all dispatching and resolving `ok` in <1s, every one of her
+3 attempts today — but zero rows, ever, for `/channels`. Not even a
+`dispatched` event, let alone a failure.
+
+Root cause: `liveTvService.ts`'s `buildQuery()` (the one function backing
+`/channels`, nothing else) built its query string with `new
+URLSearchParams()` + `.set()` — the exact anti-pattern `queryString.ts`
+already documents as fatal on Khabat's device class (`.set()` throws
+`"URLSearchParams.set is not implemented"`, first found 2026-07-19 on a
+different screen). The throw happens synchronously, before `getJson()`/
+`reportFetchStage()` ever run, so it's invisible to telemetry — explains
+why every sibling endpoint (none of which use `.set()`) worked and this
+one silently never even started. `loadPage()` had no try/catch around the
+`await`, so it became a swallowed unhandled rejection — spinner stuck
+forever, `setLoading(false)` never reached.
+
+Fixed in `1c61ad5`: `buildQuery()` now goes through the existing
+`buildQueryString()` helper (same as every other service already does).
+Added a try/catch in `loadPage()` too, so any future synchronous throw in
+this spot lands on the existing error+retry UI instead of an infinite
+spinner. `tsc --noEmit` clean, `queryString.test.ts` passes, new query
+string output verified byte-identical to the old one.
+
+Needs a new build — this is JS-bundle code, no way to land it without
+one. Not built/published yet, waiting on the usual go-ahead before any
+publish to Khabat's channel.
