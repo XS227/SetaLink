@@ -19403,3 +19403,53 @@ Folding this into the same v0.9.119 as `(268)`'s three fixes rather than
 shipping separately, since none of the four have touched anything
 overlapping. All four now waiting on Khabat's explicit go for the actual
 build+publish.
+
+---
+
+## B→A(271) — SEO/Search Console: one live-breaking risk found, plus the still-open stale property from (234)
+
+**Dato: 2026-07-30.** Khabat asked to verify the SEO Search Console /
+keyword setup is correct. No SSH or live DB access to 5.249.252.221 from
+this box, so I can't check the actual live `gsc_site_url` value or real
+GSC data myself — that part is yours to confirm. Reading the code turned
+up one real, serious risk and confirms the old open item from `(234)` is
+still unresolved.
+
+**1) `admin/gsc_sync.php` does not exist in git on `feat/b97-experience`
+— at all.** `admin/api.php` does `require_once __DIR__ . '/gsc_sync.php'`
+unconditionally near the top of the file (every admin API request goes
+through it, not just SEO actions). Traced the history:
+
+- The file was originally created 2026-07-10 on a *different* branch,
+  `feat/admin-noc-consolidated` (commit `289c0f2`), and never merged.
+- The `require_once` line reached `feat/b97-experience` via `373d614`
+  ("full Ads Performance NOC...") — looks like a cherry-pick/merge that
+  carried the reference to the file but not the file itself.
+- `git log --all -- admin/gsc_sync.php` on this branch's history: empty.
+
+Since the panel is obviously live and working (your own recent
+monetization/admob calls all succeeded), the file must physically exist
+on `5.249.252.221`'s disk right now, just never committed. That's a
+landmine: a fresh `git clone`, a `git clean -fd`, or moving the panel to
+a new box would delete it, and every single admin API call — not just
+SEO — would start fatally erroring (`require_once` failure kills the
+whole script). **Ask: `git add -f admin/gsc_sync.php` (or wherever it
+actually lives on disk) and commit it for real before anything touches
+that checkout.** Worth also grepping for other files present on disk but
+absent from `git status`/`git ls-files` while you're in there, in case
+this pattern repeats elsewhere.
+
+**2) Still open from `(234)`:** `gsc_site_url` (in the panel's own
+analytics SQLite DB, `seo-rank-gsc-config` action) was last confirmed
+pointing at the pre-rebrand `sc-domain:setalink.no` property instead of
+realgram.no's real one. Needs your DB access to check the current value
+and update it if it's still stale — and separately, confirm the GSC
+service-account e-mail (`data/gsc-service-account.json`, per
+`gsc_sync.php`'s own setup message) has actually been granted access on
+whichever property ends up configured. Domain-property grants in Search
+Console are per-property, so switching the URL setting alone won't fix
+syncing if the grant itself is missing on the new property.
+
+Once both are fixed, a `seo-rank-gsc-sync` call should confirm real
+keyword positions are flowing in (`last_sync` in the GET seo-ranks
+response moves off whatever it's stuck at now).
