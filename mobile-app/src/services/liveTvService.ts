@@ -10,6 +10,7 @@
 
 import { trackEvent } from './analytics';
 import { useAuthStore } from '../stores/authStore';
+import { buildQueryString } from '../utils/queryString';
 
 const SHAHNAMEH_ORIGIN = 'https://shahnameh.setaei.com';
 const BASE = `${SHAHNAMEH_ORIGIN}/api/live-tv`;
@@ -172,15 +173,22 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   }
 }
 
+// Never build this with `new URLSearchParams()` + `.set()` — some Android/
+// Hermes runtimes throw "URLSearchParams.set is not implemented" (see
+// queryString.ts), which happens synchronously here, before getJson() ever
+// runs, so it produces zero telemetry (no dispatched/ok/error event) and
+// leaves the screen's loading spinner stuck forever. This was the actual
+// root cause behind the 2026-07-30 "channels never load" repro — every
+// other Live TV endpoint here avoids .set() and works fine.
 function buildQuery(q: ChannelQuery): string {
-  const params = new URLSearchParams();
-  if (q.country)  params.set('country', q.country);
-  if (q.language) params.set('language', q.language);
-  if (q.category) params.set('category', q.category);
-  if (q.search)   params.set('search', q.search);
-  params.set('page', String(q.page ?? 1));
-  params.set('limit', String(q.limit ?? 30));
-  return params.toString();
+  return buildQueryString({
+    country:  q.country,
+    language: q.language,
+    category: q.category,
+    search:   q.search,
+    page:     q.page ?? 1,
+    limit:    q.limit ?? 30,
+  });
 }
 
 const EMPTY_PAGE: ChannelPage = { channels: [], page: 1, limit: 30, total: 0, total_pages: 0 };

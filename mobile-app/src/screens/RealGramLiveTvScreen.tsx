@@ -115,7 +115,20 @@ export function RealGramLiveTvScreen({ onBack, onOpenPlayer }: Props) {
     if (append) setLoadingMore(true); else setLoading(true);
     setError('');
     setFailedLoad(false);
-    const result = await getChannels({ search, country, language, category, page: pageNum, limit: PAGE_SIZE });
+    // try/catch here matters: getChannels() is expected to swallow its own
+    // request errors and resolve with `failed: true`, but a synchronous
+    // throw building the request (e.g. 2026-07-30's URLSearchParams.set()
+    // crash, thrown before any fetch/telemetry call) becomes an unhandled
+    // rejection instead — silently swallowed on RN, leaving this spinner
+    // stuck forever with no trace anywhere. Catching it here guarantees the
+    // screen always reaches the error+retry state no matter where a future
+    // bug like that one lands.
+    let result;
+    try {
+      result = await getChannels({ search, country, language, category, page: pageNum, limit: PAGE_SIZE });
+    } catch {
+      result = { channels: [], page: pageNum, limit: PAGE_SIZE, total: 0, total_pages: 1, failed: true };
+    }
     if (result.channels.length === 0 && pageNum === 1) {
       setChannels([]);
       // 2026-07-28: distinguish "request failed" (network/parse/HTTP error,
