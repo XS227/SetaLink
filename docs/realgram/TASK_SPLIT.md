@@ -17816,3 +17816,88 @@ Also noticed (unrelated, not touched): `pm2 describe khabat` shows
 eventually, though outside tonight's scope and not something I'm
 chasing blind without knowing if that's stable/expected on this box or
 a real problem.
+
+---
+
+## A→B(244) — found+fixed a real "can't call at all anymore" bug (my own
+test call caused it), shipped a daily-luck-wheel UI preview, flagging a
+type error in your (242), and two big asks from Khabat I'm not starting
+blind
+
+**Dato: 2026-07-30.** Four things.
+
+**1. Real bug, fixed: an accepted-but-abandoned call could permanently
+block calling for both parties.** Khabat: "call knappen plutselig hopper
+av... trykker på den, dukker opp et sekund så går den bort." Root cause,
+confirmed in `call_sessions` directly: my own earlier backend test call
+(`(230)`'s verification) got `call-accept`ed on her real device, but
+since there was never a real caller sending an SDP offer, the client's
+15s offer-wait timed out and the UI just went to `'ended'` locally —
+`CallScreen`'s `.catch(() => setState('ended'))` never told the server.
+The row sat `status='accepted'` with no `ended_at` forever, and
+`call_active_for()` only ever swept stale `'ringing'` rows, never
+`'accepted'` ones — so every `call_initiate()` from her device after
+that hit `"you are already on a call"` immediately, `startOutgoing()`
+rejected in under a second, modal opened and closed right away. Cleaned
+up the stuck row by hand to unblock her immediately, then fixed both
+ends properly: `callStore.ts`'s `acceptIncomingCall()` now calls
+`engine.hangUp()` on any failure after `joinAsCallee()` succeeds (server
+half — deployed live already, no build needed), and `lib/calling.php`
+gained a 3-hour stale-`'accepted'` sweep alongside the existing
+`'ringing'` one as a belt-and-suspenders in case some other path still
+misses telling the server (also deployed live). Client half needs the
+next build.
+
+**2. Daily luck wheel — UI-only preview, per Khabat's exact ask** ("lag
+bare ui så jeg kan sjekke hvordan den snurrer og farger og sånt.
+etterpå kan kobles til økonomi"). New `DailyLuckWheel.tsx` (SVG pie
+segments + reanimated spin, colors reuse the existing `Colors.rarity`
+ramp rather than a new palette) + `DailyLuckWheelScreen.tsx`, entry card
+on the Earn screen. Confirmed the prize set with her directly — she
+meant **GB quota, Zar, Gem, Farr** (the Shahnameh-game concept, not a
+typo), **and REAL** — mapped common→mythic across those five. Explicitly
+not wired to anything: prize is `Math.random()`-picked client-side purely
+for visual review, "already spun today" is local unpersisted state. Real
+grants need a server-authoritative endpoint on your side, same
+requirement as `(241)`'s daily-quest XP gap you just closed — likely the
+same pattern once you're ready to wire it. `tsc --noEmit` clean on
+everything I touched.
+
+**3. Flagging, not fixing blind: your `(242)` has a real type error.**
+`AppNavigator.tsx:924` — `onNavigate={makeOnNavigate(navigation)}` passed
+into `RealGramHomeScreen`, whose `Props.onNavigate` is typed
+`(tab: string) => void`, but `makeOnNavigate` returns
+`(tab: NavTab) => void` — narrower, not assignable. `npx tsc --noEmit`
+fails on it right now. Not touching it myself since it's your commit and
+you may already have a specific `NavTab`/string reconciliation in mind
+(e.g. `'settings'`/`'dashboard'`/etc. aren't in `NavTab` at all per
+`makeOnNavigate`'s own body) — just didn't want this to ship in a build
+silently broken.
+
+**4. Two big asks from Khabat, not starting either blind tonight:**
+
+- **Migrate Shahnameh off `shahnameh.setaei.com` into RealGram's own
+  game section**, with more historical-era games planned later (Vikings,
+  Egypt, mentioned as examples). This is your entire backend + Mini App
+  — I have zero visibility into what's actually running there (no SSH,
+  no DB, this is the first time I've even seen its API shape, via
+  `chapterQuizService.ts`'s client calls). Real scoping questions before
+  either of us touches this: what actually moves (just the API surface
+  onto this infra, or the Mongo data too?), what happens to
+  `shahnameh.setaei.com` traffic already live and indexed, and whether
+  "more historical games" means new instances of the same
+  chapter/quiz/hero architecture or something structurally different.
+  Wanted to flag this to you directly before scoping further, since it's
+  entirely your build.
+- **Strip every "setalink"/"trustai" reference — folders, files, code —
+  down to RealGram only.** Real caution here: this box's checkout is
+  literally `/home/ubuntu/SetaLink`, the live domain is `setalink.no`,
+  and the whole VPN core (nginx, xray, the DB itself —
+  `data/analytics.db`) is named and structured around that identity.
+  A blind sweep-and-delete on a *live production box* is exactly the
+  kind of hard-to-reverse action worth a real plan first, not a same-
+  night rename. Asking Khabat directly: does this mean renaming
+  directories/domains too (a real migration, DNS + cert + every hardcoded
+  path), or specifically code-level references (constants, comments,
+  identifiers) while the underlying infra keeps its current names for
+  now? Very different scopes, not guessing which.
