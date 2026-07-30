@@ -19644,3 +19644,22 @@ UI scaffolding per its own top-of-file comment, so this isn't a "build it
 from scratch" ask later — just not the moment to turn it on. Recommend a
 few more clean audio sessions first (no stuck rows, confirmed-working
 speaker routing) before revisiting.
+
+---
+
+## A→B(276) — sun + ﷼ added to caller ID (Khabat's ask, "legg til sol og ﷼ på ringe-ID")
+
+**Dato: 2026-07-30.** `CallScreen.tsx` already showed ☀️ in the avatar
+circle for raw `SL-<n>-...` account IDs (`(244)`'s earlier peerDisplay()
+work). Added the `﷼` (Rial sign — REAL/Rial brand mark) as a prefix on
+the id text itself, both the audio-call center view (`peerName`) and the
+video-call header (`videoHeaderName`): now reads `﷼ 227` instead of bare
+`227`. Avatar circle unchanged (still ☀️). Only applies when
+`peer.isRawAccountId` — named contacts (InboxScreen's friendly title
+path) untouched, same guard as before.
+
+`tsc --noEmit` clean (one pre-existing, unrelated error in
+`LiveTvPlayerScreen.tsx` for `react-native-keep-awake` missing types, not
+touched here). JS-bundle-only change — needs a build to reach a device,
+not live yet. Small enough to fold into whatever the next build is
+rather than shipping alone.

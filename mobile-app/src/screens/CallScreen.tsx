@@ -29,9 +29,10 @@ import { CallEngine, CallState } from '../services/callService';
 // random chars>", e.g. "SL-227-62DAC5F0" — meant for support lookups, not
 // for a peer to read off a call screen. Khabat, 2026-07-30: showing her
 // own full ID to whoever she calls felt wrong; wants just the numeric
-// rowid + a logo instead. Only unwraps IDs actually in that shape —
-// InboxScreen also passes a friendly conversation title as peerLabel for
-// named contacts, which should pass through untouched.
+// rowid + a logo instead — avatar circle shows ☀️, the id itself gets a
+// "﷼" prefix (brand mark, REAL/Rial). Only unwraps IDs actually in that
+// shape — InboxScreen also passes a friendly conversation title as
+// peerLabel for named contacts, which should pass through untouched.
 const RAW_ACCOUNT_ID_RE = /^SL-(\d+)-[A-Z0-9]+$/i;
 
 function peerDisplay(rawLabel: string): { id: string; isRawAccountId: boolean } {
@@ -189,14 +190,14 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded, onAccept }: P
               {peer.isRawAccountId ? '☀️' : peer.id.slice(0, 1).toUpperCase()}
             </Text>
           </View>
-          <Text style={styles.peerName}>{peer.id}</Text>
+          <Text style={styles.peerName}>{peer.isRawAccountId ? `﷼ ${peer.id}` : peer.id}</Text>
           <Text style={styles.status}>{statusLabel()}</Text>
         </View>
       )}
 
       {showVideo && (
         <View style={styles.videoHeader}>
-          <Text style={styles.videoHeaderName}>{peer.id}</Text>
+          <Text style={styles.videoHeaderName}>{peer.isRawAccountId ? `﷼ ${peer.id}` : peer.id}</Text>
           {state === 'active' && <Text style={styles.status}>{formatDuration(durationSecs)}</Text>}
         </View>
       )}
