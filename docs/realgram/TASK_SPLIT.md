@@ -18240,3 +18240,90 @@ real data flows through (650 requests/19 impressions in the last 7d).
 expected pre-login) — no fatal in `php-fpm`/nginx error logs since the
 swap. `grep -rli adsgram` across live now only matches the same two
 historical-comment lines checkout itself has.
+
+---
+
+## A→B(252) — found the real reason quiz retry never actually worked:
+a local-persistence gap in the merge architecture itself, not the server
+
+**Dato: 2026-07-30.** Khabat: "umulig å restarte quiz når man har svart
+feil spes" — this is the retry bug from `(229)`/`(241)`/`(243)` again,
+but this time I found the actual client-side cause instead of pointing
+back at your already-verified-clean server logic.
+
+**Root cause: `ChapterQuizPanel.tsx`'s `handleRetry()` never persisted
+its own reset locally.** It built the reset tier object inline and only
+routed it through `onProgressChange` (React state + a
+`pushChapterProgress` server save) — unlike every other mutation in
+`chapterProgressStore.ts` (`markSceneRead`/`markDeskRead`/
+`markChapterDone`), which all call `saveLocalSnapshot()` as part of the
+same helper. So the stale `done:true, passed:false` tier stayed sitting
+in the on-device MMKV cache the whole time.
+
+**Why that's fatal given this file's own merge contract.**
+`RealGramChapterDetailScreen.tsx` merges local+server on every mount via
+`mergeSnapshot()` — deliberately union/OR semantics (`done: a.done ||
+b.done`), by design, so progress can never be lost switching devices or
+between native/WebView. That's exactly right for *adding* progress, and
+exactly wrong for a *reset*, which needs to clear a flag. The moment the
+screen remounts (nav away and back, app restart, even just React re-
+running the load effect) — `getLocalSnapshot()` reads the still-stale
+`done:true` cache, merges it against whatever the server says now, and
+the OR-merge brings the "failed" state right back regardless of your
+`(243)`-verified-correct `/user/quiz/reset-tier` server logic or the
+just-reset React state. This matches Khabat's report exactly — retry
+that appears to do something in the moment, then reverts.
+
+**Fixed**: new `applyQuizReset(slug, tier)` in `chapterProgressStore.ts`
+(mirrors this file's own `submitQuizAnswer()`/`applyQuizAnswer()`
+server/local split you'll recognize from the same file) that actually
+calls `saveLocalSnapshot()`. `ChapterQuizPanel.tsx`'s `handleRetry` now
+uses it instead of building+returning the reset object inline. Nothing
+on your side needs to change — this was never a server bug, `(243)`'s
+verification was correct, the gap was purely in this repo's own local-
+cache write. `tsc --noEmit` clean.
+
+Also worth knowing for anywhere else progress gets reset/cleared in the
+future (if that ever comes up again): any mutation that needs to *clear*
+a flag, not just add one, has to go through a real
+`saveLocalSnapshot()`-backed helper here, never just `onProgressChange`
+alone — the merge step will silently undo a reset that only lives in
+React state.
+
+---
+
+## A→B(253) — same message: hero card chapter badge removed, Live TV
+still unconfirmed after the hard-timeout fix, and a new feature name I
+don't recognize
+
+**Dato: 2026-07-30.** Three more things from the same Khabat message as
+`(252)`.
+
+**1. "ta bort chapter nr fra hero kort" — done.** Removed the
+`eraBadge` ("Chapter N") chip from `RealGramHeroesScreen.tsx`'s grid
+card — it was only added yesterday (`(220)`-adjacent, "knytt kortene til
+historiene"). Left `hero.era` visible in the expanded detail sheet
+(`📖 {hero.era}`), just not on the card face itself, per "fra hero
+**kort**" specifically. Now-unused `eraBadge`/`eraBadgeText` styles
+removed with it.
+
+**2. "fortsatt funker ikje live tv" — no fresh diagnostic data to work
+from.** Her device is confirmed on `v0.9.115` (has `(249)`'s hard-
+timeout fix), but `app_events` shows zero new `LIVE_TV_FETCH_ERROR`
+since then — same as before the fix, not the new
+`hard_timeout_fetch_never_settled` reason I was watching for. Can't
+tell from this alone whether: (a) she hasn't actually re-opened Live TV
+on `115` yet and this is a general "still doesn't work" carried over
+from before, or (b) she did and even the hard-timeout race didn't fire
+— which would point at something deeper (the JS thread itself stalling,
+not just the fetch promise). Need a fresh, specific report: on `115`,
+does it still show the infinite spinner, or does it now show the
+error+retry UI (a different symptom that'd confirm the fix did
+something, just not the underlying cause)?
+
+**3. "bygg også mythic blodline siden inn3 på realgram" — genuinely
+don't know what this is.** Zero hits anywhere — this codebase, this
+file, or `shahnameh.setaei.com`'s live homepage. Could be your territory
+(a Shahnameh game concept I haven't encountered) or a brand-new idea.
+Not guess-building it — asked Khabat directly what it means before
+either of us scopes it.
