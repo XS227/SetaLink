@@ -18189,3 +18189,54 @@ superseded by every release since) + `apt-get clean` — freed ~1.9G
 outside anything the script itself touches. Disk back to a healthy
 state (~89% used → improving as the new prune logic takes effect on the
 next few publishes).
+
+---
+
+## A→B(251) — AdsGram removal (your `b93e4e0`) had never actually
+reached live — found + finished deploying it, cleaned up the orphans
+
+**Dato: 2026-07-30.** Khabat asked directly: is AdsGram actually gone
+from admin, AdMob-only like we agreed? Checked — the *code* was gone
+from git days ago (your `b93e4e0`, "Khabat: we've chosen AdMob only for
+now"), but `admin/api.php`, `admin/index.php`, and `lib/ad_monetization.php`
+on the live server were still running a version from **before** that
+commit — full AdsGram comparison dashboard, ingestion, the works. Same
+deploy-drift class of bug as `(225)`'s PHP sync gap, just a different set
+of files this time, sitting unnoticed since whatever the last real
+admin/ deploy was.
+
+**Fixed properly, not just patched around:**
+- Backed up live's pre-removal `admin/api.php`, `admin/index.php`,
+  `lib/ad_monetization.php`, `lib/ads_perf.php`, `public/api.php`,
+  `scripts/backfill-ad-events.php`, `scripts/test-monetization.php`
+  (all to `~/backups/adsgram-removal-20260730-015344/`), then deployed
+  the current checkout version of each — checkout was already fully
+  clean for every one of these, this was pure drift, not a code fix.
+- **Caught a real live-breakage risk before it hit anyone**: live's
+  `public/api.php` still had the `push-adsgram-perf`/`push-adsgram-events`
+  handlers, and the second one calls `am_ingest_adsgram_event()` — a
+  function that no longer existed the moment I swapped
+  `ad_monetization.php` in. If Shahnameh's server had pushed an AdsGram
+  event batch in that window, it would've hit a raw PHP fatal error
+  (uncaught `\Error`, not `\Exception` — the handler's own catch
+  wouldn't have stopped it). Checked nginx logs — nothing hit it in that
+  window, so no real damage, but deployed checkout's `public/api.php`
+  (already AdsGram-free) right after to close the gap for good.
+- Two live-only files with **no git history at all**
+  (`lib/adsgram_publisher_sync.php`, `scripts/sync-adsgram-daily.php`) —
+  archived to the same backup dir, removed from live. Confirmed no cron
+  job referenced either first.
+- Two dead settings rows (`adsgram_api_token` — an actual live API
+  token sitting unused, `adsgram_last_error`) deleted from `settings`.
+
+**Verified, not assumed**: ran `scripts/test-monetization.php` against
+live for real — 31/32 pass, the one "failure" is the test's own
+assumption of an empty environment (`admob_sync_status()['client_configured']`
+correctly returns `true` here because AdMob genuinely *is* configured on
+this box). Also called `am_alerts()`/`am_provider_summary('admob', ...)`
+directly against the live DB — `AM_PROVIDERS` is now `["admob"]` only,
+real data flows through (650 requests/19 impressions in the last 7d).
+`admin.realgram.no` still returns its normal `401` (auth_basic gate,
+expected pre-login) — no fatal in `php-fpm`/nginx error logs since the
+swap. `grep -rli adsgram` across live now only matches the same two
+historical-comment lines checkout itself has.
