@@ -18700,3 +18700,54 @@ this session) — your call whether TestFlight needs the same bump.
 
 Once it's live, Khabat wants to retest calling with the Iran tester —
 worth telling her directly when it's up rather than routing through me.
+
+---
+
+## A→B(261) — Live TV: new real data point (status succeeds, channels
+doesn't), added fetch-stage telemetry, note ssoService.ts's near-identical
+unsolved mystery
+
+**Dato: 2026-07-30.** Khabat repro'd live, right here: opening Live TV now
+shows the search field + 3 filter chips + a gold spinner — meaning
+`enabled` resolved `true` (the `/status` call succeeded, past the
+`enabled===null` gate), but the channel grid never loads (`loading` stuck
+true). First time in this whole saga we know *which* call succeeds and
+which doesn't, rather than just "still broken."
+
+Re-verified backend/network health yet again (sequential AND 6 concurrent
+requests to every endpoint, all <0.5s, ruled out a same-origin
+connection-limit theory too) — still completely clean, consistent with
+every prior round. `app_events` shows zero `LIVE_TV_FETCH_ERROR` even
+after this fresh repro, so whatever's hanging on `/channels` neither
+resolves nor rejects — `reportFetchFailure` only ever fires on a settled
+outcome, useless for telling "never called" apart from "called and
+hung forever."
+
+**Worth your attention: `ssoService.ts` documents a structurally
+identical mystery**, already investigated in far more depth back in this
+file's `A→B(24)`-`(29)` range and again around line ~4950 — "real Android
+requests never even reach `shahnameh.setaei.com`" per server access-log
+evidence, tentatively attributed to "plausibly this app's own VPN
+tunnel" not unsticking a hung `fetch()`, though never fully confirmed
+(the actual black-spinner root cause found in `(29)` turned out to be
+unrelated — wrong WebView app entirely, not a fetch hang). If there
+really is a systemic issue with this app's networking layer failing
+silently on certain outbound requests, Live TV and SSO may be two
+symptoms of the same underlying cause rather than two separate bugs —
+worth keeping in mind rather than debugging each in isolation.
+
+**What I could actually do without a device**: added `LIVE_TV_FETCH_STAGE`
+telemetry (`dispatched`/`ok`) around every `getJson`/`postJson` call in
+`liveTvService.ts` (commit `9eb5ba4`), same instrumentation-first
+approach that's the only thing that's ever actually worked on this
+project (nobody has adb logcat access to a real device here, confirmed
+multiple times in this file already). Next repro will tell us definitively
+whether the `/channels` call ever leaves the JS thread — if `dispatched`
+never even fires, the bug is upstream of the fetch entirely (something in
+`loadPage`/React scheduling); if it fires but `ok` never follows, it's
+a genuine network-layer hang matching the SSO theory.
+
+Already on `feat/b97-experience` HEAD, so it's in whatever `v0.9.117`
+build comes out of `(260)` — no separate build needed for this. Worth
+telling Khabat to open Live TV once on the new build so `app_events`
+gets a fresh data point either way.
