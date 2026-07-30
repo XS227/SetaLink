@@ -45,7 +45,6 @@ import { DailyLuckWheelScreen }  from '../screens/DailyLuckWheelScreen';
 import { RealGramLiveTvScreen }  from '../screens/RealGramLiveTvScreen';
 import { LiveTvPlayerScreen }    from '../screens/LiveTvPlayerScreen';
 import { StarlinkScreen }        from '../screens/StarlinkScreen';
-import { GameScreen }        from '../screens/GameScreen';
 import { TrustAiLinkScreen } from '../screens/TrustAiLinkScreen';
 import { SettingsScreen }    from '../screens/SettingsScreen';
 import { BypassAppsScreen }  from '../screens/BypassAppsScreen';
@@ -417,9 +416,28 @@ function ActivityAdapter({ navigation, route }: ScreenAdapterProps) {
   return <ActivityScreen activeTab={SCREEN_TO_TAB[route.name] ?? 'activity'} onNavigate={makeOnNavigate(navigation)} />;
 }
 
-function GameAdapter() {
-  // Tab screen now (B-22) — no back button, the footer is how you leave it.
-  return <GameScreen />;
+function GameAdapter({ navigation }: ScreenAdapterProps) {
+  // Khabat, 2026-07-30: "trykker på shahnameh fra footer så havner jeg
+  // tilbake til det gamle shahnameh siden" — the footer's Shahnameh tab
+  // (BottomNav's 'game' key, labelled "Shahnameh") used to render GameScreen,
+  // which is nothing but the legacy ShahnamehEmbed WebView pointed at
+  // shahnameh.setaei.com. RealGramHomeScreen (already built, reachable via
+  // the separate 'ShahnamehHome' stack route) is the real native game hub —
+  // Treasury/Continue Journey/Chronicle progress/Daily Quests/Hero Spotlight,
+  // with real Chapters/Heroes/Clan/Social/Earn/Live TV underneath. That's
+  // what tapping "Shahnameh" should land on now, not the WebView.
+  return (
+    <RealGramHomeScreen
+      onBack={() => navigation.navigate('Home')}
+      onOpenChapters={() => navigation.navigate('Chapters')}
+      onOpenHeroes={() => navigation.navigate('Heroes')}
+      onOpenClans={() => navigation.navigate('ClanBrowse')}
+      onOpenSocial={() => navigation.navigate('Social')}
+      onOpenEarn={() => navigation.navigate('Earn')}
+      onOpenLiveTv={() => navigation.navigate('LiveTv')}
+      onNavigate={makeOnNavigate(navigation) as (tab: string) => void}
+    />
+  );
 }
 
 function ChatsAdapter({ navigation }: ScreenAdapterProps) {

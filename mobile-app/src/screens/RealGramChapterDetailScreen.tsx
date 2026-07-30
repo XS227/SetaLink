@@ -147,10 +147,26 @@ export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Prop
     if (telegramId) pushChapterProgress(telegramId, slug, next).catch(() => {});
   }, [slug, telegramId]);
 
+  // Khabat, 2026-07-30: "fikk error på quiz ... retake eller try again" —
+  // root cause was a race, not the reset logic itself. Quiz answers/resets
+  // are already graded and persisted server-side by their own dedicated
+  // calls (chapterQuizService.ts's submitQuizAnswer/resetQuizTier, both
+  // direct writes to this same ChapterProgress document). This handler used
+  // to ALSO fire pushChapterProgress (chapter-progress/save) right after —
+  // a second, concurrent read-modify-write against the exact same document.
+  // Whichever request's doc.save() landed last won, and season2.js's own
+  // anti-cheat merge (mergeQuizTier, "graded && !srv.done" branch) forces
+  // done:false whenever ITS stale read of srv still looked in-progress —
+  // so a lagging push could silently flip a just-recorded done:true (or a
+  // just-completed reset-tier) back, right before the user tapped Retry.
+  // reset-tier's own guard ("tier_not_resettable" unless tp.done && !tp.passed)
+  // would then reject the retry, which is exactly the visible error toast
+  // reported. Removing the redundant push here closes the race at its
+  // source — nothing here needs re-pushing, the dedicated endpoint already
+  // saved the authoritative state.
   const handleQuizProgressChange = useCallback((next: ChapterProgressSnapshot) => {
     setProgress(next);
-    if (telegramId) pushChapterProgress(telegramId, slug, next).catch(() => {});
-  }, [slug, telegramId]);
+  }, []);
 
   const handleBattleComplete = useCallback(async () => {
     if (completing || !telegramId) return;

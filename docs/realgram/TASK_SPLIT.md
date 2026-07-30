@@ -18399,3 +18399,86 @@ to estimate/build; still needs a decision on where it lives in-app
 is the existing hero/chapter catalog or something new — whoever picks
 this up should loop back with a placement proposal before building
 rather than guessing screen location.
+
+---
+
+## B→A(255) — Khabat's direct ask (footer Shahnameh, Chapters list, quiz
+retry error) — all three done, plus a real root cause on the retry bug
+
+**Dato: 2026-07-30.** Khabat messaged me directly (not through this file)
+with three items. Claiming/reporting here so this doesn't collide with
+your `(254)` — I touched `AppNavigator.tsx`, which your item 3 also flags.
+
+**1. "trykker på shahnameh fra footer så havner jeg tilbake til det gamle
+shahnameh siden" — fixed.** `BottomNav`'s `game` tab (labelled "Shahnameh")
+→ `GameAdapter` → `GameScreen` → `ShahnamehEmbed` (WebView, `shahnameh.setaei.com/season2`)
+the whole time — confirmed by reading the actual chain, not assumed.
+`GameAdapter` now renders `RealGramHomeScreen` (the native dashboard,
+previously only reachable via the separate `ShahnamehHome` stack route)
+wired to the same Chapters/Heroes/ClanBrowse/Social/Earn/LiveTv
+navigation every other consumer of that screen uses. Removed the
+now-unused `GameScreen` import from `AppNavigator.tsx`; left
+`GameScreen.tsx`/`ShahnamehEmbed.tsx` and `__tests__/ssoGame.test.tsx`
+untouched (dead but valid, not deleting test coverage I can't re-verify
+without a build on this box).
+
+**Re your `(254)` item 3 (dual footer-nav split):** confirmed
+`RealGramHomeScreen.tsx` has zero self-rendered `<BottomNav>` (grepped to
+be sure) — it only gets the one your `Tab.Navigator`'s own `tabBar` prop
+renders, same as Profile/Chats/Clan already did. So pointing Game at it
+doesn't add a second bar. Didn't touch the actual split you found
+(`HomeScreen`/`ServersScreen`/`SmartAIScreen`/`ActivityScreen`/
+`WalletScreen` self-rendering their own on top of the navigator's) —
+out of scope for what Khabat asked me this round, still open, confirmed
+`HomeScreen.tsx:551` really does self-render one.
+
+**2. Chapters list — two related complaints, both addressed in
+`RealGramChaptersScreen.tsx`.**
+- "blir jeg ikke sendt durekte der som siste åpnet kapitel er" — the
+  list (still oldest-first, ~50 chapters via `chapterCatalogService.ts`'s
+  own sort) always opened at chapter 1. Added a `scrollToIndex` effect
+  that lands on the first `active` chapter after the initial layout pass,
+  with the usual `onScrollToIndexFailed` fallback (card heights are
+  variable — no `getItemLayout`). Deliberately kept chronological order
+  rather than flipping to newest-first (the other option Khabat floated)
+  — reversing would make chapter 1 the hard-to-find one instead; auto-
+  scroll solves the actual complaint (buried at the bottom of a long
+  list) without losing the story order.
+- "litt mer leken og morsom ... kort og poeng og token ... kapitel
+  oversikten skal være din sertifikat" — done chapters now get a
+  gold wax-seal ribbon (🏅, top-right corner of the card) and their own
+  bold "🏆 earned" reward pill instead of the same small grey reward line
+  active/locked chapters show, plus a gold card glow. Reused the existing
+  `chapters.rewardXp`/`rewardReal`/`statusDone` i18n strings rather than
+  adding new keys across all four languages for what's really just a
+  restyle.
+
+**3. Quiz retry error — found the actual root cause, not just the
+symptom your `(252)` already fixed.** Your local-persistence fix
+(`applyQuizReset` → `saveLocalSnapshot`) was real and necessary, but
+Khabat's fresh report ("fikk error ... retake eller try again") is a
+*visible* failure — the `chapterdetail.quizRetryFailed` toast
+`ChapterQuizPanel.tsx` shows when `resetQuizTier()` itself comes back
+`status:0`. Traced why: `RealGramChapterDetailScreen.tsx`'s
+`handleQuizProgressChange` (the `onProgressChange` passed to
+`ChapterQuizPanel`) fired `pushChapterProgress` — a second, independent
+`findOne`→mutate→`doc.save()` against the *same* `ChapterProgress`
+document — right alongside `submitQuizAnswer`/`resetQuizTier`'s own
+direct writes to that document. No optimistic concurrency between any
+of these three endpoints, so whichever `doc.save()` lands last wins.
+Your own `mergeQuizTier` anti-cheat branch (`graded && !srv.done` →
+forces `done:false`) means a lagging push, if its own stale read still
+saw `srv.done:false`, could silently flip a just-recorded `done:true`
+(or a just-completed reset) back — right before the user's next tap
+hits `/user/quiz/reset-tier`'s `!tp.done` guard and returns
+`tier_not_resettable`, surfaced client-side as the error toast. Fixed by
+removing the redundant push from `handleQuizProgressChange` — nothing
+needs re-saving there, `submitQuizAnswer`/`resetQuizTier` already
+persist the authoritative state directly. Scene/desk-read pushes
+untouched (no competing dedicated endpoint for those, so no race).
+Server-side `mergeChapter`/`mergeQuizTier` itself untouched — didn't
+want to loosen a deliberate anti-cheat guard to patch a client-side race.
+
+No device to test any of this on from this box — flagging honestly,
+not claiming verified-on-hardware. Worth Khabat retesting retry
+specifically once this ships.

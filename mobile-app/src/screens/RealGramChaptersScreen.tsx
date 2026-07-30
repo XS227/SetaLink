@@ -15,13 +15,24 @@
  * copy (title/summary/reward) comes from chapterCatalogService — the same
  * public `data/chapters.json` learn.js itself reads, static story content.
  * Per-user done/locked state comes from contract §9's chapters.list
- * (already fetched for Profile). Tapping a chapter still opens the real
- * Shahnameh WebView (ShahnamehEmbed, via onOpenChapter) — actually reading/
- * quizzing a chapter is real interactive gameplay content, not something
- * to reimplement natively; only this list/overview was the complaint.
+ * (already fetched for Profile). Tapping a chapter opens the real native
+ * reading/quiz screen (RealGramChapterDetailScreen, via onOpenChapter).
+ *
+ * 2026-07-30 (Khabat: with ~50 chapters in ascending order, opening this
+ * list always dropped you at chapter 1 — "blir jeg ikke sendt durekte der
+ * som siste åpnet kapitel er"): auto-scrolls to the active chapter on open
+ * instead of always starting at the top. Kept the chronological (oldest-
+ * first) order rather than flipping it — chapters build on each other
+ * story-wise, so reversing the list would make "chapter 1" the confusing
+ * one to find instead; auto-scroll solves the actual complaint (getting
+ * buried at the bottom of a long list) without losing that structure.
+ * Also gave the completed-chapter card its own "certificate" treatment
+ * (gold ribbon + earned-reward pill) per "kapitel oversikten skal være
+ * din sertifikat når du har fullført kapitlet" — a finished chapter should
+ * visibly read as an award, not just a plain done/locked/active chip.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -54,6 +65,7 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
   const [rows, setRows]       = useState<Row[] | null>(null);
   const [completed, setCompleted] = useState(0);
   const [error, setError]     = useState('');
+  const listRef = useRef<FlatList<Row>>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +97,21 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
     })();
     return () => { cancelled = true; };
   }, [deviceId, t]);
+
+  // Land the list on the active chapter instead of always chapter 1 — see
+  // this file's own header for why. A short delay lets FlatList finish its
+  // first layout pass so scrollToIndex has real measurements to work with;
+  // onScrollToIndexFailed below covers the case where it still races ahead
+  // of that (variable card heights mean no getItemLayout to short-circuit it).
+  useEffect(() => {
+    if (!rows || rows.length === 0) return;
+    const idx = rows.findIndex((r) => r.status === 'active');
+    if (idx <= 0) return; // already at/near the top, nothing to do
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.25 });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [rows]);
 
   const pct = rows && rows.length > 0 ? Math.round((completed / rows.length) * 100) : 0;
 
@@ -132,12 +159,21 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
         </View>
       ) : (
         <FlatList
+          ref={listRef}
           data={rows}
           keyExtractor={(r) => r.slug}
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing[6] }]}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={header}
           renderItem={({ item }) => <ChapterCard row={item} onOpenChapter={onOpenChapter} />}
+          onScrollToIndexFailed={(info) => {
+            // Cards have variable height (optional summary/reward lines), so
+            // there's no getItemLayout to make scrollToIndex instant — fall
+            // back to an approximate offset, then retry the precise index
+            // once that scroll has given FlatList more items to measure.
+            listRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: false });
+            setTimeout(() => listRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.25 }), 150);
+          }}
         />
       )}
     </View>
@@ -149,9 +185,13 @@ function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: s
   const title   = localizedField(row.title, row.title_fa, row.title_ru, lang);
   const summary = localizedField(row.summary, row.summary_fa, row.summary_ru, lang);
   const disabled = row.status === 'locked';
-  const chipStyle  = row.status === 'done' ? styles.chipDone : row.status === 'active' ? styles.chipActive : styles.chipLocked;
-  const chipLabel  = row.status === 'done' ? t('chapters.statusDone') : row.status === 'active' ? t('chapters.statusActive') : t('chapters.statusLocked');
-  const nodeStyle  = row.status === 'done' ? styles.nodeDone : row.status === 'active' ? styles.nodeActive : styles.nodeLocked;
+  const done     = row.status === 'done';
+  const chipStyle  = done ? styles.chipDone : row.status === 'active' ? styles.chipActive : styles.chipLocked;
+  const chipLabel  = done ? t('chapters.statusDone') : row.status === 'active' ? t('chapters.statusActive') : t('chapters.statusLocked');
+  const nodeStyle  = done ? styles.nodeDone : row.status === 'active' ? styles.nodeActive : styles.nodeLocked;
+  const hasReward  = row.reward_xp > 0 || row.reward_real > 0;
+  const rewardLine = `⭐ ${t('chapters.rewardXp').replace('{xp}', String(row.reward_xp))}`
+    + (row.reward_real > 0 ? ` · 💎 ${t('chapters.rewardReal').replace('{real}', String(row.reward_real))}` : '');
 
   return (
     <TouchableOpacity
@@ -160,10 +200,22 @@ function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: s
       activeOpacity={0.85}
       accessibilityLabel={`${title} — ${chipLabel}`}
     >
-      <GlassCard style={[styles.chapterCard, disabled && styles.chapterCardLocked]}>
+      <GlassCard
+        style={[styles.chapterCard, disabled && styles.chapterCardLocked, done && styles.chapterCardDone]}
+        glowColor={done ? Colors.gold[400] : undefined}
+      >
+        {/* Khabat, 2026-07-30: "kapitel oversikten skal være din sertifikat
+            når du har fullført kapitlet" — a done chapter gets a wax-seal-
+            style ribbon + its own bold earned-reward pill instead of the
+            plain small reward line active/locked chapters show. */}
+        {done && (
+          <View style={styles.certificateRibbon}>
+            <Text style={styles.certificateRibbonText}>🏅</Text>
+          </View>
+        )}
         <View style={styles.chapterRow}>
           <View style={[styles.node, nodeStyle]}>
-            <Text style={styles.nodeText}>{row.status === 'done' ? '✓' : row.order}</Text>
+            <Text style={styles.nodeText}>{done ? '✓' : row.order}</Text>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.chapterTitle, disabled && styles.textMuted]} numberOfLines={1}>{title}</Text>
@@ -174,13 +226,15 @@ function ChapterCard({ row, onOpenChapter }: { row: Row; onOpenChapter: (slug: s
               <View style={[styles.chip, chipStyle]}>
                 <Text style={styles.chipText}>{chipLabel}</Text>
               </View>
-              {(row.reward_xp > 0 || row.reward_real > 0) && (
-                <Text style={styles.rewardText} numberOfLines={1}>
-                  ⭐ {t('chapters.rewardXp').replace('{xp}', String(row.reward_xp))}
-                  {row.reward_real > 0 ? ` · 💎 ${t('chapters.rewardReal').replace('{real}', String(row.reward_real))}` : ''}
-                </Text>
+              {!done && hasReward && (
+                <Text style={styles.rewardText} numberOfLines={1}>{rewardLine}</Text>
               )}
             </View>
+            {done && hasReward && (
+              <View style={styles.earnedPill}>
+                <Text style={styles.earnedPillText} numberOfLines={1}>🏆 {rewardLine}</Text>
+              </View>
+            )}
           </View>
         </View>
       </GlassCard>
@@ -214,7 +268,24 @@ const styles = StyleSheet.create({
 
   chapterCard:       { gap: 0 },
   chapterCardLocked: { opacity: 0.55 },
+  chapterCardDone:   { borderColor: 'rgba(212,175,55,0.45)' },
   chapterRow:        { flexDirection: 'row', gap: Spacing[3] },
+
+  certificateRibbon: {
+    position: 'absolute', top: -8, right: -6, zIndex: 5,
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: Colors.gold[400], alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: Colors.bg.void,
+  },
+  certificateRibbonText: { fontSize: 14 },
+
+  earnedPill: {
+    alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center',
+    marginTop: Spacing[2], paddingHorizontal: Spacing[3], paddingVertical: 4,
+    borderRadius: Radius.full, backgroundColor: 'rgba(212,175,55,0.16)',
+    borderWidth: 1, borderColor: 'rgba(212,175,55,0.4)',
+  },
+  earnedPillText: { fontSize: 11, fontFamily: Typography.family.label, color: Colors.gold[400], letterSpacing: 0.2 },
 
   node:     { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.default },
   nodeDone:   { backgroundColor: Colors.gold[400], borderColor: Colors.gold[400] },
