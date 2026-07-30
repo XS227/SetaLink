@@ -67,11 +67,42 @@ export interface ChannelQuery {
   limit?:    number;
 }
 
+// Khabat, 2026-07-30: real live-device repro — Live TV gets stuck on its
+// loading spinner forever, no LIVE_TV_FETCH_ERROR ever reaches app_events
+// (checked directly). Backend and network both proven fine in the same
+// session (direct API checks from this box, and her own phone browser
+// hitting the exact endpoint with VPN off both returned real data
+// instantly) — the only thing left that explains a promise that never
+// resolves *or* rejects is AbortController.abort() not actually
+// terminating the underlying request. That's a known gap in React
+// Native's fetch/XHR bridge on Android in some RN/OkHttp version
+// combinations: abort() fires, the timer callback runs, but the native
+// XHR request already past its "connecting" phase doesn't always
+// propagate the cancellation back into a rejected promise — so `await
+// fetch(...)` just... never returns, silently, past the timeout that was
+// supposed to guarantee it does.
+//
+// This doesn't fix whatever's making the request slow in the first place
+// (still unknown — worth a native-side trace if this keeps happening),
+// but it guarantees getJson()/postJson() always settle within
+// TIMEOUT_MS regardless of whether the underlying fetch's own
+// cancellation actually works, so the UI reliably reaches the
+// error+retry state instead of spinning forever.
+function hardTimeout<T>(promise: Promise<T>, path: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const tid = setTimeout(() => {
+      reportFetchFailure(path, 'hard_timeout_fetch_never_settled');
+      reject(new Error('hard_timeout'));
+    }, TIMEOUT_MS + 500); // slightly past the fetch's own abort, so a real abort still wins first when it works
+    promise.then((v) => { clearTimeout(tid); resolve(v); }, (e) => { clearTimeout(tid); reject(e); });
+  });
+}
+
 async function getJson<T>(path: string): Promise<T | null> {
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const res = await fetch(`${BASE}${path}`, { signal: controller.signal });
+    const res = await hardTimeout(fetch(`${BASE}${path}`, { signal: controller.signal }), path);
     clearTimeout(tid);
     if (!res.ok) {
       reportFetchFailure(path, `http_${res.status}`);
@@ -93,12 +124,12 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const res = await fetch(`${BASE}${path}`, {
+    const res = await hardTimeout(fetch(`${BASE}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       signal: controller.signal,
-    });
+    }), path);
     clearTimeout(tid);
     if (!res.ok) reportFetchFailure(path, `http_${res.status}`);
     const json = await res.json();
