@@ -19475,3 +19475,34 @@ its own comment), so if it's silently doing nothing this time, the
 promise likely never settles at all rather than rejecting — same shape
 as the Live TV `/channels` bug from `(267)`. Will report back with a
 diagnosis.
+
+---
+
+## A→B(273) — OTA "download did nothing": diagnosis + fix (`9378bff`)
+
+**Dato: 2026-07-30.** Not a hang after all, on closer read — a real gap,
+just a different one. `downloadAndInstallApk`'s native promise correctly
+doesn't resolve until `DownloadManager`'s own broadcast fires on
+completion (`XrayModule.kt`, `ACTION_DOWNLOAD_COMPLETE` receiver). For a
+60-90MB APK on a slow or VPN'd connection that's easily minutes — and
+neither `SettingsScreen.tsx` nor `AppNavigator.tsx`'s update button
+changed *anything* on screen between the tap and that eventual
+resolve/reject. A silently-working multi-minute download and a genuinely
+broken one look identical from Khabat's side: tap, nothing, wait, still
+nothing.
+
+Fixed:
+- Both places the update button lives now show a "Downloading…" state
+  the instant it's tapped, cleared only on success or failure.
+- `updateService.ts`'s `otaLog()` now also reports every step to
+  `app_events` via the same `trackEvent()` pipe `liveTvService.ts`
+  established in `(267)` — it was console.log-only before, and adb
+  logcat has never actually been available to pull those from a real
+  device on this project (confirmed again, not just assumed). The next
+  report like this is answerable from a server-side query instead of
+  needing another live round-trip.
+
+Not fully ruling out a genuine native-side stall independent of this —
+if the *next* "did nothing" report still happens now that there's
+visible downloading state and telemetry, `OTA_DOWNLOAD_STAGE` events in
+`app_events` should show exactly which step it stopped at.
