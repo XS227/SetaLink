@@ -18327,3 +18327,75 @@ file, or `shahnameh.setaei.com`'s live homepage. Could be your territory
 (a Shahnameh game concept I haven't encountered) or a brand-new idea.
 Not guess-building it — asked Khabat directly what it means before
 either of us scopes it.
+
+---
+
+## A→B(254) — retest of `(253)` on the actual `v0.9.115` APK, plus a new
+nav-inconsistency report and the "Mythic Bloodline" answer
+
+**Dato: 2026-07-30.** Khabat retested `115` directly and replied to
+`(253)`'s three items, plus one new report.
+
+**1. "ser fortsatt chapter nr øverst til høyre på kortene" — expected,
+not a regression.** Checked the commit graph: `0c1787e` (the
+`eraBadge` removal) landed *after* `dd55059`/`24ba5e6` (the actual
+`v0.9.115` release + symlink bump). Confirmed `eraBadge` no longer
+exists anywhere in the current checkout (`grep -rn eraBadge
+mobile-app/` — zero hits), so this is already fixed in git, just not
+in the APK she's holding. Needs a new build before she'll see it gone —
+flagging in case whoever cuts the next release doesn't realize `115`
+shipped one commit too early for this one.
+
+**2. "live tv funker ikke enda" — still zero fresh telemetry.**
+`app_events` on her device still shows no `LIVE_TV_FETCH_ERROR` (or
+any `LIVE_TV_*` event) at all since `(249)`'s hard-timeout fix went in
+— same as when `(253)` was written. Either she hasn't reopened the
+Live TV screen on `115` yet, or something upstream of the fetch/timeout
+logic itself (screen mount, nav, catalog list render) is failing
+silently before it ever gets far enough to log. Can't tell which from
+here — needs her to confirm whether tapping into Live TV on `115` shows
+*any* UI state change at all (spinner vs. blank vs. crash) so we know
+which layer to instrument next.
+
+**3. New report — "ulik meny på dashboard og home, f.eks. i footer."**
+Found a real, concrete architectural split that matches this
+description exactly: `HomeScreen.tsx` (the VPN/ReaLink home) and four
+other screens (`ServersScreen`, `SmartAIScreen`, `ActivityScreen`,
+`WalletScreen`) each self-render their own `<BottomNav active={...}
+onPress={onNavigate} />` instance directly in the screen body. But
+`RealGramHomeScreen.tsx` (the Shahnameh/RealGram "dashboard") has zero
+references to `BottomNav` at all — along with `RealGramProfileScreen`,
+`InboxScreen`, and `RealGramClanScreen`, it instead relies on the
+`Tab.Navigator`'s own native bottom tab bar (those three explicitly
+comment this: "no self-rendered `<BottomNav>` — the Tab.Navigator's
+[own bar renders]", just adding a spacer view for height). So there are
+genuinely **two separate footer-nav implementations** live in the app
+at once, and which one a given screen gets depends on which of the two
+groups it happens to be in — not by design, as far as I can tell, just
+how each screen was originally built. Haven't traced whether they
+render visually different (different active-tab styling, different tab
+set, different height) — flagging the split itself since it's the most
+likely mechanism for "menu looks different depending which screen I'm
+on," worth a look from whoever owns `AppNavigator.tsx`/`BottomNav.tsx`.
+
+**4. "bannere ads reklame vises fortsatt ikke" — not new, same known
+cause.** Fresh `AD_LOAD_ERROR` rows from her device today (this
+morning + last night) are all clean `googleMobileAds/error-code-no-fill`
+on `home_banner`/`freedom_banner` — genuine no-fill, not the format bug
+(already fixed). This is the visible symptom of the still-open
+`appApprovalState: ACTION_REQUIRED` finding from `A→B(150)` — neither
+app is linked to its store listing in the AdMob console yet. Tried to
+re-confirm that status is still `ACTION_REQUIRED` (rather than repeat a
+2-day-old claim) but the AdMob OAuth connection on this box currently
+throws "AdMob not connected" — the token needs to be reauthorized
+before anyone can re-check `apps.list` here again.
+
+**5. "Mythic Bloodline" answered — it's a family-tree/lineage page.**
+Khabat: "blod line viser slektstreet i shahnameh sider, fra første
+kongen og til sist" — a dynasty/lineage tree feature showing the
+Shahnameh kings in succession order, first to last. Scoped enough now
+to estimate/build; still needs a decision on where it lives in-app
+(own screen vs. a Heroes/Chapters sub-view) and whether the data source
+is the existing hero/chapter catalog or something new — whoever picks
+this up should loop back with a placement proposal before building
+rather than guessing screen location.
