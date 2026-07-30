@@ -382,14 +382,6 @@ function HeroGridCard({
           )}
           <ImageScrim width={imgSize.width} height={imgSize.height} />
           <YieldBadge rate={owned ? owned.zar_per_hour : hero.zar_per_hour} />
-          {/* Khabat, 2026-07-29: "knytt kortene til historiene" — every card
-              already carries `era` (e.g. "Chapter 3"); just wasn't shown
-              anywhere in this screen before. */}
-          {!!hero.era && (
-            <View style={styles.eraBadge}>
-              <Text style={styles.eraBadgeText} numberOfLines={1}>{hero.era}</Text>
-            </View>
-          )}
           {locked && <View style={styles.gridLockOverlay}><Text style={styles.gridLockIcon}>🔒</Text></View>}
         </View>
         <Text style={[styles.gridName, locked && styles.textMuted]} numberOfLines={1}>{hero.name}</Text>
@@ -507,16 +499,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing[2], paddingVertical: 2,
   },
   yieldBadgeText: { fontSize: 10, fontFamily: Typography.family.mono, color: Colors.gold[300] },
-
-  // Chapter/era chip, top-right of the card image, mirrors the yield
-  // badge's placement pattern on the opposite corner.
-  eraBadge: {
-    position: 'absolute', right: Spacing[2], top: Spacing[2],
-    backgroundColor: 'rgba(10,8,2,0.72)', borderRadius: Radius.md,
-    borderWidth: 1, borderColor: 'rgba(212,175,55,0.5)',
-    paddingHorizontal: Spacing[2], paddingVertical: 2, maxWidth: '70%',
-  },
-  eraBadgeText: { fontSize: 9, fontFamily: Typography.family.mono, color: Colors.gold[300] },
 
   rarityDot: { width: 10, height: 10, borderRadius: 5 },
 

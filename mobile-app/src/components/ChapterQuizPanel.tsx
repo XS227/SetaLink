@@ -17,7 +17,7 @@ import { useT } from '../i18n';
 import { useToastStore } from '../stores/toastStore';
 import { localizedField } from '../utils/localizedField';
 import { getChapterQuiz, submitQuizAnswer, resetQuizTier, QuizQuestion, QuizTier } from '../services/chapterQuizService';
-import { ChapterProgressSnapshot, applyQuizAnswer } from '../services/chapterProgressStore';
+import { ChapterProgressSnapshot, applyQuizAnswer, applyQuizReset } from '../services/chapterProgressStore';
 
 const TIERS: QuizTier[] = ['easy', 'medium', 'hard'];
 const TIER_ICON: Record<QuizTier, string> = { easy: '🏆', medium: '⚔', hard: '👑' };
@@ -110,8 +110,7 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
       useToastStore.getState().show(t('chapterdetail.quizRetryFailed'), 'error');
       return;
     }
-    const reset = { idx: 0, correct: [], wrong: [], done: false, locked: tierProgress.locked, passed: false };
-    onProgressChange({ ...progress, quiz: { ...progress.quiz, [activeTier]: reset } });
+    onProgressChange(applyQuizReset(slug, activeTier));
   };
 
   const nCorrect = tierProgress.correct.filter((id) => activeQuestions.some((q) => q.id === id)).length;

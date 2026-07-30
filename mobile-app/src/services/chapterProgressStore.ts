@@ -145,6 +145,29 @@ export function markRewardsDone(slug: string): ChapterProgressSnapshot {
   return next;
 }
 
+/** Khabat, 2026-07-30: "umulig å restarte quiz når man har svart feil" —
+ *  ChapterQuizPanel.tsx's handleRetry() used to build its reset tier
+ *  object inline and only push it through onProgressChange (React state +
+ *  a server save), never through saveLocalSnapshot() the way every other
+ *  mutation here does. The stale done:true/passed:false tier stayed in
+ *  the on-device cache, so the very next screen mount's
+ *  mergeSnapshot(local, server) — union/OR semantics, `done: a.done ||
+ *  b.done` — pulled the old "failed" state right back in no matter what
+ *  the server (or the just-reset React state) said, since a merge can
+ *  only ever add progress, never clear it. A reset has to actually
+ *  persist locally to survive its own next merge. Named to match this
+ *  file's own submitQuizAnswer()/applyQuizAnswer() split (chapterQuizService.ts's
+ *  server call vs. this file's local persistence) — chapterQuizService.ts's
+ *  `resetQuizTier` is the server half, this is the local half. */
+export function applyQuizReset(slug: string, tier: 'easy' | 'medium' | 'hard'): ChapterProgressSnapshot {
+  const snap = getLocalSnapshot(slug);
+  const tp = snap.quiz[tier];
+  const reset: QuizTierProgress = { idx: 0, correct: [], wrong: [], done: false, locked: tp.locked, passed: false };
+  const next = { ...snap, quiz: { ...snap.quiz, [tier]: reset } };
+  saveLocalSnapshot(slug, next);
+  return next;
+}
+
 export function applyQuizAnswer(
   slug: string, tier: 'easy' | 'medium' | 'hard',
   questionId: string, correct: boolean, done: boolean, passed: boolean, idx: number,
