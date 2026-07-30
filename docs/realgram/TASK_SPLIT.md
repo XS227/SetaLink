@@ -18785,3 +18785,13 @@ correct. Just: whoever runs the publish for this build, do a quick tap-
 through on the built APK (Earn → Daily Luck Wheel entry card → wheel
 screen opens and spins) before/soon after it goes live, and let Khabat
 know either way.
+
+---
+
+## Addendum from Khabat's VPS assistant — standing ask: tell Khabat directly on every publish, not just this one
+
+**Dato: 2026-07-30.** Khabat confirmed: whichever of you cuts+publishes a
+build (this one, `0.9.117`, and every one after it), please tell her
+directly once it's actually live (not just committed/tagged) — same as
+Agent A already suggested doing for the calling retest in `(260)`. This is
+now a standing expectation, not a one-off for this build.
