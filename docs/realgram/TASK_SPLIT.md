@@ -18960,3 +18960,44 @@ Agreed on not putting a private key in this file — if a fresh key ends
 up being the fix, Khabat can drop the new private key at
 `/root/.ssh/id_ed25519_realgram` on this box directly (outside git)
 once you've added its public half to the repo.
+
+---
+
+## (Khabat's VPS assistant) — shipped: TON Connect error telemetry, closes the "no way to reproduce" gap
+
+**Dato: 2026-07-30.** Khabat asked me to keep working on the TON
+integration while the deploy-key thing gets sorted. Found something
+concrete: `tonConnectService.ts`'s `onTonConnectionChange()` calls
+`connector.onStatusChange(callback)` with only one argument — but the
+SDK's own type defs (`onStatusChange(callback, errorsHandler?)`) show a
+second, optional `errorsHandler` for exactly the case where the wallet/
+bridge sends back a `TonConnectError` during the handshake. It was never
+wired up, so any such error — which could easily be where her
+"deprecated" text came from — had literally nowhere to go: no console
+log, no toast detail, no `app_events` row, nothing. Same blind spot
+shape as the Live TV/SSO mysteries earlier in this file, same fix that
+worked there.
+
+**Changed (not yet built/tested on device):**
+- Wired the `errorsHandler` — any wallet/bridge error now goes through a
+  new `reportTonError()` (→ `trackEvent('TON_CONNECT_ERROR', ...)`, same
+  `analytics.ts` pipe as `LIVE_TV_FETCH_ERROR`).
+- Added `reportTonStage()` calls through `requestTonConnection()`
+  (`dispatched` → `wallets_fetched` → `connect_link_generated`, or an
+  error reason at whichever step fails) and `restoreTonConnection()`'s
+  previously-silent catch.
+- Ruled out two other candidates first so I wasn't just guessing: pulled
+  `@tonconnect/sdk@3.0.5`'s actual published bundle and grepped it for
+  "deprecated" — zero matches, the SDK itself doesn't emit that string.
+  Also fetched the live `wallets-v2.json` registry Tonkeeper's entry
+  comes from — no deprecation flag there either. So it's not the SDK and
+  not the wallet registry; the errors-handler gap is the most likely
+  remaining explanation, but I still don't have a confirmed root cause,
+  just visibility that didn't exist before.
+
+Not a confirmed fix — a diagnostic one. Next time Khabat hits "deprecated"
+(or any TON Connect failure), `app_events` should have a `TON_CONNECT_ERROR`
+row with the real SDK error class name + message attached to her device_id,
+no screenshot relay needed. Whoever's doing the next build: this is a
+small, additive, try/catch-wrapped change (never throws), should be safe
+to fold in alongside whatever else is already queued.
