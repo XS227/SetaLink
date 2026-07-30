@@ -14,6 +14,7 @@ import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from './GlassCard';
 import { useT } from '../i18n';
+import { useToastStore } from '../stores/toastStore';
 import { localizedField } from '../utils/localizedField';
 import { getChapterQuiz, submitQuizAnswer, resetQuizTier, QuizQuestion, QuizTier } from '../services/chapterQuizService';
 import { ChapterProgressSnapshot, applyQuizAnswer } from '../services/chapterProgressStore';
@@ -36,6 +37,15 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
   const [questions, setQuestions] = useState<QuizQuestion[] | null>(null);
   const [activeTier, setActiveTier] = useState<QuizTier>('easy');
   const [pendingAnswer, setPendingAnswer] = useState<{ picked: number; result: { correct: boolean } } | null>(null);
+  // Set the instant a user taps an answer, before the server round-trip —
+  // Khabat, 2026-07-30: "knappen registrerer litt seint" (the button feels
+  // slow to register). The tap itself was never actually slow; there was
+  // just no visual acknowledgement between the tap and pendingAnswer (which
+  // waits on the network) landing, so an impatient second tap could catch
+  // the Next button once it appeared. This shows a neutral "selected" state
+  // immediately — no correct/wrong color, that's still server-decided only,
+  // matching this file's own header on why grading never happens client-side.
+  const [pickedIndex, setPickedIndex] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
 
@@ -66,20 +76,23 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
     if (progress.quiz[tier].locked) return;
     setActiveTier(tier);
     setPendingAnswer(null);
+    setPickedIndex(null);
   };
 
-  const handleAnswer = async (pickedIndex: number) => {
+  const handleAnswer = async (index: number) => {
     if (!currentQuestion || submitting) return;
+    setPickedIndex(index); // instant visual ack — see the state's own comment
     setSubmitting(true);
-    const result = await submitQuizAnswer(telegramId, slug, currentQuestion.id, pickedIndex);
+    const result = await submitQuizAnswer(telegramId, slug, currentQuestion.id, index);
     setSubmitting(false);
-    if (!result) return; // network hiccup — let the user retry the tap
-    setPendingAnswer({ picked: pickedIndex, result: { correct: result.correct } });
+    if (!result) { setPickedIndex(null); return; } // network hiccup — let the user retry the tap
+    setPendingAnswer({ picked: index, result: { correct: result.correct } });
     onProgressChange(applyQuizAnswer(slug, activeTier, currentQuestion.id, result.correct, result.done, result.passed, result.idx));
   };
 
   const handleNext = () => {
     setPendingAnswer(null);
+    setPickedIndex(null);
   };
 
   const handleRetry = async () => {
@@ -87,7 +100,16 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
     setResetting(true);
     const ok = await resetQuizTier(telegramId, slug, activeTier);
     setResetting(false);
-    if (!ok) return;
+    if (!ok) {
+      // Khabat, 2026-07-30: "på noen kapitler ... funker det ikke" — retry
+      // was failing silently here (network error or a non-1 server status),
+      // which from the user's side looks identical to "the button does
+      // nothing," indistinguishable from a real freeze. Surfacing it doesn't
+      // fix whatever's rejecting the reset server-side, but at least makes
+      // the failure visible instead of silent.
+      useToastStore.getState().show(t('chapterdetail.quizRetryFailed'), 'error');
+      return;
+    }
     const reset = { idx: 0, correct: [], wrong: [], done: false, locked: tierProgress.locked, passed: false };
     onProgressChange({ ...progress, quiz: { ...progress.quiz, [activeTier]: reset } });
   };
@@ -148,11 +170,16 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
             const isPicked = pendingAnswer?.picked === i;
             const isServerCorrect = answered && pendingAnswer!.result.correct && isPicked;
             const isServerWrong = answered && !pendingAnswer!.result.correct && isPicked;
+            // Neutral "you tapped this" state while the grade is still in
+            // flight — only applies before the server result lands (once it
+            // has, isServerCorrect/isServerWrong take over the same button).
+            const isPendingPick = !answered && pickedIndex === i;
             return (
               <TouchableOpacity
                 key={i}
                 style={[
                   styles.answerBtn,
+                  isPendingPick && styles.answerBtnPending,
                   isServerCorrect && styles.answerBtnCorrect,
                   isServerWrong && styles.answerBtnWrong,
                 ]}
@@ -199,6 +226,7 @@ const styles = StyleSheet.create({
   questionText: { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.text.primary, marginBottom: Spacing[1], lineHeight: 21 },
 
   answerBtn: { backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[3], paddingHorizontal: Spacing[4], borderWidth: 1, borderColor: Colors.border.default },
+  answerBtnPending: { borderColor: Colors.gold[400], backgroundColor: 'rgba(212,175,55,0.10)' },
   answerBtnCorrect: { borderColor: Colors.status.connected, backgroundColor: 'rgba(93,214,150,0.12)' },
   answerBtnWrong: { borderColor: '#FF6B6B', backgroundColor: 'rgba(255,107,107,0.12)' },
   answerBtnText: { fontSize: 13, fontFamily: Typography.family.body, color: Colors.text.primary },
