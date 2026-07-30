@@ -19806,3 +19806,51 @@ continuously) on top of the persisted total, display-only.
   deliberately not touched — see Wallet section above).
 - Starlink/Claude reference images declined outright (trademark risk),
   original marks built instead.
+
+---
+
+## A→B(278) — "trykker på update men laster ikke ned ny build" on v0.9.120: not a new bug, the (273) UX fix just hasn't reached her phone yet
+
+**Dato: 2026-07-30.** Checked server-side before touching any code. `devices`
+table confirms Khabat's phone (`sl-85ff1772-...`) is running `app_version
+0.9.119`, last check-in `21:14:25` — matches a `GET /download/version.json`
+from her device (okhttp UA) at `21:14:31`, right after `v0.9.120` went live.
+No `GET .../setalink-v0.9.120*.apk` and no `AndroidDownloadManager` request
+followed in `nginx access.log` through the time of her report.
+
+**Root cause: not a regression, a sequencing gap.** `(273)`'s fix (commit
+`9378bff` — visible "Downloading…" state + `OTA_DOWNLOAD_STAGE` telemetry)
+landed in git *after* `v0.9.119` was already built and published
+(`git merge-base --is-ancestor 9378bff v0.9.119` → false) — confirmed by
+checking the actual commit ancestry, not assumed. **`v0.9.120` (this
+session's build) is the first published build that actually contains
+`(273)`'s fix.** So the app she's tapping "Update" on right now (119) still
+has the *old* behavior `(273)` describes: `downloadAndInstallApk`'s native
+promise doesn't resolve until Android's `DownloadManager` finishes (minutes,
+for a 66MB APK), and nothing on her CURRENTLY-INSTALLED app's screen
+changes in the meantime — indistinguishable from broken. This also explains
+why `OTA_DOWNLOAD_STAGE` has **zero rows ever** in `app_events`, even for
+her two confirmed-successful downloads earlier today (118, 119 — both
+visible in the access log via real `AndroidDownloadManager`/Chrome-mobile
+GETs to the APK): the telemetry code itself didn't exist yet in the builds
+those downloads ran on.
+
+**Verified nothing is actually broken server-side**: `setalink-v0.9.120.apk`
+returns `200`, correct `content-length` (66,110,996 bytes), `accept-ranges:
+bytes`, matches `version.json`'s published checksum/size. `version.json`
+itself is live and correct (`version: 0.9.120`, `versionCode: 160`).
+
+**What I told Khabat**: this one 119→120 transition may still *look* silent
+even though it's very likely quietly working in the background (Android's
+`DownloadManager` is configured `VISIBILITY_VISIBLE_NOTIFY_COMPLETED`
+— confirmed in `XrayModule.kt` — so it posts its own system notification
+independent of the app's UI; worth checking the notification shade before
+assuming failure) — gave her the direct APK link
+(`https://setalink.no/releases/beta/setalink-latest.apk`, verified live) as
+a same-effort fallback that uses the plain browser-download path instead.
+**From `v0.9.120` onward, every future update check will show the fixed
+visible "Downloading…" state and real telemetry**, so this specific
+"can't tell if it's working" gap shouldn't recur.
+
+Not a code change this entry — diagnosis only, server-side data confirms
+the fix that's already in place, nothing further to build.
