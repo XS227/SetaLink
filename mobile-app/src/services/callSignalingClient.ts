@@ -87,6 +87,7 @@ export class RealCallSignalingClient implements CallSignalingClient {
   private ws: WebSocket | null = null;
   private wsReady: Promise<void> | null = null;
   private reconnectAttempt = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closedByUser = false;
   private presenceToken = '';
 
@@ -116,12 +117,19 @@ export class RealCallSignalingClient implements CallSignalingClient {
 
   disconnect(): void {
     this.closedByUser = true;
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this.ws?.close();
     this.ws = null;
     this.wsReady = null;
   }
 
   private openSocket(): void {
+    // ensureConnected() can trigger a fresh openSocket() call while a
+    // backoff reconnect is already scheduled (e.g. placeCall racing a drop
+    // that happened moments earlier) — cancel the pending one so we never
+    // end up with two live sockets and this.ws silently pointing at
+    // whichever one happened to resolve last.
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null; }
     this.wsReady = new Promise((resolve) => {
       const ws = new WebSocket(WS_URL);
       this.ws = ws;
@@ -148,7 +156,10 @@ export class RealCallSignalingClient implements CallSignalingClient {
         if (this.closedByUser) return;
         const delay = RECONNECT_BACKOFF_MS[Math.min(this.reconnectAttempt, RECONNECT_BACKOFF_MS.length - 1)];
         this.reconnectAttempt += 1;
-        setTimeout(() => { if (!this.closedByUser) this.openSocket(); }, delay);
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          if (!this.closedByUser) this.openSocket();
+        }, delay);
       };
 
       ws.onerror = () => { /* onclose fires right after, handled there */ };
@@ -225,6 +236,15 @@ export class RealCallSignalingClient implements CallSignalingClient {
     const data = await callPost('call-initiate', {}, {
       device_id: this.deviceId, peer: calleeDeviceId, kind: 'audio',
     });
+    // call-initiate is a plain HTTPS round-trip (can take seconds on a bad
+    // connection) during which the WS can drop and start reconnecting —
+    // re-check right before sending rather than trusting the socket that
+    // was open when ensureConnected() was first called above. wsSend()
+    // silently no-ops on a non-OPEN socket, and this join is not queued
+    // anywhere else, so skipping this second wait meant the caller could
+    // place a call that rings/accepts over REST but never actually joins
+    // the signaling room — connects with no audio. Found live 2026-07-30.
+    await this.ensureConnected();
     this.wsSend({ type: 'call:join', voucher: data.voucher });
     return { callId: data.call_id };
   }
@@ -249,6 +269,9 @@ export class RealCallSignalingClient implements CallSignalingClient {
   async joinAsCallee(callId: string): Promise<void> {
     await this.ensureConnected();
     const data = await callPost('call-callee-voucher', {}, { device_id: this.deviceId, call_id: callId });
+    // Same race as placeCall() above — re-confirm the socket is actually
+    // open right before the join, not just when this method started.
+    await this.ensureConnected();
     this.wsSend({ type: 'call:join', voucher: data.voucher });
     await callPost('call-accept', {}, { device_id: this.deviceId, call_id: callId }).catch(() => {});
   }

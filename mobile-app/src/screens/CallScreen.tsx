@@ -18,12 +18,37 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, Vibration, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RTCView } from 'react-native-webrtc';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { CallEngine, CallState } from '../services/callService';
+
+// Raw account IDs are admin/api.php's generate_user_id(): "SL-<rowid>-<8
+// random chars>", e.g. "SL-227-62DAC5F0" — meant for support lookups, not
+// for a peer to read off a call screen. Khabat, 2026-07-30: showing her
+// own full ID to whoever she calls felt wrong; wants just the numeric
+// rowid + a logo instead. Only unwraps IDs actually in that shape —
+// InboxScreen also passes a friendly conversation title as peerLabel for
+// named contacts, which should pass through untouched.
+const RAW_ACCOUNT_ID_RE = /^SL-(\d+)-[A-Z0-9]+$/i;
+
+function peerDisplay(rawLabel: string): { id: string; isRawAccountId: boolean } {
+  const m = RAW_ACCOUNT_ID_RE.exec(rawLabel);
+  return m ? { id: m[1], isRawAccountId: true } : { id: rawLabel, isRawAccountId: false };
+}
+
+// Ringback cue for the caller's own 'dialing' wait — mirrors callStore.ts's
+// incoming RING_PATTERN (vibration-only there too, same reason: no audio
+// asset + native sound module linked in this codebase yet, see that file's
+// comment). A softer, steadier pulse than the incoming pattern on purpose —
+// this is "still trying," not "answer me." Khabat, 2026-07-30: dialing felt
+// completely dead with zero feedback (unlike incoming, which already had
+// the vibration ring); this closes that gap. Real audio ringback is tracked
+// separately (needs react-native-incall-manager or similar + on-device
+// verification neither of which this box can do — see TASK_SPLIT.md).
+const DIALING_PATTERN = [0, 250, 1750];
 
 interface Props {
   engine: CallEngine;
@@ -60,6 +85,7 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded, onAccept }: P
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVideo = engine.isVideoCall();
   const localStreamUrl = isVideo ? engine.getLocalStream()?.toURL() ?? null : null;
+  const peer = peerDisplay(peerLabel);
 
   useEffect(() => {
     if (outgoing) {
@@ -79,6 +105,12 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded, onAccept }: P
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (state !== 'dialing') return;
+    Vibration.vibrate(DIALING_PATTERN, true);
+    return () => Vibration.cancel();
+  }, [state]);
 
   useEffect(() => {
     if (state === 'active' && !timerRef.current) {
@@ -153,16 +185,18 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded, onAccept }: P
       ) : (
         <View style={styles.center}>
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarInitial}>{peerLabel.slice(0, 1).toUpperCase()}</Text>
+            <Text style={styles.avatarInitial}>
+              {peer.isRawAccountId ? '☀️' : peer.id.slice(0, 1).toUpperCase()}
+            </Text>
           </View>
-          <Text style={styles.peerName}>{peerLabel}</Text>
+          <Text style={styles.peerName}>{peer.id}</Text>
           <Text style={styles.status}>{statusLabel()}</Text>
         </View>
       )}
 
       {showVideo && (
         <View style={styles.videoHeader}>
-          <Text style={styles.videoHeaderName}>{peerLabel}</Text>
+          <Text style={styles.videoHeaderName}>{peer.id}</Text>
           {state === 'active' && <Text style={styles.status}>{formatDuration(durationSecs)}</Text>}
         </View>
       )}

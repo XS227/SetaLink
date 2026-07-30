@@ -133,6 +133,21 @@ wss.on('connection', (ws) => {
   connections.set(connectionId, ws);
   let presenceDeviceId = null; // set once presence:auth succeeds, for logging/cleanup only
 
+  // Mobile carrier NAT/firewalls (and DPI middleboxes on restrictive
+  // networks) commonly drop an idle TCP connection without ever sending a
+  // FIN/RST — the client's socket looks OPEN locally while every frame
+  // sent into it is silently black-holed. That's fatal here specifically:
+  // call-initiate/accept succeed over plain HTTPS (a fresh request each
+  // time), but the SDP offer/answer/ICE candidates only ever travel over
+  // this one long-lived WS, so a zombie connection reproduces exactly as
+  // "call connects/rings but no audio" or "auth ok but nothing happens" —
+  // found live 2026-07-30, Iran real-device test, ws sessions dying after
+  // a few dozen bytes. Ping every 30s and terminate anything that didn't
+  // pong since the last one, so the client's own reconnect logic (already
+  // has backoff) kicks in fast instead of the app sitting on a dead pipe.
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+
   ws.on('message', (raw) => {
     let msg;
     try {
@@ -235,6 +250,18 @@ wss.on('connection', (ws) => {
 });
 
 setInterval(() => registry.pruneStaleRooms(ROOM_MAX_AGE_MS), PRUNE_INTERVAL_MS).unref();
+
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      ws.terminate(); // no pong since last ping — zombie connection, drop it so the client reconnects
+      return;
+    }
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, HEARTBEAT_INTERVAL_MS).unref();
 
 wsHttpServer.listen(PORT, '127.0.0.1', () => {
   console.log(`calling-relay WS listening on 127.0.0.1:${PORT} (nginx should proxy the public path here)`);
