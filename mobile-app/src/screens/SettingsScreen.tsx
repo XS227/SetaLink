@@ -166,7 +166,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
   } = useSettingsStore();
   const { clearImportedServers, loadBootstrapIfEmpty } = useServerStore();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
-  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'uptodate' | 'available'>('idle');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'uptodate' | 'available' | 'downloading'>('idle');
   const [latestVersion, setLatestVersion] = useState('');
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
 
@@ -235,8 +235,17 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
 
   const handleDownloadUpdate = () => {
     if (!updateResult) return;
+    // Khabat, 2026-07-30: "download-knappen gjorde ingenting" on 118 — the
+    // native call doesn't resolve until DownloadManager's broadcast fires on
+    // completion (a 60-90MB APK, easily minutes on a slow/VPN'd connection),
+    // and until now nothing on screen changed between the tap and that
+    // eventual resolve/reject. A silently-working multi-minute download reads
+    // identically to a broken one with zero feedback. 'downloading' state
+    // makes that wait visible instead of guessing whether anything happened.
+    setUpdateStatus('downloading');
     downloadUpdate(updateResult.apkUrl, updateResult.latestVersion).catch(
       (err: { code?: string; message?: string }) => {
+        setUpdateStatus('available');
         const isPerm = err?.code === 'INSTALL_PERMISSION_REQUIRED';
         Alert.alert(
           isPerm ? t('upd.installPermTitle') : t('upd.downloadFailedTitle'),
@@ -510,14 +519,15 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
             {Platform.OS === 'android' ? (
               <TouchableOpacity
                 onPress={updateStatus === 'available' ? handleDownloadUpdate : handleCheckUpdate}
-                style={[styles.updateBtn, updateStatus === 'available' && styles.updateBtnAvailable]}
+                style={[styles.updateBtn, (updateStatus === 'available' || updateStatus === 'downloading') && styles.updateBtnAvailable]}
                 activeOpacity={0.75}
-                disabled={updateStatus === 'checking'}
+                disabled={updateStatus === 'checking' || updateStatus === 'downloading'}
               >
-                <Text style={[styles.updateBtnText, updateStatus === 'available' && styles.updateBtnTextAvailable]}>
-                  {updateStatus === 'checking'  ? 'Checking…'        :
-                   updateStatus === 'available' ? `Update ${latestVersion}` :
-                   updateStatus === 'uptodate'  ? 'Up to date ✓'    :
+                <Text style={[styles.updateBtnText, (updateStatus === 'available' || updateStatus === 'downloading') && styles.updateBtnTextAvailable]}>
+                  {updateStatus === 'checking'    ? 'Checking…'        :
+                   updateStatus === 'downloading' ? 'Downloading…'     :
+                   updateStatus === 'available'   ? `Update ${latestVersion}` :
+                   updateStatus === 'uptodate'    ? 'Up to date ✓'    :
                    'Check update'}
                 </Text>
               </TouchableOpacity>

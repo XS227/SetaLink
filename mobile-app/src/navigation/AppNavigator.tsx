@@ -145,6 +145,7 @@ function MainTabs() {
   const [isLocked, setIsLocked] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
   const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
+  const [updateDownloading, setUpdateDownloading] = useState(false);
   const appStateRef = React.useRef(AppState.currentState);
 
   // Opens the SAME ABI-resolved apkUrl externally (never hardcoded
@@ -162,10 +163,20 @@ function MainTabs() {
   // permission, failed download, blocked DownloadManager) — which is why
   // "Download did nothing" with no visible feedback. On failure we offer
   // Retry and the browser fallback so the user is never stuck.
+  //
+  // Khabat, 2026-07-30: still reported "download button did nothing" on 118
+  // despite the above — the native promise doesn't resolve until
+  // DownloadManager's own broadcast fires on completion (a 60-90MB APK, easily
+  // minutes on a slow/VPN'd connection), and nothing on screen changed
+  // between the tap and that eventual resolve/reject. A silently-working
+  // multi-minute download reads identically to a broken one. updateDownloading
+  // makes that wait visible instead of leaving the button looking inert.
   const handleDownloadUpdate = React.useCallback(() => {
     const r = updateResult;
     if (!r) return;
+    setUpdateDownloading(true);
     downloadUpdate(r.apkUrl, r.latestVersion).catch((err: { code?: string; message?: string }) => {
+      setUpdateDownloading(false);
       const isPerm = err?.code === 'INSTALL_PERMISSION_REQUIRED';
       Alert.alert(
         isPerm ? t('upd.installPermTitle') : t('upd.downloadFailedTitle'),
@@ -310,8 +321,9 @@ function MainTabs() {
             <TouchableOpacity
               style={updStyles.bannerBtn}
               onPress={handleDownloadUpdate}
+              disabled={updateDownloading}
             >
-              <Text style={updStyles.bannerBtnText}>{t('upd.download')}</Text>
+              <Text style={updStyles.bannerBtnText}>{updateDownloading ? t('upd.downloading') : t('upd.download')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={updStyles.bannerDismiss}
@@ -349,8 +361,9 @@ function MainTabs() {
               style={updStyles.forceBtn}
               activeOpacity={0.85}
               onPress={handleDownloadUpdate}
+              disabled={updateDownloading}
             >
-              <Text style={updStyles.forceBtnText}>{t('upd.downloadUpdate')}</Text>
+              <Text style={updStyles.forceBtnText}>{updateDownloading ? t('upd.downloading') : t('upd.downloadUpdate')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={updStyles.forceSecondaryBtn}

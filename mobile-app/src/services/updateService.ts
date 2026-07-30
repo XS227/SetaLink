@@ -1,6 +1,8 @@
 import { Linking } from 'react-native';
 import { storage, syncGet } from '../storage/storage';
 import { APP_VERSION, APP_BUILD, APP_BUILD_CODE } from '../utils/version';
+import { trackEvent } from './analytics';
+import { useAuthStore } from '../stores/authStore';
 
 export interface ChannelInfo {
   version: string;
@@ -233,10 +235,22 @@ export function snoozeUpdate(): void {
 // The OTA download path is the one place we MUST be able to diagnose from the
 // field, so these logs are unconditional (not gated by __DEV__ like Logger) —
 // they surface under the ReactNativeJS tag in `adb logcat` on release builds.
+// Khabat, 2026-07-30: "download-knappen gjorde ingenting" on 118 — adb logcat
+// has never actually been available to pull these from a real device on this
+// project (same gap ssoService.ts and liveTvService.ts hit), so console.log
+// alone was never going to diagnose a field report. Also routing every step
+// through the same trackEvent()/app_events pipe those two files already use
+// means the *next* "did nothing" report is answerable from server-side
+// queries instead of needing another live round-trip.
 // eslint-disable-next-line no-console
 function otaLog(step: string, detail?: unknown): void {
   // eslint-disable-next-line no-console
   console.log(`[RealGram:OTA] ${step}`, detail ?? '');
+  try {
+    trackEvent('OTA_DOWNLOAD_STAGE', useAuthStore.getState().user?.deviceId, {
+      step, detail: detail === undefined ? undefined : String(detail).slice(0, 300),
+    });
+  } catch { /* diagnostics must never break the UI */ }
 }
 
 /**
