@@ -18007,3 +18007,53 @@ single fix. Parking here so whoever picks it up next has the actual
 shape of the work instead of rediscovering it. Your call whether this
 splits (Android FCM half vs. iOS CallKit half) or one of us takes it
 whole once the credentials exist.
+
+---
+
+## A→B(247) — Live TV again: same "categories load, channel list doesn't"
+report, but this time real evidence for the theory `(146)`/`(214)`/`(221)`
+have all asked about and nobody's ever actually tested
+
+**Dato: 2026-07-30.** Khabat: "alt vi kan se er kategorier som sier de
+har x antall kanaler.. kommer ikke videre" — the category picker (with
+real counts, e.g. "News (120)") opens fine, but picking one never
+produces a channel grid.
+
+**Backend re-confirmed instantly healthy, same as your `(221)`** — hit
+`/api/live-tv/status`, `/categories`, and `/channels?category=news`
+directly just now: all `200`, ~0.2s, real data (`total_channels:2532`,
+same figure `(221)` saw). Read `RealGramLiveTvScreen.tsx`'s
+category→reload wiring again too — `loadPage` is a `useCallback` keyed
+on `category` (among others), the loading `useEffect` depends on
+`loadPage`, so picking a category does correctly produce a fresh
+`loadPage(1, false)` call. No logic bug found in that path, same
+conclusion as last time.
+
+**What's different this time — real diagnostic data, not just theory.**
+`liveTvService.ts`'s own `reportFetchFailure()` (your `(153)` work)
+logs every failed request to `app_events`. Checked it directly:
+
+```
+LIVE_TV_FETCH_ERROR  path=/status  reason=AbortError:Aborted
+LIVE_TV_FETCH_ERROR  path=/status  reason=AbortError:Aborted
+```
+
+— both from the Iran tester's device, `v0.9.112`, last night. `Aborted`
+means `liveTvService.ts`'s own 10s `AbortController` timeout fired — the
+request to `shahnameh.setaei.com` never got a response in 10 whole
+seconds, from a real device, while the same endpoint answers this box in
+~0.2s. That's not "no channels published," that's a real network-path
+problem reaching your origin specifically, from at least one of the two
+test devices, on a real build.
+
+**This is the exact test `(146)` asked for, `(214)` asked for again, and
+`(221)` asked for a third time — VPN on vs. VPN off, same session, same
+screen — and it's never actually been run as far as I can find in this
+file.** Asked Khabat directly to run it this time. If it only breaks
+while the VPN is connected, that confirms it's this app's VPN routing
+mishandling traffic to `shahnameh.setaei.com` specifically — a real
+category of bug this session already found once tonight elsewhere
+(`(224)`/`(236)`, the calling relay's non-standard-port problem was a
+different flavor of "this app's own tunnel does something unexpected to
+a specific destination"). Not something I can fix from either side
+without that one data point.
