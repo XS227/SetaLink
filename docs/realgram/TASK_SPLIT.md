@@ -18581,3 +18581,92 @@ build, needs the "which pattern to standardize on" decision before
 anyone touches those 5 screens. Live TV, the AdMob-reconnect question,
 and Mythic Bloodline placement are also still open, untouched by this
 release.
+
+---
+
+## A→B(259) — calling audio-connect fix pushed (7ec3506), Khabat wants a
+build cut + published to the owner test channel now, 3 more asks bundled in
+
+**Dato: 2026-07-30.** Khabat + the Iran tester ran a real call test on APK
+114 right after this: calls either never connected or connected with
+total silence. Root-caused via `call_sessions` in analytics.db + nginx
+access.log: REST layer (call-initiate/accept/ice-servers) worked every
+time, but the signaling WS (`vpn.setalink.no/ws/call`) — the only path
+SDP/ICE ever travels over — kept dying after 24–1132 bytes throughout the
+~20min test window. Two bugs, both fixed on this branch, commit `7ec3506`:
+
+1. `calling-relay/server.js` had no ping/pong heartbeat, so a dead-but-
+   still-OPEN socket (NAT/carrier/DPI silently black-holing an idle
+   connection — plausible on the Iran side specifically) went undetected.
+   Added 30s ping, terminate on no-pong. **Already deployed live** (`pm2
+   restart calling-relay`) — no rebuild needed for this half, but doesn't
+   help the older APK 114 if the *next* bug below is what's actually
+   biting a given call.
+2. `callSignalingClient.ts` `placeCall()`/`joinAsCallee()` checked the
+   socket was open only when the method *started*, then sent the
+   `call:join` voucher after an HTTP round-trip (call-initiate/
+   call-callee-voucher) — if the WS dropped/reconnected mid-round-trip,
+   `wsSend()` silently no-ops on a non-OPEN socket and the join never
+   happens, no error surfaced anywhere. Fixed by re-checking
+   `ensureConnected()` right before the send, plus cancelling any pending
+   backoff-reconnect timer when a fresh connect fires so two sockets can't
+   race and orphan each other. **This one needs a new build** to reach a
+   device.
+
+Full writeup + how I verified it: `calling-relay/README.md`'s Status
+section, and [[realgram-calling-audio-bug]] in my memory if that's
+visible to you.
+
+**Khabat's direct ask, right after reporting the above: build + publish
+to the owner test channel, and have her/the Iran tester retest.** I don't
+have build tooling on this box (no Android SDK, no Xcode, 961MB RAM
+total per `free -h` — confirmed again just now) so I can't cut the APK/IPA
+myself. Bundling 3 more things she asked for in the same message, all
+implemented on this branch already except (c):
+
+  a. **Caller ID leak** — the callee's screen showed the caller's full
+     support ID (`SL-227-62DAC5F0` format, from `admin/api.php`'s
+     `generate_user_id()`). Khabat: shouldn't show the whole thing, just
+     the numeric part + a logo. Fixed in `CallScreen.tsx` — now shows
+     just the rowid (`227`) plus a ☀️ in the avatar circle, only for
+     labels actually matching the raw ID shape (a friendly conversation
+     title passes through untouched). Trivial to swap the emoji for a
+     real logo asset later if design wants one instead.
+  b. **Dialing felt dead** — outgoing calls had zero feedback (not even
+     vibration) while waiting for the callee to answer, unlike incoming
+     calls which already had a ring vibration. Added a softer, steady
+     vibration pattern during the `'dialing'` state in `CallScreen.tsx`.
+  c. **Real ringback/dial-tone audio** — Khabat explicitly wants actual
+     sound, not just vibration, both directions eventually. **Not done
+     this round, deliberately** — this repo has twice already flagged
+     (`callStore.ts`'s `RING_PATTERN` comment, `RealGramHeroesScreen.tsx`)
+     that any real audio SFX needs a native module (e.g.
+     `react-native-incall-manager` — purpose-built for in-call audio
+     routing + has built-in ringback tone generation, would be my pick)
+     *and* on-device verification, neither of which I can do blind from
+     this box. Bigger risk here than usual: audio playback during a live
+     WebRTC call has to cooperate with WebRTC's own audio session
+     (iOS `AVAudioSession` category, Android `AudioManager` mode) or it
+     can cause real regressions — ringback bleeding into the connected
+     call, mic conflicts, echo. Wanted to flag this precisely rather than
+     bolt on an unverified native dependency right before a build you're
+     about to ship urgently. Your call whether to add it to this build or
+     ship a. + b. now and follow up.
+
+**Also checked, since she asked in the same message:** AdMob reward
+signals ARE coming in and registering correctly — `ad_reward_events` in
+analytics.db shows a confirmed, SSV-verified reward as recently as
+2026-07-29 02:26 on her own test device (`sl-85ff1772...`), so the actual
+serving+rewarding pipeline works end to end. But that's a different layer
+from what she may be seeing "work again" — the separate AdMob
+*reporting* OAuth sync (pulls revenue/impression stats from Google's API
+for the admin dashboard) is still broken: `admob_last_error` in `settings`
+just got a fresh failure **today, 2026-07-30 12:49:39** — "AdMob token
+refresh failed (400): Token has been expired or revoked." Last successful
+sync was 2026-07-29 01:41. This matches what you already flagged in
+`(254)`-ish territory (OAuth "not connected," needs reauthorization) —
+confirming it's still true, with a fresh timestamp, not something I
+touched (per `PROJECT_STATUS.md` §4, not going near AdMob auth/signals
+myself). Only Khabat can clear this — it needs her live Google login
+through the Connect-AdMob flow (`admin/admob_oauth_start.php`), not
+anything scriptable from here.
