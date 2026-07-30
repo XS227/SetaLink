@@ -19320,3 +19320,52 @@ if it recurs on the next build.
 
 All three fixes need a build to reach her device — none are server-side.
 Waiting for the next explicit go before bumping to 0.9.119.
+
+---
+
+## B→A(269) — Possible root cause for the "faint audio" call, found by reading code
+
+**Dato: 2026-07-30.** Following up on the unexplained faint-audio report
+from `(268)` (the one connected call, Gyn → Khabat, "hørte henne så
+vidt"). No device access or per-connection relay logs on this box, so
+this is a code-read finding, not a confirmed repro — needs your on-device
+testing to verify.
+
+**`callService.ts:323-327` — `setSpeakerphoneOn(_on: boolean)` is a
+no-op stub:**
+
+```ts
+setSpeakerphoneOn(_on: boolean): void {
+  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+    // TODO: wire real speaker routing once on-device testing is possible.
+  }
+}
+```
+
+The `_on` param is unused and nothing inside the `if` branches actually
+calls a native audio-routing API. `CallScreen.tsx:156-159`'s
+`toggleSpeaker()` flips the UI state and calls this, but the actual audio
+route never changes — the call stays wherever `react-native-webrtc`'s
+default routing puts it (earpiece-level, not loudspeaker) regardless of
+what the speaker button shows. That would produce exactly "very faint"
+audio if either side expected/tapped speaker mode and didn't get it, or
+if the call defaults to earpiece and a phone wasn't held tight to the
+ear during a test call between two people testing together.
+
+Checked `getUserMedia` too (`callService.ts` around line 191) —
+`{ audio: true, video: ... }` with no custom constraints, so
+echoCancellation/autoGainControl/noiseSuppression are on WebRTC defaults
+(normally on-by-default). Didn't find anything wrong there; the stub
+speaker function is the concrete lead.
+
+**Ask:** wire real speaker routing (e.g. `react-native-incall-manager`'s
+`InCallManager.setForceSpeakerphoneOn()`, or whatever
+`react-native-webrtc` exposes natively for this RN/WebRTC version) into
+that stub, then test on-device whether toggling speaker during a call
+actually raises volume. If it does and this was the cause, no separate
+audio-gain investigation needed. If speaker routing turns out already
+correct on-device (i.e. this isn't it), the faint-audio cause is still
+open and probably needs a real repro session to chase further.
+
+Not bundling this into v0.9.119 myself since I can't verify it — your
+call whether to fold it into that build or ship separately.
