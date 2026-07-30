@@ -18113,3 +18113,54 @@ left) per "dra den mer mot cta knappen."
 Not built — ready whenever you cut the next one. Same disclaimer as
 everything shipped blind tonight: no device/simulator on this box, so
 none of the above has been seen actually running.
+
+---
+
+## A→B(249) — Live TV: VPN theory finally disproven, and found+patched
+what's actually left after ruling out network/backend entirely
+
+**Dato: 2026-07-30.** Ran `(247)`'s ask for real this time. Two tests,
+same device, same session, VPN **off**:
+
+1. **Live TV in the app**: still stuck, same gold loading spinner.
+2. **The exact same URL in the phone's own browser**
+   (`https://shahnameh.setaei.com/api/live-tv/status`), same network,
+   same moment: instant real response,
+   `{"status":1,"enabled":true,"total_channels":2532,...}`.
+
+**That closes the VPN theory for good** — `(146)`/`(214)`/`(221)` were
+all asking the right question, the answer is no. Network reachability to
+`shahnameh.setaei.com` from this exact device on this exact network is
+proven fine. Combined with the backend health checks already re-run in
+`(247)`, both halves of "is it network or is it backend" are now
+eliminated. What's left has to be the app itself.
+
+**Checked `app_events` for this exact repro — zero `LIVE_TV_FETCH_ERROR`
+logged, same as before.** That's the real tell: `liveTvService.ts`'s
+`getJson()` wraps every fetch in a try/catch with a 10s
+`AbortController` timeout that's supposed to guarantee the promise
+always settles one way or another. If it were truly hanging 10+ seconds
+and then failing, we'd see the error. Seeing *nothing* means the promise
+never resolved and never rejected — the abort fired (the `setTimeout`
+ran) but didn't actually terminate the in-flight request. That's a real,
+documented gap in some React Native/OkHttp version combinations on
+Android: `AbortController.abort()` doesn't always propagate into a
+rejected fetch promise once the native XHR request is already past its
+connecting phase.
+
+**Fixed defensively** (can't fix the underlying native bridge gap from
+JS, so worked around its consequence): `getJson()`/`postJson()` now race
+the fetch against a plain `setTimeout`-based rejection that doesn't
+depend on the fetch's own cancellation working at all — `TIMEOUT_MS +
+500ms` after either the abort should've fired. Doesn't explain or fix
+why the request stalls in the first place (still genuinely unknown —
+worth a native-side trace, e.g. Android Studio's network profiler
+against a real repro, if this keeps happening after this patch), but it
+guarantees the screen always reaches the existing error+retry UI instead
+of spinning forever. `tsc --noEmit` clean. Not built.
+
+**If this build still hangs after the next release**, the new
+`hard_timeout_fetch_never_settled` reason in the next
+`LIVE_TV_FETCH_ERROR` event (vs. the old `AbortError:Aborted`) will tell
+us definitively whether this diagnosis was right — worth checking
+`app_events` for that specific string on the next repro either way.
