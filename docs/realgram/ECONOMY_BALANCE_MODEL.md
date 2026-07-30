@@ -102,59 +102,83 @@ common 45%, rare 25%, epic 15%, legendary 10%, mythic 5%, tunable server-side
 once real usage data exists (same `settings`-table pattern as every other
 rate in this doc, not hardcoded).
 
-## 4. Proposed AdMob revenue split (doesn't exist in code yet)
+## 4. AdMob revenue split — three scenarios with consequences worked out
 
-Khabat's ask: "admob som inntekt base... en god del % skal tilbake til
-liquidity og airdrop + server kostnader." Nothing in this repo currently
-splits ad revenue into buckets — it just funds quota grants indirectly via
-the eCPM/egress relationship in §1. A concrete starting proposal (not
-implemented, needs a real settings key + admin UI + ledger, same shape as
-every other rate here):
+Khabat's response to the first draft: don't pick a percentage for her —
+model 2–3 concrete scenarios and what each actually implies for (a) how
+fast REAL gets a real market price and (b) how big the eventual airdrop
+pool ends up being. Framing first, since this matters for reading the
+numbers below correctly: **this is a different flow from §5's referral-REAL
+curve.** This section is a cash waterfall (real USD from ad revenue, split
+into reserve buckets); §5 is a token-emission schedule (REAL minted/granted
+for user actions). They both eventually fund/interact with the same REAL
+supply, but they're governed separately — don't conflate "how much REAL do
+we mint for referrals" with "how do we split the cash that backs REAL's
+price."
 
-- **Server/egress costs first, off the top** — this isn't really a
-  "split" decision, it's covering real cash outlay (the $0.02/GB number).
-  Given §1's finding that ad-rewarded quota is *already* running slightly
-  net-negative on raw egress vs. ad revenue, there may currently be little
-  or nothing left over for the other two buckets from the ad-reward flow
-  specifically — the split more likely applies to *general* AdMob
-  impressions (banners, interstitials shown outside the reward flow),
-  which have no matching egress cost at all and are pure margin.
-- **Liquidity reserve** — a portion set aside toward eventually seeding
-  REAL's first DEX pool (relevant directly to §0 — REAL can't have a real
-  price until *someone* provides that liquidity).
-- **Airdrop reserve** — REAL set aside for the eventual GRAM/USDT
-  conversion event Khabat described, funded from ad margin rather than
-  minted arbitrarily, so the airdrop has real backing behind it instead of
-  being pure inflation.
+**Can't attach real dollar figures yet** — this repo has unit economics
+(§1: $3 eCPM, $0.02/GB egress) but not aggregate revenue, because the
+AdMob *reporting* OAuth sync is currently broken (`admob_last_error`:
+token expired/revoked, separate from the serving pipeline which does
+work — see `[[realgram-calling-audio-bug]]`'s AdMob section from earlier
+today). Scenarios below are expressed as percentages of whatever margin
+remains after server/egress costs (§1's finding: the ad-*reward* flow
+specifically is near break-even or slightly negative on raw egress, so
+this margin is overwhelmingly from banner/interstitial impressions
+outside the reward flow, which carry no matching egress cost).
 
-Actual percentages are a Khabat decision, not something to pick unilaterally
-here — flagged as open in §6.
+| Scenario | Split (after server costs, before founder cut — see §8) | Price-discovery speed | Airdrop pool size | Real risk |
+|---|---|---|---|---|
+| **A — Liquidity-first** | 70% liquidity / 30% airdrop | Fastest — a deeper pool from day one means real price discovery and less slippage on the first trades | Smallest of the three | Airdrop feels stingy if the community's been waiting a while by launch |
+| **B — Airdrop-first** | 30% liquidity / 70% airdrop | Slowest — thin liquidity means REAL's first price is fragile | Biggest of the three | **The dangerous one given §0**: REAL has *zero* liquidity today. A big airdrop hitting a thin/empty pool is the textbook setup for an immediate crash the moment recipients try to sell — could tank REAL's credibility in its first week rather than build it |
+| **C — Even split** | 50% liquidity / 50% airdrop | Middle | Middle | Safest default given REAL's current zero-liquidity starting point — genuinely no dominant strategy, but avoids both A's "airdrop feels thin" and B's "no floor to sell into" |
 
-## 5. "Not stuck, not overearning" — where the real risk actually is
+**My read, since this was asked for, not just three neutral boxes**: given
+§0's finding that REAL is starting from *literally zero* liquidity — not
+"thin," zero — Scenario B's crash risk isn't hypothetical, it's close to
+guaranteed with any airdrop of meaningful size. I'd lean toward starting
+liquidity-weighted (closer to A, e.g. 65/35 or 70/30) for an initial
+bootstrap window, **then rebalancing toward C or even airdrop-weighted
+once there's a real trading floor and volume** — a phased split rather
+than one fixed forever, so the airdrop that eventually lands has
+something real to be worth. This is a proposal to react to, not a
+decision made on Khabat's behalf.
 
-Based on what's visible from this repo, the quota side is already
-reasonably bounded (see §2) — the bigger open risk is the **uncapped
-referral-REAL path** combined with an **undefined REAL "book value"** for
-the eventual airdrop. If REAL has no ceiling on how much a heavy inviter can
-accumulate, and the airdrop conversion rate to GRAM/USDT isn't itself
-capped or scaled to the actual liquidity/reserve available, a small number
-of very effective inviters could claim a disproportionate share of whatever
-gets set aside in §4 — not because anyone "overearned" by gaming the
-system (TrustAI's referral risk-scoring already guards against fake
-invites), but because the mechanism itself has no ceiling. Worth deciding,
-before the wheel or the airdrop math gets built out further: is there a
-per-account cap on total accumulated REAL, or a diminishing-returns curve
-past some referral count (mirroring how the Fibonacci quota-milestone
-curve already *does* taper in absolute terms even though it grows), rather
-than the current flat 500-REAL-per-referral-forever shape?
+## 5. Referral-REAL — diminishing curve proposal (not a hard cap)
+
+Khabat's answer: diminishing-returns curve, same *shape* as the existing
+Fibonacci quota-milestone taper (§2) — grows forever in absolute terms,
+flattens hard on the marginal rate, no wall anyone suddenly hits. Concrete
+proposal, reusing the exact same milestone breakpoints the quota system
+already uses (3/8/21/55 invites) so the "feel" matches something a player
+already recognizes rather than inventing a second curve language:
+
+| Referral # | REAL per referral in this band | Cumulative REAL at band end |
+|---|---|---|
+| 1–8 | 500 (unchanged — today's rate, no regression for the typical inviter) | 4,000 |
+| 9–21 | 300 | 4,000 + 13×300 = 7,900 |
+| 22–55 | 150 | 7,900 + 34×150 = 13,000 |
+| 56+ | 75 (floor — never zero, invitations always mean *something*) | grows 75/referral forever |
+
+Compare to today's flat rate at the same milestones: 8 referrals = 4,000
+either way (**zero change for most users** — the taper only bites past
+the point where someone's already a serious inviter). Past that: at 21
+referrals, 10,500 flat vs. 7,900 on this curve (25% less), at 55, 27,500
+flat vs. 13,000 (53% less), at 100, 50,000 flat vs. 16,375 (67% less).
+The curve doesn't punish normal inviters at all and tames the
+extreme tail hard — matches "avtagende, ikke et hardt tak" exactly: nobody
+stops earning, the 200th referral still pays 75 REAL, but the runaway
+growth from §2's finding is gone.
 
 ## 6. What's blocking a fully authoritative model — needs input, not guessed
 
 - **Dr. Nasrin Dadashi's actual assessment content** — Khabat referenced
   this as the basis for this whole review; nothing by that name exists
-  anywhere in this repo or its docs. Whatever her assessment actually says
-  should shape §3-§5 above, not the other way around — this doc is a
-  starting model to react to, not a replacement for it.
+  anywhere in this repo or its docs (confirmed unrelated to anything else
+  in this project's history per her VPS assistant, 2026-07-30 — different
+  person, no other concern). Whatever her assessment actually says should
+  shape this doc, not the other way around — this is a starting model to
+  react to.
 - **Shahnameh's own Zar/Gem/Farr economy** — genuinely zero visibility
   from this repo (no SSH, no DB, confirmed multiple times elsewhere in
   `TASK_SPLIT.md`, e.g. around the "migrate Shahnameh" discussion). Every
@@ -162,10 +186,78 @@ than the current flat 500-REAL-per-referral-forever shape?
   proposal — whoever has access to `shahnameh-backend` needs to supply
   real earn/sink rates before the wheel can be balanced against the rest
   of the game's economy, not just against this repo's VPN-quota numbers.
-- **AdMob revenue split percentages** (§4) — a real policy decision for
-  Khabat, not something to set unilaterally.
-- **Referral-REAL ceiling** (§5) — same, a real product decision.
+- **Final percentages for §4 and §5** — scenarios/curve proposed, Khabat
+  picks.
+- **§7's node-operator rate and §8's founder-cut number** — both first
+  drafts below, same "propose, don't decide for her" rule.
+
+## 7. Future: Starlink/exit-node operator rewards (new, per Khabat's ask)
+
+New ask, not previously scoped anywhere in this doc or `TASK_SPLIT.md`:
+when someone contributes their own node (framed around Starlink
+specifically, presumably tied to `[[starlink-exit-node-phase1]]`'s
+infrastructure work — currently a single company-run exit node, not yet
+a community node marketplace) to actually carry traffic for other users,
+they should earn REAL for it, with a slice redirected back to the
+community pool — "alle som bidrar må få noe tilbake" extended from
+referrals/ads to infrastructure contribution as a third earning path.
+
+**Grounding the rate**: §1 established the one real cost number this
+whole system has — egress costs the company $0.02/GB. A node operator
+*providing* that GB instead of the company's own servers is a genuine
+supply-side contribution, arguably more valuable than a demand-side
+referral, so anchoring node-operator REAL/GB at or above the existing
+100 REAL/GB redemption rate (§0's only real internal exchange rate) is
+defensible rather than arbitrary. First-draft proposal:
+
+- **100 REAL per GB of verified traffic actually relayed** through the
+  operator's node (not a flat per-node/per-day rate — ties the reward to
+  real contribution, not just having a node listed, which matters for
+  the same reason `trustai_score_referral()` exists for referrals: a
+  self-reported "I ran a node" claim with no traffic behind it shouldn't
+  pay out).
+- **20% of that redirected to the community pool** Khabat asked for
+  (same reserve system as §4/§8, not a separate one) — operator nets 80
+  REAL/GB, 20 REAL/GB flows to community.
+- **Real, unresolved blocker, not glossed over**: none of this can
+  actually ship without a trust-verified bandwidth-metering mechanism —
+  measuring GB *actually relayed* through a specific operator's node,
+  server-side, the same way `trustai_score_referral()` verifies a
+  referral is real rather than trusting a client claim. That
+  infrastructure doesn't exist yet as far as this repo shows (Starlink
+  Phase 1 is a single company-operated exit node per
+  `[[starlink-exit-node-phase1]]`, not a multi-operator system with
+  per-node accounting). This section is the reward-rate design for
+  *when* that infrastructure exists, explicitly marked "i fremtid" in
+  Khabat's own message — not something to start building today.
+
+## 8. Full REAL allocation — the piece that was missing: founder/dev/investor
+
+Khabat, correctly: every bucket above (liquidity, airdrop, community,
+node operators) was accounted for except the person who owns, builds, and
+funded this whole thing. Real gap, not a joke to wave off. Every
+comparable token project (this is completely standard, not unusual to
+ask for) carves out a founder/team/investor allocation alongside
+community/ecosystem/liquidity buckets — typically 10–20% of total
+supply or of ongoing treasury flow, often vesting-locked to show
+long-term commitment rather than an instant cash-out.
+
+Folding this into §4's cash waterfall as a third bucket rather than a
+separate pool (keeps one governance surface, not two):
+
+| Bucket | First-draft % (of post-server-cost margin) |
+|---|---|
+| Liquidity reserve | 45% (scenario-dependent per §4 — this is scenario C's 50 shaved by 5 to make room below) |
+| Airdrop/community reserve | 40% |
+| **Founder/dev/investor (Khabat)** | **15%** |
+
+15% sits in the normal range for a solo founder who's also the sole
+investor and the only person actually shipping code across this entire
+ecosystem (VPN core, RealGram, the economy layer itself) — not
+maximalist, not token. Entirely her call to move up or down; the point
+of this section is that the bucket now *exists* in the model at all,
+which it didn't before she flagged it.
 
 Posted to `TASK_SPLIT.md` for agent B's Shahnameh-side input; the market-
-price and quota-side sections above are usable now regardless of the open
-items.
+price, quota-side, and revenue-split sections above are usable now
+regardless of the open items.
