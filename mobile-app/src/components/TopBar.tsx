@@ -35,18 +35,22 @@ const MENU_WIDTH = 200;
 // Opening the menu is never gated on the native call succeeding.
 const FALLBACK_MENU_POS = { top: Layout.statusBarHeight + Spacing[2] + 48, right: Layout.screenPadding };
 
-interface MenuItem { key: string; icon: string; labelKey: 'nav.profile' | 'st.title' | 'nav.chats' | 'nav.clan' | 'rgprofile.dashboard'; tab: string }
+interface MenuItem { key: string; icon: string; labelKey: 'nav.profile' | 'st.title' | 'nav.chats' | 'nav.clan'; tab: string }
 
 // Khabat, 2026-07-30: Chats/Clan moved here from the footer (BottomNav.tsx's
 // own comment has the full reasoning) — same 'inbox' tab value as before for
 // Chats (still routes to the Stack-pushed 'Inbox' screen, distinct from the
 // tab-bar 'Chats' route), just relabelled to match what left the footer.
+// The separate "Dashboard" item (→ 'ShahnamehHome') was dropped the same
+// session (Khabat: "min profil er min dashboard") — it pointed at the exact
+// same RealGramHomeScreen already reachable via BottomNav's 'game' tab, so
+// it was a second path to a destination that already has one, not a
+// distinct screen.
 const MENU_ITEMS: MenuItem[] = [
   { key: 'profile',   icon: '👤', labelKey: 'nav.profile',       tab: 'profile' },
   { key: 'settings',  icon: '⚙',  labelKey: 'st.title',          tab: 'settings' },
   { key: 'inbox',     icon: '✉',  labelKey: 'nav.chats',         tab: 'inbox' },
   { key: 'clan',      icon: '👥', labelKey: 'nav.clan',          tab: 'clan' },
-  { key: 'dashboard', icon: '🏠', labelKey: 'rgprofile.dashboard', tab: 'dashboard' },
 ];
 
 export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {

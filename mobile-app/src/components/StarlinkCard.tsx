@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { useStarlinkStore } from '../stores/starlinkStore';
+import { StarlinkMark } from './StarlinkMark';
 import { useT } from '../i18n';
 
 /**
@@ -73,11 +74,11 @@ export function StarlinkCard({ onOpen, onInvite, onConnect }: Props) {
       <TouchableOpacity activeOpacity={0.85} onPress={onOpen}>
         {/* Title row */}
         <View style={[styles.titleRow, isRTL && styles.rtlRow]}>
-          <Animated.Text
+          <Animated.View
             style={[styles.satellite, { transform: [{ translateY: drift.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) }] }]}
           >
-            🛰️
-          </Animated.Text>
+            <StarlinkMark size={24} />
+          </Animated.View>
           <View style={styles.titleBlock}>
             <Text style={[styles.title, isRTL && styles.rtlText]}>{t('sl.title')}</Text>
             <Text style={[styles.poweredBy, isRTL && styles.rtlText]}>{t('sl.poweredBy')}</Text>
@@ -150,7 +151,7 @@ const styles = StyleSheet.create({
   titleRow:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   rtlRow:     { flexDirection: 'row-reverse' },
   rtlText:    { textAlign: 'right', writingDirection: 'rtl' },
-  satellite:  { fontSize: 30 },
+  satellite:  {},
   titleBlock: { flex: 1 },
   title:      { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.cyan[300], letterSpacing: 2 },
   poweredBy:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary, letterSpacing: 1, textTransform: 'uppercase', marginTop: 1 },

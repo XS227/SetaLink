@@ -19663,3 +19663,146 @@ path) untouched, same guard as before.
 touched here). JS-bundle-only change — needs a build to reach a device,
 not live yet. Small enough to fold into whatever the next build is
 rather than shipping alone.
+
+---
+
+## A→B(277) — Khabat's post-APK-119 feedback batch: ﷼ branding sweep, layout cleanup, Profile/Dashboard nav merge, Hakim banner, tap stamina, Starlink original mark, Servers/Wallet cleanup
+
+**Dato: 2026-07-30.** Large mixed batch from Khabat's live test of APK 119
+("positiv fremgang, ringer og linjen er klar... nå skal det ryddes før
+neste steg"), relayed in two messages (front-page/dashboard/Shahnameh
+first, Freedom/Wallet as a follow-up). All on `feat/b97-experience`,
+`tsc --noEmit` clean throughout (same one pre-existing `LiveTvPlayerScreen`
+`react-native-keep-awake` types error as `(276)`, untouched). Not built/
+published — per the standing "no builds without an explicit per-build go"
+rule, this is source-only until Khabat says go.
+
+**Trademark flag (handled before writing any code):** Khabat sent two Drive
+links "for the point of showing a real logo" — pulled both down and they
+are SpaceX's actual **Starlink** logo and Anthropic's actual **Claude**
+starburst logo, neither of which this app has rights to use. Flagged to
+Khabat directly; she agreed to an original mark instead (see StarlinkMark
+below), not a copy.
+
+**﷼ branding sweep** — new `components/RealTokenIcon.tsx` (small gold
+badge rendering the same ﷼ glyph `RealCoin.tsx` already uses) replaces the
+plain 💎 emoji and the external `REAL_TOKEN_IMAGE` (a third-party ston.fi
+TON-explorer asset URL, not a brand asset) everywhere REAL balance shows a
+static icon: `RealWalletCard.tsx`'s balance header + both exchange-flow
+icon pairs, `GoldBeatBurst.tsx`'s connect-celebration coins, and via the
+new `TreasuryTile` (below) on Home/Profile. **Checked the actual app icon
+before touching it — Android (adaptive + legacy mipmaps) and iOS
+(`AppIcon-1024.png`) already show the ﷼ gold coin correctly**, confirmed by
+rasterizing `brand/app-icon-realgram.svg` after installing the missing
+`fonts-noto-core` package on this box (the glyph didn't render at all
+without it — worth knowing if anyone else hits "tofu" text instead of ﷼
+rasterizing brand SVGs here). So Khabat seeing "just a gold icon" is either
+a stale cached launcher icon on her device or she's thinking of
+**realgram.no's web favicon/logo, which is NOT in this repo** — grepped the
+whole tree, confirmed no static site/index.html/favicon dir exists here;
+that's Agent B/Shahnameh-box territory, flagging rather than guessing at it
+blind.
+
+**New `TreasuryTile` component** (gold glow border + SVG shine sweep,
+`glowColor`-style shadow) replaces the plain `StatPill`/`StatCell` grids on
+`RealGramHomeScreen.tsx`'s Treasury row and `RealGramProfileScreen.tsx`'s
+Economy grid — the "design a treasury-box style, shiny/glow/gold" ask,
+using the same component in both places so they stay visually identical.
+
+**Layout cleanup** (`HomeScreen.tsx`, `StarlinkBanner.tsx`):
+- ZAR/hr pills: smaller font/padding.
+- Tap section (`coinSection`): trimmed vertical padding/gap.
+- The 3 separate ping/speed/stability metric cards became one slim chip
+  row *inside* the tap section. **Speed showing 0**: real cause is
+  `useVpnStats`'s per-3s-poll delta legitimately reading 0 in an idle
+  window — now holds the last non-zero reading through idle gaps (resets
+  on disconnect), same fallback pattern `ping` already had.
+  **Stability was a hardcoded literal `'98'`** — now derived from the same
+  ping reading the ping chip shows (still a heuristic, but a real function
+  of a real measurement instead of a fixed prop).
+- `StarlinkBanner` (both `vip`/`hero` variants): dropped the wordmark
+  description + dot-progress track, collapsed to badge row + one status
+  line ("X invites left" / unlocked CTA text) per Khabat's exact 2-line
+  spec. `minHeight` removed, card now sizes to content.
+
+**Power/stamina** — new `hooks/useTapEnergy.ts` + `components/EnergyBar.tsx`,
+mirroring the mechanic already spec'd (but never built into the app) in
+`docs/realgram/design/theme-package/screens/01-home.html`'s energy bar JS:
+max pool 2000, −1/tap, +1 regen/300ms tick. Wired into `HomeScreen.tsx`'s
+`handleCoinForge` (a tap with 0 energy earns nothing) with a compact bar
+in the tap section. **Deliberately client-local, not server-synced** — the
+Shahnameh backend's `current_energy`/`energy_max` (Season2User schema,
+per this doc's own earlier notes) belongs to the separate web game's own
+tap flow; a real shared server-authoritative pool for Home's coin needs a
+contract this session didn't verify exists, so this doesn't claim one.
+
+**Original Starlink mark** — new `components/StarlinkMark.tsx` (SVG, three
+offset cyan orbit rings + node dots), replacing the 🛰️ emoji in
+`StarlinkBanner.tsx` and `StarlinkCard.tsx`. Intentionally not SpaceX's
+design (different ring count/style/color, no wordmark reliance) — see
+trademark flag above.
+
+**Shahnameh banner → Hakim** — no Hakim asset existed anywhere in the repo
+before this (checked — zero hits). New `components/HakimAvatar.tsx`
+(original flat-icon sage/scholar portrait, gold-on-dark, same family as
+`brand/lockup-shahnameh.svg`'s currentColor gold) + `ShahnamehHakimBanner.tsx`
+(speech-bubble with 5 cycling warm/motivating lines, fading in/out every
+~3.8s) replaces the plain `EcosystemBanner pin="shahnameh"` promo card on
+Home only — `EcosystemBanner` itself untouched, still used elsewhere
+(PremiumScreen's rotating promo). Added `hakim.line1..5` + `hakim.cta` to
+all 4 i18n languages (en/fa/zh/ru) — **fa/zh/ru translations are a first
+pass, not native-reviewed**, flagging before wide release same as this
+file's other translation caveats.
+
+**Live TV → icon, Daily Luck → wheel banner**: `RealGramHomeScreen.tsx`'s
+Live TV entry shrunk from a full `GlassCard` banner to a small pill icon
+button. Daily Luck's Earn-screen entry point was a bare 🎰 slot-machine
+emoji despite being a *wheel* — new `components/MiniLuckWheel.tsx` (static
+SVG pie preview using the same `PRIZES` colors as the real interactive
+`DailyLuckWheel.tsx`, not the interactive component itself) now sits in
+that banner.
+
+**Profile/Dashboard nav merge** — real duplication, not just "feels
+similar": `RealGramHomeScreen` was mounted under BOTH `BottomNav`'s `game`
+tab AND a separate `ShahnamehHome` stack route (reachable via `TopBar`'s
+burger-menu "Dashboard" item and via a "Dashboard" card *inside*
+`RealGramProfileScreen` that linked to itself-adjacent Home). Removed the
+dead `ShahnamehHome` route + its `types.ts`/`AppNavigator.tsx` dispatch
+case entirely, removed `TopBar`'s "Dashboard" menu item, and removed
+`RealGramProfileScreen`'s duplicate Heroes/Clans+Social/Dashboard/Earn/
+Live TV cards (all 5 were already reachable via `RealGramHomeScreen`'s own
+`quickRow` + Live TV entry). Profile now stays identity/stats/personal-data
+only; Home remains the single hub for those 5 destinations — "min profil
+er min dashboard" implemented as *removing* the redundant hub role from
+Profile, not merging two screens' full content into one.
+
+**Servers ("Freedom") screen** (`ServersScreen.tsx`, `ServerRow.tsx`):
+removed the `Recommended/Fastest/Stealth/Streaming` filter-tab bar
+entirely (list always shows all servers now); collapsed the separate
+"Activity" text button + server-count badge into one small ⓘ icon button;
+`ServerRow` gained a `rank` prop (small badge, gold treatment for top 3)
+so the list reads as individual "hero nodes" instead of a plain settings
+list. **Verified the data is real, not fake**: `serverStore.ts` pulls a
+live `/v1/servers` catalog with telemetry-derived `successScore`/ping/load
+and a bundled `cf-edge` stealth-node fallback for when that fetch itself
+is blocked — confirmed by reading the store, not assumed.
+
+**Wallet screen** (`WalletScreen.tsx`): transaction history collapsed by
+default, tap the header to expand (was always-expanded). Economy card
+gets a small ﷼ `RealTokenIcon` next to its title (Khabat: "ser litt dødt
+ut"). **"Used traffic doesn't move" root-caused, not blindly patched**:
+`vpnStore.ts`'s disconnect handler is the *only* quota writer
+(deliberately delta/session-based — its own comment says an earlier
+continuous-reporting attempt double-counted and inflated lifetime usage),
+so quota legitimately only jumps on disconnect, never mid-session. Fixed
+the visible symptom without touching that server-write logic: added the
+active session's own live `sessionBytes` (which *does* update
+continuously) on top of the persisted total, display-only.
+
+**Not done / explicitly flagged, not guessed at:**
+- realgram.no's web favicon/logo (not in this repo — Agent B/Shahnameh box).
+- Hakim dialogue fa/zh/ru translations need a native-speaker pass.
+- Any live per-session quota *reporting* change (root cause understood,
+  deliberately not touched — see Wallet section above).
+- Starlink/Claude reference images declined outright (trademark risk),
+  original marks built instead.

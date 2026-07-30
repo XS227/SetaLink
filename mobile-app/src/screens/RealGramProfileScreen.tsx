@@ -26,6 +26,7 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { BottomNav } from '../components/BottomNav';
 import { EmberField } from '../components/EmberField';
+import { TreasuryTile } from '../components/TreasuryTile';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
@@ -38,14 +39,6 @@ import {
   getProfileSummary, ProfileSummary,
 } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
-
-// Khabat, 2026-07-29: real-device test on v0.9.105 flagged Profile
-// flash/jam; Live TV (added 2026-07-28) was a suspected-but-unconfirmed
-// cause, hidden here and in RealGramHomeScreen.tsx as a mitigation. Cleared
-// by (196): root cause was useT()'s unmemoized `t` driving a render loop,
-// unrelated to Live TV — Khabat also independently confirmed the jam still
-// hit with this entry point already hidden. Re-enabled.
-const LIVE_TV_ENTRY_ENABLED = true;
 
 // Never surface a raw backend error code — Khabat, 2026-07-21: Profile
 // showed the literal string "profile_unavailable". Map known codes to
@@ -79,16 +72,6 @@ interface Props {
   // 2026-07-27 build test) with a compact progress banner that hands off
   // to a dedicated screen.
   onOpenChapters?: () => void;
-  // Opens the native Heroes roster (RealGramHeroesScreen, A->B(125) roadmap).
-  onOpenHeroes?: () => void;
-  // Opens the native clan directory / social page / Shahnameh-style
-  // dashboard (A->B(125) roadmap items 1/2/6 — browse-only until account
-  // linking unlocks the per-user actions).
-  onOpenClans?: () => void;
-  onOpenSocial?: () => void;
-  onOpenShahnamehHome?: () => void;
-  onOpenEarn?: () => void;
-  onOpenLiveTv?: () => void;
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
@@ -125,8 +108,7 @@ function StatCell({ value, label, icon }: { value: string | number; label: strin
 }
 
 export function RealGramProfileScreen({
-  onBack, onSignOut, onSettings, onOpenChapters, onOpenHeroes,
-  onOpenClans, onOpenSocial, onOpenShahnamehHome, onOpenEarn, onOpenLiveTv,
+  onBack, onSignOut, onSettings, onOpenChapters,
 }: Props) {
   const { t, isRTL } = useT();
   const deviceId       = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -410,12 +392,12 @@ export function RealGramProfileScreen({
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
           <Text style={styles.cardLabel}>{t('rgprofile.economy')}</Text>
           <View style={styles.statsGrid}>
-            <StatCell value={economy.real_balance.toLocaleString()} label={t('rghome.statReal')} icon="💎" />
-            <StatCell value={economy.zar.toLocaleString()}          label={t('rghome.statZar')}  icon="🪙" />
-            <StatCell value={economy.gems}                          label={t('rghome.statGems')} icon="💠" />
-            <StatCell value={economy.farr}                          label={t('rgprofile.statFarr')} icon="🔥" />
-            <StatCell value={economy.xp.toLocaleString()}           label={t('rghome.statXp')}   icon="⭐" />
-            <StatCell value={economy.real_earned_this_season.toLocaleString()} label={t('rgprofile.statEarnedSeason')} icon="📈" />
+            <TreasuryTile real value={economy.real_balance.toLocaleString()} label={t('rghome.statReal')} style={styles.statCellTile} />
+            <TreasuryTile icon="🪙" value={economy.zar.toLocaleString()}          label={t('rghome.statZar')} style={styles.statCellTile} />
+            <TreasuryTile icon="💠" value={String(economy.gems)}                  label={t('rghome.statGems')} style={styles.statCellTile} />
+            <TreasuryTile icon="🔥" value={String(economy.farr)}                  label={t('rgprofile.statFarr')} style={styles.statCellTile} />
+            <TreasuryTile icon="⭐" value={economy.xp.toLocaleString()}           label={t('rghome.statXp')} style={styles.statCellTile} />
+            <TreasuryTile icon="📈" value={economy.real_earned_this_season.toLocaleString()} label={t('rgprofile.statEarnedSeason')} style={styles.statCellTile} />
           </View>
         </GlassCard>
 
@@ -481,99 +463,17 @@ export function RealGramProfileScreen({
           </GlassCard>
         </TouchableOpacity>
 
-        {/* Heroes — native roster (A->B(125) roadmap item 3), catalog-only
-            until account linking unlocks per-user ownership. */}
-        <TouchableOpacity
-          disabled={!onOpenHeroes}
-          onPress={onOpenHeroes}
-          activeOpacity={0.85}
-          accessibilityLabel={t('rgprofile.browseHeroes')}
-        >
-          <GlassCard style={styles.card}>
-            <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>{t('rgprofile.heroes')}</Text>
-              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
-            </View>
-          </GlassCard>
-        </TouchableOpacity>
-
-        {/* Clans directory + Social — native, browse-only until account
-            linking unlocks per-user actions (A->B(125) roadmap items 1/2). */}
-        <View style={styles.quickLinksRow}>
-          <TouchableOpacity
-            disabled={!onOpenClans}
-            onPress={onOpenClans}
-            activeOpacity={0.85}
-            accessibilityLabel={t('rgprofile.browseClans')}
-            style={{ flex: 1 }}
-          >
-            <GlassCard style={styles.quickLinkCard}>
-              <Text style={styles.cardLabel}>{t('rgprofile.clans')}</Text>
-            </GlassCard>
-          </TouchableOpacity>
-          <TouchableOpacity
-            disabled={!onOpenSocial}
-            onPress={onOpenSocial}
-            activeOpacity={0.85}
-            accessibilityLabel={t('rgprofile.openSocial')}
-            style={{ flex: 1 }}
-          >
-            <GlassCard style={styles.quickLinkCard}>
-              <Text style={styles.cardLabel}>{t('rgprofile.social')}</Text>
-            </GlassCard>
-          </TouchableOpacity>
-        </View>
-
-        {/* Shahnameh dashboard — native, first pass (A->B(125) roadmap item
-            6, not yet pixel-verified against index.html). */}
-        <TouchableOpacity
-          disabled={!onOpenShahnamehHome}
-          onPress={onOpenShahnamehHome}
-          activeOpacity={0.85}
-          accessibilityLabel={t('rgprofile.openDashboard')}
-        >
-          <GlassCard style={styles.card}>
-            <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>{t('rgprofile.dashboard')}</Text>
-              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
-            </View>
-          </GlassCard>
-        </TouchableOpacity>
-
-        {/* Earn — native, real (A->B(125) roadmap item: Earn). Daily
-            check-in, social/partner tasks, referral milestones — all real
-            actions against /api/season2/earn/*, not a placeholder list. */}
-        <TouchableOpacity
-          disabled={!onOpenEarn}
-          onPress={onOpenEarn}
-          activeOpacity={0.85}
-          accessibilityLabel={t('rgprofile.openEarn')}
-        >
-          <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-            <View style={styles.journeyBanner}>
-              <Text style={styles.cardLabel}>{t('rgprofile.earn')}</Text>
-              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
-            </View>
-          </GlassCard>
-        </TouchableOpacity>
-
-        {/* Live TV — Khabat's iptv-org integration spec (2026-07-28), entry
-            hidden 2026-07-29 pending the app-jam investigation above. */}
-        {LIVE_TV_ENTRY_ENABLED && (
-          <TouchableOpacity
-            disabled={!onOpenLiveTv}
-            onPress={onOpenLiveTv}
-            activeOpacity={0.85}
-            accessibilityLabel={t('rgprofile.openLiveTv')}
-          >
-            <GlassCard style={styles.card}>
-              <View style={styles.journeyBanner}>
-                <Text style={styles.cardLabel}>{t('rgprofile.liveTv')}</Text>
-                <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
-              </View>
-            </GlassCard>
-          </TouchableOpacity>
-        )}
+        {/* Heroes/Clans/Social/Earn/Live TV were duplicated here AND in
+            RealGramHomeScreen's quickRow + Live TV card, reached two
+            different ways (Profile's own cards vs. Home/"Dashboard" —
+            literally the same RealGramHomeScreen mounted under both the
+            'game' bottom-tab and a separate 'ShahnamehHome' stack route).
+            Khabat, 2026-07-30: "profil og dashboard virker å ha nesten
+            samme itenms/info... min profil er min dashboard" — removed the
+            duplicate nav-hub role from Profile entirely (including the
+            "Dashboard" card that pointed at RealGramHomeScreen from inside
+            itself); Home remains the single hub for those 5 destinations,
+            Profile stays identity + stats + personal data only. */}
 
         {/* Clan */}
         <GlassCard style={styles.card}>
@@ -667,6 +567,7 @@ const styles = StyleSheet.create({
 
   statsGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing[4] },
   statCell:     { minWidth: 84, alignItems: 'flex-start' },
+  statCellTile: { flexBasis: '30%', flexGrow: 0 },
   statValue:    { fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary },
   statLabel:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
 
@@ -676,8 +577,6 @@ const styles = StyleSheet.create({
   journeyBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing[1] },
   journeyBannerText: { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
   journeyBannerArrow: { fontSize: 18, color: Colors.gold[400] },
-  quickLinksRow:  { flexDirection: 'row', gap: Spacing[3] },
-  quickLinkCard:  { alignItems: 'center', paddingVertical: Spacing[3] },
 
   clanRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   clanPhoto:    { width: 48, height: 48, borderRadius: 24 },

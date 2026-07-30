@@ -9,7 +9,7 @@
  * balance source) — so this always renders "Coming soon", never a number.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
@@ -18,7 +18,9 @@ import { TopBar } from '../components/TopBar';
 import { RealWalletCard } from '../components/RealWalletCard';
 import { TonConnectCard } from '../components/TonConnectCard';
 import { EmberField } from '../components/EmberField';
+import { RealTokenIcon } from '../components/RealTokenIcon';
 import { useAuthStore } from '../stores/authStore';
+import { useVpnStore } from '../stores/vpnStore';
 import { useT } from '../i18n';
 import { getProfileSummary, ProfileEconomy } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
@@ -38,8 +40,24 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
   const deviceId = user?.deviceId ?? '';
   const isFocused = useIsFocused();
 
+  // Khabat, 2026-07-30: "used trafikk beveger seg ikke, står bare null" —
+  // real, explainable cause, not a display bug: quotaBytesUsed only gets
+  // written on disconnect (vpnStore.ts's disconnect handler is the single
+  // quota writer, deliberately delta/session-based — an earlier attempt at
+  // continuous reporting double-counted and inflated lifetime usage, per
+  // that file's own comment, so this does NOT reintroduce that). While a
+  // session is still active, this screen only had the last-disconnect
+  // snapshot to show, which legitimately never moved mid-session. Added the
+  // current session's own live byte counter (vpnStore's sessionBytes, which
+  // *does* update continuously) on top of the persisted total for display
+  // only — real measured bytes, just not yet the ones written to the
+  // server-authoritative quota.
+  const isConnected = useVpnStore((s) => s.connectionState === 'connected');
+  const sessionBytes = useVpnStore((s) => s.sessionBytes);
+  const liveSessionGb = isConnected ? (sessionBytes.sent + sessionBytes.received) / 1073741824 : 0;
+
   const totalGb = (user?.quotaBytesTotal ?? 0) / 1073741824;
-  const usedGb  = (user?.quotaBytesUsed  ?? 0) / 1073741824;
+  const usedGb  = (user?.quotaBytesUsed  ?? 0) / 1073741824 + liveSessionGb;
   const freeGb  = Math.max(0, totalGb - usedGb);
 
   // Full economy (XP/Gems/FARR) — same source Profile reads (contract §9),
@@ -61,6 +79,7 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
   // real activity.timeline entries too, but not what "transaction
   // history" means on a wallet screen.
   const [txHistory, setTxHistory] = useState<ActivityEvent[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const loadHistory = useCallback(() => {
     if (!deviceId) return;
     getActivityTimeline(deviceId, 20, 0)
@@ -108,7 +127,10 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
 
         {economy && (
           <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-            <Text style={styles.cardTitle}>{t('wallet.economyTitle')}</Text>
+            <View style={styles.economyTitleRow}>
+              <RealTokenIcon size={18} />
+              <Text style={styles.cardTitle}>{t('wallet.economyTitle')}</Text>
+            </View>
             <View style={styles.quotaRow}>
               <View style={styles.quotaCell}>
                 <Text style={styles.quotaValue}>{economy.xp.toLocaleString()}</Text>
@@ -146,7 +168,19 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
 
         {txHistory.length > 0 && (
           <GlassCard style={styles.card}>
-            <Text style={styles.cardTitle}>{t('wallet.historyTitle')}</Text>
+            {/* Khabat, 2026-07-30: "transaction history kan åpnes og vises
+                med et trykk hvis man ønsker" — collapsed by default, tap
+                the header to expand. */}
+            <TouchableOpacity
+              style={styles.historyHeaderRow}
+              activeOpacity={0.7}
+              onPress={() => setHistoryOpen((o) => !o)}
+              accessibilityLabel={t('wallet.historyTitle')}
+            >
+              <Text style={styles.cardTitle}>{t('wallet.historyTitle')}</Text>
+              <Text style={styles.historyChevron}>{historyOpen ? '︿' : '﹀'}</Text>
+            </TouchableOpacity>
+            {historyOpen && (
             <View style={styles.historyList}>
               {txHistory.map((e, i) => (
                 <View key={`${e.ts}-${i}`} style={styles.historyRow}>
@@ -159,6 +193,7 @@ export function WalletScreen({ onNavigate, activeTab }: Props) {
                 </View>
               ))}
             </View>
+            )}
           </GlassCard>
         )}
 
@@ -179,10 +214,13 @@ const styles = StyleSheet.create({
   title:       { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   card:        { padding: Spacing[4] },
   cardTitle:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  economyTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   quotaRow:    { flexDirection: 'row', marginTop: Spacing[3], gap: Spacing[3] },
   quotaCell:   { flex: 1, alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.md, paddingVertical: Spacing[3] },
   quotaValue:  { fontSize: 18, fontFamily: Typography.family.heading, color: Colors.text.primary },
   quotaLabel:  { fontSize: 11, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  historyHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  historyChevron:   { fontSize: 13, color: Colors.text.muted },
   historyList:    { gap: Spacing[3], marginTop: Spacing[3] },
   historyRow:     { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   historyIcon:    { fontSize: 16, width: 22, textAlign: 'center' },

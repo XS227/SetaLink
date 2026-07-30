@@ -23,7 +23,6 @@ export type RootStackParamList = {
   ClanBrowse:    undefined;
   ClanHome:      undefined;
   Social:        undefined;
-  ShahnamehHome: undefined;
   Earn:          undefined;
   DailyLuck:     undefined;
   LiveTv:        undefined;

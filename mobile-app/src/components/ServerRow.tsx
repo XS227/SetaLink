@@ -39,6 +39,11 @@ interface Props {
   server: Server;
   onSelect: (server: Server) => void;
   onDelete?: (server: Server) => void;
+  /** 1-based position in the list — rendered as a small rank badge so the
+   *  list reads as a set of individual "hero nodes" rather than a plain
+   *  settings-style list (Khabat, 2026-07-30: "ikke en lang kjedelig liste
+   *  nedover men hero nodes"). Top 3 get the gold treatment. */
+  rank?: number;
 }
 
 // "ping colour: green fast / gold mid" (theme pkg 04-freedom.html) —
@@ -65,16 +70,23 @@ function LoadBar({ load }: { load: number }) {
   );
 }
 
-function ServerRowComponent({ server, onSelect, onDelete }: Props) {
+function ServerRowComponent({ server, onSelect, onDelete, rank }: Props) {
   const { t } = useT();
   const pingLabel = server.ping === 0 ? '—' : `${server.ping}ms`;
+  const isTopRank = !!rank && rank <= 3;
 
   return (
     <TouchableOpacity
-      style={[styles.row, server.selected && styles.selectedRow]}
+      style={[styles.row, isTopRank && styles.topRankRow, server.selected && styles.selectedRow]}
       onPress={() => onSelect(server)}
       activeOpacity={0.7}
     >
+      {!!rank && (
+        <View style={[styles.rankBadge, isTopRank && styles.rankBadgeTop]}>
+          <Text style={[styles.rankBadgeText, isTopRank && styles.rankBadgeTextTop]}>{rank}</Text>
+        </View>
+      )}
+
       {/* Flag + Country */}
       <View style={styles.left}>
         <View style={styles.flagBox}><FlagGlyph flag={server.flag} brand={isBrandNode(server.id)} size={28} /></View>
@@ -170,6 +182,23 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(51,255,178,0.5)',
     backgroundColor: 'rgba(51,255,178,0.05)',
   },
+  topRankRow: {
+    borderColor: 'rgba(255,196,120,0.35)',
+    shadowColor: Colors.gold[400],
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  rankBadge: {
+    width: 22, height: 22, borderRadius: 11,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: Colors.bg.elevated,
+    borderWidth: 1, borderColor: Colors.border.default,
+  },
+  rankBadgeTop: { backgroundColor: Colors.gold[400], borderColor: Colors.gold[600] },
+  rankBadgeText: { fontSize: 11, fontFamily: Typography.family.mono, color: Colors.text.muted },
+  rankBadgeTextTop: { color: '#2E1E00', fontFamily: Typography.family.heading },
   left: {
     flexDirection: 'row',
     alignItems: 'center',

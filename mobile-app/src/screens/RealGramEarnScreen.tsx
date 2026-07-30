@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { MiniLuckWheel } from '../components/MiniLuckWheel';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
@@ -208,10 +209,13 @@ export function RealGramEarnScreen({ onBack, onOpenDailyLuck }: Props) {
           {onOpenDailyLuck && (
             <TouchableOpacity activeOpacity={0.85} onPress={onOpenDailyLuck}>
               <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-                <View style={styles.cardHeaderRow}>
-                  <Text style={styles.cardLabel}>🎰 {t('dailyluck.title')}</Text>
+                <View style={styles.luckBannerRow}>
+                  <MiniLuckWheel size={40} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.cardLabel}>{t('dailyluck.title')}</Text>
+                    <Text style={styles.milestoneSub}>{t('dailyluck.subtitle')}</Text>
+                  </View>
                 </View>
-                <Text style={styles.milestoneSub}>{t('dailyluck.subtitle')}</Text>
               </GlassCard>
             </TouchableOpacity>
           )}
@@ -309,6 +313,7 @@ const styles = StyleSheet.create({
 
   card: { gap: Spacing[2] },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  luckBannerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   cardLabel: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.label, textTransform: 'uppercase', letterSpacing: 0.4 },
   streakText: { fontSize: 12, fontFamily: Typography.family.mono, color: Colors.gold[400] },
 

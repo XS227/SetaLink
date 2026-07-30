@@ -82,6 +82,18 @@ const EN = {
   'bn.realTitle': 'Trade REAL on 3real',
   'bn.realSub':   'Our REAL exchange — 3real.no',
 
+  // Hakim — Shahnameh's guide character, Home banner cycling dialogue
+  // (Khabat, 2026-07-30: "en motiverende, varm, invitation av Hakim ai...
+  // kom lær vinn og tjen din frihet kriger"). Translations here are a first
+  // pass, not native-reviewed — flag for a native speaker check before wide
+  // release, same caveat this file already carries elsewhere.
+  'hakim.line1': 'Come learn, warrior — the Shahnameh world awaits.',
+  'hakim.line2': 'Read the tales. Win the trials. Earn your freedom.',
+  'hakim.line3': 'Every chapter you finish makes you stronger.',
+  'hakim.line4': 'I am Hakim. Let me guide you in.',
+  'hakim.line5': 'Your journey begins with one tap.',
+  'hakim.cta':   'Enter Shahnameh',
+
   // Settings: relocated entries (AI / diagnostics)
   'set.smartConnect':     'Smart connection',
   'set.smartConnectDesc': 'Auto SNI / protocol optimization',
@@ -1318,6 +1330,13 @@ const FA: typeof EN = {
   'bn.realTitle': 'معامله REAL در 3real',
   'bn.realSub':   'صرافی REAL ما — 3real.no',
 
+  'hakim.line1': 'بیا و بیاموز، ای پهلوان — دنیای شاهنامه در انتظار توست.',
+  'hakim.line2': 'داستان‌ها را بخوان. در آزمون‌ها پیروز شو. آزادی‌ات را به دست آور.',
+  'hakim.line3': 'هر فصلی که به پایان می‌رسانی، تو را قوی‌تر می‌کند.',
+  'hakim.line4': 'من حکیم هستم. بگذار راهنمایی‌ات کنم.',
+  'hakim.line5': 'سفر تو با یک ضربه آغاز می‌شود.',
+  'hakim.cta':   'ورود به شاهنامه',
+
   // Settings: relocated entries (AI / diagnostics)
   'set.smartConnect':     'اتصال هوشمند',
   'set.smartConnectDesc': 'بهینه‌سازی خودکار SNI / پروتکل',
@@ -2525,6 +2544,13 @@ const ZH: typeof EN = {
   'bn.realTitle': '在 3real 交易 REAL',
   'bn.realSub': '我们的 REAL 交易所——3real.no',
 
+  'hakim.line1': '来学习吧,勇士——列王纪的世界在等你。',
+  'hakim.line2': '阅读传说,赢得试炼,赢得你的自由。',
+  'hakim.line3': '你完成的每一章都会让你更强大。',
+  'hakim.line4': '我是哈基姆。让我引导你进入。',
+  'hakim.line5': '你的旅程从一次点击开始。',
+  'hakim.cta': '进入列王纪',
+
   'set.smartConnect': '智能连接',
   'set.smartConnectDesc': '自动 SNI / 协议优化',
   'set.diagnostics': '诊断',
@@ -3724,6 +3750,13 @@ const RU: typeof EN = {
   'bn.shahSub': 'Сражайтесь как персидский воин, зарабатывайте REAL',
   'bn.realTitle': 'Торгуйте REAL на 3real',
   'bn.realSub': 'Наша биржа REAL — 3real.no',
+
+  'hakim.line1': 'Приходи учиться, воин — мир Шахнаме ждёт тебя.',
+  'hakim.line2': 'Читай сказания. Побеждай в испытаниях. Заслужи свою свободу.',
+  'hakim.line3': 'Каждая пройденная глава делает тебя сильнее.',
+  'hakim.line4': 'Я Хаким. Позволь мне направить тебя.',
+  'hakim.line5': 'Твой путь начинается с одного касания.',
+  'hakim.cta': 'Войти в Шахнаме',
 
   'set.smartConnect': 'Умное подключение',
   'set.smartConnectDesc': 'Авто SNI / оптимизация протокола',

@@ -12,11 +12,11 @@ import { TopBar } from '../components/TopBar';
 import { StarlinkBanner } from '../components/StarlinkBanner';
 import { EmberField } from '../components/EmberField';
 
-import { useServerStore, FILTER_TABS, FilterTab, COMING_SOON_SERVERS } from '../stores/serverStore';
+import { useServerStore, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
 import { useAIStore }   from '../stores/aiStore';
 import { useAuthStore } from '../stores/authStore';
-import { useT, tagLabelKey } from '../i18n';
+import { useT } from '../i18n';
 
 const STARLINK_INVITE_TARGET = 11; // mirrors HomeScreen's constant (not shared — same value, two screens)
 
@@ -29,7 +29,7 @@ interface Props {
 export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
   const { t } = useT();
   const {
-    selectedId, filter, query, selectServer, setFilter,
+    selectedId, selectServer,
     filteredServers, servers, isLoading, loadError,
     importedCreds,
   } = useServerStore();
@@ -105,7 +105,12 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Header */}
+        {/* Header — Khabat, 2026-07-30: "activity and usage kan gjøres om
+            til en info ikon" + "ta bort den øvre delen med kategori
+            vaglene recomended, fast etc" — the separate Activity text
+            button + server-count badge collapsed into one small info icon
+            (still opens Activity, just doesn't spend a whole row on it),
+            and the category filter-tab bar below is gone entirely. */}
         <View style={styles.header}>
           <Text style={styles.title}>{t('sv.title')}</Text>
           <View style={styles.headerRight}>
@@ -113,15 +118,13 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
               <ActivityIndicator size="small" color={Colors.gold[400]} style={{ marginRight: Spacing[1] }} />
             )}
             <TouchableOpacity
-              style={styles.activityBtn}
+              style={styles.infoBtn}
               onPress={() => onNavigate('activity')}
               activeOpacity={0.75}
+              accessibilityLabel={`${t('set.activity')} · ${servers.length} ${t('sv.locations')}`}
             >
-              <Text style={styles.activityBtnText}>≡ {t('set.activity')}</Text>
+              <Text style={styles.infoBtnIcon}>ⓘ</Text>
             </TouchableOpacity>
-            <View style={styles.countBadge}>
-              <Text style={styles.countText}>{servers.length} {t('sv.locations')}</Text>
-            </View>
             <TopBar onNavigate={onNavigate as (tab: string) => void} />
           </View>
         </View>
@@ -131,25 +134,6 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
             <Text style={styles.cachedBannerText}>◎ {t('sv.usingSaved')}</Text>
           </View>
         )}
-
-        {/* Filter tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.tabScroll}
-          contentContainerStyle={styles.tabContent}
-        >
-          {FILTER_TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab}
-              style={[styles.filterTab, filter === tab && styles.filterTabActive]}
-              onPress={() => setFilter(tab as FilterTab)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.filterLabel, filter === tab && styles.filterLabelActive]}>{t(tagLabelKey(tab)) || tab}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
 
         {/* AI Picks carousel removed — the list below is the single source of
             truth; users just scroll to pick an available server. */}
@@ -167,9 +151,7 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
         {/* Active servers */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {filter === 'All' ? t('sv.allServers') : (t(tagLabelKey(filter)) || filter)}
-            </Text>
+            <Text style={styles.sectionTitle}>{t('sv.allServers')}</Text>
           </View>
 
           {filtered.length === 0 ? (
@@ -181,6 +163,7 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
               <React.Fragment key={s.id}>
                 <ServerRow
                   server={s}
+                  rank={i + 1}
                   onSelect={(sv) => handleSelectServer(sv.id)}
                   onDelete={undefined}
                 />
@@ -247,23 +230,12 @@ const styles = StyleSheet.create({
   header:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   title:       { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
-  countBadge:  { backgroundColor: Colors.bg.surface, borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: 4 },
-  countText:   { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.text.muted },
 
-  activityBtn:      { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[3], paddingVertical: Spacing[1] + 2 },
-  activityBtnText:  { fontSize: Typography.size.xs, fontFamily: Typography.family.label, color: Colors.text.secondary },
+  infoBtn:     { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.subtle },
+  infoBtnIcon: { fontSize: 15, color: Colors.text.secondary },
   ecoBanner:        { marginHorizontal: Spacing[5], marginBottom: Spacing[3] },
   cachedBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
   cachedBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-
-  tabScroll:        { marginHorizontal: -Layout.screenPadding },
-  tabContent:       { paddingHorizontal: Layout.screenPadding, gap: Spacing[2] },
-  filterTab:        { paddingHorizontal: Spacing[4], paddingVertical: Spacing[2], borderRadius: Radius.full, borderWidth: 1, borderColor: Colors.border.default, backgroundColor: Colors.bg.surface },
-  // Gold — matches theme pkg's `.tab.active` (04-freedom.html), the app's
-  // general "selected/interactive" accent (BottomNav's active tab, same rule).
-  filterTabActive:  { backgroundColor: 'rgba(255,182,39,0.12)', borderColor: Colors.border.goldGlow },
-  filterLabel:      { fontSize: Typography.size.sm, fontFamily: Typography.family.label, color: Colors.text.muted },
-  filterLabelActive:{ color: Colors.gold[400] },
 
   section:       { gap: Spacing[3] },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },

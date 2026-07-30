@@ -51,6 +51,7 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
 import { TopBar } from '../components/TopBar';
+import { TreasuryTile } from '../components/TreasuryTile';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
@@ -209,10 +210,10 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           <Text style={styles.sectionTitle}>{t('rghome.treasury')}</Text>
         </View>
         <View style={styles.statsRow}>
-          <StatPill icon="💎" value={economy.real_balance.toLocaleString()} label={t('rghome.statReal')} />
-          <StatPill icon="🪙" value={economy.zar.toLocaleString()} label={t('rghome.statZar')} />
-          <StatPill icon="⭐" value={economy.xp.toLocaleString()} label={t('rghome.statXp')} />
-          <StatPill icon="💠" value={String(economy.gems)} label={t('rghome.statGems')} />
+          <TreasuryTile real value={economy.real_balance.toLocaleString()} label={t('rghome.statReal')} />
+          <TreasuryTile icon="🪙" value={economy.zar.toLocaleString()} label={t('rghome.statZar')} />
+          <TreasuryTile icon="⭐" value={economy.xp.toLocaleString()} label={t('rghome.statXp')} />
+          <TreasuryTile icon="💠" value={String(economy.gems)} label={t('rghome.statGems')} />
         </View>
 
         {/* Continue Journey */}
@@ -322,17 +323,18 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
           ))}
         </View>
 
+        {/* Khabat, 2026-07-30: "tv banner kan vises som en tv ikon" — shrunk
+            from a full-width card banner down to a small round icon button,
+            same row treatment as the quickRow icons below it. */}
         {LIVE_TV_ENTRY_ENABLED && (
-          <TouchableOpacity onPress={onOpenLiveTv} activeOpacity={0.85}>
-            <GlassCard style={styles.card}>
-              <View style={styles.liveTvRow}>
-                <Text style={styles.liveTvIcon}>📺</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.cardLabel}>{t('rghome.liveTv')}</Text>
-                  <Text style={styles.cardCta}>{t('rghome.watchLive')} {isRTL ? '‹' : '›'}</Text>
-                </View>
-              </View>
-            </GlassCard>
+          <TouchableOpacity
+            onPress={onOpenLiveTv}
+            activeOpacity={0.85}
+            style={styles.liveTvIconBtn}
+            accessibilityLabel={t('rghome.liveTv')}
+          >
+            <Text style={styles.liveTvIconBtnGlyph}>📺</Text>
+            <Text style={styles.liveTvIconBtnLabel}>{t('rghome.liveTv')}</Text>
           </TouchableOpacity>
         )}
 
@@ -370,15 +372,6 @@ function QuestPip({ label, done }: { label: string; done: boolean }) {
   );
 }
 
-function StatPill({ icon, value, label }: { icon: string; value: string; label: string }) {
-  return (
-    <View style={styles.statPill}>
-      <Text style={styles.statValue}>{icon} {value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   screen:   { flex: 1, backgroundColor: Colors.bg.void },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing[4] },
@@ -403,9 +396,6 @@ const styles = StyleSheet.create({
   sectionMore:    { fontSize: 12, color: Colors.gold[400], fontFamily: Typography.family.body },
 
   statsRow:  { flexDirection: 'row', gap: Spacing[2] },
-  statPill:  { flex: 1, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[3], alignItems: 'center' },
-  statValue: { fontSize: 12, fontFamily: Typography.family.mono, color: Colors.text.primary },
-  statLabel: { fontSize: 9, color: Colors.text.muted, fontFamily: Typography.family.label, marginTop: 2, textTransform: 'uppercase' },
 
   card: { gap: Spacing[1] },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -443,8 +433,9 @@ const styles = StyleSheet.create({
   collectionCount: { fontSize: 15, fontFamily: Typography.family.heading, color: Colors.gold[400] },
   collectionLabel: { fontSize: 10, fontFamily: Typography.family.body, color: Colors.text.muted },
 
-  liveTvRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  liveTvIcon: { fontSize: 28 },
+  liveTvIconBtn:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[2], alignSelf: 'flex-start', backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2], marginTop: Spacing[2] },
+  liveTvIconBtnGlyph: { fontSize: 16 },
+  liveTvIconBtnLabel: { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.primary },
   quickRow:   { flexDirection: 'row', gap: Spacing[3], marginTop: Spacing[3] },
   quickCard:  { flex: 1, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', gap: Spacing[1] },
   quickIcon:  { fontSize: 22 },

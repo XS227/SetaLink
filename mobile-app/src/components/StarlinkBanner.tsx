@@ -5,6 +5,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GoldButton } from './GoldButton';
+import { StarlinkMark } from './StarlinkMark';
 import { useT } from '../i18n';
 
 /**
@@ -85,68 +86,39 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
       {isHero ? (
         <>
           {!reduceMotion && stars.map((s, i) => <Star key={i} {...s} />)}
-          <Animated.Text style={[styles.satHero, satStyle]}>🛰️</Animated.Text>
+          <Animated.View style={[styles.satHero, satStyle]}><StarlinkMark size={22} /></Animated.View>
         </>
       ) : (
         <>
           <View style={styles.corner}><Text style={styles.cornerText}>VIP</Text></View>
-          <Animated.Text style={[styles.sat, satStyle]}>🛰️</Animated.Text>
+          <Animated.View style={[styles.sat, satStyle]}><StarlinkMark size={20} /></Animated.View>
         </>
       )}
 
-      <View style={styles.badge}>
-        <Text style={styles.badgeIcon}>{unlocked ? '✓' : '🔒'}</Text>
-        <Text style={styles.badgeText}>
-          {unlocked ? t('home.starlinkUnlocked') : t('home.starlinkAccess')}
-        </Text>
-      </View>
-
-      <Text style={[styles.word, isHero && styles.wordHero]}>STARLINK</Text>
-      <Text style={styles.sub}>{t('starlink.description')}</Text>
-
-      {!unlocked && (
-        <View style={styles.track}>
-          <InviteSlots count={inviteCount} target={inviteTarget} />
-          <Text style={styles.trackLabel}>
-            {t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
+      <View style={styles.headRow}>
+        <Text style={[styles.word, isHero && styles.wordHero]}>STARLINK</Text>
+        <View style={styles.badge}>
+          <Text style={styles.badgeIcon}>{unlocked ? '✓' : '🔒'}</Text>
+          <Text style={styles.badgeText}>
+            {unlocked ? t('home.starlinkUnlocked') : t('home.starlinkAccess')}
           </Text>
         </View>
-      )}
+      </View>
+
+      {/* Khabat, 2026-07-30: "starlink banner kan være mindre i høyden.
+          trenger ikke mye text der enn enten: 1. for å få tilgang må du ha
+          x antall invites/clan medlemer. 2. nå har du tilgang" — collapsed
+          the wordmark description + dot-progress track down to this one
+          status line, in both states. */}
+      <Text style={styles.statusLine} numberOfLines={1}>
+        {unlocked ? t('starlink.connectCta') : t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
+      </Text>
 
       {!unlocked && !isHero && (
         <GoldButton style={styles.cta} textStyle={styles.ctaText} onPress={onInvite} accessibilityLabel={t('pr.inviteFriends')}>
           {`👥 ${t('pr.inviteFriends')}`}
         </GoldButton>
       )}
-      {isHero && (
-        // Decorative only — the whole card is one TouchableOpacity at the
-        // call site (HomeScreen), same interaction the plain banner it
-        // replaces already had. Not a separate Pressable (avoids nesting
-        // a button inside HomeScreen's own card-tap handler).
-        <View style={styles.heroCta}>
-          <Text style={styles.heroCtaText}>
-            🛰️ {unlocked ? t('starlink.connectCta') : t('pr.inviteFriends')}
-          </Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-/**
- * Small dots, not the mockup's numbered-box slot metaphor — Khabat found the
- * 11 numbered circles (the mockup's own example used target=3, we render at
- * the app's real STARLINK_INVITE_TARGET=11) too heavy/"support-ticket"-
- * looking on Home. Plain filled/unfilled dots read as a lightweight
- * progress glance instead, closer to the hero card's star backdrop.
- */
-function InviteSlots({ count, target }: { count: number; target: number }) {
-  const slots = Array.from({ length: target }, (_, i) => i < count);
-  return (
-    <View style={styles.slotRow}>
-      {slots.map((filled, i) => (
-        <View key={i} style={[styles.dot, filled && styles.dotFilled]} />
-      ))}
     </View>
   );
 }
@@ -156,8 +128,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     borderRadius: Radius['2xl'],
-    padding: Spacing[4],
-    minHeight: 180,
+    paddingHorizontal: Spacing[4],
+    paddingVertical: Spacing[3],
     backgroundColor: Colors.bg.surface,
     borderWidth: 1,
     borderColor: 'rgba(51,211,255,0.22)',
@@ -165,13 +137,13 @@ const styles = StyleSheet.create({
   },
   cardHero: {
     backgroundColor: '#0A1220',
-    minHeight: 168,
     shadowColor: Colors.cyan[400],
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.12,
     shadowRadius: 24,
     elevation: 4,
   },
+  headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing[2] },
   corner: {
     position: 'absolute', top: 14, right: -30, zIndex: 3,
     backgroundColor: Colors.gold[400], transform: [{ rotate: '40deg' }],
@@ -189,14 +161,14 @@ const styles = StyleSheet.create({
   // and inward toward the CTA's side of the card per "dra den mer mot cta
   // knappen" — cta/heroCta both render self-aligned to the left, so both
   // anchors shifted left/down accordingly, not just away from the edge.
-  sat: { position: 'absolute', top: 34, left: 58, fontSize: 18, opacity: 0.85 },
-  satHero: { position: 'absolute', top: 30, right: 76, fontSize: 20, opacity: 0.9 },
+  sat: { position: 'absolute', bottom: 10, right: 54, opacity: 0.7 },
+  satHero: { position: 'absolute', bottom: 8, right: 54, opacity: 0.75 },
   star: { position: 'absolute', width: 2, height: 2, borderRadius: 1, backgroundColor: '#FFFFFF' },
 
   badge: {
-    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
     backgroundColor: 'rgba(51,211,255,0.12)', borderWidth: 1, borderColor: 'rgba(51,211,255,0.4)',
-    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 5, marginTop: 4,
+    borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
   },
   badgeIcon: { fontSize: 10 },
   badgeText: { fontSize: 10, fontFamily: Typography.family.label, color: Colors.cyan[300], letterSpacing: 1.5, textTransform: 'uppercase' },
@@ -204,29 +176,13 @@ const styles = StyleSheet.create({
   // Gold wordmark on the vip card (framed as a reward you unlock); cyan on
   // the hero (framed as the network itself) — matches the two mockups
   // exactly, not the same treatment reused twice.
-  word: { fontSize: 30, fontFamily: Typography.family.displayGoldBold, color: Colors.gold[100], letterSpacing: 1, marginTop: 10 },
-  wordHero: { color: Colors.cyan[300], fontSize: 32 },
-  sub:  { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 6, maxWidth: 240, lineHeight: 17 },
-
-  track:      { marginTop: 14 },
-  slotRow:    { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7 },
-  dot: {
-    width: 8, height: 8, borderRadius: 4,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  dotFilled: { backgroundColor: Colors.gold[400] },
-  trackLabel: { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 9 },
+  word: { fontSize: 19, fontFamily: Typography.family.displayGoldBold, color: Colors.gold[100], letterSpacing: 1 },
+  wordHero: { color: Colors.cyan[300], fontSize: 20 },
+  statusLine: { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.secondary, marginTop: 2 },
 
   cta: {
-    marginTop: 14, alignSelf: 'flex-start',
+    marginTop: Spacing[2], alignSelf: 'flex-start',
     paddingHorizontal: 18,
   },
   ctaText: { fontSize: 13.5, fontFamily: Typography.family.heading },
-
-  heroCta: {
-    marginTop: 13, alignSelf: 'flex-start',
-    backgroundColor: 'rgba(51,211,255,0.16)', borderWidth: 1, borderColor: 'rgba(127,227,255,0.5)',
-    borderRadius: Radius.lg, paddingHorizontal: 16, paddingVertical: 10,
-  },
-  heroCtaText: { fontSize: 12.5, fontFamily: Typography.family.heading, color: Colors.cyan[300] },
 });

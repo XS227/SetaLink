@@ -24,11 +24,11 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Linking, StyleSheet } from 'react-native';
 import { Colors, Typography, Spacing, Radius } from '../design/tokens';
 import { GlassCard } from './GlassCard';
 import { GoldButton } from './GoldButton';
-import { REAL_TOKEN_IMAGE } from './EcosystemBanner';
+import { RealTokenIcon } from './RealTokenIcon';
 import { useT } from '../i18n';
 import { useToastStore } from '../stores/toastStore';
 import { getCachedConfig, getRemoteConfig } from '../services/remoteConfigService';
@@ -158,7 +158,7 @@ export function RealWalletCard({ deviceId, onRedeemed, onOpenHeroes, style }: Pr
       {/* Balance header */}
       <GlassCard glowColor={Colors.gold[400]} style={styles.headerCard}>
         <View style={styles.header}>
-          <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.coin} />
+          <RealTokenIcon size={28} />
           <Text style={styles.title}>{t('wallet.title')}</Text>
           {linked && (
             <View style={styles.balances}>
@@ -198,7 +198,7 @@ export function RealWalletCard({ deviceId, onRedeemed, onOpenHeroes, style }: Pr
           <View style={styles.exchangeHeaderRow}>
             <Text style={styles.exchangeIcon}>🪙</Text>
             <Text style={styles.exchangeArrow}>→</Text>
-            <Text style={styles.exchangeIcon}>💎</Text>
+            <RealTokenIcon size={18} />
             <Text style={styles.exchangeTitle}>{t('wallet.convertSectionTitle')}</Text>
           </View>
           <View style={styles.stepperRow}>
@@ -241,7 +241,7 @@ export function RealWalletCard({ deviceId, onRedeemed, onOpenHeroes, style }: Pr
         // above even though both live on the same screen.
         <GlassCard style={styles.exchangeCard}>
           <View style={styles.exchangeHeaderRow}>
-            <Text style={styles.exchangeIcon}>💎</Text>
+            <RealTokenIcon size={18} />
             <Text style={styles.exchangeArrow}>→</Text>
             <Text style={styles.exchangeIcon}>📶</Text>
             <Text style={styles.exchangeTitle}>{t('wallet.redeemSectionTitle')}</Text>
@@ -299,7 +299,6 @@ export function RealWalletCard({ deviceId, onRedeemed, onOpenHeroes, style }: Pr
 const styles = StyleSheet.create({
   headerCard:   { padding: Spacing[4], marginBottom: Spacing[3] },
   header:       { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  coin:         { width: 26, height: 26, borderRadius: 13 },
   title:        { flex: 1, color: Colors.text.primary, fontSize: 15, fontFamily: Typography.family.heading },
   balances:     { alignItems: 'flex-end' },
   balance:      { color: Colors.gold[400], fontSize: 14, fontFamily: Typography.family.mono },

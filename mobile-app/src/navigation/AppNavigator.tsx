@@ -116,7 +116,6 @@ function makeOnNavigate(navigation: any): (tab: NavTab) => void {
     if ((tab as string) === 'diagnostics')    { navigation.navigate('Diagnostics');    return; }
     if ((tab as string) === 'upgrade')        { navigation.navigate('Upgrade');        return; }
     if ((tab as string) === 'inbox')           { navigation.navigate('Inbox');          return; }
-    if ((tab as string) === 'dashboard')       { navigation.navigate('ShahnamehHome');  return; }
     if ((tab as string) === 'heroes')          { navigation.navigate('Heroes');         return; }
     if ((tab as string) === 'support')         { navigation.navigate('Inbox', { threadKey: '__support__' }); return; }
     if ((tab as string) === 'transfer')        { navigation.navigate('Transfer');       return; }
@@ -496,12 +495,6 @@ function ProfileAdapter({ navigation }: ScreenAdapterProps) {
       }}
       onSettings={() => navigation.navigate('Settings')}
       onOpenChapters={() => navigation.navigate('Chapters')}
-      onOpenHeroes={() => navigation.navigate('Heroes')}
-      onOpenClans={() => navigation.navigate('ClanBrowse')}
-      onOpenSocial={() => navigation.navigate('Social')}
-      onOpenShahnamehHome={() => navigation.navigate('ShahnamehHome')}
-      onOpenEarn={() => navigation.navigate('Earn')}
-      onOpenLiveTv={() => navigation.navigate('LiveTv')}
     />
   );
 }
@@ -937,23 +930,6 @@ export function AppNavigator() {
         >
           {({ navigation }) => (
             <RealGramSocialScreen onBack={() => navigation.goBack()} />
-          )}
-        </Stack.Screen>
-        <Stack.Screen
-          name="ShahnamehHome"
-          options={{ animation: 'slide_from_right' }}
-        >
-          {({ navigation }) => (
-            <RealGramHomeScreen
-              onBack={() => navigation.goBack()}
-              onOpenChapters={() => navigation.navigate('Chapters')}
-              onOpenHeroes={() => navigation.navigate('Heroes')}
-              onOpenClans={() => navigation.navigate('ClanBrowse')}
-              onOpenSocial={() => navigation.navigate('Social')}
-              onOpenEarn={() => navigation.navigate('Earn')}
-              onOpenLiveTv={() => navigation.navigate('LiveTv')}
-              onNavigate={makeOnNavigate(navigation) as (tab: string) => void}
-            />
           )}
         </Stack.Screen>
         <Stack.Screen

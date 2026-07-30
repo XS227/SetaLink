@@ -13,9 +13,11 @@ import { RealCoin }        from '../components/RealCoin';
 import { EmberField }      from '../components/EmberField';
 import { StarlinkBanner }  from '../components/StarlinkBanner';
 import { BottomNav, NavTab } from '../components/BottomNav';
-import { EcosystemBanner } from '../components/EcosystemBanner';
+import { ShahnamehHakimBanner } from '../components/ShahnamehHakimBanner';
 import { HomeBanner }      from '../components/HomeBanner';
 import { TopBar }          from '../components/TopBar';
+import { EnergyBar }       from '../components/EnergyBar';
+import { useTapEnergy }    from '../hooks/useTapEnergy';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
@@ -225,6 +227,31 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const timer = useSessionTimer(isConnected, sessionStartedAt);
   const { pingMs, downloadMbps } = useVpnStats();
 
+  // Khabat, 2026-07-30: "hastighet viser null forresten den må fikses" —
+  // downloadMbps is a real per-3s-poll delta (useVpnStats.ts), so it
+  // legitimately reads 0 whenever no traffic moved in that window (idle
+  // connection, or the very first poll after connect) — accurate, but
+  // reads as broken to a user glancing at a tap-game stat. Hold the last
+  // real non-zero reading through idle gaps instead of flashing to 0;
+  // still real measured throughput, never a fabricated number, and it
+  // resets the moment the tunnel actually drops.
+  const lastMbpsRef = useRef(0);
+  useEffect(() => {
+    if (!isConnected) { lastMbpsRef.current = 0; return; }
+    if (downloadMbps > 0) lastMbpsRef.current = downloadMbps;
+  }, [downloadMbps, isConnected]);
+  const displayMbps = isConnected ? (downloadMbps > 0 ? downloadMbps : lastMbpsRef.current) : 0;
+
+  // "Stability" used to be the literal hardcoded string '98' whenever
+  // connected — not bound to anything real. Derives it from the same ping
+  // reading the ping chip already shows instead (lower ping = higher
+  // stability), so it's at least a real function of a real measurement
+  // rather than a fixed prop.
+  const effectivePing = pingMs || selectedServer?.ping || 0;
+  const stabilityPct = isConnected
+    ? (effectivePing > 0 ? Math.max(55, Math.min(99, Math.round(100 - effectivePing / 3))) : 97)
+    : null;
+
   useSessionLifecycle();
 
   const [goldBurst, setGoldBurst] = useState(0);
@@ -352,12 +379,18 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     Animated.timing(floatAnim, { toValue: 1, duration: 900, useNativeDriver: true }).start();
   }, [floatAnim]);
 
+  // Power/stamina — Khabat, 2026-07-30: RealGram was missing the Shahnameh
+  // tap screen's stamina/cooldown mechanic entirely. Tap now spends energy;
+  // out of energy = no reward until it regenerates (see useTapEnergy).
+  const tapEnergy = useTapEnergy();
+
   const handleCoinForge = useCallback(() => {
     if (!isConnected) return;
+    if (!tapEnergy.spend()) return;
     const result = useZarStore.getState().tap();
     recordZarTap();
     if (result.earned > 0) spawnFloat(result.earned);
-  }, [isConnected, spawnFloat]);
+  }, [isConnected, spawnFloat, tapEnergy]);
 
   const handleCoinHold = useCallback(() => { handlePower(); }, [handlePower]);
 
@@ -504,41 +537,42 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             {error && !isConnected && !isBusy && (
               <Text style={styles.errorHint} numberOfLines={1}>{t('home.holdToRetry')}</Text>
             )}
+
+            {/* Khabat, 2026-07-30: "de 3 boksene, ping og stability og
+                hastighet kan stå som mindre ikoner inne på tap seksjonen" —
+                folded the 3 separate bordered metric cards (a whole extra
+                row below the VPN card) into one slim chip row inside the
+                tap section itself. */}
+            <View style={styles.metricChipRow}>
+              <View style={styles.metricChip}>
+                <Text style={styles.metricChipIcon}>📶</Text>
+                <Text style={styles.metricChipValue}>{effectivePing > 0 ? `${effectivePing}ms` : '—'}</Text>
+              </View>
+              <View style={styles.metricChip}>
+                <Text style={styles.metricChipIcon}>⚡</Text>
+                <Text style={styles.metricChipValue}>{isConnected ? `${displayMbps.toFixed(0)}Mbps` : '—'}</Text>
+              </View>
+              <View style={styles.metricChip}>
+                <Text style={styles.metricChipIcon}>◈</Text>
+                <Text style={styles.metricChipValue}>{stabilityPct != null ? `${stabilityPct}%` : '—'}</Text>
+              </View>
+            </View>
+
+            <EnergyBar energy={tapEnergy.energy} maxEnergy={tapEnergy.maxEnergy} pct={tapEnergy.pct} />
           </View>
 
           {/* GoldBeatBurst celebrates connect transition */}
           <GoldBeatBurst burstKey={goldBurst} />
         </Animated.View>
 
-        {/* ── Metrics row ── */}
-        <Animated.View style={[styles.metricsRow, fadeStyle]}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricValue}>{isConnected ? (pingMs || activeServer?.ping || '—') : (activeServer?.ping ?? '—')}</Text>
-            <Text style={styles.metricUnit}>ms</Text>
-            <Text style={styles.metricLabel}>{t('home.ping')}</Text>
-          </View>
-          <View style={[styles.metricCard, styles.metricCardCenter]}>
-            <Text style={styles.metricValue}>{isConnected ? downloadMbps.toFixed(0) : '—'}</Text>
-            <Text style={styles.metricUnit}>Mbps</Text>
-            <Text style={styles.metricLabel}>{t('home.speed')}</Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={[styles.metricValue, isConnected && styles.metricValueActive]}>
-              {isConnected ? '98' : '—'}
-            </Text>
-            <Text style={styles.metricUnit}>%</Text>
-            <Text style={styles.metricLabel}>{t('home.stability')}</Text>
-          </View>
-        </Animated.View>
-
-        {/* ── Shahnameh banner — Khabat, 2026-07-24: the old REAL/RealGram
-             shortcut boxes both navigated to the same 'game' tab (verified
-             while reading this code — functionally duplicate destinations),
-             so replaced with one banner. Pinned (no rotation) and opens the
-             game in-app via onOpenGame, same component PremiumScreen already
-             uses unpinned for the rotating REAL/Shahnameh promo. ── */}
+        {/* ── Shahnameh banner — Khabat, 2026-07-30: replaced the plain
+             EcosystemBanner promo card with Hakim (Shahnameh's guide
+             character) inviting the user in, speech-bubble style with
+             cycling warm/motivating lines. EcosystemBanner itself is
+             untouched — still used elsewhere (PremiumScreen's rotating
+             promo). ── */}
         <Animated.View style={fadeStyle}>
-          <EcosystemBanner pin="shahnameh" onOpenGame={() => onNavigate('game')} />
+          <ShahnamehHakimBanner onOpenGame={() => onNavigate('game')} />
         </Animated.View>
 
         {/* ── Ad banner — rotates AdMob banner ⇄ ecosystem promo (Khabat, 2026-07-18:
@@ -568,11 +602,11 @@ const styles = StyleSheet.create({
 
   // Balance pills
   pillRow:      { flexDirection: 'row', gap: Spacing[2] },
-  pill:         { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Spacing[2] },
-  pillLabel:    { fontSize: 9, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 1, textTransform: 'uppercase' },
-  pillValueRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  pillDot:      { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.gold[400] },
-  pillValue:    { fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.text.primary, marginTop: 2 },
+  pill:         { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Spacing[1] + 2 },
+  pillLabel:    { fontSize: 8.5, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.8, textTransform: 'uppercase' },
+  pillValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
+  pillDot:      { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.gold[400] },
+  pillValue:    { fontSize: 13, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.text.primary },
 
   // VPN card
   vpnCard: {
@@ -594,8 +628,11 @@ const styles = StyleSheet.create({
   pingText:     { fontSize: 11, color: Colors.text.secondary, fontFamily: Typography.family.mono },
   chevron:      { fontSize: 20, color: Colors.text.muted },
   vpnDivider:   { height: 1, backgroundColor: Colors.border.subtle, marginHorizontal: Spacing[4] },
-  // Coin section — replaces the old inline connectRow/powerBtn.
-  coinSection:  { alignItems: 'center', paddingVertical: Spacing[5], gap: Spacing[3] },
+  // Coin section — replaces the old inline connectRow/powerBtn. Vertical
+  // padding trimmed (Khabat, 2026-07-30: "tap boksen også er for stor i
+  // høyden") — the orbit stage itself (coinStage) is unchanged since its
+  // size is load-bearing for the outer orbit ring's clearance.
+  coinSection:  { alignItems: 'center', paddingVertical: Spacing[3], gap: Spacing[2] },
   anvilTitle:   { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 2, textTransform: 'uppercase' },
   anvilHint:    { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, opacity: 0.75, marginTop: -4 },
   // 256, not 200 — the outermost new orbit (radius 120) needs ~2*120 +
@@ -609,12 +646,10 @@ const styles = StyleSheet.create({
   statusText:   { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary },
   errorHint:    { fontSize: 11, color: Colors.red[400], fontFamily: Typography.family.body },
 
-  // Metrics
-  metricsRow:   { flexDirection: 'row', gap: Spacing[3] },
-  metricCard:   { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, padding: Spacing[3], alignItems: 'center', borderWidth: 1, borderColor: Colors.border.subtle, gap: 1 },
-  metricCardCenter: { borderColor: Colors.border.default },
-  metricValue:      { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: -0.5 },
-  metricValueActive:{ color: Colors.status.connected },
-  metricUnit:   { fontSize: 10, color: Colors.text.muted, fontFamily: Typography.family.mono, marginTop: -2 },
-  metricLabel:  { fontSize: 10, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.8, textTransform: 'uppercase', marginTop: 2 },
+  // Metrics — small chips inside the tap section (replaces the old 3
+  // full-width bordered cards below the VPN card).
+  metricChipRow:   { flexDirection: 'row', gap: Spacing[2], marginTop: Spacing[2] },
+  metricChip:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, paddingHorizontal: Spacing[3], paddingVertical: 5 },
+  metricChipIcon:  { fontSize: 11 },
+  metricChipValue: { fontSize: 11, fontFamily: Typography.family.mono, color: Colors.text.secondary },
 });

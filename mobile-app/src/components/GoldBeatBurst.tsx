@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Image, StyleSheet, View } from 'react-native';
-import { REAL_TOKEN_IMAGE } from './EcosystemBanner';
+import { Animated, Easing, StyleSheet, View } from 'react-native';
+import { RealTokenIcon } from './RealTokenIcon';
 
 /**
  * GoldBeatBurst — the "beating heart" connect celebration.
@@ -109,7 +109,7 @@ export function GoldBeatBurst({ burstKey }: Props) {
               transform: [{ translateX: tx }, { translateY: ty }, { scale: c.beat }],
             }]}
           >
-            <Image source={{ uri: REAL_TOKEN_IMAGE }} style={styles.coinImg} />
+            <RealTokenIcon size={COIN_SIZE} />
           </Animated.View>
         );
       })}
@@ -137,5 +137,4 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 6,
   },
-  coinImg: { width: COIN_SIZE, height: COIN_SIZE, borderRadius: COIN_SIZE / 2 },
 });
