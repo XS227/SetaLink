@@ -59,10 +59,27 @@ function hoursElapsedToday(): number {
 // bigger/brighter/in front, far = smaller/dimmer/behind. No new
 // dependency; still plain Reanimated transforms, same technique as
 // before, not real 3D.
+//
+// 2026-07-30: expanded from 3 planets to 6 (+ the moon), radii spread
+// further out and speeds staggered more (closer = faster), after Khabat
+// shared a full Three.js reference build (real WebGL solar system, camera-
+// facing sun sprite, 8 orbiting bodies) asking for that richer feel. Not
+// porting the reference wholesale — that's a WebGL/Three.js rewrite this
+// app has zero dependency on today, can't be verified without a device or
+// simulator (neither exists on this box), and would mean rebuilding the
+// already-hardened tap-to-forge/hold-3s-to-disconnect gesture handling
+// (RealCoin.tsx's own history is a long list of real touch-responder bugs
+// fixed one at a time) on top of a WebView/GL bridge instead of RNGH's
+// native gesture state machine. This keeps the same proven technique, just
+// with more bodies — the actual ask ("planetene er fint om de dukker opp
+// sånn") was about the *look*, not the render pipeline underneath it.
 const ORBIT_DOTS: OrbitBodyProps[] = [
-  { duration: 9000,  radius: 92, tilt: 0.4, size: 7, color: Colors.gold[100] },
-  { duration: 13000, radius: 92, tilt: 0.4, size: 6, color: Colors.violet[400], reverse: true, phase: 2.1 },
-  { duration: 17000, radius: 92, tilt: 0.4, size: 8, color: Colors.gold[400], phase: 4.2 },
+  { duration: 6000,  radius: 74,  tilt: 0.4, size: 5, color: Colors.silver[300], phase: 0.3 },
+  { duration: 9000,  radius: 84,  tilt: 0.4, size: 7, color: Colors.gold[100],   phase: 3.6 },
+  { duration: 12000, radius: 94,  tilt: 0.4, size: 6, color: Colors.violet[400], reverse: true, phase: 1.4 },
+  { duration: 16000, radius: 104, tilt: 0.4, size: 6, color: Colors.ember[400],  phase: 5.0 },
+  { duration: 20000, radius: 112, tilt: 0.4, size: 8, color: Colors.gold[400],   reverse: true, phase: 2.5 },
+  { duration: 25000, radius: 120, tilt: 0.4, size: 6, color: Colors.violet[600], phase: 4.4 },
   // The moon: tighter orbit than the coin's own radius (66) so it visibly
   // swings in front of / behind the coin each pass — the "moon too" ask.
   { duration: 4200,  radius: 46, tilt: 0.55, size: 4, color: Colors.silver[100], reverse: true, phase: 1.0, isMoon: true },
@@ -581,7 +598,11 @@ const styles = StyleSheet.create({
   coinSection:  { alignItems: 'center', paddingVertical: Spacing[5], gap: Spacing[3] },
   anvilTitle:   { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 2, textTransform: 'uppercase' },
   anvilHint:    { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted, opacity: 0.75, marginTop: -4 },
-  coinStage:    { width: 200, height: 200, alignItems: 'center', justifyContent: 'center' },
+  // 256, not 200 — the outermost new orbit (radius 120) needs ~2*120 +
+  // dot size of clearance; 256 leaves a small buffer. Not verified against
+  // a narrow phone's actual available width (no device/simulator here) —
+  // worth a real look on the smallest screen Khabat tests on.
+  coinStage:    { width: 256, height: 256, alignItems: 'center', justifyContent: 'center' },
   floatNum:     { position: 'absolute', top: '38%', fontSize: 15, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.gold[100] },
   connectStatus:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   statusDot:    { width: 7, height: 7, borderRadius: 4 },

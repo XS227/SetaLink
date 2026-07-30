@@ -178,8 +178,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 36, paddingVertical: 3,
   },
   cornerText: { fontSize: 10, fontFamily: Typography.family.heading, color: '#241605', letterSpacing: 1 },
-  sat: { position: 'absolute', top: 16, left: 20, fontSize: 18, opacity: 0.85 },
-  satHero: { position: 'absolute', top: 18, right: 30, fontSize: 20, opacity: 0.9 },
+  // Khabat, 2026-07-30: "det sathelit ikonet som går rundt går skjult bak
+  // kantene noen ganger" — real bug, not a one-off: the anchor sat closer
+  // to its card edge than the orbit's own radius (vip: left:20 vs r:26 —
+  // every swing past translateX:-20 pushed the emoji to a negative left
+  // position, clipped by the card's `overflow:hidden`; hero: right:30 vs
+  // r:44, same problem on the right edge, which is why it only "sometimes"
+  // clipped — only the half of each orbit swinging edge-ward). Moved both
+  // anchors further from their edge than the orbit radius (with margin),
+  // and inward toward the CTA's side of the card per "dra den mer mot cta
+  // knappen" — cta/heroCta both render self-aligned to the left, so both
+  // anchors shifted left/down accordingly, not just away from the edge.
+  sat: { position: 'absolute', top: 34, left: 58, fontSize: 18, opacity: 0.85 },
+  satHero: { position: 'absolute', top: 30, right: 76, fontSize: 20, opacity: 0.9 },
   star: { position: 'absolute', width: 2, height: 2, borderRadius: 1, backgroundColor: '#FFFFFF' },
 
   badge: {
