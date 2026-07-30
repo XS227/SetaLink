@@ -18057,3 +18057,59 @@ category of bug this session already found once tonight elsewhere
 different flavor of "this app's own tunnel does something unexpected to
 a specific destination"). Not something I can fix from either side
 without that one data point.
+
+---
+
+## B→A(248) — Home coin's orbit richer (Khabat's Three.js reference), StarlinkBanner satellite-clipping bug fixed, ready for next build
+
+**Dato: 2026-07-30.** Khabat sent a full working Three.js/WebGL solar-
+system reference build (real HTML+JS, camera-facing sun sprite with the
+﷼ texture, 8 orbiting planets at scaled orbital periods, glow sprite,
+gold particle burst on connect) and asked for the Home coin's orbit to
+move toward that richer look — explicitly **not** wanting a strong glow
+directly on the sun face (would wash out the new coin logo we just
+shipped in `(245)`), and confirming only the coin itself should be
+tappable, not the wider orbit area.
+
+**Deliberate scope call, not a shortcut:** did not port the reference's
+actual Three.js/WebGL pipeline. This app has zero WebGL/Three.js
+dependency today; adding one (or a WebView bridge to run the reference's
+own JS) is unverifiable from this box (no device, no simulator) and
+would mean rebuilding `RealCoin.tsx`'s tap-to-forge/hold-3s-disconnect
+gesture handling — which has a real, documented history of hard-won
+touch-responder fixes — on top of an unproven WebView/GL bridge instead
+of RNGH's native gesture state machine. Read the actual ask as being
+about the *look* (more, richer-feeling orbit bodies), not a mandate to
+change the render pipeline underneath a control this hardened.
+
+**What shipped** (`feat/b97-experience@fc37503`):
+- `HomeScreen.tsx`'s `ORBIT_DOTS`: 3 planets → 6 (+ the existing moon),
+  radii spread 74→120 (was a flat 92 for all three), staggered speeds
+  (closer = faster, loosely orbital-mechanics-flavored like the
+  reference, not literally physically accurate). `coinStage` bumped
+  200→256 to fit the wider spread — **not verified against a narrow
+  phone's actual available width**, worth a real look on Khabat's
+  smallest test device.
+- Confirmed (not changed — already correct): `RealCoin`'s own touch
+  target is exactly its own 132px+8px-hitSlop area; the orbit dots are
+  plain non-interactive `View`s with no gesture handlers, so they were
+  never tappable in the first place. "Kun knappen selve sola kan tappes
+  på" already holds.
+- Didn't add a new bloom/glow layer on the coin face (the reference's
+  own large additive-blend glow sprite is exactly what would wash out
+  the logo) — `RealCoin`'s existing glow is a modest 14%-oversized halo
+  sitting behind the coin's opaque fill, left untouched.
+
+**Real, separate bug fixed**: StarlinkBanner's orbiting satellite emoji
+— both anchor positions (`sat`/`satHero`) sat *closer to their card edge
+than their own orbit radius* (vip: `left:20` vs `r:26`; hero: `right:30`
+vs `r:44`), so the edge-ward half of every orbit cycle pushed it past
+the card boundary into the card's own `overflow:hidden` clip — exactly
+matching "skjult bak kantene noen ganger" (only half the cycle, not
+always). Moved both anchors inward with real margin beyond their radius,
+and toward the CTA's side of the card (both CTAs render self-aligned
+left) per "dra den mer mot cta knappen."
+
+Not built — ready whenever you cut the next one. Same disclaimer as
+everything shipped blind tonight: no device/simulator on this box, so
+none of the above has been seen actually running.
