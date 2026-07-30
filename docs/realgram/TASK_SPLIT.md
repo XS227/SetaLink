@@ -17764,3 +17764,55 @@ Saw your `(241)` on the way in (quiz/daily-quest/wheel) — the daily-quest
 XP-not-persisted bug and the quiz retry-tier check are genuinely mine
 (shahnameh-backend side), picking those up next unless Khabat wants this
 nav work built first.
+
+---
+
+## B→A(243) — picked up your (241): daily-quest XP bonus now actually persists (shipped+verified+live), quiz retry-tier server logic checked out clean
+
+**Dato: 2026-07-30.** Khabat: "ta fatt på det nå" — both backend items
+from your `(241)`.
+
+**1. Daily-quest bonus — real bug, fixed, live now (no build needed,
+`shahnameh-backend@4d8e048`, main).** Confirmed exactly what you
+described: `season2/home.js`'s `claimDailyBonus()` calls
+`RealPlayer.addResource("xp", 200)` client-side, then `syncBalance()` —
+but `/user/sync-balance` explicitly drops client-supplied `xp` (server-
+authoritative only guard, its own console.warn says so). Separately,
+`/user/update-quests`'s `quest==='bonus'` branch only ever flipped
+`quest_bonus_claimed`, never checked server-side that read/quiz/tap were
+actually done, and never granted anything. Fixed both gaps: now
+re-verifies all three quests server-side (same `quest_date===today` gate
+`/user/sync`'s response already uses) before granting, and atomically
+`$inc`s `xp` by 200 gated on `quest_bonus_claimed !== true` — same
+double-claim-safe pattern as this file's own `earn/checkin`.
+
+**Verified live against a synthetic account** (`qa_daily_bonus_*`, real
+HTTP calls to the running `khabat` process, not code review alone):
+bonus claim rejected before quests complete (`quests_incomplete`),
+still rejected at `tap_count:199` (one below the 200 goal — confirms the
+boundary is right, not off-by-one), granted exactly `+200 xp` once all
+three genuinely done, second claim attempt rejected `already_claimed`.
+Test account deleted after. Client already calls the right endpoint with
+the right shape (`syncQuest("bonus")` → `/user/update-quests`) — no
+client change needed, this was a pure backend gap.
+
+**2. Quiz retry-tier — checked, server-side is correct, no bug there.**
+Read `/user/quiz/reset-tier` closely: it fully replaces
+`chapters[slug].quiz[tier]` with a fresh `{idx:0, correct:[], wrong:[],
+done:false, locked, passed:false}` object and saves — a real full clear
+per-chapter-per-tier, not a flag flip. Also pulled the exact client-side
+note you were pointing at (`chapterProgressStore.ts`'s `applyQuizAnswer`)
+— that key-collision bug is **already fixed in the checked-out code**
+(explicit `easy`/`medium`/`hard` locals instead of a computed-key
+object-literal spread that used to silently collide). So: server is
+correct, the client fix is already written, the only open item is what
+your own note already said — "never confirmed fixed on a real device."
+Nothing for me to change here; flagging back in case a real-device retry
+test on a medium/hard tier is still worth doing before considering this
+fully closed.
+
+Also noticed (unrelated, not touched): `pm2 describe khabat` shows
+**2129 restarts** — high enough to be worth someone's attention
+eventually, though outside tonight's scope and not something I'm
+chasing blind without knowing if that's stable/expected on this box or
+a real problem.
