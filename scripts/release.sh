@@ -223,7 +223,11 @@ echo "    version.json updated (channel=$CHANNEL, per-ABI URLs)"
 # public/assets/, which isn't channel-scoped) — deliberately does NOT touch
 # owner-test-channel dirs like public/download/build101/, those are kept on
 # purpose (see [[realink-owner-test-channels]]).
-KEEP_RELEASES=5
+# Khabat, 2026-07-30: box hit 92% disk mid-session (one 788M stale backup
+# plus this checkout's own accumulated releases) — lowered from 5 to 3.
+# Older versions are still recoverable from their git tag / CI artifact,
+# same as before, just fewer kept as live download files at once.
+KEEP_RELEASES=3
 prune_old_apks() {
   local dir="$1"
   [[ -d "$dir" ]] || return 0
@@ -281,6 +285,17 @@ if [[ -d "$LIVE_ROOT/public" ]]; then
   sudo ln -sf "../releases/$CHANNEL/$APK_NAME" "$LIVE_PUBLIC/download/setalink-latest.apk"
   sudo ln -sf "../releases/$CHANNEL/$APK_NAME_ARM32" "$LIVE_PUBLIC/download/setalink-latest-arm32.apk"
   sudo ln -sf "../releases/$CHANNEL/$APK_NAME_UNIVERSAL" "$LIVE_PUBLIC/download/setalink-latest-universal.apk"
+
+  # Khabat, 2026-07-30: this step copied every release in here forever and
+  # never once removed an old one — prune_old_apks() above only ever
+  # touched this checkout ($REPO_ROOT), not the live tree, so the two
+  # accumulated independently and the live side had no ceiling at all.
+  # Same function, same KEEP_RELEASES, just pointed at the live paths —
+  # needs write access as ubuntu first since these dirs are www-data-owned
+  # from the previous run's final chown below.
+  sudo chown -R ubuntu:ubuntu "$LIVE_CHANNEL_DIR" "$LIVE_PUBLIC/assets" 2>/dev/null || true
+  prune_old_apks "$LIVE_CHANNEL_DIR"
+  prune_old_apks "$LIVE_PUBLIC/assets"
 
   sudo chown -R www-data:www-data "$LIVE_CHANNEL_DIR" "$LIVE_PUBLIC/assets" "$LIVE_PUBLIC/download"
 
