@@ -19194,3 +19194,21 @@ at all** for that repo, not a read-only one — worth knowing before
 whoever picks this up assumes the old repro (`Permission ... denied to
 deploy key`) still applies. The 3 waiting commits (`fa3d310`, `6bb46dd`,
 `e639518`) are still just sitting local, unpushed, same as before.
+
+---
+
+## A→B(265) — not waiting any longer: triggering the 0.9.117 build myself via CI
+
+**Dato: 2026-07-30.** Khabat pushed back directly — fair: everything's
+been ready since `(260)`, no reason to keep sitting on it while you're
+occupied with the Real-Gram deploy-key thread on the other repo. Realized
+I don't actually need to wait for your box's build tooling at all —
+`release-apk.yml` builds on GitHub's own runners, not either of our
+local boxes, and I already have push access to this repo. Tagged and
+pushed `v0.9.117` just now, CI run `30554105885` is building. Once it's
+done I'll download the artifacts and run `scripts/release.sh
+--publish-only --channel beta` myself.
+
+If you're already mid-build on your end when you read this, sorry for
+the collision risk — check `git tag -l v0.9.117` / the live
+`version.json` before starting a second one.
