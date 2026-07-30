@@ -31,6 +31,32 @@ function reportFetchFailure(path: string, reason: string): void {
   } catch { /* diagnostics must never break the UI */ }
 }
 
+// 2026-07-30: Khabat's on-device repro — /status succeeds (the screen gets
+// past its "enabled" gate and shows search/filters), but the channel grid
+// never loads, no spinner timeout ever visible. Backend + network re-proven
+// healthy yet again from the server side (every endpoint, sequential and
+// concurrent, <0.5s) — same dead end every prior round of this hit
+// (TASK_SPLIT (146)/(214)/(221)/(247)/(249)). `reportFetchFailure` above only
+// ever fires on a *settled* failure; it can't tell us whether a request that
+// never settles at all ever actually left the JS thread. ssoService.ts hit
+// the exact same shape of mystery (B->A(29)/A->B around line ~4950 in
+// TASK_SPLIT — "real Android requests never even reach the server") and
+// only became diagnosable once every stage got its own event instead of
+// just the final outcome — adb logcat was never actually available to
+// pull `console.log`-based traces from a real device on this project (see
+// TASK_SPLIT ~4511), so the server-side app_events pipe (queryable from
+// here without touching the device) is the only diagnostic channel that's
+// ever actually worked for this team. Mirroring that here: a `dispatched`
+// event proves the fetch call was actually reached and entered (vs. some
+// earlier synchronous failure/never-called), and an `ok` event on success
+// closes the loop so the *absence* of both from a real repro is itself
+// informative.
+function reportFetchStage(stage: 'dispatched' | 'ok', path: string, extra?: Record<string, unknown>): void {
+  try {
+    trackEvent('LIVE_TV_FETCH_STAGE', useAuthStore.getState().user?.deviceId, { stage, path, ...extra });
+  } catch { /* diagnostics must never break the UI */ }
+}
+
 export interface LiveTvChannel {
   id:             string;
   name:           string;
@@ -99,6 +125,8 @@ function hardTimeout<T>(promise: Promise<T>, path: string): Promise<T> {
 }
 
 async function getJson<T>(path: string): Promise<T | null> {
+  const startedAt = Date.now();
+  reportFetchStage('dispatched', path);
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -113,6 +141,7 @@ async function getJson<T>(path: string): Promise<T | null> {
       reportFetchFailure(path, 'bad_status_field');
       return null;
     }
+    reportFetchStage('ok', path, { ms: Date.now() - startedAt });
     return json as T;
   } catch (err) {
     reportFetchFailure(path, err instanceof Error ? `${err.name}:${err.message}`.slice(0, 200) : 'unknown_error');
@@ -121,6 +150,8 @@ async function getJson<T>(path: string): Promise<T | null> {
 }
 
 async function postJson<T>(path: string, body: Record<string, unknown>): Promise<T | null> {
+  const startedAt = Date.now();
+  reportFetchStage('dispatched', path);
   try {
     const controller = new AbortController();
     const tid = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -133,6 +164,7 @@ async function postJson<T>(path: string, body: Record<string, unknown>): Promise
     clearTimeout(tid);
     if (!res.ok) reportFetchFailure(path, `http_${res.status}`);
     const json = await res.json();
+    reportFetchStage('ok', path, { ms: Date.now() - startedAt });
     return json as T;
   } catch (err) {
     reportFetchFailure(path, err instanceof Error ? `${err.name}:${err.message}`.slice(0, 200) : 'unknown_error');
