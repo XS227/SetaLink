@@ -37,6 +37,7 @@ import {
   ActivityIndicator, FlatList, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
@@ -61,13 +62,24 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
   const insets   = useSafeAreaInsets();
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
+  const isFocused = useIsFocused();
 
   const [rows, setRows]       = useState<Row[] | null>(null);
   const [completed, setCompleted] = useState(0);
   const [error, setError]     = useState('');
   const listRef = useRef<FlatList<Row>>(null);
 
+  // Khabat, 2026-07-30: finishing a chapter's quiz/battle and going back here
+  // didn't show the next chapter as unlocked — "ble jeg ikke sendt til neste
+  // kapitel når jeg trykker på knappen" (tapping it did nothing, because it
+  // still read as locked). Root cause: React Navigation's native stack keeps
+  // this screen mounted underneath ChapterDetail rather than remounting it,
+  // so the plain mount-only effect this used to be never re-ran on the way
+  // back — `rows` stayed exactly as stale as it was before the chapter was
+  // completed. `isFocused` in the deps re-fetches every time this screen
+  // comes back into view, same pattern RealGramProfileScreen already uses.
   useEffect(() => {
+    if (!isFocused) return;
     let cancelled = false;
     (async () => {
       try {
@@ -96,7 +108,7 @@ export function RealGramChaptersScreen({ onBack, onOpenChapter }: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [deviceId, t]);
+  }, [deviceId, t, isFocused]);
 
   // Land the list on the active chapter instead of always chapter 1 — see
   // this file's own header for why. A short delay lets FlatList finish its

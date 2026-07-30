@@ -48,12 +48,25 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
   const [pickedIndex, setPickedIndex] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resetting, setResetting] = useState(false);
+  // Which question is on screen — deliberately NOT read from
+  // progress.quiz[tier].idx during render. Khabat, 2026-07-30: "neste
+  // spørsmåls svar blir synlig" (next question's answers become visible)
+  // before Next is even pressed. Root cause: applyQuizAnswer() writes the
+  // server's already-advanced idx into `progress` the instant an answer is
+  // submitted, and `progress` is a live prop — so `currentQuestion` derived
+  // straight from it flips to question 2 while pendingAnswer/pickedIndex
+  // (local state) are still showing question 1's feedback UI, mixing
+  // question 1's result chrome with question 2's answer options. This local
+  // index only moves on handleNext/handleSelectTier/tier-load/retry, so the
+  // displayed question can never race ahead of the user's own tap.
+  const [displayIdx, setDisplayIdx] = useState(0);
 
   useEffect(() => {
     getChapterQuiz(slug).then((qs) => {
       setQuestions(qs);
       const firstIncomplete = TIERS.find((tier) => !progress.quiz[tier].done) ?? 'hard';
       setActiveTier(firstIncomplete);
+      setDisplayIdx(progress.quiz[firstIncomplete].idx);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
@@ -70,11 +83,12 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
   const tierQuestions = (tier: QuizTier) => questions.filter((q) => q.tier === tier);
   const tierProgress = progress.quiz[activeTier];
   const activeQuestions = tierQuestions(activeTier);
-  const currentQuestion = activeQuestions[tierProgress.idx] ?? null;
+  const currentQuestion = activeQuestions[displayIdx] ?? null;
 
   const handleSelectTier = (tier: QuizTier) => {
     if (progress.quiz[tier].locked) return;
     setActiveTier(tier);
+    setDisplayIdx(progress.quiz[tier].idx);
     setPendingAnswer(null);
     setPickedIndex(null);
   };
@@ -93,6 +107,7 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
   const handleNext = () => {
     setPendingAnswer(null);
     setPickedIndex(null);
+    setDisplayIdx((i) => i + 1);
   };
 
   const handleRetry = async () => {
@@ -111,6 +126,7 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
       return;
     }
     onProgressChange(applyQuizReset(slug, activeTier));
+    setDisplayIdx(0);
   };
 
   const nCorrect = tierProgress.correct.filter((id) => activeQuestions.some((q) => q.id === id)).length;
@@ -157,7 +173,7 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
         </View>
       ) : currentQuestion ? (
         <View style={styles.questionWrap}>
-          <Text style={styles.progressLine}>{tierProgress.idx + 1} / {total}</Text>
+          <Text style={styles.progressLine}>{displayIdx + 1} / {total}</Text>
           <Text style={styles.questionText}>
             {localizedField(currentQuestion.question, currentQuestion.question_fa, currentQuestion.question_ru, lang)}
           </Text>

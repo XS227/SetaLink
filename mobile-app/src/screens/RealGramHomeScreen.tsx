@@ -42,6 +42,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import {
   ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
@@ -102,6 +103,7 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const localDisplayName = useIdentityStore((s) => s.displayName);
+  const isFocused = useIsFocused();
 
   const [profile, setProfile]   = useState<ProfileSummary | null>(null);
   const [chapters, setChapters] = useState<ChapterCatalogEntry[]>([]);
@@ -109,7 +111,14 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
   const [ownedHeroes, setOwnedHeroes] = useState<Map<string, OwnedHero>>(new Map());
   const [error, setError]       = useState('');
 
+  // Khabat, 2026-07-30: "oversikt blir ikke oppdatert med engang" — finishing
+  // a chapter and coming back here still showed the old Continue Journey
+  // card and Chronicle %. Same root cause as RealGramChaptersScreen's fix:
+  // React Navigation's native stack keeps this screen mounted, so a plain
+  // mount-only effect never re-ran on the way back. `isFocused` in the deps
+  // re-fetches on every return to this screen instead.
   useEffect(() => {
+    if (!isFocused) return;
     let cancelled = false;
     (async () => {
       try {
@@ -130,7 +139,7 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
       }
     })();
     return () => { cancelled = true; };
-  }, [deviceId]);
+  }, [deviceId, isFocused]);
 
   if (error) {
     return (
