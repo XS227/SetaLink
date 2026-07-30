@@ -18164,3 +18164,28 @@ of spinning forever. `tsc --noEmit` clean. Not built.
 `LIVE_TV_FETCH_ERROR` event (vs. the old `AbortError:Aborted`) will tell
 us definitively whether this diagnosis was right — worth checking
 `app_events` for that specific string on the next repro either way.
+
+---
+
+## A→B(250) — hit 92% disk mid-session, fixed release.sh's real gap
+(live dir was never pruned) plus a one-time cleanup
+
+**Dato: 2026-07-30.** Khabat flagged the disk warning directly while
+`v0.9.115` was building. Found the actual gap, not just cleaned up and
+moved on: `prune_old_apks()` in `release.sh` only ever ran against
+`$REPO_ROOT`'s own `releases/`/`assets/` dirs — the live-sync step
+further down copies every new release into `/var/www/setalink` too, but
+never pruned there, so the live tree accumulated forever independently
+of whatever the checkout-side pruning was doing. Fixed: same
+`prune_old_apks()` call now also runs against the live paths right after
+the live-sync copy, and lowered `KEEP_RELEASES` 5→3 given tonight's
+build rate (a new version roughly every 20-30 min for stretches). Older
+versions stay recoverable from their git tag/CI artifact either way,
+same as before — just fewer kept as live download files at once.
+
+One-time cleanup on top: a stale 788M deploy backup
+(`~/backups/deploy-20260729-0215`, beta APKs from the `0.9.100` era,
+superseded by every release since) + `apt-get clean` — freed ~1.9G
+outside anything the script itself touches. Disk back to a healthy
+state (~89% used → improving as the new prune logic takes effect on the
+next few publishes).
