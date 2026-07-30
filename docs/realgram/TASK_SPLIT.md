@@ -17944,3 +17944,66 @@ already uses for this exact `NavTab`-vs-`string` variance. `7b7b2af`.
 
 Not built — both need a real Android/iOS build to show up (icons are
 baked in at build time), same standing rule as everything else tonight.
+
+---
+
+## A→B(246) — Khabat's real next ask: ring while the app is backgrounded/
+killed, like WhatsApp/IMO. Real VoIP push — scoping only, nothing built
+
+**Dato: 2026-07-30.** After tonight's calling fixes actually worked
+end-to-end (rang, was accepted, `(244)`'s stuck-call bug fixed), Khabat
+hit the next real gap immediately: called the Iran tester while her app
+wasn't open, nothing happened. Checked the log first to make sure it
+wasn't another bug — it wasn't: her device had zero requests of any kind
+for 37+ minutes before the call, app genuinely not running. This is the
+documented V1 limit from day one (`lib/calling.php`'s own header,
+`callStore.ts`'s own header) — "rings while foregrounded only, no
+push-wake for backgrounded/killed" — now the thing actually blocking a
+real test, not a side detail.
+
+**Confirmed from scratch, not assumed: this app has zero infrastructure
+for this today.** No `google-services.json` / `GoogleService-Info.plist`
+anywhere in the repo, no `@react-native-firebase/*`, no
+`react-native-callkeep`, no PushKit/CallKit/ConnectionService references
+in either native project, nothing in `package.json`. Whoever scopes this
+is starting genuinely from zero, not extending something half-built.
+
+**What "ring like WhatsApp" actually requires** (told Khabat this
+directly before she asked me to log it — she said go ahead anyway):
+
+1. **A Firebase project** (Android/FCM) — new, this app has no Google/
+   Firebase presence at all despite AdMob/GA4 already being integrated
+   (those are separate products, don't imply an FCM-capable project).
+   Needs whoever has/creates the Google account to hand over
+   `google-services.json`.
+2. **Apple VoIP push credentials** (iOS) — a VoIP Services certificate
+   or `.p8` auth key from an Apple Developer account. Apple's own review
+   guidelines *require* CallKit for any app using PushKit VoIP push —
+   this isn't optional engineering scope, it's an App Store policy
+   constraint, so iOS can't ship a partial version of this (FCM-only,
+   skip CallKit) the way Android technically could.
+3. **New native dependencies, both platforms** — most likely
+   `@react-native-firebase/app` + `/messaging` (Android FCM),
+   `react-native-voip-push-notification` (iOS PushKit registration),
+   `react-native-callkeep` (CallKit/ConnectionService — the actual
+   incoming-call UI that works with the screen locked). None of these
+   are JS-only; every one needs a real native build to land, not an OTA.
+4. **Backend**: a device-token table (FCM registration token / APNs VoIP
+   token, per device_id) and a fallback in `call_relay_push()` — when the
+   relay's presence registry has no live socket for the callee (exactly
+   tonight's case), send a real push instead of silently no-op'ing the
+   way it does today.
+5. **Android specifically** also needs a foreground service + full-
+   screen intent to actually show the incoming-call UI over the lock
+   screen when the app is killed, not just a normal notification (a
+   normal notification does show up but doesn't unlock into a ringing
+   screen the way this needs to feel).
+
+**Not started** — real scope, needs real account access (Firebase +
+Apple Developer, neither of which I have credentials for from this box)
+and a genuine native build cycle on both platforms once the libraries
+land, closer in size to tonight's whole calling-relay effort than any
+single fix. Parking here so whoever picks it up next has the actual
+shape of the work instead of rediscovering it. Your call whether this
+splits (Android FCM half vs. iOS CallKit half) or one of us takes it
+whole once the credentials exist.
