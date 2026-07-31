@@ -2251,9 +2251,37 @@ if ($method === 'POST') {
         if (!$dev) err('device not found');
         $account = re_linked_account($pdo, $peerDeviceId);
         $profile = $account !== '' ? re_get_profile($pdo, $account) : [];
+
+        // Khabat, 2026-07-31: "vis profil" only ever opened this thin handle/
+        // persona popup — she wants the same *player* profile (level,
+        // chapter progress, clan) her own Profile tab shows, "sånn som min
+        // egen profil". re_fetch_profile_summary() is the same Shahnameh
+        // call RealGramProfileScreen uses for the signed-in user's own
+        // profile — but its response also carries economy.real_balance/
+        // zar/gems (real currency balances) and streaks/achievements/quests,
+        // none of which this action has ever exposed (its whole design,
+        // per the comment above, is "safe to hand to a stranger with no
+        // auth check"). Pick out only level/chapters/clan and keep
+        // everything else out — do not widen this to array_merge($summary).
+        $playerFields = [];
+        if ($account !== '') {
+            $summary = re_fetch_profile_summary($pdo, $account);
+            if ($summary !== null) {
+                $playerFields = [
+                    'level'    => (int)($summary['economy']['level'] ?? 0),
+                    'chapters' => [
+                        'completed' => (int)($summary['chapters']['completed'] ?? 0),
+                        'total'     => (int)($summary['chapters']['total'] ?? 0),
+                    ],
+                    'clan' => $summary['clan'] ?? null,
+                ];
+            }
+        }
+
         ok(array_merge(
             ['user_id' => $dev['user_id'] ?? ''],
             $profile ?: ['account' => $account],
+            $playerFields,
         ));
     }
 

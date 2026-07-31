@@ -118,6 +118,23 @@ export interface PeerProfile {
   avatar_emoji?: string;
   avatar_color?: string;
   persona?:     string;
+  /** Khabat, 2026-07-31: "vis profil" needs the same *player* profile her
+   *  own Profile tab shows, not just identity — level/chapter progress/clan,
+   *  the safe subset get-peer-profile picks out of Shahnameh's profile
+   *  summary (never economy/wallet balances, see api.php's own comment on
+   *  this action). Undefined (not 0) when the peer has no linked REAL
+   *  account yet or the Shahnameh call failed — lets the UI tell "no game
+   *  data yet" apart from "level 0". */
+  level?:       number;
+  chapters?:    { completed: number; total: number };
+  clan?: {
+    clan_id:      string;
+    clan_name:    string;
+    clan_photo:   string;
+    motto:        string;
+    member_count: number;
+    role:         string;
+  } | null;
 }
 
 /**
