@@ -2237,11 +2237,17 @@ if ($method === 'POST') {
         // handle/avatar (get-real-profile's own documented "empty until
         // saved" case) — never anything sensitive (no token, plan, quota,
         // email, IP).
+        // Khabat, 2026-07-31: the `device_id` param is really "device_id or
+        // user_id" — the Support thread only ever carries SUPPORT_USER_ID
+        // (a user_id, unifiedThreads.ts) here, which qe_fetch_device's exact
+        // device_id match could never find. Switched to qe_resolve_device
+        // (device_id OR user_id OR referral_code), same helper startCall's
+        // resolution already relies on for this identical Support case.
         $peerDeviceId = trim($_GET['device_id'] ?? '');
         if (!$peerDeviceId) err('missing device_id');
         $pdo = db();
         re_ensure_schema($pdo);
-        $dev = qe_fetch_device($pdo, $peerDeviceId);
+        $dev = qe_resolve_device($pdo, $peerDeviceId);
         if (!$dev) err('device not found');
         $account = re_linked_account($pdo, $peerDeviceId);
         $profile = $account !== '' ? re_get_profile($pdo, $account) : [];

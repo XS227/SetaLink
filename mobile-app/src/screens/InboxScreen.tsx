@@ -722,28 +722,32 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   tråden" — folded down to Telegram/WhatsApp's own pattern of
                   name+status up front, secondary actions behind "...". Call
                   stays a direct icon (not buried) only while it's actually
-                  usable, see CALLING_ENABLED — and unlike Block/Delete/profile-
-                  tap, it's deliberately NOT gated on `!openConvo.support`
-                  (Khabat, 2026-07-29, after the Iran tester's call icon never
-                  showed at all: SUPPORT_USER_ID — unifiedThreads.ts — is her
-                  own account during this testing phase, so every DM with her
-                  gets folded into the pinned Support thread client-side, per
-                  buildConversations(). A canCall-eligible user should be able
-                  to ring Support the same as any other peer; startCall()
-                  already falls back to `peerUserId` when there's no
-                  `peerDevice`, and the backend resolves a user_id via
-                  qe_resolve_device() same as any other call target, so no
-                  server-side change was needed for this). */}
+                  usable, see CALLING_ENABLED.
+                  Khabat, 2026-07-31: Call/Video/profile were still unreachable
+                  for the Support thread despite the 2026-07-29 intent above —
+                  the peer-name tap that opens this menu, and the menu Modal
+                  itself, were BOTH still gated on `openConvo.support`, so the
+                  menu could never open at all. Fixed for the two Iran
+                  testers: Support (SUPPORT_USER_ID — unifiedThreads.ts — is
+                  Khabat's own account/device during this testing phase, so
+                  every DM with her is folded into the pinned Support thread
+                  client-side, per buildConversations()) is now reachable the
+                  same as any other peer — Call/Video/see-profile all fall
+                  back to `peerUserId` when there's no `peerDevice`, same
+                  pattern startCall() already used. Only Block/Delete (the
+                  separate "..." overflow menu below) stay hidden for
+                  Support — you can't block support. */}
               <View style={styles.threadHeader}>
                 <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
                   <Text style={styles.backIcon}>‹</Text>
                 </TouchableOpacity>
                 {/* Khabat, 2026-07-29: "trykker på profilbilde til sender... se
-                    deres realgram profil" — tappable only for a real DM peer
-                    (needs a device_id to resolve); official/support threads
-                    have no public profile to show. */}
+                    deres realgram profil" — tappable for any peer we can
+                    resolve a profile for, DM or Support alike (falls back to
+                    peerUserId — Support's SUPPORT_USER_ID is itself a real
+                    device_id, see get-peer-profile in api.php). */}
                 <TouchableOpacity
-                  disabled={openConvo.support || !openConvo.peerDevice}
+                  disabled={!openConvo.peerDevice && !openConvo.peerUserId}
                   onPress={() => setShowPeerProfile(true)}
                   activeOpacity={0.7}
                 >
@@ -757,7 +761,6 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 <TouchableOpacity
                   ref={peerMenuAnchorRef}
                   style={styles.threadPeerWrap}
-                  disabled={openConvo.support}
                   activeOpacity={0.7}
                   onPress={() => {
                     setPeerMenuOpen(true);
@@ -841,51 +844,49 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                 </Modal>
               )}
 
-              {!openConvo.support && (
-                <Modal visible={peerMenuOpen} transparent animationType="fade" onRequestClose={() => setPeerMenuOpen(false)}>
-                  <TouchableOpacity
-                    style={StyleSheet.absoluteFillObject}
-                    activeOpacity={1}
-                    onPress={() => setPeerMenuOpen(false)}
-                  >
-                    <View style={[styles.threadMenu, { top: peerMenuPos.top, right: peerMenuPos.right }]}>
-                      {canCall && (
-                        <TouchableOpacity
-                          testID="convo-video-call"
-                          style={styles.threadMenuRow}
-                          activeOpacity={0.7}
-                          onPress={() => { setPeerMenuOpen(false); startCall(openConvo.peerDevice || openConvo.peerUserId || '', openConvo.title, true); }}
-                        >
-                          <Text style={styles.threadMenuIcon}>📹</Text>
-                          <Text style={styles.threadMenuLabel}>{t('call.startVideo')}</Text>
-                        </TouchableOpacity>
-                      )}
-                      {canCall && (
-                        <TouchableOpacity
-                          testID="convo-call"
-                          style={styles.threadMenuRow}
-                          activeOpacity={0.7}
-                          onPress={() => { setPeerMenuOpen(false); startCall(openConvo.peerDevice || openConvo.peerUserId || '', openConvo.title); }}
-                        >
-                          <Text style={styles.threadMenuIcon}>📞</Text>
-                          <Text style={styles.threadMenuLabel}>{t('call.start')}</Text>
-                        </TouchableOpacity>
-                      )}
-                      {!!openConvo.peerDevice && (
-                        <TouchableOpacity
-                          testID="convo-see-profile"
-                          style={[styles.threadMenuRow, styles.threadMenuRowLast]}
-                          activeOpacity={0.7}
-                          onPress={() => { setPeerMenuOpen(false); setShowPeerProfile(true); }}
-                        >
-                          <Text style={styles.threadMenuIcon}>👤</Text>
-                          <Text style={styles.threadMenuLabel}>{t('inbox.seeProfile')}</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                </Modal>
-              )}
+              <Modal visible={peerMenuOpen} transparent animationType="fade" onRequestClose={() => setPeerMenuOpen(false)}>
+                <TouchableOpacity
+                  style={StyleSheet.absoluteFillObject}
+                  activeOpacity={1}
+                  onPress={() => setPeerMenuOpen(false)}
+                >
+                  <View style={[styles.threadMenu, { top: peerMenuPos.top, right: peerMenuPos.right }]}>
+                    {canCall && (
+                      <TouchableOpacity
+                        testID="convo-video-call"
+                        style={styles.threadMenuRow}
+                        activeOpacity={0.7}
+                        onPress={() => { setPeerMenuOpen(false); startCall(openConvo.peerDevice || openConvo.peerUserId || '', openConvo.title, true); }}
+                      >
+                        <Text style={styles.threadMenuIcon}>📹</Text>
+                        <Text style={styles.threadMenuLabel}>{t('call.startVideo')}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {canCall && (
+                      <TouchableOpacity
+                        testID="convo-call"
+                        style={styles.threadMenuRow}
+                        activeOpacity={0.7}
+                        onPress={() => { setPeerMenuOpen(false); startCall(openConvo.peerDevice || openConvo.peerUserId || '', openConvo.title); }}
+                      >
+                        <Text style={styles.threadMenuIcon}>📞</Text>
+                        <Text style={styles.threadMenuLabel}>{t('call.start')}</Text>
+                      </TouchableOpacity>
+                    )}
+                    {(!!openConvo.peerDevice || !!openConvo.peerUserId) && (
+                      <TouchableOpacity
+                        testID="convo-see-profile"
+                        style={[styles.threadMenuRow, styles.threadMenuRowLast]}
+                        activeOpacity={0.7}
+                        onPress={() => { setPeerMenuOpen(false); setShowPeerProfile(true); }}
+                      >
+                        <Text style={styles.threadMenuIcon}>👤</Text>
+                        <Text style={styles.threadMenuLabel}>{t('inbox.seeProfile')}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </Modal>
 
               {/* Ad banner — Khabat, 2026-07-24: AdMob showed on Freedom/Home
                   but not here; support threads are the one Inbox surface it's
@@ -1094,7 +1095,7 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
 
       <PeerProfileSheet
         visible={showPeerProfile}
-        peerDeviceId={openConvo?.peerDevice ?? ''}
+        peerDeviceId={openConvo?.peerDevice ?? openConvo?.peerUserId ?? ''}
         onClose={() => setShowPeerProfile(false)}
       />
     </View>
