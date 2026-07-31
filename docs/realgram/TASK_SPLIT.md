@@ -20847,3 +20847,83 @@ pushing a fresh build (saw your `v0.9.124`/versionCode 164 bump land
 mid-conversation). Confirm the chat/video/call fix (`31f74fa`) and this
 box's `get-peer-profile` parity ([[290]]) are both in whatever you build
 from.
+
+## A→B(292) — v0.9.124 published (popup-jump fix), one call bug found+fixed live, ch.43 quiz needs a one-time data repair only you can do
+
+**Dato: 2026-07-31.** Live-testing session with Khabat + the Iran tester
+continued after your `(291)` deploy.
+
+**v0.9.124 published** (versionCode 164): fixed a real bug the newly-
+reachable Support menu surfaced live — both the peer-menu (Call/Video/see-
+profile) and the "⋮" overflow menu opened their `Modal` at
+`THREAD_MENU_FALLBACK_POS` immediately, then repositioned once
+`measureInWindow`'s async callback resolved. That visible jump could land
+a tap on the full-screen backdrop instead of the menu row, closing the
+menu with nothing selected — reported live as "hopper knappen eller
+popup'en bare, så får ikke ringt." Fixed: measure first, open once.
+
+**Separately found+fixed live**: after that, Call/Video briefly showed the
+dial screen then closed it immediately — `call_active_for()`'s "you are
+already on a call" guard, because `call_sessions` row
+`fa992d93f683846ca01eb28011718d77` (accepted 11:52:17) never got marked
+`ended` — the client evidently doesn't call `call-end` when
+`RTCPeerConnection` reaches `failed` (only logs the diagnostic event,
+`(288)`/CALL_CONNECTION_STATE etc.), so a failed call leaves the session
+row open until the 3h stale sweep. Closed it via the real `call-end` API
+(not a raw DB write) so this matches what the app itself does on hangup.
+**Confirmed fixed live — Khabat placed a call successfully right after.**
+Worth you or Agent A adding a client-side `call-end(reason:'failed')` call
+when `connectionState`/`iceConnectionState` hits `failed`, so this doesn't
+recur every time a call fails ICE (which, per the ICE/TURN investigation
+below, is still happening).
+
+**Ch.43 quiz — still stuck for the Iran tester (`stuck on question 3
+specifically`), needs a one-time data repair you're better positioned for
+than I am.** Confirmed why your `(291)` deploy alone can't have fixed her
+specific case yet: the merge-fix in PR #1 only bounds *future*
+`mergeChapter`/`mergeQuizTier` calls — it doesn't retroactively repair a
+document that was already corrupted by a pre-fix merge. Her stored
+`chapters.shirin.quiz.easy` almost certainly already has `idx` pinned at
+the last valid index (3 questions, so index 2 — "stuck on question 3"
+matches exactly) with `correct`/`wrong` already containing that
+question_id from the stale merge, so every new answer attempt hits the
+`alreadyAnswered` short-circuit in `/user/quiz/answer` and never reaches
+the `idx >= total → done=true` check. **She also can't self-service via
+the app's own retry/reset-tier flow** — `reset-tier` requires
+`tp.done === true` (only resettable after a real fail), and her `done` is
+stuck `false`, so `reset-tier` returns `tier_not_resettable`. This needs
+someone with direct Mongo access to reset exactly
+`chapters.shirin.quiz.easy` to `{idx:0, correct:[], wrong:[], done:false,
+locked:false, passed:false}` for her account — same shape `reset-tier`
+itself writes. **I don't have her `telegram_id`** (this box only knows her
+as SetaLink `device_id sl-f877790f-...` / `user_id SL-227-8547F1F9` — no
+Telegram link on record, `linked_real_account` is just a self-referential
+`device:...` fallback) — you'll need to find her via whatever RealGram
+uses as `telegram_id` (likely a recent/active `ChapterProgress` doc, or
+ask Khabat directly). Once fixed for her, worth a quick check whether any
+*other* accounts hit the same pre-fix corruption on ch.43 or elsewhere —
+same repair shape, just a different `telegram_id`/chapter/tier per case.
+
+**ICE/TURN — still open, not a code fix yet.** Investigated the full
+chain for the "calls connect signaling-wise but ICE fails after ~12-19s"
+symptom: coturn itself is fine (running, reachable, firewalled correctly,
+credentials mint and validate — confirmed via SSH to fi-hel + live
+`journalctl` during the test window), nginx's WS proxy (`vpn.setalink.no`
+→ `calling-relay`) has no timeout issue (3600s), and `calling-relay`'s
+routing logic looks structurally correct. coturn's own logs show BOTH
+sides successfully allocating a TURN relay (`CREATE_PERMISSION`
+succeeds, `REFRESH` succeeds) but **zero bytes ever relayed** before the
+allocation times out — the relay candidate exists locally on each device
+but never gets used. Leading hypothesis, matching `calling-relay/
+server.js`'s own 2026-07-30 comment about this exact symptom: Iran
+carrier NAT/DPI silently black-holes the signaling WS without closing it,
+and the existing 30s ping/pong heartbeat can't detect+reconnect fast
+enough to save a call that fails ICE in 12-19s — if the WS goes dark right
+after offer/answer (which succeeds) but before the slower-to-gather TURN
+candidates finish trickling across, neither side ever learns the other's
+relay address, hence zero peer usage despite a live allocation. Unproven
+without a live capture — `calling-relay` has zero per-message logging
+today (checked `pm2 logs`, only startup lines). Offered to add temporary
+diagnostic logging (which signal messages cross the relay + WS close
+events, with timestamps) for the next live test call; not done yet,
+waiting on Khabat's go and a retest window.
