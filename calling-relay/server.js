@@ -128,10 +128,25 @@ const internalHttpServer = http.createServer((req, res) => {
   });
 });
 
+// Khabat, 2026-07-31: temporary diagnostic logging for the ICE/TURN
+// investigation (calls connect signaling-wise, media never flows, ICE
+// fails ~12-19s in) — this relay had zero per-message logging before,
+// so there was no way to see whether ICE candidates (esp. the slower-to-
+// gather TURN ones) actually cross the wire, or whether the WS silently
+// dies mid-call the way the zombie-connection comment below already
+// describes. Log to stdout only (pm2 out log), nothing persisted to a
+// DB — safe to strip once the live test that needs this is done.
+function diagLog(event, fields) {
+  console.log(`[diag] ${new Date().toISOString()} ${event} ${JSON.stringify(fields)}`);
+}
+
 wss.on('connection', (ws) => {
   const connectionId = String(nextConnectionId++);
   connections.set(connectionId, ws);
   let presenceDeviceId = null; // set once presence:auth succeeds, for logging/cleanup only
+  const connectedAt = Date.now();
+  let lastMessageAt = connectedAt;
+  diagLog('ws_open', { connectionId });
 
   // Mobile carrier NAT/firewalls (and DPI middleboxes on restrictive
   // networks) commonly drop an idle TCP connection without ever sending a
@@ -149,6 +164,9 @@ wss.on('connection', (ws) => {
   ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (raw) => {
+    const now = Date.now();
+    const sinceLastMs = now - lastMessageAt;
+    lastMessageAt = now;
     let msg;
     try {
       msg = JSON.parse(raw.toString());
@@ -159,6 +177,9 @@ wss.on('connection', (ws) => {
     if (!msg || typeof msg.type !== 'string') {
       send(ws, { type: 'error', message: 'missing type' });
       return;
+    }
+    if (msg.type !== 'call:signal') {
+      diagLog('ws_message', { connectionId, deviceId: presenceDeviceId, type: msg.type, call_id: msg.call_id, sinceLastMs });
     }
 
     switch (msg.type) {
@@ -181,6 +202,7 @@ wss.on('connection', (ws) => {
           return;
         }
         registry.joinRoom(payload.call_id, payload.role, payload.device_id, connectionId);
+        diagLog('call_join', { connectionId, deviceId: payload.device_id, call_id: payload.call_id, role: payload.role });
         send(ws, { type: 'call:joined', call_id: payload.call_id, role: payload.role });
         const peerConnectionId = registry.peerConnectionFor(payload.call_id, payload.device_id);
         const peerWs = peerConnectionId ? connections.get(peerConnectionId) : null;
@@ -214,6 +236,11 @@ wss.on('connection', (ws) => {
           ? (room.callee ? room.callee.connectionId : null)
           : (room.caller ? room.caller.connectionId : null);
         const peerWs = peerConnectionId ? connections.get(peerConnectionId) : null;
+        diagLog('call_signal', {
+          connectionId, call_id: msg.call_id, from: isCaller ? 'caller' : 'callee',
+          kind: msg.payload && msg.payload.kind, deliveredToPeer: !!peerWs,
+          peerWsReady: peerWs ? peerWs.readyState === peerWs.OPEN : null, sinceLastMs,
+        });
         if (peerWs) send(peerWs, { type: 'call:signal', call_id: msg.call_id, payload: msg.payload });
         break;
       }
@@ -239,12 +266,17 @@ wss.on('connection', (ws) => {
     }
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    diagLog('ws_close', {
+      connectionId, deviceId: presenceDeviceId, code, reason: reason ? reason.toString() : '',
+      msSinceLastMessage: Date.now() - lastMessageAt, msSinceConnect: Date.now() - connectedAt,
+    });
     connections.delete(connectionId);
     registry.dropConnection(connectionId);
   });
 
-  ws.on('error', () => {
+  ws.on('error', (err) => {
+    diagLog('ws_error', { connectionId, deviceId: presenceDeviceId, message: err && err.message });
     // 'close' still fires after 'error' on the ws lib — cleanup happens there.
   });
 });
