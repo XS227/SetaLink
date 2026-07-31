@@ -18,14 +18,22 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, Vibration, View } from 'react-native';
+import { StyleSheet, Text, TouchableOpacity, Vibration, View, useWindowDimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
 import { RTCView } from 'react-native-webrtc';
+import { IconCameraFlip, IconMic, IconMicOff, IconPhone, IconSpeaker, IconVideo, IconVideoOff } from '../components/CallIcons';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { CallEngine, CallState } from '../services/callService';
 import { sendMessage } from '../services/entitlementService';
 import { useAuthStore } from '../stores/authStore';
+
+const PIP_WIDTH = 100;
+const PIP_HEIGHT = 140;
+const PIP_MARGIN = Spacing[4];
+const PIP_TOP = 60;
 
 // Raw account IDs are admin/api.php's generate_user_id(): "SL-<rowid>-<8
 // random chars>", e.g. "SL-227-62DAC5F0" — meant for support lookups, not
@@ -78,6 +86,57 @@ function formatDuration(totalSecs: number): string {
   const m = Math.floor(totalSecs / 60);
   const s = totalSecs % 60;
   return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// Khabat, 2026-07-31: her own video preview sat fixed top-right, right where
+// the call-control row could end up sliding under it on smaller screens —
+// "mitt eget bilde/video går under de ikonene". Rather than guess a fixed
+// spot that dodges every button layout permutation (portrait/landscape,
+// audio vs video controls, notch height), let her drag it wherever it's out
+// of the way herself. Base anchor stays top-right (unchanged default); a pan
+// gesture adds a translate offset on top, clamped to the screen bounds so it
+// can't be dragged off-screen or under the safe-area edges, then springs
+// back inside those bounds on release.
+function DraggableLocalPip({ streamUrl }: { streamUrl: string }) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+
+  const baseLeft = screenWidth - PIP_MARGIN - PIP_WIDTH;
+  const minX = PIP_MARGIN - baseLeft;
+  const maxX = 0;
+  const minY = insets.top + Spacing[2] - PIP_TOP;
+  const maxY = screenHeight - insets.bottom - PIP_HEIGHT - Spacing[20] - PIP_TOP;
+
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const startX = useSharedValue(0);
+  const startY = useSharedValue(0);
+
+  const pan = Gesture.Pan()
+    .onStart(() => {
+      startX.value = translateX.value;
+      startY.value = translateY.value;
+    })
+    .onUpdate((e) => {
+      translateX.value = Math.min(maxX, Math.max(minX, startX.value + e.translationX));
+      translateY.value = Math.min(maxY, Math.max(minY, startY.value + e.translationY));
+    })
+    .onEnd(() => {
+      translateX.value = withSpring(Math.min(maxX, Math.max(minX, translateX.value)), { damping: 20, stiffness: 220 });
+      translateY.value = withSpring(Math.min(maxY, Math.max(minY, translateY.value)), { damping: 20, stiffness: 220 });
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
+  }));
+
+  return (
+    <GestureDetector gesture={pan}>
+      <Animated.View style={[styles.localVideoPip, animatedStyle]}>
+        <RTCView streamURL={streamUrl} style={StyleSheet.absoluteFill} objectFit="cover" mirror zOrder={1} />
+      </Animated.View>
+    </GestureDetector>
+  );
 }
 
 export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAccept }: Props) {
@@ -199,7 +258,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   const showVideo = isVideo && state === 'active' && (remoteStreamUrl || localStreamUrl);
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + Spacing[6], paddingBottom: insets.bottom + Spacing[6] }]}>
+    <View style={[styles.screen, { paddingTop: insets.top + Spacing[6], paddingBottom: insets.bottom + Spacing[3] }]}>
       {showVideo ? (
         <>
           {remoteStreamUrl ? (
@@ -209,9 +268,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
               <Text style={styles.status}>{statusLabel()}</Text>
             </View>
           )}
-          {localStreamUrl && videoOn && (
-            <RTCView streamURL={localStreamUrl} style={styles.localVideoPip} objectFit="cover" mirror zOrder={1} />
-          )}
+          {localStreamUrl && videoOn && <DraggableLocalPip streamUrl={localStreamUrl} />}
         </>
       ) : (
         <View style={styles.center}>
@@ -235,10 +292,12 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       {state === 'ringing' ? (
         <View style={styles.incomingRow}>
           <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleReject} accessibilityLabel={t('call.reject')}>
-            <Text style={styles.circleBtnIcon}>✕</Text>
+            <View style={styles.hangupIconRotate}>
+              <IconPhone size={22} color="#0B0F14" />
+            </View>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.circleBtn, styles.acceptBtn]} onPress={handleAccept} accessibilityLabel={t('call.accept')}>
-            <Text style={styles.circleBtnIcon}>✓</Text>
+            <IconPhone size={22} color="#0B0F14" />
           </TouchableOpacity>
         </View>
       ) : (
@@ -248,7 +307,9 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
             onPress={toggleMute}
             accessibilityLabel={muted ? t('call.unmute') : t('call.mute')}
           >
-            <Text style={styles.smallBtnIcon}>{muted ? '🔇' : '🎤'}</Text>
+            {muted
+              ? <IconMicOff size={19} color={Colors.gold[400]} />
+              : <IconMic size={19} color={Colors.text.primary} />}
           </TouchableOpacity>
           {isVideo && (
             <TouchableOpacity
@@ -256,15 +317,19 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
               onPress={toggleVideo}
               accessibilityLabel={videoOn ? t('call.videoOff') : t('call.videoOn')}
             >
-              <Text style={styles.smallBtnIcon}>{videoOn ? '📹' : '📷'}</Text>
+              {videoOn
+                ? <IconVideo size={19} color={Colors.text.primary} />
+                : <IconVideoOff size={19} color={Colors.gold[400]} />}
             </TouchableOpacity>
           )}
           <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleHangUp} accessibilityLabel={t('call.hangUp')}>
-            <Text style={styles.circleBtnIcon}>✕</Text>
+            <View style={styles.hangupIconRotate}>
+              <IconPhone size={22} color="#0B0F14" />
+            </View>
           </TouchableOpacity>
           {isVideo ? (
             <TouchableOpacity style={styles.smallBtn} onPress={() => engine.switchCamera()} accessibilityLabel={t('call.switchCamera')}>
-              <Text style={styles.smallBtnIcon}>🔄</Text>
+              <IconCameraFlip size={19} color={Colors.text.primary} />
             </TouchableOpacity>
           ) : (
             <TouchableOpacity
@@ -272,7 +337,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
               onPress={toggleSpeaker}
               accessibilityLabel={t('call.speaker')}
             >
-              <Text style={styles.smallBtnIcon}>🔊</Text>
+              <IconSpeaker size={19} color={speakerOn ? Colors.gold[400] : Colors.text.primary} />
             </TouchableOpacity>
           )}
         </View>
@@ -298,28 +363,32 @@ const styles = StyleSheet.create({
   avatarInitial: { fontSize: 48, color: Colors.gold[400], fontFamily: Typography.family.heading },
   peerName: { fontSize: Typography.size.xl, color: Colors.text.primary, fontFamily: Typography.family.heading },
   status: { fontSize: Typography.size.sm, color: Colors.text.secondary, fontFamily: Typography.family.mono },
-  incomingRow: { flexDirection: 'row', gap: Spacing[8] },
-  activeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[6] },
+  incomingRow: { flexDirection: 'row', gap: Spacing[7] },
+  activeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[5] },
   circleBtn: {
-    width: 68, height: 68, borderRadius: 34,
+    width: 60, height: 60, borderRadius: 30,
     alignItems: 'center', justifyContent: 'center',
   },
   acceptBtn: { backgroundColor: Colors.status.connected },
   rejectBtn: { backgroundColor: Colors.red[400] },
-  circleBtnIcon: { fontSize: 28, color: '#0B0F14' },
+  // The accept button uses IconPhone as-is; hang up/decline reuse the same
+  // glyph rotated 135° for the familiar "hang up" silhouette instead of a
+  // second icon asset.
+  hangupIconRotate: { transform: [{ rotate: '135deg' }] },
   smallBtn: {
-    width: 52, height: 52, borderRadius: Radius.full,
+    width: 46, height: 46, borderRadius: Radius.full,
     backgroundColor: Colors.bg.elevated,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: Colors.border.default,
   },
   smallBtnActive: { backgroundColor: Colors.gold[400] + '22', borderColor: Colors.gold[400] },
-  smallBtnIcon: { fontSize: 22 },
   videoWaiting: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.void },
   localVideoPip: {
-    position: 'absolute', top: 60, right: Spacing[4],
-    width: 100, height: 140, borderRadius: Radius.md,
+    position: 'absolute', top: PIP_TOP, right: PIP_MARGIN,
+    width: PIP_WIDTH, height: PIP_HEIGHT, borderRadius: Radius.md,
     borderWidth: 1, borderColor: Colors.gold[400] + '55', overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
   },
   videoHeader: {
     position: 'absolute', top: 0, left: 0, right: 0,
