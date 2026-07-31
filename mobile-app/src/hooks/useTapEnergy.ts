@@ -31,21 +31,41 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * pool so single-tap movement is visible, spend clearly above any plausible
  * passive-regen rate, slower regen so idle recovery takes a real pause
  * rather than out-regenerating the user's own thumb.
+ *
+ * 2026-07-31: took a `maxEnergy` param instead of a hardcoded constant —
+ * energyTierService.ts's paid upgrade tiers (1k/2k/3k/5k/8k, ﷼) change the
+ * pool size at runtime. Spend/regen stay ratio-based (3%/tap, 1%/tick,
+ * same feel as the 2026-07-30 rebalance at every tier) rather than fixed
+ * amounts, so a bigger pool doesn't accidentally drain faster or slower in
+ * relative terms — a tier buys a longer session, not a different feel.
  */
-
-const MAX_ENERGY = 100;
-const SPEND_PER_TAP = 3;
-const REGEN_PER_TICK = 1;
+const SPEND_RATIO = 0.03;
+const REGEN_RATIO = 0.01;
 const TICK_MS = 600;
 
-export function useTapEnergy() {
-  const [energy, setEnergy] = useState(MAX_ENERGY);
-  const energyRef = useRef(MAX_ENERGY);
+export function useTapEnergy(maxEnergy: number) {
+  const [energy, setEnergy] = useState(maxEnergy);
+  const energyRef = useRef(maxEnergy);
+  const maxRef = useRef(maxEnergy);
+
+  // Tier upgrade changes maxEnergy at runtime — raise the ceiling without
+  // resetting whatever energy the player currently has (a top-up-to-full
+  // reset would be a stealth nerf for anyone who upgrades mid-session with
+  // a partly-drained bar).
+  useEffect(() => {
+    maxRef.current = maxEnergy;
+    if (energyRef.current > maxEnergy) {
+      energyRef.current = maxEnergy;
+      setEnergy(maxEnergy);
+    }
+  }, [maxEnergy]);
 
   useEffect(() => {
     const id = setInterval(() => {
-      if (energyRef.current < MAX_ENERGY) {
-        energyRef.current = Math.min(MAX_ENERGY, energyRef.current + REGEN_PER_TICK);
+      const max = maxRef.current;
+      const regen = Math.max(1, Math.round(max * REGEN_RATIO));
+      if (energyRef.current < max) {
+        energyRef.current = Math.min(max, energyRef.current + regen);
         setEnergy(energyRef.current);
       }
     }, TICK_MS);
@@ -54,11 +74,12 @@ export function useTapEnergy() {
 
   /** Returns false (and spends nothing) when the pool is empty. */
   const spend = useCallback(() => {
-    if (energyRef.current < SPEND_PER_TAP) return false;
-    energyRef.current = Math.max(0, energyRef.current - SPEND_PER_TAP);
+    const cost = Math.max(1, Math.round(maxRef.current * SPEND_RATIO));
+    if (energyRef.current < cost) return false;
+    energyRef.current = Math.max(0, energyRef.current - cost);
     setEnergy(energyRef.current);
     return true;
   }, []);
 
-  return { energy, maxEnergy: MAX_ENERGY, pct: energy / MAX_ENERGY, spend };
+  return { energy, maxEnergy, pct: maxEnergy > 0 ? energy / maxEnergy : 0, spend };
 }

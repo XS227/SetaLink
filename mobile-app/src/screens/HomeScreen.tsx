@@ -17,6 +17,8 @@ import { ShahnamehHakimBanner } from '../components/ShahnamehHakimBanner';
 import { HomeBanner }      from '../components/HomeBanner';
 import { TopBar }          from '../components/TopBar';
 import { EnergyBar }       from '../components/EnergyBar';
+import { EnergyUpgradeModal } from '../components/EnergyUpgradeModal';
+import { getEnergyTier }   from '../services/entitlementService';
 import { MiniLuckWheel }   from '../components/MiniLuckWheel';
 import { useTapEnergy }    from '../hooks/useTapEnergy';
 
@@ -271,7 +273,21 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     if (!isConnected) { lastMbpsRef.current = 0; return; }
     if (downloadMbps > 0) lastMbpsRef.current = downloadMbps;
   }, [downloadMbps, isConnected]);
-  const displayMbps = isConnected ? (downloadMbps > 0 ? downloadMbps : lastMbpsRef.current) : 0;
+  const displayMBs = isConnected ? (downloadMbps > 0 ? downloadMbps : lastMbpsRef.current) : 0;
+  // Khabat, 2026-07-31: "på forsiden står det fortsatt 0Mbps" — the 07-30
+  // idle-hold fix above only covered the "no traffic this poll window" case.
+  // Two compounding bugs left this chip stuck at 0 for any real connection
+  // under standard speeds: (1) useVpnStats' `downloadMbps` field is actually
+  // MB/s (bytes/1e6, see that file's own note — DiagnosticsScreen labels
+  // the same number "MB/s"), silently shown here under a "Mbps" label with
+  // no unit conversion — an 8x understatement before rounding even starts;
+  // (2) `.toFixed(0)` then rounds anything under 1 (i.e. under 8 real Mbps,
+  // the common case on a VPN/proxy tunnel) straight to "0". Converting to
+  // true Mbps (*8) and keeping one decimal below 10 fixes both — this is
+  // the only place that needs actual Mbps, so converting locally here
+  // rather than changing the shared hook's unit and breaking Diagnostics'
+  // MB/s-calibrated pct bars.
+  const displayMbps = displayMBs * 8;
 
   // "Stability" used to be the literal hardcoded string '98' whenever
   // connected — not bound to anything real. Derives it from the same ping
@@ -413,7 +429,21 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   // Power/stamina — Khabat, 2026-07-30: RealGram was missing the Shahnameh
   // tap screen's stamina/cooldown mechanic entirely. Tap now spends energy;
   // out of energy = no reward until it regenerates (see useTapEnergy).
-  const tapEnergy = useTapEnergy();
+  // 2026-07-31: pool size is now a paid-upgrade tier (server-persisted,
+  // entitlementService.ts's getEnergyTier/upgradeEnergyTier) instead of a
+  // fixed constant — fetch the owned tier once on mount and feed its pool
+  // size into the hook; a fresh device with no row yet defaults to tier 0
+  // (1000) server-side, so 1000 here is just the pre-fetch placeholder, not
+  // a second source of truth.
+  const [energyMax, setEnergyMax] = useState(1000);
+  const [showEnergyUpgrade, setShowEnergyUpgrade] = useState(false);
+  useEffect(() => {
+    if (!user?.deviceId) return;
+    getEnergyTier(user.deviceId).then((res) => {
+      setEnergyMax(res.tiers[res.tier]?.pool ?? 1000);
+    }).catch(() => {});
+  }, [user?.deviceId]);
+  const tapEnergy = useTapEnergy(energyMax);
 
   const handleCoinForge = useCallback(() => {
     if (!isConnected) return;
@@ -502,28 +532,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </Animated.View>
 
-        {/* ── Balance pills — real zarStore data, not fabricated. Zar/hr
-             prefers the server's real hero-income rate (economy.
-             zar_per_hour_from_cards) once loaded — same number the Game
-             tab shows, can't drift from it. Falls back to the older
-             tap-derived estimate (earnedToday / hours elapsed today,
-             connection-gated) until that first loads or if it never does. ── */}
-        <Animated.View style={[styles.pillRow, fadeStyle]}>
-          <View style={styles.pill}>
-            <Text style={styles.pillLabel}>{t('home.balance')}</Text>
-            <View style={styles.pillValueRow}>
-              <View style={styles.pillDot} />
-              <Text style={styles.pillValue}>{formatZar(zarBalance)}</Text>
-            </View>
-          </View>
-          <View style={styles.pill}>
-            <Text style={styles.pillLabel}>{t('home.zarPerHour')}</Text>
-            <Text style={[styles.pillValue, { color: Colors.status.connected }]}>
-              +{formatZar(zarPerHourFromCards ?? (isConnected ? Math.round(zarEarnedToday / hoursElapsedToday()) : 0))}
-            </Text>
-          </View>
-        </Animated.View>
-
         {/* ── Starlink hero — theme pkg's 01-home.html §hero (stars +
              orbiting satellite + cyan wordmark), same tap target as the
              plain banner it replaces (whole card -> Freedom tab, where the
@@ -568,6 +576,26 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             )}
             <Text style={styles.chevron}>›</Text>
           </TouchableOpacity>
+
+          {/* Khabat, 2026-07-31: "balance og zar/hr fra toppen kan flyttes
+              inn på app area seksjin ... der den viser hvilket node man er
+              koblet til, den trenger ikke å være såå lang" — the two big
+              square pills that used to sit above this whole card (real
+              zarStore data, same source as before, just relocated) are now
+              a compact chip pair right under the connected-node row
+              instead, matching the ping/speed/stability chip row's own
+              compact style further down this same card. */}
+          <View style={styles.walletChipRow}>
+            <View style={styles.walletChip}>
+              <View style={styles.pillDot} />
+              <Text style={styles.walletChipValue}>{formatZar(zarBalance)}</Text>
+            </View>
+            <View style={styles.walletChip}>
+              <Text style={[styles.walletChipValue, { color: Colors.status.connected }]}>
+                +{formatZar(zarPerHourFromCards ?? (isConnected ? Math.round(zarEarnedToday / hoursElapsedToday()) : 0))}/hr
+              </Text>
+            </View>
+          </View>
 
           {/* Divider */}
           <View style={styles.vpnDivider} />
@@ -628,7 +656,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               </View>
               <View style={styles.metricChip}>
                 <Text style={styles.metricChipIcon}>⚡</Text>
-                <Text style={styles.metricChipValue}>{isConnected ? `${displayMbps.toFixed(0)}Mbps` : '—'}</Text>
+                <Text style={styles.metricChipValue}>{isConnected ? `${displayMbps.toFixed(displayMbps < 10 ? 1 : 0)}Mbps` : '—'}</Text>
               </View>
               <View style={styles.metricChip}>
                 <Text style={styles.metricChipIcon}>◈</Text>
@@ -636,7 +664,12 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               </View>
             </View>
 
-            <EnergyBar energy={tapEnergy.energy} maxEnergy={tapEnergy.maxEnergy} pct={tapEnergy.pct} />
+            <EnergyBar
+              energy={tapEnergy.energy}
+              maxEnergy={tapEnergy.maxEnergy}
+              pct={tapEnergy.pct}
+              onPress={() => setShowEnergyUpgrade(true)}
+            />
           </View>
 
           {/* GoldBeatBurst celebrates connect transition */}
@@ -661,6 +694,13 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       </ScrollView>
 
       <BottomNav active={activeTab} onPress={onNavigate} />
+
+      <EnergyUpgradeModal
+        visible={showEnergyUpgrade}
+        deviceId={user?.deviceId ?? ''}
+        onClose={() => setShowEnergyUpgrade(false)}
+        onUpgraded={(_tier, newPool) => setEnergyMax(newPool)}
+      />
     </View>
   );
 }
@@ -685,12 +725,10 @@ const styles = StyleSheet.create({
   headerIconGlyph:{ fontSize: 15 },
 
   // Balance pills
-  pillRow:      { flexDirection: 'row', gap: Spacing[2] },
-  pill:         { flex: 1, backgroundColor: Colors.bg.surface, borderRadius: Radius.lg, borderWidth: 1, borderColor: Colors.border.default, paddingHorizontal: Spacing[3], paddingVertical: Spacing[1] + 2 },
-  pillLabel:    { fontSize: 8.5, fontFamily: Typography.family.label, color: Colors.text.muted, letterSpacing: 0.8, textTransform: 'uppercase' },
-  pillValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 },
   pillDot:      { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.gold[400] },
-  pillValue:    { fontSize: 13, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.text.primary },
+  walletChipRow:   { flexDirection: 'row', gap: Spacing[2], marginTop: Spacing[2] },
+  walletChip:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, paddingHorizontal: Spacing[3], paddingVertical: 5 },
+  walletChipValue: { fontSize: 11, fontFamily: Typography.family.mono, fontWeight: '700', color: Colors.text.primary },
 
   // VPN card
   vpnCard: {

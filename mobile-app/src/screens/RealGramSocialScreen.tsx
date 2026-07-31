@@ -14,11 +14,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
+import { GlobalChatModal } from '../components/GlobalChatModal';
 import { useT } from '../i18n';
+import { useAuthStore } from '../stores/authStore';
+import { useIdentityStore } from '../stores/identityStore';
 import {
   getLeaderboard, getActivityFeed, getTournament,
-  LeaderboardRow, ActivityEvent, TournamentInfo,
+  LeaderboardRow, ActivityEvent, TournamentInfo, LeaderboardType,
 } from '../services/socialService';
+
+const LB_TABS: { type: LeaderboardType; labelKey: 'social.lbEarners' | 'social.lbLearners' | 'social.lbReferrers' }[] = [
+  { type: 'earners',   labelKey: 'social.lbEarners' },
+  { type: 'learners',  labelKey: 'social.lbLearners' },
+  { type: 'referrers', labelKey: 'social.lbReferrers' },
+];
 
 interface Props {
   onBack: () => void;
@@ -52,24 +61,44 @@ function timeAgo(ts: number): string {
 export function RealGramSocialScreen({ onBack }: Props) {
   const insets = useSafeAreaInsets();
   const { t, isRTL } = useT();
+  const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
+  const identityHandle = useIdentityStore((s) => s.handle);
+  const identityDisplayName = useIdentityStore((s) => s.displayName);
+  const [showGlobalChat, setShowGlobalChat] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[] | null>(null);
   const [activity, setActivity]       = useState<ActivityEvent[]>([]);
   const [tournament, setTournament]   = useState<TournamentInfo | null>(null);
   const [error, setError]             = useState('');
+  // Khabat, 2026-07-31: "warrior of day, month, basert på ... referal
+  // antall, mest tapping, mest lest kapitler" — the backend already has 3
+  // real leaderboard types, just never surfaced as tabs here before (see
+  // socialService.ts's own note on why day/month + tap/hero-card aren't
+  // in this list yet).
+  const [lbType, setLbType] = useState<LeaderboardType>('earners');
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getLeaderboard(), getActivityFeed(), getTournament()])
-      .then(([lb, act, tour]) => {
+    Promise.all([getActivityFeed(), getTournament()])
+      .then(([act, tour]) => {
         if (cancelled) return;
-        if (lb.length === 0) { setError(t('social.loadError')); return; }
-        setLeaderboard(lb);
         setActivity(act);
         setTournament(tour);
       })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getLeaderboard(lbType)
+      .then((lb) => {
+        if (cancelled) return;
+        if (lb.length === 0) { setError(t('social.loadError')); return; }
+        setLeaderboard(lb);
+      })
       .catch(() => { if (!cancelled) setError(t('social.loadError')); });
     return () => { cancelled = true; };
-  }, [t]);
+  }, [lbType, t]);
 
   if (error) {
     return (
@@ -107,6 +136,19 @@ export function RealGramSocialScreen({ onBack }: Props) {
             <View>
               <Text style={styles.pageTitle}>{t('social.title')}</Text>
               <Text style={styles.pageSub}>{t('social.subtitle')}</Text>
+
+              {/* Khabat, 2026-07-31: "på social så kan det være en social
+                  chat der alle brukere av realgram kan skrive i." */}
+              <TouchableOpacity
+                style={styles.chatEntryBtn}
+                activeOpacity={0.85}
+                onPress={() => setShowGlobalChat(true)}
+              >
+                <Text style={styles.chatEntryIcon}>💬</Text>
+                <Text style={styles.chatEntryText}>{t('social.globalChatTitle')}</Text>
+                <Text style={styles.chatEntryArrow}>{isRTL ? '‹' : '›'}</Text>
+              </TouchableOpacity>
+
               {!!tournament && (
                 <GlassCard style={styles.tournamentCard} glowColor={Colors.gold[400]}>
                   <View style={styles.cardHeaderRow}>
@@ -123,6 +165,18 @@ export function RealGramSocialScreen({ onBack }: Props) {
                 </GlassCard>
               )}
               <Text style={styles.sectionTitle}>{t('social.leaderboard')}</Text>
+              <View style={styles.lbTabsRow}>
+                {LB_TABS.map((tab) => (
+                  <TouchableOpacity
+                    key={tab.type}
+                    onPress={() => setLbType(tab.type)}
+                    activeOpacity={0.8}
+                    style={[styles.lbTab, lbType === tab.type && styles.lbTabActive]}
+                  >
+                    <Text style={[styles.lbTabText, lbType === tab.type && styles.lbTabTextActive]}>{t(tab.labelKey)}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           }
           renderItem={({ item, index }) => <LeaderboardCard row={item} rank={index + 1} />}
@@ -146,6 +200,13 @@ export function RealGramSocialScreen({ onBack }: Props) {
           }
         />
       )}
+
+      <GlobalChatModal
+        visible={showGlobalChat}
+        deviceId={deviceId}
+        displayName={identityHandle ? `@${identityHandle}` : identityDisplayName}
+        onClose={() => setShowGlobalChat(false)}
+      />
     </View>
   );
 }
@@ -188,6 +249,16 @@ const styles = StyleSheet.create({
 
   pageTitle: { fontSize: 22, fontFamily: Typography.family.heading, color: Colors.text.primary },
   pageSub:   { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2, marginBottom: Spacing[3] },
+  chatEntryBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: Spacing[2],
+    backgroundColor: Colors.bg.surface, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.border.default,
+    paddingHorizontal: Spacing[4], paddingVertical: Spacing[3],
+    marginBottom: Spacing[3],
+  },
+  chatEntryIcon: { fontSize: 18 },
+  chatEntryText: { flex: 1, fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary },
+  chatEntryArrow: { fontSize: 18, color: Colors.gold[400] },
 
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardLabel: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.label, textTransform: 'uppercase', letterSpacing: 0.4 },
@@ -200,6 +271,11 @@ const styles = StyleSheet.create({
   tourBalance: { fontSize: 12, color: Colors.gold[400], fontFamily: Typography.family.mono },
 
   sectionTitle: { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary, marginTop: Spacing[3], marginBottom: Spacing[2] },
+  lbTabsRow: { flexDirection: 'row', gap: Spacing[2], marginBottom: Spacing[2] },
+  lbTab: { paddingHorizontal: Spacing[3], paddingVertical: Spacing[2], borderRadius: Radius.full, backgroundColor: Colors.bg.elevated, borderWidth: 1, borderColor: Colors.border.default },
+  lbTabActive: { backgroundColor: 'rgba(212,175,55,0.16)', borderColor: Colors.gold[400] },
+  lbTabText: { fontSize: 11, fontFamily: Typography.family.label, color: Colors.text.secondary },
+  lbTabTextActive: { color: Colors.gold[400] },
 
   rowCard:   { padding: Spacing[3] },
   rowCardMe: { borderColor: Colors.gold[400] },

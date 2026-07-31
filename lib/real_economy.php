@@ -30,6 +30,26 @@ const RE_GB = 1073741824;
 const RE_VERIFY_TIMEOUT_SECS = 5;
 const RE_LINK_PROOF_MAX_AGE_SECS = 600;
 
+/**
+ * Stamina/energy pool upgrade tiers (Khabat, 2026-07-31: "gjør det om til
+ * 1k så kan de oppgradere det til 2k, 3k, 5k osv, fibonacci sekvensen").
+ * Index = devices.energy_tier. Pool sizes are exactly what she asked for
+ * (Fibonacci: 1,2,3,5,8 x1000). PRICES ARE A PROPOSED STARTING POINT, NOT
+ * a reviewed business decision — scaled roughly against the existing
+ * referral-milestone REAL amounts (1000-25000, see mobile-app's
+ * earnService.ts MILESTONES) so this doesn't feel wildly out of line with
+ * the rest of the economy, but nobody has signed off on these exact
+ * numbers. Easy to retune later — every consumer reads this table, not a
+ * hardcoded number.
+ */
+const ENERGY_TIERS = [
+    ['pool' => 1000, 'cost_real' => 0],     // tier 0 — free default, current base
+    ['pool' => 2000, 'cost_real' => 500],
+    ['pool' => 3000, 'cost_real' => 1200],
+    ['pool' => 5000, 'cost_real' => 3000],
+    ['pool' => 8000, 'cost_real' => 6000],
+];
+
 // Admin-editable rate settings (settings table), created with these defaults.
 const RE_SETTING_DEFAULTS = [
     'real_per_gb'            => '100',          // REAL cost for 1 GB of quota
@@ -219,6 +239,23 @@ function re_wheel_settings(PDO $pdo): array {
         'gem_prize'  => (float)($rows['wheel_gem_prize'] ?? WHEEL_SETTING_DEFAULTS['wheel_gem_prize']),
         'farr_prize' => (float)($rows['wheel_farr_prize'] ?? WHEEL_SETTING_DEFAULTS['wheel_farr_prize']),
     ];
+}
+
+/** Current energy tier (0..count-1, defaults to 0/free) for a device. */
+function re_get_energy_tier(PDO $pdo, string $deviceId): int {
+    $st = $pdo->prepare("SELECT energy_tier FROM devices WHERE device_id=?");
+    $st->execute([$deviceId]);
+    $v = $st->fetchColumn();
+    $tier = $v === false ? 0 : (int)$v;
+    return max(0, min($tier, count(ENERGY_TIERS) - 1));
+}
+
+/** Persists a new energy tier. Caller is responsible for having already
+ *  charged the REAL cost (re_spend) — this only writes the resulting state. */
+function re_set_energy_tier(PDO $pdo, string $deviceId, int $tier): void {
+    $tier = max(0, min($tier, count(ENERGY_TIERS) - 1));
+    $st = $pdo->prepare("UPDATE devices SET energy_tier=? WHERE device_id=?");
+    $st->execute([$tier, $deviceId]);
 }
 
 /** Bytes already redeemed by a device in the last 24h (daily-cap check). */

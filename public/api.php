@@ -27,6 +27,8 @@ require_once __DIR__ . '/../lib/quota_economy.php';
 require_once __DIR__ . '/../lib/ads_recovery.php';
 // User-to-user messaging (v0.9.33).
 require_once __DIR__ . '/../lib/messaging.php';
+// Global chat room — one shared room every user can post in (2026-07-31).
+require_once __DIR__ . '/../lib/globalChat.php';
 // Audio/video calling authorization + history (signaling relay is separate).
 require_once __DIR__ . '/../lib/calling.php';
 // TrustAI referral trust scoring (optional service, local heuristic fallback).
@@ -126,6 +128,13 @@ function init_device_tables(PDO $pdo): void {
         // preserves the first-seen one; country_updated_at = when it last changed.
         "ALTER TABLE devices ADD COLUMN first_country TEXT DEFAULT ''",
         "ALTER TABLE devices ADD COLUMN country_updated_at TEXT DEFAULT ''",
+        // Stamina/energy pool upgrade tier (Khabat, 2026-07-31: "stamina...
+        // gjør det om til 1k så kan de oppgradere det til 2k, 3k, 5k osv,
+        // fibonacci sekvensen"). 0 = base 1000 pool (free, current default),
+        // 1..4 index into ENERGY_TIERS below. Device-scoped like plan/quota —
+        // no per-account identity needed for this, matches how quota itself
+        // is tracked here.
+        "ALTER TABLE devices ADD COLUMN energy_tier INTEGER DEFAULT 0",
     ];
     foreach ($migrations as $sql) {
         try { $pdo->exec($sql); } catch (\Exception $e) { /* column already exists */ }
@@ -1949,6 +1958,33 @@ if ($method === 'POST') {
         ok(['deleted' => dm_delete_thread($pdo, $deviceId, $peer)]);
     }
 
+    if ($action === 'send-global-message') {
+        // Khabat, 2026-07-31: "social chat der alle brukere av realgram kan
+        // skrive i men begrensning på antall meldinger pr minut." See
+        // lib/globalChat.php's own header for why this is a separate,
+        // simpler table from the 1:1 DM system (plaintext, tighter rate
+        // limit, no per-recipient concept).
+        $deviceId    = trim($_POST['device_id'] ?? '');
+        $displayName = trim($_POST['display_name'] ?? '');
+        $body        = (string)($_POST['body'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        try {
+            $msg = gc_send($pdo, $deviceId, $displayName, $body);
+        } catch (\RuntimeException $e) {
+            err($e->getMessage());
+        }
+        ok(['message' => $msg]);
+    }
+
+    if ($action === 'get-global-messages') {
+        $limit    = min(100, max(10, (int)($_GET['limit'] ?? 50)));
+        $beforeId = isset($_GET['before_id']) ? (int)$_GET['before_id'] : null;
+        $pdo = db();
+        ok(['messages' => gc_recent($pdo, $limit, $beforeId)]);
+    }
+
     if ($action === 'react-message') {
         // Toggle a reaction (2026-07-22): the mobile client (entitlementService.ts,
         // DM_REACTIONS) has called this since the chat pass shipped, but nothing
@@ -2331,6 +2367,53 @@ if ($method === 'POST') {
         }
         re_zar_swap_store($pdo, $id, 'ok', $result);
         ok($result);
+    }
+
+    if ($action === 'get-energy-tier') {
+        // Khabat, 2026-07-31: stamina pool upgrade tiers. Public read — the
+        // client needs this on every Home mount to know the current pool
+        // size, same "no auth beyond device_id" posture as real-wallet above.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+        $tier = re_get_energy_tier($pdo, $deviceId);
+        ok(['tier' => $tier, 'tiers' => ENERGY_TIERS]);
+    }
+
+    if ($action === 'upgrade-energy-tier') {
+        // Buys the NEXT tier up (server enforces sequential — can't skip
+        // tiers or downgrade). Same re_spend() debit path as
+        // redeem-real-spend above; idempotent on client_ref for the same
+        // crash-between-spend-and-persist reason that action documents.
+        $deviceId  = trim($_POST['device_id'] ?? '');
+        $clientRef = trim($_POST['client_ref'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        if ($clientRef === '' || strlen($clientRef) > 64) err('missing or invalid client_ref');
+        $pdo = db();
+        re_ensure_schema($pdo);
+        if (!qe_fetch_device($pdo, $deviceId)) err('device not found');
+
+        $current = re_get_energy_tier($pdo, $deviceId);
+        $next = $current + 1;
+        if ($next >= count(ENERGY_TIERS)) err('already at max tier');
+        $cost = ENERGY_TIERS[$next]['cost_real'];
+
+        $account = re_linked_account($pdo, $deviceId);
+        if ($account === '') $account = re_ensure_real_id($pdo, $deviceId);
+
+        $spend = re_spend($pdo, $account, $cost, 'energy-tier-' . $deviceId . '-' . $clientRef);
+        if (!$spend['ok']) {
+            err($spend['error'] === 'unavailable' ? 'wallet service unavailable' : $spend['error']);
+        }
+        // re_spend is idempotent on the tx_ref (same client_ref -> same
+        // result, never double-debits) but re-applying re_set_energy_tier
+        // on a retried request is harmless (same target value each time),
+        // unlike credit ledgers elsewhere that must guard against a second
+        // write — no separate duplicate-guard needed here.
+        re_set_energy_tier($pdo, $deviceId, $next);
+        ok(['tier' => $next, 'pool' => ENERGY_TIERS[$next]['pool'], 'balance' => $spend['balance_after']]);
     }
 
     if ($action === 'tap-sync') {

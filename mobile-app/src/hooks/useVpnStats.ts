@@ -67,6 +67,12 @@ export function useVpnStats(): VpnStatsResult {
           const dt       = (now - prevBytesRef.current.time) / 1000;
           const upDelta  = Math.max(0, s.uploadBytes   - prevBytesRef.current.upload);
           const dnDelta  = Math.max(0, s.downloadBytes - prevBytesRef.current.download);
+          // NB despite the field name, this is MB/s (bytes/1e6), not true
+          // Mbps (bits/1e6) — DiagnosticsScreen already displays this same
+          // value labeled "MB/s" with pct bars calibrated to that scale
+          // (/10, /30). Keeping the existing convention here; HomeScreen was
+          // the one place mislabeling it "Mbps" — fixed there instead of
+          // reconverting units and breaking Diagnostics' calibration.
           uploadMbps   = dt > 0 ? (upDelta / dt) / 1_000_000 : 0;
           downloadMbps = dt > 0 ? (dnDelta / dt) / 1_000_000 : 0;
         }

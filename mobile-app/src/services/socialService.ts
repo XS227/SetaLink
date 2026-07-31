@@ -60,8 +60,20 @@ async function fetchJson<T>(path: string, cacheKey: string): Promise<T | null> {
   }
 }
 
-export async function getLeaderboard(): Promise<LeaderboardRow[]> {
-  const json = await fetchJson<{ rows: LeaderboardRow[] }>('/api/season2/social/leaderboard', 'leaderboard');
+export type LeaderboardType = 'earners' | 'learners' | 'referrers';
+
+// Khabat, 2026-07-31: "warrior of day, month, basert på referal antall,
+// mest tapping, mest lest kapitler" — the backend endpoint already
+// supports 3 real leaderboard types (earners=real_balance, learners=xp,
+// referrers=verified_referral_count — GET .../social/leaderboard's own
+// route comment), the client just never passed `type` and always got the
+// default. Wiring these 3 in is a real, immediate improvement; "day/month"
+// periodization and tap-count/hero-card-level as their own dimensions
+// aren't in this endpoint at all — that needs a proper time-windowed
+// snapshot design (reset timing, anti-cheat) on the backend, not something
+// to improvise here. Flagged, not built.
+export async function getLeaderboard(type: LeaderboardType = 'earners'): Promise<LeaderboardRow[]> {
+  const json = await fetchJson<{ rows: LeaderboardRow[] }>(`/api/season2/social/leaderboard?type=${type}`, `leaderboard-${type}`);
   return json?.rows ?? [];
 }
 

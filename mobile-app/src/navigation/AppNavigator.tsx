@@ -760,6 +760,7 @@ function CallManager() {
         <CallScreen
           engine={activeCall.engine}
           peerLabel={activeCall.peerLabel}
+          peerId={activeCall.peerId}
           outgoing={activeCall.outgoing}
           onAccept={activeCall.outgoing ? undefined : acceptCall}
           onEnded={endCall}
@@ -941,7 +942,6 @@ export function AppNavigator() {
           {({ navigation }) => (
             <RealGramEarnScreen
               onBack={() => navigation.goBack()}
-              onOpenDailyLuck={() => navigation.navigate('DailyLuck')}
             />
           )}
         </Stack.Screen>

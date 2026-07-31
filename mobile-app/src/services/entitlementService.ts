@@ -577,3 +577,65 @@ export async function reportSessionEnd(
     session_id:    sessionId,
   });
 }
+
+/** Stamina/energy pool upgrade tiers (Khabat, 2026-07-31: "1k...2k, 3k, 5k
+ *  osv, fibonacci sekvensen"). Server-persisted (devices.energy_tier,
+ *  api.php 'get-energy-tier'/'upgrade-energy-tier') so it survives a
+ *  reinstall — see lib/real_economy.php's ENERGY_TIERS for pool sizes and
+ *  the (explicitly flagged, not-yet-reviewed) proposed REAL prices. */
+export interface EnergyTierDef { pool: number; cost_real: number }
+export interface EnergyTierStatus { tier: number; tiers: EnergyTierDef[] }
+
+export async function getEnergyTier(deviceId: string): Promise<EnergyTierStatus> {
+  const data = await mobileGet('get-energy-tier', { device_id: deviceId });
+  return data as EnergyTierStatus;
+}
+
+export type EnergyUpgradeResult =
+  | { ok: true; tier: number; pool: number; balance: number | null }
+  | { ok: false; error: string };
+
+export async function upgradeEnergyTier(deviceId: string, clientRef: string): Promise<EnergyUpgradeResult> {
+  try {
+    const data = await mobilePost('upgrade-energy-tier', { device_id: deviceId, client_ref: clientRef }) as
+      { tier: number; pool: number; balance: number | null };
+    return { ok: true, ...data };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'network_error' };
+  }
+}
+
+/** Global chat — one shared room every user can post in (Khabat, 2026-07-31:
+ *  "en social chat der alle brukere av realgram kan skrive i men
+ *  begrensning på antall meldinger pr minut"). Server-enforced rate limit
+ *  (lib/globalChat.php: 3/min, 100/day per device) — this is NOT just a
+ *  client-side throttle, since that would be trivially bypassable. */
+export interface GlobalChatMessage {
+  id: number;
+  device_id: string;
+  display_name: string;
+  body: string;
+  created_at: string;
+}
+
+export type SendGlobalMessageResult =
+  | { ok: true; message: GlobalChatMessage }
+  | { ok: false; error: string };
+
+export async function sendGlobalMessage(deviceId: string, displayName: string, body: string): Promise<SendGlobalMessageResult> {
+  try {
+    const data = await mobilePost('send-global-message', { device_id: deviceId, display_name: displayName, body }) as
+      { message: GlobalChatMessage };
+    return { ok: true, message: data.message };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'network_error' };
+  }
+}
+
+/** Newest-first, same convention as the raw DB query — caller reverses for display. */
+export async function getGlobalMessages(limit = 50, beforeId?: number): Promise<GlobalChatMessage[]> {
+  const params: Record<string, string> = { limit: String(limit) };
+  if (beforeId != null) params.before_id = String(beforeId);
+  const data = await mobileGet('get-global-messages', params) as { messages: GlobalChatMessage[] };
+  return data.messages ?? [];
+}

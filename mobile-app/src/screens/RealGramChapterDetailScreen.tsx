@@ -52,6 +52,7 @@ import {
 import { fetchServerChapterProgress, pushChapterProgress } from '../services/chapterProgressSyncService';
 import { getChapterQuiz, QuizQuestion } from '../services/chapterQuizService';
 import { getHeroCatalog, getOwnedHeroes, HeroCatalogEntry, OwnedHero, reconcileChapterRewards } from '../services/heroCatalogService';
+import { updateDailyQuest } from '../services/earnService';
 
 interface Props {
   slug: string;
@@ -138,7 +139,14 @@ export function RealGramChapterDetailScreen({ slug, onBack, onOpenHeroes }: Prop
     }
     const next = markSceneRead(slug, sceneId);
     setProgress(next);
-    if (telegramId) pushChapterProgress(telegramId, slug, next).catch(() => {});
+    if (telegramId) {
+      pushChapterProgress(telegramId, slug, next).catch(() => {});
+      // Khabat, 2026-07-31: "daily task blir ikke oppdatert, selv om jeg
+      // ... lest kapitler" — see earnService.ts's updateDailyQuest header for
+      // the root cause. Fire-and-forget, same posture as pushChapterProgress
+      // right above.
+      updateDailyQuest(telegramId, 'read').catch(() => {});
+    }
   }, [slug, lore, progress.scenes, telegramId]);
 
   const handleDeskRead = useCallback(() => {

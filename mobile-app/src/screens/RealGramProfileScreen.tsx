@@ -19,7 +19,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsFocused } from '@react-navigation/native';
 import {
-  ActivityIndicator, Alert, Image, InteractionManager, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Alert, Image, ImageBackground, InteractionManager, ScrollView, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -31,14 +31,15 @@ import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useIdentityStore } from '../stores/identityStore';
 import { useProfilePicStore } from '../stores/profilePicStore';
-import { useSessionStore, SessionRecord } from '../stores/sessionStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useVpnStore } from '../stores/vpnStore';
 import { BiometricService } from '../services/biometricService';
-import { formatBytes, formatDuration } from '../utils/formatters';
+import { formatBytes } from '../utils/formatters';
 import {
   getProfileSummary, ProfileSummary,
 } from '../services/realGramProfileService';
 import { syncEntitlement } from '../services/entitlementService';
+import { getChapterCatalog, ChapterCatalogEntry } from '../services/chapterCatalogService';
 
 // Never surface a raw backend error code — Khabat, 2026-07-21: Profile
 // showed the literal string "profile_unavailable". Map known codes to
@@ -86,29 +87,6 @@ interface Props {
 }
 
 // Same relative-time convention as ActivityScreen's own session list.
-function timeAgo(ts: number): string {
-  const s = Math.max(0, (Date.now() - ts) / 1000);
-  if (s < 60) return 'just now';
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
-
-function ActivityRow({ session }: { session: SessionRecord }) {
-  return (
-    <View style={styles.activityRow}>
-      <Text style={styles.activityFlag}>{session.serverFlag || '🌐'}</Text>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.activityServer} numberOfLines={1}>{session.serverName}</Text>
-        <Text style={styles.activityMeta}>
-          {formatDuration(session.duration)} · {formatBytes(session.sentBytes + session.recvBytes)}
-        </Text>
-      </View>
-      <Text style={styles.activityTime}>{timeAgo(session.endedAt || session.startedAt)}</Text>
-    </View>
-  );
-}
-
 function StatCell({ value, label, icon }: { value: string | number; label: string; icon?: string }) {
   return (
     <View style={styles.statCell}>
@@ -129,8 +107,19 @@ export function RealGramProfileScreen({
   // fields HomeScreen already reads, so this stays in sync with Connect/
   // Disconnect without a second network call.
   const quotaTotal      = useAuthStore((s) => s.user?.quotaBytesTotal ?? 0);
-  const quotaUsed       = useAuthStore((s) => s.user?.quotaBytesUsed ?? 0);
   const plan            = useAuthStore((s) => s.user?.plan ?? 'free');
+  // Khabat, 2026-07-31: "har cs 1tb kvote men viser ikke hvor mye jeg har
+  // brukt" — same root cause WalletScreen.tsx already fixed 2026-07-30:
+  // quotaBytesUsed only gets written on disconnect (vpnStore.ts's disconnect
+  // handler is the single quota writer, deliberately delta/session-based),
+  // so this card only ever showed the last-disconnect snapshot — legitimately
+  // frozen while a session is still active. Same fix applied here: add the
+  // current session's own live byte counter (sessionBytes, which *does*
+  // update continuously) on top of the persisted total, display-only.
+  const persistedQuotaUsed = useAuthStore((s) => s.user?.quotaBytesUsed ?? 0);
+  const isVpnConnected  = useVpnStore((s) => s.connectionState === 'connected');
+  const sessionBytes    = useVpnStore((s) => s.sessionBytes);
+  const quotaUsed = persistedQuotaUsed + (isVpnConnected ? sessionBytes.sent + sessionBytes.received : 0);
   // Local-first identity layer (A-11/B-20) — RealGram's own @handle/avatar/
   // persona pick, separate from the server-driven ProfileSummary below.
   // "Avatar/persona" was explicitly asked for in the unified-profile spec;
@@ -143,10 +132,6 @@ export function RealGramProfileScreen({
   const localHandle     = useIdentityStore((s) => s.handle);
   const localDisplayName = useIdentityStore((s) => s.displayName);
   const biometricLock   = useSettingsStore((s) => s.biometricLock);
-  const recentSessions  = useSessionStore((s) => s.sessions)
-    .slice()
-    .sort((a, b) => (b.endedAt || b.startedAt) - (a.endedAt || a.startedAt))
-    .slice(0, 5);
   const insets   = useSafeAreaInsets();
   const isFocused = useIsFocused();
 
@@ -176,6 +161,16 @@ export function RealGramProfileScreen({
   // interactions) decouples the shadow-rasterization burst from the exact
   // frame boundary where the spinner disappears — cheap, reversible,
   // unverified on a real device yet.
+  // Khabat, 2026-07-31: "på profilen der man blir invitert til å lese mer
+  // kan bilde fra sist leste historie/kapitel være del av banneren" —
+  // needs the full chapter catalog (title/image_url), not just the
+  // slug/done list contract §9 already gives this screen. Fetched once,
+  // same static-ish catalog RealGramHomeScreen/RealGramChaptersScreen
+  // already pull independently — no shared cache exists yet, matches how
+  // those two screens each fetch their own copy today too.
+  const [chapterCatalog, setChapterCatalog] = useState<ChapterCatalogEntry[]>([]);
+  useEffect(() => { getChapterCatalog().then(setChapterCatalog).catch(() => {}); }, []);
+
   const [contentReady, setContentReady] = useState(false);
   useEffect(() => {
     if (!profile) { setContentReady(false); return; }
@@ -350,6 +345,11 @@ export function RealGramProfileScreen({
     || (localHandle ? `@${localHandle}` : '') || localDisplayName
     || t('rgprofile.defaultName');
   const chapterPct  = chapters.total > 0 ? chapters.completed / chapters.total : 0;
+  // Same "first not-done chapter in catalog order" derivation
+  // RealGramHomeScreen already uses for its own Continue Journey card —
+  // kept consistent rather than inventing a second definition of "active."
+  const doneSlugs = new Set(chapters.list.filter((c) => c.done).map((c) => c.slug));
+  const activeChapter = chapterCatalog.find((c) => !doneSlugs.has(c.slug)) ?? null;
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -496,10 +496,35 @@ export function RealGramProfileScreen({
             <View style={styles.progressTrack}>
               <View style={[styles.progressFill, { width: `${chapterPct * 100}%` as any }]} />
             </View>
-            <View style={styles.journeyBanner}>
-              <Text style={styles.journeyBannerText}>{t('rgprofile.continueJourney')}</Text>
-              <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
-            </View>
+            {/* Khabat, 2026-07-31: "bilde fra sist leste historie/kapitel
+                kan være del av banneren, f.eks bilde av shirin og tekst
+                fortsett kjærlighetshistorien til shirin" — the invite-to-
+                read-more banner now carries the active (next-unread)
+                chapter's own catalog image + title instead of being
+                generic text-only. Falls back to the old plain banner if
+                the catalog hasn't loaded yet or the chapter has no image
+                (image_url can be '', see chapterCatalogService.ts). */}
+            {activeChapter?.image_url ? (
+              <ImageBackground
+                source={{ uri: activeChapter.image_url }}
+                style={styles.journeyBannerImage}
+                imageStyle={styles.journeyBannerImageStyle}
+              >
+                <View style={styles.journeyBannerScrim}>
+                  <Text style={styles.journeyBannerImageText} numberOfLines={2}>
+                    {t('rgprofile.continueChapter').replace('{title}', activeChapter.title)}
+                  </Text>
+                  <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
+                </View>
+              </ImageBackground>
+            ) : (
+              <View style={styles.journeyBanner}>
+                <Text style={styles.journeyBannerText}>
+                  {activeChapter ? t('rgprofile.continueChapter').replace('{title}', activeChapter.title) : t('rgprofile.continueJourney')}
+                </Text>
+                <Text style={styles.journeyBannerArrow}>{isRTL ? '‹' : '›'}</Text>
+              </View>
+            )}
           </GlassCard>
         </TouchableOpacity>
 
@@ -519,42 +544,40 @@ export function RealGramProfileScreen({
             Dashboard self-link stay gone (those were genuine 1:1
             duplicates, never asked back). */}
 
-        {/* Clan */}
-        <GlassCard style={styles.card}>
-          <Text style={styles.cardLabel}>{t('rgprofile.clan')}</Text>
-          {clan ? (
-            <View style={styles.clanRow}>
-              {clan.clan_photo ? (
-                <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
-              ) : (
-                <View style={[styles.clanPhoto, styles.avatarFallback]}>
-                  <Text style={styles.avatarFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
+        {/* Clan — Khabat, 2026-07-31: "clan må være klikkbar." Was a static
+            info card with no onPress at all; every other summary card here
+            (Chapters above) already navigates somewhere. Reuses the same
+            onOpenClans callback the quickRow above already has, rather than
+            adding a second prop for the same destination. */}
+        <TouchableOpacity
+          disabled={!onOpenClans}
+          onPress={onOpenClans}
+          activeOpacity={0.85}
+          accessibilityLabel={t('rgprofile.clan')}
+        >
+          <GlassCard style={styles.card} glowColor={onOpenClans ? Colors.gold[400] : undefined}>
+            <Text style={styles.cardLabel}>{t('rgprofile.clan')}</Text>
+            {clan ? (
+              <View style={styles.clanRow}>
+                {clan.clan_photo ? (
+                  <Image source={{ uri: clan.clan_photo }} style={styles.clanPhoto} />
+                ) : (
+                  <View style={[styles.clanPhoto, styles.avatarFallback]}>
+                    <Text style={styles.avatarFallbackText}>{clan.clan_name.slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
+                  <Text style={styles.clanMeta}>
+                    {t('rgprofile.clanMembersRole').replace('{count}', String(clan.member_count)).replace('{role}', clan.role)}
+                  </Text>
                 </View>
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={styles.clanName} numberOfLines={1}>{clan.clan_name}</Text>
-                <Text style={styles.clanMeta}>
-                  {t('rgprofile.clanMembersRole').replace('{count}', String(clan.member_count)).replace('{role}', clan.role)}
-                </Text>
               </View>
-            </View>
-          ) : (
-            <Text style={styles.emptyText}>{t('rgprofile.notInClan')}</Text>
-          )}
-        </GlassCard>
-
-        {/* Recent activity — reuses ActivityScreen's own local session log,
-            no extra network call. */}
-        <GlassCard style={styles.card}>
-          <Text style={styles.cardLabel}>{t('rgprofile.recentActivity')}</Text>
-          {recentSessions.length > 0 ? (
-            <View style={styles.activityList}>
-              {recentSessions.map((s) => <ActivityRow key={s.id} session={s} />)}
-            </View>
-          ) : (
-            <Text style={styles.emptyText}>{t('rgprofile.noSessions')}</Text>
-          )}
-        </GlassCard>
+            ) : (
+              <Text style={styles.emptyText}>{t('rgprofile.notInClan')}</Text>
+            )}
+          </GlassCard>
+        </TouchableOpacity>
 
         {!!onSignOut && (
           <TouchableOpacity style={styles.logoutBtn} activeOpacity={0.75} onPress={handleSignOutPress}>
@@ -625,19 +648,20 @@ const styles = StyleSheet.create({
   journeyBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing[1] },
   journeyBannerText: { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
   journeyBannerArrow: { fontSize: 18, color: Colors.gold[400] },
+  journeyBannerImage: { height: 72, borderRadius: Radius.lg, overflow: 'hidden', marginTop: Spacing[1] },
+  journeyBannerImageStyle: { borderRadius: Radius.lg },
+  journeyBannerScrim: {
+    flex: 1, backgroundColor: 'rgba(10,10,14,0.45)',
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: Spacing[3],
+  },
+  journeyBannerImageText: { flex: 1, fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: '#FFFFFF', textShadowColor: 'rgba(0,0,0,0.6)', textShadowRadius: 4 },
 
   clanRow:      { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   clanPhoto:    { width: 48, height: 48, borderRadius: 24 },
   clanName:     { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.text.primary },
   clanMeta:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   emptyText:    { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted },
-
-  activityList: { gap: Spacing[3] },
-  activityRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
-  activityFlag: { fontSize: 20 },
-  activityServer: { fontSize: Typography.size.sm, fontFamily: Typography.family.heading, color: Colors.text.primary },
-  activityMeta: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
-  activityTime: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
 
   logoutBtn:    { borderWidth: 1, borderColor: 'rgba(255,68,68,0.3)', borderRadius: Radius.lg, paddingVertical: Spacing[4], alignItems: 'center', backgroundColor: 'rgba(255,68,68,0.06)' },
   logoutText:   { fontSize: Typography.size.base, fontFamily: Typography.family.label, color: '#FF4444', letterSpacing: 0.3 },

@@ -4,7 +4,7 @@ import {
   StyleSheet, ActivityIndicator,
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
-import { ServerRow } from '../components/ServerRow';
+import { ServerHeroCard } from '../components/ServerHeroCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { GlassCard } from '../components/GlassCard';
 import { AdBanner } from '../components/AdBanner';
@@ -81,13 +81,17 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
   );
   const comingSoon = COMING_SOON_SERVERS.filter((s) => !liveCountries.has(s.country.toLowerCase()));
 
+  // Khabat, 2026-07-31: "starlink alltid først i sortering/visning" —
+  // Starlink's nodeType flag (serverStore.ts, server-provided) already
+  // exists for exactly this, just never consumed for sort order before.
   const filtered = filteredServers(activeMode)
     .filter((s) => !s.comingSoon)
     .map((s) => ({
       ...s,
       selected: s.id === selectedId,
       imported: !!importedCreds[s.id],
-    }));
+    }))
+    .sort((a, b) => (a.nodeType === 'STARLINK' ? -1 : 0) - (b.nodeType === 'STARLINK' ? -1 : 0));
   const selected    = servers.find((s) => s.id === selectedId);
 
   const ctaLabel = isTransitioning
@@ -159,21 +163,26 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
               <Text style={styles.emptyText}>{t('sv.noResults')}</Text>
             </GlassCard>
           ) : (
-            filtered.map((s, i) => (
-              <React.Fragment key={s.id}>
-                <ServerRow
-                  server={s}
-                  rank={i + 1}
-                  onSelect={(sv) => handleSelectServer(sv.id)}
-                  onDelete={undefined}
-                />
-                {/* B-19: Servers gets exactly one AdMob banner (after the
-                    first row) — the rewarded-video card and the ecosystem
-                    cross-promos that used to interleave here were "internal
-                    banners"; that surface now belongs to Home only. */}
-                {i === 0 && <AdBanner show={userPlan === 'free' || userTestMode} style={styles.ecoBanner} />}
-              </React.Fragment>
-            ))
+            <>
+              {/* Khabat, 2026-07-31: "jeg vil ha 3 vedsiden av hverandre
+                  som på hero page" — 3-across grid replaces the stacked
+                  full-width ServerRow list ("lange banner for nodes"). */}
+              <View style={styles.heroGrid}>
+                {filtered.map((s, i) => (
+                  <ServerHeroCard
+                    key={s.id}
+                    server={s}
+                    rank={i + 1}
+                    onSelect={(sv) => handleSelectServer(sv.id)}
+                  />
+                ))}
+              </View>
+              {/* B-19: Servers gets exactly one AdMob banner — the
+                  rewarded-video card and the ecosystem cross-promos that
+                  used to interleave here were "internal banners"; that
+                  surface now belongs to Home only. */}
+              <AdBanner show={userPlan === 'free' || userTestMode} style={styles.ecoBanner} />
+            </>
           )}
         </View>
 
@@ -236,6 +245,11 @@ const styles = StyleSheet.create({
   ecoBanner:        { marginHorizontal: Spacing[5], marginBottom: Spacing[3] },
   cachedBanner:     { backgroundColor: Colors.bg.surface, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.border.subtle, paddingHorizontal: Spacing[4], paddingVertical: Spacing[2] },
   cachedBannerText: { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
+
+  // Percentage `gap` isn't reliably supported across RN versions — using
+  // space-between + a fixed card width (31.5% x3 leaves room for the
+  // distributed gaps) instead of a gap value on the container itself.
+  heroGrid:      { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: Spacing[3] },
 
   section:       { gap: Spacing[3] },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },

@@ -47,14 +47,30 @@ export interface Milestone {
   threshold: number;
   real:      number;
   gems:      number;
+  farr:      number;
   label:     string;
 }
 
+// Khabat, 2026-07-31: "referal kan gå opp i fibonaci sequensen ... fra 1
+// til 2, 3, 5, 8, 13 etc." — mirrors shahnameh-backend's routes/api/
+// season2.js MILESTONE_REWARDS table EXACTLY (this repo's own header above
+// says these values must match what the server actually pays out; the old
+// table here (1000/3000/8000/25000, no gems) had drifted from the server's
+// real amounts (500/2000/5000/15000 + gems) — found while making this
+// change, fixed here too, not just the Fibonacci ask). Reward amounts are
+// a proposed starting point, not a reviewed business decision — see that
+// backend table's own comment.
 export const MILESTONES: Milestone[] = [
-  { threshold: 3,   real: 1000,  gems: 0, label: 'Invite 3 friends' },
-  { threshold: 10,  real: 3000,  gems: 0, label: 'Invite 10 friends' },
-  { threshold: 25,  real: 8000,  gems: 0, label: 'Invite 25 friends' },
-  { threshold: 100, real: 25000, gems: 0, label: 'Invite 100 friends' },
+  { threshold: 1,  real: 200,   gems: 0,  farr: 0, label: 'Invite 1 friend' },
+  { threshold: 2,  real: 350,   gems: 0,  farr: 0, label: 'Invite 2 friends' },
+  { threshold: 3,  real: 500,   gems: 1,  farr: 0, label: 'Invite 3 friends' },
+  { threshold: 5,  real: 900,   gems: 1,  farr: 0, label: 'Invite 5 friends' },
+  { threshold: 8,  real: 1500,  gems: 2,  farr: 0, label: 'Invite 8 friends' },
+  { threshold: 13, real: 2500,  gems: 3,  farr: 0, label: 'Invite 13 friends' },
+  { threshold: 21, real: 4000,  gems: 4,  farr: 1, label: 'Invite 21 friends' },
+  { threshold: 34, real: 7000,  gems: 6,  farr: 1, label: 'Invite 34 friends' },
+  { threshold: 55, real: 11000, gems: 8,  farr: 2, label: 'Invite 55 friends' },
+  { threshold: 89, real: 18000, gems: 12, farr: 3, label: 'Invite 89 friends' },
 ];
 
 export const CHECKIN_REWARDS: Array<{ real: number; gems: number }> = [
@@ -104,6 +120,25 @@ export async function completeTask(telegramId: string, taskId: string): Promise<
   const data = await post('/api/season2/earn/complete-task', { telegram_id: telegramId, task_id: taskId });
   if (data?.status === 1) return { ok: true };
   return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
+/** Marks today's read/quiz/tap daily quest done (`/season2/user/update-quests`,
+ *  real and already used by the WebView game's own home.js/chapter.js —
+ *  see routes/api/season2.js on the backend). Khabat, 2026-07-31: "daily
+ *  task blir ikke oppdatert, selv om jeg tappet og lest kapitler" — traced
+ *  to this repo simply never calling this endpoint anywhere; the native
+ *  read/quiz screens wrote to the separate ChapterProgress store (a real,
+ *  working sync, just not the signal quest_read/quest_quiz are computed
+ *  from) and never told this one. Fire-and-forget like every other
+ *  earn-service call here — the quest pips are read-only display, nothing
+ *  blocks on this succeeding. */
+export async function updateDailyQuest(
+  telegramId: string, quest: 'read' | 'quiz' | 'invite' | 'tap', tapCount?: number,
+): Promise<void> {
+  if (!telegramId) return;
+  await post('/api/season2/user/update-quests', {
+    telegram_id: telegramId, quest, ...(tapCount != null ? { tap_count: tapCount } : {}),
+  });
 }
 
 export type MilestoneResult = { ok: boolean; error?: string };

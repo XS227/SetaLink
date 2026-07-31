@@ -44,6 +44,12 @@ const pendingOffers = new Map<string, RTCSessionDescriptionInitLike>();
 interface ActiveCall {
   engine:     CallEngine;
   peerLabel:  string;
+  /** The real SetaLink ID used for signaling/messaging — distinct from
+   *  peerLabel, which InboxScreen sometimes passes as a friendly
+   *  conversation title instead. Needed by CallScreen to log a call-log
+   *  message to the right DM thread once the call ends (Khabat,
+   *  2026-07-31: "det skal stå i melding chat at: ubesvart call..."). */
+  peerId:     string;
   outgoing:   boolean;
 }
 
@@ -97,7 +103,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       // captureLocalMedia() requests the camera (not just the mic) before
       // the user even taps Accept, same as the caller side already does.
       const engine = new CallEngine(client!, callId, callerUserId, () => {}, () => {}, kind === 'video');
-      set({ activeCall: { engine, peerLabel: callerUserId, outgoing: false } });
+      set({ activeCall: { engine, peerLabel: callerUserId, peerId: callerUserId, outgoing: false } });
     });
     client.onHangUp(() => { Vibration.cancel(); InCallManager.stopRingtone(); });
     client.onReject(() => { Vibration.cancel(); InCallManager.stopRingtone(); });
@@ -128,7 +134,7 @@ export const useCallStore = create<CallState>((set, get) => ({
       return;
     }
     const engine = new CallEngine(client, '', peerId, () => {}, () => {}, video);
-    set({ activeCall: { engine, peerLabel, outgoing: true } });
+    set({ activeCall: { engine, peerLabel, peerId, outgoing: true } });
   },
 
   acceptIncomingCall: async () => {

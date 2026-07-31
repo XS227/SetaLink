@@ -24,6 +24,8 @@ import { RTCView } from 'react-native-webrtc';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { CallEngine, CallState } from '../services/callService';
+import { sendMessage } from '../services/entitlementService';
+import { useAuthStore } from '../stores/authStore';
 
 // Raw account IDs are admin/api.php's generate_user_id(): "SL-<rowid>-<8
 // random chars>", e.g. "SL-227-62DAC5F0" — meant for support lookups, not
@@ -54,6 +56,10 @@ const DIALING_PATTERN = [0, 250, 1750];
 interface Props {
   engine: CallEngine;
   peerLabel: string;
+  /** Real SetaLink ID (signaling/messaging address) — see callStore.ts's
+   *  ActiveCall.peerId for why this is separate from the display-only
+   *  peerLabel. */
+  peerId: string;
   /** True if this device placed the call (dialing), false if it's the
    *  callee (ringing until accepted). */
   outgoing: boolean;
@@ -74,9 +80,10 @@ function formatDuration(totalSecs: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-export function CallScreen({ engine, peerLabel, outgoing, onEnded, onAccept }: Props) {
+export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAccept }: Props) {
   const { t } = useT();
   const insets = useSafeAreaInsets();
+  const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const [state, setState] = useState<CallState>(outgoing ? 'dialing' : 'ringing');
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(false);
@@ -119,8 +126,27 @@ export function CallScreen({ engine, peerLabel, outgoing, onEnded, onAccept }: P
     }
     if (state === 'ended') {
       if (timerRef.current) clearInterval(timerRef.current);
+      // Khabat, 2026-07-31: "npr jeg ringer noen og dem ikke svarer så skal
+      // det stå i melding chat at: ubesvart call, video call, eller call
+      // varighet x minutter, med dato" — a call-log entry in the DM thread.
+      // Only the caller writes it (outgoing-only): both sides reaching
+      // 'ended' on the same call would otherwise post two duplicate rows
+      // into one shared thread — the callee just sees this message arrive
+      // like any other DM, no need to also write it themselves. Missed vs.
+      // completed reads off durationSecs itself: the interval above only
+      // ever starts once state reaches 'active', so it's still 0 here for
+      // any call that rang out, was rejected, or failed before connecting.
+      // Date/time comes for free from the message's own created_at, same
+      // as every other DM in the thread.
+      if (outgoing && deviceId && peerId) {
+        const body = durationSecs > 0
+          ? t(isVideo ? 'call.logVideo' : 'call.logAudio').replace('{duration}', formatDuration(durationSecs))
+          : t('call.logMissed');
+        sendMessage(deviceId, peerId, body).catch(() => {});
+      }
       onEnded();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, onEnded]);
 
   const statusLabel = (): string => {

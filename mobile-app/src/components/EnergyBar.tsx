@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 
 /** Compact horizontal energy/stamina bar for the tap section (see useTapEnergy). */
@@ -7,15 +7,19 @@ interface Props {
   energy: number;
   maxEnergy: number;
   pct: number;
+  /** 2026-07-31: tapping the bar opens the paid-upgrade-tier picker
+   *  (energyTierService/EnergyUpgradeModal) — optional so this component
+   *  still works standalone anywhere else it's used without that flow. */
+  onPress?: () => void;
 }
 
 function formatEnergy(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
 }
 
-export function EnergyBar({ energy, maxEnergy, pct }: Props) {
+export function EnergyBar({ energy, maxEnergy, pct, onPress }: Props) {
   const low = pct <= 0.15;
-  return (
+  const content = (
     <View style={styles.row}>
       <Text style={styles.icon}>⚡</Text>
       <View style={styles.track}>
@@ -24,6 +28,8 @@ export function EnergyBar({ energy, maxEnergy, pct }: Props) {
       <Text style={[styles.value, low && styles.valueLow]}>{formatEnergy(energy)}/{formatEnergy(maxEnergy)}</Text>
     </View>
   );
+  if (!onPress) return content;
+  return <TouchableOpacity onPress={onPress} activeOpacity={0.75} accessibilityRole="button">{content}</TouchableOpacity>;
 }
 
 const styles = StyleSheet.create({

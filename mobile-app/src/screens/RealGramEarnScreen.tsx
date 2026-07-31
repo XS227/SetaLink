@@ -20,7 +20,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
-import { MiniLuckWheel } from '../components/MiniLuckWheel';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useToastStore } from '../stores/toastStore';
@@ -33,17 +32,18 @@ import {
 
 interface Props {
   onBack: () => void;
-  /** Khabat, 2026-07-30: UI-only preview entry point for the new daily
-   *  luck wheel — see DailyLuckWheelScreen/DailyLuckWheel for what is and
-   *  isn't real yet. Not wired into any task/reward flow here. */
-  onOpenDailyLuck?: () => void;
 }
 
 function todayStr(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export function RealGramEarnScreen({ onBack, onOpenDailyLuck }: Props) {
+// Khabat, 2026-07-31: "daily luck trenger ikke å stå på earn når vi har
+// det på toppen av appen" — HomeScreen.tsx's own MiniLuckWheel header icon
+// (navigates straight to 'dailyluck') is the real, already-shipped entry
+// point; this screen's own banner (added 2026-07-30) was a second,
+// redundant one. Removed here rather than duplicated in two places.
+export function RealGramEarnScreen({ onBack }: Props) {
   const insets   = useSafeAreaInsets();
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
@@ -204,22 +204,6 @@ export function RealGramEarnScreen({ onBack, onOpenDailyLuck }: Props) {
             </TouchableOpacity>
           </GlassCard>
 
-          {/* Daily luck wheel — UI preview only, see DailyLuckWheelScreen's
-              own header. Not part of the real task/reward flow above. */}
-          {onOpenDailyLuck && (
-            <TouchableOpacity activeOpacity={0.85} onPress={onOpenDailyLuck}>
-              <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-                <View style={styles.luckBannerRow}>
-                  <MiniLuckWheel size={40} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardLabel}>{t('dailyluck.title')}</Text>
-                    <Text style={styles.milestoneSub}>{t('dailyluck.subtitle')}</Text>
-                  </View>
-                </View>
-              </GlassCard>
-            </TouchableOpacity>
-          )}
-
           {/* Social tasks */}
           <Text style={styles.sectionTitle}>{t('earn.socialTasks')}</Text>
           {SOCIAL_TASKS.map((task) => (
@@ -243,7 +227,9 @@ export function RealGramEarnScreen({ onBack, onOpenDailyLuck }: Props) {
                 <View style={styles.taskRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.taskLabel}>{m.label}</Text>
-                    <Text style={styles.taskReward}>+{m.real.toLocaleString()} REAL{m.gems ? ` +${m.gems} 💎` : ''}</Text>
+                    <Text style={styles.taskReward}>
+                      +{m.real.toLocaleString()} REAL{m.gems ? ` +${m.gems} 💎` : ''}{m.farr ? ` +${m.farr} ✨` : ''}
+                    </Text>
                   </View>
                   {claimed ? (
                     <Text style={styles.doneCheck}>✓</Text>
@@ -313,7 +299,6 @@ const styles = StyleSheet.create({
 
   card: { gap: Spacing[2] },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  luckBannerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
   cardLabel: { fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.label, textTransform: 'uppercase', letterSpacing: 0.4 },
   streakText: { fontSize: 12, fontFamily: Typography.family.mono, color: Colors.gold[400] },
 

@@ -18,6 +18,7 @@ import { useToastStore } from '../stores/toastStore';
 import { localizedField } from '../utils/localizedField';
 import { getChapterQuiz, submitQuizAnswer, resetQuizTier, QuizQuestion, QuizTier } from '../services/chapterQuizService';
 import { ChapterProgressSnapshot, applyQuizAnswer, applyQuizReset } from '../services/chapterProgressStore';
+import { updateDailyQuest } from '../services/earnService';
 
 const TIERS: QuizTier[] = ['easy', 'medium', 'hard'];
 const TIER_ICON: Record<QuizTier, string> = { easy: '🏆', medium: '⚔', hard: '👑' };
@@ -66,7 +67,22 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
       setQuestions(qs);
       const firstIncomplete = TIERS.find((tier) => !progress.quiz[tier].done) ?? 'hard';
       setActiveTier(firstIncomplete);
-      setDisplayIdx(progress.quiz[firstIncomplete].idx);
+      // Khabat, 2026-07-31: stuck on chapter 43 ("shirin") — only the first
+      // question ever showed, then "no quiz available" on every re-entry.
+      // Confirmed live that shirin's quiz data itself is fine (3/5/8
+      // questions per tier), so this wasn't missing content. Root cause:
+      // progress.quiz[tier].idx (server-supplied) was used unclamped as a
+      // raw array index below (`activeQuestions[displayIdx]`) — if the
+      // server ever hands back a stale/out-of-range idx for a tier that
+      // isn't actually done (e.g. a retry that didn't fully clear
+      // server-side state), currentQuestion resolves to null while `done`
+      // stays false, landing on the dead "no quiz published" branch with no
+      // way out. Clamping here can't fix a server-side idx/done bug, but it
+      // stops the client from stranding the user on it — worst case they
+      // land on the last real question instead of a dead end.
+      const tierLen = qs.filter((q) => q.tier === firstIncomplete).length;
+      const rawIdx = progress.quiz[firstIncomplete].idx;
+      setDisplayIdx(tierLen > 0 ? Math.min(Math.max(rawIdx, 0), tierLen - 1) : 0);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
@@ -88,7 +104,8 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
   const handleSelectTier = (tier: QuizTier) => {
     if (progress.quiz[tier].locked) return;
     setActiveTier(tier);
-    setDisplayIdx(progress.quiz[tier].idx);
+    const tierLen = tierQuestions(tier).length;
+    setDisplayIdx(tierLen > 0 ? Math.min(Math.max(progress.quiz[tier].idx, 0), tierLen - 1) : 0);
     setPendingAnswer(null);
     setPickedIndex(null);
   };
@@ -102,12 +119,17 @@ export function ChapterQuizPanel({ slug, telegramId, progress, onProgressChange 
     if (!result) { setPickedIndex(null); return; } // network hiccup — let the user retry the tap
     setPendingAnswer({ picked: index, result: { correct: result.correct } });
     onProgressChange(applyQuizAnswer(slug, activeTier, currentQuestion.id, result.correct, result.done, result.passed, result.idx));
+    // Khabat, 2026-07-31: "daily task blir ikke oppdatert" — see
+    // earnService.ts's updateDailyQuest header. Fires once a tier is
+    // completed (attempted, whether passed or not — matches quest_read's
+    // own "did the activity today" semantics, not a pass/fail gate).
+    if (result.done) updateDailyQuest(telegramId, 'quiz').catch(() => {});
   };
 
   const handleNext = () => {
     setPendingAnswer(null);
     setPickedIndex(null);
-    setDisplayIdx((i) => i + 1);
+    setDisplayIdx((i) => Math.min(i + 1, Math.max(activeQuestions.length - 1, 0)));
   };
 
   const handleRetry = async () => {

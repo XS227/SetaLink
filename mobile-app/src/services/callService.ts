@@ -39,6 +39,8 @@ import InCallManager from 'react-native-incall-manager';
 import {
   MediaStream, RTCIceCandidate, RTCPeerConnection, RTCSessionDescription, mediaDevices,
 } from 'react-native-webrtc';
+import { trackEvent } from './analytics';
+import { useAuthStore } from '../stores/authStore';
 
 /**
  * Proposed signaling contract. One call = one `callId`. Each side posts
@@ -147,6 +149,22 @@ export class CallEngine {
     this.stateListeners.forEach((cb) => cb(state));
   }
 
+  /** 2026-07-31: server-side (call_sessions, nginx /ws/call byte counts) can
+   *  show a call reached 'accepted' with real signaling traffic and still
+   *  never actually connect for either side — REST/relay layer has no
+   *  visibility into the WebRTC layer above it (ICE/DTLS state, getUserMedia
+   *  failures). Nothing anywhere logged that layer at all before this.
+   *  Routes through the same trackEvent()/app_events pipe every other
+   *  screen's diagnostics already use — best-effort, never blocks a call. */
+  private logCallEvent(event: string, extra?: Record<string, unknown>): void {
+    trackEvent(event, useAuthStore.getState().user?.deviceId, {
+      call_id: this.callId,
+      peer_device_id: this.peerDeviceId,
+      kind: this.video ? 'video' : 'audio',
+      ...extra,
+    });
+  }
+
   /** Lets CallScreen (which receives an already-constructed CallEngine)
    *  react to state transitions the engine itself drives — e.g. the
    *  underlying RTCPeerConnection reaching 'connected'/'failed' — the same
@@ -186,12 +204,25 @@ export class CallEngine {
         this.remoteStream = stream;
         this.onRemoteStream(stream);
         this.remoteStreamListeners.forEach((cb) => cb(stream));
+        this.logCallEvent('CALL_REMOTE_TRACK', { track_kind: event.track?.kind || '' });
       }
     });
     pcAny.addEventListener('connectionstatechange', () => {
       const s = pcAny.connectionState;
+      this.logCallEvent('CALL_CONNECTION_STATE', { connection_state: s });
       if (s === 'connected') this.emitStateChange('active');
       if (s === 'failed' || s === 'closed' || s === 'disconnected') this.emitStateChange('ended');
+    });
+    // Historically the more reliable of the two on react-native-webrtc
+    // (connectionstatechange support/timing has been inconsistent across
+    // Android/iOS versions) — 'failed' here specifically is what
+    // distinguishes "signaling worked, ICE itself never found a path"
+    // (STUN-only behind carrier-grade NAT, dead/unreachable TURN, etc.)
+    // from every other failure mode, which is exactly the gap this file's
+    // header describes: server-side data can't tell that case apart from
+    // "connected fine, then the app/network dropped."
+    pcAny.addEventListener('iceconnectionstatechange', () => {
+      this.logCallEvent('CALL_ICE_STATE', { ice_connection_state: pcAny.iceConnectionState });
     });
 
     this.pc = pc;
@@ -225,10 +256,21 @@ export class CallEngine {
       media: this.video ? 'video' : 'audio',
       ...(ringback ? { ringback: '_BUNDLE_' } : {}),
     });
-    const stream = await mediaDevices.getUserMedia({
-      audio: true,
-      video: this.video ? { facingMode: 'user' } : false,
-    } as any);
+    let stream;
+    try {
+      stream = await mediaDevices.getUserMedia({
+        audio: true,
+        video: this.video ? { facingMode: 'user' } : false,
+      } as any);
+    } catch (err: any) {
+      // Denied/unavailable camera or mic (first-ever video test on a real
+      // device is exactly when a permission prompt can go unanswered or a
+      // camera can be busy/absent) throws here and would otherwise vanish
+      // into whatever local .catch() the caller happens to have — logging
+      // before rethrowing so it's visible without needing device access.
+      this.logCallEvent('CALL_MEDIA_ERROR', { message: err?.message || '', name: err?.name || '' });
+      throw err;
+    }
     this.localStream = stream as unknown as MediaStream;
     this.localVideoEnabled = this.video;
     return this.localStream;
