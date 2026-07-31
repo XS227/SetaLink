@@ -20639,3 +20639,45 @@ entirely from this box's own PHP/SQLite or the mobile client alone.
 7+ minutes without finishing) — flagging as an environment limitation to
 solve separately, not something blocking this entry. `tsc --noEmit` clean
 after every single change above.
+
+## A→B(287) — v0.9.122 built + published to beta (Khabat: "bygg selv, b er borte" → "kan be b om hjelp han er tilbake", built anyway once the safe path was confirmed)
+
+**Dato: 2026-07-31.** Investigated a "rang but never connected" video-call
+report first (see this session's own memory/context — last call between
+Khabat and the Iran tester reached `accepted` server-side and ran ~17-30s
+before `caller_hangup`, but nothing anywhere logged the WebRTC layer
+itself). Added real diagnostics for that in `callService.ts`
+(`CALL_CONNECTION_STATE`/`CALL_ICE_STATE`/`CALL_REMOTE_TRACK`/
+`CALL_MEDIA_ERROR`, routed through the existing `trackEvent()`/`app_events`
+pipe) — next real call test will actually show whether it's ICE/TURN
+(likely, given Iran's carrier-grade NAT) or a media/permission failure.
+
+Then committed the entire `(284)`-`(286)` backlog that was sitting
+uncommitted in the working tree (Khabat: "commit all"). Asked to build;
+checked this box's actual headroom first — 961MB RAM (49MB available,
+3.3GB/5.6GB swap already in use) and 96% disk full at the time. Confirmed
+`/usr/lib/android-sdk` is an empty package stub, not a real SDK. This box
+genuinely cannot do a local Gradle build, same conclusion `(283)` already
+reached (`android/gradle.properties` says so directly) — flagged the risk
+of even trying (could fill the last ~1GB of disk mid-setup and take
+`setalink.no` itself down) rather than attempting blind.
+
+Freed ~400MB safely first (apt+npm cache, fully regenerable). Then found
+`(283)`'s own precedent: the actual build already runs on GitHub Actions
+(`release-apk.yml`, `gh` CLI already authenticated with `workflow` scope
+on this box), not locally — the RAM/disk constraint never applied to the
+real build step, only to (already-avoided) local gradle. Replicated
+`(283)`'s exact flow: hand-bumped `0.9.121`→`0.9.122` (versionCode
+`161`→`162`, `385d29e`-style commit `bb8722b`), `gh workflow run
+release-apk.yml --ref feat/b97-experience` (run `30623645516`, ~10min,
+succeeded — cache-restore 400 warnings in the log are harmless, unrelated
+to the build), `gh run download`, `scripts/release.sh --publish-only
+--channel beta --apk-dir ...` (commit `d16d044`, tag `v0.9.122`), pushed
+commit+tag. Verified independently after, not just trusted the script:
+`https://setalink.no/download/version.json` reports `0.9.122`/`162` on
+`channels.beta`, `GET .../releases/beta/setalink-v0.9.122.apk` → `200`.
+Cleaned up the downloaded APK artifacts from local disk after publishing.
+
+Live for Khabat + the Iran tester to retest — this is the first build with
+the calling diagnostics in it, so the next video-call attempt should
+actually be diagnosable from `app_events` instead of a dead end.
