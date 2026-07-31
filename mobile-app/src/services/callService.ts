@@ -61,7 +61,11 @@ export interface CallSignalingClient {
   sendAnswer(callId: string, sdp: RTCSessionDescriptionInitLike): Promise<void>;
   sendIceCandidate(callId: string, candidate: RTCIceCandidateInitLike): Promise<void>;
   reject(callId: string): Promise<void>;
-  hangUp(callId: string): Promise<void>;
+  /** `reason` — server accepts 'caller_hangup'/'callee_hangup'/'failed',
+   *  anything else defaults to 'caller_hangup' (lib/calling.php's own
+   *  call_mark_ended). Optional so existing explicit-hangup callers don't
+   *  need to change. */
+  hangUp(callId: string, reason?: string): Promise<void>;
   /** Short-lived TURN REST API credentials for this call (username,
    *  credential, ttl) — minted server-side against fi-hel's coturn
    *  static-auth-secret, never sent from the client. */
@@ -212,7 +216,19 @@ export class CallEngine {
       const s = pcAny.connectionState;
       this.logCallEvent('CALL_CONNECTION_STATE', { connection_state: s });
       if (s === 'connected') this.emitStateChange('active');
-      if (s === 'failed' || s === 'closed' || s === 'disconnected') this.emitStateChange('ended');
+      if (s === 'failed' || s === 'closed' || s === 'disconnected') {
+        // Khabat, 2026-07-31: this used to only update local UI state —
+        // never told the server the call was over, so call_sessions kept
+        // it 'accepted' forever (the 3h stale sweep is the only other
+        // thing that clears it) and every next call attempt from either
+        // side hit call_initiate()'s "you are already on a call" guard —
+        // reproduced live twice this session as "dial screen pops up for
+        // a second then disappears." call_mark_ended is idempotent for an
+        // already-terminal call, so this is safe even if the user's own
+        // explicit hangUp() already reported it.
+        if (this.callId) this.signaling.hangUp(this.callId, 'failed').catch(() => {});
+        this.emitStateChange('ended');
+      }
     });
     // Historically the more reliable of the two on react-native-webrtc
     // (connectionstatechange support/timing has been inconsistent across

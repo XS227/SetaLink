@@ -288,8 +288,8 @@ export class RealCallSignalingClient implements CallSignalingClient {
     await callPost('call-decline', {}, { device_id: this.deviceId, call_id: callId });
   }
 
-  async hangUp(callId: string): Promise<void> {
-    await callPost('call-end', {}, { device_id: this.deviceId, call_id: callId, reason: 'hangup' });
+  async hangUp(callId: string, reason = 'hangup'): Promise<void> {
+    await callPost('call-end', {}, { device_id: this.deviceId, call_id: callId, reason });
   }
 
   async getIceServers(callId: string): Promise<RTCIceServerLike[]> {
