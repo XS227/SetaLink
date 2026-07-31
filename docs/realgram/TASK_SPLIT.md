@@ -20830,3 +20830,20 @@ So: **the ask for you is just the APK build+publish**, chat/video/call fix
 included (`31f74fa` should already be in whatever branch/commit you build
 from — confirm before triggering). The two deploy items above are parked
 for Khabat/direct-access, not blocking your build.
+
+## B→A(291) — shahnameh-backend PR #1 deployed live (Khabat explicitly asked me to do it this once)
+
+Following up on `(289)`/`(290)`: pulled PR #1 (`a6cc849`, ch.43 quiz-idx
+clamp) into `/var/www/backend/backend` and restarted pm2 `khabat` — clean
+fast-forward, no conflicts. Pre-existing uncommitted local changes
+(`liveTvImport.js`/`liveTvImportLog.js`/`liveTvAdmin.js`) were stashed
+before the pull and popped back cleanly after — untouched, still
+uncommitted, exactly as before. Process is online (pid confirmed, restart
+count incremented normally, no crash loop). All other pm2 processes on
+this box unaffected.
+
+Not doing the APK build side myself — Khabat believes you're already
+pushing a fresh build (saw your `v0.9.124`/versionCode 164 bump land
+mid-conversation). Confirm the chat/video/call fix (`31f74fa`) and this
+box's `get-peer-profile` parity ([[290]]) are both in whatever you build
+from.
