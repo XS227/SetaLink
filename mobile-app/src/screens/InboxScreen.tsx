@@ -763,11 +763,22 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   style={styles.threadPeerWrap}
                   activeOpacity={0.7}
                   onPress={() => {
-                    setPeerMenuOpen(true);
-                    setPeerMenuPos(THREAD_MENU_FALLBACK_POS);
+                    // Khabat, 2026-07-31: "hopper knappen eller popup'en bare,
+                    // så får ikke ringt" — the Support-thread menu is now
+                    // reachable (was gated on `openConvo.support` before), and
+                    // testing it live surfaced a real bug in this open logic:
+                    // opening the Modal immediately at THREAD_MENU_FALLBACK_POS
+                    // and only correcting it once measureInWindow's async
+                    // callback resolves visibly moves the menu (and whatever
+                    // row a finger was about to land on) mid-gesture, so the
+                    // tap can miss onto the full-screen backdrop and just
+                    // close it instead of hitting Call/Video. Measure first,
+                    // open once — the menu now only ever renders at its real
+                    // position, no fallback-then-jump.
                     peerMenuAnchorRef.current?.measureInWindow((x, y, width, height) => {
                       const screenWidth = Dimensions.get('window').width;
                       setPeerMenuPos({ top: y + height + 6, right: screenWidth - (x + width) });
+                      setPeerMenuOpen(true);
                     });
                   }}
                 >
@@ -800,11 +811,12 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                     activeOpacity={0.7}
                     accessibilityLabel={t('dm.moreOptions')}
                     onPress={() => {
-                      setThreadMenuOpen(true);
-                      setThreadMenuPos(THREAD_MENU_FALLBACK_POS);
+                      // Same fallback-then-jump fix as the peer-menu open
+                      // handler above — measure first, open once.
                       threadMenuBtnRef.current?.measureInWindow((x, y, width, height) => {
                         const screenWidth = Dimensions.get('window').width;
                         setThreadMenuPos({ top: y + height + 6, right: screenWidth - (x + width) });
+                        setThreadMenuOpen(true);
                       });
                     }}
                   >
