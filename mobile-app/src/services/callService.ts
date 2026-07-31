@@ -125,8 +125,6 @@ export class CallEngine {
   private localStreamListeners: Array<(stream: MediaStream) => void> = [];
   private stateListeners: Array<(state: CallState) => void> = [];
 
-  private localVideoEnabled = false;
-
   constructor(
     private readonly signaling: CallSignalingClient,
     /** Known upfront for an incoming call (arrives with the push); empty
@@ -289,7 +287,6 @@ export class CallEngine {
       throw err;
     }
     this.localStream = stream as unknown as MediaStream;
-    this.localVideoEnabled = this.video;
     this.localStreamListeners.forEach((cb) => cb(this.localStream!));
     return this.localStream;
   }
@@ -421,8 +418,17 @@ export class CallEngine {
     };
   }
 
+  /** Khabat, 2026-07-31: used to read `localVideoEnabled`, a copy of
+   *  `this.video` only set once captureLocalMedia() actually ran (after
+   *  mount, since startOutgoing()/acceptIncoming() are async) — so
+   *  CallScreen's `useState(engine.isVideoCall())` for its video-toggle
+   *  button captured `false` at mount and never updated (useState's
+   *  initial value only runs once), same class of bug the local-preview
+   *  fix above just fixed for the stream itself. `this.video` is the
+   *  constructor param this was always meant to mirror — correct from
+   *  construction, no timing gap, so read it directly instead. */
   isVideoCall(): boolean {
-    return this.localVideoEnabled;
+    return this.video;
   }
 
   setVideoEnabled(enabled: boolean): void {
