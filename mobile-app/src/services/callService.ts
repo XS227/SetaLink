@@ -118,6 +118,7 @@ export class CallEngine {
   private remoteStream: MediaStream | null = null;
   private unsubs: Array<() => void> = [];
   private remoteStreamListeners: Array<(stream: MediaStream) => void> = [];
+  private localStreamListeners: Array<(stream: MediaStream) => void> = [];
   private stateListeners: Array<(state: CallState) => void> = [];
 
   private localVideoEnabled = false;
@@ -273,6 +274,7 @@ export class CallEngine {
     }
     this.localStream = stream as unknown as MediaStream;
     this.localVideoEnabled = this.video;
+    this.localStreamListeners.forEach((cb) => cb(this.localStream!));
     return this.localStream;
   }
 
@@ -387,6 +389,22 @@ export class CallEngine {
     };
   }
 
+  /** Khabat, 2026-07-31: "jeg kunne se andre personens video og ikke mitt
+   *  eget som liten vindu nederst" — CallScreen used to read
+   *  getLocalStream() once as a plain const at render time, before
+   *  captureLocalMedia()'s getUserMedia() (called from startOutgoing()/
+   *  acceptIncoming(), after mount) had actually populated it — it only
+   *  ever appeared by accident, on whichever later re-render happened to
+   *  land after the local stream became ready. Same event-listener shape
+   *  as onRemoteStreamUpdate above, just for the local stream. */
+  onLocalStreamUpdate(cb: (stream: MediaStream) => void): () => void {
+    if (this.localStream) cb(this.localStream);
+    this.localStreamListeners.push(cb);
+    return () => {
+      this.localStreamListeners = this.localStreamListeners.filter((l) => l !== cb);
+    };
+  }
+
   isVideoCall(): boolean {
     return this.localVideoEnabled;
   }
@@ -426,6 +444,7 @@ export class CallEngine {
     this.unsubs.forEach((u) => u());
     this.unsubs = [];
     this.remoteStreamListeners = [];
+    this.localStreamListeners = [];
     this.stateListeners = [];
     this.localStream?.getTracks().forEach((t: any) => t.stop());
     this.localStream = null;

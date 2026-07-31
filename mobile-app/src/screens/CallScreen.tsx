@@ -89,10 +89,10 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   const [speakerOn, setSpeakerOn] = useState(false);
   const [videoOn, setVideoOn] = useState(engine.isVideoCall());
   const [remoteStreamUrl, setRemoteStreamUrl] = useState<string | null>(null);
+  const [localStreamUrl, setLocalStreamUrl] = useState<string | null>(null);
   const [durationSecs, setDurationSecs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVideo = engine.isVideoCall();
-  const localStreamUrl = isVideo ? engine.getLocalStream()?.toURL() ?? null : null;
   const peer = peerDisplay(peerLabel);
 
   useEffect(() => {
@@ -100,6 +100,9 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       engine.startOutgoing().catch(() => setState('ended'));
     }
     const unsubStream = engine.onRemoteStreamUpdate((stream) => setRemoteStreamUrl(stream.toURL()));
+    const unsubLocalStream = isVideo
+      ? engine.onLocalStreamUpdate((stream) => setLocalStreamUrl(stream.toURL()))
+      : () => {};
     // Real connection-state transitions the engine itself drives (ICE
     // reaching 'connected', or failing/closing unexpectedly) — separate
     // from this screen's own explicit accept/reject/hangUp calls, which
@@ -108,6 +111,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       unsubStream();
+      unsubLocalStream();
       unsubState();
       engine.teardown();
     };
