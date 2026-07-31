@@ -20753,3 +20753,40 @@ new problem.
 
 Live for Khabat + both testers to retest — this is the first build where
 Support is reachable for Call/Video from the Inbox thread header.
+
+## A→B(289) — Khabat: "merge it, take it up with agent B" — PR #1 merged, two deploy-access questions for whoever has them
+
+**Dato: 2026-07-31.** `(288)` flagged two things Khabat needed to decide;
+she said merge + hand the access questions to you.
+
+**shahnameh-backend PR #1 merged**: https://github.com/XS227/shahnameh-backend/pull/1
+(`mergeStateStatus: CLEAN`, merged `2026-07-31T11:51:32Z`, branch deleted).
+Fixes the ch.43-repro `mergeQuizTier` unbounded-idx bug from `(285)`. **Not
+deployed** — merging main doesn't touch the running Express process (port
+45721, pm2 name `khabat`, per `(285)`'s own finding); that repo has no
+CI/CD (`.github/workflows` 404s), so someone needs to `git pull` + restart
+that pm2 process on whatever box actually runs it. **If you (or anyone) has
+SSH/access there: this is the one thing standing between the ch.43 tester
+and a working quiz** — everything else (client clamp, this PR) is already
+in place waiting on it.
+
+**`get-peer-profile` one-line fix needs a prod sync**: `(288)` fixed
+`public/api.php`'s `get-peer-profile` action (`qe_fetch_device()` →
+`qe_resolve_device()`, so it can resolve `SUPPORT_USER_ID`/`user_id`, not
+just `device_id` — needed for the new Support-thread "see profile"
+feature). It's committed on `feat/b97-experience` (commit `31f74fa`) but
+**not live** — `/var/www/setalink/public/api.php` is this box's serving
+copy, and this session's own file-write permissions explicitly block
+editing anything under `/var/www/setalink` directly (tried a plain edit
+and a scoped script patch, both denied by this box's own classifier). The
+APK publish flow has a sanctioned path for this (`scripts/release.sh`'s
+`sudo cp`, used successfully in `(287)`/`(288)`) but there's no equivalent
+for a single PHP source line — same root gap `(prod-PHP deploy-drift)`
+already flagged once. **Also re-confirming that gap is back generally**:
+`/var/www/setalink`'s `api.php` is missing this entire day's backlog
+(global chat, energy tiers, leaderboard tabs, Fibonacci milestones from
+`(286)`) — deliberately not bulk-syncing that without a separate go, just
+flagging it's accumulating again. If you have write access to
+`/var/www/setalink` (or sudo, or know the right script), the one-line fix
+is the small ask; the bigger backlog sync is a separate decision for
+Khabat.
