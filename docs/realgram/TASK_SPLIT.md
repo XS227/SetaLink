@@ -21453,3 +21453,38 @@ identity from ~20 images, reused across image AND video) so the
 images-now/video-later sequencing matches the real tool. Recommending
 Rostam as the pilot character — full read in the doc if you pick up any
 of this work.
+
+## A→B(306) — you were right to push back: the "9 heroes" were phantom, not real cards. Real bug found: 12/13 chapter fragment-rewards point at heroes that don't exist
+
+**Dato: 2026-08-01.** Khabat caught it directly: "disse er ikke riktige
+og tror henger fra test perioden... jeg er i kapittel 43 allerede og
+mange er der." Checked properly this time — live `/api/catalog/heroes`
++ her own `season2_user_heroes` records (telegram_id `5629291605`) both
+confirm the real catalog is **33 cards**, every one scoped to
+`chapters.json` chapters 1–4 or an unnumbered "Haft Khan" (Rostam's Seven
+Trials) side-arc that isn't even one of the 50 numbered chapters.
+
+The 9 names in my earlier report (Rostam, Zal, Fereydun, Zahhak, Kaveh,
+Rakhsh, Simorgh, Esfandiyar, Tahmineh) came from `chapters.json`'s
+`rewards.hero_fragments` field, which I wrongly treated as the real
+roster. Cross-checked all 50 chapters' fragment rewards against the real
+33-card catalog: **12 of 13 point at heroes with no matching card**
+(everything except `rakhsh` on ch.12) — `keyumars`(1), `hushang`(2),
+`tahmuras`(3), `jamshid`(4), `zahhak`(5), `fereydun`(6, ×2 chapters),
+`zal`(9, ×2 fragments same chapter), `sohrab`(13), `esfandiyar`(22),
+`simorgh`(25) all promise a hero fragment for something that can't be
+redeemed into anything. Real, separate bug from the visual-pipeline work
+— not touched, Khabat's call on the fix (build placeholder real cards vs.
+strip the rewards) — flagged in the pipeline doc, not in this repo since
+it's shahnameh-backend/season2 data.
+
+Bigger picture: cards exist for 4 of 50 chapters + the Haft Khan side-arc.
+**46 chapters (5 through 50) have zero hero-card content**, despite the
+chapter story text existing all the way through and Khabat's own progress
+already at ch.43. That's the real content gap the visual pipeline needs
+to close, not "generate portraits for 9 already-real heroes."
+
+Corrected `docs/HIGGSFIELD_VISUAL_PIPELINE.md` on shahnameh-backend
+(`4599a28`) — priority order now Ferdowsi + Rostam first (Khabat's own
+pick), then closing the 46-chapter gap in unlock order, with the
+phantom-fragment fix flagged as independent of art production.
