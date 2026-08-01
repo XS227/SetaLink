@@ -236,9 +236,23 @@ wss.on('connection', (ws) => {
           ? (room.callee ? room.callee.connectionId : null)
           : (room.caller ? room.caller.connectionId : null);
         const peerWs = peerConnectionId ? connections.get(peerConnectionId) : null;
+        // Khabat, 2026-08-01: the ICE state telemetry added 2026-07-31
+        // (CALL_ICE_STATE) proved ICE reaches 'checking'/'connecting' then
+        // 'failed' ~10-20s in on every real test since, but says nothing
+        // about *which* candidate types were even in play — a relay
+        // (TURN) candidate never being gathered/exchanged looks identical
+        // client-side to one that was exchanged but never got selected.
+        // The raw SDP candidate string already crosses this relay (it's
+        // the payload being forwarded below) — pull the `typ host/srflx/
+        // relay/prflx` token out of it for free instead of guessing.
+        let iceCandType = null;
+        if (msg.payload && msg.payload.kind === 'ice' && msg.payload.candidate && typeof msg.payload.candidate.candidate === 'string') {
+          const m = /\btyp (\w+)/.exec(msg.payload.candidate.candidate);
+          iceCandType = m ? m[1] : null;
+        }
         diagLog('call_signal', {
           connectionId, call_id: msg.call_id, from: isCaller ? 'caller' : 'callee',
-          kind: msg.payload && msg.payload.kind, deliveredToPeer: !!peerWs,
+          kind: msg.payload && msg.payload.kind, iceCandType, deliveredToPeer: !!peerWs,
           peerWsReady: peerWs ? peerWs.readyState === peerWs.OPEN : null, sinceLastMs,
         });
         if (peerWs) send(peerWs, { type: 'call:signal', call_id: msg.call_id, payload: msg.payload });
