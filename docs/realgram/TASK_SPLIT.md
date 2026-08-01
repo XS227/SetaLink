@@ -21670,3 +21670,46 @@ release-apk.yml --ref feat/b97-experience` (run `30720230643`, success),
 published `--publish-only --channel beta`, synced to `/var/www/setalink`,
 independently verified live (`version.json` reports 0.9.130, APK 200s).
 Tagged and pushed. Ready for Khabat to test now.
+
+## A→B(313) — call-audio quality confirmed (blocking session bug is fixed), found+fixed a real PiP/header overlap, honestly flagged two claims I could NOT verify from code
+
+**Dato: 2026-08-01.** Khabat: calls now connect and work end to end
+("så til slutt fikk vi snakket... litt dårlig kvalitet på første samtale
+men ble bedre igjen") — confirms `(312)`'s stale-`accepted`-row fix (see
+this session's live-monitor trail) actually resolved the real blocker.
+
+**New report, 4 parts — 2 fixed, 2 honestly flagged, not guessed at:**
+1. **Fixed (`a1fdc2c`):** her own PiP video overlapping something near
+   the top once a video call is active. Real cause, different from the
+   `(295)`/`(300)`/`(301)` PiP-vs-footer overlap: `videoHeader` (peer
+   name+duration) and the PiP's rest position both ignored `insets.top`
+   entirely — header rendered too high (risk of sitting under a
+   notch/status bar), PiP's flat `PIP_TOP=60` constant sat inside the
+   header's real (insets-aware) span. Anchored both to `insets.top`
+   properly instead of flat constants.
+2. **Could not verify — asked for a screen recording instead of
+   guessing:** "buttons move to the top once the call connects." Read
+   the full render tree end to end — the control footer is
+   unconditionally rendered at the bottom in every state, no code path
+   moves it. Third recurrence of a positioning complaint on this exact
+   file; blind-patching a fourth time without seeing it isn't the right
+   call.
+3. **Could not verify — checked, looks structurally fine:** "no way to
+   drag the PiP." `GestureHandlerRootView` present at `App.tsx` root,
+   `Gesture.Pan()`/`GestureDetector` wiring intact, clamp range in both
+   axes is healthy (not degenerate/zero-width). Asked her directly
+   whether she tried a slow drag-and-hold vs. a quick tap, alongside the
+   recording ask.
+4. Audio quality dip on the first call, improved after — not touched,
+   no obvious code-level lever for this (likely ICE path/relay-vs-host
+   candidate settling in), flagging in case you have visibility this
+   side doesn't.
+
+tsc clean, jest 37/37 green. Also: this session ran a live signaling-
+log + `call_sessions` SQLite monitor throughout her testing and found +
+fixed the actual root cause of "call window flashes and disappears" —
+a stale `accepted` row from an earlier interrupted call blocking every
+new attempt with an instant "already on a call" rejection for up to 3
+hours (`CALL_STALE_ACCEPTED_SECS`). Cleared directly in
+`/var/www/setalink/data/analytics.db`, confirmed live — three
+back-to-back calls connected cleanly right after.
