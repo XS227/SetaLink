@@ -106,6 +106,10 @@ export type CallState =
   | 'active'
   | 'ended';
 
+/** Spec §4's three tiers, driven off pc.getStats() (RTT, packet loss,
+ *  available outgoing bitrate) while screen sharing is active. */
+export type NetworkQualityTier = 'good' | 'medium' | 'poor';
+
 export interface CallHandle {
   callId: string;
   peerDeviceId: string;
@@ -159,6 +163,23 @@ export class CallEngine {
    *  listener below from ever mistaking the initial offer for a
    *  renegotiation, regardless of message-arrival timing. */
   private callEstablished = false;
+
+  // ── Adaptive quality (spec §4) ─────────────────────────────────────────
+  private qualityPollTimer: ReturnType<typeof setInterval> | null = null;
+  private networkQualityListeners: Array<(tier: NetworkQualityTier, reason: string) => void> = [];
+  /** Which tier the low-connection prompt was last shown for -- stops
+   *  re-prompting on every poll tick while the connection sits in 'poor'
+   *  continuously; resets once quality recovers, so a second real
+   *  degradation prompts again. Spec: "ikke slå av kamera automatisk uten
+   *  at brukeren godkjenner det" -- this class only ever *suggests*,
+   *  CallScreen owns the actual consent Alert. */
+  private lastPromptedTier: NetworkQualityTier | null = null;
+  /** Spec §4: "ikke slå av kameraet automatisk uten at brukeren godkjenner
+   *  det, med mindre samtalen ellers står i fare for å kobles fra... må
+   *  vises tydelig." One-shot per call -- once the emergency stop has
+   *  fired, it stays fired (no repeated auto-actions spamming the UI). */
+  private emergencyStopFired = false;
+  private emergencyActionListeners: Array<(action: string) => void> = [];
 
   constructor(
     private readonly signaling: CallSignalingClient,
@@ -397,6 +418,7 @@ export class CallEngine {
     await this.renegotiate();
     this.screenShareListeners.forEach((cb) => cb(true, this.screenStream));
     this.logCallEvent('CALL_SCREEN_SHARE_START', {});
+    this.startAdaptiveQuality();
     return stream;
   }
 
@@ -406,6 +428,7 @@ export class CallEngine {
     if (!this.screenStream) return;
     const stream = this.screenStream;
     this.screenStream = null;
+    this.stopAdaptiveQuality();
     if (this.pc && this.screenSender) {
       try { (this.pc as any).removeTrack(this.screenSender); } catch { /* pc already closed */ }
     }
@@ -415,6 +438,160 @@ export class CallEngine {
     if (this.pc) await this.renegotiate().catch(() => {});
     this.screenShareListeners.forEach((cb) => cb(false, null));
     this.logCallEvent('CALL_SCREEN_SHARE_STOP', {});
+  }
+
+  // ── Adaptive quality (spec §4) ─────────────────────────────────────────
+  // Prioritizes screen content over camera when both are sent: the
+  // camera's encoding parameters get squeezed first/harder as quality
+  // drops, screen keeps a higher floor since that's the actual shared
+  // content the spec cares about ("prioriter skjerminnhold framfor
+  // kameravideo"). Static-vs-motion framerate adaptation (spec's own
+  // wording: "statisk skjerminnhold skal bruke lavere bildefrekvens...
+  // bevegelse... kan midlertidig øke bildefrekvensen") is NOT custom
+  // scene-change detection here -- that needs native frame-buffer access
+  // this JS layer doesn't have. What this sets is a maxFramerate CEILING
+  // per tier via RTCRtpSender.setParameters(); the underlying VP8/H264
+  // encoder's own delta-frame rate control already sends fewer actual
+  // frames for genuinely static content within that ceiling on its own
+  // -- real, but relying on codec behavior, not a claim of custom motion
+  // detection. Disclosed here so nobody mistakes this for more than it
+  // is.
+  private startAdaptiveQuality(): void {
+    if (this.qualityPollTimer) return;
+    this.lastPromptedTier = null;
+    this.qualityPollTimer = setInterval(() => { this.pollNetworkQuality().catch(() => {}); }, 4000);
+    // Fire once immediately rather than waiting a full interval for the
+    // first real read.
+    this.pollNetworkQuality().catch(() => {});
+  }
+
+  private stopAdaptiveQuality(): void {
+    if (this.qualityPollTimer) { clearInterval(this.qualityPollTimer); this.qualityPollTimer = null; }
+  }
+
+  private async pollNetworkQuality(): Promise<void> {
+    if (!this.pc || !this.screenSender) return;
+    const stats: Map<string, any> = await (this.pc as any).getStats();
+
+    let rttMs = 0;
+    let availableBitrate = Infinity;
+    let packetsLost = 0;
+    let packetsSent = 0;
+    stats.forEach((report) => {
+      if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated)) {
+        if (typeof report.currentRoundTripTime === 'number') rttMs = report.currentRoundTripTime * 1000;
+        if (typeof report.availableOutgoingBitrate === 'number') availableBitrate = report.availableOutgoingBitrate;
+      }
+      // Screen track's own outbound-rtp report -- matched by the sender's
+      // track id so this doesn't accidentally read the camera's or the
+      // audio track's numbers instead.
+      if (report.type === 'outbound-rtp' && report.kind === 'video'
+          && this.screenStream?.getVideoTracks()[0]?.id === report.trackId) {
+        packetsLost = report.packetsLost || 0;
+        packetsSent = report.packetsSent || 0;
+      }
+    });
+    const lossRatio = packetsSent > 0 ? packetsLost / packetsSent : 0;
+
+    let tier: NetworkQualityTier = 'good';
+    if (rttMs > 400 || lossRatio > 0.08 || availableBitrate < 150_000) tier = 'poor';
+    else if (rttMs > 150 || lossRatio > 0.02 || availableBitrate < 500_000) tier = 'medium';
+
+    this.applyQualityTier(tier);
+    this.logCallEvent('CALL_NETWORK_QUALITY', {
+      tier, rtt_ms: Math.round(rttMs), loss_ratio: Number(lossRatio.toFixed(3)),
+      available_bitrate: availableBitrate === Infinity ? null : Math.round(availableBitrate),
+    });
+
+    // Genuinely at risk of dropping the call -- well past plain 'poor',
+    // this is the spec's own carve-out ("med mindre samtalen ellers står
+    // i fare for å kobles fra"). Auto-stops the camera WITHOUT asking
+    // (screen+audio kept, camera is the one thing safe to sacrifice) and
+    // tells CallScreen to show a clear "we did this automatically"
+    // banner -- not the same UI as the consent-based 'poor' prompt below,
+    // spec requires this be visibly distinct from an ordinary suggestion.
+    // Deliberately does NOT touch `connectionstatechange`'s own existing
+    // 'disconnected'-ends-the-call handling above -- this fires from
+    // stats readings BEFORE ICE itself would ever reach that point, a
+    // genuinely earlier warning signal, not a change to what that
+    // handler already does.
+    const critical = rttMs > 1000 || lossRatio > 0.25 || availableBitrate < 50_000;
+    if (critical && !this.emergencyStopFired && this.cameraSender && this.screenSender) {
+      this.emergencyStopFired = true;
+      this.stopCameraTrack()
+        .then(() => this.emergencyActionListeners.forEach((cb) => cb('camera_stopped_connection_risk')))
+        .catch(() => { this.emergencyStopFired = false; }); // let it retry the emergency action if this attempt failed
+      return; // skip the ordinary prompt below -- the emergency action already handled it
+    }
+
+    // Only fire the listener (which drives CallScreen's consent prompt)
+    // on an actual tier CHANGE into 'poor', not every 4s tick spent
+    // sitting in it -- spec: suggest, don't nag.
+    if (tier === 'poor' && this.lastPromptedTier !== 'poor') {
+      this.lastPromptedTier = tier;
+      this.networkQualityListeners.forEach((cb) => cb(tier, 'poor_connection'));
+    } else if (tier !== 'poor') {
+      this.lastPromptedTier = tier;
+    }
+  }
+
+  /** Fired once, only for the emergency auto-camera-stop above -- distinct
+   *  from onNetworkQualityChange (that one is a *suggestion* needing
+   *  CallScreen to show a consent Alert; this one already happened,
+   *  CallScreen just needs to tell the user it did). */
+  onEmergencyAction(cb: (action: string) => void): () => void {
+    this.emergencyActionListeners.push(cb);
+    return () => { this.emergencyActionListeners = this.emergencyActionListeners.filter((l) => l !== cb); };
+  }
+
+  /** Screen content is prioritized over camera per spec §4 -- at 'poor'
+   *  the camera's ceiling drops much harder than the screen's, on the
+   *  reasoning that the screen IS the content being shared, the camera
+   *  is secondary. Doesn't touch the camera TRACK itself (stopping it
+   *  outright needs consent -- see the emergency-disconnect exception
+   *  below, and CallScreen's own prompt for the non-emergency case). */
+  private async applyQualityTier(tier: NetworkQualityTier): Promise<void> {
+    const screenParams: Record<NetworkQualityTier, { maxBitrate: number; maxFramerate: number }> = {
+      good:   { maxBitrate: 2_500_000, maxFramerate: 15 },
+      medium: { maxBitrate: 1_000_000, maxFramerate: 8 },
+      poor:   { maxBitrate: 350_000,   maxFramerate: 5 },
+    };
+    const cameraParams: Record<NetworkQualityTier, { maxBitrate: number; maxFramerate: number; scaleResolutionDownBy: number }> = {
+      good:   { maxBitrate: 800_000, maxFramerate: 24, scaleResolutionDownBy: 1 },
+      medium: { maxBitrate: 300_000, maxFramerate: 15, scaleResolutionDownBy: 2 },
+      poor:   { maxBitrate: 100_000, maxFramerate: 8,  scaleResolutionDownBy: 4 },
+    };
+    if (this.screenSender) {
+      const p = screenParams[tier];
+      await this.setSenderParams(this.screenSender, p.maxBitrate, p.maxFramerate);
+    }
+    if (this.cameraSender) {
+      const p = cameraParams[tier];
+      await this.setSenderParams(this.cameraSender, p.maxBitrate, p.maxFramerate, p.scaleResolutionDownBy);
+    }
+  }
+
+  private async setSenderParams(sender: any, maxBitrate: number, maxFramerate: number, scaleResolutionDownBy?: number): Promise<void> {
+    try {
+      const params = sender.getParameters ? sender.getParameters() : { encodings: [{}] };
+      if (!params.encodings || params.encodings.length === 0) params.encodings = [{}];
+      params.encodings[0].maxBitrate = maxBitrate;
+      params.encodings[0].maxFramerate = maxFramerate;
+      if (scaleResolutionDownBy !== undefined) params.encodings[0].scaleResolutionDownBy = scaleResolutionDownBy;
+      await sender.setParameters(params);
+    } catch {
+      // setParameters can reject if the sender/transceiver isn't in a
+      // state that accepts it yet (mid-renegotiation) -- best-effort,
+      // the next poll tick retries.
+    }
+  }
+
+  /** CallScreen's consent Alert (spec §4's "Forbindelsen er ustabil. Slå
+   *  av kameraet for bedre skjermdeling?") wires up through this --
+   *  fired only on a real transition into 'poor', not every poll tick. */
+  onNetworkQualityChange(cb: (tier: NetworkQualityTier, reason: string) => void): () => void {
+    this.networkQualityListeners.push(cb);
+    return () => { this.networkQualityListeners = this.networkQualityListeners.filter((l) => l !== cb); };
   }
 
   isScreenSharing(): boolean {
@@ -739,6 +916,11 @@ export class CallEngine {
     this.screenShareListeners = [];
     this.remoteScreenStreamListeners = [];
     this.callEstablished = false;
+    this.stopAdaptiveQuality();
+    this.networkQualityListeners = [];
+    this.emergencyActionListeners = [];
+    this.lastPromptedTier = null;
+    this.emergencyStopFired = false;
     this.pc?.close();
     this.pc = null;
     // Matches captureLocalMedia's start() — only meaningful to call if a

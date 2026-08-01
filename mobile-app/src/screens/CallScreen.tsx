@@ -371,6 +371,31 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       setRemoteScreenUrl(stream ? stream.toURL() : null);
       setRemoteSharing(!!stream);
     });
+    // Spec §4's consent prompt -- only ever fired by the engine on a real
+    // transition into 'poor' (not every poll tick), so this Alert can't
+    // stack/re-show itself while the connection just sits in a bad state.
+    const unsubQuality = engine.onNetworkQualityChange(() => {
+      Alert.alert(
+        t('call.weakConnectionTitle'),
+        t('call.weakConnectionBody'),
+        [
+          { text: t('call.weakConnectionContinue'), style: 'cancel' },
+          { text: t('call.weakConnectionTurnOff'), onPress: () => {
+            setVideoOn(false);
+            engine.stopCameraTrack().catch(() => setVideoOn(true));
+          } },
+        ],
+      );
+    });
+    // The emergency case -- engine already acted (stopped the camera
+    // itself, no consent asked, spec's own carve-out for genuine
+    // disconnect risk). This screen's job is only to make that visible,
+    // per spec's "må vises tydelig" -- a toast, not a blocking Alert,
+    // since there's no decision left for the user to make here.
+    const unsubEmergency = engine.onEmergencyAction(() => {
+      setVideoOn(false);
+      useToastStore.getState().show(t('call.emergencyCameraStopped'), 'info');
+    });
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       unsubStream();
@@ -378,6 +403,8 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       unsubState();
       unsubScreenShare();
       unsubRemoteScreen();
+      unsubQuality();
+      unsubEmergency();
       engine.teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
