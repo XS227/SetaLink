@@ -144,11 +144,10 @@ function OrbitDot({ duration, radius, tilt, size, color, reverse, phase = 0, isM
 }
 
 // Khabat, 2026-07-30 (test-120): "la det blinke lekent" — the Daily Luck
-// header icon points at DailyLuckWheelScreen, which is still explicitly
-// UI-preview-only (see that screen's own header comment: spins aren't
-// connected to a real reward yet). A gentle opacity pulse signals "there's
-// something here, it's not finished" without a static "soon" label
-// cluttering a header icon this small.
+// header icon points at DailyLuckWheelScreen (live spin+grant since
+// 2026-08-01, see that screen's own header). Kept the gentle opacity pulse
+// as a "there's something fun here" nudge now that there's a real prize
+// behind it, not just as an unfinished-feature signal.
 function BlinkingLuckIcon() {
   const pulse = useSharedValue(0);
   useEffect(() => {

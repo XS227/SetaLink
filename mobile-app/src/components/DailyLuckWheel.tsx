@@ -1,17 +1,13 @@
 /**
- * DailyLuckWheel — UI-only prototype (Khabat, 2026-07-30: "lag bare ui så
- * jeg kan sjekke hvordan den snurrer og farger og sånt. etterpå kan kobles
- * til økonomi"). A once-a-day spin that lands on one of five prize types.
- *
- * Deliberately NOT wired to any real reward/economy backend yet — the spin
- * result below is chosen with Math.random() purely so the wheel has
- * something to land on for a visual review. Real grants need a server-
- * authoritative endpoint (same requirement flagged in docs/realgram/
- * TASK_SPLIT.md A→B(241) for the existing daily-quest XP bug — this app has
- * no other place where a client-side balance mutation is trusted) — that
- * part is genuinely out of scope here, no Shahnameh backend repo is
- * reachable from this box (see TASK_SPLIT.md — that side is Agent B's).
- * See PRIZES below for where a real payout table would plug in.
+ * DailyLuckWheel — once-a-day spin, server-authoritative
+ * (shahnameh-backend POST /season2/user/luck-spin). Started as a UI-only
+ * prototype (Khabat, 2026-07-30: "lag bare ui så jeg kan sjekke hvordan
+ * den snurrer og farger og sånt. etterpå kan kobles til økonomi") — wired
+ * to the real endpoint 2026-08-01 once PR #3 (feat/luck-wheel-spin)
+ * shipped. The server draws the prize AND applies the grant atomically;
+ * this component only asks for a spin and animates to whatever key comes
+ * back, same shape zarSyncService's own quest_tap wiring uses for
+ * telegram_id resolution.
  *
  * Segment colors reuse the app's existing rarity ramp (design/tokens.ts
  * Colors.rarity) rather than inventing a new palette — same system already
@@ -33,13 +29,14 @@
  *      real once-per-day feel was accidental). Persisted the last-spin date
  *      to the app's own MMKV-backed `storage` (same module zustand's
  *      persist middleware already uses), keyed on a UTC date string, same
- *      convention RealGramEarnScreen's own checkin gate already uses. This
- *      is still device-local, not account-authoritative (a reinstall resets
- *      it) — real per-account enforcement still needs the server endpoint
- *      from point 1's backend note, not something fixable from this repo.
+ *      convention RealGramEarnScreen's own checkin gate already uses. Now
+ *      device-local only as a fast initial-render hint (skips a network
+ *      round-trip before showing "come back tomorrow") — the server's own
+ *      `luck_spin_date` field is what actually enforces once-per-day, this
+ *      just avoids flashing an enabled button before that answer is known.
  */
 
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
   Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming,
@@ -48,24 +45,30 @@ import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { syncGet, storage } from '../storage/storage';
+import { spinLuckWheel } from '../services/earnService';
+import { getSsoToken } from '../services/ssoService';
+import { useToastStore } from '../stores/toastStore';
 
 export interface WheelPrize {
   key: string;
-  labelKey: 'dailyluck.prizeGbQuota' | 'dailyluck.prizeZar' | 'dailyluck.prizeGem' | 'dailyluck.prizeFarr' | 'dailyluck.prizeReal';
+  labelKey: 'dailyluck.prizeZarSmall' | 'dailyluck.prizeZarBig' | 'dailyluck.prizeGem' | 'dailyluck.prizeFarr' | 'dailyluck.prizeReal';
   icon: string;
   color: string;
 }
 
-// Ordered common -> mythic, matching Colors.rarity's own scale. Swap
-// icon copy freely; `key` is what a real backend would eventually
-// return/consume, kept stable so wiring the real payout later doesn't need
-// to touch this list's shape.
+// Ordered common -> mythic, matching Colors.rarity's own scale. `key` MUST
+// stay in sync with shahnameh-backend's LUCK_WHEEL_PRIZES
+// (routes/api/season2.js) — the server draws the prize and returns one of
+// these keys, this list is only for rendering the wheel and looking up
+// which segment to land on. A "GB Quota" prize was in the original UI
+// preview but the server deliberately doesn't grant it (VPN quota lives in
+// the SetaLink panel's own DB, out of reach here) — dropped to match.
 export const PRIZES: WheelPrize[] = [
-  { key: 'gb_quota', labelKey: 'dailyluck.prizeGbQuota', icon: '📶', color: Colors.rarity.common },
-  { key: 'zar',       labelKey: 'dailyluck.prizeZar',     icon: '🪙', color: Colors.rarity.rare },
-  { key: 'gem',       labelKey: 'dailyluck.prizeGem',     icon: '💎', color: Colors.rarity.epic },
-  { key: 'farr',      labelKey: 'dailyluck.prizeFarr',    icon: '✨', color: Colors.rarity.legendary },
-  { key: 'real',      labelKey: 'dailyluck.prizeReal',    icon: '﷼',  color: Colors.rarity.mythic },
+  { key: 'zar_small', labelKey: 'dailyluck.prizeZarSmall', icon: '🪙', color: Colors.rarity.common },
+  { key: 'zar_big',   labelKey: 'dailyluck.prizeZarBig',   icon: '🪙', color: Colors.rarity.rare },
+  { key: 'gem',       labelKey: 'dailyluck.prizeGem',      icon: '💎', color: Colors.rarity.epic },
+  { key: 'farr',      labelKey: 'dailyluck.prizeFarr',     icon: '✨', color: Colors.rarity.legendary },
+  { key: 'real',      labelKey: 'dailyluck.prizeReal',     icon: '﷼',  color: Colors.rarity.mythic },
 ];
 
 const SPIN_DATE_STORAGE_KEY = 'dailyluck_lastSpinDate';
@@ -98,43 +101,51 @@ function segmentPath(index: number): string {
 }
 
 interface Props {
-  /** Called once a spin finishes, with the prize it landed on — the only
-   *  hook a real economy wiring would need; everything else here is
-   *  self-contained presentation state. */
-  onResult?: (prize: WheelPrize) => void;
+  /** Needed to resolve the account's telegram_id (same getSsoToken(deviceId,
+   *  true) pattern zarSyncService's quest_tap wiring and RealGramEarnScreen
+   *  already use) — the server spin is per-account, not per-device. */
+  deviceId: string;
+  /** Called once a spin finishes, with the prize it landed on and the
+   *  amount actually granted (server-decided, not derivable from the
+   *  prize key alone — zar_small/zar_big/gem/farr/real amounts are a
+   *  weighted table server-side, see season2.js's LUCK_WHEEL_PRIZES). */
+  onResult?: (prize: WheelPrize, amount: number) => void;
 }
 
-export function DailyLuckWheel({ onResult }: Props) {
+export function DailyLuckWheel({ deviceId, onResult }: Props) {
   const { t } = useT();
+  const showToast = useToastStore((s) => s.show);
   const rotation = useSharedValue(0);
   const [spinning, setSpinning] = useState(false);
-  // Initialized from persisted state, not always false — see this file's
-  // own header (point 2) for why a plain useState(false) here was a real
-  // bug (remounting undid the day's spin).
+  // Fast initial-render hint only, not the real gate — see this file's own
+  // header (point 2). The server's `already_spun` response (handled in
+  // handleSpin below) is the actual once-per-day enforcement.
   const [alreadySpunToday, setAlreadySpunToday] = useState(
     () => syncGet(SPIN_DATE_STORAGE_KEY) === todayUtcStr(),
   );
-  const [result, setResult] = useState<WheelPrize | null>(null);
+  const [result, setResult] = useState<{ prize: WheelPrize; amount: number } | null>(null);
   const totalRotation = useRef(0);
+  const telegramIdRef = useRef<string | null>(null);
 
-  const finishSpin = useCallback((prizeIndex: number) => {
+  useEffect(() => {
+    let cancelled = false;
+    if (!deviceId) return;
+    getSsoToken(deviceId, true)
+      .then((r) => { if (!cancelled) telegramIdRef.current = r.telegram_id || null; })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [deviceId]);
+
+  const finishSpin = useCallback((prizeIndex: number, amount: number) => {
     setSpinning(false);
     setAlreadySpunToday(true);
     storage.setItem(SPIN_DATE_STORAGE_KEY, todayUtcStr());
     const prize = PRIZES[prizeIndex];
-    setResult(prize);
-    onResult?.(prize);
+    setResult({ prize, amount });
+    onResult?.(prize, amount);
   }, [onResult]);
 
-  const handleSpin = useCallback(() => {
-    if (spinning || alreadySpunToday) return;
-    setSpinning(true);
-    setResult(null);
-
-    // Placeholder only — see this file's own header. A real spin would
-    // instead await a server call that already decided the prize, then
-    // animate to whatever index it returns rather than picking one here.
-    const prizeIndex = Math.floor(Math.random() * PRIZES.length);
+  const animateToIndex = useCallback((prizeIndex: number, amount: number) => {
     const extraSpins = MIN_EXTRA_SPINS + Math.random() * (MAX_EXTRA_SPINS - MIN_EXTRA_SPINS);
     // Land the *pointer* (fixed at the top, 0deg) on the middle of the
     // chosen segment: rotate the wheel so that segment's center ends up at
@@ -151,14 +162,55 @@ export function DailyLuckWheel({ onResult }: Props) {
         next,
         { duration: reduced ? 400 : SPIN_MS, easing: Easing.out(Easing.cubic) },
         (finished) => {
-          if (finished) runOnJS(finishSpin)(prizeIndex);
+          if (finished) runOnJS(finishSpin)(prizeIndex, amount);
         },
       );
     }).catch(() => {
       rotation.value = withTiming(next, { duration: SPIN_MS, easing: Easing.out(Easing.cubic) },
-        (finished) => { if (finished) runOnJS(finishSpin)(prizeIndex); });
+        (finished) => { if (finished) runOnJS(finishSpin)(prizeIndex, amount); });
     });
-  }, [spinning, alreadySpunToday, rotation, finishSpin]);
+  }, [rotation, finishSpin]);
+
+  const handleSpin = useCallback(async () => {
+    if (spinning || alreadySpunToday) return;
+    const telegramId = telegramIdRef.current;
+    if (!telegramId) {
+      showToast(t('dailyluck.spinError'), 'error');
+      return;
+    }
+    setSpinning(true);
+    setResult(null);
+
+    const res = await spinLuckWheel(telegramId);
+    if (!res.ok) {
+      setSpinning(false);
+      if (res.error === 'already_spun') {
+        setAlreadySpunToday(true);
+        storage.setItem(SPIN_DATE_STORAGE_KEY, todayUtcStr());
+        showToast(t('dailyluck.alreadySpun'), 'error');
+      } else {
+        showToast(t('dailyluck.spinError'), 'error');
+      }
+      return;
+    }
+
+    // Server decides the prize. `key` MUST stay in sync with season2.js's
+    // LUCK_WHEEL_PRIZES (see PRIZES' own comment above) — an unrecognized
+    // key means a stale client build vs. a since-changed backend table.
+    // The grant already happened server-side regardless, so still surface
+    // it (amount, via toast) rather than silently dropping it — just skip
+    // the wheel animation and the prize-card display, since there's no
+    // matching segment/icon/label to show without guessing wrong.
+    const prizeIndex = PRIZES.findIndex((p) => p.key === res.prize);
+    if (prizeIndex === -1) {
+      setSpinning(false);
+      setAlreadySpunToday(true);
+      storage.setItem(SPIN_DATE_STORAGE_KEY, todayUtcStr());
+      showToast(`+${res.amount}`, 'success');
+      return;
+    }
+    animateToIndex(prizeIndex, res.amount);
+  }, [spinning, alreadySpunToday, showToast, t, animateToIndex]);
 
   const wheelStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${rotation.value}deg` }],
@@ -195,8 +247,8 @@ export function DailyLuckWheel({ onResult }: Props) {
 
       {result && (
         <View style={styles.resultWrap}>
-          <Text style={styles.resultIcon}>{result.icon}</Text>
-          <Text style={styles.resultText}>{t(result.labelKey)}</Text>
+          <Text style={styles.resultIcon}>{result.prize.icon}</Text>
+          <Text style={styles.resultText}>+{result.amount} {t(result.prize.labelKey)}</Text>
         </View>
       )}
 

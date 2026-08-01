@@ -1,10 +1,8 @@
 /**
- * DailyLuckWheelScreen — UI-only preview screen for the daily luck wheel
- * (Khabat, 2026-07-30). See DailyLuckWheel.tsx's own header for exactly
- * what is and isn't real here: the wheel spins, colors, and lands on a
- * real (locale-correct) prize name each time, and "already spun today" is
- * now genuinely persisted device-side — but nothing is wired to the real
- * economy yet (no server call, no actual grant of the prize landed on).
+ * DailyLuckWheelScreen — daily luck wheel (Khabat, 2026-07-30). Wired to
+ * the real shahnameh-backend spin+grant endpoint 2026-08-01 — see
+ * DailyLuckWheel.tsx's own header for the full history (started as a
+ * UI-only prototype, server call landed once PR #3 shipped).
  */
 
 import React from 'react';
@@ -15,6 +13,7 @@ import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
 import { DailyLuckWheel } from '../components/DailyLuckWheel';
 import { useT } from '../i18n';
+import { useAuthStore } from '../stores/authStore';
 
 interface Props {
   onBack: () => void;
@@ -23,6 +22,7 @@ interface Props {
 export function DailyLuckWheelScreen({ onBack }: Props) {
   const insets = useSafeAreaInsets();
   const { t, isRTL } = useT();
+  const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -44,10 +44,8 @@ export function DailyLuckWheelScreen({ onBack }: Props) {
         <Text style={styles.pageSub}>{t('dailyluck.subtitle')}</Text>
 
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-          <DailyLuckWheel />
+          <DailyLuckWheel deviceId={deviceId} />
         </GlassCard>
-
-        <Text style={styles.previewNote}>{t('dailyluck.previewNote')}</Text>
       </ScrollView>
     </View>
   );
@@ -69,10 +67,4 @@ const styles = StyleSheet.create({
   pageSub:   { fontSize: 13, color: Colors.text.muted, fontFamily: Typography.family.body, marginTop: 2, marginBottom: Spacing[2], alignSelf: 'flex-start' },
 
   card: { width: '100%', alignItems: 'center', paddingVertical: Spacing[6] },
-
-  previewNote: {
-    fontSize: 11, color: Colors.text.muted, fontFamily: Typography.family.body,
-    textAlign: 'center', fontStyle: 'italic', paddingHorizontal: Spacing[4],
-    borderTopWidth: 1, borderTopColor: Colors.border.subtle, paddingTop: Spacing[3], marginTop: Spacing[2],
-  },
 });
