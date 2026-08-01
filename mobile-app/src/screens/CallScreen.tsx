@@ -97,7 +97,15 @@ function formatDuration(totalSecs: number): string {
 // gesture adds a translate offset on top, clamped to the screen bounds so it
 // can't be dragged off-screen or under the safe-area edges, then springs
 // back inside those bounds on release.
-function DraggableLocalPip({ streamUrl }: { streamUrl: string }) {
+// B, 2026-08-01 (Khabat: "knappene ligger over mitt eget video vindu" —
+// not a crash, confirmed directly): the bottom clamp used a guessed
+// `Spacing[20]` margin that predates the real footer bar `(295)` added,
+// so a drag toward the bottom could still land the PIP under/behind the
+// control row. `footerHeight` is the footer's own measured height (passed
+// from CallScreen's onLayout) — once known, it replaces the guess so the
+// PIP physically cannot be dragged past the footer's real top edge,
+// active-row and incoming-row heights included.
+function DraggableLocalPip({ streamUrl, footerHeight }: { streamUrl: string; footerHeight: number }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -105,7 +113,8 @@ function DraggableLocalPip({ streamUrl }: { streamUrl: string }) {
   const minX = PIP_MARGIN - baseLeft;
   const maxX = 0;
   const minY = insets.top + Spacing[2] - PIP_TOP;
-  const maxY = screenHeight - insets.bottom - PIP_HEIGHT - Spacing[20] - PIP_TOP;
+  const bottomClearance = footerHeight > 0 ? footerHeight + Spacing[3] : insets.bottom + Spacing[20];
+  const maxY = screenHeight - bottomClearance - PIP_HEIGHT - PIP_TOP;
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -150,6 +159,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   const [remoteStreamUrl, setRemoteStreamUrl] = useState<string | null>(null);
   const [localStreamUrl, setLocalStreamUrl] = useState<string | null>(null);
   const [durationSecs, setDurationSecs] = useState(0);
+  const [footerHeight, setFooterHeight] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVideo = engine.isVideoCall();
   const peer = peerDisplay(peerLabel);
@@ -268,7 +278,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
               <Text style={styles.status}>{statusLabel()}</Text>
             </View>
           )}
-          {localStreamUrl && videoOn && <DraggableLocalPip streamUrl={localStreamUrl} />}
+          {localStreamUrl && videoOn && <DraggableLocalPip streamUrl={localStreamUrl} footerHeight={footerHeight} />}
         </>
       ) : (
         <View style={styles.center}>
@@ -289,7 +299,10 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
         </View>
       )}
 
-      <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing[3] }]}>
+      <View
+        style={[styles.footer, { paddingBottom: insets.bottom + Spacing[3] }]}
+        onLayout={(e) => setFooterHeight(e.nativeEvent.layout.height)}
+      >
         {state === 'ringing' ? (
           <View style={styles.incomingRow}>
             <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleReject} accessibilityLabel={t('call.reject')}>
