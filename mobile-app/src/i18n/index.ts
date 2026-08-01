@@ -104,6 +104,7 @@ const EN = {
   // Home screen
   'home.selectServer':    'Select server',
   'home.tapToChoose':     'Tap to choose',
+  'home.tapRateHint':     'Each tap earns 1 ZAR · stamina refills on its own',
   'home.starlinkAccess':      'Starlink Access',
   'home.starlinkUnlocked':    'Starlink Unlocked',
   'home.starlinkInviteHint':  'Invite {n} more friends for Starlink access',
@@ -548,6 +549,7 @@ const EN = {
   'wallet.zarSwapAction':  'Convert to REAL',
   'wallet.zarSwapPrice':   '{z} ZAR',
   'wallet.zarSwapSuccess': 'Converted to REAL!',
+  'wallet.zarSwapNeedMore': 'Earn {z} more ZAR by tapping the coin to unlock this exchange.',
   'wallet.historyTitle':  'Transaction History',
   'wallet.tonTitle':      'TON',
   'wallet.tonComingSoon': 'Coming soon',
@@ -1380,6 +1382,7 @@ const FA: typeof EN = {
   // Home screen
   'home.selectServer':    'انتخاب سرور',
   'home.tapToChoose':     'برای انتخاب لمس کنید',
+  'home.tapRateHint':     'هر ضربه ۱ زار می‌دهد · انرژی خودبه‌خود پر می‌شود',
   'home.starlinkAccess':      'دسترسی Starlink',
   'home.starlinkUnlocked':    'Starlink باز شد',
   'home.starlinkInviteHint':  '{n} دوست دیگر دعوت کن برای دسترسی Starlink',
@@ -1824,6 +1827,7 @@ const FA: typeof EN = {
   'wallet.zarSwapAction':  'تبدیل به REAL',
   'wallet.zarSwapPrice':   '{z} ZAR',
   'wallet.zarSwapSuccess': 'به REAL تبدیل شد!',
+  'wallet.zarSwapNeedMore': 'برای باز شدن این تبدیل، {z} زار دیگر با ضربه زدن روی سکه جمع کنید.',
   'wallet.historyTitle':  'تاریخچه تراکنش‌ها',
   'wallet.tonTitle':      'TON',
   'wallet.tonComingSoon': 'به‌زودی',
@@ -2625,6 +2629,7 @@ const ZH: typeof EN = {
 
   'home.selectServer': '选择服务器',
   'home.tapToChoose': '点击选择',
+  'home.tapRateHint': '每次点击赚 1 ZAR · 体力会自动恢复',
   'home.starlinkAccess':     'Starlink 访问',
   'home.starlinkUnlocked':   'Starlink 已解锁',
   'home.starlinkInviteHint': '再邀请 {n} 位朋友获得 Starlink',
@@ -3051,6 +3056,7 @@ const ZH: typeof EN = {
   'wallet.zarSwapAction':  '兑换为 REAL',
   'wallet.zarSwapPrice':   '{z} ZAR',
   'wallet.zarSwapSuccess': '已兑换为 REAL！',
+  'wallet.zarSwapNeedMore': '再点击金币赚取 {z} ZAR 即可解锁此兑换。',
   'wallet.historyTitle':  '交易记录',
   'wallet.tonTitle':      'TON',
   'wallet.tonComingSoon': '即将推出',
@@ -3865,6 +3871,7 @@ const RU: typeof EN = {
 
   'home.selectServer': 'Выбрать сервер',
   'home.tapToChoose': 'Нажмите для выбора',
+  'home.tapRateHint': 'Каждый тап приносит 1 ZAR · выносливость восстанавливается сама',
   'home.starlinkAccess':     'Starlink доступ',
   'home.starlinkUnlocked':   'Starlink открыт',
   'home.starlinkInviteHint': 'Пригласите ещё {n} друзей для Starlink',
@@ -4291,6 +4298,7 @@ const RU: typeof EN = {
   'wallet.zarSwapAction':  'Обменять на REAL',
   'wallet.zarSwapPrice':   '{z} ZAR',
   'wallet.zarSwapSuccess': 'Обменяно на REAL!',
+  'wallet.zarSwapNeedMore': 'Наберите ещё {z} ZAR, нажимая на монету, чтобы открыть этот обмен.',
   'wallet.historyTitle':  'История транзакций',
   'wallet.tonTitle':      'TON',
   'wallet.tonComingSoon': 'Скоро',
