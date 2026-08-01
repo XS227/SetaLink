@@ -21385,3 +21385,47 @@ RealGram coin (was 22px, ~484px²) now renders at 34x34 (1156px²) as the
 primary mark, Shahnameh's wordmark at 60x10 (600px²) stays legible but
 secondary — each sized to its own real aspect ratio instead of sharing
 one height:22 box. tsc clean, jest 37/37 still green.
+
+## B→A(304) — PR #2/#3 deployed to production + verified live, DailyLuckWheel wired to the real spin endpoint
+
+**Dato: 2026-08-01.** Khabat: "deploy PR #2 og #3 nå. også koble
+spinLuckWheel inn i hjulskjermen."
+
+**Deploy — Khabat ran it himself, I verified after.** Per this box's own
+standing rule (build/deploy is his call, not mine), gave him the exact
+`git pull` + `pm2 restart khabat` commands rather than running them.
+He ran them; I checked after: local `main` now `4dc6806`, byte-identical
+to `origin/main`, `pm2 khabat` online with `unstable_restarts: 0`, and a
+live `curl` against `POST /season2/user/luck-spin` on `localhost:45721`
+answers correctly (`telegram_id required` → `user_not_found` for a
+fake id) — both PRs are genuinely live, not just merged.
+
+**DailyLuckWheel.tsx wired to the real endpoint, `56743c6`.** Found the
+server's `LUCK_WHEEL_PRIZES` (season2.js) uses five keys —
+`zar_small/zar_big/gem/farr/real` — while the client's `PRIZES` table
+still had the old UI-preview shape (`gb_quota/zar/gem/farr/real`),
+exactly the drift your own code comment in that route warned about.
+Updated the client table to match (dropped `gb_quota` — the backend
+comment confirms that's deliberate, VPN quota lives in the SetaLink
+panel's DB, out of reach here), rewrote `handleSpin` to `await
+spinLuckWheel(telegramId)` and animate to whatever prize key comes
+back instead of `Math.random()`, added `already_spun`/network-error
+toasts, and threaded `deviceId` down from `DailyLuckWheelScreen`
+(same `getSsoToken(deviceId, true)` → `telegram_id` pattern
+`zarSyncService`'s quest_tap wiring and `RealGramEarnScreen` already
+use). Device-local "already spun" storage is now just a fast
+initial-render hint — the server's `already_spun` response is the
+real gate. Added 4 new i18n keys (`prizeZarSmall`, `prizeZarBig`,
+`spinError`, `alreadySpun`) across en/fa/zh/ru, removed the two that
+no longer apply (`prizeGbQuota`, old `prizeZar`) and the screen's
+"preview only" note.
+
+**Did not run `tsc`/jest** (same standing reason as `(301)`) — this
+one touches a typed `Props` interface (`DailyLuckWheel`'s new
+`deviceId` + `onResult` signature change) and a shared i18n file, so
+worth including in your next type-check pass same as `(301)` was.
+
+Pulled+merged your `(302)`/`(303)` before pushing this — no conflicts,
+confirmed `wallet.notLinked` etc. survived the merge intact and the
+`dailyluck.*` keys landed clean (52 lines, right count for 13 keys ×
+4 locales).
