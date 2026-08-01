@@ -40,6 +40,15 @@ jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
+// ShahnamehEmbed.tsx's ShahnamehWebView calls useIsFocused() (added after
+// this test file was last touched) to reset its retry-gate state on
+// blur/unmount — real callers always sit under the app's NavigationContainer,
+// this bare-mount test doesn't. Mocked to always-focused rather than pulling
+// in a real NavigationContainer, matching this file's own pattern of stubbing
+// individual hooks (useSafeAreaInsets above) instead of the surrounding nav
+// chrome none of these tests are actually about.
+jest.mock('@react-navigation/native', () => ({ useIsFocused: () => true }));
+
 // Mutable so individual tests can set realId; setRealId actually mutates it
 // (mirrors the real store closely enough for checkAndCacheRealId's
 // useAuthStore.getState().setRealId(...) call to have an observable effect).

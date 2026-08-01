@@ -12,9 +12,9 @@ jest.mock('../stores/zarStore', () => ({
   useZarStore: { getState: () => ({ reconcileFromServer: mockReconcile }) },
 }));
 
-let vpnState = { connectionState: 'disconnected', selectedServer: null as null | { id: string; protocol: string } };
+let mockVpnState = { connectionState: 'disconnected', selectedServer: null as null | { id: string; protocol: string } };
 jest.mock('../stores/vpnStore', () => ({
-  useVpnStore: { getState: () => vpnState },
+  useVpnStore: { getState: () => mockVpnState },
 }));
 
 import { initTapAnalytics, recordTap } from '../services/tapAnalytics';
@@ -29,7 +29,7 @@ describe('zarSyncService — server-authoritative ZAR sync', () => {
     jest.useFakeTimers();
     fetchMock = jest.fn().mockResolvedValue({ json: async () => ({ ok: true, data: { zar: 42, zar_earned: 5, capped: false } }) });
     (globalThis as any).fetch = fetchMock;
-    vpnState = { connectionState: 'disconnected', selectedServer: null };
+    mockVpnState = { connectionState: 'disconnected', selectedServer: null };
     mockReconcile.mockClear();
     (recordTap as jest.Mock).mockClear();
     (initTapAnalytics as jest.Mock).mockClear();
@@ -66,7 +66,7 @@ describe('zarSyncService — server-authoritative ZAR sync', () => {
     recordZarTap();
     expect(recordTap).toHaveBeenLastCalledWith('game_hub', 'tap_coin', undefined, undefined);
 
-    vpnState = { connectionState: 'connected', selectedServer: { id: 'node-7', protocol: 'VLESS+Reality' } };
+    mockVpnState = { connectionState: 'connected', selectedServer: { id: 'node-7', protocol: 'VLESS+Reality' } };
     recordZarTap();
     expect(recordTap).toHaveBeenLastCalledWith('game_hub', 'tap_coin', 'VLESS+Reality', 'node-7');
   });

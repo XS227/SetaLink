@@ -95,6 +95,23 @@ function textValues(root: any): string[] {
   });
 }
 
+// RN's own jest mock gives every host view a bare `measureInWindow = jest.fn()`
+// with no default implementation (node_modules/react-native/jest/
+// mockNativeComponent.js) — same class of gap as the AccessibilityInfo mock
+// above. InboxScreen.tsx's thread/peer overflow menus (the 2026-07-31
+// popup-jump fix, acfbe5b) now gate opening on that callback actually
+// firing, so without this, menu-driven tests would hang open forever with
+// nothing to assert on. The ref this app code calls measureInWindow on
+// isn't the same instance `findByProps({testID})` returns (TouchableOpacity
+// forwards its ref down to the underlying host View, a separate node) —
+// walking the whole tree for every instance exposing measureInWindow and
+// stubbing it once covers both known callers (peer-menu + thread-menu)
+// without depending on that internal ref plumbing.
+function stubMeasureInWindow(root: any): void {
+  root.findAll((n: any) => !!n.instance && typeof n.instance.measureInWindow === 'function')
+    .forEach((n: any) => { (n.instance.measureInWindow as jest.Mock).mockImplementation((cb: any) => cb(0, 0, 0, 0)); });
+}
+
 describe('InboxScreen — unified messenger', () => {
   beforeEach(() => { mockDmMarkRead.mockClear(); mockAnnMarkRead.mockClear(); mockAnnouncements = []; });
 
@@ -119,9 +136,12 @@ describe('InboxScreen — unified messenger', () => {
     let tree!: renderer.ReactTestRenderer;
     act(() => { tree = renderer.create(<InboxScreen onBack={() => {}} />); });
     const root = tree.root;
+    stubMeasureInWindow(root);
     act(() => { root.findByProps({ testID: 'convo-dev-x' }).props.onPress(); });
     // Delete now lives behind the header's overflow menu (2026-07-29
     // declutter — was three always-visible icons, see InboxScreen.tsx).
+    // Opening it is gated on a measureInWindow callback since acfbe5b's
+    // popup-jump fix, hence the stub above.
     act(() => { root.findByProps({ testID: 'convo-menu' }).props.onPress(); });
     expect(root.findByProps({ testID: 'convo-delete' })).toBeTruthy();
     expect(root.findByProps({ testID: 'convo-input' })).toBeTruthy();

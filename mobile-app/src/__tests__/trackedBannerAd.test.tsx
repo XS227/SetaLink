@@ -143,7 +143,11 @@ describe('TrackedBannerAd — retry-with-backoff on failure, no remount (Khabat,
     const onAdFailedToLoad = jest.fn();
     const tree = await mount({ slot: 'home_banner', onAdFailedToLoad });
     const banner = tree.root.findByProps({ testID: 'banner-ad' });
-    const loadSpy = banner.instance.load as jest.Mock;
+    // `testID` is set on the mock's *inner* host string element (BannerAdMock
+    // spreads it there, matching how the real BannerAd forwards its own
+    // props) — that host node has no instance of its own; the class
+    // instance holding `.load` is one level up, on BannerAdMock itself.
+    const loadSpy = banner.parent!.instance.load as jest.Mock;
 
     act(() => {
       banner.props.onAdFailedToLoad(Object.assign(new Error('no fill'), { code: 'googleMobileAds/no-fill' }));

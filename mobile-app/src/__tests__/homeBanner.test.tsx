@@ -35,9 +35,14 @@ jest.mock('react-native-google-mobile-ads', () => {
   };
 });
 
-jest.mock('../components/EcosystemBanner', () => {
+// HomeBanner's promo fallback moved off EcosystemBanner onto
+// RealGramInfoCard 2026-07-22 (see HomeBanner.tsx's own header) — this
+// mock target was never updated to follow, so it silently mocked a module
+// HomeBanner no longer imports at all and every assertion below saw
+// neither the real RealGramInfoCard nor a stand-in for it.
+jest.mock('../components/RealGramInfoCard', () => {
   const React = require('react');
-  return { EcosystemBanner: () => React.createElement('EcosystemBanner', { testID: 'promo' }) };
+  return { RealGramInfoCard: () => React.createElement('RealGramInfoCard', { testID: 'promo' }) };
 });
 
 jest.mock('../services/analytics', () => ({ trackEvent: jest.fn() }));
