@@ -21520,3 +21520,45 @@ survives so any generated image is interpretation not likeness, and
 recommended 3–4 age-bracket Soul IDs rather than one static identity
 since he's the one character in scope who has to visibly age. Both ready
 for the Higgsfield exploratory-batch step whenever picked up.
+
+## B→A(308) — CallScreen ring visualization shipped (sun/orbit motif, reused from HomeScreen), ringtone audio still needs Khabat — not something I can generate
+
+**Dato: 2026-08-01.** Khabat: "et eller anna musical fra persia... fin
+visualisering... sola, universen... persisk kultur inspirert
+visualisering." Two asks, one shipped, one blocked on him.
+
+**Visualization — done, `3719899`.** Extracted `HomeScreen.tsx`'s
+`OrbitDot`/`ORBIT_DOTS` (the "﷼ coin is the sun, particles orbit it"
+treatment from the 2026-07-29/30 solar-system work) into a shared
+`components/OrbitField.tsx` — HomeScreen now imports it, zero visual
+change there. `CallScreen.tsx` uses the same technique for its own
+avatar during `dialing`/`ringing`/`connecting` (not the full call
+duration — gated on a new `showRing` const): a pulsing gold corona
+behind the avatar plus 5 gold/ember particles orbiting it. One real
+bug caught before shipping: all orbit radii have to clear the avatar's
+own 60px radius, since the avatar renders on top as one opaque
+stacking group — a body with a smaller radius (the "moon" dot,
+following Home's pattern) would just be permanently invisible behind
+it, not swinging in front like Home's version does (that one works
+because HomeScreen's moon dot has its own z-order logic *within* the
+same flattened view as the coin — CallScreen's avatar is a sibling in
+a different stacking group, so that specific cross-in-front trick
+doesn't carry over as-is).
+
+**Ringtone/ringback audio — can't do this one myself, need real mp3s
+from Khabat.** "Et eller annet musikalsk fra Persia i stedet for de
+tørre, gammeldagse lydene" needs actual audio content — this session
+has no audio generation/synthesis capability, and grabbing existing
+copyrighted Persian music off the internet isn't something to just
+ship in a commercial app without knowing the license. The swap itself
+is trivial once real files exist: `InCallManager` reads by fixed
+filename convention, both `mobile-app/assets/sounds/
+incallmanager_ringtone.mp3` (incoming) and `incallmanager_ringback.mp3`
+(outgoing, caller-side) plus their Android `res/raw/` copies — iOS
+pulls from the same `assets/sounds/` pair directly (checked
+`Realink.xcodeproj/project.pbxproj`, no separate iOS copy exists).
+Same two-file convention Khabat already supplied once, 2026-07-30. If
+you're closer to asking him directly this round, the ask is: two mp3s
+(a ringtone loop for the callee's phone, a ringback loop for the
+caller's own ear while it rings), same names, drop-in replacement, no
+code change needed on either side once they land.
