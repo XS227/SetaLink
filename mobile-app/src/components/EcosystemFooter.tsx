@@ -26,14 +26,24 @@ import { Colors, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 
 type Brand =
-  | { name: string; kind: 'image'; source: number; width: number }
+  | { name: string; kind: 'image'; source: number; width: number; height: number }
   | { name: string; kind: 'text'; label: string };
 
+// Khabat, 2026-08-01: RealGram is the account every user actually has —
+// Shahnameh is a companion feature you can later link Telegram history
+// into, not a separate identity — so RealGram's own mark shouldn't read
+// smaller than the companion game's credit. Previous width:22/84 (both
+// forced into a shared height:22 box) let the 132x22 Shahnameh wordmark's
+// horizontal footprint dominate the row even though it wasn't rendering
+// at its full box height (contain-fit width-bound). Sized each to its own
+// aspect ratio instead of sharing one box: RealGram's 1:1 coin now reads
+// as the visually primary mark (1156px²), Shahnameh's 6:1 wordmark stays
+// legible but clearly secondary (600px²).
 const BRANDS: Brand[] = [
   { name: 'AI',        kind: 'text',  label: '✨ Fable 5' },
   { name: 'Starlink',  kind: 'text',  label: '🛰️ Starlink' },
-  { name: 'RealGram',  kind: 'image', source: require('../assets/ecosystem/icon-realgram-coin.png'), width: 22 },
-  { name: 'Shahnameh', kind: 'image', source: require('../assets/ecosystem/lockup-shahnameh.png'),   width: 84 },
+  { name: 'RealGram',  kind: 'image', source: require('../assets/ecosystem/icon-realgram-coin.png'), width: 34, height: 34 },
+  { name: 'Shahnameh', kind: 'image', source: require('../assets/ecosystem/lockup-shahnameh.png'),   width: 60, height: 10 },
 ];
 
 export function EcosystemFooter() {
@@ -46,7 +56,7 @@ export function EcosystemFooter() {
             <Image
               key={b.name}
               source={b.source}
-              style={{ width: b.width, height: 22 }}
+              style={{ width: b.width, height: b.height }}
               resizeMode="contain"
               accessibilityLabel={b.name}
             />
