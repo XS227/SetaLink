@@ -258,7 +258,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   const showVideo = isVideo && state === 'active' && (remoteStreamUrl || localStreamUrl);
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + Spacing[6], paddingBottom: insets.bottom + Spacing[3] }]}>
+    <View style={[styles.screen, { paddingTop: insets.top + Spacing[6] }]}>
       {showVideo ? (
         <>
           {remoteStreamUrl ? (
@@ -289,59 +289,61 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
         </View>
       )}
 
-      {state === 'ringing' ? (
-        <View style={styles.incomingRow}>
-          <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleReject} accessibilityLabel={t('call.reject')}>
-            <View style={styles.hangupIconRotate}>
+      <View style={[styles.footer, { paddingBottom: insets.bottom + Spacing[3] }]}>
+        {state === 'ringing' ? (
+          <View style={styles.incomingRow}>
+            <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleReject} accessibilityLabel={t('call.reject')}>
+              <View style={styles.hangupIconRotate}>
+                <IconPhone size={22} color="#0B0F14" />
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.circleBtn, styles.acceptBtn]} onPress={handleAccept} accessibilityLabel={t('call.accept')}>
               <IconPhone size={22} color="#0B0F14" />
-            </View>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.circleBtn, styles.acceptBtn]} onPress={handleAccept} accessibilityLabel={t('call.accept')}>
-            <IconPhone size={22} color="#0B0F14" />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.activeRow}>
-          <TouchableOpacity
-            style={[styles.smallBtn, muted && styles.smallBtnActive]}
-            onPress={toggleMute}
-            accessibilityLabel={muted ? t('call.unmute') : t('call.mute')}
-          >
-            {muted
-              ? <IconMicOff size={19} color={Colors.gold[400]} />
-              : <IconMic size={19} color={Colors.text.primary} />}
-          </TouchableOpacity>
-          {isVideo && (
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.activeRow}>
             <TouchableOpacity
-              style={[styles.smallBtn, !videoOn && styles.smallBtnActive]}
-              onPress={toggleVideo}
-              accessibilityLabel={videoOn ? t('call.videoOff') : t('call.videoOn')}
+              style={[styles.smallBtn, muted && styles.smallBtnActive]}
+              onPress={toggleMute}
+              accessibilityLabel={muted ? t('call.unmute') : t('call.mute')}
             >
-              {videoOn
-                ? <IconVideo size={19} color={Colors.text.primary} />
-                : <IconVideoOff size={19} color={Colors.gold[400]} />}
+              {muted
+                ? <IconMicOff size={19} color={Colors.gold[400]} />
+                : <IconMic size={19} color={Colors.text.primary} />}
             </TouchableOpacity>
-          )}
-          <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleHangUp} accessibilityLabel={t('call.hangUp')}>
-            <View style={styles.hangupIconRotate}>
-              <IconPhone size={22} color="#0B0F14" />
-            </View>
-          </TouchableOpacity>
-          {isVideo ? (
-            <TouchableOpacity style={styles.smallBtn} onPress={() => engine.switchCamera()} accessibilityLabel={t('call.switchCamera')}>
-              <IconCameraFlip size={19} color={Colors.text.primary} />
+            {isVideo && (
+              <TouchableOpacity
+                style={[styles.smallBtn, !videoOn && styles.smallBtnActive]}
+                onPress={toggleVideo}
+                accessibilityLabel={videoOn ? t('call.videoOff') : t('call.videoOn')}
+              >
+                {videoOn
+                  ? <IconVideo size={19} color={Colors.text.primary} />
+                  : <IconVideoOff size={19} color={Colors.gold[400]} />}
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleHangUp} accessibilityLabel={t('call.hangUp')}>
+              <View style={styles.hangupIconRotate}>
+                <IconPhone size={22} color="#0B0F14" />
+              </View>
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.smallBtn, speakerOn && styles.smallBtnActive]}
-              onPress={toggleSpeaker}
-              accessibilityLabel={t('call.speaker')}
-            >
-              <IconSpeaker size={19} color={speakerOn ? Colors.gold[400] : Colors.text.primary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+            {isVideo ? (
+              <TouchableOpacity style={styles.smallBtn} onPress={() => engine.switchCamera()} accessibilityLabel={t('call.switchCamera')}>
+                <IconCameraFlip size={19} color={Colors.text.primary} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.smallBtn, speakerOn && styles.smallBtnActive]}
+                onPress={toggleSpeaker}
+                accessibilityLabel={t('call.speaker')}
+              >
+                <IconSpeaker size={19} color={speakerOn ? Colors.gold[400] : Colors.text.primary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+      </View>
     </View>
   );
 }
@@ -363,6 +365,18 @@ const styles = StyleSheet.create({
   avatarInitial: { fontSize: 48, color: Colors.gold[400], fontFamily: Typography.family.heading },
   peerName: { fontSize: Typography.size.xl, color: Colors.text.primary, fontFamily: Typography.family.heading },
   status: { fontSize: Typography.size.sm, color: Colors.text.secondary, fontFamily: Typography.family.mono },
+  // Khabat, 2026-08-01: "knappene kan plasseres i booter heller" — the
+  // control row already sat at the screen's bottom edge (space-between),
+  // but with no background it floated directly over the remote video with
+  // nothing to set it apart. Wrapped in an actual footer bar instead.
+  footer: {
+    width: '100%',
+    alignItems: 'center',
+    paddingTop: Spacing[4],
+    backgroundColor: Colors.bg.void + 'CC',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: Colors.border.default,
+  },
   incomingRow: { flexDirection: 'row', gap: Spacing[7] },
   activeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[5] },
   circleBtn: {

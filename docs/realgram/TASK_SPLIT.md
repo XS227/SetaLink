@@ -21036,3 +21036,72 @@ via Higgsfield AI — API key not sent yet ("remind me later"), and even
 once it lands, getting the resulting images into `chapters.json` hits
 the exact same shahnameh-backend access gap above.** Flagging here so
 whoever has that access knows it's coming.
+
+## A→B(295) — Khabat's v0.9.128 test batch: call buttons moved into a real footer bar (shipped), local-video-PiP crash root-caused but NOT fixed (needs your go), Zar-per-tap confirmed working-as-coded, 0mps re-confirmed already fixed in code
+
+**Dato: 2026-08-01.** Khabat: "vi fikk kontakt" (contact/signaling now
+succeeds — consistent with `(294)`'s ICE work) but four fresh items from
+the same test:
+
+**Call buttons moved into an actual footer bar — shipped.**
+`activeRow`/`incomingRow` in `CallScreen.tsx` already sat at the screen's
+bottom edge (`justifyContent: 'space-between'`), but with no background —
+floating bare icons directly over the remote video, which is what "knappene
+kan plasseres i booter heller" was asking to fix. Wrapped both rows in a
+new `styles.footer` (translucent `bg.void` panel + hairline top border,
+`insets.bottom` padding moved from the screen container into the footer
+itself so the panel actually reaches the safe-area edge). No logic
+changes — pure layout. `tsc --noEmit` clean, full jest suite still
+37/37 suites, 398/398 tests.
+
+**Local-video PiP crash — root cause identified, NOT touched.** Khabat's
+"ikonene or mitt eget video crasher enda på call screen" — the icons
+themselves (`CallIcons.tsx`, plain `react-native-svg` primitives) are
+clean, all 7 render correctly, no missing-glyph risk. Strong suspect is
+`DraggableLocalPip` (`CallScreen.tsx`'s `0e92a0d` PiP feature): it wraps
+an `RTCView` — which on Android is backed by WebRTC's `SurfaceViewRenderer`
+(`WebRTCView.java`, confirmed via `node_modules/react-native-webrtc`'s own
+source) — inside a `GestureDetector` + Reanimated `Animated.View` driving
+live `translateX`/`translateY` via UI-thread worklets, at `zOrder={1}`
+overlapping the full-screen remote `RTCView`. `SurfaceView` compositing to
+a separate hardware layer while a Reanimated/gesture-handler transform
+drives it every frame is a well-documented Android crash class (surface
+create/destroy churn during rapid re-layout) — but I have no crash log or
+logcat capture to confirm this is actually what's crashing versus something
+else, and this app has no crash reporting wired in (re-confirmed, still
+nothing per `(...)`'s Sentry/Crashlytics note). **Deliberately did not
+touch this** — it's exactly the kind of "unproven without a live capture"
+situation `(292)`'s ICE investigation already burned time guessing at, and
+the calling path is fragile enough right now that a blind fix risks making
+it worse. If you want to take this on: safest low-risk mitigation is
+probably switching the PiP's drag from a worklet-driven `transform` to
+JS-thread-driven `left`/`top` (SurfaceView tolerates position changes far
+better than a live transform matrix) — but that's a real behavior change
+(less smooth drag) to a feature Khabat explicitly asked for, so worth
+confirming the diagnosis first with a logcat capture on the next crash
+before committing to it.
+
+**Zar-per-tap vs. stamina — not a bug, just unexplained to the player.**
+"npr jeg tapper så går 1k ganske fort på stamina men jeg får ikke 1k i
+zar" — `zarStore.ts`'s `ZAR_PER_TAP = 1` (flat, capped at 500/day) while
+`useTapEnergy.ts`'s `SPEND_RATIO = 0.03` costs ~30 stamina/tap off a
+1000 max. A burst that drains "1k" stamina (~33 taps) earns ~33 Zar, not
+1000 — working exactly as coded, just never surfaced in the UI that Zar
+is flat-per-tap while stamina cost scales with tier. Told Khabat this
+directly rather than changing the economy unasked; flagging here in case
+you want to add a rate hint to the tap UI.
+
+**0mps — re-confirmed already fixed in the current tree, not a
+regression.** This is the exact `(284)` bug (MB/s mislabeled Mbps +
+`.toFixed(0)` rounding sub-8Mbps speeds to 0) — `HomeScreen.tsx`'s
+`displayMbps = displayMBs * 8` with `.toFixed(displayMbps < 10 ? 1 : 0)`
+has been live since `083aef8` (2026-07-31), an ancestor of the exact
+build (v0.9.128) Khabat tested. A literal "0" today can only come from
+`isConnected === false` or the native layer genuinely reporting zero
+byte delta (`XrayModule.kt`'s real `TrafficStats` accumulation, not
+stubbed). Given `[[khabat-test-device-role]]`-style device quirks already
+on record for her test device, and that this exact code path was already
+verified fixed once, this reads as either a real near-zero-throughput
+session on the Iran path or a device-specific `TrafficStats` detection
+gap — not something to chase further without a session where her device
+shows a nonzero XrayModule delta but the UI still shows 0.
