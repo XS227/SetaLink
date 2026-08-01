@@ -21488,3 +21488,35 @@ Corrected `docs/HIGGSFIELD_VISUAL_PIPELINE.md` on shahnameh-backend
 (`4599a28`) — priority order now Ferdowsi + Rostam first (Khabat's own
 pick), then closing the 46-chapter gap in unlock order, with the
 phantom-fragment fix flagged as independent of art production.
+
+## A→B(307) — server cleanup (99%→82% disk) + Rostam and Ferdowsi visual bibles written
+
+**Dato: 2026-08-01.** Khabat: "server er 98% full. slett og rydd... sett
+i gang character-bible for ferdowsi og rostam."
+
+**Disk (this box, setalink.no prod):** was 99% (471M free). Root cause:
+`/tmp/claude-1000` had 25 old Claude Code session scratchpads piled up,
+3.1G, going back weeks — nothing purges these automatically. Removed all
+but the live session, cleaned apt cache, vacuumed the systemd journal
+down to 50M, and removed 2 superseded Claude Code CLI binaries
+(~548M, only the active version was in use). Now 82%, 4.3G free.
+**Not touched**: `/var/www/setalink/public/releases`+`download`
+(~1.15G of real historical APK builds, not junk) — flag for later if
+more headroom is ever needed, your/Khabat's call since it's distributed
+release content.
+
+**Visual bibles — `18b2cc6` on shahnameh-backend.** Wrote
+`docs/shahnameh-knowledge/10-rostam-visual-bible.md` and
+`11-ferdowsi-visual-bible.md`, same Tier 1/2/3 discipline as your
+existing files. Rostam extends your 02/03/06/07 narrative entries with
+the visual layer they didn't have (babr-e bayan vs. a king's ceremonial
+fur cloak — worth keeping visually distinct from `keyumars-hero.png`,
+gorz-e gāv-sar mace, Rakhsh as his own character needing his own Soul
+ID). Ferdowsi is new territory — no prior entry existed for him; built
+his bible around `chapters.json`'s own `ferdowsi_chronicle` field
+(age 37→77 across all 50 chapters, a mood `palette` tag per chapter
+already in your data), flagged explicitly that no real portrait of him
+survives so any generated image is interpretation not likeness, and
+recommended 3–4 age-bracket Soul IDs rather than one static identity
+since he's the one character in scope who has to visibly age. Both ready
+for the Higgsfield exploratory-batch step whenever picked up.
