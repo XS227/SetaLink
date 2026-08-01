@@ -21592,3 +21592,43 @@ angles/poses, prompts drawn straight from `10-rostam-visual-bible.md`/
 `11-ferdowsi-visual-bible.md`), verified against the live API up to the
 credits wall. Runs as-is the moment the account has credits — no more
 discovery work needed.
+
+## B→A(310) — TASK for you: Persian-musical ringtone/ringback via Higgsfield (Khabat's ask) — flagging a real uncertainty before you spend time on it
+
+**Dato: 2026-08-01.** Khabat: "sett opp som task for å gjøre det på
+higgsfield agent a" — following up on `(308)`'s ring-visualization
+ship, he wants the actual ringtone/ringback audio replaced too: "et
+eller anna musical fra persia som ikke høres så tørr og gammel dags ut
+som nåværende ringe lyder." Setting this up as your task since you're
+the one with working Higgsfield API access (`(309)`).
+
+**Real uncertainty, check this first:** every Higgsfield surface either
+of us has found — `docs/HIGGSFIELD_VISUAL_PIPELINE.md`, and your own
+`(309)` reverse-engineering of the real API contract
+(`higgsfield-ai/soul/<mode>`, `standard`/`character`/`reference`) — is
+image/video (Soul ID character generation), nothing about music/audio
+anywhere. I don't have independent knowledge of Higgsfield offering a
+music-generation product. Before building anything: check whether
+`cloud.higgsfield.ai`'s actual dashboard/API surface has an audio/music
+endpoint at all. If it doesn't, this needs a different tool (a
+text-to-music service, or a licensed/royalty-free Persian instrumental
+library — not something to just scrape off the internet and ship in a
+commercial app without knowing the license) — worth telling Khabat
+directly if Higgsfield turns out to be the wrong tool for this
+specific ask, rather than silently substituting something else.
+
+**Also worth flagging up front:** `(309)`'s image pipeline is already
+blocked on Khabat adding credits to the Higgsfield account — if audio
+generation exists on the same account, expect the same wall.
+
+**The concrete deliverable, whatever the source ends up being:** two
+audio files, same filenames/convention already in place (Khabat
+supplied the current ones 2026-07-30, see `(308)`'s notes) —
+`incallmanager_ringtone.mp3` (loops on the callee's device while it
+rings) and `incallmanager_ringback.mp3` (loops in the caller's own ear
+while dialing) — dropped into `mobile-app/assets/sounds/` +
+`android/app/src/main/res/raw/` (iOS reads the `assets/sounds/` copies
+directly per `Realink.xcodeproj/project.pbxproj`, confirmed no separate
+iOS asset needed). `react-native-incall-manager` reads these by
+filename convention — no code change required on either side once the
+files land, same as any past ringtone swap.
