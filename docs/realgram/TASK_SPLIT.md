@@ -21105,3 +21105,56 @@ verified fixed once, this reads as either a real near-zero-throughput
 session on the Iran path or a device-specific `TrafficStats` detection
 gap — not something to chase further without a session where her device
 shows a nonzero XrayModule delta but the UI still shows 0.
+
+## A→B(296) — same test batch, three more: Zar→REAL swap card confirmed working-as-coded (just silent below threshold), lucky wheel re-confirmed a deliberate stub, Tonkeeper "stuck in wallet" root-caused+fixed live
+
+**Dato: 2026-08-01.** Three more from the same v0.9.128 session as `(295)`:
+
+**"jeg kan helle ikke konvertere zar til real token, knappen... er ikke
+lenger"** — not a regression, `RealWalletCard.tsx:111`'s `canSwap = !!wallet?.zar
+&& !!wallet?.conversion_rate && wallet.zar >= wallet.conversion_rate`
+silently `return`s nothing when balance is short. Rate is 500 ZAR : 1 REAL
+(`docs/realgram/DECISIONS.md:623`); `(295)`'s ZAR_PER_TAP=1/day-capped-at-500
+economy means most players sit under threshold most of the time. The
+REAL→GB redeem card she's still seeing only needs `linked`, not balance,
+which is why one card vanished and the other didn't — reads exactly like
+"the button is gone" from outside. Real gap: no "X more ZAR needed"
+messaging when below threshold, card just silently isn't there. Didn't
+touch it this session (scope was investigation, not this fix) — flagging
+for whoever picks up wallet-card work next.
+
+**"real->data lykke hjuke... ikke koblet"** — `DailyLuckWheel.tsx`'s own
+header already says it in plain text: "UI-only prototype... Deliberately
+NOT wired to any real reward/economy backend yet." Built exactly this way
+2026-07-30 at Khabat's own request ("lag bare ui... etterpå kan kobles
+til økonomi"), and already re-confirmed once before at
+`TASK_SPLIT.md:20268-20273`. There's even an i18n preview-note string
+across all 4 locales — evidently not prominent enough, since this is the
+second time it's been reported as a bug. Not touched; not a bug.
+
+**"jeg fpr koblet til men da blir jeg igjen i tonkeeper og ikke sendt
+tilbake til appen"** — this one's a real bug, root-caused and fixed live.
+`tonConnectService.ts`'s `requestTonConnection()` builds the Tonkeeper
+deep link via the installed `@tonconnect/sdk`'s `connector.connect()` —
+checked its `generateRegularUniversalLink` directly in
+`node_modules/@tonconnect/sdk/lib/cjs/index.cjs`: it only ever appends
+`v`/`id`/`trace_id`/`r` to the link, **never** a return-strategy param.
+TON Connect's protocol has one specifically for "hand focus back to the
+calling app after approval" (`ret=back`) — it's on each dApp to add it to
+the link the SDK hands back, and this file never did, so Tonkeeper had no
+instruction to do anything but sit on top of the task stack after
+approval. Added `appendReturnStrategy()` — sets `ret=back` via
+`URLSearchParams` on the link before it's returned to `TonConnectCard.tsx`
+(used for both the QR code and the direct "Open in Tonkeeper" button;
+`ret=back` is a no-op hint on the cross-device QR path, real fix is for
+the same-device open Khabat actually used). `tsc --noEmit` clean, jest
+37/37 suites, 398/398 tests still green.
+
+**Not fixed, flagging separately**: even with `ret=back`, RealGram itself
+has no deep-link receiver for a wallet-connect return today
+(`deepLinkService.ts` has zero TON/wallet case) — `ret=back` uses the
+OS's own app-switch mechanism so it doesn't need one, but if Tonkeeper
+ever needs a real return URL instead of the `back` hint (some wallet
+versions/platforms handle `back` inconsistently), that receiver still
+doesn't exist. Worth keeping an eye on after the next real test — if
+`ret=back` alone doesn't fully close it, that's the next place to look.

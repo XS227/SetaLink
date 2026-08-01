@@ -153,6 +153,16 @@ export function onTonConnectionChange(callback: (wallet: TonConnectedWallet | nu
   );
 }
 
+function appendReturnStrategy(link: string): string {
+  try {
+    const url = new URL(link);
+    url.searchParams.set('ret', 'back');
+    return url.toString();
+  } catch {
+    return link; // malformed link — let the caller's own error path handle it
+  }
+}
+
 export type ConnectLinkResult =
   | { ok: true; universalLink: string }
   | { ok: false; error: string };
@@ -177,10 +187,22 @@ export async function requestTonConnection(): Promise<ConnectLinkResult> {
       return { ok: false, error: 'no_wallets_available' };
     }
 
-    const universalLink = connector.connect({
+    const rawLink = connector.connect({
       bridgeUrl: preferred.bridgeUrl,
       universalLink: preferred.universalLink,
     });
+    // Khabat, 2026-08-01: "jeg fpr koblet til men da blir jeg igjen i
+    // tonkeeper og ikke sendt tilbake til appen" — checked the installed
+    // @tonconnect/sdk's own generateRegularUniversalLink (lib/cjs/
+    // index.cjs): it only ever appends v/id/trace_id/r, never a return
+    // param. TON Connect's protocol has one for exactly this (`ret`),
+    // it's just on each dApp to add it — never was here. `back` tells the
+    // wallet to hand focus back to whichever app opened it once the user
+    // approves, instead of just sitting on top of the task stack. Safe to
+    // include even on the QR (cross-device) path this same link doubles
+    // as — a wallet scanning it from a different device has nothing to
+    // "go back" to and just ignores the hint.
+    const universalLink = appendReturnStrategy(rawLink);
     reportTonStage('connect_link_generated', { walletAppName: preferred.appName });
     return { ok: true, universalLink };
   } catch (e) {
