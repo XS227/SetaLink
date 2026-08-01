@@ -21713,3 +21713,77 @@ new attempt with an instant "already on a call" rejection for up to 3
 hours (`CALL_STALE_ACCEPTED_SECS`). Cleared directly in
 `/var/www/setalink/data/analytics.db`, confirmed live — three
 back-to-back calls connected cleanly right after.
+
+## A→B(314) — screen sharing: spec §1-5 built (sender + receiver, round-trip testable), §6-9 still open
+
+**Dato: 2026-08-01.** Khabat handed over a full 9-section screen-share
+spec for RealGram calls (WhatsApp/Meet-style). Built in tracked phases
+rather than attempted blind in one pass — full task list + status in
+this session's TaskList. Four commits on `feat/b97-experience`:
+`6febeb3` (foundation), `0c59edc` (sender UI), `39da493` (receiver
+rendering). tsc clean, jest 37/37 green throughout.
+
+**Architecture findings (spec's own §8 ask, answered first):** calling
+is standard mesh WebRTC, STUN-first with coturn TURN fallback (`fi-hel`)
+— no SFU/media server. `react-native-webrtc` (already v124) bundles the
+native Android MediaProjection machinery — no raw native module needed.
+
+**Done — §1-5, a real round trip:**
+- Feature flag `realtime_screen_sharing_enabled` (RemoteConfig, same
+  server-flip pattern as `ecosystem.wallet_enabled` — internal-test-only
+  per spec §9, no code change needed to turn it on for testers).
+- `FOREGROUND_SERVICE_MEDIA_PROJECTION` manifest permission (API 34).
+- CallEngine: screen track kept fully separate from the camera track
+  (own MediaStream/sender) so "camera + screen" can send both
+  simultaneously. Added **mid-call SDP renegotiation** — this class only
+  ever did one offer/answer before; now start/stop screen and
+  stop/resume camera each trigger a real renegotiation cycle.
+  `callEstablished` flag stops that from ever colliding with the actual
+  call handshake. New `screen-share-state` signal (reuses the existing
+  generic `call:signal` relay verbatim — zero calling-relay server
+  changes) tells the receiver which incoming video track is the screen
+  vs. the camera.
+- 5th control-row button + RealGram's own warning Alert (exact spec
+  copy, en/fa/zh/ru) shown before `getDisplayMedia()` triggers the real
+  OS permission dialog. Camera toggle is screen-share-aware: while
+  sharing, "camera off" fully stops the track (spec's own "stoppes helt
+  for å redusere dataforbruk"), not the pre-existing soft mute.
+- Receiver: shared screen becomes the main view (works for an
+  audio-only call too, not video-gated); peer's own camera renders as an
+  independently-draggable PiP; pinch-zoom (1x-4x, no snap-back); fit/fill
+  toggle; tap-to-hide label chrome (footer/hang-up always stays
+  reachable, deliberately not part of that toggle).
+
+**Real, disclosed uncertainties — not verified on a device (CI-only,
+no local Android build capability here):**
+- 5 buttons in one row (mute/video/screen-share/hangup/camera-flip) —
+  width math looks fine on typical screens but unconfirmed on the
+  smallest supported ones.
+- Renegotiation glare handling is the simple case (checks
+  `signalingState==='stable'` before offering), not a full "perfect
+  negotiation" pattern — fine for one side toggling at a time, could
+  misbehave if both sides renegotiate in the same instant.
+- Track disambiguation (camera vs. screen) primarily uses the explicit
+  signal, with an ordering heuristic as fallback for the race where that
+  signal hasn't arrived yet — untested against a real network's actual
+  timing.
+
+**Not built yet — each a real sub-project, not a quick add-on:**
+- §4's actual adaptive-quality heuristics (network-tier detection,
+  `setParameters()` bitrate/framerate control, the "connection is weak"
+  prompt) — `getScreenSender()`/`getCameraSender()` are already exposed
+  on CallEngine for whoever picks this up.
+- §6's deeper privacy work (persistent OS-level indicator beyond what
+  MediaProjection already gives for free, sensitive-content blackout
+  detection).
+- §7's full edge-case matrix (network switch, incoming call during
+  share, capture process killed, etc.) — some of this likely falls out
+  naturally from the renegotiation/track.onended plumbing already built,
+  not independently verified per-scenario.
+- §8's stats logging (P2P/relay, resolution/fps/bitrate/packet-loss/RTT
+  via `getStats()`, no content ever logged) + admin bandwidth dashboard.
+
+**§9 (internal test build) explicitly NOT started** — needs a real
+device to mean anything, and per standing rule needs Khabat's explicit
+go before triggering `release-apk.yml`, separate from all the code work
+above.
