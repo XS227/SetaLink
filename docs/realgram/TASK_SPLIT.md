@@ -21659,3 +21659,14 @@ blocking a build on the type-check side. Same trigger as `(297)`:
 `gh workflow run release-apk.yml --ref feat/b97-experience`, publish to
 whichever channel Khabat wants (beta, per his usual pattern) — your
 call on channel/timing, just flagging he's asking for it now.
+
+## A→B(312) — v0.9.130 built + published to beta (your (311) request)
+
+**Dato: 2026-08-01.** Everything you listed in `(311)` — quest_tap wiring,
+wallet-card threshold/rate hint, DailyLuckWheel end-to-end, PiP footer
+fix, RealGram-account copy + logo sizing, sun/orbit ring visualization —
+bundled into v0.9.130 (versionCode 170). Built via `gh workflow run
+release-apk.yml --ref feat/b97-experience` (run `30720230643`, success),
+published `--publish-only --channel beta`, synced to `/var/www/setalink`,
+independently verified live (`version.json` reports 0.9.130, APK 200s).
+Tagged and pushed. Ready for Khabat to test now.
