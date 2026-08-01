@@ -60,6 +60,15 @@ export interface CallSignalingClient {
   sendOffer(callId: string, sdp: RTCSessionDescriptionInitLike): Promise<void>;
   sendAnswer(callId: string, sdp: RTCSessionDescriptionInitLike): Promise<void>;
   sendIceCandidate(callId: string, candidate: RTCIceCandidateInitLike): Promise<void>;
+  /** Out-of-band alongside a renegotiation offer/answer -- WebRTC itself
+   *  has no semantic "this track is a shared screen, not a camera" tag,
+   *  so the receiver needs this to know which incoming video track/stream
+   *  (matched by `trackId`, react-native-webrtc's own MediaStreamTrack.id)
+   *  to treat as the shared screen vs. the camera once both are present.
+   *  Routed through the exact same generic call:signal relay as offer/
+   *  answer/ice (server.js forwards any payload verbatim) -- no relay
+   *  changes needed for this. */
+  sendScreenShareState(callId: string, active: boolean, trackId?: string): Promise<void>;
   reject(callId: string): Promise<void>;
   /** `reason` — server accepts 'caller_hangup'/'callee_hangup'/'failed',
    *  anything else defaults to 'caller_hangup' (lib/calling.php's own
@@ -75,6 +84,7 @@ export interface CallSignalingClient {
   onOffer(cb: (callId: string, sdp: RTCSessionDescriptionInitLike) => void): () => void;
   onAnswer(cb: (callId: string, sdp: RTCSessionDescriptionInitLike) => void): () => void;
   onIceCandidate(cb: (callId: string, candidate: RTCIceCandidateInitLike) => void): () => void;
+  onScreenShareState(cb: (callId: string, active: boolean, trackId?: string) => void): () => void;
   onReject(cb: (callId: string) => void): () => void;
   onHangUp(cb: (callId: string) => void): () => void;
 }
@@ -124,6 +134,31 @@ export class CallEngine {
   private remoteStreamListeners: Array<(stream: MediaStream) => void> = [];
   private localStreamListeners: Array<(stream: MediaStream) => void> = [];
   private stateListeners: Array<(state: CallState) => void> = [];
+
+  // ── Screen sharing (Khabat, 2026-08-01 spec) ──────────────────────────
+  // Kept as its own MediaStream/sender, never merged into localStream --
+  // "kamera + skjerm" mode needs both sent as genuinely separate tracks
+  // (the receiver renders one as main view, the other as PiP), and "bare
+  // skjerm" needs the camera track fully stoppable/resumable without
+  // touching this one.
+  private screenStream: MediaStream | null = null;
+  private screenSender: any | null = null;
+  private cameraSender: any | null = null;
+  private audioSender: any | null = null;
+  private screenShareListeners: Array<(active: boolean, stream: MediaStream | null) => void> = [];
+  private remoteScreenStream: MediaStream | null = null;
+  private remoteScreenStreamListeners: Array<(stream: MediaStream | null) => void> = [];
+  /** Set by the explicit screen-share-state signal (not inferred from the
+   *  'track' event alone -- WebRTC has no built-in "this track is a
+   *  screen" tag). See ensurePeerConnection's 'track' handler for how this
+   *  is used to route an incoming video track to remoteStream (camera) vs.
+   *  remoteScreenStream once both can be present simultaneously. */
+  private remoteScreenTrackId: string | null = null;
+  /** True once the FIRST offer/answer (real call setup, not a screen-share
+   *  renegotiation) has completed -- guards the mid-call renegotiation
+   *  listener below from ever mistaking the initial offer for a
+   *  renegotiation, regardless of message-arrival timing. */
+  private callEstablished = false;
 
   constructor(
     private readonly signaling: CallSignalingClient,
@@ -203,17 +238,37 @@ export class CallEngine {
     });
     pcAny.addEventListener('track', (event: any) => {
       const [stream] = event.streams;
-      if (stream) {
-        this.remoteStream = stream;
-        this.onRemoteStream(stream);
-        this.remoteStreamListeners.forEach((cb) => cb(stream));
-        this.logCallEvent('CALL_REMOTE_TRACK', { track_kind: event.track?.kind || '' });
+      if (!stream) return;
+      // Route to remoteScreenStream vs. remoteStream (camera). WebRTC has
+      // no built-in "this is a screen, not a camera" tag on a track --
+      // primary signal is the explicit screen-share-state message
+      // (matched by track id, set via onScreenShareState below); the
+      // heuristic fallback (a second incoming video track once the first
+      // is already established) covers the case where that signal hasn't
+      // arrived yet due to ordinary message-arrival race, since this app
+      // only ever adds a second video track for a screen-share
+      // renegotiation -- never for any other reason.
+      const isVideo = event.track?.kind === 'video';
+      const isKnownScreenTrack = isVideo && event.track?.id === this.remoteScreenTrackId;
+      const hasExistingCameraVideo = isVideo && !!this.remoteStream?.getVideoTracks().length && stream.id !== this.remoteStream.id;
+      if (isKnownScreenTrack || hasExistingCameraVideo) {
+        this.remoteScreenStream = stream;
+        this.remoteScreenStreamListeners.forEach((cb) => cb(stream));
+        this.logCallEvent('CALL_REMOTE_TRACK', { track_kind: 'screen' });
+        return;
       }
+      this.remoteStream = stream;
+      this.onRemoteStream(stream);
+      this.remoteStreamListeners.forEach((cb) => cb(stream));
+      this.logCallEvent('CALL_REMOTE_TRACK', { track_kind: event.track?.kind || '' });
     });
     pcAny.addEventListener('connectionstatechange', () => {
       const s = pcAny.connectionState;
       this.logCallEvent('CALL_CONNECTION_STATE', { connection_state: s });
-      if (s === 'connected') this.emitStateChange('active');
+      if (s === 'connected') {
+        this.callEstablished = true;
+        this.emitStateChange('active');
+      }
       if (s === 'failed' || s === 'closed' || s === 'disconnected') {
         // Khabat, 2026-07-31: this used to only update local UI state —
         // never told the server the call was over, so call_sessions kept
@@ -291,6 +346,160 @@ export class CallEngine {
     return this.localStream;
   }
 
+  /** Adds localStream's tracks to `pc`, keeping the per-kind sender
+   *  references (cameraSender/audioSender) that startScreenShare/
+   *  stopCameraTrack/resumeCameraTrack below need -- addTrack() returns
+   *  the sender but the original call sites just discarded it. */
+  private addLocalTracks(pc: RTCPeerConnection, stream: MediaStream): void {
+    (stream.getTracks() as any[]).forEach((track) => {
+      const sender = (pc as any).addTrack(track, stream as any);
+      if (track.kind === 'video') this.cameraSender = sender;
+      else if (track.kind === 'audio') this.audioSender = sender;
+    });
+  }
+
+  // ── Screen sharing ─────────────────────────────────────────────────────
+  // Khabat, 2026-08-01 spec. Four modes fall out of two independent
+  // booleans this class already exposes distinctly: screen track present
+  // (screenStream != null) x camera track present (cameraSender != null).
+  // "Bare lyd" is neither; "kamera + skjerm" is both.
+
+  /** Starts capture (triggers the OS's own MediaProjection permission
+   *  dialog via react-native-webrtc's getDisplayMedia -- this class never
+   *  shows its own permission UI, only the caller-side warning text is
+   *  this app's own, per spec §2), adds it as a genuinely separate video
+   *  track (not a replacement of the camera track -- "kamera + skjerm"
+   *  needs both simultaneously), and renegotiates. Camera track is left
+   *  exactly as it was; call stopCameraTrack() separately for "bare
+   *  skjerm" mode. Throws on permission denial/cancellation -- the caller
+   *  (CallScreen) is expected to catch and show the spec's own error
+   *  copy, not this class's job to pick UI strings. */
+  async startScreenShare(): Promise<MediaStream> {
+    if (!this.pc) throw new Error('no active call');
+    if (this.screenStream) return this.screenStream; // already sharing -- idempotent
+    let stream: MediaStream;
+    try {
+      stream = await (mediaDevices as any).getDisplayMedia({});
+    } catch (err: any) {
+      this.logCallEvent('CALL_SCREEN_SHARE_ERROR', { message: err?.message || '', name: err?.name || '' });
+      throw err;
+    }
+    this.screenStream = stream;
+    const track = (stream as any).getVideoTracks()[0];
+    this.screenSender = (this.pc as any).addTrack(track, stream as any);
+    // Stopping the track from the OS's own screen-record indicator/quick-
+    // settings tile (spec §6/§7) fires 'ended' on the track itself, same
+    // as any other MediaStreamTrack -- this is the ONE place that needs
+    // to be true regardless of who/what triggered the stop, so
+    // stopScreenShare() itself doesn't duplicate this teardown.
+    track.onended = () => { this.stopScreenShare().catch(() => {}); };
+    await this.signaling.sendScreenShareState(this.callId, true, track.id).catch(() => {});
+    await this.renegotiate();
+    this.screenShareListeners.forEach((cb) => cb(true, this.screenStream));
+    this.logCallEvent('CALL_SCREEN_SHARE_START', {});
+    return stream;
+  }
+
+  /** Idempotent -- safe to call when not currently sharing (also reached
+   *  from track.onended above when the OS itself stops the capture). */
+  async stopScreenShare(): Promise<void> {
+    if (!this.screenStream) return;
+    const stream = this.screenStream;
+    this.screenStream = null;
+    if (this.pc && this.screenSender) {
+      try { (this.pc as any).removeTrack(this.screenSender); } catch { /* pc already closed */ }
+    }
+    this.screenSender = null;
+    (stream.getTracks() as any[]).forEach((t) => t.stop());
+    await this.signaling.sendScreenShareState(this.callId, false).catch(() => {});
+    if (this.pc) await this.renegotiate().catch(() => {});
+    this.screenShareListeners.forEach((cb) => cb(false, null));
+    this.logCallEvent('CALL_SCREEN_SHARE_STOP', {});
+  }
+
+  isScreenSharing(): boolean {
+    return !!this.screenStream;
+  }
+
+  getScreenStream(): MediaStream | null {
+    return this.screenStream;
+  }
+
+  onScreenShareUpdate(cb: (active: boolean, stream: MediaStream | null) => void): () => void {
+    this.screenShareListeners.push(cb);
+    return () => { this.screenShareListeners = this.screenShareListeners.filter((l) => l !== cb); };
+  }
+
+  /** The PEER's shared screen, when they're sharing -- distinct from
+   *  getRemoteStream() (their camera/mic), see the 'track' handler in
+   *  ensurePeerConnection for how the two are told apart. */
+  getRemoteScreenStream(): MediaStream | null {
+    return this.remoteScreenStream;
+  }
+
+  onRemoteScreenStreamUpdate(cb: (stream: MediaStream | null) => void): () => void {
+    this.remoteScreenStreamListeners.push(cb);
+    return () => { this.remoteScreenStreamListeners = this.remoteScreenStreamListeners.filter((l) => l !== cb); };
+  }
+
+  /** "Bare skjerm" mode (spec §3): fully stops and releases the camera --
+   *  not the soft track.enabled=false mute setVideoEnabled(false) does
+   *  elsewhere in this class -- so the hardware/encoder is actually freed
+   *  and no camera bitrate is spent, per the spec's own "stoppes helt for
+   *  å redusere dataforbruk". Mic keeps running (still an audio call).
+   *  Screen share, if active, is untouched. */
+  async stopCameraTrack(): Promise<void> {
+    if (!this.pc || !this.cameraSender) return;
+    const track = this.localStream?.getVideoTracks()[0];
+    try { (this.pc as any).removeTrack(this.cameraSender); } catch { /* pc already closed */ }
+    this.cameraSender = null;
+    track?.stop();
+    if (this.localStream && track) {
+      (this.localStream as any).removeTrack(track);
+    }
+    await this.renegotiate().catch(() => {});
+    this.logCallEvent('CALL_CAMERA_STOPPED', {});
+  }
+
+  /** Re-acquires the camera and adds it back as a fresh track WITHOUT
+   *  touching screen share -- spec §3's "kameraknappen må fortsatt være
+   *  tilgjengelig, slik at kameraet kan slås på igjen uten å stoppe
+   *  skjermdelingen." Safe to call whether or not stopCameraTrack() was
+   *  ever called (e.g. camera was never on for this call -- "bare
+   *  skjerm" chosen from the very start). */
+  async resumeCameraTrack(): Promise<void> {
+    if (!this.pc || this.cameraSender) return; // already have a live camera track
+    let stream: any;
+    try {
+      stream = await mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'user' } } as any);
+    } catch (err: any) {
+      this.logCallEvent('CALL_MEDIA_ERROR', { message: err?.message || '', name: err?.name || '', context: 'resumeCameraTrack' });
+      throw err;
+    }
+    const track = stream.getVideoTracks()[0];
+    if (this.localStream) {
+      (this.localStream as any).addTrack(track);
+    } else {
+      this.localStream = stream;
+    }
+    this.cameraSender = (this.pc as any).addTrack(track, (this.localStream as any));
+    this.localStreamListeners.forEach((cb) => cb(this.localStream!));
+    await this.renegotiate().catch(() => {});
+    this.logCallEvent('CALL_CAMERA_RESUMED', {});
+  }
+
+  /** Caller/screen-sharer's own RTCRtpSender for the shared-screen track --
+   *  what Task 5's adaptive-quality logic calls setParameters() on
+   *  (maxBitrate/maxFramerate/scaleResolutionDownBy), not exposed as its
+   *  own getter until that's actually wired up here. */
+  getScreenSender(): any | null {
+    return this.screenSender;
+  }
+
+  getCameraSender(): any | null {
+    return this.cameraSender;
+  }
+
   /** Caller side: capture mic(+camera), create+send an SDP offer. */
   async startOutgoing(): Promise<void> {
     this.emitStateChange('dialing');
@@ -300,7 +509,7 @@ export class CallEngine {
     const iceServers = await this.signaling.getIceServers(this.callId);
     const pc = await this.ensurePeerConnection(iceServers);
     const stream = await this.captureLocalMedia(true);
-    stream.getTracks().forEach((track: any) => pc.addTrack(track, stream as any));
+    this.addLocalTracks(pc, stream);
 
     const offer = await pc.createOffer({});
     await pc.setLocalDescription(offer);
@@ -316,7 +525,7 @@ export class CallEngine {
     const iceServers = await this.signaling.getIceServers(this.callId);
     const pc = await this.ensurePeerConnection(iceServers);
     const stream = await this.captureLocalMedia();
-    stream.getTracks().forEach((track: any) => pc.addTrack(track, stream as any));
+    this.addLocalTracks(pc, stream);
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer as any));
     const answer = await pc.createAnswer();
@@ -335,13 +544,20 @@ export class CallEngine {
     this.unsubs.push(
       this.signaling.onAnswer(async (callId, sdp) => {
         if (callId !== this.callId || !this.pc) return;
-        // Ringback is only ever started on this (caller) path — stopping it
-        // unconditionally here is safe/idempotent either way (InCallManager
-        // treats stopRingback() like its own stop(): a no-op when nothing's
-        // playing), same convention teardown()'s InCallManager.stop() below
-        // already relies on.
-        InCallManager.stopRingback();
-        this.emitStateChange('connecting');
+        // Screen-share (and any other mid-call) renegotiation reuses this
+        // exact same onAnswer path -- only touch ringback/call-state for
+        // the FIRST answer (the real call handshake). Without this guard
+        // a renegotiation answer mid-active-call would incorrectly bounce
+        // the UI back to 'connecting'.
+        if (!this.callEstablished) {
+          // Ringback is only ever started on this (caller) path — stopping
+          // it unconditionally here is safe/idempotent either way
+          // (InCallManager treats stopRingback() like its own stop(): a
+          // no-op when nothing's playing), same convention teardown()'s
+          // InCallManager.stop() below already relies on.
+          InCallManager.stopRingback();
+          this.emitStateChange('connecting');
+        }
         await this.pc.setRemoteDescription(new RTCSessionDescription(sdp as any));
       }),
       this.signaling.onReject((callId) => {
@@ -364,7 +580,45 @@ export class CallEngine {
         InCallManager.stopRingback();
         this.emitStateChange('ended');
       }),
+      // Mid-call renegotiation (screen-share start/stop, camera resume
+      // after "screen only" mode). Registered on BOTH caller and callee
+      // (this method is shared by both paths) since either side can
+      // trigger a renegotiation at any point once the call is active --
+      // whoever DIDN'T initiate the track change is the one who needs to
+      // answer it here. `callEstablished` is what stops this from ever
+      // mistaking the very first offer (handled by callStore.ts's
+      // pendingOffers/acceptIncoming flow, not here) for a renegotiation.
+      this.signaling.onOffer(async (callId, sdp) => {
+        if (callId !== this.callId || !this.pc || !this.callEstablished) return;
+        if (this.pc.signalingState !== 'stable') return; // glare -- drop, the other offer wins this round
+        await this.pc.setRemoteDescription(new RTCSessionDescription(sdp as any));
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        await this.signaling.sendAnswer(this.callId, { type: 'answer', sdp: answer.sdp! });
+      }),
+      this.signaling.onScreenShareState((callId, active, trackId) => {
+        if (callId !== this.callId) return;
+        this.remoteScreenTrackId = active ? (trackId || null) : null;
+        if (!active) {
+          this.remoteScreenStream = null;
+          this.remoteScreenStreamListeners.forEach((cb) => cb(null));
+        }
+        this.logCallEvent('CALL_REMOTE_SCREEN_SHARE', { active });
+      }),
     );
+  }
+
+  /** Mid-call track-set change (screen-share start/stop, camera stop/
+   *  resume) -- creates a fresh offer and sends it; the peer's own
+   *  listenForCandidates() onOffer handler above answers it. Not used for
+   *  the initial call setup (startOutgoing/acceptIncoming do that
+   *  directly) -- only for anything that changes tracks after the call is
+   *  already active. */
+  private async renegotiate(): Promise<void> {
+    if (!this.pc) return;
+    const offer = await this.pc.createOffer({});
+    await this.pc.setLocalDescription(offer);
+    await this.signaling.sendOffer(this.callId, { type: 'offer', sdp: offer.sdp! });
   }
 
   setMuted(muted: boolean): void {
@@ -471,6 +725,20 @@ export class CallEngine {
     this.localStream?.getTracks().forEach((t: any) => t.stop());
     this.localStream = null;
     this.remoteStream = null;
+    // Screen share must stop the instant the call ends, no exceptions --
+    // spec §6. Not routed through stopScreenShare() (which renegotiates
+    // and posts a signal) since the call/peer connection is already going
+    // away here -- just release the capture itself.
+    this.screenStream?.getTracks().forEach((t: any) => t.stop());
+    this.screenStream = null;
+    this.screenSender = null;
+    this.cameraSender = null;
+    this.audioSender = null;
+    this.remoteScreenStream = null;
+    this.remoteScreenTrackId = null;
+    this.screenShareListeners = [];
+    this.remoteScreenStreamListeners = [];
+    this.callEstablished = false;
     this.pc?.close();
     this.pc = null;
     // Matches captureLocalMedia's start() — only meaningful to call if a

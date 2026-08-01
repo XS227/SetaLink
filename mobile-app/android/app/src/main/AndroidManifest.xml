@@ -42,6 +42,18 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
+    <!-- Screen sharing in calls (Khabat, 2026-08-01 spec, behind
+         realtime_screen_sharing_enabled). react-native-webrtc's own
+         AndroidManifest.xml (node_modules/react-native-webrtc/android/
+         src/main/AndroidManifest.xml) already declares the
+         MediaProjectionService component with
+         foregroundServiceType="mediaProjection" -- that merges in
+         automatically via Gradle. This permission is the one piece the
+         *app's* manifest still has to declare itself: Android 14/API 34
+         requires FOREGROUND_SERVICE_MEDIA_PROJECTION explicitly, the
+         service's own foregroundServiceType isn't sufficient alone. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
     <!-- Package visibility (Android 11+): needed so the Smart Mode
          "Bypass selected apps" screen can list launchable apps. -->
     <queries>
