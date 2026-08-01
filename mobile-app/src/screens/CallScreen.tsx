@@ -306,21 +306,24 @@ function RemoteScreenShareView({
 
         {cameraStreamUrl && <RemoteCameraPip streamUrl={cameraStreamUrl} />}
 
+        {/* Spec §6: "vise en permanent indikator mens delingen er aktiv"
+            -- deliberately NOT part of the showChrome tap-to-hide toggle
+            below (unlike the fit/fill button). A privacy indicator that
+            can be tapped away isn't a permanent one. */}
+        <View style={[styles.screenShareLabel, { top: insets.top + Spacing[3] }]} pointerEvents="none">
+          <Text style={styles.screenShareLabelText}>
+            {t('call.sharingScreen').replace('{name}', peerName)}
+          </Text>
+        </View>
+
         {showChrome && (
-          <>
-            <View style={[styles.screenShareLabel, { top: insets.top + Spacing[3] }]} pointerEvents="none">
-              <Text style={styles.screenShareLabelText}>
-                {t('call.sharingScreen').replace('{name}', peerName)}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.fitToggle, { top: insets.top + Spacing[3] }]}
-              onPress={() => setFillMode((f) => !f)}
-              accessibilityLabel={fillMode ? t('call.fitScreen') : t('call.fillScreen')}
-            >
-              <Text style={styles.fitToggleText}>{fillMode ? t('call.fitScreen') : t('call.fillScreen')}</Text>
-            </TouchableOpacity>
-          </>
+          <TouchableOpacity
+            style={[styles.fitToggle, { top: insets.top + Spacing[3] }]}
+            onPress={() => setFillMode((f) => !f)}
+            accessibilityLabel={fillMode ? t('call.fitScreen') : t('call.fillScreen')}
+          >
+            <Text style={styles.fitToggleText}>{fillMode ? t('call.fitScreen') : t('call.fillScreen')}</Text>
+          </TouchableOpacity>
         )}
       </View>
     </GestureDetector>
@@ -394,7 +397,10 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
     // since there's no decision left for the user to make here.
     const unsubEmergency = engine.onEmergencyAction(() => {
       setVideoOn(false);
-      useToastStore.getState().show(t('call.emergencyCameraStopped'), 'info');
+      // bypass=true -- this toast IS the screen-share status the
+      // suppression in toastStore.ts exists to protect, not the kind of
+      // incidental content it's meant to hide.
+      useToastStore.getState().show(t('call.emergencyCameraStopped'), 'info', 3000, true);
     });
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -523,7 +529,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
             // separately, never a replacement for the system one.
             engine.startScreenShare()
               .then(() => setScreenSharing(true))
-              .catch(() => useToastStore.getState().show(t('call.screenShareError'), 'error'))
+              .catch(() => useToastStore.getState().show(t('call.screenShareError'), 'error', 3000, true))
               .finally(() => setScreenShareBusy(false));
           },
         },
@@ -584,6 +590,19 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
         <View style={[styles.videoHeader, { paddingTop: insets.top + Spacing[3] }]}>
           <Text style={styles.videoHeaderName}>{peerLabelText}</Text>
           {state === 'active' && <Text style={styles.status}>{formatDuration(durationSecs)}</Text>}
+        </View>
+      )}
+
+      {/* Spec §6's permanent indicator, sharer's own side -- Android's
+          MediaProjection foreground-service notification already
+          satisfies this at the OS level, but that notification isn't
+          necessarily visible while looking straight at the call UI
+          itself. Belt-and-braces, not a replacement for it. Not part of
+          RemoteScreenShareView's own chrome toggle -- always on while
+          screenSharing is true, same reasoning as the receiver's label. */}
+      {screenSharing && (
+        <View style={[styles.screenShareLabel, { top: insets.top + Spacing[3] }]} pointerEvents="none">
+          <Text style={styles.screenShareLabelText}>{t('call.youAreSharing')}</Text>
         </View>
       )}
 

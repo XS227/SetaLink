@@ -41,6 +41,7 @@ import {
 } from 'react-native-webrtc';
 import { trackEvent } from './analytics';
 import { useAuthStore } from '../stores/authStore';
+import { setScreenSharingActive } from '../stores/toastStore';
 
 /**
  * Proposed signaling contract. One call = one `callId`. Each side posts
@@ -419,6 +420,7 @@ export class CallEngine {
     this.screenShareListeners.forEach((cb) => cb(true, this.screenStream));
     this.logCallEvent('CALL_SCREEN_SHARE_START', {});
     this.startAdaptiveQuality();
+    setScreenSharingActive(true); // spec §6: suppress content-revealing local toasts while sharing
     return stream;
   }
 
@@ -429,6 +431,7 @@ export class CallEngine {
     const stream = this.screenStream;
     this.screenStream = null;
     this.stopAdaptiveQuality();
+    setScreenSharingActive(false);
     if (this.pc && this.screenSender) {
       try { (this.pc as any).removeTrack(this.screenSender); } catch { /* pc already closed */ }
     }
@@ -917,6 +920,7 @@ export class CallEngine {
     this.remoteScreenStreamListeners = [];
     this.callEstablished = false;
     this.stopAdaptiveQuality();
+    setScreenSharingActive(false); // spec §6: stop immediately when the call ends, no exceptions
     this.networkQualityListeners = [];
     this.emergencyActionListeners = [];
     this.lastPromptedTier = null;
