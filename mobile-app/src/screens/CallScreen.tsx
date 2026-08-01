@@ -217,6 +217,116 @@ function DraggableLocalPip({ streamUrl, footerHeight }: { streamUrl: string; foo
   );
 }
 
+/** The PEER's own camera, shown alongside their shared screen (spec §5:
+ *  "kamera + skjerm" mode on their side). Deliberately separate from
+ *  DraggableLocalPip (that one is always YOUR OWN camera) -- both can be
+ *  on screen at once, so this anchors top-LEFT instead of top-right to
+ *  avoid colliding with it. Same drag mechanics, simpler clamp (no
+ *  footer-height dependency -- this PiP doesn't need to duck under your
+ *  own call controls the way your own camera preview does, it just needs
+ *  to stay on screen). */
+function RemoteCameraPip({ streamUrl }: { streamUrl: string }) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const restTop = insets.top + PIP_TOP_CLEARANCE;
+
+  const minX = 0;
+  const maxX = screenWidth - PIP_MARGIN * 2 - PIP_WIDTH;
+  const minY = insets.top + Spacing[2] - restTop;
+  const maxY = screenHeight - insets.bottom - Spacing[20] - PIP_HEIGHT - restTop;
+
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const startX = useSharedValue(0);
+  const startY = useSharedValue(0);
+
+  const pan = Gesture.Pan()
+    .onStart(() => { startX.value = translateX.value; startY.value = translateY.value; })
+    .onUpdate((e) => {
+      translateX.value = Math.min(maxX, Math.max(minX, startX.value + e.translationX));
+      translateY.value = Math.min(maxY, Math.max(minY, startY.value + e.translationY));
+    })
+    .onEnd(() => {
+      translateX.value = withSpring(Math.min(maxX, Math.max(minX, translateX.value)), { damping: 20, stiffness: 220 });
+      translateY.value = withSpring(Math.min(maxY, Math.max(minY, translateY.value)), { damping: 20, stiffness: 220 });
+    });
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }, { translateY: translateY.value }],
+  }));
+
+  return (
+    <GestureDetector gesture={pan}>
+      <Animated.View style={[styles.localVideoPip, { top: restTop, left: PIP_MARGIN, right: undefined }, animatedStyle]}>
+        <RTCView streamURL={streamUrl} style={StyleSheet.absoluteFill} objectFit="cover" zOrder={1} />
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
+/** Spec §5, "mottakerens visning" -- the peer's shared screen becomes the
+ *  main view (called from CallScreen's render in place of the normal
+ *  video/avatar branch, works for a call that started as audio-only
+ *  too). Pinch-to-zoom (1x-4x, spring-back handled by clamping in
+ *  onUpdate rather than a separate onEnd reset -- deliberately does NOT
+ *  snap back to 1x on release, matches how a real "zoom into the shared
+ *  screen to read something" gesture is expected to behave, i.e. stays
+ *  zoomed until pinched back out) and a fit/fill toggle both live here.
+ *  Tapping the content toggles the label/fit-toggle chrome -- the call's
+ *  own footer controls (hang up etc.) are NOT part of this toggle, they
+ *  always stay reachable. */
+function RemoteScreenShareView({
+  streamUrl, peerName, cameraStreamUrl,
+}: { streamUrl: string; peerName: string; cameraStreamUrl: string | null }) {
+  const { t } = useT();
+  const insets = useSafeAreaInsets();
+  const [fillMode, setFillMode] = useState(false); // false = "Tilpass skjerm" (contain), true = "Fyll skjerm" (cover)
+  const [showChrome, setShowChrome] = useState(true);
+
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const pinch = Gesture.Pinch()
+    .onUpdate((e) => { scale.value = Math.min(4, Math.max(1, savedScale.value * e.scale)); })
+    .onEnd(() => { savedScale.value = scale.value; });
+
+  const zoomStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <GestureDetector gesture={pinch}>
+      <View style={StyleSheet.absoluteFill}>
+        <TouchableOpacity
+          activeOpacity={1}
+          style={StyleSheet.absoluteFill}
+          onPress={() => setShowChrome((s) => !s)}
+        >
+          <Animated.View style={[StyleSheet.absoluteFill, zoomStyle]}>
+            <RTCView streamURL={streamUrl} style={StyleSheet.absoluteFill} objectFit={fillMode ? 'cover' : 'contain'} />
+          </Animated.View>
+        </TouchableOpacity>
+
+        {cameraStreamUrl && <RemoteCameraPip streamUrl={cameraStreamUrl} />}
+
+        {showChrome && (
+          <>
+            <View style={[styles.screenShareLabel, { top: insets.top + Spacing[3] }]} pointerEvents="none">
+              <Text style={styles.screenShareLabelText}>
+                {t('call.sharingScreen').replace('{name}', peerName)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.fitToggle, { top: insets.top + Spacing[3] }]}
+              onPress={() => setFillMode((f) => !f)}
+              accessibilityLabel={fillMode ? t('call.fitScreen') : t('call.fillScreen')}
+            >
+              <Text style={styles.fitToggleText}>{fillMode ? t('call.fitScreen') : t('call.fillScreen')}</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    </GestureDetector>
+  );
+}
+
 export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAccept }: Props) {
   const { t } = useT();
   const insets = useSafeAreaInsets();
@@ -403,9 +513,13 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   // feature in this app.
   const screenShareAvailable = state === 'active' && isScreenShareEnabled();
 
+  const peerLabelText = peer.isRawAccountId ? `﷼ ${peer.id}` : peer.id;
+
   return (
     <View style={[styles.screen, { paddingTop: insets.top + Spacing[6] }]}>
-      {showVideo ? (
+      {remoteSharing && remoteScreenUrl ? (
+        <RemoteScreenShareView streamUrl={remoteScreenUrl} peerName={peerLabelText} cameraStreamUrl={remoteStreamUrl} />
+      ) : showVideo ? (
         <>
           {remoteStreamUrl ? (
             <RTCView streamURL={remoteStreamUrl} style={StyleSheet.absoluteFill} objectFit="cover" />
@@ -414,7 +528,6 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
               <Text style={styles.status}>{statusLabel()}</Text>
             </View>
           )}
-          {localStreamUrl && videoOn && <DraggableLocalPip streamUrl={localStreamUrl} footerHeight={footerHeight} />}
         </>
       ) : (
         <View style={styles.center}>
@@ -426,14 +539,23 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
               </Text>
             </View>
           </View>
-          <Text style={styles.peerName}>{peer.isRawAccountId ? `﷼ ${peer.id}` : peer.id}</Text>
+          <Text style={styles.peerName}>{peerLabelText}</Text>
           <Text style={styles.status}>{statusLabel()}</Text>
         </View>
       )}
 
-      {showVideo && (
+      {/* Your own camera preview -- independent of whether the PEER is
+          sharing their screen, so it stays visible layered on top of
+          RemoteScreenShareView too (spec doesn't say to hide it, and
+          hiding your own video feedback while screen-sharing is active
+          would be a regression from the plain video-call case). */}
+      {(showVideo || remoteSharing) && localStreamUrl && videoOn && (
+        <DraggableLocalPip streamUrl={localStreamUrl} footerHeight={footerHeight} />
+      )}
+
+      {showVideo && !remoteSharing && (
         <View style={[styles.videoHeader, { paddingTop: insets.top + Spacing[3] }]}>
-          <Text style={styles.videoHeaderName}>{peer.isRawAccountId ? `﷼ ${peer.id}` : peer.id}</Text>
+          <Text style={styles.videoHeaderName}>{peerLabelText}</Text>
           {state === 'active' && <Text style={styles.status}>{formatDuration(durationSecs)}</Text>}
         </View>
       )}
@@ -583,4 +705,22 @@ const styles = StyleSheet.create({
     alignItems: 'center', paddingTop: Spacing[6], gap: 2,
   },
   videoHeaderName: { fontSize: Typography.size.lg, color: '#FFFFFF', fontFamily: Typography.family.heading },
+  // Spec §5: "vis navn og teksten 'deler skjermen' uten å dekke
+  // innholdet" -- a slim top banner, not a full-width opaque header like
+  // videoHeader, so it reads as a label over the content rather than
+  // pushing/covering it.
+  screenShareLabel: {
+    position: 'absolute', left: 0, right: 0, alignItems: 'center',
+  },
+  screenShareLabelText: {
+    fontSize: Typography.size.sm, color: '#FFFFFF', fontFamily: Typography.family.heading,
+    backgroundColor: Colors.bg.void + 'AA', paddingHorizontal: Spacing[3], paddingVertical: Spacing[1],
+    borderRadius: Radius.full, overflow: 'hidden',
+  },
+  fitToggle: {
+    position: 'absolute', right: Spacing[4],
+    backgroundColor: Colors.bg.void + 'AA', paddingHorizontal: Spacing[3], paddingVertical: Spacing[1],
+    borderRadius: Radius.full,
+  },
+  fitToggleText: { fontSize: Typography.size.xs, color: '#FFFFFF', fontFamily: Typography.family.heading },
 });
