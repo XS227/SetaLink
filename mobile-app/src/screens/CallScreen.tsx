@@ -276,8 +276,8 @@ function RemoteCameraPip({ streamUrl }: { streamUrl: string }) {
  *  own footer controls (hang up etc.) are NOT part of this toggle, they
  *  always stay reachable. */
 function RemoteScreenShareView({
-  streamUrl, peerName, cameraStreamUrl,
-}: { streamUrl: string; peerName: string; cameraStreamUrl: string | null }) {
+  streamUrl, peerName, cameraStreamUrl, reconnecting,
+}: { streamUrl: string; peerName: string; cameraStreamUrl: string | null; reconnecting: boolean }) {
   const { t } = useT();
   const insets = useSafeAreaInsets();
   const [fillMode, setFillMode] = useState(false); // false = "Tilpass skjerm" (contain), true = "Fyll skjerm" (cover)
@@ -312,7 +312,7 @@ function RemoteScreenShareView({
             can be tapped away isn't a permanent one. */}
         <View style={[styles.screenShareLabel, { top: insets.top + Spacing[3] }]} pointerEvents="none">
           <Text style={styles.screenShareLabelText}>
-            {t('call.sharingScreen').replace('{name}', peerName)}
+            {reconnecting ? t('call.reconnecting') : t('call.sharingScreen').replace('{name}', peerName)}
           </Text>
         </View>
 
@@ -346,6 +346,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   const [screenShareBusy, setScreenShareBusy] = useState(false);
   const [remoteScreenUrl, setRemoteScreenUrl] = useState<string | null>(null);
   const [remoteSharing, setRemoteSharing] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVideo = engine.isVideoCall();
   const peer = peerDisplay(peerLabel);
@@ -369,7 +370,15 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
     // stopScreenShare() itself in that case, this just mirrors the result
     // into local UI state rather than this screen finding out from a
     // button tap that never happened.
-    const unsubScreenShare = engine.onScreenShareUpdate((active) => setScreenSharing(active));
+    const unsubScreenShare = engine.onScreenShareUpdate((active, _stream, reason) => {
+      setScreenSharing(active);
+      // Only the OS-triggered stop needs a message (spec's own "Skjerm-
+      // delingen ble stoppet av telefonen") -- a plain user tap on the
+      // button needs no toast telling them what they just did themselves.
+      if (!active && reason === 'os') {
+        useToastStore.getState().show(t('call.screenShareStoppedByOs'), 'info', 3000, true);
+      }
+    });
     const unsubRemoteScreen = engine.onRemoteScreenStreamUpdate((stream) => {
       setRemoteScreenUrl(stream ? stream.toURL() : null);
       setRemoteSharing(!!stream);
@@ -385,7 +394,9 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
           { text: t('call.weakConnectionContinue'), style: 'cancel' },
           { text: t('call.weakConnectionTurnOff'), onPress: () => {
             setVideoOn(false);
-            engine.stopCameraTrack().catch(() => setVideoOn(true));
+            engine.stopCameraTrack()
+              .then(() => useToastStore.getState().show(t('call.weakConnectionSuggestion'), 'info', 3000, true))
+              .catch(() => setVideoOn(true));
           } },
         ],
       );
@@ -402,6 +413,12 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       // incidental content it's meant to hide.
       useToastStore.getState().show(t('call.emergencyCameraStopped'), 'info', 3000, true);
     });
+    // Spec §7: network switch / brief signal loss shouldn't read as
+    // silently frozen -- the engine now attempts an ICE-restart recovery
+    // instead of ending the call immediately (see connectionstatechange's
+    // 'disconnected' handling), this just surfaces that as visible state
+    // rather than the screen looking stuck for up to 8s.
+    const unsubReconnecting = engine.onReconnecting((r) => setReconnecting(r));
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       unsubStream();
@@ -411,6 +428,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       unsubRemoteScreen();
       unsubQuality();
       unsubEmergency();
+      unsubReconnecting();
       engine.teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -452,6 +470,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   }, [state, onEnded]);
 
   const statusLabel = (): string => {
+    if (state === 'active' && reconnecting) return t('call.reconnecting');
     switch (state) {
       case 'dialing':    return t('call.dialing');
       case 'ringing':    return t('call.ringing');
@@ -529,7 +548,20 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
             // separately, never a replacement for the system one.
             engine.startScreenShare()
               .then(() => setScreenSharing(true))
-              .catch(() => useToastStore.getState().show(t('call.screenShareError'), 'error', 3000, true))
+              .catch((err: any) => {
+                // Spec §7's own example copy, classified by the error's
+                // standard DOMException-style name (react-native-webrtc's
+                // getDisplayMedia rejects with MediaStreamError, which
+                // carries these) -- 'NotAllowedError' is a real denial,
+                // distinct from the device genuinely not supporting
+                // capture at all, distinct again from the peer-side
+                // timeout thrown by CallEngine itself above.
+                let msgKey = 'call.screenShareError';
+                if (err?.name === 'PeerUnsupportedError') msgKey = 'call.screenSharePeerUnsupported';
+                else if (err?.name === 'NotAllowedError') msgKey = 'call.screenShareDenied';
+                else if (err?.name === 'NotFoundError' || err?.name === 'NotSupportedError') msgKey = 'call.screenShareUnavailable';
+                useToastStore.getState().show(t(msgKey), 'error', 3000, true);
+              })
               .finally(() => setScreenShareBusy(false));
           },
         },
@@ -551,7 +583,10 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   return (
     <View style={[styles.screen, { paddingTop: insets.top + Spacing[6] }]}>
       {remoteSharing && remoteScreenUrl ? (
-        <RemoteScreenShareView streamUrl={remoteScreenUrl} peerName={peerLabelText} cameraStreamUrl={remoteStreamUrl} />
+        <RemoteScreenShareView
+          streamUrl={remoteScreenUrl} peerName={peerLabelText} cameraStreamUrl={remoteStreamUrl}
+          reconnecting={reconnecting}
+        />
       ) : showVideo ? (
         <>
           {remoteStreamUrl ? (
@@ -589,7 +624,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       {showVideo && !remoteSharing && (
         <View style={[styles.videoHeader, { paddingTop: insets.top + Spacing[3] }]}>
           <Text style={styles.videoHeaderName}>{peerLabelText}</Text>
-          {state === 'active' && <Text style={styles.status}>{formatDuration(durationSecs)}</Text>}
+          {state === 'active' && <Text style={styles.status}>{statusLabel()}</Text>}
         </View>
       )}
 

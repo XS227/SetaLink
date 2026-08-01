@@ -150,7 +150,7 @@ export class CallEngine {
   private screenSender: any | null = null;
   private cameraSender: any | null = null;
   private audioSender: any | null = null;
-  private screenShareListeners: Array<(active: boolean, stream: MediaStream | null) => void> = [];
+  private screenShareListeners: Array<(active: boolean, stream: MediaStream | null, reason?: 'user' | 'os' | 'peer_unsupported') => void> = [];
   private remoteScreenStream: MediaStream | null = null;
   private remoteScreenStreamListeners: Array<(stream: MediaStream | null) => void> = [];
   /** Set by the explicit screen-share-state signal (not inferred from the
@@ -181,6 +181,11 @@ export class CallEngine {
    *  fired, it stays fired (no repeated auto-actions spamming the UI). */
   private emergencyStopFired = false;
   private emergencyActionListeners: Array<(action: string) => void> = [];
+
+  // ── Reconnect grace window (spec §7) ───────────────────────────────────
+  private reconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectListeners: Array<(reconnecting: boolean) => void> = [];
+  private static readonly RECONNECT_GRACE_MS = 8000;
 
   constructor(
     private readonly signaling: CallSignalingClient,
@@ -290,6 +295,25 @@ export class CallEngine {
       if (s === 'connected') {
         this.callEstablished = true;
         this.emitStateChange('active');
+        // A real reconnect (recovered from 'disconnected' below) --
+        // cancel whatever grace/give-up timer was counting down.
+        if (this.reconnectGraceTimer) { clearTimeout(this.reconnectGraceTimer); this.reconnectGraceTimer = null; }
+      }
+      // Screen-share spec §7: "nettverksbytte mellom Wi-Fi og mobilnett",
+      // "samtalen kobles fra og opp igjen" -- 'disconnected' is WebRTC's
+      // own signal for "lost the path, might come back" (a network
+      // handoff or brief signal loss), genuinely distinct from 'failed'
+      // (ICE gave up for good). Previously bundled with failed/closed
+      // below and ended the call on every transient blip, screen-sharing
+      // or not -- this is a real reliability fix for calling generally,
+      // not screen-share-specific, found while working through this
+      // spec's edge-case list. Only attempts recovery for a call that
+      // was actually established already (a call that never connected in
+      // the first place is a different failure class, keeps the
+      // immediate-fail behavior below).
+      if (s === 'disconnected' && this.callEstablished) {
+        this.attemptIceRestart();
+        return;
       }
       if (s === 'failed' || s === 'closed' || s === 'disconnected') {
         // Khabat, 2026-07-31: this used to only update local UI state —
@@ -301,6 +325,7 @@ export class CallEngine {
         // a second then disappears." call_mark_ended is idempotent for an
         // already-terminal call, so this is safe even if the user's own
         // explicit hangUp() already reported it.
+        if (this.reconnectGraceTimer) { clearTimeout(this.reconnectGraceTimer); this.reconnectGraceTimer = null; }
         if (this.callId) this.signaling.hangUp(this.callId, 'failed').catch(() => {});
         this.emitStateChange('ended');
       }
@@ -413,10 +438,28 @@ export class CallEngine {
     // settings tile (spec §6/§7) fires 'ended' on the track itself, same
     // as any other MediaStreamTrack -- this is the ONE place that needs
     // to be true regardless of who/what triggered the stop, so
-    // stopScreenShare() itself doesn't duplicate this teardown.
-    track.onended = () => { this.stopScreenShare().catch(() => {}); };
+    // stopScreenShare() itself doesn't duplicate this teardown. Spec
+    // wants a specific message for this case ("Skjermdelingen ble
+    // stoppet av telefonen") -- distinct from a user-initiated stop via
+    // the button, which needs no message at all.
+    track.onended = () => { this.stopScreenShare('os').catch(() => {}); };
     await this.signaling.sendScreenShareState(this.callId, true, track.id).catch(() => {});
-    await this.renegotiate();
+    // Spec §7: "mottakeren støtter ikke skjermdeling" -- an old app
+    // version's client never registers a mid-call onOffer handler (see
+    // listenForCandidates), so a renegotiation offer just sits unanswered
+    // forever with no error of its own. Race the answer against a
+    // timeout instead of awaiting renegotiate() unconditionally -- if it
+    // never resolves, treat this exactly like the peer not supporting
+    // the feature, undo the local share (no point burning battery/data
+    // sharing to someone who'll never see it), and let the caller know.
+    const renegotiated = await Promise.race([
+      this.renegotiate().then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
+    ]);
+    if (!renegotiated) {
+      await this.stopScreenShare('peer_unsupported');
+      throw Object.assign(new Error('peer does not support screen sharing'), { name: 'PeerUnsupportedError' });
+    }
     this.screenShareListeners.forEach((cb) => cb(true, this.screenStream));
     this.logCallEvent('CALL_SCREEN_SHARE_START', {});
     this.startAdaptiveQuality();
@@ -425,8 +468,12 @@ export class CallEngine {
   }
 
   /** Idempotent -- safe to call when not currently sharing (also reached
-   *  from track.onended above when the OS itself stops the capture). */
-  async stopScreenShare(): Promise<void> {
+   *  from track.onended above when the OS itself stops the capture).
+   *  `reason` lets CallScreen show the right copy (or none, for a plain
+   *  user-initiated stop) -- 'user' (default) needs no message, 'os'
+   *  needs spec's own "stoppet av telefonen" copy, 'peer_unsupported'
+   *  needs its own distinct one. */
+  async stopScreenShare(reason: 'user' | 'os' | 'peer_unsupported' = 'user'): Promise<void> {
     if (!this.screenStream) return;
     const stream = this.screenStream;
     this.screenStream = null;
@@ -439,7 +486,7 @@ export class CallEngine {
     (stream.getTracks() as any[]).forEach((t) => t.stop());
     await this.signaling.sendScreenShareState(this.callId, false).catch(() => {});
     if (this.pc) await this.renegotiate().catch(() => {});
-    this.screenShareListeners.forEach((cb) => cb(false, null));
+    this.screenShareListeners.forEach((cb) => cb(false, null, reason));
     this.logCallEvent('CALL_SCREEN_SHARE_STOP', {});
   }
 
@@ -605,7 +652,7 @@ export class CallEngine {
     return this.screenStream;
   }
 
-  onScreenShareUpdate(cb: (active: boolean, stream: MediaStream | null) => void): () => void {
+  onScreenShareUpdate(cb: (active: boolean, stream: MediaStream | null, reason?: 'user' | 'os' | 'peer_unsupported') => void): () => void {
     this.screenShareListeners.push(cb);
     return () => { this.screenShareListeners = this.screenShareListeners.filter((l) => l !== cb); };
   }
@@ -801,6 +848,49 @@ export class CallEngine {
     await this.signaling.sendOffer(this.callId, { type: 'offer', sdp: offer.sdp! });
   }
 
+  /** Spec §7's network-switch/reconnect edge cases. `connectionstatechange`
+   *  calls this on 'disconnected' (call already established) instead of
+   *  ending the call immediately -- an ICE restart offer, standard WebRTC
+   *  recovery mechanism, with a grace window before actually giving up.
+   *  If the network genuinely comes back (Wi-Fi<->cellular handoff, brief
+   *  signal loss) this reconnects the SAME call, screen share and all,
+   *  instead of dropping it. */
+  private attemptIceRestart(): void {
+    if (this.reconnectGraceTimer) return; // already mid-attempt
+    this.logCallEvent('CALL_RECONNECT_ATTEMPT', {});
+    this.reconnectListeners.forEach((cb) => cb(true));
+    this.renegotiateWithIceRestart().catch(() => {});
+    this.reconnectGraceTimer = setTimeout(() => {
+      this.reconnectGraceTimer = null;
+      const stillDown = !this.pc || (this.pc as any).connectionState !== 'connected';
+      if (stillDown) {
+        // Grace window expired, never recovered -- give up, same
+        // end-of-call handling connectionstatechange's 'failed' branch
+        // already does.
+        if (this.callId) this.signaling.hangUp(this.callId, 'failed').catch(() => {});
+        this.emitStateChange('ended');
+      } else {
+        this.reconnectListeners.forEach((cb) => cb(false));
+      }
+    }, CallEngine.RECONNECT_GRACE_MS);
+  }
+
+  private async renegotiateWithIceRestart(): Promise<void> {
+    if (!this.pc) return;
+    const offer = await (this.pc as any).createOffer({ iceRestart: true });
+    await this.pc.setLocalDescription(offer);
+    await this.signaling.sendOffer(this.callId, { type: 'offer', sdp: offer.sdp! });
+  }
+
+  /** CallScreen can show a "reconnecting…" indicator while this is true --
+   *  fires (true) when attemptIceRestart() starts, (false) once the
+   *  connection actually recovers (giving up entirely surfaces through
+   *  the normal onStateChangeUpdate('ended') path instead, not this). */
+  onReconnecting(cb: (reconnecting: boolean) => void): () => void {
+    this.reconnectListeners.push(cb);
+    return () => { this.reconnectListeners = this.reconnectListeners.filter((l) => l !== cb); };
+  }
+
   setMuted(muted: boolean): void {
     this.localStream?.getAudioTracks().forEach((t: any) => { t.enabled = !muted; });
   }
@@ -924,6 +1014,8 @@ export class CallEngine {
     this.networkQualityListeners = [];
     this.emergencyActionListeners = [];
     this.lastPromptedTier = null;
+    if (this.reconnectGraceTimer) { clearTimeout(this.reconnectGraceTimer); this.reconnectGraceTimer = null; }
+    this.reconnectListeners = [];
     this.emergencyStopFired = false;
     this.pc?.close();
     this.pc = null;
