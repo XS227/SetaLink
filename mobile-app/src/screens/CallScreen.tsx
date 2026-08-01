@@ -21,9 +21,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, Vibration, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, {
+  Easing, useAnimatedStyle, useSharedValue, withRepeat, withSpring, withTiming,
+} from 'react-native-reanimated';
 import { RTCView } from 'react-native-webrtc';
 import { IconCameraFlip, IconMic, IconMicOff, IconPhone, IconSpeaker, IconVideo, IconVideoOff } from '../components/CallIcons';
+import { OrbitField, OrbitBodyProps } from '../components/OrbitField';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { CallEngine, CallState } from '../services/callService';
@@ -60,6 +63,52 @@ function peerDisplay(rawLabel: string): { id: string; isRawAccountId: boolean } 
 // actual asset the same day) — kept alongside this vibration, not instead
 // of it, same as incoming's ringtone.
 const DIALING_PATTERN = [0, 250, 1750];
+
+// Khabat, 2026-08-01: "et eller anna musical fra persia... fin
+// visualisering... sola, universen... persisk kultur inspirert
+// visualisering." Reuses HomeScreen's own "﷼ becomes the sun, particles
+// orbit it in a faked-3D ring" language (OrbitField, extracted from that
+// screen's RealCoin treatment) rather than inventing a new motif — the
+// peer's avatar becomes the sun here instead of the coin. Warm gold/ember
+// tones (vs. Home's cooler gold/violet/silver mix) since this is meant to
+// read as "someone is reaching out," not the Home screen's forge/energy
+// framing. Shown only pre-connect (dialing/ringing/connecting) — see
+// showRing below — so it doesn't run for a call's full duration.
+// Radii all clear 60 (the avatar circle's own radius, opaque) — the
+// avatar renders on top of this whole stage as a single flattened
+// stacking group (see avatarStack below), so anything with a smaller
+// orbit radius than the avatar itself would just sit invisibly behind
+// it for its entire loop, defeating the point of the "moon" dot.
+const RING_ORBIT_DOTS: OrbitBodyProps[] = [
+  { duration: 5200,  radius: 78,  tilt: 0.5, size: 6, color: Colors.gold[100],   phase: 0.6 },
+  { duration: 7400,  radius: 88,  tilt: 0.5, size: 8, color: Colors.gold[400],   reverse: true, phase: 2.8 },
+  { duration: 9600,  radius: 98,  tilt: 0.5, size: 6, color: Colors.ember[400],  phase: 4.5 },
+  { duration: 12000, radius: 108, tilt: 0.5, size: 7, color: Colors.gold[600],   reverse: true, phase: 1.2 },
+  { duration: 4000,  radius: 68,  tilt: 0.6, size: 4, color: Colors.gold[100],   reverse: true, phase: 3.4, isMoon: true },
+];
+
+/** Pulsing corona behind the avatar — cheap (single Reanimated loop),
+ *  reinforces the "sun" reading the orbiting particles set up. */
+function RingGlow() {
+  const pulse = useSharedValue(0);
+  useEffect(() => {
+    pulse.value = withRepeat(withTiming(1, { duration: 1800, easing: Easing.inOut(Easing.ease) }), -1, true);
+  }, [pulse]);
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 + pulse.value * 0.18 }],
+    opacity: 0.5 - pulse.value * 0.3,
+  }));
+  return <Animated.View style={[styles.ringGlow, style]} />;
+}
+
+function RingVisualizer() {
+  return (
+    <View style={styles.ringStage} pointerEvents="none">
+      <RingGlow />
+      <OrbitField bodies={RING_ORBIT_DOTS} />
+    </View>
+  );
+}
 
 interface Props {
   engine: CallEngine;
@@ -266,6 +315,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   };
 
   const showVideo = isVideo && state === 'active' && (remoteStreamUrl || localStreamUrl);
+  const showRing = state === 'dialing' || state === 'ringing' || state === 'connecting';
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + Spacing[6] }]}>
@@ -282,10 +332,13 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
         </>
       ) : (
         <View style={styles.center}>
-          <View style={styles.avatarCircle}>
-            <Text style={styles.avatarInitial}>
-              {peer.isRawAccountId ? '☀️' : peer.id.slice(0, 1).toUpperCase()}
-            </Text>
+          <View style={styles.avatarStack}>
+            {showRing && <RingVisualizer />}
+            <View style={styles.avatarCircle}>
+              <Text style={styles.avatarInitial}>
+                {peer.isRawAccountId ? '☀️' : peer.id.slice(0, 1).toUpperCase()}
+              </Text>
+            </View>
           </View>
           <Text style={styles.peerName}>{peer.isRawAccountId ? `﷼ ${peer.id}` : peer.id}</Text>
           <Text style={styles.status}>{statusLabel()}</Text>
@@ -369,6 +422,15 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   center: { alignItems: 'center', gap: Spacing[3] },
+  avatarStack: { width: 120, height: 120, alignItems: 'center', justifyContent: 'center' },
+  ringStage: {
+    position: 'absolute', width: 240, height: 240,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  ringGlow: {
+    position: 'absolute', width: 168, height: 168, borderRadius: 84,
+    backgroundColor: Colors.gold[400] + '33',
+  },
   avatarCircle: {
     width: 120, height: 120, borderRadius: 60,
     backgroundColor: Colors.bg.elevated,

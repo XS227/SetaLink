@@ -20,6 +20,7 @@ import { EnergyBar }       from '../components/EnergyBar';
 import { EnergyUpgradeModal } from '../components/EnergyUpgradeModal';
 import { getEnergyTier }   from '../services/entitlementService';
 import { MiniLuckWheel }   from '../components/MiniLuckWheel';
+import { OrbitField, OrbitBodyProps } from '../components/OrbitField';
 import { useTapEnergy }    from '../hooks/useTapEnergy';
 
 import { useVpnStore }         from '../stores/vpnStore';
@@ -96,52 +97,6 @@ const ORBIT_DOTS: OrbitBodyProps[] = [
   // swings in front of / behind the coin each pass — the "moon too" ask.
   { duration: 4200,  radius: 36, tilt: 0.55, size: 4, color: Colors.silver[100], reverse: true, phase: 1.0, isMoon: true },
 ];
-
-interface OrbitBodyProps {
-  duration: number;
-  radius: number;
-  /** Vertical squash of the orbit circle into an ellipse — the "viewed at
-   *  an angle" cue that reads as a tilted 3D ring instead of a flat 2D loop. */
-  tilt: number;
-  size: number;
-  color: string;
-  reverse?: boolean;
-  /** Starting angle offset (radians) so bodies don't all launch aligned. */
-  phase?: number;
-  /** Moon orbits close enough to pass in front of the coin — needs real
-   *  z-order switching, not just a dimmer/smaller far side, or it would
-   *  just look like it's always sitting on top of or under the coin. */
-  isMoon?: boolean;
-}
-
-function OrbitDot({ duration, radius, tilt, size, color, reverse, phase = 0, isMoon }: OrbitBodyProps) {
-  const t = useSharedValue(0);
-  useEffect(() => {
-    t.value = withRepeat(withTiming(1, { duration, easing: REasing.linear }), -1, false);
-  }, [t, duration]);
-  const style = useAnimatedStyle(() => {
-    const a = (reverse ? -1 : 1) * t.value * Math.PI * 2 + phase;
-    const depth = Math.sin(a); // -1 (far side) .. 1 (near side)
-    const scale = 0.55 + (depth + 1) / 2 * 0.7; // 0.55 far .. 1.25 near
-    return {
-      transform: [
-        { translateX: Math.cos(a) * radius },
-        { translateY: depth * radius * tilt },
-        { scale },
-      ],
-      opacity: 0.35 + (depth + 1) / 2 * 0.65,
-      zIndex: isMoon ? (depth > 0 ? 20 : -1) : Math.round(depth * 10),
-    };
-  });
-  return (
-    <ReanimatedView.View
-      style={[
-        { position: 'absolute', width: size, height: size, borderRadius: size / 2, backgroundColor: color },
-        style,
-      ]}
-    />
-  );
-}
 
 // Khabat, 2026-07-30 (test-120): "la det blinke lekent" — the Daily Luck
 // header icon points at DailyLuckWheelScreen (live spin+grant since
@@ -606,7 +561,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           <View style={styles.coinSection}>
             <Text style={styles.anvilTitle}>◦ {t('home.anvilTitle')}</Text>
             <View style={styles.coinStage}>
-              {ORBIT_DOTS.map((d, i) => <OrbitDot key={i} {...d} />)}
+              <OrbitField bodies={ORBIT_DOTS} />
               <RealCoin
                 connected={isConnected}
                 size={132}
