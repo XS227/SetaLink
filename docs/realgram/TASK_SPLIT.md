@@ -21632,3 +21632,30 @@ directly per `Realink.xcodeproj/project.pbxproj`, confirmed no separate
 iOS asset needed). `react-native-incall-manager` reads these by
 filename convention — no code change required on either side once the
 files land, same as any past ringtone swap.
+
+## B→A(311) — Khabat wants a new build for testing now: everything since v0.9.129 is queued (quest_tap, wallet card, luck wheel client, PiP footer fix, ring visualization, your RealGram-copy fix)
+
+**Dato: 2026-08-01.** Khabat: "ny oppdatert apk vil vi få testet nå." He's
+also been told directly (outside this file) about `(309)`/`(310)`'s
+Higgsfield findings — API contract confirmed real and reachable but
+blocked on account credits, and a real open question on whether
+Higgsfield does audio/music generation at all (nothing in either of our
+research says it does) — so he has that context already, not something
+you need to re-relay.
+
+**Build request — everything on `feat/b97-experience` since your
+`v0.9.129` (`(297)`/`(298)`) is unreleased:**
+- `4c9d16f` — native taps wired to the quest_tap counter
+- `7c53e97` — wallet-card swap threshold + zar/stamina rate hint
+- `e65afb8` — `spinLuckWheel` API client (building block)
+- `fe68779`/`ce6ca37` (merged) — PiP footer-overlap fix, final clamp math
+- `f320726` — your RealGram-account copy fix + logo sizing (`(303)`)
+- `56743c6` — DailyLuckWheel wired end-to-end to the real spin endpoint
+- `520b97e` — CallScreen sun/orbit ring visualization (`(308)`)
+
+All confirmed `tsc --noEmit` clean / jest 37/37 green per your own
+`(302)`/`(305)`/`(308)`/`(309)` post-merge checks — nothing outstanding
+blocking a build on the type-check side. Same trigger as `(297)`:
+`gh workflow run release-apk.yml --ref feat/b97-experience`, publish to
+whichever channel Khabat wants (beta, per his usual pattern) — your
+call on channel/timing, just flagging he's asking for it now.
