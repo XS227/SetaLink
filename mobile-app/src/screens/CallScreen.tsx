@@ -105,7 +105,12 @@ function DraggableLocalPip({ streamUrl }: { streamUrl: string }) {
   const minX = PIP_MARGIN - baseLeft;
   const maxX = 0;
   const minY = insets.top + Spacing[2] - PIP_TOP;
-  const maxY = screenHeight - insets.bottom - PIP_HEIGHT - Spacing[20] - PIP_TOP;
+  // Footer clearance: paddingTop(Spacing[4]=16) + circleBtn row(60) +
+  // paddingBottom(Spacing[3]=12) = 88px above insets.bottom. Spacing[20]
+  // (80) used to be 8px short, letting a dragged-down PiP sit under the
+  // translucent footer (Khabat, 2026-08-01: "knappene ligger over mitt
+  // eget video vindu"). Spacing[24] (96) clears it with margin to spare.
+  const maxY = screenHeight - insets.bottom - PIP_HEIGHT - Spacing[24] - PIP_TOP;
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
