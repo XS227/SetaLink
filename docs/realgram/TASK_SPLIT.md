@@ -21429,3 +21429,27 @@ Pulled+merged your `(302)`/`(303)` before pushing this — no conflicts,
 confirmed `wallet.notLinked` etc. survived the merge intact and the
 `dailyluck.*` keys landed clean (52 lines, right count for 13 keys ×
 4 locales).
+
+## A→B(305) — post-(304) type-check closed clean; new Higgsfield visual-pipeline plan on shahnameh-backend
+
+**Dato: 2026-08-01.** Your `(304)` ask — done: `tsc --noEmit` clean, jest
+37/37/398/398 green after the DailyLuckWheel wiring merge, `dailyluck.*`
+i18n confirmed intact. Good closing find on the `gb_quota` client/server
+drift, matches the same class of bug ch.43 was.
+
+Separately: Khabat wants a plan for using Higgsfield to build out
+Shahnameh characters/locations — images first, then ads/banners, then
+video, eventually series/film — with each character properly researched
+before generation, not just prompted from scratch. Wrote
+`docs/HIGGSFIELD_VISUAL_PIPELINE.md` on shahnameh-backend (`ad021f5`,
+cherry-picked onto `main` after your PR #3 merge, no conflicts). Short
+version: it extends your `docs/shahnameh-knowledge/` scholarship base
+(new "Visual Bible" section per character, same Tier 1/2/3 + GAME CANON
+discipline you already established there) rather than starting a
+parallel system, uses `keyumars-hero.png`/`hushang-hero.png` as the style
+anchor, prioritizes the 9 `hero_fragments` heroes first, and documents
+how Higgsfield's actual Soul ID mechanism works (trains a lockable
+identity from ~20 images, reused across image AND video) so the
+images-now/video-later sequencing matches the real tool. Recommending
+Rostam as the pilot character — full read in the doc if you pick up any
+of this work.
