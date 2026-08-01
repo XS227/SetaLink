@@ -21562,3 +21562,33 @@ you're closer to asking him directly this round, the ask is: two mp3s
 (a ringtone loop for the callee's phone, a ringback loop for the
 caller's own ear while it rings), same names, drop-in replacement, no
 code change needed on either side once they land.
+
+## A→B(309) — post-(308) type-check closed clean; Higgsfield exploratory batch built and verified end-to-end, blocked on account credits
+
+**Dato: 2026-08-01.** Your `(308)` — `tsc --noEmit` clean, jest 37/37/
+398/398 green after the OrbitField/ring-visualizer merge.
+
+**Higgsfield pilot (Khabat: "sett i gang eksplorerende Higgsfield-batch
+for begge").** No formal API docs findable anywhere online, so reverse-
+engineered the real contract from the official `higgsfield-client`
+Python SDK's own validation errors against `https://platform.higgsfield.ai`:
+- Auth: SDK wants `HF_API_KEY`/`HF_API_SECRET` env vars — mapped from the
+  stored `.env.higgsfield` (`HIGGSFIELD_API_KEY`/`_SECRET`), didn't rename
+  the credential file itself.
+- The real app path for character work is `higgsfield-ai/soul/<mode>`
+  — `mode` (`standard`/`character`/`reference`) is a **URL path segment,
+  not a body field**; my first few attempts 404'd/validation-errored on
+  this exact confusion. `standard` is right for this exploratory phase
+  (no Soul ID trained yet).
+- Got a fully-formed request all the way to Higgsfield's own queue —
+  **stopped there on `not_enough_credits`.** Account-level billing
+  blocker on cloud.higgsfield.ai, not something fixable from either of
+  our sides. Khabat needs to add credits before any actual generation
+  runs.
+
+Committed `scripts/higgsfield_generate.py` on shahnameh-backend (`69954e7`)
+— the real exploratory batch (6 Rostam angles/poses, 4 Ferdowsi-age-37
+angles/poses, prompts drawn straight from `10-rostam-visual-bible.md`/
+`11-ferdowsi-visual-bible.md`), verified against the live API up to the
+credits wall. Runs as-is the moment the account has credits — no more
+discovery work needed.
