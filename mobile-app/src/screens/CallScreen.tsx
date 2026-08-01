@@ -36,7 +36,9 @@ import { useAuthStore } from '../stores/authStore';
 const PIP_WIDTH = 100;
 const PIP_HEIGHT = 140;
 const PIP_MARGIN = Spacing[4];
-const PIP_TOP = 60;
+// Clearance below insets.top, not an absolute screen position -- see
+// DraggableLocalPip's own comment on why this replaced a flat constant.
+const PIP_TOP_CLEARANCE = 80;
 
 // Raw account IDs are admin/api.php's generate_user_id(): "SL-<rowid>-<8
 // random chars>", e.g. "SL-227-62DAC5F0" — meant for support lookups, not
@@ -158,12 +160,26 @@ function DraggableLocalPip({ streamUrl, footerHeight }: { streamUrl: string; foo
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
+  // videoHeader (peer name + duration) is its own position:'absolute'
+  // top:0 element that -- like this PiP -- ignores the screen's own
+  // insets.top padding. Its own paddingTop (Spacing[6]=24) plus two text
+  // lines + gap lands its bottom edge around insets.top+68 on a typical
+  // device; the old flat PIP_TOP=60 (no insets.top at all) sat the PiP's
+  // rest position *inside* that span on any device with a real notch/
+  // status bar -- Khabat, 2026-08-01: "mitt bilde/video havner under
+  // knappene" (third report of a top-of-screen overlap on this file).
+  // Anchoring the PiP's rest position to insets.top the same way
+  // videoHeader now does, with real clearance below it, is the fix that
+  // survives orientation/device differences instead of another guessed
+  // constant.
+  const restTop = insets.top + PIP_TOP_CLEARANCE;
+
   const baseLeft = screenWidth - PIP_MARGIN - PIP_WIDTH;
   const minX = PIP_MARGIN - baseLeft;
   const maxX = 0;
-  const minY = insets.top + Spacing[2] - PIP_TOP;
+  const minY = insets.top + Spacing[2] - restTop;
   const bottomClearance = footerHeight > 0 ? footerHeight + Spacing[3] : insets.bottom + Spacing[20];
-  const maxY = screenHeight - bottomClearance - PIP_HEIGHT - PIP_TOP;
+  const maxY = screenHeight - bottomClearance - PIP_HEIGHT - restTop;
 
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
@@ -190,7 +206,7 @@ function DraggableLocalPip({ streamUrl, footerHeight }: { streamUrl: string; foo
 
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View style={[styles.localVideoPip, animatedStyle]}>
+      <Animated.View style={[styles.localVideoPip, { top: restTop }, animatedStyle]}>
         <RTCView streamURL={streamUrl} style={StyleSheet.absoluteFill} objectFit="cover" mirror zOrder={1} />
       </Animated.View>
     </GestureDetector>
@@ -346,7 +362,7 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
       )}
 
       {showVideo && (
-        <View style={styles.videoHeader}>
+        <View style={[styles.videoHeader, { paddingTop: insets.top + Spacing[3] }]}>
           <Text style={styles.videoHeaderName}>{peer.isRawAccountId ? `﷼ ${peer.id}` : peer.id}</Text>
           {state === 'active' && <Text style={styles.status}>{formatDuration(durationSecs)}</Text>}
         </View>
@@ -473,7 +489,10 @@ const styles = StyleSheet.create({
   smallBtnActive: { backgroundColor: Colors.gold[400] + '22', borderColor: Colors.gold[400] },
   videoWaiting: { alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.bg.void },
   localVideoPip: {
-    position: 'absolute', top: PIP_TOP, right: PIP_MARGIN,
+    // `top` is set inline per-instance (DraggableLocalPip's restTop,
+    // insets-aware) -- not fixed here since it depends on the device's
+    // safe-area insets, not just a static layout constant.
+    position: 'absolute', right: PIP_MARGIN,
     width: PIP_WIDTH, height: PIP_HEIGHT, borderRadius: Radius.md,
     borderWidth: 1, borderColor: Colors.gold[400] + '55', overflow: 'hidden',
     shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
