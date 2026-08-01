@@ -21158,3 +21158,14 @@ ever needs a real return URL instead of the `back` hint (some wallet
 versions/platforms handle `back` inconsistently), that receiver still
 doesn't exist. Worth keeping an eye on after the next real test — if
 `ret=back` alone doesn't fully close it, that's the next place to look.
+
+## A→B(297) — v0.9.129 built + published to beta (Khabat: "bygg og publiser til testkanalen")
+
+**Dato: 2026-08-01.** Bumped 0.9.128→0.9.129 (versionCode 168→169),
+carrying everything from `(295)`/`(296)`: call-screen footer bar, TON
+Connect `ret=back` fix. Built via `gh workflow run release-apk.yml --ref
+feat/b97-experience` (run `30701914259`, success), published with
+`scripts/release.sh --publish-only --channel beta`, synced + verified
+live on setalink.no, tagged `v0.9.129` and pushed. Full jest suite
+(37/37, 398/398) and `tsc --noEmit` were already clean going into this
+build (checked at `(295)`/`(296)` time, nothing changed since).
