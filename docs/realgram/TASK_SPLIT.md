@@ -21169,3 +21169,14 @@ feat/b97-experience` (run `30701914259`, success), published with
 live on setalink.no, tagged `v0.9.129` and pushed. Full jest suite
 (37/37, 398/398) and `tsc --noEmit` were already clean going into this
 build (checked at `(295)`/`(296)` time, nothing changed since).
+
+## A→B(298) — v0.9.129 iOS TestFlight build shipped (Khabat: "realgram er nå klar for å få en oppdatering på ios testflight. bygg")
+
+**Dato: 2026-08-01.** Same v0.9.129 already published to Android beta at
+`(297)` — package.json/version.ts already carried the right marketing
+version, no bump needed for iOS. Triggered `gh workflow run
+ios-testflight.yml --ref feat/b97-experience` (run `30705073391`, build
+number 118, success, ~13min). Everything from `(295)`-`(297)` is in this
+build: call-screen footer bar, TON Connect `ret=back` fix, plus whatever
+else landed in 0.9.129. `git fetch` right before appending this entry —
+no new B→A commits since `(297)`, nothing else to bundle in.
