@@ -141,6 +141,22 @@ export async function updateDailyQuest(
   });
 }
 
+/* Daily luck wheel — server-authoritative draw+grant (shahnameh-backend
+ * POST /season2/user/luck-spin, one per UTC day per account). The wheel
+ * animates to whatever prize key this returns; it never picks locally. */
+export type LuckSpinResult =
+  | { ok: true; prize: string; amount: number }
+  | { ok: false; error: string };
+
+export async function spinLuckWheel(telegramId: string): Promise<LuckSpinResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/luck-spin', { telegram_id: telegramId });
+  if (data?.status === 1 && typeof data.prize === 'string') {
+    return { ok: true, prize: data.prize, amount: Number(data.amount) || 0 };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
 export type MilestoneResult = { ok: boolean; error?: string };
 
 export async function claimMilestone(telegramId: string, threshold: number): Promise<MilestoneResult> {
