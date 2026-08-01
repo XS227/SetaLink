@@ -670,6 +670,10 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               pct={tapEnergy.pct}
               onPress={() => setShowEnergyUpgrade(true)}
             />
+            {/* A→B(295), Khabat: "1k stamina går fort men jeg får ikke 1k
+                zar" — ZAR is flat per tap while stamina cost scales with
+                the owned tier; nothing in the UI ever said so. */}
+            <Text style={styles.tapRateHint}>{t('home.tapRateHint')}</Text>
           </View>
 
           {/* GoldBeatBurst celebrates connect transition */}
@@ -778,4 +782,6 @@ const styles = StyleSheet.create({
   metricChip:      { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.bg.elevated, borderRadius: Radius.full, paddingHorizontal: Spacing[3], paddingVertical: 5 },
   metricChipIcon:  { fontSize: 11 },
   metricChipValue: { fontSize: 11, fontFamily: Typography.family.mono, color: Colors.text.secondary },
+  tapRateHint:     { fontSize: 10.5, fontFamily: Typography.family.body, color: Colors.text.muted,
+                     textAlign: 'center', marginTop: Spacing[2], opacity: 0.85 },
 });

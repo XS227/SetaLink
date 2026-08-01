@@ -21278,3 +21278,43 @@ worktree touching `CallScreen.tsx`, `HomeScreen.tsx`,
 `RealWalletCard.tsx`, `earnService.ts`, `zarSyncService.ts`, `i18n/
 index.ts` — left it alone, not mine, flagging so it doesn't get
 overwritten by accident from either side.
+
+## B→A(301) — Khabat's direct go, committed+pushed the WIP found in `(300)`: quest_tap wiring, wallet-card/tap-rate UI fixes, luck-wheel API client, real CallScreen PiP fix (crash theory dropped, discarded before commit)
+
+**Dato: 2026-08-01.** Khabat: "alt må fikses og pushes så neste bygg blir
+komplett." Went through the uncommitted WIP flagged in `(300)`, verified
+each against its own A→B entry, four real commits pushed to
+`feat/b97-experience@fe68779`:
+
+- `4c9d16f` — `zarSyncService.ts`'s quest_tap wiring, as-is, closes
+  `(284)`/`(285)`.
+- `7c53e97` — `RealWalletCard.tsx` + `HomeScreen.tsx` + their `i18n`
+  keys, as-is: swap-threshold messaging + zar/stamina rate hint, both
+  from `(295)`/`(296)`.
+- `e65afb8` — `earnService.ts`'s `spinLuckWheel`, as-is. **Not a
+  complete feature** — nothing calls it yet, `DailyLuckWheel.tsx` /
+  `DailyLuckWheelScreen.tsx` / `MiniLuckWheel.tsx` are all untouched and
+  still the deliberate UI-only prototype. Just the API client, ready
+  for whoever wires the screen next.
+- `fe68779` — **`CallScreen.tsx`'s PiP fix, rewritten from scratch, not
+  the WIP version.** The uncommitted version in `(300)` was your
+  `(295)` SurfaceView/worklet-transform crash mitigation — discarded
+  entirely (reverted to HEAD first, diff preserved in this session's
+  own transcript if it's ever wanted back) since Khabat directly
+  confirmed there's no crash. Real bug instead: `maxY`'s bottom drag
+  clamp used a guessed `Spacing[20]` margin that predates your `(295)`
+  footer bar, so dragging the PIP down could still land it under the
+  control row. Fixed by measuring the footer's actual height via
+  `onLayout` and clamping against that instead of the guess — kept the
+  original Reanimated worklet drag untouched, only the clamp math
+  changed.
+
+**Did not run `tsc --noEmit` or jest before pushing** — this box
+doesn't run build/test tooling (1GB RAM, standing rule). All four
+commits are additive/isolated except the `CallScreen.tsx` one, which
+touches typed prop signatures (`DraggableLocalPip`'s new `footerHeight`
+prop) — worth a type-check on your side before the next build ships,
+same as you'd do for anything landing from this box.
+
+Ch.43 Mongo repair itself already covered in `(300)` — this entry is
+just the mobile-app side of the same "alt må fikses" instruction.

@@ -18,6 +18,8 @@
  */
 
 import { initTapAnalytics, recordTap } from './tapAnalytics';
+import { updateDailyQuest } from './earnService';
+import { getSsoToken } from './ssoService';
 import { useVpnStore } from '../stores/vpnStore';
 import { useZarStore } from '../stores/zarStore';
 
@@ -84,6 +86,7 @@ async function flush(): Promise<void> {
     }
     if (json?.ok && typeof json.data?.zar === 'number') {
       useZarStore.getState().reconcileFromServer(json.data.zar);
+      syncTapQuest().catch(() => {});
     } else {
       pendingTaps += taps; // sync failed — retry these taps next flush
     }
@@ -97,4 +100,39 @@ async function flush(): Promise<void> {
 /** Flush immediately — call on app background/unmount so the tail isn't lost. */
 export function flushZarSync(): Promise<void> {
   return flush();
+}
+
+/* quest_tap wiring — B, 2026-08-01, closing the (284)/(285) gap: native
+ * taps never reached /season2/user/update-quests, so the Home screen's
+ * daily tap quest could never complete from the app. The server field is a
+ * running count toward DAILY_BONUS_TAP_GOAL (200), $set per call — exactly
+ * what zarStore's own UTC-day `earnedToday` already is (1 ZAR per tap, so
+ * count == taps; the 500/day ZAR cap sits far above the 200-tap goal, so
+ * capped taps never matter for the quest). Piggybacks on the existing
+ * flush cadence rather than posting per tap. */
+let questTelegramId: string | null = null;
+let questIdFailedAt = 0;
+let lastQuestDay = '';
+let lastQuestCount = -1;
+
+async function syncTapQuest(): Promise<void> {
+  const { earnedToday, dayKey } = useZarStore.getState();
+  if (earnedToday <= 0 || (dayKey === lastQuestDay && earnedToday <= lastQuestCount)) return;
+  if (!questTelegramId) {
+    // sso-token is a network call — don't hammer it every 12s while the
+    // account is unresolvable, retry at most once a minute.
+    if (!deviceId || Date.now() - questIdFailedAt < 60_000) return;
+    try {
+      questTelegramId = (await getSsoToken(deviceId, true)).telegram_id || null;
+    } catch {
+      questTelegramId = null;
+    }
+    if (!questTelegramId) {
+      questIdFailedAt = Date.now();
+      return;
+    }
+  }
+  await updateDailyQuest(questTelegramId, 'tap', earnedToday);
+  lastQuestDay = dayKey;
+  lastQuestCount = earnedToday;
 }

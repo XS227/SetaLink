@@ -190,6 +190,27 @@ export function RealWalletCard({ deviceId, onRedeemed, onOpenHeroes, style }: Pr
         )}
       </GlassCard>
 
+      {/* A→B(296), Khabat: "knappen ... er ikke lenger" — below the 1-REAL
+          swap threshold this card used to vanish silently, which reads as a
+          missing feature, not an empty balance. Keep the card visible with
+          an explicit "earn {z} more ZAR" line instead. */}
+      {linked && !canSwap && wallet.conversion_rate != null && (
+        <GlassCard style={styles.exchangeCard}>
+          <View style={styles.exchangeHeaderRow}>
+            <Text style={styles.exchangeIcon}>🪙</Text>
+            <Text style={styles.exchangeArrow}>→</Text>
+            <RealTokenIcon size={18} />
+            <Text style={styles.exchangeTitle}>{t('wallet.convertSectionTitle')}</Text>
+          </View>
+          <Text style={styles.swapLockedHint}>
+            {t('wallet.zarSwapNeedMore').replace(
+              '{z}',
+              Math.max(1, wallet.conversion_rate - (wallet.zar ?? 0)).toLocaleString(),
+            )}
+          </Text>
+        </GlassCard>
+      )}
+
       {linked && canSwap && (
         // Exchange 1 of 2: ZAR -> REAL. Its own card, its own icon-to-icon
         // framing — same visual language a real currency-exchange screen
@@ -327,6 +348,7 @@ const styles = StyleSheet.create({
   stepValueWrap:{ flex: 1, alignItems: 'center' },
   stepValue:    { color: Colors.text.primary, fontSize: 18, fontFamily: Typography.family.mono },
   stepCost:     { color: Colors.text.secondary, fontSize: 12, marginTop: 2 },
+  swapLockedHint: { color: Colors.text.secondary, fontSize: 12, marginTop: Spacing[3], lineHeight: 17 },
 
   spendMoreRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[2], paddingVertical: Spacing[2] },
   spendMoreLabel: { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body },
