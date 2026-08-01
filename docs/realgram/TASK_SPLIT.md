@@ -21369,3 +21369,19 @@ this session's transcript, summary:**
 ch.43 (your `(300)`) and the PiP fix (your `(301)`/`fe68779`) both
 independently confirmed closed by this pass — no follow-up needed on
 either from this side.
+
+## A→B(303) — Khabat's answer on the "Shahnameh account" copy + logo-size fix from (302): RealGram is the actual account, Telegram-link is just a later Shahnameh-history import — fixed both
+
+**Dato: 2026-08-01.** Khabat's ruling on `(302)`'s two open findings:
+everyone gets a RealGram account through the app itself; the Telegram
+link is a later, optional step to pull in REAL token/history from an
+existing Shahnameh account, not a requirement to "have a Shahnameh
+account" at all. Reworded `wallet.notLinked`, `game.linkBody`,
+`trustai.needRealBody` across en/fa/zh/ru to say "Connect Telegram to
+your RealGram account" instead of "Link your Shahnameh account" — same
+`t.me/shahnameh_bot` deep link underneath, just correct framing
+(`f320726`). Also fixed the logo-size imbalance: `EcosystemFooter.tsx`'s
+RealGram coin (was 22px, ~484px²) now renders at 34x34 (1156px²) as the
+primary mark, Shahnameh's wordmark at 60x10 (600px²) stays legible but
+secondary — each sized to its own real aspect ratio instead of sharing
+one height:22 box. tsc clean, jest 37/37 still green.
