@@ -223,9 +223,20 @@ export function RealGramHomeScreen({ onBack, onOpenChapters, onOpenHeroes, onOpe
         {activeChapter ? (
           <TouchableOpacity onPress={onOpenChapters} activeOpacity={0.85}>
             <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
-              <Text style={styles.journeyLabel}>{t('rghome.chapterActive').replace('{order}', String(activeChapter.order))}</Text>
-              <Text style={styles.journeyTitle}>{activeChapter.title}</Text>
-              <Text style={styles.cardCta}>{t('rghome.continue')} {isRTL ? '‹' : '›'}</Text>
+              <View style={styles.journeyRow}>
+                {activeChapter.image_url ? (
+                  <Image source={{ uri: activeChapter.image_url }} style={styles.journeyImage} />
+                ) : (
+                  <View style={[styles.journeyImage, styles.spotlightImageFallback]}>
+                    <Text style={styles.spotlightFallbackText}>{activeChapter.title.slice(0, 1).toUpperCase()}</Text>
+                  </View>
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.journeyLabel}>{t('rghome.chapterActive').replace('{order}', String(activeChapter.order))}</Text>
+                  <Text style={styles.journeyTitle}>{activeChapter.title}</Text>
+                  <Text style={styles.cardCta}>{t('rghome.continue')} {isRTL ? '‹' : '›'}</Text>
+                </View>
+              </View>
             </GlassCard>
           </TouchableOpacity>
         ) : (
@@ -387,6 +398,8 @@ const styles = StyleSheet.create({
   cardValue: { fontSize: 13, fontFamily: Typography.family.mono, color: Colors.gold[400] },
   cardCta:   { fontSize: 12, fontFamily: Typography.family.heading, color: Colors.gold[400], marginTop: Spacing[1] },
 
+  journeyRow:   { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
+  journeyImage: { width: 56, height: 56, borderRadius: Radius.md },
   journeyLabel: { fontSize: 10, color: Colors.gold[400], fontFamily: Typography.family.label, textTransform: 'uppercase' },
   journeyTitle: { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.text.primary, marginTop: 2 },
 
