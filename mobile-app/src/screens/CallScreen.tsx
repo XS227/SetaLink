@@ -18,20 +18,24 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, TouchableOpacity, Vibration, View, useWindowDimensions } from 'react-native';
+import { Alert, StyleSheet, Text, TouchableOpacity, Vibration, View, useWindowDimensions } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing, useAnimatedStyle, useSharedValue, withRepeat, withSpring, withTiming,
 } from 'react-native-reanimated';
 import { RTCView } from 'react-native-webrtc';
-import { IconCameraFlip, IconMic, IconMicOff, IconPhone, IconSpeaker, IconVideo, IconVideoOff } from '../components/CallIcons';
+import {
+  IconCameraFlip, IconMic, IconMicOff, IconPhone, IconScreenShare, IconSpeaker, IconVideo, IconVideoOff,
+} from '../components/CallIcons';
 import { OrbitField, OrbitBodyProps } from '../components/OrbitField';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
+import { isScreenShareEnabled } from '../config/featureFlags';
 import { useT } from '../i18n';
 import { CallEngine, CallState } from '../services/callService';
 import { sendMessage } from '../services/entitlementService';
 import { useAuthStore } from '../stores/authStore';
+import { useToastStore } from '../stores/toastStore';
 
 const PIP_WIDTH = 100;
 const PIP_HEIGHT = 140;
@@ -225,6 +229,10 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   const [localStreamUrl, setLocalStreamUrl] = useState<string | null>(null);
   const [durationSecs, setDurationSecs] = useState(0);
   const [footerHeight, setFooterHeight] = useState(0);
+  const [screenSharing, setScreenSharing] = useState(false);
+  const [screenShareBusy, setScreenShareBusy] = useState(false);
+  const [remoteScreenUrl, setRemoteScreenUrl] = useState<string | null>(null);
+  const [remoteSharing, setRemoteSharing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isVideo = engine.isVideoCall();
   const peer = peerDisplay(peerLabel);
@@ -242,11 +250,24 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
     // from this screen's own explicit accept/reject/hangUp calls, which
     // already setState directly.
     const unsubState = engine.onStateChangeUpdate((s) => setState(s));
+    // Keeps this screen's own screenSharing flag true even if the OS
+    // itself stopped the capture (system indicator, revoked permission,
+    // sensitive screen block) -- CallEngine's track.onended already calls
+    // stopScreenShare() itself in that case, this just mirrors the result
+    // into local UI state rather than this screen finding out from a
+    // button tap that never happened.
+    const unsubScreenShare = engine.onScreenShareUpdate((active) => setScreenSharing(active));
+    const unsubRemoteScreen = engine.onRemoteScreenStreamUpdate((stream) => {
+      setRemoteScreenUrl(stream ? stream.toURL() : null);
+      setRemoteSharing(!!stream);
+    });
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       unsubStream();
       unsubLocalStream();
       unsubState();
+      unsubScreenShare();
+      unsubRemoteScreen();
       engine.teardown();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -327,11 +348,60 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
   const toggleVideo = () => {
     const next = !videoOn;
     setVideoOn(next);
-    engine.setVideoEnabled(next);
+    // While screen-sharing, "camera off" means spec §3's "bare skjerm"
+    // mode -- the camera track must actually stop (hardware + encoder
+    // released, no bandwidth spent), not just mute in place. Outside
+    // screen-share this stays the existing soft toggle (unrelated
+    // behavior, not touched).
+    if (screenSharing) {
+      (next ? engine.resumeCameraTrack() : engine.stopCameraTrack()).catch(() => {
+        setVideoOn(!next); // revert the optimistic UI flip on failure
+      });
+    } else {
+      engine.setVideoEnabled(next);
+    }
+  };
+
+  const toggleScreenShare = () => {
+    if (screenSharing) {
+      setScreenShareBusy(true);
+      engine.stopScreenShare()
+        .catch(() => {})
+        .finally(() => setScreenShareBusy(false));
+      return;
+    }
+    Alert.alert(
+      t('call.screenShareWarningTitle'),
+      t('call.screenShareWarningBody'),
+      [
+        { text: t('call.screenShareWarningCancel'), style: 'cancel' },
+        {
+          text: t('call.screenShareWarningConfirm'),
+          onPress: () => {
+            setScreenShareBusy(true);
+            // engine.startScreenShare() itself triggers the OS's own
+            // MediaProjection permission dialog (spec §2's "vis
+            // operativsystemets offisielle tillatelsesdialog") -- this
+            // Alert is only RealGram's own warning, shown first and
+            // separately, never a replacement for the system one.
+            engine.startScreenShare()
+              .then(() => setScreenSharing(true))
+              .catch(() => useToastStore.getState().show(t('call.screenShareError'), 'error'))
+              .finally(() => setScreenShareBusy(false));
+          },
+        },
+      ],
+    );
   };
 
   const showVideo = isVideo && state === 'active' && (remoteStreamUrl || localStreamUrl);
   const showRing = state === 'dialing' || state === 'ringing' || state === 'connecting';
+  // Audio or video call, doesn't matter (spec §1: "under en aktiv lyd-
+  // eller videosamtale") -- only gated on the call actually being
+  // connected (nothing to renegotiate against before that) and the
+  // remote-config flag, same rollout mechanism as every other staged
+  // feature in this app.
+  const screenShareAvailable = state === 'active' && isScreenShareEnabled();
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + Spacing[6] }]}>
@@ -403,6 +473,16 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
                 {videoOn
                   ? <IconVideo size={19} color={Colors.text.primary} />
                   : <IconVideoOff size={19} color={Colors.gold[400]} />}
+              </TouchableOpacity>
+            )}
+            {screenShareAvailable && (
+              <TouchableOpacity
+                style={[styles.smallBtn, screenSharing && styles.smallBtnActive]}
+                onPress={toggleScreenShare}
+                disabled={screenShareBusy}
+                accessibilityLabel={screenSharing ? t('call.screenShareStop') : t('call.screenShareStart')}
+              >
+                <IconScreenShare size={19} color={screenSharing ? Colors.gold[400] : Colors.text.primary} />
               </TouchableOpacity>
             )}
             <TouchableOpacity style={[styles.circleBtn, styles.rejectBtn]} onPress={handleHangUp} accessibilityLabel={t('call.hangUp')}>
