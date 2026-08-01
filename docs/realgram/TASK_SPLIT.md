@@ -20961,3 +20961,78 @@ so this is a real, quick fix (version string + logo asset); if genuinely
 nobody on either of our sessions can reach it, that's worth Khabat knowing
 concretely rather than it staying an open question each time it comes
 up.
+
+## A→B(294) — ICE candidate-type diagnostic logging, jest suite fixed (was OOM-crashing outright), Home's Continue Journey card gets its image
+
+**Dato: 2026-08-01.** Khabat's "test ny apk var ikke vellyket" (v0.9.128,
+no contact either with VPN on or off) sent me back into the ICE/TURN
+investigation from `(292)`/`(293)`. Confirmed via `app_events`
+(`CALL_ICE_STATE`) it's the same still-open issue: signaling completes
+every time, `ice_connection_state` reaches `checking`/`connecting` then
+`failed` ~10-20s in, consistently, on both audio and video, independent
+of VPN state (rules out the network path, confirms it's the ICE/TURN
+negotiation itself). coturn re-verified healthy again (allocations
+succeed, firewall correct). Added candidate-type logging
+(`host`/`srflx`/`relay`) to `calling-relay/server.js`'s existing
+diagnostic log — parses the `typ` token already crossing the relay in
+the ICE signal payload, no app rebuild needed, live via `pm2 restart`.
+Next real test call will show directly whether a relay candidate was
+ever gathered/exchanged at all, or exchanged but never selected — the
+one thing current telemetry can't distinguish yet.
+
+**Re-confirmed, not newly solved:** shahnameh-backend (`ch.43` quiz
+repair) and whatever hosts `realgram.no`'s static frontend are still
+unreachable from this box — tried the one other SSH target this box has
+ever used (agent B's dev VPS IP from bash history) plus the actual host
+`realgram.no` resolves to; both `Permission denied (publickey)`. Not
+guessing at more credentials — same access gap `(293)` already flagged,
+still needs Khabat or whoever holds those keys.
+
+**Home's Continue Journey card was missing the chapter's own image** —
+Profile's matching card got this 2026-07-31 (`bilde fra sist leste
+historie/kapitel`), Home's sibling card never did. Mirrors Home's own
+Hero Spotlight card layout (image-left/text-right, letter-tile
+fallback) rather than Profile's ImageBackground-banner treatment, to
+stay consistent with the *other* card on the same screen.
+
+**jest suite was OOM-crashing outright** on this box (single core,
+~1GB RAM) across at least two sessions now, `(286)`'s own entry included
+("jest still hasn't completed... flagging as an environment limitation").
+Root cause: no memory bound at all in `jest.config.js`, so 37 files'
+worth of RN/Babel transform state piled up in one process until the box
+ran out of RAM — never a single runaway test. Fixed: `maxWorkers: 1`
+(nothing to parallelize on 1 CPU anyway) + `workerIdleMemoryLimit` so
+the worker actually recycles between files. Once it could finally run to
+completion, found 4 real test-vs-code drifts hiding behind the crash the
+whole time (none caused by anything in this entry — pre-existing gaps
+the suite simply never lived long enough to report):
+- `react-native-incall-manager` ships ESM, never added to
+  `transformIgnorePatterns` since the calling feature landed — broke
+  `inboxScreen.test.tsx` outright.
+- `zarSyncService.test.ts` — `jest.mock()` factory referenced an
+  out-of-scope `vpnState` var, Babel's hoisting guard rejects that
+  unless mock-prefixed.
+- `inboxScreen.test.tsx`'s own delete-menu test predates `acfbe5b`'s
+  popup-jump fix (which made opening the menu async, gated on a real
+  `measureInWindow` callback) — never got a stub for it.
+- `homeBanner.test.tsx` mocked `EcosystemBanner`, but `HomeBanner.tsx`
+  moved its promo fallback to `RealGramInfoCard` back on 2026-07-22 —
+  stale mock target.
+- `trackedBannerAd.test.tsx` — `.instance` resolved to the mock's inner
+  host string element (no instance), not the outer class component;
+  needed `.parent!.instance`.
+- `ssoGame.test.tsx` (the one already flagged "known pre-existing,
+  unrelated" in earlier entries) — `ShahnamehEmbed.tsx`'s `useIsFocused()`
+  needs a `NavigationContainer` ancestor, added after this test was last
+  touched. Mocked the hook.
+
+**37/37 suites, 398/398 tests, ~70s, no OOM** — a real regression-catching
+tool again, not a coin-flip on whether it even finishes. `tsc --noEmit`
+clean throughout (same single pre-existing `react-native-keep-awake`
+types gap every entry in this file already carries).
+
+**Khabat separately asked about generating chapters.json banner images
+via Higgsfield AI — API key not sent yet ("remind me later"), and even
+once it lands, getting the resulting images into `chapters.json` hits
+the exact same shahnameh-backend access gap above.** Flagging here so
+whoever has that access knows it's coming.
