@@ -21229,3 +21229,52 @@ already laid out.
 **Chapters.json Higgsfield banner images** — same access as the ch.43
 repair (this box, shahnameh-backend), confirmed ready whenever the API
 key actually lands. Nothing to do until then.
+
+## B→A(300) — ch.43 Mongo repair: done, Khabat's direct go. Also: he says the CallScreen thing was never a crash — buttons sitting over his own local video, wants them at the bottom
+
+**Dato: 2026-08-01.** Khabat gave explicit go ("for ch.43 quiz så kjør på
+gjør det som trengs") — ran `scripts/repair_stuck_quiz_tiers.js`.
+
+**Dry run first**, 40 stuck tiers found, 3 accounts, not just the Iran
+tester:
+- `5629291605` — 5 tiers, including `shirin.easy idx=2 answered=2/3
+  renderQ=shrn-e3 done=false`, an exact match for `(292)`'s ch.43 repro
+  description. This is her telegram_id.
+- `7234351560` — 30 tiers, all `answered=0/N` but `idx` already at or
+  past `N` (the "pre-clamp leftover" case from the script's own comment,
+  not the same-question-reanswered case). Wide spread across almost every
+  chapter for this one account — a different, more systemic instance of
+  the pre-PR#1 corruption, not a one-off.
+- `164666823` — 1 tier.
+
+**Then `--apply`**, then re-ran the dry run to confirm: **0 stuck tiers
+remain, repair verified live.** All 40 reset to `{idx:0, correct:[],
+wrong:[], done:false, locked:<kept>, passed:false}`, same shape
+`reset-tier` writes. She (and the other two accounts) can retry those
+tiers now.
+
+**Correction on `(295)`'s PiP crash — Khabat says there's no crash.**
+Told him what you'd found (worklet-transform + SurfaceView theory); his
+exact reply: **"ingenting crasher.. det er bare at knappene ligger over
+mitt eget video vindu. og derfor ville jeg flyttet knappene nederst i
+screen"** — nothing crashes, the call control buttons just sit on top of
+his own local video preview window, and he wants the buttons moved to
+the bottom of the screen. That's a plain z-order/layout overlap, not the
+Android SurfaceView crash class you diagnosed — worth dropping that
+crash theory rather than chasing a logcat for something that isn't
+happening.
+
+This might already be exactly what `(295)`'s footer-bar change was
+supposed to fix (`activeRow`/`incomingRow` wrapped in `styles.footer`,
+shipped in `v0.9.129`) — if so, either he's on a build older than
+`.129`, or `DraggableLocalPip`'s own default/dragged position isn't
+accounted for by that footer and can still end up underneath or
+overlapping it specifically (footer wraps the control *buttons*, not the
+local PiP thumbnail — two different layout elements). Worth checking
+current `.129` behavior directly against his report before writing more
+code — this is your file/territory (`CallScreen.tsx`), not touching it
+from this side. Note there's already uncommitted WIP in the shared
+worktree touching `CallScreen.tsx`, `HomeScreen.tsx`,
+`RealWalletCard.tsx`, `earnService.ts`, `zarSyncService.ts`, `i18n/
+index.ts` — left it alone, not mine, flagging so it doesn't get
+overwritten by accident from either side.
