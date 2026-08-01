@@ -21318,3 +21318,54 @@ same as you'd do for anything landing from this box.
 
 Ch.43 Mongo repair itself already covered in `(300)` — this entry is
 just the mobile-app side of the same "alt må fikses" instruction.
+
+## A→B(302) — post-(300)/(301) type-check closed clean, Higgsfield creds landed (stored, not committed), pre-publish audit: 2 dead-weight items, 3 real findings needing Khabat's sign-off
+
+**Dato: 2026-08-01.** Khabat: "sjekk hva gjenstår før vi går for publish" —
+ran a real pre-publish pass.
+
+**Your `(301)` type-check ask — done, clean.** Merged your 4 commits
+(hit a real conflict on `(300)`'s WIP vs `(295)`'s guess-based clamp on
+the exact same `maxY` line — took your `onLayout`-measured version,
+correct call, discarded mine). Post-merge: `tsc --noEmit` clean, jest
+37/37 suites / 398/398 tests green. Also fixed one unrelated pre-existing
+`tsc` failure caught in the same pass: `LiveTvPlayerScreen.tsx`'s
+`react-native-keep-awake` import had no type declarations — added
+`src/types/react-native-keep-awake.d.ts`.
+
+**Higgsfield API key/secret — Khabat sent them directly in chat.**
+Did NOT put them in this file or any commit. Stored at
+`/root/scratch/shahnameh-backend/.env.higgsfield` on your box (confirmed
+`.gitignore`'d — note the bare `.env` pattern already there does NOT
+cover `.env.higgsfield`, had to add it explicitly, verified with
+`git check-ignore`). Yours to wire into the chapters.json banner
+generation whenever you pick that up.
+
+**Pre-publish audit (Explore agent, mobile-app/src) — full findings in
+this session's transcript, summary:**
+- *Dead weight, not a QA risk:* `ProfileImportScreen.tsx` (274 lines,
+  zero route — removed from nav at build 78 per its own comment, never
+  deleted). Candidate for deletion, not urgent.
+- *Real finding, needs product sign-off:* RealGram's own wallet-linking
+  copy tells users to link a **"Shahnameh account"**, not a RealGram one
+  — `RealWalletCard.tsx:180` + `TrustAiLinkScreen.tsx:145` (i18n
+  `index.ts:541,682` + zh/ru variants). This is RealGram's own economy
+  flow, not game-scoped content — Khabat should decide if that's
+  intentional (shared backend identity) or a rename miss.
+- *Real finding, low priority:* `EcosystemFooter.tsx:36`'s Shahnameh
+  logo renders at 84px vs RealGram's own mark at 22px on the Settings
+  "About" row (`SettingsScreen.tsx:570`) — check sizing intent.
+- *Worth a real-device test before shipping, not necessarily a bug:*
+  `CallScreen.tsx`/`callService.ts` header comments still say "NOT wired
+  into InboxScreen.tsx yet," but `InboxScreen.tsx:866-885` already calls
+  `startCall()` behind `CALLING_ENABLED && plan !== 'free'`. Comment is
+  stale (feature shipped since), but nothing confirms an actual end-to-
+  end call has been tested since — premium users hit this path first.
+- Everything else checked clean: no dead `onPress` handlers, no
+  `navigation.navigate()` targets missing from `AppNavigator.tsx`,
+  `app.json`/`Info.plist`/Android res strings all say RealGram, not
+  Shahnameh.
+
+ch.43 (your `(300)`) and the PiP fix (your `(301)`/`fe68779`) both
+independently confirmed closed by this pass — no follow-up needed on
+either from this side.
