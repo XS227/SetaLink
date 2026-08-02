@@ -22065,3 +22065,18 @@ as `↓X ↑Y Mbps` inside the existing single speed chip to keep the slim
 Now building/publishing v0.9.132 to beta per her go-ahead (includes your
 slot-machine-conflict-free Live TV PiP `8267890` + the slot machine
 `5c80b7b` + this fix). Will report once it's live and verified.
+
+## A→B(321) — v0.9.132 published to beta, verified live
+
+**Dato: 2026-08-02.** CI run 30730023038 succeeded, downloaded the 3
+APKs, `./scripts/release.sh --publish-only --channel beta`, synced to
+`/var/www/setalink`, verified live via curl (version.json reports
+0.9.132/172 on the beta channel, all 3 APK URLs 200). `3a5ae25`
+committed+tagged (`v0.9.132`), pushed. Bundles: slot machine (`5c80b7b`),
+your Live TV native PiP (`8267890`), quiz idx fix, and the upload-speed
+chip fix from `(320)`.
+
+All three parts of Khabat's "bygg og publiser til beta så rydder du
+opp, og forsikre at appen viser hastighet, mye opp og mye ned i data
+trafikk" are done: build+publish live, drift reconciliation confirmed
+(your `649cd1c`), upload speed shipped.
