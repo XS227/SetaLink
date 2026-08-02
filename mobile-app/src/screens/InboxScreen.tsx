@@ -549,7 +549,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
       <EmberField count={6} />
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={onBack}>
+        <TouchableOpacity
+          style={styles.backBtn} activeOpacity={0.7} onPress={onBack}
+          hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+        >
           <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={styles.title}>{t('pr.inbox')}</Text>
@@ -738,7 +741,10 @@ export function InboxScreen({ onBack, initialThreadKey }: Props) {
                   separate "..." overflow menu below) stay hidden for
                   Support — you can't block support. */}
               <View style={styles.threadHeader}>
-                <TouchableOpacity style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}>
+                <TouchableOpacity
+                  style={styles.backBtn} activeOpacity={0.7} onPress={() => setOpenKey(null)}
+                  hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
+                >
                   <Text style={styles.backIcon}>‹</Text>
                 </TouchableOpacity>
                 {/* Khabat, 2026-07-29: "trykker på profilbilde til sender... se
