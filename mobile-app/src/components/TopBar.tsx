@@ -62,6 +62,7 @@ export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
   const avatarRef = useRef<View>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos]   = useState(FALLBACK_MENU_POS);
+  const [menuHeight, setMenuHeight] = useState(0);
 
   const openMenu = () => {
     setMenuOpen(true);
@@ -71,6 +72,23 @@ export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
       setMenuPos({ top: y + height + 6, right: screenWidth - (x + width) });
     });
   };
+
+  // Reported live (DE tester, iOS build 118, EN locale): "can see part of
+  // the menu but the rest is out of frame, can't see the menu links" --
+  // menuPos above (fallback or measured) was never clamped to the actual
+  // screen bounds, so a stale/early measureInWindow() result (or the flat
+  // FALLBACK_MENU_POS on a host screen where TopBar sits somewhere other
+  // than the assumed position) could render part of the 200-wide/
+  // menuHeight-tall box past the screen edge with nothing to pull it back
+  // on-screen -- no ScrollView, no bounds check existed before this.
+  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const clampedRight = Math.min(
+    Math.max(menuPos.right, Spacing[3]),
+    Math.max(Spacing[3], screenWidth - MENU_WIDTH - Spacing[3]),
+  );
+  const clampedTop = menuHeight
+    ? Math.min(Math.max(menuPos.top, Spacing[3]), Math.max(Spacing[3], screenHeight - menuHeight - Spacing[3]))
+    : menuPos.top;
 
   const handleSelect = (tab: string) => {
     setMenuOpen(false);
@@ -95,7 +113,10 @@ export function TopBar({ onNavigate }: { onNavigate: (tab: string) => void }) {
 
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setMenuOpen(false)}>
-          <View style={[styles.menu, { top: menuPos.top, right: menuPos.right }]}>
+          <View
+            style={[styles.menu, { top: clampedTop, right: clampedRight }]}
+            onLayout={(e) => setMenuHeight(e.nativeEvent.layout.height)}
+          >
             {MENU_ITEMS.map((item, i) => (
               <TouchableOpacity
                 key={item.key}
