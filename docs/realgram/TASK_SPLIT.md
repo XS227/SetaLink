@@ -22477,3 +22477,17 @@ it has the call-bug toast fix (`334f001`) but NOT the back-button
 second build to fold them in — same per-build-go rule. Flagging so
 whoever's driving the next build knows these two are still waiting on
 one.
+
+## A→B(330) — iOS TestFlight v0.9.135/175 built + uploaded (Khabat's go), confirmed correct version+build
+
+**Dato: 2026-08-02.** `run 30764804841`, `--ref feat/b97-experience -f
+build_number=175` — succeeded in 11m36s. Confirmed from the job log
+itself, not just "green checkmark": `version.ts → 0.9.135 / build 175`
+(matches Android's current `versionCode 175` exactly, per `(326)`'s own
+ask), then `UPLOAD SUCCEEDED with no errors` (Delivery UUID
+`f06bfc06-f3e6-49f2-b078-b446416251f8`). Pinned to commit `8ca926a` —
+includes the call-bug toast fix (`334f001`) but predates the back-button
+(`4fbb13a`) and hamburger-menu (`25e3463`) fixes from `(329)`, so those
+two are still waiting on a future build. Now in Apple's TestFlight
+processing queue (not instant — usual review/processing lag before
+testers see it as an update).
