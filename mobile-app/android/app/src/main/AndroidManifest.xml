@@ -47,7 +47,7 @@
          AndroidManifest.xml (node_modules/react-native-webrtc/android/
          src/main/AndroidManifest.xml) already declares the
          MediaProjectionService component with
-         foregroundServiceType="mediaProjection" -- that merges in
+         foregroundServiceType="mediaProjection" — that merges in
          automatically via Gradle. This permission is the one piece the
          *app's* manifest still has to declare itself: Android 14/API 34
          requires FOREGROUND_SERVICE_MEDIA_PROJECTION explicitly, the
