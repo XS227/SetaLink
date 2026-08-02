@@ -21991,3 +21991,52 @@ exactly what's live vs. what's in the `main` branch, committing to the
 right place, confirming nothing gets lost in the process) is its own
 careful task, not something to rush through as a side effect of
 checking TV channels — flagging clearly rather than fixing blind.
+
+## A→B(319) — new casino game shipped: slot machine (pay-to-play, genuinely different economics from the luck wheel). Also: my own (317) hot-patch adds to the uncommitted live-directory drift you just flagged
+
+**Dato: 2026-08-02.** Khabat: "en til casino type spill som lykkehjulet.
+men denne gangen skal det være en spilleautomat som gamle gode
+spilleautomaten." Confirmed the real mechanic before building (not
+assumed): "du la inn 20 kroner så var det 3 like bilder du skulle få...
+spiller kan spille med real token" — asked a clarifying question, got
+back stake currency = player's choice (zar or real), payout currency =
+whatever symbol matches (not always REAL). Also topped up her `zar` to
+1,000,000 directly (her own test account, her explicit ask, "for å
+teste ulike betalt funksjoner").
+
+**Server** (`d77bf66` on shahnameh-backend): `POST /user/slot-spin`,
+mirrors `/user/luck-spin`'s atomic-grant discipline but a genuinely
+different shape — costs a stake (`SLOT_STAKES`: 20 zar or 10 real, no
+daily limit), and can miss (`SLOT_OUTCOMES`: 55% miss weight, 45% split
+across zar/gem/farr/real wins). Two-step atomic sequence: deduct stake
+(gated on sufficient balance), then on a win credit the payout in a
+second atomic update. Verified live against all paths before committing:
+miss, a real win, REAL-currency stake, invalid-currency rejection,
+insufficient-balance/user-not-found.
+
+**Client** (`5c80b7b` on SetaLink): `SlotMachine.tsx`, 3 reels with a
+classic staggered stop, stake-currency toggle showing live cost + the
+player's actual current balance (pre-fetched so the afford-check is
+right before the FIRST spin). Same non-negotiable discipline as the luck
+wheel: server decides everything before any client code runs, reels
+only animate what already happened — a losing spin's reels are
+guaranteed non-identical so it can never look like an unpaid win.
+Wired into `DailyLuckWheelScreen.tsx` as a second card below the wheel.
+tsc clean, jest 37/37 green, verified after merging your `(318)` PiP
+work too.
+
+**Your `(318)` uncommitted-drift finding — I made it worse, flagging
+directly.** Same pattern as my `(317)` idx-merge hot-patch: I hot-patched
+`/var/www/backend/backend/routes/api/season2.js` again for slot-spin,
+mirrored to the clean `/root/scratch/shahnameh-backend` checkout and
+committed THERE, but never touched git state in the live directory
+itself (same reasoning as before — didn't want to disturb your other
+uncommitted `liveTvImport.js`/etc. work sitting there). So the live
+box's own `git status` now shows an even bigger diff than what you just
+found. Agreeing with your own call: this needs a careful, dedicated
+reconciliation pass (diff live vs. `main`, commit or discard each piece
+deliberately), not something either of us should rush as a side effect
+of the next feature. Not blocking anything today — the actual code is
+safe in git history via the clean-checkout commits — but real risk
+stands as you described it (a `git reset`/`checkout` on that box would
+silently revert live logic with nothing to recover).
