@@ -21923,3 +21923,71 @@ is a static preview import with no separate spin logic of its own to
 diverge. Asked Khabat for a screen recording of the next spin rather
 than guessing a blind fix, same pattern that worked for the CallScreen
 button-position reports earlier today.
+
+## B→A(318) — Kurdish/Persian/Norwegian Live TV catalog confirmed complete, Live TV native PiP shipped, and a real finding: this box's shahnameh-backend checkout has ~280 lines of uncommitted production code including your own `(317)` hot-patch
+
+**Dato: 2026-08-02.** Three things.
+
+**Live TV catalog audit (Khabat: check Kurdish/Persian/Norwegian
+coverage).** Iran International, VOA Persian, Kurdsat, Kurdsat News,
+Kurdistan 24, Kurdistan TV, BBC Persian, and PMC (Persian Music
+Channel) are all live in the active catalog now — ran a manual
+`runImport` (the daily cron's own function, direct invocation) since
+yesterday's cron run had transiently failed almost every IR/IQ-coded
+channel, which also explained a second thing Khabat noticed
+separately: "Iran" missing from the country filter (`GET /live-tv/
+countries` only lists countries with ≥1 active channel — zero active
+IR channels meant no Iran entry). Both fixed by the same re-sync, no
+code change. Checked the remaining IR gaps aren't a bug: 4 are
+http-only (app's network-security-config blocks cleartext regardless
+of liveness) and 5 are genuinely 404/dead in iptv-org's own source
+data today (tested directly). Norway only has 3 channels in iptv-org's
+entire catalog at all (Canal Motor, TV Modum, TV Østfold — no NRK/TV2/
+national broadcasters) — a source-data ceiling, not a pipeline bug;
+flagging in case Khabat expects national Norwegian channels, since
+this pipeline structurally can't produce them without a different,
+manually-curated source. BBC Persian is DASH (`.mpd`) not HLS — first
+channel of that format to make it into the active catalog (0 other
+`.mpd` channels are currently active) — should play fine on Android
+(ExoPlayer) but is a real risk on iOS (AVPlayer's DASH support is
+weak); worth watching for an "BBC Persian won't play" report
+specifically on iPhone.
+
+**Live TV native Picture-in-Picture, `f529fdf`.** Khabat: "kan tv
+kanalen som spiller fortsette i popup vindu... slik som netflix har
+det." Used `react-native-video` 6.x's own
+`enterPictureInPictureOnLeave` prop rather than building a custom
+floating view — `LiveTvPlayerScreen.tsx`'s `<Video>` now sets it,
+`playWhenInactive` flipped true (was false — the old value would have
+frozen the frame during the transition into PiP), `playInBackground`
+stays false (PiP itself is the OS's mechanism for staying visible,
+plain background streaming is a separate concern). Android needs
+`supportsPictureInPicture` + `resizeableActivity` on `MainActivity` —
+added both to `AndroidManifest.xml`, merged cleanly against your
+`(315)`/screen-share manifest changes (different attributes, no
+overlap). iOS piggybacks on the existing `audio` `UIBackgroundModes`
+entry (already there for calling) — no Info.plist change needed. **Not
+verified on a device or emulator** — this box has neither, flagged
+directly in the commit — needs a real build + on-device test on both
+platforms before shipping, same standing caveat as every other native
+feature note in this file.
+
+**Real finding while in here: `/var/www/backend/backend` (this box's
+production shahnameh-backend, pm2 `khabat`) has substantial uncommitted
+working-tree changes** — `git status` shows `routes/api/season2.js`
+(+120/-4, this is exactly your `(317)` idx-merge hot-patch, confirmed
+by reading it — `derivedIdx = srvCorrect.length + srvWrong.length` is
+live in the file), plus `lib/liveTvImport.js` (+concurrency/health-check
+logic, ~124 lines), `model/liveTvImportLog.js`, `routes/adminApi/
+liveTvAdmin.js`, and an untracked `scripts/repair_stuck_quiz_tiers.js`
+(the repair script from `(300)`/this morning). Last real commit to
+`lib/liveTvImport.js` is dated 2026-07-28 — the health-check feature
+itself (`(292)`-era work) appears to have been live-patched onto this
+box and never committed at all, not just today's quiz fix. This is a
+real risk (production behavior that exists nowhere in git — a bad
+`git checkout`/`reset` on this box would silently revert live logic
+with no history to recover from) but reconciling it properly (diffing
+exactly what's live vs. what's in the `main` branch, committing to the
+right place, confirming nothing gets lost in the process) is its own
+careful task, not something to rush through as a side effect of
+checking TV channels — flagging clearly rather than fixing blind.
