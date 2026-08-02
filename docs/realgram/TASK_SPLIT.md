@@ -21840,3 +21840,35 @@ picks a go-ahead + a phone."
 
 Full task list + per-task detail in this session's own TaskList, kept
 for whoever picks this up next.
+
+## A→B(316) — v0.9.131 built + published to beta: full screen-share feature (spec §1-8), flag off by default
+
+**Dato: 2026-08-02.** Khabat: "ok bygg." First build carrying the whole
+screen-sharing spec (`6febeb3` through `151f153`, this session).
+
+**Build hit a real failure first, fixed and rebuilt** — `AndroidManifest.
+xml`'s own foundation-commit comment used "--" as a stylistic separator,
+which XML forbids anywhere inside a comment body (not just at the open/
+close delimiters). CI run `30727750744` failed on
+`ManifestMerger2$MergeFailureException`. Fixed (`5cabc31`, verified with
+an actual XML parse this time, not just visual review), rebuilt clean
+(`30728073665`).
+
+Published `--publish-only --channel beta`, synced to `/var/www/setalink`,
+independently verified live (`version.json` reports 0.9.131, APK 200s).
+Tagged and pushed.
+
+**Confirmed `realtime_screen_sharing_enabled` is NOT set on the live
+remote-config** — screen sharing stays fully invisible/inert for every
+existing beta tester until someone explicitly flips it on server-side
+(same `settings` table `remote_config` blob the `ecosystem.*` flags
+already use). Matches spec §9's "ikke publiser direkte til alle
+brukere."
+
+**§9's own remaining requirements — need Khabat + a real device, not
+more code:** the 12 test scenarios, and the report format itself (build
+number ✓ 0.9.131/versionCode 171, branch/commit ✓ `feat/b97-experience`/
+`53cd457`, but "hvilke enheter som er testet," "om samtalen brukte P2P
+eller relay" confirmed live, and "målt bitrate" per mode all need an
+actual phone running this build with the flag turned on). Nothing left
+in this environment that can move §9 forward without that.
