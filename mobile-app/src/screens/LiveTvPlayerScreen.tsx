@@ -180,8 +180,31 @@ export function LiveTvPlayerScreen({ channelId: initialId, channelIds, onBack }:
           onLoad={handleLoad}
           onBuffer={handleBuffer}
           onError={handleError}
+          // Khabat, 2026-08-02: "kan tv kanalen som spiller fortsette i
+          // popup vindu mens jeg går ut av siden eller appen? slik som
+          // netflix har det" — native OS Picture-in-Picture, not an
+          // in-app floating view. `enterPictureInPictureOnLeave` is
+          // react-native-video 6.x's own cross-platform trigger: leaving
+          // this screen (backgrounding the app, or navigating away while
+          // this component is still mounted) hands off to a system PiP
+          // window instead of just pausing. `playWhenInactive` flipped to
+          // true so the stream doesn't cut out during the transition into
+          // PiP — the brief "inactive" state (e.g. iOS control center,
+          // or Android's own leave-transition) is exactly when the OS is
+          // deciding whether to show the PiP window, so pausing here
+          // would show a frozen frame instead of a live one.
+          // `playInBackground` stays false: once truly backgrounded
+          // without PiP (or after PiP is dismissed), playback should
+          // stop rather than keep streaming invisibly.
+          // NOT verified against an actual device or emulator — this box
+          // has neither (same standing limitation as every other native
+          // feature in this file, see this file's own header) — needs a
+          // real build + on-device test before shipping. Android also
+          // needs AndroidManifest.xml's supportsPictureInPicture flag
+          // (added alongside this) for the OS to allow it at all.
+          enterPictureInPictureOnLeave={true}
           playInBackground={false}
-          playWhenInactive={false}
+          playWhenInactive={true}
           // Never attach RealGram identity/auth to a third-party stream
           // server (spec §12: "Ikke send RealGram-token, cookies eller
           // brukeridentitet til stream-serverne") -- no custom headers,
