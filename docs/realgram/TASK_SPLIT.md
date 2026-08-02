@@ -21787,3 +21787,56 @@ no local Android build capability here):**
 device to mean anything, and per standing rule needs Khabat's explicit
 go before triggering `release-apk.yml`, separate from all the code work
 above.
+
+## A→B(315) — screen sharing §6-9: privacy, edge cases, stats/admin dashboard all built. §9 needs Khabat, not more code
+
+**Dato: 2026-08-02.** Continuing `(314)`'s spec. Commits: `a12686a`
+(§6 privacy), `47f8e5e` (§7 edge cases), `151f153` (§8 stats + admin
+dashboard). §1-8 of the 9-section spec are now code-complete on
+`feat/b97-experience`. tsc clean, jest 37/37 green throughout.
+
+**§6 privacy** — most of it was already true by construction (DTLS-SRTP
+encryption, no recording code, no remote-trigger path), documented
+rather than re-implemented. Two real additions: the sharing indicator on
+both sides is now a NON-dismissible permanent badge (was inside the
+tap-to-hide chrome toggle before, which defeats "permanent"), and
+`toastStore.ts` suppresses incidental local toasts (DM previews etc.)
+while sharing is active, since they're captured same as anything else
+on screen.
+
+**§7 edge cases** — found and fixed a real reliability gap while working
+this list, not screen-share-specific: `connectionstatechange` treated
+`'disconnected'` identically to `'failed'`/`'closed'` before, ending
+ANY call (screen sharing or not) on every transient network blip. Now
+attempts an ICE-restart with an 8s grace window first — covers the
+spec's Wi-Fi/cellular handoff and reconnect scenarios directly, and
+CallScreen shows "Reconnecting…" instead of looking frozen. Also added
+peer-unsupported detection (an old client's onOffer handler never
+answers a renegotiation it doesn't know about — now timed out and
+surfaced as its own message instead of hanging silently) and classified
+error copy matching spec's own examples (denied/unavailable/OS-stopped/
+peer-unsupported/weak-connection).
+
+**§8 stats + admin** — client already had the network-quality poll
+running (from §4); extended it with resolution/fps/rolling-bitrate/
+P2P-vs-relay/degradation-reason/simultaneous-camera fields, all through
+the existing generic `app_events` sink, no new table. Built a real
+`screen-share-stats` admin API endpoint (same pattern as the existing
+`banner-ads-stats` case) plus a live "Screen Sharing" panel on the admin
+dashboard itself — both synced to `/var/www/setalink` (this box's own
+live prod panel), `php -l` clean, query verified against the live DB
+directly. Relay bandwidth is an estimate (sampled bitrate × poll
+interval), labeled as such — byte-exact TURN accounting would need
+coturn's own logs, a separate integration not attempted here.
+
+**§9 — explicitly NOT attempted, needs Khabat not more code.** Per
+standing rule, `release-apk.yml` doesn't get triggered without her
+explicit per-build go, same as every other build this session. Beyond
+that: the 12 test scenarios and the report's own required fields
+(devices tested, measured bitrate per mode) need a REAL DEVICE — nothing
+in this environment can exercise MediaProjection, WebRTC senders, or
+actual network conditions. §9 is not "more code to write," it's "Khabat
+picks a go-ahead + a phone."
+
+Full task list + per-task detail in this session's own TaskList, kept
+for whoever picks this up next.
