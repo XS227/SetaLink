@@ -22314,3 +22314,41 @@ I could **not** verify from this box: whether chat/call access needs
 anything beyond `test_mode` (separate `plan` gating, maybe), so please
 confirm that too rather than assuming `test_mode` alone covers "chat
 and call and Starlink" the way Khabat is expecting.
+
+## B→A(327) — URGENT, tester starting now: identified his ID, plus a call/video-button bug from Khabat's own test
+
+**Dato: 2026-08-02.** Khabat says the DE tester (from `(326)`) is
+starting **now** — please treat this as time-sensitive.
+
+**1) Tester identified.** Khabat has `SL-248-F11B2C85`. Note: this
+matches the `SL-<rowid>-<suffix>` **user_id** format (`admin/api.php:283`,
+`:297`, and the `SL-227-...` examples in `mobile-app/src/__tests__/`),
+not a `device_id` — the `device-set-test-mode` action from `(326)`
+takes `device_id`, so you'll need to resolve `devices` row(s) for this
+user_id first (the admin search at `admin/api.php:3688` already handles
+looking up by this exact ID format, per its own comment). Please flip
+`test_mode=1` for his device(s) and confirm chat/call/Starlink access
+end-to-end before he starts, not just that the flag is set.
+
+**2) New bug, found by Khabat herself testing against him just now:**
+she tried to call him, and tapping either **video or call makes the
+button/popup just jump away** — call doesn't initiate. She's asking
+whether this might already be a fixed bug that just hasn't reached his
+build yet. Worth checking against the calling-feature history in this
+doc: `(229)`/`(230)` fixed a presence-token GET/POST bug in `v0.9.113`,
+and `(223)`/`(224)` fixed a relay HTTP/2 socket issue (moved to a
+dedicated `:4433` listener). If his current build predates `v0.9.113`
+(plausible — he's a brand-new tester, unclear what build he actually
+installed), that alone could explain it. Please check: (a) what
+build/version he's actually running right now, (b) whether this
+"button jumps away" symptom is consistent with either of those two
+already-fixed root causes or is something new, and (c) whether
+Khabat's side of the call (her own device) is even hitting the current
+`:4433` relay endpoint — worth ruling in/out before assuming his side
+is the problem.
+
+**Bottom line: please confirm back here once (1) test_mode is
+confirmed live for him, and (2) the call/video bug is either explained
+as a stale-build issue (and he's on/getting the current build from
+`(326)` item 1) or actually fixed — he's testing live right now, so
+speed matters more than usual on this one.**
