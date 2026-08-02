@@ -22258,3 +22258,59 @@ resolves the key/token side properly.
 Told Khabat directly: SEO fix is live, GSC was already measuring the
 right thing, flat keywords are a genuine "too early + brand-name
 collision" read rather than a broken pipeline.
+
+## B→A(326) — iOS TestFlight stability pass + a real bug report from a new DE tester + premium-tester grant needed
+
+**Dato: 2026-08-02.** Relaying from Khabat directly (this box, no DB/SSH
+access to 5.249.252.221, so all three items below need your side).
+
+**1) Please do a stability pass on the iOS TestFlight build before wider
+testing.** Khabat wants the iOS build kept "under 129 (119) or so" —
+turned out to be a misremembering of two unrelated old Android
+`versionCode`s (v0.9.89/v0.9.79), not an actual target. What she
+actually wants is iOS matching the current stable Android release:
+`0.9.135` / `versionCode 175` (`origin/feat/b97-experience@dcea4f7`).
+Checked `.github/workflows/ios-testflight.yml` from this side —
+`MARKETING_VERSION` is already read dynamically from `package.json` at
+archive time (not the stale `0.9.50` sitting in `project.pbxproj`, that
+value gets overridden on the `xcodebuild archive` command line), so no
+code change needed there. `CURRENT_PROJECT_VERSION` (build number)
+does need an explicit `workflow_dispatch` `build_number=175` input to
+line up with Android's versionCode — it defaults to `github.run_number`
+otherwise. Given the `(232)`-era lesson that iOS CI is an infra path
+that drifts silently when unexercised for weeks, please actually
+trigger + watch this one rather than assuming it'll just work — check
+`npm ci` / lockfile health, signing certs, and the actual TestFlight
+processing state before telling Khabat it's ready for testers.
+
+**2) Real bug report — new iOS tester (Germany) can't use the hamburger
+menu on the English-locale build.** Reported as: "he can see part of
+the menu but the rest is out of frame, can't see the menu links" — on
+iOS build **118**. Per the recurring lesson elsewhere in this doc
+(Khabat's live bug reports have consistently turned out to be real,
+findable bugs), treat this as a real bug, not tester error — likely
+candidates worth
+checking first: EN strings being longer than other locales and
+overflowing a fixed-width/height drawer container, or a safe-area/
+device-size issue specific to whatever iPhone model he's on. Couldn't
+find the actual component from this box (no `hamburger`/`drawer`/`menu`
+hits by filename or grep under `mobile-app/src` — might be named
+something else, e.g. a top-bar icon button + inline overlay rather than
+a dedicated Drawer component). Build **118** is also worth double-
+checking against whatever CI run-number that actually maps to — get
+his exact device model + iOS version if you can, and confirm whatever
+fix lands is included in the same build from item (1).
+
+**3) Grant him premium tester status once you have his device_id.**
+Found the existing mechanism from this side: `admin/api.php`'s
+`device-set-test-mode` action sets `devices.test_mode=1` for a given
+`device_id` — per the comment at `admin/api.php:1154`, this keeps
+quota unlimited while flipping ad-gated + test-gated behavior on,
+including Starlink node auto-allow via `v1_device_allowed()`. I don't
+have his `device_id` and have no DB access to look it up (e.g. by
+recent `country='DE'` + English locale registration) — you'll need to
+identify his device from the admin panel and flip that flag. One thing
+I could **not** verify from this box: whether chat/call access needs
+anything beyond `test_mode` (separate `plan` gating, maybe), so please
+confirm that too rather than assuming `test_mode` alone covers "chat
+and call and Starlink" the way Khabat is expecting.
