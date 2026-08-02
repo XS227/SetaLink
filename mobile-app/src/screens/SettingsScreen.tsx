@@ -542,6 +542,21 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
               </Text>
             </View>
           )}
+          {/* Khabat, 2026-08-02: hit a real silent hang testing build 133/134
+              — the in-app download button stayed stuck on "Downloading…"
+              with no error, no progress, and (until now) no way out short of
+              force-closing the app: downloadUpdate()'s promise only settles
+              on DownloadManager's own completion broadcast, which telemetry
+              showed never arrives for roughly half of all real attempts.
+              The native side now times out after 5min instead of hanging
+              forever, but even that is a long silent wait -- this makes the
+              browser fallback (a completely different download path) reachable
+              immediately instead of only after an explicit failure Alert. */}
+          {Platform.OS === 'android' && updateStatus === 'downloading' && (
+            <TouchableOpacity onPress={handleOpenInBrowser} style={styles.updateBanner} activeOpacity={0.7}>
+              <Text style={styles.updateBannerText}>{t('upd.openInBrowser')}</Text>
+            </TouchableOpacity>
+          )}
           {Platform.OS === 'android' && (
             <>
               <Divider />

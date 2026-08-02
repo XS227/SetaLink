@@ -9,6 +9,8 @@ import android.content.IntentFilter
 import android.net.TrafficStats
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -30,6 +32,15 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         const val NAME                  = "XrayModule"
         const val VPN_PERM_REQUEST_CODE = 0xBEEF
         private const val TAG           = "XrayModule"
+        // Khabat, 2026-08-02: OTA download telemetry (app_events) showed roughly
+        // half of all real downloadAndInstallApk attempts across several days
+        // never got a completion OR failure event -- the JS promise silently
+        // hung forever (DownloadManager's ACTION_DOWNLOAD_COMPLETE broadcast
+        // just never arrived), leaving the Settings screen stuck on
+        // "Downloading…" with the button disabled and zero way out short of
+        // force-closing the app. 60-90MB should complete well inside this on
+        // any working connection; past it, something is genuinely stuck.
+        private const val APK_DOWNLOAD_TIMEOUT_MS = 5 * 60 * 1000L
     }
 
     private var running             = false
@@ -524,6 +535,18 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
 
     private var apkDownloadId: Long = -1
     private var apkReceiver: BroadcastReceiver? = null
+    private var apkPendingPromise: Promise? = null
+    private var apkTimeoutRunnable: Runnable? = null
+    private val apkTimeoutHandler = Handler(Looper.getMainLooper())
+
+    /** Settles whatever is currently pending (resolve/reject already happened
+     *  elsewhere, this just clears the bookkeeping) so a stale timeout can
+     *  never fire against a promise that isn't its own anymore. */
+    private fun clearApkPending() {
+        apkTimeoutRunnable?.let { apkTimeoutHandler.removeCallbacks(it) }
+        apkTimeoutRunnable = null
+        apkPendingPromise = null
+    }
 
     @ReactMethod
     fun downloadAndInstallApk(url: String, promise: Promise) {
@@ -581,8 +604,16 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                 setMimeType("application/vnd.android.package-archive")
             }
 
-            // Clean up a receiver from a previous attempt
+            // Clean up a receiver from a previous attempt -- and, critically,
+            // its promise too: unregistering silently here without settling
+            // apkPendingPromise is exactly how a second tap orphaned the
+            // first attempt's promise forever (never resolved, never
+            // rejected, no telemetry possible either).
             apkReceiver?.let { runCatching { reactContext.unregisterReceiver(it) } }
+            apkPendingPromise?.let {
+                runCatching { it.reject("APK_DOWNLOAD_SUPERSEDED", "A newer download replaced this one") }
+            }
+            clearApkPending()
 
             val receiver = object : BroadcastReceiver() {
                 override fun onReceive(ctx: Context, intent: Intent) {
@@ -590,6 +621,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                     if (id != apkDownloadId) return
                     runCatching { reactContext.unregisterReceiver(this) }
                     apkReceiver = null
+                    clearApkPending()
 
                     val ok = runCatching {
                         val q = android.app.DownloadManager.Query().setFilterById(id)
@@ -631,7 +663,28 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             )
 
             apkDownloadId = dm.enqueue(request)
+            apkPendingPromise = promise
             Log.i(TAG, "APK download enqueued id=$apkDownloadId url=$url")
+
+            val timeoutRunnable = Runnable {
+                // Identity check, not just apkDownloadId: a same-id race is
+                // impossible here (DownloadManager IDs are unique), but this
+                // guards against the timeout firing after the receiver already
+                // settled things via clearApkPending() a moment earlier.
+                if (apkPendingPromise === promise) {
+                    Log.e(TAG, "APK download timed out after ${APK_DOWNLOAD_TIMEOUT_MS}ms, id=$apkDownloadId")
+                    apkReceiver?.let { runCatching { reactContext.unregisterReceiver(it) } }
+                    apkReceiver = null
+                    runCatching { dm.remove(apkDownloadId) }
+                    clearApkPending()
+                    promise.reject(
+                        "APK_DOWNLOAD_TIMEOUT",
+                        "Download timed out — check your connection and try again, or use browser download",
+                    )
+                }
+            }
+            apkTimeoutRunnable = timeoutRunnable
+            apkTimeoutHandler.postDelayed(timeoutRunnable, APK_DOWNLOAD_TIMEOUT_MS)
         } catch (e: Exception) {
             Log.e(TAG, "downloadAndInstallApk failed: ${e.message}", e)
             promise.reject("APK_DOWNLOAD_ERROR", e.message ?: "Download error")
