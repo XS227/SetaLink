@@ -16,6 +16,7 @@ import { BottomNav, NavTab } from '../components/BottomNav';
 import { ShahnamehHakimBanner } from '../components/ShahnamehHakimBanner';
 import { HomeBanner }      from '../components/HomeBanner';
 import { TopBar }          from '../components/TopBar';
+import { CoverageIcon }    from '../components/CoverageIcon';
 import { EnergyBar }       from '../components/EnergyBar';
 import { EnergyUpgradeModal } from '../components/EnergyUpgradeModal';
 import { getEnergyTier }   from '../services/entitlementService';
@@ -499,6 +500,22 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <BlinkingLuckIcon />
             </TouchableOpacity>
           </View>
+          {/* Khabat, 2026-08-02: "kan vi lage en egen 'coverage'-status
+              som ikke ser ut som VPN?" — CoverageIcon existed already
+              (built during the gaming-pivot pass) but was never wired
+              into a screen. Reuses stabilityPct (the same composite
+              health number the old Network Quality bar showed) so it's
+              a real reading, not a second fake metric. Tapping it opens
+              Diagnostics for the full picture, same destination the old
+              Network Quality card linked to. Cosmetic only — see that
+              same conversation for why the OS-level VPN status-bar icon
+              itself can't be relabelled (Android/iOS platform
+              requirement, not something the app controls). */}
+          <CoverageIcon
+            quality={stabilityPct ?? 0}
+            connected={isConnected}
+            onPress={() => (onNavigate as (t: string) => void)('diagnostics')}
+          />
           <TopBar onNavigate={onNavigate as (tab: string) => void} />
         </Animated.View>
 
