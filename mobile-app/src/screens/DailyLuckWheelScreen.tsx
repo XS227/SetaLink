@@ -13,6 +13,9 @@ import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
 import { DailyLuckWheel } from '../components/DailyLuckWheel';
 import { SlotMachine } from '../components/SlotMachine';
+import { FerdowsisScroll } from '../components/FerdowsisScroll';
+import { RostamsTrials } from '../components/RostamsTrials';
+import { SimorghsFeather } from '../components/SimorghsFeather';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 
@@ -58,6 +61,30 @@ export function DailyLuckWheelScreen({ onBack }: Props) {
         <Text style={styles.pageTitle}>{t('slots.title')}</Text>
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
           <SlotMachine deviceId={deviceId} />
+        </GlassCard>
+
+        {/* Three more chance-to-win games (docs/NEW_GAMES_SPEC.md,
+            Khabat 2026-08-02: "flere spill... som igjen kan både lære
+            og la dem prøve sjansen å vinne noe") — same "own title,
+            own card, same screen" placement as the slot machine above,
+            each teaching real Shahnameh content instead of being pure
+            chance. */}
+        <Text style={styles.pageTitle}>{t('scroll.title')}</Text>
+        <Text style={styles.pageSub}>{t('scroll.subtitle')}</Text>
+        <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+          <FerdowsisScroll deviceId={deviceId} />
+        </GlassCard>
+
+        <Text style={styles.pageTitle}>{t('trials.title')}</Text>
+        <Text style={styles.pageSub}>{t('trials.subtitle')}</Text>
+        <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+          <RostamsTrials deviceId={deviceId} />
+        </GlassCard>
+
+        <Text style={styles.pageTitle}>{t('feather.title')}</Text>
+        <Text style={styles.pageSub}>{t('feather.subtitle')}</Text>
+        <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+          <SimorghsFeather deviceId={deviceId} />
         </GlassCard>
       </ScrollView>
     </View>

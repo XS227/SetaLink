@@ -195,6 +195,154 @@ export async function spinSlotMachine(telegramId: string, stakeCurrency: SlotSta
   return { ok: false, error: String(data?.error ?? 'network_error') };
 }
 
+/* Ferdowsi's Scroll — knowledge wheel (shahnameh-backend POST /season2/
+ * user/scroll-spin + /scroll-answer, docs/NEW_GAMES_SPEC.md Game 1).
+ * Two-call split, not one: the wheel has to visually land on a segment
+ * (the question) before the player answers, so `spinScrollWheel` only
+ * returns the question + a short-lived `spin_token` — `answerScroll`
+ * grades it server-side and returns the reward. Same reason the token
+ * exists as luck-spin/slot-spin's single-call atomic grant doesn't need
+ * one: the correct answer must never sit in a response the client
+ * already has before the player commits to a guess. */
+export type ScrollSpinResult =
+  | { ok: true; spinToken: string; questionId: string; question: string; answers: string[]; difficulty: string }
+  | { ok: false; error: string };
+
+export async function spinScrollWheel(telegramId: string): Promise<ScrollSpinResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/scroll-spin', { telegram_id: telegramId });
+  if (data?.status === 1 && typeof data.spin_token === 'string') {
+    return {
+      ok: true,
+      spinToken: data.spin_token,
+      questionId: data.id,
+      question: data.question,
+      answers: Array.isArray(data.answers) ? data.answers : [],
+      difficulty: data.difficulty,
+    };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
+export type ScrollAnswerResult =
+  | {
+    ok: true; correct: boolean; correctAnswer: number; explanation: string;
+    amountCurrency: string; amount: number; newZar: number; newGems: number; newFarr: number; newRealBalance: number;
+  }
+  | { ok: false; error: string };
+
+export async function answerScroll(telegramId: string, spinToken: string, answerIndex: number): Promise<ScrollAnswerResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/scroll-answer', {
+    telegram_id: telegramId, spin_token: spinToken, answer_index: answerIndex,
+  });
+  if (data?.status === 1) {
+    return {
+      ok: true,
+      correct: !!data.correct,
+      correctAnswer: Number(data.correct_answer) || 0,
+      explanation: String(data.explanation || ''),
+      amountCurrency: String(data.amount_currency || 'zar'),
+      amount: Number(data.amount) || 0,
+      newZar: Number(data.new_zar) || 0,
+      newGems: Number(data.new_gems) || 0,
+      newFarr: Number(data.new_farr) || 0,
+      newRealBalance: Number(data.new_real_balance) || 0,
+    };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
+/* Rostam's Seven Trials — pay-to-play memory/sequencing game
+ * (shahnameh-backend POST /season2/user/trials-start + /trials-submit,
+ * docs/NEW_GAMES_SPEC.md Game 2). Same two-call reasoning as the scroll
+ * above: the correct order can't ride in the same response as the
+ * shuffled tiles, or there's nothing to actually guess. `tiles` are
+ * real heroes.json slugs (not a secret — same public catalog the Heroes
+ * screen already shows), only the ORDER is what's being graded. */
+export type TrialsStakeCurrency = 'zar' | 'real';
+
+export type TrialsStartResult =
+  | { ok: true; sessionToken: string; tiles: string[]; staked: number }
+  | { ok: false; error: string };
+
+export async function startTrials(telegramId: string, stakeCurrency: TrialsStakeCurrency): Promise<TrialsStartResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/trials-start', { telegram_id: telegramId, stake_currency: stakeCurrency });
+  if (data?.status === 1 && Array.isArray(data.tiles)) {
+    return { ok: true, sessionToken: data.session_token, tiles: data.tiles, staked: Number(data.staked) || 0 };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
+export type TrialsTier = 'miss' | 'partial' | 'full';
+
+export type TrialsSubmitResult =
+  | {
+    ok: true; matches: number; tier: TrialsTier; win: boolean; correctOrder: string[];
+    amountCurrency: string | null; amount: number; newZar: number; newGems: number; newFarr: number; newRealBalance: number;
+  }
+  | { ok: false; error: string };
+
+export async function submitTrials(telegramId: string, sessionToken: string, order: string[]): Promise<TrialsSubmitResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/trials-submit', { telegram_id: telegramId, session_token: sessionToken, order });
+  if (data?.status === 1) {
+    return {
+      ok: true,
+      matches: Number(data.matches) || 0,
+      tier: (data.tier as TrialsTier) || 'miss',
+      win: !!data.win,
+      correctOrder: Array.isArray(data.correct_order) ? data.correct_order : [],
+      amountCurrency: data.amount_currency ?? null,
+      amount: Number(data.amount) || 0,
+      newZar: Number(data.new_zar) || 0,
+      newGems: Number(data.new_gems) || 0,
+      newFarr: Number(data.new_farr) || 0,
+      newRealBalance: Number(data.new_real_balance) || 0,
+    };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
+/* Simorgh's Feather — collectible pull (shahnameh-backend POST /season2/
+ * user/feather-pull, docs/NEW_GAMES_SPEC.md Game 3). Single call, same
+ * atomic shape as luck-spin/slot-spin -- nothing here needs hiding
+ * between draw and reveal, the pull IS the reveal. */
+export type FeatherPullResult =
+  | {
+    ok: true; chapterSlug: string; title: string; flavorText: string; imageUrl: string;
+    rarity: string; duplicate: boolean; amountCurrency: string | null; amount: number;
+    newZar: number; newGems: number; newRealBalance: number; collectionTotal: number;
+  }
+  | { ok: false; error: string };
+
+export async function pullFeather(telegramId: string): Promise<FeatherPullResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/feather-pull', { telegram_id: telegramId });
+  if (data?.status === 1 && typeof data.chapter_slug === 'string') {
+    return {
+      ok: true,
+      chapterSlug: data.chapter_slug,
+      title: String(data.title || ''),
+      flavorText: String(data.flavor_text || ''),
+      // Absolutized against SHAHNAMEH_ORIGIN -- same convention
+      // heroCatalogService.ts/chapterCatalogService.ts already use for
+      // this backend's relative image_url paths.
+      imageUrl: data.image_url ? (String(data.image_url).startsWith('http') ? data.image_url : `${SHAHNAMEH_ORIGIN}${data.image_url}`) : '',
+      rarity: String(data.rarity || 'common'),
+      duplicate: !!data.duplicate,
+      amountCurrency: data.amount_currency ?? null,
+      amount: Number(data.amount) || 0,
+      newZar: Number(data.new_zar) || 0,
+      newGems: Number(data.new_gems) || 0,
+      newRealBalance: Number(data.new_real_balance) || 0,
+      collectionTotal: Number(data.collection_total) || 0,
+    };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
 export type MilestoneResult = { ok: boolean; error?: string };
 
 export async function claimMilestone(telegramId: string, threshold: number): Promise<MilestoneResult> {
