@@ -21872,3 +21872,54 @@ number ✓ 0.9.131/versionCode 171, branch/commit ✓ `feat/b97-experience`/
 eller relay" confirmed live, and "målt bitrate" per mode all need an
 actual phone running this build with the flag turned on). Nothing left
 in this environment that can move §9 forward without that.
+
+## A→B(317) — ch.43/shirin quiz bug: REAL root cause found and fixed (client + server), not just a third data reset. Luck wheel visual/reward mismatch investigated, not reproduced
+
+**Dato: 2026-08-02.** Khabat testing v0.9.131: "chapter quiz er ikke
+fikset enda" (right — it recurred within the same day as this morning's
+repair) + "lykke hjulet, pilen stoppa på ﷼ men jeg fikk ZAR i reward."
+
+**Quiz — actual root cause found, not just re-repaired a 3rd time.**
+Traced it live: this morning's `reset-tier` fixed the SERVER's copy, but
+her device's own locally-cached snapshot (`real_chapter_progress_v2_
+shirin` in MMKV) still held the stale idx=2 from a much older stuck
+session. `RealGramChapterDetailScreen.tsx`'s merge-on-load
+(`mergeSnapshot(local, server)`) took `Math.max(staleLocal, freshServer)`
+and then pushed the corrupted result straight back to the server —
+self-reinfecting on every chapter open, independent of how many times
+the underlying data gets repaired. Confirmed: she'd answered one real
+question post-repair (server correctly at idx=1), then reopening the
+chapter re-corrupted it back to idx=2 within the same session.
+
+Real fix, both sides, same bug class: `idx` was being merged as its own
+independent number instead of DERIVED from the actual answer sets.
+- Client (`chapterProgressStore.ts`'s `mergeTier`, `01804f4`): idx is now
+  `correct.length + wrong.length` after unioning both sides' answers —
+  can never exceed the true count of distinct questions answered.
+- Server (`shahnameh-backend`'s `mergeQuizTier`, correct/wrong in that
+  branch are already srv-only per the existing SECURITY note, idx now
+  matches — `srv.correct.length + srv.wrong.length`, cli.idx ignored
+  entirely). **Hot-patched directly on the live process** (`/var/www/
+  backend/backend`, pm2 `khabat`, restarted) since Khabat was actively
+  blocked, then mirrored into the clean `/root/scratch/shahnameh-backend`
+  checkout and pushed (`fb17364`) so git history matches what's actually
+  running. Re-ran `repair_stuck_quiz_tiers.js --apply` for her account,
+  verified 0 stuck tiers remain.
+
+Flagged to her: her currently-installed app doesn't have the client fix
+yet, so the OLD buggy merge could still show a stale visual locally even
+though the server can no longer be permanently corrupted by it — told
+her to force-close/reopen if it still looks stuck, real fix lands with
+the next build.
+
+**Luck wheel — investigated, not reproduced.** Traced the full path:
+server (`LUCK_WHEEL_PRIZES` in season2.js) uses the same `prize` object
+for both the response and the DB `$inc` — no server-side mismatch is
+possible by construction. Client (`DailyLuckWheel.tsx`) rotation math
+checked out algebraically (pointer fixed at top/0°, segment-center
+calculation matches), prize-key lookup is string-keyed not
+index-positional so array-order drift isn't a risk, `MiniLuckWheel.tsx`
+is a static preview import with no separate spin logic of its own to
+diverge. Asked Khabat for a screen recording of the next spin rather
+than guessing a blind fix, same pattern that worked for the CallScreen
+button-position reports earlier today.
