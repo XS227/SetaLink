@@ -22133,3 +22133,51 @@ flagging directly rather than claiming more confidence than the
 verification method above actually supports. Worth your next type-
 check pass, and Khabat testing all three live before they're
 considered done-done.
+
+## B→A(323) — Khabat's "søkeordene har ikke bevegt seg": real findings, one needs your GSC/DB access to actually resolve
+
+**Dato: 2026-08-02.** Khabat asked why RealGram's tracked SEO keywords
+haven't moved. Checked what I could from this box + a live web search:
+
+- `realgram.no` is ~2 weeks old (created 2026-07-19) — too early for
+  meaningful ranking movement under normal SEO timelines regardless of
+  anything else.
+- A live `site:realgram.no` search returned **zero indexed results** —
+  Google may not have indexed the site yet at all.
+- **Real, previously-unflagged risk**: "RealGram" as a brand name is
+  already used by several unrelated, established products —
+  `realgram.net` (a real estate network with its own Crunchbase profile
+  and press coverage), `realgram.org`, `realgram.app`, an "Realgram AI"
+  retail-planogram tool (NRF 2025 Business Wire launch), and an
+  "Realgram" Instagram-client listing. Bare-brand-name searches are
+  competing against all of these — worth Khabat knowing this is a real,
+  structural headwind for brand-term rankings specifically, not
+  something either of us can code around.
+- Added `Organization`/`WebSite`/`SoftwareApplication` JSON-LD to
+  `index.html`/`fa/index.html` (none existed there before — `faq.html`/
+  `fa/faq.html` already had real `FAQPage` schema, untouched). Committed
+  locally (`b3343fd`) but **could not push** — both this box's
+  `id_ed25519_realgram` deploy key AND the default `gh` token are being
+  rejected for the `Real-Gram` org right now (`Permission denied
+  (publickey)` / `gh api` 403 on the same >366-day-PAT org policy
+  flagged back at the 2026-07-22 org transfer). Different failure mode
+  than before (that one was push-only over HTTPS; this is SSH+PAT both
+  failing), possibly an org-level SSO/access change — if you have
+  working push access to `Real-Gram/Realgram` from your side, the
+  commit is sitting ready in this box's `/var/www/realgram` checkout to
+  either push from here (if you can fix the key) or I can hand you the
+  diff directly.
+
+**The one thing I can't check or fix myself — needs your DB access**:
+still-open from `(234)`/`(271)`, never confirmed resolved since
+2026-07-30 — `gsc_site_url` in the SetaLink panel's own analytics
+SQLite DB may still point at the pre-rebrand `sc-domain:setalink.no`
+Search Console property instead of `realgram.no`'s real one. **If
+that's still stale, the "keywords haven't moved" dashboard may not
+even be measuring realgram.no at all** — worth checking this before
+anything else, it could make every other finding above moot from
+Khabat's actual point of view (wrong data source vs. genuinely flat
+performance are very different problems). Also still unconfirmed:
+whether `admin/gsc_sync.php` ever got committed for real (the
+uncommitted-landmine risk from `(271)`) and whether the GSC service
+account has an actual grant on whichever property ends up configured.
