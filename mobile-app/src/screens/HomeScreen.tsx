@@ -212,7 +212,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const isBusy          = isTransitioning;
 
   const timer = useSessionTimer(isConnected, sessionStartedAt);
-  const { pingMs, downloadMbps } = useVpnStats();
+  const { pingMs, downloadMbps, uploadMbps } = useVpnStats();
 
   // Khabat, 2026-07-30: "hastighet viser null forresten den må fikses" —
   // downloadMbps is a real per-3s-poll delta (useVpnStats.ts), so it
@@ -242,6 +242,22 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   // rather than changing the shared hook's unit and breaking Diagnostics'
   // MB/s-calibrated pct bars.
   const displayMbps = displayMBs * 8;
+
+  // Khabat, 2026-08-02: "forsikre at appen viser hastighet, mye opp og
+  // mye ned i data trafikk" — this chip only ever showed downloadMbps;
+  // useVpnStats() has tracked uploadMbps this whole time (real per-poll
+  // delta, same shape as download), it just was never destructured or
+  // displayed anywhere on this screen. Same idle-hold + MB/s->Mbps
+  // treatment as download above, kept as its own ref/value rather than
+  // generalizing into a loop — two named quantities read clearer here
+  // than an array a future edit could mix up which index is which.
+  const lastUploadMbpsRef = useRef(0);
+  useEffect(() => {
+    if (!isConnected) { lastUploadMbpsRef.current = 0; return; }
+    if (uploadMbps > 0) lastUploadMbpsRef.current = uploadMbps;
+  }, [uploadMbps, isConnected]);
+  const displayUploadMBs = isConnected ? (uploadMbps > 0 ? uploadMbps : lastUploadMbpsRef.current) : 0;
+  const displayUploadMbps = displayUploadMBs * 8;
 
   // "Stability" used to be the literal hardcoded string '98' whenever
   // connected — not bound to anything real. Derives it from the same ping
@@ -610,7 +626,16 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               </View>
               <View style={styles.metricChip}>
                 <Text style={styles.metricChipIcon}>⚡</Text>
-                <Text style={styles.metricChipValue}>{isConnected ? `${displayMbps.toFixed(displayMbps < 10 ? 1 : 0)}Mbps` : '—'}</Text>
+                {/* Khabat, 2026-08-02: "forsikre at appen viser hastighet,
+                    mye opp og mye ned i data trafikk" — was download-only;
+                    same chip now shows both directions (↓ download, ↑
+                    upload) to stay inside the slim single-row layout from
+                    the 2026-07-30 request rather than adding a 4th chip. */}
+                <Text style={styles.metricChipValue}>
+                  {isConnected
+                    ? `↓${displayMbps.toFixed(displayMbps < 10 ? 1 : 0)} ↑${displayUploadMbps.toFixed(displayUploadMbps < 10 ? 1 : 0)}Mbps`
+                    : '—'}
+                </Text>
               </View>
               <View style={styles.metricChip}>
                 <Text style={styles.metricChipIcon}>◈</Text>
