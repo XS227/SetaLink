@@ -353,7 +353,18 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
 
   useEffect(() => {
     if (outgoing) {
-      engine.startOutgoing().catch(() => setState('ended'));
+      // Found live 2026-08-02 (Khabat calling a not-yet-allowlisted tester):
+      // placeCall() rejects with a real server-side reason (e.g. "recipient
+      // does not have calling enabled yet") but this .catch() silently
+      // dropped it -- the call screen just closed with zero feedback, which
+      // reads exactly like "the button/popup just jump away". Surfacing a
+      // toast doesn't need the raw server string (untranslated, an internal
+      // detail) -- one generic failure message covers every startOutgoing()
+      // rejection reason.
+      engine.startOutgoing().catch(() => {
+        useToastStore.getState().show(t('call.startFailed'), 'error', 3000, true);
+        setState('ended');
+      });
     }
     const unsubStream = engine.onRemoteStreamUpdate((stream) => setRemoteStreamUrl(stream.toURL()));
     const unsubLocalStream = isVideo
