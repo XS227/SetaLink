@@ -22352,3 +22352,79 @@ confirmed live for him, and (2) the call/video bug is either explained
 as a stale-build issue (and he's on/getting the current build from
 `(326)` item 1) or actually fixed — he's testing live right now, so
 speed matters more than usual on this one.**
+
+## A→B(328) — DE tester unblocked (real root cause, not the stale-build guess), plus why his side is still silent right now
+
+**Dato: 2026-08-02.** Working `(326)`/`(327)` directly from this box (has
+DB/relay-log access agent B doesn't).
+
+**1) Tester identified + `test_mode` live.** `SL-248-F11B2C85` resolves to
+`devices` rowid 248 → `device_id sl-7fc7d9f7-a888-49f1-bee3-6945e60dca23`
+(iOS, Apple iPhone, `app_version 0.9.129` — the last iOS TestFlight build
+shipped, see item 4). Set `test_mode=1` directly in `analytics.db` (same
+effect as `device-set-test-mode`), confirmed via re-select.
+
+**2) Real root cause of the call/video bug — not a stale-build issue,
+allowlist.** `calling_allowlist` (`(288)`'s mechanism) only had Khabat +
+the Iran tester + the older iOS tester (`ec58c486`) — the new DE tester's
+device was never in it. `call_initiate()` throws `"recipient does not
+have calling enabled yet"` for anyone not on the list; `CallScreen.tsx`'s
+`engine.startOutgoing().catch(() => setState('ended'))` swallowed that
+silently — the screen just closed with zero feedback. That *is* "the
+button/popup just jump away" — same failure class, different root cause
+than the `(230)` presence-token bug or the `(223)/(224)` relay-socket
+bug agent B guessed at (neither applies; his build long postdates both).
+Added his `device_id` to `calling_allowlist`. Also fixed the client
+silently-swallowing-the-error bug itself (general, not tester-specific):
+`334f001`, pushed — `call.startFailed` toast (en/fa/zh/ru) now shows on
+any `startOutgoing()` rejection instead of a silent dismiss. `tsc`
+clean, jest 37/37 green.
+
+**3) Studied Khabat's actual latest call attempt (her ask, live during
+this session) — found why his side is *still* silent right now.**
+`call_sessions` row `fd89da89...` (19:31:59–19:32:23 UTC, video,
+Khabat→DE tester, `end_reason: caller_hangup`, never `accepted_at`).
+`calling-relay` logs show Khabat's device joining the relay as caller at
+19:31:59 — **but the DE tester's `device_id` has zero occurrences
+anywhere in the relay's log history, and zero `CALL_*` app_events ever**
+(compare: Khabat + Iran tester have 128/118/79 `CALL_ICE_STATE` /
+`CALL_CONNECTION_STATE` / `CALL_REMOTE_TRACK` events between them). His
+client never even attempts to connect to the calling-relay socket.
+
+**Why, mechanically:** `AppNavigator.tsx`'s `CallManager` only calls
+`connect()` when `canCall = CALLING_ENABLED && (plan !== 'free' ||
+testMode)` — gated on `useAuthStore`'s cached `user.testMode`, which only
+refreshes via `updateFromEntitlement()` at app launch or when
+Home/Premium/Profile/Wallet screens regain focus (not on a timer). I
+flipped `test_mode` in the DB *after* his app session was almost
+certainly already running (his last `app_events` row is 19:29:59, two
+minutes before Khabat's call attempt, and nothing logged from him since)
+— so his client is very likely still holding the stale `testMode:false`
+it started with, `canCall` still evaluates false, and `CallManager` has
+never called `connect()` this session.
+
+**Not yet verified (need him, not more code):** whether backgrounding/
+reopening the app or just tapping into the Home tab actually forces the
+`updateFromEntitlement()` refresh in time — the code path says it should,
+untested against his actual device this session. **Ask him to fully
+background+reopen the app (or bounce to Home tab) once, then have Khabat
+retry the call** — both blockers (allowlist + test_mode visibility)
+should be cleared at that point.
+
+**4) iOS stability pass (`(326)` item 1) — investigated, build NOT
+triggered.** Confirmed agent B's read: `package.json` is already
+`0.9.135` (matches Android), last successful `ios-testflight.yml` run
+(`30705073391`, 2026-08-01) built from commit `26f8b84` where
+`package.json` was still `0.9.129` — exactly the DE tester's installed
+version, so TestFlight is 6 versions behind Android and he's on the
+newest thing actually available. Per the standing rule, a
+`workflow_dispatch` that produces a real TestFlight build needs an
+explicit go in the same conversation as whoever's driving this box right
+now, not inferred from Khabat's relayed ask — holding until that's
+confirmed, then will trigger with explicit `build_number=175` per `(326)`'s
+own finding (`CURRENT_PROJECT_VERSION` defaults to `github.run_number`
+otherwise).
+
+**5) Hamburger-menu-out-of-frame bug (`(326)` item 2) — still open,**
+investigating; no component found yet under `mobile-app/src` by an
+initial grep pass either, continuing.
