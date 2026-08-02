@@ -582,35 +582,37 @@ export function CallScreen({ engine, peerLabel, peerId, outgoing, onEnded, onAcc
 
   return (
     <View style={[styles.screen, { paddingTop: insets.top + Spacing[6] }]}>
-      {remoteSharing && remoteScreenUrl ? (
-        <RemoteScreenShareView
-          streamUrl={remoteScreenUrl} peerName={peerLabelText} cameraStreamUrl={remoteStreamUrl}
-          reconnecting={reconnecting}
-        />
-      ) : showVideo ? (
-        <>
-          {remoteStreamUrl ? (
-            <RTCView streamURL={remoteStreamUrl} style={StyleSheet.absoluteFill} objectFit="cover" />
-          ) : (
-            <View style={[StyleSheet.absoluteFill, styles.videoWaiting]}>
-              <Text style={styles.status}>{statusLabel()}</Text>
+      <View style={styles.mainArea}>
+        {remoteSharing && remoteScreenUrl ? (
+          <RemoteScreenShareView
+            streamUrl={remoteScreenUrl} peerName={peerLabelText} cameraStreamUrl={remoteStreamUrl}
+            reconnecting={reconnecting}
+          />
+        ) : showVideo ? (
+          <>
+            {remoteStreamUrl ? (
+              <RTCView streamURL={remoteStreamUrl} style={StyleSheet.absoluteFill} objectFit="cover" />
+            ) : (
+              <View style={[StyleSheet.absoluteFill, styles.videoWaiting]}>
+                <Text style={styles.status}>{statusLabel()}</Text>
+              </View>
+            )}
+          </>
+        ) : (
+          <View style={styles.center}>
+            <View style={styles.avatarStack}>
+              {showRing && <RingVisualizer />}
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarInitial}>
+                  {peer.isRawAccountId ? '☀️' : peer.id.slice(0, 1).toUpperCase()}
+                </Text>
+              </View>
             </View>
-          )}
-        </>
-      ) : (
-        <View style={styles.center}>
-          <View style={styles.avatarStack}>
-            {showRing && <RingVisualizer />}
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarInitial}>
-                {peer.isRawAccountId ? '☀️' : peer.id.slice(0, 1).toUpperCase()}
-              </Text>
-            </View>
+            <Text style={styles.peerName}>{peerLabelText}</Text>
+            <Text style={styles.status}>{statusLabel()}</Text>
           </View>
-          <Text style={styles.peerName}>{peerLabelText}</Text>
-          <Text style={styles.status}>{statusLabel()}</Text>
-        </View>
-      )}
+        )}
+      </View>
 
       {/* Your own camera preview -- independent of whether the PEER is
           sharing their screen, so it stays visible layered on top of
@@ -718,8 +720,22 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.bg.void,
     alignItems: 'center',
-    justifyContent: 'space-between',
+    // NOT justifyContent: 'space-between' anymore -- Khabat, 2026-08-02,
+    // testing build 133: "knappene og footer hopper til toppen med engang
+    // samtalen starter" + her own video PiP (anchored near the top by
+    // design) then collided with it. Root cause: space-between only
+    // spaces multiple flow children apart. Pre-connect, `screen` had two
+    // flow children (the ring/avatar `center` view + the footer); the
+    // instant the call goes active, the video/screen-share content
+    // becomes StyleSheet.absoluteFill (removed from flow), leaving the
+    // footer as the ONLY flow child -- and per the flexbox spec,
+    // space-between with a single item collapses to flex-start, i.e. the
+    // footer jumps to the TOP of the screen. mainArea (flex: 1) below
+    // fixes this structurally: it's always present as a flow sibling of
+    // the footer regardless of what its own children do internally, so
+    // the footer is guaranteed to sit at the bottom either way.
   },
+  mainArea: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' },
   center: { alignItems: 'center', gap: Spacing[3] },
   avatarStack: { width: 120, height: 120, alignItems: 'center', justifyContent: 'center' },
   ringStage: {

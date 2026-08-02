@@ -430,6 +430,14 @@ if ($method === 'GET') {
                 // (A-14); flip rc_trustai_link_enabled once B-9 is verified.
                 'trustai_link_enabled' => (bool)(int)($rcRows['rc_trustai_link_enabled'] ?? 0),
             ],
+            // Screen sharing in calls (spec §9, internal-test-only rollout) --
+            // the client (featureFlags.ts's isScreenShareEnabled()) has been
+            // checking this key since v0.9.131, but it was never actually
+            // built into $cfg here, so the server could never send it: the
+            // button had no way to appear regardless of intent. In practice
+            // scoped tight anyway since calling itself is calling_allowlist-
+            // gated to a handful of test devices.
+            'realtime_screen_sharing_enabled' => (bool)(int)($rcRows['rc_realtime_screen_sharing_enabled'] ?? 0),
         ];
         // If there's a legacy composite blob, merge it but let per-key values win
         try {
