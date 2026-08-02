@@ -3435,6 +3435,111 @@ switch ($action) {
         ]);
         break;
 
+    case 'screen-share-stats':
+        // Screen-share feature (Khabat, 2026-08-01 spec §8): "ved TURN/
+        // relay-trafikk må admin kunne se samlet båndbreddebruk, slik at
+        // RealGram kan overvåke serverkostnader og kapasitet." Client
+        // logs CALL_SCREEN_SHARE_START/STOP and a CALL_NETWORK_QUALITY
+        // sample every 4s while sharing is active (callService.ts's
+        // pollNetworkQuality) via the existing generic app_events sink --
+        // no new table, same pattern as banner-ads-stats above. No
+        // screenshots/frame content ever logged, only numbers -- nothing
+        // here can leak what was actually shared.
+        $db = open_analytics_db();
+        $from_raw = trim($_GET['from'] ?? '');
+        $to_raw   = trim($_GET['to']   ?? '');
+        if ($from_raw && $to_raw
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $from_raw)
+            && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to_raw)) {
+            // as-is
+        } else {
+            $days_raw = (int)($_GET['days'] ?? 30);
+            $days     = max(1, min(90, $days_raw));
+            $from_raw = gmdate('Y-m-d', strtotime("-{$days} days"));
+            $to_raw   = gmdate('Y-m-d');
+        }
+        $fromDt = $from_raw . ' 00:00:00';
+        $toDt   = gmdate('Y-m-d', strtotime($to_raw) + 86400) . ' 00:00:00'; // exclusive
+
+        $totalShares = 0;
+        $stopReasons = ['user' => 0, 'os' => 0, 'peer_unsupported' => 0, 'call_ended' => 0];
+        $p2pSamples = 0;
+        $relaySamples = 0;
+        // Estimated relay bandwidth: sum(actual_bitrate_kbps) across
+        // relay-classified samples * the 4s poll interval each sample
+        // represents, converted to MB. An estimate from sampled
+        // instantaneous bitrate, not a byte-exact TURN accounting figure
+        // (coturn's own logs would be that; this is what the client-side
+        // stats this feature already collects can give admin without a
+        // separate integration) -- labeled as such in the response.
+        $relayKbSum = 0.0;
+        $tierCounts = ['good' => 0, 'medium' => 0, 'poor' => 0];
+        $simultaneousCount = 0;
+        $totalSamples = 0;
+
+        try {
+            $st = $db->prepare("
+                SELECT COUNT(*) FROM app_events
+                WHERE event = 'CALL_SCREEN_SHARE_START' AND created_at >= ? AND created_at < ?
+            ");
+            $st->execute([$fromDt, $toDt]);
+            $totalShares = (int)$st->fetchColumn();
+
+            $st = $db->prepare("
+                SELECT json_extract(props,'\$.reason') AS reason, COUNT(*) AS cnt
+                FROM app_events
+                WHERE event = 'CALL_SCREEN_SHARE_STOP' AND created_at >= ? AND created_at < ?
+                GROUP BY reason
+            ");
+            $st->execute([$fromDt, $toDt]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $r = $row['reason'] ?: 'call_ended'; // stopScreenShare() with no explicit reason (teardown path)
+                if (isset($stopReasons[$r])) $stopReasons[$r] += (int)$row['cnt'];
+            }
+
+            $st = $db->prepare("
+                SELECT
+                    json_extract(props,'\$.connection_type') AS conn_type,
+                    json_extract(props,'\$.tier') AS tier,
+                    json_extract(props,'\$.actual_bitrate_kbps') AS kbps,
+                    json_extract(props,'\$.camera_and_screen_simultaneous') AS simul
+                FROM app_events
+                WHERE event = 'CALL_NETWORK_QUALITY' AND created_at >= ? AND created_at < ?
+            ");
+            $st->execute([$fromDt, $toDt]);
+            foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $totalSamples++;
+                if ($row['conn_type'] === 'relay') {
+                    $relaySamples++;
+                    $relayKbSum += (float)($row['kbps'] ?? 0);
+                } elseif ($row['conn_type'] === 'p2p') {
+                    $p2pSamples++;
+                }
+                if (isset($tierCounts[$row['tier']])) $tierCounts[$row['tier']]++;
+                if ($row['simul'] === '1' || $row['simul'] === 1) $simultaneousCount++;
+            }
+        } catch (\Exception $e) { /* app_events doesn't exist yet — zeros below */ }
+
+        // kbps * 4s samples -> MB: (kbps * 1000 / 8 bytes/s) * 4s / 1e6
+        $relayEstimatedMb = round($relayKbSum * 1000 / 8 * 4 / 1_000_000, 2);
+
+        api_ok([
+            'window'                => ['from' => $from_raw, 'to' => $to_raw],
+            'total_shares'          => $totalShares,
+            'stop_reasons'          => $stopReasons,
+            'connection_type'       => [
+                'p2p_samples'   => $p2pSamples,
+                'relay_samples' => $relaySamples,
+                'relay_pct'     => $totalSamples > 0 ? round($relaySamples / $totalSamples * 100, 1) : null,
+            ],
+            'relay_bandwidth_estimate_mb' => $relayEstimatedMb,
+            'relay_bandwidth_note'        => 'Estimated from sampled instantaneous bitrate (4s poll interval), not byte-exact TURN accounting.',
+            'quality_tier_distribution'   => $tierCounts,
+            'camera_and_screen_simultaneous_samples' => $simultaneousCount,
+            'total_quality_samples'       => $totalSamples,
+        ]);
+        break;
+
     case 'ad-errors-grouped':
         // Grouped AD_LOAD_ERROR view (Khabat, 2026-07-20: "do not spam admin
         // with identical errors — aggregate by slot, error code and user, show

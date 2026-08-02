@@ -175,6 +175,11 @@ export class CallEngine {
    *  at brukeren godkjenner det" -- this class only ever *suggests*,
    *  CallScreen owns the actual consent Alert. */
   private lastPromptedTier: NetworkQualityTier | null = null;
+  /** Rolling bitrate calc between poll ticks -- spec §8's "oppløsning,
+   *  bildefrekvens, bitrate" wants a current rate, not a lifetime
+   *  average. */
+  private lastStatsBytesSent: number | null = null;
+  private lastStatsAtMs: number | null = null;
   /** Spec §4: "ikke slå av kameraet automatisk uten at brukeren godkjenner
    *  det, med mindre samtalen ellers står i fare for å kobles fra... må
    *  vises tydelig." One-shot per call -- once the emergency stop has
@@ -487,7 +492,7 @@ export class CallEngine {
     await this.signaling.sendScreenShareState(this.callId, false).catch(() => {});
     if (this.pc) await this.renegotiate().catch(() => {});
     this.screenShareListeners.forEach((cb) => cb(false, null, reason));
-    this.logCallEvent('CALL_SCREEN_SHARE_STOP', {});
+    this.logCallEvent('CALL_SCREEN_SHARE_STOP', { reason }); // spec §8: "årsak til stopp"
   }
 
   // ── Adaptive quality (spec §4) ─────────────────────────────────────────
@@ -509,6 +514,8 @@ export class CallEngine {
   private startAdaptiveQuality(): void {
     if (this.qualityPollTimer) return;
     this.lastPromptedTier = null;
+    this.lastStatsBytesSent = null;
+    this.lastStatsAtMs = null;
     this.qualityPollTimer = setInterval(() => { this.pollNetworkQuality().catch(() => {}); }, 4000);
     // Fire once immediately rather than waiting a full interval for the
     // first real read.
@@ -527,10 +534,21 @@ export class CallEngine {
     let availableBitrate = Infinity;
     let packetsLost = 0;
     let packetsSent = 0;
+    let bytesSent = 0;
+    let frameWidth = 0;
+    let frameHeight = 0;
+    let framesPerSecond = 0;
+    let actualBitrateKbps = 0;
+    let candidateType: string | null = null; // spec §8: "om forbindelsen bruker P2P eller relay"
+    let localCandidateId: string | null = null;
+    let remoteCandidateId: string | null = null;
+
     stats.forEach((report) => {
       if (report.type === 'candidate-pair' && (report.state === 'succeeded' || report.nominated)) {
         if (typeof report.currentRoundTripTime === 'number') rttMs = report.currentRoundTripTime * 1000;
         if (typeof report.availableOutgoingBitrate === 'number') availableBitrate = report.availableOutgoingBitrate;
+        localCandidateId = report.localCandidateId || null;
+        remoteCandidateId = report.remoteCandidateId || null;
       }
       // Screen track's own outbound-rtp report -- matched by the sender's
       // track id so this doesn't accidentally read the camera's or the
@@ -539,18 +557,66 @@ export class CallEngine {
           && this.screenStream?.getVideoTracks()[0]?.id === report.trackId) {
         packetsLost = report.packetsLost || 0;
         packetsSent = report.packetsSent || 0;
+        bytesSent = report.bytesSent || 0;
+        frameWidth = report.frameWidth || 0;
+        frameHeight = report.frameHeight || 0;
+        framesPerSecond = report.framesPerSecond || 0;
       }
     });
+    // P2P vs relay: standard WebRTC classification -- if EITHER side of
+    // the selected pair is a 'relay' candidate, media is flowing through
+    // TURN; host/srflx/prflx on both sides means a direct (possibly
+    // STUN-assisted) path. Two more lookups against the SAME stats map,
+    // by the ids the candidate-pair report itself gave us above.
+    if (localCandidateId || remoteCandidateId) {
+      const local = localCandidateId ? stats.get(localCandidateId) : null;
+      const remote = remoteCandidateId ? stats.get(remoteCandidateId) : null;
+      const localType = local?.candidateType;
+      const remoteType = remote?.candidateType;
+      candidateType = (localType === 'relay' || remoteType === 'relay') ? 'relay' : 'p2p';
+    }
     const lossRatio = packetsSent > 0 ? packetsLost / packetsSent : 0;
+    // Rolling bitrate from the delta since the last poll, not a
+    // cumulative/lifetime average -- matches what "current bitrate" means
+    // to anyone reading the admin dashboard this feeds (task -- see
+    // screen-share-stats.php).
+    const nowMs = Date.now();
+    if (this.lastStatsBytesSent !== null && this.lastStatsAtMs !== null) {
+      const deltaBytes = bytesSent - this.lastStatsBytesSent;
+      const deltaSecs = (nowMs - this.lastStatsAtMs) / 1000;
+      if (deltaSecs > 0) actualBitrateKbps = Math.round((deltaBytes * 8) / deltaSecs / 1000);
+    }
+    this.lastStatsBytesSent = bytesSent;
+    this.lastStatsAtMs = nowMs;
 
     let tier: NetworkQualityTier = 'good';
-    if (rttMs > 400 || lossRatio > 0.08 || availableBitrate < 150_000) tier = 'poor';
-    else if (rttMs > 150 || lossRatio > 0.02 || availableBitrate < 500_000) tier = 'medium';
+    // Spec §8: "årsak til kvalitetsreduksjon" -- which specific metric(s)
+    // actually crossed the threshold, not just the resulting tier number.
+    const reasons: string[] = [];
+    if (rttMs > 400) reasons.push('rtt');
+    if (lossRatio > 0.08) reasons.push('loss');
+    if (availableBitrate < 150_000) reasons.push('bitrate');
+    if (reasons.length > 0) {
+      tier = 'poor';
+    } else {
+      if (rttMs > 150) reasons.push('rtt');
+      if (lossRatio > 0.02) reasons.push('loss');
+      if (availableBitrate < 500_000) reasons.push('bitrate');
+      if (reasons.length > 0) tier = 'medium';
+    }
 
     this.applyQualityTier(tier);
+    // Spec §8's full field list -- no screenshots/frame content, only
+    // numbers, same as every other CALL_* event in this file.
     this.logCallEvent('CALL_NETWORK_QUALITY', {
       tier, rtt_ms: Math.round(rttMs), loss_ratio: Number(lossRatio.toFixed(3)),
       available_bitrate: availableBitrate === Infinity ? null : Math.round(availableBitrate),
+      actual_bitrate_kbps: actualBitrateKbps,
+      degradation_reasons: reasons.length > 0 ? reasons.join(',') : null,
+      resolution: frameWidth && frameHeight ? `${frameWidth}x${frameHeight}` : null,
+      fps: framesPerSecond || null,
+      connection_type: candidateType,
+      camera_and_screen_simultaneous: !!(this.cameraSender && this.screenSender),
     });
 
     // Genuinely at risk of dropping the call -- well past plain 'poor',
@@ -1014,6 +1080,8 @@ export class CallEngine {
     this.networkQualityListeners = [];
     this.emergencyActionListeners = [];
     this.lastPromptedTier = null;
+    this.lastStatsBytesSent = null;
+    this.lastStatsAtMs = null;
     if (this.reconnectGraceTimer) { clearTimeout(this.reconnectGraceTimer); this.reconnectGraceTimer = null; }
     this.reconnectListeners = [];
     this.emergencyStopFired = false;

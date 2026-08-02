@@ -793,6 +793,27 @@ function icon(string $name): string {
         </div>
       </div>
 
+      <!-- ── Screen Sharing (RealGram calls, spec §8: relay bandwidth visibility) ── -->
+      <div class="panel" style="margin-top:.75rem;margin-bottom:.75rem">
+        <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Screen Sharing <span class="panel-sub">RealGram calls — same period as above; estimated from client-reported bitrate samples, not byte-exact TURN accounting</span></span></div>
+        <div class="panel-body">
+          <div class="three-col">
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">OVERVIEW</div>
+              <table class="tbl" style="width:100%"><tbody id="screenShareOverview"></tbody></table>
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">STOP REASONS</div>
+              <table class="tbl" style="width:100%"><tbody id="screenShareStopReasons"></tbody></table>
+            </div>
+            <div>
+              <div style="font-size:.72rem;font-weight:600;color:var(--muted);margin-bottom:.35rem">CONNECTION QUALITY SAMPLES</div>
+              <table class="tbl" style="width:100%"><tbody id="screenShareQuality"></tbody></table>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- ── Grouped Ad Errors ───────────────────────────────────────── -->
       <div class="panel" style="margin-top:.75rem">
         <div class="panel-header"><span class="panel-title"><?= icon('dollar') ?> Grouped Ad Errors <span class="panel-sub">AD_LOAD_ERROR aggregated by slot + code + device — repeated identical failures collapsed to one row with a count</span></span></div>
@@ -2880,7 +2901,7 @@ views.ads = {
           this.nocDays = parseInt(days, 10);
           this.nocFrom = null; this.nocTo = null;
           this.loadNoc();
-          this.loadBanner(); this.loadErrorsGrouped();
+          this.loadBanner(); this.loadErrorsGrouped(); this.loadScreenShare();
         }
       };
     });
@@ -2888,14 +2909,14 @@ views.ads = {
     if (applyBtn) applyBtn.onclick = () => {
       const f = ($('nocFrom') || {}).value;
       const t = ($('nocTo')   || {}).value;
-      if (f && t && f <= t) { this.nocFrom = f; this.nocTo = t; this.loadNoc(); this.loadBanner(); this.loadErrorsGrouped(); }
+      if (f && t && f <= t) { this.nocFrom = f; this.nocTo = t; this.loadNoc(); this.loadBanner(); this.loadErrorsGrouped(); this.loadScreenShare(); }
     };
     const rfr = $('adsNocRefresh');
-    if (rfr) rfr.onclick = () => { this.loadNoc(); this.loadBanner(); this.loadErrorsGrouped(); };
+    if (rfr) rfr.onclick = () => { this.loadNoc(); this.loadBanner(); this.loadErrorsGrouped(); this.loadScreenShare(); };
 
     this.load();
     this.loadNoc();
-    this.loadBanner(); this.loadErrorsGrouped();
+    this.loadBanner(); this.loadErrorsGrouped(); this.loadScreenShare();
   },
 
   async save() {
@@ -3098,6 +3119,54 @@ views.ads = {
     renderSlot('bannerAdsHome',    d.home_banner    || {});
     renderSlot('bannerAdsFreedom', d.freedom_banner || {});
     renderSlot('bannerAdsInbox',   d.inbox_banner   || {});
+  },
+
+  // ── Screen Sharing (Khabat, 2026-08-01 spec §8) ───────────────────────
+  // Total shares, why they stopped, P2P vs. relay split + estimated relay
+  // bandwidth (server-cost visibility), and connection-quality-tier
+  // distribution -- same period selector as the NOC charts above.
+  async loadScreenShare() {
+    const params = this.nocFrom && this.nocTo
+      ? { from: this.nocFrom, to: this.nocTo }
+      : { days: this.nocDays };
+    let d;
+    try { d = await api.get('screen-share-stats', params); } catch (e) { return; }
+    const row = (label, v) => `<tr><td style="font-size:.76rem;color:var(--muted-2)">${label}</td><td style="font-size:.76rem;text-align:right;font-family:var(--mono)">${v}</td></tr>`;
+
+    const overviewEl = $('screenShareOverview');
+    if (overviewEl) {
+      const ct = d.connection_type || {};
+      overviewEl.innerHTML = [
+        row('Total shares',        d.total_shares ?? 0),
+        row('P2P samples',         ct.p2p_samples ?? 0),
+        row('Relay (TURN) samples', ct.relay_samples ?? 0),
+        row('Relay %',             ct.relay_pct == null ? '—' : ct.relay_pct.toFixed(1) + '%'),
+        row('Est. relay bandwidth', (d.relay_bandwidth_estimate_mb ?? 0) + ' MB'),
+        row('Cam+screen simultaneous', d.camera_and_screen_simultaneous_samples ?? 0),
+      ].join('');
+    }
+
+    const stopEl = $('screenShareStopReasons');
+    if (stopEl) {
+      const sr = d.stop_reasons || {};
+      stopEl.innerHTML = [
+        row('User stopped',        sr.user ?? 0),
+        row('Stopped by phone/OS', sr.os ?? 0),
+        row('Peer unsupported',    sr.peer_unsupported ?? 0),
+        row('Call ended',          sr.call_ended ?? 0),
+      ].join('');
+    }
+
+    const qualEl = $('screenShareQuality');
+    if (qualEl) {
+      const tc = d.quality_tier_distribution || {};
+      qualEl.innerHTML = [
+        row('Good',            tc.good ?? 0),
+        row('Medium',          tc.medium ?? 0),
+        row('Poor',            tc.poor ?? 0),
+        row('Total samples',   d.total_quality_samples ?? 0),
+      ].join('');
+    }
   },
 
   // ── Grouped Ad Errors (Khabat, 2026-07-20) ────────────────────────────
