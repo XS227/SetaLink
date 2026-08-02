@@ -92,7 +92,7 @@ export class RealCallSignalingClient implements CallSignalingClient {
   private presenceToken = '';
 
   private listeners: Record<string, EventCb[]> = {
-    incomingCall: [], offer: [], answer: [], iceCandidate: [], reject: [], hangUp: [],
+    incomingCall: [], offer: [], answer: [], iceCandidate: [], reject: [], hangUp: [], screenShareState: [],
   };
 
   /** 'audio' if a `call:incoming` push ever omits `kind` (shouldn't happen —
@@ -188,6 +188,9 @@ export class RealCallSignalingClient implements CallSignalingClient {
         if (p.kind === 'offer') this.listeners.offer.forEach((cb) => cb(msg.call_id, { type: 'offer', sdp: p.sdp }));
         else if (p.kind === 'answer') this.listeners.answer.forEach((cb) => cb(msg.call_id, { type: 'answer', sdp: p.sdp }));
         else if (p.kind === 'ice') this.listeners.iceCandidate.forEach((cb) => cb(msg.call_id, p.candidate));
+        else if (p.kind === 'screen-share-state') {
+          this.listeners.screenShareState.forEach((cb) => cb(msg.call_id, !!p.active, p.trackId));
+        }
         break;
       }
       case 'call:declined':
@@ -269,6 +272,10 @@ export class RealCallSignalingClient implements CallSignalingClient {
     this.sendSignal(callId, { kind: 'ice', candidate });
   }
 
+  async sendScreenShareState(callId: string, active: boolean, trackId?: string): Promise<void> {
+    this.sendSignal(callId, { kind: 'screen-share-state', active, trackId });
+  }
+
   /** Callee side, once onIncomingCall fires: mints this device's own
    *  voucher and joins the relay room as callee. Not part of
    *  CallSignalingClient's interface (CallEngine's acceptIncoming doesn't
@@ -312,6 +319,10 @@ export class RealCallSignalingClient implements CallSignalingClient {
   onIceCandidate(cb: (callId: string, candidate: RTCIceCandidateInitLike) => void): () => void {
     this.listeners.iceCandidate.push(cb);
     return () => { this.listeners.iceCandidate = this.listeners.iceCandidate.filter((c) => c !== cb); };
+  }
+  onScreenShareState(cb: (callId: string, active: boolean, trackId?: string) => void): () => void {
+    this.listeners.screenShareState.push(cb);
+    return () => { this.listeners.screenShareState = this.listeners.screenShareState.filter((c) => c !== cb); };
   }
   onReject(cb: (callId: string) => void): () => void {
     this.listeners.reject.push(cb);

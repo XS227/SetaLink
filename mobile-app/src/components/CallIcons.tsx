@@ -93,6 +93,22 @@ export function IconCameraFlip({ size = 20, color = '#FFFFFF', strokeWidth = 2 }
   );
 }
 
+/** Monitor/screen glyph -- "Del skjerm" button. Active/"Stopp deling" state
+ *  reuses this same icon with the active-button gold treatment (like every
+ *  other toggle in this row -- IconVideoOff etc.) rather than a second
+ *  distinct glyph, so the button's *color* carries the on/off state the
+ *  way mute/video already do here. */
+export function IconScreenShare({ size = 20, color = '#FFFFFF', strokeWidth = 2 }: IconProps) {
+  const p = strokeProps(color, strokeWidth);
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Rect x={2} y={3} width={20} height={14} rx={2} ry={2} {...p} />
+      <Line x1={8} y1={21} x2={16} y2={21} {...p} />
+      <Line x1={12} y1={17} x2={12} y2={21} {...p} />
+    </Svg>
+  );
+}
+
 /** Filled phone handset — accept (as-is) or hang up/decline (rotated 135° by the caller). */
 export function IconPhone({ size = 26, color = '#0B0F14' }: IconProps) {
   return (

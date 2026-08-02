@@ -87,10 +87,27 @@ function union(a: string[], b: string[]): string[] {
 
 function mergeTier(a: QuizTierProgress, b: QuizTierProgress, isEasy: boolean): QuizTierProgress {
   const unlocked = a.locked === false || b.locked === false || isEasy;
+  const correct = union(a.correct, b.correct);
+  const wrong = union(a.wrong, b.wrong);
+  // idx is DERIVED from the merged answer sets, never merged as its own
+  // independent number. Math.max(a.idx, b.idx) let a stale cached idx
+  // encode "progress" beyond what answers actually exist -- once merged
+  // in it survives forever (this merge is anti-regression by design,
+  // nothing ever lowers idx again except a server-side reset) and
+  // silently re-corrupts a freshly-reset tier the very next time this
+  // chapter screen loads, since getLocalSnapshot()'s stale cache merges
+  // right back over the server's pristine state and gets pushed back up.
+  // Reproduced live 2026-08-02 (Khabat: "chapter quiz er ikke fikset
+  // enda") -- a local idx=2 cached from a much older stuck session
+  // outlived two separate server-side repairs because nothing ever
+  // re-derived it from the actual answer sets. correct.length+wrong.length
+  // can only ever equal the true number of DISTINCT questions answered on
+  // either device, which is exactly what idx is supposed to mean.
+  const idx = correct.length + wrong.length;
   return {
-    idx: Math.max(a.idx ?? 0, b.idx ?? 0),
-    correct: union(a.correct, b.correct),
-    wrong: union(a.wrong, b.wrong),
+    idx,
+    correct,
+    wrong,
     done: !!a.done || !!b.done,
     locked: !unlocked,
     passed: !!a.passed || !!b.passed,

@@ -69,6 +69,13 @@ export interface RemoteConfig {
   /** Enable verbose logging for this specific node ID (null = all nodes). */
   extra_logging_node?: string | null;
 
+  /** true enables the screen-share button/pipeline in RealGram calls.
+   *  Default off (undefined) -- internal-test-only rollout per Khabat's
+   *  spec §9 (not published to all users until the Android test build is
+   *  verified). Same "server-flip, no app release needed" pattern as
+   *  ecosystem.wallet_enabled below. */
+  realtime_screen_sharing_enabled?: boolean;
+
   // ── Ecosystem promotion (REAL / Shahnameh / TrustAI) ──────────────────
   /** Campaign control for the EcosystemBanner. Absent = embedded defaults. */
   ecosystem?: {

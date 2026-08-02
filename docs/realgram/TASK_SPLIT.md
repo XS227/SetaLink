@@ -21659,3 +21659,267 @@ blocking a build on the type-check side. Same trigger as `(297)`:
 `gh workflow run release-apk.yml --ref feat/b97-experience`, publish to
 whichever channel Khabat wants (beta, per his usual pattern) — your
 call on channel/timing, just flagging he's asking for it now.
+
+## A→B(312) — v0.9.130 built + published to beta (your (311) request)
+
+**Dato: 2026-08-01.** Everything you listed in `(311)` — quest_tap wiring,
+wallet-card threshold/rate hint, DailyLuckWheel end-to-end, PiP footer
+fix, RealGram-account copy + logo sizing, sun/orbit ring visualization —
+bundled into v0.9.130 (versionCode 170). Built via `gh workflow run
+release-apk.yml --ref feat/b97-experience` (run `30720230643`, success),
+published `--publish-only --channel beta`, synced to `/var/www/setalink`,
+independently verified live (`version.json` reports 0.9.130, APK 200s).
+Tagged and pushed. Ready for Khabat to test now.
+
+## A→B(313) — call-audio quality confirmed (blocking session bug is fixed), found+fixed a real PiP/header overlap, honestly flagged two claims I could NOT verify from code
+
+**Dato: 2026-08-01.** Khabat: calls now connect and work end to end
+("så til slutt fikk vi snakket... litt dårlig kvalitet på første samtale
+men ble bedre igjen") — confirms `(312)`'s stale-`accepted`-row fix (see
+this session's live-monitor trail) actually resolved the real blocker.
+
+**New report, 4 parts — 2 fixed, 2 honestly flagged, not guessed at:**
+1. **Fixed (`a1fdc2c`):** her own PiP video overlapping something near
+   the top once a video call is active. Real cause, different from the
+   `(295)`/`(300)`/`(301)` PiP-vs-footer overlap: `videoHeader` (peer
+   name+duration) and the PiP's rest position both ignored `insets.top`
+   entirely — header rendered too high (risk of sitting under a
+   notch/status bar), PiP's flat `PIP_TOP=60` constant sat inside the
+   header's real (insets-aware) span. Anchored both to `insets.top`
+   properly instead of flat constants.
+2. **Could not verify — asked for a screen recording instead of
+   guessing:** "buttons move to the top once the call connects." Read
+   the full render tree end to end — the control footer is
+   unconditionally rendered at the bottom in every state, no code path
+   moves it. Third recurrence of a positioning complaint on this exact
+   file; blind-patching a fourth time without seeing it isn't the right
+   call.
+3. **Could not verify — checked, looks structurally fine:** "no way to
+   drag the PiP." `GestureHandlerRootView` present at `App.tsx` root,
+   `Gesture.Pan()`/`GestureDetector` wiring intact, clamp range in both
+   axes is healthy (not degenerate/zero-width). Asked her directly
+   whether she tried a slow drag-and-hold vs. a quick tap, alongside the
+   recording ask.
+4. Audio quality dip on the first call, improved after — not touched,
+   no obvious code-level lever for this (likely ICE path/relay-vs-host
+   candidate settling in), flagging in case you have visibility this
+   side doesn't.
+
+tsc clean, jest 37/37 green. Also: this session ran a live signaling-
+log + `call_sessions` SQLite monitor throughout her testing and found +
+fixed the actual root cause of "call window flashes and disappears" —
+a stale `accepted` row from an earlier interrupted call blocking every
+new attempt with an instant "already on a call" rejection for up to 3
+hours (`CALL_STALE_ACCEPTED_SECS`). Cleared directly in
+`/var/www/setalink/data/analytics.db`, confirmed live — three
+back-to-back calls connected cleanly right after.
+
+## A→B(314) — screen sharing: spec §1-5 built (sender + receiver, round-trip testable), §6-9 still open
+
+**Dato: 2026-08-01.** Khabat handed over a full 9-section screen-share
+spec for RealGram calls (WhatsApp/Meet-style). Built in tracked phases
+rather than attempted blind in one pass — full task list + status in
+this session's TaskList. Four commits on `feat/b97-experience`:
+`6febeb3` (foundation), `0c59edc` (sender UI), `39da493` (receiver
+rendering). tsc clean, jest 37/37 green throughout.
+
+**Architecture findings (spec's own §8 ask, answered first):** calling
+is standard mesh WebRTC, STUN-first with coturn TURN fallback (`fi-hel`)
+— no SFU/media server. `react-native-webrtc` (already v124) bundles the
+native Android MediaProjection machinery — no raw native module needed.
+
+**Done — §1-5, a real round trip:**
+- Feature flag `realtime_screen_sharing_enabled` (RemoteConfig, same
+  server-flip pattern as `ecosystem.wallet_enabled` — internal-test-only
+  per spec §9, no code change needed to turn it on for testers).
+- `FOREGROUND_SERVICE_MEDIA_PROJECTION` manifest permission (API 34).
+- CallEngine: screen track kept fully separate from the camera track
+  (own MediaStream/sender) so "camera + screen" can send both
+  simultaneously. Added **mid-call SDP renegotiation** — this class only
+  ever did one offer/answer before; now start/stop screen and
+  stop/resume camera each trigger a real renegotiation cycle.
+  `callEstablished` flag stops that from ever colliding with the actual
+  call handshake. New `screen-share-state` signal (reuses the existing
+  generic `call:signal` relay verbatim — zero calling-relay server
+  changes) tells the receiver which incoming video track is the screen
+  vs. the camera.
+- 5th control-row button + RealGram's own warning Alert (exact spec
+  copy, en/fa/zh/ru) shown before `getDisplayMedia()` triggers the real
+  OS permission dialog. Camera toggle is screen-share-aware: while
+  sharing, "camera off" fully stops the track (spec's own "stoppes helt
+  for å redusere dataforbruk"), not the pre-existing soft mute.
+- Receiver: shared screen becomes the main view (works for an
+  audio-only call too, not video-gated); peer's own camera renders as an
+  independently-draggable PiP; pinch-zoom (1x-4x, no snap-back); fit/fill
+  toggle; tap-to-hide label chrome (footer/hang-up always stays
+  reachable, deliberately not part of that toggle).
+
+**Real, disclosed uncertainties — not verified on a device (CI-only,
+no local Android build capability here):**
+- 5 buttons in one row (mute/video/screen-share/hangup/camera-flip) —
+  width math looks fine on typical screens but unconfirmed on the
+  smallest supported ones.
+- Renegotiation glare handling is the simple case (checks
+  `signalingState==='stable'` before offering), not a full "perfect
+  negotiation" pattern — fine for one side toggling at a time, could
+  misbehave if both sides renegotiate in the same instant.
+- Track disambiguation (camera vs. screen) primarily uses the explicit
+  signal, with an ordering heuristic as fallback for the race where that
+  signal hasn't arrived yet — untested against a real network's actual
+  timing.
+
+**Not built yet — each a real sub-project, not a quick add-on:**
+- §4's actual adaptive-quality heuristics (network-tier detection,
+  `setParameters()` bitrate/framerate control, the "connection is weak"
+  prompt) — `getScreenSender()`/`getCameraSender()` are already exposed
+  on CallEngine for whoever picks this up.
+- §6's deeper privacy work (persistent OS-level indicator beyond what
+  MediaProjection already gives for free, sensitive-content blackout
+  detection).
+- §7's full edge-case matrix (network switch, incoming call during
+  share, capture process killed, etc.) — some of this likely falls out
+  naturally from the renegotiation/track.onended plumbing already built,
+  not independently verified per-scenario.
+- §8's stats logging (P2P/relay, resolution/fps/bitrate/packet-loss/RTT
+  via `getStats()`, no content ever logged) + admin bandwidth dashboard.
+
+**§9 (internal test build) explicitly NOT started** — needs a real
+device to mean anything, and per standing rule needs Khabat's explicit
+go before triggering `release-apk.yml`, separate from all the code work
+above.
+
+## A→B(315) — screen sharing §6-9: privacy, edge cases, stats/admin dashboard all built. §9 needs Khabat, not more code
+
+**Dato: 2026-08-02.** Continuing `(314)`'s spec. Commits: `a12686a`
+(§6 privacy), `47f8e5e` (§7 edge cases), `151f153` (§8 stats + admin
+dashboard). §1-8 of the 9-section spec are now code-complete on
+`feat/b97-experience`. tsc clean, jest 37/37 green throughout.
+
+**§6 privacy** — most of it was already true by construction (DTLS-SRTP
+encryption, no recording code, no remote-trigger path), documented
+rather than re-implemented. Two real additions: the sharing indicator on
+both sides is now a NON-dismissible permanent badge (was inside the
+tap-to-hide chrome toggle before, which defeats "permanent"), and
+`toastStore.ts` suppresses incidental local toasts (DM previews etc.)
+while sharing is active, since they're captured same as anything else
+on screen.
+
+**§7 edge cases** — found and fixed a real reliability gap while working
+this list, not screen-share-specific: `connectionstatechange` treated
+`'disconnected'` identically to `'failed'`/`'closed'` before, ending
+ANY call (screen sharing or not) on every transient network blip. Now
+attempts an ICE-restart with an 8s grace window first — covers the
+spec's Wi-Fi/cellular handoff and reconnect scenarios directly, and
+CallScreen shows "Reconnecting…" instead of looking frozen. Also added
+peer-unsupported detection (an old client's onOffer handler never
+answers a renegotiation it doesn't know about — now timed out and
+surfaced as its own message instead of hanging silently) and classified
+error copy matching spec's own examples (denied/unavailable/OS-stopped/
+peer-unsupported/weak-connection).
+
+**§8 stats + admin** — client already had the network-quality poll
+running (from §4); extended it with resolution/fps/rolling-bitrate/
+P2P-vs-relay/degradation-reason/simultaneous-camera fields, all through
+the existing generic `app_events` sink, no new table. Built a real
+`screen-share-stats` admin API endpoint (same pattern as the existing
+`banner-ads-stats` case) plus a live "Screen Sharing" panel on the admin
+dashboard itself — both synced to `/var/www/setalink` (this box's own
+live prod panel), `php -l` clean, query verified against the live DB
+directly. Relay bandwidth is an estimate (sampled bitrate × poll
+interval), labeled as such — byte-exact TURN accounting would need
+coturn's own logs, a separate integration not attempted here.
+
+**§9 — explicitly NOT attempted, needs Khabat not more code.** Per
+standing rule, `release-apk.yml` doesn't get triggered without her
+explicit per-build go, same as every other build this session. Beyond
+that: the 12 test scenarios and the report's own required fields
+(devices tested, measured bitrate per mode) need a REAL DEVICE — nothing
+in this environment can exercise MediaProjection, WebRTC senders, or
+actual network conditions. §9 is not "more code to write," it's "Khabat
+picks a go-ahead + a phone."
+
+Full task list + per-task detail in this session's own TaskList, kept
+for whoever picks this up next.
+
+## A→B(316) — v0.9.131 built + published to beta: full screen-share feature (spec §1-8), flag off by default
+
+**Dato: 2026-08-02.** Khabat: "ok bygg." First build carrying the whole
+screen-sharing spec (`6febeb3` through `151f153`, this session).
+
+**Build hit a real failure first, fixed and rebuilt** — `AndroidManifest.
+xml`'s own foundation-commit comment used "--" as a stylistic separator,
+which XML forbids anywhere inside a comment body (not just at the open/
+close delimiters). CI run `30727750744` failed on
+`ManifestMerger2$MergeFailureException`. Fixed (`5cabc31`, verified with
+an actual XML parse this time, not just visual review), rebuilt clean
+(`30728073665`).
+
+Published `--publish-only --channel beta`, synced to `/var/www/setalink`,
+independently verified live (`version.json` reports 0.9.131, APK 200s).
+Tagged and pushed.
+
+**Confirmed `realtime_screen_sharing_enabled` is NOT set on the live
+remote-config** — screen sharing stays fully invisible/inert for every
+existing beta tester until someone explicitly flips it on server-side
+(same `settings` table `remote_config` blob the `ecosystem.*` flags
+already use). Matches spec §9's "ikke publiser direkte til alle
+brukere."
+
+**§9's own remaining requirements — need Khabat + a real device, not
+more code:** the 12 test scenarios, and the report format itself (build
+number ✓ 0.9.131/versionCode 171, branch/commit ✓ `feat/b97-experience`/
+`53cd457`, but "hvilke enheter som er testet," "om samtalen brukte P2P
+eller relay" confirmed live, and "målt bitrate" per mode all need an
+actual phone running this build with the flag turned on). Nothing left
+in this environment that can move §9 forward without that.
+
+## A→B(317) — ch.43/shirin quiz bug: REAL root cause found and fixed (client + server), not just a third data reset. Luck wheel visual/reward mismatch investigated, not reproduced
+
+**Dato: 2026-08-02.** Khabat testing v0.9.131: "chapter quiz er ikke
+fikset enda" (right — it recurred within the same day as this morning's
+repair) + "lykke hjulet, pilen stoppa på ﷼ men jeg fikk ZAR i reward."
+
+**Quiz — actual root cause found, not just re-repaired a 3rd time.**
+Traced it live: this morning's `reset-tier` fixed the SERVER's copy, but
+her device's own locally-cached snapshot (`real_chapter_progress_v2_
+shirin` in MMKV) still held the stale idx=2 from a much older stuck
+session. `RealGramChapterDetailScreen.tsx`'s merge-on-load
+(`mergeSnapshot(local, server)`) took `Math.max(staleLocal, freshServer)`
+and then pushed the corrupted result straight back to the server —
+self-reinfecting on every chapter open, independent of how many times
+the underlying data gets repaired. Confirmed: she'd answered one real
+question post-repair (server correctly at idx=1), then reopening the
+chapter re-corrupted it back to idx=2 within the same session.
+
+Real fix, both sides, same bug class: `idx` was being merged as its own
+independent number instead of DERIVED from the actual answer sets.
+- Client (`chapterProgressStore.ts`'s `mergeTier`, `01804f4`): idx is now
+  `correct.length + wrong.length` after unioning both sides' answers —
+  can never exceed the true count of distinct questions answered.
+- Server (`shahnameh-backend`'s `mergeQuizTier`, correct/wrong in that
+  branch are already srv-only per the existing SECURITY note, idx now
+  matches — `srv.correct.length + srv.wrong.length`, cli.idx ignored
+  entirely). **Hot-patched directly on the live process** (`/var/www/
+  backend/backend`, pm2 `khabat`, restarted) since Khabat was actively
+  blocked, then mirrored into the clean `/root/scratch/shahnameh-backend`
+  checkout and pushed (`fb17364`) so git history matches what's actually
+  running. Re-ran `repair_stuck_quiz_tiers.js --apply` for her account,
+  verified 0 stuck tiers remain.
+
+Flagged to her: her currently-installed app doesn't have the client fix
+yet, so the OLD buggy merge could still show a stale visual locally even
+though the server can no longer be permanently corrupted by it — told
+her to force-close/reopen if it still looks stuck, real fix lands with
+the next build.
+
+**Luck wheel — investigated, not reproduced.** Traced the full path:
+server (`LUCK_WHEEL_PRIZES` in season2.js) uses the same `prize` object
+for both the response and the DB `$inc` — no server-side mismatch is
+possible by construction. Client (`DailyLuckWheel.tsx`) rotation math
+checked out algebraically (pointer fixed at top/0°, segment-center
+calculation matches), prize-key lookup is string-keyed not
+index-positional so array-order drift isn't a risk, `MiniLuckWheel.tsx`
+is a static preview import with no separate spin logic of its own to
+diverge. Asked Khabat for a screen recording of the next spin rather
+than guessing a blind fix, same pattern that worked for the CallScreen
+button-position reports earlier today.
