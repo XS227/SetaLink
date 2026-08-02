@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, GestureResponderEvent } from 'react-native';
 import { Colors, Typography, Radius } from '../design/tokens';
+import { useT } from '../i18n';
 
 interface Props {
   /** Composite health score 0–100 (same value that fed the old Network Quality bar). */
@@ -19,6 +20,7 @@ interface Props {
  * so the home screen stays focused on the one action that matters — Connect.
  */
 export function CoverageIcon({ quality, connected = false, onPress }: Props) {
+  const { t } = useT();
   const q = Math.max(0, Math.min(100, Math.round(quality)));
 
   const color = !connected
@@ -41,7 +43,7 @@ export function CoverageIcon({ quality, connected = false, onPress }: Props) {
       activeOpacity={onPress ? 0.7 : 1}
       disabled={!onPress}
       accessibilityRole="image"
-      accessibilityLabel={connected ? `Coverage ${q}%` : 'Coverage — not connected'}
+      accessibilityLabel={connected ? t('home.coverage').replace('{pct}', String(q)) : t('home.coverageOffline')}
     >
       <View style={styles.bars}>
         {[0, 1, 2, 3].map(i => {
