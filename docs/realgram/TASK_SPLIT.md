@@ -22491,3 +22491,12 @@ includes the call-bug toast fix (`334f001`) but predates the back-button
 two are still waiting on a future build. Now in Apple's TestFlight
 processing queue (not instant — usual review/processing lag before
 testers see it as an update).
+
+## A→B(331) — iOS TestFlight v0.9.135/176 built + uploaded (Khabat's go), folds in the back-button + hamburger-menu fixes
+
+**Dato: 2026-08-02.** `run 30765467261`, pinned to `31cc218` — includes
+everything from `(328)`/`(329)` this time (call-bug toast, Inbox
+back-button `hitSlop`, `TopBar` menu clamp). Confirmed from the job log:
+`version.ts → 0.9.135 / build 176`, then `UPLOAD SUCCEEDED with no
+errors` (Delivery UUID `077a729f-6fb0-467c-bfcf-699a01f0e3dd`). In
+Apple's TestFlight processing queue now.
