@@ -12,6 +12,7 @@ import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
 import { EmberField } from '../components/EmberField';
 import { DailyLuckWheel } from '../components/DailyLuckWheel';
+import { SlotMachine } from '../components/SlotMachine';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 
@@ -45,6 +46,18 @@ export function DailyLuckWheelScreen({ onBack }: Props) {
 
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
           <DailyLuckWheel deviceId={deviceId} />
+        </GlassCard>
+
+        {/* Slot machine (Khabat, 2026-08-02: "en til casino type spill
+            som lykkehjulet... spilleautomat") -- same screen as the luck
+            wheel above, simplest and most discoverable placement, no new
+            nav route needed. Genuinely different game underneath (costs
+            a stake, can miss) so it gets its own title/subtitle rather
+            than folding into the page header above, which is still
+            specifically the luck wheel's own framing. */}
+        <Text style={styles.pageTitle}>{t('slots.title')}</Text>
+        <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+          <SlotMachine deviceId={deviceId} />
         </GlassCard>
       </ScrollView>
     </View>

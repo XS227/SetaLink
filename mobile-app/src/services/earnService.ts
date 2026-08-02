@@ -157,6 +157,44 @@ export async function spinLuckWheel(telegramId: string): Promise<LuckSpinResult>
   return { ok: false, error: String(data?.error ?? 'network_error') };
 }
 
+/* Slot machine — server-authoritative stake+draw (shahnameh-backend
+ * POST /season2/user/slot-spin). Khabat, 2026-08-02: "en til casino
+ * type spill som lykkehjulet... spilleautomat." Different economic
+ * shape from the luck wheel above — costs a stake (player's choice of
+ * currency), no daily limit, can genuinely miss. The reels animate to
+ * whatever symbol/outcome this returns; they never pick locally, same
+ * discipline as the luck wheel — see this session's own investigation
+ * into why that matters (the "wheel landed on ﷼ but I got ZAR" report
+ * turned out to be a real, if unreproduced, risk class worth avoiding
+ * by construction here from the start). */
+export type SlotStakeCurrency = 'zar' | 'real';
+
+export type SlotSpinResult =
+  | {
+    ok: true; win: boolean; symbol: string; amount: number; staked: number;
+    newZar: number; newGems: number; newFarr: number; newRealBalance: number;
+  }
+  | { ok: false; error: string };
+
+export async function spinSlotMachine(telegramId: string, stakeCurrency: SlotStakeCurrency): Promise<SlotSpinResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/slot-spin', { telegram_id: telegramId, stake_currency: stakeCurrency });
+  if (data?.status === 1 && typeof data.symbol === 'string') {
+    return {
+      ok: true,
+      win: !!data.win,
+      symbol: data.symbol,
+      amount: Number(data.amount) || 0,
+      staked: Number(data.staked) || 0,
+      newZar: Number(data.new_zar) || 0,
+      newGems: Number(data.new_gems) || 0,
+      newFarr: Number(data.new_farr) || 0,
+      newRealBalance: Number(data.new_real_balance) || 0,
+    };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
 export type MilestoneResult = { ok: boolean; error?: string };
 
 export async function claimMilestone(telegramId: string, threshold: number): Promise<MilestoneResult> {
