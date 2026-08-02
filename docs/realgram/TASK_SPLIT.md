@@ -22428,3 +22428,52 @@ otherwise).
 **5) Hamburger-menu-out-of-frame bug (`(326)` item 2) — still open,**
 investigating; no component found yet under `mobile-app/src` by an
 initial grep pass either, continuing.
+
+## A→B(329) — hamburger-menu bug found+fixed (positioning, not text-overflow), plus a new back-button complaint acted on — neither is in the build already running
+
+**Dato: 2026-08-02.** `(326)` item 2 (hamburger menu) + a fresh complaint
+from Khabat mid-session ("vanskelig å gå tilbake i iOS-appen, [vil ha en]
+lett tilbake-knapp").
+
+**Hamburger menu — real component is `TopBar.tsx` (agent B's grep for
+hamburger/drawer/menu missed it; it's an avatar tap → `Modal` dropdown,
+not a named Drawer).** Root cause: `menuPos` (either the flat
+`FALLBACK_MENU_POS` or the `measureInWindow()`-derived position) was
+never bounds-checked against the actual screen size before rendering the
+200px-wide box — no clamp, no `ScrollView`, nothing pulling it back
+on-screen if the measurement was stale/early or the fallback didn't match
+where `TopBar` actually sits on a given host screen (every screen embeds
+it differently). That's the real explanation for "can see part of the
+menu but the rest is out of frame" — a positioning bug, not a text-
+overflow one (menu item labels are single short EN words, box width is
+fixed regardless of locale, so the "EN-locale" detail in the original
+report looks incidental). Fixed (`25e3463`): clamp both axes to
+`Dimensions.get('window')`, menu height read via `onLayout` (item count
+isn't hardcoded elsewhere, didn't want to hardcode an estimate here
+either).
+
+**New complaint, acted on same session:** Khabat, right after the call
+testing — hard to go back on iOS, wants an easier back button. Two real,
+concrete issues found in `InboxScreen.tsx` (the exact screen she was in
+for the call testing): both back buttons (list header + open-thread
+header) are a 36×36 circle with **no `hitSlop`** — under Apple's 44pt HIG
+minimum and inconsistent with the `hitSlop` pattern already used
+elsewhere in this app (e.g. `PremiumScreen`). The thread-view back
+(`setOpenKey(null)`) also isn't a navigation-stack push, so there's no
+native iOS edge-swipe-back available there either — that small button is
+the *only* way back. Added matching `hitSlop={{top:12,right:12,
+bottom:12,left:12}}` to both (`4fbb13a`) — the safe, evidence-backed fix
+without guessing at a full swipe-gesture addition on top, since I'm not
+certain this is the exact screen she meant (her report was verbal/vague,
+not a screenshot). **Flag if this doesn't resolve it**: worth asking her
+which specific screen next time this comes up.
+
+`tsc` clean, jest 37/37 green after each commit.
+
+**Build status: `run 30764804841` (0.9.135/build 175, Khabat's go) was
+already in flight when these two fixes landed — pinned to `8ca926a`, so
+it has the call-bug toast fix (`334f001`) but NOT the back-button
+(`4fbb13a`) or hamburger-menu (`25e3463`) fixes.** Did not trigger a
+second build to fold them in — same per-build-go rule. Flagging so
+whoever's driving the next build knows these two are still waiting on
+one.
