@@ -1,4 +1,4 @@
-# Rostam & Sohrab — manus og skotliste (v3)
+# Rostam & Sohrab — manus og skotliste (v4)
 ### Higgsfield Global Film Festival ($1M) — innsendingsfrist 31. august 2026 — mål: 3:33
 
 ---
@@ -35,7 +35,84 @@ den skriftlige synopsisen dere sender inn sammen med filmen.
 
 ---
 
-## 2. Hva som er nytt i v2
+## 2. Karakterbibel
+
+Fire hovedkarakterer: Ferdowsi, Rostam, Sohrab — og Rakhsh, Rostams hest, som i kildeteksten
+er langt mer enn et transportmiddel. Alt under er hentet fra faktiske beskrivelser i
+Shahnameh/sekundærlitteratur, ikke oppdiktet. "Soul Cast-prompt" er en klar-til-bruk visuell
+oppsummering for Cinema Studio.
+
+### Ferdowsi — Hakim, "Vismannen"
+*Rammefortelleren · dikteren selv, 940–1025 e.Kr.*
+
+- **Fysikk:** Eldre mann, ca. 70 år på det tidspunktet han fullfører verket (1010 e.Kr., etter
+  25–30 års arbeid). Fra dehqan-klassen — jordeiende persisk lavadel, sett som bærere av "ekte"
+  pre-islamsk persisk identitet.
+- **Antrekk:** Enkel, uprangen turban og kappe i dehqan-stil — ikke geistlig, ikke hoffklær.
+  Blekkflekkede fingre. Han døde nær fattig etter at sultan Mahmud av Ghazni aldri betalte den
+  lovede summen — antrekket bør reflektere beskjedenhet, ikke prakt.
+- **Personlighet:** Stolt, stille bitter over manglende kongelig anerkjennelse, men urokkelig
+  sikker på at verket ville vare. Skrev i relativ isolasjon, ikke ved et strålende hoff.
+- **Soul Cast-prompt:** `Elderly Persian dehqan-class scholar, ~70 years old, long grey-white
+  beard, plain wound turban, simple undyed robes, ink-stained fingers, seated in a modest
+  candlelit study — not royal or opulent.`
+
+### Rostam — Tahamtan · Jahan Pahlavan
+*"Den mektige kroppen" · "Verdens mester" — Irans største helt, fra Sistan/Zabulistan*
+
+- **Fysikk:** Legendarisk kjempestor — kildene sier han var så stor ved fødselen at moren
+  trengte hjelp fra den mytiske fuglen Simorgh for å føde ham. Skal fremstå synlig større enn
+  alle andre menn i bildet.
+- **Rustning:** Tre lag før kamp: *zereh* (lett ringbrynje) → *jowšan* (tykk platerustning) →
+  *babr-e bayan*, den magiske tiger/leopard-skinn-kappen — hans mest ikoniske kjennetegn, sies
+  å være ugjennomtrengelig for ild, vann og våpen. Spisst hjelmhode i tiger-mønster.
+  Signaturvåpen: en tung stridsklubbe med okse-hode (*gorz-e gāvsar*).
+- **Personlighet:** Definert av lojalitet og mot. Stolt, kort lunte, iblant hovmodig. Kronisk
+  oppgitt over kong Kay Kavus' forfengelighet og dumhet — men redder ham alltid likevel. Taler
+  kongene midt imot uten frykt.
+- **Soul Cast-prompt:** `Massive, towering warrior — visibly larger-framed than any other man
+  in frame. Layered armor topped with a spotted tiger/leopard-pelt garment (babr-e bayan),
+  pointed tiger-striped helmet, heavy ox-head war mace at his side. Weathered, battle-worn,
+  veteran face — not young.`
+
+### Sohrab
+*Rostams sønn, oppvokst i Turan, har aldri møtt faren*
+
+- **Fysikk:** Like høy og sterk som sin far til tross for ungdommen — et fysisk sidestykke til
+  Rostam selv, men med et tydelig yngre, uslitt ansikt. Alder holdes bevisst upresis i manuset
+  ("umulig ung for sin styrke") — kildene varierer, ikke fest et eksakt tall.
+- **Rustning:** Egen stridsklubbe, en slankere/mindre slitt ekko av farens okse-hode-design —
+  antyder en arv han selv ikke vet han bærer videre. Lettere rustning enn faren, mindre
+  kamperfaring synlig i utstyret.
+- **Personlighet:** Idealistisk, håpefull, drevet av kjærlighet til en far han aldri har møtt.
+  Ærefull av instinkt — skåner mannen som dreper ham fordi han stoler på en oppdiktet
+  æreskodeks. Ambisiøs på en konstruktiv måte: vil forene Iran og Turan under seg og faren, ikke
+  erobre for erobringens skyld.
+- **Soul Cast-prompt:** `Young warrior with the same towering build and proportions as Rostam,
+  but a visibly younger, unweathered face — eager rather than grim. Lighter, less battle-worn
+  armor. Carries his own war mace, a leaner echo of the ox-head design.`
+
+### Rakhsh
+*Rostams hest — ikke bare et transportmiddel, en egen karakter i kildeteksten*
+
+- **Utseende:** Ferdowsis egen beskrivelse: pelsen som "rosenblader strødd på safrangul bunn" —
+  altså rødrosa flekker/dapples på en gyllen-beige grunnfarge, ikke ensfarget. Bryst og skuldre
+  som en løve, hover av stål, styrke som en elefant.
+- **Opprinnelse:** Rostam valgte ham selv fra hestehjorder fra Zabulistan/Kabul — han presset
+  hånden mot ryggen på hver hest; alle andre bøyde seg under trykket, kun denne folen holdt
+  stand. Fanget med lasso etter en heftig jakt. Han er den eneste hesten i riket sterk nok til å
+  bære Rostam i full rustning.
+- **Personlighet:** Ekstremt lojal, uvanlig intelligent, adlyder ingen andre enn Rostam. I andre
+  episoder kjemper han alene mot en løve for å beskytte en sovende Rostam — en aktiv helt i egen
+  rett, ikke bare et kjøretøy.
+- **Soul Cast-prompt:** `Powerful war-horse with a dappled roan coat — rose-red/pink dapples
+  scattered over a golden-tan base, not a solid color. Heavily muscled chest and shoulders,
+  dark mane and tail, alert intelligent eyes. Built to carry a rider in full plate and pelt
+  armor without strain.`
+
+---
+
+## 3. Hva som er nytt i v2
 
 Etter et andre research-pass fant jeg mer autentisk materiale enn i v1 — spesielt fra selve
 sorgscenen etter drapet, som jeg først kuttet for tid. Det viser seg å være noe av det sterkeste
@@ -73,7 +150,7 @@ hendelsene som kildene beskriver — ikke direkte sitat fra noen oversettelse.
 
 ---
 
-## 3. Tone
+## 4. Tone
 
 **Game of Thrones** (politisk kulde, stygg/rask vold, makt som årsak til tragedie) ×
 **Lord of the Rings** (episk landskapsskala, gyllent støvlys) × **Vikings** (brutal
@@ -82,7 +159,7 @@ gjenkjenningen — stillheten skal bære vekten.
 
 ---
 
-## 4. Manus (screenplay-format, engelsk dialog)
+## 5. Manus (screenplay-format, engelsk dialog)
 
 ```
 FADE IN:
@@ -280,7 +357,7 @@ FADE OUT.
 
 ---
 
-## 5. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
+## 6. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
 
 | # | Shot | Sek | Kamera | Studio-notat |
 |---|------|-----|--------|---------------|
@@ -323,7 +400,7 @@ FADE OUT.
 
 ---
 
-## 6. Åpne punkter før produksjon starter
+## 7. Åpne punkter før produksjon starter
 
 - Vent på dommerkriterier/innholdsregler (varslet offentliggjort 3.–5. aug) — sjekk spesielt
   om selvmordsforsøket i sorgscenen (shot 18) er innenfor rammene; det er kildetro, men kan
