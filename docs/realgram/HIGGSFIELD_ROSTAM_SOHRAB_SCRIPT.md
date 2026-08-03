@@ -1,9 +1,41 @@
-# Rostam & Sohrab — manus og skotliste (v2)
+# Rostam & Sohrab — manus og skotliste (v3)
 ### Higgsfield Global Film Festival ($1M) — innsendingsfrist 31. august 2026 — mål: 3:33
 
 ---
 
-## 1. Hva som er nytt i v2
+## 1. Historisk og geografisk forankring
+
+**Tidsperiode.** Shahnameh deler Irans legendariske historie i fire "dynastier": Pishdadian
+(mytisk skapelsestid, ~2441 år), **Kayanian** (heltealderen, ~721 år), Ashkanian/partisk, og
+Sasanian (den historisk godt dokumenterte perioden frem til 651 e.Kr., da araberne erobret
+riket). Rostam & Sohrab hører til **Kayanian-dynastiet**, under **kong Kay Kavus** — andre
+kongen i denne slekten, bestefar til Kay Khosrow. Dette er heltealderen i Ferdowsis egen
+kronologi, plassert generasjoner **før Kyros den store** og Achaemenid-riket de fleste vestlige
+seere forbinder med "Persia" (fra f.eks. «300»). Shahnameh gir ingen presist kalenderår for
+perioden — den er legendarisk, ikke historisk datert slik Sasanid-æraen er — men det er nettopp
+poenget: persisk sivilisasjon strekker seg lenger tilbake enn de fleste vet, til en heltealder
+eldre enn selve det klassiske perserriket.
+
+**Geografi — ekte, ikke oppdiktet.** Sistan (også kalt Zabulistan), Rostams hjemland, er et
+reelt område som i dag ligger delt mellom Irans Sistan-Baluchestan-provins og Sør-Afghanistan
+(Zabul, Nimruz, Helmand, Kandahar). Navnet kommer fra "Sakastan" — hjemlandet til sakerne, en
+ekte skytisk/øst-iransk stamme fra antikken. Turan, riket Sohrab kommer fra, er **ikke tyrkisk**
+— en vanlig misforståelse. Tyrkiske folk kom til Sentral-Asia først mange hundre år senere. I
+Shahnameh (og i Avesta, den zoroastriske hellige teksten den bygger på) er turanerne
+øst-iranske nomadefolk, nære slektninger av perserne selv — beslektet med de historiske
+skyterne/sakerne. Konflikten mellom Iran og Turan er dermed egentlig en konflikt mellom to
+grener av samme folk, ikke perser mot fremmed erobrer — som gjør Rostam & Sohrab enda mer
+presist symbolsk: en far og sønn fra to "fiendtlige" riker som i virkeligheten er kjøtt av
+samme kjøtt.
+
+**Brukt i filmen:** åpningstekstkortet nevner nå Kay Kavus og "før Kyros den store" eksplisitt
+(shot 1). Sistan/Turan-detaljen er bevisst holdt utenfor selve dialogen — for mye eksposisjon
+ville brutt sjangertonen — men ligger som undertekst i sluttkortet, og bør absolutt være med i
+den skriftlige synopsisen dere sender inn sammen med filmen.
+
+---
+
+## 2. Hva som er nytt i v2
 
 Etter et andre research-pass fant jeg mer autentisk materiale enn i v1 — spesielt fra selve
 sorgscenen etter drapet, som jeg først kuttet for tid. Det viser seg å være noe av det sterkeste
@@ -41,7 +73,7 @@ hendelsene som kildene beskriver — ikke direkte sitat fra noen oversettelse.
 
 ---
 
-## 2. Tone
+## 3. Tone
 
 **Game of Thrones** (politisk kulde, stygg/rask vold, makt som årsak til tragedie) ×
 **Lord of the Rings** (episk landskapsskala, gyllent støvlys) × **Vikings** (brutal
@@ -50,7 +82,7 @@ gjenkjenningen — stillheten skal bære vekten.
 
 ---
 
-## 3. Manus (screenplay-format, engelsk dialog)
+## 4. Manus (screenplay-format, engelsk dialog)
 
 ```
 FADE IN:
@@ -62,9 +94,12 @@ quill moving steadily. Stacks of finished pages surround him,
 the work of a lifetime.
 
 TEXT ON SCREEN:
-"Persia, before its name was written down. A poet named
-Ferdowsi spent thirty years of his life giving his people
-back their language — and their kings."
+"In the Shahnameh's own chronology, this is the age of the
+Kayanian kings — under Kay Kavus, generations before Cyrus
+the Great, before the Persia most of the world remembers.
+
+A poet named Ferdowsi spent thirty years of his life giving
+his people back this age — in their own language."
 
 He dips the quill, keeps writing. The camera pushes past his
 hand, into the page itself — ink strokes blur, dissolve into:
@@ -238,23 +273,24 @@ He sets it down. Closes the heavy book. The candle gutters.
 TITLE CARD:
 "Nushdaru ba'd az marg-e Sohrab."
 "The cure — after Sohrab's death."
+SISTAN · TURAN — the Kayanian Age
 
 FADE OUT.
 ```
 
 ---
 
-## 4. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
+## 5. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
 
 | # | Shot | Sek | Kamera | Studio-notat |
 |---|------|-----|--------|---------------|
-| 1 | Ferdowsi skriver ved lys, tekstplakat om Persia/oppdraget hans | 14 | Statisk, varmt lys | Ny — egen Soul Cast «Ferdowsi», brukes kun shot 1, 20, 21 |
+| 1 | Ferdowsi skriver ved lys, tekstplakat: Kayanian-æraen/Kay Kavus/før Kyros | 18 | Statisk, varmt lys | Ny — egen Soul Cast «Ferdowsi», brukes kun shot 1, 20, 21. Lengre tekst enn v2 |
 | 2 | Push inn i siden, blekk → bilde | 7 | Macro push-in | Overgangs-VFX, ren post |
 | 3 | To hærer over sletta, vind, stillhet | 13 | Ekstrem vidvinkel, statisk | Location bank, gjenbrukes shot 18 |
 | 4 | Sohrab rir ut, speider blant fiendens rekker | 7 | Tracking, lav vinkel | Soul Cast: Sohrab, hero frame 1 |
 | 5 | Rostam rir ut, kappe over rustning | 6 | Tracking, motsatt retning | Soul Cast: Rostam, hero frame 1 |
 | 6 | «Are you Rostam?» / «I am no one» | 15 | To-shot, hester i sirkel | Dialogscene 1 — prioriter lipsync-budsjett |
-| 7 | Lanser knuses, avmontert, sverd → nærkamp | 17 | Håndholdt, raske klipp | Høyest genereringskost i filmen |
+| 7 | Lanser knuses, avmontert, sverd → nærkamp | 13 | Håndholdt, raske klipp | Høyest genereringskost i filmen |
 | 8 | «You fight like the man in my mother's stories» — midtkamp-dialog | 7 | Close, vekslende | Dialogscene 2 — ny i v2, forsterker gjenkjenningstemaet |
 | 9 | Sohrab kaster Rostam ned, dolk trukket | 6 | Close, lav vinkel | Soul Cast, hero frame 2 (bakke) |
 | 10 | Rostams løgn om «regelen» — Sohrab slipper ham | 14 | Close på begge ansikter | Dialogscene 3 — filmens tematiske kjerne, aldri kutt |
@@ -287,7 +323,7 @@ FADE OUT.
 
 ---
 
-## 5. Åpne punkter før produksjon starter
+## 6. Åpne punkter før produksjon starter
 
 - Vent på dommerkriterier/innholdsregler (varslet offentliggjort 3.–5. aug) — sjekk spesielt
   om selvmordsforsøket i sorgscenen (shot 18) er innenfor rammene; det er kildetro, men kan
