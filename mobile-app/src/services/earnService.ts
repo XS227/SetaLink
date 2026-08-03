@@ -343,6 +343,91 @@ export async function pullFeather(telegramId: string): Promise<FeatherPullResult
   return { ok: false, error: String(data?.error ?? 'network_error') };
 }
 
+/* Skattkammer (Treasury) — Game 4, new 2026-08-03 (shahnameh-backend POST
+ * /season2/user/treasury-open). Khabat: "legg til flere casino spill og
+ * sy det sammen med shahnameh historie og items. for eksempel gorze
+ * rostam, hesten hans, kamane arash etc." — a dedicated relic-pull game
+ * spanning the whole Shahnameh (not just Haft Khan), confirmed as its own
+ * game rather than folded into Simorgh's Feather's chapter-card pool.
+ * Same pay-to-play stake-currency-choice shape as slot-spin, single call
+ * (the pull IS the reveal, nothing to hide between draw and result) same
+ * as feather-pull above -- server draws the relic AND applies the
+ * stake/duplicate-payout atomically, this only asks for a pull and
+ * animates to whatever slug/rarity comes back. */
+export type TreasuryStakeCurrency = 'zar' | 'real';
+
+export type TreasuryOpenResult =
+  | {
+    ok: true; slug: string; name: string; flavorText: string; icon: string; era: string;
+    rarity: string; duplicate: boolean; amountCurrency: string | null; amount: number;
+    newZar: number; newGems: number; newRealBalance: number; collectionTotal: number;
+  }
+  | { ok: false; error: string };
+
+export async function openTreasury(telegramId: string, stakeCurrency: TreasuryStakeCurrency): Promise<TreasuryOpenResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/treasury-open', { telegram_id: telegramId, stake_currency: stakeCurrency });
+  if (data?.status === 1 && typeof data.slug === 'string') {
+    return {
+      ok: true,
+      slug: data.slug,
+      name: String(data.name || ''),
+      flavorText: String(data.flavor_text || ''),
+      icon: String(data.icon || '✨'),
+      era: String(data.era || ''),
+      rarity: String(data.rarity || 'common'),
+      duplicate: !!data.duplicate,
+      amountCurrency: data.amount_currency ?? null,
+      amount: Number(data.amount) || 0,
+      newZar: Number(data.new_zar) || 0,
+      newGems: Number(data.new_gems) || 0,
+      newRealBalance: Number(data.new_real_balance) || 0,
+      collectionTotal: Number(data.collection_total) || 0,
+    };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
+/* Scratch card — Game 5, new 2026-08-03 (shahnameh-backend POST /season2/
+ * user/scratch-play). Confirmed via AskUserQuestion as the second of the
+ * "2-3 new games," picked for low build cost over a card-game
+ * alternative. Same pay-to-play stake-currency-choice shape as
+ * spinSlotMachine, reusing that game's own currency-symbol vocabulary
+ * (zar/gem/farr/real/blank) -- this is a different reveal mechanic (a
+ * 3x3 grid the client uncovers cell-by-cell), not different content.
+ * Single call, same as slot-spin/feather-pull/openTreasury -- the grid's
+ * cell-by-cell uncovering on screen is cosmetic only, the win/symbol/
+ * amount are already fully decided and paid out by the time this
+ * resolves. */
+export type ScratchStakeCurrency = 'zar' | 'real';
+
+export type ScratchPlayResult =
+  | {
+    ok: true; win: boolean; symbol: string | null; amount: number; grid: string[]; staked: number;
+    newZar: number; newGems: number; newFarr: number; newRealBalance: number;
+  }
+  | { ok: false; error: string };
+
+export async function playScratch(telegramId: string, stakeCurrency: ScratchStakeCurrency): Promise<ScratchPlayResult> {
+  if (!telegramId) return { ok: false, error: 'unlinked' };
+  const data = await post('/api/season2/user/scratch-play', { telegram_id: telegramId, stake_currency: stakeCurrency });
+  if (data?.status === 1 && Array.isArray(data.grid)) {
+    return {
+      ok: true,
+      win: !!data.win,
+      symbol: data.symbol ?? null,
+      amount: Number(data.amount) || 0,
+      grid: data.grid,
+      staked: Number(data.staked) || 0,
+      newZar: Number(data.new_zar) || 0,
+      newGems: Number(data.new_gems) || 0,
+      newFarr: Number(data.new_farr) || 0,
+      newRealBalance: Number(data.new_real_balance) || 0,
+    };
+  }
+  return { ok: false, error: String(data?.error ?? 'network_error') };
+}
+
 export type MilestoneResult = { ok: boolean; error?: string };
 
 export async function claimMilestone(telegramId: string, threshold: number): Promise<MilestoneResult> {

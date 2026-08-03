@@ -22,6 +22,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle, Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { spinSlotMachine, SlotStakeCurrency } from '../services/earnService';
@@ -61,6 +62,24 @@ const STAKES: Record<SlotStakeCurrency, number> = { zar: 20, real: 10 };
 const REEL_COUNT = 3;
 const FLICKER_MS = [900, 1300, 1700]; // reel 1 stops first, then 2, then 3 -- classic stagger
 const FLICKER_INTERVAL_MS = 70;
+
+// Cabinet frame geometry — a marquee light bar (Svg, alternating bulbs) sits
+// above a bezel body (View: gold pilasters either side of the recessed reel
+// windows). MARQUEE_W is derived from the same numbers the cabinetBody/
+// reelsRow styles below use (reel size, reel gap, pilaster width, the gaps
+// around them, and cabinetBody's own padding) so the marquee bar's width
+// always lines up with the cabinet under it rather than being eyeballed
+// separately.
+const REEL_SIZE = 64;
+const REEL_GAP = Spacing[3];
+const PILASTER_W = 6;
+const CABINET_PAD = Spacing[3];
+const CABINET_GAP = Spacing[2];
+const MARQUEE_BULBS = 5;
+const MARQUEE_W =
+  CABINET_PAD * 2 + PILASTER_W * 2 + CABINET_GAP * 2 +
+  REEL_SIZE * REEL_COUNT + REEL_GAP * (REEL_COUNT - 1);
+const MARQUEE_H = 14;
 
 function randomSymbolIcon(): string {
   return SYMBOLS[Math.floor(Math.random() * SYMBOLS.length)].icon;
@@ -209,12 +228,47 @@ export function SlotMachine({ deviceId }: Props) {
         ))}
       </View>
 
-      <View style={styles.reelsRow}>
-        {reelIcons.map((icon, i) => (
-          <View key={i} style={styles.reelBox}>
-            <Text style={styles.reelIcon}>{icon}</Text>
+      <View style={styles.cabinet}>
+        <Svg width={MARQUEE_W} height={MARQUEE_H} viewBox={`0 0 ${MARQUEE_W} ${MARQUEE_H}`}>
+          <Defs>
+            <LinearGradient id="marqueeBar" x1="0%" y1="0%" x2="100%" y2="0%">
+              <Stop offset="0%" stopColor={Colors.gold[700]} />
+              <Stop offset="50%" stopColor={Colors.gold[400]} />
+              <Stop offset="100%" stopColor={Colors.gold[700]} />
+            </LinearGradient>
+          </Defs>
+          <Rect x={0} y={MARQUEE_H / 2 - 3} width={MARQUEE_W} height={6} rx={3} fill="url(#marqueeBar)" />
+          {Array.from({ length: MARQUEE_BULBS }).map((_, i) => {
+            const x = 10 + i * ((MARQUEE_W - 20) / (MARQUEE_BULBS - 1));
+            const lit = i % 2 === 0;
+            return (
+              <React.Fragment key={i}>
+                {/* Soft halo under every other bulb -- the "glow" cue,
+                    faked with a larger low-opacity circle since RN/svg has
+                    no cheap blur filter worth the render cost here. */}
+                {lit && <Circle cx={x} cy={MARQUEE_H / 2} r={6} fill={Colors.gold[100]} opacity={0.35} />}
+                <Circle
+                  cx={x} cy={MARQUEE_H / 2} r={3.5}
+                  fill={lit ? Colors.gold[100] : Colors.gold[700]}
+                  stroke={Colors.gold[700]} strokeWidth={0.75}
+                />
+              </React.Fragment>
+            );
+          })}
+        </Svg>
+
+        <View style={styles.cabinetBody}>
+          <View style={styles.pilaster} />
+          <View style={styles.reelsRow}>
+            {reelIcons.map((icon, i) => (
+              <View key={i} style={styles.reelWindow}>
+                <View style={styles.reelGlare} />
+                <Text style={styles.reelIcon}>{icon}</Text>
+              </View>
+            ))}
           </View>
-        ))}
+          <View style={styles.pilaster} />
+        </View>
       </View>
 
       {result && (
@@ -267,16 +321,25 @@ const styles = StyleSheet.create({
   stakeBtnActive: { borderColor: Colors.gold[400], backgroundColor: Colors.gold[400] + '22' },
   stakeBtnText: { fontSize: Typography.size.sm, color: Colors.text.primary, fontFamily: Typography.family.heading },
 
-  reelsRow: {
-    flexDirection: 'row', gap: Spacing[3], padding: Spacing[3],
-    backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg,
-    borderWidth: 2, borderColor: Colors.gold[400] + '55',
+  cabinet: { alignItems: 'center' },
+  cabinetBody: {
+    flexDirection: 'row', alignItems: 'stretch', gap: CABINET_GAP,
+    padding: CABINET_PAD, backgroundColor: Colors.bg.elevated, borderRadius: Radius.lg,
+    borderWidth: 2, borderColor: Colors.gold[600],
   },
-  reelBox: {
-    width: 64, height: 64, borderRadius: Radius.md, backgroundColor: Colors.bg.void,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: Colors.border.default,
+  pilaster: { width: PILASTER_W, borderRadius: Radius.full, backgroundColor: Colors.gold[400], opacity: 0.85 },
+  reelsRow: { flexDirection: 'row', gap: REEL_GAP },
+  reelWindow: {
+    width: REEL_SIZE, height: REEL_SIZE, borderRadius: Radius.md, backgroundColor: Colors.bg.void,
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    borderTopWidth: 2, borderTopColor: 'rgba(0,0,0,0.6)',
+    borderBottomWidth: 2, borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderLeftWidth: 1, borderRightWidth: 1,
+    borderLeftColor: Colors.border.default, borderRightColor: Colors.border.default,
   },
+  // Faint top sheen suggesting a glass-covered window, same "lit from
+  // above" cue the wheel/hub gradients use elsewhere in this game set.
+  reelGlare: { position: 'absolute', top: 0, left: 0, right: 0, height: 22, backgroundColor: 'rgba(255,255,255,0.05)' },
   reelIcon: { fontSize: 32 },
 
   resultWrap: { alignItems: 'center', gap: Spacing[1], minHeight: 40 },

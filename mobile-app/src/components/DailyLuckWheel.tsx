@@ -41,7 +41,7 @@ import { AccessibilityInfo, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import Animated, {
   Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming,
 } from 'react-native-reanimated';
-import Svg, { Circle, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, RadialGradient, Stop, Text as SvgText } from 'react-native-svg';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
 import { useT } from '../i18n';
 import { syncGet, storage } from '../storage/storage';
@@ -79,6 +79,13 @@ function todayUtcStr(): string {
 const SIZE = 260;
 const CENTER = SIZE / 2;
 const R = SIZE / 2 - 6;
+// A metallic rim band sits between the colored segments and the wheel's
+// outer edge (Gardoon-reference detail: a real prize wheel reads as an
+// object with depth, not a flat colored disc) — segments stop short of R,
+// the rim ring fills the rest.
+const RIM_WIDTH = 16;
+const SEG_R = R - RIM_WIDTH;
+const HUB_R = 22;
 const SEGMENT_DEG = 360 / PRIZES.length;
 const SPIN_MS = 3600;
 // Extra full rotations before landing, purely for a satisfying spin length —
@@ -94,10 +101,28 @@ function polarToXY(deg: number, radius: number): { x: number; y: number } {
 function segmentPath(index: number): string {
   const startDeg = index * SEGMENT_DEG;
   const endDeg = startDeg + SEGMENT_DEG;
-  const start = polarToXY(startDeg, R);
-  const end = polarToXY(endDeg, R);
+  const start = polarToXY(startDeg, SEG_R);
+  const end = polarToXY(endDeg, SEG_R);
   const largeArc = SEGMENT_DEG > 180 ? 1 : 0;
-  return `M ${CENTER} ${CENTER} L ${start.x} ${start.y} A ${R} ${R} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
+  return `M ${CENTER} ${CENTER} L ${start.x} ${start.y} A ${SEG_R} ${SEG_R} 0 ${largeArc} 1 ${end.x} ${end.y} Z`;
+}
+
+/** Lighten (positive amount) or darken (negative) a #rrggbb color toward
+ * white/black — used to turn each prize's single flat rarity color into a
+ * 3-stop radial gradient (hub-lit highlight -> true color -> rim shadow)
+ * so a segment reads as a lathed metal wedge instead of a flat swatch. */
+function shade(hex: string, amount: number): string {
+  const clean = hex.replace('#', '');
+  const num = parseInt(clean, 16);
+  const r = (num >> 16) & 0xff;
+  const g = (num >> 8) & 0xff;
+  const b = num & 0xff;
+  const mix = (channel: number) => {
+    const target = amount > 0 ? 255 : 0;
+    const next = Math.round(channel + (target - channel) * Math.abs(amount));
+    return Math.max(0, Math.min(255, next));
+  };
+  return `#${[mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
 }
 
 interface Props {
@@ -219,15 +244,48 @@ export function DailyLuckWheel({ deviceId, onResult }: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.stage}>
-        <View style={styles.pointer} />
+        {/* Soft contact shadow, outside the rotating wheel so it never
+            spins with it — a real wheel casts a shadow onto whatever it
+            sits on, not onto itself. */}
+        <View style={styles.wheelShadow} />
+
         <Animated.View style={[{ width: SIZE, height: SIZE }, wheelStyle]}>
           <Svg width={SIZE} height={SIZE} viewBox={`0 0 ${SIZE} ${SIZE}`}>
+            <Defs>
+              {PRIZES.map((prize) => (
+                <RadialGradient key={prize.key} id={`seg-${prize.key}`} cx="50%" cy="50%" r="75%">
+                  <Stop offset="0%" stopColor={shade(prize.color, 0.45)} />
+                  <Stop offset="60%" stopColor={prize.color} />
+                  <Stop offset="100%" stopColor={shade(prize.color, -0.35)} />
+                </RadialGradient>
+              ))}
+              {/* Rim gradient centered up-left of the wheel so the metal
+                  band reads as lit from one side, same "brass caught in
+                  light" cue as the Gardoon reference — RealGram's own
+                  gold ramp, not literal brass. */}
+              <RadialGradient id="wheelRim" cx="32%" cy="28%" r="85%">
+                <Stop offset="0%" stopColor={Colors.gold[100]} />
+                <Stop offset="45%" stopColor={Colors.gold[400]} />
+                <Stop offset="100%" stopColor={Colors.gold[700]} />
+              </RadialGradient>
+              <RadialGradient id="wheelHub" cx="35%" cy="30%" r="75%">
+                <Stop offset="0%" stopColor={Colors.gold[100]} />
+                <Stop offset="55%" stopColor={Colors.gold[400]} />
+                <Stop offset="100%" stopColor={Colors.gold[700]} />
+              </RadialGradient>
+            </Defs>
+
             {PRIZES.map((prize, i) => {
               const labelDeg = i * SEGMENT_DEG + SEGMENT_DEG / 2;
-              const labelPos = polarToXY(labelDeg, R * 0.66);
+              const labelPos = polarToXY(labelDeg, SEG_R * 0.62);
               return (
                 <React.Fragment key={prize.key}>
-                  <Path d={segmentPath(i)} fill={prize.color} stroke={Colors.bg.void} strokeWidth={2} />
+                  <Path
+                    d={segmentPath(i)}
+                    fill={`url(#seg-${prize.key})`}
+                    stroke={Colors.bg.void}
+                    strokeWidth={2}
+                  />
                   <SvgText
                     x={labelPos.x} y={labelPos.y}
                     fontSize={22}
@@ -239,10 +297,45 @@ export function DailyLuckWheel({ deviceId, onResult }: Props) {
                 </React.Fragment>
               );
             })}
-            <Circle cx={CENTER} cy={CENTER} r={R} fill="none" stroke={Colors.gold[400]} strokeWidth={3} />
-            <Circle cx={CENTER} cy={CENTER} r={10} fill={Colors.gold[400]} />
+
+            {/* Pegs — the physical-looking dividers a real prize wheel has
+                between pockets (Gardoon reference: "åtte hull... jevnt
+                fordelt"). Purely decorative here, same rhythm as the
+                segment boundaries. */}
+            {PRIZES.map((_, i) => {
+              const deg = i * SEGMENT_DEG;
+              const pos = polarToXY(deg, SEG_R);
+              return (
+                <Circle key={`peg-${i}`} cx={pos.x} cy={pos.y} r={3.5} fill={Colors.gold[100]} stroke={Colors.gold[700]} strokeWidth={1} />
+              );
+            })}
+
+            {/* Metallic rim band between the segments and the wheel's edge. */}
+            <Circle
+              cx={CENTER} cy={CENTER} r={R - RIM_WIDTH / 2}
+              fill="none" stroke="url(#wheelRim)" strokeWidth={RIM_WIDTH}
+            />
+            <Circle cx={CENTER} cy={CENTER} r={R - 1} fill="none" stroke={Colors.gold[700]} strokeWidth={1.5} />
+            <Circle cx={CENTER} cy={CENTER} r={SEG_R + 1} fill="none" stroke={Colors.gold[700]} strokeWidth={1} opacity={0.6} />
+
+            {/* Hub, lit like RealCoin's own gold sphere so the wheel's
+                center reads as the same "forged gold" object language as
+                the rest of the app. */}
+            <Circle cx={CENTER} cy={CENTER} r={HUB_R} fill="url(#wheelHub)" stroke={Colors.gold[700]} strokeWidth={1.5} />
+            <Circle cx={CENTER - HUB_R * 0.28} cy={CENTER - HUB_R * 0.3} r={HUB_R * 0.32} fill={Colors.gold[100]} opacity={0.55} />
           </Svg>
         </Animated.View>
+
+        {/* Pointer — a small lit gem instead of a flat CSS triangle. */}
+        <Svg width={28} height={30} viewBox="0 0 28 30" style={styles.pointerSvg}>
+          <Defs>
+            <LinearGradient id="pointerGem" x1="0%" y1="0%" x2="100%" y2="100%">
+              <Stop offset="0%" stopColor={Colors.gold[100]} />
+              <Stop offset="100%" stopColor={Colors.gold[600]} />
+            </LinearGradient>
+          </Defs>
+          <Path d="M14 30 L2 10 L14 0 L26 10 Z" fill="url(#pointerGem)" stroke={Colors.gold[700]} strokeWidth={1} />
+        </Svg>
       </View>
 
       {result && (
@@ -281,13 +374,13 @@ export function DailyLuckWheel({ deviceId, onResult }: Props) {
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', gap: Spacing[4] },
   stage: { width: SIZE, height: SIZE, alignItems: 'center', justifyContent: 'center' },
-  pointer: {
-    position: 'absolute', top: -4, zIndex: 2,
-    width: 0, height: 0,
-    borderLeftWidth: 12, borderRightWidth: 12, borderTopWidth: 20,
-    borderLeftColor: 'transparent', borderRightColor: 'transparent',
-    borderTopColor: Colors.gold[400],
+  wheelShadow: {
+    position: 'absolute',
+    width: SIZE * 0.9, height: SIZE * 0.9, borderRadius: SIZE / 2,
+    backgroundColor: Colors.bg.void, opacity: 0.45,
+    top: SIZE * 0.07,
   },
+  pointerSvg: { position: 'absolute', top: -6, zIndex: 2 },
   resultWrap: { alignItems: 'center', gap: Spacing[1] },
   resultIcon: { fontSize: 36 },
   resultText: { fontSize: 16, fontFamily: Typography.family.heading, color: Colors.gold[400] },

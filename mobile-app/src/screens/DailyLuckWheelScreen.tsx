@@ -16,6 +16,8 @@ import { SlotMachine } from '../components/SlotMachine';
 import { FerdowsisScroll } from '../components/FerdowsisScroll';
 import { RostamsTrials } from '../components/RostamsTrials';
 import { SimorghsFeather } from '../components/SimorghsFeather';
+import { TreasuryChest } from '../components/TreasuryChest';
+import { ScratchCard } from '../components/ScratchCard';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 
@@ -85,6 +87,27 @@ export function DailyLuckWheelScreen({ onBack }: Props) {
         <Text style={styles.pageSub}>{t('feather.subtitle')}</Text>
         <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
           <SimorghsFeather deviceId={deviceId} />
+        </GlassCard>
+
+        {/* Skattkammer / Treasury (Game 4, new 2026-08-03) -- Khabat:
+            "legg til flere casino spill og sy det sammen med shahnameh
+            historie og items... gorze rostam, hesten hans, kamane
+            arash". Its own dedicated relic game spanning the whole
+            Shahnameh, confirmed via AskUserQuestion as separate from
+            Simorgh's Feather above rather than folded into it. */}
+        <Text style={styles.pageTitle}>{t('treasury.title')}</Text>
+        <Text style={styles.pageSub}>{t('treasury.subtitle')}</Text>
+        <GlassCard style={styles.card} glowColor={Colors.violet[400]}>
+          <TreasuryChest deviceId={deviceId} />
+        </GlassCard>
+
+        {/* Scratch card (Game 5, new 2026-08-03) -- the second of the
+            "2-3 new games," confirmed via AskUserQuestion over a
+            card-game alternative specifically for its lower build cost. */}
+        <Text style={styles.pageTitle}>{t('scratch.title')}</Text>
+        <Text style={styles.pageSub}>{t('scratch.subtitle')}</Text>
+        <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+          <ScratchCard deviceId={deviceId} />
         </GlassCard>
       </ScrollView>
     </View>
