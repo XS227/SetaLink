@@ -14,7 +14,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View,
+  ActivityIndicator, Clipboard, Linking, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors, Radius, Spacing, Typography } from '../design/tokens';
@@ -47,6 +47,17 @@ export function RealGramEarnScreen({ onBack }: Props) {
   const insets   = useSafeAreaInsets();
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
+  // Khabat, 2026-08-03: "hvor er referal koden/linken min" — the only place
+  // this ever showed was WelcomeScreen.tsx's one-time onboarding flow
+  // (gated on hasSeenWelcome, never shown again after first launch). The
+  // code/count/plan data itself was never missing — authStore's own
+  // loginWithDevice/updateFromEntitlement refresh referralCode on every
+  // entitlement fetch, same as any other account field — there was just no
+  // surface a returning user could ever reach it from again. Added here,
+  // right above the milestones this same code is what earns progress
+  // toward, reusing WelcomeScreen's exact copy/share strings rather than
+  // inventing new ones (already translated in all 4 locales).
+  const referralCode = useAuthStore((s) => s.user?.referralCode ?? '');
   const showToast = useToastStore((s) => s.show);
 
   const [telegramId, setTelegramId] = useState('');
@@ -116,6 +127,19 @@ export function RealGramEarnScreen({ onBack }: Props) {
       showToast(t('earn.verifyGeneric'), 'error');
     }
   }, [telegramId, requireTelegramId, showToast, t]);
+
+  const handleCopyCode = useCallback(() => {
+    if (!referralCode) return;
+    Clipboard.setString(referralCode);
+    showToast(t('welcome.codeCopied'), 'success', 2000);
+  }, [referralCode, showToast, t]);
+
+  const handleShareCode = useCallback(async () => {
+    if (!referralCode) return;
+    try {
+      await Share.share({ message: t('welcome.shareMessage').replace(/\{code\}/g, referralCode) });
+    } catch { /* share dismissed */ }
+  }, [referralCode, t]);
 
   const handleMilestone = useCallback(async (m: typeof MILESTONES[number]) => {
     if (!requireTelegramId()) return;
@@ -216,6 +240,22 @@ export function RealGramEarnScreen({ onBack }: Props) {
             <TaskRow key={task.id} task={task} done={completedTasks.has(task.id)} busy={busyKey === task.id} onPress={() => handleTask(task)} />
           ))}
 
+          {/* Referral code — the actual shareable code/link, persistently
+              reachable here (unlike WelcomeScreen's one-time version). */}
+          <Text style={styles.sectionTitle}>{t('welcome.referralTitle')}</Text>
+          <GlassCard style={styles.card} glowColor={Colors.blue[400]}>
+            <Text style={styles.milestoneSub}>{t('welcome.referralDesc')}</Text>
+            <View style={styles.codeRow}>
+              <Text style={styles.codeText}>{referralCode || '—'}</Text>
+              <TouchableOpacity style={styles.copyBtn} onPress={handleCopyCode} activeOpacity={0.75}>
+                <Text style={styles.taskBtnText}>{t('welcome.copy')}</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity style={styles.claimBtn} onPress={handleShareCode} activeOpacity={0.85}>
+              <Text style={styles.claimBtnText}>{t('welcome.shareInviteLink')}</Text>
+            </TouchableOpacity>
+          </GlassCard>
+
           {/* Milestones */}
           <Text style={styles.sectionTitle}>{t('earn.referralMilestones')}</Text>
           <Text style={styles.milestoneSub}>{t('earn.verifiedInvitesSoFar').replace('{count}', String(referralCount))}</Text>
@@ -314,6 +354,14 @@ const styles = StyleSheet.create({
 
   sectionTitle: { fontSize: 14, fontFamily: Typography.family.heading, color: Colors.text.primary, marginTop: Spacing[3], marginBottom: Spacing[1] },
   milestoneSub: { fontSize: 12, color: Colors.text.muted, fontFamily: Typography.family.body, marginBottom: Spacing[1] },
+
+  codeRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.bg.elevated, borderRadius: Radius.md,
+    paddingVertical: Spacing[2], paddingHorizontal: Spacing[3], marginTop: Spacing[1],
+  },
+  codeText: { fontSize: 16, fontFamily: Typography.family.mono, color: Colors.text.primary, letterSpacing: 1 },
+  copyBtn: { backgroundColor: Colors.gold[400], borderRadius: Radius.lg, paddingVertical: Spacing[2], paddingHorizontal: Spacing[3] },
 
   taskCard: { gap: 0 },
   taskRow:  { flexDirection: 'row', alignItems: 'center', gap: Spacing[3] },
