@@ -87,6 +87,24 @@ function union(a: string[], b: string[]): string[] {
 
 function mergeTier(a: QuizTierProgress, b: QuizTierProgress, isEasy: boolean): QuizTierProgress {
   const unlocked = a.locked === false || b.locked === false || isEasy;
+  // BUG (found 2026-08-03, "stuck on 3/3 in all chapters" -- much broader
+  // than the single ch.43 repro the idx-derivation fix above targeted):
+  // once EITHER side is done, its correct/wrong are a FINAL graded
+  // record, not two still-growing sets safe to union. If a question_id
+  // was wrong on one side (a pre-reset attempt) and correct on the other
+  // (the post-reset retry that actually passed), blindly unioning both
+  // `correct` and `wrong` independently puts the SAME id in both final
+  // arrays -- inflating correct.length+wrong.length past the tier's real
+  // question count and corrupting `passed` (found live across 6+ real
+  // accounts, one heavily-tested account had roughly half its touched
+  // chapters corrupted this way). Once either side is done, that side is
+  // authoritative outright -- matches season2.js's own mergeQuizTier fix,
+  // same date, which now treats ANY graded tier as srv-only regardless of
+  // done state, not just the not-yet-done case.
+  if (a.done || b.done) {
+    const winner = a.done && b.done ? (b.correct.length > a.correct.length ? b : a) : (a.done ? a : b);
+    return { ...winner, locked: !unlocked };
+  }
   const correct = union(a.correct, b.correct);
   const wrong = union(a.wrong, b.wrong);
   // idx is DERIVED from the merged answer sets, never merged as its own
@@ -108,9 +126,9 @@ function mergeTier(a: QuizTierProgress, b: QuizTierProgress, isEasy: boolean): Q
     idx,
     correct,
     wrong,
-    done: !!a.done || !!b.done,
+    done: false,
     locked: !unlocked,
-    passed: !!a.passed || !!b.passed,
+    passed: false,
   };
 }
 
