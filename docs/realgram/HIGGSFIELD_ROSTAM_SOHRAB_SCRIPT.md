@@ -1,94 +1,73 @@
-# Rostam & Sohrab — manus og skotliste
-### Higgsfield Global Film Festival ($1M) — innsendingsfrist 31. august 2026
+# Rostam & Sohrab — manus og skotliste (v2)
+### Higgsfield Global Film Festival ($1M) — innsendingsfrist 31. august 2026 — mål: 3:33
 
 ---
 
-## 1. Kildegrunnlag
+## 1. Hva som er nytt i v2
 
-Research gjort mot flere uavhengige gjenfortellinger/sammendrag av Ferdowsis originaltekst
-(skrevet ca. år 1010), samt sekundærlitteratur om de to store engelske oversettelsene:
+Etter et andre research-pass fant jeg mer autentisk materiale enn i v1 — spesielt fra selve
+sorgscenen etter drapet, som jeg først kuttet for tid. Det viser seg å være noe av det sterkeste
+i hele originalteksten, og er nå lagt inn igjen. To bevisste kreative tillegg er også gjort, begge
+tydelig merket under som *mine forslag* — du bestemmer om de blir med:
 
-- **Warner & Warner (1905–1925)** — eneste komplette engelske oversettelse, i vers. Tro mot
-  helheten, men tung og datert prosa.
-- **Dick Davis (2006, revidert utgave brukt av Penguin Classics)** — moderne standard-
-  oversettelsen, blanding av prosa og vers. Ikke komplett (utvalgte episoder), men regnes som
-  den mest lesbare og poetisk tro gjengivelsen på engelsk i dag.
+1. **Ferdowsi-rammefortellingen** (din idé) — filmen åpner på dikteren selv, kamera dykker inn i
+   siden, historien blir levende.
+2. **Et lukkende speilbilde** (mitt forslag) — filmen vender tilbake til Ferdowsi helt til slutt,
+   som lukker boken idet han skriver ordtaket. Rent estetisk grep for å ramme inn hele filmen;
+   fjern denne biten uten at noe annet i manuset trenger å endres hvis du ikke vil ha den.
 
-Begge er konsistente på selve handlingskjeden i Rostam & Sohrab — det er ikke faglig uenighet
-om hva som skjer, kun om språkdrakt. Under er handlingen slik den faktisk står i kildene, ikke
-den forenklede "populærversjonen" som sirkulerer i de fleste sammendrag på nett.
+Nye, kildebekreftede detaljer lagt til i selve fortellingen:
 
-### De 7 plottpunktene som MÅ være med for at det skal kjennes riktig
+- **Sohrab prøver aktivt gjennom hele kampen** å få motstanderen til å avsløre seg — ikke bare ett
+  spørsmål ved starten. Kildene siterer ham (parafrasert her, ikke direkte oversatt tekst) som å
+  si noe i retning av at motstanderens kampstil minner ham om historiene moren fortalte om
+  Rostam. Dette gjør "gjenkjennelse nesten, men ikke helt"-spenningen mye sterkere gjennom hele
+  duellen, ikke bare i én replikk.
+- **Sohrabs siste ord er ikke rettet til drapsmannen som person** — han ber om at noen skal bringe
+  budskapet videre TIL Rostam, uvitende om at han snakker direkte til ham. Dette er en betydelig
+  sterkere dramatisk ironi enn det jeg hadde i v1.
+- **Sorgscenen**: Rostam river i sin egen rustning, strør støv over hodet (gammel sørgeskikk),
+  trekker dolken mot sitt eget bryst — og blir fysisk stoppet av egne soldater. Dette er
+  dokumentert i flere uavhengige kilder som en av de mest siterte scenene i persisk litteratur,
+  og var feil av meg å kutte i v1 kun for tidsbudsjett.
+- **Flashback-innstikk** (mitt forslag, 4 sek, helt stille) — unge Rostam knytter armbåndet på
+  Tahminehs arm, år tilbake. Gir armbånd-gjenkjenningen visuell vekt uten å måtte forklare den
+  med dialog.
 
-De fleste kortversjoner (og trolig det du har sett før) flater ut historien til "far dreper sønn
-ved en tragisk misforståelse i en ærlig duell." Det er ikke det som faktisk skjer. Det som gjør
-originalen mye mørkere — og mye mer *Game of Thrones* enn *ren heltesaga* — er:
-
-1. **Tahmineh og armbåndet.** Rostam ligger med Tahmineh én natt, gir henne et armbånd
-   (bazuband) til barnet — bæres på armen hvis gutt, flettes i håret hvis jente — som eneste
-   fremtidig gjenkjennelsestegn. Han drar før barnet er født og ser det aldri.
-2. **Skjult identitet er ikke en tilfeldighet — den er villet.** Den turanske kongen Afrasiyab
-   sender generalene Human og Barman med Sohrabs hær, med hemmelig ordre om å hindre far og
-   sønn i å kjenne hverandre igjen — fordi en forening mellom dem ville true *begge* riker.
-   Dette er politisk sabotasje, ikke skjebne.
-3. **Sohrab spør direkte — Rostam lyver.** Sohrab spør flere ganger om motstanderen er Rostam.
-   Rostam nekter, av forsiktighet/skikk. Sønnen leter faktisk etter faren, rett foran ham, og blir
-   avvist.
-4. **Det falske "regelen"-trikset.** I første brytekamp kaster Sohrab Rostam over ende, setter
-   seg på ham og trekker dolk for å avslutte det. Rostam lyver og sier at persisk skikk krever at
-   du kun dreper motstanderen på *andre* fall, ikke det første. Sohrab — av ære, ikke naivitet —
-   tror ham og slipper ham fri. Dette er nøkkelscenen: sønnen skåner faren fordi han følger en
-   æreskodeks faren selv finner opp for å redde seg selv.
-5. **Det andre fallet er ikke en fair duell.** Rostam ber om/finner fornyet styrke, kaster Sohrab
-   hardt i bakken og stikker ham med dolken *før* Sohrab rekker å reise seg igjen. Ferdowsi
-   skriver ikke dette som et ærefullt drap — Rostam vinner ved et løftebrudd, ikke ved overlegen
-   styrke.
-6. **Armbåndet — for sent.** Døende ber Sohrab motstanderen advare "den store Rostam" om at
-   sønnen hans lette etter ham. Han viser armbåndet. Rostam kjenner det igjen — det er hans eget.
-7. **Nushdaru — legemiddelet som kom for sent.** Rostam sender bud til kong Kay Kavus om det
-   livreddende eliksiret. Kavus nøler — av frykt for at en frisk Rostam+Sohrab sammen ville vært
-   umulig å kontrollere for tronen — og forsinkelsen dreper Sohrab like sikkert som dolken.
-   Dette er opphavet til det persiske uttrykket **"Nushdaru ba'd az marg-e Sohrab"** — "kuren,
-   etter Sohrabs død" — brukt den dag i dag om hjelp som kommer for sent til å bety noe.
-   Tragedien er systemisk, ikke bare personlig: en konges sjalusi dreper like mye som dolken.
-
-### Bevisst utelatt i 3–5 min-formatet (og hvorfor)
-
-- **Gordafarid-episoden** (kvinnelig kriger ved Den hvite borgen som beseirer Sohrab taktisk
-  tidligere i felttoget) — fantastisk scene, men egen sidehistorie som krever egen oppbygging.
-  Nevnt her fordi den er et sterkt kort å ha i bakhånd om dette blir en serie/oppfølger.
-- **Hajir-løgnen** (en fange lyver til Sohrab om at Rostam ikke er til stede) — dobler opp samme
-  tema som punkt 2–3 over; kuttet for å ikke fortynne hovedbeatet.
-- **Tre fulle kampdager** — komprimert til to sammenhengende basketak, som beholder den
-  dramaturgisk kritiske "falske skånsel → ekte drap"-strukturen uten å bruke tid på et tredje,
-  redundant slag.
-
-Det som IKKE er kuttet, er noe av det viktigste: **trikset, dolken-før-han-reiser-seg, og
-Kavus-forsinkelsen.** Dette er forskjellen på en tro gjengivelse og en generisk "far dreper sønn
-ved uhell"-film.
+Kildegrunnlaget (Warner & Warner 1905–1925 komplett versoversettelse; Dick Davis' moderne
+prosa/vers-standardutgave) er uendret fra v1 — begge er samstemte om selve handlingskjeden.
+Dialogen under er egen, original engelsk tekst skrevet for å fange de samme følelsene og
+hendelsene som kildene beskriver — ikke direkte sitat fra noen oversettelse.
 
 ---
 
-## 2. Tone og referanser
+## 2. Tone
 
-- **Game of Thrones** — kalde, politiske cold opens; vold som er rask og stygg, ikke koreografert
-  "fair fight"; makt/sjalusi hos en konge som årsak til katastrofe, ikke bare krigslykke.
-- **Lord of the Rings** — episk landskapsskala (vide steppe-/fjellskudd), gyllen/støvete lys,
-  rustning og bannere som formidler "to sivilisasjoner," ikke bare to menn.
-- **Vikings (TV-serien)** — brutal nærkamp-tekstur, lite dialog, stillhet brukt som virkemiddel
-  i sorgscener fremfor patos-monologer.
-
-Musikalsk/lydmessig: lavmælt, spent perkusjon under duellen, total stillhet i
-gjenkjennelsesøyeblikket (ingen musikk under armbånd-reveal — la stillheten bære vekten).
+**Game of Thrones** (politisk kulde, stygg/rask vold, makt som årsak til tragedie) ×
+**Lord of the Rings** (episk landskapsskala, gyllent støvlys) × **Vikings** (brutal
+nærkamp-tekstur, stillhet i sorg fremfor patos). Ingen musikk under dolkstøtet eller
+gjenkjenningen — stillheten skal bære vekten.
 
 ---
 
-## 3. Manus (screenplay-format)
-
-Dialog på engelsk (internasjonal jury). Minimal — historien bæres visuelt.
+## 3. Manus (screenplay-format, engelsk dialog)
 
 ```
 FADE IN:
+
+INT. FERDOWSI'S STUDY — NIGHT
+
+Candlelight. An old man — FERDOWSI — hunched over parchment,
+quill moving steadily. Stacks of finished pages surround him,
+the work of a lifetime.
+
+TEXT ON SCREEN:
+"Persia, before its name was written down. A poet named
+Ferdowsi spent thirty years of his life giving his people
+back their language — and their kings."
+
+He dips the quill, keeps writing. The camera pushes past his
+hand, into the page itself — ink strokes blur, dissolve into:
 
 EXT. THE PLAIN BETWEEN TWO ARMIES — DAWN
 
@@ -96,15 +75,13 @@ Dust hangs low over a wide steppe. Two armies face each other
 across the plain — Iranian banners on one ridge, Turanian on
 the other. Silence, except wind.
 
-TITLE CARD: "Persia, before the age of kings was written down."
-
 A lone rider breaks from the Turanian line — SOHRAB, young,
 armored, unmistakably strong. He scans the Iranian ranks like
 he's searching for someone specific.
 
-From the Iranian line, a second rider answers the challenge —
-ROSTAM, older, face half-hidden beneath a plain soldier's
-cloak over his armor. No banner. No name given.
+From the Iranian line, a second rider answers — ROSTAM, older,
+face half-hidden beneath a plain soldier's cloak over his
+armor. No banner. No name given.
 
 They meet at the center of the plain, horses circling.
 
@@ -132,6 +109,19 @@ Brutal, fast combat. Spears shatter. They're unhorsed within
 seconds — this isn't choreography, it's two exhausted men
 trying to survive. Swords give way to hands.
 
+Mid-exchange, breathing hard, circling —
+
+                    SOHRAB
+          You fight like the man in my mother's
+          stories. She spoke of one man like
+          this, my whole life.
+
+                    ROSTAM
+          (guarded, not stopping)
+          Plenty of old men fight like the men
+          in old songs. Doesn't make them the
+          ones you're looking for.
+
 They grapple in the dirt. Sohrab is younger, stronger. He
 throws Rostam down, pins him, draws a dagger to finish it.
 
@@ -141,17 +131,17 @@ throws Rostam down, pins him, draws a dagger to finish it.
           first fall spares a man's life. Only
           the second earns his death.
 
-Sohrab hesitates. It's a lie, and some part of him may know
-it — but he lets the dagger fall to his side. He steps back.
-Honor, not weakness.
+Sohrab hesitates. Some part of him may know it's a lie — but
+he lets the dagger fall to his side. He steps back. Honor,
+not weakness.
 
                     SOHRAB
           Then we finish this the right way.
 
-He walks off to recover. Alone for a moment, he looks back at
-the stranger — something in his face unguarded, almost
-hopeful, like he WANTS this man to be who he's been looking
-for.
+He walks off to recover. Alone a moment, he looks back at the
+stranger — something unguarded in his face, almost hopeful,
+like he WANTS this man to be who he's been looking for his
+whole life.
 
 CUT TO:
 
@@ -169,29 +159,37 @@ Sohrab goes still beneath him. Rostam holds the position,
 breathing hard — a win that doesn't feel like one.
 
                     SOHRAB
-          (weak, almost amused)
-          My father will hear of this... Rostam
-          will avenge me...
+          (weak, urgent — not looking at Rostam,
+          but past him, to the watching soldiers)
+          Find Rostam. Tell him a son went
+          looking for him... his whole life.
+          Tell him I died still looking.
 
-Rostam freezes.
+Rostam goes very still.
 
                     ROSTAM
-          What did you say.
+          Looking for what.
 
 Sohrab, fading, pulls back his sleeve with the last of his
 strength — an old, engraved ARMBAND tied above his elbow.
 
                     SOHRAB
-          My mother gave me this. Tahmineh...
-          of Samangan. She said... he'd know it.
+          My mother gave me this. Tahmineh, of
+          Samangan. She said... he'd know it on
+          sight.
 
-Rostam looks at the armband. His own hands start to shake.
-He knows it. He gave it to her himself, a lifetime ago.
+INSERT — FLASHBACK (silent, 4 seconds):
+A YOUNGER ROSTAM ties this same armband onto TAHMINEH'S wrist
+by candlelight, years ago. A private, tender moment. Gone as
+quickly as it came.
 
-No dialogue needed. His face says everything.
+BACK TO PRESENT:
 
-He pulls off his own cloak — revealing the armor beneath,
-the armor of Iran's greatest champion.
+Rostam looks at the armband. His hands start to shake. He
+knows it. He gave it to her himself, a lifetime ago.
+
+He pulls off his own cloak — revealing the armor beneath, the
+armor of Iran's greatest champion.
 
                     ROSTAM
           (barely audible)
@@ -200,16 +198,44 @@ the armor of Iran's greatest champion.
 Sohrab's eyes find his father's face for the first — and
 last — time. A faint, terrible smile. Not anger. Relief.
 
-WIDE SHOT — both armies, frozen on the ridgelines, watching in
-silence as Rostam gathers his son into his arms.
+Sohrab goes limp in his arms.
 
-In the distance, far too late, a single RIDER crests the
-hill at a gallop — carrying a small vial that catches the
-light. The cure. Coming from the king who delayed it.
+A beat of total stillness. Then Rostam breaks.
+
+He tears at the straps of his own armor. Grabs a fistful of
+dust from the ground and drags it across his own head — the
+old rite of mourning.
+
+                    ROSTAM
+          Every man on this field sang of your
+          courage before the sun was even up.
+          And it was my own hand that silenced
+          it.
+
+He grabs his dagger — turns the point toward his own chest.
+Two SOLDIERS lunge in, wrestle the blade from him, hold him
+back as he fights them, screaming without words.
+
+WIDE SHOT — both armies, frozen on the ridgelines, watching in
+silence. Rostam finally stops fighting the men holding him. He
+sinks down and simply holds his son.
+
+In the distance, far too late, a single RIDER crests the hill
+at a gallop — carrying a small vial that catches the light.
+The cure. Sent by the king who delayed it.
 
 It will not arrive in time.
 
-TITLE CARD (closing):
+MATCH CUT TO:
+
+INT. FERDOWSI'S STUDY — NIGHT
+
+Ferdowsi's hand, finishing the same line of script. The quill
+lifts from the page.
+
+He sets it down. Closes the heavy book. The candle gutters.
+
+TITLE CARD:
 "Nushdaru ba'd az marg-e Sohrab."
 "The cure — after Sohrab's death."
 
@@ -218,42 +244,54 @@ FADE OUT.
 
 ---
 
-## 4. Skotliste (produksjon i Cinema Studio)
+## 4. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
 
-Mål: 10–13 shots, 3:30–4:30 total. Kolonnen **Studio** peker til hvilken Cinema
-Studio-funksjon shotet er avhengig av (se produksjonsplanen fra research-fasen).
+| # | Shot | Sek | Kamera | Studio-notat |
+|---|------|-----|--------|---------------|
+| 1 | Ferdowsi skriver ved lys, tekstplakat om Persia/oppdraget hans | 14 | Statisk, varmt lys | Ny — egen Soul Cast «Ferdowsi», brukes kun shot 1, 20, 21 |
+| 2 | Push inn i siden, blekk → bilde | 7 | Macro push-in | Overgangs-VFX, ren post |
+| 3 | To hærer over sletta, vind, stillhet | 13 | Ekstrem vidvinkel, statisk | Location bank, gjenbrukes shot 18 |
+| 4 | Sohrab rir ut, speider blant fiendens rekker | 7 | Tracking, lav vinkel | Soul Cast: Sohrab, hero frame 1 |
+| 5 | Rostam rir ut, kappe over rustning | 6 | Tracking, motsatt retning | Soul Cast: Rostam, hero frame 1 |
+| 6 | «Are you Rostam?» / «I am no one» | 15 | To-shot, hester i sirkel | Dialogscene 1 — prioriter lipsync-budsjett |
+| 7 | Lanser knuses, avmontert, sverd → nærkamp | 17 | Håndholdt, raske klipp | Høyest genereringskost i filmen |
+| 8 | «You fight like the man in my mother's stories» — midtkamp-dialog | 7 | Close, vekslende | Dialogscene 2 — ny i v2, forsterker gjenkjenningstemaet |
+| 9 | Sohrab kaster Rostam ned, dolk trukket | 6 | Close, lav vinkel | Soul Cast, hero frame 2 (bakke) |
+| 10 | Rostams løgn om «regelen» — Sohrab slipper ham | 14 | Close på begge ansikter | Dialogscene 3 — filmens tematiske kjerne, aldri kutt |
+| 11 | Sohrab alene, håpefullt blikk mot den fremmede | 6 | Close, dvelende | Emosjonelt ankerpunkt |
+| 12 | Andre basketak, Rostam kaster Sohrab hardt ned | 8 | Høy vinkel ned | Reuse rig fra shot 9 |
+| 13 | Dolkstøtet — stille, ingen musikk | 6 | Close, ingen bevegelse | Filmens viktigste enkeltbilde |
+| 14 | «Find Rostam... tell him I died still looking» + armbånd frem | 8 | Close, håndbevegelse i fokus | Rekvisitt-bank: armbånd |
+| 15 | FLASHBACK: ung Rostam knytter armbånd på Tahminehs arm (stille) | 4 | Close, varmt lys, annen palett | Ny Soul Cast: Tahmineh + «ung Rostam»-variant av hero frame 1 |
+| 16 | Tilbake til nåtid — gjenkjenning, «I am Rostam» | 8 | Close på Rostams ansikt | Emosjonelt vendepunkt |
+| 17 | Sorgscene: river rustning, støv på hodet, «I have killed you with my own hand» | 17 | Håndholdt, tett | Ny i v2 — kjernescene fra kilden, hentet tilbake fra kutt i v1 |
+| 18 | Selvmordsforsøk, soldater stopper ham | 9 | Bred nok til å vise flere kropper i bilde | Krever 2 statist-Soul Casts («soldater») |
+| 19 | Vidt bilde: begge hærer ser på i stillhet, Rostam holder sønnen | 14 | Ekstrem vidvinkel (reuse #3-plate) | Billig shot, størst emosjonell effekt |
+| 20 | Rytteren ankommer for sent med eliksiren | 11 | Vidvinkel, i det fjerne | Location bank reuse |
+| 21 | Match-cut: Ferdowsis hånd fullfører linjen, lukker boken, sluttkort | 14 | Close → statisk tekstkort | Ingen ny generering utover shot 1's Ferdowsi-rig |
 
-| # | Shot | Varighet | Kamera | Studio-notat |
-|---|------|----------|--------|---------------|
-| 1 | Åpningsbilde: to hærer over sletta, vind, stillhet | 8s | Ekstrem vidvinkel, statisk | Location bank — «slette + to hærer» bakgrunnsplate, gjenbrukes shot 12 |
-| 2 | Sohrab rir ut alene, speider blant fiendens rekker | 6s | Tracking, lav vinkel | Soul Cast: Sohrab, hero frame nr. 1 |
-| 3 | Rostam rir ut, kappe over rustning, uten banner | 5s | Tracking, motsatt retning av #2 | Soul Cast: Rostam, hero frame nr. 1 |
-| 4 | De møtes midt på sletta — «Are you Rostam?» / «I am no one» | 10s | To-shot, hester i sirkel | Dialogscene — lipsync-kritisk, prioriter re-gen budsjett her |
-| 5 | Lanser knuses, avmontert, sverd → never/hånd-til-hånd | 12s | Håndholdt-følelse, raske klipp | Action-sekvens, høyest genereringskost i hele filmen |
-| 6 | Sohrab kaster Rostam ned, dolk trukket | 6s | Close, lav vinkel på Rostam | Soul Cast: begge, hero frame nr. 2 (bakke-posisjon) |
-| 7 | Rostams løgn om «regelen» — Sohrab slipper ham | 8s | Close på begge ansikter vekselvis | Dialogscene nr. 2 |
-| 8 | Sohrab alene et øyeblikk, håpefullt blikk mot fremmede | 4s | Close, dvelende | Emosjonelt ankerpunkt — ikke kutt denne for tid |
-| 9 | Andre basketak, Rostam kaster Sohrab hardt ned | 6s | Høy vinkel ned | Reuse rig fra shot 6 |
-| 10 | Dolkstøtet — stille, ingen musikk | 4s | Close, ingen kamerabevegelse | Det viktigste enkeltbildet i filmen — bruk mest tid på hero frame her |
-| 11 | Armbånd-reveal + gjenkjennelse | 10s | Macro på armbånd → cut til Rostams ansikt | Rekvisitt-bank: armbånd, må være identisk i evt. flashback |
-| 12 | Vidt bilde: begge hærer ser på i stillhet, rytter i det fjerne med eliksiren | 8s | Ekstrem vidvinkel (reuse #1-plate) | Location bank reuse — billig shot, stor emosjonell effekt |
-| 13 | Sluttkort: sitatet på persisk + engelsk oversettelse | 5s | Statisk tekstkort | Ingen generering — ren post |
+**Sum: 213 sek = 3:33 nøyaktig.**
 
-**Sum: ~3:32** — innenfor 3–5 min-kravet med margin til ev. lengre dialogtakt i klipp.
+### Hva som ALDRI må kuttes hvis produksjonstiden blir knapp
+1. **Shot 13 (dolkstøtet) og 14/16 (armbånd + gjenkjenning)** — dette ER Rostam & Sohrab.
+2. **Shot 10 (det falske regel-trikset)** — skiller en tro gjengivelse fra en generisk
+   "tragisk duell."
+3. **Shot 17–18 (sorgscenen)** — nylig hentet tilbake fra v1-kuttet; dette er scenen kildene
+   selv fremhever som den mest siterte i hele episoden. Kutt heller shot 7 (actionsekvensen)
+   først.
 
-### Prioritering hvis tiden blir knapp
-1. Shot 10 (dolkstøtet) og shot 11 (armbånd) er filmens kjerne — dette ER Rostam & Sohrab.
-   Aldri kutt disse.
-2. Shot 7 (det falske regel-trikset) er den scenen som skiller en tro gjengivelse fra en
-   generisk "tragisk duell." Kutt heller et actionshot (5) enn denne.
-3. Shot 12 (den forsinkede eliksiren) er billig å produsere (gjenbrukt plate) og gir hele
-   Kavus/systemsvikt-temaet uten å måtte skrive inn en kongescene — behold.
+### Hva som kan kuttes/forkortes uten å skade autentisiteten
+- Shot 2 (push-in-overgangen) kan komprimeres til 3–4 sek ren VFX om nødvendig.
+- Shot 15 (flashback) er mitt forslag — helt trygt å fjerne (spar 4 sek, legg til shot 17)
+  hvis Soul Cast-budsjettet for en ekstra "ung Rostam + Tahmineh"-rigg blir for dyrt.
 
 ---
 
 ## 5. Åpne punkter før produksjon starter
 
-- Vent på dommerkriterier/innholdsregler (varslet offentliggjort 3.–5. aug) — sjekk om
-  våpenvold/død i denne graden er innenfor rammene.
-- Endelig titteltekst-språk: kun engelsk, eller engelsk + persisk sluttkort (anbefalt — styrker
-  autentisitet og gir en unik visuell signatur ingen andre bidrag vil ha).
+- Vent på dommerkriterier/innholdsregler (varslet offentliggjort 3.–5. aug) — sjekk spesielt
+  om selvmordsforsøket i sorgscenen (shot 18) er innenfor rammene; det er kildetro, men kan
+  være det mest sensitive enkeltbildet i hele filmen.
+- Bekreft om du vil beholde det lukkende Ferdowsi-speilbildet (shot 21) eller avslutte rett på
+  sluttkortet uten retur til rammefortellingen — begge funker uten andre endringer i manuset.
+- Endelig titteltekst-språk: engelsk alene, eller engelsk + persisk sluttkort (anbefalt).
