@@ -35,7 +35,53 @@ den skriftlige synopsisen dere sender inn sammen med filmen.
 
 ---
 
-## 2. Karakterbibel
+## 2. Hva tidligere vinnere hadde til felles
+
+Higgsfield offentliggjorde vinnerne av sin hittil største konkurranse (Action Contest, mars
+2026 — 8 752 bidrag fra 139 land, $500k-pott) med navn, filmtitler og eksplisitte
+jury-uttalelser om hva som ble vektlagt. Dette er den mest relevante presedensen som finnes
+for hvordan denne jurykulturen dømmer.
+
+**Juryens eget svar.** Panelet — en blanding av tradisjonelle Hollywood-folk og AI-native
+studioer (Jason Zada, Emmy-vinnende regissør bak Secret Level; Buralqy, VFX-studio bak
+musikkvideoer for The Weeknd/Bad Bunny/Kanye West; Jama Jurabaev, konseptkunstner bak Beauty
+and the Beast/Kong: Skull Island/Ready Player One; PJ Ace, CEO Genre.ai; Rourke, GenHQ) —
+**prioriterte historiefortelling og regissørens intensjon over teknisk polish**. De så
+spesielt etter: om scener flyter naturlig, om karakteroppførsel føles konsistent gjennom hele
+filmen, og om lyssetting støtter historiens tone.
+
+| Plass | Film / skaper | Premie | Hvorfor den vant |
+|---|---|---|---|
+| 1. | «GRANDMA vs WASP» — Muhannad Nassar & Simon Meyer (aldri møtt hverandre, samarbeidet eksternt) | $150 000 | Absurd, universelt gjenkjennelig konsept («bestemor blir ninja-kriger mot en veps») utført med ekte actionfilm-kameraspråk: ekstrem sakte film (1000FPS-stil), lave heltevinkler, rask klipping. Konseptet ER vitsen; håndverket er å ta det på alvor. |
+| 2. | «CUPID» — Nikolay Shestak | $100 000 | Mørkt, tematisk ambisiøst premiss («aggresjon er blitt normen»), utført med profesjonell skuespiller-/regikvalitet. |
+| 3. | «SCRATCH» — Ash & Aram Gevorkyan (laget på 5 dager) | $50 000 | Vant hovedsakelig på ren produksjonsverdi — publikum trodde det var en ekte studiotrailer. |
+
+**Mønsteret på tvers av alle tre:** konseptet er det som faktisk skiller vinnerne fra
+mengden — alle har tilgang til de samme AI-verktøyene, så et enkelt, klart, følelsesmessig
+lesbart konsept er det som vinner over spektakulær men uklar historiefortelling. Teknisk
+utførelse (konsistente karakterer, ingen "uncanny valley"-følelse, lyssetting som støtter
+tonen) er et nødvendig gulv, ikke selve differensiatoren.
+
+**Anvendt på vårt manus:**
+- **Konsept:** vårt utgangspunkt (far dreper sønn uvitende, pga. en løgn han selv finner opp)
+  er allerede av samme type som alle tre vinnerne — enkelt, universelt, følelsesmessig
+  umiddelbart lesbart selv uten forkunnskap om Shahnameh. Ingen endring nødvendig her.
+- **Karakterkonsistens** er eksplisitt noe juryen vurderer — dette er nøyaktig grunnen til at
+  karakterbibelen under (seksjon 3) med faste Soul Cast-prompts per karakter ikke er et
+  nice-to-have, men direkte rettet mot et uttalt bedømmelseskriterium.
+- **Lagt til i skotlisten (seksjon 7):** shot 4/5 (Sohrab og Rostam rir ut) er nå merket som
+  lave heltevinkler — direkte inspirert av GRANDMA vs WASPs vinnende kameraspråk. Shot 13
+  (dolkstøtet) har fått en eksplisitt sakte film-note på det avgjørende slaget, samme prinsipp
+  som vinnerfilmens bruk av ekstrem slow-motion på det actionfylte høydepunktet.
+- **Ny risiko å styre etter:** "menneskelig ytelse som ikke leser som AI-generert" er et eget,
+  eksplisitt kriterium. De mest følelsesmessig krevende bildene i manuset vårt —
+  gjenkjenningen (shot 16) og sorgscenen (shot 17–18) — er der mikro-uttrykk i ansiktet må
+  sitte, siden det er nøyaktig der AI-generert skuespill vanligvis avslører seg selv. Sett av
+  mest re-genereringsbudsjett her, ikke på actionsekvensene.
+
+---
+
+## 3. Karakterbibel
 
 Fire hovedkarakterer: Ferdowsi, Rostam, Sohrab — og Rakhsh, Rostams hest, som i kildeteksten
 er langt mer enn et transportmiddel. Alt under er hentet fra faktiske beskrivelser i
@@ -112,7 +158,7 @@ oppsummering for Cinema Studio.
 
 ---
 
-## 3. Hva som er nytt i v2
+## 4. Hva som er nytt i v2
 
 Etter et andre research-pass fant jeg mer autentisk materiale enn i v1 — spesielt fra selve
 sorgscenen etter drapet, som jeg først kuttet for tid. Det viser seg å være noe av det sterkeste
@@ -150,7 +196,7 @@ hendelsene som kildene beskriver — ikke direkte sitat fra noen oversettelse.
 
 ---
 
-## 4. Tone
+## 5. Tone
 
 **Game of Thrones** (politisk kulde, stygg/rask vold, makt som årsak til tragedie) ×
 **Lord of the Rings** (episk landskapsskala, gyllent støvlys) × **Vikings** (brutal
@@ -159,7 +205,7 @@ gjenkjenningen — stillheten skal bære vekten.
 
 ---
 
-## 5. Manus (screenplay-format, engelsk dialog)
+## 6. Manus (screenplay-format, engelsk dialog)
 
 ```
 FADE IN:
@@ -357,15 +403,15 @@ FADE OUT.
 
 ---
 
-## 6. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
+## 7. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
 
 | # | Shot | Sek | Kamera | Studio-notat |
 |---|------|-----|--------|---------------|
 | 1 | Ferdowsi skriver ved lys, tekstplakat: Kayanian-æraen/Kay Kavus/før Kyros | 18 | Statisk, varmt lys | Ny — egen Soul Cast «Ferdowsi», brukes kun shot 1, 20, 21. Lengre tekst enn v2 |
 | 2 | Push inn i siden, blekk → bilde | 7 | Macro push-in | Overgangs-VFX, ren post |
 | 3 | To hærer over sletta, vind, stillhet | 13 | Ekstrem vidvinkel, statisk | Location bank, gjenbrukes shot 18 |
-| 4 | Sohrab rir ut, speider blant fiendens rekker | 7 | Tracking, lav vinkel | Soul Cast: Sohrab, hero frame 1 |
-| 5 | Rostam rir ut, kappe over rustning | 6 | Tracking, motsatt retning | Soul Cast: Rostam, hero frame 1 |
+| 4 | Sohrab rir ut, speider blant fiendens rekker | 7 | Tracking, **lav heltevinkel** | Soul Cast: Sohrab, hero frame 1 — vinkelvalg inspirert av GRANDMA vs WASPs vinnende kameraspråk (seksjon 2) |
+| 5 | Rostam rir ut, kappe over rustning | 6 | Tracking, **lav heltevinkel** | Soul Cast: Rostam, hero frame 1 — samme prinsipp |
 | 6 | «Are you Rostam?» / «I am no one» | 15 | To-shot, hester i sirkel | Dialogscene 1 — prioriter lipsync-budsjett |
 | 7 | Lanser knuses, avmontert, sverd → nærkamp | 13 | Håndholdt, raske klipp | Høyest genereringskost i filmen |
 | 8 | «You fight like the man in my mother's stories» — midtkamp-dialog | 7 | Close, vekslende | Dialogscene 2 — ny i v2, forsterker gjenkjenningstemaet |
@@ -373,7 +419,7 @@ FADE OUT.
 | 10 | Rostams løgn om «regelen» — Sohrab slipper ham | 14 | Close på begge ansikter | Dialogscene 3 — filmens tematiske kjerne, aldri kutt |
 | 11 | Sohrab alene, håpefullt blikk mot den fremmede | 6 | Close, dvelende | Emosjonelt ankerpunkt |
 | 12 | Andre basketak, Rostam kaster Sohrab hardt ned | 8 | Høy vinkel ned | Reuse rig fra shot 9 |
-| 13 | Dolkstøtet — stille, ingen musikk | 6 | Close, ingen bevegelse | Filmens viktigste enkeltbilde |
+| 13 | Dolkstøtet — stille, **ramp inn i slow-motion** idet dolken treffer | 6 | Close, ingen bevegelse | Filmens viktigste enkeltbilde — bevisst sakte film på slaget, samme teknikk som GRANDMA vs WASP brukte i sitt vinnende høydepunkt |
 | 14 | «Find Rostam... tell him I died still looking» + armbånd frem | 8 | Close, håndbevegelse i fokus | Rekvisitt-bank: armbånd |
 | 15 | FLASHBACK: ung Rostam knytter armbånd på Tahminehs arm (stille) | 4 | Close, varmt lys, annen palett | Ny Soul Cast: Tahmineh + «ung Rostam»-variant av hero frame 1 |
 | 16 | Tilbake til nåtid — gjenkjenning, «I am Rostam» | 8 | Close på Rostams ansikt | Emosjonelt vendepunkt |
@@ -400,7 +446,7 @@ FADE OUT.
 
 ---
 
-## 7. Åpne punkter før produksjon starter
+## 8. Åpne punkter før produksjon starter
 
 - Vent på dommerkriterier/innholdsregler (varslet offentliggjort 3.–5. aug) — sjekk spesielt
   om selvmordsforsøket i sorgscenen (shot 18) er innenfor rammene; det er kildetro, men kan
