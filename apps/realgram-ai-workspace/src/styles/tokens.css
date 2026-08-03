@@ -1,0 +1,89 @@
+/*
+  RealGram AI Workspace — design tokens, v3 ("clearer RealGram identity" pass).
+
+  v2 reserved gold entirely for the AI's presence, on the theory that
+  restraint reads as premium. Feedback from a real judge-eye pass: it read
+  as *generic*, not restrained — a RealGram product needs RealGram's own
+  gold + purple visibly on the page, not rationed down to one glowing dot.
+  v3 keeps gold as the AI's signature (orb/tether still gold, still
+  meaningful) but lets it do double duty as the primary premium accent
+  (buttons, active states, the brand line in the top bar) — matching the
+  shipped mobile app's actual "gold = owned/connected/premium" language.
+  Purple stops being a 16px icon and becomes a real secondary accent: the
+  top bar's ambient glow, the wordmark treatment.
+
+  Palette:
+    void    #05070C  deepest canvas
+    ink     #0B0F17  panel base, one step up from void
+    slate   #121826  elevated glass surface
+    aurum   #E8B454  RealGram gold — AI presence AND primary premium accent
+    orchid  #C77DFF  RealGram purple — logo mark + secondary brand accent
+    signal  #57E3B4  human-presence status (connected, live)
+*/
+:root {
+  --void: #05070c;
+  --ink: #0b0f17;
+  --slate: #121826;
+  --slate-raised: #182033;
+
+  --mist: rgba(255, 255, 255, 0.06);
+  --mist-strong: rgba(255, 255, 255, 0.1);
+  --hairline: rgba(255, 255, 255, 0.08);
+
+  --glass-fill: rgba(18, 24, 38, 0.6);
+  --glass-fill-strong: rgba(18, 24, 38, 0.82);
+  --glass-highlight: rgba(255, 255, 255, 0.05);
+
+  /* Aurum — RealGram gold. The AI's signature color AND the app's primary
+     premium accent (buttons, active states, brand line) — one color doing
+     both jobs on purpose, so "this is RealGram" and "the AI is here" read
+     as the same visual language, not two competing systems. */
+  --aurum: #e8b454;
+  --aurum-bright: #ffcf7a;
+  --aurum-soft: rgba(232, 180, 84, 0.16);
+  --aurum-glow: rgba(232, 180, 84, 0.45);
+  --aurum-dim: #a67a35;
+
+  /* Orchid — RealGram purple. Logo mark + secondary brand accent (top bar
+     glow, wordmark gradient) — always paired with gold, never alone, so
+     the two read as one identity rather than two accent colors fighting. */
+  --orchid: #c77dff;
+  --orchid-soft: rgba(199, 125, 255, 0.16);
+  --orchid-glow: rgba(199, 125, 255, 0.4);
+  --logo-purple: var(--orchid);
+
+  /* Signal — human/system presence (connected, recording, live). Cool on
+     purpose, distinct from the brand's warm gold/purple pair. */
+  --signal: #57e3b4;
+  --signal-soft: rgba(87, 227, 180, 0.16);
+
+  --danger: #ef6461;
+  --danger-soft: rgba(239, 100, 97, 0.14);
+
+  --text-primary: #eef1f7;
+  --text-secondary: #8b96ab;
+  --text-muted: #4c5568;
+  --text-inverse: #060809;
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+  --radius-pill: 999px;
+
+  --font-display: "Space Grotesk", "Inter", -apple-system, sans-serif;
+  --font-body: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --shadow-float: 0 24px 60px -20px rgba(0, 0, 0, 0.65), 0 2px 10px rgba(0, 0, 0, 0.3);
+  --shadow-float-lg: 0 40px 100px -30px rgba(0, 0, 0, 0.7), 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-aurum: 0 0 0 1px var(--aurum-soft), 0 10px 40px -12px var(--aurum-glow);
+
+  --gradient-brand: linear-gradient(90deg, var(--aurum) 0%, var(--orchid) 100%);
+  --gradient-gold-button: linear-gradient(135deg, var(--aurum-bright), var(--aurum));
+
+  color-scheme: dark;
+}
