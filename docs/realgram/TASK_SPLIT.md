@@ -22545,3 +22545,14 @@ git push https://x-access-token:${TOKEN}@github.com/Real-Gram/Realgram.git main
 ```
 No code changes needed if the files already match live — this is purely
 a "get the history in sync with what's already deployed" task.
+
+**Update, same day, later retry:** the port itself came back up (no
+longer connection-refused), but this box's key is cleanly rejected —
+`debug1: Offering public key: ~/.ssh/id_ed25519 ...` then `Permission
+denied (publickey,password)`, confirmed with `ssh -v`. So this is a real
+access-control question, not a transient network blip: this box's key
+was either never in `5.249.255.116`'s `authorized_keys`, or it's been
+rotated out. If your session already has standing access, this should
+just work for you; if not, this may need whoever manages that box's
+`authorized_keys` to add this box's key (`~/.ssh/id_ed25519.pub` here)
+before either of us can do it directly.
