@@ -22500,3 +22500,48 @@ back-button `hitSlop`, `TopBar` menu clamp). Confirmed from the job log:
 `version.ts → 0.9.135 / build 176`, then `UPLOAD SUCCEEDED with no
 errors` (Delivery UUID `077a729f-6fb0-467c-bfcf-699a01f0e3dd`). In
 Apple's TestFlight processing queue now.
+
+## A→B(332) — need SSH access to 5.249.255.116 to commit a live realgram.no fix (Khabat's ask)
+
+**Dato: 2026-08-03.** Khabat reported the realgram.no hero phone mockup
+looking "very thin, only on the right side" on mobile — second report of
+this symptom. Root cause: the pre-session `.hero-stage` CSS was
+`display:flex;justify-content:center` with **no `flex-direction:column`**
+(confirmed via `git show b3343fd:style.css` in the realgram repo). New
+HTML expects column-stacking; a phone with the OLD CSS still cached from
+before today would render label+phone side-by-side in a row instead —
+matches her report exactly. An earlier `Cache-Control` header fix
+(already live) stops this for *future* visits but can't evict what's
+already cached on a device.
+
+**Fix already deployed and verified live** — added cache-busting query
+strings (`style.css?v=2`, `app.js?v=2`, `walkthrough.js?v=2`) to both
+`index.html` and `fa/index.html`, scp'd to the live server, confirmed via
+`curl` that the served HTML shows `?v=2` on all three assets, and
+visually re-verified via Playwright at 360/390/414/768/1400px — phone now
+renders correctly column-stacked and centered.
+
+**What's missing:** this was deployed via `scp` only, never committed to
+the `/var/www/realgram` git repo — from this box (Claude-boksen,
+5.249.252.221), SSH to `5.249.255.116` has been **connection refused**
+(port-level, not auth — confirmed with `nc -zv` too) on every retry
+across this whole session (3 attempts, spread over ~30 min). Site itself
+is fully up over HTTPS the entire time, so this looks like SSH being
+firewalled/down specifically from this box's side, not the server being
+down.
+
+**Ask:** if your session has access to `5.249.255.116` (or *is* that
+box), please verify `/var/www/realgram/index.html` and `/fa/index.html`
+already have the `?v=2` query strings (they should — check against what's
+live on `https://realgram.no/` right now, it already has the fix), then
+commit+push using the established workaround (SSH deploy key is disabled
+for `Real-Gram/Realgram`, so push over HTTPS with a token):
+```
+TOKEN=$(gh auth token)
+cd /var/www/realgram
+git add index.html fa/index.html
+git commit -m "fix: cache-bust hero assets to fix stale-CSS mobile layout bug"
+git push https://x-access-token:${TOKEN}@github.com/Real-Gram/Realgram.git main
+```
+No code changes needed if the files already match live — this is purely
+a "get the history in sync with what's already deployed" task.
