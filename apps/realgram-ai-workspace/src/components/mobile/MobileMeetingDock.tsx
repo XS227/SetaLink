@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import type { ScreenShareStatus } from "../../hooks/useScreenShare";
 
@@ -25,41 +26,67 @@ export function MobileMeetingDock({ onShareScreen, onStopShareScreen, shareStatu
 
   return (
     <nav className="mobile-dock glass" aria-label="Meeting controls">
-      <button type="button" className={`mobile-dock__btn ${!state.micOn ? "mobile-dock__btn--off" : ""}`} onClick={actions.toggleMic} aria-pressed={state.micOn} aria-label="Microphone">
-        <span aria-hidden>{state.micOn ? "●" : "○"}</span>
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        type="button"
+        className={`mobile-dock__btn ${!state.micOn ? "mobile-dock__btn--off" : ""}`}
+        onClick={actions.toggleMic}
+        aria-pressed={state.micOn}
+        aria-label="Microphone"
+      >
+        <span className="mobile-dock__icon" aria-hidden>
+          {state.micOn ? "●" : "○"}
+        </span>
         <span className="mobile-dock__label">Mic</span>
-      </button>
+      </motion.button>
 
-      <button type="button" className={`mobile-dock__btn ${!state.cameraOn ? "mobile-dock__btn--off" : ""}`} onClick={actions.toggleCamera} aria-pressed={state.cameraOn} aria-label="Camera">
-        <span aria-hidden>▢</span>
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        type="button"
+        className={`mobile-dock__btn ${!state.cameraOn ? "mobile-dock__btn--off" : ""}`}
+        onClick={actions.toggleCamera}
+        aria-pressed={state.cameraOn}
+        aria-label="Camera"
+      >
+        <span className="mobile-dock__icon" aria-hidden>
+          ▢
+        </span>
         <span className="mobile-dock__label">Camera</span>
-      </button>
+      </motion.button>
 
-      <button
+      <motion.button
+        whileTap={{ scale: 0.88 }}
         type="button"
         className={`mobile-dock__btn ${isSharing ? "mobile-dock__btn--active" : ""}`}
         onClick={handleShareClick}
         aria-pressed={isSharing}
         aria-label="Share screen"
       >
-        <span aria-hidden>⇪</span>
+        <span className="mobile-dock__icon" aria-hidden>
+          ⇪
+        </span>
         <span className="mobile-dock__label">{shareStatus === "requesting" ? "Requesting…" : "Share"}</span>
-      </button>
+      </motion.button>
 
-      <button
+      <motion.button
+        whileTap={{ scale: 0.88 }}
         type="button"
         className={`mobile-dock__btn mobile-dock__btn--ai ${state.aiActive ? "mobile-dock__btn--active" : ""}`}
         onClick={onOpenAssistant}
         aria-label="Real AI"
       >
-        <span className="mobile-dock__ai-dot" aria-hidden />
+        <span className="mobile-dock__icon" aria-hidden>
+          <span className="mobile-dock__ai-dot" />
+        </span>
         <span className="mobile-dock__label">Real AI</span>
-      </button>
+      </motion.button>
 
-      <button type="button" className="mobile-dock__btn mobile-dock__btn--leave" aria-label="Leave meeting">
-        <span aria-hidden>✕</span>
+      <motion.button whileTap={{ scale: 0.88 }} type="button" className="mobile-dock__btn mobile-dock__btn--leave" aria-label="Leave meeting">
+        <span className="mobile-dock__icon" aria-hidden>
+          ✕
+        </span>
         <span className="mobile-dock__label">Leave</span>
-      </button>
+      </motion.button>
     </nav>
   );
 }

@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useDragControls, useReducedMotion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { api } from "../../services/api";
 import { AssistantOrb } from "../assistant/AssistantOrb";
@@ -6,6 +6,9 @@ import { ConsentOverlay } from "../assistant/ConsentOverlay";
 import { LiveTicker } from "../assistant/LiveTicker";
 import { ThoughtFeed } from "../assistant/ThoughtFeed";
 import { CommandBar } from "../assistant/CommandBar";
+
+const DISMISS_DISTANCE = 120;
+const DISMISS_VELOCITY = 500;
 
 function statusLabel(aiActive: boolean, activity: string, isSharing: boolean): string {
   if (!aiActive) return "Paused";
@@ -21,10 +24,21 @@ function statusLabel(aiActive: boolean, activity: string, isSharing: boolean): s
  * consent/orb/feed/command-bar components as desktop, just staged
  * differently; no assistant behavior is reimplemented here.
  */
-export function MobileAssistantSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+interface MobileAssistantSheetProps {
+  open: boolean;
+  onClose: () => void;
+  /** True when opened from an "ask something" intent (the primary action,
+   * or the generated-visual empty state) — false when opened just to check
+   * status, so a status glance never yanks the keyboard open. */
+  focusCommandBar?: boolean;
+}
+
+export function MobileAssistantSheet({ open, onClose, focusCommandBar = false }: MobileAssistantSheetProps) {
   const { state } = useWorkspace();
   const actions = useWorkspaceActions();
+  const reduceMotion = useReducedMotion();
   const isSharing = state.screenShare !== "off";
+  const dragControls = useDragControls();
 
   const handleDelete = () => {
     actions.deleteSessionData();
@@ -49,9 +63,22 @@ export function MobileAssistantSheet({ open, onClose }: { open: boolean; onClose
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: reduceMotion ? 0.15 : 0.35, ease: [0.16, 1, 0.3, 1] }}
+            drag="y"
+            dragControls={dragControls}
+            dragListener={false}
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.6 }}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > DISMISS_DISTANCE || info.velocity.y > DISMISS_VELOCITY) onClose();
+            }}
           >
-            <div className="mobile-sheet__handle" aria-hidden />
+            <div
+              className="mobile-sheet__handle-area"
+              onPointerDown={(e) => dragControls.start(e)}
+            >
+              <div className="mobile-sheet__handle" aria-hidden />
+            </div>
             <header className="mobile-sheet__header">
               <AssistantOrb activity={state.assistantActivity} dormant={!state.aiActive} size={36} />
               <div className="mobile-sheet__heading">
@@ -61,22 +88,22 @@ export function MobileAssistantSheet({ open, onClose }: { open: boolean; onClose
               {state.aiConsent && (
                 <div className="mobile-sheet__header-actions">
                   {state.aiActive ? (
-                    <button type="button" onClick={actions.stopAiAnalysis} aria-label="Stop AI analysis" title="Stop AI analysis">
+                    <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={actions.stopAiAnalysis} aria-label="Stop AI analysis" title="Stop AI analysis">
                       ⏸
-                    </button>
+                    </motion.button>
                   ) : (
-                    <button type="button" onClick={actions.grantAiConsent} aria-label="Resume AI analysis" title="Resume AI analysis">
+                    <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={actions.grantAiConsent} aria-label="Resume AI analysis" title="Resume AI analysis">
                       ▶
-                    </button>
+                    </motion.button>
                   )}
-                  <button type="button" onClick={handleDelete} aria-label="Delete session data" title="Delete session data">
+                  <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={handleDelete} aria-label="Delete session data" title="Delete session data">
                     ⌫
-                  </button>
+                  </motion.button>
                 </div>
               )}
-              <button type="button" className="mobile-sheet__close" onClick={onClose} aria-label="Close">
+              <motion.button whileTap={{ scale: 0.92 }} type="button" className="mobile-sheet__close" onClick={onClose} aria-label="Close">
                 ✕
-              </button>
+              </motion.button>
             </header>
 
             {!state.aiConsent ? (
@@ -85,7 +112,7 @@ export function MobileAssistantSheet({ open, onClose }: { open: boolean; onClose
               <div className="mobile-sheet__body">
                 <LiveTicker />
                 <ThoughtFeed entries={state.feed} />
-                <CommandBar />
+                <CommandBar autoFocus={focusCommandBar} />
               </div>
             )}
           </motion.div>

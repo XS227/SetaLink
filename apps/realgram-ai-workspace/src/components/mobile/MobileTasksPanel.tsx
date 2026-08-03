@@ -1,19 +1,75 @@
 import { useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { api } from "../../services/api";
 import { downloadMeetingIntelligencePack } from "../../services/exportPack";
 
+interface AccordionRowProps {
+  title: string;
+  count?: number;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}
+
 /**
- * Decisions/action items/summary collapse into <details> disclosures,
- * closed by default with counts in their headers, so the page's dominant
- * element stays the generated visual, not a wall of meeting-minutes text.
- * Export drops from "the biggest button on the page" (desktop's rail) to a
- * plain secondary action at the bottom of this panel.
+ * A custom accordion instead of native <details> — the browser's built-in
+ * disclosure snaps open/closed with no animation, which reads as a form,
+ * not an app. This animates height smoothly and gives every tap real
+ * press feedback, matching the rest of the mobile experience.
  */
+function AccordionRow({ title, count, open, onToggle, children }: AccordionRowProps) {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <div className="mobile-tasks__section">
+      <motion.button
+        type="button"
+        className="mobile-tasks__section-summary"
+        onClick={onToggle}
+        aria-expanded={open}
+        whileTap={{ scale: 0.985 }}
+      >
+        <span>{title}</span>
+        {count !== undefined && <span className="mobile-tasks__count">{count}</span>}
+        <motion.span
+          className="mobile-tasks__chevron"
+          aria-hidden
+          animate={{ rotate: open ? 45 : 0 }}
+          transition={{ duration: reduceMotion ? 0 : 0.25 }}
+        >
+          +
+        </motion.span>
+      </motion.button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            className="mobile-tasks__section-body"
+            initial={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.28, ease: [0.16, 1, 0.3, 1] }}
+            style={{ overflow: "hidden" }}
+          >
+            {children}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function MobileTasksPanel() {
   const { state } = useWorkspace();
   const actions = useWorkspaceActions();
   const [generating, setGenerating] = useState(false);
+  const [open, setOpen] = useState<{ summary: boolean; decisions: boolean; actions: boolean }>({
+    summary: false,
+    decisions: false,
+    actions: false,
+  });
+
+  const toggle = (key: keyof typeof open) => setOpen((prev) => ({ ...prev, [key]: !prev[key] }));
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -28,45 +84,49 @@ export function MobileTasksPanel() {
   if (!state.summary) {
     return (
       <section className="mobile-tasks">
-        <button type="button" className="mobile-tasks__generate" onClick={handleGenerate} disabled={generating || !state.aiActive}>
+        <motion.button
+          type="button"
+          className="mobile-tasks__generate"
+          onClick={handleGenerate}
+          disabled={generating || !state.aiActive}
+          whileTap={state.aiActive ? { scale: 0.985 } : undefined}
+        >
           {generating ? "Summarizing…" : "Generate decisions & action items"}
-        </button>
+        </motion.button>
       </section>
     );
   }
 
   return (
     <section className="mobile-tasks">
-      <details className="mobile-tasks__section">
-        <summary>Meeting summary</summary>
+      <AccordionRow title="Meeting summary" open={open.summary} onToggle={() => toggle("summary")}>
         <p className="mobile-tasks__summary-text">{state.summary}</p>
-      </details>
+      </AccordionRow>
 
-      <details className="mobile-tasks__section">
-        <summary>
-          Decisions <span className="mobile-tasks__count">{state.decisions.length}</span>
-        </summary>
+      <AccordionRow title="Decisions" count={state.decisions.length} open={open.decisions} onToggle={() => toggle("decisions")}>
         <ul>
           {state.decisions.map((d, i) => (
             <li key={i}>{d}</li>
           ))}
         </ul>
-      </details>
+      </AccordionRow>
 
-      <details className="mobile-tasks__section">
-        <summary>
-          Action items <span className="mobile-tasks__count">{state.actionItems.length}</span>
-        </summary>
+      <AccordionRow title="Action items" count={state.actionItems.length} open={open.actions} onToggle={() => toggle("actions")}>
         <ul>
           {state.actionItems.map((a, i) => (
             <li key={i}>{a}</li>
           ))}
         </ul>
-      </details>
+      </AccordionRow>
 
-      <button type="button" className="mobile-tasks__export" onClick={() => downloadMeetingIntelligencePack(state)}>
+      <motion.button
+        type="button"
+        className="mobile-tasks__export"
+        onClick={() => downloadMeetingIntelligencePack(state)}
+        whileTap={{ scale: 0.97 }}
+      >
         Export Meeting Intelligence Pack
-      </button>
+      </motion.button>
     </section>
   );
 }

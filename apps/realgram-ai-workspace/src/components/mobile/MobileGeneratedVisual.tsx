@@ -1,3 +1,4 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { RealGramLogo } from "../RealGramLogo";
 
@@ -12,6 +13,7 @@ import { RealGramLogo } from "../RealGramLogo";
 export function MobileGeneratedVisual({ onAskRealAi }: { onAskRealAi: () => void }) {
   const { state } = useWorkspace();
   const actions = useWorkspaceActions();
+  const reduceMotion = useReducedMotion();
   const job = state.generationJobs[0];
   const isPresenting = job?.resultUrl && state.presentedAsset?.url === job.resultUrl;
   const badgeLabel = job && job.provider !== "mock" ? "AI generated" : "Demo generation";
@@ -19,44 +21,84 @@ export function MobileGeneratedVisual({ onAskRealAi }: { onAskRealAi: () => void
   return (
     <section className="mobile-generated" aria-label="Real AI's generated visual">
       <div className="mobile-generated__frame">
-        {!job && (
-          <div className="mobile-generated__empty">
-            <RealGramLogo size={30} />
-            <p className="mobile-generated__empty-title">Nothing generated yet</p>
-            <p className="mobile-generated__empty-hint">Ask Real AI for a launch visual and it'll appear here, full size.</p>
-            <button type="button" className="mobile-generated__ask" onClick={onAskRealAi}>
-              Ask Real AI to create
-            </button>
-          </div>
-        )}
+        <AnimatePresence mode="wait" initial={false}>
+          {!job && (
+            <motion.div
+              key="empty"
+              className="mobile-generated__empty"
+              initial={reduceMotion ? undefined : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <RealGramLogo size={30} />
+              <p className="mobile-generated__empty-title">Nothing generated yet</p>
+              <p className="mobile-generated__empty-hint">Ask Real AI for a launch visual and it'll appear here, full size.</p>
+              <motion.button whileTap={{ scale: 0.97 }} type="button" className="mobile-generated__ask" onClick={onAskRealAi}>
+                Ask Real AI to create
+              </motion.button>
+            </motion.div>
+          )}
 
-        {job && (job.status === "queued" || job.status === "processing") && (
-          <div className="mobile-generated__progress">
-            <span className="mobile-generated__spinner" aria-hidden />
-            <p className="mobile-generated__progress-title">Real AI is generating…</p>
-            <p className="mobile-generated__progress-prompt">{job.prompt}</p>
-            <span className="mobile-generated__badge mobile-generated__badge--status mono">{job.status}</span>
-          </div>
-        )}
+          {job && (job.status === "queued" || job.status === "processing") && (
+            <motion.div
+              key="progress"
+              className="mobile-generated__progress"
+              initial={reduceMotion ? undefined : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0 }}
+              transition={{ duration: 0.25 }}
+            >
+              <span className="mobile-generated__spinner" aria-hidden />
+              <p className="mobile-generated__progress-title">Real AI is generating…</p>
+              <p className="mobile-generated__progress-prompt">{job.prompt}</p>
+              <span className="mobile-generated__badge mobile-generated__badge--status mono">{job.status}</span>
+            </motion.div>
+          )}
 
-        {job?.status === "failed" && (
-          <div className="mobile-generated__failed">
-            <p>Generation failed.</p>
-            <p className="mobile-generated__progress-prompt">{job.error ?? "Try asking again."}</p>
-          </div>
-        )}
+          {job?.status === "failed" && (
+            <motion.div
+              key="failed"
+              className="mobile-generated__failed"
+              initial={reduceMotion ? undefined : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={reduceMotion ? undefined : { opacity: 0 }}
+            >
+              <p>Generation failed.</p>
+              <p className="mobile-generated__progress-prompt">{job.error ?? "Try asking again."}</p>
+            </motion.div>
+          )}
 
-        {job?.status === "completed" && job.resultUrl && (
-          <>
-            <img src={job.resultUrl} alt={job.prompt} className="mobile-generated__image" />
-            <span className="mobile-generated__badge mono">{badgeLabel}</span>
-          </>
-        )}
+          {job?.status === "completed" && job.resultUrl && (
+            <motion.div
+              key="result"
+              initial={reduceMotion ? undefined : { opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
+            >
+              <img src={job.resultUrl} alt={job.prompt} className="mobile-generated__image" />
+              <motion.span
+                className="mobile-generated__badge mono"
+                initial={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.3 }}
+              >
+                {badgeLabel}
+              </motion.span>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {job?.status === "completed" && job.resultUrl && (
-        <div className="mobile-generated__actions">
-          <button
+        <motion.div
+          className="mobile-generated__actions"
+          initial={reduceMotion ? undefined : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.3 }}
+        >
+          <motion.button
+            whileTap={{ scale: 0.96 }}
             type="button"
             className="mobile-generated__action"
             aria-pressed={Boolean(isPresenting)}
@@ -67,15 +109,16 @@ export function MobileGeneratedVisual({ onAskRealAi }: { onAskRealAi: () => void
             }
           >
             {isPresenting ? "Presenting" : "Present on stage"}
-          </button>
-          <button
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.96 }}
             type="button"
             className="mobile-generated__action"
             onClick={() => actions.shareAssetToChat(job.resultUrl as string, job.prompt)}
           >
             Share to chat
-          </button>
-        </div>
+          </motion.button>
+        </motion.div>
       )}
     </section>
   );

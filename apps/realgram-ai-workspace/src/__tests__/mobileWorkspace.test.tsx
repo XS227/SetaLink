@@ -166,14 +166,14 @@ describe("mobile workspace (viewport <= MOBILE_BREAKPOINT)", () => {
     await user.click(screen.getByRole("button", { name: /wake real ai/i }));
     await user.click(screen.getByRole("button", { name: /generate decisions/i }));
 
-    const decisionsToggle = await screen.findByText(/^decisions$/i);
-    const decisionsDetails = decisionsToggle.closest("details") as HTMLDetailsElement;
-    expect(decisionsDetails.open).toBe(false);
-    expect(within(decisionsDetails).getByText("3")).toBeInTheDocument();
+    const decisionsToggle = screen.getByRole("button", { name: /^decisions/i });
+    expect(decisionsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(within(decisionsToggle).getByText("3")).toBeInTheDocument();
+    expect(screen.queryByText("Decision one")).not.toBeInTheDocument();
 
     await user.click(decisionsToggle);
-    expect(decisionsDetails.open).toBe(true);
-    expect(screen.getByText("Decision one")).toBeInTheDocument();
+    expect(decisionsToggle).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByText("Decision one")).toBeInTheDocument();
 
     expect(screen.getByRole("button", { name: /export meeting intelligence pack/i })).toBeInTheDocument();
   });

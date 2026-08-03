@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { api } from "../../services/api";
 import { pollGenerationJob } from "../../services/pollGeneration";
@@ -8,10 +8,18 @@ function looksLikeGenerationRequest(text: string): boolean {
   return ["visual", "image", "generate", "video", "clip", "picture", "graphic"].some((kw) => q.includes(kw));
 }
 
-export function CommandBar() {
+/** `autoFocus` is opt-in (mobile's assistant sheet passes it when opened via
+ * an "ask" intent) — desktop's always-visible pane never wants a page load
+ * to yank focus into an input, so it omits the prop entirely. */
+export function CommandBar({ autoFocus = false }: { autoFocus?: boolean }) {
   const { state } = useWorkspace();
   const actions = useWorkspaceActions();
   const [question, setQuestion] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -39,6 +47,7 @@ export function CommandBar() {
   return (
     <form className="command-bar" onSubmit={handleSubmit}>
       <input
+        ref={inputRef}
         type="text"
         value={question}
         onChange={(e) => setQuestion(e.target.value)}

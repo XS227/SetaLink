@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { useGuidedDemo } from "../../hooks/useGuidedDemo";
 import type { ScreenShareStatus } from "../../hooks/useScreenShare";
@@ -23,6 +24,16 @@ interface MobileWorkspaceProps {
   shareStatus: ScreenShareStatus;
 }
 
+const columnVariants = {
+  hidden: {},
+  shown: { transition: { staggerChildren: 0.06, delayChildren: 0.04 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 10 },
+  shown: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } },
+};
+
 /**
  * The whole mobile page in one glance-able column: header, meeting name,
  * current step, AI status, a single primary action, then the generated
@@ -35,7 +46,14 @@ export function MobileWorkspace({ onShareScreen, onStopShareScreen, shareStatus 
   const actions = useWorkspaceActions();
   const { play, pause, demoPlaying } = useGuidedDemo();
   const [assistantOpen, setAssistantOpen] = useState(false);
+  const [focusCommandBar, setFocusCommandBar] = useState(false);
+  const reduceMotion = useReducedMotion();
   const isSharing = state.screenShare !== "off";
+
+  const openAssistant = useCallback((focus = false) => {
+    setFocusCommandBar(focus);
+    setAssistantOpen(true);
+  }, []);
 
   const primaryAction = !state.aiConsent
     ? { label: "Wake Real AI", onClick: () => actions.grantAiConsent() }
@@ -43,40 +61,69 @@ export function MobileWorkspace({ onShareScreen, onStopShareScreen, shareStatus 
       ? { label: "Pause guided demo", onClick: pause }
       : state.sceneIndex === 0 && state.generationJobs.length === 0
         ? { label: "Play guided demo", onClick: play }
-        : { label: "Ask Real AI", onClick: () => setAssistantOpen(true) };
+        : { label: "Ask Real AI", onClick: () => openAssistant(true) };
 
   return (
     <div className="mobile-workspace">
       <MobileHeader />
 
-      <main className="mobile-workspace__scroll">
-        <p className="mobile-meeting-strip mono">{state.meetingTitle || "—"}</p>
+      <motion.main
+        className="mobile-workspace__scroll"
+        variants={reduceMotion ? undefined : columnVariants}
+        initial="hidden"
+        animate="shown"
+      >
+        <motion.p variants={reduceMotion ? undefined : itemVariants} className="mobile-meeting-strip mono">
+          {state.meetingTitle || "—"}
+        </motion.p>
 
-        <MobileStepper />
+        <motion.div variants={reduceMotion ? undefined : itemVariants}>
+          <MobileStepper />
+        </motion.div>
 
-        <button type="button" className="mobile-ai-status glass" onClick={() => setAssistantOpen(true)}>
+        <motion.button
+          variants={reduceMotion ? undefined : itemVariants}
+          whileTap={{ scale: 0.98 }}
+          type="button"
+          className="mobile-ai-status glass"
+          onClick={() => openAssistant(false)}
+        >
           <AssistantOrb activity={state.assistantActivity} dormant={!state.aiActive} size={24} />
           <span>{statusLabel(state.aiActive, state.assistantActivity, isSharing)}</span>
           <span className="mobile-ai-status__open">Open Real AI ›</span>
-        </button>
+        </motion.button>
 
-        <button type="button" className="mobile-primary-action" onClick={primaryAction.onClick}>
+        <motion.button
+          variants={reduceMotion ? undefined : itemVariants}
+          whileTap={{ scale: 0.97 }}
+          type="button"
+          className="mobile-primary-action"
+          onClick={primaryAction.onClick}
+        >
           {primaryAction.label}
-        </button>
+        </motion.button>
 
-        <MobileGeneratedVisual onAskRealAi={() => setAssistantOpen(true)} />
+        <motion.div variants={reduceMotion ? undefined : itemVariants}>
+          <MobileGeneratedVisual onAskRealAi={() => openAssistant(true)} />
+        </motion.div>
 
-        <MobileTasksPanel />
-      </main>
+        <motion.div variants={reduceMotion ? undefined : itemVariants}>
+          <MobileTasksPanel />
+        </motion.div>
+      </motion.main>
 
       <MobileMeetingDock
         onShareScreen={onShareScreen}
         onStopShareScreen={onStopShareScreen}
         shareStatus={shareStatus}
-        onOpenAssistant={() => setAssistantOpen(true)}
+        onOpenAssistant={() => openAssistant(false)}
       />
 
-      <MobileAssistantSheet open={assistantOpen} onClose={() => setAssistantOpen(false)} />
+      <MobileAssistantSheet
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        focusCommandBar={focusCommandBar}
+      />
     </div>
   );
 }
