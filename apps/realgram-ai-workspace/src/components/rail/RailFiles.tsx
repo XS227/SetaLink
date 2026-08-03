@@ -1,4 +1,5 @@
 import type { GenerationJob } from "../../types/api";
+import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 
 export function RailFiles({ jobs }: { jobs: GenerationJob[] }) {
   return (
@@ -18,9 +19,14 @@ export function RailFiles({ jobs }: { jobs: GenerationJob[] }) {
 }
 
 function FileCard({ job }: { job: GenerationJob }) {
+  const { state } = useWorkspace();
+  const actions = useWorkspaceActions();
+  const isCompleted = job.status === "completed" && Boolean(job.resultUrl);
+  const isPresenting = isCompleted && state.presentedAsset?.url === job.resultUrl;
+
   return (
     <div className={`file-card file-card--${job.status}`}>
-      {job.status === "completed" && job.resultUrl ? (
+      {isCompleted && job.resultUrl ? (
         <img src={job.resultUrl} alt={job.prompt} className="file-card__image" />
       ) : (
         <div className="file-card__progress">
@@ -29,6 +35,30 @@ function FileCard({ job }: { job: GenerationJob }) {
         </div>
       )}
       <p className="file-card__prompt">{job.prompt}</p>
+
+      {isCompleted && job.resultUrl && (
+        <div className="file-card__actions">
+          <button
+            type="button"
+            className="file-card__action"
+            aria-pressed={isPresenting}
+            onClick={() =>
+              isPresenting
+                ? actions.stopPresenting()
+                : actions.presentAsset({ url: job.resultUrl as string, prompt: job.prompt })
+            }
+          >
+            {isPresenting ? "Presenting" : "Present on stage"}
+          </button>
+          <button
+            type="button"
+            className="file-card__action"
+            onClick={() => actions.shareAssetToChat(job.resultUrl as string, job.prompt)}
+          >
+            Share to chat
+          </button>
+        </div>
+      )}
     </div>
   );
 }

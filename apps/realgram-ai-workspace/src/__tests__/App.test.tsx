@@ -57,6 +57,16 @@ describe("RealGram AI Workspace — main demo flow", () => {
     expect(await screen.findByRole("heading", { name: "RealGram Global Product Review" })).toBeInTheDocument();
   });
 
+  it("renders the top bar's workflow stepper with every phase", async () => {
+    render(<App />);
+    await screen.findByRole("heading", { name: "RealGram Global Product Review" });
+
+    expect(screen.getByRole("list", { name: /meeting workflow/i })).toBeInTheDocument();
+    for (const phase of ["Join", "Share", "Analyze", "Summarize", "Create", "Export"]) {
+      expect(screen.getByText(phase)).toBeInTheDocument();
+    }
+  });
+
   it("gates the assistant behind explicit consent — the orb stays dormant", async () => {
     render(<App />);
     await screen.findByRole("heading", { name: "RealGram Global Product Review" });

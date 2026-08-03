@@ -116,6 +116,15 @@ describe("guided demo (scenes 1-9)", () => {
       const generatedImage = await screen.findByAltText(mockScript.askRealAiPrompt, {}, { timeout: 10000 });
       expect(generatedImage).toHaveAttribute("src", "data:image/svg+xml;base64,AAAA");
 
+      // The completed file card's actions present the result on stage and
+      // share it back to the meeting chat — both dispatch into workspace
+      // state that already existed (Stage, ThoughtFeed) but had no trigger.
+      await user.click(screen.getByRole("button", { name: /present on stage/i }));
+      expect(await screen.findByText(/presenting real ai's result/i)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /^share to chat$/i }));
+      expect(await screen.findByText(/shared to the meeting/i)).toBeInTheDocument();
+
       // Scene 8 produces the meeting summary.
       expect(await screen.findByText(/team aligned on shipping the mock adapter/i, {}, { timeout: 10000 })).toBeInTheDocument();
       expect(screen.getByText("Ship mock adapter default")).toBeInTheDocument();

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { WorkspaceProvider, useWorkspace, useWorkspaceActions } from "./state/workspaceStore";
 import { useScreenShare } from "./hooks/useScreenShare";
 import { api } from "./services/api";
+import { TopBar } from "./components/topbar/TopBar";
 import { ProjectRail } from "./components/rail/ProjectRail";
 import { Stage } from "./components/stage/Stage";
 import { LivingAssistant } from "./components/assistant/LivingAssistant";
@@ -51,16 +52,19 @@ function WorkspaceShell() {
   };
 
   return (
-    <div className="canvas">
-      <ProjectRail />
-      <div className="canvas__stage-area">
-        <Stage realStream={screenShare.stream} />
-        <LivingAssistant />
-        <ParticipantDock
-          onShareScreen={handleShareScreen}
-          onStopShareScreen={handleStopShareScreen}
-          shareStatus={screenShare.status}
-        />
+    <div className="app-shell">
+      <TopBar />
+      <div className="canvas">
+        <ProjectRail />
+        <div className="canvas__stage-area">
+          <Stage realStream={screenShare.stream} />
+          <LivingAssistant />
+          <ParticipantDock
+            onShareScreen={handleShareScreen}
+            onStopShareScreen={handleStopShareScreen}
+            shareStatus={screenShare.status}
+          />
+        </div>
       </div>
     </div>
   );
