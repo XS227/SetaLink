@@ -6,6 +6,7 @@ import { ConsentOverlay } from "../assistant/ConsentOverlay";
 import { LiveTicker } from "../assistant/LiveTicker";
 import { ThoughtFeed } from "../assistant/ThoughtFeed";
 import { CommandBar } from "../assistant/CommandBar";
+import { triggerHaptic } from "../../services/haptics";
 
 const DISMISS_DISTANCE = 120;
 const DISMISS_VELOCITY = 500;
@@ -70,7 +71,10 @@ export function MobileAssistantSheet({ open, onClose, focusCommandBar = false }:
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0, bottom: 0.6 }}
             onDragEnd={(_, info) => {
-              if (info.offset.y > DISMISS_DISTANCE || info.velocity.y > DISMISS_VELOCITY) onClose();
+              if (info.offset.y > DISMISS_DISTANCE || info.velocity.y > DISMISS_VELOCITY) {
+                triggerHaptic("light");
+                onClose();
+              }
             }}
           >
             <div
@@ -88,20 +92,48 @@ export function MobileAssistantSheet({ open, onClose, focusCommandBar = false }:
               {state.aiConsent && (
                 <div className="mobile-sheet__header-actions">
                   {state.aiActive ? (
-                    <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={actions.stopAiAnalysis} aria-label="Stop AI analysis" title="Stop AI analysis">
+                    <motion.button
+                      whileTap={{ scale: 0.92 }}
+                      onTapStart={() => triggerHaptic("light")}
+                      type="button"
+                      onClick={actions.stopAiAnalysis}
+                      aria-label="Stop AI analysis"
+                      title="Stop AI analysis"
+                    >
                       ⏸
                     </motion.button>
                   ) : (
-                    <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={actions.grantAiConsent} aria-label="Resume AI analysis" title="Resume AI analysis">
+                    <motion.button
+                      whileTap={{ scale: 0.92 }}
+                      onTapStart={() => triggerHaptic("light")}
+                      type="button"
+                      onClick={actions.grantAiConsent}
+                      aria-label="Resume AI analysis"
+                      title="Resume AI analysis"
+                    >
                       ▶
                     </motion.button>
                   )}
-                  <motion.button whileTap={{ scale: 0.92 }} type="button" onClick={handleDelete} aria-label="Delete session data" title="Delete session data">
+                  <motion.button
+                    whileTap={{ scale: 0.92 }}
+                    onTapStart={() => triggerHaptic("warning")}
+                    type="button"
+                    onClick={handleDelete}
+                    aria-label="Delete session data"
+                    title="Delete session data"
+                  >
                     ⌫
                   </motion.button>
                 </div>
               )}
-              <motion.button whileTap={{ scale: 0.92 }} type="button" className="mobile-sheet__close" onClick={onClose} aria-label="Close">
+              <motion.button
+                whileTap={{ scale: 0.92 }}
+                onTapStart={() => triggerHaptic("light")}
+                type="button"
+                className="mobile-sheet__close"
+                onClick={onClose}
+                aria-label="Close"
+              >
                 ✕
               </motion.button>
             </header>

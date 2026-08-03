@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import type { ScreenShareStatus } from "../../hooks/useScreenShare";
+import { triggerHaptic } from "../../services/haptics";
 
 interface MobileMeetingDockProps {
   onShareScreen: () => void;
@@ -28,6 +29,7 @@ export function MobileMeetingDock({ onShareScreen, onStopShareScreen, shareStatu
     <nav className="mobile-dock glass" aria-label="Meeting controls">
       <motion.button
         whileTap={{ scale: 0.88 }}
+        onTapStart={() => triggerHaptic("light")}
         type="button"
         className={`mobile-dock__btn ${!state.micOn ? "mobile-dock__btn--off" : ""}`}
         onClick={actions.toggleMic}
@@ -42,6 +44,7 @@ export function MobileMeetingDock({ onShareScreen, onStopShareScreen, shareStatu
 
       <motion.button
         whileTap={{ scale: 0.88 }}
+        onTapStart={() => triggerHaptic("light")}
         type="button"
         className={`mobile-dock__btn ${!state.cameraOn ? "mobile-dock__btn--off" : ""}`}
         onClick={actions.toggleCamera}
@@ -56,6 +59,7 @@ export function MobileMeetingDock({ onShareScreen, onStopShareScreen, shareStatu
 
       <motion.button
         whileTap={{ scale: 0.88 }}
+        onTapStart={() => triggerHaptic("light")}
         type="button"
         className={`mobile-dock__btn ${isSharing ? "mobile-dock__btn--active" : ""}`}
         onClick={handleShareClick}
@@ -70,6 +74,7 @@ export function MobileMeetingDock({ onShareScreen, onStopShareScreen, shareStatu
 
       <motion.button
         whileTap={{ scale: 0.88 }}
+        onTapStart={() => triggerHaptic("light")}
         type="button"
         className={`mobile-dock__btn mobile-dock__btn--ai ${state.aiActive ? "mobile-dock__btn--active" : ""}`}
         onClick={onOpenAssistant}
@@ -81,7 +86,13 @@ export function MobileMeetingDock({ onShareScreen, onStopShareScreen, shareStatu
         <span className="mobile-dock__label">Real AI</span>
       </motion.button>
 
-      <motion.button whileTap={{ scale: 0.88 }} type="button" className="mobile-dock__btn mobile-dock__btn--leave" aria-label="Leave meeting">
+      <motion.button
+        whileTap={{ scale: 0.88 }}
+        onTapStart={() => triggerHaptic("warning")}
+        type="button"
+        className="mobile-dock__btn mobile-dock__btn--leave"
+        aria-label="Leave meeting"
+      >
         <span className="mobile-dock__icon" aria-hidden>
           ✕
         </span>

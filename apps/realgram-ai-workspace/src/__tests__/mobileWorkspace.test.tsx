@@ -134,6 +134,21 @@ describe("mobile workspace (viewport <= MOBILE_BREAKPOINT)", () => {
     expect(screen.getByRole("button", { name: /play guided demo/i })).toBeInTheDocument();
   });
 
+  it("fires the Vibration API on tap", async () => {
+    const vibrate = vi.fn();
+    Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("RealGram Global Product Review");
+
+    await user.click(screen.getByRole("button", { name: /wake real ai/i }));
+    expect(vibrate).toHaveBeenCalled();
+
+    // @ts-expect-error — restore jsdom to having no Vibration API for other tests.
+    delete navigator.vibrate;
+  });
+
   it(
     "runs the guided demo and wires present/share-to-chat on the completed visual",
     async () => {

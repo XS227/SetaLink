@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { api } from "../../services/api";
 import { downloadMeetingIntelligencePack } from "../../services/exportPack";
+import { triggerHaptic } from "../../services/haptics";
 
 interface AccordionRowProps {
   title: string;
@@ -29,6 +30,7 @@ function AccordionRow({ title, count, open, onToggle, children }: AccordionRowPr
         onClick={onToggle}
         aria-expanded={open}
         whileTap={{ scale: 0.985 }}
+        onTapStart={() => triggerHaptic("light")}
       >
         <span>{title}</span>
         {count !== undefined && <span className="mobile-tasks__count">{count}</span>}
@@ -90,6 +92,7 @@ export function MobileTasksPanel() {
           onClick={handleGenerate}
           disabled={generating || !state.aiActive}
           whileTap={state.aiActive ? { scale: 0.985 } : undefined}
+          onTapStart={() => triggerHaptic("light")}
         >
           {generating ? "Summarizing…" : "Generate decisions & action items"}
         </motion.button>
@@ -124,6 +127,7 @@ export function MobileTasksPanel() {
         className="mobile-tasks__export"
         onClick={() => downloadMeetingIntelligencePack(state)}
         whileTap={{ scale: 0.97 }}
+        onTapStart={() => triggerHaptic("success")}
       >
         Export Meeting Intelligence Pack
       </motion.button>

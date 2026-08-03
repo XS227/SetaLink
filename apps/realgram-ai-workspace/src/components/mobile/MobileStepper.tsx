@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useWorkspace } from "../../state/workspaceStore";
 import { WORKFLOW_PHASES, getActivePhaseIndex } from "../../state/workflowPhases";
 import { useGuidedDemo } from "../../hooks/useGuidedDemo";
+import { triggerHaptic } from "../../services/haptics";
 
 /**
  * Mobile's answer to the desktop top bar's six-dot horizontal stepper: one
@@ -27,6 +28,7 @@ export function MobileStepper() {
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         whileTap={{ scale: 0.99 }}
+        onTapStart={() => triggerHaptic("light")}
       >
         <div className="mobile-stepper__current">
           <span className="mobile-stepper__eyebrow">
@@ -93,15 +95,27 @@ export function MobileStepper() {
               </ol>
               <div className="mobile-stepper__demo-controls">
                 {demoPlaying ? (
-                  <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={pause}>
+                  <motion.button whileTap={{ scale: 0.97 }} onTapStart={() => triggerHaptic("light")} type="button" onClick={pause}>
                     Pause guided demo
                   </motion.button>
                 ) : (
-                  <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={play} className="mobile-stepper__demo-play">
+                  <motion.button
+                    whileTap={{ scale: 0.97 }}
+                    onTapStart={() => triggerHaptic("light")}
+                    type="button"
+                    onClick={play}
+                    className="mobile-stepper__demo-play"
+                  >
                     {activeIndex === 0 ? "Play guided demo" : "Resume guided demo"}
                   </motion.button>
                 )}
-                <motion.button whileTap={{ scale: 0.97 }} type="button" onClick={restart} disabled={demoPlaying}>
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onTapStart={() => triggerHaptic("warning")}
+                  type="button"
+                  onClick={restart}
+                  disabled={demoPlaying}
+                >
                   Restart
                 </motion.button>
               </div>

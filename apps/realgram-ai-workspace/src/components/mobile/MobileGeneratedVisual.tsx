@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { RealGramLogo } from "../RealGramLogo";
+import { triggerHaptic } from "../../services/haptics";
 
 /**
  * The dominant element of the mobile page — full-width, a real minimum
@@ -34,7 +35,13 @@ export function MobileGeneratedVisual({ onAskRealAi }: { onAskRealAi: () => void
               <RealGramLogo size={30} />
               <p className="mobile-generated__empty-title">Nothing generated yet</p>
               <p className="mobile-generated__empty-hint">Ask Real AI for a launch visual and it'll appear here, full size.</p>
-              <motion.button whileTap={{ scale: 0.97 }} type="button" className="mobile-generated__ask" onClick={onAskRealAi}>
+              <motion.button
+                whileTap={{ scale: 0.97 }}
+                onTapStart={() => triggerHaptic("light")}
+                type="button"
+                className="mobile-generated__ask"
+                onClick={onAskRealAi}
+              >
                 Ask Real AI to create
               </motion.button>
             </motion.div>
@@ -99,6 +106,7 @@ export function MobileGeneratedVisual({ onAskRealAi }: { onAskRealAi: () => void
         >
           <motion.button
             whileTap={{ scale: 0.96 }}
+            onTapStart={() => triggerHaptic("light")}
             type="button"
             className="mobile-generated__action"
             aria-pressed={Boolean(isPresenting)}
@@ -112,6 +120,7 @@ export function MobileGeneratedVisual({ onAskRealAi }: { onAskRealAi: () => void
           </motion.button>
           <motion.button
             whileTap={{ scale: 0.96 }}
+            onTapStart={() => triggerHaptic("success")}
             type="button"
             className="mobile-generated__action"
             onClick={() => actions.shareAssetToChat(job.resultUrl as string, job.prompt)}

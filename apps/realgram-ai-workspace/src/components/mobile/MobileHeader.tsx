@@ -4,6 +4,7 @@ import { RealGramLogo } from "../RealGramLogo";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { WORKFLOW_PHASES, getActivePhaseIndex } from "../../state/workflowPhases";
 import type { TranslationLang } from "../../types/api";
+import { triggerHaptic } from "../../services/haptics";
 
 const LANG_LABEL: Record<TranslationLang, string> = { en: "EN", no: "NO", fa: "FA" };
 
@@ -75,6 +76,7 @@ export function MobileHeader() {
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((v) => !v)}
           whileTap={{ scale: 0.88 }}
+          onTapStart={() => triggerHaptic("light")}
         >
           <span aria-hidden>⋯</span>
         </motion.button>
@@ -95,6 +97,7 @@ export function MobileHeader() {
             {state.aiConsent && (
               <motion.button
                 whileTap={{ scale: 0.98 }}
+                onTapStart={() => triggerHaptic("light")}
                 type="button"
                 role="menuitem"
                 onClick={() => (state.aiActive ? actions.stopAiAnalysis() : actions.grantAiConsent())}
@@ -102,7 +105,14 @@ export function MobileHeader() {
                 {state.aiActive ? "Stop AI analysis" : "Resume AI analysis"}
               </motion.button>
             )}
-            <motion.button whileTap={{ scale: 0.98 }} type="button" role="menuitem" onClick={actions.toggleCaptions} aria-pressed={state.captionsOn}>
+            <motion.button
+              whileTap={{ scale: 0.98 }}
+              onTapStart={() => triggerHaptic("light")}
+              type="button"
+              role="menuitem"
+              onClick={actions.toggleCaptions}
+              aria-pressed={state.captionsOn}
+            >
               {state.captionsOn ? "Turn off captions" : "Turn on captions"}
             </motion.button>
             {state.captionsOn && (
@@ -111,6 +121,7 @@ export function MobileHeader() {
                   <motion.button
                     key={lang}
                     whileTap={{ scale: 0.94 }}
+                    onTapStart={() => triggerHaptic("light")}
                     type="button"
                     className={state.translationLang === lang ? "mobile-header__menu-lang--active" : ""}
                     onClick={() => actions.setTranslationLang(lang)}
@@ -121,7 +132,13 @@ export function MobileHeader() {
               </div>
             )}
             {state.aiConsent && (
-              <motion.button whileTap={{ scale: 0.98 }} type="button" role="menuitem" onClick={actions.deleteSessionData}>
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                onTapStart={() => triggerHaptic("warning")}
+                type="button"
+                role="menuitem"
+                onClick={actions.deleteSessionData}
+              >
                 Delete session data
               </motion.button>
             )}

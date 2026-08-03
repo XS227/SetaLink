@@ -10,6 +10,7 @@ import { MobileGeneratedVisual } from "./MobileGeneratedVisual";
 import { MobileTasksPanel } from "./MobileTasksPanel";
 import { MobileMeetingDock } from "./MobileMeetingDock";
 import { MobileAssistantSheet } from "./MobileAssistantSheet";
+import { triggerHaptic } from "../../services/haptics";
 
 function statusLabel(aiActive: boolean, activity: string, isSharing: boolean): string {
   if (!aiActive) return "Paused";
@@ -84,6 +85,7 @@ export function MobileWorkspace({ onShareScreen, onStopShareScreen, shareStatus 
         <motion.button
           variants={reduceMotion ? undefined : itemVariants}
           whileTap={{ scale: 0.98 }}
+          onTapStart={() => triggerHaptic("light")}
           type="button"
           className="mobile-ai-status glass"
           onClick={() => openAssistant(false)}
@@ -96,6 +98,7 @@ export function MobileWorkspace({ onShareScreen, onStopShareScreen, shareStatus 
         <motion.button
           variants={reduceMotion ? undefined : itemVariants}
           whileTap={{ scale: 0.97 }}
+          onTapStart={() => triggerHaptic("medium")}
           type="button"
           className="mobile-primary-action"
           onClick={primaryAction.onClick}
