@@ -1,19 +1,23 @@
 import { useEffect } from "react";
 import { WorkspaceProvider, useWorkspace, useWorkspaceActions } from "./state/workspaceStore";
 import { useScreenShare } from "./hooks/useScreenShare";
+import { useIsMobile } from "./hooks/useIsMobile";
 import { api } from "./services/api";
 import { TopBar } from "./components/topbar/TopBar";
 import { ProjectRail } from "./components/rail/ProjectRail";
 import { Stage } from "./components/stage/Stage";
 import { LivingAssistant } from "./components/assistant/LivingAssistant";
 import { ParticipantDock } from "./components/dock/ParticipantDock";
+import { MobileWorkspace } from "./components/mobile/MobileWorkspace";
 import "./styles/tokens.css";
 import "./styles/app.css";
+import "./styles/mobile.css";
 
 function WorkspaceShell() {
   const { state } = useWorkspace();
   const actions = useWorkspaceActions();
   const screenShare = useScreenShare();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     api.demoScript().then((script) => {
@@ -50,6 +54,16 @@ function WorkspaceShell() {
     }
     actions.setScreenShare("off");
   };
+
+  if (isMobile) {
+    return (
+      <MobileWorkspace
+        onShareScreen={handleShareScreen}
+        onStopShareScreen={handleStopShareScreen}
+        shareStatus={screenShare.status}
+      />
+    );
+  }
 
   return (
     <div className="app-shell">

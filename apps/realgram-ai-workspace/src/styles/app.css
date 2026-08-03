@@ -58,77 +58,15 @@ button {
   }
 }
 
-/* ---------- responsive: below desktop, stack in normal flow ----------
-   The floating-panes-over-a-stage composition assumes real desktop width.
-   Below ~980px the assistant pane and dock un-float into a scrollable
-   column instead of overlapping a too-small stage. */
-@media (max-width: 980px) {
-  body {
-    overflow-y: auto;
-  }
-
-  .app-shell {
-    height: auto;
-    min-height: 100vh;
-  }
-
-  .canvas {
-    flex-direction: column;
-    height: auto;
-  }
-
-  .rail {
-    width: 100% !important;
-    height: auto;
-    flex-direction: row;
-    align-items: center;
-    border-right: none;
-    border-bottom: 1px solid var(--hairline);
-  }
-
-  .rail__brand {
-    border-bottom: none;
-    flex-shrink: 0;
-  }
-
-  .rail__body {
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 12px;
-    gap: 16px;
-  }
-
-  .rail-section {
-    min-width: 220px;
-    border-top: none;
-    padding-top: 0;
-  }
-
-  .canvas__stage-area {
-    height: auto;
-  }
-
-  .stage {
-    position: static;
-    height: 60vh;
-    min-height: 420px;
-    padding: 20px;
-  }
-
-  .assistant-pane {
-    position: static;
-    width: 100%;
-    height: 60vh;
-    min-height: 420px;
-    margin: 0;
-  }
-
-  .dock {
-    position: static;
-    width: fit-content;
-    margin: 16px auto;
-  }
-}
+/* Below MOBILE_BREAKPOINT (src/hooks/useIsMobile.ts, 900px) App.tsx mounts
+   an entirely separate component tree (src/components/mobile) instead of
+   reflowing this one — see styles/mobile.css. A previous attempt to reflow
+   this desktop DOM via a max-width media query lived here; it never
+   actually took effect (the unconditional `.stage`/`.assistant-pane`/`.dock`
+   rules below are later in this file with equal specificity, so they always
+   won the cascade regardless of viewport) and has been removed rather than
+   fixed in place, since the desktop tree now only ever renders above the
+   breakpoint. */
 
 /* ---------- app shell + top bar ---------- */
 
