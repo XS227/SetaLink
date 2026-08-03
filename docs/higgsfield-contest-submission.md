@@ -181,9 +181,11 @@ That's RealGram AI Workspace. #HiggsfieldApp
   (no usable headless browser was available); verification here is
   component-level (Testing Library + jsdom) and live HTTP smoke-testing
   against the real running server, not a rendered-pixel screenshot.
-- **No production build has been deployed anywhere** — `npm run build`
-  succeeds and `dist/` is ready, but hosting/deploy is a separate step not
-  taken in this session.
+- **Live at `desktop.realgram.no`** — pm2 (`realgram-ai-workspace-server`,
+  `:4181`) + nginx + Let's Encrypt, frontend built and synced to
+  `/var/www/realgram-ai-workspace`. Redeploy after a frontend change is
+  `npm run build` then `rsync`/copy `dist/` over that directory (owned by
+  `www-data`) — there's no CI step wired up for it yet.
 - **The floating-panes composition is desktop-first**, matching the
   brief's own "desktop-first meeting workspace" direction. A ~980px
   breakpoint switches to a stacked, scrollable layout so nothing is
