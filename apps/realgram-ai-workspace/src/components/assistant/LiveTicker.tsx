@@ -1,12 +1,14 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import type { TranslationLang } from "../../types/api";
+import { triggerHaptic } from "../../services/haptics";
 
 const LANG_LABEL: Record<TranslationLang, string> = { en: "EN", no: "NO", fa: "FA" };
 
 /** A one-line "what's being said right now" ticker — the assistant
- * visibly following the conversation, not a scrollback transcript log. */
-export function LiveTicker() {
+ * visibly following the conversation, not a scrollback transcript log.
+ * `haptics` is opt-in (mobile's assistant sheet passes it); desktop omits it. */
+export function LiveTicker({ haptics = false }: { haptics?: boolean }) {
   const { state } = useWorkspace();
   const actions = useWorkspaceActions();
   const current = state.transcript[state.transcriptRevealCount - 1];
@@ -38,6 +40,7 @@ export function LiveTicker() {
           <button
             type="button"
             className={`live-ticker__cc ${state.captionsOn ? "live-ticker__cc--active" : ""}`}
+            onPointerDown={haptics ? () => triggerHaptic("light") : undefined}
             onClick={actions.toggleCaptions}
             aria-pressed={state.captionsOn}
             title="Toggle translated captions"

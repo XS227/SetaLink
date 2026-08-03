@@ -139,12 +139,12 @@ export function MobileAssistantSheet({ open, onClose, focusCommandBar = false }:
             </header>
 
             {!state.aiConsent ? (
-              <ConsentOverlay />
+              <ConsentOverlay haptics />
             ) : (
               <div className="mobile-sheet__body">
-                <LiveTicker />
+                <LiveTicker haptics />
                 <ThoughtFeed entries={state.feed} />
-                <CommandBar autoFocus={focusCommandBar} />
+                <CommandBar autoFocus={focusCommandBar} haptics />
               </div>
             )}
           </motion.div>

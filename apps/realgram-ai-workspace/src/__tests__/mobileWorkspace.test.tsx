@@ -149,6 +149,37 @@ describe("mobile workspace (viewport <= MOBILE_BREAKPOINT)", () => {
     delete navigator.vibrate;
   });
 
+  it("also fires haptics on the desktop-shared pieces reused inside the assistant sheet", async () => {
+    const vibrate = vi.fn();
+    Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByText("RealGram Global Product Review");
+
+    // Open the sheet before consent — it renders ConsentOverlay (reused from desktop).
+    // Scoped to the dialog: the page's own primary-action "Wake Real AI" button is
+    // still present behind the sheet, so an unscoped query would be ambiguous.
+    await user.click(screen.getByRole("button", { name: /open real ai/i }));
+    const dialog = screen.getByRole("dialog", { name: /real ai/i });
+    vibrate.mockClear();
+    await user.click(within(dialog).getByRole("button", { name: /wake real ai/i }));
+    expect(vibrate).toHaveBeenCalled(); // ConsentOverlay's own Wake button
+
+    // Now consented — the sheet body shows LiveTicker (CC toggle) and CommandBar (Ask).
+    vibrate.mockClear();
+    await user.click(screen.getByRole("button", { name: /^cc$/i }));
+    expect(vibrate).toHaveBeenCalled(); // LiveTicker's CC toggle
+
+    vibrate.mockClear();
+    await user.type(screen.getByLabelText(/ask real ai/i), "What did we decide?");
+    await user.click(screen.getByRole("button", { name: /^ask$/i }));
+    expect(vibrate).toHaveBeenCalled(); // CommandBar's submit button
+
+    // @ts-expect-error — restore jsdom to having no Vibration API for other tests.
+    delete navigator.vibrate;
+  });
+
   it(
     "runs the guided demo and wires present/share-to-chat on the completed visual",
     async () => {

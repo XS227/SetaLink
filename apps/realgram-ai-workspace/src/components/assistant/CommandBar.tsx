@@ -2,16 +2,17 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useWorkspace, useWorkspaceActions } from "../../state/workspaceStore";
 import { api } from "../../services/api";
 import { pollGenerationJob } from "../../services/pollGeneration";
+import { triggerHaptic } from "../../services/haptics";
 
 function looksLikeGenerationRequest(text: string): boolean {
   const q = text.toLowerCase();
   return ["visual", "image", "generate", "video", "clip", "picture", "graphic"].some((kw) => q.includes(kw));
 }
 
-/** `autoFocus` is opt-in (mobile's assistant sheet passes it when opened via
- * an "ask" intent) — desktop's always-visible pane never wants a page load
- * to yank focus into an input, so it omits the prop entirely. */
-export function CommandBar({ autoFocus = false }: { autoFocus?: boolean }) {
+/** `autoFocus`/`haptics` are opt-in (mobile's assistant sheet passes both) —
+ * desktop's always-visible pane never wants a page load to yank focus into
+ * an input, and has no reason to buzz, so it omits both props entirely. */
+export function CommandBar({ autoFocus = false, haptics = false }: { autoFocus?: boolean; haptics?: boolean }) {
   const { state } = useWorkspace();
   const actions = useWorkspaceActions();
   const [question, setQuestion] = useState("");
@@ -58,6 +59,7 @@ export function CommandBar({ autoFocus = false }: { autoFocus?: boolean }) {
       <button
         type="submit"
         aria-label="Ask"
+        onPointerDown={haptics ? () => triggerHaptic("light") : undefined}
         disabled={!state.aiActive || state.assistantActivity === "thinking" || !question.trim()}
       >
         <span aria-hidden>↵</span>
