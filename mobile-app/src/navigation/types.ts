@@ -17,6 +17,7 @@ export type RootStackParamList = {
   Inbox:         undefined;
   Transfer:      undefined;
   Starlink:      undefined;
+  MoneyDesk:     undefined;
   Chapters:      undefined;
   ChapterDetail: { slug: string };
   Heroes:        { slug?: string } | undefined;

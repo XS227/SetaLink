@@ -33,6 +33,7 @@ import { SmartAIScreen }     from '../screens/SmartAIScreen';
 import { ActivityScreen }    from '../screens/ActivityScreen';
 import { RealGramProfileScreen } from '../screens/RealGramProfileScreen';
 import { RealGramClanScreen }    from '../screens/RealGramClanScreen';
+import { RealGramMoneyDeskScreen } from '../screens/RealGramMoneyDeskScreen';
 import { RealGramChaptersScreen } from '../screens/RealGramChaptersScreen';
 import { RealGramChapterDetailScreen } from '../screens/RealGramChapterDetailScreen';
 import { RealGramHeroesScreen }  from '../screens/RealGramHeroesScreen';
@@ -481,6 +482,7 @@ function ClanAdapter({ navigation }: ScreenAdapterProps) {
         Share.share({ message: t('pr.shareMessage').replace(/\{code\}/g, code) }).catch(() => {});
       }}
       onOpenClans={() => navigation.navigate('ClanBrowse')}
+      onOpenMoneyDesk={() => navigation.navigate('MoneyDesk')}
     />
   );
 }
@@ -842,6 +844,20 @@ export function AppNavigator() {
               }}
               onConnect={() => navigation.navigate('Main', { screen: 'Servers' } as never)}
               onUpgrade={() => navigation.navigate('Upgrade')}
+            />
+          )}
+        </Stack.Screen>
+        <Stack.Screen
+          name="MoneyDesk"
+          options={{ animation: 'slide_from_right' }}
+        >
+          {({ navigation }) => (
+            <RealGramMoneyDeskScreen
+              onBack={() => navigation.goBack()}
+              onInvite={() => {
+                const code = (useAuthStore.getState().user?.referralCode || '').toUpperCase();
+                Share.share({ message: t('pr.shareMessage').replace(/\{code\}/g, code) }).catch(() => {});
+              }}
             />
           )}
         </Stack.Screen>

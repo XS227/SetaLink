@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
   StyleSheet, ActivityIndicator,
@@ -10,12 +10,14 @@ import { GlassCard } from '../components/GlassCard';
 import { AdBanner } from '../components/AdBanner';
 import { TopBar } from '../components/TopBar';
 import { StarlinkBanner } from '../components/StarlinkBanner';
+import { ContestBanner } from '../components/ContestBanner';
 import { EmberField } from '../components/EmberField';
 
 import { useServerStore, COMING_SOON_SERVERS } from '../stores/serverStore';
 import { useVpnStore }  from '../stores/vpnStore';
 import { useAIStore }   from '../stores/aiStore';
 import { useAuthStore } from '../stores/authStore';
+import { useContestStore } from '../stores/contestStore';
 import { useT } from '../i18n';
 
 const STARLINK_INVITE_TARGET = 11; // mirrors HomeScreen's constant (not shared — same value, two screens)
@@ -43,6 +45,16 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
   // userShowsAds: a premium tester can be flagged server-side to see ads without
   // touching her actual plan/quota.
   const userTestMode    = useAuthStore((s) => !!s.user?.testMode);
+  const token           = useAuthStore((s) => s.token);
+  const contestStatus   = useContestStore((s) => s.status);
+
+  // Same best-effort, non-blocking refresh idiom as RealGramClanScreen's
+  // starlinkStore wiring — this store persists, so a stale/null status
+  // never hides the banner, it just refreshes in the background.
+  useEffect(() => {
+    if (!token) return;
+    useContestStore.getState().refresh(token).catch(() => {});
+  }, [token]);
 
   const isConnected     = connectionState === 'connected';
   const isTransitioning = connectionState === 'connecting'
@@ -151,6 +163,21 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
           inviteTarget={STARLINK_INVITE_TARGET}
           onInvite={onInvite}
         />
+
+        {/* Pre-release 100-invite / $100 USDT contest — separate banner
+            from StarlinkBanner above (different target number, different
+            reward, would overload one component with two unrelated
+            concepts — see ContestBanner.tsx's own header). */}
+        {contestStatus && (
+          <ContestBanner
+            qualifies={contestStatus.qualifies}
+            claimed={!!contestStatus.claimStatus}
+            inviteCount={contestStatus.invitesVerified}
+            inviteTarget={contestStatus.invitesRequired}
+            walletConnected={contestStatus.walletConnected}
+            onInvite={onInvite}
+          />
+        )}
 
         {/* Active servers */}
         <View style={styles.section}>

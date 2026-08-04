@@ -60,23 +60,26 @@ import { EmberField } from '../components/EmberField';
 import { useT } from '../i18n';
 import { useAuthStore } from '../stores/authStore';
 import { useStarlinkStore } from '../stores/starlinkStore';
+import { useContestStore } from '../stores/contestStore';
 import { getProfileSummary, ProfileClan } from '../services/realGramProfileService';
 
 const ONE_GB = 1073741824;
 
 interface Props {
-  onOpenStarlink: () => void;
-  onInvite:       () => void;
-  onOpenClans:    () => void;
+  onOpenStarlink:  () => void;
+  onInvite:        () => void;
+  onOpenClans:     () => void;
+  onOpenMoneyDesk: () => void;
 }
 
-export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Props) {
+export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans, onOpenMoneyDesk }: Props) {
   const { t, isRTL } = useT();
   const deviceId = useAuthStore((s) => s.user?.deviceId ?? '');
   const token    = useAuthStore((s) => s.token);
   const quotaTotal = useAuthStore((s) => s.user?.quotaBytesTotal ?? 0);
   const milestones = useAuthStore((s) => s.user?.milestones ?? null);
   const insets   = useSafeAreaInsets();
+  const contestStatus = useContestStore((s) => s.status);
 
   const [clan, setClan] = useState<ProfileClan | null>(null);
 
@@ -92,6 +95,7 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Pr
   useEffect(() => {
     if (!token) return;
     useStarlinkStore.getState().refresh(token).catch(() => {});
+    useContestStore.getState().refresh(token).catch(() => {});
   }, [token]);
 
   return (
@@ -108,6 +112,22 @@ export function RealGramClanScreen({ onOpenStarlink, onInvite, onOpenClans }: Pr
         {/* Members / referrals / shared rewards + "top contributors" ranking —
             a complete, already-shipped component, just never placed here. */}
         <ReferralEarningsDonut deviceId={deviceId} onInvite={onInvite} />
+
+        {/* Pre-release 100-invite / $100 USDT contest — compact tappable
+            summary into its own screen, same pattern as the Shahnameh clan
+            card below (onOpenClans). */}
+        <TouchableOpacity onPress={onOpenMoneyDesk} activeOpacity={0.85}>
+          <GlassCard style={styles.card} glowColor={Colors.gold[400]}>
+            <View style={styles.cardLabelRow}>
+              <Text style={styles.cardLabel}>{t('contest.clanCardLabel')}</Text>
+              <Text style={styles.chevron}>{isRTL ? '‹' : '›'}</Text>
+            </View>
+            <Text style={styles.dataValue}>
+              {contestStatus?.invitesVerified ?? 0}/{contestStatus?.invitesRequired ?? 100}
+            </Text>
+            <Text style={styles.dataSub}>{t('contest.clanCardSub')}</Text>
+          </GlassCard>
+        </TouchableOpacity>
 
         {/* Escalating invite quest: reads the already-live qe_milestones()
             ladder (3 -> 5 -> 8 -> 13 -> 21 -> 34 -> 55) off authStore, so a

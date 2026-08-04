@@ -25,7 +25,15 @@ import {
 
 type Phase = 'idle' | 'connecting' | 'connected';
 
-export function TonConnectCard() {
+interface Props {
+  /** Fired whenever a wallet becomes connected — on a fresh connect in this
+   *  session AND when an existing session is restored on mount. Callers that
+   *  need the address server-side (e.g. the contest money desk) hook this
+   *  instead of duplicating tonConnectService's own subscription. */
+  onConnected?: (wallet: TonConnectedWallet) => void;
+}
+
+export function TonConnectCard({ onConnected }: Props = {}) {
   const { t } = useT();
   const showToast = useToastStore((s) => s.show);
 
@@ -35,14 +43,15 @@ export function TonConnectCard() {
 
   useEffect(() => {
     restoreTonConnection().then((w) => {
-      if (w) { setWallet(w); setPhase('connected'); }
+      if (w) { setWallet(w); setPhase('connected'); onConnected?.(w); }
     });
     const unsubscribe = onTonConnectionChange((w) => {
       setWallet(w);
       setPhase(w ? 'connected' : 'idle');
-      if (w) setLink('');
+      if (w) { setLink(''); onConnected?.(w); }
     });
     return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleConnect = async () => {

@@ -1629,6 +1629,65 @@ PS1;
         api_ok(['status' => 'rejected']);
     }
 
+    // Pre-release 100-invite contest ($100 USDT) — manual-review payout
+    // queue. See lib/contest.php's header for the anti-fraud rationale:
+    // contest-claim (public/v1.php) only ever inserts a 'pending' row here,
+    // nothing in this codebase ever moves real USDT automatically. Approve
+    // just means "go ahead and send it" — Khabat sends the USDT himself,
+    // then mark-paid records the tx_hash for the audit trail. Same
+    // approve/reject shape as referral-approve/reject just above.
+    if ($action === 'contest-payouts-list') {
+        require_once __DIR__ . '/../lib/contest.php';
+        $db = open_analytics_db();
+        contest_ensure_schema($db);
+        $status = trim((string)($parsed['status'] ?? '')) ?: null;
+        api_ok(['payouts' => contest_list_payouts($db, $status)]);
+    }
+
+    if ($action === 'contest-payout-approve' || $action === 'contest-payout-reject') {
+        require_once __DIR__ . '/../lib/contest.php';
+        $id = (int)($parsed['id'] ?? 0);
+        if ($id <= 0) api_err('id required');
+        $db = open_analytics_db();
+        contest_ensure_schema($db);
+
+        $st = $db->prepare("SELECT * FROM contest_payouts WHERE id=?");
+        $st->execute([$id]);
+        $row = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$row) api_err('payout not found', 404);
+        if (($row['status'] ?? '') !== 'pending') {
+            api_err("payout is '{$row['status']}' — only pending payouts can be reviewed", 409);
+        }
+
+        $admin  = $auth_user !== '' ? $auth_user : 'admin';
+        $status = $action === 'contest-payout-approve' ? 'approved' : 'rejected';
+        $db->prepare("UPDATE contest_payouts SET status=?, reviewed_by=?, reviewed_at=datetime('now') WHERE id=?")
+           ->execute([$status, $admin, $id]);
+        api_ok(['id' => $id, 'status' => $status]);
+    }
+
+    if ($action === 'contest-payout-mark-paid') {
+        require_once __DIR__ . '/../lib/contest.php';
+        $id     = (int)($parsed['id'] ?? 0);
+        $txHash = trim((string)($parsed['tx_hash'] ?? ''));
+        $note   = trim((string)($parsed['note'] ?? ''));
+        if ($id <= 0) api_err('id required');
+        if ($txHash === '') api_err('tx_hash required');
+        $db = open_analytics_db();
+        contest_ensure_schema($db);
+
+        $st = $db->prepare("SELECT status FROM contest_payouts WHERE id=?");
+        $st->execute([$id]);
+        $cur = $st->fetchColumn();
+        if ($cur === false) api_err('payout not found', 404);
+        if ($cur !== 'approved') {
+            api_err("payout is '{$cur}' — only approved payouts can be marked paid", 409);
+        }
+        $db->prepare("UPDATE contest_payouts SET status='paid', tx_hash=?, note=? WHERE id=?")
+           ->execute([$txHash, $note, $id]);
+        api_ok(['id' => $id, 'status' => 'paid', 'tx_hash' => $txHash]);
+    }
+
     if ($action === 'geo-backfill') {
         // Re-resolve country for devices that have a public last_ip but no
         // country (their first lookups failed or every request was tunneled).

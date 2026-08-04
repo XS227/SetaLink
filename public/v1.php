@@ -41,6 +41,8 @@ require_once __DIR__ . '/../lib/payments.php';
 require_once __DIR__ . '/../lib/node_intel.php';
 // Starlink exit-node registry, health policy, and unlock-status.
 require_once __DIR__ . '/../lib/starlink.php';
+// Pre-release 100-invite contest ($100 USDT, manual-review payout).
+require_once __DIR__ . '/../lib/contest.php';
 
 /** Read a POST field from form-encoded body or a JSON body. */
 function v1_body(string $key, string $default = ''): string {
@@ -484,14 +486,9 @@ function v1_starlink_unlock(PDO $pdo, ?string $deviceId): array {
         $q = $pdo->prepare("SELECT plan, COALESCE(test_mode,0) AS test_mode FROM devices WHERE device_id = ?");
         $q->execute([$deviceId]);
         $dev = $q->fetch(PDO::FETCH_ASSOC);
-        $ic = $pdo->prepare(
-            "SELECT COUNT(*) FROM referral_uses ru
-             JOIN devices d ON d.device_id = ru.new_device_id
-             WHERE ru.referrer_device_id = ?
-               AND ru.status IN ('credited','approved')
-               AND (d.internet_ok = 1 OR d.last_seen >= datetime('now','-7 days'))");
-        $ic->execute([$deviceId]);
-        $res['invitesVerified'] = (int)$ic->fetchColumn();
+        // Shared with the 100-invite contest (lib/contest.php) so "verified
+        // active invite" can never drift into two different definitions.
+        $res['invitesVerified'] = contest_active_invite_count($pdo, $deviceId);
         if ($dev && $dev['plan'] === 'premium') {
             $res['unlocked'] = true; $res['reason'] = 'premium';
         } elseif ($dev && (int)$dev['test_mode'] === 1) {
@@ -848,6 +845,33 @@ if ($rel === '/starlink/unlock-status' && $method === 'GET') {
         break;
     }
     v1_send(['unlock' => $unlock, 'node' => $nodeOut, 'hasConnected' => $hasConnected]);
+}
+
+// ── Pre-release 100-invite contest ($100 USDT, manual-review payout) ────────
+// See lib/contest.php's header for the full design/anti-fraud rationale.
+// All three routes require a registered device identity — the contest is
+// per-account, not per-anonymous-install.
+if ($rel === '/contest/status' || $rel === '/contest/wallet-connect' || $rel === '/contest/claim') {
+    if ($deviceId === null || $deviceId === '') v1_send(['message' => 'device identity required'], 403);
+    contest_ensure_schema($pdo);
+
+    if ($rel === '/contest/status' && $method === 'GET') {
+        v1_send(contest_status($pdo, $deviceId));
+    }
+
+    if ($rel === '/contest/wallet-connect' && $method === 'POST') {
+        $address = v1_body('wallet_address');
+        $chain   = v1_body('chain');
+        if ($address === '') v1_send(['message' => 'wallet_address required'], 400);
+        contest_wallet_connect($pdo, $deviceId, $address, $chain);
+        v1_send(contest_status($pdo, $deviceId));
+    }
+
+    if ($rel === '/contest/claim' && $method === 'POST') {
+        v1_send(contest_claim($pdo, $deviceId));
+    }
+
+    v1_send(['message' => 'method not allowed'], 405);
 }
 
 if ($rel === '/servers') {
