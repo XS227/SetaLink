@@ -1,4 +1,4 @@
-# Rostam & Sohrab — manus og skotliste (v4)
+# Rostam & Sohrab — manus og skotliste (v5)
 ### Higgsfield Global Film Festival ($1M) — innsendingsfrist 31. august 2026 — mål: 3:33
 
 ---
@@ -410,291 +410,484 @@ FADE OUT.
 de andre. Skrevet på engelsk siden video-modellene fungerer klart best på engelske prompts
 selv for persisk-språklig innhold — se språknotat til slutt.
 
-**v2 — strammet inn etter test.** To testgenereringer avdekket ekte problemer: kameraet
-zoomet mot Nord-Amerika i stedet for Persia (geografien var ikke eksplisitt nok), en uønsket
-glødende sikksakk-linje dukket opp under nedstigningen, og Ferdowsi fikk løst hår og en
-staselig gårdsplass med kjempemåne i stedet for turban og et beskjedent rom. Shot 1 er nå ÉN
-sammenhengende prompt for hele de første ~9 sekundene (matcher faktisk Seedance-varighet per
-generering), med eksplisitt gjentatt Iran/Persia-geografi, det ekte åpningsverset fra
-Shahnameh innskrevet i kalligrafien, og en egen "Avoid"-liste for å motvirke driften.
+**v3 — full feltstruktur + splittet reveal.** Test nr. 2 (samlet 9s-prompt) var et stort steg
+riktig: korrekt geografi, korrekt turban/antrekk, beskjedent leirhus, ingen glødende linje. To
+ting gjenstår: (1) det gikk for fort — scene 1 splittes nå i to genereringer, først ryggen til
+Ferdowsi, så et bevisst, langsomt reveal av ansiktet hans; (2) prompten er nå bygget med samme
+feltstruktur som Higgsfields egen Seedance/Cinema Studio-dokumentasjon bruker
+(Duration/Aspect ratio/Frame rate/Environment/Characters/Action arc/Camera/Speed ramp/
+Lighting/Style/Technical/Rules) i stedet for løs tekst — samme format du så i andres
+resultater.
 
-**Shot 1 — Hele åpningen, ett sammenhengende shot (~9s)**
-```
-The camera begins in orbit around planet Earth in space, against a black starfield with
-visible stars. It descends smoothly and continuously through the atmosphere, flying directly
-toward Iran and the Middle East on the Iranian plateau — not North America, not Europe, not
-any other continent — heading specifically toward the ancient Persian region of Khorasan, near
-the historic city of Tus. As the descent continues over an arid, mountainous Persian landscape
-at night, the camera glides low and converges on a single small, modest mudbrick house — no
-palace, no grand courtyard, no towers, no domes, no minarets. It pushes through a small lit
-window glowing with warm candlelight into a plain, humble room. Inside, an elderly Persian
-scholar in his seventies sits at a low wooden desk. His hair is fully covered by a plain wound
-cream-colored turban — no loose or visible hair. He has a long grey-white beard and wears
-simple undyed woolen robes, ink-stained fingers. He writes with a reed quill on a parchment
-scroll in flowing Persian Nastaliq calligraphy. The opening line of his manuscript is visible
-in the calligraphy: "به نام خداوند جان و خرد" (in the name of the Lord of soul and wisdom). A
-single small oil lamp beside him is the only light source; deep natural shadows elsewhere in
-the room. He continues writing without looking up, fully absorbed. The camera slowly pushes in
-from a medium shot toward his writing hand, ending in an extreme close-up on the ink strokes
-of the calligraphy filling the frame. One continuous unbroken camera movement throughout, no
-hard cuts. Cinematic, photorealistic, painterly warm color grade, shallow depth of field, dust
-motes visible in the candlelight, historical Persian manuscript aesthetic.
+**Timing-varsel:** etter å ha delt scene 1 i to (rygg → ansikt-reveal) og gitt flere scener
+mer albuerom for å fikse "går for fort"-tilbakemeldingen, summerer nåværende varigheter til
+**~2:51** — under kontestens 3-minutters minimum. Skotlisten i seksjon 8 viser fortsatt den
+opprinnelige 213-sek/3:33-planen fra før live-testingen startet; de to henger ikke lenger
+perfekt sammen. Løsning når dere har testet flere shots: forleng sorgscenen (17) og/eller det
+stille vide bildet (19) ytterligere — begge tåler mer tid uten å skade historien — for å komme
+trygt over 3:00.
 
-Avoid: glowing lines, light trails, neon paths, or CGI light streaks during the descent; an
-oversized, overly detailed, or glowing moon; loose or windblown hair; any grand architecture,
-palace, courtyard, domes, or minarets; magical glowing effects on the quill or pen tip; modern
-or non-Persian architecture.
+**Shahnameh-ident — gjenbrukbar, bygges i etterarbeid, ikke i Seedance.** Din idé om en fast
+studio-ident (som Warner Bros-logoen før hver film) er riktig løsning — men bør bygges som en
+egen, kort tittelgrafikk i etterarbeid (CapCut/Premiere/After Effects), ikke genereres på nytt
+hver gang i Seedance. Grunnen: AI-videomodeller kan foreløpig ikke skrive presis, lesbar tekst
+pålitelig — verken persisk kalligrafi eller latinske bokstaver (se testfunn under). En
+ordentlig tittelgrafikk garanterer at ordene faktisk står riktig, og kan gjenbrukes identisk
+foran ethvert fremtidig Shahnameh-kapittel dere lager.
+
+- **Innhold:** gulltekst "SHAHNAMEH" på svart bakgrunn, under i mindre kursiv serif den
+  engelske oversettelsen: *"In the name of the Lord of Soul and Wisdom"*.
+- **Designnotat:** svart bakgrunn → gulltekst "SHAHNAMEH" materialiserer seg sakte (partikkel-
+  eller blekk-effekt passer tematisk) → hold 2 sek → ton ut til første shot. ~3–4 sek totalt,
+  stille eller med en enkelt, dyp gongong/streng-tone.
+
+**Shot 1A — Nedstigning → eksteriør, Ferdowsi sett bakfra**
 ```
-*Modell: seedance_2_0 · Varighet: 9s (matcher observert faktisk lengde) · Oppløsning: 4k/std · Bildeforhold: 16:9 · Sjanger: epic · Lyd: av*
+[DURATION] 9 seconds
+[ASPECT RATIO] 16:9
+[FRAME RATE] 24fps, cinematic motion (not soap-opera smooth)
+[ENVIRONMENT] Begins in orbital space around Earth, black starfield, visible stars. Descends
+through atmosphere toward Iran and the Middle East on the Iranian plateau — explicitly not
+North America, not Europe. Continues toward the historic Khorasan region near the city of
+Tus, ending over an arid, mountainous Persian night landscape.
+[CHARACTERS] A single small, modest mudbrick house, flat roof, no ornamentation. No palace,
+no courtyard, no towers, no domes, no minarets anywhere in frame.
+[ACTION ARC] Cold, silent space → fast atmospheric descent → deceleration as the house comes
+into view → camera glides low and slow toward one small lit window.
+[CAMERA] Continuous unbroken single take, no cuts. Begins as a slow orbital rotation,
+transitions into a steep dive, then a low glide toward the window.
+[SPEED RAMP] 100% through space and atmosphere → decelerating to 40% over the last two
+seconds as the house appears → settle to a slow, steady glide at the window, not an abrupt
+stop.
+[LIGHTING] Cool blue-black space tones and starlight, shifting to the warm amber glow of a
+single window as the only light source on an otherwise dark, moonlit-but-not-oversized
+landscape.
+[STYLE] Ultra-photorealistic, live-action nature-documentary-meets-narrative-film hybrid.
+Physically accurate satellite/aerial cinematography. Absolutely not cartoon, not 3D-render,
+not video-game engine look, not animated, not stylized illustration.
+[TECHNICAL] Sharp focus throughout the descent, natural atmospheric haze near the ground,
+subtle film grain, no lens flares, no artificial light rays.
+[LAST FRAME] Wide-to-medium shot through the window: an elderly man is visible seated at a
+low desk, seen from behind / in silhouette — his face is NOT visible in this shot. This exact
+frame is the starting reference for the next generation.
+[RULES / AVOID] No glowing lines, light trails, neon paths, or CGI light streaks of any kind
+during the descent. No oversized, overly detailed, or glowing moon — if a moon is visible, it
+must be small and natural in scale. No visible human face in this shot. No modern buildings,
+roads, or vehicles. No text, no logos, no subtitles rendered by the model.
+```
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: epic · Lyd: av*
+
+**Shot 1B — Reveal: sakte sving fra rygg til ansikt**
+```
+[CONTINUATION] Opens on the exact last frame of the previous clip: an elderly man seen from
+behind, seated at a low wooden desk inside a small, plain mudbrick room, lit by a single
+small oil lamp.
+[DURATION] 10 seconds
+[ASPECT RATIO] 16:9
+[FRAME RATE] 24fps
+[ENVIRONMENT] Interior of the same small, humble room — bare mudbrick walls, no decoration, a
+low wooden desk, a parchment scroll, a single small clay oil lamp as the only light source.
+Deep natural shadow everywhere else.
+[CHARACTERS] Ferdowsi: elderly Persian scholar, seventies, hair fully covered by a plain
+wound cream-colored turban — no loose or visible hair. Long grey-white beard. Simple undyed
+woolen robes. Ink-stained fingers. Seated cross-legged or kneeling at the desk.
+[ACTION ARC] Held on his back for a beat → camera begins a slow arc around him → his profile
+comes into view → continues arcing until his face is fully revealed, still writing, absorbed,
+not looking at camera → holds on his face → he dips the quill and resumes a stroke.
+[CAMERA] Slow arcing dolly move, moving from directly behind him around to a three-quarter
+front angle. Deliberate, unhurried — the reveal of his face should take at least 4-5 seconds
+of screen time, not a quick pass.
+[SPEED RAMP] Constant slow 35-40% speed throughout — noticeably slower and calmer than the
+descent in the previous clip. No acceleration.
+[LIGHTING] Warm amber oil-lamp light as the only source, soft shadow falloff, gentle
+highlight on his face as it comes into view.
+[STYLE] Ultra-photorealistic, live-action narrative film, painterly warm color grade,
+shallow depth of field, visible dust motes drifting through the lamp light. Absolutely not
+cartoon, not 3D-render, not video-game engine look, not animated.
+[TECHNICAL] 35mm-lens-equivalent look, subtle film grain, his face stays tack-sharp once
+revealed.
+[RULES / AVOID] No loose or windblown hair at any point — turban stays on and fully covers
+his hair throughout. No grand architecture. No oversized or glowing moon. No magical glow
+effects on the quill or pen tip. No cartoon or 3D-render look. No modern elements.
+```
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama · Lyd: av*
 
 **Shot 2 — Tidsmaskin-overgang via blekket**
 ```
-Extreme close-up on flowing Persian Nastaliq calligraphy ink strokes on parchment, filling the
-entire frame. The ink strokes begin to blur and swirl, as if the page itself is dissolving
-into motion — the dark ink transforms into streaks of golden dust blown across an open desert
-plain. Seamless match-cut transition from extreme close-up ink calligraphy to a wide desert
-landscape in Iran at dawn, cinematic time-travel transition, warm amber candlelight shifting
-into pale cool dawn light.
-
-Avoid: glowing lines, light trails, or neon effects — the transition should read as dust and
-light, not as a magical special effect.
+[CONTINUATION] Opens close on Ferdowsi's writing hand and the parchment beneath it,
+continuing directly from the previous clip.
+[DURATION] 6 seconds
+[ASPECT RATIO] 16:9
+[ACTION ARC] Camera pushes in from the hand to an extreme close-up filling the frame with
+flowing Persian Nastaliq calligraphy ink strokes on the parchment → the ink strokes blur and
+swirl, as if the page dissolves into motion → the dark ink transforms into streaks of golden
+dust blown across an open desert plain → match-cut to a wide desert landscape in Iran at
+dawn.
+[CAMERA] Continuous push-in, then a seamless match-cut transition — no hard edit.
+[LIGHTING] Warm amber lamplight shifting gradually into pale, cool dawn light as the
+transition completes.
+[STYLE] Ultra-photorealistic throughout, not cartoon, not 3D-render.
+[RULES / AVOID] No glowing lines, light trails, or neon effects during the transition — it
+must read as dust and light dissolving, not as a magical special effect.
 ```
-*Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: drama · Lyd: av*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama · Lyd: av*
 
-**Testhistorikk (for referanse):** v1 av denne åpningen (delt i tre separate shots) ga to
-observerbare feil ved testgenerering — (1) en isolert "shot 1"-prompt uten resten av
-konteksten navigerte til Nord-Amerika i stedet for Persia, og (2) selv med full kontekst
-dukket det opp en uønsket glødende sikksakk-linje under nedstigningen, og Ferdowsi-scenen
-driftet til løst hår + staselig gårdsplass + overdimensjonert måne i stedet for turban +
-beskjedent rom. Begge er adressert direkte i v2-prompten over.
+**Ærlig funn fra siste test:** selve kalligrafi-nærbildet i den nyeste genereringen ser
+overbevisende ut på avstand, men bokstavene som faktisk dannes er ikke en presis gjengivelse
+av «به نام خداوند جان و خرد» — de ligner persisk skrift, men er ikke lesbare/korrekte. Dette
+er en kjent, nåværende begrensning hos ALLE video-AI-modeller (inkludert Seedance) — de kan
+ikke skrive presis tekst i noe språk pålitelig, verken persisk eller latinsk. Det er grunnen
+til at selve ident-grafikken (over) og eventuelt sluttkortet bør bygges som ekte tekst i
+etterarbeid, ikke stole på at modellen skriver riktig i selve videoen. Kalligrafi-nærbildet
+fra Seedance fungerer fint som atmosfærisk bakgrunn/tekstur — bare ikke som lesbar tekst.
 
 **Shot 3 — To hærer på sletta**
 ```
-A vast, dusty steppe plain at dawn, dust hanging low in the golden morning light. Two armies
-face each other across the open ground from opposite ridgelines — one side flying Iranian
-banners, the other Turanian banners. Total silence, only wind moving the dust. Extreme wide
-establishing shot, epic scale, static camera, cinematic historical war-epic aesthetic.
+[DURATION] 9 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] A vast, dusty steppe plain in ancient Iran/Turan at dawn, dust hanging low in
+golden morning light, low ridgelines on either side.
+[CHARACTERS] Two full armies, hundreds of men, one flying Iranian banners, the other
+Turanian banners — distinct banner colors/emblems on each side.
+[ACTION ARC] Total stillness and silence, only wind moving the dust and banners.
+[CAMERA] Extreme wide static establishing shot, no camera movement.
+[LIGHTING] Low golden dawn sun, long shadows, dust particles visible in the light.
+[STYLE] Ultra-photorealistic historical war-epic cinematography, live-action scale. Not
+cartoon, not 3D-render, not video-game engine look.
+[RULES / AVOID] No modern equipment, no anachronistic weapons or armor, no text or logos.
 ```
-*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: epic*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: epic*
 
 **Shot 4 — Sohrab rir ut, lav heltevinkel**
 ```
-A young Persian warrior, Sohrab, rides alone away from an army line, across an open dusty
-plain in ancient Iran. He is tall and powerfully built despite his youth, of ordinary human
-proportions — not a giant. He wears lighter, plain iron-plate armor with no fur or pelt
-garments, and carries his own war mace with a smaller, plainer bronze ox-head shape than a
-veteran's weapon would have. His face is young and unweathered, eager rather than grim,
-clean-shaven or very light stubble. He scans the opposing ranks as if searching for someone
-specific. Low-angle hero shot, camera tracking alongside at ground level looking up at him,
-golden dawn light, dust kicked up by the horse's hooves, epic cinematic scale,
-historically-grounded Persian aesthetic, not generic medieval European fantasy armor.
-
-Avoid: generic Hollywood medieval-fantasy plate armor with no distinguishing features; a beard
-as heavy as an older man's; identical armor design to an older warrior in the same story.
+[DURATION] 6 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Open dusty steppe plain in ancient Iran, golden dawn light.
+[CHARACTERS] Sohrab: young Persian warrior, tall and powerfully built despite his youth,
+ordinary human proportions — not a giant. Plain iron-plate armor, no fur or pelt. Carries a
+smaller, plainer bronze ox-head war mace than a veteran's weapon. Young, unweathered face,
+eager not grim, clean-shaven or light stubble.
+[ACTION ARC] Rides alone away from the army line, scanning the opposing ranks as if
+searching for someone specific.
+[CAMERA] Low-angle hero shot, tracking alongside at ground level looking up at him.
+[SPEED RAMP] Steady galloping pace, no ramp.
+[LIGHTING] Golden dawn light, dust kicked up by the horse's hooves catching the light.
+[STYLE] Ultra-photorealistic, historically-grounded ancient Persian aesthetic, not generic
+medieval European fantasy armor. Not cartoon, not 3D-render.
+[RULES / AVOID] Generic Hollywood medieval-fantasy plate armor with no distinguishing
+features; a beard as heavy as an older man's; identical armor design to an older warrior in
+the same story.
 ```
-*Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: epic*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: epic*
 
 **Shot 5 — Rostam rir ut, lav heltevinkel**
 ```
-A massive Persian warrior, Rostam, noticeably bigger and broader than an ordinary man — wider
-shoulders, thicker build, clearly the largest man in the scene — rides alone from an army line
-in ancient Iran to meet a younger, smaller-framed rider approaching from the opposite side. He
-is unmistakably wearing a spotted orange-and-black tiger-pelt garment draped over his
-shoulders and chest, worn OVER iron-plate armor underneath — the tiger pelt is the single most
-visually distinctive thing about him, clearly visible with its pattern. He wears a pointed
-helmet, and carries a large bronze war mace with a carved ox-head shape at its striking end.
-His face is weathered, sun-worn, deep lines, a full grey-streaked beard, a veteran clearly
-decades older than the other rider. A plain undyed cloak is thrown loosely over his armor,
-hiding any banner. His horse has a distinctive dappled roan coat — rose-red dapples scattered
-over a golden-tan base coat, a powerfully muscled chest, larger than an ordinary horse.
-Low-angle hero shot, camera tracking alongside at ground level looking up, golden dawn light,
-dust kicked up by hooves, epic cinematic scale, historically-grounded ancient Persian
-aesthetic.
-
-Avoid: generic Hollywood medieval-fantasy armor with no fur or pelt visible; a build similar
-in size to the younger warrior; a young or clean-shaven face; missing or barely-visible tiger
-pelt; missing ox-head mace.
+[DURATION] 6 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Open dusty steppe plain in ancient Iran, golden dawn light.
+[CHARACTERS] Rostam: massive Persian warrior, noticeably bigger and broader than an ordinary
+man — wider shoulders, thicker build, clearly the largest man in the scene. Unmistakably
+wearing a spotted orange-and-black tiger-pelt garment draped over his shoulders and chest,
+worn OVER iron-plate armor — the single most visually distinctive thing about him. Pointed
+helmet, large bronze war mace with a carved ox-head striking end. Weathered, sun-worn face,
+deep lines, full grey-streaked beard, clearly decades older than Sohrab. A plain undyed
+cloak thrown loosely over his armor, hiding any banner. His horse: distinctive dappled roan
+coat, rose-red dapples over a golden-tan base, powerfully muscled chest, larger than an
+ordinary horse.
+[ACTION ARC] Rides alone from the army line to meet the younger rider approaching from the
+opposite side.
+[CAMERA] Low-angle hero shot, tracking alongside at ground level looking up.
+[LIGHTING] Golden dawn light, dust kicked up by hooves.
+[STYLE] Ultra-photorealistic, historically-grounded ancient Persian aesthetic. Not cartoon,
+not 3D-render.
+[RULES / AVOID] Generic Hollywood medieval-fantasy armor with no fur or pelt visible; a
+build similar in size to the younger warrior; a young or clean-shaven face; missing or
+barely-visible tiger pelt; missing ox-head mace.
 ```
-*Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: epic*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: epic*
 
 **Shot 6 — Møtet, «Er du Rostam?»**
 ```
-Two Persian riders meet at the center of an open dusty plain in ancient Iran, their horses
-circling each other warily. On one side, a young warrior of ordinary build, plain iron armor,
-no fur. On the other side, a much larger, broader older warrior wearing a visible spotted
-tiger-pelt garment over his armor, grey-streaked beard, clearly decades older and physically
-bigger than the young rider facing him — the size and armor contrast between the two men
-should be obvious at a glance. The younger warrior calls out, asking the cloaked stranger to
-reveal his name, asking directly if he is the great warrior Rostam, son of Zal. The older,
-cloaked warrior hesitates a moment too long before denying it. The younger warrior studies him
-intently, searching, almost hopeful — then lowers his spear and both riders charge toward each
-other. Two-shot, horses circling, tense dialogue beat, golden dawn light, cinematic historical
-epic, historically-grounded ancient Persian aesthetic, no other duplicate or ghost figures in
-the background.
-
-Avoid: both men appearing similar in age, build, or armor; generic fantasy armor with no tiger
-pelt; duplicate or mirrored background figures.
+[DURATION] 11 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Center of the open dusty plain, golden dawn light, no other figures nearby.
+[CHARACTERS] Sohrab (young, ordinary build, plain iron armor, no fur) and Rostam (much
+larger, broader, visible spotted tiger-pelt over armor, grey-streaked beard, decades older) —
+the size and armor contrast between the two must be obvious at a glance.
+[ACTION ARC] Their horses circle each other warily → Sohrab calls out, asking the stranger to
+reveal his name, asking directly if he is Rostam, son of Zal → Rostam hesitates a moment too
+long, then denies it → Sohrab studies him intently, searching, almost hopeful → lowers his
+spear → both riders charge toward each other.
+[CAMERA] Two-shot, horses circling, then a wider shot as they charge.
+[LIGHTING] Golden dawn light.
+[STYLE] Ultra-photorealistic historical epic, historically-grounded ancient Persian
+aesthetic. Not cartoon, not 3D-render.
+[RULES / AVOID] Both men appearing similar in age, build, or armor; generic fantasy armor
+with no tiger pelt; duplicate or mirrored background figures.
 ```
-*Modell: seedance_2_0 · Varighet: 10–12s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 7 — Lanser, avmontert, nærkamp**
 ```
-Brutal, fast combat between two mounted warriors — spears shatter on impact, both riders are
-unhorsed within seconds. This is not clean choreography; it is two exhausted men fighting to
-survive. Swords are drawn, then abandoned for hand-to-hand grappling in the dust. Handheld
-camera energy, rapid cuts, dust and chaos, golden dawn light, cinematic action sequence, no
-dialogue.
+[DURATION] 12 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Open dusty plain, golden dawn light.
+[CHARACTERS] Same Rostam and Sohrab as established in shots 4-6, same armor/build contrast
+maintained.
+[ACTION ARC] Spears shatter on impact, both riders unhorsed within seconds → swords drawn →
+abandoned for hand-to-hand grappling in the dust. Not clean choreography — two exhausted men
+fighting to survive.
+[CAMERA] Handheld energy, rapid cuts between close and medium shots.
+[LIGHTING] Golden dawn light, dust and chaos.
+[STYLE] Ultra-photorealistic action cinematography. Not cartoon, not 3D-render, not
+video-game combat animation.
+[RULES / AVOID] No dialogue in this shot; no choreographed/clean martial-arts movement —
+must feel desperate and exhausting.
 ```
-*Modell: seedance_2_0 · Varighet: 10–13s · Sjanger: action*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: action*
 
 **Shot 8 — «You fight like the man in my mother's stories»**
 ```
-Mid-fight, breathing hard, two warriors circle each other. The younger one speaks between
-breaths, saying the stranger fights like a man from his mother's old stories, that she spoke
-of one man like this his whole life. The older, cloaked warrior deflects without stopping,
-saying plenty of old men fight like the men in old songs — it doesn't make them the one he's
-looking for. Close, alternating between both faces, dust settling around them, golden dawn
-light, tense emotional dialogue beat.
+[DURATION] 7 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same dusty plain, mid-fight.
+[CHARACTERS] Rostam and Sohrab, same as before, breathing hard, circling each other.
+[ACTION ARC] Sohrab speaks between breaths, saying the stranger fights like the man from his
+mother's old stories, that she spoke of one man like this his whole life. Rostam deflects
+without stopping, saying plenty of old men fight like the men in old songs — it doesn't make
+them the one he's looking for.
+[CAMERA] Close, alternating between both faces.
+[LIGHTING] Golden dawn light, dust settling around them.
+[STYLE] Ultra-photorealistic, tense emotional dialogue beat. Not cartoon, not 3D-render.
+[RULES / AVOID] No exaggerated facial expressions — restrained, naturalistic performance.
 ```
-*Modell: seedance_2_0 · Varighet: 6–8s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 9 — Sohrab pinner Rostam**
 ```
-In a grapple, the younger warrior throws the older, cloaked warrior down into the dirt, pins
-him, and draws a dagger to finish the fight. Close, low angle looking up at the younger
-warrior from the pinned man's position, dust in the air, tense combat close-up, golden dawn
-light.
+[DURATION] 5 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Dusty ground, golden dawn light.
+[CHARACTERS] Sohrab and Rostam, same as established.
+[ACTION ARC] In the grapple, Sohrab throws Rostam down into the dirt, pins him, and draws a
+dagger to finish the fight.
+[CAMERA] Close, low angle looking up at Sohrab from Rostam's pinned position.
+[LIGHTING] Golden dawn light, dust in the air.
+[STYLE] Ultra-photorealistic tense combat close-up. Not cartoon, not 3D-render.
 ```
-*Modell: seedance_2_0 · Varighet: 5–6s · Sjanger: action*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: action*
 
 **Shot 10 — Det falske regel-trikset (tematisk kjerne)**
 ```
-Pinned in the dirt with a dagger at his throat, the older, cloaked warrior gasps out a claim —
-that it is not their custom to kill a man on the first fall, only the second. The younger
-warrior hesitates, some instinct suggesting it might be untrue, but he lets the dagger fall to
-his side and steps back, honoring what he believes is a rule of combat rather than showing
-weakness. Close on both faces alternately, dust settling, tense emotional beat, golden dawn
-light, no music.
+[DURATION] 9 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same dusty ground, golden dawn light.
+[CHARACTERS] Sohrab pinning Rostam, dagger at his throat.
+[ACTION ARC] Rostam gasps out a claim — that it is not their custom to kill a man on the
+first fall, only the second. Sohrab hesitates, some instinct suggesting it might be untrue,
+but lets the dagger fall to his side and steps back, honoring what he believes is a rule of
+combat rather than showing weakness.
+[CAMERA] Close on both faces alternately, no music.
+[LIGHTING] Golden dawn light, dust settling.
+[STYLE] Ultra-photorealistic, tense restrained emotional beat. Not cartoon, not 3D-render.
+[RULES / AVOID] No music, no exaggerated performance — this is a quiet, tense beat, not an
+action climax.
 ```
-*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama · tematisk kjerne, aldri kutt*
 
 **Shot 11 — Sohrab alene, håpefullt blikk**
 ```
-The young warrior stands alone for a moment, recovering, and looks back toward the cloaked
-stranger with an unguarded, almost hopeful expression — as if some part of him wants this man
-to be the father he has been searching for his whole life. Close-up, lingering shot, warm dawn
-light, quiet emotional beat, no dialogue.
+[DURATION] 5 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same plain, warm dawn light.
+[CHARACTERS] Sohrab, alone, recovering.
+[ACTION ARC] He stands for a moment and looks back toward Rostam with an unguarded, almost
+hopeful expression — as if some part of him wants this man to be the father he has been
+searching for his whole life.
+[CAMERA] Close-up, lingering, no camera movement.
+[LIGHTING] Warm dawn light.
+[STYLE] Ultra-photorealistic, quiet emotional beat, no dialogue. Not cartoon, not 3D-render.
 ```
-*Modell: seedance_2_0 · Varighet: 5–6s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 12 — Andre basketak**
 ```
-The two warriors grapple again. This time the older, cloaked warrior finds a last desperate
-reserve of strength — not noble, but raw and ugly — and throws the younger warrior down hard
-onto the ground. High angle looking down at the fall, dust exploding outward, cinematic action
-beat, harsher midday light now.
+[DURATION] 7 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same ground, light shifting to harsher midday.
+[CHARACTERS] Rostam and Sohrab grappling again.
+[ACTION ARC] Rostam finds a last desperate reserve of strength — not noble, but raw and ugly
+— and throws Sohrab down hard onto the ground.
+[CAMERA] High angle looking down at the fall.
+[LIGHTING] Harsher midday light now, shift from the golden dawn tone of earlier shots.
+[STYLE] Ultra-photorealistic action beat, dust exploding outward. Not cartoon, not 3D-render.
 ```
-*Modell: seedance_2_0 · Varighet: 6–8s · Sjanger: action*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: action*
 
 **Shot 13 — Dolkstøtet, ramp inn i slow-motion**
 ```
-Before the younger warrior can rise, the older, cloaked warrior drives his dagger down in a
-single decisive strike. The moment slows dramatically into extreme slow motion exactly as the
-dagger connects — no music, only the sound of breath and impact. Close-up, static camera,
-dramatic ramped slow-motion on the strike itself, harsh direct light, no camera movement,
-silent and heavy emotional weight.
+[DURATION] 5 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same ground, harsh direct midday light.
+[CHARACTERS] Rostam over Sohrab, who cannot rise in time.
+[ACTION ARC] Rostam drives his dagger down in a single decisive strike before Sohrab can
+rise.
+[CAMERA] Close-up, static, no camera movement.
+[SPEED RAMP] Normal speed until the instant of contact, then ramps into extreme slow motion
+exactly as the dagger connects, holding the slow motion for the remainder of the shot.
+[LIGHTING] Harsh direct light, no softness.
+[STYLE] Ultra-photorealistic, no music, only breath and impact sound design. Not cartoon,
+not 3D-render.
+[RULES / AVOID] No music. No camera movement. This must read as heavy and silent, not
+stylized or glorified.
 ```
-*Modell: seedance_2_0 · Varighet: 5–6s · Sjanger: drama · filmens viktigste enkeltbilde*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama · filmens viktigste enkeltbilde*
 
 **Shot 14 — «Find Rostam... I died still looking» + armbånd**
 ```
-A wounded young warrior lies fading beneath his killer, and speaks weakly — not to the man
-above him, but past him, toward watching soldiers — asking that word be carried to the great
-warrior Rostam, that a son went looking for his father his whole life and died still looking.
-With his last strength he pulls back his sleeve to reveal an old, engraved armband tied above
-his elbow, saying his mother gave it to him and that the man he sought would know it on sight.
-Close-up on his face and the trembling hand revealing the armband, warm fading light, quiet
-devastating emotional beat.
+[DURATION] 8 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same ground, harsh light beginning to fade/soften.
+[CHARACTERS] Sohrab, wounded, fading, beneath Rostam. An old, engraved armband tied above
+his elbow.
+[ACTION ARC] Sohrab speaks weakly — not to Rostam, but past him, toward watching soldiers —
+asking that word be carried to the great warrior Rostam, that a son went looking for his
+father his whole life and died still looking. With his last strength he pulls back his
+sleeve to reveal the armband, saying his mother gave it to him and that the man he sought
+would know it on sight.
+[CAMERA] Close-up on his face and the trembling hand revealing the armband.
+[LIGHTING] Warm fading light.
+[STYLE] Ultra-photorealistic, quiet devastating emotional beat. Not cartoon, not 3D-render.
+[RULES / AVOID] No overacting — weak, fading delivery, not a dramatic monologue.
 ```
-*Modell: seedance_2_0 · Varighet: 7–9s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 15 — Flashback: ung Rostam knytter armbånd**
 ```
-A brief silent flashback: a younger version of a towering warrior ties an engraved armband
-onto the wrist of a young woman by candlelight, years earlier — a private, tender moment
-between them. Warm intimate lighting, soft focus, nostalgic color grade, very brief insert
-shot, no dialogue.
+[DURATION] 4 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] A private room, candlelight, years earlier.
+[CHARACTERS] A younger version of Rostam and Tahmineh, a young woman.
+[ACTION ARC] He ties an engraved armband onto her wrist — a private, tender moment between
+them. Silent, no dialogue.
+[CAMERA] Close, soft focus.
+[LIGHTING] Warm intimate candlelight.
+[STYLE] Ultra-photorealistic, nostalgic color grade. Not cartoon, not 3D-render.
 ```
-*Modell: seedance_2_0 · Varighet: 4s · Sjanger: drama · mitt forslag, trygt å kutte*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama · mitt forslag, trygt å kutte*
 
 **Shot 16 — Gjenkjenning, «I am Rostam»**
 ```
-The older, cloaked warrior stares at an armband on a dying young man's arm, recognizing it —
-his hands beginning to shake as he realizes he gave this exact armband to a woman named
-Tahmineh a lifetime ago. He pulls off his own cloak, revealing the full armor of Iran's
-greatest champion beneath, and says quietly that he is Rostam. The dying young warrior's eyes
-find his father's face for the first and only time, and a faint, terrible smile crosses his
-face — not anger, but relief. Close-up transforming from confusion to horror to grief,
-intimate emotional close-up, warm fading light.
+[DURATION] 8 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same battlefield ground, warm fading light.
+[CHARACTERS] Rostam, staring at the armband on the dying Sohrab's arm.
+[ACTION ARC] Rostam's hands begin to shake as he recognizes the armband — he gave this exact
+one to a woman named Tahmineh a lifetime ago. He pulls off his own cloak, revealing the full
+armor of Iran's greatest champion beneath, and says quietly that he is Rostam. Sohrab's eyes
+find his father's face for the first and only time — a faint, terrible smile, not anger, but
+relief.
+[CAMERA] Close-up, transforming from confusion to horror to grief on Rostam's face.
+[LIGHTING] Warm fading light.
+[STYLE] Ultra-photorealistic intimate emotional close-up. Not cartoon, not 3D-render.
+[RULES / AVOID] No overacting — this is internal, quiet devastation, not a shouted
+revelation.
 ```
-*Modell: seedance_2_0 · Varighet: 7–8s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 17 — Sorgscene: river rustning, støv på hodet**
 ```
-A great warrior breaks down over the body of the son he has just killed. He tears at the
-straps of his own armor and grabs a fistful of dust from the ground, dragging it across his
-own head in an ancient rite of mourning, crying out that every man on the field sang of his
-son's courage before the sun was even up, and that it was his own hand that silenced it.
-Handheld, tight, raw emotional performance, harsh grief, dust and tears, dramatic cinematic
-lighting.
+[DURATION] 11 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same battlefield ground.
+[CHARACTERS] Rostam, over the body of the son he has just killed.
+[ACTION ARC] He breaks down. Tears at the straps of his own armor. Grabs a fistful of dust
+from the ground and drags it across his own head in an ancient rite of mourning. Cries out
+that every man on the field sang of his son's courage before the sun was even up, and that it
+was his own hand that silenced it.
+[CAMERA] Handheld, tight, raw.
+[LIGHTING] Dramatic, harsh grief lighting.
+[STYLE] Ultra-photorealistic raw emotional performance, dust and tears. Not cartoon, not
+3D-render.
+[RULES / AVOID] No restrained/subtle performance here — this is the one shot that should be
+raw and unguarded, in contrast to the quiet close-ups around it.
 ```
-*Modell: seedance_2_0 · Varighet: 10–12s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 18 — Selvmordsforsøk, soldater stopper ham**
 ```
-In his grief, a warrior grabs his own dagger and turns the point toward his own chest,
-attempting to take his own life. Two soldiers rush in and wrestle the blade from his hands,
-holding him back as he fights them, screaming without words. Wide enough to show multiple
-figures, chaotic emotional restraint, dust and motion, harsh dramatic lighting.
+[DURATION] 8 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same battlefield ground.
+[CHARACTERS] Rostam and two soldiers.
+[ACTION ARC] In his grief, Rostam grabs his own dagger and turns the point toward his own
+chest, attempting to take his own life. Two soldiers rush in and wrestle the blade from his
+hands, holding him back as he fights them, screaming without words.
+[CAMERA] Wide enough to show multiple figures.
+[LIGHTING] Harsh dramatic lighting.
+[STYLE] Ultra-photorealistic, chaotic emotional restraint. Not cartoon, not 3D-render.
 ```
-*Modell: seedance_2_0 · Varighet: 7–9s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 19 — Vidt bilde, begge hærer i stillhet**
 ```
-A wide shot reveals two armies frozen on opposite ridgelines, watching in absolute silence as
-a great warrior finally stops fighting the men holding him back and simply sinks down,
-cradling his dead son in his arms. Extreme wide shot, static camera, vast steppe landscape,
-harsh midday light, overwhelming silence and scale.
+[DURATION] 9 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Vast steppe landscape, both armies on opposite ridgelines, harsh midday light.
+[CHARACTERS] Both full armies, frozen and silent. Rostam, cradling his dead son.
+[ACTION ARC] Rostam finally stops fighting the men holding him back and simply sinks down,
+cradling his dead son in his arms, watched by both armies in absolute silence.
+[CAMERA] Extreme wide, static, no movement.
+[LIGHTING] Harsh midday light.
+[STYLE] Ultra-photorealistic, overwhelming silence and scale. Not cartoon, not 3D-render.
 ```
-*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: epic*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: epic*
 
 **Shot 20 — Rytteren ankommer for sent**
 ```
-In the far distance, a single rider crests a hill at a gallop, arriving too late, carrying a
-small vial that catches the light — a cure sent by a king who delayed it out of jealousy and
-fear. Wide shot, rider approaching but clearly too far and too late, harsh light, tragic irony
-visualized without dialogue.
+[DURATION] 7 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] Same wide steppe landscape, harsh light, a distant hill.
+[CHARACTERS] A single rider in the far distance, carrying a small vial.
+[ACTION ARC] The rider crests a hill at a gallop, arriving too late, carrying a cure sent by
+a king who delayed it out of jealousy and fear — visualized purely through distance and
+timing, without dialogue.
+[CAMERA] Wide shot, rider clearly too far and too late.
+[LIGHTING] Harsh light, the vial catching a glint.
+[STYLE] Ultra-photorealistic, tragic irony visualized without dialogue. Not cartoon, not
+3D-render.
 ```
-*Modell: seedance_2_0 · Varighet: 6–8s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Shot 21 — Ferdowsi fullfører linjen, sluttkort**
 ```
-Match cut back to an elderly Persian scholar in his candlelit study at night. His hand
-finishes writing the same line of script, the quill lifting from the page. He sets it down,
-closes the heavy manuscript book, and the candle flickers low. Final image: an old man alone
-with what he has just written, the weight of the story still visible on his face. Warm
-candlelight, quiet closing shot, intimate scale after the epic scale of the battlefield.
+[CONTINUATION] Match cut back to the same elderly Persian scholar and the same small,
+candlelit room established in shots 1B/2.
+[DURATION] 9 seconds
+[ASPECT RATIO] 16:9
+[ENVIRONMENT] The same small, humble mudbrick room at night, single oil lamp.
+[CHARACTERS] Ferdowsi — same turban, beard, robes as established earlier. No loose hair.
+[ACTION ARC] His hand finishes writing the same line of script, the quill lifting from the
+page. He sets it down, closes the heavy manuscript, and the lamp flickers low. He sits alone
+with what he has just written, the weight of the story visible on his face.
+[CAMERA] Close on his hand and face, quiet, no camera movement at the end.
+[LIGHTING] Warm, dimming lamplight.
+[STYLE] Ultra-photorealistic, intimate scale after the epic scale of the battlefield. Not
+cartoon, not 3D-render.
+[RULES / AVOID] No loose hair, no grand architecture, no oversized moon — same constraints as
+the opening shots, for visual consistency.
 ```
-*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: drama*
+*Modell: seedance_2_0 · Oppløsning: 4k/std · Sjanger: drama*
 
 **Om persisk språk:** prompts til selve video-modellen er skrevet på engelsk — det er det
 Seedance og lignende modeller er trent best på, uansett hvilket språk/kultur scenen skal
 skildre. Persisk kommer inn på to steder: (1) kalligrafien på Ferdowsis manuskript (shot
-1b/2, allerede spesifisert som "flowing Persian calligraphy" i prompten), og (2) eventuell
-tale/dialog. Anbefaling: generer shotene **stille** (lyd av) og legg på ekte persisk tale/VO i
-etterarbeid — AI-generert leppesynkronisert tale på et spesifikt historisk persisk register er
-upålitelig kvalitetsmessig akkurat nå, mens en ekte stemme (eller en god persisk TTS) gir full
-kontroll over uttale og periodekorrekt språkdrakt.
+1B/2, allerede spesifisert som "flowing Persian calligraphy" i prompten — se det ærlige
+funnet over om nåværende begrensninger), og (2) eventuell tale/dialog. Anbefaling: generer
+shotene **stille** (lyd av) og legg på ekte persisk tale/VO i etterarbeid — AI-generert
+leppesynkronisert tale på et spesifikt historisk persisk register er upålitelig
+kvalitetsmessig akkurat nå, mens en ekte stemme (eller en god persisk TTS) gir full kontroll
+over uttale og periodekorrekt språkdrakt.
 
 ---
 
