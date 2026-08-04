@@ -403,7 +403,263 @@ FADE OUT.
 
 ---
 
-## 7. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
+## 7. Klar-til-lim-inn video-prompts
+
+Én fullstendig, selvstendig prompt per shot — lim inn én og én på higgsfield.ai (Seedance
+2.0). Hver prompt inneholder full karakterbeskrivelse, siden hver generering er uavhengig av
+de andre. Skrevet på engelsk siden video-modellene fungerer klart best på engelske prompts
+selv for persisk-språklig innhold — se språknotat til slutt.
+
+**Nytt åpningsgrep:** filmen åpner nå i verdensrommet, zoomer ned gjennom atmosfæren til
+nøyaktig der Ferdowsi levde (Tus, Khorasan — ekte historisk sted), og overgangen til fortiden
+skjer ved at kameraet dykker inn i selve blekket på manuskriptet hans — en "tidsmaskin" via
+hans egne ord. Shot 1 og 2 under er bygget rundt akkurat dette.
+
+**Shot 1 — Zoom fra verdensrommet til Tus (NY)**
+```
+The camera begins in orbit around planet Earth, slowly rotating in space against a black
+starfield. It plunges downward through the atmosphere in one continuous, seamless movement,
+descending rapidly over oceans and continents toward the ancient region of Khorasan in
+northeastern Persia, near the city of Tus. The descent continues down into a small, humble
+stone house at night, converging on a single lit window glowing with warm candlelight in the
+darkness. Continuous unbroken camera movement from orbital space to ground level, epic scale
+transitioning into intimate scale, cool blue-black space tones warming into golden candlelight
+at the very end, cinematic historical epic aesthetic.
+```
+*Modell: seedance_2_0 · Varighet: 8–10s · Oppløsning: 4k/std · Bildeforhold: 16:9 · Sjanger: epic · Lyd: av*
+
+**Shot 1b — Ferdowsi skriver**
+```
+Inside the small candlelit study: an elderly Persian dehqan-class scholar, approximately 70
+years old, with a long grey-white beard and a weathered, dignified face. He wears a plain
+wound turban in undyed cream fabric and simple undyed robes, ink-stained fingers. He sits
+hunched over a low wooden desk, writing steadily on a large sheet of parchment with a reed
+quill in flowing Persian calligraphy, surrounded by stacks of finished handwritten pages —
+the accumulated work of decades. Warm flickering candlelight from a single oil lamp beside
+him, deep shadows elsewhere in the room, no other light source. He dips the quill and
+continues writing without looking up, fully absorbed. Cinematic, painterly warm color grade,
+shallow depth of field, dust motes visible in the candlelight.
+```
+*Modell: seedance_2_0 · Varighet: 6–8s · Oppløsning: 4k/std · Sjanger: drama · Lyd: av*
+
+**Shot 2 — Tidsmaskin-overgang via blekket (NY)**
+```
+Camera slowly pushes in on the elderly scholar's writing hand and the parchment beneath it,
+closing in on the flowing Persian calligraphy ink strokes until they fill the entire frame.
+The ink strokes begin to blur and swirl, as if the page itself is dissolving into motion — the
+dark ink transforms into streaks of golden dust blown across an open desert plain. Seamless
+match-cut transition from extreme close-up ink calligraphy to a wide desert landscape at dawn,
+cinematic time-travel transition, warm amber candlelight shifting into pale cool dawn light.
+```
+*Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: drama · Lyd: av*
+
+**Shot 3 — To hærer på sletta**
+```
+A vast, dusty steppe plain at dawn, dust hanging low in the golden morning light. Two armies
+face each other across the open ground from opposite ridgelines — one side flying Iranian
+banners, the other Turanian banners. Total silence, only wind moving the dust. Extreme wide
+establishing shot, epic scale, static camera, cinematic historical war-epic aesthetic.
+```
+*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: epic*
+
+**Shot 4 — Sohrab rir ut, lav heltevinkel**
+```
+A young warrior rides alone away from an army line, across an open dusty plain. He is tall and
+powerfully built despite his youth, wearing lighter, less battle-worn armor, carrying his own
+war mace — a leaner, less ornate echo of an ox-head design. His face is young and unweathered,
+eager rather than grim. He scans the opposing ranks as if searching for someone specific.
+Low-angle hero shot, camera tracking alongside at ground level looking up at him, golden dawn
+light, dust kicked up by the horse's hooves, epic cinematic scale.
+```
+*Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: epic*
+
+**Shot 5 — Rostam rir ut, lav heltevinkel**
+```
+A massive, towering armored warrior — visibly larger-framed than an ordinary man — rides alone
+from an army line to meet a younger rider approaching from the opposite side. He wears layered
+armor topped with a spotted tiger-pelt garment over his shoulders, a pointed tiger-striped
+helmet, and carries a heavy ox-head war mace at his side. His face is weathered and
+battle-worn, a veteran, not young. A plain soldier's cloak is thrown over his armor, hiding any
+banner or rank marking. His horse has a distinctive dappled roan coat — rose-red dapples
+scattered over a golden-tan base coat, a powerfully muscled chest. Low-angle hero shot, camera
+tracking alongside at ground level looking up, golden dawn light, dust kicked up by hooves,
+epic cinematic scale.
+```
+*Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: epic*
+
+**Shot 6 — Møtet, «Er du Rostam?»**
+```
+Two riders meet at the center of an open dusty plain, their horses circling each other
+warily. The younger warrior calls out, asking the cloaked stranger to reveal his name, asking
+directly if he is the great warrior Rostam, son of Zal. The older, cloaked warrior hesitates a
+moment too long before denying it. The younger warrior studies him intently, searching, almost
+hopeful — then lowers his spear and both riders charge toward each other. Two-shot, horses
+circling, tense dialogue beat, golden dawn light, cinematic historical epic.
+```
+*Modell: seedance_2_0 · Varighet: 10–12s · Sjanger: drama*
+
+**Shot 7 — Lanser, avmontert, nærkamp**
+```
+Brutal, fast combat between two mounted warriors — spears shatter on impact, both riders are
+unhorsed within seconds. This is not clean choreography; it is two exhausted men fighting to
+survive. Swords are drawn, then abandoned for hand-to-hand grappling in the dust. Handheld
+camera energy, rapid cuts, dust and chaos, golden dawn light, cinematic action sequence, no
+dialogue.
+```
+*Modell: seedance_2_0 · Varighet: 10–13s · Sjanger: action*
+
+**Shot 8 — «You fight like the man in my mother's stories»**
+```
+Mid-fight, breathing hard, two warriors circle each other. The younger one speaks between
+breaths, saying the stranger fights like a man from his mother's old stories, that she spoke
+of one man like this his whole life. The older, cloaked warrior deflects without stopping,
+saying plenty of old men fight like the men in old songs — it doesn't make them the one he's
+looking for. Close, alternating between both faces, dust settling around them, golden dawn
+light, tense emotional dialogue beat.
+```
+*Modell: seedance_2_0 · Varighet: 6–8s · Sjanger: drama*
+
+**Shot 9 — Sohrab pinner Rostam**
+```
+In a grapple, the younger warrior throws the older, cloaked warrior down into the dirt, pins
+him, and draws a dagger to finish the fight. Close, low angle looking up at the younger
+warrior from the pinned man's position, dust in the air, tense combat close-up, golden dawn
+light.
+```
+*Modell: seedance_2_0 · Varighet: 5–6s · Sjanger: action*
+
+**Shot 10 — Det falske regel-trikset (tematisk kjerne)**
+```
+Pinned in the dirt with a dagger at his throat, the older, cloaked warrior gasps out a claim —
+that it is not their custom to kill a man on the first fall, only the second. The younger
+warrior hesitates, some instinct suggesting it might be untrue, but he lets the dagger fall to
+his side and steps back, honoring what he believes is a rule of combat rather than showing
+weakness. Close on both faces alternately, dust settling, tense emotional beat, golden dawn
+light, no music.
+```
+*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: drama*
+
+**Shot 11 — Sohrab alene, håpefullt blikk**
+```
+The young warrior stands alone for a moment, recovering, and looks back toward the cloaked
+stranger with an unguarded, almost hopeful expression — as if some part of him wants this man
+to be the father he has been searching for his whole life. Close-up, lingering shot, warm dawn
+light, quiet emotional beat, no dialogue.
+```
+*Modell: seedance_2_0 · Varighet: 5–6s · Sjanger: drama*
+
+**Shot 12 — Andre basketak**
+```
+The two warriors grapple again. This time the older, cloaked warrior finds a last desperate
+reserve of strength — not noble, but raw and ugly — and throws the younger warrior down hard
+onto the ground. High angle looking down at the fall, dust exploding outward, cinematic action
+beat, harsher midday light now.
+```
+*Modell: seedance_2_0 · Varighet: 6–8s · Sjanger: action*
+
+**Shot 13 — Dolkstøtet, ramp inn i slow-motion**
+```
+Before the younger warrior can rise, the older, cloaked warrior drives his dagger down in a
+single decisive strike. The moment slows dramatically into extreme slow motion exactly as the
+dagger connects — no music, only the sound of breath and impact. Close-up, static camera,
+dramatic ramped slow-motion on the strike itself, harsh direct light, no camera movement,
+silent and heavy emotional weight.
+```
+*Modell: seedance_2_0 · Varighet: 5–6s · Sjanger: drama · filmens viktigste enkeltbilde*
+
+**Shot 14 — «Find Rostam... I died still looking» + armbånd**
+```
+A wounded young warrior lies fading beneath his killer, and speaks weakly — not to the man
+above him, but past him, toward watching soldiers — asking that word be carried to the great
+warrior Rostam, that a son went looking for his father his whole life and died still looking.
+With his last strength he pulls back his sleeve to reveal an old, engraved armband tied above
+his elbow, saying his mother gave it to him and that the man he sought would know it on sight.
+Close-up on his face and the trembling hand revealing the armband, warm fading light, quiet
+devastating emotional beat.
+```
+*Modell: seedance_2_0 · Varighet: 7–9s · Sjanger: drama*
+
+**Shot 15 — Flashback: ung Rostam knytter armbånd**
+```
+A brief silent flashback: a younger version of a towering warrior ties an engraved armband
+onto the wrist of a young woman by candlelight, years earlier — a private, tender moment
+between them. Warm intimate lighting, soft focus, nostalgic color grade, very brief insert
+shot, no dialogue.
+```
+*Modell: seedance_2_0 · Varighet: 4s · Sjanger: drama · mitt forslag, trygt å kutte*
+
+**Shot 16 — Gjenkjenning, «I am Rostam»**
+```
+The older, cloaked warrior stares at an armband on a dying young man's arm, recognizing it —
+his hands beginning to shake as he realizes he gave this exact armband to a woman named
+Tahmineh a lifetime ago. He pulls off his own cloak, revealing the full armor of Iran's
+greatest champion beneath, and says quietly that he is Rostam. The dying young warrior's eyes
+find his father's face for the first and only time, and a faint, terrible smile crosses his
+face — not anger, but relief. Close-up transforming from confusion to horror to grief,
+intimate emotional close-up, warm fading light.
+```
+*Modell: seedance_2_0 · Varighet: 7–8s · Sjanger: drama*
+
+**Shot 17 — Sorgscene: river rustning, støv på hodet**
+```
+A great warrior breaks down over the body of the son he has just killed. He tears at the
+straps of his own armor and grabs a fistful of dust from the ground, dragging it across his
+own head in an ancient rite of mourning, crying out that every man on the field sang of his
+son's courage before the sun was even up, and that it was his own hand that silenced it.
+Handheld, tight, raw emotional performance, harsh grief, dust and tears, dramatic cinematic
+lighting.
+```
+*Modell: seedance_2_0 · Varighet: 10–12s · Sjanger: drama*
+
+**Shot 18 — Selvmordsforsøk, soldater stopper ham**
+```
+In his grief, a warrior grabs his own dagger and turns the point toward his own chest,
+attempting to take his own life. Two soldiers rush in and wrestle the blade from his hands,
+holding him back as he fights them, screaming without words. Wide enough to show multiple
+figures, chaotic emotional restraint, dust and motion, harsh dramatic lighting.
+```
+*Modell: seedance_2_0 · Varighet: 7–9s · Sjanger: drama*
+
+**Shot 19 — Vidt bilde, begge hærer i stillhet**
+```
+A wide shot reveals two armies frozen on opposite ridgelines, watching in absolute silence as
+a great warrior finally stops fighting the men holding him back and simply sinks down,
+cradling his dead son in his arms. Extreme wide shot, static camera, vast steppe landscape,
+harsh midday light, overwhelming silence and scale.
+```
+*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: epic*
+
+**Shot 20 — Rytteren ankommer for sent**
+```
+In the far distance, a single rider crests a hill at a gallop, arriving too late, carrying a
+small vial that catches the light — a cure sent by a king who delayed it out of jealousy and
+fear. Wide shot, rider approaching but clearly too far and too late, harsh light, tragic irony
+visualized without dialogue.
+```
+*Modell: seedance_2_0 · Varighet: 6–8s · Sjanger: drama*
+
+**Shot 21 — Ferdowsi fullfører linjen, sluttkort**
+```
+Match cut back to an elderly Persian scholar in his candlelit study at night. His hand
+finishes writing the same line of script, the quill lifting from the page. He sets it down,
+closes the heavy manuscript book, and the candle flickers low. Final image: an old man alone
+with what he has just written, the weight of the story still visible on his face. Warm
+candlelight, quiet closing shot, intimate scale after the epic scale of the battlefield.
+```
+*Modell: seedance_2_0 · Varighet: 8–10s · Sjanger: drama*
+
+**Om persisk språk:** prompts til selve video-modellen er skrevet på engelsk — det er det
+Seedance og lignende modeller er trent best på, uansett hvilket språk/kultur scenen skal
+skildre. Persisk kommer inn på to steder: (1) kalligrafien på Ferdowsis manuskript (shot
+1b/2, allerede spesifisert som "flowing Persian calligraphy" i prompten), og (2) eventuell
+tale/dialog. Anbefaling: generer shotene **stille** (lyd av) og legg på ekte persisk tale/VO i
+etterarbeid — AI-generert leppesynkronisert tale på et spesifikt historisk persisk register er
+upålitelig kvalitetsmessig akkurat nå, mens en ekte stemme (eller en god persisk TTS) gir full
+kontroll over uttale og periodekorrekt språkdrakt.
+
+---
+
+## 8. Skotliste (produksjon i Cinema Studio) — mål 3:33 (213 sek)
 
 | # | Shot | Sek | Kamera | Studio-notat |
 |---|------|-----|--------|---------------|
@@ -446,7 +702,7 @@ FADE OUT.
 
 ---
 
-## 8. Åpne punkter før produksjon starter
+## 9. Åpne punkter før produksjon starter
 
 - Vent på dommerkriterier/innholdsregler (varslet offentliggjort 3.–5. aug) — sjekk spesielt
   om selvmordsforsøket i sorgscenen (shot 18) er innenfor rammene; det er kildetro, men kan
