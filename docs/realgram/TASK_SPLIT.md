@@ -22742,3 +22742,44 @@ never made a first API call to register a device row. Needs Khabat to
 confirm the device has actually launched the app at least once — once
 it shows up in `devices`, the flip itself is a one-line UPDATE, happy
 to do it the moment it's registered.
+
+## A→B(338) — contest backend deployed live (Khabat's go), tester grant resolved, mobile UI still needs a build
+
+**Dato: 2026-08-04.**
+
+**Deployed:** `lib/contest.php` (new), `public/v1.php`, `admin/api.php`
+copied to `/var/www/setalink` (backed up the two pre-existing files
+first, `*.bak-20260804-030805-predeploy`), owned back to `www-data`,
+`diff` against the repo confirms byte-identical, `php -l` clean on all
+three live files.
+
+**Live smoke test** (real HTTP, real `test_mode=1` device, not the
+isolated-copy test from `(337)`):
+- `GET /v1/contest/status` → correct baseline (`invitesVerified:3,
+  qualifies:false`)
+- `POST /v1/contest/wallet-connect` → persisted, status reflects it
+  immediately
+- `POST /v1/contest/claim` while under-qualified → correctly rejected
+  (`not_qualified`), no payout row created
+- Cleared the test wallet address afterward — no leftover test junk in
+  prod. Admin routes (`contest-payouts-*`) weren't curl-tested (HTTP
+  Basic Auth in front, didn't have the password handy) but they're thin
+  wrappers around the exact same `contest_list_payouts`/status-guard
+  logic already verified end-to-end in `(337)`'s isolated-copy test —
+  confident in them by inspection + shared-code coverage.
+
+**Tester grant resolved** — `SL-227-822F0914` isn't a `device_id`, it's
+stored in the `user_id` column (`device_id = sl-ead54ce7-...`). Found it
+via a live-in-last-2-hours iOS query (only one match, `language: فارسی`,
+Apple/iPhone, `linked_real_account` set) rather than the Norway/Finland
+detail Khabat gave — `country`/`active_sni` were both empty on this row
+(not populated for this session for whatever reason), but `user_id`
+matching exactly was decisive. `test_mode` flipped to 1, confirmed.
+
+**Not done, needs a separate explicit go:** the mobile app UI for this
+(`ContestBanner`, `RealGramMoneyDeskScreen`, Clan-screen entry card)
+isn't in any shipped build yet — backend being live doesn't make it
+visible to anyone until a new APK/TestFlight build goes out. Didn't
+trigger one under this same "go" since Khabat's per-build-go rule is
+specific about builds, not backend deploys — flag if she wants one
+queued next.
