@@ -410,48 +410,63 @@ FADE OUT.
 de andre. Skrevet på engelsk siden video-modellene fungerer klart best på engelske prompts
 selv for persisk-språklig innhold — se språknotat til slutt.
 
-**Nytt åpningsgrep:** filmen åpner nå i verdensrommet, zoomer ned gjennom atmosfæren til
-nøyaktig der Ferdowsi levde (Tus, Khorasan — ekte historisk sted), og overgangen til fortiden
-skjer ved at kameraet dykker inn i selve blekket på manuskriptet hans — en "tidsmaskin" via
-hans egne ord. Shot 1 og 2 under er bygget rundt akkurat dette.
+**v2 — strammet inn etter test.** To testgenereringer avdekket ekte problemer: kameraet
+zoomet mot Nord-Amerika i stedet for Persia (geografien var ikke eksplisitt nok), en uønsket
+glødende sikksakk-linje dukket opp under nedstigningen, og Ferdowsi fikk løst hår og en
+staselig gårdsplass med kjempemåne i stedet for turban og et beskjedent rom. Shot 1 er nå ÉN
+sammenhengende prompt for hele de første ~9 sekundene (matcher faktisk Seedance-varighet per
+generering), med eksplisitt gjentatt Iran/Persia-geografi, det ekte åpningsverset fra
+Shahnameh innskrevet i kalligrafien, og en egen "Avoid"-liste for å motvirke driften.
 
-**Shot 1 — Zoom fra verdensrommet til Tus (NY)**
+**Shot 1 — Hele åpningen, ett sammenhengende shot (~9s)**
 ```
-The camera begins in orbit around planet Earth, slowly rotating in space against a black
-starfield. It plunges downward through the atmosphere in one continuous, seamless movement,
-descending rapidly over oceans and continents toward the ancient region of Khorasan in
-northeastern Persia, near the city of Tus. The descent continues down into a small, humble
-stone house at night, converging on a single lit window glowing with warm candlelight in the
-darkness. Continuous unbroken camera movement from orbital space to ground level, epic scale
-transitioning into intimate scale, cool blue-black space tones warming into golden candlelight
-at the very end, cinematic historical epic aesthetic.
-```
-*Modell: seedance_2_0 · Varighet: 8–10s · Oppløsning: 4k/std · Bildeforhold: 16:9 · Sjanger: epic · Lyd: av*
+The camera begins in orbit around planet Earth in space, against a black starfield with
+visible stars. It descends smoothly and continuously through the atmosphere, flying directly
+toward Iran and the Middle East on the Iranian plateau — not North America, not Europe, not
+any other continent — heading specifically toward the ancient Persian region of Khorasan, near
+the historic city of Tus. As the descent continues over an arid, mountainous Persian landscape
+at night, the camera glides low and converges on a single small, modest mudbrick house — no
+palace, no grand courtyard, no towers, no domes, no minarets. It pushes through a small lit
+window glowing with warm candlelight into a plain, humble room. Inside, an elderly Persian
+scholar in his seventies sits at a low wooden desk. His hair is fully covered by a plain wound
+cream-colored turban — no loose or visible hair. He has a long grey-white beard and wears
+simple undyed woolen robes, ink-stained fingers. He writes with a reed quill on a parchment
+scroll in flowing Persian Nastaliq calligraphy. The opening line of his manuscript is visible
+in the calligraphy: "به نام خداوند جان و خرد" (in the name of the Lord of soul and wisdom). A
+single small oil lamp beside him is the only light source; deep natural shadows elsewhere in
+the room. He continues writing without looking up, fully absorbed. The camera slowly pushes in
+from a medium shot toward his writing hand, ending in an extreme close-up on the ink strokes
+of the calligraphy filling the frame. One continuous unbroken camera movement throughout, no
+hard cuts. Cinematic, photorealistic, painterly warm color grade, shallow depth of field, dust
+motes visible in the candlelight, historical Persian manuscript aesthetic.
 
-**Shot 1b — Ferdowsi skriver**
+Avoid: glowing lines, light trails, neon paths, or CGI light streaks during the descent; an
+oversized, overly detailed, or glowing moon; loose or windblown hair; any grand architecture,
+palace, courtyard, domes, or minarets; magical glowing effects on the quill or pen tip; modern
+or non-Persian architecture.
 ```
-Inside the small candlelit study: an elderly Persian dehqan-class scholar, approximately 70
-years old, with a long grey-white beard and a weathered, dignified face. He wears a plain
-wound turban in undyed cream fabric and simple undyed robes, ink-stained fingers. He sits
-hunched over a low wooden desk, writing steadily on a large sheet of parchment with a reed
-quill in flowing Persian calligraphy, surrounded by stacks of finished handwritten pages —
-the accumulated work of decades. Warm flickering candlelight from a single oil lamp beside
-him, deep shadows elsewhere in the room, no other light source. He dips the quill and
-continues writing without looking up, fully absorbed. Cinematic, painterly warm color grade,
-shallow depth of field, dust motes visible in the candlelight.
-```
-*Modell: seedance_2_0 · Varighet: 6–8s · Oppløsning: 4k/std · Sjanger: drama · Lyd: av*
+*Modell: seedance_2_0 · Varighet: 9s (matcher observert faktisk lengde) · Oppløsning: 4k/std · Bildeforhold: 16:9 · Sjanger: epic · Lyd: av*
 
-**Shot 2 — Tidsmaskin-overgang via blekket (NY)**
+**Shot 2 — Tidsmaskin-overgang via blekket**
 ```
-Camera slowly pushes in on the elderly scholar's writing hand and the parchment beneath it,
-closing in on the flowing Persian calligraphy ink strokes until they fill the entire frame.
-The ink strokes begin to blur and swirl, as if the page itself is dissolving into motion — the
-dark ink transforms into streaks of golden dust blown across an open desert plain. Seamless
-match-cut transition from extreme close-up ink calligraphy to a wide desert landscape at dawn,
-cinematic time-travel transition, warm amber candlelight shifting into pale cool dawn light.
+Extreme close-up on flowing Persian Nastaliq calligraphy ink strokes on parchment, filling the
+entire frame. The ink strokes begin to blur and swirl, as if the page itself is dissolving
+into motion — the dark ink transforms into streaks of golden dust blown across an open desert
+plain. Seamless match-cut transition from extreme close-up ink calligraphy to a wide desert
+landscape in Iran at dawn, cinematic time-travel transition, warm amber candlelight shifting
+into pale cool dawn light.
+
+Avoid: glowing lines, light trails, or neon effects — the transition should read as dust and
+light, not as a magical special effect.
 ```
 *Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: drama · Lyd: av*
+
+**Testhistorikk (for referanse):** v1 av denne åpningen (delt i tre separate shots) ga to
+observerbare feil ved testgenerering — (1) en isolert "shot 1"-prompt uten resten av
+konteksten navigerte til Nord-Amerika i stedet for Persia, og (2) selv med full kontekst
+dukket det opp en uønsket glødende sikksakk-linje under nedstigningen, og Ferdowsi-scenen
+driftet til løst hår + staselig gårdsplass + overdimensjonert måne i stedet for turban +
+beskjedent rom. Begge er adressert direkte i v2-prompten over.
 
 **Shot 3 — To hærer på sletta**
 ```
@@ -464,37 +479,61 @@ establishing shot, epic scale, static camera, cinematic historical war-epic aest
 
 **Shot 4 — Sohrab rir ut, lav heltevinkel**
 ```
-A young warrior rides alone away from an army line, across an open dusty plain. He is tall and
-powerfully built despite his youth, wearing lighter, less battle-worn armor, carrying his own
-war mace — a leaner, less ornate echo of an ox-head design. His face is young and unweathered,
-eager rather than grim. He scans the opposing ranks as if searching for someone specific.
-Low-angle hero shot, camera tracking alongside at ground level looking up at him, golden dawn
-light, dust kicked up by the horse's hooves, epic cinematic scale.
+A young Persian warrior, Sohrab, rides alone away from an army line, across an open dusty
+plain in ancient Iran. He is tall and powerfully built despite his youth, of ordinary human
+proportions — not a giant. He wears lighter, plain iron-plate armor with no fur or pelt
+garments, and carries his own war mace with a smaller, plainer bronze ox-head shape than a
+veteran's weapon would have. His face is young and unweathered, eager rather than grim,
+clean-shaven or very light stubble. He scans the opposing ranks as if searching for someone
+specific. Low-angle hero shot, camera tracking alongside at ground level looking up at him,
+golden dawn light, dust kicked up by the horse's hooves, epic cinematic scale,
+historically-grounded Persian aesthetic, not generic medieval European fantasy armor.
+
+Avoid: generic Hollywood medieval-fantasy plate armor with no distinguishing features; a beard
+as heavy as an older man's; identical armor design to an older warrior in the same story.
 ```
 *Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: epic*
 
 **Shot 5 — Rostam rir ut, lav heltevinkel**
 ```
-A massive, towering armored warrior — visibly larger-framed than an ordinary man — rides alone
-from an army line to meet a younger rider approaching from the opposite side. He wears layered
-armor topped with a spotted tiger-pelt garment over his shoulders, a pointed tiger-striped
-helmet, and carries a heavy ox-head war mace at his side. His face is weathered and
-battle-worn, a veteran, not young. A plain soldier's cloak is thrown over his armor, hiding any
-banner or rank marking. His horse has a distinctive dappled roan coat — rose-red dapples
-scattered over a golden-tan base coat, a powerfully muscled chest. Low-angle hero shot, camera
-tracking alongside at ground level looking up, golden dawn light, dust kicked up by hooves,
-epic cinematic scale.
+A massive Persian warrior, Rostam, noticeably bigger and broader than an ordinary man — wider
+shoulders, thicker build, clearly the largest man in the scene — rides alone from an army line
+in ancient Iran to meet a younger, smaller-framed rider approaching from the opposite side. He
+is unmistakably wearing a spotted orange-and-black tiger-pelt garment draped over his
+shoulders and chest, worn OVER iron-plate armor underneath — the tiger pelt is the single most
+visually distinctive thing about him, clearly visible with its pattern. He wears a pointed
+helmet, and carries a large bronze war mace with a carved ox-head shape at its striking end.
+His face is weathered, sun-worn, deep lines, a full grey-streaked beard, a veteran clearly
+decades older than the other rider. A plain undyed cloak is thrown loosely over his armor,
+hiding any banner. His horse has a distinctive dappled roan coat — rose-red dapples scattered
+over a golden-tan base coat, a powerfully muscled chest, larger than an ordinary horse.
+Low-angle hero shot, camera tracking alongside at ground level looking up, golden dawn light,
+dust kicked up by hooves, epic cinematic scale, historically-grounded ancient Persian
+aesthetic.
+
+Avoid: generic Hollywood medieval-fantasy armor with no fur or pelt visible; a build similar
+in size to the younger warrior; a young or clean-shaven face; missing or barely-visible tiger
+pelt; missing ox-head mace.
 ```
 *Modell: seedance_2_0 · Varighet: 5–7s · Sjanger: epic*
 
 **Shot 6 — Møtet, «Er du Rostam?»**
 ```
-Two riders meet at the center of an open dusty plain, their horses circling each other
-warily. The younger warrior calls out, asking the cloaked stranger to reveal his name, asking
-directly if he is the great warrior Rostam, son of Zal. The older, cloaked warrior hesitates a
-moment too long before denying it. The younger warrior studies him intently, searching, almost
-hopeful — then lowers his spear and both riders charge toward each other. Two-shot, horses
-circling, tense dialogue beat, golden dawn light, cinematic historical epic.
+Two Persian riders meet at the center of an open dusty plain in ancient Iran, their horses
+circling each other warily. On one side, a young warrior of ordinary build, plain iron armor,
+no fur. On the other side, a much larger, broader older warrior wearing a visible spotted
+tiger-pelt garment over his armor, grey-streaked beard, clearly decades older and physically
+bigger than the young rider facing him — the size and armor contrast between the two men
+should be obvious at a glance. The younger warrior calls out, asking the cloaked stranger to
+reveal his name, asking directly if he is the great warrior Rostam, son of Zal. The older,
+cloaked warrior hesitates a moment too long before denying it. The younger warrior studies him
+intently, searching, almost hopeful — then lowers his spear and both riders charge toward each
+other. Two-shot, horses circling, tense dialogue beat, golden dawn light, cinematic historical
+epic, historically-grounded ancient Persian aesthetic, no other duplicate or ghost figures in
+the background.
+
+Avoid: both men appearing similar in age, build, or armor; generic fantasy armor with no tiger
+pelt; duplicate or mirrored background figures.
 ```
 *Modell: seedance_2_0 · Varighet: 10–12s · Sjanger: drama*
 
