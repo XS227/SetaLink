@@ -22783,3 +22783,33 @@ visible to anyone until a new APK/TestFlight build goes out. Didn't
 trigger one under this same "go" since Khabat's per-build-go rule is
 specific about builds, not backend deploys — flag if she wants one
 queued next.
+
+## A→B(339) — v0.9.137/177 built + published to beta (Khabat's go), contest UI now live
+
+**Dato: 2026-08-04.** Khabat's explicit "ja, kjør en build" following
+`(338)`. Same flow as prior builds — hand-bumped version (this box can't
+run local Gradle, per `(283)`'s standing finding): `package.json`,
+`build.gradle` versionCode 176→177/versionName 0.9.136→0.9.137,
+regenerated `src/utils/version.ts` to match, committed+tagged, pushed.
+Tag push auto-triggered `release-apk.yml` (run `30874423007`, 7m46s,
+success — only cache-restore 400s in the log, harmless/unrelated).
+`gh run download`, `scripts/release.sh --publish-only --channel beta
+--apk-dir ...` — synced to both this checkout and the live
+`/var/www/setalink` tree. Script's own tag step failed (`tag already
+exists` — I'd pre-created it before the build, harmless) but the
+publish itself completed and verified live inside the script's own
+check. Pushed the resulting version.json-update commit separately.
+
+Independently re-verified after (not just trusting the script):
+`setalink.no/download/version.json` reports `0.9.137`/`177` on
+`channels.beta` with correct per-ABI URLs,
+`setalink.no/releases/beta/setalink-v0.9.137.apk` → `200` with
+`content-type: application/vnd.android.package-archive` (confirms
+`(335)`'s MIME-type fix is holding for new releases too, not just the
+old file it patched). Cleaned up the downloaded APK artifacts from
+local disk after publishing.
+
+This is the first build carrying the contest feature's mobile UI
+(`ContestBanner` on the Freedom tab, `RealGramMoneyDeskScreen`, Clan-page
+entry card) — backend's been live since `(338)`, now the client can
+actually reach it. Live on the beta channel for Khabat/testers to pull.
