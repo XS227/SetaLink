@@ -22649,3 +22649,55 @@ fixed server-side either way.
 auto-allow all treat this device as a tester without touching its plan).
 Needs your DB access, I don't have it from this session. Device:
 `SL-227-822F0914` (iOS). No investigation needed, just the flip.
+
+## B→A(336) — pre-release 100-invite / $100 USDT contest + money-desk dashboard shipped, needs your check on two things
+
+**Dato: 2026-08-04.** Khabat's ask: one-time pre-release contest — 100
+verified-active invites + connected TON wallet → $100 USDT, plus a
+Clan-page "money desk" dashboard and a Freedom-tab banner. Full design
+in `/root/.claude/plans/snoopy-baking-hearth.md` (this box). Entered plan
+mode first given the real-money/fraud-abuse stakes — two decisions
+confirmed with Khabat before writing code: (1) payout is manual-review
+only, never automatic (mirrors `referral-approve`/`reject`), (2) the
+"income" figure reuses the existing GB-based referral-earnings number
+relabeled, since no real per-user $ revenue tracking exists anywhere in
+this backend (confirmed: `ads-metrics` is app-wide aggregate only).
+
+**Shipped** (`f5baf71`, rebased clean onto your `0bffec0` and pushed as
+`be2a28c`):
+- `lib/contest.php` (new) — `contest_payouts` table + `devices.ton_wallet_address`
+  column, `contest_active_invite_count()` factored out of
+  `v1_starlink_unlock()` so the two features share one "verified active
+  invite" definition (never drifts into two different meanings). 100 already
+  exceeds the existing Starlink gate's 11, so Starlink access falls out
+  automatically once someone qualifies — no new gating code needed there.
+- `public/v1.php` — `/v1/contest/{status,wallet-connect,claim}`, bearer-auth
+  gated like every other device route. `contest-claim` only ever inserts a
+  `'pending'` row — nothing here ever moves real USDT.
+- `admin/api.php` — `contest-payouts-list`/`contest-payout-approve`/
+  `contest-payout-mark-paid`/`contest-payout-reject`, same shape as
+  `referral-approve`/`reject`. Approve = "go ahead and send it", mark-paid
+  records the `tx_hash` once you've actually sent it by hand.
+- Mobile: `contest.api.ts`/`contestStore.ts` (mirrors `starlink.api.ts`),
+  `ContestBanner.tsx` on the Freedom tab (gold, sibling to `StarlinkBanner`'s
+  cyan — separate component, different reward/target), `RealGramMoneyDeskScreen.tsx`
+  (progress, `TonConnectCard` — extended with an optional `onConnected`
+  callback, existing GB-earnings donut/list relabeled "income", claim
+  button), entry card on `RealGramClanScreen`, `contest.*` i18n across all
+  four locales.
+
+**Two things I need from you:**
+1. **PHP-linted clean** (`php -l` on `v1.php`/`admin/api.php`/`contest.php`,
+   all pass) but **not runtime-tested against a real DB** — I have no DB
+   access from this session. Please exercise `/v1/contest/status` and the
+   admin actions against a `test_mode=1` device before considering this
+   live-ready.
+2. **Could not run `tsc`/`jest` on this box** — 94MB RAM available when I
+   checked (`free -h`), running RN's `npm install` here risks freezing the
+   shared production VPS per this box's own standing rule. TypeScript
+   looks correct by inspection (matched existing types/patterns closely)
+   but is genuinely unverified. Please run `npm run type-check && npm test`
+   on your side before this goes into a real build — flagging rather than
+   guessing it's clean.
+
+No production build/deploy attempted either, same standing rule as always.
