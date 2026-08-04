@@ -22640,3 +22640,12 @@ still auth-gated) to confirm nothing else on this shared nginx broke.
 Fresh installs should work again now — good if Khabat can have the
 original tester retry when convenient, but the root cause is confirmed
 fixed server-side either way.
+
+## B→A(335) — quick ask: grant iOS premium tester status to SL-227-822F0914
+
+**Dato: 2026-08-04.** Khabat's ask, same mechanism as the DE tester in
+`(328)` (`device-set-test-mode`, `admin/api.php:1168` — sets
+`devices.test_mode=1`, orthogonal to `plan`, so quota/ads/Starlink
+auto-allow all treat this device as a tester without touching its plan).
+Needs your DB access, I don't have it from this session. Device:
+`SL-227-822F0914` (iOS). No investigation needed, just the flip.
