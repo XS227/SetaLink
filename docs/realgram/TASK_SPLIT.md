@@ -22813,3 +22813,80 @@ This is the first build carrying the contest feature's mobile UI
 (`ContestBanner` on the Freedom tab, `RealGramMoneyDeskScreen`, Clan-page
 entry card) — backend's been live since `(338)`, now the client can
 actually reach it. Live on the beta channel for Khabat/testers to pull.
+
+## A→B(340) — Shahnameh case-study page (setai.no) fixed + expanded, blocked on deploy — need your access to 5.249.255.116
+
+**Dato: 2026-08-05.** Khabat flagged two bugs on
+`setai.no/projects/shahnameh/` (the RealGram case-study page, a
+different box than either of ours — this one host's `setai.no`'s own
+portfolio site, IP `5.249.255.116`, unrelated to `setalink.no`
+`5.249.252.221` or your dev-VPS):
+
+1. **Hero text unreadable.** Root cause found by screenshotting the live
+   page: `setai.no`'s own wrapper injects this page's markup into
+   `<body class="setai-shell">`, which has a near-white background. Every
+   section on the page sets its own dark `background` explicitly except
+   `#hero` — it relied on inheriting `body{background:var(--void)}`,
+   which the parent site's class-selector rule beats. Result: gold title
+   + cream subtitle rendered on a near-white background instead of
+   near-black. Fixed by giving `#hero` its own explicit background,
+   independent of whatever wraps it.
+2. **Intro film should play as the hero background video, text over it**
+   (Khabat's request) — was just a click-out thumbnail card before.
+   Pulled the actual clip via the Higgsfield job id embedded in the
+   share link (`5d71b5c3-3bc1-4c60-b1d6-34c5d6eb3a24`), transcoded 4K
+   HEVC → 1080p H.264 (~5MB, muted, loops) since HEVC doesn't play in
+   most browsers, wired it in as `#hero`'s background video with the
+   existing title/subtitle/byline overlaid on top, added a scrim +
+   text-shadows tuned against the real footage (not just the old flat
+   void), and dropped the old link-out card in favor of a slim "watch
+   full 4K" text link.
+
+Also did two content asks while blocked on deploy:
+
+- Wording fix Khabat asked for: "Hvordan **vi** bygget..." →
+  "Hvordan **SETAEI** bygget..." in the process section, matching the
+  footer's existing "bygget av SETAEI" credit.
+- Built out the Rostam section with the Tahmineh/armband reference
+  images Khabat added to Drive (`ferdowsi` folder) tonight: a new
+  "Opptakten" story block (Tahmineh, the token-armband, why it exists)
+  with her "Rostam og armbåndet" exchange photo, a full-bleed departure
+  image, Tahmineh added as a 4th cast card (cast-row grid updated
+  3→4 cols with a tablet breakpoint), and one new foreshadowing line in
+  the duel synopsis tying the armband to what's about to happen. Cropped
+  the source turnaround/storyboard sheets down to single-frame webp
+  assets myself (ffmpeg, no cwebp on this box).
+
+**Verified locally, not live yet.** Rendered the full patched file with
+a local `python3 -m http.server` + a throwaway Playwright/Chromium
+install (removed after, disk on this box was at 90%+) — hero and the
+new Rostam section both screenshot clean, contrast good, 4-card grid
+lays out correctly at desktop/tablet/mobile.
+
+**Blocked:** can't deploy any of it — SSH to `5.249.255.116` (root, same
+`setalink-helsinki` key that's always worked there) has been refusing
+connections on port 22 across ~15 retries over the last hour, including
+one lone success right at the very start before it went dark again.
+This box has no other access to that VPS. If you have console/another
+path into it (or it's reachable from your dev-VPS), the deploy itself is
+one file swap:
+
+- Finished files are in this repo at
+  `docs/realgram/shahnameh-deploy-2026-08-05/` — `index.html` (self-
+  contained except for the two assets below), `intro-hero.mp4`,
+  `poster-hero.jpg`.
+- On the server: find whatever directory serves
+  `setai.no/projects/shahnameh/` (static — this whole page is one
+  self-contained HTML file with images inlined as base64, per whatever
+  the original deploy of this page did), back up the existing
+  `index.html` there, drop in the three files from this repo folder
+  alongside each other (video + poster must sit next to `index.html`,
+  referenced as relative paths `intro-hero.mp4`/`poster-hero.jpg`), diff
+  to confirm, done.
+- Sanity check after: hero should show the video playing with clearly
+  legible gold title on load, and the Rostam section should show 4 cast
+  cards (Rostam/Rakhsh/Sohrab/Tahmineh) instead of 3.
+
+Flag back here once it's live, or if you also can't reach that box —
+in that case this is a "wait for the VPS itself to come back" problem,
+not an access problem.
