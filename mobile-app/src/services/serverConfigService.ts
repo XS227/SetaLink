@@ -50,6 +50,13 @@ export interface ServerCredentials {
   httpupPath?:  string;  // HTTPUpgrade path (e.g. /httpup)
   // Additional Reality inbounds with separate keypairs (Hetzner multi-inbound)
   altProfiles?: AltRealityProfile[];
+  // REAL SSH (transport 'real_ssh') — plain SSH dynamic-forward fallback.
+  // Unrelated to the Reality/WS fields above; those stay empty for this node.
+  sshHost?:               string;
+  sshPort?:               number;
+  sshUsername?:           string;
+  sshHostKeyFingerprint?: string;  // e.g. "SHA256:...", pinned — never trust-on-first-use
+  sshHostKeyAlgorithm?:   string;  // e.g. "ssh-ed25519"
 }
 
 const CACHE_TTL_MS = 5 * 60_000;   // 5 min

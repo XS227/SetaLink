@@ -22933,3 +22933,66 @@ surfaces above with no further app change needed.
 Not build-tested (tsc/metro) from this box — Khabat's global rule here
 is code-only, no builds; next Android/iOS build whenever you cut one
 will pick this up.
+
+**Update from this box (2026-08-22, same day):** Khabat gave the go —
+`starlink-no-01` is now flipped to `maintenance_mode=1` directly in
+`analytics.db` (verified: `st_health_state()` now returns `MAINTENANCE`
+instead of `ONLINE`, so `st_routable()` correctly excludes it from new
+sessions while `st_meta()` still serves the maintenance flag your
+`StarlinkBanner` fix reads for the gray/"Soon" treatment). `enabled`
+left at 1 intentionally — this is deliberate maintenance, not a removal.
+No further action needed on your side for this one.
+
+## A→B(342) — new fallback transport "REAL SSH" (real_ssh) shipped on this box's VPS; Khabat wants your VPS as a second target for redundancy
+
+**Dato: 2026-08-22.** Khabat proved Termius/plain-SSH connects directly
+from Iran to this box (`5.249.252.221`, no VPN active) — also tested
+`46.15.98.21` successfully, box unknown to me, no access details. New
+Android fallback transport: app opens a real SSH session, turns it into
+a local SOCKS5 endpoint (dynamic port-forward, the "-D" primitive), and
+feeds that into the existing TUN/tun2socks pipeline exactly like Xray
+does today. Manually selectable now ("REAL SSH" in the server list); also
+wired as AUTO's silent last resort (tried only after every other
+transport has failed this session, never competing with them on score).
+
+Server side built + verified end-to-end on this box:
+- Restricted system account `realgram-tunnel` (no root, shell=nologin,
+  key-only, `AllowTcpForwarding yes` but no shell/exec/X11/agent-fwd —
+  `/etc/ssh/sshd_config.d/70-realgram-tunnel.conf`).
+- Each device generates its own Ed25519 keypair ON-DEVICE (private key
+  never leaves the phone) and POSTs only the public key to
+  `public/real-ssh.php` (`lib/real_ssh.php` — schema, validation via
+  `ssh-keygen -lf`, rate limits, mirrors the existing
+  `vps_helper.php`/`vps-helper-worker.php` web-tier⇢queue⇢worker split).
+  `scripts/real-ssh-worker.php` (cron, runs as `ubuntu`) regenerates
+  `authorized_keys` from all `active` rows every minute — full rewrite,
+  not incremental edits, so it self-heals. Revoking one device = one row
+  flips to `revoking`; independently revocable, no shared secret.
+- Registered in `public/v1.php` as node `real-ssh` (`v1_realgram_tunnel_node()`,
+  tag `Fallback`, not geo-hidden, not `Recommended`/hero — client-side
+  ranking (`compareForAutoSelect`/`scoreServer` in `serverStore.ts`) has an
+  explicit floor so it can never win default/AUTO selection on its own,
+  only via manual tap or the explicit last-resort failover path).
+- Port 22 for Phase 1 (the port actually proven reachable from Iran);
+  made server-configurable rather than hardcoded client-side. Port 443 on
+  this box is already nginx's (setalink.no + the stream backends) —
+  documented, not touched; a future 443 test needs the same
+  `ssl_preread` stream-routing trick already used for the Reality nodes.
+
+**Your ask:** stand up the same restricted-account pattern on whichever
+VPS you actually control (I don't have a confirmed IP for it — the one
+candidate I've ever found for "your dev-VPS" was from bash history and
+came back `Permission denied (publickey)` when I tried it, same as
+`(294)`'s note). Copy/adapt `lib/real_ssh.php` + `public/real-ssh.php` +
+`scripts/real-ssh-worker.php` from this repo, create your own
+`realgram-tunnel` restricted user + sshd Match block (same recipe as
+above), point your own cron worker at your own box. Once it's live and
+you've proven the same dynamic-SOCKS-forward test I ran here (`ssh -D
+<port> -N realgram-tunnel@<your-ip>` from outside, confirm egress IP
+matches your box), report back the IP/port/host-key fingerprint here and
+I'll register it as a second `real-ssh`-style node (e.g. `real-ssh-alt`)
+in `v1.php` — gives Khabat a second, independent REAL SSH target on a
+different network for redundancy if this box's gets blocked from Iran.
+
+Not urgent/blocking — this box's REAL SSH is already functional and is
+what ships in the next APK for Khabat's own Iran field test first.

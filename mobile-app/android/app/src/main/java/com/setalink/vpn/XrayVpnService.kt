@@ -109,6 +109,9 @@ class XrayVpnService : VpnService() {
     private var xrayProcess:   Process?              = null
     private var tun2socksPid:  Int?                  = null
     private var connectJob:    Job?                  = null
+    // REAL SSH (transport 'real_ssh') — non-null only when this session's
+    // SOCKS backend is the SSH bridge instead of Xray.
+    private var realSshTunnel: RealSshTunnel?         = null
 
     // Set while tearDownTunnel runs — makes it idempotent and lets the
     // metrics/watchdog loops bail out instead of re-triggering teardown.
@@ -196,6 +199,10 @@ class XrayVpnService : VpnService() {
             broadcastStep("binaries", true,
                 "xray=${xrayBin.length()}B tun2socks=${tun2sockBin.length()}B")
 
+            val transportType = runCatching { JSONObject(configJson).optString("transport", "") }.getOrDefault("")
+            val isRealSsh = transportType == "real_ssh"
+
+            if (!isRealSsh) {
             // Log Xray version for diagnostics
             runCatching {
                 val verProc = ProcessBuilder(xrayBin.absolutePath, "version")
@@ -311,6 +318,42 @@ class XrayVpnService : VpnService() {
                 throw Exception("SOCKS5 handshake failed on port 10808 — Xray may not have SOCKS inbound configured")
             }
             broadcastStep("socks_handshake", true, "SOCKS5 handshake OK on 127.0.0.1:10808 — Xray inbound responding")
+
+            } else {
+                // REAL SSH — replaces steps 2-5 (xray config/process/SOCKS-wait) with an
+                // SSH session + a local SOCKS5-over-SSH bridge bound to the SAME port
+                // (10808) Xray normally serves. Everything below (TUN builder, bypass
+                // apps, tun2socks launch, probes, metrics, watchdog, teardown) is
+                // transport-agnostic and runs completely unmodified for this path too.
+                val cfg = JSONObject(configJson)
+                val sshHost     = cfg.getString("host")
+                val sshPort     = cfg.getInt("port")
+                val sshUser     = cfg.getString("username")
+                val sshHostKeyFp = cfg.getString("hostKeyFingerprint")
+                appendLog("[REAL-SSH] target=$sshHost:$sshPort user=$sshUser")
+
+                serverIpVersion = if (sshHost.matches(Regex("\\d+\\.\\d+\\.\\d+\\.\\d+"))) "ipv4" else "unknown"
+                runCatching {
+                    val t0 = System.currentTimeMillis()
+                    Socket().use { s -> s.soTimeout = 5_000; s.connect(InetSocketAddress(sshHost, sshPort), 5_000) }
+                    serverRttMs = System.currentTimeMillis() - t0
+                    appendLog("[RTT] TCP to $sshHost:$sshPort = ${serverRttMs}ms")
+                }.onFailure { appendLog("[RTT] Could not measure: ${it.message}") }
+
+                val tunnel = RealSshTunnel(applicationContext) { line ->
+                    appendLog("[REAL-SSH] $line")
+                    val step = line.substringBefore(':').trim()
+                    val msg  = line.substringAfter(':', line).trim()
+                    if (step.isNotEmpty() && step != line) broadcastStep(step, true, msg)
+                }
+                realSshTunnel = tunnel
+                try {
+                    tunnel.connect(sshHost, sshPort, sshUser, sshHostKeyFp, 10808)
+                } catch (e: Exception) {
+                    broadcastStep("ssh_connect_fail", false, "REAL SSH connect failed: ${e.message}")
+                    throw Exception("REAL SSH connect failed: ${e.message}")
+                }
+            }
 
             // 6. Build TUN interface
             val mtu = if (emergencyMode) 1280 else 1400
@@ -1277,6 +1320,11 @@ class XrayVpnService : VpnService() {
         tunFd = null
         Log.i(TAG, "SETALINK_TUN_CLOSED")
         appendLog("[TUN_CLOSED]")
+
+        // 2b. Tear down the REAL SSH bridge/session, if that was this session's
+        // transport. No-op (realSshTunnel stays null) for the normal Xray path.
+        runCatching { realSshTunnel?.disconnect() }
+        realSshTunnel = null
 
         // 3. Kill Xray and confirm it actually died.
         val xp = xrayProcess

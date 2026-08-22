@@ -785,6 +785,24 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         }.start()
     }
 
+    // REAL SSH (transport 'real_ssh') — generates (once) or returns the
+    // device's on-device Ed25519 identity. Only the public key ever crosses
+    // this bridge; the private key stays in RealSshTunnel's encrypted
+    // storage. No active tunnel/connection required to call this.
+    @ReactMethod
+    fun getOrCreateRealSshIdentity(promise: Promise) {
+        try {
+            val identity = com.setalink.vpn.RealSshTunnel(reactContext) { line -> Log.d(TAG, "[REAL-SSH-IDENTITY] $line") }
+                .getOrCreateIdentity()
+            promise.resolve(WritableNativeMap().apply {
+                putString("publicKey", identity.publicKeyOpenSsh)
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "getOrCreateRealSshIdentity() error: ${e.message}", e)
+            promise.reject("REAL_SSH_IDENTITY_ERROR", e.message ?: "Could not generate REAL SSH identity", e)
+        }
+    }
+
     // ── VPN permission result ─────────────────────────────────────────────────
 
     override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {

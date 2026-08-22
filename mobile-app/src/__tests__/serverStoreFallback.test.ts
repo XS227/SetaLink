@@ -151,4 +151,26 @@ describe('user node preference vs failover (2026-07-11)', () => {
     useServerStore.getState().restoreUserSelection();
     expect(useServerStore.getState().selectedId).toBe(CF_EDGE_ID); // stays on failover node
   });
+
+  it('restoreUserSelection is a no-op when the preference node is reported unavailable (2026-08-21)', () => {
+    // A sticky pick made while the node was healthy (e.g. the Starlink hero
+    // node) must not get restored once the server marks it available:false —
+    // stale cached creds alone are not enough; a dead node stays dead until
+    // it's healthy again, same as the "gone" case above.
+    useServerStore.setState({
+      servers: [
+        { id: 'finland', country: 'Finland', city: 'Helsinki', flag: '🇫🇮', ping: 40, load: 5, protocol: 'Reality', available: false } as any,
+        { id: CF_EDGE_ID, country: 'Cloudflare', city: 'Edge', flag: '☁️', ping: 60, load: 5, protocol: 'WebSocket', tags: ['Stealth'] } as any,
+      ],
+      importedCreds: {
+        finland:      { uuid: 'fi', address: '1.2.3.4', port: 443, publicKey: 'k', shortId: 's', sni: 'x', flow: 'xtls-rprx-vision', fingerprint: 'chrome' } as any,
+        [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS,
+      },
+      selectedId: '', userSelectedId: '',
+    });
+    useServerStore.getState().selectServer('finland');            // picked while it was still online
+    useServerStore.getState().selectServer(CF_EDGE_ID, false);    // failover after it went down
+    useServerStore.getState().restoreUserSelection();              // fresh connect, finland still available:false
+    expect(useServerStore.getState().selectedId).toBe(CF_EDGE_ID); // stays on the healthy failover node
+  });
 });

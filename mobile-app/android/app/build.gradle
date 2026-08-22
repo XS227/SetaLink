@@ -36,8 +36,8 @@ android {
         applicationId "com.setalink"
         minSdk         rootProject.ext.minSdkVersion
         targetSdk      rootProject.ext.targetSdkVersion
-        versionCode    178
-        versionName    "0.9.138"
+        versionCode    179
+        versionName    "0.9.139"
 
         manifestPlaceholders = [appLabel: "@string/app_name"]
 
@@ -135,4 +135,15 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
     implementation("androidx.biometric:biometric:1.1.0")
+    // Encrypted-at-rest storage for the REAL SSH device private key (Keystore-
+    // wrapped master key, standard Jetpack Security pattern).
+    implementation("androidx.security:security-crypto:1.1.0")
+
+    // REAL SSH transport (2026-08-22): plain SSH dynamic-forward fallback.
+    // sshj = SSH client (direct-tcpip channel = the "-D" dynamic-forward
+    // primitive our SOCKS5 bridge needs). BouncyCastle registered as a
+    // security provider so Ed25519 keygen/signing works down to minSdk 24
+    // (platform-native Ed25519 support only lands on API 26+/33+).
+    implementation("com.hierynomus:sshj:0.40.0")
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.78.1")
 }

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { ConnectionMachine, MachineState } from '../services/connectionMachine';
 import { getAdapter }                       from '../services/vpnBridge';
 import { buildXrayConfigJson, validateCreds } from '../services/xrayConfigBuilder';
+import { buildRealSshConfigJson } from '../services/sshConfigBuilder';
 import { appendMetric } from '../services/vpnMetricsStore';
 import { classifyFailure } from '../services/failureClassifier';
 
@@ -118,21 +119,48 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const nodesDisabled = cfg.nodes_disabled ?? [];
       const { _triedNodeIds } = get();
 
-      if (_triedNodeIds.length >= maxExtra) return false;
-
       const sst = useServerStore.getState();
       const curId = sst.selectedId;
       const newTried = [..._triedNodeIds, curId].filter(Boolean);
-      const nextServer = [...sst.servers]
-        .filter(s =>
-          s.id !== curId &&
-          !newTried.includes(s.id) &&
-          !nodesDisabled.includes(s.id) &&
-          sst.importedCreds[s.id],
-        )
-        .sort((a, b) => (b.successScore ?? 0) - (a.successScore ?? 0))[0];
+      const isCandidate = (s: typeof sst.servers[number]) =>
+        s.id !== curId &&
+        !newTried.includes(s.id) &&
+        !nodesDisabled.includes(s.id) &&
+        !!sst.importedCreds[s.id];
+
+      let nextServer = _triedNodeIds.length < maxExtra
+        ? [...sst.servers]
+            .filter(s => isCandidate(s) && s.transport !== 'real_ssh')
+            .sort((a, b) => (b.successScore ?? 0) - (a.successScore ?? 0))[0]
+        : undefined;
+
+      // AUTO's silent last resort (task: "AUTO -> preferred -> alternative ->
+      // REAL SSH"): only reached once every normal candidate within budget is
+      // exhausted, never competing with them on successScore or the same
+      // maxExtra budget — this is the one deliberate exception to that cap.
+      if (!nextServer) {
+        nextServer = sst.servers.find(s => s.transport === 'real_ssh' && isCandidate(s));
+      }
 
       if (!nextServer) return false;
+
+      // Best-effort, fire-and-forget: if AUTO reaches real_ssh without the
+      // user ever having manually selected it first, make sure the device's
+      // one-time key handshake is at least in flight before the native side
+      // tries to authenticate. connect()'s own provisioning path (manual
+      // selection) is the primary route; this just covers the silent-AUTO case.
+      if (nextServer.transport === 'real_ssh') {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { useAuthStore } = require('./authStore');
+          const deviceId = useAuthStore.getState().user?.deviceId;
+          if (deviceId) {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { ensureRealSshProvisioned } = require('../services/realSshProvisioning') as typeof import('../services/realSshProvisioning');
+            ensureRealSshProvisioned(deviceId).catch(() => {});
+          }
+        } catch {}
+      }
 
       set({
         _triedNodeIds:  newTried,
@@ -440,9 +468,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const analysis = classifyFailure(message);
 
       // Protocol auto-fallback: silently try next protocol before surfacing the error.
-      const { _fallbackActive, _fallbackIdx } = get();
+      // Never applies to REAL SSH — it has no Reality/XHTTP/WebSocket variants;
+      // a failure there goes straight to node failover below.
+      const { _fallbackActive, _fallbackIdx, selectedServer } = get();
       const nextIdx = _fallbackIdx + 1;
-      if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length) {
+      if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length && selectedServer?.transport !== 'real_ssh') {
         const nextProto = FALLBACK_PROTOCOLS[nextIdx]!;
         const step = nextIdx + 1;
         const total = FALLBACK_PROTOCOLS.length;
@@ -527,6 +557,12 @@ export const useVpnStore = create<VpnState>((set, get) => {
       // No real credentials — refuse to connect with placeholder config.
       if (!creds) return null;
 
+      // REAL SSH — entirely separate config shape (host/port/username/host-key
+      // pin, no uuid/publicKey/flow), no Xray protocol-fallback ladder applies.
+      if (selectedServer.transport === 'real_ssh') {
+        return buildRealSshConfigJson(creds);
+      }
+
       const credCheck = validateCreds(creds);
       if (!credCheck.valid) throw new Error(credCheck.error!);
 
@@ -607,6 +643,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
       }
       // Write device_id + country to App Group before the extension starts.
       // PacketTunnelProvider reads these to include in the diagnostic upload.
+      let deviceId: string | undefined;
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { setDiagnosticContext } = require('../services/vpnBridge');
@@ -614,10 +651,29 @@ export const useVpnStore = create<VpnState>((set, get) => {
         const { useAuthStore } = require('./authStore');
         const user   = useAuthStore.getState().user;
         const server = get().selectedServer;
+        deviceId = user?.deviceId;
         if (user?.deviceId) {
           setDiagnosticContext(user.deviceId, server?.country ?? '').catch(() => {});
         }
       } catch {}
+
+      // REAL SSH needs a one-time device-key handshake with the backend
+      // before the native side can authenticate — everything else (config
+      // building, the machine, reconnect/failover) is unchanged, so this is
+      // the one async detour before handing off to the (sync) state machine.
+      if (get().selectedServer?.transport === 'real_ssh' && deviceId) {
+        set({ smartStatus: 'Authenticating…' });
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { ensureRealSshProvisioned } = require('../services/realSshProvisioning') as typeof import('../services/realSshProvisioning');
+        ensureRealSshProvisioned(deviceId)
+          .then(() => machine.send('CONNECT'))
+          .catch((e: unknown) => {
+            set({ _fallbackActive: false, _fallbackIdx: 0, smartStatus: null,
+                  error: e instanceof Error ? e.message : 'REAL SSH provisioning failed' });
+          });
+        return;
+      }
+
       machine.send('CONNECT');
     },
 

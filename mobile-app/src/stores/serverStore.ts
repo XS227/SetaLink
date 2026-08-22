@@ -119,6 +119,37 @@ export const BUNDLED_CF_EDGE_CREDS: ServerCredentials = {
   wsPath:      '/cfws',
 };
 
+// REAL SSH — plain SSH dynamic-forward fallback transport (2026-08-22).
+// Bundled like cf-edge so it's always selectable offline of a catalog fetch.
+// Deliberately NOT tagged Recommended/Stealth — isPreferredNode()/AUTO's
+// default ranking must never prefer it over a healthy normal node; it's
+// reachable by manual tap, and (see vpnStore's tryNodeFailover) as AUTO's
+// silent LAST resort once every other transport has already failed this
+// session — never as a peer competing with them on score.
+export const REAL_SSH_ID = 'real-ssh';
+
+export const BUNDLED_REAL_SSH: ServerRecord = {
+  id:        REAL_SSH_ID,
+  country:   'RealGram',
+  city:      'REAL SSH',
+  flag:      '🔐',
+  ping:      0,
+  load:      0,
+  protocol:  'SSH',
+  transport: 'real_ssh',
+  tags:      ['Fallback'],
+};
+
+export const BUNDLED_REAL_SSH_CREDS: ServerCredentials = {
+  // Reality/WS fields unused by this transport.
+  uuid: '', address: '', port: 0, publicKey: '', shortId: '', sni: '', flow: '', fingerprint: '',
+  sshHost:               '5.249.252.221',
+  sshPort:               22,
+  sshUsername:           'realgram-tunnel',
+  sshHostKeyFingerprint: 'SHA256:bXEaqnHLLo8ePtf9r5LZB//1gTAl5Mya23dGf+tOdjA',
+  sshHostKeyAlgorithm:   'ssh-ed25519',
+};
+
 /** Ranking for the DEFAULT auto-selection (only used when the user has not
  *  chosen a node). Raw server-side ping is a poor proxy for a censored user:
  *  a low-ping direct node can be DPI-blocked/throttled from their network,
@@ -134,7 +165,17 @@ export const BUNDLED_CF_EDGE_CREDS: ServerCredentials = {
 function isPreferredNode(s: ServerRecord): boolean {
   return (s.tags ?? []).some((t) => t === 'Recommended' || t === 'Stealth');
 }
+// REAL SSH must never win default/AUTO selection on its own merits (its
+// ping:0 placeholder would otherwise look like the fastest node) — it's
+// manual-select-only, or AUTO's silent last resort via vpnStore's
+// tryNodeFailover, never a peer in this ranking.
+function isLastResortOnly(s: ServerRecord): boolean {
+  return s.transport === 'real_ssh';
+}
 export function compareForAutoSelect(a: ServerRecord, b: ServerRecord): number {
+  const la = isLastResortOnly(a) ? 1 : 0;
+  const lb = isLastResortOnly(b) ? 1 : 0;
+  if (la !== lb) return la - lb;                       // last-resort-only nodes always sort last
   const sa = typeof a.successScore === 'number' ? a.successScore : -1;
   const sb = typeof b.successScore === 'number' ? b.successScore : -1;
   if (sb !== sa) return sb - sa;                       // higher success first
@@ -151,20 +192,29 @@ function ensureBundledFallback(
   creds:   Record<string, ServerCredentials>,
 ): { servers: ServerRecord[]; creds: Record<string, ServerCredentials> } {
   const hasNode  = servers.some((s) => s.id === CF_EDGE_ID);
-  const nextSrv  = hasNode ? servers : [...servers, BUNDLED_CF_EDGE];
-  const nextCred = creds[CF_EDGE_ID]
+  const nextSrv0 = hasNode ? servers : [...servers, BUNDLED_CF_EDGE];
+  const nextCred0 = creds[CF_EDGE_ID]
     ? creds
     : { ...creds, [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS };
+
+  const hasSsh   = nextSrv0.some((s) => s.id === REAL_SSH_ID);
+  const nextSrv  = hasSsh ? nextSrv0 : [...nextSrv0, BUNDLED_REAL_SSH];
+  const nextCred = nextCred0[REAL_SSH_ID]
+    ? nextCred0
+    : { ...nextCred0, [REAL_SSH_ID]: BUNDLED_REAL_SSH_CREDS };
   return { servers: nextSrv, creds: nextCred };
 }
 
 // No hardcoded demo servers — only real imported or backend-provided nodes.
-// cf-edge is the one bundled exception: the CDN-fronted node must survive a
+// cf-edge and real-ssh are the bundled exceptions: both must survive a
 // blocked catalog fetch (see ensureBundledFallback).
-export const SERVER_CATALOG: ServerRecord[] = [BUNDLED_CF_EDGE];
+export const SERVER_CATALOG: ServerRecord[] = [BUNDLED_CF_EDGE, BUNDLED_REAL_SSH];
 
 // Composite server score for AI-driven ranking
 export function scoreServer(s: ServerRecord, mode: AIModeKey): number {
+  // See isLastResortOnly() above compareForAutoSelect — same rule here: its
+  // ping:0/load:0 placeholders must never look like the best pick.
+  if (isLastResortOnly(s)) return -9999;
   const pingScore = (150 - s.ping) * 0.5;
   const loadScore = (100 - s.load) * 0.3;
   // successScore weight: shifts score by ±20 around the neutral point (80% = +0, 100% = +20, 0% = -32).
@@ -232,7 +282,10 @@ function syncToVpnStore(record: ServerRecord): void {
       city:      record.city,
       flag:      record.flag,
       protocol:  record.protocol,
-      transport: record.protocol === 'Reality' ? 'Reality' : 'TCP',
+      // REAL SSH needs its own transport id downstream (vpnStore branches on
+      // it); every other protocol keeps the pre-existing Reality/TCP mapping
+      // unchanged (this field isn't otherwise read for those).
+      transport: record.transport === 'real_ssh' ? 'real_ssh' : (record.protocol === 'Reality' ? 'Reality' : 'TCP'),
       ping:      record.ping,
       load:      record.load,
       premium:   record.premium ?? false,
@@ -250,9 +303,9 @@ export const useServerStore = create<ServerState>()(
   query:         '',
   isLoading:     false,
   loadError:     null,
-  // Seed the bundled cf-edge creds so the stealth node is connectable even
+  // Seed the bundled cf-edge + real-ssh creds so both are connectable even
   // before (or without) a successful catalog fetch.
-  importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS },
+  importedCreds: { [CF_EDGE_ID]: BUNDLED_CF_EDGE_CREDS, [REAL_SSH_ID]: BUNDLED_REAL_SSH_CREDS },
 
   selectServer: (id, isUser = true) => {
     // A manual tap sets the sticky preference; failover (isUser=false) only
@@ -273,9 +326,18 @@ export const useServerStore = create<ServerState>()(
     const { userSelectedId, selectedId, servers, importedCreds } = get();
     if (!userSelectedId || userSelectedId === selectedId) return;
     const record = servers.find((s) => s.id === userSelectedId);
-    // Only restore to a node that still exists and is connectable — otherwise
-    // leave the current (failover) node so we don't bounce onto a dead choice.
-    if (!record || !importedCreds[userSelectedId]) return;
+    // Only restore to a node that still exists, is connectable, AND is
+    // currently reported available by the server — otherwise leave the
+    // current (failover) node so we don't bounce onto a dead choice.
+    // Khabat, 2026-08-21: sticky-selected the Starlink hero node once while
+    // it was healthy (server cached its creds into importedCreds); the node
+    // later went down (available:false/status:offline in /v1/servers) but
+    // this function only checked "does a cached credential exist," not
+    // "is the server still reporting this node online" — so every fresh
+    // Connect tap snapped straight back to the now-dead node regardless of
+    // its live status, producing a "can't connect" that looked like a
+    // network/DNS problem but was actually this stale-preference bug.
+    if (!record || !importedCreds[userSelectedId] || record.available === false) return;
     set({ selectedId: userSelectedId });
     syncToVpnStore(record);
   },

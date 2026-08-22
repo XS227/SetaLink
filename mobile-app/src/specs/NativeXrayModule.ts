@@ -158,6 +158,15 @@ export interface Spec extends TurboModule {
     ok:     boolean;
     detail: string;
   }>>;
+
+  /**
+   * REAL SSH (transport 'real_ssh') — generates (once, on-device, Android
+   * Keystore-backed) or returns the existing Ed25519 identity used to
+   * authenticate to the realgram-tunnel account. Returns ONLY the OpenSSH
+   * public key string; the private key never leaves native storage and is
+   * never exposed to JS. Android only.
+   */
+  getOrCreateRealSshIdentity(): Promise<{ publicKey: string } | null>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('XrayModule');

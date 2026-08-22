@@ -57,6 +57,11 @@ export interface QuicProbeResult {
   quicDetail: string;
 }
 
+export interface RealSshIdentity {
+  /** OpenSSH-format public key ("ssh-ed25519 AAAA... "). Private key never leaves the device. */
+  publicKey: string;
+}
+
 export interface VpnAdapter {
   connect(configJson: string): Promise<void>;
   connectEmergency(configJson: string): Promise<void>;
@@ -70,6 +75,12 @@ export interface VpnAdapter {
   getTunnelState?(): Promise<string>;
   getProbeDiagnostics?(): Promise<ProbeDiagnostics>;
   runQuicProbe?(): Promise<QuicProbeResult | null>;
+  /**
+   * REAL SSH — generates (once) or returns the device's existing on-device
+   * Ed25519 identity for the `real_ssh` transport. Returns the PUBLIC key
+   * only; the private key is stored natively and never crosses this bridge.
+   */
+  getOrCreateRealSshIdentity?(): Promise<RealSshIdentity | null>;
 }
 
 // ── Mock adapter (used when native module is unavailable) ─────────────────────
@@ -134,6 +145,9 @@ class MockAdapter implements VpnAdapter {
     return { verdict: 'QUIC_OK', line: 'TCP=ok(50ms,HTTP 200) QUIC=ok(60ms,HTTP 200) ⇒ QUIC_OK [app-path] (mock)',
              tcpOk: true, tcpMs: 50, tcpDetail: 'HTTP 200 (mock)',
              quicOk: true, quicMs: 60, quicDetail: 'HTTP 200 (mock)' };
+  }
+  async getOrCreateRealSshIdentity(): Promise<RealSshIdentity> {
+    return { publicKey: 'ssh-ed25519 AAAAMOCKMOCKMOCKMOCKMOCK (mock)' };
   }
 }
 
@@ -306,6 +320,14 @@ class NativeAdapter implements VpnAdapter {
   async runQuicProbe(): Promise<QuicProbeResult | null> {
     try {
       return (await this.module.runQuicProbe?.()) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async getOrCreateRealSshIdentity(): Promise<RealSshIdentity | null> {
+    try {
+      return (await this.module.getOrCreateRealSshIdentity?.()) ?? null;
     } catch {
       return null;
     }
