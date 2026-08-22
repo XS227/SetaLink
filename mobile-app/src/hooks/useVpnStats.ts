@@ -11,6 +11,14 @@ export interface VpnStatsResult {
 
 const POLL_MS = 3000;
 
+// Consecutive zero-byte-delta polls before treating the tunnel as a "zombie"
+// (native reports connected, but no traffic has crossed the TUN interface).
+// 20 * 3s = 60s — matches the native traffic_stall watchdog's own tiering
+// (30s/60s.../480s in XrayVpnService.kt) without waiting the full 8 minutes
+// that watchdog can silently sit at before this fix, since nothing consumed
+// its broadcast.
+const STALL_POLL_THRESHOLD = 20;
+
 /**
  * Polls the VPN adapter for live stats while connected.
  * Side-effects: pushes cumulative bytes to vpnStore and live rates to diagnosticsStore.
@@ -24,6 +32,7 @@ export function useVpnStats(): VpnStatsResult {
   const [stats, setStats] = useState<VpnStatsResult>({ uploadMbps: 0, downloadMbps: 0, pingMs: 0 });
 
   const prevBytesRef = useRef<{ upload: number; download: number; time: number } | null>(null);
+  const reportTrafficStall = useVpnStore((s) => s.reportTrafficStall);
 
   useEffect(() => {
     if (connectionState !== 'connected') {
@@ -42,6 +51,7 @@ export function useVpnStats(): VpnStatsResult {
     }
 
     let cancelled = false;
+    let stalledPolls = 0;
 
     const poll = async () => {
       try {
@@ -75,6 +85,15 @@ export function useVpnStats(): VpnStatsResult {
           // reconverting units and breaking Diagnostics' calibration.
           uploadMbps   = dt > 0 ? (upDelta / dt) / 1_000_000 : 0;
           downloadMbps = dt > 0 ? (dnDelta / dt) / 1_000_000 : 0;
+
+          if (upDelta === 0 && dnDelta === 0) {
+            stalledPolls++;
+            if (stalledPolls === STALL_POLL_THRESHOLD) {
+              reportTrafficStall();
+            }
+          } else {
+            stalledPolls = 0;
+          }
         }
 
         prevBytesRef.current = { upload: s.uploadBytes, download: s.downloadBytes, time: now };

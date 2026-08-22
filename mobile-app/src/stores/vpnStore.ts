@@ -67,10 +67,22 @@ interface VpnState {
   _fallbackActive:    boolean;
   // Node failover state — tracks which nodes were tried in this connect cycle
   _triedNodeIds:      string[];
+  // Unexpected-drop tracking (internal — not persisted). A tunnel that dies
+  // mid-session (native watchdog, ISP interference, etc.) used to just show
+  // "Disconnected" and stop — the node-failover logic below only ever ran on
+  // an initial CONNECT failure, never on a drop after a successful connect.
+  // First unexpected drop: reconnect to the same node (cheap, handles a
+  // one-off blip). A second drop without a stable reconnect in between:
+  // escalate to the same successScore-ranked node failover CONNECT already
+  // uses, instead of silently going idle on a node that clearly isn't
+  // holding up right now.
+  _unexpectedDropCount: number;
+  _userInitiatedDisconnect: boolean;
 
   connect:            () => void;
   disconnect:         () => void;
   switchServer:       () => void;
+  reportTrafficStall: () => void;
   setSelectedServer:  (server: VpnServer | null) => void;
   setSessionBytes:    (b: SessionBytes) => void;
   addSessionBytes:    (sent: number, received: number) => void;
@@ -87,6 +99,57 @@ interface VpnState {
 // No default server — user must import a real VLESS config before connecting.
 
 export const useVpnStore = create<VpnState>((set, get) => {
+  // Try the next-best untried node (successScore-ranked, carrier/region-aware
+  // via the backend's /v1/servers scoring — see lib/geo.php + node_intel.php
+  // on the server side). Shared by onError (initial CONNECT never succeeded)
+  // and onDisconnected's unexpected-drop handling (it DID connect, then died)
+  // — both are "this node isn't working for this device right now", just
+  // discovered at different points in the connection lifecycle.
+  // Returns true if a switch was started (caller should not also show its
+  // own "failed" UI — a reconnect attempt is already in flight).
+  function tryNodeFailover(): boolean {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { getCachedConfig } = require('../services/remoteConfigService') as typeof import('../services/remoteConfigService');
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useServerStore } = require('./serverStore') as typeof import('./serverStore');
+      const cfg = getCachedConfig();
+      const maxExtra = cfg.failover_max_nodes ?? 2;
+      const nodesDisabled = cfg.nodes_disabled ?? [];
+      const { _triedNodeIds } = get();
+
+      if (_triedNodeIds.length >= maxExtra) return false;
+
+      const sst = useServerStore.getState();
+      const curId = sst.selectedId;
+      const newTried = [..._triedNodeIds, curId].filter(Boolean);
+      const nextServer = [...sst.servers]
+        .filter(s =>
+          s.id !== curId &&
+          !newTried.includes(s.id) &&
+          !nodesDisabled.includes(s.id) &&
+          sst.importedCreds[s.id],
+        )
+        .sort((a, b) => (b.successScore ?? 0) - (a.successScore ?? 0))[0];
+
+      if (!nextServer) return false;
+
+      set({
+        _triedNodeIds:  newTried,
+        _fallbackActive: false,
+        _fallbackIdx:   0,
+        isSwitchingServer: true,
+        smartStatus: `${nextServer.flag} Trying ${nextServer.city}…`,
+        error: null,
+      });
+      sst.selectServer(nextServer.id, false);  // active-only; keep user's preference
+      machine.send('DISCONNECT');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   // Machine lives in closure — one instance per store, survives re-renders
   const machine = new ConnectionMachine({
     onStateChange: (next, _prev) => {
@@ -94,7 +157,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     onConnected: () => {
-      set({ sessionStartedAt: Date.now(), error: null, smartStatus: null, _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [] });
+      set({ sessionStartedAt: Date.now(), error: null, smartStatus: null, _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], _unexpectedDropCount: 0 });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');
@@ -303,6 +366,29 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
       set({ sessionStartedAt: null, sessionBytes: { sent: 0, received: 0 }, reconnectAttempts: 0 });
 
+      // Unexpected drop — the tunnel connected successfully and then died on
+      // its own (native watchdog, ISP interference, ...), not a user tap and
+      // not an already-handled server switch. Previously this just fell
+      // through to the plain "Disconnected" toast below and stopped there —
+      // no retry, no failover, even though the exact same successScore-based
+      // node failover already exists for a connect that never succeeds at
+      // all (see tryNodeFailover). First drop: cheap same-node reconnect
+      // (handles a one-off blip). A second drop without a stable reconnect
+      // in between: this node isn't holding up right now — try the next-best
+      // one instead of bouncing on the same node indefinitely.
+      const wasUnexpectedDrop = !!state.sessionStartedAt && !state.isSwitchingServer && !state._userInitiatedDisconnect;
+      if (wasUnexpectedDrop) {
+        const drops = state._unexpectedDropCount + 1;
+        set({ _unexpectedDropCount: drops });
+        if (drops >= 2 && tryNodeFailover()) {
+          return;
+        }
+        set({ smartStatus: 'Connection dropped — reconnecting…' });
+        setTimeout(() => machine.send('CONNECT'), 600);
+        return;
+      }
+      set({ _userInitiatedDisconnect: false });
+
       // Server switch: skip the disconnect toast and auto-reconnect to the new server
       if (get().isSwitchingServer) {
         set({ isSwitchingServer: false });
@@ -354,7 +440,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const analysis = classifyFailure(message);
 
       // Protocol auto-fallback: silently try next protocol before surfacing the error.
-      const { _fallbackActive, _fallbackIdx, _triedNodeIds } = get();
+      const { _fallbackActive, _fallbackIdx } = get();
       const nextIdx = _fallbackIdx + 1;
       if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length) {
         const nextProto = FALLBACK_PROTOCOLS[nextIdx]!;
@@ -371,47 +457,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
       }
 
       // All protocols exhausted (or AI-mode single-shot) — try next node before giving up.
-      // Reads failover_max_nodes from cached remote config (sync, never blocks).
-      let nodeFailoverAttempted = false;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { getCachedConfig } = require('../services/remoteConfigService') as typeof import('../services/remoteConfigService');
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { useServerStore } = require('./serverStore') as typeof import('./serverStore');
-        const cfg = getCachedConfig();
-        const maxExtra = cfg.failover_max_nodes ?? 2;
-        const nodesDisabled = cfg.nodes_disabled ?? [];
-
-        if (_triedNodeIds.length < maxExtra) {
-          const sst = useServerStore.getState();
-          const curId = sst.selectedId;
-          const newTried = [..._triedNodeIds, curId].filter(Boolean);
-          const nextServer = [...sst.servers]
-            .filter(s =>
-              s.id !== curId &&
-              !newTried.includes(s.id) &&
-              !nodesDisabled.includes(s.id) &&
-              sst.importedCreds[s.id],
-            )
-            .sort((a, b) => (b.successScore ?? 0) - (a.successScore ?? 0))[0];
-
-          if (nextServer) {
-            set({
-              _triedNodeIds:  newTried,
-              _fallbackActive: false,
-              _fallbackIdx:   0,
-              isSwitchingServer: true,
-              smartStatus: `${nextServer.flag} Trying ${nextServer.city}…`,
-              error: null,
-            });
-            sst.selectServer(nextServer.id, false);  // active-only; keep user's preference
-            machine.send('DISCONNECT');
-            nodeFailoverAttempted = true;
-          }
-        }
-      } catch {}
-
-      if (nodeFailoverAttempted) return;
+      if (tryNodeFailover()) return;
 
       // All nodes and protocols exhausted — surface the final error.
       set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], error: analysis.userMessage, smartStatus: null });
@@ -532,6 +578,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
     _fallbackIdx:      0,
     _fallbackActive:   false,
     _triedNodeIds:     [],
+    _unexpectedDropCount:     0,
+    _userInitiatedDisconnect: false,
 
     connect: () => {
       // Forced-update gate: a build below minSupported must not connect.
@@ -545,7 +593,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
       } catch {}
       // Start auto-fallback only on a fresh connect (not during a fallback retry).
       if (!get()._fallbackActive) {
-        set({ _fallbackActive: true, _fallbackIdx: 0, error: null, smartStatus: 'Establishing secure tunnel…' });
+        set({ _fallbackActive: true, _fallbackIdx: 0, error: null, smartStatus: 'Establishing secure tunnel…',
+              _userInitiatedDisconnect: false, _unexpectedDropCount: 0 });
         // Fresh user-initiated connect: go back to the user's manually chosen
         // node. A prior failover may have left the active node elsewhere (e.g.
         // the stealth node), but the user's preference (e.g. Finland) wins on
@@ -573,7 +622,9 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     disconnect: () => {
-      set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], smartStatus: null });
+      // Marks this as a deliberate stop so onDisconnected doesn't mistake it
+      // for an unexpected drop and try to auto-reconnect / fail over.
+      set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], smartStatus: null, _userInitiatedDisconnect: true });
       machine.send('DISCONNECT');
     },
 
@@ -581,6 +632,21 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const { connectionState: cs } = get();
       if (cs !== 'connected') return;
       set({ isSwitchingServer: true });
+      machine.send('DISCONNECT');
+    },
+
+    // Native reports the tunnel as up (isRunning=true) but zero bytes have
+    // crossed the TUN interface for a sustained window — a "zombie" tunnel
+    // where the app shows Connected while nothing actually loads. Nothing
+    // previously acted on this (native's own traffic_stall broadcast has no
+    // listener). Tear the tunnel down deliberately, WITHOUT the
+    // isSwitchingServer/_userInitiatedDisconnect flags, so onDisconnected's
+    // existing wasUnexpectedDrop branch treats it exactly like a native
+    // drop: reconnect once same-node, then fail over to the next-best node.
+    reportTrafficStall: () => {
+      const { connectionState: cs, isSwitchingServer } = get();
+      if (cs !== 'connected' || isSwitchingServer) return;
+      set({ smartStatus: 'No traffic detected — reconnecting…' });
       machine.send('DISCONNECT');
     },
 
