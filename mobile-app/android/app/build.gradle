@@ -114,6 +114,14 @@ android {
         jniLibs {
             useLegacyPackaging true
         }
+        resources {
+            // BouncyCastle's bcprov/bcpkix/bcutil-jdk18on jars (REAL SSH
+            // transport, 2026-08-22) each ship an identical OSGi manifest
+            // fragment at this path — irrelevant on Android, just needs to
+            // not collide when merging resources across the 4 jars that
+            // carry it (third CI failure of build 179).
+            excludes += ["META-INF/versions/9/OSGI-INF/MANIFEST.MF"]
+        }
     }
 
     lint {
