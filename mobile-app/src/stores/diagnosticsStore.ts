@@ -5,9 +5,14 @@ function activeServerHint(): ServerHint | undefined {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { useVpnStore } = require('../stores/vpnStore');
-    const s = useVpnStore.getState().selectedServer;
+    const { selectedServer: s, activeProtocol, connectionState } = useVpnStore.getState();
     if (!s) return undefined;
-    return { id: s.id, ping: s.ping, protocol: s.protocol, city: s.city, country: s.country };
+    // selectedServer.protocol is just the last-picked node in the list — it
+    // drifts from reality across the protocol fallback ladder, node failover
+    // and AI auto-connect. While actually connected, activeProtocol (set once
+    // in vpnStore's onConnected from whichever path won) is ground truth.
+    const protocol = connectionState === 'connected' && activeProtocol ? activeProtocol : s.protocol;
+    return { id: s.id, ping: s.ping, protocol, city: s.city, country: s.country };
   } catch { return undefined; }
 }
 

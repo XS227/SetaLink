@@ -52,6 +52,14 @@ interface TraceTestResult {
 interface VpnState {
   connectionState:    ConnectionState;
   selectedServer:     VpnServer | null;
+  // The protocol/transport actually negotiated by the current connected
+  // session — set once in onConnected() from whichever path won (protocol
+  // fallback ladder or plain connect), cleared on disconnect. selectedServer
+  // reflects the last-picked node/protocol in the list, which drifts out of
+  // sync with reality across the fallback ladder, node failover and AI
+  // auto-connect paths; Diagnostics must read this instead.
+  activeProtocol:     string | null;
+  activeTransport:    string | null;
   sessionStartedAt:   number | null;   // unix ms
   sessionBytes:       SessionBytes;
   selectedProtocol:   string;
@@ -185,7 +193,21 @@ export const useVpnStore = create<VpnState>((set, get) => {
     },
 
     onConnected: () => {
-      set({ sessionStartedAt: Date.now(), error: null, smartStatus: null, _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], _unexpectedDropCount: 0 });
+      // Capture which protocol actually won BEFORE the fallback state below
+      // resets it — when the ladder advanced past the node's default
+      // protocol, selectedServer.protocol still names the original pick,
+      // not the one that connected.
+      const { _fallbackActive, _fallbackIdx, selectedServer: connectedServer } = get();
+      const activeProtocol = _fallbackActive
+        ? (FALLBACK_PROTOCOLS[_fallbackIdx] ?? connectedServer?.protocol ?? null)
+        : (connectedServer?.protocol ?? null);
+      const activeTransport = connectedServer?.transport ?? null;
+
+      set({
+        sessionStartedAt: Date.now(), error: null, smartStatus: null,
+        _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], _unexpectedDropCount: 0,
+        activeProtocol, activeTransport,
+      });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { getLastConnectLog, uploadTunnelLog } = require('../services/vpnBridge');
@@ -219,22 +241,25 @@ export const useVpnStore = create<VpnState>((set, get) => {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { useAIStore } = require('./aiStore');
         useAIStore.getState().addLogEntry(
-          `Connection established · ${server?.protocol ?? 'VPN'} · DPI bypass active`,
+          `Connection established · ${activeProtocol ?? 'VPN'} · DPI bypass active`,
           'success'
         );
       } catch {}
 
-      appendMetric({ type: 'connect_success', at: Date.now(), country: server?.country, transport: server?.transport, protocol: server?.protocol });
+      appendMetric({ type: 'connect_success', at: Date.now(), country: server?.country, transport: activeTransport ?? undefined, protocol: activeProtocol ?? undefined });
 
       // Session-level telemetry: manual connects never reported before this,
       // so learned routing only saw smart-connect probes (deduped inside).
+      // Report the protocol/transport that actually won (activeProtocol),
+      // not server.protocol — during a fallback-ladder connect those differ,
+      // and this feeds the learned-routing successScore per node.
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { reportSessionOutcome } = require('../services/sessionTelemetry') as typeof import('../services/sessionTelemetry');
         reportSessionOutcome({
           ok:        true,
           nodeId:    server?.id ?? 'primary',
-          protocol:  server ? `${server.protocol}+${server.transport}` : undefined,
+          protocol:  activeProtocol ? `${activeProtocol}+${activeTransport ?? ''}` : undefined,
           latencyMs: get().lastPingMs ?? undefined,
         });
       } catch {}
@@ -289,8 +314,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
         const { getLastConnectProbeOk } = require('../services/vpnBridge');
         const user = useAuthStore.getState().user;
         if (user) {
-          const server = get().selectedServer;
-          const protocol = server ? `${server.protocol}${server.transport && server.transport !== server.protocol ? '+' + server.transport : ''}` : '';
+          // Ground truth for what actually connected (see activeProtocol
+          // above) — not selectedServer, which names the original pick and
+          // is what admin's "active protocol" column used to silently show
+          // during a fallback-ladder connect.
+          const protocol = activeProtocol ? `${activeProtocol}${activeTransport && activeTransport !== activeProtocol ? '+' + activeTransport : ''}` : '';
           reportVpnStatus(user.deviceId, 'online', {
             protocol,
             internetOk: getLastConnectProbeOk?.() ?? false,
@@ -317,6 +345,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
     onDisconnected: () => {
       stopStatusHeartbeat();
+      // Diagnostics reads activeProtocol/activeTransport live; without
+      // clearing them here it keeps showing the last connected protocol
+      // after disconnect, same class of bug useVpnStats.ts's clearLiveStats
+      // guards against for throughput.
+      set({ activeProtocol: null, activeTransport: null });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { cancelQuicEvidenceProbe } = require('../services/quicEvidenceService') as typeof import('../services/quicEvidenceService');
@@ -600,6 +633,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
   return {
     connectionState:   'idle',
     selectedServer:    null,
+    activeProtocol:    null,
+    activeTransport:   null,
     sessionStartedAt:  null,
     sessionBytes:      { sent: 0, received: 0 },
     selectedProtocol:  'VLESS+Reality',

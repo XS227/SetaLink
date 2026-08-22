@@ -417,6 +417,23 @@ export function DiagnosticsScreen({ onBack }: DiagnosticsProps) {
                 : getStep('dns_check') === 'fail' || getStep('dns_resolve') === 'fail' ? 'fail'
                 : internetOk === 'ok' ? 'ok' : 'unknown';
             }
+
+            // connectionLog is a snapshot from whenever the tunnel last (re)connected —
+            // on a long-running session it can be hours stale, and a transient probe
+            // hiccup during that original connect can leave a permanent "Internet: FAIL"
+            // showing here even though the tunnel has been fine ever since. A confirmed
+            // LIVE probe is stronger evidence than that snapshot, so let it upgrade a
+            // stale fail/unknown — same reasoning diagnosticsStore's withLiveDns() already
+            // applies to the Health Checks card's DNS row. Never downgrades a real fail.
+            if (traceTestResult?.ok) {
+              if (internetOk !== 'ok') internetOk = 'ok';
+              if (dnsOk !== 'ok')      dnsOk      = 'ok';
+            }
+            const liveHttpsPass = (selfTestResults ?? []).some(r => (r.test === 'https' || r.test === 'exit_ip') && r.ok);
+            if (liveHttpsPass && internetOk !== 'ok') internetOk = 'ok';
+            const liveDnsPass = (selfTestResults ?? []).some(r => r.test === 'dns' && r.ok);
+            if (liveDnsPass && dnsOk !== 'ok') dnsOk = 'ok';
+
             const statusColor = (s: 'ok' | 'fail' | 'unknown') =>
               s === 'ok' ? Colors.emerald[400] : s === 'fail' ? Colors.status.disconnected : Colors.text.muted;
             const statusIcon  = (s: 'ok' | 'fail' | 'unknown') =>

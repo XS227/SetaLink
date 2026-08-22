@@ -785,6 +785,42 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         }.start()
     }
 
+    // 4-test suite mirroring iOS XrayModule.swift's runSelfTest (dns / https /
+    // route / exit_ip). iOS routes URLSession through NEProxySettings
+    // automatically via the App Group; Android has no equivalent, so each
+    // fetch reuses runTraceTest's proven two-tier strategy above (VPN-bound
+    // network first, falling back to a direct SOCKS5 probe on
+    // 127.0.0.1:10808 for ROMs that exclude our own UID from the TUN).
+    @ReactMethod
+    fun runSelfTest(promise: Promise) {
+        Thread {
+            val results = WritableNativeArray()
+
+            val dns = fetchThroughTunnel("https://cp.cloudflare.com/", 8_000)
+            results.pushMap(selfTestEntry("dns", "DNS Resolution", dns))
+
+            val https = fetchThroughTunnel("https://1.1.1.1/cdn-cgi/trace", 8_000)
+            results.pushMap(selfTestEntry("https", "HTTPS (IP-direct)", https))
+
+            // iOS checks tunnel_state == connected_verified in the App Group;
+            // the closest Android ground truth is the service actually
+            // running plus the last connect-time probe result.
+            val routeOk = running && lastProbeOk
+            results.pushMap(WritableNativeMap().apply {
+                putString("test",  "route")
+                putString("label", "Tunnel Route Verified")
+                putBoolean("ok",   routeOk)
+                putString("detail", "running=$running probe_ok=$lastProbeOk")
+            })
+
+            val exitIp     = fetchThroughTunnel("https://cloudflare.com/cdn-cgi/trace", 10_000)
+            val serverAddr = readConfiguredServerAddr()
+            results.pushMap(exitIpEntry(exitIp, serverAddr))
+
+            promise.resolve(results)
+        }.start()
+    }
+
     // REAL SSH (transport 'real_ssh') — generates (once) or returns the
     // device's on-device Ed25519 identity. Only the public key ever crosses
     // this bridge; the private key stays in RealSshTunnel's encrypted
@@ -842,6 +878,92 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             promise.reject("VPN_START_ERROR", e.message ?: "Failed to start VPN service", e)
         }
     }
+
+    // ── Self-test helpers ───────────────────────────────────────────────────────
+
+    private data class TunnelFetch(val ok: Boolean, val ip: String?, val detail: String)
+
+    private fun fetchThroughTunnel(urlString: String, timeoutMs: Int): TunnelFetch {
+        val t0 = System.currentTimeMillis()
+        fun elapsed() = "%.2fs".format((System.currentTimeMillis() - t0) / 1000.0)
+
+        fun doFetch(conn: java.net.HttpURLConnection, viaSuffix: String): TunnelFetch {
+            conn.connectTimeout = timeoutMs
+            conn.readTimeout    = timeoutMs
+            conn.setRequestProperty("User-Agent", "SetaLink/1.0")
+            return try {
+                val code = conn.responseCode
+                val body = conn.inputStream.bufferedReader().readText()
+                val ip   = body.lines().firstOrNull { it.startsWith("ip=") }?.removePrefix("ip=")
+                val ok   = code == 200 || code == 204
+                TunnelFetch(ok, ip, "HTTP $code · ${body.length}B · ${elapsed()}$viaSuffix")
+            } finally {
+                conn.disconnect()
+            }
+        }
+
+        val vpnResult = runCatching {
+            val cm = reactContext.getSystemService(android.net.ConnectivityManager::class.java)
+            val vpnNet = cm?.allNetworks?.firstOrNull { net ->
+                cm.getNetworkCapabilities(net)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+            } ?: return@runCatching null
+            val conn = vpnNet.openConnection(java.net.URL(urlString)) as java.net.HttpURLConnection
+            doFetch(conn, "")
+        }
+        val primary = vpnResult.getOrNull()
+        if (primary != null && primary.ok) return primary
+
+        val socksResult = runCatching {
+            val proxy = java.net.Proxy(java.net.Proxy.Type.SOCKS, java.net.InetSocketAddress("127.0.0.1", 10808))
+            val conn  = java.net.URL(urlString).openConnection(proxy) as java.net.HttpURLConnection
+            doFetch(conn, " (socks5)")
+        }
+        socksResult.getOrNull()?.let { return it }
+
+        val vpnErr  = vpnResult.exceptionOrNull()?.message ?: primary?.detail ?: "VPN network unavailable"
+        val sockErr = socksResult.exceptionOrNull()?.message ?: "SOCKS5 probe failed"
+        return TunnelFetch(false, null, "VPN: $vpnErr | SOCKS5: $sockErr (${elapsed()})")
+    }
+
+    private fun selfTestEntry(test: String, label: String, r: TunnelFetch): WritableNativeMap =
+        WritableNativeMap().apply {
+            putString("test", test)
+            putString("label", label)
+            putBoolean("ok", r.ok)
+            putString("detail", r.detail)
+        }
+
+    // Confirms traffic actually exits through the configured VPN server, not
+    // the device's own IP (which would mean the proxy isn't routing this
+    // request and the rest of the suite is a false positive) — same check as
+    // iOS's selfTestExitIP.
+    private fun exitIpEntry(r: TunnelFetch, serverAddr: String?): WritableNativeMap {
+        val verified = r.ok && r.ip != null && (serverAddr == null || r.ip == serverAddr)
+        val detail = when {
+            !r.ok || r.ip == null -> r.detail
+            serverAddr == null    -> "exit IP: ${r.ip} (server addr unknown) · ${r.detail}"
+            r.ip == serverAddr    -> "exit IP: ${r.ip} = VPN node ✓ · ${r.detail}"
+            else                  -> "exit IP: ${r.ip} ≠ VPN node $serverAddr — traffic NOT through proxy"
+        }
+        return WritableNativeMap().apply {
+            putString("test", "exit_ip")
+            putString("label", "Exit IP")
+            putBoolean("ok", verified)
+            putString("detail", detail)
+        }
+    }
+
+    // Same outbounds[0].settings.vnext[0].address field iOS's parseServerAddr
+    // reads from the mirrored xray config JSON — same xray-core schema on
+    // both platforms.
+    private fun readConfiguredServerAddr(): String? = try {
+        val f = java.io.File(reactContext.filesDir, "xray.json")
+        if (!f.exists()) null else {
+            val outbounds = org.json.JSONObject(f.readText()).optJSONArray("outbounds")
+            val vnext     = outbounds?.optJSONObject(0)?.optJSONObject("settings")?.optJSONArray("vnext")
+            vnext?.optJSONObject(0)?.optString("address")?.takeIf { it.isNotEmpty() }
+        }
+    } catch (e: Exception) { null }
 
     // ── Cleanup ───────────────────────────────────────────────────────────────
 

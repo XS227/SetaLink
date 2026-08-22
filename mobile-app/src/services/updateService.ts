@@ -247,9 +247,21 @@ function otaLog(step: string, detail?: unknown): void {
   // eslint-disable-next-line no-console
   console.log(`[RealGram:OTA] ${step}`, detail ?? '');
   try {
-    trackEvent('OTA_DOWNLOAD_STAGE', useAuthStore.getState().user?.deviceId, {
-      step, detail: detail === undefined ? undefined : String(detail).slice(0, 300),
-    });
+    // String(detail) on an object (e.g. the {code, message} caught below)
+    // stringifies to the useless literal "[object Object]" — every native
+    // install exception logged that instead of the actual error. Only plain
+    // strings/numbers pass through String(); everything else gets
+    // JSON.stringify'd so the real code/message survive into telemetry.
+    let detailStr: string | undefined;
+    if (detail !== undefined) {
+      if (typeof detail === 'string' || typeof detail === 'number') {
+        detailStr = String(detail);
+      } else {
+        try { detailStr = JSON.stringify(detail); } catch { detailStr = String(detail); }
+      }
+      detailStr = detailStr.slice(0, 300);
+    }
+    trackEvent('OTA_DOWNLOAD_STAGE', useAuthStore.getState().user?.deviceId, { step, detail: detailStr });
   } catch { /* diagnostics must never break the UI */ }
 }
 

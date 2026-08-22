@@ -32,7 +32,7 @@ import { useProfilePicStore }  from '../stores/profilePicStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
-import { useVpnStats }         from '../hooks/useVpnStats';
+import { useDiagnosticsStore } from '../stores/diagnosticsStore';
 import { useT }                from '../i18n';
 import { initAds, preloadInterstitial, gateActionWithAd, notifyVpnDisconnected } from '../services/adsService';
 import { initZarSync, recordZarTap } from '../services/zarSyncService';
@@ -213,7 +213,15 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const isBusy          = isTransitioning;
 
   const timer = useSessionTimer(isConnected, sessionStartedAt);
-  const { pingMs, downloadMbps, uploadMbps } = useVpnStats();
+  // The actual poll (useVpnStats) now runs once at the App root so traffic
+  // bytes keep accumulating while the user is on any tab — Activity's Total
+  // Data / Bandwidth chart used to read 0 for any time spent off this screen,
+  // since useVpnStats' setInterval only ran while HomeScreen was mounted.
+  // Home just reads the live values it already pushes into diagnosticsStore.
+  const liveStats     = useDiagnosticsStore((s) => s.liveStats);
+  const pingMs        = liveStats?.ping ?? 0;
+  const downloadMbps  = liveStats?.downloadMbps ?? 0;
+  const uploadMbps    = liveStats?.uploadMbps ?? 0;
 
   // Khabat, 2026-07-30: "hastighet viser null forresten den må fikses" —
   // downloadMbps is a real per-3s-poll delta (useVpnStats.ts), so it
