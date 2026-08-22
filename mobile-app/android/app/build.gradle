@@ -141,12 +141,15 @@ dependencies {
 
     // REAL SSH transport (2026-08-22): plain SSH dynamic-forward fallback.
     // sshj = SSH client (direct-tcpip channel = the "-D" dynamic-forward
-    // primitive our SOCKS5 bridge needs). sshj already brings its own
-    // BouncyCastle (bcprov-jdk18on, runtime scope) transitively — do NOT
-    // also declare bcprov-jdk15to18 ourselves, the two overlap and R8/D8
-    // fails the build with "Duplicate class" (found the hard way: build
-    // 179's first CI run). BC is what makes Ed25519 keygen/signing work
-    // down to minSdk 24 (platform-native Ed25519 support only lands on
-    // API 26+/33+); sshj's own transitive copy already covers that.
+    // primitive our SOCKS5 bridge needs). sshj's own bcprov-jdk18on
+    // dependency is RUNTIME-scope in its POM, so it's on the runtime
+    // classpath but NOT the compile classpath — RealSshTunnel.kt imports
+    // BouncyCastleProvider directly, so it needs to be a compile-time dep
+    // too. Pinning the SAME artifact+version sshj already uses (not the
+    // bcprov-jdk15to18 build, which caused a "Duplicate class" R8/D8
+    // failure on the first CI attempt of this build — same BC module,
+    // two differently-packaged jars, real conflict) so Gradle resolves
+    // to exactly one jar either way.
     implementation("com.hierynomus:sshj:0.40.0")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.80")
 }
