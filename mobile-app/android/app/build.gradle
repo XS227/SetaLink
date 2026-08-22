@@ -141,9 +141,12 @@ dependencies {
 
     // REAL SSH transport (2026-08-22): plain SSH dynamic-forward fallback.
     // sshj = SSH client (direct-tcpip channel = the "-D" dynamic-forward
-    // primitive our SOCKS5 bridge needs). BouncyCastle registered as a
-    // security provider so Ed25519 keygen/signing works down to minSdk 24
-    // (platform-native Ed25519 support only lands on API 26+/33+).
+    // primitive our SOCKS5 bridge needs). sshj already brings its own
+    // BouncyCastle (bcprov-jdk18on, runtime scope) transitively — do NOT
+    // also declare bcprov-jdk15to18 ourselves, the two overlap and R8/D8
+    // fails the build with "Duplicate class" (found the hard way: build
+    // 179's first CI run). BC is what makes Ed25519 keygen/signing work
+    // down to minSdk 24 (platform-native Ed25519 support only lands on
+    // API 26+/33+); sshj's own transitive copy already covers that.
     implementation("com.hierynomus:sshj:0.40.0")
-    implementation("org.bouncycastle:bcprov-jdk15to18:1.78.1")
 }
