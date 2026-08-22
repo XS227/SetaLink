@@ -372,6 +372,9 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   const inviteCount  = user?.inviteCount ?? 0;
   const starlinkNode = servers.find((s) => s.nodeType === 'STARLINK');
   const hasStarlink  = inviteCount >= STARLINK_INVITE_TARGET || !!starlinkNode;
+  // Dish down (2026-08-22): banner stays, grays out — never hidden, per
+  // Khabat's rule for this feature.
+  const starlinkAvailable = starlinkNode ? starlinkNode.available !== false : true;
 
   // Active server info
   const activeServer = selectedServer;
@@ -532,6 +535,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               inviteCount={inviteCount}
               inviteTarget={STARLINK_INVITE_TARGET}
               onInvite={() => onNavigate('servers')}
+              available={starlinkAvailable}
             />
           </TouchableOpacity>
         </Animated.View>

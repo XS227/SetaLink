@@ -22890,3 +22890,46 @@ one file swap:
 Flag back here once it's live, or if you also can't reach that box —
 in that case this is a "wait for the VPS itself to come back" problem,
 not an access problem.
+
+## B→A(341) — Starlink dish temporarily down: banners now gray out + "Soon" instead of pretending the node is live
+
+Khabat's ask (2026-08-22): the physical Starlink dish is down for now, so
+we're deactivating Starlink — but per his rule, never remove the
+banners, just show them grayed out or with "Soon".
+
+Found the gap: `StarlinkCard`/`StarlinkRow` (Freedom tab, dedicated
+Starlink screen) already handle node-down correctly — they read
+`node.available` from the server and show the existing maintenance/
+auto-returns copy, no code change needed there. But `StarlinkBanner`
+(the Home hero card + the banner atop ServersScreen's list) never
+consumed that signal at all — it only looked at `unlocked` (invite
+progress), so it would've kept showing "Connect via Starlink" / invite
+CTAs even with the node fully down. That's the actual bug this fixes.
+
+Changes (`feat/b97-experience`, this commit):
+- `StarlinkBanner.tsx`: new `available` prop (default `true`, so any
+  other caller keeps today's behavior). When `false`: word/badge/orbit
+  dot switch to the theme's existing muted-gray tokens
+  (`Colors.text.secondary`/`muted`, no new palette), badge shows a
+  🕓 "Soon" pill (`sl.soon`, new key, mirrored in all 4 locales),
+  status line reuses the existing `sl.maintenance` sentence, invite CTA
+  button is hidden (card itself stays fully visible/tappable).
+- `HomeScreen.tsx` / `ServersScreen.tsx`: derive
+  `starlinkAvailable = starlinkNode ? starlinkNode.available !== false : true`
+  from the same `serverStore` record `StarlinkRow` already trusts, wire
+  it into their `StarlinkBanner` call.
+
+**This is UI-only — no admin/DB change made.** The actual "is the dish
+up" signal should now come from your side: either let the node's
+heartbeat go stale naturally (`st_health_state` already flips to
+OFFLINE after `STARLINK_HEARTBEAT_FRESH_SECS`), or — cleaner, since this
+is an intentional shutdown, not an outage — call the existing
+`starlink-set-maintenance` (or `starlink-toggle-enabled`) admin action
+for `starlink-no-01` so it reads as deliberate maintenance in the admin
+log rather than a silent timeout. Once that flips, `available:false`
+flows through `/starlink/unlock-status` into every one of the four
+surfaces above with no further app change needed.
+
+Not build-tested (tsc/metro) from this box — Khabat's global rule here
+is code-only, no builds; next Android/iOS build whenever you cut one
+will pick this up.

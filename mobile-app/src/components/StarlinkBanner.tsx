@@ -29,6 +29,11 @@ interface Props {
   inviteCount: number;
   inviteTarget: number;
   onInvite: () => void;
+  /** false while the physical node is down (e.g. dish offline) — card stays
+   *  visible per product rule ("never hide it"), just grays out with a
+   *  "Soon" badge instead of the normal locked/unlocked copy. Defaults to
+   *  true so screens that don't pass it keep today's behavior. */
+  available?: boolean;
 }
 
 function useSlowOrbit(durationMs: number) {
@@ -59,7 +64,7 @@ function Star({ left, top, delay }: { left: number; top: number; delay: number }
   return <Animated.View style={[styles.star, { left: `${left}%`, top: `${top}%` }, style]} />;
 }
 
-export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteTarget, onInvite }: Props) {
+export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteTarget, onInvite, available = true }: Props) {
   const { t } = useT();
   const inviteLeft = Math.max(0, inviteTarget - inviteCount);
   const isHero = variant === 'hero';
@@ -95,22 +100,22 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
   useEffect(() => { AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion).catch(() => {}); }, []);
 
   return (
-    <View style={[styles.card, isHero && styles.cardHero]}>
+    <View style={[styles.card, isHero && styles.cardHero, !available && styles.cardSoon]}>
       {isHero
-        ? (!reduceMotion && stars.map((s, i) => <Star key={i} {...s} />))
+        ? (available && !reduceMotion && stars.map((s, i) => <Star key={i} {...s} />))
         : <View style={styles.corner}><Text style={styles.cornerText}>VIP</Text></View>}
 
       <View style={styles.headRow}>
-        <Text style={[styles.word, isHero && styles.wordHero]}>STARLINK</Text>
+        <Text style={[styles.word, isHero && styles.wordHero, !available && styles.wordSoon]}>STARLINK</Text>
         <View style={styles.orbitStage}>
-          <Animated.View style={[styles.orbitDot, satStyle]}>
+          <Animated.View style={[styles.orbitDot, available && satStyle, !available && styles.orbitDotSoon]}>
             <StarlinkMark size={isHero ? 18 : 16} />
           </Animated.View>
         </View>
-        <View style={styles.badge}>
-          <Text style={styles.badgeIcon}>{unlocked ? '✓' : '🔒'}</Text>
-          <Text style={styles.badgeText}>
-            {unlocked ? t('home.starlinkUnlocked') : t('home.starlinkAccess')}
+        <View style={[styles.badge, !available && styles.badgeSoon]}>
+          <Text style={styles.badgeIcon}>{!available ? '🕓' : unlocked ? '✓' : '🔒'}</Text>
+          <Text style={[styles.badgeText, !available && styles.badgeTextSoon]}>
+            {!available ? t('sl.soon') : unlocked ? t('home.starlinkUnlocked') : t('home.starlinkAccess')}
           </Text>
         </View>
       </View>
@@ -119,12 +124,16 @@ export function StarlinkBanner({ variant = 'vip', unlocked, inviteCount, inviteT
           trenger ikke mye text der enn enten: 1. for å få tilgang må du ha
           x antall invites/clan medlemer. 2. nå har du tilgang" — collapsed
           the wordmark description + dot-progress track down to this one
-          status line, in both states. */}
+          status line, in both states. Dish-down state (available=false,
+          2026-08-22) reuses the same line for the maintenance note instead
+          of inventing a third copy slot. */}
       <Text style={styles.statusLine} numberOfLines={1}>
-        {unlocked ? t('starlink.connectCta') : t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
+        {!available
+          ? t('sl.maintenance')
+          : unlocked ? t('starlink.connectCta') : t('home.starlinkInviteHint').replace('{n}', String(inviteLeft))}
       </Text>
 
-      {!unlocked && !isHero && (
+      {available && !unlocked && !isHero && (
         <GoldButton style={styles.cta} textStyle={styles.ctaText} onPress={onInvite} accessibilityLabel={t('pr.inviteFriends')}>
           {`👥 ${t('pr.inviteFriends')}`}
         </GoldButton>
@@ -153,6 +162,14 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 4,
   },
+  // Dish-down state: same layout, desaturated to the theme's own muted-text
+  // tones (no new gray palette introduced) so the banner reads as "off",
+  // not as another active/errored server.
+  cardSoon: {
+    borderColor: 'rgba(61,85,112,0.4)',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: Spacing[2] },
   corner: {
     position: 'absolute', top: 14, right: -30, zIndex: 3,
@@ -167,6 +184,7 @@ const styles = StyleSheet.create({
   // 18px icon needs ~29px of diameter; 34 leaves a small buffer on every side.
   orbitStage: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
   orbitDot:   { opacity: 0.85 },
+  orbitDotSoon: { opacity: 0.3 },
   star: { position: 'absolute', width: 2, height: 2, borderRadius: 1, backgroundColor: '#FFFFFF' },
 
   badge: {
@@ -174,14 +192,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(51,211,255,0.12)', borderWidth: 1, borderColor: 'rgba(51,211,255,0.4)',
     borderRadius: Radius.full, paddingHorizontal: 10, paddingVertical: 4,
   },
+  badgeSoon: { backgroundColor: 'rgba(61,85,112,0.18)', borderColor: 'rgba(61,85,112,0.5)' },
   badgeIcon: { fontSize: 10 },
   badgeText: { fontSize: 10, fontFamily: Typography.family.label, color: Colors.cyan[300], letterSpacing: 1.5, textTransform: 'uppercase' },
+  badgeTextSoon: { color: Colors.text.secondary },
 
   // Gold wordmark on the vip card (framed as a reward you unlock); cyan on
   // the hero (framed as the network itself) — matches the two mockups
   // exactly, not the same treatment reused twice.
   word: { fontSize: 19, fontFamily: Typography.family.displayGoldBold, color: Colors.gold[100], letterSpacing: 1 },
   wordHero: { color: Colors.cyan[300], fontSize: 20 },
+  wordSoon: { color: Colors.text.muted },
   statusLine: { fontSize: 12, fontFamily: Typography.family.body, color: Colors.text.secondary, marginTop: 2 },
 
   cta: {

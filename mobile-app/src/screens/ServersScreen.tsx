@@ -39,8 +39,11 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
   const { activeMode }  = useAIStore();
   const userPlan        = useAuthStore((s) => s.user?.plan ?? 'free');
   const inviteCount     = useAuthStore((s) => s.user?.inviteCount ?? 0);
-  const hasStarlink     = inviteCount >= STARLINK_INVITE_TARGET
-    || servers.some((s) => s.nodeType === 'STARLINK');
+  const starlinkNode    = servers.find((s) => s.nodeType === 'STARLINK');
+  const hasStarlink     = inviteCount >= STARLINK_INVITE_TARGET || !!starlinkNode;
+  // Dish down (2026-08-22): banner stays, grays out — never hidden, per
+  // Khabat's rule for this feature.
+  const starlinkAvailable = starlinkNode ? starlinkNode.available !== false : true;
   // Per-device ad-testing override (devices.test_mode) — same rule as HomeScreen's
   // userShowsAds: a premium tester can be flagged server-side to see ads without
   // touching her actual plan/quota.
@@ -162,6 +165,7 @@ export function ServersScreen({ onNavigate, activeTab, onInvite }: Props) {
           inviteCount={inviteCount}
           inviteTarget={STARLINK_INVITE_TARGET}
           onInvite={onInvite}
+          available={starlinkAvailable}
         />
 
         {/* Pre-release 100-invite / $100 USDT contest — separate banner
