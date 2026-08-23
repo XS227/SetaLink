@@ -55,7 +55,16 @@ class RealSshTunnel(
         private fun ensureBouncyCastle() {
             if (!bcRegistered) {
                 synchronized(this) {
-                    if (Security.getProvider("BC") == null) Security.addProvider(BouncyCastleProvider())
+                    // Android ships its own provider already registered under the
+                    // name "BC" — a stripped legacy AOSP BouncyCastle with no
+                    // Ed25519 support. `getProvider("BC") == null` is therefore
+                    // never true on a real device, so the real bcprov-jdk18on
+                    // provider we depend on never got installed and
+                    // KeyPairGenerator/KeyFactory.getInstance("Ed25519", "BC")
+                    // resolved to Android's crippled one and threw
+                    // NoSuchAlgorithmException. Must replace it, not skip it.
+                    Security.removeProvider("BC")
+                    Security.insertProviderAt(BouncyCastleProvider(), 1)
                     bcRegistered = true
                 }
             }
