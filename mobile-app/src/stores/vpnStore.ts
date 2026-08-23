@@ -186,6 +186,26 @@ export const useVpnStore = create<VpnState>((set, get) => {
     }
   }
 
+  // True when the currently selected node is REAL SSH *and* it's the user's
+  // own sticky pick (userSelectedId), not AUTO having silently fallen through
+  // to it as the last-resort candidate (tryNodeFailover picks real_ssh with
+  // isUser=false, so userSelectedId never points at it in that case). A user
+  // testing/debugging the SSH transport directly needs to see why it failed —
+  // silently rerouting to the next-best node (almost always Finland/Helsinki,
+  // since real_ssh never wins on successScore) hides the actual error and
+  // makes the transport impossible to debug from the device.
+  function isManualRealSshSelection(): boolean {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useServerStore } = require('./serverStore') as typeof import('./serverStore');
+      const { selectedServer } = get();
+      const { userSelectedId } = useServerStore.getState();
+      return selectedServer?.transport === 'real_ssh' && selectedServer.id === userSelectedId;
+    } catch {
+      return false;
+    }
+  }
+
   // Machine lives in closure — one instance per store, survives re-renders
   const machine = new ConnectionMachine({
     onStateChange: (next, _prev) => {
@@ -441,7 +461,10 @@ export const useVpnStore = create<VpnState>((set, get) => {
       if (wasUnexpectedDrop) {
         const drops = state._unexpectedDropCount + 1;
         set({ _unexpectedDropCount: drops });
-        if (drops >= 2 && tryNodeFailover()) {
+        // Manual REAL SSH pick: never silently reroute away — see
+        // isManualRealSshSelection(). Keep retrying the same node so the
+        // user can see the drop instead of waking up on Helsinki.
+        if (drops >= 2 && !isManualRealSshSelection() && tryNodeFailover()) {
           return;
         }
         set({ smartStatus: 'Connection dropped — reconnecting…' });
@@ -502,7 +525,8 @@ export const useVpnStore = create<VpnState>((set, get) => {
 
       // Protocol auto-fallback: silently try next protocol before surfacing the error.
       // Never applies to REAL SSH — it has no Reality/XHTTP/WebSocket variants;
-      // a failure there goes straight to node failover below.
+      // a failure there goes straight to node failover below (unless it's the
+      // user's own manual SSH pick — see isManualRealSshSelection).
       const { _fallbackActive, _fallbackIdx, selectedServer } = get();
       const nextIdx = _fallbackIdx + 1;
       if (_fallbackActive && nextIdx < FALLBACK_PROTOCOLS.length && selectedServer?.transport !== 'real_ssh') {
@@ -519,8 +543,11 @@ export const useVpnStore = create<VpnState>((set, get) => {
         return;
       }
 
-      // All protocols exhausted (or AI-mode single-shot) — try next node before giving up.
-      if (tryNodeFailover()) return;
+      // All protocols exhausted (or AI-mode single-shot) — try next node before
+      // giving up. Skipped for a manual REAL SSH pick (see
+      // isManualRealSshSelection) so the real failure reaches the user
+      // instead of a silent reroute to whatever node scores best.
+      if (!isManualRealSshSelection() && tryNodeFailover()) return;
 
       // All nodes and protocols exhausted — surface the final error.
       set({ _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], error: analysis.userMessage, smartStatus: null });
