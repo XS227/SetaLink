@@ -120,26 +120,67 @@ jobs:
       # installing it — the test cert either isn't trusted by
       # Add-AppDevPackage.ps1 cleanly on every machine, or needs Developer
       # Mode enabled first; either way it's friction we don't need for v1
-      # with no code-signing infra behind it. Back to the loose exe: no
-      # install step, no cert, no SmartScreen-adjacent prompts beyond the
-      # normal "unknown publisher" exe warning — unzip anywhere, run
-      # setalink.exe.
+      # with no code-signing infra behind it. Back to the loose exe (#8):
+      # no install step, no cert, no SmartScreen-adjacent prompts beyond
+      # the normal "unknown publisher" exe warning.
+      #
+      # #8 alone then failed to *launch* on Khabat's machine — "the code
+      # execution cannot proceed because VCRUNTIME140_1_APP.DLL was not
+      # found" (also MSVCP140_APP.DLL). Those `_app`-suffixed CRT
+      # forwarders are the UWP/WinRT variant of the VC++ runtime that
+      # Microsoft.ReactNative's C++/WinRT projection needs even in an
+      # unpackaged Win32 exe — they're normally provided by the
+      # Microsoft.VCLibs.140.00 UWP-desktop framework package, which is
+      # exactly what was sitting in the .msix's Dependencies/ folder we
+      # dropped when we stopped zipping AppPackages. `react-native run-
+      # windows` still builds that AppPackages output even though we only
+      # zip the loose exe from it — so pull Dependencies/ back in
+      # alongside the exe (not the .msix itself, not
+      # Add-AppDevPackage.ps1). Those redistributable .appx files are
+      # signed by Microsoft directly, not by our test cert, so installing
+      # them doesn't hit the "publisher could not be verified" prompt —
+      # one-time double-click install, then setalink.exe just runs.
       - name: Locate build output
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Recurse -Filter "setalink.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $exe) { Write-Error "No setalink.exe found under windows/x64/Release"; exit 1 }
-          Write-Host "Found: $($exe.FullName)"
+          Write-Host "Found exe: $($exe.FullName)"
+
+          $deps = Get-ChildItem -Path AppPackages -Recurse -Directory -Filter "Dependencies" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $deps) { Write-Error "No Dependencies folder found under windows/AppPackages"; exit 1 }
+          Write-Host "Found dependencies: $($deps.FullName)"
 
       - name: Zip build output
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
-          $dest = "$env:GITHUB_WORKSPACE\RealGram-windows-x64.zip"
+          $stageDir = "$env:RUNNER_TEMP\RealGram-windows-x64"
+          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+
           $outDir = (Get-ChildItem -Recurse -Filter "setalink.exe" | Select-Object -First 1).DirectoryName
-          Compress-Archive -Path "$outDir\*" -DestinationPath $dest -Force
-          Write-Host "Zipped $outDir to $dest"
+          Copy-Item -Path "$outDir\*" -Destination $stageDir -Recurse -Force
+
+          $depsDir = (Get-ChildItem -Path AppPackages -Recurse -Directory -Filter "Dependencies" | Select-Object -First 1).FullName
+          Copy-Item -Path $depsDir -Destination "$stageDir\Dependencies" -Recurse -Force
+
+          @"
+          RealGram for Windows (chat-only) — installasjon
+
+          Forste gang: apne mappen "Dependencies" og dobbeltklikk hver
+          .appx-fil der (Microsoft-signerte runtime-pakker — ingen
+          "utgiver kunne ikke bekreftes"-advarsel). Kun nodvendig en gang
+          per maskin.
+
+          Deretter: dobbeltklikk setalink.exe for a starte appen. Windows
+          kan vise en "ukjent utgiver"-advarsel forste gang (appen er
+          ikke kodesignert enna) - trykk "Mer info" -> "Kjor likevel".
+          "@ | Out-File -FilePath "$stageDir\LES MEG FORST.txt" -Encoding utf8
+
+          $dest = "$env:GITHUB_WORKSPACE\RealGram-windows-x64.zip"
+          Compress-Archive -Path "$stageDir\*" -DestinationPath $dest -Force
+          Write-Host "Zipped $stageDir to $dest"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
