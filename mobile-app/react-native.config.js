@@ -4,6 +4,16 @@ module.exports = {
       packageName: 'com.setalink',
     },
     ios: {},
+    // Windows (RealGram desktop, chat-only — no calling/ads, see the
+    // windows:null dependency overrides below). Scaffolded via
+    // `npx react-native-windows-init --version 0.75.4 --namespace SetaLink`.
+    windows: {
+      sourceDir: 'windows',
+      solutionFile: 'setalink.sln',
+      project: {
+        projectFile: 'setalink/setalink.vcxproj',
+      },
+    },
   },
   // RealGram gold/silver theme typefaces (Space Grotesk, JetBrains Mono,
   // Vazirmatn) — linked via `npx react-native-asset`, which writes into
@@ -17,7 +27,19 @@ module.exports = {
     'react-native-network-info': {
       platforms: {
         android: null,
+        // No Windows implementation either; same try/catch require() fallback.
+        windows: null,
       },
     },
+    // None of these have a react-native-windows implementation. RealGram for
+    // Windows is chat-only (calling/ads/live-TV are gated off in JS — see
+    // adsService.ts, TrackedBannerAd.tsx, featureFlags.ts, AppNavigator.tsx),
+    // so there's nothing on Windows for autolink-windows to link here.
+    'react-native-webrtc': { platforms: { windows: null } },
+    'react-native-incall-manager': { platforms: { windows: null } },
+    'react-native-google-mobile-ads': { platforms: { windows: null } },
+    'react-native-orientation-locker': { platforms: { windows: null } },
+    'react-native-video': { platforms: { windows: null } },
+    'react-native-keep-awake': { platforms: { windows: null } },
   },
 };

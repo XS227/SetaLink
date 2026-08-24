@@ -23,12 +23,24 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { InteractionManager, Platform } from 'react-native';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+// Type-only import — erased at compile time, so it never becomes a runtime
+// require() and is safe to keep even on Windows (see the guarded value
+// require() below, which IS a real runtime import and must stay conditional).
+import type { BannerAd as BannerAdInstance } from 'react-native-google-mobile-ads';
 import {
-  AD_RETRY_BACKOFF_MS, BANNER_UNIT_ID, initAds, isAdsInitialized, vpnConnectedNow,
+  ADS_SUPPORTED, AD_RETRY_BACKOFF_MS, BANNER_UNIT_ID, initAds, isAdsInitialized, vpnConnectedNow,
 } from '../services/adsService';
 import { trackEvent } from '../services/analytics';
 import { useAuthStore } from '../stores/authStore';
+
+// Same reasoning as adsService.ts: react-native-google-mobile-ads throws at
+// MODULE LOAD TIME on a platform without a native implementation, so the
+// package must never be required at all on Windows — not even just to grab
+// its types. Guarded so the require() itself is skipped there.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { BannerAd, BannerAdSize } = ADS_SUPPORTED
+  ? require('react-native-google-mobile-ads')
+  : { BannerAd: null as any, BannerAdSize: null as any };
 
 export type BannerSlot = 'home_banner' | 'freedom_banner' | 'inbox_banner';
 
@@ -50,7 +62,7 @@ export function TrackedBannerAd({ slot, onAdLoaded, onAdFailedToLoad }: Props) {
   // mount (and its implicit request) until the transition/interactions
   // settle, same fix as adsService.ts's interstitial/rewarded loaders.
   const [interactionsDone, setInteractionsDone] = useState(false);
-  const adRef = useRef<BannerAd>(null);
+  const adRef = useRef<BannerAdInstance>(null);
   const retryIdxRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -79,13 +91,17 @@ export function TrackedBannerAd({ slot, onAdLoaded, onAdFailedToLoad }: Props) {
   // attempt, even one that never resolves (e.g. the app backgrounded before
   // load/fail fired) — see docs/realgram/TASK_SPLIT.md banner-ads-admin entry.
   useEffect(() => {
-    if (!ready || !interactionsDone) return;
+    if (!ADS_SUPPORTED || !ready || !interactionsDone) return;
     _slotLoading[slot] = true;
     trackEvent('AD_BANNER_REQUEST', useAuthStore.getState().user?.deviceId, { slot });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slot, ready, interactionsDone]);
 
-  if (!ready || !interactionsDone) return null;
+  // ADS_SUPPORTED checked first: `ready` can still flip true on Windows (see
+  // adsService.ts's initAds(), which resolves without an SDK on unsupported
+  // platforms) — this must short-circuit before ever reaching <BannerAd>,
+  // which is null there.
+  if (!ADS_SUPPORTED || !ready || !interactionsDone) return null;
 
   return (
     <BannerAd
@@ -126,7 +142,7 @@ export function TrackedBannerAd({ slot, onAdLoaded, onAdFailedToLoad }: Props) {
         // user taps the ad and it's about to open (browser/store).
         trackEvent('AD_BANNER_CLICK', useAuthStore.getState().user?.deviceId, { slot });
       }}
-      onPaid={(event) => {
+      onPaid={(event: { value: number; currency: string }) => {
         // Impression-level ad revenue — fires once per real, counted impression.
         trackEvent('AD_BANNER_IMPRESSION', useAuthStore.getState().user?.deviceId, {
           slot, value: event.value, currency: event.currency,

@@ -11,12 +11,28 @@
  */
 
 import { InteractionManager, Platform } from 'react-native';
-import mobileAds, {
-  RewardedAd, RewardedAdEventType, AdEventType, TestIds, MaxAdContentRating,
-  InterstitialAd,
-} from 'react-native-google-mobile-ads';
 import { trackEvent } from './analytics';
 import { tr } from '../i18n';
+
+// react-native-google-mobile-ads has no Windows implementation, and unlike
+// react-native-webrtc/incall-manager (which resolve their native module via
+// plain `NativeModules.X`, undefined-but-import-safe when unlinked), this
+// SDK's own index.js eagerly does `TurboModuleRegistry.getEnforcing(...)` at
+// MODULE LOAD TIME (confirmed by reading node_modules/react-native-google-
+// mobile-ads/lib/commonjs/NativeGoogleMobileAdsModule.js) — a plain top-level
+// `import` of this package throws immediately on an unlinked platform, before
+// any Platform.OS check in this file's function bodies would ever run. So the
+// package must never be `require()`d at all on Windows, not just left unused.
+export const ADS_SUPPORTED = Platform.OS !== 'windows';
+type AdsSdk = typeof import('react-native-google-mobile-ads');
+let _sdk: AdsSdk | null = null;
+function sdk(): AdsSdk {
+  if (!_sdk) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    _sdk = require('react-native-google-mobile-ads');
+  }
+  return _sdk!;
+}
 
 // Lazy require to avoid a static import cycle (adsService is imported by
 // screens that authStore itself doesn't depend on, but keep the same
@@ -45,8 +61,9 @@ const REWARDED_UNIT_PROD   = Platform.OS === 'ios'
 // the test unit does not call our SSV so it never credits quota.
 const FORCE_TEST_REWARDED = false;
 
-export const REWARDED_UNIT_ID =
-  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.REWARDED : REWARDED_UNIT_PROD;
+export const REWARDED_UNIT_ID = !ADS_SUPPORTED
+  ? ''
+  : (__DEV__ || FORCE_TEST_REWARDED) ? sdk().TestIds.REWARDED : REWARDED_UNIT_PROD;
 
 let _initialized = false;
 let _initPromise: Promise<void> | null = null;
@@ -57,10 +74,12 @@ let _initPromise: Promise<void> | null = null;
  * promise instead of racing a second `mobileAds().initialize()`).
  */
 export function initAds(): Promise<void> {
+  if (!ADS_SUPPORTED) return Promise.resolve();
   if (_initialized) return Promise.resolve();
   if (_initPromise) return _initPromise;
   _initPromise = (async () => {
     try {
+      const { default: mobileAds, MaxAdContentRating } = sdk();
       await mobileAds().setRequestConfiguration({
         maxAdContentRating: MaxAdContentRating.PG,
         tagForChildDirectedTreatment: false,
@@ -102,6 +121,7 @@ type AdError = Error & { code?: string };
  */
 export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promise<RewardOutcome> {
   return new Promise<RewardOutcome>((resolve, reject) => {
+    if (!ADS_SUPPORTED) { reject(new Error('ads not supported on this platform')); return; }
     if (!deviceId) { reject(new Error('no device id')); return; }
 
     // Guard against requesting before the SDK is ready — WatchAdCard already
@@ -111,6 +131,7 @@ export function showRewardedForData(deviceId: string, timeoutMs = 30000): Promis
       return;
     }
 
+    const { RewardedAd, RewardedAdEventType, AdEventType } = sdk();
     const ad = RewardedAd.createForAdRequest(REWARDED_UNIT_ID, {
       serverSideVerificationOptions: { userId: deviceId },
       requestNonPersonalizedAdsOnly: true,
@@ -205,8 +226,9 @@ const INTERSTITIAL_FALLBACK_UNIT_PROD = Platform.OS === 'ios'
   ? 'ca-app-pub-5788265416382988/5216238008'
   : 'ca-app-pub-5788265416382988/5352089518';
 
-export const INTERSTITIAL_FALLBACK_UNIT_ID =
-  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.INTERSTITIAL : INTERSTITIAL_FALLBACK_UNIT_PROD;
+export const INTERSTITIAL_FALLBACK_UNIT_ID = !ADS_SUPPORTED
+  ? ''
+  : (__DEV__ || FORCE_TEST_REWARDED) ? sdk().TestIds.INTERSTITIAL : INTERSTITIAL_FALLBACK_UNIT_PROD;
 
 // Dedicated classic Interstitial ad unit for the Connect placement — one per
 // app (Khabat, 2026-07-27: provided as a 4th, distinct production ID per
@@ -226,8 +248,9 @@ const INTERSTITIAL_UNIT_PROD = Platform.OS === 'ios'
   ? 'ca-app-pub-5788265416382988/1585189182'
   : 'ca-app-pub-5788265416382988/2914618117';
 
-export const INTERSTITIAL_UNIT_ID: string | null =
-  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.INTERSTITIAL : INTERSTITIAL_UNIT_PROD;
+export const INTERSTITIAL_UNIT_ID: string | null = !ADS_SUPPORTED
+  ? null
+  : (__DEV__ || FORCE_TEST_REWARDED) ? sdk().TestIds.INTERSTITIAL : INTERSTITIAL_UNIT_PROD;
 
 // Banner ad units (one per app; rotated with the ecosystem banner on Home).
 // Banner is out of scope for the "no static image ads" rule — it's a small
@@ -237,12 +260,15 @@ const BANNER_UNIT_PROD = Platform.OS === 'ios'
   ? 'ca-app-pub-5788265416382988/9407874272'
   : 'ca-app-pub-5788265416382988/7975373101';
 
-export const BANNER_UNIT_ID =
-  (__DEV__ || FORCE_TEST_REWARDED) ? TestIds.BANNER : BANNER_UNIT_PROD;
+export const BANNER_UNIT_ID = !ADS_SUPPORTED
+  ? ''
+  : (__DEV__ || FORCE_TEST_REWARDED) ? sdk().TestIds.BANNER : BANNER_UNIT_PROD;
 
 type InterstitialKind = 'interstitial' | 'interstitial_fallback';
 type FullscreenAdKind = InterstitialKind | 'rewarded_video';
-type FullscreenAd = InterstitialAd | RewardedAd;
+type FullscreenAd =
+  | ReturnType<AdsSdk['InterstitialAd']['createForAdRequest']>
+  | ReturnType<AdsSdk['RewardedAd']['createForAdRequest']>;
 
 let _interstitial: FullscreenAd | null = null;
 let _interKind: FullscreenAdKind | null = null;
@@ -351,6 +377,7 @@ function scheduleAmbientRetry(): void {
  *  then plain Rewarded once each (see `_startInterstitialLoad` /
  *  `_startRewardedVideoLoad`) — never further back than that. */
 export function preloadInterstitial(): void {
+  if (!ADS_SUPPORTED) return;
   if (_interReady || _interLoading) return;   // never start a second concurrent load
   if (!isAdsInitialized()) { initAds().then(preloadInterstitial); return; }
   const deviceId = currentDeviceId();
@@ -397,6 +424,7 @@ function _startInterstitialLoad(unitId: string, kind: InterstitialKind, deviceId
     if (token !== _loadToken) return;
     const timeoutMs = currentInterstitialTimeout();
     try {
+      const { InterstitialAd, AdEventType } = sdk();
       const ad = InterstitialAd.createForAdRequest(unitId, {
         requestNonPersonalizedAdsOnly: true,
       });
@@ -484,6 +512,7 @@ function _startRewardedVideoLoad(deviceId: string): void {
     if (token !== _loadToken) return;
     const timeoutMs = currentInterstitialTimeout();
     try {
+      const { RewardedAd, RewardedAdEventType, AdEventType } = sdk();
       const ad = RewardedAd.createForAdRequest(REWARDED_UNIT_ID, {
         serverSideVerificationOptions: { userId: deviceId },
         requestNonPersonalizedAdsOnly: true,
@@ -675,6 +704,7 @@ function _afterFullscreenClose(deviceId: string, earned: boolean): void {
  * kicks off a preload for the next Connect. Returns true if an ad was shown.
  */
 export function showInterstitialOnConnect(): boolean {
+  if (!ADS_SUPPORTED) return false;
   if (_interReady && _interstitial) {
     if (interstitialIsStale()) {
       // Tunnel-loaded or expired ad would flash blank — drop it and reload.
@@ -706,6 +736,7 @@ export function showInterstitialOnConnect(): boolean {
  * shown here at all, only picked up later by the ambient retry.
  */
 export function showInterstitialAfterConnect(windowMs = 22_000): boolean {
+  if (!ADS_SUPPORTED) return false;
   if (_interReady && _interstitial && !interstitialIsStale()) {
     try {
       _interstitial.show();
@@ -782,6 +813,7 @@ export function notifyVpnDisconnected(): void {
 const SHOWING_AD_SAFETY_TIMEOUT_MS = 45_000;
 
 export function gateActionWithAd(proceed: () => void, timeoutMs = 6_000): void {
+  if (!ADS_SUPPORTED) { proceed(); return; }
   let settled = false;
   let pollTimer: ReturnType<typeof setInterval> | null = null;
   let deadlineTimer: ReturnType<typeof setTimeout> | null = null;
@@ -806,7 +838,8 @@ export function gateActionWithAd(proceed: () => void, timeoutMs = 6_000): void {
       // is narrower than the Rewarded pair's) — AdEventType.CLOSED is valid
       // on all three classes' actual (identical, MobileAd-inherited) runtime
       // implementation, so this is a type-system limitation, not a real gap.
-      (_interstitial as InterstitialAd).addAdEventListener(AdEventType.CLOSED, finish);
+      (_interstitial as ReturnType<AdsSdk['InterstitialAd']['createForAdRequest']>)
+        .addAdEventListener(sdk().AdEventType.CLOSED, finish);
       _interstitial.show();
       _interReady = false;
       return true;

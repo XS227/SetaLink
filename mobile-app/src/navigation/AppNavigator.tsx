@@ -969,32 +969,41 @@ export function AppNavigator() {
             <DailyLuckWheelScreen onBack={() => navigation.goBack()} />
           )}
         </Stack.Screen>
-        <Stack.Screen
-          name="LiveTv"
-          options={{ animation: 'slide_from_right' }}
-        >
-          {({ navigation }) => (
-            <RealGramLiveTvScreen
-              onBack={() => navigation.goBack()}
-              onOpenPlayer={(channelId, channelIds) => navigation.navigate('LiveTvPlayer', { channelId, channelIds })}
-            />
-          )}
-        </Stack.Screen>
-        <Stack.Screen
-          name="LiveTvPlayer"
-          options={{ animation: 'fade', orientation: 'landscape' }}
-        >
-          {({ navigation, route }) => {
-            const params = route.params as { channelId: string; channelIds: string[] };
-            return (
-              <LiveTvPlayerScreen
-                channelId={params.channelId}
-                channelIds={params.channelIds}
+        {/* react-native-video/orientation-locker/keep-awake have no Windows
+            implementation — omit the routes entirely there rather than ship
+            a Live TV screen that can't actually play anything (Windows =
+            chat-only, see featureFlags.ts's CALLING_ENABLED for the same
+            reasoning applied to calling). */}
+        {Platform.OS !== 'windows' && (
+          <Stack.Screen
+            name="LiveTv"
+            options={{ animation: 'slide_from_right' }}
+          >
+            {({ navigation }) => (
+              <RealGramLiveTvScreen
                 onBack={() => navigation.goBack()}
+                onOpenPlayer={(channelId, channelIds) => navigation.navigate('LiveTvPlayer', { channelId, channelIds })}
               />
-            );
-          }}
-        </Stack.Screen>
+            )}
+          </Stack.Screen>
+        )}
+        {Platform.OS !== 'windows' && (
+          <Stack.Screen
+            name="LiveTvPlayer"
+            options={{ animation: 'fade', orientation: 'landscape' }}
+          >
+            {({ navigation, route }) => {
+              const params = route.params as { channelId: string; channelIds: string[] };
+              return (
+                <LiveTvPlayerScreen
+                  channelId={params.channelId}
+                  channelIds={params.channelIds}
+                  onBack={() => navigation.goBack()}
+                />
+              );
+            }}
+          </Stack.Screen>
+        )}
       </Stack.Navigator>
       <Toast />
     </NavigationContainer>

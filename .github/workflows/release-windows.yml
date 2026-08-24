@@ -1,0 +1,78 @@
+name: Release Windows (RealGram desktop, chat-only)
+
+# Manual only — never on push. Same standing rule as release-apk.yml/
+# ios-testflight.yml: no build/publish without an explicit go per run.
+#
+# This produces a PORTABLE (unpackaged) Release x64 build — a folder with
+# RealGram.exe/setalink.exe + its supporting DLLs, zipped as the artifact.
+# It is NOT an MSIX installer (no code-signing cert needed for v1): download
+# the zip, unzip anywhere, run the .exe inside. See mobile-app/react-native.config.js
+# for which native modules (calling, ads, live TV) are intentionally excluded
+# on this platform — none of them have a Windows implementation.
+#
+# This machine (the Linux VPS that normally runs release-apk.yml) cannot
+# build this itself — react-native-windows compiles via MSBuild against the
+# Windows SDK/WinAppSDK, which only exists on a real Windows toolchain. Hence
+# windows-latest here, unlike every other workflow in this repo.
+on:
+  workflow_dispatch:
+
+jobs:
+  build-release:
+    name: Build Windows release (unpackaged, x64)
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: mobile-app/node_modules
+          key: node-modules-windows-${{ hashFiles('mobile-app/package.json') }}
+          restore-keys: node-modules-windows-
+
+      - name: Install JS dependencies
+        working-directory: mobile-app
+        run: npm install
+
+      # Builds the Visual Studio solution under mobile-app/windows via
+      # MSBuild. --no-deploy skips registering/launching the app on this
+      # runner (there's no interactive session to deploy into); --no-packager
+      # skips starting a Metro dev server, which a --release build bundles
+      # past anyway.
+      - name: Build Windows app (Release, x64)
+        working-directory: mobile-app
+        run: npx react-native run-windows --release --arch x64 --no-launch --no-deploy --no-packager --logging
+
+      - name: Locate build output
+        working-directory: mobile-app/windows
+        shell: pwsh
+        run: |
+          $out = Get-ChildItem -Recurse -Directory -Filter "Release" | Where-Object { $_.FullName -match "\\bin\\x64\\Release" }
+          if (-not $out) { Write-Error "No Release build output found under windows/**/bin/x64/Release"; exit 1 }
+          $out | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+
+      - name: Zip build output
+        working-directory: mobile-app/windows
+        shell: pwsh
+        run: |
+          $dest = "$env:GITHUB_WORKSPACE\RealGram-windows-x64.zip"
+          $binDirs = Get-ChildItem -Recurse -Directory -Filter "Release" | Where-Object { $_.FullName -match "\\bin\\x64\\Release" }
+          Compress-Archive -Path ($binDirs | Select-Object -ExpandProperty FullName) -DestinationPath $dest -Force
+          Write-Host "Zipped to $dest"
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: realgram-windows-x64-${{ github.run_number }}
+          path: RealGram-windows-x64.zip
+          retention-days: 30
+          if-no-files-found: error
