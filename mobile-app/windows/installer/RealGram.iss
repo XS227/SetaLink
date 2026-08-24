@@ -32,6 +32,9 @@
 #ifndef AppVersion
   #define AppVersion "1.0.0"
 #endif
+#ifndef WebView2Bootstrapper
+  #define WebView2Bootstrapper "build\MicrosoftEdgeWebview2Setup.exe"
+#endif
 
 #define AppName "RealGram"
 #define AppExeName "setalink.exe"
@@ -77,7 +80,19 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
 
 [Files]
-Source: "{#AppFilesDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; recursesubdirs matters more than it looks: as of 2026-08-24 AppFiles has a
+; Bundle\ subfolder holding index.windows.bundle (the app's JavaScript) plus
+; its images/fonts. Without that folder on disk next to setalink.exe the app
+; installs fine and then dies on launch with no message — see
+; release-windows.yml's "Stage installer inputs" step for the full story.
+; Excludes: .pdb/sourcemaps are debug artifacts MSBuild drops in the same
+; output dir; they're a third of the installer's size and nothing reads them
+; on a user's machine.
+Source: "{#AppFilesDir}\*"; DestDir: "{app}"; Excludes: "*.pdb,sourcemaps\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Staged by CI next to AppFiles, not inside it — installed to {tmp} and run
+; only when WebView2 is missing (see [Run]/NeedsWebView2 below), never shipped
+; into {app}.
+Source: "{#WebView2Bootstrapper}"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -85,8 +100,35 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
+; Install the WebView2 runtime first, and only if it's actually missing — the
+; app's in-app Shahnameh/TrustAI screens are WebView-backed and render blank
+; without it. Not fatal: RealGram's chat and VPN screens don't touch WebView,
+; so a failure here shouldn't block the install (hence no check of the exit
+; code beyond Inno's own, and runascurrentuser is deliberately NOT used — the
+; installer is already elevated for {autopf}).
+Filename: "{tmp}\{#ExtractFileName(WebView2Bootstrapper)}"; Parameters: "/silent /install"; \
+  StatusMsg: "Installing Microsoft WebView2 runtime..."; Check: NeedsWebView2; \
+  Flags: waituntilterminated runhidden skipifdoesntexist
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 ; "Make it a real setup" (Khabat) — also offer to open the website on
 ; finish, same pattern as the app launch above (shellexec hands the URL to
 ; the default browser; Inno doesn't run URLs as a local process).
 Filename: "{#AppURL}"; Description: "Open {#AppURL}"; Flags: shellexec nowait postinstall skipifsilent
+
+[Code]
+{ True when the WebView2 Evergreen runtime isn't registered on this machine.
+  Microsoft's documented detection: a non-empty pv value under the WebView2
+  client key. Per-machine installs land in HKLM (under WOW6432Node on x64),
+  per-user ones in HKCU — check all three before deciding it's missing. }
+function NeedsWebView2: Boolean;
+var
+  Version: String;
+begin
+  Result := True;
+  if RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) then
+    if Version <> '' then Result := False;
+  if Result and RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) then
+    if Version <> '' then Result := False;
+  if Result and RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) then
+    if Version <> '' then Result := False;
+end;

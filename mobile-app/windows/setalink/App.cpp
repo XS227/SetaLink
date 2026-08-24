@@ -5,6 +5,8 @@
 #include "AutolinkedNativeModules.g.h"
 #include "ReactPackageProvider.h"
 
+#include <string>
+
 using namespace winrt;
 using namespace xaml;
 using namespace xaml::Controls;
@@ -13,6 +15,55 @@ using namespace xaml::Navigation;
 using namespace Windows::ApplicationModel;
 namespace winrt::SetaLink::implementation
 {
+namespace
+{
+/// <summary>
+/// Absolute path of the "Bundle" folder sitting next to the running exe.
+///
+/// RealGram for Windows ships UNPACKAGED — a loose setalink.exe installed by
+/// Inno Setup, with no MSIX package identity (see release-windows.yml and
+/// installer/RealGram.iss for why the .msix path was dropped). ReactInstanceWin
+/// defaults BundleRootPath to "ms-appx:///Bundle/", and that URI scheme only
+/// resolves for a *packaged* app: with no identity the JS bundle load throws
+/// and the process dies the instant after the XAML window appears (Khabat,
+/// 2026-08-24 field test: "et slags vindu et millisekund så forsvant").
+///
+/// LocalBundleReader::LoadBundleAsync treats any root that isn't "ms-app..."
+/// or "resource://" as a plain filesystem path (GetFileFromPathAsync), so
+/// pointing it at our own install directory works whether or not the app is
+/// packaged. Returns an empty string if the module path can't be read, which
+/// leaves BundleRootPath at its default rather than setting a bogus one.
+/// </summary>
+winrt::hstring GetLocalBundleRootPath() noexcept
+{
+    std::wstring modulePath(MAX_PATH, L'\0');
+    for (;;)
+    {
+        const DWORD length = ::GetModuleFileNameW(nullptr, modulePath.data(), static_cast<DWORD>(modulePath.size()));
+        if (length == 0)
+        {
+            return {}; // Can't locate ourselves — fall back to the default.
+        }
+        if (length < modulePath.size())
+        {
+            modulePath.resize(length);
+            break;
+        }
+        // Truncated (ERROR_INSUFFICIENT_BUFFER): retry with a bigger buffer.
+        modulePath.resize(modulePath.size() * 2);
+    }
+
+    const auto lastSeparator = modulePath.find_last_of(L"\\/");
+    if (lastSeparator == std::wstring::npos)
+    {
+        return {};
+    }
+    modulePath.resize(lastSeparator + 1);
+
+    return winrt::to_hstring(modulePath + L"Bundle");
+}
+} // namespace
+
 /// <summary>
 /// Initializes the singleton application object.  This is the first line of
 /// authored code executed, and as such is the logical equivalent of main() or
@@ -23,6 +74,13 @@ App::App() noexcept
 #if BUNDLE
     JavaScriptBundleFile(L"index.windows");
     InstanceSettings().UseFastRefresh(false);
+    // Load index.windows.bundle from our own install folder, not ms-appx:///
+    // — see GetLocalBundleRootPath above. Without this the app can never find
+    // its JavaScript once installed, no matter what the installer ships.
+    if (const auto bundleRootPath = GetLocalBundleRootPath(); !bundleRootPath.empty())
+    {
+        InstanceSettings().BundleRootPath(bundleRootPath);
+    }
 #else
     JavaScriptBundleFile(L"index");
     InstanceSettings().UseFastRefresh(true);

@@ -194,8 +194,40 @@ jobs:
           $stage = "installer\build"
           New-Item -ItemType Directory -Path "$stage\AppFiles" -Force | Out-Null
 
-          $outDir = (Get-ChildItem -Recurse -Filter "setalink.exe" | Select-Object -First 1).DirectoryName
+          # Pin this to the loose Release dir. MSBuild also drops a copy of
+          # setalink.exe inside the .msix layout (x64\Release\setalink\AppX\),
+          # and "first match wins" only happens to skip it because of
+          # enumeration order — if that ever flipped we'd ship AppxManifest.xml
+          # and resources.pri as if they were plain app files.
+          $outDir = (Get-ChildItem -Recurse -Filter "setalink.exe" |
+            Where-Object { $_.FullName -notmatch '\\AppX\\' } |
+            Select-Object -First 1).DirectoryName
+          Write-Host "Staging app files from: $outDir"
           Copy-Item -Path "$outDir\*" -Destination "$stage\AppFiles" -Recurse -Force
+
+          # 2026-08-24, after Khabat's second field test ("appen kan ikke lastes,
+          # ingenting skjer" — a window flashing up for a frame, then gone): the
+          # installed app never had any JavaScript in it. MakeBundle writes the
+          # Hermes bundle to windows\setalink\Bundle\, and Bundle.Cpp.targets
+          # then adds it as <None DeploymentContent="true"> — which is an APPX
+          # *packaging* concept. It lands in the .msix layout under
+          # windows\AppPackages\, and never in windows\x64\Release\setalink\,
+          # the loose exe dir $outDir points at. So every loose-exe build we've
+          # shipped (#8 onward) installed setalink.exe + its DLLs with no
+          # index.windows.bundle anywhere on disk. The DLL fix below made the
+          # process start; this is why it still died immediately afterwards.
+          #
+          # Copy the bundle folder in explicitly, next to the exe, matching the
+          # BundleRootPath that App.cpp now sets at runtime. --assets-dest wrote
+          # the app's images/fonts into the same folder, so this carries those
+          # too. Hard-fail if it's missing rather than shipping another silently
+          # JS-less installer.
+          $bundleDir = "setalink\Bundle"
+          if (-not (Test-Path "$bundleDir\index.windows.bundle")) {
+            Write-Error "No index.windows.bundle in $bundleDir — MakeBundle did not run"; exit 1
+          }
+          New-Item -ItemType Directory -Path "$stage\AppFiles\Bundle" -Force | Out-Null
+          Copy-Item -Path "$bundleDir\*" -Destination "$stage\AppFiles\Bundle" -Recurse -Force
 
           $depsDir = (Get-ChildItem -Path AppPackages -Recurse -Directory -Filter "Dependencies" | Select-Object -First 1).FullName
           Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -214,8 +246,27 @@ jobs:
           }
           $xamlZip.Dispose()
 
+          # WebView2 Evergreen bootstrapper (~2 MB, signed by Microsoft). The
+          # app's WebView screens (ShahnamehEmbed, TrustAiLinkScreen) need the
+          # WebView2 *runtime*, which is a machine-level component — shipping
+          # Microsoft.Web.WebView2.Core.dll is not enough on its own. It's
+          # preinstalled on Windows 11 and on current Windows 10, but not
+          # guaranteed on a box like Khabat's (22H2, long unpatched), where
+          # those screens would come up blank. The bootstrapper no-ops when the
+          # runtime is already present, and RealGram.iss only runs it when the
+          # registry says it's missing.
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" `
+            -OutFile "$stage\MicrosoftEdgeWebview2Setup.exe"
+
           Write-Host "AppFiles now contains:"
           Get-ChildItem "$stage\AppFiles" -Filter "*.dll" | Select-Object -ExpandProperty Name
+
+          # Fail loudly here rather than shipping another installer that can't
+          # start — this is the exact file whose absence caused the #8..#10
+          # "nothing happens when I open it" reports.
+          $bundleSize = (Get-Item "$stage\AppFiles\Bundle\index.windows.bundle").Length
+          Write-Host "Bundle staged: $bundleSize bytes"
+          if ($bundleSize -lt 100000) { Write-Error "Bundle looks like the placeholder stub, not a real build"; exit 1 }
 
       - name: Compile installer (Inno Setup)
         working-directory: mobile-app/windows/installer
@@ -225,6 +276,7 @@ jobs:
           Write-Host "Building installer for version $version"
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             "/DAppFilesDir=build\AppFiles" `
+            "/DWebView2Bootstrapper=build\MicrosoftEdgeWebview2Setup.exe" `
             "/DAppVersion=$version" `
             RealGram.iss
           if ($LASTEXITCODE -ne 0) { Write-Error "ISCC.exe failed"; exit 1 }
