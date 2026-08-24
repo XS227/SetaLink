@@ -112,25 +112,34 @@ jobs:
       #      Dependencies/ (VCLibs/WinUI runtime redistributables), and
       #      Add-AppDevPackage.ps1 — Microsoft's own standard "install this
       #      unsigned/test-signed package" script (installs a dev cert, then
-      #      the package). This is what actually gets zipped — closer to
-      #      "download and install" than a bare exe folder, and doesn't need
-      #      us to stand up separate code-signing for v1.
+      #      the package).
+      #
+      # Went with the .msix build (#6) first, on the theory it'd feel more
+      # like "download and install" than a bare exe folder. Khabat hit
+      # "this app package's publisher certificate could not be verified"
+      # installing it — the test cert either isn't trusted by
+      # Add-AppDevPackage.ps1 cleanly on every machine, or needs Developer
+      # Mode enabled first; either way it's friction we don't need for v1
+      # with no code-signing infra behind it. Back to the loose exe: no
+      # install step, no cert, no SmartScreen-adjacent prompts beyond the
+      # normal "unknown publisher" exe warning — unzip anywhere, run
+      # setalink.exe.
       - name: Locate build output
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
-          $pkg = Get-ChildItem -Path AppPackages -Recurse -Filter "*.msix" -ErrorAction SilentlyContinue
-          if (-not $pkg) { Write-Error "No .msix package found under windows/AppPackages"; exit 1 }
-          $pkg | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+          $exe = Get-ChildItem -Recurse -Filter "setalink.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { Write-Error "No setalink.exe found under windows/x64/Release"; exit 1 }
+          Write-Host "Found: $($exe.FullName)"
 
       - name: Zip build output
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
           $dest = "$env:GITHUB_WORKSPACE\RealGram-windows-x64.zip"
-          $pkgDir = Get-ChildItem -Path AppPackages -Recurse -Filter "*.msix" | Select-Object -First 1 | ForEach-Object { $_.Directory.FullName }
-          Compress-Archive -Path "$pkgDir\*" -DestinationPath $dest -Force
-          Write-Host "Zipped $pkgDir to $dest"
+          $outDir = (Get-ChildItem -Recurse -Filter "setalink.exe" | Select-Object -First 1).DirectoryName
+          Compress-Archive -Path "$outDir\*" -DestinationPath $dest -Force
+          Write-Host "Zipped $outDir to $dest"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
