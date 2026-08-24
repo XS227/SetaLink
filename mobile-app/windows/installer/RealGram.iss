@@ -56,6 +56,14 @@ SetupIconFile=RealGram.ico
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; Branded wizard: the gold RealGram coin (same source as the app's own
+; icon, mobile-app/ios/.../AppIcon-1024.png) on a navy banner for the
+; Welcome/Finish pages, plus a small matching header logo on every inner
+; page. Generated once via Pillow — see WizardImage.png/WizardSmallImage.png;
+; regenerate the same way if the app icon ever changes.
+WizardImageFile=WizardImage.png
+WizardSmallImageFile=WizardSmallImage.png
+WizardImageStretch=no
 ; Traditional x64 keyword (not the newer x64compatible) — safer against
 ; whatever exact Inno Setup 6.x point release windows-2022 happens to ship.
 ArchitecturesAllowed=x64
@@ -78,3 +86,7 @@ Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+; "Make it a real setup" (Khabat) — also offer to open the website on
+; finish, same pattern as the app launch above (shellexec hands the URL to
+; the default browser; Inno doesn't run URLs as a local process).
+Filename: "{#AppURL}"; Description: "Open {#AppURL}"; Flags: shellexec nowait postinstall skipifsilent
