@@ -20,7 +20,16 @@ on:
 jobs:
   build-release:
     name: Build Windows release (unpackaged, x64)
-    runs-on: windows-latest
+    # Pinned, not windows-latest: as of this writing "latest" resolves to
+    # windows-2025-vs2026 (Visual Studio 2026 / v18.x) — react-native-windows
+    # 0.75.4's CLI hardcodes a [17.11.0, 18.0) version-range check (VS 2022
+    # only) when locating MSBuild, so it reports "No public VS release
+    # found" against a VS2026 image even though VS itself (with the right
+    # workloads) is present and rnw-dependencies.ps1's own laxer check (no
+    # upper version bound) reports "All mandatory requirements met." for
+    # the exact same install. windows-2022 ships VS 2022, matching what this
+    # RNW version actually looks for.
+    runs-on: windows-2022
     timeout-minutes: 90
 
     steps:
