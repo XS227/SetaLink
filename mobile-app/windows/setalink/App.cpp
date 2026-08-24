@@ -60,7 +60,9 @@ winrt::hstring GetLocalBundleRootPath() noexcept
     }
     modulePath.resize(lastSeparator + 1);
 
-    return winrt::to_hstring(modulePath + L"Bundle");
+    // hstring constructs straight from a wide string; winrt::to_hstring has no
+    // std::wstring overload (its string_view overload expects UTF-8).
+    return winrt::hstring{modulePath + L"Bundle"};
 }
 } // namespace
 
