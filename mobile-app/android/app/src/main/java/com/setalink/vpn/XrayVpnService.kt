@@ -872,7 +872,9 @@ class XrayVpnService : VpnService() {
     // network directly. This is the authoritative check: if Xray can forward real traffic, the
     // tunnel is working regardless of whether Network.openConnection() is available.
     private suspend fun runTunEpermFallback(): ValidationResult {
-        val xrayAlive = xrayProcess?.isAlive == true
+        // REAL SSH sessions never spawn xrayProcess (see establishTunnel) — the
+        // SSH bridge's own connection state is the correct liveness signal there.
+        val xrayAlive = realSshTunnel?.let { it.isConnected() } ?: (xrayProcess?.isAlive == true)
         val t2sAlive  = tun2socksPid?.let { nativeTun2socksExitCode(it) == -2 } == true
         val tunIface  = findTunInterfaceName()
         val tunExists = tunIface != null
@@ -881,7 +883,7 @@ class XrayVpnService : VpnService() {
 
         if (!xrayAlive || !t2sAlive || !tunExists) {
             val reasons = buildList<String> {
-                if (!xrayAlive) add("Xray not running")
+                if (!xrayAlive) add(if (realSshTunnel != null) "REAL SSH not connected" else "Xray not running")
                 if (!t2sAlive)  add("tun2socks not running")
                 if (!tunExists) add("TUN interface missing")
             }.joinToString("; ")
@@ -1100,13 +1102,16 @@ class XrayVpnService : VpnService() {
             while (isActive) {
                 delay(3_000L)
                 if (tearingDown.get()) break
-                val xAlive = xrayProcess?.isAlive == true
+                // REAL SSH sessions never spawn xrayProcess (see establishTunnel) — the
+                // SSH bridge's own connection state is the correct liveness signal there.
+                val xAlive = realSshTunnel?.let { it.isConnected() } ?: (xrayProcess?.isAlive == true)
                 val tAlive = tun2socksPid?.let { nativeTun2socksExitCode(it) == -2 } == true
                 if (!xAlive || !tAlive) {
                     if (tearingDown.get()) break   // teardown already killing them
                     val t2sLog  = readTun2socksLog()
                     val logTail = readLogTail(20)
-                    val msg = "Process died (xray=$xAlive tun2socks=$tAlive)\nt2s output:\n$t2sLog\nxray log:\n$logTail"
+                    val backend = if (realSshTunnel != null) "ssh" else "xray"
+                    val msg = "Process died ($backend=$xAlive tun2socks=$tAlive)\nt2s output:\n$t2sLog\nxray log:\n$logTail"
                     Log.e(TAG, msg)
                     broadcastError(msg)
                     tearDownTunnel("watchdog-process-died")
