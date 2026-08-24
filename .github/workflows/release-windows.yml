@@ -64,6 +64,16 @@ jobs:
         shell: pwsh
         run: .\node_modules\react-native-windows\Scripts\rnw-dependencies.ps1 -Install -NoPrompt buildLab
 
+      # `react-native run-windows` shells out to msbuild.exe directly (not
+      # through Visual Studio, which would auto-restore on load) — it does
+      # NOT restore NuGet packages first. Third CI run got 15+ minutes into
+      # the actual compile and failed on a packages.config-referenced
+      # package (Microsoft.Windows.CppWinRT) missing entirely. windows-2022
+      # runners ship nuget.exe on PATH already.
+      - name: Restore NuGet packages
+        working-directory: mobile-app/windows
+        run: nuget restore setalink.sln
+
       # Builds the Visual Studio solution under mobile-app/windows via
       # MSBuild. --no-deploy skips registering/launching the app on this
       # runner (there's no interactive session to deploy into); --no-packager
