@@ -105,22 +105,32 @@ jobs:
         working-directory: mobile-app
         run: npx react-native run-windows --release --arch x64 --no-launch --no-deploy --no-packager --logging
 
+      # The Release build produces two things, confirmed from run #5's log:
+      #   1. A loose exe: windows/x64/Release/setalink/setalink.exe (+ DLLs)
+      #   2. windows/AppPackages/setalink/setalink_<version>_x64_Test/ — a
+      #      real sideloadable app package: the .msix itself, its
+      #      Dependencies/ (VCLibs/WinUI runtime redistributables), and
+      #      Add-AppDevPackage.ps1 — Microsoft's own standard "install this
+      #      unsigned/test-signed package" script (installs a dev cert, then
+      #      the package). This is what actually gets zipped — closer to
+      #      "download and install" than a bare exe folder, and doesn't need
+      #      us to stand up separate code-signing for v1.
       - name: Locate build output
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
-          $out = Get-ChildItem -Recurse -Directory -Filter "Release" | Where-Object { $_.FullName -match "\\bin\\x64\\Release" }
-          if (-not $out) { Write-Error "No Release build output found under windows/**/bin/x64/Release"; exit 1 }
-          $out | ForEach-Object { Write-Host "Found: $($_.FullName)" }
+          $pkg = Get-ChildItem -Path AppPackages -Recurse -Filter "*.msix" -ErrorAction SilentlyContinue
+          if (-not $pkg) { Write-Error "No .msix package found under windows/AppPackages"; exit 1 }
+          $pkg | ForEach-Object { Write-Host "Found: $($_.FullName)" }
 
       - name: Zip build output
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
           $dest = "$env:GITHUB_WORKSPACE\RealGram-windows-x64.zip"
-          $binDirs = Get-ChildItem -Recurse -Directory -Filter "Release" | Where-Object { $_.FullName -match "\\bin\\x64\\Release" }
-          Compress-Archive -Path ($binDirs | Select-Object -ExpandProperty FullName) -DestinationPath $dest -Force
-          Write-Host "Zipped to $dest"
+          $pkgDir = Get-ChildItem -Path AppPackages -Recurse -Filter "*.msix" | Select-Object -First 1 | ForEach-Object { $_.Directory.FullName }
+          Compress-Archive -Path "$pkgDir\*" -DestinationPath $dest -Force
+          Write-Host "Zipped $pkgDir to $dest"
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
