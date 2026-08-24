@@ -67,6 +67,7 @@ Source: "{#AppFilesDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdir
 ; extracted-to-temp-and-discarded: a few MB, and it means [Run] below can
 ; reference a fixed path instead of fighting Inno's temp-extraction API.
 Source: "{#DependenciesDir}\*.appx"; DestDir: "{app}\Dependencies"; Flags: ignoreversion
+Source: "Install-Dependencies.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -78,13 +79,11 @@ Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 ; unpackaged exe needs (VCRUNTIME140_1_APP.DLL / MSVCP140_APP.DLL come from
 ; these) before the app can run. These are framework packages signed by
 ; Microsoft directly, so Add-AppxPackage never hits a "publisher could not
-; be verified" prompt — no dev cert, no Developer Mode requirement. Errors
-; are swallowed only for the expected "same or higher version already
-; installed" case (e.g. a re-run, or another app already brought VCLibs);
-; anything else still surfaces so a real failure doesn't install a broken
-; app silently.
+; be verified" prompt — no dev cert, no Developer Mode requirement. Logic
+; lives in Install-Dependencies.ps1 (see that file for why it isn't an
+; inline -Command string here: it collides with Inno's {constant} syntax).
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-ChildItem -Path '{app}\Dependencies' -Filter *.appx | ForEach-Object { try { Add-AppxPackage -Path $_.FullName -ErrorAction Stop } catch { if ($_.Exception.Message -notmatch 'already installed|higher version') { throw } } }"""; \
+    Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Install-Dependencies.ps1"" -DependenciesPath ""{app}\Dependencies"""; \
     StatusMsg: "Installing required Windows runtime components..."; \
     Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
