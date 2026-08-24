@@ -21,7 +21,7 @@ jobs:
   build-release:
     name: Build Windows release (unpackaged, x64)
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
@@ -42,6 +42,18 @@ jobs:
       - name: Install JS dependencies
         working-directory: mobile-app
         run: npm install
+
+      # windows-latest ships Visual Studio 2022 Enterprise, but not the C++
+      # (VCTools)/UWP workloads react-native-windows needs to build — first
+      # CI run failed with "Could not find MSBuild with VCTools" for exactly
+      # this reason. RNW ships its own dependency installer for this; the
+      # `buildLab` tag is the CI-appropriate subset (skips IDE-only
+      # components like UWP.VC that a real dev machine needs but a headless
+      # build doesn't — see the script's own comment on that flag).
+      - name: Install RNW build dependencies (VS C++/UWP workloads)
+        working-directory: mobile-app
+        shell: pwsh
+        run: .\node_modules\react-native-windows\Scripts\rnw-dependencies.ps1 -Install -NoPrompt buildLab
 
       # Builds the Visual Studio solution under mobile-app/windows via
       # MSBuild. --no-deploy skips registering/launching the app on this
