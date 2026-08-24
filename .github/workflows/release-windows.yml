@@ -3,12 +3,15 @@ name: Release Windows (RealGram desktop, chat-only)
 # Manual only — never on push. Same standing rule as release-apk.yml/
 # ios-testflight.yml: no build/publish without an explicit go per run.
 #
-# This produces a PORTABLE (unpackaged) Release x64 build — a folder with
-# RealGram.exe/setalink.exe + its supporting DLLs, zipped as the artifact.
-# It is NOT an MSIX installer (no code-signing cert needed for v1): download
-# the zip, unzip anywhere, run the .exe inside. See mobile-app/react-native.config.js
-# for which native modules (calling, ads, live TV) are intentionally excluded
-# on this platform — none of them have a Windows implementation.
+# This produces a single installer exe (RealGram-Setup.exe, built with Inno
+# Setup from mobile-app/windows/installer/RealGram.iss): download, double-
+# click, Next/Next/Finish, app launches — no manually opening a Dependencies
+# folder first. It is still NOT an MSIX/code-signed installer (see the .iss
+# file's header for why that path was dropped) — Windows still shows one
+# generic "unknown publisher" SmartScreen prompt on first run, same as any
+# unsigned installer. See mobile-app/react-native.config.js for which native
+# modules (calling, ads, live TV) are intentionally excluded on this
+# platform — none of them have a Windows implementation.
 #
 # This machine (the Linux VPS that normally runs release-apk.yml) cannot
 # build this itself — react-native-windows compiles via MSBuild against the
@@ -152,40 +155,46 @@ jobs:
           if (-not $deps) { Write-Error "No Dependencies folder found under windows/AppPackages"; exit 1 }
           Write-Host "Found dependencies: $($deps.FullName)"
 
-      - name: Zip build output
+      # Replaces the old "zip of a loose exe + a Dependencies folder the user
+      # had to manually double-click through" with ONE installer exe:
+      # download, double-click, Next/Next/Finish, app launches. The .iss
+      # script (mobile-app/windows/installer/RealGram.iss) silently installs
+      # the same Microsoft-signed VCLibs/WinUI .appx redistributables in its
+      # own [Run] step instead of asking the user to do it by hand — see
+      # that file's header comment for the full rationale. windows-2022
+      # ships Inno Setup 6 preinstalled, so no separate install step here.
+      - name: Stage installer inputs
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
-          $stageDir = "$env:RUNNER_TEMP\RealGram-windows-x64"
-          New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
+          $stage = "installer\build"
+          New-Item -ItemType Directory -Path "$stage\AppFiles" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$stage\Dependencies" -Force | Out-Null
 
           $outDir = (Get-ChildItem -Recurse -Filter "setalink.exe" | Select-Object -First 1).DirectoryName
-          Copy-Item -Path "$outDir\*" -Destination $stageDir -Recurse -Force
+          Copy-Item -Path "$outDir\*" -Destination "$stage\AppFiles" -Recurse -Force
 
           $depsDir = (Get-ChildItem -Path AppPackages -Recurse -Directory -Filter "Dependencies" | Select-Object -First 1).FullName
-          Copy-Item -Path $depsDir -Destination "$stageDir\Dependencies" -Recurse -Force
+          Copy-Item -Path "$depsDir\*" -Destination "$stage\Dependencies" -Recurse -Force
 
-          @"
-          RealGram for Windows (chat-only) — installasjon
-
-          Forste gang: apne mappen "Dependencies" og dobbeltklikk hver
-          .appx-fil der (Microsoft-signerte runtime-pakker — ingen
-          "utgiver kunne ikke bekreftes"-advarsel). Kun nodvendig en gang
-          per maskin.
-
-          Deretter: dobbeltklikk setalink.exe for a starte appen. Windows
-          kan vise en "ukjent utgiver"-advarsel forste gang (appen er
-          ikke kodesignert enna) - trykk "Mer info" -> "Kjor likevel".
-          "@ | Out-File -FilePath "$stageDir\LES MEG FORST.txt" -Encoding utf8
-
-          $dest = "$env:GITHUB_WORKSPACE\RealGram-windows-x64.zip"
-          Compress-Archive -Path "$stageDir\*" -DestinationPath $dest -Force
-          Write-Host "Zipped $stageDir to $dest"
+      - name: Compile installer (Inno Setup)
+        working-directory: mobile-app/windows/installer
+        shell: pwsh
+        run: |
+          $version = (Get-Content ..\..\package.json | ConvertFrom-Json).version
+          Write-Host "Building installer for version $version"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DAppFilesDir=build\AppFiles" `
+            "/DDependenciesDir=build\Dependencies" `
+            "/DAppVersion=$version" `
+            RealGram.iss
+          if ($LASTEXITCODE -ne 0) { Write-Error "ISCC.exe failed"; exit 1 }
+          if (-not (Test-Path "Output\RealGram-Setup.exe")) { Write-Error "RealGram-Setup.exe not produced"; exit 1 }
 
       - name: Upload Windows build
         uses: actions/upload-artifact@v4
         with:
-          name: realgram-windows-x64-${{ github.run_number }}
-          path: RealGram-windows-x64.zip
+          name: realgram-windows-setup-${{ github.run_number }}
+          path: mobile-app/windows/installer/Output/RealGram-Setup.exe
           retention-days: 30
           if-no-files-found: error
