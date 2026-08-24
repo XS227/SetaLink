@@ -23033,3 +23033,22 @@ at `https://setalink.no/download/windows/RealGram-windows-x64.zip`
 `public/download/`'s existing beta-APK OTA/symlink machinery so it
 doesn't interfere with that). Fine to leave as a redirect target or drop
 entirely once realgram.no has its own copy + CTA — your call.
+
+**Update (2026-08-24, same day) — the artifact changed, use this version
+for the CTA, not the one linked above:** Khabat tried installing the
+`.msix` and hit "this app package's publisher certificate could not be
+verified" — no code-signing infra behind the test cert, and
+`Add-AppDevPackage.ps1` doesn't reliably self-trust it on every machine.
+Switched the workflow back to packaging the loose/portable exe instead
+(commit `2c52a99` on this branch): `setalink.exe` + its DLLs, no install
+step, no cert, unzip-and-run. New confirmed-green run:
+https://github.com/XS227/SetaLink/actions/runs/32732819135, artifact
+`realgram-windows-x64-8` (~89MB — smaller than the old one since it's no
+longer carrying the VCLibs/WinUI `Dependencies/` redistributables the
+MSIX needed). The stopgap mirror at the same
+`https://setalink.no/download/windows/RealGram-windows-x64.zip` URL
+above has already been swapped to this new build — link is live and
+correct as of now, only the CTA-wiring on realgram.no itself is still
+outstanding. Point the CTA at this artifact (or your own re-host of it),
+not the `.msix` one — and no cert/install instructions needed in
+whatever copy you write for Khabat, just "unzip, run setalink.exe".
