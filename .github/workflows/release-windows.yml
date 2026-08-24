@@ -174,8 +174,13 @@ jobs:
           $outDir = (Get-ChildItem -Recurse -Filter "setalink.exe" | Select-Object -First 1).DirectoryName
           Copy-Item -Path "$outDir\*" -Destination "$stage\AppFiles" -Recurse -Force
 
+          # Dependencies\ is split into per-architecture subfolders (arm,
+          # arm64, Win32, x64, x86), each with its own .appx set — confirmed
+          # by inspecting a prior successful run's artifact. This is an x64-
+          # only build, so only Dependencies\x64\* is relevant; bundling the
+          # other architectures would just bloat the installer for nothing.
           $depsDir = (Get-ChildItem -Path AppPackages -Recurse -Directory -Filter "Dependencies" | Select-Object -First 1).FullName
-          Copy-Item -Path "$depsDir\*" -Destination "$stage\Dependencies" -Recurse -Force
+          Copy-Item -Path "$depsDir\x64\*" -Destination "$stage\Dependencies" -Recurse -Force
 
       - name: Compile installer (Inno Setup)
         working-directory: mobile-app/windows/installer
