@@ -157,30 +157,65 @@ jobs:
 
       # Replaces the old "zip of a loose exe + a Dependencies folder the user
       # had to manually double-click through" with ONE installer exe:
-      # download, double-click, Next/Next/Finish, app launches. The .iss
-      # script (mobile-app/windows/installer/RealGram.iss) silently installs
-      # the same Microsoft-signed VCLibs/WinUI .appx redistributables in its
-      # own [Run] step instead of asking the user to do it by hand — see
-      # that file's header comment for the full rationale. windows-2022
-      # ships Inno Setup 6 preinstalled, so no separate install step here.
+      # download, double-click, Next/Next/Finish, app launches.
+      #
+      # 2026-08-24, after Khabat's field test: the first version of this step
+      # shipped the Dependencies\x64\*.appx files as-is and had RealGram.iss
+      # silently `Add-AppxPackage` them in a [Run] step. That failed on
+      # Khabat's actual test machine (Windows 10 22H2, not updated since
+      # 2025-07) — both the scripted install and a manual double-click of
+      # Microsoft.VCLibs.x64.14.00.Desktop.appx errored out, and the app
+      # still couldn't find VCRUNTIME140_1_APP.DLL / MSVCP140_APP.DLL
+      # afterwards. AppX/MSIX deployment depends on OS-level framework
+      # package infrastructure that can be flaky or simply behind on an
+      # unpatched Windows 10 box — exactly the "regular user's" machine this
+      # installer needs to work on.
+      #
+      # Root cause of the DLL names not existing anywhere, independent of
+      # that failure: they were never in the ".Desktop.appx" (that one only
+      # has the plain, non-_APP-suffixed CRT DLLs — misleading name). The
+      # `_app`-suffixed forwarder DLLs the exe actually needs live in the
+      # OTHER, plain "Microsoft.VCLibs.x64.14.00.appx". Confirmed by
+      # inspecting both .appx files from a prior successful run (each is
+      # just a zip; the DLLs sit at its root, not the framework-package
+      # runtime — an unpackaged win32 exe resolves DLLs via normal search
+      # order, not MSIX framework references).
+      #
+      # Fix: skip AppX entirely. Extract the actual DLLs (from the plain
+      # VCLibs appx and the WinUI Xaml appx) straight into AppFiles, right
+      # next to setalink.exe, as plain files. Normal Windows DLL search
+      # order finds them with zero install step, no elevation, no AppX
+      # deployment service, no OS-version dependency — works identically on
+      # a fresh Windows 11 box and a three-year-unpatched Windows 10 one.
       - name: Stage installer inputs
         working-directory: mobile-app/windows
         shell: pwsh
         run: |
           $stage = "installer\build"
           New-Item -ItemType Directory -Path "$stage\AppFiles" -Force | Out-Null
-          New-Item -ItemType Directory -Path "$stage\Dependencies" -Force | Out-Null
 
           $outDir = (Get-ChildItem -Recurse -Filter "setalink.exe" | Select-Object -First 1).DirectoryName
           Copy-Item -Path "$outDir\*" -Destination "$stage\AppFiles" -Recurse -Force
 
-          # Dependencies\ is split into per-architecture subfolders (arm,
-          # arm64, Win32, x64, x86), each with its own .appx set — confirmed
-          # by inspecting a prior successful run's artifact. This is an x64-
-          # only build, so only Dependencies\x64\* is relevant; bundling the
-          # other architectures would just bloat the installer for nothing.
           $depsDir = (Get-ChildItem -Path AppPackages -Recurse -Directory -Filter "Dependencies" | Select-Object -First 1).FullName
-          Copy-Item -Path "$depsDir\x64\*" -Destination "$stage\Dependencies" -Recurse -Force
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          # The plain (non-Desktop) VCLibs appx — has the _app-suffixed DLLs.
+          $vclibsZip = [System.IO.Compression.ZipFile]::OpenRead("$depsDir\x64\Microsoft.VCLibs.x64.14.00.appx")
+          foreach ($entry in $vclibsZip.Entries | Where-Object { $_.Name -like "*.dll" }) {
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, "$stage\AppFiles\$($entry.Name)", $true)
+          }
+          $vclibsZip.Dispose()
+
+          # WinUI/Xaml — single DLL at the archive root.
+          $xamlZip = [System.IO.Compression.ZipFile]::OpenRead("$depsDir\x64\Microsoft.UI.Xaml.2.8.appx")
+          foreach ($entry in $xamlZip.Entries | Where-Object { $_.Name -like "*.dll" }) {
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, "$stage\AppFiles\$($entry.Name)", $true)
+          }
+          $xamlZip.Dispose()
+
+          Write-Host "AppFiles now contains:"
+          Get-ChildItem "$stage\AppFiles" -Filter "*.dll" | Select-Object -ExpandProperty Name
 
       - name: Compile installer (Inno Setup)
         working-directory: mobile-app/windows/installer
@@ -190,7 +225,6 @@ jobs:
           Write-Host "Building installer for version $version"
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             "/DAppFilesDir=build\AppFiles" `
-            "/DDependenciesDir=build\Dependencies" `
             "/DAppVersion=$version" `
             RealGram.iss
           if ($LASTEXITCODE -ne 0) { Write-Error "ISCC.exe failed"; exit 1 }

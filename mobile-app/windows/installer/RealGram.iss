@@ -2,25 +2,32 @@
 ;
 ; Replaces the old "download a zip, unzip, open Dependencies\, double-click
 ; each .appx by hand, THEN run setalink.exe, click through SmartScreen"
-; flow (see release-windows.yml's history comment on why the zip has a
+; flow (see release-windows.yml's history comment on why the zip had a
 ; Dependencies\ folder at all) with one .exe: download, double-click,
-; Next/Next/Finish, app launches. The VCLibs .appx files are installed
-; silently in [Run], before the app's own shortcut is offered — same
-; Microsoft-signed packages as before, just no manual step.
+; Next/Next/Finish, app launches.
+;
+; 2026-08-24: this used to also silently `Add-AppxPackage` the VCLibs/WinUI
+; redistributables in a [Run] step. Dropped after Khabat's field test:
+; AppX/MSIX deployment failed outright on his actual test machine (Windows
+; 10 22H2, unpatched since 2025-07) — both the scripted install and a
+; manual double-click of the .appx errored, and the app still couldn't
+; find its DLLs afterwards. Root cause turned out not to need AppX at all:
+; the required _app-suffixed DLLs are just loose files inside the .appx
+; zip containers, and setalink.exe (an unpackaged win32 exe) resolves them
+; via normal DLL search order, not MSIX framework references. The build
+; workflow now extracts those DLLs straight into AppFilesDir (see
+; release-windows.yml's "Stage installer inputs" step) — this script just
+; ships whatever's in there as plain files. No install step, no
+; elevation, no AppX deployment service, no OS-version dependency.
 ;
 ; Compiled by CI (release-windows.yml) via ISCC.exe, which windows-2022
 ; runners ship with Inno Setup 6 preinstalled — no separate install step.
-; Expects two build inputs, staged by the workflow before calling ISCC:
-;   AppFiles\      -- the loose Release x64 output (setalink.exe + DLLs)
-;   Dependencies\  -- the VCLibs/WinUI redistributable .appx files
-; Both paths are passed in as ISCC /D command-line defines so this script
-; never hardcodes a path that only exists inside the CI runner's temp dir.
+; AppFilesDir is passed in as an ISCC /D command-line define so this
+; script never hardcodes a path that only exists inside the CI runner's
+; temp dir.
 
 #ifndef AppFilesDir
   #define AppFilesDir "AppFiles"
-#endif
-#ifndef DependenciesDir
-  #define DependenciesDir "Dependencies"
 #endif
 #ifndef AppVersion
   #define AppVersion "1.0.0"
@@ -63,11 +70,6 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 
 [Files]
 Source: "{#AppFilesDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-; Kept as a normal (permanent) install under {app}\Dependencies rather than
-; extracted-to-temp-and-discarded: a few MB, and it means [Run] below can
-; reference a fixed path instead of fighting Inno's temp-extraction API.
-Source: "{#DependenciesDir}\*.appx"; DestDir: "{app}\Dependencies"; Flags: ignoreversion
-Source: "Install-Dependencies.ps1"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -75,15 +77,4 @@ Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: desktopicon
 
 [Run]
-; Silently install each Microsoft-signed VCLibs/WinUI redistributable the
-; unpackaged exe needs (VCRUNTIME140_1_APP.DLL / MSVCP140_APP.DLL come from
-; these) before the app can run. These are framework packages signed by
-; Microsoft directly, so Add-AppxPackage never hits a "publisher could not
-; be verified" prompt — no dev cert, no Developer Mode requirement. Logic
-; lives in Install-Dependencies.ps1 (see that file for why it isn't an
-; inline -Command string here: it collides with Inno's {constant} syntax).
-Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; \
-    Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Install-Dependencies.ps1"" -DependenciesPath ""{app}\Dependencies"""; \
-    StatusMsg: "Installing required Windows runtime components..."; \
-    Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
