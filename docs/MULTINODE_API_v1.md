@@ -112,3 +112,64 @@ The installed app **already** targets `api.setalink.net/v1/servers` + `/servers/
 ## 7. Test profile (manual Helsinki selection)
 
 Once §5.1–5.4 are live: allowlist the tester's device id (the value after `device-` in its bearer token; visible in the admin devices list). That device's app — **no update** — will then show Helsinki (🇫🇮 Test) in the server list, fetch `fi-hel/config` on tap, and connect via Helsinki. Everyone else continues to see Denmark only and stays on it by default. A sample allowlist entry `dev-helsinki-tester-001 → fi-hel` was seeded for verification.
+
+---
+
+## 8. Contract addendum (2026-07-16) — Adaptive Routing context on `GET /v1/servers`
+
+See `docs/NODE_INTELLIGENCE_ARCHITECTURE.md` for the full design. This
+section is the durable, cross-boundary contract per `docs/realgram/
+COORDINATION_HUB.md`'s "any new cross-boundary contract is written down
+first" rule — Agent A (mobile-app) is the consumer of this contract.
+
+**Status: implemented server-side, flag OFF. Do not build against the new
+response shape in the app until Khabat confirms the flag is being turned on
+— see Rule 7 in `docs/CLAUDE_REALINK_RULES.md`.**
+
+### Request — new optional query params, `GET /v1/servers`
+
+| Param | Type | Required | Notes |
+|---|---|---|---|
+| `carrier` | string | No | Raw carrier name (e.g. `"MCI"`) — hashed server-side the same way `/v1/telemetry/connect`'s `carrier` field already is. Do not pre-hash client-side. |
+| `network_type` | string | No | Same values already sent to `/v1/telemetry/connect` (`wifi` \| `mobile` \| etc.). |
+
+`country` needs **no client change** — derived server-side from the request
+IP, reusing the exact lookup telemetry already uses.
+
+### Response — CHANGES SHAPE when `adaptive_routing_enabled` is on
+
+**Flag off (today, and until explicitly turned on):** unchanged —
+```json
+[{"id":"primary","country":"Germany", "...": "...", "successScore": 94.2}]
+```
+
+**Flag on:**
+```json
+{
+  "servers": [
+    {"id":"starlink-no-01", "...": "...", "routingScore": 250.67, "routingLevel": "carrier"},
+    {"id":"primary", "...": "...", "routingScore": 202.06, "routingLevel": "global"}
+  ],
+  "decisionId": "f96f190697941fc7cd1cc479f44c983e"
+}
+```
+`servers` is **pre-sorted best-first** — the app should stop doing its own
+"try all in parallel, first to answer wins" node selection once this is the
+live behavior (the protocol-level race in `public/index.php`'s described
+behavior — VLESS+Reality/XHTTP/WebSocket in parallel — is unrelated and
+unaffected; this is about *which node*, not *which protocol*).
+
+### New optional field on `POST /v1/telemetry/connect`
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `decision_id` | string | No | Echo back the `decisionId` from the `/servers` call that led to this session, if any. Closes the Evolution Layer feedback loop server-side — no other client behavior needed. |
+
+### Open question for Agent A, not yet answered
+
+`app_category` (which kind of traffic a session represents — streaming,
+messaging, gaming, etc.) is a planned fifth Genome dimension with **no
+client contract yet**. Needs: what the enum values are, whether it's
+inferred client-side or user-declared, and whether it's sent per-session or
+per-tap. Spec it in `docs/realgram/DECISIONS.md` before building, per the
+handshake rule — this doc only flags that it's wanted, it does not define it.

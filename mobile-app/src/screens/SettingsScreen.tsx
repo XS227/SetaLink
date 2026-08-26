@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard } from '../components/GlassCard';
+import { EcosystemFooter } from '../components/EcosystemFooter';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useServerStore }   from '../stores/serverStore';
 import { BiometricService } from '../services/biometricService';
@@ -440,6 +441,7 @@ export function SettingsScreen({ onBack, onSmartConnect, onDiagnostics, onActivi
           <Text style={styles.appName}>Realink</Text>
           <Text style={styles.version}>v{APP_VERSION} · Build {APP_BUILD}</Text>
           <Text style={styles.legal}>© 2026 Realink. {t('st.allRights')}</Text>
+          <EcosystemFooter />
         </View>
 
         <View style={{ height: Spacing[12] }} />

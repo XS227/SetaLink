@@ -18,7 +18,7 @@
  */
 import { Platform } from 'react-native';
 import { getAdapter } from './vpnBridge';
-import { uploadConnectTelemetry } from './api/telemetry.api';
+import { uploadConnectTelemetry, ConnectTelemetryPayload } from './api/telemetry.api';
 import { APP_VERSION, APP_BUILD_CODE } from '../utils/version';
 
 // The extension's own verification chain is: connected_verified → 3 s settle →
@@ -29,14 +29,23 @@ const RETRY_MS  = 8_000;
 
 let _timer: ReturnType<typeof setTimeout> | null = null;
 
-/** Called from vpnStore.onConnected. iOS-only: Android has no app-path probe. */
+/** Called from vpnStore.onConnected. iOS-only: Android has no app-path probe.
+ *
+ *  quicOutboundTag: the Xray outboundTag the current config routes UDP/443
+ *  through for this server — 'proxy-quic' on Vision-flow servers (their
+ *  outbound rejects UDP/443 directly, see buildQuicProxyOutbound in
+ *  xrayConfigBuilder.ts), otherwise 'proxy'. Computed once by the caller
+ *  (which already knows the connected server's flow) and reported alongside
+ *  the probe result — see the probe_outbound field's doc comment in
+ *  telemetry.api.ts for why this is "expected", not "observed". */
 export function scheduleQuicEvidenceProbe(
   nodeId: string | undefined,
   isStillConnected: () => boolean,
+  quicOutboundTag: string = 'proxy',
 ): void {
   if (Platform.OS !== 'ios') return;
   cancelQuicEvidenceProbe();
-  _timer = setTimeout(() => { void _run(nodeId, isStillConnected, 0); }, SETTLE_MS);
+  _timer = setTimeout(() => { void _run(nodeId, isStillConnected, 0, quicOutboundTag); }, SETTLE_MS);
 }
 
 /** Called from vpnStore.onDisconnected — a probe of a dead tunnel is noise. */
@@ -48,6 +57,7 @@ async function _run(
   nodeId: string | undefined,
   isStillConnected: () => boolean,
   attempt: number,
+  quicOutboundTag: string,
 ): Promise<void> {
   _timer = null;
   try {
@@ -60,18 +70,27 @@ async function _run(
     const res = await adapter.runQuicProbe?.();
     if (!res) return;
     if (res.verdict === 'BOTH_FAIL' && attempt === 0) {
-      _timer = setTimeout(() => { void _run(nodeId, isStillConnected, 1); }, RETRY_MS);
+      _timer = setTimeout(() => { void _run(nodeId, isStillConnected, 1, quicOutboundTag); }, RETRY_MS);
       return;
     }
     uploadConnectTelemetry({
-      event:        'quic_probe',
-      node_id:      nodeId || 'unknown',
-      platform:     Platform.OS as 'android' | 'ios',
-      app_version:  APP_VERSION,
-      build_number: APP_BUILD_CODE,
-      tunnel_mode:  res.verdict,
-      internet_ok:  res.tcpOk,
-      probe_ms:     res.quicMs,
+      event:               'quic_probe',
+      node_id:              nodeId || 'unknown',
+      platform:              Platform.OS as 'android' | 'ios',
+      app_version:           APP_VERSION,
+      build_number:          APP_BUILD_CODE,
+      tunnel_mode:           res.verdict,
+      internet_ok:           res.tcpOk,
+      probe_ms:              res.quicMs,
+      // Instagram diagnostics (2026-07-17) — see doc comment on these fields
+      // in telemetry.api.ts. error_category carries the QUIC leg (the one
+      // implicated by the known blackhole history); the TCP leg travels
+      // separately since error_category is one shared column.
+      probe_outbound:        quicOutboundTag,
+      error_category:        res.quicCategory !== 'ok' ? (res.quicCategory as ConnectTelemetryPayload['error_category']) : undefined,
+      probe_tcp_detail:      res.tcpDetail,
+      probe_tcp_category:    res.tcpCategory,
+      probe_quic_detail:     res.quicDetail,
     });
   } catch {
     // Diagnostics only — swallow everything.

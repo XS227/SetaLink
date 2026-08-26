@@ -24,8 +24,12 @@ export function WatchAdCard({ style }: { style?: object }) {
   const updateFromEntitlement = useAuthStore((s) => s.updateFromEntitlement);
   const showToast = useToastStore((s) => s.show);
   const [busy, setBusy] = useState(false);
+  const isPremium = user?.plan === 'premium';
 
-  useEffect(() => { initAds(); }, []);
+  useEffect(() => { if (!isPremium) initAds(); }, [isPremium]);
+
+  // Premium is ad-free — and has no use for bonus data on an unlimited plan.
+  if (isPremium) return null;
 
   const onPress = async () => {
     const deviceId = user?.deviceId;

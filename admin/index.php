@@ -22,7 +22,15 @@ setcookie('_sl_session', hash_hmac('sha256','sl-session:'.$auth_user,$csrf_secre
 function h(string $s): string { return htmlspecialchars($s, ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8'); }
 
 $page = (string)($_GET['page'] ?? 'dashboard');
-if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','aidiag','installs','devices','logs','release','config','referrals'], true)) $page = 'dashboard';
+// 'starlink' and 'tunnellogs' were already missing from this whitelist before
+// this change (same class of bug independently found+fixed on
+// feat/admin-noc-consolidated, see ADMIN_NOC_ROADMAP.md §1.1 "Reell bug
+// funnet og fikset") — a direct-load or refresh on those pages silently
+// bounced to Dashboard even though the nav item and view both worked fine
+// after a client-side click. Fixed here too since 'diagnostics' (this
+// change) hits the exact same line. 'diagnostics' = Connection Diagnostics,
+// added 2026-07-20 — see docs/CONNECTION_DIAGNOSTICS.md.
+if (!in_array($page, ['dashboard','analytics','ads','payments','iran','intel','starlink','aidiag','installs','devices','logs','tunnellogs','release','config','referrals','diagnostics'], true)) $page = 'dashboard';
 
 // Inline SVG icon helper
 function icon(string $name): string {
@@ -96,6 +104,12 @@ function icon(string $name): string {
     </div>
     <div class="nav-item<?= $page==='intel'?' active':'' ?>" data-page="intel">
       <?= icon('chart') ?> Network Intel
+    </div>
+    <div class="nav-item<?= $page==='diagnostics'?' active':'' ?>" data-page="diagnostics">
+      <?= icon('chart') ?> Connection Diagnostics
+    </div>
+    <div class="nav-item<?= $page==='starlink'?' active':'' ?>" data-page="starlink">
+      <?= icon('globe') ?> Starlink
     </div>
     <div class="nav-item<?= $page==='aidiag'?' active':'' ?>" data-page="aidiag">
       <?= icon('chart') ?> AI Diagnosis
@@ -756,6 +770,105 @@ function icon(string $name): string {
           <table>
             <thead><tr><th>Time</th><th>Event</th><th>Node</th><th>Profile</th><th>SNI</th><th>Platform</th><th>Network</th><th>Country</th><th>Stage</th><th>Latency</th></tr></thead>
             <tbody id="intelFailTbl"><tr><td colspan="10" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: CONNECTION DIAGNOSTICS (real measured perf, 2026-07-20) -->
+    <!-- Added after a Starlink "feels slow" complaint (see             -->
+    <!-- STARLINK_WINDOWS_HANDOFF.md §32-35) found there was no real     -->
+    <!-- measured data to check against — this page exists so the NEXT  -->
+    <!-- "X feels slow" report has actual numbers instead of a guess.    -->
+    <!-- ============================================================ -->
+    <div data-view="diagnostics" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+        <span style="font-size:1.1rem;font-weight:700">Connection Diagnostics</span>
+        <select class="select btn-sm" id="diagPerfDays" style="width:110px">
+          <option value="1">Last 24h</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="14">Last 14 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" id="diagPerfRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <span style="font-size:.72rem;color:var(--muted)" id="diagPerfNote">Real client-measured RTT/handshake/jitter/packet-loss/throughput</span>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="panel-header">
+          <span class="panel-title">By Node — Starlink vs fi-hel vs primary</span>
+          <span class="panel-sub">this is the "Starlink vs other VPN nodes" comparison — one row per node_id</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Node</th><th>Attempts</th><th>Success</th>
+              <th>Avg RTT</th><th>Avg Handshake</th><th>Avg Connect Time</th>
+              <th>Avg Jitter</th><th>Avg Packet Loss</th>
+              <th>Avg ↓ Throughput</th><th>Avg ↑ Throughput</th><th>MTU</th>
+            </tr></thead>
+            <tbody id="diagPerfNodeTbl"><tr><td colspan="11" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="two-col" style="margin-bottom:1rem">
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">By Platform</span><span class="panel-sub">Android vs iOS</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Platform</th><th>Attempts</th><th>Avg RTT</th><th>Avg Jitter</th><th>Avg Loss</th><th>Avg ↓</th><th>Avg ↑</th></tr></thead>
+              <tbody id="diagPerfPlatformTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-header"><span class="panel-title">By Network Type</span><span class="panel-sub">Wi-Fi vs mobile data</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Network</th><th>Attempts</th><th>Avg RTT</th><th>Avg Jitter</th><th>Avg Loss</th><th>Avg ↓</th><th>Avg ↑</th></tr></thead>
+              <tbody id="diagPerfNetworkTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">By Cellular Generation</span>
+          <span class="panel-sub">5G / 4G / 3G — best-effort, "unknown" means not measured, not zero (see docs/CONNECTION_DIAGNOSTICS.md)</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Generation</th><th>Attempts</th><th>Avg RTT</th><th>Avg Jitter</th><th>Avg Loss</th><th>Avg ↓</th><th>Avg ↑</th></tr></thead>
+            <tbody id="diagPerfGenerationTbl"><tr><td colspan="7" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- VIEW: STARLINK (exit node, beta/testing — Phase 1)           -->
+    <!-- ============================================================ -->
+    <div data-view="starlink" hidden>
+      <div class="panel-header" style="margin-bottom:1rem;display:flex;align-items:center;gap:.75rem">
+        <span style="font-size:1.1rem;font-weight:700">Starlink exit nodes</span>
+        <button class="btn btn-secondary btn-sm" id="stRefreshBtn"><?= icon('refresh') ?> Refresh</button>
+        <span style="font-size:.72rem;color:var(--muted)">Never visible to normal users until enabled + allowlisted</span>
+      </div>
+
+      <div id="stNodesWrap"><div class="spinner"></div></div>
+
+      <div class="panel" style="margin-top:1rem">
+        <div class="panel-header">
+          <span class="panel-title">Admin activity log</span>
+          <span class="panel-sub">enable/disable · maintenance · fallback · token rotation</span>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>Node</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead>
+            <tbody id="stLogTbl"><tr><td colspan="5" class="tbl-empty"><div class="spinner"></div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1608,6 +1721,8 @@ const pageTitles = {
   payments:  ['Payments', 'premium packages · REAL vs USDT · intents'],
   iran:      ['Iran Debug', 'censorship diagnostics · Iranian ISP analysis'],
   intel:     ['Network Intel', 'connect telemetry · node health scores · ISP/platform breakdown'],
+  diagnostics: ['Connection Diagnostics', 'real measured RTT/jitter/throughput/packet loss — Starlink vs Wi-Fi vs 5G vs node vs node vs platform'],
+  starlink:  ['Starlink', 'exit-node (beta/testing) · tunnel health · allowlisted testers'],
   installs:  ['Install Diagnostics', 'app versions · Android versions · ABI · install failures'],
   devices:   ['Devices', 'device management · quota · payments'],
   logs:      ['Logs', 'structured log viewer'],
@@ -2667,16 +2782,38 @@ views.intel = {
     const typeIcon = t => ({route:'🔀',infra:'🖥',protocol:'📡',security:'🔒',platform:'📱'})[t]||'•';
 
     el.innerHTML = `<div style="display:flex;flex-direction:column;gap:.6rem">`
-      + rows.map(r => `
+      + rows.map(r => {
+        // Evidence-driven display (2026-07-17): every recommendation now
+        // carries a statistical confidence score + the raw evidence behind
+        // it (sample size, affected platforms/ISPs/app versions, first/last
+        // seen) — see ni_attach_evidence()/ni_two_proportion_confidence() in
+        // lib/node_intel.php. Shown up front, not buried, per Khabat's
+        // explicit "must remain evidence-driven" instruction.
+        const tier = r.confidence_tier || {emoji:'⚪',label:'unknown'};
+        const confPct = r.confidence != null ? Math.round(r.confidence * 100) : null;
+        const platforms = Object.entries(r.affected_platforms || {}).map(([k,v]) => `${esc(k)} (${v})`).join(', ') || '—';
+        const versions   = Object.entries(r.affected_app_versions || {}).map(([k,v]) => `${esc(k)} (${v})`).join(', ') || '—';
+        const ispCount   = Object.keys(r.affected_isp_hashes || {}).length;
+        const downgradeNote = r.severity_downgraded_from
+          ? `<div style="font-size:.7rem;color:#fbbf24;margin-top:.3rem">⚠ Downgraded from ${esc(r.severity_downgraded_from).toUpperCase()}: ${esc(r.severity_downgrade_reason||'')}</div>`
+          : '';
+        return `
         <div style="border-left:3px solid ${sev(r.severity)};background:rgba(255,255,255,.03);border-radius:0 6px 6px 0;padding:.65rem .85rem">
-          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem">
+          <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.3rem;flex-wrap:wrap">
             <span style="font-size:.68rem;font-weight:700;color:${sev(r.severity)};letter-spacing:.04em">${sevLabel(r.severity)}</span>
             <span style="font-size:.7rem;color:var(--muted-2);background:rgba(255,255,255,.06);padding:1px 6px;border-radius:3px">${typeIcon(r.type)} ${esc((r.type||'').toUpperCase())}</span>
             <span style="font-size:.85rem;font-weight:700;color:var(--text)">${esc(r.title)}</span>
+            ${confPct != null ? `<span style="font-size:.72rem;font-weight:700;margin-left:auto;white-space:nowrap">${tier.emoji} ${confPct}% confidence (${r.sample_size ?? '?'} sessions)</span>` : ''}
           </div>
           <div style="font-size:.8rem;color:var(--muted);margin-bottom:.3rem">${esc(r.body)}</div>
           <div style="font-size:.75rem;color:var(--accent)">→ ${esc(r.action)}</div>
-        </div>`).join('')
+          ${downgradeNote}
+          <div style="font-size:.7rem;color:var(--muted-2);margin-top:.4rem;padding-top:.4rem;border-top:1px solid rgba(255,255,255,.06)">
+            Platforms: ${platforms} &nbsp;·&nbsp; App versions: ${versions} &nbsp;·&nbsp; ISPs affected: ${ispCount}
+            ${r.first_seen ? `&nbsp;·&nbsp; First seen: ${esc(r.first_seen)} &nbsp;·&nbsp; Last seen: ${esc(r.last_seen||'')}` : ''}
+          </div>
+        </div>`;
+      }).join('')
       + '</div>';
   },
   async loadDiagSessions() {
@@ -2820,6 +2957,226 @@ views.intel = {
         },
       });
     } catch(e) { /* Chart.js not yet loaded / canvas issue */ }
+  },
+};
+
+// ── VIEW: CONNECTION DIAGNOSTICS (2026-07-20) ────────────────────────
+// Real measured RTT/handshake/jitter/packet-loss/throughput, backing the
+// "is Starlink actually slow, or does it just feel that way" question
+// (STARLINK_WINDOWS_HANDOFF.md §32-35) with real numbers instead of a guess.
+// This is about SPEED; views.intel above is about SUCCESS/FAILURE — related
+// but separate questions, hence a separate page rather than another intel tab.
+views.diagnostics = {
+  init() {
+    $('diagPerfRefreshBtn').addEventListener('click', ()=>this.load());
+    $('diagPerfDays').addEventListener('change', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    const days = $('diagPerfDays').value;
+    $('diagPerfNote').textContent = 'Loading…';
+    try {
+      const d = await api.get('connection-diagnostics', {days});
+      this.renderNodeTable(d.by_node || []);
+      this.renderCompactTable('diagPerfPlatformTbl', d.by_platform || [], r =>
+        `${r.value==='ios'?'🍎':r.value==='android'?'🤖':'?'} ${esc(r.value)}`);
+      this.renderCompactTable('diagPerfNetworkTbl', d.by_network_type || [], r =>
+        `${r.value==='wifi'?'📶':r.value==='mobile'?'📡':'?'} ${esc(r.value)}`);
+      this.renderCompactTable('diagPerfGenerationTbl', d.by_network_generation || [], r => esc(r.value));
+      $('diagPerfNote').textContent = `Real client-measured performance · ${days}-day window`;
+    } catch(e) {
+      $('diagPerfNote').textContent = 'Error: ' + esc(e.message);
+    }
+  },
+  // A metric with n=0 real samples is shown as "—", never "0" — an average
+  // of nothing is not a measured zero. n is shown alongside so a "55ms"
+  // built from 1 sample doesn't read as trustworthy as one built from 500.
+  fmtMetric(avg, n, unit) {
+    if (avg === null || !n) return '<span style="color:var(--muted)">—</span>';
+    return `${avg}${unit} <span style="font-size:.68rem;color:var(--muted)">(n=${fmtNum(n)})</span>`;
+  },
+  renderNodeTable(rows) {
+    if (!rows.length) { $('diagPerfNodeTbl').innerHTML = '<tr><td colspan="11" class="tbl-empty">No telemetry data yet</td></tr>'; return; }
+    const rateColor = r => r===null?'var(--muted)':r>=80?'var(--ok)':r>=50?'var(--warn)':'var(--danger)';
+    $('diagPerfNodeTbl').innerHTML = rows.map(r => `<tr>
+      <td><strong>${esc(r.value)}</strong>${r.value==='starlink-no-01'?' 🛰️':''}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td style="color:${rateColor(r.success_rate)};font-weight:600">${r.success_rate !== null ? r.success_rate+'%' : '—'}</td>
+      <td>${this.fmtMetric(r.avg_rtt_ms, r.n_rtt_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_handshake_ms, r.n_handshake_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_time_to_connect_ms, r.n_time_to_connect_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_jitter_ms, r.n_jitter_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_packet_loss_pct, r.n_packet_loss_pct, '%')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_down_kbps, r.n_throughput_down_kbps, ' kbps')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_up_kbps, r.n_throughput_up_kbps, ' kbps')}</td>
+      <td>${r.mtu ?? '—'}</td>
+    </tr>`).join('');
+  },
+  renderCompactTable(tblId, rows, labelFn) {
+    if (!rows.length) { $(tblId).innerHTML = '<tr><td colspan="7" class="tbl-empty">No data</td></tr>'; return; }
+    $(tblId).innerHTML = rows.map(r => `<tr>
+      <td>${labelFn(r)}</td>
+      <td>${fmtNum(r.total)}</td>
+      <td>${this.fmtMetric(r.avg_rtt_ms, r.n_rtt_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_jitter_ms, r.n_jitter_ms, 'ms')}</td>
+      <td>${this.fmtMetric(r.avg_packet_loss_pct, r.n_packet_loss_pct, '%')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_down_kbps, r.n_throughput_down_kbps, ' kbps')}</td>
+      <td>${this.fmtMetric(r.avg_throughput_up_kbps, r.n_throughput_up_kbps, ' kbps')}</td>
+    </tr>`).join('');
+  },
+};
+
+// ── VIEW: STARLINK ───────────────────────────────────────────────────
+views.starlink = {
+  init() {
+    $('stRefreshBtn').addEventListener('click', ()=>this.load());
+    this.load();
+  },
+  async load() {
+    try {
+      const d = await api.get('starlink-list');
+      this.renderNodes(d.nodes || []);
+      this.renderLog(d.log || []);
+    } catch(e) {
+      $('stNodesWrap').innerHTML = `<div class="panel-empty">Error: ${esc(e.message)}</div>`;
+    }
+  },
+  healthColor(h) {
+    return h==='ONLINE' ? 'var(--ok)' : h==='DEGRADED' ? 'var(--warn)' : h==='MAINTENANCE' ? 'var(--muted)' : 'var(--danger)';
+  },
+  renderNodes(nodes) {
+    if (!nodes.length) { $('stNodesWrap').innerHTML = '<div class="panel-empty">No Starlink nodes registered yet.</div>'; return; }
+    $('stNodesWrap').innerHTML = nodes.map(n => {
+      const allow = (n.allowlist||[]).map(a=>`<span class="chip">${esc(a.device_id)} <a href="#" data-remove-device="${esc(a.device_id)}" data-node="${esc(n.node_id)}" title="Revoke">×</a></span>`).join(' ') || '<span style="color:var(--muted)">none</span>';
+      return `<div class="panel" style="margin-bottom:1rem" data-node-panel="${esc(n.node_id)}">
+        <div class="panel-header" style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
+          <span class="panel-title">${esc(n.display_name)} <span style="font-weight:400;color:var(--muted)">(${esc(n.node_id)})</span></span>
+          <span class="badge" style="background:${this.healthColor(n.health_state)}20;color:${this.healthColor(n.health_state)};border:1px solid ${this.healthColor(n.health_state)}">${esc(n.health_state)}</span>
+          <span class="badge" style="margin-left:auto">${n.enabled ? 'Enabled' : 'Disabled'} · ${esc(n.testing_state)}</span>
+        </div>
+        <div class="panel-body" style="padding:.75rem 1rem;font-size:.8rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.5rem">
+          <div><b>Country</b><br>${esc(n.country)}</div>
+          <div><b>Tunnel</b><br>${esc(n.tunnel_status)}</div>
+          <div><b>Last heartbeat</b><br>${esc((n.last_heartbeat_at||'never').replace('T',' '))}</div>
+          <div><b>Public IPv4</b><br>${esc(n.public_ipv4||'—')}</div>
+          <div><b>Public IPv6</b><br>${esc(n.public_ipv6||'—')}</div>
+          <div><b>Exit IP</b><br>${esc(n.exit_ip||'—')}</div>
+          <div><b>Latency</b><br>${n.latency_ms!=null?n.latency_ms+' ms':'—'}</div>
+          <div><b>Packet loss</b><br>${n.packet_loss_pct!=null?n.packet_loss_pct+'%':'—'}</div>
+          <div><b>Recent disconnects</b><br>${fmtNum(n.recent_disconnects||0)}</div>
+          <div><b>Down / Up</b><br>${n.measured_download_kbps!=null?(n.measured_download_kbps/1000).toFixed(1)+' Mbps':'—'} / ${n.measured_upload_kbps!=null?(n.measured_upload_kbps/1000).toFixed(1)+' Mbps':'—'}</div>
+          <div><b>Sessions</b><br>${n.current_sessions}/${n.max_sessions}</div>
+          <div><b>Allocated</b><br>${(n.allocated_kbps/1000).toFixed(0)} Mbps of ${(n.nominal_capacity_kbps/1000).toFixed(0)} Mbps nominal</div>
+          <div><b>Version</b><br>${esc(n.software_version||'—')}</div>
+          <div><b>Last error</b><br><span style="color:var(--danger)">${esc(n.last_error||'—')}</span></div>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem;display:flex;gap:.5rem;flex-wrap:wrap">
+          <button class="btn btn-sm ${n.enabled?'btn-secondary':'btn-primary'}" data-act="toggle" data-node="${esc(n.node_id)}" data-val="${n.enabled?0:1}">${n.enabled?'Disable':'Enable'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="maint" data-node="${esc(n.node_id)}" data-val="${n.maintenance_mode?0:1}">${n.maintenance_mode?'Exit maintenance':'Enter maintenance'}</button>
+          <button class="btn btn-sm btn-secondary" data-act="fallback" data-node="${esc(n.node_id)}">Force fallback</button>
+          <button class="btn btn-sm btn-secondary" data-act="token" data-node="${esc(n.node_id)}">Generate heartbeat token</button>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem">
+          <b style="font-size:.8rem">Allowlisted test devices</b><br>
+          <div style="margin:.4rem 0">${allow}</div>
+          <form data-allow-form="${esc(n.node_id)}" style="display:flex;gap:.4rem">
+            <input class="input btn-sm" name="device_id" placeholder="device_id" style="flex:1">
+            <button class="btn btn-sm btn-primary" type="submit">Allow</button>
+          </form>
+        </div>
+        <div class="panel-body" style="padding:0 1rem 1rem;border-top:1px solid var(--border)">
+          <b style="font-size:.8rem">Node Console</b>
+          <span style="color:var(--muted);font-size:.75rem"> — runs on this node's next heartbeat (≤30s), never instantly; results land in the history below.</span>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin:.5rem 0">
+            <button class="btn btn-sm btn-secondary" data-cmd="wg_status" data-node="${esc(n.node_id)}">WireGuard status</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="network_status" data-node="${esc(n.node_id)}">Network status</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="last_100_logs" data-node="${esc(n.node_id)}">Last 100 logs</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="refresh_telemetry" data-node="${esc(n.node_id)}">Refresh telemetry</button>
+            <button class="btn btn-sm btn-secondary" data-cmd="restart_wireguard" data-node="${esc(n.node_id)}" data-confirm="1">Restart WireGuard</button>
+            <button class="btn btn-sm btn-secondary" data-history="${esc(n.node_id)}">Show history</button>
+          </div>
+          <div data-history-wrap="${esc(n.node_id)}" style="display:none;font-size:.75rem;font-family:monospace;white-space:pre-wrap;max-height:260px;overflow:auto;background:var(--bg-alt);padding:.5rem;border-radius:4px"></div>
+        </div>
+      </div>`;
+    }).join('');
+
+    $('stNodesWrap').querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', () => this.act(btn)));
+    $('stNodesWrap').querySelectorAll('[data-remove-device]').forEach(a => a.addEventListener('click', e => {
+      e.preventDefault();
+      this.allowlistRemove(a.dataset.node, a.dataset.removeDevice);
+    }));
+    $('stNodesWrap').querySelectorAll('[data-allow-form]').forEach(f => f.addEventListener('submit', e => {
+      e.preventDefault();
+      const did = f.device_id.value.trim();
+      if (did) this.allowlistAdd(f.dataset.allowForm, did);
+    }));
+    $('stNodesWrap').querySelectorAll('[data-cmd]').forEach(btn => btn.addEventListener('click', () => this.sendCommand(btn)));
+    $('stNodesWrap').querySelectorAll('[data-history]').forEach(btn => btn.addEventListener('click', () => this.toggleHistory(btn)));
+  },
+  async sendCommand(btn) {
+    const node = btn.dataset.node, cmd = btn.dataset.cmd;
+    if (btn.dataset.confirm && !confirm(`Queue "${cmd}" on ${node}? Runs on its next heartbeat.`)) return;
+    try {
+      await api.post({action:'node-command-enqueue', node_id:node, command_key:cmd, confirmed: btn.dataset.confirm ? '1' : '0'});
+      toast('Command queued — check history in ~30s', 'success');
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async toggleHistory(btn) {
+    const node = btn.dataset.history;
+    const wrap = document.querySelector(`[data-history-wrap="${node}"]`);
+    if (wrap.style.display !== 'none') { wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    wrap.textContent = 'Loading…';
+    try {
+      const rows = await api.get('node-command-events', {node_id: node, limit: 30}) || [];
+      wrap.textContent = rows.length ? rows.map(r =>
+        `${r.created_at}  ${r.automatic ? '[self-heal]' : '[admin]'}  ${r.command_key}  ${r.success ? 'OK' : 'FAILED'}` +
+        (r.duration_ms != null ? `  ${r.duration_ms}ms` : '') +
+        (r.recovery_action ? `  (${r.recovery_action})` : '')
+      ).join('\n') : '(no command/self-heal events recorded yet)';
+    } catch(e) { wrap.textContent = 'Error: ' + e.message; }
+  },
+  async act(btn) {
+    const node = btn.dataset.node, act = btn.dataset.act;
+    try {
+      if (act === 'toggle') {
+        await api.post({action:'starlink-toggle-enabled', node_id:node, enabled: btn.dataset.val === '1'});
+      } else if (act === 'maint') {
+        await api.post({action:'starlink-set-maintenance', node_id:node, maintenance: btn.dataset.val === '1'});
+      } else if (act === 'fallback') {
+        if (!confirm('Force this node into fallback (stop routing new sessions) now?')) return;
+        await api.post({action:'starlink-force-fallback', node_id:node});
+      } else if (act === 'token') {
+        const d = await api.post({action:'starlink-generate-token', node_id:node});
+        prompt('Heartbeat token (shown once — copy into the gateway config now):', d.heartbeat_token);
+      }
+      toast('Updated', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistAdd(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-add', node_id: node, device_id: deviceId});
+      toast('Device allowlisted', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  async allowlistRemove(node, deviceId) {
+    try {
+      await api.post({action:'node-allowlist-remove', node_id: node, device_id: deviceId});
+      toast('Device revoked', 'success');
+      this.load();
+    } catch(e) { toast('Error: ' + e.message, 'error'); }
+  },
+  renderLog(rows) {
+    if (!rows.length) { $('stLogTbl').innerHTML = '<tr><td colspan="5" class="tbl-empty">No admin activity yet</td></tr>'; return; }
+    $('stLogTbl').innerHTML = rows.map(r => `<tr>
+      <td style="font-size:.7rem;color:var(--muted)">${esc((r.created_at||'').replace('T',' '))}</td>
+      <td>${esc(r.node_id)}</td>
+      <td>${esc(r.actor)}</td>
+      <td>${esc(r.action)}</td>
+      <td style="font-size:.75rem;color:var(--muted)">${esc(r.detail||'')}</td>
+    </tr>`).join('');
   },
 };
 
@@ -3139,6 +3496,12 @@ views.devices = {
             : r.registration_source==='testflight'
               ? '<span class="badge badge-info" style="font-size:.58rem;margin-left:.1rem">🧪 TF</span>'
               : '';
+          // Starlink access badge — mirrors v1_starlink_unlock()'s policy
+          // (premium / test_mode / >=11 verified invites), so admins can see
+          // at a glance who the Starlink gate actually lets through.
+          const starlinkBadge = r.starlink_access
+            ? `<span class="badge badge-accent" style="font-size:.58rem;margin-left:.1rem" title="Starlink node access: ${esc(r.starlink_reason||'')}">🛰️ Starlink</span>`
+            : '';
           // First Seen / Last Seen combined cell
           const daysAgo = r.days_inactive != null
             ? (r.days_inactive < 1 ? 'today' : `${r.days_inactive}d ago`)
@@ -3150,7 +3513,7 @@ views.devices = {
             <td>
               <div style="font-family:var(--mono);font-size:.72rem;color:var(--text);font-weight:600">${esc(uid)}</div>
               <div style="display:flex;gap:.25rem;align-items:center;margin:.18rem 0;flex-wrap:wrap">
-                ${platformBadge(r.platform)}${srcBadge}
+                ${platformBadge(r.platform)}${srcBadge}${starlinkBadge}
                 ${r.app_version?`<span class="badge badge-muted" style="font-family:var(--mono);font-size:.62rem" title="App version">${esc(r.app_version)}</span>`:''}
               </div>
               <div style="font-size:.6rem;color:var(--muted-2);font-family:var(--mono)" title="Device fingerprint">FP: ${esc(r.device_id_short||'')}</div>
@@ -3332,16 +3695,30 @@ window.devDetail = async function(did) {
       kv('Quota', isIos
         ? `${gb(dev.quota_bytes_total)} (${esc(dev.plan)}) <span style="color:var(--muted-2);font-size:.7rem">· traffic not tracked on iOS proxy</span>`
         : `${dev.quota_bytes_used>0?gb(dev.quota_bytes_used):'0 B'} / ${gb(dev.quota_bytes_total)} (${esc(dev.plan)})`),
+      kv('Starlink access', dev.starlink_access
+        ? `<span style="color:var(--ok)">🛰️ unlocked</span> <span style="color:var(--muted-2);font-size:.7rem">(${esc(dev.starlink_reason||'')})</span>`
+        : `<span style="color:var(--muted-2)">locked</span> <span style="color:var(--muted-2);font-size:.7rem">(${dev.invites_verified||0}/11 invites, test_mode=${dev.test_mode?1:0}, plan=${esc(dev.plan||'free')})</span>`),
       kv('Referral code', esc(dev.referral_code)),
       kv('First seen', esc(dev.created_at)),
       kv('Last seen', `${esc(dev.last_seen)} (${fmtRelative(dev.last_seen)})`),
     ].join('');
-    const sess = (d.sessions||[]).slice(0,10).map(s=>{
+    // Traffic summary across the reported sessions — so the total is visible
+    // even when individual sessions lack byte data (iOS, or short/idle Android).
+    const allSess = d.sessions || [];
+    const sumRecv = allSess.reduce((a,s)=>a+(s.bytes_recv||0),0);
+    const sumSent = allSess.reduce((a,s)=>a+(s.bytes_sent||0),0);
+    const sessTraffic = (sumRecv+sumSent) > 0
+      ? `<span style="font-family:var(--mono);color:var(--ok)">↓${fmtBytes(sumRecv)} ↑${fmtBytes(sumSent)}</span> across ${allSess.length} session(s)`
+      : (isIos ? `<span style="color:var(--muted-2)">per-session bytes aren't tracked on iOS — see the Quota row above for total plan usage</span>`
+               : `<span style="color:var(--muted-2)">no per-session traffic reported yet</span>`);
+    const sess = allSess.slice(0,10).map(s=>{
       const hasBytes = (s.bytes_recv||0)+(s.bytes_sent||0) > 0;
+      const idle = !hasBytes && (s.duration_secs||0) > 0;
       const trafficCell = hasBytes
         ? `<span style="font-family:var(--mono)">↓${fmtBytes(s.bytes_recv)} ↑${fmtBytes(s.bytes_sent)}</span>`
-        : (isIos ? `<span style="color:var(--muted-2)" title="iOS proxy — byte counting not available">—</span>`
-                 : `<span style="color:var(--muted-2)">—</span>`);
+        : (isIos ? `<span style="color:var(--muted-2)" title="iOS proxy — byte counting not available">not tracked (iOS)</span>`
+                 : (idle ? `<span style="color:var(--muted-2)" title="connected but no measured traffic">idle</span>`
+                         : `<span style="color:var(--muted-2)">—</span>`));
       return `<tr>
         <td style="font-size:.68rem">${fmtRelative(s.ended_at)}</td>
         <td style="font-size:.68rem">${protoBadge(s.protocol)}</td>
@@ -3355,6 +3732,7 @@ window.devDetail = async function(did) {
     $('devDetailBody').innerHTML = `
       ${devRows}
       <div style="margin-top:.9rem;font-size:.72rem;font-weight:600;color:var(--muted)">RECENT SESSIONS <span style="font-weight:400;color:var(--muted-2)">— this device only</span></div>
+      <div style="font-size:.7rem;margin:.25rem 0 .1rem">Session traffic: ${sessTraffic}</div>
       <table class="tbl" style="margin-top:.3rem"><thead><tr>
         <th>When</th><th>Protocol</th><th>Traffic</th><th>Duration</th><th>Probe</th><th>Error</th><th>Reported from</th>
       </tr></thead><tbody>${sess}</tbody></table>

@@ -6,17 +6,24 @@ import {
 import { Colors, Typography, Spacing, Radius, Layout, Shadow } from '../design/tokens';
 import { ConnectButton } from '../components/ConnectButton';
 import { GoldBeatBurst } from '../components/GoldBeatBurst';
+import { StarlinkHeroCard } from '../components/StarlinkHeroCard';
+import { StarlinkCelebration } from '../components/StarlinkCelebration';
 import { StatusBadge }   from '../components/StatusBadge';
+import { TopBar }             from '../components/TopBar';
 import { MetricPill }    from '../components/MetricPill';
 import { CoverageIcon }  from '../components/CoverageIcon';
 import { GlassCard }     from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
 import { WatchAdCard } from '../components/WatchAdCard';
+import { HomeBanner } from '../components/HomeBanner';
 
 import { useVpnStore }         from '../stores/vpnStore';
 import { useAuthStore }        from '../stores/authStore';
+import { useZarStore }         from '../stores/zarStore';
 import { useAIStore }          from '../stores/aiStore';
 import { useServerStore }      from '../stores/serverStore';
+import { useStarlinkStore }    from '../stores/starlinkStore';
+import { useSettingsStore }    from '../stores/settingsStore';
 import { useSessionTimer }     from '../hooks/useSessionTimer';
 import { useSessionLifecycle } from '../hooks/useSessionLifecycle';
 import { useGreeting }         from '../hooks/useGreeting';
@@ -26,12 +33,8 @@ import { computeHealthScore, dnsOkFromConnectionLog } from '../utils/healthScore
 import { getLastConnectProbeOk } from '../services/vpnBridge';
 import { useT, trPhrase }     from '../i18n';
 import { connectingPhaseLabel } from '../services/failureClassifier';
-import { initAds, preloadInterstitial, showInterstitialOnConnect } from '../services/adsService';
+import { initAds, preloadInterstitial, showInterstitialOnConnect, showInterstitialAfterConnect } from '../services/adsService';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_CONNECTED    = require('../assets/logo_connected.png') as number;
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const LOGO_DISCONNECTED = require('../assets/logo_disconnected.png') as number;
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const LOGO_MARK         = require('../assets/logo_mark.png') as number;
 
@@ -89,6 +92,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   const { greeting } = useGreeting();
   const user = useAuthStore((s) => s.user);
+  const authToken = useAuthStore((s) => s.token);
   const autoConnect = useAIStore((s) => s.autoConnect);
   const getImportedCreds = useServerStore((s) => s.getImportedCreds);
   const selectedId = useServerStore((s) => s.selectedId);
@@ -119,6 +123,34 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     if (isConnected && !wasConnectedRef.current) setGoldBurst(k => k + 1);
     wasConnectedRef.current = isConnected;
   }, [isConnected]);
+
+  // b97: Starlink unlock/progress card data — fetched on mount and refreshed
+  // after every connect (invite progress and hasConnected can both change).
+  const starlinkStatus = useStarlinkStore((s) => s.status);
+  useEffect(() => {
+    if (authToken) useStarlinkStore.getState().fetch(authToken);
+  }, [authToken]);
+
+  // "Satellite Route Active" — once-per-device first-connect achievement
+  // (b97 addendum #2). Server truth (`hasConnected`, node_usage-backed,
+  // survives reinstalls) is the real gate; the local settingsStore flag is
+  // only a same-session guard against a stale/slow usage-record double
+  // firing this. Own ref (not shared with the gold-burst effect above) so
+  // effect execution order between the two can never matter.
+  const [starlinkBurst, setStarlinkBurst] = useState(0);
+  const wasConnectedForStarlinkRef = useRef(false);
+  useEffect(() => {
+    const justConnected = isConnected && !wasConnectedForStarlinkRef.current;
+    if (justConnected && selectedServer?.nodeType === 'STARLINK') {
+      const settings = useSettingsStore.getState();
+      if (starlinkStatus?.hasConnected === false && !settings.hasSeenStarlinkCelebration) {
+        settings.markStarlinkCelebrationSeen();
+        setStarlinkBurst(k => k + 1);
+      }
+      if (authToken) useStarlinkStore.getState().fetch(authToken);
+    }
+    wasConnectedForStarlinkRef.current = isConnected;
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Friendly status message shown below connect button while connecting
   const connectingLabel = (() => {
@@ -151,15 +183,41 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
     ]).start();
   }, []);
 
-  // Warm up an interstitial so it's ready by the first Connect tap (free users
-  // only — premium is ad-free). Best-effort; failures are silent.
+  // Warm up an interstitial so it's ready by the first Connect tap. Ad gates are
+  // FAIL-CLOSED: ads only when the plan is known to be 'free' — an unloaded or
+  // stale-synced user must never show a premium account an ad. Best-effort.
   useEffect(() => {
-    if (user && user.plan !== 'free') return;
+    if (user?.plan !== 'free') return;
     initAds().then(preloadInterstitial).catch(() => {});
   }, [user?.plan]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Where Google is unreachable outside the tunnel (Iran), the tap-time ad is
+  // never ready — show it once the tunnel is up instead, so the ad streams
+  // through the tunnel instead of flashing blank.
+  const adShownAtTapRef = useRef(false);
+  const wasConnectedForAdsRef = useRef(false);
+  useEffect(() => {
+    if (isConnected && !wasConnectedForAdsRef.current) {
+      if (user?.plan === 'free' && !adShownAtTapRef.current) {
+        showInterstitialAfterConnect();
+      }
+      adShownAtTapRef.current = false;
+    }
+    wasConnectedForAdsRef.current = isConnected;
+  }, [isConnected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tap-to-earn: while connected the coin mints ZAR (Shahnameh currency,
+  // REAL conversion comes later). Disconnect lives on the TopBar power icon
+  // and as hold-to-disconnect on the coin itself.
+  const zarBalance = useZarStore((s) => s.balance);
+  const [zarCapped, setZarCapped] = useState(false);
   const handleConnect = () => {
-    if (connectionState === 'connected') { disconnect(); return; }
+    if (connectionState === 'connected') {
+      const res = useZarStore.getState().tap();
+      setZarCapped(res.capped);
+      if (res.earned > 0) setGoldBurst(k => k + 1);
+      return;
+    }
     if (connectionState === 'idle' || connectionState === 'failed') {
       // Block connect when free quota is exhausted
       if (user && user.plan === 'free' && user.quotaBytesUsed >= user.quotaBytesTotal) {
@@ -168,13 +226,30 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
       }
       // Start connecting first so the ad can never delay or block the tunnel.
       connect();
-      // Best-effort ad revenue on each new connection — free users only, and
-      // only if an interstitial is already loaded (never blocks connect).
-      if (!user || user.plan === 'free') {
-        showInterstitialOnConnect();
-      }
+      // Best-effort ad revenue on each new connection — only for users KNOWN to
+      // be on the free plan, and only if an interstitial is already loaded.
+      adShownAtTapRef.current = user?.plan === 'free'
+        ? showInterstitialOnConnect()
+        : false;
     }
   };
+
+  // Starlink hero card actions (b97). "Connect via Starlink" selects the
+  // Starlink node then reuses whatever connect path is already correct for
+  // the current state (fresh connect vs. switching an active session) —
+  // same split ServersScreen uses elsewhere for server selection.
+  const handleStarlinkConnect = () => {
+    const nodeId = starlinkStatus?.node?.id;
+    if (!nodeId) return;
+    useServerStore.getState().selectServer(nodeId);
+    if (connectionState === 'connected') {
+      useVpnStore.getState().switchServer();
+    } else if (connectionState === 'idle' || connectionState === 'failed') {
+      connect();
+    }
+  };
+  const handleStarlinkInvite  = () => (onNavigate as (tab: string) => void)('profile');
+  const handleStarlinkUpgrade = () => (onNavigate as (tab: string) => void)('upgrade');
 
   const protocol = selectedServer
     ? `${selectedServer.protocol} · ${selectedServer.transport}`
@@ -183,39 +258,28 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
   return (
     <View style={styles.screen}>
       {isConnected && <View style={styles.ambientGlow} pointerEvents="none" />}
+      {/* Positioned relative to the screen root (not the scroll content) so
+          it overlays the top of the viewport regardless of scroll offset. */}
+      <StarlinkCelebration burstKey={starlinkBurst} />
 
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+        {/* Header — B-16 declutter: dropped the in-app "Realink" logo+wordmark
+            row (purely decorative — the user already knows what app this is)
+            and the raw device/user-id line (still visible on Profile via
+            IdentityHeader). One text line + the action row, not four. */}
         <Animated.View style={[styles.header, { opacity: headerOpacity }]}>
-          <View style={styles.brandBlock}>
-            <View style={styles.brandRow}>
-              <Image source={isConnected ? LOGO_CONNECTED : LOGO_DISCONNECTED} style={styles.brandLogoSmall} resizeMode="contain" />
-              <Text style={styles.brandName}>Realink</Text>
-            </View>
-            <Text style={styles.greeting}>{t(greeting)}</Text>
-            {user && (user.userId || user.deviceId) && (
-              <Text style={styles.userId} numberOfLines={1}>
-                {user.userId || `SL-???-${user.deviceId.slice(-8).toUpperCase()}`}
-              </Text>
-            )}
-          </View>
+          <Text style={styles.greeting} numberOfLines={1}>{t(greeting)}</Text>
           <View style={styles.headerActions}>
             <CoverageIcon
               quality={healthScore}
               connected={isConnected}
               onPress={() => onNavigate('ai')}
             />
-            <TouchableOpacity
-              style={styles.settingsBtn}
-              onPress={() => onNavigate('settings' as NavTab)}
-              activeOpacity={0.75}
-            >
-              <Text style={styles.settingsIcon}>⚙</Text>
-            </TouchableOpacity>
+            <TopBar onNavigate={onNavigate as (tab: string) => void} />
           </View>
         </Animated.View>
 
@@ -237,19 +301,82 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
           )}
         </Animated.View>
 
-        {/* Connect button */}
+        {/* Server pill — B-17: moved ahead of the connect button (glanceable
+            info first, primary action lower on the screen, closer to thumb
+            reach). */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+          <TouchableOpacity
+            style={[styles.serverPill, isConnected && styles.serverPillActive]}
+            onPress={() => onNavigate('servers')}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
+            <View style={styles.serverInfo}>
+              <View style={styles.serverNameRow}>
+                <Text style={styles.serverName}>
+                  {selectedServer ? selectedServer.country : t('home.selectServer')}
+                </Text>
+                {/* Starlink exit indicator -- only while actually connected through
+                    one, not just when one happens to be selected/queued (matches
+                    the "connected to a Starlink exit" requirement, not "picked").
+                    Relocated here 2026-07-17 during the b20-b22 merge: B-17 moved
+                    the server pill up above the connect button, this is now the
+                    only copy that actually renders. */}
+                {isConnected && selectedServer?.nodeType === 'STARLINK' && (
+                  <View style={styles.starlinkBadge}>
+                    <Text style={styles.starlinkBadgeText}>🛰 {t('srv.starlink')}</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.serverSub}>
+                {selectedServer
+                  ? `${selectedServer.city} · ${selectedServer.protocol}`
+                  : t('home.tapToChoose')}
+              </Text>
+            </View>
+            <View style={styles.serverMeta}>
+              <View style={[styles.pingDot, { backgroundColor: Colors.emerald[400] }]} />
+              <Text style={styles.serverPing}>{selectedServer?.ping ?? '—'}ms</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        {/* Connect button — B-17: ring shrunk (188 → 152, ConnectButton.tsx)
+            and moved down in the scroll order (was right under the status
+            row) so it sits lower on the initial viewport, closer to natural
+            thumb reach. Right-biased (not centered): the button+burst cluster
+            aligns to the right edge of the content column, with enough
+            paddingRight (Spacing[10]=40, on top of the 20px screen padding)
+            to clear AnimatedRing's pulse overflow (scales to 1.6x = ~46px
+            beyond the button's edge) without clipping on narrow phones —
+            see DECISIONS.md for the exact clearance math. */}
         <Animated.View style={[
           styles.connectArea,
           { transform: [{ translateY: contentTranslate }] },
         ]}>
-          <ConnectButton
-            state={BUTTON_STATE_MAP[connectionState]}
-            onPress={handleConnect}
-            disabled={isTransitioning}
-          />
+          <View style={styles.connectButtonCluster}>
+            <ConnectButton
+              state={BUTTON_STATE_MAP[connectionState]}
+              onPress={handleConnect}
+              onLongPress={isConnected ? disconnect : undefined}
+              disabled={isTransitioning}
+            />
+            {/* Heartbeat of the network — gold REAL coins pulse out on connect.
+                Moved inside the same shrink-wrapped cluster as the button so
+                its absoluteFillObject layer centers on the button itself,
+                not the old full-width connectArea centre. */}
+            <GoldBeatBurst burstKey={goldBurst} />
+          </View>
           {isConnected && <Text style={styles.timer}>{timer}</Text>}
-          {/* Heartbeat of the network — gold REAL coins pulse out on connect */}
-          <GoldBeatBurst burstKey={goldBurst} />
+          {isConnected && (
+            <View style={styles.zarPill}>
+              <Text style={styles.zarText}>⚡ {zarBalance} ZAR</Text>
+              <Text style={styles.zarHint}>
+                {zarCapped ? t('home.zarCapReached') : t('home.zarHint')}
+              </Text>
+            </View>
+          )}
         </Animated.View>
 
         {/* Smart status — friendly message while connecting */}
@@ -275,32 +402,6 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             </TouchableOpacity>
           </Animated.View>
         )}
-
-        {/* Server pill */}
-        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
-          <TouchableOpacity
-            style={[styles.serverPill, isConnected && styles.serverPillActive]}
-            onPress={() => onNavigate('servers')}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.serverFlag}>{selectedServer?.flag ?? '🌐'}</Text>
-            <View style={styles.serverInfo}>
-              <Text style={styles.serverName}>
-                {selectedServer ? selectedServer.country : t('home.selectServer')}
-              </Text>
-              <Text style={styles.serverSub}>
-                {selectedServer
-                  ? `${selectedServer.city} · ${selectedServer.protocol}`
-                  : t('home.tapToChoose')}
-              </Text>
-            </View>
-            <View style={styles.serverMeta}>
-              <View style={[styles.pingDot, { backgroundColor: Colors.emerald[400] }]} />
-              <Text style={styles.serverPing}>{selectedServer?.ping ?? '—'}ms</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        </Animated.View>
 
         {/* Metric row */}
         <Animated.View style={[styles.metricRow, { transform: [{ translateY: contentTranslate }] }]}>
@@ -353,6 +454,28 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
               <Text style={styles.aiArrowText}>›</Text>
             </View>
           </TouchableOpacity>
+        </Animated.View>
+
+        {/* b97: Starlink unlock/progress card — replaces the old Shahnameh
+            promo slot, first in the repurposed promo order (Starlink, then
+            the ad/reward surfaces below). Renders null until the first
+            fetch resolves or if the server has no Starlink node configured
+            at all — never an empty gap. */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }] }}>
+          <StarlinkHeroCard
+            status={starlinkStatus}
+            isConnectedViaStarlink={isConnected && selectedServer?.nodeType === 'STARLINK'}
+            onConnect={handleStarlinkConnect}
+            onInvite={handleStarlinkInvite}
+            onUpgrade={handleStarlinkUpgrade}
+          />
+        </Animated.View>
+
+        {/* B-19: Home's two ad surfaces — 1 AdMob banner (rotates with the
+            ecosystem promo, was built but never wired in) + 1 rewarded-video
+            invite card. Both already gate ad-free for premium internally. */}
+        <Animated.View style={{ transform: [{ translateY: contentTranslate }], marginTop: Spacing[3] }}>
+          <HomeBanner showAds={user?.plan === 'free'} />
         </Animated.View>
 
         {/* Watch ad → earn data */}
@@ -466,12 +589,9 @@ const styles = StyleSheet.create({
   content:      { paddingTop: Layout.statusBarHeight, paddingHorizontal: Layout.screenPadding, gap: Spacing[4] },
   header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: Spacing[2] },
   headerActions:{ flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
-  brandBlock:   { flex: 1, gap: 2 },
-  brandRow:     { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  brandLogoSmall: { width: 22, height: 22 },
-  brandName:    { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: 0.5 },
-  greeting:     { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, letterSpacing: Typography.tracking.wide },
-  userId:       { fontSize: Typography.size.xs, fontFamily: Typography.family.mono, color: Colors.emerald[400], letterSpacing: 0.5, marginTop: 1 },
+  // B-16: the sole header text line now (brand logo/wordmark + raw device-id
+  // line removed — decorative/redundant, see the header comment above).
+  greeting:     { flex: 1, fontSize: Typography.size.lg, fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight, marginRight: Spacing[3] },
   settingsBtn:  { width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.bg.surface, borderWidth: 1, borderColor: Colors.border.default, alignItems: 'center', justifyContent: 'center' },
   settingsIcon: { fontSize: 18, color: Colors.text.secondary },
   statusRow:    { flexDirection: 'row', alignItems: 'center', gap: Spacing[3], flexWrap: 'wrap' },
@@ -489,14 +609,36 @@ const styles = StyleSheet.create({
   errorCard:      { backgroundColor: 'rgba(255,80,80,0.08)', borderRadius: Radius.xl, borderWidth: 1, borderColor: 'rgba(255,80,80,0.25)', padding: Spacing[4], alignItems: 'center', gap: Spacing[1] },
   errorCardText:  { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.status.disconnected, textAlign: 'center' },
   errorCardHint:  { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted },
-  connectArea:  { alignItems: 'center', paddingVertical: Spacing[4], gap: Spacing[3] },
+  // B-17: right-biased thumb zone. paddingRight clears AnimatedRing's max
+  // pulse overflow (~46px beyond the 152px button's edge at 1.6x scale) —
+  // see the header comment above where this is used for the full math.
+  connectArea:  { alignItems: 'flex-end', paddingVertical: Spacing[4], paddingRight: Spacing[10], gap: Spacing[3] },
+  connectButtonCluster: { alignItems: 'center', justifyContent: 'center' },
   timer:        { fontSize: Typography.size.md, fontFamily: Typography.family.mono, color: Colors.text.secondary, letterSpacing: 2 },
+  zarPill:      { alignItems: 'center', gap: 2, marginTop: Spacing[1] },
+  zarText:      { fontSize: Typography.size.md, fontFamily: Typography.family.heading, color: Colors.gold[400], letterSpacing: 1 },
+  zarHint:      { fontSize: Typography.size.xs, color: Colors.text.muted },
   serverPill:   { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.bg.surface, borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.border.default, padding: Spacing[4], gap: Spacing[3] },
   serverPillActive: { borderColor: Colors.border.glow, backgroundColor: 'rgba(0,232,122,0.04)' },
   serverFlag:   { fontSize: 28 },
   serverInfo:   { flex: 1 },
+  serverNameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing[2] },
   serverName:   { fontSize: Typography.size.base, fontFamily: Typography.family.heading, color: Colors.text.primary },
   serverSub:    { fontSize: Typography.size.xs, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
+  starlinkBadge: {
+    backgroundColor: 'rgba(120,180,255,0.14)',
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(120,180,255,0.35)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  starlinkBadgeText: {
+    fontSize: 9,
+    fontFamily: Typography.family.label,
+    color: '#78B4FF',
+    letterSpacing: 0.3,
+  },
   serverMeta:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pingDot:      { width: 6, height: 6, borderRadius: 3 },
   serverPing:   { fontSize: Typography.size.sm, fontFamily: Typography.family.mono, color: Colors.emerald[400] },

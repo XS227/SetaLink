@@ -395,6 +395,60 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
         })
     }
 
+    // Connection Diagnostics (2026-07-20): network type + best-effort cellular
+    // generation for connect_telemetry (see docs/CONNECTION_DIAGNOSTICS.md).
+    // Entirely wrapped in runCatching, same defensive style as
+    // getDeviceFingerprint() below — dataNetworkType() has historically needed
+    // READ_PHONE_STATE (not declared in this app's manifest, see
+    // AndroidManifest.xml), so "generation" will realistically read "unknown"
+    // on most devices today. That's an honest "unknown", not a bug: the admin
+    // Connection Diagnostics page treats it as "we didn't measure this",
+    // distinct from a 0% value. Wifi/mobile "type" does NOT need that
+    // permission (ConnectivityManager + ACCESS_NETWORK_STATE only, already
+    // declared) and works the same way XrayVpnService.detectNetworkType() does.
+    @ReactMethod
+    fun getNetworkInfo(promise: Promise) {
+        val type = runCatching {
+            val cm = reactContext.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? android.net.ConnectivityManager
+            val net = cm?.activeNetwork
+            val caps = net?.let { cm.getNetworkCapabilities(it) }
+            when {
+                caps == null -> "unknown"
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)     -> "wifi"
+                caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "mobile"
+                else -> "unknown"
+            }
+        }.getOrDefault("unknown")
+
+        val generation = runCatching {
+            val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE)
+                as? android.telephony.TelephonyManager
+            when (tm?.dataNetworkType) {
+                android.telephony.TelephonyManager.NETWORK_TYPE_NR -> "5g"
+                android.telephony.TelephonyManager.NETWORK_TYPE_LTE,
+                android.telephony.TelephonyManager.NETWORK_TYPE_LTE_CA -> "4g"
+                android.telephony.TelephonyManager.NETWORK_TYPE_UMTS,
+                android.telephony.TelephonyManager.NETWORK_TYPE_HSDPA,
+                android.telephony.TelephonyManager.NETWORK_TYPE_HSUPA,
+                android.telephony.TelephonyManager.NETWORK_TYPE_HSPA,
+                android.telephony.TelephonyManager.NETWORK_TYPE_HSPAP,
+                android.telephony.TelephonyManager.NETWORK_TYPE_EVDO_0,
+                android.telephony.TelephonyManager.NETWORK_TYPE_EVDO_A,
+                android.telephony.TelephonyManager.NETWORK_TYPE_EVDO_B -> "3g"
+                android.telephony.TelephonyManager.NETWORK_TYPE_EDGE,
+                android.telephony.TelephonyManager.NETWORK_TYPE_GPRS,
+                android.telephony.TelephonyManager.NETWORK_TYPE_CDMA -> "2g"
+                else -> "unknown"
+            }
+        }.getOrDefault("unknown")
+
+        promise.resolve(WritableNativeMap().apply {
+            putString("type", type)
+            putString("generation", generation)
+        })
+    }
+
     @ReactMethod
     fun getAndroidId(promise: Promise) {
         val androidId = android.provider.Settings.Secure.getString(
@@ -460,11 +514,22 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
             // SIM/network country is the only geo signal that survives the
             // tunnel: requests through the VPN exit in Germany, but the SIM
             // still says IR/TR. Used for the admin country analytics + flags.
-            val simCountry = runCatching {
-                val tm = reactContext.getSystemService(Context.TELEPHONY_SERVICE)
+            val tm = runCatching {
+                reactContext.getSystemService(Context.TELEPHONY_SERVICE)
                     as android.telephony.TelephonyManager
-                (tm.simCountryIso.takeIf { it.isNotBlank() } ?: tm.networkCountryIso ?: "")
+            }.getOrNull()
+            val simCountry = runCatching {
+                (tm?.simCountryIso?.takeIf { it.isNotBlank() } ?: tm?.networkCountryIso ?: "")
                     .uppercase()
+            }.getOrDefault("")
+            // Carrier/operator NAME — the signal that lets the panel do
+            // per-operator learned routing (Hetzner is blackholed on Irancell/TCI
+            // but works on MCI; the Stealth node saves Irancell/TCI). No runtime
+            // permission is required for the operator name. Prefer the SIM
+            // operator (the real carrier) over the (roaming) network operator.
+            val carrierName = runCatching {
+                (tm?.simOperatorName?.takeIf { it.isNotBlank() }
+                    ?: tm?.networkOperatorName ?: "").trim()
             }.getOrDefault("")
             promise.resolve(WritableNativeMap().apply {
                 putString("android_id_hash",  androidIdHash)
@@ -474,6 +539,7 @@ class XrayModule(private val reactContext: ReactApplicationContext) :
                 putString("android_version",  android.os.Build.VERSION.RELEASE)
                 putString("abi",              android.os.Build.SUPPORTED_ABIS.joinToString(","))
                 putString("sim_country",      simCountry)
+                putString("carrier_name",     carrierName)
             })
         } catch (e: Exception) {
             promise.resolve(WritableNativeMap())

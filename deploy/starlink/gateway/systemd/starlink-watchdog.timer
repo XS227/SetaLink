@@ -1,0 +1,15 @@
+[Unit]
+Description=Run ReaLink Starlink gateway watchdog every ~60s
+
+[Timer]
+# 30s OnBootSec, offset from the heartbeat timer's 15s, so the very first
+# watchdog pass runs after wg-quick's own boot-time bring-up has had a
+# moment to settle, but still well within the first minute after reboot --
+# no manual "kick it once" step needed, unlike the Windows Surface path.
+OnBootSec=30s
+OnUnitActiveSec=60s
+AccuracySec=1s
+Unit=starlink-watchdog.service
+
+[Install]
+WantedBy=timers.target

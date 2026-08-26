@@ -1,0 +1,15 @@
+[Unit]
+Description=Run ReaLink Starlink gateway heartbeat every ~30s
+
+[Timer]
+# OnBootSec so the first heartbeat fires quickly after boot rather than
+# waiting a full period -- this is the Linux side of "automatic recovery
+# after reboot": the gateway starts reporting (and picking up any queued
+# Node Console commands) within seconds of coming back up, no manual step.
+OnBootSec=15s
+OnUnitActiveSec=30s
+AccuracySec=1s
+Unit=starlink-heartbeat.service
+
+[Install]
+WantedBy=timers.target

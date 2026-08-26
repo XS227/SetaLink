@@ -38,6 +38,35 @@ export function clearNetworkInfoCache(): void {
   _cacheExpiry = 0;
 }
 
+// ── Connection type (Connection Diagnostics, 2026-07-20) ───────────────────────
+// Wifi/cellular + best-effort cellular generation. Distinct from getNetworkInfo()
+// above, which resolves IP addresses, not connection type. Neither this file's
+// existing dependency (react-native-network-info, IP/SSID only) nor anything
+// else in package.json does connection-type detection, so this reads a small
+// native XrayModule.getNetworkInfo() bridge method (Android: ConnectivityManager
+// + TelephonyManager, both defensively wrapped; iOS: NWPathMonitor + CoreTelephony)
+// added alongside it — see docs/CONNECTION_DIAGNOSTICS.md.
+
+export interface ConnectionType {
+  type:       'wifi' | 'mobile' | 'unknown';
+  generation: '5g' | '4g' | '3g' | '2g' | 'unknown';
+}
+
+export async function getConnectionType(): Promise<ConnectionType> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { NativeModules } = require('react-native');
+    const info = await NativeModules?.XrayModule?.getNetworkInfo?.();
+    const type: ConnectionType['type'] =
+      info?.type === 'wifi' || info?.type === 'mobile' ? info.type : 'unknown';
+    const generation: ConnectionType['generation'] =
+      ['5g', '4g', '3g', '2g'].includes(info?.generation) ? info.generation : 'unknown';
+    return { type, generation };
+  } catch {
+    return { type: 'unknown', generation: 'unknown' };
+  }
+}
+
 async function fetchLocalIp(): Promise<string | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires

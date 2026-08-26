@@ -1,0 +1,12 @@
+[Unit]
+Description=ReaLink Starlink gateway heartbeat (one-shot, fired by starlink-heartbeat.timer)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/starlink-gateway/heartbeat.sh
+# Never let a hung curl/ping wedge the timer permanently -- next tick just
+# starts a fresh run. Matches heartbeat.sh's own --max-time 6 curl timeout
+# plus headroom for the ping/wg checks.
+TimeoutStartSec=25

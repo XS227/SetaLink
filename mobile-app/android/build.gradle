@@ -2,8 +2,8 @@ buildscript {
     ext {
         buildToolsVersion = "34.0.0"
         minSdkVersion     = 24
-        compileSdkVersion = 34
-        targetSdkVersion  = 34
+        compileSdkVersion = 35
+        targetSdkVersion  = 35
         ndkVersion        = "26.1.10909125"
         kotlinVersion     = "1.9.24"
     }
@@ -19,4 +19,17 @@ buildscript {
 
 plugins {
     id("com.facebook.react.rootproject")
+}
+
+// Sonatype's legacy OSSRH host (oss.sonatype.org) was sunset in 2025 and now
+// answers 504. The RN gradle plugin still injects it as a snapshots repo, and
+// any 5xx during resolution is fatal to the whole build once the Gradle cache
+// is cold. Every artifact we need lives on mavenCentral/google, so drop it.
+allprojects {
+    repositories.all { repo ->
+        if (repo instanceof MavenArtifactRepository
+                && repo.url.toString().contains('oss.sonatype.org')) {
+            repositories.remove(repo)
+        }
+    }
 }

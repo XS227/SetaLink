@@ -418,3 +418,153 @@ than an on-device test would tell us.
 **Not yet verified:** this was written on the VPS (1GB RAM, no local
 builds per house rules) — needs an actual device/simulator pass before
 the flag flips. Nothing here has been type-checked or run.
+
+### 2026-07-17 — Tap-to-Learn mobile contract: `app_category` dimension + ZAR reward framing (needs Agent A spec/decision)
+
+**Requested by:** Khabat, as the named "next milestone" after
+`docs/NODE_INTELLIGENCE_ARCHITECTURE.md` (Genome/Trust/Adaptive
+Routing/Evolution Layer, server-side, `feat/starlink-node-phase1`
+commit `7c71b5a`) — wiring real mobile-app telemetry into that engine so
+users earn Zar while anonymously contributing.
+**Owner of this spec:** written from the backend/`/v1/*` side (my
+territory per `COORDINATION_HUB.md`'s role split). The actual mobile-app
+work (`mobile-app/`) is Agent A's — this is the handshake this doc exists
+for, not an implementation.
+
+**Most of the transport already exists — read this first.** `POST
+/v1/telemetry/connect` with `event=tap` (and `trigger=tap`, `consent=1`,
+plus a `device-` bearer token) already records an anonymous observation
+AND triggers `ni_award_tap_contribution()` — rate-limited to one reward
+per 15 minutes per device, currently crediting the **quota-bonus ledger**
+(`qe_ledger_add()`, `tap_intel_reward_bytes` setting, default 2MB), the
+same mechanism ad-rewards use. **This is not building a reward path from
+scratch — it's specifying the two things that path is still missing.**
+
+#### 1. `app_category` — no contract exists yet, proposing one
+
+Fifth Genome dimension (`docs/NODE_INTELLIGENCE_ARCHITECTURE.md` §7 flags
+this as the one open gap). Proposed field on the existing telemetry POST:
+
+```
+POST /v1/telemetry/connect
+Authorization: Bearer device-<device_id>
+{ ..., "app_category": "streaming" }
+```
+
+**Proposed enum** (client-inferred, not user-declared — asking a user to
+categorize their own traffic is bad UX and adds a decision point to every
+tap): `streaming | messaging | social | gaming | browsing | other`. Open
+question back to Agent A: is there already a signal in the app (active
+foreground app detection, per-profile hints, whatever `probe_telegram`/
+`probe_instagram`'s existing per-app probes are based on) that could set
+this automatically, or does it need new client logic? If inference isn't
+reliable, `"other"` as the default is fine — the dimension degrades
+gracefully to the existing four when absent, per the architecture doc.
+**Not decided:** the exact enum. This is a proposal, not a spec — Agent A
+should counter-propose if the app's actual telemetry surface suggests
+different categories.
+
+#### 2. "Users earn Zar" — needs a decision, not an assumption
+
+Khabat's framing says users earn **Zar**. What's actually wired today
+credits **quota bytes**, not Zar — Zar is a Shahnameh-side, client-local
+concept (per the original Tap-to-Learn commit, `ec8de6d`: *"True ZAR/REAL
+crediting for taps is explicitly NOT built here... no existing
+remote-credit API from this side"*). That's still true. Two ways to close
+this gap, genuinely different in scope:
+
+- **(a) Framing only, no backend change:** the mobile app's UI copy calls
+  the existing quota-bonus reward "Zar" (or converts bytes→a displayed Zar
+  number client-side, cosmetically) without any new server-side crediting
+  path. Cheapest, ships immediately, but Zar shown here wouldn't be the
+  same Zar balance Shahnameh tracks — two numbers that only coincidentally
+  share a name.
+- **(b) Real Zar crediting:** a new integration between `/v1/telemetry/
+  connect`'s reward path and Shahnameh's actual Zar ledger — needs a
+  contract with Agent B (Shahnameh/ecosystem owner per the role split),
+  not something this doc can spec unilaterally since it's Agent B's
+  system. Bigger scope: auth between systems, idempotency, and reconciling
+  Shahnameh's own reward/anti-abuse rules with `ni_award_tap_contribution`'s
+  15-minute cooldown.
+
+**Not deciding this here** — flagging it before Agent A builds UI copy
+that implies (b) when only (a) exists, or vice versa. Khabat: which one?
+
+#### 3. Sampling / batching (original brief: 30-60s windows)
+
+Server-side rate limiting (`ni_telemetry_gate`'s per-IP/minute cap,
+`ni_award_tap_contribution`'s 15-minute reward cooldown) already bounds
+worst-case volume regardless of client cadence, so this is a
+recommendation, not a hard requirement: batch tap-triggered observations
+client-side into a single `/v1/telemetry/connect` call per ~30-60s
+connected window rather than one call per tap, per the original brief.
+Reduces request volume; does not change server-side behavior either way.
+
+**Status:** spec only. Nothing in `mobile-app/` has been touched. Server
+side already tolerates `app_category`'s absence and either reward framing
+choice without further backend work — (b) is the only path here that
+would require new backend work, and only after Agent B scopes it.
+
+### 2026-07-16 — B-22: Game moved into the footer tab bar; embedding study
+
+**Decided by Agent B:** keep the WebView embed A-10 already built
+(`GameScreen.tsx` + `ssoService.ts`), just rehome it from a Stack overlay
+into a `Tab.Screen` inside `MainTabs` (`AppNavigator.tsx`), so switching to
+the game feels like a normal tab instead of a "leaving the app" push
+transition. `types.ts`: `Game` moved from `RootStackParamList` to
+`MainTabParamList`. Footer (`BottomNav.tsx`): `TAB_KEYS` swaps `profile` →
+`game` (⚔); `Profile` stays registered as a `Tab.Screen` (still reachable —
+`TopBar` has its own profile icon on every screen), it's just off the
+visible footer now. Dropped the footer's unread-badge logic that lived on
+the old `profile` tab entry — `TopBar` already renders an independent inbox
+badge everywhere, so it was a duplicate, not a loss.
+
+**Embedding study — WebView vs. deeper embed, and why WebView wins here:**
+- **WebView (chosen, already built):** game stays a remote Next.js app, zero
+  APK size cost, ships/patches independently of app releases, no RN
+  reimplementation of Shahnameh's UI. Cost: one JS-bridge hop for anything
+  needing tighter native integration (haptics, push-token handoff, etc.) —
+  none of that is asked for in B-22, so the cost isn't paid today.
+- **Native re-embed (rejected):** would mean rebuilding Shahnameh's screens
+  in RN or shipping a second engine in-app — large scope, large APK/RAM
+  cost, and forks the game's UI from its own web release cadence. Nothing
+  in the B-16..B-25 spec asks for native-level integration (no haptics,
+  no shared navigation chrome), so there's no requirement this would
+  satisfy that WebView doesn't already.
+- **Micro-frontend / native module bridge (rejected):** more work than
+  either option for a win that only matters if the game needs to share
+  state with the VPN/identity stores in real time. It doesn't today —
+  `sso` JWT + `device_id` in the URL is the whole interface.
+- **Conclusion:** WebView, unchanged from A-10, is the right embed for what
+  B-22 actually asks (a footer tab, not deeper integration). Revisit only
+  if a future task needs bidirectional native↔game messaging.
+
+**Identity keys into the game — reviewed, no client change made:**
+B-22's spec mentions "two identity keys: Telegram id and ReaLink id."
+`buildGameUrl()` (`ssoService.ts`) currently passes `device_id` (the
+ReaLink/device identity) and, when linked, an `sso` JWT — no explicit
+`telegram_id` param. Traced where a Telegram identity would come from:
+`GameScreen.tsx`'s unlinked-state CTA already opens
+`https://t.me/shahnameh_bot?start=linkvpn_<deviceId>` — i.e. the
+Telegram↔ReaLink linkage is established server-side, inside the Shahnameh
+bot's `/start linkvpn_*` handler, which is Shahnameh backend code this repo
+doesn't own. So the "two keys" are already both present in the system —
+just not both in the URL: the game's own backend can already resolve
+`device_id` → linked Telegram account via that bot flow. Not adding a raw
+`telegram_id` client param since the app has no legitimate way to know a
+user's Telegram id in the first place (only the bot linking flow does).
+
+**Open question for Agent A / Shahnameh backend (posted to coord board):**
+confirm the game's WebView-side session lookup keys off `device_id` from
+the URL (not something else), so the `linkvpn_<deviceId>` bot handshake and
+`buildGameUrl`'s `device_id` param actually resolve to the same account. If
+they don't match today, that's the one gap left before this is fully wired.
+
+**Not yet verified:** same house-rules caveat as above — no `tsc`/Jest run
+on this VPS (1GB RAM, no local builds). Navigation restructuring reviewed
+by hand: `SCREEN_TO_TAB`/`TAB_TO_SCREEN` both extended for `Game`↔`game`,
+the dead `if (tab === 'game')` special-case in `makeOnNavigate` removed
+(now falls through to the generic `TAB_TO_SCREEN` lookup, which resolves
+correctly since `Game` is a sibling tab now), old `Stack.Screen name="Game"`
+removed. Needs an on-device pass to confirm the tab bar renders correctly
+and the WebView still loads/authenticates as before.

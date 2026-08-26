@@ -6,6 +6,7 @@ import {
 import { Colors, Typography, Spacing, Radius, Layout } from '../design/tokens';
 import { GlassCard }         from '../components/GlassCard';
 import { BottomNav, NavTab } from '../components/BottomNav';
+import { TopBar }            from '../components/TopBar';
 
 import { useAIStore, AI_MODES, AIFeatures } from '../stores/aiStore';
 import { formatRelativeTime }               from '../utils/formatters';
@@ -278,9 +279,12 @@ export function SmartAIScreen({ onNavigate, activeTab }: Props) {
             <Text style={styles.title}>{t('ai.title')}</Text>
             <Text style={styles.sub}>{t('ai.sub')}</Text>
           </View>
-          <View style={[styles.aiBadge, { borderColor: mode.accentColor + '50' }]}>
-            <View style={[styles.aiBadgeDot, { backgroundColor: mode.accentColor }]} />
-            <Text style={[styles.aiBadgeText, { color: mode.accentColor }]}>{t('ai.active')}</Text>
+          <View style={styles.headerRight}>
+            <View style={[styles.aiBadge, { borderColor: mode.accentColor + '50' }]}>
+              <View style={[styles.aiBadgeDot, { backgroundColor: mode.accentColor }]} />
+              <Text style={[styles.aiBadgeText, { color: mode.accentColor }]}>{t('ai.active')}</Text>
+            </View>
+            <TopBar onNavigate={onNavigate as (tab: string) => void} />
           </View>
         </View>
 
@@ -659,6 +663,7 @@ const styles = StyleSheet.create({
   scroll:         { flex: 1 },
   content:        { paddingTop: Layout.statusBarHeight + Spacing[2], paddingHorizontal: Layout.screenPadding, gap: Spacing[5] },
   header:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headerRight:    { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title:          { fontSize: Typography.size['2xl'], fontFamily: Typography.family.heading, color: Colors.text.primary, letterSpacing: Typography.tracking.tight },
   sub:            { fontSize: Typography.size.sm, fontFamily: Typography.family.body, color: Colors.text.muted, marginTop: 2 },
   aiBadge:        { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: Radius.full, paddingHorizontal: Spacing[3], paddingVertical: 6, backgroundColor: Colors.bg.surface },

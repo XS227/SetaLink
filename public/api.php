@@ -80,7 +80,7 @@ function init_device_tables(PDO $pdo): void {
         device_id          TEXT PRIMARY KEY,
         referral_code      TEXT UNIQUE,
         plan               TEXT    DEFAULT 'free',
-        quota_bytes_total  INTEGER DEFAULT 1073741824,
+        quota_bytes_total  INTEGER DEFAULT 5368709120,
         quota_bytes_used   INTEGER DEFAULT 0,
         valid_until        TEXT    DEFAULT NULL,
         blocked            INTEGER DEFAULT 0,
@@ -403,6 +403,9 @@ if ($method === 'GET') {
                 // Default OFF: the wallet card only makes sense once the
                 // Shahnameh-side wallet API is live (TASK_SPLIT.md B-1/B-2).
                 'wallet_enabled' => (bool)(int)($rcRows['rc_real_wallet_enabled'] ?? 0),
+                // Default OFF: gates the "Link TrustAI account" card on Profile
+                // (A-14); flip rc_trustai_link_enabled once B-9 is verified.
+                'trustai_link_enabled' => (bool)(int)($rcRows['rc_trustai_link_enabled'] ?? 0),
             ],
         ];
         // If there's a legacy composite blob, merge it but let per-key values win
@@ -537,6 +540,9 @@ if ($method === 'GET') {
             'user_id'           => $dev['user_id']        ?? '',
             'referral_code'     => $dev['referral_code'],
             'plan'              => $dev['plan'],
+            // Test-account flag, orthogonal to plan — lets a premium tester
+            // keep quota while exercising free-tier-gated features (ads).
+            'test_mode'         => (int)($dev['test_mode'] ?? 0) === 1,
             'quota_bytes_total' => (int)$dev['quota_bytes_total'],
             'quota_bytes_used'  => (int)$dev['quota_bytes_used'],
             'valid_until'       => $dev['valid_until'],
@@ -598,6 +604,139 @@ if ($method === 'GET') {
         if (!$deviceId) err('missing device_id');
         $pdo = db();
         ok(['transfers' => qe_transfer_history($pdo, $deviceId, 50)]);
+    }
+
+    if ($action === 'referral-earnings') {
+        // Ambassador model: the referrer earns a fixed % of each active
+        // invitee's usage, ongoing ("forever"). Powers the profile donut chart
+        // that shows how much comes in from each person they invited. This is a
+        // read-only computation (display) — the % is admin-tunable via the
+        // referral_earn_pct setting (default 10). Only credited/approved
+        // referrals count (TrustAI/risk-gated at referral time), so fraud
+        // doesn't inflate earnings.
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$deviceId) err('missing device_id');
+        $pdo = db();
+        $pct = 10.0;
+        try {
+            $v = $pdo->query("SELECT value FROM settings WHERE key='referral_earn_pct'")->fetchColumn();
+            if (is_numeric($v) && (float)$v > 0) $pct = (float)$v;
+        } catch (\Exception $e) {}
+        $st = $pdo->prepare(
+            "SELECT r.new_device_id AS did, COALESCE(d.user_id,'') AS uid,
+                    COALESCE(d.quota_bytes_used,0) AS used
+             FROM referral_uses r JOIN devices d ON d.device_id = r.new_device_id
+             WHERE r.referrer_device_id = ? AND r.status IN ('credited','approved')
+             ORDER BY used DESC"
+        );
+        $st->execute([$deviceId]);
+        $invitees = []; $total = 0;
+        foreach ($st->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $earned = (int)floor((int)$row['used'] * $pct / 100);
+            $total += $earned;
+            $invitees[] = [
+                'label'        => $row['uid'] !== '' ? $row['uid'] : ('SL-…' . substr((string)$row['did'], -6)),
+                'used_bytes'   => (int)$row['used'],
+                'earned_bytes' => $earned,
+            ];
+        }
+        ok([
+            'pct'                => $pct,
+            'count'              => count($invitees),
+            'total_earned_bytes' => $total,
+            'invitees'           => $invitees,
+        ]);
+    }
+
+    if ($action === 'handle-lookup' || $action === 'handle-reserve' || $action === 'handle-resolve') {
+        // Identity layer (A-11): unique, addressable @handles for ReaLink users.
+        // The registry lives on the panel because the panel owns the devices
+        // table (natural uniqueness authority). The app is local-first and only
+        // gates on this when reachable, so it degrades cleanly.
+        //   handle-lookup   -> availability (read-only)
+        //   handle-reserve  -> claim it for a device (+ optional profile)
+        //   handle-resolve  -> friend-add: handle -> public mini-profile
+        $pdo = db();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS device_handles (
+            handle       TEXT PRIMARY KEY,
+            device_id    TEXT NOT NULL UNIQUE,
+            display_name TEXT DEFAULT '',
+            avatar_emoji TEXT DEFAULT '',
+            avatar_color TEXT DEFAULT '',
+            created_at   TEXT DEFAULT (datetime('now')),
+            updated_at   TEXT DEFAULT (datetime('now'))
+        )");
+
+        // Server-side normalize + validate (mirrors utils/handle.ts).
+        $handle = strtolower(trim($_GET['handle'] ?? ''));
+        $handle = ltrim($handle, '@');
+        $handle = preg_replace('/\s+/', '', $handle);
+        $validHandle = (strlen($handle) >= 3 && strlen($handle) <= 20
+                        && preg_match('/^[a-z][a-z0-9_]*$/', $handle) === 1);
+
+        if ($action === 'handle-resolve') {
+            if (!$validHandle) err('invalid handle');
+            $st = $pdo->prepare(
+                "SELECT h.handle, h.device_id, COALESCE(d.user_id,'') AS user_id,
+                        h.display_name, h.avatar_emoji, h.avatar_color
+                 FROM device_handles h LEFT JOIN devices d ON d.device_id = h.device_id
+                 WHERE h.handle = ?");
+            $st->execute([$handle]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$row) ok(['found' => false]);
+            ok([
+                'found'        => true,
+                'handle'       => $row['handle'],
+                'device_id'    => $row['device_id'],
+                'user_id'      => $row['user_id'],
+                'display_name' => $row['display_name'],
+                'avatar_emoji' => $row['avatar_emoji'],
+                'avatar_color' => $row['avatar_color'],
+            ]);
+        }
+
+        $deviceId = trim($_GET['device_id'] ?? '');
+        if (!$validHandle) ok(['available' => false, 'reason' => 'invalid']);
+
+        // Who (if anyone) currently owns this handle?
+        $st = $pdo->prepare("SELECT device_id FROM device_handles WHERE handle = ?");
+        $st->execute([$handle]);
+        $owner = $st->fetchColumn();
+        $ownedByMe = ($owner !== false && $deviceId !== '' && $owner === $deviceId);
+        $available = ($owner === false || $ownedByMe);
+
+        if ($action === 'handle-lookup') {
+            ok(['available' => $available, 'reason' => $available ? '' : 'taken']);
+        }
+
+        // handle-reserve — claim it.
+        if ($deviceId === '') err('missing device_id');
+        if (!$available) ok(['available' => false, 'reason' => 'taken']);
+        // UTF-8-safe truncation without mbstring (not installed on this host).
+        $cut = function (string $s, int $n): string {
+            $chars = preg_split('//u', $s, -1, PREG_SPLIT_NO_EMPTY);
+            return $chars === false ? substr($s, 0, $n) : implode('', array_slice($chars, 0, $n));
+        };
+        $displayName = $cut(trim($_GET['display_name'] ?? ''), 40);
+        $emoji       = $cut(trim($_GET['avatar_emoji'] ?? ''), 4);
+        $color       = $cut(trim($_GET['avatar_color'] ?? ''), 9);
+        $pdo->beginTransaction();
+        try {
+            // A device holds at most one handle — release the old one first.
+            $del = $pdo->prepare("DELETE FROM device_handles WHERE device_id = ?");
+            $del->execute([$deviceId]);
+            $ins = $pdo->prepare(
+                "INSERT INTO device_handles
+                    (handle, device_id, display_name, avatar_emoji, avatar_color, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))");
+            $ins->execute([$handle, $deviceId, $displayName, $emoji, $color]);
+            $pdo->commit();
+        } catch (\Exception $e) {
+            $pdo->rollBack();
+            // Lost a race for the same handle (UNIQUE) — report as taken.
+            ok(['available' => false, 'reason' => 'taken']);
+        }
+        ok(['available' => true, 'reason' => '', 'reserved' => true]);
     }
 
     if ($action === 'sso-token') {
@@ -674,6 +813,8 @@ if ($method === 'POST') {
         $sdkVersion    = (int)($_POST['sdk_version'] ?? 0);
         $androidVer    = substr(trim($_POST['android_version'] ?? ''), 0, 20);
         $abi           = substr(trim($_POST['abi']             ?? ''), 0, 80);
+        // Carrier/operator name → feeds per-operator learned routing.
+        $carrier       = substr(trim($_POST['carrier']         ?? ''), 0, 80);
         if (!$deviceId) err('missing device_id');
 
         $clientIp = client_ip();
@@ -711,8 +852,9 @@ if ($method === 'POST') {
             $pdo->prepare(
                 "INSERT INTO devices
                     (device_id, user_id, referral_code, platform, app_version, language, country, country_name,
-                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online')"
+                     manufacturer, model, sdk_version, android_version, abi, android_id_hash, last_ip, status,
+                     quota_bytes_total)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'online', 5368709120)"
             )->execute([$deviceId, $uid, $code, $platform, $appVersion, $language,
                         $country, $countryName, $manufacturer, $model, $sdkVersion,
                         $androidVer, $abi, $androidIdHash, $clientIp]);
@@ -757,12 +899,21 @@ if ($method === 'POST') {
             $dev = $stmt->fetch();
         }
 
+        // Store the carrier separately (kept out of the big INSERT/UPDATE above
+        // to avoid touching their column lists). Only when the client sent one —
+        // never blank an existing value. Drives per-operator learned routing.
+        if ($carrier !== '') {
+            try { $pdo->prepare("UPDATE devices SET carrier=? WHERE device_id=?")->execute([$carrier, $deviceId]); }
+            catch (\Exception $e) { /* carrier column absent on very old schemas */ }
+        }
+
         $srv = fetch_bootstrap_server($pdo);
         ok([
             'device_id'           => $dev['device_id'],
             'user_id'             => $dev['user_id']        ?? '',
             'referral_code'       => $dev['referral_code'],
             'plan'                => $dev['plan'],
+            'test_mode'           => (int)($dev['test_mode'] ?? 0) === 1,
             'quota_bytes_total'   => (int)$dev['quota_bytes_total'],
             'quota_bytes_used'    => (int)$dev['quota_bytes_used'],
             'valid_until'         => $dev['valid_until'],
@@ -1405,6 +1556,16 @@ if ($method === 'POST') {
         if ($rawCfg !== '' && strlen($rawCfg) <= 32768) {
             file_put_contents($base . '.config.json', $rawCfg);
         }
+
+        // Storage Manager Fase 1 (2026-07-17): this endpoint is exactly what
+        // grows data/tunnel-logs/ unboundedly, so it's the natural place to
+        // opportunistically trim it back — same pattern as every other
+        // rotation function in this codebase (cheap probabilistic trigger,
+        // no cron needed). See lib/storage_manager.php.
+        try {
+            require_once __DIR__ . '/../lib/storage_manager.php';
+            sm_auto_cleanup();
+        } catch (\Throwable $_) {}
 
         ok(['saved' => $safe . '_' . $ts, 'lines' => count($lines)]);
     }

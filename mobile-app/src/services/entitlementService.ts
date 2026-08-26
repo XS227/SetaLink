@@ -165,6 +165,8 @@ export async function registerDevice(
     // SIM country survives the tunnel (request IP does not) — send it as the
     // country when the caller didn't supply one explicitly.
     if (!body.country && fp.sim_country) body.country = String(fp.sim_country);
+    // Carrier/operator name → drives per-operator learned routing server-side.
+    if (fp.carrier_name)    body.carrier         = String(fp.carrier_name);
     if (fp.android_id_hash) body.android_id_hash = String(fp.android_id_hash);
     if (fp.manufacturer)    body.manufacturer    = String(fp.manufacturer);
     if (fp.model)           body.model           = String(fp.model);

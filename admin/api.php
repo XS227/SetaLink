@@ -469,6 +469,25 @@ function normalize_platform(array $r): string {
     return 'android';
 }
 
+// Mirrors public/v1.php's v1_starlink_unlock() policy (premium OR test_mode
+// OR >= this-many verified active invites) so the admin panel can show the
+// same access decision the VPN gate actually uses, instead of admins having
+// to infer it from plan/test_mode by hand. Keep in sync with
+// public/v1.php's V1_STARLINK_INVITES_REQUIRED.
+const ADMIN_STARLINK_INVITES_REQUIRED = 11;
+function starlink_access_status(array $dev, int $invitesVerified): array {
+    if (($dev['plan'] ?? '') === 'premium') {
+        return ['unlocked' => true, 'reason' => 'premium'];
+    }
+    if ((int)($dev['test_mode'] ?? 0) === 1) {
+        return ['unlocked' => true, 'reason' => 'test_mode'];
+    }
+    if ($invitesVerified >= ADMIN_STARLINK_INVITES_REQUIRED) {
+        return ['unlocked' => true, 'reason' => 'invites'];
+    }
+    return ['unlocked' => false, 'reason' => null];
+}
+
 // ── Mobile POST ───────────────────────────────────────────────────────────
 if ($method === 'POST' && isset($_GET['mobile']) && $_GET['mobile'] === '1') {
     $tok = (string)($_POST['_token'] ?? $_GET['_token'] ?? '');
@@ -785,6 +804,174 @@ if ($method === 'POST') {
             api_ok(['allowed' => false, 'device_id' => $did, 'node_id' => $nid]);
         }
     }
+    // Starlink exit-node admin controls (Phase 1 — single test node, disabled
+    // by default). Every mutation is logged to starlink_admin_log for audit
+    // (docs/CLAUDE_REALINK_RULES.md Rule 3: admin visibility for new network
+    // features). Device allowlisting reuses node-allowlist-add/remove above —
+    // a Starlink node is just another node_id there.
+    if (in_array($action, [
+        'starlink-toggle-enabled', 'starlink-set-maintenance', 'starlink-force-fallback',
+        'starlink-generate-token', 'starlink-update-node',
+    ], true)) {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db  = open_analytics_db();
+        st_init_tables($db);
+        $nid = trim((string)($parsed['node_id'] ?? 'starlink-no-01'));
+        $node = st_get($db, $nid);
+        if (!$node) api_err('unknown starlink node', 404);
+
+        if ($action === 'starlink-toggle-enabled') {
+            $enabled = !empty($parsed['enabled']) ? 1 : 0;
+            $db->prepare("UPDATE starlink_nodes SET enabled=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$enabled, $nid]);
+            st_log($db, $nid, $auth_user, $enabled ? 'enable' : 'disable');
+            api_ok(['node_id' => $nid, 'enabled' => (bool)$enabled]);
+        }
+        if ($action === 'starlink-set-maintenance') {
+            $maint = !empty($parsed['maintenance']) ? 1 : 0;
+            $db->prepare("UPDATE starlink_nodes SET maintenance_mode=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$maint, $nid]);
+            st_log($db, $nid, $auth_user, $maint ? 'maintenance-on' : 'maintenance-off');
+            api_ok(['node_id' => $nid, 'maintenance_mode' => (bool)$maint]);
+        }
+        if ($action === 'starlink-force-fallback') {
+            // Stop routing new sessions here immediately without removing the
+            // node from the catalog — marks the tunnel down so health policy
+            // (st_health_state) reports OFFLINE until the next real heartbeat.
+            $db->prepare("UPDATE starlink_nodes SET tunnel_status='down', last_error=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute(['forced fallback by admin', $nid]);
+            st_log($db, $nid, $auth_user, 'force-fallback');
+            api_ok(['node_id' => $nid, 'forced' => true]);
+        }
+        if ($action === 'starlink-generate-token') {
+            // Returned ONCE in plaintext — only the hash is persisted. The
+            // admin must copy it into the gateway's heartbeat script now.
+            $secret = st_generate_heartbeat_token($db, $nid);
+            st_log($db, $nid, $auth_user, 'rotate-heartbeat-token');
+            api_ok(['node_id' => $nid, 'heartbeat_token' => "starlink-node-{$nid}:{$secret}"]);
+        }
+        if ($action === 'starlink-update-node') {
+            $displayName = trim((string)($parsed['display_name']  ?? $node['display_name']));
+            $uuid        = trim((string)($parsed['vless_uuid']    ?? $node['vless_uuid']));
+            $maxSessions = max(0, (int)($parsed['max_sessions']   ?? $node['max_sessions']));
+            $allocKbps   = max(0, (int)($parsed['allocated_kbps'] ?? $node['allocated_kbps']));
+            $db->prepare("UPDATE starlink_nodes SET display_name=?, vless_uuid=?, max_sessions=?, allocated_kbps=?, updated_at=datetime('now') WHERE node_id=?")
+               ->execute([$displayName, $uuid, $maxSessions, $allocKbps, $nid]);
+            st_log($db, $nid, $auth_user, 'update-config');
+            api_ok(['node_id' => $nid]);
+        }
+    }
+    // The VPS-side WireGuard peer info handed back by starlink-enroll.php —
+    // same settings-table convention as real_link_secret/real_api_key
+    // (INSERT OR REPLACE), not a new config mechanism. Set this once the
+    // rendezvous point is stable; re-run it if the rendezvous ever moves
+    // again (it already has once — see docs/STARLINK_WINDOWS_HANDOFF.md §13).
+    if ($action === 'starlink-set-wg-peer') {
+        $db = open_analytics_db();
+        $endpoint  = trim((string)($parsed['wg_endpoint']    ?? ''));
+        $publicKey = trim((string)($parsed['wg_public_key']  ?? ''));
+        if ($endpoint === '' || $publicKey === '') api_err('wg_endpoint and wg_public_key both required', 400);
+        $st = $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))");
+        $st->execute(['starlink_wg_endpoint', $endpoint]);
+        $st->execute(['starlink_wg_public_key', $publicKey]);
+        require_once __DIR__ . '/../lib/starlink.php';
+        st_log($db, '(settings)', $auth_user, 'set-wg-peer', "endpoint={$endpoint}");
+        api_ok(['wg_endpoint' => $endpoint, 'wg_public_key' => $publicKey]);
+    }
+    // Adaptive Routing feature flag + policy bonuses, and Node Console
+    // command enqueue. These were originally (mis)placed in the GET-only
+    // switch further down in this file -- the switch at "── Admin GET ──"
+    // is ONLY reached via $_GET['action'] and is never hit by a POST
+    // request (every POST either matches an earlier `if ($action === ...)`
+    // block here, or hits the `$allowed` cli-action catch-all's
+    // api_err('unknown action') a few hundred lines down and exits first).
+    // A state-changing action living only in the GET switch is reachable
+    // solely via a plain, CSRF-unprotected GET request -- moved here so
+    // they get the same $csrf_token check as everything else in this
+    // block, and read from $parsed (the JSON body) instead of $_POST
+    // (which is never populated for a JSON request body).
+    //
+    // RULE 7 (docs/CLAUDE_REALINK_RULES.md): routing-toggle is the ONLY
+    // place that can turn Adaptive Routing on — nothing in
+    // lib/node_intel.php or public/v1.php ever flips this setting itself.
+    if ($action === 'routing-toggle') {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $enabled = ((string)($parsed['enabled'] ?? '0')) === '1' ? '1' : '0';
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES ('adaptive_routing_enabled',?,datetime('now'))")
+            ->execute([$enabled]);
+        api_ok(['adaptive_routing_enabled' => $enabled === '1']);
+    }
+    // Set (or clear, with bonus=0) a policy bonus for one node or a whole
+    // node_type class — see ni_policy_bonus(). {node_id or node_type, bonus}
+    if ($action === 'routing-set-bonus') {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $nodeId   = trim((string)($parsed['node_id']   ?? ''));
+        $nodeType = trim((string)($parsed['node_type'] ?? ''));
+        $bonus    = (float)($parsed['bonus'] ?? 0);
+        if ($nodeId === '' && $nodeType === '') api_err('node_id or node_type required', 400);
+        $key = $nodeId !== '' ? "node_policy_bonus_{$nodeId}" : "node_policy_bonus_type_{$nodeType}";
+        $db->prepare("INSERT OR REPLACE INTO settings (key,value,updated_at) VALUES (?,?,datetime('now'))")
+            ->execute([$key, $bonus]);
+        api_ok(['key' => $key, 'bonus' => $bonus]);
+    }
+    // Node Console (Phase 1) — see docs/NODE_CONSOLE_ARCHITECTURE.md and
+    // lib/node_console.php. Trust boundary today is the same single-tier
+    // admin session ($auth_user) as every other action in this file —
+    // true Owner/Admin role separation is explicitly not built yet.
+    // {node_id, command_key, confirmed?, confirmed_twice?}
+    if ($action === 'node-command-enqueue') {
+        require_once __DIR__ . '/../lib/starlink.php';
+        require_once __DIR__ . '/../lib/node_console.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        nc_init_tables($db);
+        $nodeId     = trim((string)($parsed['node_id']     ?? ''));
+        $commandKey = trim((string)($parsed['command_key'] ?? ''));
+        $confirmed  = (string)($parsed['confirmed'] ?? '') === '1';
+        if ($nodeId === '' || $commandKey === '') api_err('node_id and command_key required', 400);
+
+        $node = st_get($db, $nodeId);
+        if (!$node) api_err('unknown node', 404);
+        $nodeType = strtolower((string)($node['node_type'] ?? 'starlink'));
+
+        $entry = NC_COMMAND_REGISTRY[$commandKey] ?? null;
+        if (!$entry) api_err('unknown command_key', 400);
+        if ($entry['confirm'] !== 'none' && !$confirmed) {
+            api_err('this command requires confirmation (confirmed=1)', 400);
+        }
+        // Phase 1 registry has no 'double'-confirm entries yet, but enforce
+        // the distinction now so adding one later doesn't need new plumbing.
+        if ($entry['confirm'] === 'double' && (string)($parsed['confirmed_twice'] ?? '') !== '1') {
+            api_err('this command requires double confirmation', 400);
+        }
+
+        $result = nc_enqueue_command($db, $nodeId, $nodeType, $commandKey, $auth_user);
+        if (!$result) api_err('command not available for this node type', 400);
+        api_ok($result);
+    }
+    // Phase 2: self-registration. Separate from the block above because this
+    // action runs BEFORE a node_id exists — it's what creates one. Manual
+    // provisioning (the block above) still works unchanged; this is an
+    // additional path for a brand-new gateway device.
+    if ($action === 'starlink-create-enrollment-token') {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        $displayName = trim((string)($parsed['display_name'] ?? ''));
+        $country     = trim((string)($parsed['country'] ?? '')) ?: 'Norway';
+        // Shown ONCE in plaintext, same convention as starlink-generate-token
+        // above — only its SHA-256 is persisted (see st_create_enrollment_token()
+        // for why this is a fast hash, unlike the heartbeat token).
+        $token = st_create_enrollment_token($db, $auth_user, $displayName, $country);
+        api_ok([
+            'enrollment_token' => $token,
+            'expires_in'       => STARLINK_ENROLLMENT_TTL_SECS,
+        ]);
+    }
     if ($action === 'send-message') {
         // In-app message to one device ('' target = broadcast to all).
         // No real push transport exists (no FCM): clients poll get-messages
@@ -822,6 +1009,25 @@ if ($method === 'POST') {
         // Keep the ledger invariant after a direct quota write.
         try { qe_reconcile($db, $did, 'admin set-quota'); } catch (Exception $e) {}
         api_ok(['quota_bytes_total' => $quota]);
+    }
+
+    if ($action === 'device-set-test-mode') {
+        // Marks a device as a TEST account, orthogonal to `plan` (Khabat,
+        // 2026-07-16): a premium tester keeps unlimited quota but test-gated
+        // functionality treats her like a tester — ads stay visible during a
+        // test period (client-side, once ad gating reads test_mode) and
+        // Starlink nodes auto-allow (v1_device_allowed()). Deliberately NOT a
+        // plan downgrade — that would also cost the device its quota.
+        $did  = trim((string)($parsed['device_id'] ?? ''));
+        $mode = (int)($parsed['test_mode'] ?? 0) === 1 ? 1 : 0;
+        if (!$did) api_err('device_id required');
+        $db = open_analytics_db();
+        init_device_tables($db);
+        try { $db->exec("ALTER TABLE devices ADD COLUMN test_mode INTEGER DEFAULT 0"); } catch (Exception $e) {}
+        $st = $db->prepare("UPDATE devices SET test_mode=? WHERE device_id=?");
+        $st->execute([$mode, $did]);
+        if ($st->rowCount() === 0) api_err('device not found', 404);
+        api_ok(['device_id' => $did, 'test_mode' => $mode === 1]);
     }
 
     if ($action === 'credit-package') {
@@ -1358,6 +1564,29 @@ switch ($action) {
         break;
     }
 
+    case 'starlink-list': {
+        require_once __DIR__ . '/../lib/starlink.php';
+        $db = open_analytics_db();
+        st_init_tables($db);
+        $nodes = st_all($db);
+        // Attach live health_state + allowlisted device count (reuses the
+        // existing generic node_allowlist table — see node-allowlist-add above).
+        foreach ($nodes as &$n) {
+            $n['health_state'] = st_health_state($n);
+            unset($n['heartbeat_token_hash']); // never expose, even hashed
+            $st = $db->prepare("SELECT device_id, added_at FROM node_allowlist WHERE node_id = ? ORDER BY added_at DESC");
+            $st->execute([$n['node_id']]);
+            $n['allowlist'] = $st->fetchAll(PDO::FETCH_ASSOC);
+        }
+        unset($n);
+        $log = $db->query("SELECT * FROM starlink_admin_log ORDER BY id DESC LIMIT 100")->fetchAll(PDO::FETCH_ASSOC);
+        // Phase 2: pending self-enrollment tokens (never the raw token itself
+        // — that's a launch-time secret shown once by starlink-create-enrollment-token).
+        $pendingEnrollments = st_list_pending_enrollments($db);
+        api_ok(['nodes' => $nodes, 'log' => $log, 'pending_enrollments' => $pendingEnrollments]);
+        break;
+    }
+
     case 'node-health': {
         // Latest per-node health written by scripts/check-node-health.sh (cron).
         $path = realpath(__DIR__ . '/../data') . '/node_health.json';
@@ -1394,6 +1623,90 @@ switch ($action) {
             'probe_breakdown'     => ni_probe_breakdown($db, $days),
             'recommendations'     => ni_recommendations($db, $days),
         ]);
+        break;
+    }
+
+    // Connection Diagnostics (2026-07-20): real measured RTT/handshake/jitter/
+    // packet-loss/throughput, grouped by node, platform, or network type —
+    // added after a Starlink "feels slow" complaint (STARLINK_WINDOWS_HANDOFF.md
+    // §32-33) found there was no measured data anywhere to check. Backs the
+    // dedicated "Connection Diagnostics" admin page (distinct from Network
+    // Intel above, which is about connect SUCCESS, not connect SPEED).
+    // See docs/CONNECTION_DIAGNOSTICS.md.
+    case 'connection-diagnostics': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db   = open_analytics_db();
+        $days = max(1, min(90, (int)($_GET['days'] ?? 7)));
+        ni_init_tables($db);
+        api_ok([
+            'days'               => $days,
+            'by_node'            => ni_perf_breakdown($db, 'node_id', $days),
+            'by_platform'        => ni_perf_breakdown($db, 'platform', $days),
+            'by_network_type'    => ni_perf_breakdown($db, 'network_type', $days),
+            'by_network_generation' => ni_perf_breakdown($db, 'network_generation', $days),
+        ]);
+        break;
+    }
+
+    // Node Genome + Telemetry Trust + Adaptive Routing + Evolution Layer —
+    // see docs/NODE_INTELLIGENCE_ARCHITECTURE.md. Read-only visibility;
+    // adaptive_routing_enabled is toggled via the dedicated
+    // 'routing-toggle' action below (Rule 7: explicit action, never implicit).
+    case 'node-genome': {
+        require_once __DIR__ . '/../lib/node_intel.php';
+        $db = open_analytics_db();
+        ni_init_tables($db);
+        $node = trim((string)($_GET['node'] ?? ''));
+        $recentDecisions = $db->query(
+            "SELECT decision_id, device_id, context_json, predicted_node, selected_node,
+                    outcome_json, created_at, outcome_recorded_at
+               FROM routing_decisions ORDER BY created_at DESC LIMIT 100"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $trustSummary = $db->query(
+            "SELECT COUNT(*) AS devices, AVG(trust_score) AS avg_trust,
+                    SUM(flagged_reports) AS flagged, SUM(total_reports) AS total
+               FROM device_trust"
+        )->fetch(PDO::FETCH_ASSOC) ?: [];
+        api_ok([
+            'genomes'            => $node !== '' ? [$node => ni_node_genome($db, $node)] : ni_all_genomes($db),
+            'routing_enabled'    => ni_adaptive_routing_enabled($db),
+            'routing_weights'    => ni_routing_weights($db),
+            'recent_decisions'   => $recentDecisions,
+            'trust_summary'      => $trustSummary,
+        ]);
+        break;
+    }
+
+    // routing-toggle, routing-set-bonus, node-command-enqueue: moved up to
+    // the CSRF-protected POST if-chain above (search "RULE 7" above) — this
+    // switch is GET-only in practice (see the comment at that new location
+    // for why leaving state-changing actions here was a real CSRF gap).
+
+    // GET ?action=node-command-queue&node_id=<id optional>&limit=50
+    case 'node-command-queue': {
+        require_once __DIR__ . '/../lib/node_console.php';
+        $db = open_analytics_db();
+        nc_init_tables($db);
+        $nodeId = trim((string)($_GET['node_id'] ?? '')) ?: null;
+        $limit  = min(200, max(1, (int)($_GET['limit'] ?? 50)));
+        api_ok([
+            'registry' => NC_COMMAND_REGISTRY,
+            'commands' => nc_recent_commands($db, $nodeId, $limit),
+        ]);
+        break;
+    }
+
+    // GET ?action=node-command-events&node_id=<id optional>&limit=100
+    // The audit trail that also feeds the Network Genome / Telemetry Trust
+    // Engine (lib/node_intel.php's ni_rebuild_genome()) — includes watchdog
+    // self-heals (automatic=1), not just admin-clicked commands.
+    case 'node-command-events': {
+        require_once __DIR__ . '/../lib/node_console.php';
+        $db = open_analytics_db();
+        nc_init_tables($db);
+        $nodeId = trim((string)($_GET['node_id'] ?? '')) ?: null;
+        $limit  = min(500, max(1, (int)($_GET['limit'] ?? 100)));
+        api_ok(nc_recent_events($db, $nodeId, $limit));
         break;
     }
 
@@ -2552,8 +2865,8 @@ switch ($action) {
         $status_filter = trim((string)($_GET['status'] ?? ''));
         $where = []; $params = [];
         if ($q) {
-            $where[] = "(d.device_id LIKE ? OR d.user_id LIKE ? OR d.country LIKE ? OR d.app_version LIKE ? OR d.model LIKE ?)";
-            $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%"]);
+            $where[] = "(d.device_id LIKE ? OR d.user_id LIKE ? OR d.country LIKE ? OR d.app_version LIKE ? OR d.model LIKE ? OR d.referral_code LIKE ?)";
+            $params = array_merge($params, ["%$q%","%$q%","%$q%","%$q%","%$q%","%$q%"]);
         }
         if ($plan)          { $where[] = 'd.plan=?';    $params[] = $plan; }
         if ($status_filter === 'online')  { $where[] = "(d.status='online' AND d.last_seen>=datetime('now','-180 minutes'))"; }
@@ -2563,7 +2876,8 @@ switch ($action) {
         $sql = 'SELECT d.*,
                        COALESCE(s.session_count,0) AS session_count,
                        COALESCE(s.session_bytes,0) AS session_bytes,
-                       s.last_session_at
+                       s.last_session_at,
+                       COALESCE(inv.invites_verified,0) AS invites_verified
                 FROM devices d
                 LEFT JOIN (
                     SELECT device_id,
@@ -2571,7 +2885,15 @@ switch ($action) {
                            SUM(bytes_sent+bytes_recv)     AS session_bytes,
                            MAX(ended_at)                  AS last_session_at
                     FROM vpn_sessions GROUP BY device_id
-                ) s ON s.device_id = d.device_id'
+                ) s ON s.device_id = d.device_id
+                LEFT JOIN (
+                    SELECT ru.referrer_device_id AS device_id, COUNT(*) AS invites_verified
+                    FROM referral_uses ru
+                    JOIN devices d2 ON d2.device_id = ru.new_device_id
+                    WHERE ru.status IN (\'credited\',\'approved\')
+                      AND (d2.internet_ok = 1 OR d2.last_seen >= datetime(\'now\',\'-7 days\'))
+                    GROUP BY ru.referrer_device_id
+                ) inv ON inv.device_id = d.device_id'
               . ($where ? ' WHERE '.implode(' AND ',$where) : '')
               . ' ORDER BY d.created_at DESC LIMIT 500';
         $st  = $db->prepare($sql);
@@ -2601,6 +2923,8 @@ switch ($action) {
                 $source = 'android';
             }
             $daysSince = $ls ? round((time()-strtotime((string)$ls.' UTC'))/86400, 1) : null;
+            $invitesVerified = (int)($r['invites_verified'] ?? 0);
+            $starlink = starlink_access_status($r, $invitesVerified);
             return [
                 'device_id'         => $r['device_id'],
                 'device_id_short'   => strtoupper(substr(hash('sha256',(string)$r['device_id']),0,8)),
@@ -2639,6 +2963,10 @@ switch ($action) {
                 'last_session_at'        => $r['last_session_at'] ?? null,
                 'ever_connected'         => $sessionCount > 0,
                 'days_inactive'          => $daysSince,
+                'test_mode'              => (int)($r['test_mode'] ?? 0) === 1,
+                'invites_verified'       => $invitesVerified,
+                'starlink_access'        => $starlink['unlocked'],
+                'starlink_reason'        => $starlink['reason'],
                 'registration_source'    => $source,
                 'phantom_online'         => $phantom,
             ];
@@ -2706,6 +3034,19 @@ switch ($action) {
                             ORDER BY id DESC LIMIT 10");
         $ev->execute([$did]);
         $dev['platform'] = normalize_platform($dev);
+        $invSt = $db->prepare(
+            "SELECT COUNT(*) FROM referral_uses ru
+             JOIN devices d2 ON d2.device_id = ru.new_device_id
+             WHERE ru.referrer_device_id = ?
+               AND ru.status IN ('credited','approved')
+               AND (d2.internet_ok = 1 OR d2.last_seen >= datetime('now','-7 days'))"
+        );
+        $invSt->execute([$did]);
+        $invCount = (int)$invSt->fetchColumn();
+        $dev['invites_verified'] = $invCount;
+        $starlink = starlink_access_status($dev, $invCount);
+        $dev['starlink_access'] = $starlink['unlocked'];
+        $dev['starlink_reason'] = $starlink['reason'];
         api_ok([
             'device'         => $dev,
             'sessions'       => $sessions,
