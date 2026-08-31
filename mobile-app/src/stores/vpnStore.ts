@@ -130,10 +130,18 @@ export const useVpnStore = create<VpnState>((set, get) => {
       const sst = useServerStore.getState();
       const curId = sst.selectedId;
       const newTried = [..._triedNodeIds, curId].filter(Boolean);
+      // `nodes_disabled` is a manually-curated remote-config kill-list, not the
+      // live per-node health the same servers array already carries — relying
+      // on it alone meant a node that /v1/servers reports down (e.g. the
+      // 2026-08-25 Hetzner outage on primary/de-nbg/fi-hel) still had cached
+      // creds and could win failover here for as long as nobody remembered to
+      // also add it to nodes_disabled, reproducing the exact "connects, no
+      // internet" symptom this failover path exists to avoid.
       const isCandidate = (s: typeof sst.servers[number]) =>
         s.id !== curId &&
         !newTried.includes(s.id) &&
         !nodesDisabled.includes(s.id) &&
+        s.available !== false &&
         !!sst.importedCreds[s.id];
 
       let nextServer = _triedNodeIds.length < maxExtra
