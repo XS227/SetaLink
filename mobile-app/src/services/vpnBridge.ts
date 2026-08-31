@@ -68,6 +68,14 @@ export interface VpnAdapter {
   disconnect(): Promise<void>;
   getStats(): Promise<VpnStats>;
   isRunning(): Promise<boolean>;
+  /**
+   * Live re-read of the native probe flag — NOT the cached connect-time
+   * value getLastConnectProbeOk() exposes. Native keeps updating this after
+   * CONNECTED broadcasts (Android's runBackgroundValidation, iOS's periodic
+   * App Group re-probe), so this is the only way to notice the tunnel is up
+   * but internet stopped routing mid-session.
+   */
+  getProbeResult?(): Promise<boolean>;
   getTun2socksLog?(): Promise<string>;
   getGeneratedConfig?(): Promise<string>;
   runTraceTest?(): Promise<TraceTestResult>;
@@ -120,6 +128,7 @@ class MockAdapter implements VpnAdapter {
   }
 
   async isRunning(): Promise<boolean> { return this._running; }
+  async getProbeResult(): Promise<boolean> { return this._running; }
   async getTun2socksLog(): Promise<string> { return '(mock — no native tunnel)'; }
   async getGeneratedConfig(): Promise<string> { return '(mock — no native tunnel)'; }
   async runTraceTest(): Promise<TraceTestResult> {
@@ -269,6 +278,12 @@ class NativeAdapter implements VpnAdapter {
 
   async isRunning(): Promise<boolean> {
     return this.module.isRunning();
+  }
+
+  async getProbeResult(): Promise<boolean> {
+    const ok = (await this.module.getLastProbeResult?.().catch(() => true) as boolean | null) ?? true;
+    _lastConnectProbeOk = ok;
+    return ok;
   }
 
   async getTun2socksLog(): Promise<string> {

@@ -133,7 +133,7 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
 
   const {
     connectionState, selectedServer, sessionStartedAt,
-    connect, disconnect, error,
+    connect, disconnect, error, internetDegraded,
   } = useVpnStore();
 
   const user         = useAuthStore((s) => s.user);
@@ -641,6 +641,13 @@ export function HomeScreen({ onNavigate, activeTab }: Props) {
             </View>
             {error && !isConnected && !isBusy && (
               <Text style={styles.errorHint} numberOfLines={1}>{t('home.holdToRetry')}</Text>
+            )}
+            {/* 2026-08-31: connected but the native probe confirmed nothing
+                actually routes (see vpnStore's probeRecheckInterval) — the
+                dot above still reads green, so this is the only visible
+                signal until the node-failover already in flight lands. */}
+            {isConnected && internetDegraded && (
+              <Text style={styles.errorHint} numberOfLines={1}>{t('home.noInternetWarning')}</Text>
             )}
 
             {/* Khabat, 2026-07-30: "de 3 boksene, ping og stability og

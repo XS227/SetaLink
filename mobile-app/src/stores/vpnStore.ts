@@ -40,6 +40,30 @@ function stopStatusHeartbeat() {
   if (statusHeartbeat) { clearInterval(statusHeartbeat); statusHeartbeat = null; }
 }
 
+// Post-connect internet-routing recheck. The native side only gates the
+// *initial* CONNECTED broadcast on a real HTTP probe (XrayVpnService's
+// tun_probe / PacketTunnelProvider's routeOk) — a SEPARATE, deeper
+// validation pass (runBackgroundValidation on Android, the periodic
+// re-probe on iOS) keeps running after that and can flip getLastProbeResult()
+// back to false if the ISP starts interfering mid-session (matches the real
+// "connected but no internet" devices seen in analytics: internet_ok=0 while
+// status=online, spanning current beta builds — a 2026-08-31 Danmark/dk-cph
+// report from Khabat traced to exactly this: nothing in JS ever re-reads
+// getLastProbeResult() after the one-time read at connect, so a later
+// failure just sits in native state and is silently reported to no one).
+// Poll periodically while connected and, once two consecutive checks agree
+// the probe is failing (avoids reacting to a single transient blip — same
+// "first strike lenient" philosophy as _unexpectedDropCount below), surface
+// a visible warning and hand off to the existing node-failover ladder.
+const PROBE_RECHECK_INTERVAL_MS = 20 * 1000;
+let probeRecheckInterval: ReturnType<typeof setInterval> | null = null;
+let probeRecheckFailStreak = 0;
+
+function stopProbeRecheck() {
+  if (probeRecheckInterval) { clearInterval(probeRecheckInterval); probeRecheckInterval = null; }
+  probeRecheckFailStreak = 0;
+}
+
 interface TraceTestResult {
   ok: boolean;
   statusCode?: number;
@@ -87,6 +111,13 @@ interface VpnState {
   // holding up right now.
   _unexpectedDropCount: number;
   _userInitiatedDisconnect: boolean;
+  // True once the post-connect probe recheck (see startProbeRecheck below)
+  // has caught the native deep-validation probe reporting no internet while
+  // the tunnel itself is still up ("connected" in the UI, connect_ok in
+  // telemetry, but nothing actually routes) — surfaced as a visible banner
+  // on HomeScreen instead of silently staying green. Reset on every fresh
+  // onConnected/disconnect.
+  internetDegraded:   boolean;
 
   connect:            () => void;
   disconnect:         () => void;
@@ -234,7 +265,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
       set({
         sessionStartedAt: Date.now(), error: null, smartStatus: null,
         _fallbackActive: false, _fallbackIdx: 0, _triedNodeIds: [], _unexpectedDropCount: 0,
-        activeProtocol, activeTransport,
+        activeProtocol, activeTransport, internetDegraded: false,
       });
       try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -369,10 +400,52 @@ export const useVpnStore = create<VpnState>((set, get) => {
           }, HEARTBEAT_INTERVAL_MS);
         }
       } catch {}
+
+      // Recheck the native internet-routing probe periodically — see
+      // PROBE_RECHECK_INTERVAL_MS comment above for why this exists.
+      try {
+        stopProbeRecheck();
+        probeRecheckInterval = setInterval(() => {
+          const s = get();
+          if (s.connectionState !== 'connected') { stopProbeRecheck(); return; }
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { getAdapter } = require('../services/vpnBridge') as typeof import('../services/vpnBridge');
+          getAdapter().getProbeResult?.().then((ok: boolean) => {
+            if (get().connectionState !== 'connected') return; // state moved on while awaiting
+            if (ok) {
+              probeRecheckFailStreak = 0;
+              if (get().internetDegraded) set({ internetDegraded: false });
+              return;
+            }
+            probeRecheckFailStreak += 1;
+            if (probeRecheckFailStreak < 2) return; // one-off blip — confirm on the next tick
+            stopProbeRecheck();
+            set({ internetDegraded: true });
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { useToastStore } = require('./toastStore');
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { tr } = require('../i18n');
+              useToastStore.getState().show(tr('home.noInternetWarning'), 'error', 6000);
+            } catch {}
+            try {
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { reportVpnStatus } = require('../services/entitlementService');
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const { useAuthStore } = require('./authStore');
+              const u = useAuthStore.getState().user;
+              if (u) reportVpnStatus(u.deviceId, 'online', { internetOk: false }).catch(() => {});
+            } catch {}
+            tryNodeFailover();
+          }).catch(() => {});
+        }, PROBE_RECHECK_INTERVAL_MS);
+      } catch {}
     },
 
     onDisconnected: () => {
       stopStatusHeartbeat();
+      stopProbeRecheck();
+      set({ internetDegraded: false });
       // Diagnostics reads activeProtocol/activeTransport live; without
       // clearing them here it keeps showing the last connected protocol
       // after disconnect, same class of bug useVpnStats.ts's clearLiveStats
@@ -686,6 +759,7 @@ export const useVpnStore = create<VpnState>((set, get) => {
     _triedNodeIds:     [],
     _unexpectedDropCount:     0,
     _userInitiatedDisconnect: false,
+    internetDegraded:         false,
 
     connect: () => {
       // Forced-update gate: a build below minSupported must not connect.
