@@ -23125,3 +23125,58 @@ https://github.com/XS227/SetaLink/actions/runs/33401569047, ~10m23s),
 published to `beta` only (Khabat's go). Live version.json verified
 (`https://setalink.no/download/version.json` reports 0.9.145, APK
 checksum matches on disk).
+
+## A→B(346) — v0.9.146/186 published to beta: v0.9.145's probe-recheck fix didn't actually recheck anything
+
+**Dato: 2026-08-31.** Same day, same device (`sl-85ff1772-...`) submitted
+a diagnostic report on v0.9.145/build 185 — the fix build itself —
+showing the *identical* "connected, Exit IP ≠ VPN node, HTTPS timeout"
+signature as the pre-fix report. Khabat also reported real-world context:
+in Lahijan he can get unfiltered internet with no VPN at all, but at
+another nearby location even the VPN itself won't connect — points at
+ISP interference that starts or changes per-location/mid-session, not a
+one-off connect-time fluke.
+
+Root cause: v0.9.145's own commit message assumed native kept
+re-validating in the background after connect ("a separate background
+validation pass keeps running afterward"). It didn't. Read
+`XrayVpnService.kt` line by line: `runBackgroundValidation()` (which
+sets the flag `getLastProbeResult()` reads) is launched exactly **once**,
+~1-2s after CONNECTED — `startWatchdog()`'s only other loop just checks
+whether the xray/tun2socks processes are alive, never whether internet
+routes. So the JS-side 20s poll added in v0.9.145 was reading a value
+frozen shortly after connect for the rest of the session — it could
+never catch the ISP starting to interfere later. Fully explains why the
+same device showed the same failure on both the pre-fix and "fixed"
+build.
+
+Fix: new `startProbeRecheckLoop()` in `XrayVpnService.kt`, launched
+right after the existing one-shot `runBackgroundValidation()` and
+running for the life of the session — every 30s, probes real websites
+(`www.cloudflare.com`, `example.com`, `vg.no`) via the existing
+`runHttpsProbe()` helper (deliberately NOT the captive-check domains
+`runDeepValidation()` uses — `connectivitycheck.gstatic.com` /
+`captive.apple.com` — some ISPs allow-list exactly those while blocking
+everything else, which is how a session can pass the one-shot deep
+validation yet still leak to a raw-ISP exit IP). Requires 2 consecutive
+failures (~60s) before broadcasting `probe_ok:false`, broadcasts
+`probe_ok:true` again on recovery so a blip doesn't leave the banner
+stuck — reuses the exact `BROADCAST_CONNECTED`/`probe_update` wire
+format the v0.9.145 JS poll already consumes, so **no JS changes were
+needed**, only the native side. `npx tsc --noEmit` clean, `npx jest`
+39/39 suites / 408/408 tests green (JS changes were version-bump only).
+
+v0.9.146 (versionCode 186) built via `release-apk.yml` (tag push, run
+https://github.com/XS227/SetaLink/actions/runs/33426698106), published
+to `beta` only. Live version.json verified
+(`https://setalink.no/download/version.json` reports 0.9.146).
+
+**Still open:** this is Android-only. iOS's `PacketTunnelProvider.swift`
+has the identical one-shot gap (`runInternetProbe()` also only runs
+once per connect; `startLivenessTimer()` only touches a heartbeat
+timestamp, not the probe) — not fixed this round, flagging for whoever
+next touches the iOS tunnel extension. Also: the app currently fails
+**open**, not closed — when routing is actually broken, traffic still
+leaks to the raw ISP path instead of being blocked (the diagnostic's
+Exit IP mismatch is a real leak, not just a UI/detection gap) — separate
+issue from the detection fix here, not addressed this round.
