@@ -23052,3 +23052,43 @@ correct as of now, only the CTA-wiring on realgram.no itself is still
 outstanding. Point the CTA at this artifact (or your own re-host of it),
 not the `.msix` one — and no cert/install instructions needed in
 whatever copy you write for Khabat, just "unzip, run setalink.exe".
+
+## A→B(344) — v0.9.144/184 published to beta: failover was picking dead Hetzner-blocked nodes; also an emergency live remote-config patch
+
+**Dato: 2026-08-31.** Khabat reported his own device (`sl-85ff1772...`)
+"connects, but no internet" — not a fresh install, an existing device
+that had been connecting fine all day. Root cause: `tryNodeFailover()`
+in `vpnStore.ts` (used both on initial-connect failure and mid-session
+drops) only excluded candidates via the remote-config `nodes_disabled`
+list, never checked each server's own `available` flag. `primary`/
+`de-nbg`/`fi-hel` have been down since 2026-08-25 (Hetzner payment
+block, see [[realgram-primary-node-hetzner-payment-block]] in memory)
+but nobody had added them to `nodes_disabled`, so any device with
+cached creds for one of them (Khabat's had heavy historical use of all
+three) could still fail over onto a dead node — TLS/edge handshake
+succeeds, backend is gone, exactly "connects, no internet."
+
+Two fixes, one immediate + one shipped:
+1. **Live, no build (applied first, ~12:39 UTC):** added
+   `primary`/`de-nbg`/`fi-hel` to `rc_nodes_disabled` directly in
+   `settings` (analytics.db) — closes the gap for every device on its
+   next remote-config fetch (the app force-refreshes that after a VPN
+   failure, so it reaches an actively-failing device fast, not stuck
+   behind the 1h TTL).
+2. **Code fix, built + published:** `isCandidate()` now also requires
+   `s.available !== false`, so this class of bug can't recur next time
+   a node goes down and someone forgets the manual kill-list. v0.9.144
+   (versionCode 184) built via `release-apk.yml` (tag push, run
+   https://github.com/XS227/SetaLink/actions/runs/33393182046) and
+   published to the `beta` channel only (Khabat's go, owner-test-only —
+   `experimental` was left untouched, it's been stale at 0.9.67/build101
+   for a while and doesn't look like it's actually in use as a channel
+   any more; flag if that's wrong). Live version.json verified
+   (`https://setalink.no/download/version.json` reports 0.9.144, APK
+   checksum matches on disk).
+
+Note for whoever next touches `primary`/`de-nbg`/`fi-hel`: the
+`rc_nodes_disabled` entries above need removing once Hetzner actually
+restores those nodes, same as the other temp patches tracked in that
+memory entry (v1.php's primary-exemption suspension, bootstrap_* → 
+dk-cph) — all three should be reverted together.
