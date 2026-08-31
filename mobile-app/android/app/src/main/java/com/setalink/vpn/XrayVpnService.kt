@@ -67,6 +67,20 @@ class XrayVpnService : VpnService() {
         // Metrics polling interval
         private const val METRICS_INTERVAL_MS = 3_000L
 
+        // Post-connect internet-routing recheck. runBackgroundValidation() only ever
+        // ran ONCE, ~1-2s after connect — v0.9.145 (see docs/realgram/TASK_SPLIT.md
+        // A→B(345)) shipped a JS-side 20s poll of getLastProbeResult() assuming native
+        // kept re-validating in the background, but nothing did; the flag it read was
+        // frozen at that one-shot value for the rest of the session. This loop is the
+        // actual periodic re-probe. Real websites, not captive-check domains
+        // (connectivitycheck.gstatic.com / captive.apple.com) — some ISPs allow-list
+        // exactly those domains even while blocking everything else, which is how a
+        // "connected but no internet" session can pass runDeepValidation() yet still
+        // show a raw-ISP exit IP (see the sl-85ff1772 field report, 2026-08-31).
+        private const val PROBE_RECHECK_INTERVAL_MS    = 30_000L
+        private const val PROBE_RECHECK_FAIL_THRESHOLD = 2
+        private val PROBE_RECHECK_TARGETS = listOf("www.cloudflare.com", "example.com", "vg.no")
+
         // PIDs of spawned processes survive here across service-instance
         // recreation (HyperOS/MIUI kill the service object but the forked
         // children live on holding the TUN fd — the reboot-only bug).
@@ -109,6 +123,7 @@ class XrayVpnService : VpnService() {
     private var xrayProcess:   Process?              = null
     private var tun2socksPid:  Int?                  = null
     private var connectJob:    Job?                  = null
+    private var probeRecheckJob: Job?                = null
     // REAL SSH (transport 'real_ssh') — non-null only when this session's
     // SOCKS backend is the SSH bridge instead of Xray.
     private var realSshTunnel: RealSshTunnel?         = null
@@ -523,8 +538,15 @@ class XrayVpnService : VpnService() {
             startMetricsLoop(tunInterface)
             startWatchdog()
 
-            // 11. Background validation — now used mainly for metrics/ping
-            scope.launch { runBackgroundValidation(tunInterface) }
+            // 11. Background validation — now used mainly for metrics/ping. Then keep
+            // re-probing periodically (see PROBE_RECHECK_INTERVAL_MS above) — the
+            // one-shot validation alone can't catch the ISP starting to interfere
+            // mid-session.
+            probeRecheckJob?.cancel()
+            probeRecheckJob = scope.launch {
+                runBackgroundValidation(tunInterface)
+                startProbeRecheckLoop(tunInterface)
+            }
 
         } catch (e: Exception) {
             Log.e(TAG, "Tunnel setup failed: ${e.message}", e)
@@ -582,6 +604,55 @@ class XrayVpnService : VpnService() {
         } catch (e: Exception) {
             appendLog("[BG-VALIDATION] Exception: ${e.message}")
             broadcastStep("validation_error", false, "Background validation error: ${e.message}")
+        }
+    }
+
+    // ── Periodic internet-routing recheck ─────────────────────────────────────
+    // The actual fix for "connected but no internet" (see PROBE_RECHECK_* consts
+    // above for why runBackgroundValidation() alone isn't enough). Runs for as
+    // long as this session stays connected; the JS side already polls
+    // getLastProbeResult() every 20s (vpnStore.ts, shipped v0.9.145) and handles
+    // the banner + node-failover handoff once probe_ok flips — this loop just
+    // needs to keep that native flag honest.
+
+    private suspend fun startProbeRecheckLoop(tunInterface: String?) {
+        var failStreak = 0
+        while (scope.isActive) {
+            delay(PROBE_RECHECK_INTERVAL_MS)
+            if (tearingDown.get()) break
+            val xAlive = realSshTunnel?.let { it.isConnected() } ?: (xrayProcess?.isAlive == true)
+            val tAlive = tun2socksPid?.let { nativeTun2socksExitCode(it) == -2 } == true
+            if (!xAlive || !tAlive) break // watchdog is already tearing this session down
+
+            var ok = false
+            for (host in PROBE_RECHECK_TARGETS) {
+                val (hostOk, bytes, _) = runHttpsProbe(host)
+                if (hostOk) { ok = true; appendLog("[PROBE-RECHECK] $host OK (${bytes}B)"); break }
+            }
+
+            if (ok) {
+                if (failStreak >= PROBE_RECHECK_FAIL_THRESHOLD) {
+                    appendLog("[PROBE-RECHECK] recovered — real-website probe OK again")
+                    sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
+                        setPackage(packageName)
+                        putExtra("probe_ok", true)
+                        putExtra("probe_update", true)
+                    })
+                }
+                failStreak = 0
+                continue
+            }
+
+            failStreak += 1
+            appendLog("[PROBE-RECHECK] all real-website probes failed (streak=$failStreak)")
+            if (failStreak == PROBE_RECHECK_FAIL_THRESHOLD) {
+                appendLog("[PROBE-RECHECK] confirmed — tunnel up but internet not routing, reporting probe_ok=false")
+                sendBroadcast(Intent(BROADCAST_CONNECTED).apply {
+                    setPackage(packageName)
+                    putExtra("probe_ok", false)
+                    putExtra("probe_update", true)
+                })
+            }
         }
     }
 
@@ -1306,6 +1377,8 @@ class XrayVpnService : VpnService() {
         // 0. Cancel an in-flight connect so it can't resurrect processes mid-teardown.
         runCatching { connectJob?.cancel() }
         connectJob = null
+        runCatching { probeRecheckJob?.cancel() }
+        probeRecheckJob = null
 
         // 1. Stop tun2socks FIRST — it holds the TUN fd; while it lives the
         //    kernel keeps the tun device (and the system VPN state) alive.
