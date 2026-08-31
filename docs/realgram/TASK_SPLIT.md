@@ -23092,3 +23092,36 @@ Note for whoever next touches `primary`/`de-nbg`/`fi-hel`: the
 restores those nodes, same as the other temp patches tracked in that
 memory entry (v1.php's primary-exemption suspension, bootstrap_* → 
 dk-cph) — all three should be reverted together.
+
+## A→B(345) — v0.9.145/185 published to beta: connected-but-no-internet probe race fixed
+
+**Dato: 2026-08-31.** Khabat reported the dk-cph (Denmark) node "shows
+connected but isn't" — confirmed real and current in prod telemetry,
+not isolated to that node: 3 of 11 devices online in the last 24h had
+`internet_ok=0` while `status=online`, spanning app versions 0.9.66
+through 0.9.143.
+
+Root cause: `XrayVpnService.kt` correctly gates the *first* CONNECTED
+broadcast on a real HTTP probe, but a separate background validation
+pass keeps running after that and can flip the native probe flag back
+to false if the ISP interferes shortly into the session — the tunnel
+is deliberately kept alive ("apps may still work"). Nothing in JS ever
+re-read that flag after the one-time read at connect time, so a real
+mid-session internet loss reached neither the UI (HomeScreen had zero
+references to probeOk) nor the backend (heartbeat never resends
+internetOk). See [[realgram-connected-but-no-internet-probe-gap]] in
+memory for the full trace.
+
+Fix: `vpnBridge.ts` gained `getProbeResult()` (live re-read, not the
+cached connect-time value); `vpnStore.ts` rechecks every 20s while
+connected, requires 2 consecutive failures (~40s, avoids reacting to a
+one-off blip) before showing a warning banner (`HomeScreen.tsx`, new
+`home.noInternetWarning` i18n key in all 4 locales) and handing off to
+the existing `tryNodeFailover()` ladder. `npx tsc --noEmit` clean,
+full `npx jest` 408/408 green before build.
+
+v0.9.145 (versionCode 185) built via `release-apk.yml` (tag push, run
+https://github.com/XS227/SetaLink/actions/runs/33401569047, ~10m23s),
+published to `beta` only (Khabat's go). Live version.json verified
+(`https://setalink.no/download/version.json` reports 0.9.145, APK
+checksum matches on disk).
