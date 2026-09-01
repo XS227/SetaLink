@@ -375,6 +375,7 @@ class XrayVpnService : VpnService() {
             val vpnBuilder = Builder()
                 .setSession("RealGram")
                 .addAddress("10.0.0.2", 24)
+                .addAddress("fd00:1:fd00:1::2", 64)
                 .addDnsServer("1.1.1.1")
                 .addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
