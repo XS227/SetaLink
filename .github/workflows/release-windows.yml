@@ -1,7 +1,18 @@
-name: Release Windows (RealGram desktop, chat-only)
+name: Release Windows (RealGram desktop, VPN — untested, not yet the public download)
 
 # Manual only — never on push. Same standing rule as release-apk.yml/
 # ios-testflight.yml: no build/publish without an explicit go per run.
+#
+# 2026-09-03: this run now also bundles the RealGram VPN service (WinTun +
+# xray-core + tun2socks, see mobile-app/windows/vpn-service/) alongside the
+# previously chat-only app. This is a FIRST PASS with zero real-device
+# testing — no Windows machine to test on from this box, only CI, which
+# compiles but cannot verify a tunnel actually connects. Per
+# docs/CLAUDE_REALINK_RULES.md Rule 2 ("connected != working unless
+# verified") and Rule 7 (no production rollout without explicit approval):
+# this artifact is for Khabat to test on his own machine — it must NOT be
+# swapped into the live realgram.no download until that verification
+# happens. See docs/realgram/TASK_SPLIT.md for the handoff note.
 #
 # This produces a single installer exe (RealGram-Setup.exe, built with Inno
 # Setup from mobile-app/windows/installer/RealGram.iss): download, double-
@@ -268,6 +279,77 @@ jobs:
           Write-Host "Bundle staged: $bundleSize bytes"
           if ($bundleSize -lt 100000) { Write-Error "Bundle looks like the placeholder stub, not a real build"; exit 1 }
 
+      # RealGram VPN service — the SYSTEM-level helper that owns the WinTun
+      # tunnel + xray-core/tun2socks child processes (see mobile-app/windows/
+      # vpn-service/ for why: creating a TUN adapter and changing the default
+      # route needs Administrator rights this unelevated app process
+      # shouldn't run with). Independent of the RNW app build above — plain
+      # Win32, not part of setalink.sln — so it's staged in its own steps.
+      - name: Stage VPN binaries (xray-core, tun2socks, wintun)
+        working-directory: mobile-app/windows
+        shell: pwsh
+        run: |
+          $vpnDir = "installer\build\VpnFiles"
+          New-Item -ItemType Directory -Path $vpnDir -Force | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+          # Xray-core — latest release. Same binary family Android/iOS bundle
+          # (VLESS+REALITY client); no version pin, unlike tun2socks below —
+          # this app's config only uses the stable vnext/REALITY outbound
+          # shape, and always fetching current satisfies Rule 1 in
+          # docs/CLAUDE_REALINK_RULES.md ("check Xray-core changes before
+          # every network release") by construction.
+          $xrayRelease = Invoke-RestMethod -Uri "https://api.github.com/repos/XTLS/Xray-core/releases/latest"
+          $xrayAsset = $xrayRelease.assets | Where-Object { $_.name -eq "Xray-windows-64.zip" } | Select-Object -First 1
+          if (-not $xrayAsset) { Write-Error "Xray-windows-64.zip not found in latest Xray-core release"; exit 1 }
+          Write-Host "Xray-core $($xrayRelease.tag_name): $($xrayAsset.browser_download_url)"
+          Invoke-WebRequest -Uri $xrayAsset.browser_download_url -OutFile "$vpnDir\xray.zip"
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("$vpnDir\xray.zip", $vpnDir)
+          Remove-Item "$vpnDir\xray.zip"
+          if (-not (Test-Path "$vpnDir\xray.exe")) { Write-Error "xray.exe missing after extracting Xray-windows-64.zip"; exit 1 }
+
+          # tun2socks — pinned to v2.6.0, the exact version Android bundles
+          # (mobile-app/android/app/src/main/jniLibs, per
+          # docs/realgram/BUILD_SIZE_BUDGET.md), so the CLI flags
+          # RealGramVpnService.cpp launches it with (--device, --proxy,
+          # --loglevel) can't silently drift from a newer release.
+          Invoke-WebRequest -Uri "https://github.com/xjasonlyu/tun2socks/releases/download/v2.6.0/tun2socks-windows-amd64.zip" -OutFile "$vpnDir\tun2socks.zip"
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("$vpnDir\tun2socks.zip", $vpnDir)
+          Remove-Item "$vpnDir\tun2socks.zip"
+          $t2sExe = Get-ChildItem -Path $vpnDir -Filter "tun2socks-windows-amd64.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($t2sExe) { Rename-Item $t2sExe.FullName "tun2socks.exe" }
+          if (-not (Test-Path "$vpnDir\tun2socks.exe")) { Write-Error "tun2socks.exe missing after extracting tun2socks v2.6.0"; exit 1 }
+
+          # Wintun — the TUN driver DLL tun2socks's `wintun://` device loads
+          # at runtime. Official redistributable from the WireGuard project;
+          # wintun.net (not GitHub) is the canonical distribution point for
+          # this exact file.
+          Invoke-WebRequest -Uri "https://www.wintun.net/builds/wintun-0.14.1.zip" -OutFile "$vpnDir\wintun.zip"
+          [System.IO.Compression.ZipFile]::ExtractToDirectory("$vpnDir\wintun.zip", "$vpnDir\wintun_extracted")
+          Copy-Item "$vpnDir\wintun_extracted\wintun\bin\amd64\wintun.dll" "$vpnDir\wintun.dll"
+          Remove-Item "$vpnDir\wintun.zip", "$vpnDir\wintun_extracted" -Recurse -Force
+          if (-not (Test-Path "$vpnDir\wintun.dll")) { Write-Error "wintun.dll missing after extracting wintun-0.14.1.zip"; exit 1 }
+
+          Write-Host "VpnFiles staged:"
+          Get-ChildItem $vpnDir | Select-Object Name, Length
+
+      - name: Add MSBuild to PATH (for the standalone VPN service project)
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build RealGram VPN service (Release, x64)
+        working-directory: mobile-app/windows
+        run: msbuild vpn-service\RealGramVpnService.vcxproj /p:Configuration=Release /p:Platform=x64 /m
+
+      - name: Stage VPN service binary
+        working-directory: mobile-app/windows
+        shell: pwsh
+        run: |
+          $svcExe = Get-ChildItem -Recurse -Path vpn-service -Filter "RealGramVpnService.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $svcExe) { Write-Error "RealGramVpnService.exe not found after build"; exit 1 }
+          Copy-Item $svcExe.FullName "installer\build\VpnFiles\RealGramVpnService.exe"
+          Write-Host "VpnFiles final contents:"
+          Get-ChildItem "installer\build\VpnFiles" | Select-Object Name, Length
+
       - name: Compile installer (Inno Setup)
         working-directory: mobile-app/windows/installer
         shell: pwsh
@@ -277,6 +359,7 @@ jobs:
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
             "/DAppFilesDir=build\AppFiles" `
             "/DWebView2Bootstrapper=build\MicrosoftEdgeWebview2Setup.exe" `
+            "/DVpnFilesDir=build\VpnFiles" `
             "/DAppVersion=$version" `
             RealGram.iss
           if ($LASTEXITCODE -ne 0) { Write-Error "ISCC.exe failed"; exit 1 }

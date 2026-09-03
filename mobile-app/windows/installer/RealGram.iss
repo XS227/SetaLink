@@ -35,6 +35,9 @@
 #ifndef WebView2Bootstrapper
   #define WebView2Bootstrapper "build\MicrosoftEdgeWebview2Setup.exe"
 #endif
+#ifndef VpnFilesDir
+  #define VpnFilesDir "build\VpnFiles"
+#endif
 
 #define AppName "RealGram"
 #define AppExeName "setalink.exe"
@@ -93,6 +96,10 @@ Source: "{#AppFilesDir}\*"; DestDir: "{app}"; Excludes: "*.pdb,sourcemaps\*"; Fl
 ; only when WebView2 is missing (see [Run]/NeedsWebView2 below), never shipped
 ; into {app}.
 Source: "{#WebView2Bootstrapper}"; DestDir: "{tmp}"; Flags: deleteafterinstall
+; xray.exe + tun2socks.exe + wintun.dll + RealGramVpnService.exe — staged by
+; CI into a "vpn" folder (see release-windows.yml) separate from AppFiles so
+; the service's own binaries never get swept up as loose app DLLs.
+Source: "{#VpnFilesDir}\*"; DestDir: "{app}\vpn"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"
@@ -109,11 +116,38 @@ Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Tasks: deskto
 Filename: "{tmp}\{#ExtractFileName(WebView2Bootstrapper)}"; Parameters: "/silent /install"; \
   StatusMsg: "Installing Microsoft WebView2 runtime..."; Check: NeedsWebView2; \
   Flags: waituntilterminated runhidden skipifdoesntexist
+; RealGram VPN service — owns the WinTun tunnel + xray-core/tun2socks child
+; processes as SYSTEM, so the (unelevated, unpackaged) RealGram.exe never
+; needs to run elevated itself. See mobile-app/windows/vpn-service/ for what
+; this actually does; the app's native XrayModule talks to it over a named
+; pipe (mobile-app/windows/shared/PipeProtocol.h). Stop+delete before create
+; so a re-install/upgrade picks up a new binary rather than erroring on an
+; already-registered service name — sc.exe's exit code isn't checked (Inno
+; doesn't examine it for a plain [Run] entry), so a fresh install's harmless
+; "service does not exist" failures on stop/delete don't block anything.
+Filename: "{sys}\sc.exe"; Parameters: "stop RealGramVpnService"; \
+  Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "delete RealGramVpnService"; \
+  Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; \
+  Parameters: "create RealGramVpnService binPath= ""{app}\vpn\RealGramVpnService.exe"" start= auto DisplayName= ""RealGram VPN Service"""; \
+  StatusMsg: "Installing RealGram VPN service..."; Flags: runhidden waituntilterminated
+Filename: "{sys}\sc.exe"; Parameters: "start RealGramVpnService"; \
+  StatusMsg: "Starting RealGram VPN service..."; Flags: runhidden waituntilterminated
 Filename: "{app}\{#AppExeName}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
 ; "Make it a real setup" (Khabat) — also offer to open the website on
 ; finish, same pattern as the app launch above (shellexec hands the URL to
 ; the default browser; Inno doesn't run URLs as a local process).
 Filename: "{#AppURL}"; Description: "Open {#AppURL}"; Flags: shellexec nowait postinstall skipifsilent
+
+[UninstallRun]
+; Tear down the VPN service so uninstalling RealGram doesn't leave a SYSTEM
+; process (and, if still connected, a live tunnel) behind. Exit codes not
+; checked, same reasoning as the [Run] install-time entries above.
+Filename: "{sys}\sc.exe"; Parameters: "stop RealGramVpnService"; \
+  Flags: runhidden waituntilterminated; RunOnceId: "StopRealGramVpnService"
+Filename: "{sys}\sc.exe"; Parameters: "delete RealGramVpnService"; \
+  Flags: runhidden waituntilterminated; RunOnceId: "DeleteRealGramVpnService"
 
 [Code]
 { True when the WebView2 Evergreen runtime isn't registered on this machine.
