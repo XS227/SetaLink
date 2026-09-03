@@ -210,7 +210,7 @@ bool ProbeThroughSocks5(int timeoutMs) {
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons((u_short)kSocksPort);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+  InetPtonA(AF_INET, "127.0.0.1", &addr.sin_addr);
   connect(s, (sockaddr*)&addr, sizeof(addr));
 
   fd_set writeSet;
@@ -352,7 +352,7 @@ bool StartTunnelInternal(const std::string& configJsonUtf8, bool /*emergency*/, 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
     addr.sin_port = htons((u_short)kSocksPort);
-    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+    InetPtonA(AF_INET, "127.0.0.1", &addr.sin_addr);
     if (connect(probe, (sockaddr*)&addr, sizeof(addr)) == 0) socksOpen = true;
     closesocket(probe);
     if (socksOpen) break;
