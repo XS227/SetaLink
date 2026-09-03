@@ -37,8 +37,14 @@ bool CallService(Command cmd, const std::string &payload, ResponseStatus &outSta
                   DWORD timeoutMs, std::string &transportError) {
   HANDLE pipe = INVALID_HANDLE_VALUE;
   const DWORD waitStart = GetTickCount();
+  // CreateFileW is excluded from WINAPI_PARTITION_APP, which this project
+  // targets as a react-native-windows/C++-WinRT app — CreateFile2 is the
+  // app-family-compatible replacement for opening the named pipe.
+  CREATEFILE2_EXTENDED_PARAMETERS pipeParams = {};
+  pipeParams.dwSize = sizeof(pipeParams);
+  pipeParams.dwFileAttributes = FILE_ATTRIBUTE_NORMAL;
   for (;;) {
-    pipe = CreateFileW(kPipeName, GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+    pipe = CreateFile2(kPipeName, GENERIC_READ | GENERIC_WRITE, 0, OPEN_EXISTING, &pipeParams);
     if (pipe != INVALID_HANDLE_VALUE) break;
     if (GetLastError() != ERROR_PIPE_BUSY) {
       transportError =
